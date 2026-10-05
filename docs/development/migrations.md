@@ -82,8 +82,9 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain includes
-`047_dlsite_genre_dictionary.sql`, with the `047_v0.7.1.sql` baseline generated
-from the current `VERSION` file. Migration 047 adds `work_dlsite_genre` and
+`048_favorite_list_icon.sql`, with the `048_v0.7.1.sql` baseline generated
+from the current `VERSION` file. Migration 048 adds the `favorite_list.icon`
+presentation key with an empty default; it changes no existing rows. Migration 047 adds `work_dlsite_genre` and
 `dlsite_genre_name`, backfills them from each work's latest DLsite snapshot
 (genres with a positive integer id only, newest name first), adds triggers that
 queue affected works for the search index, and queues every work that has a

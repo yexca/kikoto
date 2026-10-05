@@ -112,6 +112,12 @@ The Workflows page keeps routing, selection, and run handlers. Definition
 detail, run forms, the trigger editor, availability watches, run detail, and
 candidate review live in `features/workflows`.
 
+The Favorites page keeps data loading, browse state, and history restoration.
+The shelf rail, shelf header, controls, card and list views, creator shelves,
+and list management live in `features/favorites`. List icons come from a
+shared catalog in `components/favorite-list`, so the work card's list menu and
+Favorites draw the same icon for a stored key.
+
 Work detail metadata editing exposes one entry from
 `features/work-detail/metadata`. Its modal owns interaction and save actions,
 suggestion hooks own asynchronous lookup, and a pure model maps editor state

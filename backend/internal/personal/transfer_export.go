@@ -146,10 +146,10 @@ func (s Store) Export(ctx context.Context, user int64) ([]byte, error) {
 		return nil, err
 	}
 	listIndex := map[int64]int{}
-	err = scanRows(ctx, tx, `SELECT id,name,description,sort_order FROM favorite_list WHERE user_id=? AND kind='user' ORDER BY sort_order,id LIMIT ?`, []any{user, maxTransferLists + 1}, func(rows *sql.Rows) error {
+	err = scanRows(ctx, tx, `SELECT id,name,description,icon,sort_order FROM favorite_list WHERE user_id=? AND kind='user' ORDER BY sort_order,id LIMIT ?`, []any{user, maxTransferLists + 1}, func(rows *sql.Rows) error {
 		var id int64
 		list := BackupPlaylist{Items: []BackupPlaylistItem{}}
-		if err := rows.Scan(&id, &list.Name, &list.Description, &list.SortOrder); err != nil {
+		if err := rows.Scan(&id, &list.Name, &list.Description, &list.Icon, &list.SortOrder); err != nil {
 			return err
 		}
 		if err := reserveText(list.Name, list.Description); err != nil {

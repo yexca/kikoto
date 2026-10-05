@@ -19,6 +19,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
+import { FavoriteListIconGlyph } from "@/components/favorite-list/FavoriteListIconGlyph";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1068,6 +1069,7 @@ export function WorkCardListButton({
                     name: list.name,
                   })}
                 />
+                <FavoriteListIconGlyph list={list} />
                 <span className="min-w-0 flex-1 truncate">{list.name}</span>
               </div>
             ))
@@ -1173,7 +1175,7 @@ export function userTagBadges(tags: UserTag[], onOpen?: (tag: string) => void): 
 
 const quickMarkOptions: ListeningStatus[] = ["none", "want_to_listen", "listening", "finished", "relisten", "paused"];
 
-function quickMarkMeta(value: ListeningStatus) {
+export function quickMarkMeta(value: ListeningStatus) {
   switch (value) {
     case "want_to_listen":
       return { icon: BookmarkPlus, active: true, className: "text-primary" };

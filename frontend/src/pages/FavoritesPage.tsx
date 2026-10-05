@@ -1,74 +1,70 @@
-import {
-  Album,
-  ArrowDownAZ,
-  ArrowDownZA,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  Check,
-  ChevronDown,
-  Cloud,
-  Filter,
-  Heart,
-  ListChecks,
-  ListMusic,
-  Mic2,
-  Pencil,
-  Pause,
-  Play,
-  Plus,
-  RefreshCw,
-  Search,
-  Star,
-  Trash2,
-  UsersRound,
-  X,
-} from "lucide-react";
-import { memo, useEffect, useRef, useState, type ReactNode } from "react";
-import type { TFunction } from "i18next";
+import { ListMusic, Pencil } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { AnchoredPopover } from "@/components/ui/anchored-popover";
+import { useAuth } from "@/auth/AuthProvider";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
+import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { IconButton } from "@/components/ui/icon-button";
-import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { useAuth } from "@/auth/AuthProvider";
-import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
-import { dismissKeyboardOnEnter } from "@/lib/keyboard";
-import { hasPlaybackHistory } from "@/lib/playbackHistory";
-import {
-  WorkCardDLsiteAction,
-  WorkCardFooter,
-  WorkCardListButton,
-  WorkCardQuickMarkButton,
-  WorkCardSelection,
-  WorkCardShell,
-  dlsiteTagBadges,
-  userTagBadges,
-  type WorkCardViewModel,
-} from "@/components/work-card/WorkCardShell";
-import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
-import {
-  WorkCollectionLayoutPicker,
-  workCollectionClassName,
-  workCollectionStyle,
-  useWorkCollectionLayout,
-  type WorkCollectionColumnSetting,
-} from "@/components/work-collection/WorkCollectionLayout";
+import { WorkCollectionLayoutPicker, useWorkCollectionLayout } from "@/components/work-collection/WorkCollectionLayout";
+import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
-import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
+import { favoriteListIcon } from "@/components/favorite-list/favoriteListIcons";
+import { FavoriteContinueStrip, useFavoriteContinueListening } from "@/features/favorites/FavoriteContinueStrip";
+import { FavoriteCreatorShelf } from "@/features/favorites/FavoriteCreatorShelf";
 import {
-  CreatorCard,
-  CreatorCollectionSkeleton,
-  creatorCardMinHeightClassName,
-  creatorCollectionClassName,
-} from "@/components/creator/CreatorCard";
+  FavoriteListMembershipPopover,
+  type FavoriteListMembershipChanges,
+} from "@/features/favorites/FavoriteListMembershipPopover";
+import { FavoriteListManager, type FavoriteListDraft } from "@/features/favorites/FavoriteListManager";
+import { FavoriteShelfHeader } from "@/features/favorites/FavoriteShelfHeader";
+import {
+  FavoriteShelfSidebar,
+  FavoriteShelfStrip,
+  type FavoriteShelfNavigation,
+} from "@/features/favorites/FavoriteShelfNavigator";
+import { EmptyFavorites, FavoriteLoadError } from "@/features/favorites/FavoriteStates";
+import { FavoriteStatusTabs } from "@/features/favorites/FavoriteStatusTabs";
+import { FavoriteWorkGrid } from "@/features/favorites/FavoriteWorkGrid";
+import {
+  FavoriteWorkList,
+  FavoriteWorkListSkeleton,
+  type FavoriteWorkItemHandlers,
+} from "@/features/favorites/FavoriteWorkList";
+import {
+  FavoriteResourceFilter,
+  FavoriteSearchInput,
+  FavoriteSelectionToggle,
+  FavoriteSortControls,
+  FavoriteViewToggle,
+  type FavoriteResourceSelection,
+} from "@/features/favorites/FavoriteWorksControls";
+import {
+  favoriteShelfCovers,
+  favoriteShelfKind,
+  favoriteShelfProgress,
+  favoriteStatusFilterOptions,
+} from "@/features/favorites/favoriteShelfModel";
+import { useFavoriteViewMode } from "@/features/favorites/favoriteViewMode";
+import {
+  defaultFavoritesBrowseState,
+  favoritesBrowseSearch,
+  favoritesBrowseStateFromSearch,
+  favoritesBrowseStateFromValue,
+  favoritesLocation,
+  personalTagSearch,
+  readFavoritesBrowseState,
+  writeFavoritesBrowseState,
+  type FavoriteAvailability,
+  type FavoriteEntity,
+  type FavoritesBrowseState,
+} from "@/features/favorites/favoritesBrowseState";
+import { useBrowseHistoryState } from "@/hooks/useBrowseHistoryState";
+import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import {
   api,
   type CircleSummary,
@@ -80,60 +76,11 @@ import {
   type VoiceSummary,
   type Work,
 } from "@/lib/api";
-import { openCircleRoute, openCircleSeriesRoute } from "@/lib/circleNavigationState";
-import { openVoiceRoute } from "@/lib/voiceNavigationState";
-import {
-  defaultFavoritesBrowseState,
-  favoritesBrowseSearch,
-  favoritesBrowseStateFromSearch,
-  favoritesBrowseStateFromValue,
-  favoritesLocation,
-  personalTagSearch,
-  readFavoritesBrowseState,
-  writeFavoritesBrowseState,
-  type FavoriteAvailability,
-  type FavoritesBrowseState,
-  type FavoriteEntity,
-} from "@/pages/favoritesBrowseState";
-import {
-  FavoriteListMembershipPopover,
-  type FavoriteListMembershipChanges,
-} from "@/pages/FavoriteListMembershipPopover";
-import { defaultLibraryBrowseState, libraryLocation } from "@/lib/libraryBrowseState";
+import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
-import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
-import { useStableCallback } from "@/hooks/useStableCallback";
-import { useBrowseHistoryState } from "@/hooks/useBrowseHistoryState";
-
-const listeningStatusOptions: { value: ListeningStatus; label: string }[] = [
-  { value: "none", label: "Unmarked" },
-  { value: "want_to_listen", label: "Want" },
-  { value: "listening", label: "Listening" },
-  { value: "finished", label: "Finished" },
-  { value: "relisten", label: "Relisten" },
-  { value: "paused", label: "Shelved" },
-];
-
-const statusTabs: { value: ListeningStatus | "all"; label: string; icon: typeof Heart }[] = [
-  { value: "all", label: "All", icon: Heart },
-  { value: "want_to_listen", label: "Want", icon: Star },
-  { value: "listening", label: "Listening", icon: Play },
-  { value: "finished", label: "Finished", icon: ListChecks },
-  { value: "relisten", label: "Relisten", icon: Heart },
-  { value: "paused", label: "Shelved", icon: Pause },
-];
+import { defaultLibraryBrowseState, libraryLocation } from "@/lib/libraryBrowseState";
 
 const pageSizeOptions = [24, 48] as const;
-const favoriteSortOptions: { value: FavoriteSort; label: string }[] = [
-  { value: "activity", label: "Favorite activity" },
-  { value: "added", label: "Marked or added" },
-  { value: "release", label: "Release date" },
-  { value: "code", label: "DLsite code" },
-  { value: "title", label: "Title" },
-  { value: "rating", label: "Rating" },
-  { value: "sales", label: "Sales" },
-  { value: "random", label: "Random" },
-];
 
 function createFavoriteRandomSeed() {
   return (window.crypto.getRandomValues(new Uint32Array(1))[0] % 2147483646) + 1;
@@ -196,6 +143,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [listCounts, setListCounts] = useState<Record<string, number>>({});
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout();
+  const [viewMode, setViewMode] = useFavoriteViewMode();
   const [selectionMode, setSelectionMode] = useState(Boolean(initialEntryState.favoritesSelection?.active));
   const [selectedWorkIDs, setSelectedWorkIDs] = useState<Set<number>>(
     () => new Set(initialEntryState.favoritesSelection?.workIDs ?? []),
@@ -206,6 +154,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [worksSnapshotUserID, setWorksSnapshotUserID] = useState<number | null>(null);
   const [worksLoadError, setWorksLoadError] = useState("");
   const [worksReloadToken, setWorksReloadToken] = useState(0);
+  const [shelfCountsUserID, setShelfCountsUserID] = useState<number | null>(null);
   const [listEditor, setListEditor] = useState<FavoriteList | "new" | null>(null);
   const [deleteListTarget, setDeleteListTarget] = useState<FavoriteList | null>(null);
   const [isDeletingList, setIsDeletingList] = useState(false);
@@ -527,14 +476,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
 
   const totalPages = Math.max(1, Math.ceil(totalWorks / pageSize));
   const currentPage = Math.min(page, totalPages);
-  const hasActiveFilters =
-    favoriteEntity === "works"
-      ? Boolean(query.trim()) ||
-        statusFilter !== "all" ||
-        availabilityFilter !== "all" ||
-        sourceIDs.length > 0 ||
-        activeList !== "all"
-      : Boolean(query.trim());
+  const hasWorkFilters =
+    Boolean(query.trim()) || statusFilter !== "all" || availabilityFilter !== "all" || sourceIDs.length > 0;
   const markedList = favoriteLists.find((list) => list.kind === "marked") ?? null;
   const userFavoriteLists = favoriteLists.filter((list) => list.kind !== "marked");
   const selectedWorks = works.filter((work) => selectedWorkIDs.has(work.id));
@@ -542,6 +485,39 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const favoriteVoices = voices.filter((voice) => voice.favorite);
   const hasEntitySnapshot = entitySnapshotUserID === principalID;
   const hasWorksSnapshot = worksSnapshotUserID === principalID;
+  const shelfKind = favoriteShelfKind(activeList, markedList);
+  const activeUserList =
+    shelfKind === "list" ? (userFavoriteLists.find((list) => list.id === activeList) ?? null) : null;
+  const shelfTotal = activeList === "all" ? favoriteTotal : (listCounts[String(activeList)] ?? 0);
+  // A creator shelf opened first still labels the works shelves, from a one-item request.
+  useEffect(() => {
+    if (!active || !auth.user || favoriteEntity === "works" || hasWorksSnapshot) return;
+    if (shelfCountsUserID === principalID) return;
+    const controller = new AbortController();
+    api
+      .listFavoriteWorksPage(1, 1, "", "all", "all", "all", [], "added", "desc", 1, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setFavoriteTotal(result.shelfTotal);
+        setListCounts(result.listCounts);
+        setShelfCountsUserID(principalID);
+      })
+      .catch(() => {
+        // The shelves stay usable; their counts appear once works load.
+      });
+    return () => controller.abort();
+  }, [active, auth.user, favoriteEntity, hasWorksSnapshot, principalID, shelfCountsUserID]);
+  const continueWorks = useFavoriteContinueListening({
+    enabled:
+      active &&
+      Boolean(auth.user) &&
+      favoriteEntity === "works" &&
+      statusFilter === "all" &&
+      !query.trim() &&
+      currentPage === 1,
+    listID: activeList,
+    requestKey: `${principalID ?? "anonymous"}:${worksReloadToken}`,
+  });
 
   useEffect(() => {
     if (active && !isLoading && worksLoadedRequestKey.current === worksRequestKey && page > totalPages)
@@ -594,12 +570,12 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     setWorksReloadToken((value) => value + 1);
   };
 
+  // Clearing filters keeps the open shelf; switching shelves is navigation, not a filter.
   const clearFilters = () => {
     setQuery("");
     setStatusFilter("all");
     setAvailabilityFilter("all");
     setSourceIDs([]);
-    setActiveList("all");
     setPage(1);
   };
 
@@ -609,8 +585,18 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     setPage(1);
   };
 
-  const changeFavoriteEntity = (value: FavoriteEntity) => {
-    setFavoriteEntity(value);
+  const openWorksShelf = (list: "all" | number) => {
+    if (favoriteEntity !== "works") {
+      setFavoriteEntity("works");
+      setQuery("");
+    }
+    setActiveList(list);
+    setPage(1);
+  };
+
+  const openCreatorShelf = (entity: Exclude<FavoriteEntity, "works">) => {
+    if (favoriteEntity === entity) return;
+    setFavoriteEntity(entity);
     setQuery("");
     setPage(1);
   };
@@ -618,6 +604,11 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const changeFavoriteQuery = (value: string) => {
     setQuery(value);
     if (favoriteEntity === "works") setPage(1);
+  };
+
+  const changeStatusFilter = (value: ListeningStatus | "all") => {
+    setStatusFilter(value);
+    setPage(1);
   };
 
   const changePageSize = (value: PageSize) => {
@@ -657,7 +648,12 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       desktopColumns,
     });
     window.history.pushState({}, "", target);
-    window.dispatchEvent(new Event("kikoto:navigation"));
+    window.dispatchEvent(new Event(NAVIGATION_EVENT));
+  };
+
+  const browseLibrary = () => {
+    window.history.pushState({}, "", "/library");
+    window.dispatchEvent(new Event(NAVIGATION_EVENT));
   };
 
   const reloadFavoriteLists = async () => {
@@ -683,7 +679,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     return lists;
   };
 
-  const saveFavoriteList = async (payload: { name: string; description: string }) => {
+  const saveFavoriteList = async (payload: FavoriteListDraft) => {
     if (listEditor === null) return;
     if (listEditor === "new") {
       const list = await api.createFavoriteList(payload);
@@ -694,12 +690,13 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       await reloadFavoriteLists();
       setActiveList(list.id);
     }
+    if (favoriteEntity !== "works") setFavoriteEntity("works");
     setListEditor(null);
     toast.success(t("favorites.listSaved"));
   };
 
-  const openFavoriteListManager = () => {
-    setListEditor(null);
+  const openFavoriteListManager = (editor: FavoriteList | "new" | null = null) => {
+    setListEditor(editor);
     setDeleteListTarget(null);
     setListManagerOpen(true);
   };
@@ -792,16 +789,22 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     }
   };
 
-  // Stable card handlers let unchanged cards skip rendering when the page
-  // re-renders, such as when a tab switch toggles `active`.
-  const openCardWork = useStableCallback(openWork);
+  // Stable item handlers let unchanged cards and rows skip rendering when the
+  // page re-renders, such as when a tab switch toggles `active`.
+  const openItemWork = useStableCallback(openWork);
   const openCardUserTag = useStableCallback(openShelfUserTag);
-  const changeCardStatus = useStableCallback(updateWorkStatus);
-  const changeCardSelection = useStableCallback(toggleWorkSelection);
-  const refreshCardLists = useStableCallback(async (work: Work) => {
+  const changeItemStatus = useStableCallback(updateWorkStatus);
+  const changeItemSelection = useStableCallback(toggleWorkSelection);
+  const refreshItemLists = useStableCallback(async (work: Work) => {
     await reloadFavoriteLists();
     toast.success(t("favorites.workMembershipUpdated", { code: work.primaryCode }));
   });
+  const itemHandlers = useRef<FavoriteWorkItemHandlers>({
+    onOpen: openItemWork,
+    onStatusChange: changeItemStatus,
+    onSelectedChange: changeItemSelection,
+    onListsChanged: refreshItemLists,
+  }).current;
   const changeCircle = useStableCallback((next: CircleSummary) =>
     setCircles((items) => items.map((item) => (item.externalId === next.externalId ? { ...item, ...next } : item))),
   );
@@ -817,372 +820,310 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     );
   }
 
+  const navigation: FavoriteShelfNavigation = {
+    entity: favoriteEntity,
+    activeList,
+    markedList,
+    userLists: userFavoriteLists,
+    favoriteTotal,
+    listCounts,
+    worksCountsKnown: hasWorksSnapshot || shelfCountsUserID === principalID,
+    circleCount: hasEntitySnapshot ? favoriteCircles.length : null,
+    voiceCount: hasEntitySnapshot ? favoriteVoices.length : null,
+    listsLoading: areFavoriteListsLoading,
+    onWorksShelf: openWorksShelf,
+    onCreatorShelf: openCreatorShelf,
+    onEditLists: () => openFavoriteListManager(),
+    onAddList: () => openFavoriteListManager("new"),
+  };
+  const searchPlaceholder =
+    favoriteEntity === "works"
+      ? t("library.searchPlaceholder")
+      : favoriteEntity === "circles"
+        ? t("creatorBrowse.searchCircles")
+        : t("creatorBrowse.searchVoices");
+
   return (
-    <section className="relative space-y-5">
-      <div
-        hidden={mobileNavigationLayout}
-        className={`${mobileNavigationLayout ? "hidden" : "flex"} flex-col space-y-3`}
-        data-toast-avoid
-      >
-        <div className="flex items-center gap-3">
-          <FavoriteEntityPicker value={favoriteEntity} onChange={changeFavoriteEntity} />
-          {favoriteEntity === "works" && (
-            <FavoriteDesktopListPicker
-              markedList={markedList}
-              userFavoriteLists={userFavoriteLists}
-              activeList={activeList}
-              favoriteTotal={favoriteTotal}
-              listCounts={listCounts}
-              loading={areFavoriteListsLoading}
-              onListChange={(list) => {
-                setActiveList(list);
-                setPage(1);
-              }}
-              onEditLists={openFavoriteListManager}
-            />
-          )}
-          <FavoriteSearchInput
-            value={query}
-            placeholder={
-              favoriteEntity === "works"
-                ? t("library.searchPlaceholder")
-                : favoriteEntity === "circles"
-                  ? t("creatorBrowse.searchCircles")
-                  : t("creatorBrowse.searchVoices")
-            }
-            onChange={changeFavoriteQuery}
-          />
-          {favoriteEntity === "works" && (
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              <FavoriteResourceFilter
-                availability={availabilityFilter}
-                sources={fileSources}
-                selectedSourceIDs={sourceIDs}
-                loading={areFileSourcesLoading}
-                onChange={changeResourceSelection}
-              />
-              <WorkCollectionLayoutPicker
-                mobileColumns={mobileColumns}
-                desktopColumns={desktopColumns}
-                onMobileColumnsChange={setMobileColumns}
-                onDesktopColumnsChange={setDesktopColumns}
-              />
-              <FavoriteSortControls
-                value={sort}
-                direction={sortDirection}
-                disabled={isLoading}
-                compact
-                onChange={changeFavoriteSort}
-                onDirectionChange={changeFavoriteSortDirection}
-                onReshuffle={reshuffleFavorites}
-              />
-              <PageSizePicker
-                value={pageSize}
-                options={pageSizeOptions}
-                onChange={(value) => changePageSize(value as PageSize)}
-              />
-              <FavoriteSelectionToggle active={selectionMode} onToggle={toggleSelectionMode} />
+    <section className="relative">
+      <div className={mobileNavigationLayout ? "" : "flex items-start gap-6"}>
+        {!mobileNavigationLayout && <FavoriteShelfSidebar navigation={navigation} />}
+
+        <div className="@container min-w-0 flex-1 space-y-5">
+          {mobileNavigationLayout && (
+            <div data-toast-avoid>
+              <FavoriteShelfStrip navigation={navigation} />
             </div>
           )}
-        </div>
-        {favoriteEntity === "works" && (
-          <div className="flex min-h-10 items-center gap-4 border-b">
-            <FavoriteDesktopStatusFilters
-              value={statusFilter}
-              counts={statusCounts}
-              favoriteTotal={activeList === "all" ? favoriteTotal : (listCounts[String(activeList)] ?? 0)}
-              onChange={(value) => {
-                setStatusFilter(value);
-                setPage(1);
-              }}
+
+          {favoriteEntity === "works" ? (
+            <FavoriteShelfHeader
+              kind={shelfKind}
+              listIcon={activeUserList ? favoriteListIcon(activeUserList) : undefined}
+              title={
+                shelfKind === "all"
+                  ? t("favorites.all")
+                  : shelfKind === "marked"
+                    ? t("favorites.marked")
+                    : (activeUserList?.name ?? t("favorites.lists"))
+              }
+              description={
+                shelfKind === "all"
+                  ? t("favorites.shelfAllDescription")
+                  : shelfKind === "marked"
+                    ? t("favorites.markedShelfDescription")
+                    : activeUserList?.description
+              }
+              countLabel={hasWorksSnapshot ? t("favorites.workCount", { count: shelfTotal }) : null}
+              covers={hasWorksSnapshot ? favoriteShelfCovers(works) : []}
+              progress={hasWorksSnapshot ? favoriteShelfProgress(statusCounts) : null}
+              actions={
+                activeUserList ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 text-muted-foreground"
+                    onClick={() => openFavoriteListManager(activeUserList)}
+                    aria-label={t("favorites.editList")}
+                    title={t("favorites.editList")}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                ) : undefined
+              }
             />
-            {/* The shared top pagination draws its own divider; the row owns it here so it can sit inline. */}
-            <div className="ml-auto shrink-0 [&>div]:min-h-0 [&>div]:border-0 [&>div]:py-0">
-              <WorkCollectionPagination
-                placement="top"
-                page={currentPage}
-                pageSize={pageSize}
-                totalItems={totalWorks}
-                totalPages={totalPages}
-                compactMobile
-                compactTop
-                refreshing={isLoading && hasWorksSnapshot}
-                refreshingLabel={t("favorites.refreshing")}
-                onPageChange={setPage}
+          ) : (
+            <FavoriteShelfHeader
+              kind={favoriteEntity}
+              title={favoriteEntity === "circles" ? t("creatorBrowse.circles") : t("creatorBrowse.voiceActors")}
+              description={
+                favoriteEntity === "circles"
+                  ? t("favorites.circleShelfDescription")
+                  : t("favorites.voiceShelfDescription")
+              }
+              countLabel={
+                hasEntitySnapshot
+                  ? favoriteEntity === "circles"
+                    ? t("favorites.circleCount", { count: favoriteCircles.length })
+                    : t("favorites.voiceCount", { count: favoriteVoices.length })
+                  : null
+              }
+              covers={[]}
+            />
+          )}
+
+          {favoriteEntity === "works" && <FavoriteContinueStrip works={continueWorks} onOpen={openItemWork} />}
+
+          <div className="space-y-3" data-toast-avoid>
+            <div className="flex flex-wrap items-center gap-2">
+              <FavoriteSearchInput
+                value={query}
+                placeholder={searchPlaceholder}
+                onChange={changeFavoriteQuery}
+                className="w-full @md:w-auto @md:max-w-sm @md:flex-1"
               />
+              {favoriteEntity === "works" && (
+                <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                  <FavoriteResourceFilter
+                    availability={availabilityFilter}
+                    sources={fileSources}
+                    selectedSourceIDs={sourceIDs}
+                    loading={areFileSourcesLoading}
+                    compact={mobileNavigationLayout}
+                    onChange={changeResourceSelection}
+                  />
+                  <FavoriteSortControls
+                    value={sort}
+                    direction={sortDirection}
+                    disabled={isLoading}
+                    compact={mobileNavigationLayout}
+                    onChange={changeFavoriteSort}
+                    onDirectionChange={changeFavoriteSortDirection}
+                    onReshuffle={reshuffleFavorites}
+                  />
+                  <FavoriteViewToggle value={viewMode} onChange={setViewMode} />
+                  {viewMode === "grid" && (
+                    <WorkCollectionLayoutPicker
+                      mobileColumns={mobileColumns}
+                      desktopColumns={desktopColumns}
+                      onMobileColumnsChange={setMobileColumns}
+                      onDesktopColumnsChange={setDesktopColumns}
+                    />
+                  )}
+                  <PageSizePicker
+                    value={pageSize}
+                    options={pageSizeOptions}
+                    onChange={(value) => changePageSize(value as PageSize)}
+                  />
+                  <FavoriteSelectionToggle active={selectionMode} onToggle={toggleSelectionMode} />
+                </div>
+              )}
             </div>
-          </div>
-        )}
-      </div>
-
-      <div hidden={!mobileNavigationLayout} className={mobileNavigationLayout ? "block" : "hidden"}>
-        <FavoriteMobileToolbar
-          favoriteEntity={favoriteEntity}
-          query={query}
-          worksOptions={
-            favoriteEntity === "works" ? (
-              <FavoriteMobileWorksControls
-                availability={availabilityFilter}
-                sources={fileSources}
-                selectedSourceIDs={sourceIDs}
-                sourcesLoading={areFileSourcesLoading}
-                sort={sort}
-                direction={sortDirection}
-                pageSize={pageSize}
-                mobileColumns={mobileColumns}
-                sortDisabled={isLoading}
-                onResourceChange={changeResourceSelection}
-                onSortChange={changeFavoriteSort}
-                onDirectionChange={changeFavoriteSortDirection}
-                onReshuffle={reshuffleFavorites}
-                onPageSizeChange={changePageSize}
-                onMobileColumnsChange={setMobileColumns}
-                desktopColumns={desktopColumns}
-                onDesktopColumnsChange={setDesktopColumns}
-                selectionMode={selectionMode}
-                onToggleSelection={toggleSelectionMode}
-              />
-            ) : null
-          }
-          onEntityChange={changeFavoriteEntity}
-          onQueryChange={changeFavoriteQuery}
-        />
-      </div>
-
-      {favoriteEntity !== "works" && (
-        <FavoriteEntitySection
-          kind={favoriteEntity}
-          query={query}
-          isLoading={isEntitiesLoading}
-          hasSnapshot={hasEntitySnapshot}
-          loadError={entityLoadError}
-          circles={favoriteCircles}
-          voices={favoriteVoices}
-          onRetry={() => setEntityReloadToken((value) => value + 1)}
-          onCircleChange={changeCircle}
-          onVoiceChange={changeVoice}
-        />
-      )}
-
-      {favoriteEntity === "works" && (
-        <>
-          <div hidden={!mobileNavigationLayout} className={mobileNavigationLayout ? "space-y-2" : "hidden"}>
-            <div className="flex items-center gap-2 pb-1">
-              <div
-                className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain"
-                role="region"
-                aria-label={t("favorites.listTabs")}
-              >
-                <div className="flex w-max min-w-full gap-2" role="group" aria-label={t("favorites.lists")}>
-                  {areFavoriteListsLoading ? (
-                    <FavoriteListTabSkeletons />
-                  ) : (
-                    <FavoriteListTab
-                      active={activeList === "all"}
-                      label={t("favorites.all")}
-                      count={favoriteTotal}
-                      onClick={() => {
-                        setActiveList("all");
-                        setPage(1);
-                      }}
-                    />
-                  )}
-                  {markedList && (
-                    <FavoriteListTab
-                      active={activeList === markedList.id}
-                      label={t("favorites.marked")}
-                      count={listCounts[String(markedList.id)] ?? 0}
-                      title={t("favorites.quickMarkWorks")}
-                      onClick={() => {
-                        setActiveList(markedList.id);
-                        setPage(1);
-                      }}
-                    />
-                  )}
-                  {userFavoriteLists.map((list) => (
-                    <FavoriteListTab
-                      key={list.id}
-                      active={activeList === list.id}
-                      label={list.name}
-                      count={listCounts[String(list.id)] ?? 0}
-                      title={list.description || list.name}
-                      onClick={() => {
-                        setActiveList(list.id);
-                        setPage(1);
-                      }}
-                    />
-                  ))}
+            {favoriteEntity === "works" && (
+              <div className="flex flex-col gap-2 @min-[64rem]:flex-row @min-[64rem]:items-center @min-[64rem]:gap-4">
+                <FavoriteStatusTabs
+                  options={favoriteStatusFilterOptions(statusCounts, shelfTotal, statusFilter)}
+                  value={statusFilter}
+                  onChange={changeStatusFilter}
+                />
+                {/* A single page needs no top pager; the shared pager draws its own divider, so this row owns spacing. */}
+                <div
+                  hidden={totalPages <= 1}
+                  className="shrink-0 self-end @min-[64rem]:ml-auto @min-[64rem]:self-auto [&>div]:min-h-0 [&>div]:border-0 [&>div]:py-0"
+                >
+                  <WorkCollectionPagination
+                    placement="top"
+                    page={currentPage}
+                    pageSize={pageSize}
+                    totalItems={totalWorks}
+                    totalPages={totalPages}
+                    compactMobile
+                    compactTop
+                    refreshing={isLoading && hasWorksSnapshot}
+                    refreshingLabel={t("favorites.refreshing")}
+                    onPageChange={setPage}
+                  />
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="group -m-1 h-11 w-11 shrink-0 hover:bg-transparent lg:m-0 lg:h-8 lg:w-8"
-                disabled={areFavoriteListsLoading}
-                onClick={openFavoriteListManager}
-                aria-label={t("favorites.editLists")}
-                title={t("favorites.editLists")}
-              >
-                <span className="grid h-9 w-9 place-items-center rounded-[var(--control-radius)] border border-input bg-card transition-colors group-hover:bg-muted lg:h-8 lg:w-8">
-                  <Pencil className="h-4 w-4" />
-                </span>
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-1 overflow-x-auto pb-1" aria-label={t("favorites.statusFilters")}>
-              <span className="mr-1 inline-flex h-7 shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
-                <Filter className="h-3 w-3" />
-                {t("admin.status")}
-              </span>
-              {statusTabs.map((tab) => (
-                <button
-                  key={tab.value}
-                  className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors ${statusFilter === tab.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-                  onClick={() => {
-                    setStatusFilter(tab.value);
-                    setPage(1);
-                  }}
-                  aria-pressed={statusFilter === tab.value}
-                >
-                  <tab.icon className="h-3 w-3" />
-                  {tab.value === "all"
-                    ? t("favorites.all")
-                    : t(`library.status.${tab.value}`, { defaultValue: tab.label })}
-                  <span className="text-2xs tabular-nums opacity-65">
-                    {tab.value === "all"
-                      ? activeList === "all"
-                        ? favoriteTotal
-                        : (listCounts[String(activeList)] ?? 0)
-                      : (statusCounts[tab.value] ?? 0)}
-                  </span>
-                </button>
-              ))}
-            </div>
+            )}
           </div>
 
-          <div hidden={!mobileNavigationLayout} className={mobileNavigationLayout ? "block" : "hidden"}>
-            <WorkCollectionPagination
-              placement="top"
-              page={currentPage}
-              pageSize={pageSize}
-              totalItems={totalWorks}
-              totalPages={totalPages}
-              compactMobile
-              compactTop
-              refreshing={isLoading && hasWorksSnapshot}
-              refreshingLabel={t("favorites.refreshing")}
-              onPageChange={setPage}
-            />
-          </div>
-
-          {selectionMode && (
-            <WorkSelectionBar
-              selectedCount={selectedWorks.length}
-              scopeSelectableCount={works.length}
-              scopeSelectedCount={selectedWorks.length}
-              onSelectScope={() => togglePagedSelection(true)}
-              onClear={() => setSelectedWorkIDs(new Set())}
-              onExit={() => {
-                setSelectedWorkIDs(new Set());
-                setSelectionMode(false);
-              }}
-            >
-              <div className="relative">
-                <WorkSelectionAction
-                  icon={<ListMusic className="h-4 w-4" />}
-                  label={t("favorites.changeLists")}
-                  count={selectedWorks.length}
-                  disabled={isBulkUpdating}
-                  className="w-full"
-                  aria-expanded={Boolean(listDialogTarget)}
-                  onClick={() => setListDialogTarget((target) => (target ? null : { mode: "bulk" }))}
-                />
-                {listDialogTarget && (
-                  <FavoriteListMembershipPopover
-                    title={t("favorites.selectedWorks", { count: selectedWorks.length })}
-                    workIDs={selectedWorks.map((work) => work.id)}
-                    favoriteLists={userFavoriteLists}
-                    disabled={isBulkUpdating}
-                    align="right"
-                    onClose={() => setListDialogTarget(null)}
-                    onSave={applyListMembership}
-                  />
-                )}
-              </div>
-            </WorkSelectionBar>
-          )}
-
-          {hasWorksSnapshot && worksLoadError && (
-            <FavoriteLoadError
-              message={worksLoadError}
-              compact
-              onRetry={() => setWorksReloadToken((value) => value + 1)}
+          {favoriteEntity !== "works" && (
+            <FavoriteCreatorShelf
+              kind={favoriteEntity}
+              query={query}
+              isLoading={isEntitiesLoading}
+              hasSnapshot={hasEntitySnapshot}
+              loadError={entityLoadError}
+              circles={favoriteCircles}
+              voices={favoriteVoices}
+              onRetry={() => setEntityReloadToken((value) => value + 1)}
+              onCircleChange={changeCircle}
+              onVoiceChange={changeVoice}
             />
           )}
-          {!hasWorksSnapshot ? (
-            worksLoadError ? (
-              <FavoriteLoadError message={worksLoadError} onRetry={() => setWorksReloadToken((value) => value + 1)} />
-            ) : (
-              <WorkCollectionLoadingState
-                label={t("favorites.loadingWorks")}
-                mobileColumns={mobileColumns}
-                desktopColumns={desktopColumns}
-              />
-            )
-          ) : works.length > 0 ? (
+
+          {favoriteEntity === "works" && (
             <>
-              <div
-                className={workCollectionClassName()}
-                style={workCollectionStyle(mobileColumns, desktopColumns)}
-                aria-busy={isLoading}
-              >
-                {works.map((work) => (
-                  <div key={work.id} data-favorite-work-id={work.id} tabIndex={-1} className="outline-none">
-                    <FavoriteWorkCard
-                      work={work}
-                      selected={selectedWorkIDs.has(work.id)}
-                      selectionActive={selectionMode}
-                      onSelectedChange={changeCardSelection}
-                      isListSaving={isBulkUpdating}
-                      onListsChanged={refreshCardLists}
-                      onOpen={openCardWork}
-                      onUserTagOpen={openCardUserTag}
-                      onStatusChange={changeCardStatus}
+              {selectionMode && (
+                <WorkSelectionBar
+                  selectedCount={selectedWorks.length}
+                  scopeSelectableCount={works.length}
+                  scopeSelectedCount={selectedWorks.length}
+                  onSelectScope={() => togglePagedSelection(true)}
+                  onClear={() => setSelectedWorkIDs(new Set())}
+                  onExit={() => {
+                    setSelectedWorkIDs(new Set());
+                    setSelectionMode(false);
+                  }}
+                >
+                  <div className="relative">
+                    <WorkSelectionAction
+                      icon={<ListMusic className="h-4 w-4" />}
+                      label={t("favorites.changeLists")}
+                      count={selectedWorks.length}
+                      disabled={isBulkUpdating}
+                      className="w-full"
+                      aria-expanded={Boolean(listDialogTarget)}
+                      onClick={() => setListDialogTarget((target) => (target ? null : { mode: "bulk" }))}
                     />
+                    {listDialogTarget && (
+                      <FavoriteListMembershipPopover
+                        title={t("favorites.selectedWorks", { count: selectedWorks.length })}
+                        workIDs={selectedWorks.map((work) => work.id)}
+                        favoriteLists={userFavoriteLists}
+                        disabled={isBulkUpdating}
+                        align="right"
+                        onClose={() => setListDialogTarget(null)}
+                        onSave={applyListMembership}
+                      />
+                    )}
                   </div>
-                ))}
-              </div>
-              <WorkCollectionPagination
-                placement="bottom"
-                page={currentPage}
-                pageSize={pageSize}
-                totalItems={totalWorks}
-                totalPages={totalPages}
-                onPageChange={setPage}
-              />
+                </WorkSelectionBar>
+              )}
+
+              {hasWorksSnapshot && worksLoadError && (
+                <FavoriteLoadError
+                  message={worksLoadError}
+                  compact
+                  onRetry={() => setWorksReloadToken((value) => value + 1)}
+                />
+              )}
+              {!hasWorksSnapshot ? (
+                worksLoadError ? (
+                  <FavoriteLoadError
+                    message={worksLoadError}
+                    onRetry={() => setWorksReloadToken((value) => value + 1)}
+                  />
+                ) : viewMode === "list" ? (
+                  <FavoriteWorkListSkeleton label={t("favorites.loadingWorks")} />
+                ) : (
+                  <WorkCollectionLoadingState
+                    label={t("favorites.loadingWorks")}
+                    mobileColumns={mobileColumns}
+                    desktopColumns={desktopColumns}
+                  />
+                )
+              ) : works.length > 0 ? (
+                <>
+                  {viewMode === "list" ? (
+                    <FavoriteWorkList
+                      works={works}
+                      selectedWorkIDs={selectedWorkIDs}
+                      selectionActive={selectionMode}
+                      isListSaving={isBulkUpdating}
+                      busy={isLoading}
+                      handlers={itemHandlers}
+                    />
+                  ) : (
+                    <FavoriteWorkGrid
+                      works={works}
+                      selectedWorkIDs={selectedWorkIDs}
+                      selectionActive={selectionMode}
+                      isListSaving={isBulkUpdating}
+                      busy={isLoading}
+                      mobileColumns={mobileColumns}
+                      desktopColumns={desktopColumns}
+                      handlers={itemHandlers}
+                      onUserTagOpen={openCardUserTag}
+                    />
+                  )}
+                  <WorkCollectionPagination
+                    placement="bottom"
+                    page={currentPage}
+                    pageSize={pageSize}
+                    totalItems={totalWorks}
+                    totalPages={totalPages}
+                    onPageChange={setPage}
+                  />
+                </>
+              ) : (
+                <EmptyFavorites
+                  reason={hasWorkFilters ? "filtered" : shelfKind === "list" ? "list" : "shelf"}
+                  onClearFilters={clearFilters}
+                  onBrowseLibrary={browseLibrary}
+                />
+              )}
             </>
-          ) : (
-            <EmptyFavorites hasFilters={Boolean(hasActiveFilters)} onClearFilters={clearFilters} />
           )}
-          {listManagerOpen && (
-            <FavoriteListManager
-              markedList={markedList}
-              lists={userFavoriteLists}
-              editor={listEditor}
-              deleteTarget={deleteListTarget}
-              deleting={isDeletingList}
-              onClose={closeFavoriteListManager}
-              onNew={() => setListEditor("new")}
-              onEdit={setListEditor}
-              onCancelEdit={() => setListEditor(null)}
-              onSave={saveFavoriteList}
-              onDelete={setDeleteListTarget}
-              onCancelDelete={() => setDeleteListTarget(null)}
-              onConfirmDelete={() => void deleteFavoriteList()}
-              onMove={(listID, direction) => void moveFavoriteListByID(listID, direction)}
-            />
-          )}
-        </>
+        </div>
+      </div>
+      {listManagerOpen && (
+        <FavoriteListManager
+          markedList={markedList}
+          lists={userFavoriteLists}
+          editor={listEditor}
+          deleteTarget={deleteListTarget}
+          deleting={isDeletingList}
+          onClose={closeFavoriteListManager}
+          onNew={() => setListEditor("new")}
+          onEdit={setListEditor}
+          onCancelEdit={() => setListEditor(null)}
+          onSave={saveFavoriteList}
+          onDelete={setDeleteListTarget}
+          onCancelDelete={() => setDeleteListTarget(null)}
+          onConfirmDelete={() => void deleteFavoriteList()}
+          onMove={(listID, direction) => void moveFavoriteListByID(listID, direction)}
+        />
       )}
       <BrowseLoadingIndicator
         refreshing={favoriteEntity === "works" && isLoading && hasWorksSnapshot}
@@ -1190,1488 +1131,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       />
     </section>
   );
-}
-
-function FavoriteEntityPicker({
-  value,
-  onChange,
-  compact = false,
-}: {
-  value: FavoriteEntity;
-  onChange: (value: FavoriteEntity) => void;
-  compact?: boolean;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
-  const options: { value: FavoriteEntity; label: string; icon: typeof ListMusic }[] = [
-    { value: "works", label: t("detailActions.works"), icon: Album },
-    { value: "circles", label: t("creatorBrowse.circles"), icon: UsersRound },
-    { value: "voices", label: t("creatorBrowse.voiceActors"), icon: Mic2 },
-  ];
-  const selected = options.find((option) => option.value === value) ?? options[0];
-  return (
-    <div className="relative shrink-0" ref={anchorRef}>
-      <Button
-        variant="outline"
-        size={compact ? "icon" : "sm"}
-        className={compact ? "h-8 w-8" : "h-9 min-w-32 justify-between"}
-        onClick={() => setOpen((current) => !current)}
-        aria-label={`${t("favorites.entityType")}: ${selected.label}`}
-        title={`${t("favorites.entityType")}: ${selected.label}`}
-      >
-        {compact ? (
-          <selected.icon className="h-4 w-4" />
-        ) : (
-          <>
-            <span className="flex items-center gap-2">
-              <selected.icon className="h-4 w-4" />
-              <span>{selected.label}</span>
-            </span>
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          </>
-        )}
-      </Button>
-      <AnchoredPopover open={open} anchorRef={anchorRef} onOpenChange={setOpen} className="w-44 p-1 text-sm">
-        <div role="menu" aria-label={t("favorites.entityType")}>
-          {options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="menuitemradio"
-              aria-checked={option.value === value}
-              className={`flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-muted ${option.value === value ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground"}`}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-            >
-              <option.icon className="h-4 w-4" />
-              <span>{option.label}</span>
-            </button>
-          ))}
-        </div>
-      </AnchoredPopover>
-    </div>
-  );
-}
-
-function FavoriteMobileToolbar({
-  favoriteEntity,
-  query,
-  worksOptions,
-  onEntityChange,
-  onQueryChange,
-}: {
-  favoriteEntity: FavoriteEntity;
-  query: string;
-  worksOptions: ReactNode;
-  onEntityChange: (value: FavoriteEntity) => void;
-  onQueryChange: (value: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [searchOpen, setSearchOpen] = useState(() => Boolean(query.trim()));
-  // Switching entity reopens search only when the carried-over query is set.
-  const [searchEntity, setSearchEntity] = useState(favoriteEntity);
-  if (searchEntity !== favoriteEntity) {
-    setSearchEntity(favoriteEntity);
-    setSearchOpen(Boolean(query.trim()));
-  }
-  const searchAnchorRef = useRef<HTMLDivElement | null>(null);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const placeholder =
-    favoriteEntity === "works"
-      ? t("library.searchPlaceholder")
-      : favoriteEntity === "circles"
-        ? t("creatorBrowse.searchCircles")
-        : t("creatorBrowse.searchVoices");
-
-  useEffect(() => {
-    if (query.trim()) setSearchOpen(true);
-  }, [query]);
-
-  useEffect(() => {
-    if (!searchOpen) return;
-    const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
-  }, [searchOpen]);
-
-  return (
-    <div className="flex items-center gap-2" data-toast-avoid>
-      <FavoriteEntityPicker value={favoriteEntity} onChange={onEntityChange} compact />
-      <div className="relative shrink-0" ref={searchAnchorRef}>
-        <Button
-          variant="outline"
-          size="icon"
-          className={`h-8 w-8 ${query.trim() ? "border-primary/30 bg-primary/10 text-primary" : ""}`}
-          onClick={() => setSearchOpen((open) => !open)}
-          aria-label={t("library.searchLibrary")}
-          title={t("library.searchLibrary")}
-        >
-          <Search className="h-4 w-4" />
-        </Button>
-        <AnchoredPopover
-          open={searchOpen}
-          anchorRef={searchAnchorRef}
-          onOpenChange={setSearchOpen}
-          align="start"
-          className="w-[min(22rem,calc(100vw-1.5rem))] p-2"
-        >
-          <div className="flex items-center gap-2">
-            <label className="relative block min-w-0 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                ref={searchInputRef}
-                className="h-11 w-full rounded-md border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                value={query}
-                onKeyDown={dismissKeyboardOnEnter}
-                onChange={(event) => onQueryChange(event.target.value)}
-                placeholder={placeholder}
-                aria-label={placeholder}
-              />
-            </label>
-            {query.trim() && (
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => onQueryChange("")}
-                aria-label={t("library.clearSearch")}
-                title={t("library.clearSearch")}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </AnchoredPopover>
-      </div>
-      <div className="ml-auto shrink-0">{worksOptions}</div>
-    </div>
-  );
-}
-
-function FavoriteSearchInput({
-  value,
-  placeholder,
-  onChange,
-}: {
-  value: string;
-  placeholder: string;
-  onChange: (value: string) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <label className="flex min-w-0 max-w-xl flex-1 items-center gap-2 rounded-lg border bg-card px-3 text-sm">
-      <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-      <input
-        className="min-w-0 flex-1 bg-transparent py-2 outline-none placeholder:text-muted-foreground"
-        value={value}
-        onKeyDown={dismissKeyboardOnEnter}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        aria-label={placeholder}
-      />
-      {value.trim() && (
-        <button
-          type="button"
-          className="text-muted-foreground hover:text-foreground"
-          onClick={() => onChange("")}
-          aria-label={t("favorites.clearSearch")}
-        >
-          <X className="h-4 w-4" />
-        </button>
-      )}
-    </label>
-  );
-}
-
-function FavoriteDesktopListPicker({
-  markedList,
-  userFavoriteLists,
-  activeList,
-  favoriteTotal,
-  listCounts,
-  loading,
-  onListChange,
-  onEditLists,
-}: {
-  markedList: FavoriteList | null;
-  userFavoriteLists: FavoriteList[];
-  activeList: "all" | number;
-  favoriteTotal: number;
-  listCounts: Record<string, number>;
-  loading: boolean;
-  onListChange: (list: "all" | number) => void;
-  onEditLists: () => void;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
-  const options: { value: "all" | number; label: string; count: number; title: string }[] = [
-    { value: "all", label: t("favorites.all"), count: favoriteTotal, title: t("favorites.all") },
-    ...(markedList
-      ? [
-          {
-            value: markedList.id,
-            label: t("favorites.marked"),
-            count: listCounts[String(markedList.id)] ?? 0,
-            title: t("favorites.quickMarkWorks"),
-          },
-        ]
-      : []),
-    ...userFavoriteLists.map((list) => ({
-      value: list.id,
-      label: list.name,
-      count: listCounts[String(list.id)] ?? 0,
-      title: list.description || list.name,
-    })),
-  ];
-  const selected = options.find((option) => option.value === activeList) ?? options[0];
-  const close = () => setOpen(false);
-
-  if (loading) return <FavoriteSkeletonLine className="h-9 w-48 shrink-0" />;
-
-  return (
-    <div className="relative min-w-0 shrink-0" ref={anchorRef}>
-      <div className="inline-flex h-9 max-w-72 items-center rounded-[var(--control-radius)] border border-input bg-card">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-full min-w-0 justify-between gap-2 rounded-r-none"
-          onClick={() => setOpen((current) => !current)}
-          aria-haspopup="menu"
-          aria-expanded={open}
-          aria-label={`${t("favorites.lists")}: ${selected.label} (${selected.count})`}
-          title={selected.title}
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <ListMusic className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 truncate">{selected.label}</span>
-            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{selected.count}</span>
-          </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-full w-9 shrink-0 rounded-l-none border-l"
-          onClick={() => {
-            close();
-            onEditLists();
-          }}
-          aria-label={t("favorites.editLists")}
-          title={t("favorites.editLists")}
-        >
-          <Pencil className="h-4 w-4" />
-        </Button>
-      </div>
-      <AnchoredPopover
-        open={open}
-        anchorRef={anchorRef}
-        onOpenChange={setOpen}
-        align="start"
-        className="w-64 p-1 text-sm"
-      >
-        <div role="menu" aria-label={t("favorites.lists")}>
-          <div className="max-h-[min(22rem,55vh)] overflow-y-auto">
-            {options.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                role="menuitemradio"
-                aria-checked={option.value === activeList}
-                title={option.title}
-                className={`flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-muted ${option.value === activeList ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground"}`}
-                onClick={() => {
-                  close();
-                  onListChange(option.value);
-                }}
-              >
-                <ListMusic className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                <span className="shrink-0 text-xs tabular-nums opacity-80">{option.count}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </AnchoredPopover>
-    </div>
-  );
-}
-
-function FavoriteDesktopStatusFilters({
-  value,
-  counts,
-  favoriteTotal,
-  onChange,
-}: {
-  value: ListeningStatus | "all";
-  counts: Record<string, number>;
-  favoriteTotal: number;
-  onChange: (value: ListeningStatus | "all") => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1"
-      aria-label={t("favorites.statusFilters")}
-    >
-      <span className="mr-1 inline-flex h-7 shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
-        <Filter className="h-3 w-3" />
-        {t("favorites.status")}
-      </span>
-      {statusTabs.map((tab) => (
-        <button
-          key={tab.value}
-          type="button"
-          className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium ${value === tab.value ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-          onClick={() => onChange(tab.value)}
-          aria-pressed={value === tab.value}
-        >
-          <tab.icon className="h-3 w-3" />
-          {tab.value === "all" ? t("favorites.all") : t(`library.status.${tab.value}`, { defaultValue: tab.label })}
-          <span className="text-2xs tabular-nums opacity-65">
-            {tab.value === "all" ? favoriteTotal : (counts[tab.value] ?? 0)}
-          </span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-type FavoriteResourceSelection = {
-  availability: AvailabilityFilter;
-  sourceIDs: number[];
-};
-
-function FavoriteResourceFilter({
-  availability,
-  sources,
-  selectedSourceIDs,
-  loading,
-  onChange,
-}: {
-  availability: AvailabilityFilter;
-  sources: LibrarySource[];
-  selectedSourceIDs: number[];
-  loading: boolean;
-  onChange: (selection: FavoriteResourceSelection) => void;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
-  const selection: FavoriteResourceSelection = { availability, sourceIDs: selectedSourceIDs };
-  const label = favoriteResourceLabel(sources, selection, t);
-  const disabled = loading;
-  const select = (next: FavoriteResourceSelection) => {
-    onChange(next);
-    setOpen(false);
-  };
-
-  return (
-    <div className="relative" ref={anchorRef}>
-      <Button
-        variant="outline"
-        size="sm"
-        className={`h-8 max-w-48 ${availability !== "all" || selectedSourceIDs.length > 0 ? "border-primary/30 bg-primary/10 text-primary" : ""}`}
-        disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
-        aria-label={`${t("favorites.resource")}: ${label}`}
-        title={`${t("favorites.resource")}: ${label}`}
-      >
-        <Cloud className="h-3.5 w-3.5 shrink-0" />
-        <span className="truncate">{label}</span>
-      </Button>
-      <AnchoredPopover
-        open={open && !disabled}
-        anchorRef={anchorRef}
-        onOpenChange={setOpen}
-        align="start"
-        className="w-[min(18rem,calc(100vw-1.5rem))] p-1 text-sm"
-      >
-        <div role="menu" aria-label={t("favorites.resourceFilters")}>
-          <div className="px-3 py-2 text-xs font-semibold text-foreground">{t("favorites.resource")}</div>
-          <FavoriteResourceOption
-            label={t("favorites.anyAvailable")}
-            selected={availability === "all" && selectedSourceIDs.length === 0}
-            onClick={() => select({ availability: "all", sourceIDs: [] })}
-          />
-          <FavoriteResourceOption
-            label={t("detailActions.local")}
-            selected={availability === "local" && selectedSourceIDs.length === 0}
-            onClick={() => select({ availability: "local", sourceIDs: [] })}
-          />
-          <FavoriteResourceOption
-            label={t("favorites.cached")}
-            selected={availability === "cache" && selectedSourceIDs.length === 0}
-            onClick={() => select({ availability: "cache", sourceIDs: [] })}
-          />
-          <FavoriteResourceOption
-            label={t("favorites.anyRemote")}
-            selected={availability === "remote" && selectedSourceIDs.length === 0}
-            onClick={() => select({ availability: "remote", sourceIDs: [] })}
-          />
-          {sources.map((source) => (
-            <FavoriteResourceOption
-              key={source.id}
-              label={source.displayName || source.code}
-              selected={
-                availability === "remote" && selectedSourceIDs.length === 1 && selectedSourceIDs[0] === source.id
-              }
-              onClick={() => select({ availability: "remote", sourceIDs: [source.id] })}
-              icon={<Cloud className="h-3.5 w-3.5 shrink-0" />}
-              suffix={!source.enabled ? t("favorites.disabled") : undefined}
-            />
-          ))}
-          <FavoriteResourceOption
-            label={t("favorites.missing")}
-            selected={availability === "missing" && selectedSourceIDs.length === 0}
-            onClick={() => select({ availability: "missing", sourceIDs: [] })}
-          />
-        </div>
-      </AnchoredPopover>
-    </div>
-  );
-}
-
-function FavoriteResourceOption({
-  label,
-  selected,
-  onClick,
-  icon,
-  suffix,
-}: {
-  label: string;
-  selected: boolean;
-  onClick: () => void;
-  icon?: ReactNode;
-  suffix?: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitemradio"
-      aria-checked={selected}
-      className={`flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-muted ${selected ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-      onClick={onClick}
-    >
-      <Check className={`h-4 w-4 shrink-0 ${selected ? "opacity-100" : "opacity-0"}`} />
-      {icon}
-      <span className="min-w-0 flex-1 truncate text-foreground">{label}</span>
-      {suffix && <span className="text-2xs text-muted-foreground">{suffix}</span>}
-    </button>
-  );
-}
-
-function favoriteResourceLabel(
-  sources: LibrarySource[],
-  selection: FavoriteResourceSelection,
-  translate: (key: string) => string,
-) {
-  if (selection.sourceIDs.length === 1) {
-    const source = sources.find((candidate) => candidate.id === selection.sourceIDs[0]);
-    return source?.displayName || source?.code || translate("detailActions.source");
-  }
-  switch (selection.availability) {
-    case "local":
-      return translate("detailActions.local");
-    case "cache":
-      return translate("favorites.cached");
-    case "remote":
-      return translate("favorites.anyRemote");
-    case "missing":
-      return translate("favorites.missing");
-    default:
-      return translate("favorites.anyAvailable");
-  }
-}
-
-function FavoriteEntitySection({
-  kind,
-  query,
-  isLoading,
-  hasSnapshot,
-  loadError,
-  circles,
-  voices,
-  onRetry,
-  onCircleChange,
-  onVoiceChange,
-}: {
-  kind: Exclude<FavoriteEntity, "works">;
-  query: string;
-  isLoading: boolean;
-  hasSnapshot: boolean;
-  loadError: string;
-  circles: CircleSummary[];
-  voices: VoiceSummary[];
-  onRetry: () => void;
-  onCircleChange: (circle: CircleSummary) => void;
-  onVoiceChange: (voice: VoiceSummary) => void;
-}) {
-  const { t } = useTranslation();
-  const needle = query.trim().toLowerCase();
-  const filteredCircles = circles.filter(
-    (circle) =>
-      !needle ||
-      [circle.externalId, circle.displayName, ...circle.userTags.map((tag) => tag.name)].some((value) =>
-        value.toLowerCase().includes(needle),
-      ),
-  );
-  const filteredVoices = voices.filter(
-    (voice) =>
-      !needle ||
-      [voice.displayName, String(voice.personId), ...voice.aliases, ...voice.userTags.map((tag) => tag.name)].some(
-        (value) => value.toLowerCase().includes(needle),
-      ),
-  );
-  const items = kind === "circles" ? filteredCircles : filteredVoices;
-  const entityLabel = kind === "circles" ? t("creatorBrowse.circles") : t("creatorBrowse.voiceActors");
-
-  if (!hasSnapshot) {
-    return loadError ? (
-      <FavoriteLoadError message={loadError} onRetry={onRetry} />
-    ) : (
-      <CreatorCollectionSkeleton label={`${t("favorites.loadingSources")}: ${entityLabel}`} />
-    );
-  }
-  if (items.length === 0) {
-    return (
-      <Card className={creatorCardMinHeightClassName} aria-busy={isLoading}>
-        <CardContent
-          className={`grid ${creatorCardMinHeightClassName} place-items-center p-5 text-sm text-muted-foreground`}
-        >
-          {t("favorites.noMatches")} · {entityLabel}
-        </CardContent>
-      </Card>
-    );
-  }
-  return (
-    <div
-      className={creatorCollectionClassName}
-      role="region"
-      aria-label={`${t("favorites.all")}: ${entityLabel}`}
-      aria-busy={isLoading}
-    >
-      {kind === "circles"
-        ? filteredCircles.map((circle) => (
-            <FavoriteCircleCard key={circle.externalId} circle={circle} onChange={onCircleChange} />
-          ))
-        : filteredVoices.map((voice) => (
-            <FavoriteVoiceCard key={voice.personId} voice={voice} onChange={onVoiceChange} />
-          ))}
-    </div>
-  );
-}
-
-const FavoriteCircleCard = memo(function FavoriteCircleCard({
-  circle,
-  onChange,
-}: {
-  circle: CircleSummary;
-  onChange: (circle: CircleSummary) => void;
-}) {
-  const { t } = useTranslation();
-  const toast = useToast();
-  const saveTags = async (tags: string[]) => {
-    try {
-      const result = await api.setCircleUserTags(circle.externalId, tags);
-      onChange({ ...circle, userTags: result.userTags });
-    } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.tagsUpdateFailed")));
-    }
-  };
-  const removeFavorite = async () => {
-    try {
-      const next = await api.updateCircleUserState(circle.externalId, { favorite: false });
-      onChange({ ...circle, ...next });
-    } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.favoriteUpdateFailed")));
-    }
-  };
-  return (
-    <CreatorCard
-      name={circle.displayName}
-      identityLabel={circle.externalId}
-      aliases={circle.aliases}
-      showAliases={false}
-      latestWork={circle.latestWork}
-      favorite={circle.favorite}
-      userTags={circle.userTags}
-      syncState={circle.syncState}
-      workCount={circle.catalogWorks}
-      availabilitySummary={{ available: circle.playableWorks, total: circle.catalogWorks }}
-      unavailableCount={circle.missingWorks}
-      sources={circle.sourceSummaries}
-      onOpen={() => openCircleRoute(circle.externalId)}
-      onFavoriteToggle={() => void removeFavorite()}
-      onTagsSave={saveTags}
-      tagScope="circle"
-    />
-  );
-});
-
-const FavoriteVoiceCard = memo(function FavoriteVoiceCard({
-  voice,
-  onChange,
-}: {
-  voice: VoiceSummary;
-  onChange: (voice: VoiceSummary) => void;
-}) {
-  const { t } = useTranslation();
-  const toast = useToast();
-  const saveTags = async (tags: string[]) => {
-    try {
-      const result = await api.setVoiceUserTags(voice.personId, tags);
-      onChange({ ...voice, userTags: result.userTags });
-    } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.tagsUpdateFailed")));
-    }
-  };
-  const removeFavorite = async () => {
-    try {
-      const next = await api.updateVoiceUserState(voice.personId, { favorite: false });
-      onChange({ ...voice, ...next });
-    } catch (error) {
-      toast.notify(toastFromError(error, t("creatorBrowse.favoriteUpdateFailed")));
-    }
-  };
-  return (
-    <CreatorCard
-      name={voice.displayName}
-      identityLabel={voice.latestWork ? undefined : t("creatorBrowse.voiceActor")}
-      aliases={voice.aliases}
-      latestWork={voice.latestWork}
-      favorite={voice.favorite}
-      userTags={voice.userTags}
-      syncState={voice.syncState}
-      workCount={voice.knownWorks}
-      availabilityCounts={{ local: voice.localWorks, remote: voice.remoteWorks }}
-      unavailableCount={Math.max(0, voice.knownWorks - voice.playableWorks)}
-      sources={voice.sourceSummaries}
-      onOpen={() => openVoiceRoute(voice.personId)}
-      onFavoriteToggle={() => void removeFavorite()}
-      onTagsSave={saveTags}
-      tagScope="voice"
-    />
-  );
-});
-
-function FavoriteSkeletonLine({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
-}
-
-function FavoriteListTab({
-  active,
-  label,
-  count,
-  title,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  count: number;
-  title?: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className="group -my-1 inline-flex h-11 shrink-0 items-center rounded-md transition-[box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100 lg:my-0 lg:h-8"
-      aria-pressed={active}
-      title={title ?? label}
-      onClick={onClick}
-    >
-      <span
-        className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors lg:h-8 ${active ? "bg-primary text-primary-foreground" : "bg-card group-hover:bg-muted"}`}
-      >
-        <ListMusic className="h-4 w-4" />
-        <span className="max-w-48 truncate">{label}</span>
-        <span className="text-xs tabular-nums opacity-80">{count}</span>
-      </span>
-    </button>
-  );
-}
-
-function FavoriteListTabSkeletons() {
-  return (
-    <>
-      {Array.from({ length: 4 }, (_, index) => (
-        <FavoriteSkeletonLine key={index} className="h-9 w-28 shrink-0 lg:h-8" />
-      ))}
-    </>
-  );
-}
-
-function FavoriteSelectionToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
-  const { t } = useTranslation();
-  return (
-    <IconButton
-      title={active ? t("favorites.exitSelection") : t("favorites.selectWorks")}
-      aria-pressed={active}
-      onClick={onToggle}
-    >
-      <ListChecks className={`h-4 w-4 ${active ? "text-primary" : ""}`} />
-    </IconButton>
-  );
-}
-
-function FavoriteLoadError({
-  message,
-  compact = false,
-  onRetry,
-}: {
-  message: string;
-  compact?: boolean;
-  onRetry: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      className={`${compact ? "flex min-h-12 items-center justify-between gap-3 px-3 py-2" : "grid min-h-40 place-items-center px-4 py-8 text-center"} rounded-lg border border-error-border bg-error-surface`}
-      role="alert"
-    >
-      <p className="text-sm text-error-foreground">{message}</p>
-      <Button size="sm" variant="outline" onClick={onRetry}>
-        {t("common.retry")}
-      </Button>
-    </div>
-  );
-}
-
-const FavoriteWorkCard = memo(function FavoriteWorkCard({
-  work,
-  selected,
-  selectionActive,
-  onSelectedChange,
-  isListSaving,
-  onListsChanged,
-  onOpen,
-  onUserTagOpen,
-  onStatusChange,
-}: {
-  work: Work;
-  selected: boolean;
-  selectionActive: boolean;
-  onSelectedChange: (workID: number, selected: boolean) => void;
-  isListSaving: boolean;
-  onListsChanged: (work: Work) => Promise<void>;
-  onOpen: (work: Work) => void;
-  onUserTagOpen: (tag: string) => void;
-  onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
-}) {
-  const { t } = useTranslation();
-  const view = favoriteWorkCardView(work, onUserTagOpen, t);
-
-  return (
-    <WorkCardShell
-      work={view}
-      selection={
-        selectionActive ? (
-          <WorkCardSelection checked={selected} onChange={(checked) => onSelectedChange(work.id, checked)} />
-        ) : undefined
-      }
-      onOpen={() => onOpen(work)}
-      onSeriesOpen={
-        work.seriesTitleId && work.circleExternalId
-          ? () => openCircleSeriesRoute(work.circleExternalId, work.seriesTitleId)
-          : undefined
-      }
-      footer={
-        <WorkCardFooter
-          left={<WorkCardDLsiteAction href={work.dlsiteUrl} />}
-          right={
-            <>
-              <WorkCardListButton
-                workId={work.id}
-                active={work.favorite}
-                disabled={isListSaving}
-                onSaved={() => void onListsChanged(work)}
-              />
-              <WorkCardQuickMarkButton
-                value={work.listeningStatus}
-                onChange={(status) => void onStatusChange(work.id, status)}
-              />
-            </>
-          }
-        />
-      }
-    />
-  );
-});
-
-function favoriteWorkCardView(
-  work: Work,
-  onUserTagOpen: ((tag: string) => void) | undefined,
-  t: TFunction,
-): WorkCardViewModel {
-  return {
-    code: work.primaryCode,
-    title: work.title,
-    circle: work.circle || t("workCard.unknownCircle"),
-    circleExternalId: work.circleExternalId,
-    ageRating: work.ageRating,
-    voiceActors: work.voiceActors,
-    voiceCredits: work.voiceCredits,
-    coverUrl: work.coverUrl,
-    rating: work.rating,
-    ratingCount: work.ratingCount,
-    sales: work.sales,
-    regularPrice: work.regularPrice,
-    price: work.price,
-    priceCurrency: work.priceCurrency,
-    series: work.series || null,
-    hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
-    hasPlaybackHistory: hasPlaybackHistory(work.progress),
-    dlsiteTags: [
-      {
-        key: `status:${work.listeningStatus}`,
-        label: listeningStatusLabel(work.listeningStatus, t),
-        variant: "secondary",
-      },
-      ...dlsiteTagBadges(work.tags),
-    ],
-    userTags: userTagBadges(work.userTags ?? [], onUserTagOpen),
-    sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
-  };
-}
-
-function FavoriteSortControls({
-  value,
-  direction,
-  disabled,
-  compact = false,
-  onChange,
-  onDirectionChange,
-  onReshuffle,
-}: {
-  value: FavoriteSort;
-  direction: SortDirection;
-  disabled: boolean;
-  compact?: boolean;
-  onChange: (value: FavoriteSort) => void;
-  onDirectionChange: (value: SortDirection) => void;
-  onReshuffle: () => void;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
-  const localizedOptions = favoriteSortOptions.map((option) => ({
-    ...option,
-    label:
-      option.value === "activity"
-        ? t("favorites.sortActivity")
-        : option.value === "added"
-          ? t("favorites.sortMarkedOrAdded")
-          : t(`library.sortOptions.${option.value}`, { defaultValue: option.label }),
-  }));
-  const label = localizedOptions.find((option) => option.value === value)?.label ?? t("library.sort");
-  const directionTitle =
-    value === "random"
-      ? t("library.reshuffle")
-      : direction === "asc"
-        ? t("library.ascending")
-        : t("library.descending");
-  return (
-    <div className="relative" ref={anchorRef}>
-      <div className="inline-flex h-8 shrink-0 items-center rounded-md border bg-background">
-        <button
-          type="button"
-          className={`inline-flex h-7 items-center gap-1.5 rounded-l-md px-2 text-xs text-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-50 ${compact ? "w-8 justify-center px-0" : "min-w-0 max-w-40"}`}
-          disabled={disabled}
-          onClick={() => setOpen((current) => !current)}
-          aria-label={t("library.sortLabel", { label })}
-          title={t("library.sortLabel", { label })}
-        >
-          <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          {!compact && <span className="truncate">{label}</span>}
-        </button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-8 rounded-l-none border-l"
-          disabled={disabled}
-          onClick={() => (value === "random" ? onReshuffle() : onDirectionChange(direction === "asc" ? "desc" : "asc"))}
-          aria-label={directionTitle}
-          title={directionTitle}
-        >
-          {value === "random" ? (
-            <RefreshCw className="h-4 w-4" />
-          ) : direction === "asc" ? (
-            <ArrowDownAZ className="h-4 w-4" />
-          ) : (
-            <ArrowDownZA className="h-4 w-4" />
-          )}
-        </Button>
-      </div>
-      <AnchoredPopover
-        open={open && !disabled}
-        anchorRef={anchorRef}
-        onOpenChange={setOpen}
-        className="w-[min(12rem,calc(100vw-1.5rem))] p-1 text-sm"
-      >
-        <div role="menu" aria-label={t("favorites.sortOptions")}>
-          {localizedOptions.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="menuitemradio"
-              aria-checked={value === option.value}
-              className={`flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left hover:bg-muted ${value === option.value ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </AnchoredPopover>
-    </div>
-  );
-}
-
-function favoriteSourceFilterLabel(
-  sources: LibrarySource[],
-  selectedSourceIDs: number[],
-  translate: (key: string, options?: { count: number }) => string,
-) {
-  if (selectedSourceIDs.length === 0) return translate("favorites.allSources");
-  if (selectedSourceIDs.length > 1) return translate("favorites.sourcesCount", { count: selectedSourceIDs.length });
-  const selected = sources.find((source) => source.id === selectedSourceIDs[0]);
-  return selected?.displayName || selected?.code || translate("favorites.oneSource");
-}
-
-function FavoriteMobileWorksControls({
-  availability,
-  sources,
-  selectedSourceIDs,
-  sourcesLoading,
-  sort,
-  direction,
-  pageSize,
-  mobileColumns,
-  desktopColumns,
-  sortDisabled,
-  onResourceChange,
-  onSortChange,
-  onDirectionChange,
-  onReshuffle,
-  onPageSizeChange,
-  onMobileColumnsChange,
-  onDesktopColumnsChange,
-  selectionMode,
-  onToggleSelection,
-}: {
-  availability: AvailabilityFilter;
-  sources: LibrarySource[];
-  selectedSourceIDs: number[];
-  sourcesLoading: boolean;
-  sort: FavoriteSort;
-  direction: SortDirection;
-  pageSize: PageSize;
-  mobileColumns: WorkCollectionColumnSetting;
-  desktopColumns: WorkCollectionColumnSetting;
-  sortDisabled: boolean;
-  onResourceChange: (selection: FavoriteResourceSelection) => void;
-  onSortChange: (value: FavoriteSort) => void;
-  onDirectionChange: (value: SortDirection) => void;
-  onReshuffle: () => void;
-  onPageSizeChange: (value: PageSize) => void;
-  onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
-  onDesktopColumnsChange: (value: WorkCollectionColumnSetting) => void;
-  selectionMode: boolean;
-  onToggleSelection: () => void;
-}) {
-  const { t } = useTranslation();
-  const availabilityLabel = favoriteResourceLabel(sources, { availability, sourceIDs: [] }, t);
-  const sourceLabel = sourcesLoading
-    ? t("favorites.loadingSources")
-    : sources.length === 0
-      ? t("favorites.noSources")
-      : favoriteSourceFilterLabel(sources, selectedSourceIDs, t);
-  const resourceLabel = selectedSourceIDs.length > 0 ? sourceLabel : availabilityLabel;
-
-  return (
-    <div className="flex items-center gap-1">
-      <FavoriteResourceIconControl
-        availability={availability}
-        sources={sources}
-        selectedSourceIDs={selectedSourceIDs}
-        loading={sourcesLoading}
-        label={resourceLabel}
-        onChange={onResourceChange}
-      />
-      <WorkCollectionLayoutPicker
-        mobileColumns={mobileColumns}
-        desktopColumns={desktopColumns}
-        onMobileColumnsChange={onMobileColumnsChange}
-        onDesktopColumnsChange={onDesktopColumnsChange}
-      />
-      <FavoriteSortControls
-        value={sort}
-        direction={direction}
-        disabled={sortDisabled}
-        compact
-        onChange={onSortChange}
-        onDirectionChange={onDirectionChange}
-        onReshuffle={onReshuffle}
-      />
-      <PageSizePicker
-        value={pageSize}
-        options={pageSizeOptions}
-        onChange={(value) => onPageSizeChange(value as PageSize)}
-      />
-      <FavoriteSelectionToggle active={selectionMode} onToggle={onToggleSelection} />
-    </div>
-  );
-}
-
-function FavoriteResourceIconControl({
-  availability,
-  sources,
-  selectedSourceIDs,
-  loading,
-  label,
-  onChange,
-}: {
-  availability: AvailabilityFilter;
-  sources: LibrarySource[];
-  selectedSourceIDs: number[];
-  loading: boolean;
-  label: string;
-  onChange: (selection: FavoriteResourceSelection) => void;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
-  const disabled = loading;
-  return (
-    <div className="relative" ref={anchorRef}>
-      <Button
-        variant="outline"
-        size="icon"
-        className={`h-8 w-8 ${availability !== "all" || selectedSourceIDs.length > 0 ? "border-primary/30 bg-primary/10 text-primary" : ""}`}
-        disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
-        aria-label={`${t("favorites.resource")}: ${label}`}
-        title={`${t("favorites.resource")}: ${label}`}
-      >
-        <Cloud className="h-4 w-4" />
-      </Button>
-      <AnchoredPopover
-        open={open && !disabled}
-        anchorRef={anchorRef}
-        onOpenChange={setOpen}
-        align="end"
-        className="w-[min(18rem,calc(100vw-1.5rem))] p-1 text-sm"
-      >
-        <div role="menu" aria-label={t("favorites.resourceFilters")}>
-          <div className="px-3 py-2 text-xs font-semibold text-foreground">{t("favorites.resource")}</div>
-          <FavoriteResourceOption
-            label={t("favorites.anyAvailable")}
-            selected={availability === "all" && selectedSourceIDs.length === 0}
-            onClick={() => {
-              onChange({ availability: "all", sourceIDs: [] });
-              setOpen(false);
-            }}
-          />
-          <FavoriteResourceOption
-            label={t("detailActions.local")}
-            selected={availability === "local" && selectedSourceIDs.length === 0}
-            onClick={() => {
-              onChange({ availability: "local", sourceIDs: [] });
-              setOpen(false);
-            }}
-          />
-          <FavoriteResourceOption
-            label={t("favorites.cached")}
-            selected={availability === "cache" && selectedSourceIDs.length === 0}
-            onClick={() => {
-              onChange({ availability: "cache", sourceIDs: [] });
-              setOpen(false);
-            }}
-          />
-          <FavoriteResourceOption
-            label={t("favorites.anyRemote")}
-            selected={availability === "remote" && selectedSourceIDs.length === 0}
-            onClick={() => {
-              onChange({ availability: "remote", sourceIDs: [] });
-              setOpen(false);
-            }}
-          />
-          {sources.map((source) => (
-            <FavoriteResourceOption
-              key={source.id}
-              label={source.displayName || source.code}
-              selected={
-                availability === "remote" && selectedSourceIDs.length === 1 && selectedSourceIDs[0] === source.id
-              }
-              onClick={() => {
-                onChange({ availability: "remote", sourceIDs: [source.id] });
-                setOpen(false);
-              }}
-              icon={<Cloud className="h-3.5 w-3.5 shrink-0" />}
-              suffix={!source.enabled ? t("favorites.disabled") : undefined}
-            />
-          ))}
-          <FavoriteResourceOption
-            label={t("favorites.missing")}
-            selected={availability === "missing" && selectedSourceIDs.length === 0}
-            onClick={() => {
-              onChange({ availability: "missing", sourceIDs: [] });
-              setOpen(false);
-            }}
-          />
-        </div>
-      </AnchoredPopover>
-    </div>
-  );
-}
-
-function EmptyFavorites({ hasFilters, onClearFilters }: { hasFilters: boolean; onClearFilters: () => void }) {
-  const { t } = useTranslation();
-  return (
-    <div className="grid min-h-72 place-items-center rounded-lg border bg-card p-6 text-center">
-      <div className="max-w-sm space-y-3">
-        <Heart className="mx-auto h-8 w-8 text-primary" />
-        <h3 className="text-base font-semibold">
-          {hasFilters ? t("favorites.noMatches") : t("favorites.noFavoriteWorks")}
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          {hasFilters ? t("favorites.filteredDescription") : t("favorites.emptyDescription")}
-        </p>
-        {hasFilters && (
-          <Button variant="outline" size="sm" onClick={onClearFilters}>
-            {t("favorites.clearFilters")}
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function FavoriteListEditor({
-  list,
-  onClose,
-  onSave,
-}: {
-  list: FavoriteList | null;
-  onClose: () => void;
-  onSave: (payload: { name: string; description: string }) => Promise<void>;
-}) {
-  const { t } = useTranslation();
-  const editorRef = useRef<HTMLDivElement | null>(null);
-  const [name, setName] = useState(list?.name ?? "");
-  const [description, setDescription] = useState(list?.description ?? "");
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => editorRef.current?.scrollIntoView({ block: "nearest" }));
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  const save = async () => {
-    setIsSaving(true);
-    setError("");
-    try {
-      await onSave({ name, description });
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : t("favorites.listSaveFailed"));
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <div ref={editorRef} role="listitem">
-      <form
-        aria-label={list ? `${t("favorites.renameList")}: ${list.name}` : t("favorites.addList")}
-        className="rounded-md border bg-background p-3"
-        onMouseDown={(event) => event.stopPropagation()}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!isSaving && name.trim()) void save();
-        }}
-      >
-        <h3 className="text-sm font-semibold">{list ? t("favorites.renameList") : t("favorites.addList")}</h3>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="grid gap-1 text-sm">
-            <span className="text-xs font-medium text-muted-foreground">{t("favorites.name")}</span>
-            <Input fieldSize="sm" value={name} onChange={(event) => setName(event.target.value)} autoFocus />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="text-xs font-medium text-muted-foreground">{t("favorites.description")}</span>
-            <Input fieldSize="sm" value={description} onChange={(event) => setDescription(event.target.value)} />
-          </label>
-        </div>
-        {error && (
-          <div className="mt-3 rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground" role="alert">
-            {error}
-          </div>
-        )}
-        <div className="mt-3 flex justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={onClose}>
-            {t("content.cancel")}
-          </Button>
-          <Button size="sm" type="submit" disabled={isSaving || !name.trim()}>
-            {isSaving ? t("favorites.saving") : list ? t("content.save") : t("favorites.addList")}
-          </Button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function FavoriteListManager({
-  markedList,
-  lists,
-  editor,
-  deleteTarget,
-  deleting,
-  onClose,
-  onNew,
-  onEdit,
-  onCancelEdit,
-  onSave,
-  onDelete,
-  onCancelDelete,
-  onConfirmDelete,
-  onMove,
-}: {
-  markedList: FavoriteList | null;
-  lists: FavoriteList[];
-  editor: FavoriteList | "new" | null;
-  deleteTarget: FavoriteList | null;
-  deleting: boolean;
-  onClose: () => void;
-  onNew: () => void;
-  onEdit: (list: FavoriteList) => void;
-  onCancelEdit: () => void;
-  onSave: (payload: { name: string; description: string }) => Promise<void>;
-  onDelete: (list: FavoriteList) => void;
-  onCancelDelete: () => void;
-  onConfirmDelete: () => void;
-  onMove: (listID: number, direction: -1 | 1) => void;
-}) {
-  const { t } = useTranslation();
-  const actionsDisabled = editor !== null || deleteTarget !== null || deleting;
-
-  return (
-    <Dialog
-      onClose={onClose}
-      size="lg"
-      dismissible={!deleting}
-      // Nested rename/delete surfaces own Escape while they are open.
-      closeOnEscape={editor === null && deleteTarget === null}
-    >
-      <DialogHeader
-        title={t("favorites.editLists")}
-        description={t("favorites.editListsDescription")}
-        onClose={() => {
-          if (!deleting) onClose();
-        }}
-        closeLabel={t("favorites.closeListEditor")}
-      />
-      <DialogBody className="space-y-2 overscroll-contain" role="list" aria-label={t("favorites.lists")}>
-        {markedList && (
-          <div
-            role="listitem"
-            className="flex items-center gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2"
-          >
-            <ListMusic className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{t("favorites.marked")}</div>
-              <div className="truncate text-xs text-muted-foreground">{t("favorites.markedDescription")}</div>
-            </div>
-            <span className="shrink-0 text-xs text-muted-foreground">{t("favorites.fixed")}</span>
-          </div>
-        )}
-        {lists.length === 0 && editor !== "new" ? (
-          <div className="rounded-md border px-3 py-4 text-sm text-muted-foreground">
-            {t("favorites.noCustomLists")}
-          </div>
-        ) : (
-          lists.map((list, index) =>
-            editor !== "new" && editor?.id === list.id ? (
-              <FavoriteListEditor key={`editor-${list.id}`} list={list} onClose={onCancelEdit} onSave={onSave} />
-            ) : (
-              <FavoriteListManagerRow
-                key={list.id}
-                list={list}
-                index={index}
-                total={lists.length}
-                actionsDisabled={actionsDisabled}
-                confirmingDelete={deleteTarget?.id === list.id}
-                deleting={deleting && deleteTarget?.id === list.id}
-                onMove={onMove}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                onCancelDelete={onCancelDelete}
-                onConfirmDelete={onConfirmDelete}
-              />
-            ),
-          )
-        )}
-        {editor === "new" && (
-          <FavoriteListEditor key="new-list-editor" list={null} onClose={onCancelEdit} onSave={onSave} />
-        )}
-      </DialogBody>
-      <DialogFooter className="justify-start">
-        {editor === null && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onNew}
-            disabled={deleteTarget !== null || deleting}
-          >
-            <Plus className="h-4 w-4" />
-            {t("favorites.addList")}
-          </Button>
-        )}
-        <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={onClose} disabled={deleting}>
-          {t("favorites.done")}
-        </Button>
-      </DialogFooter>
-    </Dialog>
-  );
-}
-
-function FavoriteListManagerRow({
-  list,
-  index,
-  total,
-  actionsDisabled,
-  confirmingDelete,
-  deleting,
-  onMove,
-  onEdit,
-  onDelete,
-  onCancelDelete,
-  onConfirmDelete,
-}: {
-  list: FavoriteList;
-  index: number;
-  total: number;
-  actionsDisabled: boolean;
-  confirmingDelete: boolean;
-  deleting: boolean;
-  onMove: (listID: number, direction: -1 | 1) => void;
-  onEdit: (list: FavoriteList) => void;
-  onDelete: (list: FavoriteList) => void;
-  onCancelDelete: () => void;
-  onConfirmDelete: () => void;
-}) {
-  const { t } = useTranslation();
-  const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
-  const deleteTitleID = `favorite-list-delete-${list.id}-title`;
-  const deleteDescriptionID = `favorite-list-delete-${list.id}-description`;
-
-  const closeDeleteConfirmation = () => {
-    onCancelDelete();
-    window.requestAnimationFrame(() => deleteButtonRef.current?.focus());
-  };
-
-  return (
-    <div role="listitem" className="flex items-center gap-1 rounded-md border bg-background px-2 py-2 sm:gap-2 sm:px-3">
-      <ListMusic className="h-4 w-4 shrink-0 text-muted-foreground" />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{list.name}</div>
-        {list.description && <div className="truncate text-xs text-muted-foreground">{list.description}</div>}
-      </div>
-      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{index + 1}</span>
-      <div className="flex shrink-0 items-center">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-11 w-11 sm:h-8 sm:w-8"
-          disabled={actionsDisabled || index === 0}
-          onClick={() => onMove(list.id, -1)}
-          aria-label={`${t("favorites.moveUp")}: ${list.name}`}
-          title={t("favorites.moveUp")}
-        >
-          <ArrowUp className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-11 w-11 sm:h-8 sm:w-8"
-          disabled={actionsDisabled || index === total - 1}
-          onClick={() => onMove(list.id, 1)}
-          aria-label={`${t("favorites.moveDown")}: ${list.name}`}
-          title={t("favorites.moveDown")}
-        >
-          <ArrowDown className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-11 w-11 sm:h-8 sm:w-8"
-          disabled={actionsDisabled}
-          onClick={() => onEdit(list)}
-          aria-label={`${t("favorites.rename")}: ${list.name}`}
-          title={t("favorites.rename")}
-        >
-          <Pencil className="h-4 w-4" />
-        </Button>
-        <Button
-          ref={deleteButtonRef}
-          variant="ghost"
-          size="icon"
-          className="h-11 w-11 sm:h-8 sm:w-8"
-          disabled={deleting || (actionsDisabled && !confirmingDelete)}
-          onClick={() => onDelete(list)}
-          aria-label={`${t("favorites.delete")}: ${list.name}`}
-          aria-haspopup="dialog"
-          aria-expanded={confirmingDelete}
-          title={t("favorites.delete")}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
-      <AnchoredPopover
-        open={confirmingDelete}
-        anchorRef={deleteButtonRef}
-        onOpenChange={(open) => {
-          if (!open && !deleting) closeDeleteConfirmation();
-        }}
-        className="w-[min(18rem,calc(100vw-1.5rem))] p-3"
-        zIndex={60}
-      >
-        <div role="alertdialog" aria-labelledby={deleteTitleID} aria-describedby={deleteDescriptionID}>
-          <h3 id={deleteTitleID} className="text-sm font-semibold">
-            {t("favorites.deleteListConfirm")}
-          </h3>
-          <p id={deleteDescriptionID} className="mt-2 text-sm text-muted-foreground">
-            {t("favorites.deleteListDescription", { name: list.name })}
-          </p>
-          <div className="mt-3 flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={closeDeleteConfirmation}
-              disabled={deleting}
-              autoFocus
-            >
-              {t("content.cancel")}
-            </Button>
-            <Button type="button" variant="destructive" size="sm" onClick={onConfirmDelete} disabled={deleting}>
-              {deleting ? t("favorites.deleting") : t("favorites.delete")}
-            </Button>
-          </div>
-        </div>
-      </AnchoredPopover>
-    </div>
-  );
-}
-
-function listeningStatusLabel(status: ListeningStatus, t?: TFunction) {
-  if (t) return t(`library.status.${status}`);
-  return listeningStatusOptions.find((option) => option.value === status)?.label ?? "Unmarked";
 }
 
 function readFavoritesEntryState(storageScope: string): FavoritesEntryState {

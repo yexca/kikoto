@@ -62,6 +62,7 @@ type BackupTag struct {
 type BackupPlaylist struct {
 	Name        string               `json:"name"`
 	Description string               `json:"description"`
+	Icon        string               `json:"icon,omitempty"`
 	SortOrder   int64                `json:"sortOrder"`
 	Items       []BackupPlaylistItem `json:"items"`
 }
@@ -228,6 +229,11 @@ func validateBackup(b *Backup) error {
 		}
 		// Favorite-list names use the existing exact-name uniqueness contract.
 		seen[list.Name] = true
+		icon, ok := NormalizeFavoriteListIcon(list.Icon)
+		if !ok {
+			return ErrInvalid
+		}
+		list.Icon = icon
 		items += len(list.Items)
 		if items > maxTransferItems {
 			return ErrLimit
