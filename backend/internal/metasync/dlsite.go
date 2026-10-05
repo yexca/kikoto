@@ -1179,25 +1179,8 @@ func replaceDLsiteWorkGenres(ctx context.Context, tx *sql.Tx, workID int64, genr
 		`, workID, int64(genre.ID)); err != nil {
 			return err
 		}
-		names := []struct{ language, name string }{{"ja-jp", genre.NameBase}}
-		if requestLocale != "" {
-			names = append(names, struct{ language, name string }{requestLocale, genre.Name})
-		}
-		for _, entry := range names {
-			name := strings.TrimSpace(entry.name)
-			if name == "" {
-				continue
-			}
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO dlsite_genre_name (genre_id, language, name)
-				VALUES (?, ?, ?)
-				ON CONFLICT(genre_id, language) DO UPDATE SET
-					name = excluded.name,
-					updated_at = CURRENT_TIMESTAMP
-				WHERE dlsite_genre_name.name <> excluded.name
-			`, int64(genre.ID), entry.language, name); err != nil {
-				return err
-			}
+		if err := learnDLsiteGenreNamesTx(ctx, tx, genre, requestLocale); err != nil {
+			return err
 		}
 		id, err := metadatatags.EnsureGenreTx(ctx, tx, int64(genre.ID))
 		if err != nil {
@@ -1209,6 +1192,33 @@ func replaceDLsiteWorkGenres(ctx context.Context, tx *sql.Tx, workID int64, genr
 		return nil
 	}
 	return metadatatags.RefreshNamesTx(ctx, tx, priorities, ids...)
+}
+
+// learnDLsiteGenreNamesTx stores one response's names for a genre: NameBase
+// as Japanese and Name under the locale DLsite was asked for. The newest
+// observation replaces an older, different name.
+func learnDLsiteGenreNamesTx(ctx context.Context, tx *sql.Tx, genre dlsite.Genre, requestLocale string) error {
+	names := []struct{ language, name string }{{"ja-jp", genre.NameBase}}
+	if requestLocale != "" {
+		names = append(names, struct{ language, name string }{requestLocale, genre.Name})
+	}
+	for _, entry := range names {
+		name := strings.TrimSpace(entry.name)
+		if name == "" || len(name) > 512 {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO dlsite_genre_name (genre_id, language, name)
+			VALUES (?, ?, ?)
+			ON CONFLICT(genre_id, language) DO UPDATE SET
+				name = excluded.name,
+				updated_at = CURRENT_TIMESTAMP
+			WHERE dlsite_genre_name.name <> excluded.name
+		`, int64(genre.ID), entry.language, name); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func normalizeRequestLocale(value string) string {

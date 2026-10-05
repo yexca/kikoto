@@ -23,21 +23,24 @@ type appSettingsResponse struct {
 	LocalScanDepth         int  `json:"localScanDepth"`
 	// LocalScanDepthMinimum is the shallowest depth that still reaches every
 	// Fetch folder; scans use at least this depth.
-	LocalScanDepthMinimum     int                   `json:"localScanDepthMinimum"`
-	CacheEnabled              bool                  `json:"cacheEnabled"`
-	CacheLimitGB              int                   `json:"cacheLimitGb"`
-	TranscodeCacheLimitGB     int                   `json:"transcodeCacheLimitGb"`
-	RemoteDownloadLimitGB     int                   `json:"remoteDownloadLimitGb"`
-	FetchStagingRetentionDays int                   `json:"fetchStagingRetentionDays"`
-	RemoteSaveTemplate        string                `json:"remoteSaveTemplate"`
-	RemoteDelayBase           float64               `json:"remoteDelayBaseSeconds"`
-	RemoteDelayRandom         float64               `json:"remoteDelayRandomSeconds"`
-	RemoteBackoff             float64               `json:"remoteBackoffSeconds"`
-	RemoteMaxBackoff          float64               `json:"remoteMaxBackoffSeconds"`
-	CatalogFreshnessDays      int                   `json:"catalogFreshnessDays"`
-	DLsiteMetadataLanguage    string                `json:"dlsiteMetadataLanguage"`
-	DLsiteMetadataLanguages   []string              `json:"dlsiteMetadataLanguages"`
-	Proxy                     proxySettingsResponse `json:"proxy"`
+	LocalScanDepthMinimum     int      `json:"localScanDepthMinimum"`
+	CacheEnabled              bool     `json:"cacheEnabled"`
+	CacheLimitGB              int      `json:"cacheLimitGb"`
+	TranscodeCacheLimitGB     int      `json:"transcodeCacheLimitGb"`
+	RemoteDownloadLimitGB     int      `json:"remoteDownloadLimitGb"`
+	FetchStagingRetentionDays int      `json:"fetchStagingRetentionDays"`
+	RemoteSaveTemplate        string   `json:"remoteSaveTemplate"`
+	RemoteDelayBase           float64  `json:"remoteDelayBaseSeconds"`
+	RemoteDelayRandom         float64  `json:"remoteDelayRandomSeconds"`
+	RemoteBackoff             float64  `json:"remoteBackoffSeconds"`
+	RemoteMaxBackoff          float64  `json:"remoteMaxBackoffSeconds"`
+	CatalogFreshnessDays      int      `json:"catalogFreshnessDays"`
+	DLsiteMetadataLanguage    string   `json:"dlsiteMetadataLanguage"`
+	DLsiteMetadataLanguages   []string `json:"dlsiteMetadataLanguages"`
+	// RemoteMetadataFallback is the opt-in remote source lookup for works
+	// DLsite reports as not found, with its ordered source list.
+	RemoteMetadataFallback remoteMetadataFallbackSettings `json:"remoteMetadataFallback"`
+	Proxy                  proxySettingsResponse          `json:"proxy"`
 	// KikoeruImportPrivateAddresses lets every account enter a private or LAN
 	// address for a Kikoeru account import; administrators always can.
 	KikoeruImportPrivateAddresses bool                         `json:"kikoeruImportPrivateAddresses"`
@@ -60,25 +63,26 @@ type directoryRule struct {
 }
 
 type settingsUpdatePayload struct {
-	LocalScanDepth                *int                  `json:"localScanDepth"`
-	CacheEnabled                  *bool                 `json:"cacheEnabled"`
-	CacheLimitGB                  *int                  `json:"cacheLimitGb"`
-	TranscodeCacheLimitGB         *int                  `json:"transcodeCacheLimitGb"`
-	RemoteDownloadLimitGB         *int                  `json:"remoteDownloadLimitGb"`
-	FetchStagingRetentionDays     *int                  `json:"fetchStagingRetentionDays"`
-	RemoteSaveTemplate            *string               `json:"remoteSaveTemplate"`
-	RemoteDelayBase               *float64              `json:"remoteDelayBaseSeconds"`
-	RemoteDelayRandom             *float64              `json:"remoteDelayRandomSeconds"`
-	RemoteBackoff                 *float64              `json:"remoteBackoffSeconds"`
-	RemoteMaxBackoff              *float64              `json:"remoteMaxBackoffSeconds"`
-	CatalogFreshnessDays          *int                  `json:"catalogFreshnessDays"`
-	DLsiteMetadataLanguage        *string               `json:"dlsiteMetadataLanguage"`
-	DLsiteMetadataLanguages       *[]string             `json:"dlsiteMetadataLanguages"`
-	Proxy                         *proxySettingsPayload `json:"proxy"`
-	KikoeruImportPrivateAddresses *bool                 `json:"kikoeruImportPrivateAddresses"`
-	DirectoryRoutingRules         *[]directoryRule      `json:"directoryRoutingRules"`
-	RecommendationThreshold       *int                  `json:"recommendationThreshold"`
-	RecommendationConfig          json.RawMessage       `json:"recommendationConfig"`
+	LocalScanDepth                *int                            `json:"localScanDepth"`
+	CacheEnabled                  *bool                           `json:"cacheEnabled"`
+	CacheLimitGB                  *int                            `json:"cacheLimitGb"`
+	TranscodeCacheLimitGB         *int                            `json:"transcodeCacheLimitGb"`
+	RemoteDownloadLimitGB         *int                            `json:"remoteDownloadLimitGb"`
+	FetchStagingRetentionDays     *int                            `json:"fetchStagingRetentionDays"`
+	RemoteSaveTemplate            *string                         `json:"remoteSaveTemplate"`
+	RemoteDelayBase               *float64                        `json:"remoteDelayBaseSeconds"`
+	RemoteDelayRandom             *float64                        `json:"remoteDelayRandomSeconds"`
+	RemoteBackoff                 *float64                        `json:"remoteBackoffSeconds"`
+	RemoteMaxBackoff              *float64                        `json:"remoteMaxBackoffSeconds"`
+	CatalogFreshnessDays          *int                            `json:"catalogFreshnessDays"`
+	DLsiteMetadataLanguage        *string                         `json:"dlsiteMetadataLanguage"`
+	DLsiteMetadataLanguages       *[]string                       `json:"dlsiteMetadataLanguages"`
+	RemoteMetadataFallback        *remoteMetadataFallbackSettings `json:"remoteMetadataFallback"`
+	Proxy                         *proxySettingsPayload           `json:"proxy"`
+	KikoeruImportPrivateAddresses *bool                           `json:"kikoeruImportPrivateAddresses"`
+	DirectoryRoutingRules         *[]directoryRule                `json:"directoryRoutingRules"`
+	RecommendationThreshold       *int                            `json:"recommendationThreshold"`
+	RecommendationConfig          json.RawMessage                 `json:"recommendationConfig"`
 }
 
 type settingsValidationError struct{ message string }
@@ -188,6 +192,8 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, err)
 			return
 		}
+		// A newly preferred language may need genre names.
+		s.queueGenreNameLearning(r.Context(), "language_priority")
 	}
 	if payload.TranscodeCacheLimitGB != nil {
 		if _, err := s.enforceTranscodeCacheLimit(r.Context(), 0); err != nil {
@@ -230,6 +236,9 @@ func (s *Server) applySettingsUpdate(
 		return err
 	}
 	if err := applyMetadataSettings(r, tx, payload); err != nil {
+		return err
+	}
+	if err := applyRemoteMetadataFallbackSettings(r, tx, payload.RemoteMetadataFallback); err != nil {
 		return err
 	}
 	if err := applyRecommendationSettings(r, tx, payload, recommendationConfig); err != nil {
@@ -397,6 +406,10 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 	if err != nil {
 		return appSettingsResponse{}, err
 	}
+	remoteMetadataFallback, err := s.loadRemoteMetadataFallbackSettings(r.Context())
+	if err != nil {
+		return appSettingsResponse{}, err
+	}
 	return appSettingsResponse{
 		AnonymousAccessEnabled:        s.configuredAnonymousAccessEnabled(),
 		LocalScanDepth:                s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
@@ -414,6 +427,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		CatalogFreshnessDays:          s.catalogFreshnessDays(r.Context()),
 		DLsiteMetadataLanguage:        metadataLanguages[0],
 		DLsiteMetadataLanguages:       metadataLanguages,
+		RemoteMetadataFallback:        remoteMetadataFallback,
 		Proxy:                         s.proxySettingsResponse(proxyConfig),
 		KikoeruImportPrivateAddresses: s.settingBool(r, kikoeruImportPrivateAddressesSetting, false),
 		DirectoryRoutingRules:         s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),

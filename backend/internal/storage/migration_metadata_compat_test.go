@@ -140,8 +140,8 @@ func TestMigratePreservesBothDevelopmentHistories(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if state.currentVersion != 53 || state.baselineHash != oldState.baselineHash || state.baselineVersion != oldState.baselineVersion || state.dirtyVersion.Valid {
-				t.Fatalf("upgrade changed baseline state or failed to reach 053: %+v", state)
+			if state.currentVersion != latestNumberedMigrationVersion || state.baselineHash != oldState.baselineHash || state.baselineVersion != oldState.baselineVersion || state.dirtyVersion.Valid {
+				t.Fatalf("upgrade changed baseline state or failed to reach %03d: %+v", latestNumberedMigrationVersion, state)
 			}
 			if got := schemaSnapshot(t, db); !reflect.DeepEqual(got, wantSchema) {
 				for name, definition := range wantSchema {
@@ -232,7 +232,7 @@ func TestMetadataHistorySharesFutureCanonicalTail(t *testing.T) {
 		}
 		writeMigration(t, dir, "compat/metadata/"+filename, string(contents))
 	}
-	writeMigration(t, dir, "054_future_probe.sql", "CREATE TABLE future_probe (id INTEGER PRIMARY KEY);")
+	writeMigration(t, dir, fmt.Sprintf("%03d_future_probe.sql", latestNumberedMigrationVersion+1), "CREATE TABLE future_probe (id INTEGER PRIMARY KEY);")
 	for _, metadata := range []bool{false, true} {
 		t.Run(fmt.Sprintf("metadata=%v", metadata), func(t *testing.T) {
 			db := openMigrationManagerDB(t)
@@ -247,7 +247,7 @@ func TestMetadataHistorySharesFutureCanonicalTail(t *testing.T) {
 				t.Fatal(err)
 			}
 			if _, err := db.Exec("INSERT INTO future_probe(id) VALUES (1)"); err != nil {
-				t.Fatalf("shared migration 054 was not applied: %v", err)
+				t.Fatalf("shared future migration was not applied: %v", err)
 			}
 		})
 	}
@@ -296,8 +296,8 @@ func TestMetadataHistoryConcurrentUpgrade(t *testing.T) {
 		}
 	}
 	after := migrationLedgerSnapshot(t, first)
-	if len(after) != 53 || after["053_favorite_list_icon.sql"] == "" {
-		t.Fatalf("concurrent upgrade did not append exactly one migration: %v", after)
+	if len(after) != latestNumberedMigrationVersion || after["053_favorite_list_icon.sql"] == "" || after["054_remote_metadata_fallback.sql"] == "" || after["055_genre_name_learning.sql"] == "" {
+		t.Fatalf("concurrent upgrade did not append each missing migration once: %v", after)
 	}
 	for filename, record := range before {
 		if after[filename] != record {

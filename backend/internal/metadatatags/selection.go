@@ -34,27 +34,51 @@ func PreferredLanguages(ctx context.Context, q Querier) ([]string, error) {
 // EqualFold matches Unicode case variants; names are definitions, not substring
 // search keys. Creation and reuse happen inside the caller's write transaction.
 func FindByName(ctx context.Context, q Querier, name string) (int64, error) {
-	rows, err := q.QueryContext(ctx, `SELECT tag.id,tag.display_name FROM tag INNER JOIN metadata_tag ON tag_id=tag.id
- UNION SELECT tag_id,name FROM metadata_tag_name
- UNION SELECT concept.tag_id,name.name FROM metadata_tag AS concept INNER JOIN dlsite_genre_name AS name ON name.genre_id=concept.dlsite_genre_id ORDER BY 1`)
+	matches, err := FindByNames(ctx, q, []string{name})
 	if err != nil {
 		return 0, err
+	}
+	if id, ok := matches[strings.TrimSpace(name)]; ok {
+		return id, nil
+	}
+	return 0, sql.ErrNoRows
+}
+
+// FindByNames reads every known concept name once and returns, for each
+// requested trimmed name, the lowest concept id with a case-folded equal name.
+func FindByNames(ctx context.Context, q Querier, names []string) (map[string]int64, error) {
+	wanted := []string{}
+	for _, name := range names {
+		if name = strings.TrimSpace(name); name != "" {
+			wanted = append(wanted, name)
+		}
+	}
+	result := map[string]int64{}
+	if len(wanted) == 0 {
+		return result, nil
+	}
+	rows, err := q.QueryContext(ctx, `SELECT tag.id,tag.display_name FROM tag INNER JOIN metadata_tag ON tag_id=tag.id
+ UNION SELECT tag_id,name FROM metadata_tag_name
+ UNION SELECT tag_id,name FROM metadata_tag_provider_name
+ UNION SELECT concept.tag_id,name.name FROM metadata_tag AS concept INNER JOIN dlsite_genre_name AS name ON name.genre_id=concept.dlsite_genre_id ORDER BY 1`)
+	if err != nil {
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var id int64
 		var candidate string
 		if err := rows.Scan(&id, &candidate); err != nil {
-			return 0, err
+			return nil, err
 		}
-		if strings.EqualFold(strings.TrimSpace(candidate), name) {
-			return id, nil
+		candidate = strings.TrimSpace(candidate)
+		for _, name := range wanted {
+			if _, found := result[name]; !found && strings.EqualFold(candidate, name) {
+				result[name] = id
+			}
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
-	return 0, sql.ErrNoRows
+	return result, rows.Err()
 }
 
 func Projected(ctx context.Context, q Querier, workID int64) (bool, error) {

@@ -13,6 +13,7 @@ import type {
 } from "../../src/lib/api";
 import {
   appSettingsFixture,
+  fileSourceFixture,
   metadataIssueWorkFixture,
   workDetailFixture,
   voiceDetailFixture,
@@ -402,6 +403,54 @@ for (const viewport of ["mobile", "@desktop"]) {
     await expect(page.getByRole("button", { name: "Metadata sync", exact: true })).toHaveCount(0);
   });
 }
+
+test("@desktop Metadata settings save the remote metadata fallback order", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "sources:write", "metadata:sync", "workflows:run"],
+  });
+  await page.route("**/api/maintenance/works?*", (route) =>
+    route.fulfill({ json: { works: [], page: 1, pageSize: 25, total: 0 } satisfies MaintenanceWorkPage }),
+  );
+  const remote = (id: number, priority: number, capabilities?: string[]) =>
+    fileSourceFixture({
+      id,
+      code: `example_remote_${id}`,
+      displayName: `Example Remote ${String.fromCharCode(64 + id)}`,
+      sourceType: "kikoeru_compatible",
+      priority,
+      config: capabilities ? { capabilities } : {},
+    });
+  let settings = appSettingsFixture({
+    fileSources: [remote(1, 10), remote(2, 20), remote(3, 30, [])],
+    remoteMetadataFallback: { enabled: false, sourceIds: [] },
+  });
+  const saved: unknown[] = [];
+  await page.route("**/api/settings", async (route) => {
+    if (route.request().method() === "PATCH") {
+      const body = route.request().postDataJSON() as Partial<typeof settings>;
+      saved.push(body);
+      settings = { ...settings, ...body };
+    }
+    await route.fulfill({ json: settings });
+  });
+  await page.goto("/metadata");
+  await page.getByRole("button", { name: "Metadata settings", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Metadata settings", exact: true });
+  const order = dialog.getByRole("list", { name: "Fallback source order", exact: true });
+  // Only sources that declare the metadata capability are offered.
+  await expect(order.getByRole("listitem")).toHaveText(["Example Remote A", "Example Remote B"]);
+  const toggle = dialog.getByRole("switch", { name: "Look up works DLsite does not have", exact: true });
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await toggle.click();
+  await dialog.getByRole("checkbox", { name: "Use Example Remote A", exact: true }).click();
+  await dialog.getByRole("checkbox", { name: "Use Example Remote B", exact: true }).click();
+  await dialog.getByRole("button", { name: "Move Example Remote B earlier", exact: true }).click();
+  await expect(order.getByRole("listitem")).toHaveText(["Example Remote B", "Example Remote A"]);
+  await dialog.getByRole("button", { name: "Save metadata settings", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  expect(saved[0]).toMatchObject({ remoteMetadataFallback: { enabled: true, sourceIds: [2, 1] } });
+});
 
 test("@desktop Metadata table shows management columns, edits a work in place, and does not poll", async ({ page }) => {
   await page.clock.install();

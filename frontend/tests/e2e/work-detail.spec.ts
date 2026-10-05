@@ -515,6 +515,30 @@ test("work detail prompts for missing metadata and refreshes after sync complete
   await expect(page.getByTestId("metadata-sync-notice")).toHaveCount(0);
 });
 
+test("work detail names the remote source that filled a work DLsite does not have", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "playback:use", "metadata:sync"],
+    detailMetadataSync: {
+      status: "remote_fallback",
+      checkedAt: "",
+      source: "Example Remote A",
+      fields: [
+        { field: "title", source: "Example Remote A" },
+        { field: "tags", source: "Example Remote A" },
+      ],
+    },
+  });
+  await page.goto("/");
+  await page.getByText(work.title, { exact: true }).click();
+  await page.getByRole("button", { name: "Info", exact: true }).click();
+  const notice = page.getByTestId("metadata-sync-notice");
+  await expect(notice).toContainText("Filled from a remote source");
+  await expect(notice).toContainText("DLsite has no record of this work. Its metadata comes from Example Remote A.");
+  await expect(notice).toContainText("From Example Remote A: title, tags");
+  await expect(notice).not.toContainText("Metadata unavailable");
+});
+
 test("local work detail lists Origin first and expands from local to all editions", async ({ page }) => {
   const detailTranslations: WorkTranslation[] = [
     {

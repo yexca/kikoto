@@ -356,6 +356,10 @@ Reset passes the selected title language to the API, refreshes its hints and
 keeps the editor open with all other language and field drafts intact. Clearing
 an owned manual title removes it; clearing an inherited hint changes nothing.
 
+The metadata language label of an original edition whose language was never
+declared reads only Original; other editions keep their language or the
+unknown-language label.
+
 Effective titles and descriptions arrive together in metadata variants. Detail
 language selection updates both; descriptions render stored plain text verbatim
 through React escaping, preserving brackets, ampersands and line breaks. Local,
@@ -364,6 +368,26 @@ display title while retaining their media identity and directory edition.
 Existing global playback remains outside page boundaries. Cards and search
 results use the same backend display policy; the frontend does not strip authored
 titles or rewrite provider values.
+
+## Remote metadata fallback presentation
+
+Metadata settings add a Remote metadata fallback group: an off-by-default switch
+and the metadata-capable remote sources, each with a checkbox and earlier/later
+controls for the fallback order, saved with the rest of the form. A pure model
+(`remoteMetadataFallbackModel`) orders the rows and drops ids that no longer
+name a capable source before saving. The remote source dialog has a
+Provides work metadata switch that writes the `metadata` capability;
+`lib/remoteSourceCapabilities` holds the shared capability rule.
+
+The work detail notice shows `remote_fallback` as an informational state that
+names the filling source and, per source, which values it filled; a not-synced
+work with remote values shows the same per-source lines. The title editor names
+a remote title's source. Metadata issue rows say a DLsite-unavailable work was
+filled by a named remote source instead of showing a bare unavailable status.
+
+Workflows lists Learn tag names (`metadata_genre_names`) in the Basic group
+after metadata sync. It is a read-only system workflow: its runs, progress and
+failures appear in Activity, and it has no run form.
 
 ## Related Docs
 

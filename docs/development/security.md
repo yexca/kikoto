@@ -77,6 +77,25 @@ to one destination and reads that user's reviews and playlists:
   to 3 minutes, and page and item counts to the transfer limits. At most two
   account or database reads run at once.
 
+### Remote metadata fallback
+
+The opt-in fallback asks administrator-configured remote sources for one work
+after DLsite reports it as not found:
+
+- The destination is the source's configured API origin. Redirects are followed
+  only between the source's configured origins (API, public site, fallback);
+  the shared source policy validates every hop, pins the validated address,
+  strips credentials on an origin change, and keeps the configured private-origin
+  exception for those origins only. A cover URL from the response goes through
+  the existing remote cover path, so an unconfigured private origin is refused.
+- Each source gets one `workInfo` request with a 30-second bound and a 2 MiB
+  response limit, through the paced crawl lane; cancellation releases the lane
+  and records no outcome. Retryable DLsite failures never trigger a request.
+- The response is untrusted. It must decode within the remote snapshot bounds
+  and name the requested code; nothing is applied otherwise.
+- Run output, Activity, and the API expose source codes, display names and
+  fixed outcomes only. Detailed upstream errors stay in protected logs.
+
 `POST /api/user-data/kikoeru/database` streams an uploaded Kikoeru SQLite file,
 up to 512 MiB, to a temporary file that is deleted when the request ends. The
 file is opened read-only and immutable with `trusted_schema` off, only the base

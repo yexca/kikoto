@@ -99,6 +99,16 @@ func ProjectWorkTx(ctx context.Context, tx *sql.Tx, workID, genreWorkID int64, l
 			fallback = append(fallback, id)
 		}
 	}
+	return projectWorkTx(ctx, tx, workID, genreWorkID, fallback)
+}
+
+// projectWorkTx stores the provider base (the genre concepts of genreWorkID, or
+// fallback when it has none) and the effective links derived from it.
+func projectWorkTx(ctx context.Context, tx *sql.Tx, workID, genreWorkID int64, fallback []int64) error {
+	var genreCount int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM work_dlsite_genre WHERE work_id=?", genreWorkID).Scan(&genreCount); err != nil {
+		return err
+	}
 	base := fallback
 	if genreCount > 0 {
 		rows, err := tx.QueryContext(ctx, "SELECT concept.tag_id FROM work_dlsite_genre AS genre JOIN metadata_tag AS concept ON concept.dlsite_genre_id=genre.genre_id WHERE genre.work_id=?", genreWorkID)

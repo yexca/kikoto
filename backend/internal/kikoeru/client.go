@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,11 +20,26 @@ import (
 )
 
 type Client struct {
-	baseURL         string
-	httpClient      *http.Client
-	compatibility   string
-	requestLanguage string
+	baseURL          string
+	httpClient       *http.Client
+	compatibility    string
+	requestLanguage  string
+	maxResponseBytes int64
 }
+
+// StatusError reports a non-2xx response without exposing its body.
+type StatusError struct{ Code int }
+
+func (err StatusError) Error() string { return fmt.Sprintf("remote source returned HTTP %d", err.Code) }
+
+// IsNotFound reports whether the source answered that a resource is missing.
+func IsNotFound(err error) bool {
+	var status StatusError
+	return errors.As(err, &status) && status.Code == http.StatusNotFound
+}
+
+// ErrResponseTooLarge reports a response body above the client's bound.
+var ErrResponseTooLarge = errors.New("remote source response is too large")
 
 type clientPolicyErrorTransport struct {
 	err error
@@ -233,6 +249,15 @@ func NewNumber178Client(baseURL string, httpClient *http.Client) *Client {
 	client := NewClient(baseURL, httpClient)
 	client.compatibility = CompatibilityNumber178
 	return client
+}
+
+// WithMaxResponseBytes lowers the buffered JSON bound for this client, for
+// example for a metadata lookup that needs only one work.
+func (c *Client) WithMaxResponseBytes(limit int64) *Client {
+	if limit > 0 && limit < maxKikoeruJSONBytes {
+		c.maxResponseBytes = limit
+	}
+	return c
 }
 
 // WithRequestLanguage sets the Accept-Language hint sent to the compatible
@@ -485,9 +510,9 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, target
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("remote source returned HTTP %d", resp.StatusCode)
+		return StatusError{Code: resp.StatusCode}
 	}
-	bytes, err := readLimitedJSONBody(resp.Body)
+	bytes, err := readLimitedJSONBody(resp.Body, c.responseLimit())
 	if err != nil {
 		return err
 	}
@@ -522,22 +547,29 @@ func (c *Client) postJSON(ctx context.Context, path string, payload any, target 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("remote source returned HTTP %d", resp.StatusCode)
+		return StatusError{Code: resp.StatusCode}
 	}
-	bytes, err := readLimitedJSONBody(resp.Body)
+	bytes, err := readLimitedJSONBody(resp.Body, c.responseLimit())
 	if err != nil {
 		return err
 	}
 	return json.Unmarshal(bytes, target)
 }
 
-func readLimitedJSONBody(body io.Reader) ([]byte, error) {
-	data, err := io.ReadAll(io.LimitReader(body, maxKikoeruJSONBytes+1))
+func (c *Client) responseLimit() int64 {
+	if c.maxResponseBytes > 0 {
+		return c.maxResponseBytes
+	}
+	return maxKikoeruJSONBytes
+}
+
+func readLimitedJSONBody(body io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(body, limit+1))
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(data)) > maxKikoeruJSONBytes {
-		return nil, fmt.Errorf("remote source response exceeds %d bytes", maxKikoeruJSONBytes)
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("%w: exceeds %d bytes", ErrResponseTooLarge, limit)
 	}
 	return data, nil
 }

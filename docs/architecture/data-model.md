@@ -23,15 +23,19 @@ Important tables:
 - `work_tag`
 - `metadata_tag`
 - `metadata_tag_name`
+- `metadata_tag_provider_name`
 - `work_tag_override`
 - `party_alias`
 - `party_merge_review`
 - `work_dlsite_genre`
 - `dlsite_genre_name`
+- `dlsite_genre_name_request`
+- `dlsite_genre_name_gap`
 - `party`
 - `person`
 - `work_credit`
 - `work_snapshot_projection`
+- `work_metadata_field_source`
 
 DLsite metadata sync stores raw snapshots and updates normalized fields used by
 library and detail views.
@@ -90,6 +94,24 @@ edition language because an edition without its own locale is requested in
 `ja-jp` and reports Japanese names. Known ids feed shared metadata tag
 concepts and their display names; dictionary learning never creates works.
 
+DLsite reports genre names in the requested locale whether or not a work has a
+translated edition, so a Japanese-only work still has preferred-language tag
+names once the dictionary knows them. Genre name learning (migration `055`)
+fills missing cells for each preferred non-Japanese language: it asks for the
+known, requestable work whose genres cover the most unnamed genres, so requests
+grow with the missing genre sets rather than the number of works. It stores only
+the response's genre names for genre ids the library already knows; it writes no
+work, edition, relation, snapshot, title or introduction.
+`dlsite_genre_name_request` records each answered request (`learned`,
+`no_names`, or `not_found`) so a work is never asked again in that language;
+failed requests are not recorded and stay retryable. Works DLsite already
+reported as not found are not requested. `dlsite_genre_name_gap` counts answered
+lookups that did not name a genre; after two such answers, or when no
+requestable work carries the genre, the genre and language pair is exhausted and
+no longer selected. New names refresh the affected concepts' display names in
+the same transaction, and the dictionary triggers invalidate the related works'
+search documents.
+
 ### Shared Metadata Tags
 
 A shared tag has one `tag` row in namespace `metadata`, with an empty
@@ -123,8 +145,9 @@ creator lists, search, workflow predicates, and recommendation similarity.
 `work_metadata_tag_base` retains each work's original provider concept ids
 before hiding, removals, or merge resolution. Snapshot-only DLsite names and
 genres are normalized into this base without
-fetching or creating new works. Remote snapshot tags remain in their existing
-snapshot presentation and do not enter shared concepts at this stage. Snapshot
+fetching or creating new works. Remote snapshot tags enter shared concepts only
+through the opt-in [remote metadata fallback](#remote-metadata-fallback);
+otherwise they keep their snapshot presentation. Snapshot
 fallback fills only absent dictionary cells; names with no known request locale
 are unscoped, while `name_base` is Japanese. Invalid objects, more than 256 tags,
 names over 512 bytes, or snapshots over 8 MiB skip the entire snapshot fallback
@@ -197,8 +220,11 @@ authorship and cover assets. Only title allows a nonempty language (`ja-jp`,
 foreign-key indexes and all migration-036 search invalidation triggers are
 recreated, including language-only updates.
 
-Display title selection tries each configured language: its manual title, the
-universal manual title, then that DLsite edition. `origin` matches the canonical
+Display title selection picks the first configured language with its own manual
+title or DLsite edition, then shows its language manual title, the universal
+manual title, or that edition's title. A universal manual title replaces only
+the text: it never selects an edition, so the default edition, description, and
+tags match the presentation without it. `origin` matches the canonical
 edition's declared language and never infers a language from text or request
 locale. Unknown origin languages use the universal manual title or original title. Manual titles
 without a corresponding provider edition use the original description; otherwise
@@ -218,8 +244,11 @@ plain-text introduction, including manual-only language choices. Universal manua
 titles overlay existing choices without creating a language; only a specific
 manual language may add a choice. Unknown original languages stay unknown in
 the menu, selection and editor sources. All manual languages are
-indexed and scoped writes/reset invalidate search. Remote-title fallback is not
-part of this stage.
+indexed and scoped writes/reset invalidate search. A work without DLsite data
+falls back to the title a remote source filled (see
+[remote metadata fallback](#remote-metadata-fallback)), then to its own title.
+Remote titles declare no language: they never become an edition, add no
+language choice, and receive no translation-label stripping.
 
 The optional PATCH `titles` map updates only supplied language keys; `null` or
 empty values remove that language. Legacy `title` remains the universal value;
@@ -254,6 +283,69 @@ the work, its translation and language-edition relationships are removed, and
 code never becomes a work, edition, or alias, and its family is not walked.
 Saving a link rechecks a work previously recorded as `not_found`; removing it
 keeps the stored metadata until the work's own code is synchronized again.
+
+### Remote Metadata Fallback
+
+Remote file sources may describe works, but they never create a work or a
+second identity. A source declares the ability in `file_source.config_json`
+`capabilities`. Only Kikoeru-compatible source types support `metadata`; a
+config without the list keeps that type's default, and an explicit list,
+including an empty one, is authoritative. Code checks the declared capability
+and source type, never a display name. A remote source's provider identity is
+`kikoeru_source_<source code>`.
+
+`app_setting.remote_metadata_fallback` stores `{"enabled", "sourceIds"}`,
+default off with no sources. Selected metadata-capable sources form the
+fallback order. Every remote source is ranked, with the selected ones first in
+that order and the others by source priority and id. The ranking decides every
+remote value, so the result no longer depends on which source wrote last.
+
+`remotemetadata.ReconcileWorkTx` derives a work's normalized fields from the
+latest stored snapshot of each remote provider. Snapshots are untrusted:
+non-objects, missing codes, titles over 2048 bytes, circle names over 512 bytes,
+more than 256 tags, tag names over 512 bytes, more than 16 localizations per
+tag, or snapshots over 8 MiB are skipped as a whole with a protected log.
+Release dates must start with `YYYY-MM-DD`. For each field the first-ranked
+source with a value wins. Without DLsite (or another non-remote provider)
+metadata, the winner replaces title, release date, age rating and duration;
+with it, remote values only fill an empty field, as before.
+`work_metadata_field_source` (migration `054`) records the provider of each
+remote-filled value (`title`, `release_date`, `age_rating`, `duration`,
+`circle`, `tags`, `cover`). It holds rows only while the work has no DLsite
+metadata; projection clears them when DLsite data arrives, so DLsite always
+takes over.
+
+The winning circle name links an existing circle by name or confirmed alias.
+Only an active fallback source (switch on, selected, capable, enabled) may
+create a new circle without a maker id; such duplicates can be merged in the
+circle view. One remote circle relation is kept per work, from the winner, and
+a manual or DLsite circle keeps precedence. A fallback cover is cached only when
+the work has no cover, so an existing DLsite cover is never replaced.
+
+While the fallback is enabled, the first active source whose snapshot declares
+tags supplies a remote-only work's shared-tag base. Each tag reuses the concept
+whose display, manual, dictionary or provider name equals its primary or any
+localized name, ignoring case, so a remote name matching a DLsite genre joins
+that genre. An unmatched tag gets the deterministic name concept used by legacy
+imports. Its localized names go to `metadata_tag_provider_name`, only for
+concepts without a genre id and only into absent cells. They rank after manual
+and dictionary names in display precedence, are searchable, and invalidate
+search when they change. Remote refreshes reach the durable projection queue
+through the snapshot triggers, so tags follow the latest snapshot.
+
+`work_metadata_sync_state` and `work_metadata_provider_state` record remote
+providers' outcomes as well as DLsite's. When DLsite reported the work not found
+and remote values remain, the detail's `metadataSync.status` is
+`remote_fallback`, with the filling source and per-field sources, and the
+Metadata issue list names that source on the DLsite row.
+
+Turning the switch off stops new lookups and requeues every work with a remote
+snapshot. Remote tags then leave shared tags again and their snapshot display
+returns. Filled titles, dates, circles and covers, their provenance and the
+snapshots stay as passive remote data under the same ordering until DLsite or
+manual values replace them. Changing the order, or a source's enabled state or
+capability, requeues the affected works the same way, and pending remote issues
+of a source the fallback no longer uses are cleared.
 
 ## Voice Catalog Discovery
 

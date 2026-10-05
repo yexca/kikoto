@@ -458,7 +458,7 @@ func (s *Server) trackRemoteCollectionWork(ctx context.Context, source remoteSou
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork, true)
+	workID, err := upsertRemoteWork(ctx, tx, source, remoteWork, rawWork)
 	if err != nil {
 		return 0, err
 	}

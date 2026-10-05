@@ -27,10 +27,14 @@ func attemptID(ctx context.Context) int64 {
 }
 
 func (s *DLsiteSyncer) beginAttempt(ctx context.Context) (context.Context, error) {
+	return beginSyncAttempt(ctx, s.db)
+}
+
+func beginSyncAttempt(ctx context.Context, db *sql.DB) (context.Context, error) {
 	if attemptID(ctx) > 0 {
 		return ctx, nil
 	}
-	result, err := s.db.ExecContext(ctx, "INSERT INTO metadata_sync_attempt DEFAULT VALUES")
+	result, err := db.ExecContext(ctx, "INSERT INTO metadata_sync_attempt DEFAULT VALUES")
 	if err != nil {
 		return ctx, err
 	}
@@ -39,17 +43,73 @@ func (s *DLsiteSyncer) beginAttempt(ctx context.Context) (context.Context, error
 		return ctx, err
 	}
 	ctx = context.WithValue(ctx, syncAttemptKey, id)
-	return ctx, s.linkAttemptRun(ctx, id)
+	return ctx, linkSyncAttemptRun(ctx, db, id)
 }
 
 func (s *DLsiteSyncer) linkAttemptRun(ctx context.Context, id int64) error {
+	return linkSyncAttemptRun(ctx, s.db, id)
+}
+
+func linkSyncAttemptRun(ctx context.Context, db *sql.DB, id int64) error {
 	runID, _ := ctx.Value(syncRunKey).(int64)
 	if runID <= 0 || id <= 0 {
 		return nil
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO metadata_sync_attempt_run (attempt_id, workflow_run_id)
+	_, err := db.ExecContext(ctx, `INSERT OR IGNORE INTO metadata_sync_attempt_run (attempt_id, workflow_run_id)
 		SELECT ?, id FROM workflow_run WHERE id = ?`, id, runID)
 	return err
+}
+
+// Fixed provider outcome statuses. Detailed errors stay in protected logs and
+// workflow diagnostics.
+const (
+	ProviderOutcomeSucceeded   = "succeeded"
+	ProviderOutcomeFailed      = "failed"
+	ProviderOutcomeUnavailable = "unavailable"
+)
+
+// RecordProviderOutcome stores a non-DLsite provider's metadata outcome, such
+// as one remote fallback source, in the same attempt ledger and current state
+// as DLsite. An unavailable outcome means the provider has no such work.
+func RecordProviderOutcome(ctx context.Context, db *sql.DB, workID int64, providerCode, providerName, status string) error {
+	if ctx.Err() != nil {
+		return nil
+	}
+	switch status {
+	case ProviderOutcomeSucceeded, ProviderOutcomeFailed, ProviderOutcomeUnavailable:
+	default:
+		return errors.New("invalid metadata provider outcome")
+	}
+	ctx, err := beginSyncAttempt(ctx, db)
+	if err != nil {
+		return err
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	providerID, err := ensureMetadataProvider(ctx, tx, providerCode, providerName)
+	if err != nil {
+		return err
+	}
+	if err := recordSyncOutcome(ctx, tx, workID, providerID, "metadata", status); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ClearProviderIssues removes pending failed and unavailable states of the
+// given providers, for example when remote fallback stops using a source.
+func ClearProviderIssues(ctx context.Context, tx *sql.Tx, providerCodes []string) error {
+	for _, code := range providerCodes {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM work_metadata_sync_state
+			WHERE status IN ('failed', 'unavailable')
+				AND provider_id = (SELECT id FROM metadata_provider WHERE code = ?)`, code); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *DLsiteSyncer) recordCodeOutcome(ctx context.Context, code, component string, outcome error) error {
@@ -138,4 +198,18 @@ func newerMetadataWasStored(ctx context.Context, tx *sql.Tx, workID, providerID 
 		WHERE work_id = ? AND provider_id = ? AND component = 'metadata' AND last_success_attempt_id > ?)`,
 		workID, providerID, attemptID(ctx)).Scan(&newer)
 	return newer, err
+}
+
+// ClearWorkProviderIssues removes one work's pending failed and unavailable
+// states of the given providers, for example earlier fallback sources once a
+// later source has filled the work.
+func ClearWorkProviderIssues(ctx context.Context, db *sql.DB, workID int64, providerCodes []string) error {
+	for _, code := range providerCodes {
+		if _, err := db.ExecContext(ctx, `DELETE FROM work_metadata_sync_state
+			WHERE work_id = ? AND status IN ('failed', 'unavailable')
+				AND provider_id = (SELECT id FROM metadata_provider WHERE code = ?)`, workID, code); err != nil {
+			return err
+		}
+	}
+	return nil
 }

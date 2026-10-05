@@ -9,6 +9,31 @@
   introductions follow the selected edition as verbatim plain text; playback queues use the display
   title. Unsupported edition entries retain their own cleaned titles, circle and
   voice actor titles load in batches, and every manual title language remains searchable.
+  An all-language manual title replaces only the displayed text, so it no longer
+  moves the default edition, introduction, or tags back to the original. An
+  original edition without a declared language is labelled only Original.
+- Tag names for preferred languages are learned in the background: for each
+  preferred non-Japanese language, Learn tag names asks DLsite once for the
+  work covering the most unnamed genres, so requests scale with missing genres,
+  not works, and Japanese-only works show translated tag names. It runs after
+  startup, metadata syncs and language changes, follows the existing request
+  pacing, proxy and outbound policy, resumes after interruption, reports
+  progress and failures in Activity, never stores titles, works or snapshots,
+  and never repeats an answered request. Schema 055 is packaged in
+  `055_v0.7.1.sql`.
+- Opt-in remote metadata fallback: when DLsite explicitly reports a work as not
+  found, a metadata refresh asks the selected metadata-capable remote sources in
+  the configured order, once each through workInfo (reusing cached catalog
+  JSON), and fills title, release date, circle, tags, and a missing cover.
+  Retryable DLsite failures never contact remote sources, and no work is
+  created. Every value records its remote source; the detail says DLsite has no
+  record and names the filling source, the title editor and Metadata issues
+  name it too, and later DLsite data takes over. Remote tags join shared tags
+  only while the fallback uses their source. Several remote sources now apply
+  in a deterministic order instead of last-writer-wins. Requests stay on the
+  configured origins with bounded size and time. Schema 054 adds the
+  provenance and provider tag name tables; the schema-053 and schema-054
+  development baselines are retired with their checksums kept for upgrades.
 - Admin tag merge targets label hidden tags and explain that the merged tag will
   be hidden on all works. Remote tags are documented on voice actor remote-work
   lists in all five languages.
@@ -60,7 +85,7 @@
   entries and work counts to demo works and withholds circle merge history.
 - Circle management supports manual names, confirmed aliases, and reviewed,
   reversible merges that transfer creator relations and personal circle data.
-- Schema 053 is packaged in `053_v0.7.1.sql`; released baselines remain intact.
+- Schema 053 added language-scoped titles; released baselines remain intact.
   Existing `main` and metadata development databases retain their original
   migration history and receive the missing changes through separate immutable
   paths that converge at schema 053. Historical metadata schema-051/052 and

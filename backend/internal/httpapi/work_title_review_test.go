@@ -138,6 +138,42 @@ func TestUniversalManualTitleDoesNotInventLanguageOptions(t *testing.T) {
 	}
 }
 
+// A legacy editor left only universal titles. Such a title must replace the
+// displayed text without moving the default edition, introduction, or tags to
+// the original when an earlier preferred language has no edition.
+func TestUniversalManualTitleKeepsTheDefaultEdition(t *testing.T) {
+	f := newTitleReviewFamily(t, "JPN", true)
+	ctx := context.Background()
+	if _, err := f.db.Exec(`INSERT INTO app_setting(key,value_json) VALUES ('dlsite_metadata_languages','["zh-tw","zh-cn","origin"]') ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json`); err != nil {
+		t.Fatal(err)
+	}
+	before, err := f.server.loadWorkDetail(ctx, f.userID, f.workID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	translation := testfixture.WorkCode("RJ", 1)
+	if before.MetadataView.DefaultVariantKey != translation || before.Description != "Example edition introduction" {
+		t.Fatalf("baseline default edition: %+v %q", before.MetadataView, before.Description)
+	}
+	if response := updateManualOverridesRequest(t, f, `{"title":"Example universal manual"}`); response.Code != http.StatusOK {
+		t.Fatal(response.Body.String())
+	}
+	after, err := f.server.loadWorkDetail(ctx, f.userID, f.workID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Title != "Example universal manual" || after.MetadataView.DefaultVariantKey != translation || after.Description != before.Description || after.MetadataLanguage != before.MetadataLanguage {
+		t.Fatalf("universal title moved the default edition: %+v %q %q", after.MetadataView, after.Description, after.MetadataLanguage)
+	}
+	if choice := after.TitleChoices["zh-cn"]; choice.Code != translation || choice.Source != "manual" {
+		t.Fatalf("language choice: %+v", choice)
+	}
+	works := []libraryWorkSummary{{ID: f.workID}}
+	if err := f.server.enrichLibraryWorkSummaries(ctx, f.userID, works); err != nil || works[0].Title != "Example universal manual" {
+		t.Fatalf("card title: %+v %v", works, err)
+	}
+}
+
 type titleQueryCounter struct {
 	*sql.DB
 	queries []string

@@ -200,16 +200,21 @@ func closeRows(rows *sql.Rows) error {
 	return other
 }
 
+// Provider names come from a remote source's declared localizations of a
+// concept without a DLsite genre id. They rank after manual and dictionary names.
 func loadNames(ctx context.Context, q Querier, id, genre int64) ([]Name, error) {
-	rows, err := q.QueryContext(ctx, `SELECT language,name,'manual' FROM metadata_tag_name WHERE tag_id=?
- UNION ALL SELECT language,name,'dlsite' FROM dlsite_genre_name WHERE genre_id=? ORDER BY 3 DESC,1`, id, genre)
+	rows, err := q.QueryContext(ctx, `SELECT language,name,'manual',0 FROM metadata_tag_name WHERE tag_id=?
+ UNION ALL SELECT language,name,'dlsite',1 FROM dlsite_genre_name WHERE genre_id=?
+ UNION ALL SELECT language,name,'provider',2 FROM metadata_tag_provider_name WHERE tag_id=?
+ ORDER BY 4,1`, id, genre, id)
 	if err != nil {
 		return nil, err
 	}
 	result := []Name{}
 	for rows.Next() {
 		var n Name
-		if err := rows.Scan(&n.Language, &n.Name, &n.Source); err != nil {
+		var rank int
+		if err := rows.Scan(&n.Language, &n.Name, &n.Source, &rank); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
@@ -226,7 +231,7 @@ func languageName(names []Name, language string) string {
 		}
 		return ""
 	}
-	for _, value := range []struct{ source, language string }{{"manual", language}, {"manual", ""}, {"dlsite", language}} {
+	for _, value := range []struct{ source, language string }{{"manual", language}, {"manual", ""}, {"dlsite", language}, {"provider", language}} {
 		if name := find(value.source, value.language); name != "" {
 			return name
 		}

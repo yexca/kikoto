@@ -76,7 +76,7 @@ func TestUnavailableRequestedProductCompletesWithoutReviewCandidate(t *testing.T
 		RequestedCode: "RJ00000002", CanonicalCode: "RJ00000002", Codes: []string{"RJ00000002"},
 		Failures: []string{"RJ00000002: dlsite product not found"}, RequestedUnavailable: true,
 	}
-	if err := server.finishUnavailableWorkMetadataSyncJob(context.Background(), job, payload, family, "dlsite product not found"); err != nil {
+	if err := server.finishUnavailableWorkMetadataSyncJob(context.Background(), job, payload, family, "dlsite product not found", remoteMetadataFallbackResult{}); err != nil {
 		t.Fatal(err)
 	}
 	var runStatus, jobStatus, nodeStatus string

@@ -271,6 +271,8 @@ const adminToolsJapanese = {
     detectError: "検出を実行できませんでした。再試行するか手動で入力してください。",
     enterManually: "手動で入力",
     enableDescription: "無効なソースは設定を保持しますが、リクエストされません。",
+    metadataCapability: "作品のメタデータを提供",
+    metadataCapabilityDescription: "DLsite に記録がない作品で、メタデータ設定がこのソースを使えるようにします。",
     connection: "接続の詳細",
     connectionDescription: "API URL、公開サイト、作品リンク",
     apiUrlHint: "サービスのベース URL。/api/works などのパスは自動で付加されます。",

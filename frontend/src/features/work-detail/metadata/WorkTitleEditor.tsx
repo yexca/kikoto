@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { WorkDetail } from "@/lib/api";
 import { metadataTagLanguages } from "@/lib/metadataTagModel";
-import { manualTitles } from "./titleEditorModel";
+import { manualTitles, titleSourceLabel } from "./titleEditorModel";
 
 export function WorkTitleEditor({
   work,
@@ -23,13 +23,8 @@ export function WorkTitleEditor({
   const { t } = useTranslation();
   const choice = work.titleChoices?.[language];
   const manual = manualTitles(work.manualOverrides ?? {});
-  const source = manual[language]
-    ? t(language ? "workTitles.manual" : "workTitles.manualAll")
-    : manual[""]
-      ? t("workTitles.manualAll")
-      : choice?.source === "dlsite"
-        ? t("workTitles.dlsite", { code: choice.code })
-        : t("workTitles.original");
+  const sourceLabel = titleSourceLabel(language, manual, choice);
+  const source = t(sourceLabel.key, sourceLabel.values);
   return (
     <div className="space-y-3">
       <label className="block space-y-1 text-sm">

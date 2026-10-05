@@ -15,15 +15,18 @@ type Issue struct {
 }
 
 type IssueWork struct {
-	WorkID       int64   `json:"workId"`
-	PrimaryCode  string  `json:"primaryCode"`
-	Title        string  `json:"title"`
-	ProviderCode string  `json:"providerCode"`
-	ProviderName string  `json:"providerName"`
-	FamilyCode   string  `json:"-"`
-	FamilyWorkID int64   `json:"-"`
-	Retrying     bool    `json:"retrying"`
-	Issues       []Issue `json:"issues"`
+	WorkID       int64  `json:"workId"`
+	PrimaryCode  string `json:"primaryCode"`
+	Title        string `json:"title"`
+	ProviderCode string `json:"providerCode"`
+	ProviderName string `json:"providerName"`
+	FamilyCode   string `json:"-"`
+	FamilyWorkID int64  `json:"-"`
+	Retrying     bool   `json:"retrying"`
+	// FallbackSource names the remote source that filled a work DLsite does
+	// not have, so the list can say so instead of a bare "unavailable".
+	FallbackSource string  `json:"fallbackSource,omitempty"`
+	Issues         []Issue `json:"issues"`
 }
 
 type IssueQuery struct {
@@ -148,7 +151,56 @@ func (s *IssueStore) List(ctx context.Context, query IssueQuery) (IssuePage, err
 			page.Items = append(page.Items, work)
 		}
 	}
-	return page, rows.Err()
+	if err := rows.Err(); err != nil {
+		return page, err
+	}
+	if err := rows.Close(); err != nil {
+		return page, err
+	}
+	return page, s.attachFallbackSources(ctx, page.Items)
+}
+
+// attachFallbackSources reads the remote provenance of the page's DLsite rows,
+// preferring the title's source, in one bounded query.
+func (s *IssueStore) attachFallbackSources(ctx context.Context, items []IssueWork) error {
+	ids := []any{}
+	for _, item := range items {
+		if item.ProviderCode == "dlsite" {
+			ids = append(ids, item.WorkID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT source.work_id, provider.display_name
+		FROM work_metadata_field_source AS source
+		JOIN metadata_provider AS provider ON provider.id = source.provider_id
+		WHERE source.work_id IN (`+strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")+`)
+		ORDER BY source.work_id, CASE source.field_name WHEN 'title' THEN 0 ELSE 1 END, source.field_name`, ids...)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	names := map[int64]string{}
+	for rows.Next() {
+		var workID int64
+		var name string
+		if err := rows.Scan(&workID, &name); err != nil {
+			return err
+		}
+		if _, exists := names[workID]; !exists {
+			names[workID] = name
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for index := range items {
+		if items[index].ProviderCode == "dlsite" {
+			items[index].FallbackSource = names[items[index].WorkID]
+		}
+	}
+	return nil
 }
 
 func (s *IssueStore) HasPendingDLsite(ctx context.Context, workID int64) (bool, error) {

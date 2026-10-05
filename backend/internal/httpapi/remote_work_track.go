@@ -344,7 +344,7 @@ func (s *Server) prepareRemoteWorkTrack(ctx context.Context, sourceID int64, cod
 }
 
 func persistRemoteWorkSync(ctx context.Context, tx *sql.Tx, prepared preparedRemoteWorkTrack, tracked bool) (int64, int, int, error) {
-	workID, err := upsertRemoteWork(ctx, tx, prepared.Source, prepared.RemoteWork, prepared.RawWork, true)
+	workID, err := upsertRemoteWork(ctx, tx, prepared.Source, prepared.RemoteWork, prepared.RawWork)
 	if err != nil {
 		return 0, 0, 0, err
 	}

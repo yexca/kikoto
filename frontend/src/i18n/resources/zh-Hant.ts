@@ -272,6 +272,8 @@ const adminToolsHant = {
     detectError: "偵測未能執行。請重試或手動填寫。",
     enterManually: "手動填寫",
     enableDescription: "停用的來源會保留設定，但不會被請求。",
+    metadataCapability: "提供作品中繼資料",
+    metadataCapabilityDescription: "允許中繼資料設定在 DLsite 沒有記錄時使用此來源。",
     connection: "連線詳細資料",
     connectionDescription: "API URL、公開網站與作品連結",
     apiUrlHint: "服務基礎 URL；/api/works 等路徑會自動附加。",

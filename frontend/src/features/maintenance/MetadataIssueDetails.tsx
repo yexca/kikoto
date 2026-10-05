@@ -37,18 +37,20 @@ export function MetadataIssueDetails({
                 <p key={issue.component} className="flex flex-wrap items-center gap-x-1.5 text-muted-foreground">
                   <span
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                      issue.status === "unavailable" ? "bg-error" : "bg-warning"
+                      issue.status !== "unavailable" ? "bg-warning" : item.fallbackSource ? "bg-info" : "bg-error"
                     }`}
                     aria-hidden="true"
                   />
                   <span className="text-foreground">
-                    {t(
-                      issue.status === "unavailable"
-                        ? "metadataIssues.unavailable"
-                        : issue.component === "cover"
-                          ? "metadataIssues.coverFailed"
-                          : "metadataIssues.metadataFailed",
-                    )}
+                    {issue.status === "unavailable" && item.fallbackSource
+                      ? t("metadataIssues.filledByRemote", { source: item.fallbackSource })
+                      : t(
+                          issue.status === "unavailable"
+                            ? "metadataIssues.unavailable"
+                            : issue.component === "cover"
+                              ? "metadataIssues.coverFailed"
+                              : "metadataIssues.metadataFailed",
+                        )}
                   </span>
                   <span aria-hidden="true">·</span>
                   <span>{t("metadataIssues.attempts", { count: issue.failureCount })}</span>

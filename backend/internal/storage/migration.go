@@ -82,6 +82,11 @@ var retiredBaselineLedgerAssets = []migrationAsset{
 	{version: 47, filename: "baseline/047_v0.7.0.sql", checksum: "b014f409c569319b47148b54e19b9049acdc2c74a68e76b72bb3290a1ac7f866", baseline: true},
 	// v0.7.1 shipped schema 047. Schema 050 was a development snapshot.
 	{version: 50, filename: "baseline/050_v0.7.1.sql", checksum: "92053103e31a861fa8f894ca5a2cc9706146b27e06eb5461ea8b53ea1eb9de13", baseline: true},
+	// Schema 053 was the integrated development snapshot before remote
+	// metadata fallback added schema 054.
+	{version: 53, filename: "baseline/053_v0.7.1.sql", checksum: "8b0a58b94c88febf165862b78fbcdde455b850c13fd140f5121e0374b9ba656c", baseline: true},
+	// Schema 054 (remote metadata fallback) preceded genre name learning.
+	{version: 54, filename: "baseline/054_v0.7.1.sql", checksum: "a5d557cf238841c0b65b77abef9b7d9ca8558ceebf1783fde15ed0574dab5fd4", baseline: true},
 }
 
 type migrationCatalog struct {

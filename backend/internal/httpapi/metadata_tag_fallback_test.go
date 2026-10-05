@@ -19,7 +19,7 @@ func TestSnapshotTagFallbackSurvivesGlobalBackfillMarkerAndEmptyProjectionIsAuth
 	work := metadataReviewExec(t, db, "INSERT INTO work(primary_code,title) VALUES (?,'Synthetic snapshot work')", code)
 	insertProjectionSnapshot(t, db, work, "2026-01-01 00:00:00", `{"product":{"genres":[{"id":1,"name":"Synthetic fallback genre"}]}}`)
 	metadataReviewExec(t, db, "INSERT INTO app_setting(key,value_json) VALUES ('metadata_tag_projection_version','1')")
-	_, tags, projected, err := s.loadProjectedDLsiteMetadata(ctx, work)
+	tags, projected, err := s.loadProjectedDLsiteTags(ctx, work)
 	if err != nil || projected || tags != nil {
 		t.Fatalf("unprojected snapshot fallback = %v, %v, %v", tags, projected, err)
 	}
@@ -64,7 +64,7 @@ func TestSnapshotTagFallbackSurvivesGlobalBackfillMarkerAndEmptyProjectionIsAuth
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	_, tags, projected, err = s.loadProjectedDLsiteMetadata(ctx, work)
+	tags, projected, err = s.loadProjectedDLsiteTags(ctx, work)
 	if err != nil || !projected || tags == nil || len(tags) != 0 {
 		t.Fatalf("authoritative empty tags=%v, %v, %v", tags, projected, err)
 	}

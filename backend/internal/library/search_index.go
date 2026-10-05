@@ -320,6 +320,12 @@ func loadSearchDocuments(ctx context.Context, tx *sql.Tx, ids []int64) (map[int6
    INNER JOIN metadata_tag_resolution AS resolution ON resolution.resolved_tag_id = effective.tag_id
    INNER JOIN metadata_tag_name AS name ON name.tag_id = resolution.source_tag_id
    WHERE link.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.tag }},
+		// Localized names a remote source declared for a concept without a genre id.
+		{`SELECT link.work_id, name.name FROM work_tag AS link
+   INNER JOIN metadata_tag AS effective ON effective.tag_id = link.tag_id
+   INNER JOIN metadata_tag_resolution AS resolution ON resolution.resolved_tag_id = effective.tag_id
+   INNER JOIN metadata_tag_provider_name AS name ON name.tag_id = resolution.source_tag_id
+   WHERE link.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.tag }},
 		{`SELECT link.work_id, alias.display_name FROM work_tag AS link
    INNER JOIN metadata_tag AS effective ON effective.tag_id = link.tag_id
    INNER JOIN metadata_tag_resolution AS resolution ON resolution.resolved_tag_id = effective.tag_id

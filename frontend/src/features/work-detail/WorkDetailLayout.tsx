@@ -47,7 +47,12 @@ import {
   workVersionMediaState,
 } from "@/features/work-detail/workVersionModel";
 import { openWorkCodeRoute, type WorkPreview } from "@/features/work-detail/workDetailShared";
-import { orderedMetadataVariants, resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
+import {
+  metadataSourceGroups,
+  metadataVariantLabel as metadataVariantLabelFor,
+  orderedMetadataVariants,
+  resolveMetadataVariant,
+} from "@/features/work-detail/metadataPresentationModel";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { formatBytes, formatDuration } from "@/features/work-detail/media/mediaTreeModel";
@@ -220,8 +225,7 @@ function DesktopWorkDetailLayout({
             <DetailTagLine tags={tags} personalTags={personalTags} />
             <DetailStatStrip {...presentation} />
             <MetadataSyncNotice
-              status={metadataSync?.status}
-              checkedAt={metadataSync?.checkedAt ?? ""}
+              sync={metadataSync}
               canSync={Boolean(canSyncMetadata && onSyncMetadata)}
               busy={metadataSyncBusy}
               onSync={onSyncMetadata}
@@ -639,8 +643,7 @@ function MobileWorkDetailLayout({
       />
 
       <MetadataSyncNotice
-        status={metadataSync?.status}
-        checkedAt={metadataSync?.checkedAt ?? ""}
+        sync={metadataSync}
         canSync={Boolean(canSyncMetadata && onSyncMetadata)}
         busy={metadataSyncBusy}
         onSync={onSyncMetadata}
@@ -828,22 +831,24 @@ function DetailTitleBlock({
 }
 
 function MetadataSyncNotice({
-  status,
-  checkedAt,
+  sync,
   canSync,
   busy,
   onSync,
   onLink,
 }: {
-  status?: string;
-  checkedAt: string;
+  sync?: WorkMetadataSyncStatus;
   canSync: boolean;
   busy: boolean;
   onSync?: () => void;
   onLink?: () => void;
 }) {
-  if (status !== "not_synced" && status !== "not_found") return null;
+  const status = sync?.status;
+  const checkedAt = sync?.checkedAt ?? "";
+  if (status !== "not_synced" && status !== "not_found" && status !== "remote_fallback") return null;
   const unavailable = status === "not_found";
+  const filled = status === "remote_fallback";
+  const sourceGroups = metadataSourceGroups(sync?.fields);
   return (
     <div
       className={`rounded-lg border p-3 text-sm sm:col-span-2 ${
@@ -858,18 +863,37 @@ function MetadataSyncNotice({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="font-medium">
-            {unavailable ? i18n.t("libraryDetail.metadataUnavailable") : i18n.t("libraryDetail.metadataNotSynced")}
+            {filled
+              ? i18n.t("libraryDetail.metadataRemoteFallback")
+              : unavailable
+                ? i18n.t("libraryDetail.metadataUnavailable")
+                : i18n.t("libraryDetail.metadataNotSynced")}
           </div>
           <p className="mt-1 text-xs opacity-80">
-            {unavailable ? i18n.t("libraryDetail.metadataNotRecorded") : i18n.t("libraryDetail.metadataNotSynced")}
+            {filled
+              ? i18n.t("libraryDetail.metadataRemoteFallbackDescription", { source: sync?.source ?? "" })
+              : unavailable
+                ? i18n.t("libraryDetail.metadataNotRecorded")
+                : i18n.t("libraryDetail.metadataNotSynced")}
           </p>
+          {sourceGroups.map((group) => (
+            <p key={group.source} className="mt-1 text-xs opacity-80">
+              {i18n.t("libraryDetail.metadataFieldSources", {
+                source: group.source,
+                fields: group.fields
+                  .map((field) => i18n.t(`libraryDetail.metadataFields.${field}`, { defaultValue: "" }))
+                  .filter(Boolean)
+                  .join(i18n.t("libraryDetail.metadataFieldSeparator")),
+              })}
+            </p>
+          ))}
           {checkedAt && (
             <div className="mt-1 text-xs opacity-70">
               {i18n.t("common.checking")} {formatDateTime(checkedAt)}
             </div>
           )}
         </div>
-        {unavailable && onLink && (
+        {(unavailable || filled) && onLink && (
           <Button variant="outline" size="sm" onClick={onLink}>
             <Link2 className="h-4 w-4" />
             {i18n.t("libraryDetail.useOtherWorkMetadata")}
@@ -1281,12 +1305,10 @@ function metadataVariantLabel(
   variant: WorkMetadataPresentation["variants"][number],
   variants: WorkMetadataPresentation["variants"],
 ) {
-  const language = languageLabel(variant.language);
-  const sameLanguageCount = variants.filter(
-    (candidate) => candidate.language.trim().toLowerCase() === variant.language.trim().toLowerCase(),
-  ).length;
-  const prefix = variant.origin ? `${i18n.t("libraryDetail.original")} · ${language}` : language;
-  return sameLanguageCount > 1 ? `${prefix} · ${variant.key}` : prefix;
+  return metadataVariantLabelFor(variant, variants, {
+    original: i18n.t("libraryDetail.original"),
+    language: languageLabel,
+  });
 }
 
 function workVersionStateLabel(version: WorkDetail["translations"][number], scope: WorkVersionAvailabilityScope) {

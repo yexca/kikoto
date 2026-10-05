@@ -14,12 +14,17 @@ type Variant struct {
 	Title       string
 	Description string
 	Origin      bool
+	// RemoteSource names the remote source whose title the work row holds.
+	// A remote title declares no language: it is never an edition, only the
+	// last provider step before the work's own title.
+	RemoteSource string
 }
 
 type Selection struct {
 	Title       string `json:"title"`
 	Language    string `json:"language"`
 	Source      string `json:"source"`
+	SourceName  string `json:"sourceName,omitempty"`
 	Code        string `json:"code"`
 	Description string `json:"description"`
 }
@@ -62,7 +67,10 @@ func Original(variants []Variant, fallback Variant) Variant {
 
 // ForLanguage applies locale manual > global manual > matching edition.
 // Missing editions use the original description; a manual title is never
-// interpreted as a translation of the description.
+// interpreted as a translation of the description. The result reports whether
+// this language has its own edition or language-specific manual title. A
+// global manual title replaces only the title text: it never lets a language
+// without an edition win the priority order.
 func ForLanguage(variants []Variant, manual map[string]string, language string, fallback Variant) (Selection, bool) {
 	origin := Original(variants, fallback)
 	selected := origin
@@ -82,14 +90,15 @@ func ForLanguage(variants []Variant, manual map[string]string, language string, 
 		result.Title, result.Source, result.Language = title, "manual", language
 		return result, true
 	}
-	if title := strings.TrimSpace(manual[""]); title != "" {
-		result.Title, result.Source = title, "manual"
-		return result, true
-	}
 	result.Title = Display(selected.Title, !selected.Origin)
 	result.Source = "original"
 	if found {
 		result.Source = "dlsite"
+	} else if selected.RemoteSource != "" {
+		result.Source, result.SourceName = "remote", selected.RemoteSource
+	}
+	if title := strings.TrimSpace(manual[""]); title != "" {
+		result.Title, result.Source, result.SourceName = title, "manual", ""
 	}
 	return result, found
 }
