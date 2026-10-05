@@ -173,7 +173,7 @@ func TestRemoteFetchMetadataReadyRejectsRemoteOnlyWorkShell(t *testing.T) {
 
 func TestRemoteWorkTrackCacheReusesSnapshot(t *testing.T) {
 	server := NewServer(nil, config.Config{})
-	key := "7:RJ00000002"
+	key := server.remoteWorkCacheKey(context.Background(), 7, "RJ00000002")
 	server.remoteWorkCache[key] = remoteWorkSnapshot{
 		Source:    remoteSourceForUse{ID: 7, Code: "cached"},
 		Work:      kikoeru.Work{ID: 95, SourceID: "RJ00000002"},

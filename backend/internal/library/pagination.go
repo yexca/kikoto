@@ -5,14 +5,15 @@ package library
 // their cost by page size, including when recommendation lanes require sorting.
 // Both stages execute in one statement and therefore share one SQLite snapshot.
 func listPageSelectSQL(where, sortKey, direction string, randomSeed int64, config RecommendationConfig, includeRecommendation bool, generationID int64) string {
-	return listPageSelectSQLWithSearchRank(where, sortKey, direction, randomSeed, config, includeRecommendation, generationID, "")
+	return listPageSelectSQLWithSearchRank(where, sortKey, direction, randomSeed, config, includeRecommendation, generationID, "", "")
 }
 
 // listPageSelectSQLWithSearchRank orders works by searchRank, highest first,
 // before the selected sort. An empty searchRank keeps the selected sort alone.
 // The rank expression's arguments follow the recommendation arguments and
-// precede the user id.
-func listPageSelectSQLWithSearchRank(where, sortKey, direction string, randomSeed int64, config RecommendationConfig, includeRecommendation bool, generationID int64, searchRank string) string {
+// precede the user id. titleSort is the viewer's title sort key, or empty
+// for work.title.
+func listPageSelectSQLWithSearchRank(where, sortKey, direction string, randomSeed int64, config RecommendationConfig, includeRecommendation bool, generationID int64, searchRank string, titleSort string) string {
 	score, join := listRecommendationProjection(includeRecommendation, config, generationID)
 	normalizedSort, _ := normalizeSort(sortKey, direction)
 	extra := ""
@@ -34,7 +35,7 @@ func listPageSelectSQLWithSearchRank(where, sortKey, direction string, randomSee
 		FROM work
 		LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?` + join + `
 		WHERE ` + where
-	orderBy := listOrderBy(sortKey, direction, randomSeed, config)
+	orderBy := listOrderBy(sortKey, direction, randomSeed, config, titleSort)
 	if normalizedSort == "recommend" {
 		candidates = recommendationOrderedSelectSQL(candidates, direction, randomSeed, config, "*")
 		orderBy = "work.recommendation_suppressed ASC, work.recommendation_position ASC, work.id ASC"

@@ -273,6 +273,10 @@ const adminToolsKorean = {
     enableDescription: "사용하지 않는 소스는 설정을 유지하지만 요청하지 않습니다.",
     metadataCapability: "작품 메타데이터 제공",
     metadataCapabilityDescription: "DLsite에 기록이 없는 작품에 메타데이터 설정이 이 소스를 사용할 수 있게 합니다.",
+    fallbackLanguage: "대체 언어",
+    fallbackLanguageDescription:
+      "요청은 보는 사람이 우선하는 메타데이터 언어를 먼저, 이 언어를 마지막으로 지정합니다. 우선 언어가 없는 소스를 위한 설정입니다.",
+    customLanguage: "사용자 지정({{language}})",
     connection: "연결 세부 정보",
     connectionDescription: "API URL, 공개 사이트, 작품 링크",
     apiUrlHint: "서비스 기본 URL입니다. /api/works 같은 경로는 자동으로 붙습니다.",
@@ -644,6 +648,7 @@ export const koreanResource = {
         metadataLanguage: "우선 표시할 메타데이터 언어",
         metadataLanguageSaveFailed: "메타데이터 언어를 저장하지 못했습니다.",
         metadataLanguageLoadFailed: "메타데이터 언어를 불러오지 못했습니다.",
+        metadataLanguageDefault: "서버 기본값({{language}})",
       },
       account: {
         account: "계정",

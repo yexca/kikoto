@@ -82,7 +82,7 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain ends at
-`055_genre_name_learning.sql`, with `055_v0.7.1.sql` generated
+`056_user_metadata_language.sql`, with `056_v0.7.1.sql` generated
 from the current `VERSION` file. Released migrations and baselines, including
 `047_v0.7.1.sql`, remain immutable and available for ledger validation.
 
@@ -104,10 +104,10 @@ retry counters and backoff deadlines, and
 snapshot-writer
 triggers, queues existing works, and requests one new startup backfill to repair
 older projections and locale-name precedence. Hidden/merged states now commit
-before batched work projection. Existing databases apply 048–055 through the
-numbered chain; empty databases use the schema-055 baseline. The earlier
-development schema-050, integrated schema-053 and schema-054 baselines and the
-metadata-branch schema-051/052 baselines are retired; their checksums remain
+before batched work projection. Existing databases apply 048–056 through the
+numbered chain; empty databases use the schema-056 baseline. The earlier
+development schema-050, integrated schema-053, schema-054 and schema-055
+baselines and the metadata-branch schema-051/052 baselines are retired; their checksums remain
 available for ledger validation.
 Migration 053 preserves existing all-language authored overrides while adding
 language-scoped titles and rebuilding indexes/search triggers. It never changes
@@ -119,6 +119,12 @@ existing work with a remote snapshot for background reconciliation, which
 applies the deterministic source order without rewriting DLsite-backed works.
 Migration 055 adds `dlsite_genre_name_request` and `dlsite_genre_name_gap`, the
 resumable state of background genre name learning. It changes no existing rows.
+Migration 056 adds the nullable `user_preference.metadata_languages` personal
+priority, the `work_title_language` sort titles with their family-wide
+`work_title_language_dirty` queue and triggers, and queues every work for the
+background title build. It also queues the canonical works of families with
+another DLsite edition for shared-tag reprojection, because their tags now
+come from the original edition. It changes no existing rows directly.
 v0.7.1 shipped schema 047. Snapshot triggers queue only existing works, preserve
 committed projection markers, and permit snapshots to outlive a deleted work.
 Startup moves old flat

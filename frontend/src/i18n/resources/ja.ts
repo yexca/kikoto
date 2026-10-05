@@ -273,6 +273,10 @@ const adminToolsJapanese = {
     enableDescription: "無効なソースは設定を保持しますが、リクエストされません。",
     metadataCapability: "作品のメタデータを提供",
     metadataCapabilityDescription: "DLsite に記録がない作品で、メタデータ設定がこのソースを使えるようにします。",
+    fallbackLanguage: "フォールバック言語",
+    fallbackLanguageDescription:
+      "リクエストは閲覧者が優先するメタデータ言語を先に、この言語を最後に指定します。優先言語のないソース向けです。",
+    customLanguage: "カスタム（{{language}}）",
     connection: "接続の詳細",
     connectionDescription: "API URL、公開サイト、作品リンク",
     apiUrlHint: "サービスのベース URL。/api/works などのパスは自動で付加されます。",
@@ -652,6 +656,7 @@ export const japaneseResource = {
         metadataLanguage: "優先表示するメタデータ言語",
         metadataLanguageSaveFailed: "メタデータ言語を保存できませんでした。",
         metadataLanguageLoadFailed: "メタデータ言語を読み込めませんでした。",
+        metadataLanguageDefault: "サーバーの既定（{{language}}）",
       },
       account: {
         account: "アカウント",

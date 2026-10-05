@@ -319,8 +319,6 @@ export const surfaceHant = {
     accessPolicySaved: "存取原則已儲存。",
     accessPolicySaveFailed: "無法儲存存取原則。",
     sourceSaved: "來源已儲存。",
-    requestLanguageUpdated: "已更新 {{name}} 的要求語言。",
-    requestLanguageSaveFailed: "無法儲存遠端要求語言。",
     sourceDeleted: "來源已刪除。",
     sourceDeleteFailed: "無法刪除來源。",
     sourceHealthPassed: "來源健康檢查通過。",
@@ -506,8 +504,9 @@ export const surfaceHant = {
       noProxies: "尚未設定代理。DLsite 要求將直接連線。",
       manageProxies: "管理代理",
       proxyUpdated: "已更新 DLsite 代理。",
-      remoteRequests: "遠端要求語言",
-      remoteRequestsDescription: "作為 Accept-Language 提示傳送。來源可能忽略它或回傳混合語言。",
+      defaultLanguage: "預設中繼資料語言",
+      defaultLanguageDescription:
+        "用於未在外觀選單中選擇語言的使用者與匿名訪客，也用於儲存的標題、標籤名稱與背景要求。",
       remoteFallback: "遠端中繼資料備援",
       remoteFallbackDescription:
         "DLsite 明確找不到作品時，依序查詢所選來源，並將其標籤併入共享標籤。關閉後已補全的值保留，遠端標籤會移出共享標籤。",

@@ -54,9 +54,7 @@ func (s *Server) downloadToFile(ctx context.Context, source remoteSourceForUse, 
 			return 0, err
 		}
 		request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-		if source.Config.RequestLanguage != "" {
-			request.Header.Set("Accept-Language", source.Config.RequestLanguage)
-		}
+		request.Header.Set("Accept-Language", s.instanceRemoteSourceAcceptLanguage(ctx, source))
 		response, err := s.sourceDownloadHTTPClient(source, 0).Do(request)
 		if err != nil {
 			var backoffErr sourceBackoffError

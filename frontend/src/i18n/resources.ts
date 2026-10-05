@@ -326,6 +326,7 @@ export const englishResource = {
         metadataLanguage: "Preferred metadata language",
         metadataLanguageSaveFailed: "Metadata language could not be saved.",
         metadataLanguageLoadFailed: "Metadata language could not be loaded.",
+        metadataLanguageDefault: "Server default ({{language}})",
       },
       account: {
         account: "Account",

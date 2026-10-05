@@ -450,6 +450,17 @@ test("@desktop Metadata settings save the remote metadata fallback order", async
   await dialog.getByRole("button", { name: "Save metadata settings", exact: true }).click();
   await expect.poll(() => saved.length).toBe(1);
   expect(saved[0]).toMatchObject({ remoteMetadataFallback: { enabled: true, sourceIds: [2, 1] } });
+  expect(saved[0]).not.toHaveProperty("dlsiteMetadataLanguages");
+
+  // The instance default metadata language replaces per-source request languages.
+  const defaultLanguage = dialog.getByRole("combobox", { name: "Default metadata language", exact: true });
+  await expect(defaultLanguage).toHaveValue("ja-jp");
+  await expect(dialog.getByRole("combobox", { name: /request language/ })).toHaveCount(0);
+  await defaultLanguage.selectOption({ label: "English" });
+  await dialog.getByRole("button", { name: "Save metadata settings", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(2);
+  expect(saved[1]).toMatchObject({ dlsiteMetadataLanguages: ["en-us", "origin"] });
+  expect(saved[1]).not.toHaveProperty("remoteMetadataFallback");
 });
 
 test("@desktop Metadata table shows management columns, edits a work in place, and does not poll", async ({ page }) => {

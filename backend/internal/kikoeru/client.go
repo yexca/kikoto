@@ -23,7 +23,7 @@ type Client struct {
 	baseURL          string
 	httpClient       *http.Client
 	compatibility    string
-	requestLanguage  string
+	acceptLanguage   string
 	maxResponseBytes int64
 }
 
@@ -260,10 +260,11 @@ func (c *Client) WithMaxResponseBytes(limit int64) *Client {
 	return c
 }
 
-// WithRequestLanguage sets the Accept-Language hint sent to the compatible
-// source. The upstream may ignore it or return mixed-language metadata.
-func (c *Client) WithRequestLanguage(language string) *Client {
-	c.requestLanguage = strings.TrimSpace(strings.ReplaceAll(language, "_", "-"))
+// WithAcceptLanguage sets the Accept-Language header value sent to the
+// compatible source, such as "zh-CN, ja-JP;q=0.9". The upstream may ignore it
+// or return mixed-language metadata.
+func (c *Client) WithAcceptLanguage(value string) *Client {
+	c.acceptLanguage = strings.TrimSpace(value)
 	return c
 }
 
@@ -501,8 +502,8 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, target
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-	if c.requestLanguage != "" {
-		req.Header.Set("Accept-Language", c.requestLanguage)
+	if c.acceptLanguage != "" {
+		req.Header.Set("Accept-Language", c.acceptLanguage)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -538,8 +539,8 @@ func (c *Client) postJSON(ctx context.Context, path string, payload any, target 
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-	if c.requestLanguage != "" {
-		req.Header.Set("Accept-Language", c.requestLanguage)
+	if c.acceptLanguage != "" {
+		req.Header.Set("Accept-Language", c.acceptLanguage)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

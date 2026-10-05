@@ -123,3 +123,20 @@ func Select(variants []Variant, manual map[string]string, priorities []string, f
 	result, _ := ForLanguage(variants, manual, dlsite.OriginMetadataLanguage, fallback)
 	return result
 }
+
+// LanguageTitles returns, for each language Select can stop at, the title it
+// would show: every supported language with its own edition or
+// language-specific manual title, and always `origin`. Select over a priority
+// list therefore equals the first present entry in that list's order, which
+// lets a list sort follow a viewer's priority without a stored preference.
+func LanguageTitles(input Inputs) map[string]string {
+	result := map[string]string{}
+	for _, language := range dlsite.SupportedMetadataLanguages {
+		if selection, ok := ForLanguage(input.Variants, input.Manual, language, input.Fallback); ok {
+			result[language] = selection.Title
+		}
+	}
+	origin, _ := ForLanguage(input.Variants, input.Manual, dlsite.OriginMetadataLanguage, input.Fallback)
+	result[dlsite.OriginMetadataLanguage] = origin.Title
+	return result
+}

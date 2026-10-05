@@ -91,7 +91,7 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 		s.writeRemoteWorksDisabled(w, id, r, diagnosticURL)
 		return
 	}
-	request := newRemoteSourceWorksRequest(r, source.SourceType, remoteSourceRequestLanguages(source.Config.RequestLanguage))
+	request := newRemoteSourceWorksRequest(r, source.SourceType, s.remoteSourceLanguages(r.Context(), source))
 	if err := s.serveRemoteSourceWorksPage(w, r, userID, source, diagnosticURL, request); err != nil {
 		writeError(w, err)
 	}
@@ -137,7 +137,7 @@ func (s *Server) writeRemoteWorksDisabled(w http.ResponseWriter, sourceID int64,
 
 func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Request, userID int64, source remoteSourceForUse, diagnosticURL string, request remoteSourceWorksRequest) error {
 	ctx := r.Context()
-	client := s.kikoeruClientForSource(source)
+	client := s.kikoeruClientForSource(ctx, source)
 	if s.cfg.IsDemo() {
 		works, total, sortApplied, err := s.demoRemoteSourcePageWithLanguages(ctx, userID, source.ID, client, source.SourceType, request.Query, request.UpstreamOrder, request.Direction, request.Seed, request.Page, request.PageSize, request.Languages, request.IncludeRecommendation)
 		return s.writeRemoteSourceWorksResult(w, ctx, source, diagnosticURL, request, works, total, sortApplied, err)

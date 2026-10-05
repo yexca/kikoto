@@ -279,6 +279,29 @@ func chooseDLsiteMetadataVariant(variants []DLsiteMetadataVariant, priorities []
 	return DLsiteMetadataVariant{}
 }
 
+// chooseDLsiteTagSourceVariant returns the edition whose genres are the
+// family's shared tags: the original edition, otherwise the first edition in
+// the fixed supported-language order. Language preferences never change it.
+func chooseDLsiteTagSourceVariant(variants []DLsiteMetadataVariant) DLsiteMetadataVariant {
+	for _, variant := range variants {
+		if variant.IsCanonical && strings.TrimSpace(variant.Title) != "" {
+			return variant
+		}
+	}
+	return chooseDLsiteMetadataVariant(variants, dlsite.SupportedMetadataLanguages)
+}
+
+// SelectDLsiteTagSourceVariant returns the edition whose genres supply the
+// shared tags of workID's family; see chooseDLsiteTagSourceVariant.
+func SelectDLsiteTagSourceVariant(ctx context.Context, db *sql.DB, workID int64) (DLsiteMetadataVariant, bool, error) {
+	variants, err := ListDLsiteMetadataVariants(ctx, db, workID)
+	if err != nil {
+		return DLsiteMetadataVariant{}, false, err
+	}
+	selected := chooseDLsiteTagSourceVariant(variants)
+	return selected, selected.ID > 0, nil
+}
+
 func variantMatchesPriority(variant DLsiteMetadataVariant, priority string) bool {
 	if priority == dlsite.OriginMetadataLanguage {
 		return variant.IsCanonical
@@ -335,9 +358,17 @@ func ProjectWorkMetadataTagsTx(ctx context.Context, tx *sql.Tx, workID int64, pr
 		if err != nil {
 			return err
 		}
+		// The family's shared tags come from a fixed edition, so every viewer
+		// sees the same tag set whatever language it prefers. Only the stored
+		// work title follows the instance priority.
 		selected := DLsiteMetadataVariant{}
 		if workID == canonicalID {
-			selected = chooseDLsiteMetadataVariant(variants, priorities)
+			selected = chooseDLsiteTagSourceVariant(variants)
+			if title := strings.TrimSpace(chooseDLsiteMetadataVariant(variants, priorities).Title); title != "" {
+				if _, err := tx.ExecContext(ctx, "UPDATE work SET title=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND title<>?", title, workID, title); err != nil {
+					return err
+				}
+			}
 		} else {
 			for _, v := range variants {
 				if v.WorkID == workID {
@@ -350,11 +381,6 @@ func ProjectWorkMetadataTagsTx(ctx context.Context, tx *sql.Tx, workID int64, pr
 			sourceID = selected.WorkID
 			if err := json.Unmarshal([]byte(selected.TagsJSON), &legacy); err != nil {
 				return err
-			}
-			if workID == canonicalID && strings.TrimSpace(selected.Title) != "" {
-				if _, err := tx.ExecContext(ctx, "UPDATE work SET title=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND title<>?", strings.TrimSpace(selected.Title), workID, strings.TrimSpace(selected.Title)); err != nil {
-					return err
-				}
 			}
 		}
 	}

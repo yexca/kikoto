@@ -64,3 +64,29 @@ func TestTranslationPrefixIsDisplayOnlyAndBounded(t *testing.T) {
 		}
 	}
 }
+
+// A viewer's title sort reads the first stored language title in its
+// priority; that must always be the title Select presents.
+func TestLanguageTitlesMatchSelectForEveryPriority(t *testing.T) {
+	variants := []Variant{
+		{Code: testfixture.WorkCode(testfixture.PrefixRJ, 1), Language: "zh-cn", Title: "【简体中文版】Example translation"},
+		{Code: testfixture.WorkCode(testfixture.PrefixRJ, 0), Language: "ja-jp", Title: "Example original", Origin: true},
+	}
+	for _, manual := range []map[string]string{nil, {"": "Global"}, {"ko-kr": "Korean manual"}, {"ja-jp": "Japanese manual", "": "Global"}} {
+		input := Inputs{Variants: variants, Manual: manual}
+		titles := LanguageTitles(input)
+		for _, priority := range [][]string{{"origin"}, {"zh-cn"}, {"ko-kr"}, {"en-us"}, {"ja-jp"}, {"ko-kr", "zh-cn"}, {"en-us", "origin"}} {
+			want := Select(variants, manual, priority, Variant{}).Title
+			got := ""
+			for _, language := range append(append([]string{}, priority...), "origin") {
+				if title, ok := titles[language]; ok {
+					got = title
+					break
+				}
+			}
+			if got != want {
+				t.Fatalf("manual %v priority %v: sort title %q, displayed %q", manual, priority, got, want)
+			}
+		}
+	}
+}

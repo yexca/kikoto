@@ -20,7 +20,7 @@ func (s *Server) startStartupMetadataRepairs() {
 		}{
 			{"startup_cover_migration", s.migrateFlatCoverCache},
 			{"startup_metadata_tag_backfill", func(ctx context.Context) error {
-				return metasync.BackfillMetadataTags(ctx, s.db, s.preferredMetadataLanguages(ctx))
+				return metasync.BackfillMetadataTags(ctx, s.db, s.instanceMetadataLanguages(ctx))
 			}},
 		} {
 			s.Go(func(ctx context.Context) {

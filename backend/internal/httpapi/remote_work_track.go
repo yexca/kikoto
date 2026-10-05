@@ -309,7 +309,7 @@ func (s *Server) prepareRemoteWorkTrack(ctx context.Context, sourceID int64, cod
 	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
 		return preparedRemoteWorkTrack{}, fmt.Errorf("source is not an enabled kikoeru-compatible source")
 	}
-	client := s.kikoeruCrawlClientForSource(source)
+	client := s.kikoeruCrawlClientForSource(ctx, source)
 	remoteWork, rawWork, err := s.resolveRemoteWorkForAccess(ctx, client, requestedCode)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {

@@ -93,7 +93,9 @@ export function HeaderActions({
   const canViewWorkflows = canView("workflows:run");
   const canViewMetadataIssues = canView("metadata:sync");
   const canViewUsers = canView("users:manage");
-  const canViewMetadataLanguage = canView("sources:write");
+  // Every signed-in user chooses an own metadata language; anonymous visitors
+  // see the instance default.
+  const canViewMetadataLanguage = Boolean(user);
   const readOnly = user?.demoMode ?? false;
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredThemeMode());
   const [themePreset, setThemePreset] = useState<ThemePreset>(() => getStoredThemePreset());
@@ -120,10 +122,12 @@ export function HeaderActions({
   const locale = useLocale();
   const metadataDisplayLanguage = useMetadataDisplayLanguage(
     canViewMetadataLanguage && (themeOpen || mobileAppearanceOpen),
+    user?.id ?? null,
   );
   const metadataLanguageControl = canViewMetadataLanguage
     ? {
         value: metadataDisplayLanguage.value,
+        defaultValue: metadataDisplayLanguage.defaultValue,
         busy: metadataDisplayLanguage.busy,
         failed: metadataDisplayLanguage.failed,
         readOnly,

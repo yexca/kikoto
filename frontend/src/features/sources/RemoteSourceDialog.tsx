@@ -16,6 +16,8 @@ import {
   applyDetectResult,
   configuredSourceOrigins,
   LEGACY_NUMBER178_SOURCE_TYPE,
+  remoteFallbackLanguage,
+  REMOTE_FALLBACK_LANGUAGE_OPTIONS,
   storagePathPreview,
 } from "./remoteSourceModel";
 
@@ -64,6 +66,7 @@ export function RemoteSourceDialog({
     onChange({ ...source, endpoint: { ...source.endpoint, ...next } });
   const legacyNumber178 = source.sourceType === LEGACY_NUMBER178_SOURCE_TYPE;
   const configuredOrigins = configuredSourceOrigins(source.endpoint);
+  const fallbackLanguage = remoteFallbackLanguage(source);
   const savePreview = storagePathPreview(
     source.config.saveRootTemplate?.trim() || defaultSaveTemplate,
     source.code.trim() || "source",
@@ -203,6 +206,37 @@ export function RemoteSourceDialog({
                 onCheckedChange={(enabled) => patch({ config: withMetadataCapability(source.config, enabled) })}
                 aria-label={t("sourceSetup.metadataCapability")}
               />
+            </div>
+
+            <div className="flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5">
+              <div className="min-w-0">
+                <label htmlFor="remote-source-fallback-language" className="block text-sm font-medium">
+                  {t("sourceSetup.fallbackLanguage")}
+                </label>
+                <div id="remote-source-fallback-language-description" className="text-xs text-muted-foreground">
+                  {t("sourceSetup.fallbackLanguageDescription")}
+                </div>
+              </div>
+              <NativeSelect
+                id="remote-source-fallback-language"
+                aria-describedby="remote-source-fallback-language-description"
+                fieldSize="sm"
+                className="w-36 shrink-0"
+                value={fallbackLanguage.value}
+                disabled={readOnly}
+                onChange={(event) => patch({ config: { ...source.config, requestLanguage: event.target.value } })}
+              >
+                {fallbackLanguage.custom && (
+                  <option value={fallbackLanguage.value}>
+                    {t("sourceSetup.customLanguage", { language: fallbackLanguage.value })}
+                  </option>
+                )}
+                {REMOTE_FALLBACK_LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(option.labelKey)}
+                  </option>
+                ))}
+              </NativeSelect>
             </div>
 
             <div className="overflow-hidden rounded-lg border">

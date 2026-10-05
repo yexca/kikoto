@@ -164,11 +164,14 @@ async function mockCacheSettings(
       }),
     ],
   };
+  let metadataLanguages: string[] | null = null;
   const currentPreferences = (): UserPreferences => ({
     directoryRoutingRules: currentSettings.directoryRoutingRules,
     recommendationConfig: currentSettings.recommendationConfig,
     recommendationThreshold: currentSettings.recommendationThreshold,
     recommendationDefaults: currentSettings.recommendationDefaults,
+    metadataLanguages,
+    defaultMetadataLanguages: currentSettings.dlsiteMetadataLanguages,
   });
   const replaceRemoteSource = (source: FileSource) => {
     currentSettings = { ...currentSettings, fileSources: [currentSettings.fileSources[0], source] };
@@ -195,8 +198,9 @@ async function mockCacheSettings(
     }
     if (url.pathname === "/api/auth/me/preferences") {
       if (route.request().method() === "PATCH") {
-        const payload = route.request().postDataJSON() as PreferencesUpdate;
-        onSettings(payload);
+        const { metadataLanguages: languages, ...payload } = route.request().postDataJSON() as PreferencesUpdate;
+        onSettings(languages === undefined ? payload : { ...payload, metadataLanguages: languages });
+        if (languages !== undefined) metadataLanguages = languages;
         currentSettings = { ...currentSettings, ...payload };
       }
       await route.fulfill({ json: currentPreferences() });
@@ -917,11 +921,15 @@ test("remote sources toggle in place and new sources start from address detectio
   await dialog.getByRole("button", { name: "Detect", exact: true }).click();
   await expect(dialog.getByText("Compatible API found", { exact: true })).toBeVisible();
   await expect(dialog.getByLabel("Name")).toHaveValue("compatible.example.invalid");
+  const fallbackLanguage = dialog.getByRole("combobox", { name: "Fallback language", exact: true });
+  await expect(fallbackLanguage).toHaveValue("ja-JP");
+  await fallbackLanguage.selectOption({ label: "English" });
   await dialog.getByRole("button", { name: "Add source", exact: true }).click();
   await expect.poll(() => sourceWrites.length).toBe(2);
   expect(sourceWrites[1]).toEqual(
     expect.objectContaining({
       displayName: "compatible.example.invalid",
+      config: expect.objectContaining({ requestLanguage: "en-US" }),
       endpoint: expect.objectContaining({
         apiUrl: "https://api.compatible.example.invalid",
         baseUrl: "https://compatible.example.invalid",
@@ -1171,42 +1179,13 @@ test("administrators add proxies by priority and choose where they apply", async
   await expect(fallback).toHaveAttribute("aria-checked", "true");
 });
 
-test("@desktop appearance saves the preferred metadata language for source administrators", async ({
-  page,
-}, testInfo) => {
+test("@desktop appearance saves a personal metadata language for any signed-in user", async ({ page }, testInfo) => {
   const saves: Record<string, unknown>[] = [];
   await mockCacheSettings(
     page,
     () => undefined,
     (payload) => saves.push(payload),
   );
-  await page.route("**/api/auth/me", (route) =>
-    route.fulfill({
-      json: authenticatedStateFixture({
-        username: "admin",
-        displayName: "Admin",
-        role: "admin",
-        permissions: ["library:read", "sources:write"],
-      }),
-    }),
-  );
-  await page.goto("/metadata");
-  await page.getByRole("button", { name: "Open appearance settings" }).click();
-  const groups = page.getByRole("group");
-  await expect(groups.nth(0)).toHaveAccessibleName("UI language");
-  await expect(groups.nth(1)).toHaveAccessibleName("Preferred metadata language");
-  const metadataLanguage = page.getByRole("combobox", { name: "Preferred metadata language" });
-  await expect(metadataLanguage).toHaveText("Japanese");
-  await page.screenshot({ path: testInfo.outputPath("appearance-metadata-language.png") });
-  await metadataLanguage.click();
-  await page.getByRole("listbox").getByRole("option", { name: "Origin", exact: true }).click();
-  await expect.poll(() => saves.length).toBe(1);
-  expect(saves[0]).toEqual({ dlsiteMetadataLanguages: ["origin"] });
-  await expect(metadataLanguage).toHaveText("Origin");
-});
-
-test("@desktop appearance hides the metadata language without source administration", async ({ page }) => {
-  await mockCacheSettings(page, () => undefined);
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({
       json: authenticatedStateFixture({
@@ -1223,8 +1202,24 @@ test("@desktop appearance hides the metadata language without source administrat
   });
   await page.goto("/settings?tab=playback");
   await page.getByRole("button", { name: "Open appearance settings" }).click();
-  await expect(page.getByRole("combobox", { name: "UI language" })).toBeVisible();
-  await expect(page.getByRole("combobox", { name: "Preferred metadata language" })).toHaveCount(0);
+  const groups = page.getByRole("group");
+  await expect(groups.nth(0)).toHaveAccessibleName("UI language");
+  await expect(groups.nth(1)).toHaveAccessibleName("Preferred metadata language");
+  const metadataLanguage = page.getByRole("combobox", { name: "Preferred metadata language" });
+  // Until the user chooses, the instance default applies and is named.
+  await expect(metadataLanguage).toHaveText("Server default (Japanese)");
+  await page.screenshot({ path: testInfo.outputPath("appearance-metadata-language.png") });
+  await metadataLanguage.click();
+  await page.getByRole("listbox").getByRole("option", { name: "Origin", exact: true }).click();
+  await expect.poll(() => saves.length).toBe(1);
+  expect(saves[0]).toEqual({ metadataLanguages: ["origin"] });
+  await expect(metadataLanguage).toHaveText("Origin");
+  await metadataLanguage.click();
+  await page.getByRole("listbox").getByRole("option", { name: "Server default (Japanese)", exact: true }).click();
+  await expect.poll(() => saves.length).toBe(2);
+  expect(saves[1]).toEqual({ metadataLanguages: null });
+  await expect(metadataLanguage).toHaveText("Server default (Japanese)");
+  // A personal language never reads or writes instance settings.
   expect(instanceRequests).toBe(0);
 });
 

@@ -10,6 +10,21 @@
   and metadata link changes are now drafts applied by Save instead of taking
   effect immediately and closing the editor, and Cancel confirms before
   discarding drafts.
+- Preferred metadata language is now a personal choice for every signed-in
+  user in the header Appearance menu. It selects that user's titles,
+  introductions, tag names and default detail edition, sorts lists by the
+  titles shown, and leads that user's remote-source requests. **Server
+  default** follows the instance default, which administrators now set as
+  **Default metadata language** in Metadata settings; anonymous visitors,
+  stored titles and tag names, and background requests use it. A work's shared
+  tags always come from its original edition, so every language shows the same
+  tags. Remote sources replace the per-source request language with a
+  **Fallback language** in the source dialog: requests send the viewer's
+  languages first and the fallback last, and cached remote works are separated
+  by language. Tag name learning covers every user's language. Schema 056 adds
+  the personal preference and per-language sort titles, and is packaged in
+  `056_v0.7.1.sql`; the schema-055 development baseline is retired with its
+  checksum kept for upgrades.
 - Language-scoped manual titles follow configured language priority before DLsite
   editions. Editors directly edit owned manual titles, show inherited/provider
   sources as hints, preserve drafts across resets, and save only changes.
@@ -29,8 +44,7 @@
   startup, metadata syncs and language changes, follows the existing request
   pacing, proxy and outbound policy, resumes after interruption, reports
   progress and failures in Activity, never stores titles, works or snapshots,
-  and never repeats an answered request. Schema 055 is packaged in
-  `055_v0.7.1.sql`.
+  and never repeats an answered request. Schema 055 adds the learning state.
 - Opt-in remote metadata fallback: when DLsite explicitly reports a work as not
   found, a metadata refresh asks the selected metadata-capable remote sources in
   the configured order, once each through workInfo (reusing cached catalog

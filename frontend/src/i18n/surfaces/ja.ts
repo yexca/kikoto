@@ -326,8 +326,6 @@ export const surfaceJapanese = {
     accessPolicySaved: "アクセス設定を保存しました。",
     accessPolicySaveFailed: "アクセス設定を保存できませんでした。",
     sourceSaved: "ソースを保存しました。",
-    requestLanguageUpdated: "{{name}}のリクエスト言語を更新しました。",
-    requestLanguageSaveFailed: "リモートリクエスト言語を保存できませんでした。",
     sourceDeleted: "ソースを削除しました。",
     sourceDeleteFailed: "ソースを削除できませんでした。",
     sourceHealthPassed: "ソースの状態確認に成功しました。",
@@ -518,9 +516,9 @@ export const surfaceJapanese = {
       noProxies: "プロキシが構成されていません。DLsite へは直接接続します。",
       manageProxies: "プロキシを管理",
       proxyUpdated: "DLsite プロキシを更新しました。",
-      remoteRequests: "リモートのリクエスト言語",
-      remoteRequestsDescription:
-        "Accept-Language ヒントとして送信します。ソースによっては無視されたり、言語が混在したりします。",
+      defaultLanguage: "既定のメタデータ言語",
+      defaultLanguageDescription:
+        "外観メニューで言語を選んでいないユーザーと匿名の訪問者に使われ、保存されるタイトル、タグ名、バックグラウンドのリクエストにも使われます。",
       remoteFallback: "リモートメタデータの補完",
       remoteFallbackDescription:
         "DLsite が作品を見つけられなかった場合、選択したソースに順番に問い合わせ、そのタグを共有タグに加えます。オフにすると補完済みの値は残り、リモートのタグは共有タグから外れます。",

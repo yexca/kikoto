@@ -824,9 +824,7 @@ func (s *Server) openRemotePlaybackResponse(ctx context.Context, r *http.Request
 			request.Header.Set(header, value)
 		}
 	}
-	if source.Config.RequestLanguage != "" {
-		request.Header.Set("Accept-Language", source.Config.RequestLanguage)
-	}
+	request.Header.Set("Accept-Language", s.remoteSourceAcceptLanguage(r.Context(), source))
 	return s.sourcePlaybackHTTPClient(source, 0).Do(request)
 }
 

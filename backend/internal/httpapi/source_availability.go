@@ -204,7 +204,7 @@ func (s *Server) checkRemoteSourceHealth(ctx context.Context, source remoteSourc
 }
 
 func (s *Server) checkRemoteSourceHealthWithClass(ctx context.Context, source remoteSourceForUse, class sourceRequestClass) error {
-	client := s.kikoeruClientForSourceClass(source, class)
+	client := s.kikoeruClientForSourceClass(ctx, source, class)
 	if err := client.Health(ctx); err == nil {
 		return nil
 	}
@@ -380,7 +380,7 @@ func (s *Server) checkRemoteWorkAvailabilityWithClass(ctx context.Context, sourc
 	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
 		return kikoeru.Work{}, fmt.Errorf("source has no API endpoint")
 	}
-	client := s.kikoeruClientForSourceClass(source, class)
+	client := s.kikoeruClientForSourceClass(ctx, source, class)
 	remoteWork, _, err := s.resolveKikoeruWork(ctx, client, code)
 	return remoteWork, err
 }
