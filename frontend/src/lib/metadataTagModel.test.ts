@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   changeMetadataTagOverride,
+  changedMetadataTagNames,
+  manualMetadataTagNames,
+  providerMetadataTagName,
   metadataTagOverrideKey,
   exactMetadataTag,
   sameMetadataTagName,
@@ -39,5 +42,26 @@ describe("metadata tag drafts", () => {
     ]);
     expect(metadataTagOverrideKey(changed)).not.toBe(metadataTagOverrideKey(initial));
     expect(metadataTagOverrideKey(changeMetadataTagOverride(changed, 1, "add"))).toBe(metadataTagOverrideKey(initial));
+  });
+});
+
+describe("metadata tag names", () => {
+  const names = [
+    { language: "", name: "Synthetic manual", source: "manual" },
+    { language: "zh-cn", name: "Synthetic provider", source: "dlsite" },
+  ];
+  it("separates manual names from provider hints", () => {
+    expect(manualMetadataTagNames({ names })).toEqual({ "": "Synthetic manual" });
+    expect(providerMetadataTagName({ names }, "zh-cn")).toBe("Synthetic provider");
+    expect(providerMetadataTagName({ names }, "")).toBeUndefined();
+  });
+  it("sends only touched languages whose trimmed name changed, clearing with an empty name", () => {
+    const previous = manualMetadataTagNames({ names });
+    expect(changedMetadataTagNames({}, previous)).toEqual({});
+    expect(changedMetadataTagNames({ "": " Synthetic manual ", "en-us": " " }, previous)).toEqual({});
+    expect(changedMetadataTagNames({ "": "", "zh-cn": " Synthetic edit " }, previous)).toEqual({
+      "": "",
+      "zh-cn": "Synthetic edit",
+    });
   });
 });

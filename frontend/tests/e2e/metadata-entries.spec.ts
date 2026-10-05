@@ -36,7 +36,7 @@ async function metadataWorkEditor(page: Page) {
   );
 }
 
-test("language title drafts use source placeholders, partial saves and a scoped reset", async ({ page }) => {
+test("language title rows use source placeholders and stage reverts beside other drafts", async ({ page }) => {
   await metadataWorkEditor(page);
   const detail = workDetailFixture(work, {
     manualOverrides: { titles: { "ja-jp": "Example Japanese" } },
@@ -54,71 +54,62 @@ test("language title drafts use source placeholders, partial saves and a scoped 
   });
   await page.route("**/api/works/1?includeMedia=false", (route) => route.fulfill({ json: detail }));
   const writes: unknown[] = [];
-  const resets: string[] = [];
+  const deletes: string[] = [];
   await page.route("**/api/works/1/manual-overrides", (route) => {
     writes.push(route.request().postDataJSON());
     return route.fulfill({ json: detail.manualOverrides });
   });
-  await page.route("**/api/works/1/manual-overrides/title?*", (route) => {
-    resets.push(new URL(route.request().url()).searchParams.get("language") ?? "");
-    detail.manualOverrides = {};
-    detail.titleChoices!["ja-jp"] = {
-      title: "Example original",
-      language: "",
-      source: "original",
-      code: work.primaryCode,
-      description: "",
-    };
+  await page.route("**/api/works/1/manual-overrides/*", (route) => {
+    deletes.push(route.request().url());
     return route.fulfill({ json: { ok: true, deleted: 1 } });
   });
   await page.goto("/metadata");
   const open = () => page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
   await open();
   let dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
-  const title = dialog.getByRole("textbox", { name: "Title", exact: true });
-  await expect(title).toHaveValue("");
-  await expect(title).toHaveAttribute("placeholder", "Example original");
-  await expect(dialog.getByText("Current source: Original title", { exact: true })).toBeVisible();
-  await dialog.getByRole("combobox", { name: "Title language", exact: true }).selectOption("zh-cn");
-  await expect(title).toHaveAttribute("placeholder", "Example Chinese");
-  await expect(dialog.getByText("Current source: DLsite edition RJ00000001", { exact: true })).toBeVisible();
-  await title.fill("【简体中文版】Example authored Chinese");
-  await dialog.getByRole("combobox", { name: "Title language", exact: true }).selectOption("en-us");
-  await title.fill("Example authored English");
-  await dialog.getByRole("combobox", { name: "Title language", exact: true }).selectOption("zh-cn");
-  await expect(title).toHaveValue("【简体中文版】Example authored Chinese");
+  const allLanguages = dialog.getByRole("textbox", { name: "All languages", exact: true });
+  const chinese = dialog.getByRole("textbox", { name: "Simplified Chinese", exact: true });
+  const english = dialog.getByRole("textbox", { name: "English", exact: true });
+  const japanese = dialog.getByRole("textbox", { name: "Japanese", exact: true });
+  await expect(allLanguages).toHaveValue("");
+  await expect(allLanguages).toHaveAttribute("placeholder", "Example original");
+  await expect(
+    dialog.getByRole("group", { name: "All languages" }).getByText("Current source: Original title", { exact: true }),
+  ).toBeVisible();
+  await expect(chinese).toHaveAttribute("placeholder", "Example Chinese");
+  await expect(
+    dialog
+      .getByRole("group", { name: "Simplified Chinese" })
+      .getByText("Current source: DLsite edition RJ00000001", { exact: true }),
+  ).toBeVisible();
+  await expect(japanese).toHaveValue("Example Japanese");
+  await chinese.fill("【简体中文版】Example authored Chinese");
+  await english.fill("Example authored English");
+  await expect(dialog.getByText("Unsaved: Title", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(writes).toEqual([
     { titles: { "zh-cn": "【简体中文版】Example authored Chinese", "en-us": "Example authored English" } },
   ]);
+
   await open();
   dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
-  await dialog.getByRole("combobox", { name: "Title language", exact: true }).selectOption("zh-cn");
-  await title.fill("Example Chinese draft to keep");
-  const circleName = dialog
-    .getByRole("region", { name: "Circle", exact: true })
-    .getByRole("textbox", { name: "Name", exact: true });
-  await circleName.fill("Example circle draft to keep");
-  await dialog.getByRole("combobox", { name: "Title language", exact: true }).selectOption("ja-jp");
-  await expect(title).toHaveValue("Example Japanese");
-  await expect(dialog.getByText("Current source: Manual title for this language", { exact: true })).toBeVisible();
-  await dialog.getByRole("button", { name: "Reset title", exact: true }).click();
-  await expect(dialog.getByRole("button", { name: "Reset title", exact: true })).toBeDisabled();
-  await expect(title).toHaveValue("");
-  await expect(circleName).toHaveValue("Example circle draft to keep");
-  await dialog.getByRole("combobox", { name: "Title language", exact: true }).selectOption("zh-cn");
-  await expect(title).toHaveValue("Example Chinese draft to keep");
-  expect(resets).toEqual(["ja-jp"]);
+  await chinese.fill("Example Chinese draft to keep");
+  await dialog.getByRole("button", { name: "Revert the Japanese title", exact: true }).click();
+  await expect(japanese).toHaveValue("");
+  await expect(dialog.getByRole("group", { name: "Japanese" }).getByText("Reverts on save")).toBeVisible();
+  await dialog.getByRole("tab", { name: /^Credits/ }).click();
+  await dialog.getByRole("combobox", { name: "Circle", exact: true }).fill("Example circle draft to keep");
+  await dialog.getByRole("tab", { name: /^Title/ }).click();
+  await expect(chinese).toHaveValue("Example Chinese draft to keep");
+  expect(deletes).toEqual([]);
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(writes[1]).toMatchObject({
-    titles: { "zh-cn": "Example Chinese draft to keep" },
+    titles: { "zh-cn": "Example Chinese draft to keep", "ja-jp": null },
     circle: { name: "Example circle draft to keep" },
   });
-  expect((writes[1] as { titles: Record<string, string> }).titles).toEqual({
-    "zh-cn": "Example Chinese draft to keep",
-  });
+  expect(deletes).toEqual([]);
 });
 
 test("own titles are editable while inherited titles stay hints and clearing matches visible changes", async ({
@@ -154,33 +145,35 @@ test("own titles are editable while inherited titles stay hints and clearing mat
   const open = () => page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
   await open();
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
-  const language = dialog.getByRole("combobox", { name: "Title language", exact: true });
-  const title = dialog.getByRole("textbox", { name: "Title", exact: true });
-  await expect(title).toHaveValue("Example universal");
-  await language.selectOption("en-us");
-  await expect(title).toHaveValue("");
-  await expect(title).toHaveAttribute("placeholder", "Example universal");
-  await expect(dialog.getByText("Current source: Manual title (all languages)", { exact: true })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Reset title", exact: true })).toBeDisabled();
-  await title.fill("Example temporary inherited edit");
-  await title.clear();
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  const english = dialog.getByRole("group", { name: "English" });
+  const englishTitle = dialog.getByRole("textbox", { name: "English", exact: true });
+  const japaneseTitle = dialog.getByRole("textbox", { name: "Japanese", exact: true });
+  const save = dialog.getByRole("button", { name: "Save", exact: true });
+  await expect(dialog.getByRole("textbox", { name: "All languages", exact: true })).toHaveValue("Example universal");
+  await expect(englishTitle).toHaveValue("");
+  await expect(englishTitle).toHaveAttribute("placeholder", "Example universal");
+  await expect(english.getByText("Current source: Manual title (all languages)", { exact: true })).toBeVisible();
+  await expect(english.getByRole("button", { name: /Revert/ })).toHaveCount(0);
+  await englishTitle.fill("Example temporary inherited edit");
+  await expect(save).toBeEnabled();
+  await englishTitle.clear();
+  await expect(save).toBeDisabled();
+  await expect(dialog.getByText("No unsaved changes", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(writes).toEqual([]);
   await open();
-  await language.selectOption("ja-jp");
-  await expect(title).toHaveValue("Example Japanese");
-  await title.press("End");
-  await title.pressSequentially(" revised");
-  await expect(title).toHaveValue("Example Japanese revised");
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(japaneseTitle).toHaveValue("Example Japanese");
+  await japaneseTitle.press("End");
+  await japaneseTitle.pressSequentially(" revised");
+  await expect(japaneseTitle).toHaveValue("Example Japanese revised");
+  await save.click();
   await expect(dialog).toHaveCount(0);
   expect(writes).toEqual([{ titles: { "ja-jp": "Example Japanese revised" } }]);
   await open();
-  await language.selectOption("ja-jp");
-  await title.clear();
-  await expect(title).toHaveValue("");
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await japaneseTitle.clear();
+  await expect(japaneseTitle).toHaveValue("");
+  await save.click();
   await expect(dialog).toHaveCount(0);
   expect(writes[1]).toEqual({ titles: { "ja-jp": null } });
 });
@@ -216,11 +209,61 @@ test("@desktop cover-only metadata saves do not freeze any displayed scalar fiel
   await page.goto("/metadata");
   await page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("tab", { name: "Cover" }).click();
   await dialog.getByRole("button", { name: /cover.png/ }).click();
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(cover).toEqual({ locationId: 7 });
   expect(scalarWrites).toEqual([]);
+});
+
+test("@desktop override reverts and a metadata link wait for Save", async ({ page }) => {
+  await metadataWorkEditor(page);
+  const detail = workDetailFixture(work, {
+    manualOverrides: {
+      circle: { name: "Example manual circle", externalId: "" },
+      cover: { assetPath: "covers/1.png", originalPath: `${work.primaryCode}/cover.png`, url: "/synthetic-cover.png" },
+    },
+  });
+  await page.route("**/api/works/1?includeMedia=false", (route) => route.fulfill({ json: detail }));
+  const requests: string[] = [];
+  const writes: unknown[] = [];
+  await page.route("**/api/works/1/manual-overrides", (route) => {
+    requests.push("overrides");
+    writes.push(route.request().postDataJSON());
+    return route.fulfill({ json: {} });
+  });
+  await page.route("**/api/works/1/manual-overrides/cover", (route) => {
+    requests.push(`${route.request().method()} cover`);
+    return route.fulfill({ json: { ok: true, deleted: 1 } });
+  });
+  let link: unknown;
+  await page.route("**/api/works/1/metadata-link", (route) => {
+    requests.push(`${route.request().method()} link`);
+    link = route.request().postDataJSON();
+    return route.fulfill({
+      json: { link: { sourceCode: "RJ00000001", url: "", updatedAt: "" } } satisfies ApiResponse<"setWorkMetadataLink">,
+    });
+  });
+  await page.goto("/metadata");
+  await page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("tab", { name: "Credits" }).click();
+  await dialog.getByRole("button", { name: "Reset circle", exact: true }).click();
+  await expect(dialog.getByRole("group", { name: "Circle" }).getByText("Reverts on save")).toBeVisible();
+  await dialog.getByRole("tab", { name: "Cover" }).click();
+  await dialog.getByRole("button", { name: "Reset cover", exact: true }).click();
+  await dialog.getByRole("tab", { name: "Metadata source" }).click();
+  await dialog.getByLabel("DLsite code to use", { exact: true }).fill("rj00000001");
+  await dialog.getByRole("button", { name: "Use this code", exact: true }).click();
+  await expect(dialog.getByText("Metadata will come from RJ00000001 after you save.", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Unsaved: Cover · Credits · Metadata source", { exact: true })).toBeVisible();
+  expect(requests).toEqual([]);
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(requests).toEqual(["overrides", "DELETE cover", "PUT link"]);
+  expect(writes).toEqual([{ circle: null }]);
+  expect(link).toEqual({ sourceCode: "RJ00000001" });
 });
 
 test("work tag edits autocomplete, create, remove and reset without scalar writes", async ({ page }) => {
@@ -265,11 +308,12 @@ test("work tag edits autocomplete, create, remove and reset without scalar write
   const open = () => page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
   await open();
   let dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("tab", { name: /^Tags/ }).click();
   await dialog.getByRole("button", { name: "Remove Synthetic inherited tag" }).click();
   await dialog.getByLabel("Add tag", { exact: true }).fill("Synthetic shared");
-  await dialog.getByRole("button", { name: "Synthetic shared tag", exact: true }).click();
+  await dialog.getByRole("option", { name: "Synthetic shared tag", exact: true }).click();
   await dialog.getByLabel("Add tag", { exact: true }).fill("Synthetic new tag");
-  await dialog.getByRole("button", { name: "Create tag: Synthetic new tag", exact: true }).click();
+  await dialog.getByRole("option", { name: "Create tag: Synthetic new tag", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Remove Synthetic new tag" })).toBeVisible();
   expect(writes).toEqual([]);
   expect(sharedCreates).toBe(0);
@@ -289,11 +333,80 @@ test("work tag edits autocomplete, create, remove and reset without scalar write
   expect(scalarWrites).toEqual([]);
   await open();
   dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("tab", { name: /^Tags/ }).click();
   await dialog.getByRole("button", { name: "Restore DLsite tags" }).click();
   await expect(dialog.getByRole("button", { name: "Remove Synthetic inherited tag" })).toBeVisible();
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(writes[1]).toEqual({ overrides: [] });
+});
+
+test("tag names are edited by language and saved with the work's tag draft", async ({ page }) => {
+  await metadataWorkEditor(page);
+  const shared = metadataTagFixture({
+    id: 2,
+    displayName: "Synthetic shared tag",
+    workCount: 3,
+    names: [
+      { language: "", name: "Synthetic shared tag", source: "manual" },
+      { language: "zh-cn", name: "Synthetic provider Chinese", source: "dlsite" },
+    ],
+  });
+  const state: WorkMetadataTags = {
+    tags: [{ id: 2, displayName: "Synthetic shared tag", source: "dlsite" }],
+    inheritedTags: [{ id: 2, displayName: "Synthetic shared tag", source: "dlsite" }],
+    overrides: [],
+  };
+  const tagWrites: unknown[] = [];
+  const nameWrites: unknown[] = [];
+  await page.route("**/api/works/1/metadata-tags", (route) => {
+    if (route.request().method() === "PUT") tagWrites.push(route.request().postDataJSON());
+    return route.fulfill({ json: state });
+  });
+  await page.route("**/api/metadata/tags?*", (route) =>
+    route.fulfill({
+      json: { tags: [], total: 0, page: 1, pageSize: 20 } satisfies ApiResponse<"listMetadataTags">,
+    }),
+  );
+  await page.route("**/api/metadata/tags/2", (route) => {
+    if (route.request().method() === "PATCH") nameWrites.push(route.request().postDataJSON());
+    return route.fulfill({ json: shared });
+  });
+  await page.goto("/metadata");
+  await page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("tab", { name: /^Tags/ }).click();
+  await dialog.getByRole("button", { name: "Edit names of Synthetic shared tag by language" }).click();
+  const names = dialog.getByRole("region", { name: "Names of Synthetic shared tag" });
+  await expect(names.getByText(/Shared by 3 works/)).toBeVisible();
+  await expect(names.getByRole("textbox", { name: "All languages", exact: true })).toHaveValue("Synthetic shared tag");
+  const chinese = names.getByRole("textbox", { name: "Simplified Chinese", exact: true });
+  await expect(chinese).toHaveValue("");
+  await expect(chinese).toHaveAttribute("placeholder", "Synthetic provider Chinese");
+  await chinese.fill("Synthetic manual Chinese");
+  await names.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(names).toHaveCount(0);
+
+  await dialog.getByLabel("Add tag", { exact: true }).fill("Synthetic new tag");
+  await dialog.getByRole("option", { name: "Create tag: Synthetic new tag", exact: true }).click();
+  await dialog.getByRole("button", { name: "Edit names of Synthetic new tag by language" }).click();
+  const newNames = dialog.getByRole("region", { name: "Names of Synthetic new tag" });
+  await expect(newNames.getByText(/created when you save/)).toBeVisible();
+  await newNames.getByRole("textbox", { name: "English", exact: true }).fill(" Synthetic English ");
+  await expect(dialog.getByText("Unsaved: Tags", { exact: true })).toBeVisible();
+  expect(nameWrites).toEqual([]);
+  expect(tagWrites).toEqual([]);
+
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(nameWrites).toEqual([{ names: { "zh-cn": "Synthetic manual Chinese" } }]);
+  expect(tagWrites).toEqual([
+    {
+      overrides: [],
+      newTags: ["Synthetic new tag"],
+      newTagNames: { "Synthetic new tag": { "en-us": "Synthetic English" } },
+    },
+  ]);
 });
 
 test("canceling staged tags writes nothing and exact names reuse autocomplete entries", async ({ page }) => {
@@ -321,23 +434,33 @@ test("canceling staged tags writes nothing and exact names reuse autocomplete en
   const open = () => page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
   await open();
   let dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("tab", { name: /^Tags/ }).click();
   await dialog.getByLabel("Add tag", { exact: true }).fill("Synthetic draft tag");
-  await dialog.getByRole("button", { name: "Create tag: Synthetic draft tag", exact: true }).click();
+  await dialog.getByRole("option", { name: "Create tag: Synthetic draft tag", exact: true }).click();
   await dialog.getByLabel("Add tag", { exact: true }).fill(" synthetic DRAFT tag ");
-  await expect(dialog.getByRole("button", { name: /Create tag:/ })).toHaveCount(0);
+  await expect(dialog.getByRole("option", { name: /Create tag:/ })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Remove Synthetic draft tag", exact: true })).toHaveCount(1);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog.getByText("Discard unsaved changes?", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Keep editing", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Remove Synthetic draft tag", exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await dialog.getByRole("button", { name: "Discard", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(writes).toBe(0);
   await open();
   dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("tab", { name: /^Tags/ }).click();
+  await expect(dialog.getByText("No metadata tags.", { exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Remove Synthetic draft tag", exact: true })).toHaveCount(0);
   await dialog.getByLabel("Add tag", { exact: true }).fill(" synthetic ALTERNATE name ");
-  await expect(dialog.getByRole("button", { name: "Synthetic display tag", exact: true })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: /Create tag:/ })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Synthetic display tag", exact: true }).click();
+  await expect(dialog.getByRole("option", { name: "Synthetic display tag", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("option", { name: /Create tag:/ })).toHaveCount(0);
+  await dialog.getByRole("option", { name: "Synthetic display tag", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Remove Synthetic display tag", exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await dialog.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   expect(writes).toBe(0);
 });
 
@@ -414,10 +537,14 @@ test("hidden tag matches are explained and cannot be silently created in the wor
   await page.goto("/metadata");
   await page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("tab", { name: /^Tags/ }).click();
   await dialog.getByLabel("Add tag", { exact: true }).fill("Example hidden tag");
-  await expect(dialog.getByRole("button", { name: "Example hidden tag · Hidden", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("option", { name: "Example hidden tag · Hidden", exact: true })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
   await expect(dialog.getByRole("alert")).toContainText("Unhide it in Metadata");
-  await expect(dialog.getByRole("button", { name: "Create tag: Example hidden tag", exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("option", { name: "Create tag: Example hidden tag", exact: true })).toHaveCount(0);
 });
 
 test("admin merge targets mark hidden tags and explain the resulting visibility", async ({ page }) => {
@@ -478,9 +605,10 @@ test("merged tag names complete as the final target and save that identity", asy
   await page.goto("/metadata");
   await page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("tab", { name: /^Tags/ }).click();
   await dialog.getByLabel("Add tag", { exact: true }).fill("Example old name");
-  await expect(dialog.getByRole("button", { name: "Create tag: Example old name", exact: true })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Example final target", exact: true }).click();
+  await expect(dialog.getByRole("option", { name: "Create tag: Example old name", exact: true })).toHaveCount(0);
+  await dialog.getByRole("option", { name: "Example final target", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Remove Example final target", exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toHaveCount(0);

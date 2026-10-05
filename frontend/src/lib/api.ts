@@ -2557,6 +2557,7 @@ export const api = {
       signal,
     ),
   createMetadataTag: (name: string) => postJSONBody<MetadataTag>("/api/metadata/tags", { name }),
+  getMetadataTag: (id: number, signal?: AbortSignal) => getJSON<MetadataTag>(`/api/metadata/tags/${id}`, signal),
   updateMetadataTag: (id: number, payload: { names?: Record<string, string>; hidden?: boolean }) =>
     patchJSONBody<MetadataTag>(`/api/metadata/tags/${id}`, payload),
   mergeMetadataTag: (id: number, targetTagId: number) =>
@@ -2564,10 +2565,17 @@ export const api = {
   undoMetadataTagMerge: (id: number) => deleteJSON<MetadataTag>(`/api/metadata/tags/${id}/merge`),
   getWorkMetadataTags: (id: number, signal?: AbortSignal) =>
     getJSON<WorkMetadataTags>(`/api/works/${id}/metadata-tags`, signal),
-  setWorkMetadataTags: (id: number, overrides: MetadataTagOverride[], newTags: string[] = []) =>
+  /** `newTagNames` holds language names for tags this save creates, keyed by the trimmed new tag name. */
+  setWorkMetadataTags: (
+    id: number,
+    overrides: MetadataTagOverride[],
+    newTags: string[] = [],
+    newTagNames: Record<string, Record<string, string>> = {},
+  ) =>
     putJSONBody<WorkMetadataTags>(`/api/works/${id}/metadata-tags`, {
       overrides,
       ...(newTags.length ? { newTags } : {}),
+      ...(Object.keys(newTagNames).length ? { newTagNames } : {}),
     }),
   listMetadataCircles: ({
     query = "",

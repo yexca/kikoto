@@ -5,13 +5,12 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { Input } from "@/components/ui/input";
 import { useMetadataEntrySuggestions } from "@/hooks/useMetadataEntrySuggestions";
 import { api, type MetadataTag } from "@/lib/api";
-import { metadataTagLanguages } from "@/lib/metadataTagModel";
-
-function manualNames(tag: MetadataTag): Record<string, string> {
-  return Object.fromEntries(
-    tag.names.filter((name) => name.source === "manual").map((name) => [name.language, name.name]),
-  );
-}
+import {
+  changedMetadataTagNames,
+  manualMetadataTagNames as manualNames,
+  metadataTagLanguages,
+  providerMetadataTagName,
+} from "@/lib/metadataTagModel";
 
 export function MetadataTagDialog({
   entry,
@@ -51,11 +50,9 @@ export function MetadataTagDialog({
     }
   };
   const save = () => {
-    const previous = manualNames(tag);
-    const changed = Object.fromEntries(
-      metadataTagLanguages
-        .map(([language]) => [language, (names[language] ?? "").trim()])
-        .filter(([language, name]) => name !== (previous[language] ?? "")),
+    const changed = changedMetadataTagNames(
+      Object.fromEntries(metadataTagLanguages.map(([language]) => [language, names[language] ?? ""])),
+      manualNames(tag),
     );
     return mutate(() =>
       api.updateMetadataTag(tag.id, { names: changed, ...(hidden !== tag.hidden ? { hidden } : {}) }),
@@ -89,7 +86,7 @@ export function MetadataTagDialog({
                   <Input
                     className="w-full"
                     value={names[language] ?? ""}
-                    placeholder={tag.names.find((name) => name.language === language && name.source !== "manual")?.name}
+                    placeholder={providerMetadataTagName(tag, language)}
                     onChange={(event) => setNames((current) => ({ ...current, [language]: event.target.value }))}
                   />
                 </label>

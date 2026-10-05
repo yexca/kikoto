@@ -189,7 +189,10 @@ concepts, stages custom names and additions/removals, and can restore
 DLsite tags. Exact names in any known language reuse an existing concept after
 trimming and ignoring case. Custom names stay local until Save creates and
 attaches them in the same request; Cancel leaves no shared entry. Only a changed
-tag draft is saved. A tag-section load failure
+tag draft is saved. Each tag chip opens `MetadataTagNamesPanel`, which loads the
+shared tag once and edits its per-language manual names; Save patches renamed
+shared tags before the membership request, and new tags send their language
+names with it. A tag-section load failure
 retains the other metadata fields. Demo shows these controls disabled.
 
 Tag completion requests `resolveMerged=true`, collapses merged matches into
@@ -348,15 +351,24 @@ visible while the failed remote or media stage renders an inline Retry state.
 
 ## Multilingual title presentation
 
-`WorkTitleEditor` shows six language scopes and independent drafts. The scope's
-own manual title is editable text; provider and inherited values are grey hints.
-Source labels distinguish scope-specific and universal manual titles.
+`WorkTitleEditor` lists all six language scopes as rows with independent drafts.
+A row's own manual title is editable text; provider and inherited values are grey
+hints. Source labels distinguish scope-specific and universal manual titles.
 `titleEditorModel` compares only touched scopes with
-manual values so unchanged provider text never freezes. The existing metadata
-editor composes this with circle, series, voice actor, cover and tag operations.
-Reset passes the selected title language to the API, refreshes its hints and
-keeps the editor open with all other language and field drafts intact. Clearing
-an owned manual title removes it; clearing an inherited hint changes nothing.
+manual values so unchanged provider text never freezes. Clearing an owned
+manual title, or its row's Revert, removes it on Save; clearing an inherited
+hint changes nothing.
+
+`WorkMetadataEditorModal` splits the editor into Title, Cover, Tags, Credits,
+and Metadata source tabs, each marked while it holds unsaved changes. Every
+change is a draft until Save: credit reverts become explicit `null` or empty
+PATCH fields (`MetadataEditorReverts`), a cover revert deletes the cover
+override, and a staged metadata link is written last, so its refresh result
+reaches `onLinkChanged`. A failure after a partial save reloads the caller and
+keeps the editor open. Cancel with drafts asks before discarding them. Credit
+and tag inputs share `SuggestionCombobox`, an in-flow listbox with arrow-key and
+Enter selection. The work detail's metadata-unavailable notice opens the editor
+on its Metadata source tab.
 
 The metadata language label of an original edition whose language was never
 declared reads only Original; other editions keep their language or the

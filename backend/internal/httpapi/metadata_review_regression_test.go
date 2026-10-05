@@ -58,7 +58,11 @@ func metadataReviewRequest(t *testing.T, s *Server, method, path, body string, u
 		}
 	default:
 		r.SetPathValue("tagId", parts[3])
-		s.changeMetadataTag(w, r)
+		if method == http.MethodGet {
+			s.getMetadataTag(w, r)
+		} else {
+			s.changeMetadataTag(w, r)
+		}
 	}
 	return w
 }
@@ -426,5 +430,67 @@ func TestMetadataEntryReadsRespectPagePermissionsDemoScopeAndCircleVisibility(t 
 	response = metadataReviewRequest(t, demo, http.MethodGet, fmt.Sprintf("/api/metadata/circles/%d/merges", visible), "", user)
 	if response.Code != 200 || strings.TrimSpace(response.Body.String()) != "[]" {
 		t.Fatalf("demo merge history leaked: %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestWorkTagDraftsNameOnlyTheTagsTheyCreate(t *testing.T) {
+	db := openMigratedTestDB(t)
+	s := NewServer(db, config.Config{})
+	actor := metadataReviewExec(t, db, "INSERT INTO user_account(username,role) VALUES ('synthetic-localized-draft','admin')")
+	user := account.User{ID: actor, Permissions: account.PermissionsForRole("admin")}
+	work := metadataReviewExec(t, db, "INSERT INTO work(primary_code,title) VALUES (?,'Synthetic localized work')", testfixture.WorkCode(testfixture.PrefixRJ, 0))
+	path := fmt.Sprintf("/api/works/%d/metadata-tags", work)
+	response := metadataReviewRequest(t, s, http.MethodPut, path, `{"newTags":[" Synthetic localized "],"overrides":[],"newTagNames":{"Synthetic localized":{"":"Ignored all-language name","zh-cn":"合成本地化标签","en-us":" Synthetic English "}}}`, user)
+	if response.Code != 200 {
+		t.Fatalf("localized draft: %d %s", response.Code, response.Body.String())
+	}
+	var state workMetadataTags
+	if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Tags) != 1 {
+		t.Fatalf("tags = %+v", state.Tags)
+	}
+	tag := state.Tags[0].ID
+	response = metadataReviewRequest(t, s, http.MethodGet, fmt.Sprintf("/api/metadata/tags/%d", tag), "", user)
+	if response.Code != 200 {
+		t.Fatalf("get tag: %d %s", response.Code, response.Body.String())
+	}
+	var entry metadatatags.Tag
+	if err := json.Unmarshal(response.Body.Bytes(), &entry); err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]string{}
+	for _, name := range entry.Names {
+		names[name.Language] = name.Name
+	}
+	want := map[string]string{"": "Synthetic localized", "zh-cn": "合成本地化标签", "en-us": "Synthetic English"}
+	for language, name := range want {
+		if names[language] != name {
+			t.Fatalf("names = %+v, want %+v", names, want)
+		}
+	}
+
+	// A draft that resolves to the existing tag reuses it without rewriting its shared names.
+	response = metadataReviewRequest(t, s, http.MethodPut, path, `{"newTags":["synthetic LOCALIZED"],"overrides":[],"newTagNames":{"synthetic LOCALIZED":{"zh-cn":"Overwritten"}}}`, user)
+	if response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	var zh string
+	if err := db.QueryRow("SELECT name FROM metadata_tag_name WHERE tag_id=? AND language='zh-cn'", tag).Scan(&zh); err != nil || zh != "合成本地化标签" {
+		t.Fatalf("reused tag zh-cn = %q, %v", zh, err)
+	}
+
+	// An unsupported language rejects the whole save without leaving the new tag behind.
+	response = metadataReviewRequest(t, s, http.MethodPut, path, `{"newTags":["Synthetic rejected"],"overrides":[],"newTagNames":{"Synthetic rejected":{"xx-yy":"Invalid"}}}`, user)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid language = %d %s", response.Code, response.Body.String())
+	}
+	var orphans int
+	if err := db.QueryRow("SELECT COUNT(*) FROM tag WHERE display_name='Synthetic rejected'").Scan(&orphans); err != nil || orphans != 0 {
+		t.Fatalf("rejected draft left tags=%d, %v", orphans, err)
+	}
+	if response := metadataReviewRequest(t, s, http.MethodGet, "/api/metadata/tags/999999", "", user); response.Code != http.StatusNotFound {
+		t.Fatalf("missing tag = %d", response.Code)
 	}
 }

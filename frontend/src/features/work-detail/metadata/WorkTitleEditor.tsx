@@ -1,60 +1,73 @@
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { WorkDetail } from "@/lib/api";
 import { metadataTagLanguages } from "@/lib/metadataTagModel";
+import { MetadataEditorField } from "./MetadataEditorFields";
+import { manualValueStatus } from "./metadataEditorModel";
 import { manualTitles, titleSourceLabel } from "./titleEditorModel";
 
+/**
+ * Lists every title scope at once: the all-language title first, then one row
+ * per display language. An empty row inherits, and its placeholder shows the
+ * title it currently inherits.
+ */
 export function WorkTitleEditor({
   work,
-  language,
   drafts,
-  onLanguage,
   onDraft,
-  onReset,
 }: {
   work: WorkDetail;
-  language: string;
   drafts: Record<string, string>;
-  onLanguage: (language: string) => void;
   onDraft: (language: string, title: string) => void;
-  onReset: (language: string) => void;
 }) {
   const { t } = useTranslation();
-  const choice = work.titleChoices?.[language];
   const manual = manualTitles(work.manualOverrides ?? {});
-  const sourceLabel = titleSourceLabel(language, manual, choice);
-  const source = t(sourceLabel.key, sourceLabel.values);
-  return (
-    <div className="space-y-3">
-      <label className="block space-y-1 text-sm">
-        <span>{t("workTitles.language")}</span>
-        <select
-          className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-          value={language}
-          onChange={(event) => onLanguage(event.target.value)}
-        >
-          {metadataTagLanguages.map(([value, label]) => (
-            <option key={value} value={value}>
-              {t(label)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="block space-y-1 text-sm">
-        <span>{t("libraryDetail.title")}</span>
+  const [allLanguages, ...languages] = metadataTagLanguages;
+
+  const row = ([language, label]: (typeof metadataTagLanguages)[number]) => {
+    const own = manual[language];
+    const choice = work.titleChoices?.[language];
+    const status = manualValueStatus(drafts[language], own);
+    const sourceLabel = titleSourceLabel(language, manual, choice);
+    const inherited = own ? (language ? manual[""] : undefined) : (choice?.title ?? manual[""] ?? work.title);
+    const id = `work-title-${language || "all"}`;
+    return (
+      <MetadataEditorField
+        key={language}
+        label={t(label)}
+        labelFor={id}
+        status={status}
+        revertLabel={t("metadataEditor.revertTitle", { language: t(label) })}
+        onRevert={() => onDraft(language, "")}
+        hint={
+          status === "reverting"
+            ? t("metadataEditor.titleRevertHint")
+            : own
+              ? undefined
+              : t("workTitles.source", { source: t(sourceLabel.key, sourceLabel.values) })
+        }
+      >
         <Input
+          id={id}
+          fieldSize="sm"
           className="w-full"
-          value={drafts[language] ?? manual[language] ?? ""}
-          placeholder={manual[language] ? "" : (choice?.title ?? manual[""] ?? work.title)}
+          value={drafts[language] ?? own ?? ""}
+          placeholder={inherited || t("metadataEditor.inheritedTitle")}
           onChange={(event) => onDraft(language, event.target.value)}
         />
-      </label>
-      <p className="text-xs text-muted-foreground">{t("workTitles.source", { source })}</p>
-      <div className="flex justify-end">
-        <Button variant="outline" size="sm" disabled={!manual[language]} onClick={() => onReset(language)}>
-          {t("libraryDetail.resetTitle")}
-        </Button>
+      </MetadataEditorField>
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      {row(allLanguages)}
+      <div className="space-y-3">
+        <div>
+          <h5 className="text-sm font-semibold">{t("metadataEditor.languageTitles")}</h5>
+          <p className="text-xs text-muted-foreground">{t("metadataEditor.languageTitlesDescription")}</p>
+        </div>
+        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">{languages.map(row)}</div>
       </div>
     </div>
   );
