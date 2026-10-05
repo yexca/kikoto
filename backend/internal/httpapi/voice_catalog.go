@@ -1899,6 +1899,15 @@ func (s *Server) buildVoiceCatalogRemoteWork(ctx context.Context, row voiceCatal
 		}
 	}
 	tags := decodeVoiceCatalogStrings(row.TagsJSON)
+	if workID > 0 {
+		projected, ok, err := s.loadProjectedDLsiteTags(ctx, workID)
+		if err != nil {
+			return voiceRemoteWork{}, err
+		}
+		if ok {
+			tags = projected
+		}
+	}
 	voiceActors := decodeVoiceCatalogStrings(row.VoiceActorsJSON)
 	flags := sourceAvailabilityState{}
 	if workID > 0 && row.SourceID.Int64 > 0 {

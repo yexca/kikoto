@@ -165,11 +165,35 @@ viewer read LRC, WebVTT, and SRT files the same way.
   personal tags manage account-owned work, circle, and voice tags; data
   transfer offers personal JSON export and previewed import from a Kikoto or
   Kikoeru file, a Kikoeru account, or an open-source Kikoeru database.
-- Metadata: saved metadata and attention categories below Workflows, plus a Voice aliases view, with a settings dialog and sync workflow shortcut.
+- Metadata: a Works group for saved metadata and attention categories, and an
+  Entries group for Tags, Circles, and Voice actors. Each entry view owns a
+  searchable table and management dialog. Tag and circle edits require
+  `library:write`; voice aliases retain `metadata:sync`. The URLs
+  `?view=tags`, `?view=circles`, and `?view=aliases&voice=<id>` select
+  those views; existing voice deep links remain valid. The shared icon rail
+  shows group headings when expanded and accessible group descriptions at all
+  sizes. Metadata settings remain in the header popover.
+
 - Workflows: horizontal definition tabs and a right-side Activity summary.
 - Activity run details inside the Workflows panel, also reachable through notifications.
 - Users.
 - Global player dock.
+
+The work metadata editor freezes its initial normalized values and sends only
+changed scalar fields. Selecting a cover alone does not create title, circle,
+series, or voice overrides. Its separate tag section loads effective tags,
+inherited DLsite tags, and the saved override draft. It searches shared
+concepts, stages custom names and additions/removals, and can restore
+DLsite tags. Exact names in any known language reuse an existing concept after
+trimming and ignoring case. Custom names stay local until Save creates and
+attaches them in the same request; Cancel leaves no shared entry. Only a changed
+tag draft is saved. A tag-section load failure
+retains the other metadata fields. Demo shows these controls disabled.
+
+`lib/metadataTagModel` holds draft comparison and language labels; the shared
+suggestion hook owns cancellation and debounce. The maintenance tag and circle
+dialogs keep transport separate from the work editor and preserve their loaded
+state and drafts on request failure.
 
 The personal destinations open at `/settings?tab=history`, `?tab=tags`, and
 `?tab=data`; `data` is an alias that opens the Account data section, and

@@ -21,6 +21,11 @@ Important tables:
 - `metadata_sync_attempt_run`
 - `tag`
 - `work_tag`
+- `metadata_tag`
+- `metadata_tag_name`
+- `work_tag_override`
+- `party_alias`
+- `party_merge_review`
 - `work_dlsite_genre`
 - `dlsite_genre_name`
 - `party`
@@ -82,8 +87,87 @@ DLsite genre ids are stable across request locales. `work_dlsite_genre`
 products: `name_base` is the Japanese name and `name` is the name for the
 locale that was requested. Names are keyed by request locale rather than
 edition language because an edition without its own locale is requested in
-`ja-jp` and reports Japanese names. Both tables only feed search: they do not
-create works or tags, and learned names never appear in tag lists.
+`ja-jp` and reports Japanese names. Known ids feed shared metadata tag
+concepts and their display names; dictionary learning never creates works.
+
+### Shared Metadata Tags
+
+A shared tag has one `tag` row in namespace `metadata`, with an empty
+`language` and a stable `normalized_name`: `dlsite-genre:<id>` for a
+known genre, or `custom:<id>` for an authored concept. Imported names without
+ids retain a deterministic `dlsite-name:<hash>` concept until a provider id
+is available. The old `dlsite` rows remain readable during startup backfill.
+`metadata_tag` holds the genre id, hidden flag, merge target, and author.
+`metadata_tag_name` holds manual names by locale; an empty locale applies to
+all languages. Personal `user_tag` records remain account-owned and separate.
+
+The single `tag.display_name` is computed from the universal manual name,
+then each configured preferred locale's manual name or genre dictionary name,
+then Japanese manual/dictionary names, then any known name. The edition token
+`origin` does not stop this dictionary fallback. Synchronization, manual
+renaming, and language-priority changes refresh the stored display name.
+Dictionary learning and concept creation refresh only the changed concepts in
+the writing transaction. A normal sync never recalculates the entire dictionary
+and never publishes a generated genre placeholder. Detail language variants use
+a universal manual name, then that variant's requested locale's manual or
+dictionary name, then the stored priority-selected name.
+
+`work_tag_override` records per-work additions and removals. Projection takes
+the selected edition's genres for the canonical work and each other edition's
+own genres, follows merge mappings, adds manual concepts, and applies removals
+and hiding. Removal wins when an addition and a removal resolve to the same
+concept. Effective `work_tag` rows drive cards, detail language chips,
+creator lists, search, workflow predicates, and recommendation similarity.
+`tags_json` retains the provider's original names for provenance.
+
+`work_metadata_tag_base` retains each work's original provider concept ids
+before hiding, removals, or merge resolution. Snapshot-only provider names and
+genres are normalized into this base without fetching or creating new works.
+`work_metadata_tag_projection` records the work and selected source work whose
+base has been projected, including an intentionally empty result. Snapshot
+inserts or content changes invalidate the affected per-work markers. Reads
+retain snapshot fallback for unprojected works; a global backfill completion
+marker alone never makes an empty work authoritative.
+
+Search expands dictionary, manual, and original display names from the effective
+concept and all concepts resolving to it through `metadata_tag_resolution`.
+Source-name and merge changes invalidate affected documents even when the
+effective display name and links stay unchanged. Undo removes the former
+source names from works that now resolve only to the target.
+Tag merges retain the original concept and override ids; undo clears the
+mapping, and cycles are rejected. Only the final merge target's hidden flag
+controls visibility. A merged source's hidden flag is dormant until undo;
+merging into a hidden target hides the result for every related work.
+Hidden final concepts and removed work tags do not
+participate in current display, search, or recommendation inputs. Relation
+changes advance the existing recommendation input revision, so the algorithm
+version is unchanged and new sessions rebuild their generation.
+
+Custom creation trims the name and reuses an existing concept when any known
+locale name matches with Unicode case folding. It resolves a matched merged
+source to its final target. Work-editor custom tags are created and attached in
+the work-save transaction, so cancellation and failed saves leave no new orphan.
+
+### Circle Identity
+
+`party.manual_name` takes precedence over `provider_name`; provider
+refreshes preserve authored names. `party_alias` stores confirmed alternate
+names, including names retained by a merge. Aliases participate in creator
+suggestions, work search, and matching an existing circle from a remote record.
+
+A circle merge transfers work relations, every maker id, catalogs, retained
+snapshots, series membership, personal state and tags, and earlier merge
+reviews. Duplicate catalogs keep the newest observation; duplicate personal
+states preserve target ratings/notes and union favorites and tags. Catalog
+refresh state is invalidated. `party_merge_review` retains protected before
+and after records. Undo applies only captured differences, keeps unrelated new
+rows, and rejects a later change to data it would restore. Nested merges undo
+in reverse order. Review responses expose names and status, not raw snapshots.
+
+`PATCH /api/works/{id}/manual-overrides` updates only supplied fields;
+explicit null or empty values reset that field. Omitted relations remain
+unchanged. Migration 048 clears only title overrides exactly matching a
+trimmed provider title in the work's own edition or logical family.
 
 `work.rating_average`, `work.sales_count`, and the current commercial fields are
 normalized projections maintained by metadata sync. Interactive rating/sales

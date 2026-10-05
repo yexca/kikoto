@@ -1,4 +1,14 @@
-import { CircleAlert, FileWarning, LayoutGrid, MicVocal, Settings, Unlink, type LucideIcon } from "lucide-react";
+import {
+  Building2,
+  Tags,
+  CircleAlert,
+  FileWarning,
+  LayoutGrid,
+  MicVocal,
+  Settings,
+  Unlink,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
@@ -9,16 +19,15 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import type { MaintenanceToolbarSlots } from "@/features/maintenance/MaintenanceControls";
 import { WorkMaintenance } from "@/features/maintenance/WorkMaintenance";
 import { MetadataSettingsPanel } from "@/features/maintenance/MetadataSettingsPanel";
+import { MetadataEntryMaintenance } from "@/features/maintenance/MetadataEntryMaintenance";
 import { VoiceAliasMaintenance } from "@/features/maintenance/VoiceAliasMaintenance";
 import { WorkMetadataEditorModal } from "@/features/work-detail/metadata";
 import { api, type MaintenanceWork, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { metadataIssueRunFromLocation } from "@/lib/metadataMaintenance";
 
-type MetadataView = "works" | "aliases";
-type MetadataRailValue = "catalog" | "all" | "metadata" | "no_source" | "aliases";
-
-const ALIASES_VIEW_PARAM = "aliases";
+type MetadataView = "works" | "aliases" | "tags" | "circles";
+type MetadataRailValue = "catalog" | "all" | "metadata" | "no_source" | "aliases" | "tags" | "circles";
 
 const railIcons: Record<MetadataRailValue, LucideIcon> = {
   catalog: LayoutGrid,
@@ -26,6 +35,8 @@ const railIcons: Record<MetadataRailValue, LucideIcon> = {
   metadata: FileWarning,
   no_source: Unlink,
   aliases: MicVocal,
+  tags: Tags,
+  circles: Building2,
 };
 
 function reasonFromLocation() {
@@ -37,7 +48,8 @@ function reasonFromLocation() {
 }
 
 function viewFromLocation(): MetadataView {
-  return new URLSearchParams(window.location.search).get("view") === ALIASES_VIEW_PARAM ? "aliases" : "works";
+  const view = new URLSearchParams(window.location.search).get("view");
+  return view === "aliases" || view === "tags" || view === "circles" ? view : "works";
 }
 
 // The requested reason and view fall back to what the viewer may open.
@@ -49,7 +61,8 @@ function availableReasonFromLocation(canSyncMetadata: boolean, canManageSources:
 }
 
 function availableViewFromLocation(canSyncMetadata: boolean): MetadataView {
-  return canSyncMetadata ? viewFromLocation() : "works";
+  const view = viewFromLocation();
+  return view === "aliases" && !canSyncMetadata ? "works" : view;
 }
 
 function settingsFromLocation() {
@@ -91,7 +104,7 @@ function useInlineSearchFits(
 
 /**
  * Metadata page shell: an icon rail that switches between the saved-work
- * views and the voice actor alias view, beside a header holding the active
+ * views and the tag, circle, and voice actor views, beside a header holding the active
  * view's search, list controls, and selection actions (rendered into slots)
  * and the settings popover. Views own their own tables; this page owns the
  * URL state, decides whether search fits inline, and composes the metadata
@@ -156,9 +169,9 @@ export function WorkManagementPage({
     setRunId(nextRun);
     setView("works");
   };
-  const showAliases = () => {
-    window.history.replaceState(window.history.state, "", `/metadata?view=${ALIASES_VIEW_PARAM}`);
-    setView("aliases");
+  const showEntries = (nextView: "tags" | "circles" | "aliases") => {
+    window.history.replaceState(window.history.state, "", `/metadata?view=${nextView}`);
+    setView(nextView);
   };
   const showSettings = (open: boolean) => {
     const url = new URL(window.location.href);
@@ -195,6 +208,8 @@ export function WorkManagementPage({
     ["all", t("workMaintenance.all"), true],
     ["metadata", t("workMaintenance.metadata"), canSyncMetadata],
     ["no_source", t("workMaintenance.noSource"), canManageSources],
+    ["tags", t("metadataEntries.tags"), true],
+    ["circles", t("metadataEntries.circles"), true],
     ["aliases", t("workManagement.voiceAliases"), canSyncMetadata],
   ];
   const railItems: IconRailItem<MetadataRailValue>[] = railEntries
@@ -204,10 +219,25 @@ export function WorkManagementPage({
       label,
       icon: railIcons[value],
       id: `metadata-tab-${value}`,
-      controls: value === "aliases" ? "metadata-aliases" : "metadata-records",
-      separated: value === "aliases",
+      controls:
+        value === "aliases"
+          ? "metadata-aliases"
+          : value === "tags" || value === "circles"
+            ? `metadata-${value}`
+            : "metadata-records",
+      separated: value === "tags",
+      groupLabel: t(
+        value === "aliases" || value === "tags" || value === "circles"
+          ? "metadataEntries.entriesGroup"
+          : "metadataEntries.worksGroup",
+      ),
+      description: t(
+        value === "aliases" || value === "tags" || value === "circles"
+          ? "metadataEntries.entriesGroup"
+          : "metadataEntries.worksGroup",
+      ),
     }));
-  const railSelected = (view === "aliases" ? "aliases" : reason) as MetadataRailValue;
+  const railSelected = (view === "works" ? reason : view) as MetadataRailValue;
 
   return (
     <div className="min-w-0 space-y-3">
@@ -218,7 +248,9 @@ export function WorkManagementPage({
           labelsStorageKey="kikoto:metadata-rail-labels-shown"
           items={railItems}
           selected={railSelected}
-          onSelect={(value) => (value === "aliases" ? showAliases() : showWorks(value))}
+          onSelect={(value) =>
+            value === "aliases" || value === "tags" || value === "circles" ? showEntries(value) : showWorks(value)
+          }
         />
         <div className="min-w-0 flex-1 space-y-3">
           <div ref={headerRef} className="flex min-h-10 items-center gap-2">
@@ -262,6 +294,13 @@ export function WorkManagementPage({
           <div ref={setSearchRowSlot} className="empty:hidden" />
           {view === "aliases" ? (
             <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} readOnly={readOnly} toolbar={toolbar} />
+          ) : view === "tags" || view === "circles" ? (
+            <MetadataEntryMaintenance
+              key={view}
+              kind={view}
+              canManage={canEditMetadata && !readOnly}
+              toolbar={toolbar}
+            />
           ) : (
             <WorkMaintenance
               canManageSources={canManageSources}

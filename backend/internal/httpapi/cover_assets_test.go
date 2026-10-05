@@ -39,10 +39,10 @@ func TestRemoteCoverAcceptsRasterContentAndRejectsActiveDocuments(t *testing.T) 
 	if err := s.downloadRemoteCover(context.Background(), source, code, remote.URL+"/image.html"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.downloadRemoteCover(context.Background(), source, code, remote.URL+"/image.jpg"); !errors.Is(err, download.ErrImageType) {
+	if err := s.downloadRemoteCover(context.Background(), source, testfixture.WorkCode(testfixture.PrefixRJ, 1), remote.URL+"/image.jpg"); !errors.Is(err, download.ErrImageType) {
 		t.Fatalf("active document error = %v", err)
 	}
-	request := httptest.NewRequest(http.MethodGet, "/api/assets/covers/"+code+".png", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/assets/covers/"+coverAssetRelativePath(code, ".png"), nil)
 	response := httptest.NewRecorder()
 	s.getCoverAsset(response, request)
 	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/png" || !bytes.Equal(response.Body.Bytes(), picture.Bytes()) {

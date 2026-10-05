@@ -440,6 +440,46 @@ export type WorkManualOverridePayload = {
   voiceActors?: ManualOverridePerson[];
 };
 
+export type MetadataTag = {
+  id: number;
+  key: string;
+  displayName: string;
+  dlsiteGenreId: number | null;
+  mergedIntoTagId: number | null;
+  hidden: boolean;
+  source: string;
+  workCount: number;
+  names: { language: string; name: string; source: string }[];
+  mergedFromTagIds: number[];
+};
+export type MetadataTagOverride = { tagId: number; action: "add" | "remove" };
+export type EffectiveMetadataTag = { id: number; displayName: string; source: string };
+export type WorkMetadataTags = {
+  tags: EffectiveMetadataTag[];
+  inheritedTags: EffectiveMetadataTag[];
+  overrides: MetadataTagOverride[];
+};
+export type MetadataCircle = {
+  id: number;
+  displayName: string;
+  manualName: string;
+  providerName: string;
+  workCount: number;
+  aliases: { id: number; alias: string; source: string }[];
+  externalIds: string[];
+};
+export type CircleMergeReview = {
+  id: number;
+  targetPartyId: number;
+  sourcePartyId: number;
+  targetName: string;
+  sourceName: string;
+  status: string;
+  createdAt: string;
+  undoneAt: string;
+};
+export type MetadataEntryPage<T> = { total: number; page: number; pageSize: number } & T;
+
 export type WorkCoverCandidate = {
   locationId: number;
   fileName: string;
@@ -2452,6 +2492,52 @@ export const api = {
     getJSON<{ workId: number; mediaWorkId: number; mediaItems: MediaItem[] }>(`/api/works/${id}/media`, signal),
   refreshWorkLocalFiles: (id: number, fileSourceId?: number | null) =>
     postJSONBody<LocalMediaRefreshResult>(`/api/works/${id}/local-files/refresh`, { fileSourceId: fileSourceId ?? 0 }),
+  listMetadataTags: ({
+    query = "",
+    page = 1,
+    pageSize = 25,
+    includeHidden = false,
+    signal,
+  }: { query?: string; page?: number; pageSize?: number; includeHidden?: boolean; signal?: AbortSignal } = {}) =>
+    getJSON<MetadataEntryPage<{ tags: MetadataTag[] }>>(
+      `/api/metadata/tags?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}&includeHidden=${includeHidden}`,
+      signal,
+    ),
+  createMetadataTag: (name: string) => postJSONBody<MetadataTag>("/api/metadata/tags", { name }),
+  updateMetadataTag: (id: number, payload: { names?: Record<string, string>; hidden?: boolean }) =>
+    patchJSONBody<MetadataTag>(`/api/metadata/tags/${id}`, payload),
+  mergeMetadataTag: (id: number, targetTagId: number) =>
+    postJSONBody<MetadataTag>(`/api/metadata/tags/${id}/merge`, { targetTagId }),
+  undoMetadataTagMerge: (id: number) => deleteJSON<MetadataTag>(`/api/metadata/tags/${id}/merge`),
+  getWorkMetadataTags: (id: number, signal?: AbortSignal) =>
+    getJSON<WorkMetadataTags>(`/api/works/${id}/metadata-tags`, signal),
+  setWorkMetadataTags: (id: number, overrides: MetadataTagOverride[], newTags: string[] = []) =>
+    putJSONBody<WorkMetadataTags>(`/api/works/${id}/metadata-tags`, {
+      overrides,
+      ...(newTags.length ? { newTags } : {}),
+    }),
+  listMetadataCircles: ({
+    query = "",
+    page = 1,
+    pageSize = 25,
+    signal,
+  }: { query?: string; page?: number; pageSize?: number; signal?: AbortSignal } = {}) =>
+    getJSON<MetadataEntryPage<{ circles: MetadataCircle[] }>>(
+      `/api/metadata/circles?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`,
+      signal,
+    ),
+  getMetadataCircle: (id: number) => getJSON<MetadataCircle>(`/api/metadata/circles/${id}`),
+  renameMetadataCircle: (id: number, manualName: string) =>
+    patchJSONBody<MetadataCircle>(`/api/metadata/circles/${id}`, { manualName }),
+  addCircleAlias: (id: number, alias: string) =>
+    postJSONBody<MetadataCircle>(`/api/metadata/circles/${id}/aliases`, { alias }),
+  deleteCircleAlias: (id: number, aliasId: number) =>
+    deleteJSON<MetadataCircle>(`/api/metadata/circles/${id}/aliases/${aliasId}`),
+  mergeMetadataCircle: (id: number, sourcePartyId: number) =>
+    postJSONBody<{ ok: boolean; mergeId: number }>(`/api/metadata/circles/${id}/merge`, { sourcePartyId }),
+  listCircleMerges: (id: number) => getJSON<CircleMergeReview[]>(`/api/metadata/circles/${id}/merges`),
+  undoCircleMerge: (id: number, mergeId: number) =>
+    postJSONBody<{ ok: boolean }>(`/api/metadata/circles/${id}/merges/${mergeId}/undo`, {}),
   getWorkManualOverrides: (id: number) => getJSON<WorkManualOverrides>(`/api/works/${id}/manual-overrides`),
   updateWorkManualOverrides: (id: number, payload: WorkManualOverridePayload) =>
     patchJSONBody<WorkManualOverrides>(`/api/works/${id}/manual-overrides`, payload),

@@ -9,6 +9,7 @@ describe("navigation access and labels", () => {
   });
   it("lets metadata operators reach work management without source settings permission", () => {
     expect(canAccessPage("metadata", "authenticated", (permission) => permission === "metadata:sync")).toBe(true);
+    expect(canAccessPage("metadata", "authenticated", (permission) => permission === "library:write")).toBe(true);
     expect(canAccessPage("metadata", "authenticated", () => false)).toBe(false);
     expect(canAccessPage("metadata", "anonymous", () => true)).toBe(false);
   });

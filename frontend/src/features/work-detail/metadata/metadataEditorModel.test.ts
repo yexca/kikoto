@@ -29,24 +29,53 @@ describe("metadata editor model", () => {
 
   it("clears blank overrides while preserving an entity selected by id", () => {
     expect(
-      workMetadataOverridePayload({
-        title: "  ",
-        circleName: " ",
-        circleExternalId: " example-circle ",
-        seriesName: " ",
-        seriesTitleId: "",
-        seriesCircleExternalId: "",
-        voiceActors: [
-          { name: " Example Voice ", personId: 7 },
-          { name: " ", personId: 0 },
-        ],
-      }),
+      workMetadataOverridePayload(
+        {
+          title: "  ",
+          circleName: " ",
+          circleExternalId: " example-circle ",
+          seriesName: " ",
+          seriesTitleId: "",
+          seriesCircleExternalId: "",
+          voiceActors: [
+            { name: " Example Voice ", personId: 7 },
+            { name: " ", personId: 0 },
+          ],
+        },
+        {
+          title: "Initial title",
+          circleName: "Initial circle",
+          circleExternalId: "",
+          seriesName: "Initial series",
+          seriesTitleId: "",
+          seriesCircleExternalId: "",
+          voiceActors: [],
+        },
+      ),
     ).toEqual({
       title: null,
       circle: { name: "", externalId: "example-circle" },
       series: null,
       voiceActors: [{ name: "Example Voice", personId: 7 }],
     });
+  });
+
+  it("submits normalized differences and leaves untouched projected fields unfrozen", () => {
+    const initial = {
+      title: "Projected title",
+      circleName: "Synthetic circle",
+      circleExternalId: "RG00000000",
+      seriesName: "Synthetic series",
+      seriesTitleId: "SRI0000000000",
+      seriesCircleExternalId: "RG00000000",
+      voiceActors: [{ name: "Synthetic voice", personId: 1 }],
+    };
+    expect(workMetadataOverridePayload(initial, initial)).toEqual({});
+    expect(workMetadataOverridePayload({ ...initial, title: " Projected title " }, initial)).toEqual({});
+    expect(workMetadataOverridePayload({ ...initial, title: "Authored title" }, initial)).toEqual({
+      title: "Authored title",
+    });
+    expect(workMetadataOverridePayload({ ...initial, voiceActors: [] }, initial)).toEqual({ voiceActors: [] });
   });
 
   it("accepts only another DLsite code as a metadata link", () => {

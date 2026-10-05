@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/yexca/kikoto/backend/internal/storage"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -504,56 +506,16 @@ func TestSyncFamilyMarksRequestedProductUnavailable(t *testing.T) {
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite", ":memory:")
+	db, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
-
-	schema := []string{
-		`CREATE TABLE metadata_provider (id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE TABLE work (id INTEGER PRIMARY KEY, primary_code TEXT NOT NULL UNIQUE, work_type TEXT NOT NULL DEFAULT 'audio', title TEXT NOT NULL, title_kana TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', release_date TEXT, age_rating TEXT NOT NULL DEFAULT '', cover_asset_id INTEGER, duration_seconds INTEGER, rating_average REAL, sales_count INTEGER, regular_price INTEGER, current_price INTEGER, price_currency TEXT NOT NULL DEFAULT '', is_permanently_free INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE TABLE work_metadata_provider_state (work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id) ON DELETE CASCADE, status TEXT NOT NULL CHECK(status IN ('available', 'not_found')), message TEXT NOT NULL DEFAULT '', checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(work_id, provider_id))`,
-		`CREATE TABLE logical_work (id INTEGER PRIMARY KEY, canonical_work_id INTEGER REFERENCES work(id) ON DELETE SET NULL, canonical_code TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE TABLE work_edition (work_id INTEGER PRIMARY KEY REFERENCES work(id) ON DELETE CASCADE, logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE, provider_id INTEGER REFERENCES metadata_provider(id), primary_code TEXT NOT NULL, base_code TEXT NOT NULL DEFAULT '', metadata_language TEXT NOT NULL DEFAULT '', edition_label TEXT NOT NULL DEFAULT '', is_canonical INTEGER NOT NULL DEFAULT 0, translation_kind TEXT NOT NULL DEFAULT 'unknown', classification_source TEXT NOT NULL DEFAULT '', maker_id TEXT NOT NULL DEFAULT '', origin_maker_id TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE UNIQUE INDEX idx_work_edition_provider_code ON work_edition(provider_id, primary_code)`,
-		`CREATE INDEX idx_work_edition_logical_work ON work_edition(logical_work_id, is_canonical DESC, primary_code)`,
-		`CREATE TABLE work_code_alias (id INTEGER PRIMARY KEY, logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id), primary_code TEXT NOT NULL, metadata_language TEXT NOT NULL DEFAULT '', edition_label TEXT NOT NULL DEFAULT '', source_work_id INTEGER REFERENCES work(id) ON DELETE SET NULL, relationship_kind TEXT NOT NULL DEFAULT 'provider_declared', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(provider_id, primary_code))`,
-		`CREATE TABLE work_external_id (id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id), id_type TEXT NOT NULL, external_id TEXT NOT NULL, url TEXT NOT NULL DEFAULT '', is_primary INTEGER NOT NULL DEFAULT 0, UNIQUE(provider_id, id_type, external_id))`,
-		`CREATE TABLE metadata_snapshot (id INTEGER PRIMARY KEY, work_id INTEGER REFERENCES work(id) ON DELETE SET NULL, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id), external_id TEXT NOT NULL, snapshot_json TEXT NOT NULL, fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, variant_key TEXT NOT NULL DEFAULT '', edition_language TEXT NOT NULL DEFAULT '', request_locale TEXT NOT NULL DEFAULT '', content_hash TEXT NOT NULL DEFAULT '')`,
-		`CREATE TABLE dlsite_metadata_variant (id INTEGER PRIMARY KEY, logical_work_id INTEGER NOT NULL REFERENCES logical_work(id) ON DELETE CASCADE, work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE, provider_id INTEGER NOT NULL REFERENCES metadata_provider(id) ON DELETE CASCADE, external_id TEXT NOT NULL, edition_language TEXT NOT NULL DEFAULT '', request_locale TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]', content_hash TEXT NOT NULL DEFAULT '', fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(provider_id, work_id))`,
-		`CREATE TABLE tag (id INTEGER PRIMARY KEY, namespace TEXT NOT NULL, normalized_name TEXT NOT NULL, display_name TEXT NOT NULL, language TEXT NOT NULL DEFAULT '', is_user_defined INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(namespace, normalized_name, language))`,
-		`CREATE TABLE work_tag (work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE, tag_id INTEGER NOT NULL REFERENCES tag(id) ON DELETE CASCADE, source TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(work_id, tag_id, source))`,
-		`CREATE TABLE dlsite_genre_name (genre_id INTEGER NOT NULL CHECK(genre_id > 0), language TEXT NOT NULL, name TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (genre_id, language))`,
-		`CREATE TABLE work_dlsite_genre (work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE, genre_id INTEGER NOT NULL CHECK(genre_id > 0), PRIMARY KEY (work_id, genre_id))`,
-		`CREATE TABLE workflow_definition (id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', definition_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE TABLE workflow_trigger (id INTEGER PRIMARY KEY, workflow_definition_id INTEGER NOT NULL REFERENCES workflow_definition(id) ON DELETE CASCADE, trigger_type TEXT NOT NULL, display_name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, schedule_json TEXT NOT NULL DEFAULT '{}', config_json TEXT NOT NULL DEFAULT '{}', next_run_at TEXT, last_run_at TEXT, last_success_at TEXT, last_error_message TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE TABLE workflow_run (id INTEGER PRIMARY KEY, workflow_definition_id INTEGER REFERENCES workflow_definition(id) ON DELETE SET NULL, trigger_id INTEGER REFERENCES workflow_trigger(id) ON DELETE SET NULL, workflow_code TEXT NOT NULL, display_name TEXT NOT NULL, status TEXT NOT NULL, trigger_type TEXT NOT NULL, trigger_reason TEXT NOT NULL DEFAULT '', input_json TEXT NOT NULL DEFAULT '{}', summary_json TEXT NOT NULL DEFAULT '{}', started_at TEXT, finished_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE TABLE workflow_node_run (id INTEGER PRIMARY KEY, workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE, node_id TEXT NOT NULL, node_type TEXT NOT NULL, display_name TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, input_json TEXT NOT NULL DEFAULT '{}', output_json TEXT NOT NULL DEFAULT '{}', error_message TEXT NOT NULL DEFAULT '', started_at TEXT, finished_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE TABLE workflow_job (id INTEGER PRIMARY KEY, workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE, workflow_node_run_id INTEGER REFERENCES workflow_node_run(id) ON DELETE SET NULL, worker_type TEXT NOT NULL, status TEXT NOT NULL, priority INTEGER NOT NULL DEFAULT 0, resource_key TEXT NOT NULL DEFAULT '', payload_json TEXT NOT NULL DEFAULT '{}', checkpoint_json TEXT NOT NULL DEFAULT '{}', recoverable INTEGER NOT NULL DEFAULT 0, max_retries INTEGER NOT NULL DEFAULT 3, resume_count INTEGER NOT NULL DEFAULT 0, available_at TEXT, retry_count INTEGER NOT NULL DEFAULT 0, error_message TEXT NOT NULL DEFAULT '', progress_current INTEGER NOT NULL DEFAULT 0, progress_total INTEGER NOT NULL DEFAULT 0, progress_bytes_current INTEGER NOT NULL DEFAULT 0, progress_bytes_total INTEGER NOT NULL DEFAULT 0, progress_bytes_unknown_items INTEGER NOT NULL DEFAULT 0, locked_by TEXT NOT NULL DEFAULT '', locked_at TEXT, heartbeat_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE TABLE workflow_candidate (id INTEGER PRIMARY KEY, workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE, workflow_node_run_id INTEGER REFERENCES workflow_node_run(id) ON DELETE SET NULL, candidate_type TEXT NOT NULL, external_key TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, payload_json TEXT NOT NULL DEFAULT '{}', decision_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE TABLE workflow_event (id INTEGER PRIMARY KEY, workflow_run_id INTEGER NOT NULL REFERENCES workflow_run(id) ON DELETE CASCADE, workflow_node_run_id INTEGER REFERENCES workflow_node_run(id) ON DELETE SET NULL, workflow_job_id INTEGER REFERENCES workflow_job(id) ON DELETE SET NULL, level TEXT NOT NULL DEFAULT 'info', event_type TEXT NOT NULL, message TEXT NOT NULL, detail_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`INSERT INTO work (primary_code, title) VALUES ('RJ00000004', 'Local title')`,
-	}
-	for _, statement := range schema {
-		if _, err := db.Exec(statement); err != nil {
-			t.Fatal(err)
-		}
-	}
-	issueSchema, err := migrations.Files.ReadFile("033_metadata_sync_issues.sql")
-	if err != nil {
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	if err := storage.MigrateFS(db, migrations.Files, "test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(string(issueSchema)); err != nil {
-		t.Fatal(err)
-	}
-	linkSchema, err := migrations.Files.ReadFile("045_work_metadata_link.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(string(linkSchema)); err != nil {
+	if _, err := db.Exec("INSERT INTO work(primary_code,title) VALUES ('RJ00000004','Local title')"); err != nil {
 		t.Fatal(err)
 	}
 	return db
