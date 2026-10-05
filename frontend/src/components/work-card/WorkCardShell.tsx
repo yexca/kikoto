@@ -600,9 +600,11 @@ function MeasuredBadgeList({
           </button>
         )}
       </div>
+      {/* Only widths are measured. A zero-height, clipped column keeps the stacked tags from
+          extending the page's scroll height below the last row of cards. */}
       <div
         ref={measurementRef}
-        className="pointer-events-none invisible absolute inset-x-0 top-0 -z-10 flex flex-col items-start"
+        className="pointer-events-none invisible absolute inset-x-0 top-0 -z-10 flex h-0 flex-col items-start overflow-hidden"
         aria-hidden="true"
       >
         {badges.map((badge) => (
