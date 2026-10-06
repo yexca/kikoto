@@ -311,6 +311,10 @@ export const surfaceEnglish = {
   permissions: {
     demoReadOnly: "Demo mode is read-only.",
     demoReadOnlyNotice: "Demo mode: every feature is visible, but server data cannot be changed.",
+    demoLibraryNotice:
+      "Demo mode: Kikoto itself does not provide any works; it only manages audio works you have purchased yourself. The works in this demo are all free works from DLsite, and their copyrights belong to their original creators.",
+    demoWorksNotice:
+      "Demo mode: these works are shown for demonstration only, and their copyrights belong to their original creators.",
     permissionDenied: "Your account does not have permission to use this feature.",
   },
   workflow: {

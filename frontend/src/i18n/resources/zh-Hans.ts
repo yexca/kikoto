@@ -722,6 +722,7 @@ export const zhHansResource = {
         technologies: "主要技术栈",
         license: "许可证",
         copyright: "版权所有 (C) 2026 yexca。",
+        usageNotice: "Kikoto 不提供任何服务，仅用于用户管理自己所购买的音声作品。",
         licenseText:
           "Kikoto 是根据 <license>GNU AGPL v3</license> 授权的自由软件，不提供任何保证；完整对应源代码可在项目仓库中找到。",
         groups: {

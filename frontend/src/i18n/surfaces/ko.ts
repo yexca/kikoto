@@ -304,6 +304,9 @@ export const surfaceKorean = {
   permissions: {
     demoReadOnly: "데모 모드는 읽기 전용입니다.",
     demoReadOnlyNotice: "데모 모드: 모든 기능을 볼 수 있지만 서버 데이터는 변경할 수 없습니다.",
+    demoLibraryNotice:
+      "데모 모드: Kikoto 자체는 어떠한 작품도 제공하지 않으며, 사용자가 직접 구매한 음성 작품을 관리하는 용도로만 사용됩니다. 이 데모에 사용된 작품은 모두 DLsite의 무료 작품이며, 저작권은 원저작자에게 있습니다.",
+    demoWorksNotice: "데모 모드: 작품은 데모 용도로만 표시되며, 저작권은 원저작자에게 있습니다.",
     permissionDenied: "이 기능을 사용할 권한이 없습니다.",
   },
   workflow: {
