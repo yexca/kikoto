@@ -230,8 +230,9 @@ test("@desktop favorites puts shelves in a collapsible rail beside search and wo
   await expect(search).toBeVisible();
   await expect(resource).toBeVisible();
   await expect(page.getByRole("button", { name: "Sort: Marked or added" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Columns: Auto" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Items per page: 24" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Display options (Columns: Auto · Items per page: 24)" }),
+  ).toBeVisible();
   const searchBox = await search.boundingBox();
   const resourceBox = await resource.boundingBox();
   expect(searchBox).not.toBeNull();
@@ -337,9 +338,10 @@ test("mobile favorites shows shelves as one row above search and icon controls",
   await expect(search).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Favorite shelves" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Resource: Any available" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Columns: Auto" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Display options (Columns: Auto · Items per page: 24)" }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Sort: Marked or added" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Items per page: 24" })).toBeVisible();
 
   const mobileListScroller = page.getByRole("region", { name: "Favorite list tabs" });
   const mobileListTab = mobileListScroller.locator("button").first();
@@ -391,9 +393,8 @@ test("mobile favorites shows shelves as one row above search and icon controls",
   const circleSearch = page.getByPlaceholder("Search circles");
   await expect(circleSearch).toBeVisible();
   await expect(page.getByRole("button", { name: /^Resource:/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /^Columns:/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Sort:/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /^Items per page:/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Display options/ })).toHaveCount(0);
   await circleSearch.fill("Example");
   await expect(circleSearch).toHaveValue("Example");
 });

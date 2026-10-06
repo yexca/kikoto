@@ -5,11 +5,13 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoContentNotice } from "@/components/DemoReadOnlyNotice";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
-import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { WorkCollectionLayoutPicker, useWorkCollectionLayout } from "@/components/work-collection/WorkCollectionLayout";
+import {
+  WorkCollectionDisplayPicker,
+  useWorkCollectionLayout,
+} from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
@@ -947,18 +949,15 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                     onReshuffle={reshuffleFavorites}
                   />
                   <FavoriteViewToggle value={viewMode} onChange={setViewMode} />
-                  {viewMode === "grid" && (
-                    <WorkCollectionLayoutPicker
-                      mobileColumns={mobileColumns}
-                      desktopColumns={desktopColumns}
-                      onMobileColumnsChange={setMobileColumns}
-                      onDesktopColumnsChange={setDesktopColumns}
-                    />
-                  )}
-                  <PageSizePicker
-                    value={pageSize}
-                    options={pageSizeOptions}
-                    onChange={(value) => changePageSize(value as PageSize)}
+                  <WorkCollectionDisplayPicker
+                    mobileColumns={mobileColumns}
+                    desktopColumns={desktopColumns}
+                    onMobileColumnsChange={setMobileColumns}
+                    onDesktopColumnsChange={setDesktopColumns}
+                    showColumns={viewMode === "grid"}
+                    pageSize={pageSize}
+                    pageSizeOptions={pageSizeOptions}
+                    onPageSizeChange={(value) => changePageSize(value as PageSize)}
                   />
                   <FavoriteSelectionToggle active={selectionMode} onToggle={toggleSelectionMode} />
                 </div>
