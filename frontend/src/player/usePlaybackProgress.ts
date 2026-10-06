@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { PLAYBACK_CURSOR_UPDATED_EVENT, type PlaybackCursorUpdatedDetail } from "@/lib/appEvents";
 import { api, ApiError } from "@/lib/api";
-import type { ClientPrincipalID } from "@/lib/clientStorageScope";
+import {
+  currentClientStorageScope,
+  isClientStorageScopeOnCurrentServer,
+  type ClientPrincipalID,
+} from "@/lib/clientStorageScope";
 
 import { canPersistPlaybackProgress } from "./playbackStart";
 import { shouldSaveRemoteProgress, type ProgressSaveMarker } from "./playerProgress";
@@ -15,22 +19,44 @@ type ProgressSavePayload = {
   completed: boolean;
 };
 
-type QueuedProgressSave = { payload: ProgressSavePayload; principalID: ClientPrincipalID };
+type ProgressSaveQueue = {
+  inFlight: boolean;
+  pending: Map<number, ProgressSavePayload>;
+  controller: AbortController;
+  isCurrent: () => boolean;
+};
+
+function waitForRetry(signal: AbortSignal) {
+  return new Promise<void>((resolve) => {
+    const finish = () => {
+      window.clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timer = window.setTimeout(finish, 200 + Math.round(Math.random() * 200));
+    signal.addEventListener("abort", finish, { once: true });
+    if (signal.aborted) finish();
+  });
+}
 
 async function saveProgressWithBusyRetry(
   mediaItemId: number,
   payload: ProgressSavePayload,
   principalID: ClientPrincipalID,
+  queue: ProgressSaveQueue,
 ) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (!queue.isCurrent()) return;
     try {
-      const cursor = await api.updateMediaProgress(mediaItemId, payload);
+      const cursor = await api.updateMediaProgress(mediaItemId, payload, queue.controller.signal);
+      if (!queue.isCurrent()) return;
       const detail: PlaybackCursorUpdatedDetail = { ...cursor, principalID };
       window.dispatchEvent(new CustomEvent(PLAYBACK_CURSOR_UPDATED_EVENT, { detail }));
       return;
     } catch (error) {
       if (!(error instanceof ApiError) || error.code !== "database_busy" || attempt > 0) return;
-      await new Promise((resolve) => window.setTimeout(resolve, 200 + Math.round(Math.random() * 200)));
+      if (!queue.isCurrent()) return;
+      await waitForRetry(queue.controller.signal);
     }
   }
 }
@@ -42,25 +68,46 @@ async function saveProgressWithBusyRetry(
  */
 export function usePlaybackProgress(engine: PlaybackEngine, canSaveRemotely: boolean, principalID: ClientPrincipalID) {
   const { refs, currentTrack, currentPlaybackInstanceKey, duration, durationLocationId } = engine;
+  const scope = currentClientStorageScope(principalID);
+  const currentScopeRef = useRef<string | null>(null);
+  currentScopeRef.current = canSaveRemotely ? scope : null;
   const lastSavedRef = useRef<ProgressSaveMarker | null>(null);
-  const saveQueueRef = useRef<{ inFlight: boolean; pending: Map<number, QueuedProgressSave> }>({
-    inFlight: false,
-    pending: new Map(),
-  });
+  const saveQueueRef = useRef<ProgressSaveQueue | null>(null);
   const latestSaveRef = useRef<(completed: boolean, force?: boolean) => void>(() => {});
+
+  useEffect(() => {
+    lastSavedRef.current = null;
+    if (!canSaveRemotely) return;
+    const controller = new AbortController();
+    const queue: ProgressSaveQueue = {
+      inFlight: false,
+      pending: new Map(),
+      controller,
+      isCurrent: () =>
+        !controller.signal.aborted && currentScopeRef.current === scope && isClientStorageScopeOnCurrentServer(scope),
+    };
+    saveQueueRef.current = queue;
+    return () => {
+      // Requests use the session current when they start. Never drain or retry
+      // this player's saves after an account/server change or unmount.
+      controller.abort();
+      queue.pending.clear();
+      if (saveQueueRef.current === queue) saveQueueRef.current = null;
+    };
+  }, [canSaveRemotely, scope]);
 
   const queueProgressSave = (mediaItemId: number, payload: ProgressSavePayload) => {
     const queueState = saveQueueRef.current;
-    // A save outlives the render that queued it; it belongs to the account that queued it.
-    queueState.pending.set(mediaItemId, { payload, principalID });
+    if (!queueState?.isCurrent()) return;
+    queueState.pending.set(mediaItemId, payload);
     if (queueState.inFlight) return;
     queueState.inFlight = true;
     void (async () => {
-      while (queueState.pending.size > 0) {
-        const next = queueState.pending.entries().next().value as [number, QueuedProgressSave] | undefined;
+      while (queueState.isCurrent() && queueState.pending.size > 0) {
+        const next = queueState.pending.entries().next().value;
         if (!next) break;
         queueState.pending.delete(next[0]);
-        await saveProgressWithBusyRetry(next[0], next[1].payload, next[1].principalID);
+        await saveProgressWithBusyRetry(next[0], next[1], principalID, queueState);
       }
       queueState.inFlight = false;
     })();

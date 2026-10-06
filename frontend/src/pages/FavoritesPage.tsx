@@ -46,12 +46,12 @@ import {
   type FavoriteResourceSelection,
 } from "@/features/favorites/FavoriteWorksControls";
 import {
-  favoriteShelfCovers,
   favoriteShelfKind,
   favoriteShelfProgress,
   favoriteStatusFilterOptions,
 } from "@/features/favorites/favoriteShelfModel";
 import { useFavoriteViewMode } from "@/features/favorites/favoriteViewMode";
+import { useFavoriteShelfCovers } from "@/features/favorites/useFavoriteShelfCovers";
 import {
   defaultFavoritesBrowseState,
   favoritesBrowseSearch,
@@ -511,15 +511,20 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     return () => controller.abort();
   }, [active, auth.user, favoriteEntity, hasWorksSnapshot, principalID, shelfCountsUserID]);
   const continueWorks = useFavoriteContinueListening({
+    enabled: active && Boolean(auth.user) && favoriteEntity === "works" && !query.trim() && currentPage === 1,
+    listID: activeList,
+    requestKey: `${principalID ?? "anonymous"}:${worksReloadToken}`,
+  });
+  const shelfCovers = useFavoriteShelfCovers({
+    // Waiting for the shelf counts avoids a second request when the first count arrives.
     enabled:
       active &&
       Boolean(auth.user) &&
       favoriteEntity === "works" &&
-      statusFilter === "all" &&
-      !query.trim() &&
-      currentPage === 1,
+      (hasWorksSnapshot || shelfCountsUserID === principalID),
     listID: activeList,
-    requestKey: `${principalID ?? "anonymous"}:${worksReloadToken}`,
+    // The shelf total follows membership changes that do not reload the works.
+    requestKey: `${principalID ?? "anonymous"}:${worksReloadToken}:${shelfTotal}`,
   });
 
   useEffect(() => {
@@ -863,134 +868,141 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
             </div>
           )}
 
-          {favoriteEntity === "works" ? (
-            <FavoriteShelfHeader
-              kind={shelfKind}
-              listIcon={activeUserList ? favoriteListIcon(activeUserList) : undefined}
-              title={
-                shelfKind === "all"
-                  ? t("favorites.all")
-                  : shelfKind === "marked"
-                    ? t("favorites.marked")
-                    : (activeUserList?.name ?? t("favorites.lists"))
-              }
-              description={
-                shelfKind === "all"
-                  ? t("favorites.shelfAllDescription")
-                  : shelfKind === "marked"
-                    ? t("favorites.markedShelfDescription")
-                    : activeUserList?.description
-              }
-              countLabel={hasWorksSnapshot ? t("favorites.workCount", { count: shelfTotal }) : null}
-              covers={hasWorksSnapshot ? favoriteShelfCovers(works) : []}
-              progress={hasWorksSnapshot ? favoriteShelfProgress(statusCounts) : null}
-              actions={
-                activeUserList ? (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 shrink-0 text-muted-foreground"
-                    onClick={() => openFavoriteListManager(activeUserList)}
-                    aria-label={t("favorites.editList")}
-                    title={t("favorites.editList")}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                ) : undefined
-              }
-            />
-          ) : (
-            <FavoriteShelfHeader
-              kind={favoriteEntity}
-              title={favoriteEntity === "circles" ? t("creatorBrowse.circles") : t("creatorBrowse.voiceActors")}
-              description={
-                favoriteEntity === "circles"
-                  ? t("favorites.circleShelfDescription")
-                  : t("favorites.voiceShelfDescription")
-              }
-              countLabel={
-                hasEntitySnapshot
-                  ? favoriteEntity === "circles"
-                    ? t("favorites.circleCount", { count: favoriteCircles.length })
-                    : t("favorites.voiceCount", { count: favoriteVoices.length })
-                  : null
-              }
-              covers={[]}
-            />
-          )}
-
-          {favoriteEntity === "works" && <FavoriteContinueStrip works={continueWorks} onOpen={openItemWork} />}
-
-          <div className="space-y-3" data-toast-avoid>
-            <div className="flex flex-wrap items-center gap-2">
-              <FavoriteSearchInput
-                value={query}
-                placeholder={searchPlaceholder}
-                onChange={changeFavoriteQuery}
-                className="w-full @md:w-auto @md:max-w-sm @md:flex-1"
-              />
+          {/* A wide shelf puts search, filters, and quick mark tabs beside the header, so works start higher. */}
+          <div className="flex flex-col gap-5 @min-[60rem]:flex-row @min-[60rem]:items-start @min-[60rem]:gap-6">
+            <div className="min-w-0 flex-1">
+              {favoriteEntity === "works" ? (
+                <FavoriteShelfHeader
+                  kind={shelfKind}
+                  listIcon={activeUserList ? favoriteListIcon(activeUserList) : undefined}
+                  title={
+                    shelfKind === "all"
+                      ? t("favorites.all")
+                      : shelfKind === "marked"
+                        ? t("favorites.marked")
+                        : (activeUserList?.name ?? t("favorites.lists"))
+                  }
+                  description={
+                    shelfKind === "all"
+                      ? t("favorites.shelfAllDescription")
+                      : shelfKind === "marked"
+                        ? t("favorites.markedShelfDescription")
+                        : activeUserList?.description
+                  }
+                  countLabel={hasWorksSnapshot ? t("favorites.workCount", { count: shelfTotal }) : null}
+                  covers={shelfCovers}
+                  progress={hasWorksSnapshot ? favoriteShelfProgress(statusCounts) : null}
+                  actions={
+                    activeUserList ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 text-muted-foreground"
+                        onClick={() => openFavoriteListManager(activeUserList)}
+                        aria-label={t("favorites.editList")}
+                        title={t("favorites.editList")}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ) : (
+                <FavoriteShelfHeader
+                  kind={favoriteEntity}
+                  title={favoriteEntity === "circles" ? t("creatorBrowse.circles") : t("creatorBrowse.voiceActors")}
+                  description={
+                    favoriteEntity === "circles"
+                      ? t("favorites.circleShelfDescription")
+                      : t("favorites.voiceShelfDescription")
+                  }
+                  countLabel={
+                    hasEntitySnapshot
+                      ? favoriteEntity === "circles"
+                        ? t("favorites.circleCount", { count: favoriteCircles.length })
+                        : t("favorites.voiceCount", { count: favoriteVoices.length })
+                      : null
+                  }
+                  covers={[]}
+                />
+              )}
+            </div>
+            <div
+              className="flex min-w-0 flex-col gap-3 @min-[60rem]:max-w-[46rem] @min-[60rem]:items-end"
+              data-toast-avoid
+            >
+              <div className="flex flex-wrap items-center gap-2 @min-[60rem]:w-full @min-[60rem]:flex-nowrap @min-[60rem]:justify-end">
+                <FavoriteSearchInput
+                  value={query}
+                  placeholder={searchPlaceholder}
+                  onChange={changeFavoriteQuery}
+                  className="w-full @md:w-auto @md:max-w-sm @md:flex-1 @min-[60rem]:min-w-40 @min-[60rem]:max-w-none"
+                />
+                {favoriteEntity === "works" && (
+                  <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                    <FavoriteResourceFilter
+                      availability={availabilityFilter}
+                      sources={fileSources}
+                      selectedSourceIDs={sourceIDs}
+                      loading={areFileSourcesLoading}
+                      compact={mobileNavigationLayout}
+                      onChange={changeResourceSelection}
+                    />
+                    <FavoriteSortControls
+                      value={sort}
+                      direction={sortDirection}
+                      disabled={isLoading}
+                      compact={mobileNavigationLayout}
+                      onChange={changeFavoriteSort}
+                      onDirectionChange={changeFavoriteSortDirection}
+                      onReshuffle={reshuffleFavorites}
+                    />
+                    <FavoriteViewToggle value={viewMode} onChange={setViewMode} />
+                    <WorkCollectionDisplayPicker
+                      mobileColumns={mobileColumns}
+                      desktopColumns={desktopColumns}
+                      onMobileColumnsChange={setMobileColumns}
+                      onDesktopColumnsChange={setDesktopColumns}
+                      showColumns={viewMode === "grid"}
+                      pageSize={pageSize}
+                      pageSizeOptions={pageSizeOptions}
+                      onPageSizeChange={(value) => changePageSize(value as PageSize)}
+                    />
+                    <FavoriteSelectionToggle active={selectionMode} onToggle={toggleSelectionMode} />
+                  </div>
+                )}
+              </div>
               {favoriteEntity === "works" && (
-                <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                  <FavoriteResourceFilter
-                    availability={availabilityFilter}
-                    sources={fileSources}
-                    selectedSourceIDs={sourceIDs}
-                    loading={areFileSourcesLoading}
-                    compact={mobileNavigationLayout}
-                    onChange={changeResourceSelection}
+                <div className="flex flex-col gap-2 @min-[60rem]:items-end @min-[60rem]:gap-3">
+                  <FavoriteStatusTabs
+                    options={favoriteStatusFilterOptions(statusCounts, shelfTotal, statusFilter)}
+                    value={statusFilter}
+                    onChange={changeStatusFilter}
                   />
-                  <FavoriteSortControls
-                    value={sort}
-                    direction={sortDirection}
-                    disabled={isLoading}
-                    compact={mobileNavigationLayout}
-                    onChange={changeFavoriteSort}
-                    onDirectionChange={changeFavoriteSortDirection}
-                    onReshuffle={reshuffleFavorites}
-                  />
-                  <FavoriteViewToggle value={viewMode} onChange={setViewMode} />
-                  <WorkCollectionDisplayPicker
-                    mobileColumns={mobileColumns}
-                    desktopColumns={desktopColumns}
-                    onMobileColumnsChange={setMobileColumns}
-                    onDesktopColumnsChange={setDesktopColumns}
-                    showColumns={viewMode === "grid"}
-                    pageSize={pageSize}
-                    pageSizeOptions={pageSizeOptions}
-                    onPageSizeChange={(value) => changePageSize(value as PageSize)}
-                  />
-                  <FavoriteSelectionToggle active={selectionMode} onToggle={toggleSelectionMode} />
+                  {/* A single page needs no top pager; the shared pager draws its own divider, so this row owns spacing. */}
+                  <div
+                    hidden={totalPages <= 1}
+                    className="shrink-0 self-end [&>div]:min-h-0 [&>div]:border-0 [&>div]:py-0"
+                  >
+                    <WorkCollectionPagination
+                      placement="top"
+                      page={currentPage}
+                      pageSize={pageSize}
+                      totalItems={totalWorks}
+                      totalPages={totalPages}
+                      compactMobile
+                      compactTop
+                      refreshing={isLoading && hasWorksSnapshot}
+                      refreshingLabel={t("favorites.refreshing")}
+                      onPageChange={setPage}
+                    />
+                  </div>
                 </div>
               )}
             </div>
-            {favoriteEntity === "works" && (
-              <div className="flex flex-col gap-2 @min-[64rem]:flex-row @min-[64rem]:items-center @min-[64rem]:gap-4">
-                <FavoriteStatusTabs
-                  options={favoriteStatusFilterOptions(statusCounts, shelfTotal, statusFilter)}
-                  value={statusFilter}
-                  onChange={changeStatusFilter}
-                />
-                {/* A single page needs no top pager; the shared pager draws its own divider, so this row owns spacing. */}
-                <div
-                  hidden={totalPages <= 1}
-                  className="shrink-0 self-end @min-[64rem]:ml-auto @min-[64rem]:self-auto [&>div]:min-h-0 [&>div]:border-0 [&>div]:py-0"
-                >
-                  <WorkCollectionPagination
-                    placement="top"
-                    page={currentPage}
-                    pageSize={pageSize}
-                    totalItems={totalWorks}
-                    totalPages={totalPages}
-                    compactMobile
-                    compactTop
-                    refreshing={isLoading && hasWorksSnapshot}
-                    refreshingLabel={t("favorites.refreshing")}
-                    onPageChange={setPage}
-                  />
-                </div>
-              </div>
-            )}
           </div>
+
+          {favoriteEntity === "works" && <FavoriteContinueStrip works={continueWorks} onOpen={openItemWork} />}
 
           {favoriteEntity !== "works" && (
             <FavoriteCreatorShelf

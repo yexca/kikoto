@@ -185,7 +185,9 @@ func DiscoverChangedFolders(root string, options Options, changedPaths []string)
 			return nil, Summary{}, err
 		}
 		if isDirectory {
-			scopes[strings.ToLower(absPath)] = absPath
+			// Filesystem paths can differ only by case; work-code folding does
+			// not apply to directory identity.
+			scopes[absPath] = absPath
 		}
 	}
 
@@ -327,7 +329,7 @@ func (discovery *changedFolderDiscovery) addCandidate(path string) error {
 		return nil
 	}
 	cleanPath := filepath.Clean(path)
-	discovery.candidates[strings.ToLower(cleanPath)] = WorkFolder{
+	discovery.candidates[cleanPath] = WorkFolder{
 		Code: code, Title: strings.TrimSpace(filepath.Base(path)), AbsPath: cleanPath,
 		RelPath: filepath.ToSlash(rel), Depth: depth,
 	}

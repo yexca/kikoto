@@ -49,6 +49,8 @@ async function mockFavorites(
     sources?: LibrarySource[];
     onFavoriteWorksRequest?: (sourceIDs: number[]) => void;
     interactiveQuickMark?: boolean;
+    /** Gives each status filter its own covers, so filtered results look different. */
+    statusCovers?: boolean;
   } = {},
 ) {
   let savedTags: UserTag[] = baseWork.userTags;
@@ -121,12 +123,22 @@ async function mockFavorites(
         await delayedList.gate;
       }
       const emptied = options.interactiveQuickMark && quickMark === "none";
+      const status = url.searchParams.get("status") ?? "all";
       await route.fulfill({
         json: {
-          ...worksPageFixture(emptied ? [] : works.map((work) => ({ ...work, listeningStatus: quickMark })), {
-            page: Number(url.searchParams.get("page") ?? 1),
-            total: emptied ? 0 : 48,
-          }),
+          ...worksPageFixture(
+            emptied
+              ? []
+              : works.map((work) => ({
+                  ...work,
+                  listeningStatus: quickMark,
+                  coverUrl: options.statusCovers ? `/covers/${status}-${work.id}.jpg` : work.coverUrl,
+                })),
+            {
+              page: Number(url.searchParams.get("page") ?? 1),
+              total: emptied ? 0 : 48,
+            },
+          ),
           shelfTotal: emptied ? 0 : 48,
           listCounts: { "1": emptied ? 0 : 24, "2": 24 },
           statusCounts: quickMark === "none" ? {} : { [quickMark]: 48 },
@@ -218,7 +230,7 @@ test("@desktop favorites puts shelves in a collapsible rail beside search and wo
   await mockFavorites(page, {
     sources: [exampleRemoteA],
   });
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto("/favorites");
 
   const shelves = page.getByRole("navigation", { name: "Favorite shelves" });
@@ -238,6 +250,13 @@ test("@desktop favorites puts shelves in a collapsible rail beside search and wo
   expect(searchBox).not.toBeNull();
   expect(resourceBox).not.toBeNull();
   expect(searchBox!.x + searchBox!.width).toBeLessThanOrEqual(resourceBox!.x);
+  // A wide shelf puts search and the quick mark tabs beside the header, not below it.
+  const headingBox = await page.getByRole("heading", { name: "All Favorites", level: 2 }).boundingBox();
+  const statusTabsBox = await page.getByRole("group", { name: "Listening status filters" }).boundingBox();
+  expect(headingBox).not.toBeNull();
+  expect(statusTabsBox).not.toBeNull();
+  expect(searchBox!.x).toBeGreaterThan(headingBox!.x + headingBox!.width);
+  expect(statusTabsBox!.y).toBeLessThan(headingBox!.y + 2 * headingBox!.height);
 
   await resource.click();
   await page.getByRole("menuitemradio", { name: "Example Remote A" }).click();
@@ -325,6 +344,49 @@ test("@desktop favorites puts shelves in a collapsible rail beside search and wo
   await shelves.getByRole("button", { name: /^Circles/ }).click();
   await expect(page.getByPlaceholder("Search circles")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Resource:/ })).toHaveCount(0);
+});
+
+test("continue listening starts collapsed and stays through quick mark filters", async ({ page }) => {
+  await mockFavorites(page);
+  await page.goto("/favorites");
+
+  const toggle = page.getByRole("button", { name: /^Continue listening/ });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  const strip = page.getByRole("region", { name: /^Continue listening/ });
+  await expect(strip.getByRole("listitem")).toHaveCount(0);
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(strip.getByRole("listitem")).toHaveCount(24);
+  await page
+    .getByRole("group", { name: "Listening status filters" })
+    .getByRole("button", { name: /^Finished/ })
+    .click();
+  await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.status)).toBe("finished");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+  // The open strip is a per-device preference.
+  await page.reload();
+  await expect(page.getByRole("button", { name: /^Continue listening/ })).toHaveAttribute("aria-expanded", "true");
+});
+
+test("the shelf artwork stays while quick mark filters change the works below", async ({ page }) => {
+  await mockFavorites(page, { statusCovers: true });
+  await page.goto("/favorites");
+
+  const artwork = page.locator("header").filter({ has: page.getByRole("heading", { name: "All Favorites" }) });
+  const covers = () => artwork.locator("img").evaluateAll((images) => images.map((image) => image.getAttribute("src")));
+  await expect.poll(covers).toHaveLength(4);
+  const initial = await covers();
+
+  await page
+    .getByRole("group", { name: "Listening status filters" })
+    .getByRole("button", { name: /^Finished/ })
+    .click();
+  await expect.poll(() => page.evaluate(() => window.history.state?.favoritesBrowseState?.status)).toBe("finished");
+  // The works below now show the filtered covers; the header keeps the shelf's own.
+  await expect(page.locator('img[src*="/covers/finished-"]').first()).toBeAttached();
+  expect(await covers()).toEqual(initial);
 });
 
 test("mobile favorites shows shelves as one row above search and icon controls", async ({ page }) => {

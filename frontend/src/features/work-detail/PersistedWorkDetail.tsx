@@ -860,12 +860,14 @@ function PersistedDirectoryManagerOverlay({
 function PersistedMetadataEditorOverlay({
   section,
   work,
+  selectedMetadataVariantKey,
   onClose,
   onSaved,
   onLinkChanged,
 }: {
   section: MetadataEditorSection | null;
   work: WorkDetail | null;
+  selectedMetadataVariantKey: string;
   onClose: () => void;
   onSaved: () => void;
   onLinkChanged: (result: WorkMetadataLinkResult) => void;
@@ -875,6 +877,7 @@ function PersistedMetadataEditorOverlay({
   return (
     <WorkMetadataEditorModal
       work={work}
+      selectedMetadataVariantKey={selectedMetadataVariantKey}
       readOnly={demoMode}
       initialSection={section}
       onClose={onClose}
@@ -1854,6 +1857,7 @@ export function PersistedWorkDetailController({
       <PersistedMetadataEditorOverlay
         section={metadataEditorSection}
         work={work}
+        selectedMetadataVariantKey={selectedMetadataVariantKey}
         onClose={() => setMetadataEditorSection(null)}
         onSaved={() => void metadataSaved()}
         onLinkChanged={(result) => void metadataLinkChanged(result)}
