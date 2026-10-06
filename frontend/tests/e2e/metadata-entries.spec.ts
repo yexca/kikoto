@@ -40,6 +40,13 @@ test("language title rows use source placeholders and stage reverts beside other
   await metadataWorkEditor(page);
   const detail = workDetailFixture(work, {
     manualOverrides: { titles: { "ja-jp": "Example Japanese" } },
+    metadataPresentation: {
+      defaultVariantKey: "chinese",
+      variants: [
+        { key: "original", language: "ja-jp", title: "Example original", tags: [], origin: true },
+        { key: "chinese", language: "zh-cn", title: "Example Chinese", tags: [], origin: false },
+      ],
+    },
     titleChoices: {
       "": { title: "Example original", language: "", source: "original", code: work.primaryCode, description: "" },
       "ja-jp": {
@@ -67,14 +74,30 @@ test("language title rows use source placeholders and stage reverts beside other
   const open = () => page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
   await open();
   let dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
-  const allLanguages = dialog.getByRole("textbox", { name: "All languages", exact: true });
+  const universalTitle = dialog.getByRole("textbox", { name: "Universal title", exact: true });
   const chinese = dialog.getByRole("textbox", { name: "Simplified Chinese", exact: true });
   const english = dialog.getByRole("textbox", { name: "English", exact: true });
   const japanese = dialog.getByRole("textbox", { name: "Japanese", exact: true });
-  await expect(allLanguages).toHaveValue("");
-  await expect(allLanguages).toHaveAttribute("placeholder", "Example original");
+  await expect(universalTitle).not.toBeVisible();
+  await expect(japanese).toBeVisible();
   await expect(
-    dialog.getByRole("group", { name: "All languages" }).getByText("Current source: Original title", { exact: true }),
+    dialog.getByRole("group", { name: "Japanese", exact: true }).getByText("origin", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("group", { name: "Simplified Chinese", exact: true }).getByText("current", { exact: true }),
+  ).toBeVisible();
+  const advanced = dialog.getByRole("button", { name: "Advanced title options", exact: true });
+  await expect(advanced).toHaveAttribute("aria-expanded", "false");
+  await advanced.focus();
+  await advanced.press("Enter");
+  await expect(advanced).toHaveAttribute("aria-expanded", "true");
+  await expect(universalTitle).toHaveValue("");
+  await expect(universalTitle).toHaveAttribute("placeholder", "Example original");
+  await expect(universalTitle).toHaveAccessibleDescription(
+    "Overrides provider titles in every language. Per-language manual titles take precedence; the edition and description stay the same.",
+  );
+  await expect(
+    dialog.getByRole("group", { name: "Universal title" }).getByText("Current source: Original title", { exact: true }),
   ).toBeVisible();
   await expect(chinese).toHaveAttribute("placeholder", "Example Chinese");
   await expect(
@@ -112,12 +135,29 @@ test("language title rows use source placeholders and stage reverts beside other
   expect(deletes).toEqual([]);
 });
 
+test("@desktop per-language title fields each occupy a full-width row", async ({ page }) => {
+  await metadataWorkEditor(page);
+  await page.goto("/metadata");
+  await page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  const languages = ["Japanese", "Simplified Chinese", "Traditional Chinese", "English", "Korean"];
+  const boxes = await Promise.all(
+    languages.map((name) => dialog.getByRole("textbox", { name, exact: true }).boundingBox()),
+  );
+  for (const [index, box] of boxes.entries()) {
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeCloseTo(boxes[0]!.x, 0);
+    expect(box!.width).toBeCloseTo(boxes[0]!.width, 0);
+    if (index > 0) expect(box!.y).toBeGreaterThan(boxes[index - 1]!.y + boxes[index - 1]!.height);
+  }
+});
+
 test("own titles are editable while inherited titles stay hints and clearing matches visible changes", async ({
   page,
 }) => {
   await metadataWorkEditor(page);
   const detail = workDetailFixture(work, {
-    manualOverrides: { title: "Example universal", titles: { "": "Example universal", "ja-jp": "Example Japanese" } },
+    manualOverrides: { title: "Example universal", titles: { "ja-jp": "Example Japanese" } },
     titleChoices: {
       "en-us": {
         title: "Example universal",
@@ -149,7 +189,9 @@ test("own titles are editable while inherited titles stay hints and clearing mat
   const englishTitle = dialog.getByRole("textbox", { name: "English", exact: true });
   const japaneseTitle = dialog.getByRole("textbox", { name: "Japanese", exact: true });
   const save = dialog.getByRole("button", { name: "Save", exact: true });
-  await expect(dialog.getByRole("textbox", { name: "All languages", exact: true })).toHaveValue("Example universal");
+  const universalTitle = dialog.getByRole("textbox", { name: "Universal title", exact: true });
+  await expect(universalTitle).toBeVisible();
+  await expect(universalTitle).toHaveValue("Example universal");
   await expect(englishTitle).toHaveValue("");
   await expect(englishTitle).toHaveAttribute("placeholder", "Example universal");
   await expect(english.getByText("Current source: Manual title (all languages)", { exact: true })).toBeVisible();
@@ -176,6 +218,18 @@ test("own titles are editable while inherited titles stay hints and clearing mat
   await save.click();
   await expect(dialog).toHaveCount(0);
   expect(writes[1]).toEqual({ titles: { "ja-jp": null } });
+  await open();
+  await dialog.getByRole("button", { name: "Revert the universal title", exact: true }).click();
+  await expect(universalTitle).toHaveValue("");
+  await expect(dialog.getByRole("group", { name: "Universal title" }).getByText("Reverts on save")).toBeVisible();
+  await dialog.getByRole("tab", { name: /^Cover/ }).click();
+  await dialog.getByRole("tab", { name: /^Title/ }).click();
+  await expect(universalTitle).toBeVisible();
+  await expect(universalTitle).toHaveValue("");
+  await englishTitle.fill("Example authored English");
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+  expect(writes[2]).toEqual({ titles: { "": null, "en-us": "Example authored English" } });
 });
 
 test("@desktop cover-only metadata saves do not freeze any displayed scalar fields", async ({ page }) => {

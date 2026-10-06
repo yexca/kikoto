@@ -14,6 +14,8 @@ export const surfaceEnglish = {
     description: "Description",
   },
   metadataEditor: {
+    originLanguage: "origin",
+    currentLanguage: "current",
     status: {
       manual: "Manual",
       edited: "Edited",
@@ -27,6 +29,11 @@ export const surfaceEnglish = {
     inheritedTitle: "Inherited title",
     languageTitles: "Per-language titles",
     languageTitlesDescription: "Set a title for one display language only. Empty fields inherit.",
+    advancedTitles: "Advanced title options",
+    universalTitle: "Universal title",
+    revertUniversalTitle: "Revert the universal title",
+    universalTitleDescription:
+      "Overrides provider titles in every language. Per-language manual titles take precedence; the edition and description stay the same.",
     coverHint: "The image is copied, so the cover stays even if the file later moves.",
     currentCover: "Current cover",
     searchCircles: "Search circles or type a name",
@@ -65,8 +72,7 @@ export const surfaceEnglish = {
       source: "Metadata source",
     },
     descriptions: {
-      title:
-        "Leave a field empty to keep the title it inherits. The all-languages title applies wherever a language has no title of its own.",
+      title: "Edit a title for each display language. Your manual titles survive metadata refreshes.",
       cover: "Choose one of this work's local images as its cover.",
       tags: "Add or remove tags for this work, and edit each tag's name by language. Tag names are shared, so a renamed tag changes on every work that has it.",
       credits:

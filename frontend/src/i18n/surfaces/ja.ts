@@ -11,6 +11,8 @@ export const surfaceJapanese = {
     description: "作品紹介",
   },
   metadataEditor: {
+    originLanguage: "origin",
+    currentLanguage: "current",
     status: {
       manual: "手動",
       edited: "編集済み",
@@ -24,6 +26,11 @@ export const surfaceJapanese = {
     inheritedTitle: "継承されたタイトル",
     languageTitles: "言語別タイトル",
     languageTitlesDescription: "特定の表示言語だけのタイトルを設定します。空欄の項目は継承されます。",
+    advancedTitles: "タイトルの詳細設定",
+    universalTitle: "全言語共通タイトル",
+    revertUniversalTitle: "全言語共通タイトルを元に戻す",
+    universalTitleDescription:
+      "各言語の提供元タイトルより優先されます。言語別の手動タイトルがあれば、そちらを優先します。版や紹介文は変わりません。",
     coverHint: "画像はコピーされるため、元のファイルを移動してもカバーは残ります。",
     currentCover: "現在のカバー",
     searchCircles: "サークルを検索、または名前を入力",
@@ -63,8 +70,7 @@ export const surfaceJapanese = {
       source: "メタデータ提供元",
     },
     descriptions: {
-      title:
-        "空欄のままにすると継承されたタイトルを使います。全言語のタイトルは、独自のタイトルがない言語すべてに適用されます。",
+      title: "表示言語ごとにタイトルを編集します。手動タイトルはメタデータを更新しても保持されます。",
       cover: "この作品のローカル画像から 1 枚をカバーに選びます。",
       tags: "この作品のタグを追加・削除し、各タグの言語別の名前を編集します。タグ名は共有されるため、変更はそのタグを持つすべての作品に反映されます。",
       credits:

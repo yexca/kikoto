@@ -11,6 +11,8 @@ export const surfaceKorean = {
     description: "작품 소개",
   },
   metadataEditor: {
+    originLanguage: "origin",
+    currentLanguage: "current",
     status: {
       manual: "수동",
       edited: "편집됨",
@@ -24,6 +26,11 @@ export const surfaceKorean = {
     inheritedTitle: "상속된 제목",
     languageTitles: "언어별 제목",
     languageTitlesDescription: "특정 표시 언어에만 적용할 제목을 설정합니다. 빈 칸은 상속됩니다.",
+    advancedTitles: "고급 제목 옵션",
+    universalTitle: "모든 언어 공통 제목",
+    revertUniversalTitle: "모든 언어 공통 제목 되돌리기",
+    universalTitleDescription:
+      "각 언어의 제공자 제목보다 우선합니다. 언어별 수동 제목이 있으면 그 제목을 우선하며, 판본과 소개는 바뀌지 않습니다.",
     coverHint: "이미지는 복사되므로 나중에 파일을 옮겨도 커버가 유지됩니다.",
     currentCover: "현재 커버",
     searchCircles: "서클을 검색하거나 이름을 입력하세요",
@@ -62,7 +69,7 @@ export const surfaceKorean = {
       source: "메타데이터 출처",
     },
     descriptions: {
-      title: "빈 칸으로 두면 상속된 제목을 사용합니다. 모든 언어 제목은 자체 제목이 없는 모든 언어에 적용됩니다.",
+      title: "표시 언어별로 제목을 수정합니다. 수동 제목은 메타데이터를 새로 고쳐도 유지됩니다.",
       cover: "이 작품의 로컬 이미지 중 하나를 커버로 선택합니다.",
       tags: "이 작품의 태그를 추가하거나 삭제하고 태그마다 언어별 이름을 편집합니다. 태그 이름은 공유되므로 변경하면 그 태그가 있는 모든 작품에 적용됩니다.",
       credits:

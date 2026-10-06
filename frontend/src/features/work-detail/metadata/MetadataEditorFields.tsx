@@ -26,6 +26,7 @@ export function MetadataFieldStatusBadge({ status }: { status: MetadataFieldStat
 export function MetadataEditorField({
   label,
   labelFor,
+  labelBadges,
   status,
   revertLabel,
   onRevert,
@@ -35,6 +36,7 @@ export function MetadataEditorField({
 }: {
   label: string;
   labelFor?: string;
+  labelBadges?: ReactNode;
   status: MetadataFieldStatus;
   revertLabel?: string;
   onRevert?: () => void;
@@ -51,6 +53,7 @@ export function MetadataEditorField({
         <LabelTag id={labelId} htmlFor={labelFor} className="min-w-0 truncate text-sm font-medium">
           {label}
         </LabelTag>
+        {labelBadges}
         <MetadataFieldStatusBadge status={status} />
         <span className="flex-1" />
         {status === "manual" && onRevert && (

@@ -374,7 +374,15 @@ visible while the failed remote or media stage renders an inline Retry state.
 
 ## Multilingual title presentation
 
-`WorkTitleEditor` lists all six language scopes as rows with independent drafts.
+`WorkTitleEditor` lists per-language titles first in a single column, with independent drafts.
+The declared original language carries an `origin` badge and the selected metadata
+language a `current` badge; one row can carry both. The detail editor follows the
+detail page's temporary selection, while Metadata uses the default variant.
+An undeclared original language stays unmarked.
+The universal title appears under Advanced title options, collapsed by default
+and expanded when a saved universal title or a nonempty draft exists. Its hint
+explains that it overrides provider titles while language-specific manual titles
+take precedence, without changing the selected edition or description.
 A row's own manual title is editable text; provider and inherited values are grey
 hints. Source labels distinguish scope-specific and universal manual titles.
 `titleEditorModel` compares only touched scopes with

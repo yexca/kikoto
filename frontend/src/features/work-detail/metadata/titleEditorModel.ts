@@ -1,4 +1,18 @@
-import type { WorkManualOverrides, WorkTitleChoice } from "@/lib/api";
+import type { WorkDetail, WorkManualOverrides, WorkTitleChoice } from "@/lib/api";
+import { resolveMetadataVariant } from "../metadataPresentationModel";
+
+/** Uses declared metadata languages, preserving an unknown original language. */
+export function titleLanguageMarkers(
+  work: Pick<WorkDetail, "metadataPresentation" | "titleChoices">,
+  selectedMetadataVariantKey: string,
+) {
+  const original = work.metadataPresentation.variants.find((variant) => variant.origin);
+  const current = resolveMetadataVariant(work.metadataPresentation, selectedMetadataVariantKey);
+  return {
+    origin: (original?.language ?? work.titleChoices?.origin?.language ?? "").trim().toLowerCase(),
+    current: (current?.language ?? "").trim().toLowerCase(),
+  };
+}
 
 export function manualTitles(manual: WorkManualOverrides): Record<string, string> {
   return { ...(manual.title ? { "": manual.title } : {}), ...manual.titles };

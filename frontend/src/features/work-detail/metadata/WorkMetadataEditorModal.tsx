@@ -33,6 +33,7 @@ const sections: { id: MetadataEditorSection; icon: LucideIcon }[] = [
  */
 export function WorkMetadataEditorModal({
   work,
+  selectedMetadataVariantKey,
   readOnly = false,
   initialSection = "title",
   onClose,
@@ -40,6 +41,7 @@ export function WorkMetadataEditorModal({
   onLinkChanged,
 }: {
   work: WorkDetail;
+  selectedMetadataVariantKey?: string;
   readOnly?: boolean;
   initialSection?: MetadataEditorSection;
   onClose: () => void;
@@ -221,6 +223,7 @@ export function WorkMetadataEditorModal({
             {section === "title" && (
               <WorkTitleEditor
                 work={work}
+                selectedMetadataVariantKey={selectedMetadataVariantKey}
                 drafts={titleDrafts}
                 onDraft={(language, title) => setTitleDrafts((current) => ({ ...current, [language]: title }))}
               />

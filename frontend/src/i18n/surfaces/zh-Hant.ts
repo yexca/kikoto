@@ -11,6 +11,8 @@ export const surfaceHant = {
     description: "作品簡介",
   },
   metadataEditor: {
+    originLanguage: "origin",
+    currentLanguage: "current",
     status: {
       manual: "手動",
       edited: "已編輯",
@@ -24,6 +26,10 @@ export const surfaceHant = {
     inheritedTitle: "繼承的標題",
     languageTitles: "依語言設定標題",
     languageTitlesDescription: "只為某個顯示語言設定標題。留空的項目會繼承。",
+    advancedTitles: "進階標題選項",
+    universalTitle: "跨語言通用標題",
+    revertUniversalTitle: "還原跨語言通用標題",
+    universalTitleDescription: "優先於各語言的來源標題，分語言手動標題優先於此。只替換標題，不改變版本或簡介。",
     coverHint: "圖片會被複製，之後移動原檔案也不影響封面。",
     currentCover: "目前封面",
     searchCircles: "搜尋社團或輸入名稱",
@@ -61,7 +67,7 @@ export const surfaceHant = {
       source: "中繼資料來源",
     },
     descriptions: {
-      title: "留空則沿用繼承的標題。「所有語言」標題會用於所有沒有單獨標題的語言。",
+      title: "依顯示語言修改標題，手動標題會在中繼資料重新整理後保留。",
       cover: "從本作品的本機圖片中選擇一張作為封面。",
       tags: "為本作品新增或移除標籤，並依語言編輯每個標籤的名稱。標籤名稱是共用的，改名會套用至所有帶此標籤的作品。",
       credits: "選擇建議項目可連結既有的社團、系列或聲優。編輯過的製作資訊在重新整理中繼資料後保持不變。",
