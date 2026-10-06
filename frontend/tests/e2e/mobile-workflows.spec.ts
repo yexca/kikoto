@@ -24,8 +24,10 @@ import type {
   WorkflowTrigger,
 } from "../../src/lib/api";
 import {
+  appSettingsFixture,
   authenticatedStateFixture,
   currentUserFixture,
+  fileSourceFixture,
   fixtureTimestamp,
   librarySourceFixture,
   runtimeSettingsFixture,
@@ -895,6 +897,59 @@ test("workflow deep links do not override a later workflow selection", async ({ 
   await openWorkflow(page, "Sync work metadata");
   await expect(page).toHaveURL(/workflow=metadata_sync/);
   await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toHaveCount(0);
+});
+
+test("@desktop Metadata sync configuration saves the remote metadata fallback order", async ({ page }) => {
+  await mockWorkflows(page);
+  const remote = (id: number, priority: number, capabilities?: string[]) =>
+    fileSourceFixture({
+      id,
+      code: `example_remote_${id}`,
+      displayName: `Example Remote ${String.fromCharCode(64 + id)}`,
+      sourceType: "kikoeru_compatible",
+      priority,
+      config: capabilities ? { capabilities } : {},
+    });
+  let settings = appSettingsFixture({
+    fileSources: [remote(1, 10), remote(2, 20), remote(3, 30, [])],
+    remoteMetadataFallback: { enabled: false, sourceIds: [] },
+  });
+  const saved: unknown[] = [];
+  await page.route("**/api/settings", async (route) => {
+    if (route.request().method() === "PATCH") {
+      const body = route.request().postDataJSON() as Partial<typeof settings>;
+      saved.push(body);
+      settings = { ...settings, ...body };
+    }
+    await route.fulfill({ json: settings });
+  });
+  await page.goto("/workflows?workflow=metadata_sync");
+  await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Configuration", exact: true });
+  const order = dialog.getByRole("list", { name: "Fallback source order", exact: true });
+  // Only sources that declare the metadata capability are offered.
+  await expect(order.getByRole("listitem")).toHaveText(["Example Remote A", "Example Remote B"]);
+  const save = dialog.getByRole("button", { name: "Save", exact: true });
+  await expect(save).toBeDisabled();
+  const toggle = dialog.getByRole("switch", { name: "Look up works DLsite does not have", exact: true });
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await toggle.click();
+  await dialog.getByRole("checkbox", { name: "Use Example Remote A", exact: true }).click();
+  await dialog.getByRole("checkbox", { name: "Use Example Remote B", exact: true }).click();
+  await dialog.getByRole("button", { name: "Move Example Remote B earlier", exact: true }).click();
+  await expect(order.getByRole("listitem")).toHaveText(["Example Remote B", "Example Remote A"]);
+  await save.click();
+  await expect.poll(() => saved.length).toBe(1);
+  // Only the fallback is sent, so this form never overwrites other settings.
+  expect(saved[0]).toEqual({ remoteMetadataFallback: { enabled: true, sourceIds: [2, 1] } });
+  await expect(dialog).toHaveCount(0);
+
+  // Reopening reads the saved order back.
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
+  await expect(order.getByRole("listitem")).toHaveText(["Example Remote B", "Example Remote A"]);
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
 });
 
 test("a follow shortcut fills the circle id and says it did", async ({ page }) => {
@@ -1935,6 +1990,7 @@ test("demo settings keeps account and workflows read-only while allowing appeara
     "Recommendations",
     "Tags",
     "Library",
+    "Metadata",
     "Cache & Fetch",
     "Proxy",
     "Cleanup",

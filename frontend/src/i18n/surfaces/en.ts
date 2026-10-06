@@ -434,22 +434,18 @@ export const surfaceEnglish = {
       noProxies: "No proxies are configured. DLsite requests connect directly.",
       manageProxies: "Manage proxies",
       proxyUpdated: "DLsite proxy updated.",
+      defaults: "Metadata defaults",
       defaultLanguage: "Default metadata language",
       defaultLanguageDescription:
         "Used for anyone who has not chosen a language in the Appearance menu, for anonymous visitors, and for stored titles, tag names and background requests.",
-      remoteFallback: "Remote metadata fallback",
-      remoteFallbackDescription:
-        "When DLsite reports a work as not found, the selected sources are asked in order and their tags join shared tags. Turning this off keeps filled values; remote tags leave shared tags.",
-      remoteFallbackEnabled: "Look up works DLsite does not have",
-      remoteFallbackNoSources: "No remote source provides metadata. Turn it on in the source's settings.",
-      remoteFallbackOrder: "Fallback source order",
-      remoteFallbackUse: "Use {{name}}",
-      remoteFallbackEarlier: "Move {{name}} earlier",
-      remoteFallbackLater: "Move {{name}} later",
       catalogFreshnessDays: "Catalog freshness days",
-      catalogFreshnessDescription: "Circle and voice catalogs are marked Attention after {{count}} days.",
-      save: "Save metadata settings",
+      catalogFreshnessDescription:
+        "Circle and voice actor catalogs are marked Attention when their last refresh is older than this.",
+      save: "Save metadata defaults",
       about: "About {{label}}",
+      elsewhere: "More metadata settings",
+      openDefaults: "Default language and catalog freshness",
+      openRemoteFallback: "Remote metadata fallback",
     },
     recommendation: {
       tuning: "Recommendation tuning",
@@ -886,6 +882,21 @@ export const surfaceEnglish = {
       "No filter is on, so every automated run syncs metadata for each catalog work that lacks it. Turning on a release date range or a work limit is recommended.",
     presetTriggerNeedsReconfiguration:
       "Follow options changed. Edit this trigger to reconfigure it, then turn it on again.",
+    remoteMetadataFallback: {
+      title: "Remote metadata fallback",
+      description:
+        "When DLsite reports a work as not found, the selected sources are asked in order and their tags join shared tags. Turning this off keeps filled values; remote tags leave shared tags.",
+      enabled: "Look up works DLsite does not have",
+      noSources: "No remote source provides metadata. Turn it on in the source's settings.",
+      order: "Fallback source order",
+      use: "Use {{name}}",
+      earlier: "Move {{name}} earlier",
+      later: "Move {{name}} later",
+      saved: "Remote metadata fallback saved.",
+      saveFailed: "The remote metadata fallback could not be saved.",
+      loadFailed: "The remote metadata fallback could not be loaded.",
+      loading: "Loading the remote metadata fallback",
+    },
     metadataSyncScope: {
       label: "Works",
       hint: "Only works already in the library are refreshed; new catalog works are added by the follow workflows.",

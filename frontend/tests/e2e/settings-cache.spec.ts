@@ -577,6 +577,7 @@ test("administrators see administration tabs after the personal tabs in one list
     "Recommendations",
     "Tags",
     "Library",
+    "Metadata",
     "Cache & Fetch",
     "Proxy",
     "Cleanup",
@@ -786,7 +787,7 @@ for (const layout of ["mobile", "@desktop"]) {
     );
     // A deep link to a later tab scrolls the compact row so the selected tab shows.
     await expect(navigation.getByRole("tab", { name: "Library", exact: true })).toBeInViewport({ ratio: 1 });
-    await expect(navigation.getByRole("tab")).toHaveCount(10);
+    await expect(navigation.getByRole("tab")).toHaveCount(11);
     const boxes = await navigation.getByRole("tab").evaluateAll((buttons) =>
       buttons.map((button) => {
         const box = button.getBoundingClientRect();
@@ -1054,19 +1055,19 @@ test("@desktop work management owns metadata settings in a popover", async ({ pa
   await expect(page).toHaveURL(/metadata\?tab=settings/);
   await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toBeVisible();
   const settingsDialog = page.getByRole("dialog", { name: "Metadata settings", exact: true });
-  await page.getByRole("spinbutton", { name: "Catalog freshness days", exact: true }).fill("14");
-  await page.getByRole("button", { name: "Save metadata settings", exact: true }).click();
-  await expect.poll(() => saves.length).toBe(1);
-  // The display language moved to Appearance, so this save must not overwrite it.
-  expect(Object.keys(saves[0]).sort()).toEqual(["catalogFreshnessDays"]);
-  expect(saves[0].catalogFreshnessDays).toBe(14);
+  // Instance defaults live in Settings and the remote fallback in Metadata sync; the popover links to both.
+  await expect(settingsDialog.getByRole("spinbutton")).toHaveCount(0);
+  await expect(
+    settingsDialog.getByRole("button", { name: "Default language and catalog freshness", exact: true }),
+  ).toBeVisible();
+  await expect(settingsDialog.getByRole("button", { name: "Remote metadata fallback", exact: true })).toBeVisible();
 
   // The DLsite proxy is a shortcut to the DLsite scope in Settings and saves at once.
   const dlsiteProxy = settingsDialog.getByRole("switch", { name: "Use proxy for DLsite", exact: true });
   await expect(dlsiteProxy).toHaveAttribute("aria-checked", "false");
   await dlsiteProxy.click();
-  await expect.poll(() => saves.length).toBe(2);
-  expect(saves[1]).toEqual({
+  await expect.poll(() => saves.length).toBe(1);
+  expect(saves[0]).toEqual({
     proxy: {
       proxies: [{ id: "lan", name: "", kind: "custom", scheme: "http", host: "192.0.2.10", port: 8080, username: "" }],
       routes: expect.objectContaining({ dlsite: { enabled: true, proxyIds: [] } }),
@@ -1100,6 +1101,39 @@ test("@desktop the metadata DLsite proxy shortcut opens proxy management in Sett
     .click();
   await expect(page).toHaveURL(/\/settings\?tab=proxy$/);
   await expect(page.getByRole("heading", { name: "Proxy", exact: true })).toBeInViewport();
+});
+
+test("@desktop administrators set metadata defaults in Settings", async ({ page }) => {
+  const saves: Record<string, unknown>[] = [];
+  await mockCacheSettings(
+    page,
+    () => undefined,
+    (payload) => saves.push(payload),
+  );
+  await page.goto("/metadata?tab=settings");
+  await page
+    .getByRole("dialog", { name: "Metadata settings", exact: true })
+    .getByRole("button", { name: "Default language and catalog freshness", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/settings\?tab=metadata$/);
+  await expect(page.getByRole("tab", { name: "Metadata", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Metadata", exact: true })).toHaveAccessibleDescription("Administration");
+
+  const save = page.getByRole("button", { name: "Save metadata defaults", exact: true });
+  await expect(save).toBeDisabled();
+  await page.getByRole("spinbutton", { name: "Catalog freshness days", exact: true }).fill("14");
+  await save.click();
+  await expect.poll(() => saves.length).toBe(1);
+  // Each save sends only what changed, so it never overwrites settings edited elsewhere.
+  expect(saves[0]).toEqual({ catalogFreshnessDays: 14 });
+  await expect(save).toBeDisabled();
+
+  const language = page.getByRole("combobox", { name: "Default metadata language", exact: true });
+  await expect(language).toHaveValue("ja-jp");
+  await language.selectOption({ label: "English" });
+  await save.click();
+  await expect.poll(() => saves.length).toBe(2);
+  expect(saves[1]).toEqual({ dlsiteMetadataLanguages: ["en-us", "origin"] });
 });
 
 test("administrators add proxies by priority and choose where they apply", async ({ page }) => {

@@ -13,6 +13,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { LibraryLayoutSection } from "@/features/library-setup/LibraryLayoutSection";
+import { MetadataDefaultsSection } from "@/features/maintenance/MetadataDefaultsSection";
 import { ProxySettingsSection } from "@/features/proxy";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { RemoteSourceDialog } from "@/features/sources/RemoteSourceDialog";
@@ -31,7 +32,7 @@ import { api, type AppSettings, type FileSource } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { UsersPage } from "@/pages/UsersPage";
 
-type MaintenanceTab = "library" | "cache" | "proxy" | "users";
+type MaintenanceTab = "library" | "metadata" | "cache" | "proxy" | "users";
 
 type RuntimeDraft = {
   localScanDepth: number;
@@ -379,6 +380,10 @@ export function MaintenancePage({
             />
 
             <StoragePaths settings={settings} remoteSources={remoteSources} />
+          </div>
+        ) : activeTab === "metadata" && settings ? (
+          <div className="space-y-6">
+            <MetadataDefaultsSection settings={settings} readOnly={readOnly} onSaved={setSettings} />
           </div>
         ) : activeTab === "cache" && draft ? (
           <CacheFetchSettings
