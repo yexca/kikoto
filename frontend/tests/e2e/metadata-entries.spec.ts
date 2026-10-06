@@ -719,6 +719,7 @@ test("circle management keeps names and aliases and reviews merge history", asyn
     displayName: "Synthetic second circle",
     providerName: "Synthetic second circle",
     externalIds: ["RG00000001"],
+    code: "RG00000001",
   });
   let history: CircleMergeReview[] = [];
   await page.route("**/api/metadata/circles?*", (route) =>
@@ -763,6 +764,9 @@ test("circle management keeps names and aliases and reviews merge history", asyn
     return route.fulfill({ json: { ok: true } });
   });
   await page.goto("/metadata?view=circles");
+  // Rows are keyed by DLsite maker id, not by the name anyone authored.
+  const table = page.getByRole("table", { name: "Circles", exact: true });
+  await expect(table.getByRole("rowheader")).toHaveText(["RG00000000", "RG00000001"]);
   await page.getByRole("button", { name: "Manage Synthetic circle", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Manual name", { exact: true }).fill("Authored circle");

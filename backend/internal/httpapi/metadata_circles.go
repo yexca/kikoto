@@ -41,17 +41,22 @@ func (s *Server) listMetadataCircles(w http.ResponseWriter, r *http.Request) {
 	}
 	args := []any{query, query, query, query}
 	result := struct {
-		Circles  []circleidentity.Circle `json:"circles"`
-		Total    int                     `json:"total"`
-		Page     int                     `json:"page"`
-		PageSize int                     `json:"pageSize"`
-	}{Circles: []circleidentity.Circle{}, Page: page, PageSize: size}
+		Circles  []metadataCircleEntry `json:"circles"`
+		Total    int                   `json:"total"`
+		Page     int                   `json:"page"`
+		PageSize int                   `json:"pageSize"`
+	}{Circles: []metadataCircleEntry{}, Page: page, PageSize: size}
 	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM party WHERE "+where, args...).Scan(&result.Total); err != nil {
 		writeError(w, err)
 		return
 	}
 	args = append(args, size, (page-1)*size)
-	rows, err := s.db.QueryContext(r.Context(), "SELECT id FROM party WHERE "+where+" ORDER BY LOWER(display_name),id LIMIT ? OFFSET ?", args...)
+	// Circles are organized by DLsite maker id, like tags by id, so the list
+	// reads the same whatever names anyone authored. Maker ids share a
+	// two-letter prefix and grow in digits, so length orders them numerically.
+	// Circles known only from a remote source have no code and follow by id.
+	rows, err := s.db.QueryContext(r.Context(), `SELECT id FROM (SELECT id,`+circleidentity.CodeSQL("party.id")+` AS code FROM party WHERE `+where+`)
+ ORDER BY code IS NULL,SUBSTR(code,1,2),LENGTH(code),code,id LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -76,16 +81,33 @@ func (s *Server) listMetadataCircles(w http.ResponseWriter, r *http.Request) {
 		writeError(w, closeErr)
 		return
 	}
+	latest, err := s.loadCircleLatestWorks(r.Context(), ids)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	for _, id := range ids {
 		item, err := s.loadMetadataCircleForRead(r.Context(), id)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
-		result.Circles = append(result.Circles, item)
+		entry := metadataCircleEntry{Circle: item}
+		if work := latest[id]; work != nil {
+			entry.CoverURL = s.coverURL(work.PrimaryCode)
+		}
+		result.Circles = append(result.Circles, entry)
 	}
 	writeJSON(w, http.StatusOK, result)
 }
+
+// metadataCircleEntry is one Metadata circle row: the identity plus the cover
+// of its latest known work, the same picture the Circles browse page shows.
+type metadataCircleEntry struct {
+	circleidentity.Circle
+	CoverURL string `json:"coverUrl"`
+}
+
 func (s *Server) getMetadataCircle(w http.ResponseWriter, r *http.Request) {
 	if !s.requireMetadataEntryRead(w, r) {
 		return
