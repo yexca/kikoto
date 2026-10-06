@@ -84,12 +84,16 @@ function RemoteFetchResultNodeView({
       {!isRoot && (
         <button
           type="button"
-          className="flex min-h-7 w-full items-center gap-2 rounded px-2 text-left text-sm hover:bg-muted"
+          className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted/70"
           style={{ paddingLeft: depth * 14 + 8 }}
           onClick={() => setOpen((value) => !value)}
         >
-          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          <Folder className="h-4 w-4 text-primary" />
+          {open ? (
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
+          <Folder className="h-4 w-4 text-muted-foreground" />
           <span className="truncate">{node.name}</span>
         </button>
       )}
@@ -117,16 +121,22 @@ function RemoteFetchResultNodeView({
           return (
             <div
               key={item.itemKey || item.targetPath}
-              className="rounded hover:bg-muted/60"
-              style={{ marginLeft: (depth + 1) * 14 + 8 }}
+              className={item.targetConflict ? "rounded-md bg-error-surface/50" : "rounded-md hover:bg-muted/60"}
+              style={{ marginLeft: (depth + 1) * 14 }}
               title={item.targetPath}
             >
               <div className="flex min-h-8 items-center gap-2 px-2 text-xs">
+                <span className="w-3.5 shrink-0" />
                 {kindIcon(item.kind, "h-3.5 w-3.5")}
                 <span className="min-w-0 flex-1 truncate">{item.path}</span>
+                {item.sizeBytes !== null && (
+                  <span className="hidden shrink-0 tabular-nums text-muted-foreground sm:inline">
+                    {formatBytes(item.sizeBytes)}
+                  </span>
+                )}
                 <Badge
-                  variant={item.action === "skip" || item.targetConflict ? "outline" : "secondary"}
-                  className={item.targetConflict ? "border-destructive/40 text-destructive" : ""}
+                  variant={item.targetConflict ? "error" : fetchResultActionVariant(item.action)}
+                  className="shrink-0 px-2 py-0 text-2xs"
                 >
                   {t(fetchResultActionKey(item.action))}
                 </Badge>
@@ -241,11 +251,11 @@ export function RemoteFetchLocalTreeNode({
     <div className="space-y-1">
       {!isRoot && (
         <div
-          className="flex min-h-7 items-center gap-2 rounded px-2 text-sm hover:bg-muted"
+          className="flex min-h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-muted/70"
           style={{ paddingLeft: depth * 14 + 8 }}
         >
           <button
-            className="rounded p-0.5 hover:bg-background"
+            className="rounded p-0.5 text-muted-foreground hover:bg-background"
             onClick={() => setOpen((value) => !value)}
             title={open ? t("remoteFetch.collapse") : t("remoteFetch.expand")}
             aria-label={open ? t("remoteFetch.collapse") : t("remoteFetch.expand")}
@@ -259,7 +269,7 @@ export function RemoteFetchLocalTreeNode({
             onCheckedChange={toggleNode}
             aria-label={t("remoteFetch.select", { name: node.name })}
           />
-          <Folder className="h-4 w-4 text-primary" />
+          <Folder className="h-4 w-4 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate" title={node.path}>
             {node.name}
           </span>
@@ -283,10 +293,10 @@ export function RemoteFetchLocalTreeNode({
         items.map((item) => (
           <label
             key={item.fullPath}
-            className="flex min-h-7 items-center gap-2 rounded px-2 text-sm hover:bg-muted"
+            className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-sm hover:bg-muted/70"
             style={{ paddingLeft: (isRoot ? 0 : depth + 1) * 14 + 8 }}
           >
-            <span className="w-5" />
+            <span className="w-[18px] shrink-0" />
             <Checkbox
               checked={selectedLocalPaths.has(item.fullPath)}
               disabled={disabled}
@@ -302,7 +312,9 @@ export function RemoteFetchLocalTreeNode({
             <span className="min-w-0 flex-1 truncate" title={item.fullPath}>
               {item.name}
             </span>
-            <span className="shrink-0 text-xs text-muted-foreground">{formatBytes(item.sizeBytes)}</span>
+            <span className="w-16 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+              {item.sizeBytes === null ? "" : formatBytes(item.sizeBytes)}
+            </span>
           </label>
         ))}
     </div>
@@ -347,11 +359,11 @@ export function RemoteSelectionNode({
     <div className="space-y-1">
       {!isRoot && (
         <div
-          className="flex min-h-7 items-center gap-2 rounded px-2 text-sm hover:bg-muted"
+          className="flex min-h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-muted/70"
           style={{ paddingLeft: depth * 14 + 8 }}
         >
           <button
-            className="rounded p-0.5 hover:bg-background"
+            className="rounded p-0.5 text-muted-foreground hover:bg-background"
             disabled={!hasChildren}
             onClick={() => setOpen((value) => !value)}
             title={open ? t("remoteFetch.collapse") : t("remoteFetch.expand")}
@@ -366,9 +378,9 @@ export function RemoteSelectionNode({
             onCheckedChange={toggleNode}
             aria-label={t("remoteFetch.select", { name: node.name })}
           />
-          <Folder className="h-4 w-4 text-primary" />
+          <Folder className="h-4 w-4 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate">{node.name}</span>
-          <span className="text-xs text-muted-foreground">
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
             {checkedCount}/{nodePaths.length}
           </span>
         </div>
@@ -392,9 +404,10 @@ export function RemoteSelectionNode({
           return (
             <label
               key={path}
-              className="flex min-h-7 items-center gap-2 rounded px-2 text-sm hover:bg-muted"
+              className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-sm hover:bg-muted/70"
               style={{ paddingLeft: (isRoot ? 0 : depth + 1) * 14 + 8 }}
             >
+              <span className="w-[18px] shrink-0" />
               <Checkbox
                 checked={selectedPaths.has(path)}
                 disabled={disabled}
@@ -407,17 +420,20 @@ export function RemoteSelectionNode({
                 aria-label={t("remoteFetch.select", { name: file.title })}
               />
               {fileIcon(file)}
-              <span className="min-w-0 flex-1 truncate">{file.title}</span>
-              {plan && (
+              <span className="min-w-0 flex-1 truncate" title={file.title}>
+                {file.title}
+              </span>
+              {plan?.targetConflict && (
                 <span
-                  className={
-                    plan.targetConflict ? "max-w-48 truncate text-xs text-destructive" : "text-xs text-muted-foreground"
-                  }
+                  className="max-w-40 shrink-0 truncate text-xs text-error-foreground"
                   title={plan.targetConflictReason || plan.status}
                 >
-                  {plan.status}
+                  {t("remoteFetch.actionConflict")}
                 </span>
               )}
+              <span className="w-16 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                {file.sizeBytes === null ? "" : formatBytes(file.sizeBytes)}
+              </span>
             </label>
           );
         })}
@@ -493,6 +509,21 @@ export function remoteFetchCurrentEditionCode(plan: RemoteWorkSavePlan | null | 
     (edition) => edition.primaryCode.toUpperCase() === plan.primaryCode.toUpperCase(),
   );
   return plannedEdition?.primaryCode ?? plan.primaryCode;
+}
+
+function fetchResultActionVariant(action: string) {
+  switch (action) {
+    case "cache_download":
+      return "info" as const;
+    case "cache_hit":
+      return "success" as const;
+    case "copy_local":
+      return "secondary" as const;
+    case "conflict":
+      return "error" as const;
+    default:
+      return "outline" as const;
+  }
 }
 
 function fetchResultActionKey(action: string) {
