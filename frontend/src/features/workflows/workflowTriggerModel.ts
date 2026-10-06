@@ -24,6 +24,7 @@ export function supportedAutomationTriggerTypes(
   isPreset = false,
 ): AutomationTriggerType[] {
   if (definition.scope === "system" && isPreset) return automationTriggerTypes;
+  if (definition.scope === "system" && definition.code === "remote_work_fetch") return [];
   if (definition.scope === "system" && definition.code === "availability_watch") return ["schedule"];
   if (definition.scope === "system" && definition.code === "local_library_scan")
     return ["startup", "filesystem_event", "schedule"];

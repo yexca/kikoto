@@ -16,6 +16,7 @@ export type FetchIntent = {
   sourceDisplayName?: string;
   canonicalCode?: string;
   detail?: RemoteWorkDetail;
+  excludeExtensions?: string[];
 };
 
 export type RemoteFetchDraft = {
