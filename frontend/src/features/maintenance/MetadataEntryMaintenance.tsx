@@ -1,3 +1,4 @@
+import { Inbox, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -139,20 +140,38 @@ export function MetadataEntryMaintenance({
           </Button>
         </div>
       )}
-      {loading && !loaded ? (
-        <p className="p-4 text-sm text-muted-foreground">{t("common.loading")}</p>
-      ) : (
-        <div className="relative overflow-x-auto rounded-md border">
-          {kind === "tags" ? (
-            <MetadataTagTable tags={result.entries as MetadataTag[]} onManage={setManaged} />
-          ) : (
-            <MetadataCircleTable circles={result.entries as MetadataCircle[]} onManage={setManaged} />
-          )}
-          {!result.entries.length && !failed && (
-            <p className="p-6 text-center text-sm text-muted-foreground">{t("metadataEntries.empty")}</p>
-          )}
-        </div>
-      )}
+      <section className="overflow-hidden rounded-lg border bg-card" aria-busy={loading}>
+        {loading && !loaded ? (
+          <p className="grid min-h-48 place-items-center p-4 text-sm text-muted-foreground" role="status">
+            {t("common.loading")}
+          </p>
+        ) : (
+          <>
+            <div className="relative overflow-x-auto">
+              {kind === "tags" ? (
+                <MetadataTagTable tags={result.entries as MetadataTag[]} onManage={setManaged} />
+              ) : (
+                <MetadataCircleTable circles={result.entries as MetadataCircle[]} onManage={setManaged} />
+              )}
+            </div>
+            {!result.entries.length && !failed && (
+              <div className="grid min-h-48 place-items-center px-6 py-10 text-center">
+                <div>
+                  <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">
+                    {search.query ? <Search className="h-4 w-4" /> : <Inbox className="h-4 w-4" />}
+                  </div>
+                  <p className="text-sm font-medium">{t("metadataEntries.empty")}</p>
+                  {search.query && (
+                    <Button className="mt-4" size="sm" variant="outline" onClick={search.clear}>
+                      {t("unlinked.clearSearch")}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </section>
       <CollectionPagination {...pagination} placement="bottom" />
       {managed &&
         (kind === "tags" ? (
