@@ -396,7 +396,7 @@ func (err remoteWorkSaveConflictError) Error() string {
 }
 
 func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, requestedTargetRoot string, decisions []remoteFetchFileDecision) (remoteWorkSavePlan, error) {
-	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(ctx, sourceID, code)
+	source, remoteWork, tracks, err := s.loadInstanceRemoteWorkTracksCached(ctx, sourceID, code)
 	if err != nil {
 		return remoteWorkSavePlan{}, err
 	}

@@ -31,10 +31,15 @@ func (s *Server) kikoeruCrawlClientForSource(ctx context.Context, source remoteS
 }
 
 func (s *Server) kikoeruClientForSourceClass(ctx context.Context, source remoteSourceForUse, class sourceRequestClass) *kikoeru.Client {
-	acceptLanguage := s.remoteSourceAcceptLanguage(ctx, source)
+	languages := s.viewerMetadataLanguages(ctx)
 	if class == sourceRequestCrawl {
-		acceptLanguage = s.instanceRemoteSourceAcceptLanguage(ctx, source)
+		languages = s.instanceMetadataLanguages(ctx)
 	}
+	return s.kikoeruClientForSourceWithLanguages(source, class, languages)
+}
+
+func (s *Server) kikoeruClientForSourceWithLanguages(source remoteSourceForUse, class sourceRequestClass, languages []string) *kikoeru.Client {
+	acceptLanguage := remoteAcceptLanguage(remoteSourceLanguageList(languages, source.Config.RequestLanguage))
 	var httpClient *http.Client
 	switch class {
 	case sourceRequestCrawl:

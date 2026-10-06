@@ -111,11 +111,13 @@ function useInlineSearchFits(
  * editor that the work table opens from its action column.
  */
 export function WorkManagementPage({
+  preferenceRevision = 0,
   canSyncMetadata,
   canManageSources,
   canEditMetadata = false,
   readOnly = false,
 }: {
+  preferenceRevision?: number;
   canSyncMetadata: boolean;
   canManageSources: boolean;
   canEditMetadata?: boolean;
@@ -303,6 +305,7 @@ export function WorkManagementPage({
             />
           ) : (
             <WorkMaintenance
+              preferenceRevision={preferenceRevision}
               canManageSources={canManageSources}
               canSyncMetadata={canSyncMetadata}
               readOnly={readOnly}
