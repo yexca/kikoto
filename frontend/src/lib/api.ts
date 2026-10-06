@@ -495,6 +495,10 @@ export type MetadataCircle = {
   workCount: number;
   aliases: { id: number; alias: string; source: string }[];
   externalIds: string[];
+  /** Primary DLsite maker id; empty for a circle known only from a remote source. */
+  code: string;
+  /** Latest known work's cover; present only in list results. */
+  coverUrl?: string;
 };
 export type CircleMergeReview = {
   id: number;
@@ -1591,6 +1595,8 @@ export type CreatorListOptions = {
   query?: string;
   filter?: string;
   tag?: string;
+  /** "id" orders by Kikoto id; omitted keeps the browse order. */
+  sort?: "id";
   signal?: AbortSignal;
 };
 
@@ -2011,6 +2017,7 @@ function creatorListSearch(options: CreatorListOptions) {
   if (options.query?.trim()) search.set("q", options.query.trim());
   if (options.filter && options.filter !== "all") search.set("filter", options.filter);
   if (options.tag?.trim()) search.set("tag", options.tag.trim());
+  if (options.sort) search.set("sort", options.sort);
   const value = search.toString();
   return value ? `?${value}` : "";
 }
@@ -2769,7 +2776,8 @@ export const api = {
   updateMediaProgress: (
     id: number,
     payload: { locationId: number; positionSeconds: number; durationSeconds: number | null; completed: boolean },
-  ) => patchJSONBody<MediaProgressUpdate>(`/api/media-items/${id}/progress`, payload),
+    signal?: AbortSignal,
+  ) => sendJSONBody<MediaProgressUpdate>("PATCH", `/api/media-items/${id}/progress`, payload, { signal }),
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),
   getSettings: () => getJSON<AppSettings>("/api/settings"),
   updateAccessPolicy: (payload: AccessPolicy) => patchJSONBody<AccessPolicy>("/api/access-policy", payload),

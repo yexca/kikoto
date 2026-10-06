@@ -10,6 +10,8 @@ import type {
   MaintenanceWorkPage,
   RemoteCollectionRunResult,
   RemoteWorkTrackResult,
+  RemoteWorkSavePlan,
+  RemoteWorkSaveResult,
   WorkflowCandidate,
   WorkflowDefinition,
   WorkflowEvent,
@@ -30,6 +32,9 @@ import {
   fileSourceFixture,
   fixtureTimestamp,
   librarySourceFixture,
+  remoteTrackFixture,
+  remoteWorkDetailFixture,
+  remoteWorkTracksFixture,
   runtimeSettingsFixture,
   workflowRunDetailFixture,
   workflowRunFixture,
@@ -736,6 +741,247 @@ async function openWorkflow(page: Page, name: string) {
   await workflowList(page).getByRole("button", { name, exact: true }).click();
   await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
 }
+
+async function mockFetchRunOptions(page: Page) {
+  await mockWorkflows(page);
+  await page.route("**/api/workflow-definitions", (route) =>
+    route.fulfill({
+      json: [
+        ...systemDefinitions,
+        workflowDefinitionFixture({
+          id: 9,
+          code: "remote_work_fetch",
+          displayName: "Fetch remote work",
+          description: "Review and fetch selected files.",
+        }),
+      ],
+    }),
+  );
+  await page.route("**/api/library-sources", (route) =>
+    route.fulfill({
+      json: [
+        librarySourceFixture({ id: 8 }),
+        librarySourceFixture({ id: 9, code: "example_remote_b", displayName: "Example Remote B" }),
+        librarySourceFixture({ id: 10, enabled: false, displayName: "Example Disabled" }),
+        librarySourceFixture({ id: 11, sourceType: "local", displayName: "Example Local" }),
+      ],
+    }),
+  );
+  const plans: { code: string; paths: string[] }[] = [];
+  const submissions: Record<string, unknown>[] = [];
+  const detail = (code: string) =>
+    remoteWorkDetailFixture({
+      sourceId: 9,
+      sourceCode: "example_remote_b",
+      sourceName: "Example Remote B",
+      primaryCode: code,
+      remoteCode: code,
+      tracks: ["track.mp3", "track.WAV", "cover.webp"].map((title) =>
+        remoteTrackFixture({
+          title,
+          hash: title,
+          downloadUrl: `https://source.example.invalid/${title}`,
+          sizeBytes: 12,
+        }),
+      ),
+    });
+  const plan = (code: string, paths: string[]): RemoteWorkSavePlan => ({
+    sourceId: 9,
+    primaryCode: code,
+    saveRoot: `example_remote_b/${code}`,
+    fetchRoot: { rootPath: "example_remote_b", status: "ready", conflict: false, message: "" },
+    localFiles: [],
+    items: paths.map((path) => ({
+      itemKey: `remote:${path}`,
+      path,
+      kind: "audio",
+      sizeBytes: 12,
+      sourceKind: "remote",
+      action: "cache_download",
+      status: "remote_only",
+      sourcePath: "",
+      localSourcePath: "",
+      cachePath: "",
+      targetPath: `example_remote_b/${code}/${path}`,
+      originalTargetPath: `example_remote_b/${code}/${path}`,
+      resolution: "auto",
+      remoteSourceId: 9,
+      remoteSourceCode: "example_remote_b",
+      remoteSourceName: "Example Remote B",
+      remotePath: path,
+      sourceOptions: [],
+      mediaItemId: 0,
+      localPaths: [],
+      targetExists: false,
+      targetConflict: false,
+      targetConflictReason: "",
+      targetSizeBytes: null,
+    })),
+    summary: {
+      total: paths.length,
+      skipExisting: 0,
+      cacheHit: 0,
+      cacheDownload: paths.length,
+      promote: paths.length,
+      conflict: 0,
+    },
+    preparation: {
+      requestedCode: code,
+      canonicalCode: "RJ00000000",
+      metadataStatus: "complete",
+      warnings: [],
+      editions: ["RJ00000000", "RJ00000001"].map((primaryCode, index) => ({
+        workId: index + 1,
+        primaryCode,
+        title: "Example Work",
+        metadataLanguage: index ? "en-us" : "ja-jp",
+        editionLabel: "",
+        translationKind: index ? "official" : "origin",
+        classificationSource: "metadata",
+        makerId: "",
+        originMakerId: "",
+        origin: index === 0,
+        localRoots: [],
+        sources: [],
+      })),
+    },
+  });
+  await page.route(/\/api\/remote-sources\/9\/works\/RJ0000000[01](?:\/.*)?$/, async (route) => {
+    const url = new URL(route.request().url());
+    const code = url.pathname.split("/")[5];
+    if (url.pathname.endsWith("/tracks")) {
+      await route.fulfill({ json: remoteWorkTracksFixture(detail(code)) });
+    } else if (url.pathname.endsWith("/fetch-plan")) {
+      const payload = route.request().postDataJSON() as { paths: string[] };
+      plans.push({ code, paths: payload.paths });
+      await route.fulfill({ json: plan(code, payload.paths) });
+    } else if (url.pathname.endsWith("/fetch")) {
+      const payload = route.request().postDataJSON() as Record<string, unknown> & { paths: string[] };
+      submissions.push(payload);
+      await route.fulfill({
+        status: 202,
+        json: {
+          runId: 92,
+          jobId: 93,
+          workId: 1,
+          primaryCode: code,
+          status: "queued",
+          saveRoot: `example_remote_b/${code}`,
+          savedFiles: 0,
+          skippedFiles: 0,
+          cachedFiles: 0,
+          promotedFiles: 0,
+          plan: plan(code, payload.paths).summary,
+          requestId: String(payload.requestId),
+          deduplicated: false,
+        } satisfies RemoteWorkSaveResult,
+      });
+    } else {
+      await route.fulfill({ json: detail(code) });
+    }
+  });
+  return { plans, submissions };
+}
+
+for (const suffix of ["", " @desktop"]) {
+  test(`Fetch run options apply source and extension filters through edition review and publication${suffix}`, async ({
+    page,
+  }) => {
+    const { plans, submissions } = await mockFetchRunOptions(page);
+    await page.goto("/workflows?workflow=remote_work_fetch");
+    const options = page.getByRole("region", { name: "Run options", exact: true });
+    const run = options.getByRole("button", { name: "Run", exact: true });
+    await expect(run).toBeDisabled();
+    await options.getByRole("textbox", { name: "Work code", exact: true }).fill(" rj00000000 ");
+    const source = options.getByRole("combobox", { name: "Remote source", exact: true });
+    await source.selectOption("9");
+    await expect(source.getByRole("option")).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Run at startup", exact: true })).toHaveCount(0);
+    await options.getByRole("checkbox", { name: "Exclude WAV", exact: true }).click();
+    await options.getByRole("textbox", { name: "Other extensions to exclude", exact: true }).fill(".WEBP");
+    await run.click();
+    const preview = page.getByRole("dialog", { name: "Fetch selection", exact: true });
+    await expect(preview).toBeVisible();
+    expect(plans[0]).toEqual({ code: "RJ00000000", paths: ["track.mp3"] });
+    expect(submissions).toHaveLength(0);
+    await expect(preview.getByRole("checkbox", { name: "Include WAV", exact: true })).not.toBeChecked();
+    await preview.getByRole("checkbox", { name: "Select RJ00000001", exact: true }).click();
+    await expect.poll(() => plans.at(-1)).toEqual({ code: "RJ00000001", paths: ["track.mp3"] });
+    await preview.getByRole("button", { name: "Publish Fetch", exact: true }).click();
+    await expect(preview).toHaveCount(0);
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]).toMatchObject({
+      paths: ["track.mp3"],
+      localPaths: [],
+      targetRoot: "example_remote_b/RJ00000001",
+    });
+    expect(submissions[0].requestId).toMatch(/^fetch:/);
+  });
+}
+
+test("Fetch run options retain defaults, retry source loading, and stop when filters exclude every file", async ({
+  page,
+}) => {
+  const { plans, submissions } = await mockFetchRunOptions(page);
+  await page.route("**/api/library-sources", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: "Sources unavailable", code: "unavailable", retryable: true } satisfies ApiErrorBody,
+    }),
+  );
+  await page.goto("/workflows?workflow=remote_work_fetch");
+  const options = page.getByRole("region", { name: "Run options", exact: true });
+  await expect(options.getByRole("alert")).toContainText("Remote sources could not be loaded.");
+  await options.getByRole("textbox", { name: "Work code", exact: true }).fill("RJ00000000");
+  await page.route("**/api/library-sources", (route) => route.fulfill({ json: [librarySourceFixture({ id: 9 })] }));
+  await options.getByRole("button", { name: "Retry", exact: true }).click();
+  const run = options.getByRole("button", { name: "Run", exact: true });
+  await expect(run).toBeEnabled();
+  for (const checkbox of await options.getByRole("checkbox").all()) await expect(checkbox).not.toBeChecked();
+  await run.click();
+  const preview = page.getByRole("dialog", { name: "Fetch selection", exact: true });
+  await expect(preview).toBeVisible();
+  expect(plans[0].paths).toEqual(["track.mp3", "track.WAV", "cover.webp"]);
+  await preview.getByRole("button", { name: "Close", exact: true }).click();
+  await options.getByRole("checkbox", { name: "Exclude WAV", exact: true }).click();
+  await options.getByRole("checkbox", { name: "Exclude MP3", exact: true }).click();
+  await options.getByRole("textbox", { name: "Other extensions to exclude", exact: true }).fill("webp");
+  await run.click();
+  await expect(options.getByRole("status")).toContainText("Fetch preview could not be opened.");
+  await expect(preview).toHaveCount(0);
+  expect(plans).toHaveLength(1);
+  expect(submissions).toHaveLength(0);
+});
+
+test("demo Fetch run options remain inspectable without preparing or publishing files", async ({ page }) => {
+  const { plans, submissions } = await mockFetchRunOptions(page);
+  await page.route("**/api/runtime-settings", (route) =>
+    route.fulfill({
+      json: runtimeSettingsFixture({ mode: "demo", demoMode: true, anonymousAccessEnabled: false }),
+    }),
+  );
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: authenticatedStateFixture({
+        username: "__demo__",
+        displayName: "Demo",
+        role: "user",
+        permissions: ["library:read", "playback:use"],
+        demoMode: true,
+      }),
+    }),
+  );
+  await page.goto("/workflows?workflow=remote_work_fetch");
+  const options = page.getByRole("region", { name: "Run options", exact: true });
+  await options.getByRole("textbox", { name: "Work code", exact: true }).fill("RJ00000000");
+  await options.getByRole("combobox", { name: "Remote source", exact: true }).selectOption("9");
+  await options.getByRole("checkbox", { name: "Exclude WAV", exact: true }).click();
+  await expect(options.getByRole("button", { name: "Run", exact: true })).toBeDisabled();
+  await expect(page.getByRole("dialog", { name: "Fetch selection", exact: true })).toHaveCount(0);
+  expect(plans).toHaveLength(0);
+  expect(submissions).toHaveLength(0);
+});
 
 test("definitions foreground runnable presets and show DLsite popular run options inline", async ({ page }) => {
   await mockWorkflows(page);

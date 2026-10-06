@@ -728,8 +728,7 @@ export const japaneseResource = {
         updateAvailable: "利用可能なアップデート：{{version}}",
         sourceCode: "ソースコード",
         releaseNotes: "リリースノート",
-        intro:
-          "Kikoto は、DLsite 形式の作品、統合メタデータ、互換リモートソース、ブラウザー再生に対応したローカルファーストの個人オーディオライブラリです。",
+        intro: "聴くことを大切にした、あなたの音声ライブラリ。",
         builtWithAi: "AI で開発",
         aiCredit: "このソフトウェアは yexca が AI Agent の支援を受けて開発しています。",
         modelHistoryTitle: "使用している AI モデル",

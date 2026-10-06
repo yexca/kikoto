@@ -25,7 +25,13 @@ export type WorkflowNode = {
 };
 
 export type SystemRunKind =
-  "local_scan" | "local_media_index" | "metadata_sync" | "remote_popular" | "dlsite_popular" | "preset";
+  | "local_scan"
+  | "local_media_index"
+  | "metadata_sync"
+  | "remote_popular"
+  | "remote_fetch"
+  | "dlsite_popular"
+  | "preset";
 
 export type SystemRunOptions = {
   followUpRun?: boolean;
@@ -50,6 +56,13 @@ export type RemotePopularRunOptions = {
   limit: number;
   tagNameTemplate: string;
   skipTag: boolean;
+};
+
+export type RemoteFetchRunOptions = {
+  sourceId: number;
+  sourceDisplayName: string;
+  workCode: string;
+  excludeExtensions: string[];
 };
 
 export type SystemWorkflowTriggerConfig = {
@@ -78,14 +91,11 @@ export const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = 
   local_media_index: ["local_media_index"],
   metadata_sync: ["metadata_sync"],
   remote_popular_collection: ["remote_popular"],
+  remote_work_fetch: ["remote_fetch"],
   dlsite_popular_collection: ["dlsite_popular"],
 };
 
 export const configurableSystemWorkflowCodes = new Set(Object.keys(manuallyRunnableSystemWorkflows));
-
-// Workflows shown for their history only. A Fetch starts from a work, never
-// from this page, so its tab has no Run form or triggers.
-export const readOnlySystemWorkflowCodes = new Set(["remote_work_fetch"]);
 
 export function parseNodes(definitionJson: string): WorkflowNode[] {
   try {

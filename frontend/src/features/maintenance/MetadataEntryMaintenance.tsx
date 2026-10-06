@@ -1,3 +1,4 @@
+import { Inbox, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { MaintenanceToolbar, useMaintenanceSearch, type MaintenanceToolbarSlots 
 import { MetadataTagDialog } from "./MetadataTagDialog";
 import { MetadataTagTable } from "./MetadataTagTable";
 import { MetadataCircleDialog } from "./MetadataCircleDialog";
+import { MetadataCircleTable } from "./MetadataCircleTable";
 
 const PAGE_SIZES = [25, 50, 100] as const;
 
@@ -105,7 +107,7 @@ export function MetadataEntryMaintenance({
         slots={toolbar}
         query={search.draft}
         label={t(kind === "tags" ? "metadataEntries.searchTags" : "metadataEntries.searchCircles")}
-        placeholder={t(kind === "tags" ? "metadataEntries.nameOrId" : "metadataEntries.name")}
+        placeholder={t(kind === "tags" ? "metadataEntries.nameOrId" : "metadataEntries.nameOrCode")}
         loading={loading}
         pageSize={pageSize}
         pageSizeOptions={PAGE_SIZES}
@@ -138,52 +140,38 @@ export function MetadataEntryMaintenance({
           </Button>
         </div>
       )}
-      {loading && !loaded ? (
-        <p className="p-4 text-sm text-muted-foreground">{t("common.loading")}</p>
-      ) : (
-        <div className="relative overflow-x-auto rounded-md border">
-          {kind === "tags" ? (
-            <MetadataTagTable tags={result.entries as MetadataTag[]} onManage={setManaged} />
-          ) : (
-            <table className="w-full text-left text-sm" aria-label={t("metadataEntries.circles")}>
-              <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2">{t("metadataEntries.name")}</th>
-                  <th className="px-3 py-2">{t("metadataEntries.knownNames")}</th>
-                  <th className="px-3 py-2">{t("metadataEntries.workCount")}</th>
-                  <th className="px-3 py-2">
-                    <span className="sr-only">{t("metadataEntries.manage")}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {(result.entries as MetadataCircle[]).map((entry) => (
-                  <tr key={entry.id} className="border-b last:border-0">
-                    <td className="px-3 py-3 font-medium">{entry.displayName}</td>
-                    <td className="max-w-sm px-3 py-3 text-muted-foreground">
-                      {entry.aliases.map((value) => value.alias).join(" · ") || "—"}
-                    </td>
-                    <td className="px-3 py-3 tabular-nums">{entry.workCount}</td>
-                    <td className="px-3 py-3 text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        aria-label={t("metadataEntries.manageFor", { name: entry.displayName })}
-                        onClick={() => setManaged(entry)}
-                      >
-                        {t("metadataEntries.manage")}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {!result.entries.length && !failed && (
-            <p className="p-6 text-center text-sm text-muted-foreground">{t("metadataEntries.empty")}</p>
-          )}
-        </div>
-      )}
+      <section className="overflow-hidden rounded-lg border bg-card" aria-busy={loading}>
+        {loading && !loaded ? (
+          <p className="grid min-h-48 place-items-center p-4 text-sm text-muted-foreground" role="status">
+            {t("common.loading")}
+          </p>
+        ) : (
+          <>
+            <div className="relative overflow-x-auto">
+              {kind === "tags" ? (
+                <MetadataTagTable tags={result.entries as MetadataTag[]} onManage={setManaged} />
+              ) : (
+                <MetadataCircleTable circles={result.entries as MetadataCircle[]} onManage={setManaged} />
+              )}
+            </div>
+            {!result.entries.length && !failed && (
+              <div className="grid min-h-48 place-items-center px-6 py-10 text-center">
+                <div>
+                  <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-muted text-muted-foreground">
+                    {search.query ? <Search className="h-4 w-4" /> : <Inbox className="h-4 w-4" />}
+                  </div>
+                  <p className="text-sm font-medium">{t("metadataEntries.empty")}</p>
+                  {search.query && (
+                    <Button className="mt-4" size="sm" variant="outline" onClick={search.clear}>
+                      {t("unlinked.clearSearch")}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </section>
       <CollectionPagination {...pagination} placement="bottom" />
       {managed &&
         (kind === "tags" ? (

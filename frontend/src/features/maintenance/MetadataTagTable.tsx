@@ -1,39 +1,52 @@
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import type { MetadataTag } from "@/lib/api";
 import { metadataTagLanguageName, metadataTagNameLanguages, otherMetadataTagNames } from "@/lib/metadataTagModel";
+import {
+  MetadataActionsCell,
+  MetadataActionsHeader,
+  MetadataManageButton,
+  metadataBodyClassName,
+  metadataHeadClassName,
+  metadataRowClassName,
+  metadataTableClassName,
+} from "./MetadataEntryTable";
 
 /**
  * Shared tags keyed by id, with the name each language shows side by side, so
  * the list reads the same whatever language anyone prefers. The table scrolls
- * inside its box; Manage stays pinned to the visible edge.
+ * inside its box; the manage action stays pinned to the visible edge.
  */
 export function MetadataTagTable({ tags, onManage }: { tags: MetadataTag[]; onManage: (tag: MetadataTag) => void }) {
   const { t } = useTranslation();
   return (
-    <table className="w-full text-left text-sm" aria-label={t("metadataEntries.tags")}>
-      <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
-        <tr>
-          <th className="px-3 py-2">{t("metadataEntries.id")}</th>
+    <table className={metadataTableClassName} aria-label={t("metadataEntries.tags")}>
+      <thead className={metadataHeadClassName}>
+        <tr className="h-10">
+          <th scope="col" className="py-2 pl-4 pr-3 font-medium">
+            {t("metadataEntries.id")}
+          </th>
           {metadataTagNameLanguages.map(([language, labelKey]) => (
-            <th key={language} className="min-w-28 px-3 py-2">
+            <th key={language} scope="col" className="min-w-28 px-3 py-2 font-medium">
               {t(labelKey)}
             </th>
           ))}
-          <th className="min-w-36 px-3 py-2">{t("metadataEntries.otherNames")}</th>
-          <th className="px-3 py-2">{t("metadataEntries.workCount")}</th>
-          <th className="sticky right-0 bg-card px-3 py-2">
-            <span className="sr-only">{t("metadataEntries.manage")}</span>
+          <th scope="col" className="min-w-36 px-3 py-2 font-medium">
+            {t("metadataEntries.otherNames")}
           </th>
+          <th scope="col" className="px-3 py-2 text-right font-medium">
+            {t("metadataEntries.workCount")}
+          </th>
+          <MetadataActionsHeader />
         </tr>
       </thead>
-      <tbody>
+      <tbody className={metadataBodyClassName}>
         {tags.map((tag) => {
           const others = otherMetadataTagNames(tag);
           const status = tag.hidden ? "metadataEntries.hidden" : tag.mergedIntoTagId ? "metadataEntries.merged" : null;
           return (
-            <tr key={tag.id} className="border-b align-top last:border-0">
-              <th scope="row" className="whitespace-nowrap px-3 py-3 font-medium tabular-nums">
+            <tr key={tag.id} className={`${metadataRowClassName} align-top`}>
+              <th scope="row" className="whitespace-nowrap py-3 pl-4 pr-3 font-medium tabular-nums">
                 <span className="block">{tag.id}</span>
                 {tag.dlsiteGenreId !== null && " "}
                 {tag.dlsiteGenreId !== null && (
@@ -43,7 +56,11 @@ export function MetadataTagTable({ tags, onManage }: { tags: MetadataTag[]; onMa
                 )}
                 {/* Only exceptions are named; an active tag needs no status. */}
                 {status && " "}
-                {status && <span className="block text-xs font-normal text-muted-foreground">{t(status)}</span>}
+                {status && (
+                  <Badge variant="outline" className="mt-1 px-1.5 py-0 text-[11px] font-normal text-muted-foreground">
+                    {t(status)}
+                  </Badge>
+                )}
               </th>
               {metadataTagNameLanguages.map(([language]) => {
                 const name = metadataTagLanguageName(tag, language);
@@ -55,7 +72,7 @@ export function MetadataTagTable({ tags, onManage }: { tags: MetadataTag[]; onMa
                     className={allLanguages ? "px-3 py-3 text-muted-foreground" : "px-3 py-3"}
                     title={allLanguages ? t("metadataEntries.allLanguages") : undefined}
                   >
-                    {name?.name ?? <span className="text-muted-foreground">—</span>}
+                    {name?.name ?? <span className="text-muted-foreground/60">—</span>}
                   </td>
                 );
               })}
@@ -73,20 +90,16 @@ export function MetadataTagTable({ tags, onManage }: { tags: MetadataTag[]; onMa
                     })}
                   </ul>
                 ) : (
-                  "—"
+                  <span className="text-muted-foreground/60">—</span>
                 )}
               </td>
-              <td className="px-3 py-3 tabular-nums">{tag.workCount}</td>
-              <td className="sticky right-0 bg-card px-3 py-3 text-right">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label={t("metadataEntries.manageFor", { name: tag.displayName })}
+              <td className="px-3 py-3 text-right tabular-nums">{tag.workCount}</td>
+              <MetadataActionsCell>
+                <MetadataManageButton
+                  label={t("metadataEntries.manageFor", { name: tag.displayName })}
                   onClick={() => onManage(tag)}
-                >
-                  {t("metadataEntries.manage")}
-                </Button>
-              </td>
+                />
+              </MetadataActionsCell>
             </tr>
           );
         })}

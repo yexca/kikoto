@@ -576,11 +576,13 @@ test("@desktop Metadata voice aliases view lists people and opens alias review",
     remoteWorks: 1,
     playableWorks: 1,
   });
-  await page.route("**/api/voices?*", (route) =>
-    route.fulfill({
+  const listRequests: URL[] = [];
+  await page.route("**/api/voices?*", (route) => {
+    listRequests.push(new URL(route.request().url()));
+    return route.fulfill({
       json: { voices: [voice], page: 1, pageSize: 25, total: 1, tagOptions: [] } satisfies VoiceSummaryPage,
-    }),
-  );
+    });
+  });
   await page.route("**/api/voices/7?*", (route) =>
     route.fulfill({
       json: voiceDetailFixture(voice, {
@@ -624,8 +626,12 @@ test("@desktop Metadata voice aliases view lists people and opens alias review",
   const tabs = page.getByRole("tablist", { name: "Metadata views" });
   await expect(tabs.getByRole("tab", { name: "Voice actors", exact: true })).toHaveAttribute("aria-selected", "true");
   const region = page.getByRole("region", { name: "Voice actors", exact: true });
-  await expect(region.getByRole("link", { name: "Example Voice", exact: true })).toBeVisible();
-  await expect(region.getByText("Voice alias", { exact: true })).toBeVisible();
+  // One row per Kikoto person id, one column per fact.
+  const row = region.getByRole("row", { name: /^#7 / });
+  await expect(row.getByRole("link", { name: "Example Voice", exact: true })).toBeVisible();
+  await expect(row.getByRole("cell", { name: "Voice alias", exact: true })).toBeVisible();
+  await expect(row.getByRole("cell", { name: "3", exact: true })).toBeVisible();
+  expect(listRequests.at(-1)?.searchParams.get("sort")).toBe("id");
 
   await region.getByRole("button", { name: "Manage aliases for Example Voice" }).click();
   const dialog = page.getByRole("dialog", { name: "Example Voice" });

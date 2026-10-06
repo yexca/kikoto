@@ -397,8 +397,7 @@ export const englishResource = {
         updateAvailable: "Update available: {{version}}",
         sourceCode: "Source code",
         releaseNotes: "Release notes",
-        intro:
-          "Kikoto is a local-first personal audio library focused on DLsite-style works, unified metadata, compatible remote sources, and browser playback.",
+        intro: "Your personal audio library, built around listening.",
         builtWithAi: "Built with AI",
         aiCredit: "This software is developed by yexca with assistance from AI Agent.",
         modelHistoryTitle: "AI models used",

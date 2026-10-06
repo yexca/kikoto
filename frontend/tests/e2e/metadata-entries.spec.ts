@@ -563,7 +563,7 @@ test("tags are listed by id with the name each language shows", async ({ page })
     "Korean",
     "Other names",
     "Works",
-    "Manage",
+    "Actions",
   ]);
   // The list is ordered by id, so no language preference changes it.
   expect(requests[0].get("sort")).toBe("id");
@@ -577,8 +577,10 @@ test("tags are listed by id with the name each language shows", async ({ page })
     "—",
     /^Synthetic English genre · English\s*Synthetic unlabeled$/,
     "1",
-    "Manage",
+    "",
   ]);
+  // The row action is an icon whose accessible name says which tag it manages.
+  await expect(row.getByRole("button", { name: "Manage Synthetic Japanese genre", exact: true })).toBeVisible();
   // A stored name without name records is still listed.
   const customRow = table.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "9", exact: true }) });
   await expect(customRow.getByRole("listitem")).toHaveText(["Synthetic custom tag"]);
@@ -719,6 +721,7 @@ test("circle management keeps names and aliases and reviews merge history", asyn
     displayName: "Synthetic second circle",
     providerName: "Synthetic second circle",
     externalIds: ["RG00000001"],
+    code: "RG00000001",
   });
   let history: CircleMergeReview[] = [];
   await page.route("**/api/metadata/circles?*", (route) =>
@@ -763,6 +766,9 @@ test("circle management keeps names and aliases and reviews merge history", asyn
     return route.fulfill({ json: { ok: true } });
   });
   await page.goto("/metadata?view=circles");
+  // Rows are keyed by DLsite maker id, not by the name anyone authored.
+  const table = page.getByRole("table", { name: "Circles", exact: true });
+  await expect(table.getByRole("rowheader")).toHaveText(["RG00000000", "RG00000001"]);
   await page.getByRole("button", { name: "Manage Synthetic circle", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Manual name", { exact: true }).fill("Authored circle");

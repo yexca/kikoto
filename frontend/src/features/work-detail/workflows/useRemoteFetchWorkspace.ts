@@ -18,6 +18,7 @@ import {
 import { api, ApiError, type RemoteFetchFileDecision, type RemoteWorkSaveResult } from "@/lib/api";
 import { fetchDestinationCode, librarySettingsPath } from "@/lib/fetchDestination";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
+import { filterRemoteFetchPaths } from "@/lib/remoteFetchFilters";
 
 export type { FetchIntent, RemoteFetchDraft } from "@/features/work-detail/workflows/remoteFetchWorkspaceModel";
 
@@ -62,8 +63,11 @@ export function useRemoteFetchWorkspace({
         fetchIntentDetailMatches(intent, remoteCode) && intent.detail!.tracks.length > 0
           ? intent.detail!
           : await api.getRemoteSourceWork(intent.sourceId, remoteCode);
-      const paths = remoteSelectablePaths(
-        buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) }),
+      const paths = filterRemoteFetchPaths(
+        remoteSelectablePaths(
+          buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) }),
+        ),
+        intent.excludeExtensions,
       );
       if (paths.length === 0) {
         toast.notify({ kind: "warning", message: t("remoteFetch.noFiles") });
@@ -89,8 +93,11 @@ export function useRemoteFetchWorkspace({
     if (!beginOperation()) return false;
     try {
       const detail = await api.getRemoteSourceWork(draft.intent.sourceId, cleanCode);
-      const paths = remoteSelectablePaths(
-        buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) }),
+      const paths = filterRemoteFetchPaths(
+        remoteSelectablePaths(
+          buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) }),
+        ),
+        draft.intent.excludeExtensions,
       );
       if (paths.length === 0) {
         toast.notify({ kind: "warning", message: t("remoteFetch.noEditionFiles", { code: cleanCode }) });

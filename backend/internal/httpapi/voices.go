@@ -262,6 +262,11 @@ func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
 		strings.TrimSpace(r.URL.Query().Get("filter")),
 		strings.TrimSpace(r.URL.Query().Get("tag")),
 	)
+	// Metadata organizes voice actors by Kikoto person id, independent of
+	// names or credit counts; browsing keeps the most-credited first.
+	if r.URL.Query().Get("sort") == "id" {
+		sort.SliceStable(summaries, func(i, j int) bool { return summaries[i].PersonID < summaries[j].PersonID })
+	}
 	pageSize := queryInt(r, "pageSize", 24)
 	page, start, end := creatorPageBounds(queryInt(r, "page", 1), pageSize, len(summaries))
 	pageItems := summaries[start:end]
