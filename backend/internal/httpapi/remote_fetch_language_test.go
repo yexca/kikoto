@@ -16,8 +16,9 @@ import (
 )
 
 // Fetch must not persist a viewer's localized browse snapshot, including when
-// both the viewer's metadata and directory caches were populated first.
-func TestRemoteFetchUsesInstanceLanguagesAfterPersonalBrowse(t *testing.T) {
+// both the viewer's metadata and directory caches were populated first. Shared
+// writes ask in the source's fallback language alone.
+func TestRemoteFetchUsesSourceFallbackLanguageAfterPersonalBrowse(t *testing.T) {
 	code := testfixture.WorkCode("RJ", 0)
 	var mu sync.Mutex
 	requests := []string{}
@@ -45,7 +46,6 @@ func TestRemoteFetchUsesInstanceLanguagesAfterPersonalBrowse(t *testing.T) {
 	server := NewServer(db, config.Config{DataRoot: t.TempDir(), CacheRoot: t.TempDir(), LocalScanDepth: 2})
 	metadataReviewExec(t, db, `INSERT INTO file_source (id, code, display_name, source_type) VALUES (7, 'example_remote_a', 'Example Remote A', 'kikoeru_compatible')`)
 	metadataReviewExec(t, db, `INSERT INTO file_source_endpoint (file_source_id, api_url, base_url) VALUES (7, ?, ?)`, upstream.URL, upstream.URL)
-	metadataReviewExec(t, db, `INSERT INTO app_setting (key, value_json) VALUES ('dlsite_metadata_languages', '["ja-jp","origin"]')`)
 	userID := metadataReviewExec(t, db, `INSERT INTO user_account (username, display_name, role) VALUES ('synthetic-user', 'Example User', 'user')`)
 	metadataReviewExec(t, db, `INSERT INTO user_preference (user_id, metadata_languages) VALUES (?, '["en-us","origin"]')`, userID)
 	ctx := withMetadataLanguageMemo(context.WithValue(context.Background(), currentUserKey, currentUser{ID: userID, Role: "user"}))
@@ -79,7 +79,7 @@ func TestRemoteFetchUsesInstanceLanguagesAfterPersonalBrowse(t *testing.T) {
 	if err != nil || work.Title != "Example Work English" {
 		t.Fatalf("personal browse after Fetch = %q, error = %v", work.Title, err)
 	}
-	// Force recovery to reconstruct the plan after the instance cache expires.
+	// Force recovery to reconstruct the plan after the shared cache expires.
 	server.invalidateRemoteWorkCache(7)
 	metadataReviewExec(t, db, `UPDATE remote_fetch_manifest SET plan_json = '{}' WHERE workflow_run_id = ?`, result.RunID)
 	if _, err := server.prepareRemoteWorkFetchExecution(ctx, result.RunID, result.JobID, remoteWorkFetchJobPayload{SourceID: 7, WorkCode: code}); err != nil {
@@ -89,7 +89,7 @@ func TestRemoteFetchUsesInstanceLanguagesAfterPersonalBrowse(t *testing.T) {
 	seen := append([]string(nil), requests...)
 	mu.Unlock()
 	if len(seen) != 6 {
-		t.Fatalf("upstream requests = %v, want personal browse, instance plan and instance recovery pairs", seen)
+		t.Fatalf("upstream requests = %v, want personal browse, shared plan and shared recovery pairs", seen)
 	}
 	for index, language := range seen {
 		want := "ja-JP"

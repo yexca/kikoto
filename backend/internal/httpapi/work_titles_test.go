@@ -107,7 +107,7 @@ func TestScopedTitlePatchAndResetKeepOtherLanguagesAndFields(t *testing.T) {
 
 func TestTitlePresentationSharesEditionDescriptionWithoutRewritingProvider(t *testing.T) {
 	fixture := newManualOverrideFixture(t, config.Config{})
-	ctx := context.Background()
+	ctx := metadataLanguageViewer(fixture.userID)
 	translatedCode := testfixture.WorkCode("RJ", 1)
 	result, err := fixture.db.Exec("INSERT INTO work(primary_code,title,description) VALUES (?, '【简体中文版】Example Chinese','Chinese introduction')", translatedCode)
 	if err != nil {
@@ -126,13 +126,13 @@ func TestTitlePresentationSharesEditionDescriptionWithoutRewritingProvider(t *te
 		{"UPDATE work SET description='Japanese introduction' WHERE id=?", []any{fixture.workID}},
 		{`INSERT INTO work_edition(work_id,logical_work_id,primary_code,metadata_language,is_canonical,translation_kind) VALUES (?,?,?,'JPN',1,'origin'),(?,?,?,'CHI_HANS',0,'official')`, []any{fixture.workID, logicalID, testfixture.WorkCode("RJ", 0), translatedID, logicalID, translatedCode}},
 		{`INSERT INTO dlsite_metadata_variant(logical_work_id,work_id,provider_id,external_id,edition_language,title) VALUES (?,?,?,?,'JPN','Example Japanese'),(?,?,?,?,'CHI_HANS','【简体中文版】Example Chinese')`, []any{logicalID, fixture.workID, fixture.providerID, testfixture.WorkCode("RJ", 0), logicalID, translatedID, fixture.providerID, translatedCode}},
-		{`INSERT INTO app_setting(key,value_json) VALUES ('dlsite_metadata_languages','["zh-cn","origin"]') ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json`, nil},
 	}
 	for _, q := range queries {
 		if _, err := fixture.db.Exec(q.query, q.args...); err != nil {
 			t.Fatal(err)
 		}
 	}
+	setUserMetadataLanguages(t, fixture.db, fixture.userID, `["zh-cn","origin"]`)
 	detail, err := fixture.server.loadWorkDetail(ctx, fixture.userID, fixture.workID, false)
 	if err != nil {
 		t.Fatal(err)
@@ -158,9 +158,7 @@ func TestTitlePresentationSharesEditionDescriptionWithoutRewritingProvider(t *te
 	if detail.Title != "【简体中文版】Authored Chinese" || detail.Description != "Chinese introduction" {
 		t.Fatalf("manual detail: %+v", detail)
 	}
-	if _, err := fixture.db.Exec(`UPDATE app_setting SET value_json='["ko-kr","zh-cn","origin"]' WHERE key='dlsite_metadata_languages'`); err != nil {
-		t.Fatal(err)
-	}
+	setUserMetadataLanguages(t, fixture.db, fixture.userID, `["ko-kr","zh-cn","origin"]`)
 	detail, err = fixture.server.loadWorkDetail(ctx, fixture.userID, fixture.workID, false)
 	if err != nil {
 		t.Fatal(err)

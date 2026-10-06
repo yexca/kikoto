@@ -274,7 +274,8 @@ const adminToolsHans = {
     metadataCapability: "提供作品元数据",
     metadataCapabilityDescription: "允许元数据同步的远程回退在 DLsite 没有记录时使用此来源。",
     fallbackLanguage: "回退语言",
-    fallbackLanguageDescription: "请求先使用查看者偏好的元数据语言，最后使用此语言，用于没有偏好语言的来源。",
+    fallbackLanguageDescription:
+      "请求先使用查看者偏好的元数据语言，最后使用此语言。显示原语言的用户、匿名访客和后台任务只使用此语言。",
     customLanguage: "自定义（{{language}}）",
     connection: "连接详情",
     connectionDescription: "API URL、公开网站与作品链接",
@@ -629,7 +630,6 @@ export const zhHansResource = {
         metadataLanguage: "优先展示 metadata 语言",
         metadataLanguageSaveFailed: "无法保存 metadata 语言。",
         metadataLanguageLoadFailed: "无法读取 metadata 语言。",
-        metadataLanguageDefault: "服务器默认（{{language}}）",
       },
       account: {
         account: "账户",

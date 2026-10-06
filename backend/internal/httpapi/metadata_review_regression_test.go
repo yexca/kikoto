@@ -494,3 +494,73 @@ func TestWorkTagDraftsNameOnlyTheTagsTheyCreate(t *testing.T) {
 		t.Fatalf("missing tag = %d", response.Code)
 	}
 }
+
+// The management list can order by id, independent of any display language,
+// and a query finds tags by tag id, DLsite genre id or remote provider name.
+func TestMetadataTagListSortsByIDAndSearchesIDsAndProviderNames(t *testing.T) {
+	db := openMigratedTestDB(t)
+	s := NewServer(db, config.Config{})
+	actor := metadataReviewExec(t, db, "INSERT INTO user_account(username,role) VALUES ('synthetic-tag-list','admin')")
+	user := account.User{ID: actor, Permissions: account.PermissionsForRole("admin")}
+	provider := metadataReviewExec(t, db, "INSERT INTO metadata_provider(code,display_name) VALUES ('kikoeru_source_example_remote_a','Example Remote A')")
+	metadataReviewExec(t, db, "INSERT INTO dlsite_genre_name(genre_id,language,name) VALUES (900,'ja-jp','Synthetic genre')")
+	ctx := context.Background()
+	var zeta, alpha, genre, remote int64
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, create := range []struct {
+		target *int64
+		name   string
+	}{{&zeta, "Synthetic zeta"}, {&alpha, "Synthetic alpha"}} {
+		if *create.target, err = metadatatags.CreateTx(ctx, tx, create.name, actor); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if genre, err = metadatatags.EnsureGenreTx(ctx, tx, 900); err != nil {
+		t.Fatal(err)
+	}
+	if remote, err = metadatatags.EnsureLegacyTx(ctx, tx, "Synthetic remote concept"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec("INSERT INTO metadata_tag_provider_name(tag_id,language,name,provider_id) VALUES (?,'en-us','Synthetic provider alias',?)", remote, provider); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	list := func(query string) []int64 {
+		t.Helper()
+		response := metadataReviewRequest(t, s, http.MethodGet, "/api/metadata/tags?"+query, "", user)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", query, response.Code, response.Body.String())
+		}
+		var page metadataTagPage
+		if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+			t.Fatal(err)
+		}
+		ids := []int64{}
+		for _, tag := range page.Tags {
+			ids = append(ids, tag.ID)
+		}
+		if page.Total != len(ids) {
+			t.Fatalf("%s: total %d for %d tags", query, page.Total, len(ids))
+		}
+		return ids
+	}
+	for _, check := range []struct {
+		query string
+		want  []int64
+	}{
+		{"", []int64{alpha, genre, remote, zeta}},
+		{"sort=id", []int64{zeta, alpha, genre, remote}},
+		{fmt.Sprintf("q=%d", alpha), []int64{alpha}},
+		{"q=900", []int64{genre}},
+		{"q=provider+alias", []int64{remote}},
+	} {
+		if got := list(check.query); !reflect.DeepEqual(got, check.want) {
+			t.Fatalf("%q tags = %v, want %v", check.query, got, check.want)
+		}
+	}
+}

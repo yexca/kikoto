@@ -22,6 +22,19 @@ func metadataLanguageUser(t *testing.T, db *sql.DB, name string) (int64, context
 	return id, context.WithValue(context.Background(), currentUserKey, currentUser{ID: id, Role: "user"})
 }
 
+// setUserMetadataLanguages stores a user's personal metadata language
+// priority directly, as a JSON list.
+func setUserMetadataLanguages(t *testing.T, db *sql.DB, userID int64, languages string) {
+	t.Helper()
+	metadataReviewExec(t, db, `INSERT INTO user_preference (user_id, metadata_languages) VALUES (?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET metadata_languages = excluded.metadata_languages`, userID, languages)
+}
+
+// metadataLanguageViewer is a request context signed in as userID.
+func metadataLanguageViewer(userID int64) context.Context {
+	return context.WithValue(context.Background(), currentUserKey, currentUser{ID: userID, Role: "user"})
+}
+
 func patchMetadataLanguages(t *testing.T, server *Server, userID int64, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(http.MethodPatch, "/api/auth/me/preferences", strings.NewReader(body))
@@ -31,12 +44,11 @@ func patchMetadataLanguages(t *testing.T, server *Server, userID int64, body str
 	return response
 }
 
-func TestUserMetadataLanguageFollowsInstanceUntilChosen(t *testing.T) {
+func TestUserMetadataLanguageUsesOriginUntilChosen(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	chooser, chooserCtx := metadataLanguageUser(t, db, "synthetic-language-a")
 	_, otherCtx := metadataLanguageUser(t, db, "synthetic-language-b")
-	metadataReviewExec(t, db, `INSERT INTO app_setting(key,value_json) VALUES ('dlsite_metadata_languages','["en-us","origin"]')`)
 
 	response := patchMetadataLanguages(t, server, chooser, `{"metadataLanguages":["zh-cn"]}`)
 	if response.Code != http.StatusOK {
@@ -46,7 +58,7 @@ func TestUserMetadataLanguageFollowsInstanceUntilChosen(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &saved); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(saved.MetadataLanguages, []string{"zh-cn", "origin"}) || !reflect.DeepEqual(saved.DefaultMetadataLanguages, []string{"en-us", "origin"}) {
+	if !reflect.DeepEqual(saved.MetadataLanguages, []string{"zh-cn", "origin"}) {
 		t.Fatalf("saved preferences = %+v", saved)
 	}
 	for _, check := range []struct {
@@ -55,20 +67,26 @@ func TestUserMetadataLanguageFollowsInstanceUntilChosen(t *testing.T) {
 		want []string
 	}{
 		{"chooser", chooserCtx, []string{"zh-cn", "origin"}},
-		{"other user", otherCtx, []string{"en-us", "origin"}},
-		{"anonymous", context.Background(), []string{"en-us", "origin"}},
+		{"other user", otherCtx, []string{"origin"}},
+		{"anonymous", context.Background(), []string{"origin"}},
 	} {
 		if got := server.viewerMetadataLanguages(check.ctx); !reflect.DeepEqual(got, check.want) {
 			t.Fatalf("%s languages = %v, want %v", check.name, got, check.want)
 		}
 	}
-	// A personal choice never rewrites the instance default.
-	if got := server.instanceMetadataLanguages(context.Background()); !reflect.DeepEqual(got, []string{"en-us", "origin"}) {
+	// A personal choice never changes the stored-metadata language.
+	if got := server.instanceMetadataLanguages(context.Background()); !reflect.DeepEqual(got, []string{"origin"}) {
 		t.Fatalf("instance languages = %v", got)
 	}
 
-	if response := patchMetadataLanguages(t, server, chooser, `{"metadataLanguages":["xx-yy"]}`); response.Code != http.StatusBadRequest {
-		t.Fatalf("unsupported language: %d %s", response.Code, response.Body.String())
+	for _, body := range []string{
+		`{"metadataLanguages":["xx-yy"]}`,
+		`{"metadataLanguages":[]}`,
+		`{"metadataLanguages":["ja-jp","en-us","zh-cn","zh-tw","ko-kr","ja-jp"]}`,
+	} {
+		if response := patchMetadataLanguages(t, server, chooser, body); response.Code != http.StatusBadRequest {
+			t.Fatalf("invalid list %s: %d %s", body, response.Code, response.Body.String())
+		}
 	}
 	if response := patchMetadataLanguages(t, server, chooser, `{"recommendationThreshold":40}`); response.Code != http.StatusOK {
 		t.Fatalf("unrelated update: %d %s", response.Code, response.Body.String())
@@ -77,18 +95,58 @@ func TestUserMetadataLanguageFollowsInstanceUntilChosen(t *testing.T) {
 		t.Fatalf("omitted field changed languages to %v", got)
 	}
 	if response := patchMetadataLanguages(t, server, chooser, `{"metadataLanguages":null}`); response.Code != http.StatusOK {
-		t.Fatalf("follow default: %d %s", response.Code, response.Body.String())
+		t.Fatalf("clear choice: %d %s", response.Code, response.Body.String())
 	}
-	if got := server.viewerMetadataLanguages(chooserCtx); !reflect.DeepEqual(got, []string{"en-us", "origin"}) {
+	if got := server.viewerMetadataLanguages(chooserCtx); !reflect.DeepEqual(got, []string{"origin"}) {
 		t.Fatalf("cleared choice languages = %v", got)
 	}
-	if got := server.learnedMetadataLanguages(context.Background()); !reflect.DeepEqual(got, []string{"en-us", "origin"}) {
+	if got := server.learnedMetadataLanguages(context.Background()); !reflect.DeepEqual(got, []string{"origin"}) {
 		t.Fatalf("learned languages after clearing = %v", got)
 	}
 }
 
+// Choosing only the original language is no preference: it is stored as
+// NULL, and the response carries no separate instance default.
+func TestUserMetadataLanguageOriginOnlyIsStoredAsNoPreference(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	user, userCtx := metadataLanguageUser(t, db, "synthetic-language-origin-only")
+	if response := patchMetadataLanguages(t, server, user, `{"metadataLanguages":["zh-cn"]}`); response.Code != http.StatusOK {
+		t.Fatalf("save: %d %s", response.Code, response.Body.String())
+	}
+	response := patchMetadataLanguages(t, server, user, `{"metadataLanguages":["origin"]}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("save origin: %d %s", response.Code, response.Body.String())
+	}
+	var stored sql.NullString
+	if err := db.QueryRow("SELECT metadata_languages FROM user_preference WHERE user_id = ?", user).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Valid {
+		t.Fatalf("origin-only choice stored %q, want NULL", stored.String)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/auth/me/preferences", nil).WithContext(userCtx)
+	got := httptest.NewRecorder()
+	server.getUserPreferences(got, request)
+	if got.Code != http.StatusOK {
+		t.Fatalf("get: %d %s", got.Code, got.Body.String())
+	}
+	for _, body := range []*httptest.ResponseRecorder{response, got} {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(body.Body.Bytes(), &fields); err != nil {
+			t.Fatal(err)
+		}
+		if raw, ok := fields["metadataLanguages"]; !ok || string(raw) != "null" {
+			t.Fatalf("metadataLanguages = %s (present %v), want null", raw, ok)
+		}
+		if _, ok := fields["defaultMetadataLanguages"]; ok {
+			t.Fatalf("preferences still expose defaultMetadataLanguages: %s", body.Body.String())
+		}
+	}
+}
+
 // Two users see the same work in their own languages while the stored
-// projection keeps the instance default.
+// projection keeps the original language.
 func TestViewerLanguageSelectsTitlesTagsAndEditionWithoutChangingStoredValues(t *testing.T) {
 	db := openMigratedTestDB(t)
 	ctx := context.Background()

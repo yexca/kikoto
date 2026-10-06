@@ -15,18 +15,16 @@ type userPreferences struct {
 	RecommendationThreshold int                          `json:"recommendationThreshold"`
 	RecommendationDefaults  library.RecommendationConfig `json:"recommendationDefaults"`
 	// MetadataLanguages is the user's own metadata language priority, or nil
-	// when the user follows DefaultMetadataLanguages, the instance default.
-	MetadataLanguages        []string `json:"metadataLanguages"`
-	DefaultMetadataLanguages []string `json:"defaultMetadataLanguages"`
+	// when the user has no preference and sees each work's original language.
+	MetadataLanguages []string `json:"metadataLanguages"`
 }
 
 func (s *Server) loadUserPreferences(r *http.Request, userID int64) (userPreferences, error) {
 	result := userPreferences{
-		DirectoryRoutingRules:    s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
-		RecommendationConfig:     s.libraryStore.LoadUserRecommendationConfig(r.Context(), userID),
-		RecommendationThreshold:  s.settingInt(r, "recommendation_threshold", 50),
-		RecommendationDefaults:   library.DefaultRecommendationConfig(),
-		DefaultMetadataLanguages: s.instanceMetadataLanguages(r.Context()),
+		DirectoryRoutingRules:   s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),
+		RecommendationConfig:    s.libraryStore.LoadUserRecommendationConfig(r.Context(), userID),
+		RecommendationThreshold: s.settingInt(r, "recommendation_threshold", 50),
+		RecommendationDefaults:  library.DefaultRecommendationConfig(),
 	}
 	if languages, ok := s.userMetadataLanguages(r.Context(), userID); ok {
 		result.MetadataLanguages = languages
@@ -72,8 +70,8 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 		DirectoryRoutingRules   *[]directoryRule              `json:"directoryRoutingRules"`
 		RecommendationConfig    *library.RecommendationConfig `json:"recommendationConfig"`
 		RecommendationThreshold *int                          `json:"recommendationThreshold"`
-		// MetadataLanguages is a language priority, or null to follow the
-		// instance default. Omitting it keeps the current choice.
+		// MetadataLanguages is a language priority, or null for no
+		// preference (original language). Omitting it keeps the current choice.
 		MetadataLanguages json.RawMessage `json:"metadataLanguages"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
@@ -124,12 +122,15 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		encoded, err := json.Marshal(languages)
-		if err != nil {
-			writeError(w, err)
-			return
+		// Choosing only the original language is the same as no preference.
+		if !sameMetadataLanguages(languages, defaultDLsiteMetadataLanguages) {
+			encoded, err := json.Marshal(languages)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			metadataLanguagesJSON = string(encoded)
 		}
-		metadataLanguagesJSON = string(encoded)
 	}
 	_, err := s.db.ExecContext(r.Context(), `INSERT INTO user_preference (user_id, directory_routing_rules, recommendation_config, recommendation_threshold)
 		VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET

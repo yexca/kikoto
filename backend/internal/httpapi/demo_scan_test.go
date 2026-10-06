@@ -238,10 +238,6 @@ func TestDemoLibraryScanStoresEligibleLanguageEditionMetadata(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '0')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('dlsite_metadata_languages', '["zh-cn","origin"]')`); err != nil {
-		t.Fatal(err)
-	}
-
 	server := NewServer(db, config.Config{Mode: config.ModeDemo, DataRoot: dataRoot, CacheRoot: t.TempDir(), LocalScanDepth: 2})
 	client := &localizedDemoScanDLsiteClient{
 		fakeDemoScanDLsiteClient: &fakeDemoScanDLsiteClient{products: map[string]dlsite.Product{
@@ -273,8 +269,10 @@ func TestDemoLibraryScanStoresEligibleLanguageEditionMetadata(t *testing.T) {
 	if err := db.QueryRow("SELECT title FROM work WHERE primary_code = 'RJ00000010'").Scan(&rootTitle); err != nil {
 		t.Fatal(err)
 	}
-	if rootTitle != "Simplified title" {
-		t.Fatalf("projected Demo title = %q, want Simplified title", rootTitle)
+	// The stored title is the original edition's; localized editions are kept
+	// for viewers who prefer them.
+	if rootTitle != "Origin title" {
+		t.Fatalf("projected Demo title = %q, want Origin title", rootTitle)
 	}
 	var requestLocale, localizedTitle string
 	if err := db.QueryRow(`

@@ -127,7 +127,6 @@ export function HeaderActions({
   const metadataLanguageControl = canViewMetadataLanguage
     ? {
         value: metadataDisplayLanguage.value,
-        defaultValue: metadataDisplayLanguage.defaultValue,
         busy: metadataDisplayLanguage.busy,
         failed: metadataDisplayLanguage.failed,
         readOnly,

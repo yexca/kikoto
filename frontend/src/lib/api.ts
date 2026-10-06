@@ -693,10 +693,8 @@ export type UserPreferences = {
   recommendationConfig: RecommendationConfig;
   recommendationThreshold: number;
   recommendationDefaults: RecommendationConfig;
-  /** The user's own metadata language priority; null follows defaultMetadataLanguages. */
+  /** The user's own metadata language priority; null shows each work's original language. */
   metadataLanguages: string[] | null;
-  /** The instance default metadata language priority. */
-  defaultMetadataLanguages: string[];
 };
 
 export type RuntimeSettings = {
@@ -732,8 +730,6 @@ export type AppSettings = {
   remoteBackoffSeconds: number;
   remoteMaxBackoffSeconds: number;
   catalogFreshnessDays: number;
-  dlsiteMetadataLanguage: string;
-  dlsiteMetadataLanguages: string[];
   remoteMetadataFallback?: RemoteMetadataFallbackSettings;
   proxy: ProxySettings;
   /** Lets every account enter a private or LAN address for a Kikoeru account import. */
@@ -2420,9 +2416,8 @@ export const api = {
   getWorkPlaybackCursor: (id: number, signal?: AbortSignal) =>
     getJSON<WorkPlaybackCursorResponse>(`/api/works/${id}/playback-cursor`, signal),
   getUserPreferences: (signal?: AbortSignal) => getJSON<UserPreferences>("/api/auth/me/preferences", signal),
-  updateUserPreferences: (
-    payload: Partial<Omit<UserPreferences, "recommendationDefaults" | "defaultMetadataLanguages">>,
-  ) => patchJSONBody<UserPreferences>("/api/auth/me/preferences", payload),
+  updateUserPreferences: (payload: Partial<Omit<UserPreferences, "recommendationDefaults">>) =>
+    patchJSONBody<UserPreferences>("/api/auth/me/preferences", payload),
   getRuntimeSettings: (signal?: AbortSignal): Promise<RuntimeSettings> =>
     sharedGetJSON("/api/runtime-settings", signal),
   listRemoteSourceWorks: (
@@ -2543,6 +2538,7 @@ export const api = {
     pageSize = 25,
     includeHidden = false,
     resolveMerged = false,
+    sort = "name",
     signal,
   }: {
     query?: string;
@@ -2550,10 +2546,12 @@ export const api = {
     pageSize?: number;
     includeHidden?: boolean;
     resolveMerged?: boolean;
+    /** "id" orders by tag id, independent of any language; "name" by display name. */
+    sort?: "name" | "id";
     signal?: AbortSignal;
   } = {}) =>
     getJSON<MetadataEntryPage<{ tags: MetadataTag[]; pendingWorkCount?: number }>>(
-      `/api/metadata/tags?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}&includeHidden=${includeHidden}&resolveMerged=${resolveMerged}`,
+      `/api/metadata/tags?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}&includeHidden=${includeHidden}&resolveMerged=${resolveMerged}&sort=${sort}`,
       signal,
     ),
   createMetadataTag: (name: string) => postJSONBody<MetadataTag>("/api/metadata/tags", { name }),
@@ -2788,8 +2786,6 @@ export const api = {
     remoteBackoffSeconds?: number;
     remoteMaxBackoffSeconds?: number;
     catalogFreshnessDays?: number;
-    dlsiteMetadataLanguage?: string;
-    dlsiteMetadataLanguages?: string[];
     remoteMetadataFallback?: RemoteMetadataFallbackSettings;
     proxy?: ProxySettingsPayload;
     kikoeruImportPrivateAddresses?: boolean;

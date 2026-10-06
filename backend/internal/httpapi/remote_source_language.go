@@ -11,8 +11,10 @@ import (
 // A remote source is asked in the viewer's metadata languages first and in
 // the source's configured fallback language last. An administrator sets the
 // fallback per source because a source may not describe works in every
-// language. Requests without a viewer, such as background jobs, use the
-// instance default languages. The upstream may still ignore the hint.
+// language. A viewer without a preference, anonymous browsing and background
+// jobs such as crawls and downloads ask in the fallback language alone, since
+// "original language" has no request language. The upstream may still ignore
+// the hint.
 
 type remoteSourceLanguage struct {
 	// token is the presentation language, comparable with metadata language

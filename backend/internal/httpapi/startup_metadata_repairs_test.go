@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/metadatatags"
+	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -123,5 +125,75 @@ func TestStartupRepairsFailIndependentlyContinueOtherCoversAndRetry(t *testing.T
 	}
 	if markers != 2 {
 		t.Fatalf("retry completion markers=%d", markers)
+	}
+}
+
+// Retiring the former instance metadata language deletes both settings and,
+// when a database was projected in another language, re-projects stored tag
+// names in the original language.
+func TestRetireInstanceMetadataLanguageReprojectsNonOriginDatabases(t *testing.T) {
+	for _, check := range []struct {
+		name, languages, legacy string
+		reproject               bool
+	}{
+		{"non-origin priority", `["zh-cn","origin"]`, `"zh-cn"`, true},
+		{"legacy scalar only", "", `"en-us"`, true},
+		{"origin only", `["origin"]`, `"origin"`, false},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			db := openMigratedTestDB(t)
+			ctx := context.Background()
+			metadataReviewExec(t, db, "INSERT INTO dlsite_genre_name(genre_id,language,name) VALUES (1,'ja-jp','合成日本語タグ'),(1,'zh-cn','合成中文标签')")
+			tx, err := db.Begin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			tag, err := metadatatags.EnsureGenreTx(ctx, tx, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatal(err)
+			}
+			// A completed projection that used the former instance language.
+			metadataReviewExec(t, db, "UPDATE tag SET display_name='合成中文标签' WHERE id=?", tag)
+			metadataReviewExec(t, db, `INSERT INTO app_setting(key,value_json) VALUES ('metadata_tag_projection_version','1')
+				ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json`)
+			if check.languages != "" {
+				metadataReviewExec(t, db, "INSERT INTO app_setting(key,value_json) VALUES (?,?)", dlsiteMetadataLanguagesSetting, check.languages)
+			}
+			metadataReviewExec(t, db, "INSERT INTO app_setting(key,value_json) VALUES (?,?)", dlsiteMetadataLanguageSetting, check.legacy)
+
+			if err := retireInstanceMetadataLanguage(ctx, db); err != nil {
+				t.Fatal(err)
+			}
+			var settings, pending int
+			if err := db.QueryRow("SELECT COUNT(*) FROM app_setting WHERE key IN (?,?)", dlsiteMetadataLanguagesSetting, dlsiteMetadataLanguageSetting).Scan(&settings); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.QueryRow("SELECT COUNT(*) FROM app_setting WHERE key='metadata_projection_pending'").Scan(&pending); err != nil {
+				t.Fatal(err)
+			}
+			if settings != 0 || (pending == 1) != check.reproject {
+				t.Fatalf("settings left=%d pending=%d, want reprojection %v", settings, pending, check.reproject)
+			}
+			if !check.reproject {
+				return
+			}
+			s := NewServer(db, config.Config{})
+			if err := metasync.BackfillMetadataTags(ctx, db, s.instanceMetadataLanguages(ctx)); err != nil {
+				t.Fatal(err)
+			}
+			var name string
+			if err := db.QueryRow("SELECT display_name FROM tag WHERE id=?", tag).Scan(&name); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.QueryRow("SELECT COUNT(*) FROM app_setting WHERE key='metadata_projection_pending'").Scan(&pending); err != nil {
+				t.Fatal(err)
+			}
+			if name != "合成日本語タグ" || pending != 0 {
+				t.Fatalf("after backfill: name=%q pending=%d", name, pending)
+			}
+		})
 	}
 }

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"log/slog"
 	"time"
@@ -20,6 +21,9 @@ func (s *Server) startStartupMetadataRepairs() {
 		}{
 			{"startup_cover_migration", s.migrateFlatCoverCache},
 			{"startup_metadata_tag_backfill", func(ctx context.Context) error {
+				if err := retireInstanceMetadataLanguage(ctx, s.db); err != nil {
+					return err
+				}
 				return metasync.BackfillMetadataTags(ctx, s.db, s.instanceMetadataLanguages(ctx))
 			}},
 		} {
@@ -36,6 +40,28 @@ func (s *Server) startStartupMetadataRepairs() {
 			})
 		}
 	})
+}
+
+// retireInstanceMetadataLanguage removes the former instance default
+// metadata language. Stored titles and tag names now always use the original
+// language, so a database projected in another language is marked for the
+// backfill that follows to project again.
+func retireInstanceMetadataLanguage(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO app_setting(key,value_json)
+ SELECT 'metadata_projection_pending','true'
+ WHERE EXISTS(SELECT 1 FROM app_setting WHERE (key=? AND value_json<>'["origin"]') OR (key=? AND value_json<>'"origin"'))
+ ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json`, dlsiteMetadataLanguagesSetting, dlsiteMetadataLanguageSetting); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM app_setting WHERE key IN (?,?)", dlsiteMetadataLanguagesSetting, dlsiteMetadataLanguageSetting); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Server) recordStartupRepair(ctx context.Context, key, status string) {

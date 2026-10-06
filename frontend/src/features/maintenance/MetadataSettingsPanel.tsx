@@ -11,7 +11,8 @@ const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n
 /**
  * Metadata settings shown in the page's settings popover: the DLsite proxy
  * shortcut, which saves on its own, and links to the metadata settings kept
- * elsewhere (instance defaults in Settings, remote fallback in Metadata sync).
+ * elsewhere (catalog freshness in Library settings, remote fallback in
+ * Metadata sync).
  */
 export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?: boolean; onClose: () => void }) {
   const { t } = useTranslation();
@@ -86,8 +87,8 @@ export function MetadataSettingsPanel({ readOnly = false, onClose }: { readOnly?
           <h3 id="metadata-settings-elsewhere" className="text-xs font-semibold text-muted-foreground">
             {maintenanceCopy("metadata.elsewhere")}
           </h3>
-          <SettingsLink onClick={() => navigate("/settings?tab=metadata")}>
-            {maintenanceCopy("metadata.openDefaults")}
+          <SettingsLink onClick={() => navigate("/settings?tab=library")}>
+            {maintenanceCopy("metadata.openCatalogFreshness")}
           </SettingsLink>
           <SettingsLink onClick={() => navigate("/workflows?workflow=metadata_sync")}>
             {maintenanceCopy("metadata.openRemoteFallback")}

@@ -5,8 +5,8 @@ Notifications (when authenticated), Appearance, and account. Quick actions
 opens the searchable Command Palette in a bottom sheet; Notifications,
 Appearance, and account use anchored popovers. Appearance owns mode, style, and
 color choices, and for a signed-in user the personal preferred metadata
-language: **Server default** follows the instance default named beside it, and
-a saved change refreshes the routed page through the user preference event; the account surface owns Activity, account settings, native
+language: **Origin** is shown when the user has no preference and choosing it
+clears the stored preference, and a saved change refreshes the routed page through the user preference event; the account surface owns Activity, account settings, native
 connection actions, and authentication actions. On desktop, Quick actions and
 the same command palette remain a centered surface while the header popovers
 stay anchored to their triggers.
@@ -175,9 +175,14 @@ viewer read LRC, WebVTT, and SRT files the same way.
   those views; existing voice deep links remain valid. The shared icon rail
   shows group headings when expanded and accessible group descriptions at all
   sizes. The header settings popover keeps the DLsite proxy shortcut and
-  links to Settings → Metadata (default metadata language and catalog
-  freshness) and to the Metadata sync configuration (remote metadata
-  fallback).
+  links to Settings → Library (creator catalog freshness) and to the
+  Metadata sync configuration (remote metadata fallback). The Tags table is
+  keyed and ordered by shared tag ID, so its rows never depend on a
+  language setting. The ID cell carries the DLsite genre id and, only for a
+  hidden or merged tag, its status; there is no separate status column. The
+  table shows one column per supported language plus Other names and Works,
+  and scrolls sideways inside its own box on narrow screens with the Manage
+  column pinned to the right edge.
 
 - Workflows: horizontal definition tabs and a right-side Activity summary.
 - Activity run details inside the Workflows panel, also reachable through notifications.

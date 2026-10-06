@@ -36,7 +36,7 @@ password is reset from the server host; see
 [Administrator setup and recovery](../../operations/security.md#administrator-setup-and-recovery).
 
 Demo mode keeps account-backed Settings read-only. The administration tabs
-(Library, Metadata, Cache & Fetch, Proxy, Cleanup, and Users), the personal History &
+(Library, Cache & Fetch, Proxy, Cleanup, and Users), the personal History &
 recommendations and Tags tabs, and the Your data section of Account stay visible for inspection even though the Demo identity is
 not an administrator, and every change in them is disabled. Appearance and playback controls remain available because theme mode, style, color, seek intervals, and playback source options
 are browser-local preferences and do not modify Demo server data. Playback
@@ -45,11 +45,11 @@ anonymous principal when anonymous access is enabled.
 
 ## Personal Playback And Recommendations
 
-Settings uses Account, Playback, History, Recommendations, and Tags tabs, shown as icons: hover or focus an icon for its name, and phones also name the active tab. Account ends with the **Your data** export and import section; see [Personal data](personal-data.md) for listening history, tags, and data transfer. Administrators, and Demo, also see the administration tabs (Library, Metadata, Cache & Fetch, Proxy, Cleanup, and Users) after a divider, so the elevated scope stays separate. Wide screens show the icons in a column beside the settings; phones show them as one row that scrolls sideways. The **Show tab names** button below the column expands it to name every tab, and Settings remembers the choice. Playback contains local seek intervals, **Playback sources**, and **Folder preference**: ordered folder matching and exclusion rules. History shows the listening report (30 days, 12 months, or all time) and a collapsed full listening history. Recommendations starts with the **Your recommendation activity** report of the signed-in user's own last 30 days (how impressions turned into opens and plays, the marks and reshuffles given, and the affinity score distribution), followed by recommendation presets, badge threshold, variation, discovery boost, and advanced scoring. These two migrated preferences are stored per authenticated account on the server; changing them never changes another account. An account without overrides and anonymous browsing retain the existing instance defaults. Old Maintenance Routing and Recommendation links open the corresponding Settings tab, and older `?tab=data` Settings links open the Your data section of Account.
+Settings uses Account, Playback, History, Recommendations, and Tags tabs, shown as icons: hover or focus an icon for its name, and phones also name the active tab. Account ends with the **Your data** export and import section; see [Personal data](personal-data.md) for listening history, tags, and data transfer. Administrators, and Demo, also see the administration tabs (Library, Cache & Fetch, Proxy, Cleanup, and Users) after a divider, so the elevated scope stays separate. Wide screens show the icons in a column beside the settings; phones show them as one row that scrolls sideways. The **Show tab names** button below the column expands it to name every tab, and Settings remembers the choice. Playback contains local seek intervals, **Playback sources**, and **Folder preference**: ordered folder matching and exclusion rules. History shows the listening report (30 days, 12 months, or all time) and a collapsed full listening history. Recommendations starts with the **Your recommendation activity** report of the signed-in user's own last 30 days (how impressions turned into opens and plays, the marks and reshuffles given, and the affinity score distribution), followed by recommendation presets, badge threshold, variation, discovery boost, and advanced scoring. These two migrated preferences are stored per authenticated account on the server; changing them never changes another account. An account without overrides and anonymous browsing retain the existing instance defaults. Old Maintenance Routing and Recommendation links open the corresponding Settings tab, and older `?tab=data` Settings links open the Your data section of Account.
 
 Saving recommendation settings creates a new recommendation session for the current tab. Other open tabs keep their existing snapshots until a new session is created. Saving folder preferences updates subsequent directory selection without stopping the player. Failed saves retain the draft and the previous persisted values. Demo mode keeps these server-backed preferences read-only.
 
-Appearance is available only from the header menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Every signed-in user also sees **Preferred metadata language** directly below the UI language. It is a personal choice: it decides which title edition, introduction and tag names that user sees, orders title sorting by those titles, and is asked first when Kikoto queries a remote source for that user. It starts at **Server default**, the instance default an administrator sets in `Settings -> Metadata`, which itself defaults to `Origin`; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition. Every language shows the same tags: they come from the original edition. Anonymous visitors see the server default.
+Appearance is available only from the header menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Every signed-in user also sees **Preferred metadata language** directly below the UI language. It is a personal choice: it decides which title edition, introduction and tag names that user sees, orders title sorting by those titles, and is asked first when Kikoto queries a remote source for that user. The options are **Origin**, Japanese, English, Simplified Chinese, Traditional Chinese, and Korean. Without a choice it shows **Origin**, each work's original language, and choosing **Origin** clears the preference; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition. Every language shows the same tags: they come from the original edition. Anonymous visitors see the original language. Everything stored or shared, such as stored titles and tag names, background syncs, creator catalog refreshes, remote metadata fallback, and Activity text, always uses each work's original language, so one user's choice never changes what others see.
 
 ## Maintenance Organization
 
@@ -82,23 +82,23 @@ Maintenance uses one horizontal row of tabs, scrolling horizontally on narrow sc
   **Connection details** opens for manual entry. Endpoint fields, priority, and
   network/storage options stay in collapsed groups.
 - **Fallback language** is asked last, after the viewer's preferred metadata
-  language, because a source may not describe works in every language. It
-  defaults to Japanese. The upstream may still ignore the request or return
+  language, because a source may not describe works in every language. A
+  viewer who keeps **Origin**, anonymous visitors, and background jobs such as
+  crawls, downloads, and remote metadata fallback ask in the fallback language
+  only. It defaults to Japanese. The upstream may still ignore the request or return
   mixed-language metadata.
 - Remote sources default to compatible public storage hosts. Source
   configuration can enable **Restrict outbound hosts** to allow only the API,
   Public site, Fallback, and an editable list of exact or `*.example.invalid`
   public host patterns.
-- Maintenance contains Library, Metadata, Cache & Fetch, Proxy, Cleanup, and Users.
-- **Metadata** holds the instance metadata defaults, saved by one action that
-  sends only the changed values. **Default metadata language** applies to
-  users who keep **Server default**, to anonymous visitors, to stored titles
-  and tag names, and to background requests such as remote metadata fallback
-  and catalog refreshes; changing it refreshes the stored titles and tag
-  names. Each user's own choice is in the header Appearance menu; a remote
-  source's fallback language is in its source settings. **Catalog freshness
-  days** (1 to 365, default 30) marks a circle or voice actor catalog
-  Attention once its last refresh is older than that.
+- Maintenance contains Library, Cache & Fetch, Proxy, Cleanup, and Users.
+- **Creator catalogs** in Library holds **Catalog freshness days** (1 to 365,
+  default 30), saved with its own **Save catalog settings** button. A circle
+  or voice actor catalog is marked Attention once its last refresh is older
+  than that. Older `/settings?tab=metadata` links open Library. There is no
+  instance metadata language: each user's own choice is in the header
+  Appearance menu, and a remote source's fallback language is in its source
+  settings.
 - Cache & Fetch contains configuration only: playback cache policy, transfer
   safety, and collapsed download pacing, with one save action that is enabled
   after a change. Cache contents are managed in the Cleanup tab.
@@ -165,7 +165,7 @@ sections need `sources:write`.
 
 The **Metadata** icon rail groups **Works** (All, Needs attention, Metadata issues, No available source) and **Entries** (Tags, Circles, Voice actors). Wide screens can expand group and view names; phones show a scrollable icon row. Work tables retain search, pagination, selection and manual refresh, and the pencil opens the same editor as work detail. Admin and super_admin receive `library:write` for metadata, covers, metadata links, source untracking, shared tag edits, and circle identity edits.
 
-**Tags** (`/metadata?view=tags`) lists shared concepts, known names, work counts, hiding and merge state. Manage opens manual names for all languages or a locale, global hiding, merge-target selection, and undo of the merge mapping. **Circles** (`?view=circles`) supports a manual name that survives provider refresh, confirmed aliases, and reviewed merges that move works, maker ids, catalogs, snapshots, series, and personal circle data. Undo processes the latest merge first and refuses to replace later edits to affected records. **Voice actors** retains `metadata:sync` for alias and duplicate management and the existing `/metadata?view=aliases&voice=<id>` deep link. Demo allows inspection while changes remain disabled.
+**Tags** (`/metadata?view=tags`) lists shared concepts by their shared tag **ID**, ordered by ID so the list never depends on a language setting. The ID cell shows the DLsite genre id below the tag ID when there is one, and **Hidden** or **Merged** below that only for a hidden or merged tag; an active tag shows no status. The columns are ID, Japanese, Simplified Chinese, Traditional Chinese, English, Korean, **Other names**, Works, and Manage. Each language column shows the name that language displays: its own manual name, then the all-language manual name (shown muted), then the DLsite dictionary name, then a remote source's name, or "—" when there is none. **Other names** lists every other known name once: names a manual name replaced, with their language, names without a language, and a stored name without name records. Search matches names, including remote-source names, and a numeric query also matches the tag ID or DLsite genre id. On narrow screens the table scrolls sideways inside its own box while the Manage button stays pinned to its right edge. Manage opens manual names for all languages or a locale, global hiding, merge-target selection, and undo of the merge mapping. **Circles** (`?view=circles`) supports a manual name that survives provider refresh, confirmed aliases, and reviewed merges that move works, maker ids, catalogs, snapshots, series, and personal circle data. Undo processes the latest merge first and refuses to replace later edits to affected records. **Voice actors** retains `metadata:sync` for alias and duplicate management and the existing `/metadata?view=aliases&voice=<id>` deep link. Demo allows inspection while changes remain disabled.
 
 Entry lists follow access to the Metadata page: sign in with at least one of `library:write`, `metadata:sync`, `sources:write`, or `system:admin`. Anonymous read access does not include these management lists. Demo shows only tags and circles related to demo works, counts only those works, and does not expose circle merge history.
 
@@ -182,8 +182,8 @@ Select families and choose **Retry metadata**; its count includes only eligible 
 Metadata settings have a **DLsite proxy** shortcut: the same switch and proxy
   choice as the DLsite scope under `Settings -> Proxy -> Proxy scope`, saved
   immediately. **Manage proxies** opens that section to add or reorder proxies.
-  Below it, **Default language and catalog freshness** opens
-  `Settings -> Metadata`, and **Remote metadata fallback** opens the Metadata
+  Below it, **Catalog freshness** opens `Settings -> Library`, and
+  **Remote metadata fallback** opens the Metadata
   sync workflow, whose **Configure** holds that setting.
 
 Shared tag names try each preferred language in order: that language’s manual name, the all-language manual name, then the provider name. Detail language switching follows the same precedence.
@@ -192,7 +192,7 @@ Hide, merge and undo save their state immediately. Related works update continuo
 
 ### Tag names in preferred languages
 
-DLsite names genres in the requested language even for Japanese-only works. When the server default or any user's preferred metadata language is not Japanese, the **Learn tag names** workflow fills missing tag names in the background: for each language it asks DLsite once for the work that covers the most unnamed tags, so the number of requests depends on missing tags, not on the size of the library. It runs after startup, metadata syncs, and language changes, uses the same request pacing and DLsite proxy as metadata sync, and resumes after a restart. Progress, results, and failures appear in Activity. It stores only tag names, never titles or introductions, and does not ask again for a tag DLsite did not name.
+DLsite names genres in the requested language even for Japanese-only works. When any user's preferred metadata language is not Japanese, the **Learn tag names** workflow fills missing tag names in the background: for each language it asks DLsite once for the work that covers the most unnamed tags, so the number of requests depends on missing tags, not on the size of the library. It runs after startup, metadata syncs, and language changes, uses the same request pacing and DLsite proxy as metadata sync, and resumes after a restart. Progress, results, and failures appear in Activity. It stores only tag names, never titles or introductions, and does not ask again for a tag DLsite did not name.
 
 ### Remote metadata fallback
 

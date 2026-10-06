@@ -76,11 +76,11 @@ the failed run's scope.
 `metadata_genre_names` ("Learn tag names") is a single-flight system workflow
 that fills the genre name dictionary for the preferred non-Japanese metadata
 languages, as described in the [data model](data-model.md#work-metadata): the
-instance default together with every user's own choice. It is
+languages some user prefers. There is no instance default language. It is
 queued only when some preferred language still has a learnable unnamed genre:
 at startup, after a metadata sync, family refresh, preset or DLsite popular run
-finishes (a sync may have learned new genre ids), and after the instance
-default or a user's language changes. A request while one is queued or running joins it. Demo mode
+finishes (a sync may have learned new genre ids), and after a user's language
+changes. A request while one is queued or running joins it. Demo mode
 does not learn.
 
 The job reads the current languages and asks DLsite through the same
@@ -97,8 +97,8 @@ pairs, failures, and what remains.
 
 Metadata synchronization remains a workflow. Metadata management owns the current
 attention list and the DLsite proxy shortcut; sync and its remote metadata
-fallback configuration live in Workflows, and the instance metadata defaults
-in Settings → Metadata.
+fallback configuration live in Workflows, and creator catalog freshness in
+Settings → Library.
 Activity run detail links to the unresolved
 issues encountered by that run. Selecting works queues recoverable family-sync
 jobs, reusing an already queued/running job for that family. Explicit recovery
@@ -149,9 +149,12 @@ only; circle merge review history is withheld in Demo.
 
 Startup projects shared tags in transactions of at most 64 existing works.
 `metadata_tag_projection_version` records completion only after every batch
-commits. Instance default language changes use the same batched
-projection; a user's own language changes no stored projection; `metadata_projection_pending` makes an interrupted pass resume
-at the next startup. Repeating a completed projection preserves unchanged
+commits. Stored projections always use the original language; a user's own
+language changes no stored projection. `metadata_projection_pending` makes an
+interrupted pass resume at the next startup, and the startup step that retires
+the former instance default language sets it when that default was not
+`origin`, so the same batched projection returns stored titles and tag names to
+the original language. Repeating a completed projection preserves unchanged
 relations and recommendation revisions. Hiding, merging, and undo collect only
 works referencing the connected merge component through provider bases, genre
 ids, effective links, or manual additions/removals. The state change and queue
@@ -740,7 +743,7 @@ manual overrides. Own manual titles load as editable text. Title reset targets
 one field/language and keeps other unsaved drafts in the open editor. Cover and shared metadata tag
 operations keep their existing transactions and behavior. Title insert, update,
 language change and delete queue the work's search document and language
-titles. Changing the instance default or a user's metadata language selects
+titles. Changing a user's metadata language selects
 titles and descriptions from stored editions without new provider requests or
 work identities. See [data model](data-model.md) for the
 precedence and `origin` contract. A remote-filled title follows DLsite in the

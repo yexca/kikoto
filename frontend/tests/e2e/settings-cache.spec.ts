@@ -97,8 +97,6 @@ async function mockCacheSettings(
     remoteBackoffSeconds: 30,
     remoteMaxBackoffSeconds: 300,
     catalogFreshnessDays: 30,
-    dlsiteMetadataLanguage: "ja-jp",
-    dlsiteMetadataLanguages: ["ja-jp"],
     proxy: {
       hostAddress: "host.docker.internal",
       proxies: [
@@ -171,7 +169,6 @@ async function mockCacheSettings(
     recommendationThreshold: currentSettings.recommendationThreshold,
     recommendationDefaults: currentSettings.recommendationDefaults,
     metadataLanguages,
-    defaultMetadataLanguages: currentSettings.dlsiteMetadataLanguages,
   });
   const replaceRemoteSource = (source: FileSource) => {
     currentSettings = { ...currentSettings, fileSources: [currentSettings.fileSources[0], source] };
@@ -577,7 +574,6 @@ test("administrators see administration tabs after the personal tabs in one list
     "Recommendations",
     "Tags",
     "Library",
-    "Metadata",
     "Cache & Fetch",
     "Proxy",
     "Cleanup",
@@ -787,7 +783,7 @@ for (const layout of ["mobile", "@desktop"]) {
     );
     // A deep link to a later tab scrolls the compact row so the selected tab shows.
     await expect(navigation.getByRole("tab", { name: "Library", exact: true })).toBeInViewport({ ratio: 1 });
-    await expect(navigation.getByRole("tab")).toHaveCount(11);
+    await expect(navigation.getByRole("tab")).toHaveCount(10);
     const boxes = await navigation.getByRole("tab").evaluateAll((buttons) =>
       buttons.map((button) => {
         const box = button.getBoundingClientRect();
@@ -1055,11 +1051,9 @@ test("@desktop work management owns metadata settings in a popover", async ({ pa
   await expect(page).toHaveURL(/metadata\?tab=settings/);
   await expect(page.getByRole("dialog", { name: "Metadata settings", exact: true })).toBeVisible();
   const settingsDialog = page.getByRole("dialog", { name: "Metadata settings", exact: true });
-  // Instance defaults live in Settings and the remote fallback in Metadata sync; the popover links to both.
+  // Catalog freshness lives in Library settings and the remote fallback in Metadata sync; the popover links to both.
   await expect(settingsDialog.getByRole("spinbutton")).toHaveCount(0);
-  await expect(
-    settingsDialog.getByRole("button", { name: "Default language and catalog freshness", exact: true }),
-  ).toBeVisible();
+  await expect(settingsDialog.getByRole("button", { name: "Catalog freshness", exact: true })).toBeVisible();
   await expect(settingsDialog.getByRole("button", { name: "Remote metadata fallback", exact: true })).toBeVisible();
 
   // The DLsite proxy is a shortcut to the DLsite scope in Settings and saves at once.
@@ -1103,7 +1097,7 @@ test("@desktop the metadata DLsite proxy shortcut opens proxy management in Sett
   await expect(page.getByRole("heading", { name: "Proxy", exact: true })).toBeInViewport();
 });
 
-test("@desktop administrators set metadata defaults in Settings", async ({ page }) => {
+test("@desktop administrators set catalog freshness in Library settings", async ({ page }) => {
   const saves: Record<string, unknown>[] = [];
   await mockCacheSettings(
     page,
@@ -1113,27 +1107,25 @@ test("@desktop administrators set metadata defaults in Settings", async ({ page 
   await page.goto("/metadata?tab=settings");
   await page
     .getByRole("dialog", { name: "Metadata settings", exact: true })
-    .getByRole("button", { name: "Default language and catalog freshness", exact: true })
+    .getByRole("button", { name: "Catalog freshness", exact: true })
     .click();
-  await expect(page).toHaveURL(/\/settings\?tab=metadata$/);
-  await expect(page.getByRole("tab", { name: "Metadata", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("tab", { name: "Metadata", exact: true })).toHaveAccessibleDescription("Administration");
+  await expect(page).toHaveURL(/\/settings\?tab=library$/);
+  await expect(page.getByRole("tab", { name: "Library", exact: true })).toHaveAttribute("aria-selected", "true");
+  // There is no instance metadata language, so Settings has no Metadata tab.
+  await expect(page.getByRole("tab", { name: "Metadata", exact: true })).toHaveCount(0);
 
-  const save = page.getByRole("button", { name: "Save metadata defaults", exact: true });
+  const save = page.getByRole("button", { name: "Save catalog settings", exact: true });
   await expect(save).toBeDisabled();
   await page.getByRole("spinbutton", { name: "Catalog freshness days", exact: true }).fill("14");
   await save.click();
   await expect.poll(() => saves.length).toBe(1);
-  // Each save sends only what changed, so it never overwrites settings edited elsewhere.
-  expect(saves[0]).toEqual({ catalogFreshnessDays: 14 });
+  expect(saves[0]).toEqual(expect.objectContaining({ catalogFreshnessDays: 14 }));
+  expect(saves[0]).not.toHaveProperty("dlsiteMetadataLanguages");
   await expect(save).toBeDisabled();
 
-  const language = page.getByRole("combobox", { name: "Default metadata language", exact: true });
-  await expect(language).toHaveValue("ja-jp");
-  await language.selectOption({ label: "English" });
-  await save.click();
-  await expect.poll(() => saves.length).toBe(2);
-  expect(saves[1]).toEqual({ dlsiteMetadataLanguages: ["en-us", "origin"] });
+  // The former Metadata tab link opens Library.
+  await page.goto("/settings?tab=metadata");
+  await expect(page.getByRole("tab", { name: "Library", exact: true })).toHaveAttribute("aria-selected", "true");
 });
 
 test("administrators add proxies by priority and choose where they apply", async ({ page }) => {
@@ -1240,19 +1232,20 @@ test("@desktop appearance saves a personal metadata language for any signed-in u
   await expect(groups.nth(0)).toHaveAccessibleName("UI language");
   await expect(groups.nth(1)).toHaveAccessibleName("Preferred metadata language");
   const metadataLanguage = page.getByRole("combobox", { name: "Preferred metadata language" });
-  // Until the user chooses, the instance default applies and is named.
-  await expect(metadataLanguage).toHaveText("Server default (Japanese)");
+  // Until the user chooses, each work shows its original language.
+  await expect(metadataLanguage).toHaveText("Origin");
   await page.screenshot({ path: testInfo.outputPath("appearance-metadata-language.png") });
   await metadataLanguage.click();
-  await page.getByRole("listbox").getByRole("option", { name: "Origin", exact: true }).click();
+  await page.getByRole("listbox").getByRole("option", { name: "Japanese", exact: true }).click();
   await expect.poll(() => saves.length).toBe(1);
-  expect(saves[0]).toEqual({ metadataLanguages: ["origin"] });
-  await expect(metadataLanguage).toHaveText("Origin");
+  expect(saves[0]).toEqual({ metadataLanguages: ["ja-jp", "origin"] });
+  await expect(metadataLanguage).toHaveText("Japanese");
+  // Choosing the original language again clears the preference.
   await metadataLanguage.click();
-  await page.getByRole("listbox").getByRole("option", { name: "Server default (Japanese)", exact: true }).click();
+  await page.getByRole("listbox").getByRole("option", { name: "Origin", exact: true }).click();
   await expect.poll(() => saves.length).toBe(2);
   expect(saves[1]).toEqual({ metadataLanguages: null });
-  await expect(metadataLanguage).toHaveText("Server default (Japanese)");
+  await expect(metadataLanguage).toHaveText("Origin");
   // A personal language never reads or writes instance settings.
   expect(instanceRequests).toBe(0);
 });

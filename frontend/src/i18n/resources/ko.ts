@@ -276,7 +276,7 @@ const adminToolsKorean = {
       "DLsite에 기록이 없는 작품에 메타데이터 동기화의 원격 보완이 이 소스를 사용할 수 있게 합니다.",
     fallbackLanguage: "대체 언어",
     fallbackLanguageDescription:
-      "요청은 보는 사람이 우선하는 메타데이터 언어를 먼저, 이 언어를 마지막으로 지정합니다. 우선 언어가 없는 소스를 위한 설정입니다.",
+      "요청은 보는 사람이 우선하는 메타데이터 언어를 먼저, 이 언어를 마지막으로 지정합니다. 원어로 표시하는 사용자, 익명 방문자, 백그라운드 작업은 이 언어만 지정합니다.",
     customLanguage: "사용자 지정({{language}})",
     connection: "연결 세부 정보",
     connectionDescription: "API URL, 공개 사이트, 작품 링크",
@@ -649,7 +649,6 @@ export const koreanResource = {
         metadataLanguage: "우선 표시할 메타데이터 언어",
         metadataLanguageSaveFailed: "메타데이터 언어를 저장하지 못했습니다.",
         metadataLanguageLoadFailed: "메타데이터 언어를 불러오지 못했습니다.",
-        metadataLanguageDefault: "서버 기본값({{language}})",
       },
       account: {
         account: "계정",

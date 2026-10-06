@@ -82,19 +82,26 @@ Failure tracking never creates a work solely from a discovered catalog code.
 For DLsite, `dlsite_metadata_variant` stores the title and tags for each
 provider-declared language edition in a logical work family. The `origin`
 display token refers to the canonical edition even when its source language is
-not Japanese. The configured priority only changes the normalized title/tag
+not Japanese. A language priority only changes the normalized title/tag
 projection; the request locale and the raw snapshot remain provenance data.
 
-Metadata language has two scopes. The instance default
-(`app_setting.dlsite_metadata_languages`) decides everything stored or shared:
-the projected `work.title`, `tag.display_name`, background syncs, catalog
-snapshots, remote metadata fallback and Activity text. A signed-in user may
-store an own priority in `user_preference.metadata_languages` (migration `056`;
-`NULL` follows the instance default). It changes only what that user's requests
-present: selected titles and introductions, tag names, the default detail
-edition, title sorting, and live remote-source requests. Requests without a
-user use the instance default. No stored provider value depends on a personal
-priority, and a personal change rewrites nothing.
+Metadata language has two scopes. Everything stored or shared uses each work's
+original language (the `origin` priority): the projected `work.title`,
+`tag.display_name`, background syncs, catalog snapshots, remote metadata
+fallback and Activity text. There is no instance-wide language setting. A
+signed-in user may store an own priority in `user_preference.metadata_languages`
+(migration `056`; `NULL`, also stored when the user picks `origin`, means no
+preference). It changes only what that user's requests present: selected
+titles and introductions, tag names, the default detail edition, title
+sorting, and live remote-source requests. Requests without a user use the
+original language. No stored provider value depends on a personal priority,
+and a personal change rewrites nothing.
+
+The former instance default keys `app_setting.dlsite_metadata_languages` and
+`app_setting.dlsite_metadata_language` are deleted by the startup metadata tag
+backfill. When either held a language other than `origin`, the same step sets
+`metadata_projection_pending` first, so the backfill projects stored titles and
+tag names again in the original language. No schema change is involved.
 
 `work_title_language` (migration `056`) holds each work's title for every
 language that title selection can stop at: each supported language with its own
@@ -143,15 +150,15 @@ is available. The old `dlsite` rows remain readable during startup backfill.
 `metadata_tag_name` holds manual names by locale; an empty locale applies to
 all languages. Personal `user_tag` records remain account-owned and separate.
 
-The single `tag.display_name` tries each configured preferred locale in order:
-that locale's manual name, the universal manual name, then its genre dictionary name,
-then Japanese manual/dictionary names, then any known name. The edition token
-`origin` does not stop this dictionary fallback. Synchronization, manual
-renaming, and language-priority changes refresh the stored display name.
+A display name tries each locale of a priority in order: that locale's manual
+name, the universal manual name, then its genre dictionary name, then Japanese
+manual/dictionary names, then any known name. The edition token `origin` does
+not stop this dictionary fallback. The single stored `tag.display_name` always
+uses the `origin` priority. Synchronization and manual renaming refresh it.
 Dictionary learning and concept creation refresh only the changed concepts in
 the writing transaction. A normal sync never recalculates the entire dictionary
-and never publishes a generated genre placeholder. A viewer whose priority
-differs from the instance default gets the same chain over its own priority at
+and never publishes a generated genre placeholder. A viewer with an own
+preferred language gets the same chain over its own priority at
 read time; the stored name is used unchanged otherwise. Detail language
 variants use that variant's requested locale's manual name, then the universal
 manual name, then its dictionary name, then the viewer's priority-selected name.
@@ -245,7 +252,7 @@ authorship and cover assets. Only title allows a nonempty language (`ja-jp`,
 foreign-key indexes and all migration-036 search invalidation triggers are
 recreated, including language-only updates.
 
-Display title selection picks the first configured language with its own manual
+Display title selection picks the first preferred language with its own manual
 title or DLsite edition, then shows its language manual title, the universal
 manual title, or that edition's title. A universal manual title replaces only
 the text: it never selects an edition, so the default edition, description, and

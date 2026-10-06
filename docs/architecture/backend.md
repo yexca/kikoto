@@ -152,10 +152,12 @@ destinations reject private and reserved addresses. Administrator-configured
 source origins may explicitly reach private LAN addresses.
 
 Requests to a compatible remote source send `Accept-Language`: on behalf of a
-signed-in user, that user's metadata languages first; for results stored for
-everyone (crawls, catalog refreshes, remote metadata fallback, downloads), the
-instance default languages; and always the source's configured fallback
-language last, with decreasing weights. The short-lived remote work snapshot
+signed-in user with a preferred metadata language, that user's languages
+first, then the source's configured fallback language last, with decreasing
+weights. The original language has no request language, so a viewer without a
+preference, anonymous browsing, and results stored for everyone (crawls,
+catalog refreshes, remote metadata fallback, downloads) send the fallback
+language alone. The short-lived remote work snapshot
 cache is keyed by the viewer's languages, so one viewer's response never serves
 another language. The header changes no destination or transport policy.
 

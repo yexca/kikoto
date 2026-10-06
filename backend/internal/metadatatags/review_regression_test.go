@@ -130,7 +130,6 @@ func TestEditionTagPresentationUsesOwnLanguageAndPriorityFallback(t *testing.T) 
 	db := openTagDB(t)
 	ctx := context.Background()
 	work := execTag(t, db, "INSERT INTO work(primary_code,title) VALUES (?,'Synthetic localized work')", testfixture.WorkCode(testfixture.PrefixRJ, 0))
-	execTag(t, db, "INSERT INTO app_setting(key,value_json) VALUES ('dlsite_metadata_languages','[\"zh-cn\",\"origin\"]')")
 	execTag(t, db, "INSERT INTO dlsite_genre_name(genre_id,language,name) VALUES (1,'ja-jp','Synthetic Japanese'),(1,'zh-cn','合成中文'),(1,'en-us','Synthetic English'),(2,'ja-jp','Synthetic removed'),(3,'ja-jp','Synthetic hidden')")
 	var genre, removed, hidden, custom int64
 	tagTx(t, db, func(tx *sql.Tx) error {
@@ -162,20 +161,26 @@ func TestEditionTagPresentationUsesOwnLanguageAndPriorityFallback(t *testing.T) 
 		}
 		return metadatatags.SetOverridesTx(ctx, tx, work, []metadatatags.Override{{TagID: removed, Action: "remove"}, {TagID: custom, Action: "add"}}, 0)
 	})
-	assert := func(language, want string) {
+	// The stored display name is the original-language name; a viewer's
+	// priority and an edition's own language only change the presentation.
+	// Tags keep the stored-name order, where the genre sorts first.
+	viewer := []string{"zh-cn", "origin"}
+	assert := func(language string, priorities []string, want string) {
 		t.Helper()
-		names, err := metadatatags.Presentation(ctx, db, work, work, nil, language)
+		names, err := metadatatags.PresentationFor(ctx, db, work, work, nil, priorities, language)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(names, []string{"Synthetic custom", want}) {
-			t.Fatalf("%s tags = %v", language, names)
+		if !reflect.DeepEqual(names, []string{want, "Synthetic custom"}) {
+			t.Fatalf("%s/%v tags = %v", language, priorities, names)
 		}
 	}
-	assert("ja-jp", "Synthetic Japanese")
-	assert("en-us", "Synthetic manual English")
-	assert("ko-kr", "合成中文")
-	assert("", "合成中文")
+	assert("", nil, "Synthetic Japanese")
+	assert("ja-jp", viewer, "Synthetic Japanese")
+	assert("en-us", viewer, "Synthetic manual English")
+	assert("ko-kr", viewer, "合成中文")
+	assert("", viewer, "合成中文")
+	assert("ko-kr", nil, "Synthetic Japanese")
 	tagTx(t, db, func(tx *sql.Tx) error {
 		if err := metadatatags.MergeTx(ctx, tx, removed, genre); err != nil {
 			return err

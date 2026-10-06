@@ -332,8 +332,6 @@ export function appSettingsFixture(overrides: Partial<AppSettings> = {}): AppSet
     remoteBackoffSeconds: 30,
     remoteMaxBackoffSeconds: 300,
     catalogFreshnessDays: 30,
-    dlsiteMetadataLanguage: "ja-jp",
-    dlsiteMetadataLanguages: ["ja-jp"],
     proxy: {
       hostAddress: "host.docker.internal",
       proxies: [],

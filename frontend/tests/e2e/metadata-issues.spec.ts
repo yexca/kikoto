@@ -180,7 +180,6 @@ test("@desktop personal metadata language refreshes the current list and preserv
         recommendationDefaults: settings.recommendationDefaults,
         recommendationThreshold: settings.recommendationThreshold,
         metadataLanguages: languages,
-        defaultMetadataLanguages: ["ja-jp", "origin"],
       } satisfies ApiResponse<"getUserPreferences">,
     });
   });
@@ -236,7 +235,8 @@ test("@desktop personal metadata language refreshes the current list and preserv
   expect(audio).not.toBeNull();
   await page.getByRole("button", { name: "Open appearance settings" }).click();
   const language = page.getByRole("combobox", { name: "Preferred metadata language" });
-  await expect(language).toHaveText("Server default (Japanese)");
+  // Without a preference each work shows its original language.
+  await expect(language).toHaveText("Origin");
   const choose = async (name: string) => {
     await language.click();
     await page.getByRole("listbox").getByRole("option", { name, exact: true }).click();
@@ -256,7 +256,7 @@ test("@desktop personal metadata language refreshes the current list and preserv
   await expect(list.getByRole("link", { name: /Example Work English 25/ })).toBeVisible();
   await expect(selected).toBeChecked();
   failList = false;
-  await choose("Server default (Japanese)");
+  await choose("Origin");
   await expect(list.getByRole("link", { name: /Example Work Japanese 25/ })).toBeVisible();
   await expect(list.getByRole("alert")).toHaveCount(0);
   await expect(selected).toBeChecked();
@@ -286,7 +286,6 @@ test("work maintenance keeps source actions scoped and metadata settings separat
         fileSources: [],
         directoryRoutingRules: [],
         catalogFreshnessDays: 30,
-        dlsiteMetadataLanguages: ["ja-jp"],
       }),
     }),
   );
@@ -448,7 +447,7 @@ for (const viewport of ["mobile", "@desktop"]) {
     });
     await page.route("**/api/settings", (route) =>
       route.fulfill({
-        json: appSettingsFixture({ fileSources: [], catalogFreshnessDays: 30, dlsiteMetadataLanguages: ["ja-jp"] }),
+        json: appSettingsFixture({ fileSources: [], catalogFreshnessDays: 30 }),
       }),
     );
     await page.goto(viewport === "mobile" ? "/work-management" : "/metadata");
