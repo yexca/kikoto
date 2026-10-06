@@ -47,6 +47,7 @@ type PendingDelete = {
  * page header through `toolbar`. The list loads on demand rather than polling.
  */
 export function WorkMaintenance({
+  preferenceRevision = 0,
   canManageSources,
   canSyncMetadata,
   readOnly = false,
@@ -57,6 +58,8 @@ export function WorkMaintenance({
   editingWorkId = null,
   onEditWork,
 }: {
+  /** Reload presentation after a personal preference changes, keeping list state. */
+  preferenceRevision?: number;
   canManageSources: boolean;
   canSyncMetadata: boolean;
   readOnly?: boolean;
@@ -127,7 +130,7 @@ export function WorkMaintenance({
     };
     void load();
     return () => controller.abort();
-  }, [page, pageSize, query, reason, runId, refreshKey, canManageSources, t]);
+  }, [page, pageSize, query, reason, runId, refreshKey, preferenceRevision, canManageSources, t]);
 
   const pageWorkIds = useMemo(
     () =>

@@ -600,6 +600,7 @@ function AuthenticatedApp() {
                 )}
                 {canAccessCurrentPage && page === "metadata" && auth.user && (
                   <WorkManagementPage
+                    preferenceRevision={preferenceRevision}
                     canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
                     canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
                     canEditMetadata={auth.demoMode || auth.hasPermission("library:write")}

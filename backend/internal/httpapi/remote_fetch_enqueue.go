@@ -48,7 +48,7 @@ func (s *Server) prepareRemoteWorkSaveEnqueue(
 	requestedByUserID int64,
 	jobPriority int,
 ) (remoteWorkSavePreparation, error) {
-	source, remoteWork, tracks, err := s.loadRemoteWorkTracksCached(ctx, sourceID, code)
+	source, remoteWork, tracks, err := s.loadInstanceRemoteWorkTracksCached(ctx, sourceID, code)
 	if err != nil {
 		return remoteWorkSavePreparation{}, err
 	}

@@ -159,6 +159,111 @@ test("@desktop metadata page selection resets when searching or changing pages",
   await expect(page.getByRole("button", { name: "Previous page", exact: true }).first()).toBeDisabled();
 });
 
+test("@desktop personal metadata language refreshes the current list and preserves its state", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "playback:use", "metadata:sync"],
+  });
+  await seedPlayer(page, persistedTrack, 1);
+  const settings = appSettingsFixture();
+  let languages: string[] | null = null;
+  const saves: Array<string[] | null> = [];
+  await page.route("**/api/auth/me/preferences", async (route) => {
+    if (route.request().method() === "PATCH") {
+      languages = (route.request().postDataJSON() as { metadataLanguages: string[] | null }).metadataLanguages;
+      saves.push(languages);
+    }
+    await route.fulfill({
+      json: {
+        directoryRoutingRules: settings.directoryRoutingRules,
+        recommendationConfig: settings.recommendationConfig,
+        recommendationDefaults: settings.recommendationDefaults,
+        recommendationThreshold: settings.recommendationThreshold,
+        metadataLanguages: languages,
+        defaultMetadataLanguages: ["ja-jp", "origin"],
+      } satisfies ApiResponse<"getUserPreferences">,
+    });
+  });
+  let failList = false;
+  const reads: Array<{ page: number; query: string }> = [];
+  await page.route("**/api/maintenance/works?*", async (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const currentPage = Number(params.get("page"));
+    const query = params.get("q") ?? "";
+    reads.push({ page: currentPage, query });
+    const items = Array.from({ length: 26 }, (_, index) =>
+      asMaintenanceWork(
+        metadataIssueWorkFixture({
+          workId: index + 1,
+          primaryCode: syntheticWorkCode("RJ", index),
+          title: `Example Work ${languages?.[0] === "en-us" ? "English" : "Japanese"} ${index}`,
+          issues: [
+            {
+              component: "metadata",
+              status: "failed",
+              failureCount: 1,
+              firstFailedAt: "2026-01-01 00:00:00",
+              checkedAt: "2026-01-01 00:00:00",
+            },
+          ],
+        }),
+      ),
+    );
+    await route.fulfill(
+      failList
+        ? { status: 503, json: { error: "unavailable" } satisfies ApiErrorBody }
+        : {
+            json: {
+              works: items.slice((currentPage - 1) * 25, currentPage * 25),
+              page: currentPage,
+              pageSize: 25,
+              total: items.length,
+            } satisfies MaintenanceWorkPage,
+          },
+    );
+  });
+  await page.goto("/metadata?reason=metadata");
+  await page.getByRole("button", { name: "Collapse player", exact: true }).click();
+  const list = page.getByRole("region", { name: "Metadata records" });
+  const search = page.getByRole("searchbox", { name: "Search metadata", exact: true });
+  await search.fill("Example Work");
+  await search.press("Enter");
+  await page.getByRole("button", { name: "Next page", exact: true }).first().click();
+  await expect(list.getByRole("link", { name: /Example Work Japanese 25/ })).toBeVisible();
+  const selected = list.getByRole("checkbox", { name: `Select ${syntheticWorkCode("RJ", 25)}`, exact: true });
+  await selected.click();
+  const audio = await page.locator("audio").first().elementHandle();
+  expect(audio).not.toBeNull();
+  await page.getByRole("button", { name: "Open appearance settings" }).click();
+  const language = page.getByRole("combobox", { name: "Preferred metadata language" });
+  await expect(language).toHaveText("Server default (Japanese)");
+  const choose = async (name: string) => {
+    await language.click();
+    await page.getByRole("listbox").getByRole("option", { name, exact: true }).click();
+    await expect(language).toHaveText(name);
+  };
+  await choose("English");
+  await expect(list.getByRole("link", { name: /Example Work English 25/ })).toBeVisible();
+  await expect(selected).toBeChecked();
+  await expect(search).toHaveValue("Example Work");
+  expect(reads.at(-1)).toEqual({ page: 2, query: "Example Work" });
+  expect(await audio!.evaluate((element) => element.isConnected)).toBe(true);
+
+  // A presentation reload failure preserves the known list and selection.
+  failList = true;
+  await choose("Japanese");
+  await expect(list.getByRole("alert")).toBeVisible();
+  await expect(list.getByRole("link", { name: /Example Work English 25/ })).toBeVisible();
+  await expect(selected).toBeChecked();
+  failList = false;
+  await choose("Server default (Japanese)");
+  await expect(list.getByRole("link", { name: /Example Work Japanese 25/ })).toBeVisible();
+  await expect(list.getByRole("alert")).toHaveCount(0);
+  await expect(selected).toBeChecked();
+  expect(reads.at(-1)).toEqual({ page: 2, query: "Example Work" });
+  expect(saves).toEqual([["en-us", "origin"], ["ja-jp", "origin"], null]);
+});
+
 function asMaintenanceWork(item: MetadataIssueWork): MaintenanceWork {
   return {
     ...work,

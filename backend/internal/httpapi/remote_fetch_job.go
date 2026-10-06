@@ -65,7 +65,7 @@ func (s *Server) prepareRemoteWorkFetchExecution(
 	if manifestErr != nil || plan.PrimaryCode == "" {
 		var remoteWork kikoeru.Work
 		var tracks []kikoeru.Track
-		source, remoteWork, tracks, err = s.loadRemoteWorkTracksCached(ctx, payload.SourceID, payload.WorkCode)
+		source, remoteWork, tracks, err = s.loadInstanceRemoteWorkTracksCached(ctx, payload.SourceID, payload.WorkCode)
 		if err != nil {
 			return execution, err
 		}

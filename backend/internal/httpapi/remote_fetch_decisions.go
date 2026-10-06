@@ -86,7 +86,7 @@ func (s *Server) appendRemoteFetchAlternativeSources(ctx context.Context, result
 	}
 	_ = rows.Close()
 	for _, sourceID := range sourceIDs {
-		source, remoteWork, tracks, loadErr := s.loadRemoteWorkTracks(ctx, sourceID, workCode)
+		source, remoteWork, tracks, loadErr := s.loadInstanceRemoteWorkTracks(ctx, sourceID, workCode)
 		if loadErr != nil || !strings.EqualFold(normalizedRemoteWorkCode(remoteWork), workCode) {
 			continue
 		}
