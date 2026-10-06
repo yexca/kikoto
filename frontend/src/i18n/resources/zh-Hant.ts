@@ -712,7 +712,7 @@ export const zhHantResource = {
         updateAvailable: "有可用更新：{{version}}",
         sourceCode: "原始碼",
         releaseNotes: "版本說明",
-        intro: "Kikoto 是一款本機優先的個人音訊庫，專注於 DLsite 風格作品、統一元資料、相容的遠端來源和瀏覽器播放。",
+        intro: "以聆聽為中心的個人音聲庫。",
         builtWithAi: "使用 AI 建置",
         aiCredit: "本軟體由 yexca 在 AI Agent 的協助下開發。",
         modelHistoryTitle: "使用的 AI 模型",
