@@ -10,7 +10,11 @@ import {
   type WorkDetail,
 } from "@/lib/api";
 import { useTranslation } from "react-i18next";
-import { MediaContextActionBar, WorkIdentityActionBar } from "@/features/work-detail/WorkDetailActionBars";
+import {
+  MediaContextActionBar,
+  type SourceActionLayout,
+  WorkIdentityActionBar,
+} from "@/features/work-detail/WorkDetailActionBars";
 import {
   buildSourceTabs,
   type RemoteSourceAvailability,
@@ -93,23 +97,15 @@ type RemoteOnlyDetailActionsProps = {
   onFetch: () => void;
 };
 
-function RemoteOnlyDetailActions({
+function RemoteOnlyIdentityActions({
   detail,
-  source,
   busy,
-  primaryRemoteSelected,
-  availabilityLoading,
-  hasTrackedSource,
-  materializedWorkID,
   onEnsureListWork,
   onListSaved,
   onMark,
-  onTrack,
-  onUntrack,
-  onFetch,
 }: RemoteOnlyDetailActionsProps) {
-  const { t } = useTranslation();
-  const identityActions = detail ? (
+  if (!detail) return <DetailSkeletonActions />;
+  return (
     <WorkIdentityActionBar
       busy={busy}
       listeningStatus="none"
@@ -119,33 +115,42 @@ function RemoteOnlyDetailActions({
       onListSaved={onListSaved}
       onMark={onMark}
     />
-  ) : (
-    <DetailSkeletonActions />
   );
-  const mediaActions =
-    detail && primaryRemoteSelected ? (
-      <MediaContextActionBar
-        busy={busy}
-        mode="remote_source"
-        contextKey={`${remoteSourceTabKey(source.id)}:${hasTrackedSource ? "tracked" : "available"}`}
-        onTrack={onTrack}
-        trackDisabled={availabilityLoading || hasTrackedSource}
-        trackDisabledReason={
-          availabilityLoading ? t("detailActions.loadingTrackingState") : t("detailActions.alreadyTracked")
-        }
-        onUntrack={hasTrackedSource && materializedWorkID ? onUntrack : undefined}
-        onFetch={onFetch}
-        remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
-        remoteSourceName={detail.sourceName}
-        sourceLabel={detail.sourceName}
-        sourceStatus={t("content.available")}
-      />
-    ) : undefined;
+}
+
+function RemoteOnlySourceActions({
+  detail,
+  source,
+  busy,
+  primaryRemoteSelected,
+  availabilityLoading,
+  hasTrackedSource,
+  materializedWorkID,
+  onTrack,
+  onUntrack,
+  onFetch,
+  layout,
+}: RemoteOnlyDetailActionsProps & { layout: SourceActionLayout }) {
+  const { t } = useTranslation();
+  if (!detail || !primaryRemoteSelected) return null;
   return (
-    <>
-      {identityActions}
-      {mediaActions}
-    </>
+    <MediaContextActionBar
+      layout={layout}
+      busy={busy}
+      mode="remote_source"
+      contextKey={`${remoteSourceTabKey(source.id)}:${hasTrackedSource ? "tracked" : "available"}`}
+      onTrack={onTrack}
+      trackDisabled={availabilityLoading || hasTrackedSource}
+      trackDisabledReason={
+        availabilityLoading ? t("detailActions.loadingTrackingState") : t("detailActions.alreadyTracked")
+      }
+      onUntrack={hasTrackedSource && materializedWorkID ? onUntrack : undefined}
+      onFetch={onFetch}
+      remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
+      remoteSourceName={detail.sourceName}
+      sourceLabel={detail.sourceName}
+      sourceStatus={t("content.available")}
+    />
   );
 }
 
@@ -1091,22 +1096,24 @@ export function RemoteOnlyWorkDetailController({
     setManualPlaybackRouteKey(autoPlaybackRouteKey);
     setActiveRemoteTab(key);
   };
-  const heroActions = (
-    <RemoteOnlyDetailActions
-      detail={detail}
-      source={source}
-      busy={isFetching || fetchWorkspace.isBusy}
-      primaryRemoteSelected={primaryRemoteSelected}
-      availabilityLoading={availabilityLoading}
-      hasTrackedSource={hasTrackedSource}
-      materializedWorkID={materializedWorkID}
-      onEnsureListWork={() => syncForUserState("detail_list_remote")}
-      onListSaved={onWorksChanged}
-      onMark={(status) => void updateRemoteMark(status)}
-      onTrack={() => void fetchWork("manual_track")}
-      onUntrack={() => void untrackRemoteSource()}
-      onFetch={openSaveWorkspace}
-    />
+  const detailActionProps: RemoteOnlyDetailActionsProps = {
+    detail,
+    source,
+    busy: isFetching || fetchWorkspace.isBusy,
+    primaryRemoteSelected,
+    availabilityLoading,
+    hasTrackedSource,
+    materializedWorkID,
+    onEnsureListWork: () => syncForUserState("detail_list_remote"),
+    onListSaved: onWorksChanged,
+    onMark: (status) => void updateRemoteMark(status),
+    onTrack: () => void fetchWork("manual_track"),
+    onUntrack: () => void untrackRemoteSource(),
+    onFetch: openSaveWorkspace,
+  };
+  const heroActions = <RemoteOnlyIdentityActions {...detailActionProps} />;
+  const renderSourceActions = (layout: SourceActionLayout) => (
+    <RemoteOnlySourceActions {...detailActionProps} layout={layout} />
   );
   const directoryPanel = (
     <RemoteOnlyDirectoryPanel
@@ -1191,6 +1198,7 @@ export function RemoteOnlyWorkDetailController({
       mobileTab={mobileDetailTab}
       onMobileTabChange={setMobileDetailTab}
       actions={heroActions}
+      renderSourceActions={renderSourceActions}
       directory={directoryPanel}
       onBack={onBack}
     >

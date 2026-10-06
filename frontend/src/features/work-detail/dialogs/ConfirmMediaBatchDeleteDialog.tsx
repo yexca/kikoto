@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { mediaDeleteTargetKey } from "@/features/work-detail/dialogs/mediaDeleteTargets";
+import { mediaDeleteTargetKindLabel } from "@/features/work-detail/dialogs/mediaFilePresentation";
 import type { MediaCleanupMode, MediaDeleteTarget } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
 import i18n from "@/i18n";
 
@@ -59,7 +60,7 @@ export function ConfirmMediaBatchDeleteDialog({
         <div className="app-scroll max-h-44 overflow-auto rounded-md border bg-muted px-3 py-2 text-xs text-muted-foreground">
           {targets.slice(0, 10).map((target) => (
             <div key={mediaDeleteTargetKey(target)} className="flex gap-2 py-0.5">
-              <span className="w-12 shrink-0 font-medium">{target.kind}</span>
+              <span className="w-20 shrink-0 truncate font-medium">{mediaDeleteTargetKindLabel(target)}</span>
               <span className="min-w-0 flex-1 truncate">{target.path}</span>
             </div>
           ))}

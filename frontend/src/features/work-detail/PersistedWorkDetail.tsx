@@ -59,6 +59,7 @@ import {
 import {
   type DetailActionMode,
   MediaContextActionBar,
+  type SourceActionLayout,
   WorkIdentityActionBar,
 } from "@/features/work-detail/WorkDetailActionBars";
 import {
@@ -402,13 +403,14 @@ function persistedMediaActionBindings(props: PersistedDetailActionsProps) {
   };
 }
 
-function PersistedMediaActions(props: PersistedDetailActionsProps) {
+function PersistedMediaActions({ layout, ...props }: PersistedDetailActionsProps & { layout: SourceActionLayout }) {
   const { t } = useTranslation();
   if (!props.work) return null;
   const busy = props.isSyncingDetail || props.fetchBusy || props.isRefreshingLocalFiles || props.cleanupBusy;
   const actions = persistedMediaActionBindings(props);
   return (
     <MediaContextActionBar
+      layout={layout}
       busy={busy}
       mode={props.actionMode}
       contextKey={props.sourceContextKey}
@@ -432,15 +434,6 @@ function PersistedMediaActions(props: PersistedDetailActionsProps) {
       sourceDetailsLoading={props.selectedSourceDetailsLoading}
       {...actions}
     />
-  );
-}
-
-function PersistedDetailActions(props: PersistedDetailActionsProps) {
-  return (
-    <>
-      <PersistedIdentityActions {...props} />
-      <PersistedMediaActions {...props} />
-    </>
   );
 }
 
@@ -1144,16 +1137,21 @@ export function PersistedWorkDetailController({
   const mediaCleanup = useMediaCleanupWorkflow({
     onAccepted: () => setIsManageOpen(false),
     onCompleted: async ({ workForgotten, partial }: MediaCleanupCompletion) => {
-      await onWorksChanged();
+      // Leave first: refreshing the library drops the forgotten work, and the
+      // detail would otherwise reload into its not-found state.
       if (workForgotten && !partial) {
         onBack();
+        await onWorksChanged();
         return;
       }
+      // Reload the detail and its media cache before the library refresh can
+      // reopen the work from media cached before the deletion.
       if (activeEdition) {
         setActiveEdition(await api.getWork(activeEdition.id));
       } else if (work) {
         await onWorkReload(work.id, true);
       }
+      await onWorksChanged();
     },
   });
   const workHasNoLinkedSource = Boolean(work && workHasNoSource(work));
@@ -1701,49 +1699,51 @@ export function PersistedWorkDetailController({
     selectedRemoteDetail,
     fallbackDurationSeconds: hero.durationSeconds,
   });
-  const heroActions = (
-    <PersistedDetailActions
-      work={work}
-      favoriteLists={favoriteLists}
-      favoriteSelected={favoriteSelected}
-      playbackCursorLoading={playbackCursorLoading}
-      hasResumableCursor={hasResumableCursor}
-      activeMetadataRunId={activeMetadataRunId}
-      isSyncingDetail={isSyncingDetail}
-      canSyncMetadata={canSyncMetadata}
-      fetchBusy={fetchWorkspace.isBusy}
-      isRefreshingLocalFiles={isRefreshingLocalFiles}
-      cleanupBusy={mediaCleanup.isBusy}
-      isResuming={isResuming}
-      actionMode={actionMode}
-      sourceContextKey={`${resolvedActiveSourceKey}:${selectedTrackedPresenceKey}`}
-      selectedRemoteSource={selectedRemoteSource}
-      canTrackRemote={canTrackRemote}
-      selectedSourceDetailsLoading={selectedSourceDetailsLoading}
-      selectedRemoteHasTracked={selectedRemoteHasTracked}
-      hasTrackedSourceForAction={hasTrackedSourceForAction}
-      forkSources={forkSources}
-      currentForkSource={currentForkSource}
-      fetchRemote={fetchRemote}
-      selectedRemoteDetail={selectedRemoteDetail}
-      activeSourceLabel={activeSourceLabel}
-      sourceStatus={sourceInfo.statusLabel}
-      selectedTrackedPresence={selectedTrackedPresence}
-      trackedCacheAvailable={trackedCacheAvailable}
-      selectedSource={selectedSource}
-      onEnsureListWork={ensureDetailListWork}
-      onListSaved={favoriteSaved}
-      onResume={() => void resumePlayback()}
-      onMark={(status) => void markDetailWork(status)}
-      onSyncMetadata={() => void syncDetailMetadata()}
-      onEditMetadata={() => setMetadataEditorSection("title")}
-      onTrack={() => void trackSelectedRemoteSource()}
-      onUntrack={() => void untrackSelectedSource()}
-      onFork={requestForkSource}
-      onFetch={openFetchWorkspace}
-      onManage={() => setIsManageOpen(true)}
-      onRefreshLocalFiles={() => void refreshLocalFiles()}
-    />
+  const detailActionProps: PersistedDetailActionsProps = {
+    work,
+    favoriteLists,
+    favoriteSelected,
+    playbackCursorLoading,
+    hasResumableCursor,
+    activeMetadataRunId,
+    isSyncingDetail,
+    canSyncMetadata,
+    fetchBusy: fetchWorkspace.isBusy,
+    isRefreshingLocalFiles,
+    cleanupBusy: mediaCleanup.isBusy,
+    isResuming,
+    actionMode,
+    sourceContextKey: `${resolvedActiveSourceKey}:${selectedTrackedPresenceKey}`,
+    selectedRemoteSource,
+    canTrackRemote,
+    selectedSourceDetailsLoading,
+    selectedRemoteHasTracked,
+    hasTrackedSourceForAction,
+    forkSources,
+    currentForkSource,
+    fetchRemote,
+    selectedRemoteDetail,
+    activeSourceLabel,
+    sourceStatus: sourceInfo.statusLabel,
+    selectedTrackedPresence,
+    trackedCacheAvailable,
+    selectedSource,
+    onEnsureListWork: ensureDetailListWork,
+    onListSaved: favoriteSaved,
+    onResume: () => void resumePlayback(),
+    onMark: (status) => void markDetailWork(status),
+    onSyncMetadata: () => void syncDetailMetadata(),
+    onEditMetadata: () => setMetadataEditorSection("title"),
+    onTrack: () => void trackSelectedRemoteSource(),
+    onUntrack: () => void untrackSelectedSource(),
+    onFork: requestForkSource,
+    onFetch: openFetchWorkspace,
+    onManage: () => setIsManageOpen(true),
+    onRefreshLocalFiles: () => void refreshLocalFiles(),
+  };
+  const heroActions = <PersistedIdentityActions {...detailActionProps} />;
+  const renderSourceActions = (layout: SourceActionLayout) => (
+    <PersistedMediaActions {...detailActionProps} layout={layout} />
   );
   const directoryPanel = (
     <PersistedDirectoryPanel
@@ -1827,6 +1827,7 @@ export function PersistedWorkDetailController({
       mobileTab={mobileDetailTab}
       onMobileTabChange={setMobileDetailTab}
       actions={heroActions}
+      renderSourceActions={renderSourceActions}
       directory={directoryPanel}
       onBack={onBack}
     >

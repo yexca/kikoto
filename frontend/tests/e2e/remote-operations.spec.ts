@@ -316,9 +316,10 @@ function localRootFolder(id: number): WorkFolderLocation {
   };
 }
 
-test("local Delete builds a refreshed preview and requires two confirmations", async ({ page }) => {
+test("local Delete selects by location, summarizes the selection, and requires two confirmations", async ({ page }) => {
   const cleanupBodies: Record<string, unknown>[] = [];
   let localRefreshes = 0;
+  let mediaRequests = 0;
   const mediaItems: MediaItem[] = [
     {
       id: 1,
@@ -371,6 +372,9 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
     onLocalRefresh: () => {
       localRefreshes += 1;
     },
+    onMediaRequest: () => {
+      mediaRequests += 1;
+    },
   });
   await page.goto("/");
   await page.getByText("Tagged mobile work", { exact: true }).click();
@@ -380,21 +384,27 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
   await page.getByRole("button", { name: /Source actions for/ }).click();
   await page.getByRole("menuitem", { name: "Manage files", exact: true }).click();
 
-  await expect(page.getByRole("button", { name: "All", exact: true })).toBeVisible();
-  await expect(page.getByLabel("Include MP3")).toBeVisible();
   await expect(page.getByLabel(`Select work root ${work.primaryCode}`)).toBeVisible();
-  await expect(page.getByText("Delete preview", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "All", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Refreshing preview" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Review file deletion" })).toBeEnabled();
-  await expect(page.getByText("3 items", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Review file deletion" })).toBeDisabled();
+  await page.getByLabel("Include Cache", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Cache copy of track.mp3", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByText(/^1 selected \/ 3 deletable/)).toBeVisible();
+  await page.getByRole("checkbox", { name: "Select all", exact: true }).click();
+  await expect(page.getByText(/^3 selected \/ 3 deletable/)).toBeVisible();
 
   await page.getByRole("button", { name: "Review file deletion" }).click();
   await expect(page.getByRole("heading", { name: "Review file deletion" })).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("heading", { name: "Final confirmation" })).toBeVisible();
+  const mediaRequestsBeforeDelete = mediaRequests;
   await page.getByRole("button", { name: "Delete files only" }).click();
   await expect.poll(() => cleanupBodies).toHaveLength(1);
+  // A finished deletion reloads the detail's files in place.
+  await expect.poll(() => mediaRequests).toBeGreaterThan(mediaRequestsBeforeDelete);
+  await expect(page.getByRole("heading", { name: work.title, exact: true })).toBeVisible();
   expect(cleanupBodies[0]).toEqual({
     mode: "files_only",
     targets: [
@@ -403,6 +413,24 @@ test("local Delete builds a refreshed preview and requires two confirmations", a
       { kind: "local_root", locationId: 1, folderId: 101, expectedPath: work.primaryCode },
     ],
   });
+});
+
+test("@desktop wide work detail lists source actions inside Source info", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    work: { ...work, sourcePresence: [localPresence] },
+    detailLocalFolders: [localRootFolder(103)],
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await page.getByText(work.title, { exact: true }).click();
+
+  const sourceActions = page
+    .getByRole("complementary", { name: "Source info", exact: true })
+    .getByRole("group", { name: /Source actions for/ });
+  await expect(sourceActions.getByRole("button", { name: "Refresh local files", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Source actions for/ })).toHaveCount(0);
+  await sourceActions.getByRole("button", { name: "Manage files", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Manage files" })).toBeVisible();
 });
 
 test("local Delete enables work forgetting only for a complete root and confirms its data boundary", async ({
@@ -445,6 +473,7 @@ test("local Delete enables work forgetting only for a complete root and confirms
     permissions: ["library:read", "playback:use", "downloads:manage", "sources:write"],
     work: { ...work, sourcePresence: [localPresence] },
     detailLocalFolders: [localRootFolder(102)],
+    cleanupRunSummary: { mode: "files_and_forget_work", work_forgotten: true, forgotten_family_count: 1 },
   });
 
   await page.goto("/");
@@ -452,9 +481,12 @@ test("local Delete enables work forgetting only for a complete root and confirms
   await page.getByRole("button", { name: /Source actions for/ }).click();
   await page.getByRole("menuitem", { name: "Manage files", exact: true }).click();
 
+  // Forgetting a work deletes its complete folder, so it stays locked until everything is selected.
   const forgetButton = page.getByRole("button", { name: "Review deletion and forget work" });
   await expect(forgetButton).toBeDisabled();
-  await page.getByRole("button", { name: "All", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Select track.mp3", exact: true }).click();
+  await expect(forgetButton).toBeDisabled();
+  await page.getByRole("checkbox", { name: "Select all", exact: true }).click();
   await expect(forgetButton).toBeEnabled();
   await forgetButton.click();
 
@@ -469,6 +501,9 @@ test("local Delete enables work forgetting only for a complete root and confirms
   await page.getByRole("button", { name: "Delete files and forget work" }).click();
 
   await expect.poll(() => cleanupBodies).toHaveLength(1);
+  // A forgotten work has no detail left, so the page returns to where it was opened from.
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId("detail-hero")).toHaveCount(0);
   expect(cleanupBodies[0]).toEqual({
     mode: "files_and_forget_work",
     targets: [
@@ -704,8 +739,8 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(page.locator('button[title="Remote A: Available"]')).toBeVisible();
   await page.getByRole("button", { name: /Source actions for/ }).click();
   await page.getByRole("menuitem", { name: /Manage cache/ }).click();
-  await page.getByRole("button", { name: "All", exact: true }).click();
-  await expect(page.getByText("1 selected / 1 deletable", { exact: true })).toBeVisible();
+  await page.getByRole("checkbox", { name: "Select all", exact: true }).click();
+  await expect(page.getByText(/^1 selected \/ 1 deletable/)).toBeVisible();
   await page.getByRole("button", { name: "Review file deletion" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Delete files only" }).click();

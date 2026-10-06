@@ -167,6 +167,8 @@ type MockApplicationFixture = {
   detailMetadataPresentation?: WorkMetadataPresentation;
   detailMetadataSync?: WorkMetadataSyncStatus;
   detailLocalFolders?: WorkFolderLocation[];
+  /** Summary the finished media cleanup run reports, such as a forgotten work. */
+  cleanupRunSummary?: Record<string, unknown>;
   metadataSyncControl?: {
     runId: number;
     status: "queued" | "running" | "succeeded" | "partial" | "failed";
@@ -548,7 +550,12 @@ export async function mockApplication(
     if (url.pathname === "/api/workflow-runs/41") {
       await route.fulfill({
         json: workflowRunDetailFixture(
-          workflowRunFixture({ id: 41, workflowCode: "media_cleanup", displayName: "Media cleanup" }),
+          workflowRunFixture({
+            id: 41,
+            workflowCode: "media_cleanup",
+            displayName: "Media cleanup",
+            summaryJson: JSON.stringify(fixture.cleanupRunSummary ?? {}),
+          }),
         ),
       });
       return;
