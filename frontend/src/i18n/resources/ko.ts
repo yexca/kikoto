@@ -272,7 +272,8 @@ const adminToolsKorean = {
     enterManually: "직접 입력",
     enableDescription: "사용하지 않는 소스는 설정을 유지하지만 요청하지 않습니다.",
     metadataCapability: "작품 메타데이터 제공",
-    metadataCapabilityDescription: "DLsite에 기록이 없는 작품에 메타데이터 설정이 이 소스를 사용할 수 있게 합니다.",
+    metadataCapabilityDescription:
+      "DLsite에 기록이 없는 작품에 메타데이터 동기화의 원격 보완이 이 소스를 사용할 수 있게 합니다.",
     fallbackLanguage: "대체 언어",
     fallbackLanguageDescription:
       "요청은 보는 사람이 우선하는 메타데이터 언어를 먼저, 이 언어를 마지막으로 지정합니다. 우선 언어가 없는 소스를 위한 설정입니다.",

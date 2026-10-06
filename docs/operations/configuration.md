@@ -38,7 +38,7 @@ does not update its environment.
 
 Maintenance manages local scan depth, cache behavior, the remote per-file
 download limit, failed Fetch staging retention, remote request pacing, the
-default metadata language (under `Metadata -> Metadata settings`), outbound
+default metadata language (under `Settings -> Metadata`), outbound
 proxies and their scopes, file sources and their fallback languages, creator
 catalog freshness, and production instance access.
 

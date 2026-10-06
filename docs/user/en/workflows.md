@@ -60,8 +60,8 @@ Workflows make backend actions inspectable.
   dedicated metadata-run notice. Other failures can be marked reviewed once
   outstanding issues are resolved. This acknowledgement is per user. History
   keeps the original outcome, including failed, partial, and cancelled runs.
-- Metadata owns pending-work recovery and metadata settings. Its metadata
-  sync shortcut selects the existing workflow here.
+- Metadata owns pending-work recovery and the DLsite proxy shortcut. Its
+  metadata sync shortcut selects the existing workflow here.
 - Built-in local scan, metadata sync, remote popular, and DLsite popular
   workflows support editable interval triggers; local scan and the two popular
   collectors also support Startup triggers. Local scan ships
@@ -139,7 +139,10 @@ Workflows make backend actions inspectable.
 - Metadata sync refreshes works already in the library. Its Run options choose
   **Works** (All works, one circle's works, or one voice actor's works) and
   **Refresh** (Missing or outdated, or All metadata). Its interval triggers
-  store the same choice.
+  store the same choice. Administrators with `sources:write` also see
+  **Configure** beside **Run**: it sets the instance-wide
+  [remote metadata fallback](settings.md#remote-metadata-fallback) and saves
+  only that setting.
 - User-authored custom workflows, the DAG editor, slash commands, and the
   definition run dialog were removed. Upgrading deletes existing user
   definitions and their triggers; their runs stay in Activity history.

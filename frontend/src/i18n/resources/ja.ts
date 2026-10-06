@@ -272,7 +272,8 @@ const adminToolsJapanese = {
     enterManually: "手動で入力",
     enableDescription: "無効なソースは設定を保持しますが、リクエストされません。",
     metadataCapability: "作品のメタデータを提供",
-    metadataCapabilityDescription: "DLsite に記録がない作品で、メタデータ設定がこのソースを使えるようにします。",
+    metadataCapabilityDescription:
+      "DLsite に記録がない作品で、メタデータ同期のリモート補完がこのソースを使えるようにします。",
     fallbackLanguage: "フォールバック言語",
     fallbackLanguageDescription:
       "リクエストは閲覧者が優先するメタデータ言語を先に、この言語を最後に指定します。優先言語のないソース向けです。",

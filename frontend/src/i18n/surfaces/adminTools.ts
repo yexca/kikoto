@@ -25,7 +25,8 @@ export const adminToolsEnglish = {
     enterManually: "Enter details manually",
     enableDescription: "Disabled sources keep their configuration but are not queried.",
     metadataCapability: "Provides work metadata",
-    metadataCapabilityDescription: "Lets Metadata settings use this source when DLsite has no record of a work.",
+    metadataCapabilityDescription:
+      "Lets the Metadata sync remote fallback use this source when DLsite has no record of a work.",
     fallbackLanguage: "Fallback language",
     fallbackLanguageDescription:
       "Requests ask in each viewer's preferred metadata language first and in this language last, for sources that lack the preferred one.",

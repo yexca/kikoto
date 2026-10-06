@@ -612,6 +612,7 @@ function AuthenticatedApp() {
                     canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
                     canTagWorks={auth.demoMode || auth.hasPermission("tags:write")}
                     canManageDownloads={auth.demoMode || auth.hasPermission("downloads:manage")}
+                    canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
                     readOnly={auth.demoMode}
                   />
                 )}
