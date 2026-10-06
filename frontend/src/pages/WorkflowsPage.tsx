@@ -64,12 +64,15 @@ export function WorkflowsPage({
   canSyncMetadata,
   canTagWorks,
   canManageDownloads,
+  canManageSources = false,
   readOnly = false,
 }: {
   canRun: boolean;
   canSyncMetadata: boolean;
   canTagWorks: boolean;
   canManageDownloads: boolean;
+  /** Instance settings such as the remote metadata fallback need `sources:write`. */
+  canManageSources?: boolean;
   readOnly?: boolean;
 }) {
   const toast = useToast();
@@ -591,6 +594,7 @@ export function WorkflowsPage({
                     onRunSystemAction={runSystemAction}
                     onRunRemotePopular={runPopularCollection}
                     canFetchRemotePopular={canManageDownloads}
+                    canConfigureMetadataSync={canManageSources}
                     canTag={canTagWorks}
                     remoteSourceUnavailable={remoteSourceAvailability === "unavailable"}
                     onOpenRemoteSourceSettings={openRemoteSourcesSettings}

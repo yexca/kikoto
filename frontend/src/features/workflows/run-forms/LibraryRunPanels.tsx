@@ -1,5 +1,7 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { Settings2 } from "lucide-react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { VoiceActorPicker } from "@/features/workflows/CreatorPresetFields";
 import {
@@ -12,6 +14,7 @@ import {
   type MetadataSyncFormValues,
 } from "@/features/workflows/metadataSyncModel";
 import { presetParameterLabel } from "@/features/workflows/run-forms/PresetRunPanel";
+import { RemoteMetadataFallbackPopover } from "@/features/workflows/run-forms/RemoteMetadataFallbackPopover";
 import {
   OptionField,
   RunBlockerNote,
@@ -211,33 +214,67 @@ export function MetadataSyncFields({
   );
 }
 
+/**
+ * Metadata sync run form. Administrators who manage sources also get
+ * Configure beside Run for the instance-wide remote metadata fallback.
+ */
 export function MetadataSyncRunPanel({
   layout,
   running,
   allowed,
+  configurable = false,
+  readOnly = false,
   onRun,
   onTriggerRunOptionsChange,
 }: {
   layout: RunFormLayout;
   running: boolean;
   allowed: boolean;
+  /** Shows Configure; saving the configuration also needs `readOnly` to be false. */
+  configurable?: boolean;
+  readOnly?: boolean;
   onRun: (options: MetadataSyncOptions) => Promise<void>;
   onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
 }) {
   const [values, setValues] = useState<MetadataSyncFormValues>(metadataSyncDefaultValues);
+  const configureRef = useRef<HTMLButtonElement | null>(null);
+  const [configuring, setConfiguring] = useState(false);
   useEffect(() => {
     onTriggerRunOptionsChange?.({ code: "metadata_sync", metadataSync: values });
   }, [values, onTriggerRunOptionsChange]);
   const blockers = metadataSyncBlockers(values);
-  return layout({
-    run: (
-      <WorkflowRunButton
-        running={running}
-        disabled={!allowed || blockers.length > 0}
-        onClick={() => void onRun(metadataSyncPayload(values))}
-      />
-    ),
-    options: <MetadataSyncFields idPrefix="metadata-sync-run" values={values} onChange={setValues} />,
-    blocker: blockers.length > 0 ? <RunBlockerNote>{metadataSyncBlockerText(blockers[0])}</RunBlockerNote> : null,
-  });
+  return (
+    <>
+      {layout({
+        run: (
+          <WorkflowRunButton
+            running={running}
+            disabled={!allowed || blockers.length > 0}
+            onClick={() => void onRun(metadataSyncPayload(values))}
+          />
+        ),
+        actions: configurable ? (
+          <Button
+            ref={configureRef}
+            variant="outline"
+            aria-expanded={configuring}
+            aria-haspopup="dialog"
+            onClick={() => setConfiguring((open) => !open)}
+          >
+            <Settings2 className="h-4 w-4" />
+            {workflowCopy("configure")}
+          </Button>
+        ) : undefined,
+        options: <MetadataSyncFields idPrefix="metadata-sync-run" values={values} onChange={setValues} />,
+        blocker: blockers.length > 0 ? <RunBlockerNote>{metadataSyncBlockerText(blockers[0])}</RunBlockerNote> : null,
+      })}
+      {configuring && (
+        <RemoteMetadataFallbackPopover
+          anchorRef={configureRef}
+          readOnly={readOnly}
+          onClose={() => setConfiguring(false)}
+        />
+      )}
+    </>
+  );
 }

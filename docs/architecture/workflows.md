@@ -96,7 +96,9 @@ pairs, failures, and what remains.
 ## Metadata Recovery
 
 Metadata synchronization remains a workflow. Metadata management owns the current
-attention list and metadata settings; sync itself starts from Workflows.
+attention list and the DLsite proxy shortcut; sync and its remote metadata
+fallback configuration live in Workflows, and the instance metadata defaults
+in Settings → Metadata.
 Activity run detail links to the unresolved
 issues encountered by that run. Selecting works queues recoverable family-sync
 jobs, reusing an already queued/running job for that family. Explicit recovery
@@ -746,7 +748,7 @@ title chain without adding a language.
 
 ## Remote Metadata Fallback
 
-When the administrator enables it in Metadata settings, the per-work metadata
+When the administrator enables it from the Metadata sync Configure popover, the per-work metadata
 job (`metadata_family_sync`, also queued by Metadata recovery and detail
 refresh) asks the selected sources after DLsite reports the requested product
 as not found. Timeouts, rate limits and other retryable DLsite failures fail or

@@ -273,7 +273,7 @@ const adminToolsHant = {
     enterManually: "手動填寫",
     enableDescription: "停用的來源會保留設定，但不會被請求。",
     metadataCapability: "提供作品中繼資料",
-    metadataCapabilityDescription: "允許中繼資料設定在 DLsite 沒有記錄時使用此來源。",
+    metadataCapabilityDescription: "允許中繼資料同步的遠端備援在 DLsite 沒有記錄時使用此來源。",
     fallbackLanguage: "備援語言",
     fallbackLanguageDescription: "要求先使用檢視者偏好的中繼資料語言，最後使用此語言，用於沒有偏好語言的來源。",
     customLanguage: "自訂（{{language}}）",

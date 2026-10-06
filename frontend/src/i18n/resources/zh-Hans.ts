@@ -272,7 +272,7 @@ const adminToolsHans = {
     enterManually: "手动填写",
     enableDescription: "停用的来源会保留配置，但不会被请求。",
     metadataCapability: "提供作品元数据",
-    metadataCapabilityDescription: "允许元数据设置在 DLsite 没有记录时使用此来源。",
+    metadataCapabilityDescription: "允许元数据同步的远程回退在 DLsite 没有记录时使用此来源。",
     fallbackLanguage: "回退语言",
     fallbackLanguageDescription: "请求先使用查看者偏好的元数据语言，最后使用此语言，用于没有偏好语言的来源。",
     customLanguage: "自定义（{{language}}）",

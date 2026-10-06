@@ -174,7 +174,10 @@ viewer read LRC, WebVTT, and SRT files the same way.
   `?view=tags`, `?view=circles`, and `?view=aliases&voice=<id>` select
   those views; existing voice deep links remain valid. The shared icon rail
   shows group headings when expanded and accessible group descriptions at all
-  sizes. Metadata settings remain in the header popover.
+  sizes. The header settings popover keeps the DLsite proxy shortcut and
+  links to Settings → Metadata (default metadata language and catalog
+  freshness) and to the Metadata sync configuration (remote metadata
+  fallback).
 
 - Workflows: horizontal definition tabs and a right-side Activity summary.
 - Activity run details inside the Workflows panel, also reachable through notifications.
@@ -385,11 +388,13 @@ titles or rewrite provider values.
 
 ## Remote metadata fallback presentation
 
-Metadata settings add a Remote metadata fallback group: an off-by-default switch
-and the metadata-capable remote sources, each with a checkbox and earlier/later
-controls for the fallback order, saved with the rest of the form. A pure model
-(`remoteMetadataFallbackModel`) orders the rows and drops ids that no longer
-name a capable source before saving. The remote source dialog has a
+The Metadata sync workflow's Configure popover, offered with `sources:write`,
+holds the Remote metadata fallback: an off-by-default switch and the
+metadata-capable remote sources, each with a checkbox and earlier/later
+controls for the fallback order. It reads the settings when opened and saves
+only the fallback. A pure model (`features/workflows/remoteMetadataFallbackModel`)
+orders the rows and drops ids that no longer name a capable source before
+saving. The remote source dialog has a
 Provides work metadata switch that writes the `metadata` capability;
 `lib/remoteSourceCapabilities` holds the shared capability rule.
 

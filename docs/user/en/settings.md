@@ -36,7 +36,7 @@ password is reset from the server host; see
 [Administrator setup and recovery](../../operations/security.md#administrator-setup-and-recovery).
 
 Demo mode keeps account-backed Settings read-only. The administration tabs
-(Library, Cache & Fetch, Proxy, Cleanup, and Users), the personal History &
+(Library, Metadata, Cache & Fetch, Proxy, Cleanup, and Users), the personal History &
 recommendations and Tags tabs, and the Your data section of Account stay visible for inspection even though the Demo identity is
 not an administrator, and every change in them is disabled. Appearance and playback controls remain available because theme mode, style, color, seek intervals, and playback source options
 are browser-local preferences and do not modify Demo server data. Playback
@@ -45,11 +45,11 @@ anonymous principal when anonymous access is enabled.
 
 ## Personal Playback And Recommendations
 
-Settings uses Account, Playback, History, Recommendations, and Tags tabs, shown as icons: hover or focus an icon for its name, and phones also name the active tab. Account ends with the **Your data** export and import section; see [Personal data](personal-data.md) for listening history, tags, and data transfer. Administrators, and Demo, also see the administration tabs (Library, Cache & Fetch, Proxy, Cleanup, and Users) after a divider, so the elevated scope stays separate. Wide screens show the icons in a column beside the settings; phones show them as one row that scrolls sideways. The **Show tab names** button below the column expands it to name every tab, and Settings remembers the choice. Playback contains local seek intervals, **Playback sources**, and **Folder preference**: ordered folder matching and exclusion rules. History shows the listening report (30 days, 12 months, or all time) and a collapsed full listening history. Recommendations starts with the **Your recommendation activity** report of the signed-in user's own last 30 days (how impressions turned into opens and plays, the marks and reshuffles given, and the affinity score distribution), followed by recommendation presets, badge threshold, variation, discovery boost, and advanced scoring. These two migrated preferences are stored per authenticated account on the server; changing them never changes another account. An account without overrides and anonymous browsing retain the existing instance defaults. Old Maintenance Routing and Recommendation links open the corresponding Settings tab, and older `?tab=data` Settings links open the Your data section of Account.
+Settings uses Account, Playback, History, Recommendations, and Tags tabs, shown as icons: hover or focus an icon for its name, and phones also name the active tab. Account ends with the **Your data** export and import section; see [Personal data](personal-data.md) for listening history, tags, and data transfer. Administrators, and Demo, also see the administration tabs (Library, Metadata, Cache & Fetch, Proxy, Cleanup, and Users) after a divider, so the elevated scope stays separate. Wide screens show the icons in a column beside the settings; phones show them as one row that scrolls sideways. The **Show tab names** button below the column expands it to name every tab, and Settings remembers the choice. Playback contains local seek intervals, **Playback sources**, and **Folder preference**: ordered folder matching and exclusion rules. History shows the listening report (30 days, 12 months, or all time) and a collapsed full listening history. Recommendations starts with the **Your recommendation activity** report of the signed-in user's own last 30 days (how impressions turned into opens and plays, the marks and reshuffles given, and the affinity score distribution), followed by recommendation presets, badge threshold, variation, discovery boost, and advanced scoring. These two migrated preferences are stored per authenticated account on the server; changing them never changes another account. An account without overrides and anonymous browsing retain the existing instance defaults. Old Maintenance Routing and Recommendation links open the corresponding Settings tab, and older `?tab=data` Settings links open the Your data section of Account.
 
 Saving recommendation settings creates a new recommendation session for the current tab. Other open tabs keep their existing snapshots until a new session is created. Saving folder preferences updates subsequent directory selection without stopping the player. Failed saves retain the draft and the previous persisted values. Demo mode keeps these server-backed preferences read-only.
 
-Appearance is available only from the header menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Every signed-in user also sees **Preferred metadata language** directly below the UI language. It is a personal choice: it decides which title edition, introduction and tag names that user sees, orders title sorting by those titles, and is asked first when Kikoto queries a remote source for that user. It starts at **Server default**, the instance default an administrator sets in Metadata settings, which itself defaults to `Origin`; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition. Every language shows the same tags: they come from the original edition. Anonymous visitors see the server default.
+Appearance is available only from the header menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Every signed-in user also sees **Preferred metadata language** directly below the UI language. It is a personal choice: it decides which title edition, introduction and tag names that user sees, orders title sorting by those titles, and is asked first when Kikoto queries a remote source for that user. It starts at **Server default**, the instance default an administrator sets in `Settings -> Metadata`, which itself defaults to `Origin`; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition. Every language shows the same tags: they come from the original edition. Anonymous visitors see the server default.
 
 ## Maintenance Organization
 
@@ -89,7 +89,16 @@ Maintenance uses one horizontal row of tabs, scrolling horizontally on narrow sc
   configuration can enable **Restrict outbound hosts** to allow only the API,
   Public site, Fallback, and an editable list of exact or `*.example.invalid`
   public host patterns.
-- Maintenance contains Library, Cache & Fetch, Proxy, Cleanup, and Users.
+- Maintenance contains Library, Metadata, Cache & Fetch, Proxy, Cleanup, and Users.
+- **Metadata** holds the instance metadata defaults, saved by one action that
+  sends only the changed values. **Default metadata language** applies to
+  users who keep **Server default**, to anonymous visitors, to stored titles
+  and tag names, and to background requests such as remote metadata fallback
+  and catalog refreshes; changing it refreshes the stored titles and tag
+  names. Each user's own choice is in the header Appearance menu; a remote
+  source's fallback language is in its source settings. **Catalog freshness
+  days** (1 to 365, default 30) marks a circle or voice actor catalog
+  Attention once its last refresh is older than that.
 - Cache & Fetch contains configuration only: playback cache policy, transfer
   safety, and collapsed download pacing, with one save action that is enabled
   after a change. Cache contents are managed in the Cleanup tab.
@@ -173,12 +182,9 @@ Select families and choose **Retry metadata**; its count includes only eligible 
 Metadata settings have a **DLsite proxy** shortcut: the same switch and proxy
   choice as the DLsite scope under `Settings -> Proxy -> Proxy scope`, saved
   immediately. **Manage proxies** opens that section to add or reorder proxies.
-  **Default metadata language** is the instance default: it applies to users
-  who keep **Server default**, to anonymous visitors, to stored titles and tag
-  names, and to background requests such as remote metadata fallback and
-  catalog refreshes. Changing it refreshes the stored titles and tag names.
-  Each user's own choice is in the header Appearance menu; a remote source's
-  fallback language is in its source settings.
+  Below it, **Default language and catalog freshness** opens
+  `Settings -> Metadata`, and **Remote metadata fallback** opens the Metadata
+  sync workflow, whose **Configure** holds that setting.
 
 Shared tag names try each preferred language in order: that language’s manual name, the all-language manual name, then the provider name. Detail language switching follows the same precedence.
 
@@ -190,7 +196,7 @@ DLsite names genres in the requested language even for Japanese-only works. When
 
 ### Remote metadata fallback
 
-**Remote metadata fallback** in Metadata settings is off by default. When it is on, refreshing a work's metadata asks the selected remote sources, in the listed order, after DLsite explicitly reports the work as not found; timeouts and other temporary DLsite errors never trigger it. Only sources whose settings have **Provides work metadata** turned on are listed. Each source is asked once, and the first that describes the work fills its title, release date, circle, tags, and cover (a cover only when the work has none). The fallback never creates works and never fills a language DLsite lacks. While it is on, the tags of works without DLsite data join shared tags, and a remote tag matching a known tag reuses it. DLsite data always replaces remote values once available.
+**Remote metadata fallback** is set from **Configure** on the Metadata sync workflow (`Workflows -> Metadata sync`), which administrators with `sources:write` see beside **Run**, and is off by default. When it is on, refreshing a work's metadata asks the selected remote sources, in the listed order, after DLsite explicitly reports the work as not found; timeouts and other temporary DLsite errors never trigger it. Only sources whose settings have **Provides work metadata** turned on are listed. Each source is asked once, and the first that describes the work fills its title, release date, circle, tags, and cover (a cover only when the work has none). The fallback never creates works and never fills a language DLsite lacks. While it is on, the tags of works without DLsite data join shared tags, and a remote tag matching a known tag reuses it. DLsite data always replaces remote values once available.
 
 The listed order also decides which source wins when several remote sources describe the same work, even with the switch off. Turning the switch off stops new lookups and removes remote tags from shared tags again; titles, dates, circles, and covers already filled stay until DLsite or a manual value replaces them. Metadata issues name the source that filled a work DLsite does not have.
 

@@ -1,5 +1,11 @@
 # Unreleased
 
+- Metadata settings are reorganized. **Default metadata language** and
+  **Catalog freshness days** move to a new **Metadata** tab under Settings
+  administration, and **Remote metadata fallback** moves to **Configure**
+  on the Metadata sync workflow, offered to administrators with
+  `sources:write`. Each saves only its own values. The Metadata page's
+  settings popover keeps the DLsite proxy shortcut and links to both.
 - The metadata editor on work detail and Metadata → Works is reorganized into
   Title, Cover, Tags, Credits, and Metadata source sections that mark unsaved
   changes. Every language title has its own row, covers are picked from a
@@ -15,7 +21,7 @@
   introductions, tag names and default detail edition, sorts lists by the
   titles shown, and leads that user's remote-source requests. **Server
   default** follows the instance default, which administrators now set as
-  **Default metadata language** in Metadata settings; anonymous visitors,
+  **Default metadata language** in `Settings -> Metadata`; anonymous visitors,
   stored titles and tag names, and background requests use it. A work's shared
   tags always come from its original edition, so every language shows the same
   tags. Remote sources replace the per-source request language with a
