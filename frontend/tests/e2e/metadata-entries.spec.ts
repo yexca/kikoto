@@ -36,7 +36,7 @@ async function metadataWorkEditor(page: Page) {
   );
 }
 
-test("language title rows use source placeholders and stage reverts beside other drafts", async ({ page }) => {
+test("language title rows prefill current titles and stage reverts beside other drafts", async ({ page }) => {
   await metadataWorkEditor(page);
   const detail = workDetailFixture(work, {
     manualOverrides: { titles: { "ja-jp": "Example Japanese" } },
@@ -91,15 +91,14 @@ test("language title rows use source placeholders and stage reverts beside other
   await advanced.focus();
   await advanced.press("Enter");
   await expect(advanced).toHaveAttribute("aria-expanded", "true");
-  await expect(universalTitle).toHaveValue("");
-  await expect(universalTitle).toHaveAttribute("placeholder", "Example original");
+  await expect(universalTitle).toHaveValue("Example original");
   await expect(universalTitle).toHaveAccessibleDescription(
     "Overrides provider titles in every language. Per-language manual titles take precedence; the edition and description stay the same.",
   );
   await expect(
     dialog.getByRole("group", { name: "Universal title" }).getByText("Current source: Original title", { exact: true }),
   ).toBeVisible();
-  await expect(chinese).toHaveAttribute("placeholder", "Example Chinese");
+  await expect(chinese).toHaveValue("Example Chinese");
   await expect(
     dialog
       .getByRole("group", { name: "Simplified Chinese" })
@@ -152,9 +151,7 @@ test("@desktop per-language title fields each occupy a full-width row", async ({
   }
 });
 
-test("own titles are editable while inherited titles stay hints and clearing matches visible changes", async ({
-  page,
-}) => {
+test("inherited titles prefill without becoming overrides and clearing matches visible changes", async ({ page }) => {
   await metadataWorkEditor(page);
   const detail = workDetailFixture(work, {
     manualOverrides: { title: "Example universal", titles: { "ja-jp": "Example Japanese" } },
@@ -192,13 +189,15 @@ test("own titles are editable while inherited titles stay hints and clearing mat
   const universalTitle = dialog.getByRole("textbox", { name: "Universal title", exact: true });
   await expect(universalTitle).toBeVisible();
   await expect(universalTitle).toHaveValue("Example universal");
-  await expect(englishTitle).toHaveValue("");
-  await expect(englishTitle).toHaveAttribute("placeholder", "Example universal");
+  await expect(englishTitle).toHaveValue("Example universal");
   await expect(english.getByText("Current source: Manual title (all languages)", { exact: true })).toBeVisible();
   await expect(english.getByRole("button", { name: /Revert/ })).toHaveCount(0);
   await englishTitle.fill("Example temporary inherited edit");
   await expect(save).toBeEnabled();
+  await englishTitle.fill("Example universal");
+  await expect(save).toBeDisabled();
   await englishTitle.clear();
+  await expect(englishTitle).toHaveAttribute("placeholder", "Example universal");
   await expect(save).toBeDisabled();
   await expect(dialog.getByText("No unsaved changes", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();

@@ -12,7 +12,7 @@ import { MetadataEditorSourceSection, type StagedMetadataLink } from "./Metadata
 import { WorkMetadataTagsSection } from "./WorkMetadataTagsSection";
 import { WorkTitleEditor } from "./WorkTitleEditor";
 import { metadataEditorInitialState, payloadChangesCredits } from "./metadataEditorModel";
-import { changedTitles } from "./titleEditorModel";
+import { changedTitles, currentTitles } from "./titleEditorModel";
 import { useWorkCoverCandidates } from "./useMetadataSuggestions";
 import { useWorkMetadataTagsEditor } from "./useWorkMetadataTagsEditor";
 
@@ -63,7 +63,7 @@ export function WorkMetadataEditorModal({
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const tabRefs = useRef<Partial<Record<MetadataEditorSection, HTMLButtonElement | null>>>({});
 
-  const titles = changedTitles(titleDrafts, manual);
+  const titles = changedTitles(titleDrafts, manual, currentTitles(work));
   const coverChanged = coverState.selectedCoverId !== coverState.initialCoverId;
   const changed: Record<MetadataEditorSection, boolean> = {
     title: Object.keys(titles).length > 0,
