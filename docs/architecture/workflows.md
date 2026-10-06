@@ -747,7 +747,8 @@ titles. Changing a user's metadata language selects
 titles and descriptions from stored editions without new provider requests or
 work identities. See [data model](data-model.md) for the
 precedence and `origin` contract. A remote-filled title follows DLsite in the
-title chain without adding a language.
+title chain. Provider-declared remote edition titles add metadata language
+choices; an undeclared remote title remains the languageless fallback.
 
 ## Remote Metadata Fallback
 
@@ -760,6 +761,12 @@ fan out to remote sources. Bulk and scheduled metadata sync keep their
 unavailable-product skip; recovering a not-found work from Metadata management
 runs the fallback. A work that already has DLsite metadata is skipped, and the
 fallback never fills a language DLsite lacks.
+
+For works without DLsite metadata, the same response's `language_editions`
+relationships and `other_language_editions_in_db` titles supply stored language
+choices. Switching language reads those choices without requesting sibling
+codes. These metadata references never materialize library works or playable
+editions; an edition relationship without a returned title stays a relationship.
 
 Sources are tried in the configured order, and the first that describes the
 work wins. A matching cached description is reused first: that source's earlier

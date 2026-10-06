@@ -34,15 +34,16 @@ var (
 
 // Work is the bounded, validated subset of a remote work used for metadata.
 type Work struct {
-	Code         string
-	Title        string
-	Release      string
-	AgeRating    string
-	Duration     int64
-	Circle       string
-	CoverURL     string
-	Tags         []metadatatags.ProviderTag
-	TagsDeclared bool
+	Code          string
+	Title         string
+	Release       string
+	AgeRating     string
+	Duration      int64
+	Circle        string
+	CoverURL      string
+	Tags          []metadatatags.ProviderTag
+	TagsDeclared  bool
+	TitleVariants []TitleVariant
 }
 
 // Decode validates untrusted remote work JSON. It accepts the shape returned
@@ -74,6 +75,11 @@ func Decode(raw []byte) (Work, error) {
 	if strings.EqualFold(work.Title, work.Code) {
 		work.Title = ""
 	}
+	variants, err := decodeTitleVariants(remote)
+	if err != nil {
+		return Work{}, err
+	}
+	work.TitleVariants = variants
 	if release := strings.TrimSpace(remote.Release); releasePattern.MatchString(release) {
 		work.Release = release[:10]
 	}

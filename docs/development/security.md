@@ -92,7 +92,10 @@ after DLsite reports it as not found:
   response limit, through the paced crawl lane; cancellation releases the lane
   and records no outcome. Retryable DLsite failures never trigger a request.
 - The response is untrusted. It must decode within the remote snapshot bounds
-  and name the requested code; nothing is applied otherwise.
+  and name the requested code; nothing is applied otherwise. Each edition
+  collection is limited to 32 entries, and sibling titles to 2048 bytes.
+  Edition codes and declared languages supply metadata references only; a
+  source-local id or relationship without a title creates no work or request.
 - Run output, Activity, and the API expose source codes, display names and
   fixed outcomes only. Detailed upstream errors stay in protected logs.
 

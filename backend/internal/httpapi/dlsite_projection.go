@@ -96,6 +96,13 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 			result.DefaultVariantKey = key
 		}
 	}
+	if len(variants) == 0 {
+		remoteVariants, err := s.remoteTitlePresentation(ctx, workID, overrides)
+		if err != nil {
+			return result, err
+		}
+		result.Variants = append(result.Variants, remoteVariants...)
+	}
 	fallbackTags := []string{}
 	for _, variant := range result.Variants {
 		if variant.Key == result.DefaultVariantKey {
@@ -123,7 +130,7 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 	if canonical || len(variants) == 0 {
 		matched := false
 		for _, variant := range result.Variants {
-			if (variant.Language == selectedTitle.Language || selectedTitle.Language == "") && variant.Key == selectedTitle.Code {
+			if (variant.Language == selectedTitle.Language || selectedTitle.Language == "") && firstNonEmpty(variant.MetadataCode, variant.Key) == selectedTitle.Code {
 				result.DefaultVariantKey, matched = variant.Key, true
 				break
 			}

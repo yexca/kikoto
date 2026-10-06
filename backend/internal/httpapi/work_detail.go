@@ -65,6 +65,7 @@ type workMetadataPresentation struct {
 }
 
 type workMetadataVariant struct {
+	MetadataCode string `json:"-"`
 	// A manual-only language choice is presentation, not evidence of provider sync.
 	PresentationOnly bool     `json:"-"`
 	Description      string   `json:"description"`

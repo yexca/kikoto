@@ -15,6 +15,7 @@ Important tables:
 - `metadata_snapshot`
 - `metadata_snapshot_card_summary`
 - `dlsite_metadata_variant`
+- `remote_metadata_title_variant`
 - `work_metadata_sync_state`
 - `metadata_sync_attempt`
 - `metadata_sync_attempt_work`
@@ -279,8 +280,12 @@ the menu, selection and editor sources. All manual languages are
 indexed and scoped writes/reset invalidate search. A work without DLsite data
 falls back to the title a remote source filled (see
 [remote metadata fallback](#remote-metadata-fallback)), then to its own title.
-Remote titles declare no language: they never become an edition, add no
-language choice, and receive no translation-label stripping.
+Remote titles may declare a language through `language_editions` and
+`other_language_editions_in_db`. Stored titles with declared languages enter
+the same priority selection and manual-title precedence; an undeclared title
+remains a languageless fallback. Remote titles receive no translation-label
+stripping, and their metadata choices never become playable editions or proof
+of a successful DLsite synchronization.
 
 The optional PATCH `titles` map updates only supplied language keys; `null` or
 empty values remove that language. Legacy `title` remains the universal value;
@@ -336,7 +341,8 @@ remote value, so the result no longer depends on which source wrote last.
 latest stored snapshot of each remote provider. Snapshots are untrusted:
 non-objects, missing codes, titles over 2048 bytes, circle names over 512 bytes,
 more than 256 tags, tag names over 512 bytes, more than 16 localizations per
-tag, or snapshots over 8 MiB are skipped as a whole with a protected log.
+tag, more than 32 entries in either edition collection, or snapshots over
+8 MiB are skipped as a whole with a protected log.
 Release dates must start with `YYYY-MM-DD`. For each field the first-ranked
 source with a value wins. Without DLsite (or another non-remote provider)
 metadata, the winner replaces title, release date, age rating and duration;
@@ -346,6 +352,26 @@ remote-filled value (`title`, `release_date`, `age_rating`, `duration`,
 `circle`, `tags`, `cover`). It holds rows only while the work has no DLsite
 metadata; projection clears them when DLsite data arrives, so DLsite always
 takes over.
+
+`remote_metadata_title_variant` (migration `057`) holds the first-ranked
+provider's title per supported language and original edition for an existing
+work. A title's language comes from the provider's edition declarations,
+never the request locale or title text. `language_editions` supplies code and
+language relationships; `other_language_editions_in_db` supplies the titles
+already returned for sibling codes. A source-local numeric id alone is not an
+edition code. A relationship without a title creates no language choice and
+causes no additional request, work, alias or file availability. Raw snapshots
+remain the provenance source; projection reads no remote catalog.
+
+The shared title projection always uses the original edition when it has a
+stored title; otherwise it keeps the source's own title as the fallback.
+Each viewer selects their own title from the stored variants. Legacy instance
+language settings never affect this projection. The title editor, detail
+language menu, title sort and search share these values. Snapshot refreshes
+and source-order changes replace the projection through the existing bounded
+queue. Turning the fallback off retains these titles as passive metadata;
+DLsite takeover removes the remote projection and never fills a missing
+DLsite language from a remote source.
 
 The winning circle name links an existing circle by name or confirmed alias.
 Only an active fallback source (switch on, selected, capable, enabled) may

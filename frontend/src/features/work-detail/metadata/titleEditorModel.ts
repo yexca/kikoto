@@ -19,7 +19,7 @@ export type TitleSourceLabel = { key: string; values?: Record<string, string> };
 /**
  * Names where a scope's current title comes from: its own manual title, the
  * all-language manual title, a DLsite edition, a remote source, or the work's
- * own title. A remote title never belongs to a language.
+ * own title. Remote language titles require a provider-declared edition.
  */
 export function titleSourceLabel(
   language: string,
