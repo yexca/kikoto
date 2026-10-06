@@ -58,6 +58,7 @@ import { ageRatingPresentation } from "@/lib/ageRating";
 import { formatBytes, formatDuration } from "@/features/work-detail/media/mediaTreeModel";
 import { sourceTabStatusClass } from "@/features/work-detail/source/sourceContextModel";
 import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
+import type { SourceActionLayout } from "@/features/work-detail/WorkDetailActionBars";
 
 export type UnifiedWorkDetailPresentation = {
   coverUrl: string;
@@ -106,6 +107,7 @@ export function UnifiedWorkDetailPage({
   mobileTab,
   onMobileTabChange,
   actions,
+  renderSourceActions,
   directory,
   onBack,
   children,
@@ -115,6 +117,8 @@ export function UnifiedWorkDetailPage({
   mobileTab: "info" | "directory";
   onMobileTabChange: (tab: "info" | "directory") => void;
   actions: ReactNode;
+  /** Actions for the selected source: a menu with the Hero actions, or an inline list in wide Source info. */
+  renderSourceActions?: (layout: SourceActionLayout) => ReactNode;
   directory: ReactNode;
   onBack: () => void;
   children?: ReactNode;
@@ -132,11 +136,21 @@ export function UnifiedWorkDetailPage({
           {...presentation}
           activeTab={mobileTab}
           onActiveTabChange={onMobileTabChange}
-          actions={actions}
+          actions={
+            <>
+              {actions}
+              {renderSourceActions?.("menu")}
+            </>
+          }
           directory={directory}
         />
       ) : (
-        <DesktopWorkDetailLayout {...presentation} actions={actions} directory={directory} />
+        <DesktopWorkDetailLayout
+          {...presentation}
+          actions={actions}
+          renderSourceActions={renderSourceActions}
+          directory={directory}
+        />
       )}
       {children}
     </div>
@@ -145,9 +159,14 @@ export function UnifiedWorkDetailPage({
 
 function DesktopWorkDetailLayout({
   actions,
+  renderSourceActions,
   directory,
   ...presentation
-}: UnifiedWorkDetailPresentation & { actions: ReactNode; directory: ReactNode }) {
+}: UnifiedWorkDetailPresentation & {
+  actions: ReactNode;
+  renderSourceActions?: (layout: SourceActionLayout) => ReactNode;
+  directory: ReactNode;
+}) {
   const {
     coverUrl,
     fallbackCode,
@@ -174,6 +193,9 @@ function DesktopWorkDetailLayout({
   } = presentation;
   const entityResolver = useDetailEntityResolver(code);
   const versionMenu = detailVersionMenu(presentation);
+  // Source info only sits beside the Directory on wide screens; narrower desktops
+  // stack it below the Directory, so source actions stay a menu with the Hero actions.
+  const sourceActionsInPanel = useMediaQueryMatch(WIDE_DETAIL_LAYOUT_QUERY);
 
   return (
     <div className="space-y-6">
@@ -233,6 +255,7 @@ function DesktopWorkDetailLayout({
             />
             <div data-testid="hero-actions" className="mt-auto flex min-w-0 flex-wrap gap-2 pt-1">
               {actions}
+              {!sourceActionsInPanel && renderSourceActions?.("menu")}
             </div>
           </div>
         </div>
@@ -243,7 +266,12 @@ function DesktopWorkDetailLayout({
           <WorkDescription description={presentation.description} />
           {directory}
         </div>
-        <DetailInfoPanel sourceInfo={sourceInfo} dlsiteFetchedAt={dlsiteFetchedAt} className="xl:sticky xl:top-20" />
+        <DetailInfoPanel
+          sourceInfo={sourceInfo}
+          dlsiteFetchedAt={dlsiteFetchedAt}
+          actions={sourceActionsInPanel ? renderSourceActions?.("list") : undefined}
+          className="xl:sticky xl:top-20"
+        />
       </div>
     </div>
   );
@@ -252,8 +280,10 @@ function DesktopWorkDetailLayout({
 function DetailInfoPanel({
   sourceInfo,
   dlsiteFetchedAt,
+  actions,
   className,
 }: Pick<UnifiedWorkDetailPresentation, "sourceInfo" | "dlsiteFetchedAt"> & {
+  actions?: ReactNode;
   className: string;
 }) {
   return (
@@ -263,6 +293,7 @@ function DetailInfoPanel({
       data-testid="detail-source-metadata"
     >
       <ActiveSourceInfo info={sourceInfo} />
+      {actions && <div className="p-2 empty:hidden">{actions}</div>}
       {dlsiteFetchedAt && (
         <div className="flex items-center gap-2 px-4 py-3 text-2xs text-muted-foreground">
           <Clock3 className="h-3.5 w-3.5 shrink-0" />
@@ -467,7 +498,7 @@ function DetailStatStrip({
       className={
         compact
           ? "flex justify-between gap-x-2 overflow-x-auto min-[360px]:gap-x-3 rounded-lg border bg-background/60 px-3 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          : "flex flex-wrap gap-x-6 gap-y-2 rounded-lg border bg-background/60 px-3.5 py-2 backdrop-blur-sm"
+          : "flex w-fit max-w-full flex-wrap gap-x-6 gap-y-2 self-start rounded-lg border bg-background/60 px-3.5 py-2 backdrop-blur-sm"
       }
     >
       {stats.map((stat) => (
@@ -973,16 +1004,23 @@ export function detailHeroModel(code: string, work: WorkDetail | null, preview: 
 }
 
 export function useCompactDetailLayout() {
-  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 767px)").matches);
+  return useMediaQueryMatch("(max-width: 767px)");
+}
+
+// Matches Tailwind's `xl` breakpoint, where Source info becomes a sticky side panel.
+const WIDE_DETAIL_LAYOUT_QUERY = "(min-width: 1280px)";
+
+function useMediaQueryMatch(query: string) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
-    const media = window.matchMedia("(max-width: 767px)");
-    const update = () => setCompact(media.matches);
+    const media = window.matchMedia(query);
+    const update = () => setMatches(media.matches);
     update();
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
-  }, []);
+  }, [query]);
 
-  return compact;
+  return matches;
 }
 
 function WorkVersionMenus({

@@ -1,6 +1,7 @@
 import { FileAudio, FileText, FileVideo, ImageIcon } from "lucide-react";
 
 import { formatBytes, type TreeStats, type TreeTrack } from "@/features/work-detail/media/mediaTreeModel";
+import type { MediaDeleteTarget } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
 import i18n from "@/i18n";
 
 export function formatFolderStats(stats: TreeStats, directPlayableCount: number) {
@@ -14,6 +15,12 @@ export function formatFolderStats(stats: TreeStats, directPlayableCount: number)
         : "";
   const sizeLabel = stats.knownSizeFiles > 0 ? formatBytes(stats.sizeBytes) : "";
   return [countLabel, sizeLabel].filter(Boolean).join(" · ");
+}
+
+export function mediaDeleteTargetKindLabel(target: Pick<MediaDeleteTarget, "kind">) {
+  if (target.kind === "cache") return i18n.t("libraryDetail.cache");
+  if (target.kind === "local_root") return i18n.t("libraryDetail.workRoot");
+  return i18n.t("detailActions.local");
 }
 
 export function fileIcon(file: TreeTrack) {

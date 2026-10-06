@@ -7,12 +7,12 @@ import {
   Database,
   Edit3,
   ExternalLink,
+  FolderCog,
   GitFork,
   HardDrive,
   HardDriveDownload,
   Loader2,
   RefreshCw,
-  Trash2,
   Unlink,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
@@ -142,6 +142,7 @@ export function WorkIdentityActionBar({
 }
 
 export function MediaContextActionBar({
+  layout = "menu",
   busy,
   mode,
   contextKey,
@@ -185,6 +186,8 @@ export function MediaContextActionBar({
   manageCacheDisabled?: boolean;
   onManageFiles?: () => void;
   onRefreshLocalFiles?: () => void;
+  /** `list` renders the actions inline, for a panel that already names the source. */
+  layout?: SourceActionLayout;
 }) {
   const { t } = useTranslation();
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -261,6 +264,140 @@ export function MediaContextActionBar({
     items[nextIndex]?.focus();
   };
 
+  const renderItems = (layout: SourceActionLayout) => (
+    <>
+      {sourceDetailsLoading && (
+        <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground" role="status">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          {t("detailActions.loadingSourceDetails")}
+        </div>
+      )}
+      {mode === "remote_source" && onTrack && (
+        <SourceOptionButton
+          layout={layout}
+          icon={<BookmarkPlus className="h-4 w-4" />}
+          label={t("detailActions.track")}
+          detail={trackDisabled ? trackDisabledReason || t("detailActions.alreadyTracked") : undefined}
+          disabled={busy || trackDisabled}
+          onClick={() => runOption(onTrack)}
+        />
+      )}
+      {hasForkOptions && (
+        <div className="border-t px-1 pt-1 first:border-t-0">
+          <div className="px-1 py-1 text-2xs font-medium uppercase text-muted-foreground">
+            {mode === "tracked_forked" ? t("detailActions.switchFork") : t("detailActions.forkFrom")}
+          </div>
+          {forkSources.length === 0 ? (
+            <div className="px-2 py-2 text-xs text-muted-foreground">{t("detailActions.noForkSourceAvailable")}</div>
+          ) : (
+            forkSources.map((remote) => {
+              const active = currentForkSource?.source.id === remote.source.id;
+              return (
+                <SourceOptionButton
+                  key={remote.source.id}
+                  layout={layout}
+                  icon={<GitFork className="h-4 w-4" />}
+                  label={remote.source.displayName}
+                  trailing={active ? <Check className="h-3.5 w-3.5 text-primary" /> : undefined}
+                  disabled={busy || active}
+                  onClick={() => runOption(() => onFork!(remote))}
+                />
+              );
+            })
+          )}
+        </div>
+      )}
+      {onUntrack && (
+        <>
+          <div className="my-1 border-t first:hidden" />
+          <SourceOptionButton
+            layout={layout}
+            icon={<Unlink className="h-4 w-4" />}
+            label={untrackConfirming ? t("detailActions.confirmUntrack") : t("detailActions.untrack")}
+            detail={untrackConfirming ? t("detailActions.clickAgainToConfirm") : t("detailActions.stopTrackingSource")}
+            tone="danger"
+            disabled={busy || untrackDisabled}
+            onClick={() => {
+              if (!untrackConfirming) {
+                setUntrackConfirming(true);
+                return;
+              }
+              setUntrackConfirming(false);
+              runOption(onUntrack);
+            }}
+          />
+        </>
+      )}
+      {onFetch && (
+        <SourceOptionButton
+          layout={layout}
+          icon={<HardDriveDownload className="h-4 w-4" />}
+          label={t("detailActions.fetch")}
+          disabled={busy}
+          onClick={() => runOption(onFetch)}
+        />
+      )}
+      {remoteSourceWorkUrl && (
+        <a
+          role={layout === "menu" ? "menuitem" : undefined}
+          tabIndex={layout === "menu" ? -1 : undefined}
+          className={sourceOptionClassName(layout, "default")}
+          href={remoteSourceWorkUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={t("detailActions.openOriginOn", { source: remoteSourceName || t("detailActions.source") })}
+          onClick={closeOptions}
+        >
+          <ExternalLink className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{t("detailActions.openOrigin")}</span>
+        </a>
+      )}
+      {(onManageCache || onManageFiles || onRefreshLocalFiles) && <div className="my-1 border-t first:hidden" />}
+      {onRefreshLocalFiles && (
+        <SourceOptionButton
+          layout={layout}
+          icon={<RefreshCw className={`h-4 w-4 ${busy && layout === "list" ? "animate-spin" : ""}`} />}
+          label={t("detailActions.refreshLocalFiles")}
+          disabled={busy}
+          onClick={() => runOption(onRefreshLocalFiles)}
+        />
+      )}
+      {onManageCache && (
+        <SourceOptionButton
+          layout={layout}
+          icon={<HardDrive className="h-4 w-4" />}
+          label={t("detailActions.manageCache")}
+          detail={manageCacheDisabled ? t("detailActions.noCachedFiles") : undefined}
+          disabled={busy || manageCacheDisabled}
+          onClick={() => runOption(onManageCache)}
+        />
+      )}
+      {onManageFiles && (
+        <SourceOptionButton
+          layout={layout}
+          icon={<FolderCog className="h-4 w-4" />}
+          label={t("detailActions.manageFiles")}
+          disabled={busy}
+          onClick={() => runOption(onManageFiles)}
+        />
+      )}
+    </>
+  );
+
+  if (layout === "list") {
+    return (
+      <div role="group" aria-label={sourceActionsLabel} className="space-y-0.5 text-sm">
+        {hasOptions ? (
+          renderItems("list")
+        ) : (
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">
+            {t("detailActions.noActionsFor", { source: displaySourceLabel })}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="relative shrink-0" ref={optionsAnchorRef}>
       <Button
@@ -299,123 +436,27 @@ export function MediaContextActionBar({
             <span className="block truncate">{displaySourceLabel}</span>
             {sourceStatus && <span className="mt-0.5 block text-2xs font-normal">{sourceStatus}</span>}
           </div>
-          {sourceDetailsLoading && (
-            <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground" role="status">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              {t("detailActions.loadingSourceDetails")}
-            </div>
-          )}
-          {mode === "remote_source" && onTrack && (
-            <SourceOptionButton
-              icon={<BookmarkPlus className="h-4 w-4" />}
-              label={t("detailActions.track")}
-              detail={trackDisabled ? trackDisabledReason || t("detailActions.alreadyTracked") : undefined}
-              disabled={trackDisabled}
-              onClick={() => runOption(onTrack)}
-            />
-          )}
-          {hasForkOptions && (
-            <div className="border-t px-1 pt-1 first:border-t-0">
-              <div className="px-1 py-1 text-2xs font-medium uppercase text-muted-foreground">
-                {mode === "tracked_forked" ? t("detailActions.switchFork") : t("detailActions.forkFrom")}
-              </div>
-              {forkSources.length === 0 ? (
-                <div className="px-2 py-2 text-xs text-muted-foreground">
-                  {t("detailActions.noForkSourceAvailable")}
-                </div>
-              ) : (
-                forkSources.map((remote) => {
-                  const active = currentForkSource?.source.id === remote.source.id;
-                  return (
-                    <SourceOptionButton
-                      key={remote.source.id}
-                      icon={<GitFork className="h-4 w-4" />}
-                      label={remote.source.displayName}
-                      trailing={active ? <Check className="h-3.5 w-3.5 text-primary" /> : undefined}
-                      disabled={active}
-                      onClick={() => runOption(() => onFork!(remote))}
-                    />
-                  );
-                })
-              )}
-            </div>
-          )}
-          {onUntrack && (
-            <>
-              <div className="my-1 border-t" />
-              <SourceOptionButton
-                icon={<Unlink className="h-4 w-4" />}
-                label={untrackConfirming ? t("detailActions.confirmUntrack") : t("detailActions.untrack")}
-                detail={
-                  untrackConfirming ? t("detailActions.clickAgainToConfirm") : t("detailActions.stopTrackingSource")
-                }
-                tone="danger"
-                disabled={untrackDisabled}
-                onClick={() => {
-                  if (!untrackConfirming) {
-                    setUntrackConfirming(true);
-                    return;
-                  }
-                  setUntrackConfirming(false);
-                  runOption(onUntrack);
-                }}
-              />
-            </>
-          )}
-          {onFetch && (
-            <SourceOptionButton
-              icon={<HardDriveDownload className="h-4 w-4" />}
-              label={t("detailActions.fetch")}
-              onClick={() => runOption(onFetch)}
-            />
-          )}
-          {remoteSourceWorkUrl && (
-            <a
-              role="menuitem"
-              tabIndex={-1}
-              className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
-              href={remoteSourceWorkUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={t("detailActions.openOriginOn", { source: remoteSourceName || t("detailActions.source") })}
-              onClick={closeOptions}
-            >
-              <ExternalLink className="h-4 w-4" />
-              <span className="min-w-0 flex-1 truncate">{t("detailActions.openOrigin")}</span>
-            </a>
-          )}
-          {(onManageCache || onManageFiles || onRefreshLocalFiles) && <div className="my-1 border-t" />}
-          {onRefreshLocalFiles && (
-            <SourceOptionButton
-              icon={<RefreshCw className="h-4 w-4" />}
-              label={t("detailActions.refreshLocalFiles")}
-              onClick={() => runOption(onRefreshLocalFiles)}
-            />
-          )}
-          {onManageCache && (
-            <SourceOptionButton
-              icon={<HardDrive className="h-4 w-4" />}
-              label={t("detailActions.manageCache")}
-              detail={manageCacheDisabled ? t("detailActions.noCachedFiles") : undefined}
-              disabled={manageCacheDisabled}
-              onClick={() => runOption(onManageCache)}
-            />
-          )}
-          {onManageFiles && (
-            <SourceOptionButton
-              icon={<Trash2 className="h-4 w-4" />}
-              label={t("detailActions.manageFiles")}
-              tone="danger"
-              onClick={() => runOption(onManageFiles)}
-            />
-          )}
+          {renderItems("menu")}
         </div>
       </AnchoredPopover>
     </div>
   );
 }
 
+export type SourceActionLayout = "menu" | "list";
+
+function sourceOptionClassName(layout: SourceActionLayout, tone: "default" | "danger") {
+  const toneClassName =
+    tone === "danger" ? "text-destructive hover:bg-destructive/10 focus:bg-destructive/10" : "hover:bg-muted";
+  const layoutClassName =
+    layout === "menu"
+      ? "rounded px-2 py-2 focus:bg-muted focus:outline-none"
+      : "rounded-md px-2 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  return `flex w-full items-center gap-2.5 text-left disabled:pointer-events-none disabled:opacity-50 ${layoutClassName} ${toneClassName}`;
+}
+
 function SourceOptionButton({
+  layout,
   icon,
   label,
   detail,
@@ -424,6 +465,7 @@ function SourceOptionButton({
   tone = "default",
   onClick,
 }: {
+  layout: SourceActionLayout;
   icon: ReactNode;
   label: string;
   detail?: string;
@@ -434,15 +476,14 @@ function SourceOptionButton({
 }) {
   return (
     <button
-      role="menuitem"
-      tabIndex={-1}
-      className={`flex w-full items-center gap-2 rounded px-2 py-2 text-left focus:bg-muted focus:outline-none disabled:pointer-events-none disabled:opacity-50 ${
-        tone === "danger" ? "text-destructive hover:bg-destructive/10 focus:bg-destructive/10" : "hover:bg-muted"
-      }`}
+      type="button"
+      role={layout === "menu" ? "menuitem" : undefined}
+      tabIndex={layout === "menu" ? -1 : undefined}
+      className={sourceOptionClassName(layout, tone)}
       disabled={disabled}
       onClick={onClick}
     >
-      <span className="shrink-0">{icon}</span>
+      <span className={`shrink-0 ${tone === "danger" ? "" : "text-muted-foreground"}`}>{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate">{label}</span>
         {detail && <span className="block truncate text-2xs text-muted-foreground">{detail}</span>}

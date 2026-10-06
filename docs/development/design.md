@@ -175,8 +175,10 @@ Desktop:
 
 - Sidebar navigation.
 - Source-aware work detail with a cover-tinted Hero (cover, identity, tags with
-  inline personal tags, a compact stat strip, and bottom-aligned Hero actions),
-  the Directory as the main column, and a sticky source panel on wide screens.
+  inline personal tags, a content-width stat strip, and bottom-aligned Hero
+  actions), the Directory as the main column, and a sticky source panel on wide
+  screens that lists the selected source's actions inline. Narrower layouts
+  keep those actions in a Source menu beside the Hero actions.
 - Persistent lower-right player dock with full, compact, and draggable mini
   modes.
 
