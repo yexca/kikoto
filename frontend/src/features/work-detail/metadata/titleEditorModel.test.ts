@@ -1,5 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { changedTitles, titleSourceLabel } from "./titleEditorModel";
+import { changedTitles, titleLanguageMarkers, titleSourceLabel } from "./titleEditorModel";
+
+describe("title language markers", () => {
+  const work = {
+    metadataPresentation: {
+      defaultVariantKey: "chinese",
+      variants: [
+        { key: "original", language: "ja-jp", title: "Example original", tags: [], origin: true },
+        { key: "chinese", language: "zh-cn", title: "Example Chinese", tags: [], origin: false },
+      ],
+    },
+  };
+
+  it("marks the original language and the default displayed language separately", () => {
+    expect(titleLanguageMarkers(work, "")).toEqual({ origin: "ja-jp", current: "zh-cn" });
+  });
+
+  it("follows an explicit selection, including both markers on the original language", () => {
+    expect(titleLanguageMarkers(work, "original")).toEqual({ origin: "ja-jp", current: "ja-jp" });
+  });
+
+  it("does not infer an undeclared original language from the displayed translation", () => {
+    const unknownOriginal = {
+      ...work,
+      metadataPresentation: {
+        ...work.metadataPresentation,
+        variants: work.metadataPresentation.variants.map((variant) =>
+          variant.origin ? { ...variant, language: "" } : variant,
+        ),
+      },
+    };
+    expect(titleLanguageMarkers(unknownOriginal, "")).toEqual({ origin: "", current: "zh-cn" });
+    expect(titleLanguageMarkers(unknownOriginal, "original")).toEqual({ origin: "", current: "" });
+  });
+});
 
 describe("language title drafts", () => {
   const manual = { title: "Global", titles: { "": "Global", "ja-jp": "Japanese" } };

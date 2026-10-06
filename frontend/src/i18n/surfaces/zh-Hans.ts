@@ -11,6 +11,8 @@ export const surfaceHans = {
     description: "作品简介",
   },
   metadataEditor: {
+    originLanguage: "origin",
+    currentLanguage: "current",
     status: {
       manual: "手动",
       edited: "已编辑",
@@ -24,6 +26,10 @@ export const surfaceHans = {
     inheritedTitle: "继承的标题",
     languageTitles: "按语言设置标题",
     languageTitlesDescription: "只为某个显示语言设置标题。留空的项目会继承。",
+    advancedTitles: "高级标题选项",
+    universalTitle: "跨语言通用标题",
+    revertUniversalTitle: "还原跨语言通用标题",
+    universalTitleDescription: "优先于各语言的来源标题，分语言手动标题优先于此。只替换标题，不改变版本或简介。",
     coverHint: "图片会被复制，之后移动原文件也不影响封面。",
     currentCover: "当前封面",
     searchCircles: "搜索社团或输入名称",
@@ -61,7 +67,7 @@ export const surfaceHans = {
       source: "元数据来源",
     },
     descriptions: {
-      title: "留空则沿用继承的标题。“所有语言”标题会用于所有没有单独标题的语言。",
+      title: "按显示语言修改标题，手动标题会在元数据刷新后保留。",
       cover: "从本作品的本地图片中选择一张作为封面。",
       tags: "为本作品添加或移除标签，并按语言编辑每个标签的名称。标签名称是共享的，改名会作用于所有带此标签的作品。",
       credits: "选择建议项可关联已有的社团、系列或声优。编辑过的制作信息在刷新元数据后保持不变。",

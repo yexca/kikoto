@@ -73,6 +73,33 @@ test("selected metadata title and introduction follow playback without changing 
     .toBe("Example original");
 });
 
+test("title editor current marker follows the selected metadata language", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "library:write", "playback:use"],
+    detailMetadataPresentation: {
+      defaultVariantKey: "chinese",
+      variants: [
+        { key: "original", language: "ja-jp", title: "Example original", tags: [], origin: true },
+        { key: "chinese", language: "zh-cn", title: "Example Chinese", tags: [], origin: false },
+      ],
+    },
+  });
+  await page.route("**/api/works/1/cover-candidates", (route) => route.fulfill({ json: { candidates: [] } }));
+  await page.goto("/RJ00000000");
+  await page.getByRole("button", { name: "Metadata language", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Original · Japanese", exact: true }).click();
+  await page.getByRole("button", { name: "Manage metadata", exact: true }).click();
+  await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  const japanese = dialog.getByRole("group", { name: "Japanese", exact: true });
+  await expect(japanese.getByText("origin", { exact: true })).toBeVisible();
+  await expect(japanese.getByText("current", { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByRole("group", { name: "Simplified Chinese", exact: true }).getByText("current", { exact: true }),
+  ).toHaveCount(0);
+});
+
 test("unknown routes and missing work codes render not found states", async ({ page }) => {
   await mockApplication(page);
   await page.goto("/missing-route");
