@@ -12,6 +12,15 @@ import { api, type VoiceAlias, type VoiceSummary, type VoiceSummaryPage } from "
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { MaintenanceToolbar, useMaintenanceSearch, type MaintenanceToolbarSlots } from "./MaintenanceControls";
 import { MetadataEntryCover } from "./MetadataEntryCover";
+import {
+  MetadataActionsCell,
+  MetadataActionsHeader,
+  MetadataManageButton,
+  metadataBodyClassName,
+  metadataHeadClassName,
+  metadataRowClassName,
+  metadataTableClassName,
+} from "./MetadataEntryTable";
 import { VoiceAliasPanel } from "./VoiceAliasPanel";
 
 const PAGE_SIZES = [25, 50] as const;
@@ -197,9 +206,9 @@ export function VoiceAliasMaintenance({
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm" aria-busy={loading}>
+              <table className={metadataTableClassName} aria-busy={loading}>
                 <VoiceAliasTableHead />
-                <tbody className="divide-y">
+                <tbody className={metadataBodyClassName}>
                   {result.voices.map((voice) => (
                     <VoiceAliasRow
                       key={voice.personId}
@@ -245,8 +254,8 @@ function VoiceAliasRow({
     [voice.aliases, voice.displayName],
   );
   return (
-    <tr className="align-middle transition-colors hover:bg-muted/30">
-      <th scope="row" className="whitespace-nowrap px-3 py-3 font-medium tabular-nums">
+    <tr className={`${metadataRowClassName} align-middle`}>
+      <th scope="row" className="whitespace-nowrap py-2 pl-4 pr-3 font-medium tabular-nums">
         {`#${voice.personId}`}
       </th>
       <td className="px-3 py-2">
@@ -261,7 +270,7 @@ function VoiceAliasRow({
           </a>
         </div>
       </td>
-      <td className="px-3 py-3">
+      <td className="px-3 py-2">
         {aliases.length > 0 ? (
           <div className="flex min-w-0 flex-wrap gap-1">
             {aliases.map((alias) => (
@@ -271,23 +280,19 @@ function VoiceAliasRow({
             ))}
           </div>
         ) : (
-          <span className="text-muted-foreground">—</span>
+          <span className="text-muted-foreground/60">—</span>
         )}
       </td>
-      <td className="px-3 py-3 tabular-nums">{voice.knownWorks}</td>
-      <td className="px-3 py-3">
+      <td className="px-3 py-2 text-right tabular-nums">{voice.knownWorks}</td>
+      <td className="px-3 py-2">
         <CatalogSyncBadge state={voice.syncState} appearance="dot" />
       </td>
-      <td className="sticky right-0 bg-card px-3 py-3 text-right">
-        <Button
-          variant="outline"
-          size="sm"
+      <MetadataActionsCell>
+        <MetadataManageButton
+          label={t("workManagement.manageAliasesFor", { name: voice.displayName })}
           onClick={onManage}
-          aria-label={t("workManagement.manageAliasesFor", { name: voice.displayName })}
-        >
-          {t("metadataEntries.manage")}
-        </Button>
-      </td>
+        />
+      </MetadataActionsCell>
     </tr>
   );
 }
@@ -380,16 +385,16 @@ function VoiceAliasTableSkeleton() {
   const { t } = useTranslation();
   return (
     <table
-      className="w-full text-left text-sm"
+      className={metadataTableClassName}
       role="status"
       aria-label={t("creatorBrowse.loadingVoices")}
       aria-busy="true"
     >
       <VoiceAliasTableHead />
-      <tbody className="divide-y" aria-hidden="true">
+      <tbody className={metadataBodyClassName} aria-hidden="true">
         {Array.from({ length: 3 }, (_, index) => (
           <tr key={index}>
-            <td className="px-3 py-3">
+            <td className="py-3 pl-4 pr-3">
               <div className="h-3 w-8 animate-pulse rounded bg-muted" />
             </td>
             <td className="px-3 py-2">
@@ -407,8 +412,8 @@ function VoiceAliasTableSkeleton() {
             <td className="px-3 py-3">
               <div className="h-3 w-14 animate-pulse rounded bg-muted" />
             </td>
-            <td className="px-3 py-3">
-              <div className="ml-auto h-8 w-16 animate-pulse rounded-md bg-muted" />
+            <td className="py-2 pr-1 sm:pr-3">
+              <div className="ml-auto h-8 w-8 animate-pulse rounded-md bg-muted" />
             </td>
           </tr>
         ))}
@@ -420,16 +425,24 @@ function VoiceAliasTableSkeleton() {
 function VoiceAliasTableHead() {
   const { t } = useTranslation();
   return (
-    <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
-      <tr>
-        <th className="px-3 py-2">{t("metadataEntries.id")}</th>
-        <th className="min-w-48 px-3 py-2">{t("metadataEntries.name")}</th>
-        <th className="min-w-36 px-3 py-2">{t("metadataEntries.aliases")}</th>
-        <th className="px-3 py-2">{t("metadataEntries.workCount")}</th>
-        <th className="px-3 py-2">{t("metadataEntries.status")}</th>
-        <th className="sticky right-0 bg-card px-3 py-2">
-          <span className="sr-only">{t("metadataEntries.manage")}</span>
+    <thead className={metadataHeadClassName}>
+      <tr className="h-10">
+        <th scope="col" className="py-2 pl-4 pr-3 font-medium">
+          {t("metadataEntries.id")}
         </th>
+        <th scope="col" className="min-w-48 px-3 py-2 font-medium">
+          {t("metadataEntries.name")}
+        </th>
+        <th scope="col" className="min-w-36 px-3 py-2 font-medium">
+          {t("metadataEntries.aliases")}
+        </th>
+        <th scope="col" className="px-3 py-2 text-right font-medium">
+          {t("metadataEntries.workCount")}
+        </th>
+        <th scope="col" className="px-3 py-2 font-medium">
+          {t("metadataEntries.status")}
+        </th>
+        <MetadataActionsHeader />
       </tr>
     </thead>
   );

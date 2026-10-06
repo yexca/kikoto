@@ -1,13 +1,21 @@
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
 import type { MetadataCircle } from "@/lib/api";
 import { MetadataEntryCover } from "./MetadataEntryCover";
+import {
+  MetadataActionsCell,
+  MetadataActionsHeader,
+  MetadataManageButton,
+  metadataBodyClassName,
+  metadataHeadClassName,
+  metadataRowClassName,
+  metadataTableClassName,
+} from "./MetadataEntryTable";
 
 /**
  * Circles keyed by DLsite maker id, like tags by id, so the list reads the
  * same whatever names anyone authored. Maker ids a merge brought along sit
  * under the primary one; a circle known only from a remote source has no code
- * and shows its Kikoto id. Manage stays pinned to the visible edge.
+ * and shows its Kikoto id. The manage action stays pinned to the visible edge.
  */
 export function MetadataCircleTable({
   circles,
@@ -18,28 +26,34 @@ export function MetadataCircleTable({
 }) {
   const { t } = useTranslation();
   return (
-    <table className="w-full text-left text-sm" aria-label={t("metadataEntries.circles")}>
-      <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
-        <tr>
-          <th className="px-3 py-2">{t("metadataEntries.code")}</th>
-          <th className="min-w-48 px-3 py-2">{t("metadataEntries.name")}</th>
-          <th className="min-w-36 px-3 py-2">{t("metadataEntries.knownNames")}</th>
-          <th className="px-3 py-2">{t("metadataEntries.workCount")}</th>
-          <th className="sticky right-0 bg-card px-3 py-2">
-            <span className="sr-only">{t("metadataEntries.manage")}</span>
+    <table className={metadataTableClassName} aria-label={t("metadataEntries.circles")}>
+      <thead className={metadataHeadClassName}>
+        <tr className="h-10">
+          <th scope="col" className="py-2 pl-4 pr-3 font-medium">
+            {t("metadataEntries.code")}
           </th>
+          <th scope="col" className="min-w-48 px-3 py-2 font-medium">
+            {t("metadataEntries.name")}
+          </th>
+          <th scope="col" className="min-w-36 px-3 py-2 font-medium">
+            {t("metadataEntries.knownNames")}
+          </th>
+          <th scope="col" className="px-3 py-2 text-right font-medium">
+            {t("metadataEntries.workCount")}
+          </th>
+          <MetadataActionsHeader />
         </tr>
       </thead>
-      <tbody>
+      <tbody className={metadataBodyClassName}>
         {circles.map((circle) => {
           const mergedCodes = circle.externalIds.filter((code) => code !== circle.code);
           const renamed = circle.manualName !== "" && circle.manualName !== circle.providerName;
           return (
-            <tr key={circle.id} className="border-b align-middle last:border-0">
-              <th scope="row" className="whitespace-nowrap px-3 py-3 font-medium tabular-nums">
+            <tr key={circle.id} className={`${metadataRowClassName} align-middle`}>
+              <th scope="row" className="whitespace-nowrap py-2 pl-4 pr-3 font-mono text-xs font-medium tabular-nums">
                 <span className="block">{circle.code || `#${circle.id}`}</span>
                 {mergedCodes.map((code) => (
-                  <span key={code} className="block text-xs font-normal text-muted-foreground">
+                  <span key={code} className="block font-normal text-muted-foreground">
                     {code}
                   </span>
                 ))}
@@ -57,20 +71,18 @@ export function MetadataCircleTable({
                   </div>
                 </div>
               </td>
-              <td className="max-w-sm px-3 py-3 text-muted-foreground">
-                {circle.aliases.map((value) => value.alias).join(" · ") || "—"}
+              <td className="max-w-sm px-3 py-2 text-muted-foreground">
+                {circle.aliases.map((value) => value.alias).join(" · ") || (
+                  <span className="text-muted-foreground/60">—</span>
+                )}
               </td>
-              <td className="px-3 py-3 tabular-nums">{circle.workCount}</td>
-              <td className="sticky right-0 bg-card px-3 py-3 text-right">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label={t("metadataEntries.manageFor", { name: circle.displayName })}
+              <td className="px-3 py-2 text-right tabular-nums">{circle.workCount}</td>
+              <MetadataActionsCell>
+                <MetadataManageButton
+                  label={t("metadataEntries.manageFor", { name: circle.displayName })}
                   onClick={() => onManage(circle)}
-                >
-                  {t("metadataEntries.manage")}
-                </Button>
-              </td>
+                />
+              </MetadataActionsCell>
             </tr>
           );
         })}
