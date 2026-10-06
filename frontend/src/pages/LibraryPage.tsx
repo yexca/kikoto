@@ -64,7 +64,7 @@ import { readOrCreateRecommendationSession, RECOMMENDATION_ALGORITHM_VERSION } f
 import {
   useWorkCollectionLayout,
   workCollectionClassName,
-  WorkCollectionLayoutPicker as LayoutPicker,
+  WorkCollectionDisplayPicker,
   workCollectionStyle,
 } from "@/components/work-collection/WorkCollectionLayout";
 import {
@@ -125,7 +125,6 @@ import {
 } from "lucide-react";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { RecentlyPlayedPicker } from "@/pages/library/RecentlyPlayedPicker";
-import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { Badge } from "@/components/ui/badge";
 import { RecommendationExplanationDialog } from "@/pages/library/RecommendationExplanationDialog";
 import {
@@ -1824,16 +1823,14 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             </IconButton>
           )}
           <RecentlyPlayedPicker onOpen={(work) => openWork(work, recentWorkSourceIntent(work))} />
-          <LayoutPicker
+          <WorkCollectionDisplayPicker
             mobileColumns={mobileColumns}
             desktopColumns={desktopColumns}
             onMobileColumnsChange={setMobileColumns}
             onDesktopColumnsChange={setDesktopColumns}
-          />
-          <PageSizePicker
-            value={activePageSize}
-            options={activePageSizeOptions}
-            onChange={(value) => {
+            pageSize={activePageSize}
+            pageSizeOptions={activePageSizeOptions}
+            onPageSizeChange={(value) => {
               queueResultsScroll();
               if (activeTab.kind === "source") {
                 updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });

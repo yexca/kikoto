@@ -1,14 +1,18 @@
-import { Columns3 } from "lucide-react";
+import { Columns3Cog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { TFunction } from "i18next";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
+import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import i18n from "@/i18n";
+import { cn } from "@/lib/tailwindClassNames";
 import {
-  isWorkCollectionColumnCount,
-  workCollectionColumnOptions,
+  isWorkCollectionDesktopColumnSetting,
+  isWorkCollectionMobileColumnSetting,
+  workCollectionDesktopColumnOptions,
+  workCollectionMobileColumnOptions,
   type WorkCollectionColumnSetting,
 } from "@/components/work-collection/workCollectionLayoutModel";
 
@@ -61,86 +65,149 @@ export function useWorkCollectionLayout(
   };
 }
 
-export function WorkCollectionLayoutPicker({
+/**
+ * One toolbar control for how a work collection is displayed: grid columns and
+ * items per page share a popover so the toolbar spends a single icon on them.
+ * Either group may be omitted (a list view has no columns; some collections are
+ * not paged). The popover stays open after a choice so both can be adjusted.
+ */
+export function WorkCollectionDisplayPicker({
   mobileColumns,
   desktopColumns,
   onMobileColumnsChange,
   onDesktopColumnsChange,
+  showColumns = true,
+  pageSize,
+  pageSizeOptions,
+  onPageSizeChange,
 }: {
   mobileColumns: WorkCollectionColumnSetting;
   desktopColumns: WorkCollectionColumnSetting;
   onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
   onDesktopColumnsChange: (value: WorkCollectionColumnSetting) => void;
+  showColumns?: boolean;
+  pageSize?: number;
+  pageSizeOptions?: readonly number[];
+  onPageSizeChange?: (value: number) => void;
 }) {
   const { t } = useTranslation("translation", { i18n });
-  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const isWide = useIsWideLayout();
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-  useDismissiblePopover(columnsOpen, popoverRef, () => setColumnsOpen(false));
-  const currentValue = isWide ? desktopColumns : mobileColumns;
-  const options: readonly WorkCollectionColumnSetting[] = isWide
-    ? ["auto", ...workCollectionColumnOptions]
-    : ["auto", 1, 2];
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const currentColumns = isWide ? desktopColumns : mobileColumns;
+  const columnOptions: readonly WorkCollectionColumnSetting[] = [
+    "auto",
+    ...(isWide ? workCollectionDesktopColumnOptions : workCollectionMobileColumnOptions),
+  ];
   const setColumns = (value: WorkCollectionColumnSetting) => {
     if (isWide) onDesktopColumnsChange(value);
     else onMobileColumnsChange(value);
-    setColumnsOpen(false);
   };
+  const paged = pageSize !== undefined && pageSizeOptions !== undefined && onPageSizeChange !== undefined;
+  const summary = [
+    showColumns ? t("collection.columns", { label: columnSettingLabel(currentColumns, t) }) : null,
+    paged ? t("collection.pageSize", { value: pageSize }) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const buttonLabel = t("collection.displayOptionsValue", { value: summary });
 
   return (
-    <div className="relative" ref={popoverRef}>
+    <div className="relative" ref={anchorRef}>
       <Button
         variant="toolbar"
         size="icon-sm"
-        aria-expanded={columnsOpen}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         className="relative"
-        title={t("collection.columns", { label: columnSettingLabel(currentValue, t) })}
-        aria-label={t("collection.columns", { label: columnSettingLabel(currentValue, t) })}
+        title={buttonLabel}
+        aria-label={buttonLabel}
         type="button"
-        onClick={() => setColumnsOpen((current) => !current)}
+        onClick={() => setOpen((current) => !current)}
       >
-        <Columns3 className="h-4 w-4" />
+        <Columns3Cog className="h-4 w-4" />
       </Button>
       <AnchoredPopover
-        open={columnsOpen}
-        anchorRef={popoverRef}
-        onOpenChange={setColumnsOpen}
-        className="flex w-16 flex-col gap-1 p-1 text-sm"
+        open={open}
+        anchorRef={anchorRef}
+        onOpenChange={setOpen}
+        ariaLabel={t("collection.displayOptions")}
+        className="flex w-[min(18rem,calc(100vw-1.5rem))] flex-col gap-3 p-3 text-sm"
       >
-        {options.map((option) => (
-          <button
-            key={option}
-            type="button"
-            className={`flex h-8 items-center justify-center rounded-md text-sm font-medium hover:bg-muted ${currentValue === option ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15" : "text-muted-foreground"}`}
-            aria-pressed={currentValue === option}
-            title={columnOptionLabel(option, t)}
-            aria-label={columnOptionLabel(option, t)}
-            onClick={() => setColumns(option)}
-          >
-            {columnSettingLabel(option, t)}
-          </button>
-        ))}
+        {showColumns && (
+          <DisplayOptionGroup label={t("collection.columnsHeading")}>
+            {columnOptions.map((option) => (
+              <DisplayOptionButton
+                key={option}
+                checked={currentColumns === option}
+                label={columnOptionLabel(option, t)}
+                className={option === "auto" ? "flex-[1.6]" : undefined}
+                onSelect={() => setColumns(option)}
+              >
+                {columnSettingLabel(option, t)}
+              </DisplayOptionButton>
+            ))}
+          </DisplayOptionGroup>
+        )}
+        {paged && (
+          <DisplayOptionGroup label={t("collection.itemsPerPage")}>
+            {pageSizeOptions.map((option) => (
+              <DisplayOptionButton
+                key={option}
+                checked={pageSize === option}
+                label={t("collection.perPageOption", { value: option })}
+                onSelect={() => onPageSizeChange(option)}
+              >
+                {option}
+              </DisplayOptionButton>
+            ))}
+          </DisplayOptionGroup>
+        )}
       </AnchoredPopover>
     </div>
   );
 }
 
-function useDismissiblePopover(open: boolean, ref: RefObject<HTMLElement | null>, onClose: () => void) {
-  useEffect(() => {
-    if (!open) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!ref.current?.contains(event.target as Node)) onClose();
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose, open, ref]);
+function DisplayOptionGroup({ label, children }: { label: string; children: ReactNode }) {
+  const labelId = useId();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div id={labelId} className="px-0.5 text-xs font-medium text-muted-foreground">
+        {label}
+      </div>
+      <div role="radiogroup" aria-labelledby={labelId} className={segmentedListClassName("w-full")}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function DisplayOptionButton({
+  checked,
+  label,
+  className,
+  onSelect,
+  children,
+}: {
+  checked: boolean;
+  label: string;
+  className?: string;
+  onSelect: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      title={label}
+      aria-label={label}
+      className={segmentedItemClassName(checked, cn("min-w-0 flex-1 justify-center px-0 tabular-nums", className))}
+      onClick={onSelect}
+    >
+      {children}
+    </button>
+  );
 }
 
 function useIsWideLayout() {
@@ -167,14 +234,15 @@ function readStoredLayout(fallback: StoredWorkCollectionLayout): StoredWorkColle
   try {
     const value = JSON.parse(localStorage.getItem(layoutStorageKey) ?? "{}") as Partial<StoredWorkCollectionLayout>;
     return {
-      mobileColumns:
-        value.mobileColumns === "auto" || value.mobileColumns === 1 || value.mobileColumns === 2
-          ? value.mobileColumns
-          : fallback.mobileColumns,
-      desktopColumns:
-        value.desktopColumns === "auto" || isWorkCollectionColumnCount(value.desktopColumns)
-          ? value.desktopColumns
-          : fallback.desktopColumns,
+      mobileColumns: isWorkCollectionMobileColumnSetting(value.mobileColumns)
+        ? value.mobileColumns
+        : fallback.mobileColumns,
+      // Desktop no longer offers one or two columns; an older choice reverts to the default.
+      desktopColumns: isWorkCollectionDesktopColumnSetting(value.desktopColumns)
+        ? value.desktopColumns
+        : isWorkCollectionDesktopColumnSetting(fallback.desktopColumns)
+          ? fallback.desktopColumns
+          : "auto",
     };
   } catch {
     return fallback;

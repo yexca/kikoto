@@ -764,7 +764,7 @@ test("@desktop voice detail keeps full action labels and inline work controls", 
   await expect(actions.getByText("More", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open voice work options" })).toBeHidden();
   await expect(page.getByLabel("Voice work availability")).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Columns:/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Display options \(Columns:/ })).toBeVisible();
 });
 
 test("circle detail keeps availability and primary actions compact on mobile", async ({ page }) => {

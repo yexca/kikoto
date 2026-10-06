@@ -29,12 +29,13 @@ test("column preferences change the rendered collection and remain independent a
       }
     }).toPass();
   };
-  await page.getByRole("button", { name: /^Columns:/ }).click();
-  await page.getByRole("button", { name: "2 columns", exact: true }).click();
+  await page.getByRole("button", { name: /^Display options/ }).click();
+  await page.getByRole("radio", { name: "2 columns", exact: true }).click();
   await expectColumns(2);
+  await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.getByRole("button", { name: /^Columns:/ }).click();
-  await page.getByRole("button", { name: "3 columns", exact: true }).click();
+  await page.getByRole("button", { name: /^Display options/ }).click();
+  await page.getByRole("radio", { name: "3 columns", exact: true }).click();
   await expectColumns(3);
   await page.reload();
   await expectColumns(3);
@@ -462,13 +463,11 @@ test("library search conditions use accessible select menus", async ({ page }) =
   await expect(clauseType).toHaveText("Text");
   await expect(clauseDialog.getByPlaceholder("Value")).toBeFocused();
   const toolbar = page.locator("section[data-toast-avoid]").filter({ has: searchBox });
-  await expect(toolbar.getByRole("button", { name: /Items per page:/ })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: /^Display options/ })).toBeVisible();
   await expect(toolbar.getByRole("button", { name: "Sort: Recommended" })).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: /^Columns:/ })).toBeVisible();
   await expect(toolbar.getByRole("button", { name: "Filters" })).toBeVisible();
   const actionButtons = [
-    toolbar.getByRole("button", { name: /Items per page:/ }),
-    toolbar.getByRole("button", { name: /^Columns:/ }),
+    toolbar.getByRole("button", { name: /^Display options/ }),
     toolbar.getByRole("button", { name: /^Sort:/ }),
     toolbar.getByRole("button", { name: "Filters" }),
   ];
@@ -488,7 +487,7 @@ test("library search conditions use accessible select menus", async ({ page }) =
   await toolbar.getByRole("button", { name: "Hide library search" }).click();
   await expect(clauseDialog).toHaveCount(0);
   await expect(searchBox).toBeHidden();
-  await expect(toolbar.getByRole("button", { name: /^Columns:/ })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: /^Display options/ })).toBeVisible();
   await toolbar.getByRole("button", { name: "Search library" }).click();
   await page.getByRole("button", { name: "Add search condition" }).click();
   await expect(clauseType).toHaveText("Text");

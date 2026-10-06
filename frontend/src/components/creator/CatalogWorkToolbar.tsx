@@ -3,10 +3,9 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { CollectionFilterPicker, type CollectionFilterOption } from "@/components/collection/CollectionFilterPicker";
-import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { Button } from "@/components/ui/button";
 import {
-  WorkCollectionLayoutPicker,
+  WorkCollectionDisplayPicker,
   type WorkCollectionColumnSetting,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
@@ -14,8 +13,8 @@ import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 /**
  * First-row toolbar for the works of one circle or voice actor. It mirrors the
  * Library and creator-list toolbars: optional view tabs on the left, a bounded
- * search field, and quiet icon actions (columns, page size, availability
- * filter, selection) on the right. Narrow layouts keep their options sheet, so
+ * search field, and quiet icon actions (display options, availability filter,
+ * selection) on the right. Narrow layouts keep their options sheet, so
  * the search and actions stay desktop-only unless `mobileSearch` opts in.
  */
 export function CatalogWorkToolbar<FilterValue extends string>({
@@ -96,15 +95,15 @@ export function CatalogWorkToolbar<FilterValue extends string>({
         {mobileSearchAction && <div className="-mr-1.5 shrink-0 lg:hidden">{mobileSearchAction}</div>}
       </div>
       <div className="ml-auto hidden shrink-0 gap-2 lg:flex">
-        <WorkCollectionLayoutPicker
+        <WorkCollectionDisplayPicker
           mobileColumns={mobileColumns}
           desktopColumns={desktopColumns}
           onMobileColumnsChange={onMobileColumnsChange}
           onDesktopColumnsChange={onDesktopColumnsChange}
+          pageSize={pageSize}
+          pageSizeOptions={pageSizeOptions}
+          onPageSizeChange={onPageSizeChange}
         />
-        {pageSize !== undefined && pageSizeOptions && onPageSizeChange && (
-          <PageSizePicker value={pageSize} options={pageSizeOptions} onChange={onPageSizeChange} />
-        )}
         <CollectionFilterPicker
           label={filterLabel}
           value={filter}
