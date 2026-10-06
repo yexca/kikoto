@@ -18,13 +18,13 @@ import {
   LogIn,
   LogOut,
   RotateCcw,
+  Search,
   Server,
   Settings,
   Trash2,
   Users,
   Workflow,
   X,
-  Zap,
 } from "lucide-react";
 
 import { type PageID } from "@/app/navigation";
@@ -57,6 +57,7 @@ import { useStableCallback } from "@/hooks/useStableCallback";
 import { api, type CurrentUser, type WorkflowNotification, type WorkflowRun } from "@/lib/api";
 import { clearStoredServerURL, getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
 import { versionLabel } from "@/lib/appInfo";
+import { cn } from "@/lib/tailwindClassNames";
 import { buildMobileDiagnosticsText } from "@/lib/mobileDiagnostics";
 import { useMobileRuntime } from "@/app/MobileRuntime";
 import type { UiLocale } from "@/i18n";
@@ -74,6 +75,14 @@ type HeaderActionsProps = {
   onOpenCommandPalette: () => void;
   onLocaleChange: (locale: UiLocale) => Promise<void>;
 };
+
+// Icon controls inside the header tray: 44px on mobile, compact and round on
+// wider screens where the tray border groups them.
+const trayButtonClass =
+  "h-11 w-11 rounded-full text-muted-foreground hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground sm:h-8 sm:w-8";
+
+const commandShortcutLabel =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "\u2318K" : "Ctrl K";
 
 // Personal tabs stay out of the four bottom tabs; the mobile account surface
 // reaches each one directly next to Settings.
@@ -310,23 +319,44 @@ export function HeaderActions({
   };
 
   return (
-    <div className="flex shrink-0 items-center gap-2">
+    <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
+      <button
+        type="button"
+        aria-label={t("header.quickActions")}
+        title={t("header.quickActions")}
+        className="order-1 hidden h-[var(--control-height)] w-52 items-center gap-2 rounded-full border bg-background/70 pl-3 pr-1.5 text-sm text-muted-foreground transition-[color,background-color,border-color,transform] hover:border-ring/40 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100 md:flex md:w-44 xl:w-72"
+        onClick={onOpenCommandPalette}
+      >
+        <Search className="h-4 w-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate text-left">{t("commands.searchPlaceholder")}</span>
+        <kbd className="hidden shrink-0 rounded-full border bg-card px-2 py-0.5 font-sans text-3xs font-medium leading-4 text-muted-foreground xl:inline">
+          {commandShortcutLabel}
+        </kbd>
+      </button>
       <Button
-        variant="outline"
+        variant="ghost"
         size="icon"
         aria-label={t("header.quickActions")}
         title={t("header.quickActions")}
-        className="order-1 h-11 w-11 sm:h-[var(--control-icon-size)] sm:w-[var(--control-icon-size)]"
+        className={cn(trayButtonClass, "order-1 md:hidden")}
         onClick={onOpenCommandPalette}
       >
-        <Zap className="h-4 w-4" />
+        <Search className="h-4 w-4" />
       </Button>
 
       <div className="order-3 sm:hidden">
         <HeaderPopover
           open={mobileAppearanceOpen}
           onOpenChange={setMobileAppearanceOpen}
-          trigger={<ThemeTrigger mode={themeMode} preset={themePreset} palette={themePalette} />}
+          trigger={
+            <ThemeTrigger
+              mode={themeMode}
+              preset={themePreset}
+              palette={themePalette}
+              variant="ghost"
+              className={trayButtonClass}
+            />
+          }
           align="right"
           ariaLabel={t("appearance.title")}
         >
@@ -358,23 +388,21 @@ export function HeaderActions({
           trigger={
             user ? (
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon"
                 aria-label={t("account.accountMenu")}
                 title={t("account.accountMenu")}
-                className="relative h-11 w-11"
+                className="relative h-11 w-11 rounded-full aria-expanded:bg-muted"
               >
-                <span className="grid h-7 w-7 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-                  {userInitial(user)}
-                </span>
+                <UserAvatar user={user} className="h-8 w-8 text-xs" />
               </Button>
             ) : (
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon"
                 aria-label={t("account.signIn")}
                 title={t("account.signIn")}
-                className="h-11 w-11"
+                className={trayButtonClass}
               >
                 <LogIn className="h-4 w-4" />
               </Button>
@@ -497,361 +525,378 @@ export function HeaderActions({
         </HeaderPopover>
       </div>
 
-      {isNativeApp() && (
-        <div className="order-2 hidden sm:block">
-          <HeaderPopover
-            open={connectionOpen}
-            onOpenChange={(open) => {
-              setConnectionOpen(open);
-              if (open) {
-                setConnectionStatus("");
-                setDiagnosticsText("");
+      <div className="contents sm:order-2 sm:flex sm:items-center sm:gap-0.5 sm:rounded-full sm:border sm:bg-background/70 sm:p-0.5">
+        {isNativeApp() && (
+          <div className="hidden sm:block">
+            <HeaderPopover
+              open={connectionOpen}
+              onOpenChange={(open) => {
+                setConnectionOpen(open);
+                if (open) {
+                  setConnectionStatus("");
+                  setDiagnosticsText("");
+                }
+              }}
+              trigger={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t("account.serverConnection")}
+                  title={t("account.serverConnection")}
+                  className={trayButtonClass}
+                >
+                  <Server className="h-4 w-4" />
+                </Button>
               }
-            }}
-            trigger={
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label={t("account.serverConnection")}
-                title={t("account.serverConnection")}
-              >
-                <Server className="h-4 w-4" />
-              </Button>
-            }
-            align="right"
-          >
-            <div className="w-80">
-              <PopoverHeader title={t("account.connection")} subtitle={t("account.androidClientServer")} />
-              <div className="space-y-3 border-b p-3 text-sm">
-                <div>
-                  <div className="text-xs font-medium text-muted-foreground">{t("account.server")}</div>
-                  <div className="mt-1 break-all font-medium">{getStoredServerURL() || t("common.notConfigured")}</div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-md border bg-muted px-2 py-1.5">
-                    <div className="text-muted-foreground">{t("account.client")}</div>
-                    <div className="truncate font-medium">{versionLabel()}</div>
-                  </div>
-                  <div className="rounded-md border bg-muted px-2 py-1.5">
-                    <div className="text-muted-foreground">{t("account.server")}</div>
-                    <div className="truncate font-medium">
-                      {mobileRuntime.connection.serverVersion || t("common.unknown")}
+              align="right"
+            >
+              <div className="w-80">
+                <PopoverHeader title={t("account.connection")} subtitle={t("account.androidClientServer")} />
+                <div className="space-y-3 border-b p-3 text-sm">
+                  <div>
+                    <div className="text-xs font-medium text-muted-foreground">{t("account.server")}</div>
+                    <div className="mt-1 break-all font-medium">
+                      {getStoredServerURL() || t("common.notConfigured")}
                     </div>
                   </div>
-                </div>
-                {mobileRuntime.connection.message && (
-                  <div className="rounded-md border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
-                    {mobileRuntime.connection.message}
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-md border bg-muted px-2 py-1.5">
+                      <div className="text-muted-foreground">{t("account.client")}</div>
+                      <div className="truncate font-medium">{versionLabel()}</div>
+                    </div>
+                    <div className="rounded-md border bg-muted px-2 py-1.5">
+                      <div className="text-muted-foreground">{t("account.server")}</div>
+                      <div className="truncate font-medium">
+                        {mobileRuntime.connection.serverVersion || t("common.unknown")}
+                      </div>
+                    </div>
                   </div>
-                )}
-                {connectionStatus && (
-                  <div className="rounded-md border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
-                    {connectionStatus}
+                  {mobileRuntime.connection.message && (
+                    <div className="rounded-md border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
+                      {mobileRuntime.connection.message}
+                    </div>
+                  )}
+                  {connectionStatus && (
+                    <div className="rounded-md border bg-muted px-2 py-1.5 text-xs text-muted-foreground">
+                      {connectionStatus}
+                    </div>
+                  )}
+                </div>
+                <MenuList>
+                  <ActionItem
+                    icon={<Server className="h-4 w-4" />}
+                    label={t("account.reconnect")}
+                    onClick={() => void checkConnection()}
+                  />
+                  {user && (
+                    <ActionItem
+                      icon={<LogOut className="h-4 w-4" />}
+                      label={t("account.signOut")}
+                      onClick={() => {
+                        setConnectionOpen(false);
+                        onLogout();
+                      }}
+                    />
+                  )}
+                  <ActionItem
+                    icon={<RotateCcw className="h-4 w-4" />}
+                    label={t("account.clearServer")}
+                    onClick={() => {
+                      void clearMobileServer();
+                    }}
+                  />
+                  <ActionItem
+                    icon={<Clipboard className="h-4 w-4" />}
+                    label={t("account.copyDiagnostics")}
+                    onClick={() => void showDiagnostics()}
+                  />
+                </MenuList>
+                {diagnosticsText && (
+                  <div className="border-t p-2">
+                    <textarea
+                      className="h-32 w-full resize-none rounded-md border bg-background p-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+                      readOnly
+                      value={diagnosticsText}
+                    />
                   </div>
                 )}
               </div>
-              <MenuList>
-                <ActionItem
-                  icon={<Server className="h-4 w-4" />}
-                  label={t("account.reconnect")}
-                  onClick={() => void checkConnection()}
-                />
-                {user && (
-                  <ActionItem
-                    icon={<LogOut className="h-4 w-4" />}
-                    label={t("account.signOut")}
-                    onClick={() => {
-                      setConnectionOpen(false);
-                      onLogout();
-                    }}
-                  />
-                )}
-                <ActionItem
-                  icon={<RotateCcw className="h-4 w-4" />}
-                  label={t("account.clearServer")}
-                  onClick={() => {
-                    void clearMobileServer();
-                  }}
-                />
-                <ActionItem
-                  icon={<Clipboard className="h-4 w-4" />}
-                  label={t("account.copyDiagnostics")}
-                  onClick={() => void showDiagnostics()}
-                />
-              </MenuList>
-              {diagnosticsText && (
-                <div className="border-t p-2">
-                  <textarea
-                    className="h-32 w-full resize-none rounded-md border bg-background p-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-                    readOnly
-                    value={diagnosticsText}
-                  />
-                </div>
-              )}
-            </div>
-          </HeaderPopover>
-        </div>
-      )}
+            </HeaderPopover>
+          </div>
+        )}
 
-      {user && (
-        <div className="order-2 sm:order-3">
-          <HeaderPopover
-            open={reviewOpen}
-            onOpenChange={(open) => {
-              setReviewOpen(open);
-              if (open) refreshNotificationCenter();
-            }}
-            trigger={
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label={t("notifications.title")}
-                title={t("notifications.title")}
-                className="relative h-11 w-11 sm:h-[var(--control-icon-size)] sm:w-[var(--control-icon-size)]"
-              >
-                <Bell className="h-4 w-4" />
-                {totalNotificationCount > 0 && (
-                  <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-destructive px-1 text-3xs font-semibold leading-5 text-destructive-foreground">
-                    {totalNotificationCount > 99 ? "99+" : totalNotificationCount}
-                  </span>
-                )}
-              </Button>
-            }
-            align="right"
-            ariaLabel={t("notifications.title")}
-          >
-            <div className="w-[min(22rem,calc(100vw-1rem))] max-w-full">
-              <PopoverHeader
-                title={t("notifications.title")}
-                subtitle={
-                  totalNotificationCount > 0
-                    ? t("notifications.itemCount", { count: totalNotificationCount })
-                    : t("notifications.nothingNew")
-                }
-              />
-              <div className="app-scroll max-h-[min(24rem,calc(var(--visual-viewport-height)-8rem))] overflow-auto p-2">
-                {notifications.length === 0 && reviewRuns.length === 0 ? (
-                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                    {t("notifications.empty")}
-                  </div>
-                ) : (
-                  <>
-                    {notifications.map((notification) => (
-                      <div
-                        key={`notification-${notification.id}`}
-                        className="mb-1 flex items-start rounded-md hover:bg-muted"
-                      >
+        {user && (
+          <div className="order-2 sm:order-none">
+            <HeaderPopover
+              open={reviewOpen}
+              onOpenChange={(open) => {
+                setReviewOpen(open);
+                if (open) refreshNotificationCenter();
+              }}
+              trigger={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t("notifications.title")}
+                  title={t("notifications.title")}
+                  className={cn(trayButtonClass, "relative")}
+                >
+                  <Bell className="h-4 w-4" />
+                  {totalNotificationCount > 0 && (
+                    <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-3xs font-semibold leading-none text-primary-foreground ring-2 ring-card sm:-right-0.5 sm:-top-0.5">
+                      {totalNotificationCount > 99 ? "99+" : totalNotificationCount}
+                    </span>
+                  )}
+                </Button>
+              }
+              align="right"
+              ariaLabel={t("notifications.title")}
+            >
+              <div className="w-[min(22rem,calc(100vw-1rem))] max-w-full">
+                <PopoverHeader
+                  title={t("notifications.title")}
+                  subtitle={
+                    totalNotificationCount > 0
+                      ? t("notifications.itemCount", { count: totalNotificationCount })
+                      : t("notifications.nothingNew")
+                  }
+                />
+                <div className="app-scroll max-h-[min(24rem,calc(var(--visual-viewport-height)-8rem))] overflow-auto p-2">
+                  {notifications.length === 0 && reviewRuns.length === 0 ? (
+                    <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                      {t("notifications.empty")}
+                    </div>
+                  ) : (
+                    <>
+                      {notifications.map((notification) => (
+                        <div
+                          key={`notification-${notification.id}`}
+                          className="mb-1 flex items-start rounded-md hover:bg-muted"
+                        >
+                          <button
+                            className="flex min-w-0 flex-1 items-start gap-3 p-2 text-left text-sm"
+                            onClick={() => {
+                              setReviewOpen(false);
+                              if (notification.type === "metadata_onboarding") {
+                                onOpenPath(
+                                  canViewMetadataIssues
+                                    ? metadataSyncResultURL(
+                                        notification.workflowRunId,
+                                        notification.status !== "succeeded",
+                                        canViewWorkflows,
+                                      )
+                                    : canViewWorkflows
+                                      ? `/workflows?activity=1&run=${notification.workflowRunId}`
+                                      : "/",
+                                );
+                                return;
+                              }
+                              if (notification.type === "availability_watch_ready") {
+                                onOpenPath(
+                                  `/workflows?workflow=availability_watch&dialog=ready&run=${notification.workflowRunId}`,
+                                );
+                                return;
+                              }
+                              if (notification.type === "remote_track" && notification.status === "failed") {
+                                if (canViewWorkflows)
+                                  onOpenPath(`/workflows?activity=1&run=${notification.workflowRunId}`);
+                                return;
+                              }
+                              const trackedSource = notification.fileSourceId
+                                ? `&trackedSource=${notification.fileSourceId}`
+                                : "";
+                              onOpenPath(
+                                notification.type === "remote_track"
+                                  ? `/${encodeURIComponent(notification.workCode)}?view=tracked${trackedSource}`
+                                  : `/${encodeURIComponent(notification.workCode)}?view=local`,
+                              );
+                            }}
+                          >
+                            {notification.type === "availability_watch_ready" ? (
+                              <Bell className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                            ) : notification.status === "succeeded" ? (
+                              notification.type === "remote_track" ? (
+                                <GitBranchPlus className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                              ) : (
+                                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                              )
+                            ) : (
+                              <Download className="mt-0.5 h-4 w-4 shrink-0 text-error" />
+                            )}
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium">{notificationTitle(notification, t)}</span>
+                              {notification.type === "metadata_onboarding" && (
+                                <span className="block text-xs text-muted-foreground">
+                                  {t(
+                                    notification.status === "succeeded"
+                                      ? "metadataOnboarding.complete"
+                                      : "metadataOnboarding.partial",
+                                  )}
+                                </span>
+                              )}
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {t("notifications.workflowStatus", {
+                                  id: notification.workflowRunId,
+                                  status: notificationStatusLabel(notification.status, t),
+                                })}
+                              </span>
+                            </span>
+                          </button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="m-1 h-8 w-8 shrink-0"
+                            aria-label={t("notifications.dismissFor", { workCode: notification.workCode })}
+                            title={t("notifications.dismiss")}
+                            disabled={readOnly}
+                            onClick={() => void dismissFetchNotification(notification.id)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      {reviewRuns.map((run) => (
                         <button
-                          className="flex min-w-0 flex-1 items-start gap-3 p-2 text-left text-sm"
+                          key={`review-${run.id}`}
+                          className="mb-1 flex w-full items-start gap-3 rounded-md p-2 text-left text-sm hover:bg-muted"
                           onClick={() => {
                             setReviewOpen(false);
-                            if (notification.type === "metadata_onboarding") {
-                              onOpenPath(
-                                canViewMetadataIssues
-                                  ? metadataSyncResultURL(
-                                      notification.workflowRunId,
-                                      notification.status !== "succeeded",
-                                      canViewWorkflows,
-                                    )
-                                  : canViewWorkflows
-                                    ? `/workflows?activity=1&run=${notification.workflowRunId}`
-                                    : "/",
-                              );
-                              return;
-                            }
-                            if (notification.type === "availability_watch_ready") {
-                              onOpenPath(
-                                `/workflows?workflow=availability_watch&dialog=ready&run=${notification.workflowRunId}`,
-                              );
-                              return;
-                            }
-                            if (notification.type === "remote_track" && notification.status === "failed") {
-                              if (canViewWorkflows)
-                                onOpenPath(`/workflows?activity=1&run=${notification.workflowRunId}`);
-                              return;
-                            }
-                            const trackedSource = notification.fileSourceId
-                              ? `&trackedSource=${notification.fileSourceId}`
-                              : "";
                             onOpenPath(
-                              notification.type === "remote_track"
-                                ? `/${encodeURIComponent(notification.workCode)}?view=tracked${trackedSource}`
-                                : `/${encodeURIComponent(notification.workCode)}?view=local`,
+                              canViewMetadataIssues && (run.pendingMetadata ?? 0) > 0
+                                ? metadataIssuesURL(run.id)
+                                : `/workflows?activity=1&view=review&run=${run.id}`,
                             );
                           }}
                         >
-                          {notification.type === "availability_watch_ready" ? (
-                            <Bell className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                          ) : notification.status === "succeeded" ? (
-                            notification.type === "remote_track" ? (
-                              <GitBranchPlus className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                            ) : (
-                              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                            )
-                          ) : (
-                            <Download className="mt-0.5 h-4 w-4 shrink-0 text-error" />
-                          )}
+                          <Workflow className="mt-0.5 h-4 w-4 text-primary" />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium">{notificationTitle(notification, t)}</span>
-                            {notification.type === "metadata_onboarding" && (
-                              <span className="block text-xs text-muted-foreground">
-                                {t(
-                                  notification.status === "succeeded"
-                                    ? "metadataOnboarding.complete"
-                                    : "metadataOnboarding.partial",
-                                )}
-                              </span>
-                            )}
+                            <span className="block truncate font-medium">{run.displayName}</span>
                             <span className="block truncate text-xs text-muted-foreground">
-                              {t("notifications.workflowStatus", {
-                                id: notification.workflowRunId,
-                                status: notificationStatusLabel(notification.status, t),
-                              })}
+                              {run.workflowCode} · {t("account.review")}
                             </span>
                           </span>
+                          <Badge variant="warning">{workflowReviewCount(run)}</Badge>
                         </button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="m-1 h-8 w-8 shrink-0"
-                          aria-label={t("notifications.dismissFor", { workCode: notification.workCode })}
-                          title={t("notifications.dismiss")}
-                          disabled={readOnly}
-                          onClick={() => void dismissFetchNotification(notification.id)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    {reviewRuns.map((run) => (
-                      <button
-                        key={`review-${run.id}`}
-                        className="mb-1 flex w-full items-start gap-3 rounded-md p-2 text-left text-sm hover:bg-muted"
-                        onClick={() => {
-                          setReviewOpen(false);
-                          onOpenPath(
-                            canViewMetadataIssues && (run.pendingMetadata ?? 0) > 0
-                              ? metadataIssuesURL(run.id)
-                              : `/workflows?activity=1&view=review&run=${run.id}`,
-                          );
-                        }}
+                      ))}
+                    </>
+                  )}
+                </div>
+                {notificationTotalPages > 1 && (
+                  <div className="flex items-center justify-between gap-2 border-t px-3 py-1.5 text-xs text-muted-foreground">
+                    <span>
+                      {t("notifications.pageOf", { page: notificationPage, totalPages: notificationTotalPages })}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        disabled={notificationPage <= 1}
+                        aria-label={t("collection.previousPage")}
+                        title={t("collection.previousPage")}
+                        onClick={() => setNotificationPage((page) => Math.max(1, page - 1))}
                       >
-                        <Workflow className="mt-0.5 h-4 w-4 text-primary" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">{run.displayName}</span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {run.workflowCode} · {t("account.review")}
-                          </span>
-                        </span>
-                        <Badge variant="warning">{workflowReviewCount(run)}</Badge>
-                      </button>
-                    ))}
-                  </>
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        disabled={notificationPage >= notificationTotalPages}
+                        aria-label={t("collection.nextPage")}
+                        title={t("collection.nextPage")}
+                        onClick={() => setNotificationPage((page) => Math.min(notificationTotalPages, page + 1))}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
                 )}
-              </div>
-              {notificationTotalPages > 1 && (
-                <div className="flex items-center justify-between gap-2 border-t px-3 py-1.5 text-xs text-muted-foreground">
-                  <span>
-                    {t("notifications.pageOf", { page: notificationPage, totalPages: notificationTotalPages })}
-                  </span>
-                  <div className="flex items-center gap-1">
+                <PopoverFooter>
+                  <div className="flex w-full items-center justify-between gap-2">
                     <Button
                       variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      disabled={notificationPage <= 1}
-                      aria-label={t("collection.previousPage")}
-                      title={t("collection.previousPage")}
-                      onClick={() => setNotificationPage((page) => Math.max(1, page - 1))}
+                      size="sm"
+                      disabled={readOnly || clearingSucceeded || clearableNotificationCount === 0}
+                      onClick={() => void clearSucceededNotifications()}
                     >
-                      <ChevronLeft className="h-4 w-4" />
+                      {clearingSucceeded ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                      {t("notifications.clearSucceeded")}
                     </Button>
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      disabled={notificationPage >= notificationTotalPages}
-                      aria-label={t("collection.nextPage")}
-                      title={t("collection.nextPage")}
-                      onClick={() => setNotificationPage((page) => Math.min(notificationTotalPages, page + 1))}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setReviewOpen(false);
+                        onOpenPath("/workflows?activity=1");
+                      }}
                     >
-                      <ChevronRight className="h-4 w-4" />
+                      <Activity className="h-4 w-4" />
+                      {t("notifications.openActivity")}
                     </Button>
                   </div>
-                </div>
-              )}
-              <PopoverFooter>
-                <div className="flex w-full items-center justify-between gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={readOnly || clearingSucceeded || clearableNotificationCount === 0}
-                    onClick={() => void clearSucceededNotifications()}
-                  >
-                    {clearingSucceeded ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    {t("notifications.clearSucceeded")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setReviewOpen(false);
-                      onOpenPath("/workflows?activity=1");
-                    }}
-                  >
-                    <Activity className="h-4 w-4" />
-                    {t("notifications.openActivity")}
-                  </Button>
-                </div>
-              </PopoverFooter>
-            </div>
-          </HeaderPopover>
-        </div>
-      )}
+                </PopoverFooter>
+              </div>
+            </HeaderPopover>
+          </div>
+        )}
 
-      <div className="order-4 hidden sm:block">
-        <HeaderPopover
-          open={themeOpen}
-          onOpenChange={setThemeOpen}
-          trigger={<ThemeTrigger mode={themeMode} preset={themePreset} palette={themePalette} />}
-          align="right"
-        >
-          <div className="w-64">
-            <div className="app-scroll max-h-[calc(var(--visual-viewport-height)-4rem)] overflow-y-auto">
-              <PopoverHeader title={t("appearance.title")} subtitle={t("appearance.subtitle")} />
-              <AppearanceControls
+        <div className="hidden sm:block">
+          <HeaderPopover
+            open={themeOpen}
+            onOpenChange={setThemeOpen}
+            trigger={
+              <ThemeTrigger
                 mode={themeMode}
                 preset={themePreset}
                 palette={themePalette}
-                onModeChange={setThemeMode}
-                onPresetChange={setThemePreset}
-                onPaletteChange={setThemePalette}
-                localePreference={locale.preference}
-                onLocaleChange={changeLocale}
-                localeBusy={localeBusy}
-                localeError={localeError}
-                metadataLanguage={metadataLanguageControl}
+                variant="ghost"
+                className={trayButtonClass}
               />
+            }
+            align="right"
+          >
+            <div className="w-64">
+              <div className="app-scroll max-h-[calc(var(--visual-viewport-height)-4rem)] overflow-y-auto">
+                <PopoverHeader title={t("appearance.title")} subtitle={t("appearance.subtitle")} />
+                <AppearanceControls
+                  mode={themeMode}
+                  preset={themePreset}
+                  palette={themePalette}
+                  onModeChange={setThemeMode}
+                  onPresetChange={setThemePreset}
+                  onPaletteChange={setThemePalette}
+                  localePreference={locale.preference}
+                  onLocaleChange={changeLocale}
+                  localeBusy={localeBusy}
+                  localeError={localeError}
+                  metadataLanguage={metadataLanguageControl}
+                />
+              </div>
             </div>
-          </div>
-        </HeaderPopover>
+          </HeaderPopover>
+        </div>
       </div>
 
-      <div className="order-5 hidden sm:block">
+      <span aria-hidden="true" className="order-3 hidden h-5 w-px bg-border sm:block" />
+
+      <div className="order-4 hidden sm:block">
         {user ? (
           <HeaderPopover
             open={userOpen}
             onOpenChange={setUserOpen}
             trigger={
               <Button
-                variant="outline"
-                className="h-[var(--control-height)] gap-2 px-2 sm:px-3"
+                variant="ghost"
+                className="h-[var(--control-height)] gap-2 rounded-full px-1 aria-expanded:bg-muted xl:pr-2.5"
                 aria-label={t("account.userMenu")}
               >
-                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-                  {userInitial(user)}
-                </span>
-                <span className="hidden min-w-0 text-left sm:block">
+                <UserAvatar user={user} className="h-8 w-8 text-xs" />
+                <span className="hidden min-w-0 text-left xl:block">
                   <span className="block max-w-32 truncate text-xs font-medium leading-4">
                     {user.displayName || user.username}
                   </span>
@@ -860,7 +905,7 @@ export function HeaderActions({
                     {user.devMode ? " · dev" : user.demoMode ? " · demo" : ""}
                   </span>
                 </span>
-                <ChevronDown className="hidden h-3.5 w-3.5 sm:block" />
+                <ChevronDown className="hidden h-3.5 w-3.5 text-muted-foreground xl:block" />
               </Button>
             }
             align="right"
@@ -868,9 +913,7 @@ export function HeaderActions({
             <div className="w-72">
               <div className="border-b p-3">
                 <div className="flex items-center gap-3">
-                  <span className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                    {userInitial(user)}
-                  </span>
+                  <UserAvatar user={user} className="h-10 w-10 text-sm" />
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium">{user.displayName || user.username}</div>
                     <div className="truncate text-xs text-muted-foreground">@{user.username}</div>
@@ -919,9 +962,9 @@ export function HeaderActions({
             </div>
           </HeaderPopover>
         ) : (
-          <Button variant="outline" className="h-[var(--control-height)] gap-2 px-3" onClick={onOpenLogin}>
+          <Button className="h-[var(--control-height)] gap-2 rounded-full px-4" onClick={onOpenLogin}>
             <LogIn className="h-4 w-4" />
-            <span className="hidden sm:inline">{t("account.signIn")}</span>
+            {t("account.signIn")}
           </Button>
         )}
       </div>
@@ -1080,6 +1123,20 @@ function notificationStatusLabel(status: string, t: TFunction) {
               ? "notifications.statusCancelled"
               : "notifications.statusUnknown";
   return t(key);
+}
+
+function UserAvatar({ user, className }: { user: CurrentUser; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "grid shrink-0 place-items-center rounded-full bg-primary/15 font-semibold text-primary ring-1 ring-inset ring-primary/25",
+        className,
+      )}
+    >
+      {userInitial(user)}
+    </span>
+  );
 }
 
 function userInitial(user: CurrentUser) {

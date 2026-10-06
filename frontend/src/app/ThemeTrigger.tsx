@@ -2,18 +2,22 @@ import type { MouseEventHandler } from "react";
 import { Palette } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
+import { Button, type ButtonProps } from "@/components/ui/button";
 import { themePaletteLabel, themePresetLabel, type ThemeMode, type ThemePalette, type ThemePreset } from "@/app/theme";
 
 export function ThemeTrigger({
   mode,
   preset,
   palette,
+  variant = "outline",
+  className,
   onClick,
 }: {
   mode: ThemeMode;
   preset: ThemePreset;
   palette: ThemePalette;
+  variant?: ButtonProps["variant"];
+  className?: string;
   onClick?: MouseEventHandler<HTMLButtonElement>;
 }) {
   const { t } = useTranslation();
@@ -27,8 +31,9 @@ export function ThemeTrigger({
   return (
     <Button
       type="button"
-      variant="outline"
+      variant={variant}
       size="icon"
+      className={className}
       aria-label={t("appearance.openSettings", { defaultValue: "Open appearance settings" })}
       title={
         appearanceSummary.includes("{{")
