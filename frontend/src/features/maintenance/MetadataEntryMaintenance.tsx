@@ -9,6 +9,7 @@ import { MaintenanceToolbar, useMaintenanceSearch, type MaintenanceToolbarSlots 
 import { MetadataTagDialog } from "./MetadataTagDialog";
 import { MetadataTagTable } from "./MetadataTagTable";
 import { MetadataCircleDialog } from "./MetadataCircleDialog";
+import { MetadataCircleTable } from "./MetadataCircleTable";
 
 const PAGE_SIZES = [25, 50, 100] as const;
 
@@ -105,7 +106,7 @@ export function MetadataEntryMaintenance({
         slots={toolbar}
         query={search.draft}
         label={t(kind === "tags" ? "metadataEntries.searchTags" : "metadataEntries.searchCircles")}
-        placeholder={t(kind === "tags" ? "metadataEntries.nameOrId" : "metadataEntries.name")}
+        placeholder={t(kind === "tags" ? "metadataEntries.nameOrId" : "metadataEntries.nameOrCode")}
         loading={loading}
         pageSize={pageSize}
         pageSizeOptions={PAGE_SIZES}
@@ -145,39 +146,7 @@ export function MetadataEntryMaintenance({
           {kind === "tags" ? (
             <MetadataTagTable tags={result.entries as MetadataTag[]} onManage={setManaged} />
           ) : (
-            <table className="w-full text-left text-sm" aria-label={t("metadataEntries.circles")}>
-              <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2">{t("metadataEntries.name")}</th>
-                  <th className="px-3 py-2">{t("metadataEntries.knownNames")}</th>
-                  <th className="px-3 py-2">{t("metadataEntries.workCount")}</th>
-                  <th className="px-3 py-2">
-                    <span className="sr-only">{t("metadataEntries.manage")}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {(result.entries as MetadataCircle[]).map((entry) => (
-                  <tr key={entry.id} className="border-b last:border-0">
-                    <td className="px-3 py-3 font-medium">{entry.displayName}</td>
-                    <td className="max-w-sm px-3 py-3 text-muted-foreground">
-                      {entry.aliases.map((value) => value.alias).join(" · ") || "—"}
-                    </td>
-                    <td className="px-3 py-3 tabular-nums">{entry.workCount}</td>
-                    <td className="px-3 py-3 text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        aria-label={t("metadataEntries.manageFor", { name: entry.displayName })}
-                        onClick={() => setManaged(entry)}
-                      >
-                        {t("metadataEntries.manage")}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <MetadataCircleTable circles={result.entries as MetadataCircle[]} onManage={setManaged} />
           )}
           {!result.entries.length && !failed && (
             <p className="p-6 text-center text-sm text-muted-foreground">{t("metadataEntries.empty")}</p>

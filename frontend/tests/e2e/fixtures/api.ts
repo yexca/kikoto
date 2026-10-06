@@ -795,6 +795,7 @@ export function metadataCircleFixture(overrides: Partial<MetadataCircle> = {}): 
     workCount: 1,
     aliases: [],
     externalIds: ["RG00000000"],
+    code: "RG00000000",
     ...overrides,
   };
 }

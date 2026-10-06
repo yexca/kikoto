@@ -24,8 +24,22 @@ type Circle struct {
 	ProviderName string   `json:"providerName"`
 	Aliases      []Alias  `json:"aliases"`
 	ExternalIDs  []string `json:"externalIds"`
-	WorkCount    int      `json:"workCount"`
+	// Code is the primary DLsite maker id (RGxxxxx), the key the Metadata
+	// circle list is organized by. Circles known only from a remote source
+	// have none.
+	Code      string `json:"code"`
+	WorkCount int    `json:"workCount"`
 }
+
+// CodeSQL selects the primary DLsite maker id for the party row named by
+// partyRef, a trusted SQL alias.
+func CodeSQL(partyRef string) string {
+	return `(SELECT external.external_id FROM party_external_id AS external
+ JOIN metadata_provider AS provider ON provider.id=external.provider_id AND provider.code='dlsite'
+ WHERE external.party_id=` + partyRef + ` AND external.id_type='maker_id'
+ ORDER BY external.is_primary DESC,external.id LIMIT 1)`
+}
+
 type Review struct {
 	ID         int64  `json:"id"`
 	TargetID   int64  `json:"targetPartyId"`
@@ -51,7 +65,7 @@ func closeRows(rows *sql.Rows) error {
 }
 func Load(ctx context.Context, q Querier, id int64) (Circle, error) {
 	var c Circle
-	err := q.QueryRowContext(ctx, "SELECT id,display_name,manual_name,provider_name,(SELECT COUNT(DISTINCT work_id) FROM work_party WHERE party_id=party.id) FROM party WHERE id=? AND party_type IN ('circle','brand','maker')", id).Scan(&c.ID, &c.DisplayName, &c.ManualName, &c.ProviderName, &c.WorkCount)
+	err := q.QueryRowContext(ctx, "SELECT id,display_name,manual_name,provider_name,COALESCE("+CodeSQL("party.id")+",''),(SELECT COUNT(DISTINCT work_id) FROM work_party WHERE party_id=party.id) FROM party WHERE id=? AND party_type IN ('circle','brand','maker')", id).Scan(&c.ID, &c.DisplayName, &c.ManualName, &c.ProviderName, &c.Code, &c.WorkCount)
 	if err != nil {
 		return c, err
 	}

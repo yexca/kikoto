@@ -8,9 +8,10 @@ import { Dialog, DialogBody, DialogHeader } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
-import { api, assetURL, type VoiceAlias, type VoiceSummary, type VoiceSummaryPage } from "@/lib/api";
+import { api, type VoiceAlias, type VoiceSummary, type VoiceSummaryPage } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { MaintenanceToolbar, useMaintenanceSearch, type MaintenanceToolbarSlots } from "./MaintenanceControls";
+import { MetadataEntryCover } from "./MetadataEntryCover";
 import { VoiceAliasPanel } from "./VoiceAliasPanel";
 
 const PAGE_SIZES = [25, 50] as const;
@@ -23,8 +24,9 @@ function requestedVoiceId() {
 
 /**
  * Metadata view for voice actor identity: a searchable table of known people
- * with their confirmed aliases, and a dialog that reviews aliases and merges
- * duplicates for one person. `?voice=<id>` opens that person's dialog directly.
+ * keyed by Kikoto person id, one column per fact, and a dialog that reviews
+ * aliases and merges duplicates for one person. `?voice=<id>` opens that
+ * person's dialog directly.
  */
 export function VoiceAliasMaintenance({
   canManage,
@@ -59,7 +61,7 @@ export function VoiceAliasMaintenance({
     setLoading(true);
     void (async () => {
       try {
-        const next = await api.listVoices({ page, pageSize, query, signal: controller.signal });
+        const next = await api.listVoices({ page, pageSize, query, sort: "id", signal: controller.signal });
         if (controller.signal.aborted) return;
         if (next.voices.length === 0 && page > 1 && next.total <= (page - 1) * pageSize) {
           setPage(Math.max(1, Math.ceil(next.total / pageSize)));
@@ -194,19 +196,21 @@ export function VoiceAliasMaintenance({
               </div>
             </div>
           ) : (
-            <table className="w-full table-fixed text-left text-sm" aria-busy={loading}>
-              <VoiceAliasTableHead />
-              <tbody className="divide-y">
-                {result.voices.map((voice) => (
-                  <VoiceAliasRow
-                    key={voice.personId}
-                    voice={voice}
-                    onNavigate={navigateVoice}
-                    onManage={() => openVoice(voice.personId)}
-                  />
-                ))}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm" aria-busy={loading}>
+                <VoiceAliasTableHead />
+                <tbody className="divide-y">
+                  {result.voices.map((voice) => (
+                    <VoiceAliasRow
+                      key={voice.personId}
+                      voice={voice}
+                      onNavigate={navigateVoice}
+                      onManage={() => openVoice(voice.personId)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </section>
@@ -240,66 +244,49 @@ function VoiceAliasRow({
     () => [...new Set(voice.aliases.filter((alias) => alias.trim() && alias !== voice.displayName))],
     [voice.aliases, voice.displayName],
   );
-  const href = `/voices/${voice.personId}`;
-  const coverUrl = voice.latestWork?.coverUrl;
-  const initial = Array.from(voice.displayName.trim())[0] ?? "?";
   return (
-    <tr className="group transition-colors hover:bg-muted/30">
-      <td className="min-w-0 py-2.5 pl-4 align-top">
-        <div className="flex min-w-0 gap-3">
-          <div
-            className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-md bg-secondary ring-1 ring-foreground/5"
-            aria-hidden="true"
+    <tr className="align-middle transition-colors hover:bg-muted/30">
+      <th scope="row" className="whitespace-nowrap px-3 py-3 font-medium tabular-nums">
+        {`#${voice.personId}`}
+      </th>
+      <td className="px-3 py-2">
+        <div className="flex min-w-0 items-center gap-3">
+          <MetadataEntryCover url={voice.latestWork?.coverUrl} name={voice.displayName} />
+          <a
+            onClick={onNavigate}
+            href={`/voices/${voice.personId}`}
+            className="min-w-0 font-medium transition-colors hover:text-primary"
           >
-            {coverUrl ? (
-              <img src={assetURL(coverUrl)} alt="" className="h-full w-full object-cover" loading="lazy" />
-            ) : (
-              <span className="text-lg font-semibold text-secondary-foreground">{initial}</span>
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <a
-                onClick={onNavigate}
-                href={href}
-                className="truncate font-medium transition-colors hover:text-primary"
-                title={voice.displayName}
-              >
-                {voice.displayName}
-              </a>
-              <span className="font-mono text-xs text-muted-foreground">#{voice.personId}</span>
-            </div>
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
-              {aliases.length > 0 ? (
-                aliases.map((alias) => (
-                  <Badge key={alias} variant="outline" className="max-w-full truncate px-1.5 py-0 text-[11px]">
-                    {alias}
-                  </Badge>
-                ))
-              ) : (
-                <span className="text-xs text-muted-foreground">{t("creatorBrowse.noAliases")}</span>
-              )}
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-              <span className="tabular-nums">{t("creator.works", { count: voice.knownWorks })}</span>
-              <CatalogSyncBadge state={voice.syncState} appearance="dot" />
-            </div>
-          </div>
+            {voice.displayName}
+          </a>
         </div>
       </td>
-      <td className="py-2.5 pr-1 align-top sm:pr-3">
-        <div className="flex justify-end sm:mt-1.5">
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            className="text-muted-foreground max-sm:h-11 max-sm:w-11"
-            onClick={onManage}
-            aria-label={t("workManagement.manageAliasesFor", { name: voice.displayName })}
-            title={t("workManagement.manageAliases")}
-          >
-            <Tags className="h-4 w-4" />
-          </Button>
-        </div>
+      <td className="px-3 py-3">
+        {aliases.length > 0 ? (
+          <div className="flex min-w-0 flex-wrap gap-1">
+            {aliases.map((alias) => (
+              <Badge key={alias} variant="outline" className="max-w-full truncate px-1.5 py-0 text-[11px]">
+                {alias}
+              </Badge>
+            ))}
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </td>
+      <td className="px-3 py-3 tabular-nums">{voice.knownWorks}</td>
+      <td className="px-3 py-3">
+        <CatalogSyncBadge state={voice.syncState} appearance="dot" />
+      </td>
+      <td className="sticky right-0 bg-card px-3 py-3 text-right">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onManage}
+          aria-label={t("workManagement.manageAliasesFor", { name: voice.displayName })}
+        >
+          {t("metadataEntries.manage")}
+        </Button>
       </td>
     </tr>
   );
@@ -393,7 +380,7 @@ function VoiceAliasTableSkeleton() {
   const { t } = useTranslation();
   return (
     <table
-      className="w-full table-fixed text-left text-sm"
+      className="w-full text-left text-sm"
       role="status"
       aria-label={t("creatorBrowse.loadingVoices")}
       aria-busy="true"
@@ -402,18 +389,26 @@ function VoiceAliasTableSkeleton() {
       <tbody className="divide-y" aria-hidden="true">
         {Array.from({ length: 3 }, (_, index) => (
           <tr key={index}>
-            <td className="py-2.5 pl-4">
-              <div className="flex gap-3">
-                <div className="h-12 w-12 shrink-0 animate-pulse rounded-md bg-muted" />
-                <div className="min-w-0 flex-1 space-y-2 pt-1">
-                  <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
-                  <div className="h-2.5 w-1/2 animate-pulse rounded bg-muted" />
-                  <div className="h-2.5 w-20 animate-pulse rounded bg-muted" />
-                </div>
+            <td className="px-3 py-3">
+              <div className="h-3 w-8 animate-pulse rounded bg-muted" />
+            </td>
+            <td className="px-3 py-2">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 shrink-0 animate-pulse rounded-md bg-muted" />
+                <div className="h-3 w-24 animate-pulse rounded bg-muted" />
               </div>
             </td>
-            <td className="py-2.5 pr-3">
-              <div className="ml-auto mt-1.5 h-8 w-8 animate-pulse rounded-md bg-muted" />
+            <td className="px-3 py-3">
+              <div className="h-3 w-20 animate-pulse rounded bg-muted" />
+            </td>
+            <td className="px-3 py-3">
+              <div className="h-3 w-6 animate-pulse rounded bg-muted" />
+            </td>
+            <td className="px-3 py-3">
+              <div className="h-3 w-14 animate-pulse rounded bg-muted" />
+            </td>
+            <td className="px-3 py-3">
+              <div className="ml-auto h-8 w-16 animate-pulse rounded-md bg-muted" />
             </td>
           </tr>
         ))}
@@ -425,17 +420,17 @@ function VoiceAliasTableSkeleton() {
 function VoiceAliasTableHead() {
   const { t } = useTranslation();
   return (
-    <>
-      <colgroup>
-        <col />
-        <col className="w-12 sm:w-20" />
-      </colgroup>
-      <thead className="sr-only">
-        <tr>
-          <th>{t("creatorBrowse.voiceActor")}</th>
-          <th>{t("unlinked.actions")}</th>
-        </tr>
-      </thead>
-    </>
+    <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
+      <tr>
+        <th className="px-3 py-2">{t("metadataEntries.id")}</th>
+        <th className="min-w-48 px-3 py-2">{t("metadataEntries.name")}</th>
+        <th className="min-w-36 px-3 py-2">{t("metadataEntries.aliases")}</th>
+        <th className="px-3 py-2">{t("metadataEntries.workCount")}</th>
+        <th className="px-3 py-2">{t("metadataEntries.status")}</th>
+        <th className="sticky right-0 bg-card px-3 py-2">
+          <span className="sr-only">{t("metadataEntries.manage")}</span>
+        </th>
+      </tr>
+    </thead>
   );
 }
