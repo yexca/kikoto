@@ -133,7 +133,7 @@ func (s *Server) loadKnownLocalWorkRoots(ctx context.Context) ([]knownLocalWorkR
 		if item.WorkID <= 0 || item.Code == "" || item.Root == "" {
 			continue
 		}
-		key := strings.ToLower(item.Root) + ":" + item.Code
+		key := item.Root + ":" + item.Code
 		if !seen[key] {
 			seen[key] = true
 			result = append(result, item)
@@ -229,7 +229,7 @@ func (persistence *incrementalLocalScanPersistence) persistFolders(folders []loc
 }
 
 func (persistence *incrementalLocalScanPersistence) persistFolder(folder localfs.WorkFolder) error {
-	persistence.seenRoots[strings.ToLower(normalizeFolderRootPath(folder.RelPath))] = true
+	persistence.seenRoots[normalizeFolderRootPath(folder.RelPath)] = true
 	persistence.recordAffectedKnownRoots(folder)
 	workID, err := persistence.server.persistLocalScanFolder(
 		persistence.ctx, persistence.tx, persistence.fileSourceID, folder, &persistence.state,
@@ -279,7 +279,7 @@ func (persistence *incrementalLocalScanPersistence) recordLocationChanges(folder
 
 func (persistence *incrementalLocalScanPersistence) markMissingRoots() error {
 	for _, known := range persistence.knownRoots {
-		if !localRootAffectedByChanges(known.Root, persistence.changedPaths) || persistence.seenRoots[strings.ToLower(known.Root)] {
+		if !localRootAffectedByChanges(known.Root, persistence.changedPaths) || persistence.seenRoots[known.Root] {
 			continue
 		}
 		if _, err := persistence.tx.ExecContext(persistence.ctx, `
@@ -396,8 +396,8 @@ func localRootAffectedByChanges(root string, changedPaths []string) bool {
 }
 
 func localRelativePathsOverlap(left, right string) bool {
-	left = strings.ToLower(normalizeFolderRootPath(left))
-	right = strings.ToLower(normalizeFolderRootPath(right))
+	left = normalizeFolderRootPath(left)
+	right = normalizeFolderRootPath(right)
 	if left == "" || right == "" {
 		return false
 	}
@@ -405,7 +405,7 @@ func localRelativePathsOverlap(left, right string) bool {
 }
 
 func sameLocalRelativePath(left, right string) bool {
-	return strings.EqualFold(normalizeFolderRootPath(left), normalizeFolderRootPath(right))
+	return normalizeFolderRootPath(left) == normalizeFolderRootPath(right)
 }
 
 func localWorkRootExists(root, rel string) bool {

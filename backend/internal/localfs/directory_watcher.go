@@ -344,5 +344,5 @@ func (w *DirectoryWatcher) emitError(err error) {
 }
 
 func sameFilesystemPath(left, right string) bool {
-	return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
+	return filepath.Clean(left) == filepath.Clean(right)
 }

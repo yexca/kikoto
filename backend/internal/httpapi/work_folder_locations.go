@@ -87,7 +87,7 @@ func markMissingExternalWorkFolderLocations(ctx context.Context, tx *sql.Tx, fil
 			_ = rows.Close()
 			return err
 		}
-		if !seenRoots[strings.ToLower(normalizeFolderRootPath(rootPath))] && inScope(rootPath) {
+		if !seenRoots[normalizeFolderRootPath(rootPath)] && inScope(rootPath) {
 			missingIDs = append(missingIDs, id)
 		}
 	}
