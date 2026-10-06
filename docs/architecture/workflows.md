@@ -269,8 +269,8 @@ Recent runs and list rows open full run details inside the same panel; returning
 to the list retains the global scope. There is no separate Activity page.
 Legacy `/activity` and `/runs` links redirect into Workflows; a linked run resolves
 its workflow before loading history, including a read-only context for workflows
-without a configurable definition. Account and notification entries open this
-same surface. Events, candidates, progress, retries, and cancellation remain
+without a configurable definition. The header notification panel and Quick
+actions open this same surface. Events, candidates, progress, retries, and cancellation remain
 available within the panel.
 
 The active list contains running and queued jobs; Needs attention contains

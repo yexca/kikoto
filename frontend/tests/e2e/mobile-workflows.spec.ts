@@ -1868,11 +1868,11 @@ test("activity preserves its loading state until the scoped request completes", 
   await mockWorkflows(page);
   await page.route("**/api/workflow-runs?**", async (route) => {
     const params = new URL(route.request().url()).searchParams;
-    if (params.get("view") !== "attention") {
+    // The header notification summary reads the unscoped attention list.
+    if (params.get("view") !== "attention" || !params.get("workflowCode")) {
       await route.fallback();
       return;
     }
-    expect(params.get("workflowCode")).toBeTruthy();
     await gate;
     await route.fulfill({
       json: workflowRunsPageFixture([], {
@@ -1955,7 +1955,7 @@ test("remote popular shows an unavailable overlay without a compatible source", 
   await expect(page).toHaveURL(/\/settings\?tab=library#remote-sources$/);
 });
 
-test("mobile header orders actions and separates popovers from the quick-action sheet", async ({ page }) => {
+test("mobile header orders actions and keeps languages in the account panel", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockWorkflows(page);
   await page.goto("/workflows");
@@ -1987,27 +1987,15 @@ test("mobile header orders actions and separates popovers from the quick-action 
   const accountPopover = page.getByRole("dialog", { name: "Account" });
   await expect(accountPopover).toBeVisible();
   expect(await accountPopover.evaluate((element) => getComputedStyle(element).zIndex)).toBe("50");
-  await expect(accountPopover.getByRole("button", { name: "Activity", exact: true })).toBeVisible();
-  await expect(accountPopover.getByText("Appearance", { exact: true })).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await expect(accountPopover).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Open appearance settings" }).click();
-  const appearancePopover = page.getByRole("dialog", { name: "Appearance" });
-  await expect(appearancePopover).toBeVisible();
-  await expect(appearancePopover.getByText("UI language, mode, style, and color", { exact: true })).toBeVisible();
-  await expect(appearancePopover.getByRole("button", { name: "Activity", exact: true })).toHaveCount(0);
-
-  const modeGroup = appearancePopover.getByRole("group", { name: "Mode" });
-  const modeBox = await modeGroup.boundingBox();
-  expect(modeBox).not.toBeNull();
-  expect(modeBox!.x).toBeGreaterThanOrEqual(0);
-  expect(modeBox!.x + modeBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-
+  // Activity lives behind Notifications; the account panel holds personal entries and languages.
+  await expect(accountPopover.getByRole("button", { name: "Activity", exact: true })).toHaveCount(0);
+  await expect(accountPopover.getByRole("button", { name: /^Review/ })).toHaveCount(0);
+  await expect(accountPopover.getByRole("group", { name: "Mode" })).toHaveCount(0);
   await expect(
-    appearancePopover.getByText("Choose the language used by the Kikoto interface.", { exact: true }),
+    accountPopover.getByText("Choose the language used by the Kikoto interface.", { exact: true }),
   ).toHaveCount(0);
-  await appearancePopover.getByRole("combobox", { name: "UI language" }).click();
+
+  await accountPopover.getByRole("combobox", { name: "UI language" }).click();
   const languageListbox = page.getByRole("listbox");
   await expect(languageListbox.getByRole("option")).toHaveCount(6);
   const languageListboxBox = await languageListbox.boundingBox();
@@ -2016,21 +2004,34 @@ test("mobile header orders actions and separates popovers from the quick-action 
   expect(languageListboxBox!.x + languageListboxBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   expect(languageListboxBox!.y + languageListboxBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await languageListbox.getByRole("option", { name: "Auto", exact: true }).click();
-  await expect(appearancePopover).toBeVisible();
-  await expect(appearancePopover.getByRole("combobox", { name: "UI language" })).toHaveCSS("box-shadow", "none");
+  await expect(accountPopover).toBeVisible();
+  await expect(accountPopover.getByRole("combobox", { name: "UI language" })).toHaveCSS("box-shadow", "none");
 
-  const appearanceBox = await appearancePopover.boundingBox();
-  expect(appearanceBox).not.toBeNull();
-  await appearancePopover.getByRole("combobox", { name: "UI language" }).click();
-  await page.mouse.click(appearanceBox!.x + 12, appearanceBox!.y + 12);
+  await accountPopover.getByRole("combobox", { name: "UI language" }).click();
+  await accountPopover.getByText("@admin", { exact: true }).click();
   await expect(languageListbox).toBeHidden();
-  await expect(appearancePopover).toBeVisible();
+  await expect(accountPopover).toBeVisible();
 
-  await appearancePopover.getByRole("combobox", { name: "UI language" }).click();
+  await accountPopover.getByRole("combobox", { name: "UI language" }).click();
   await expect(languageListbox).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(languageListbox).toBeHidden();
+  await expect(accountPopover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(accountPopover).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open appearance settings" }).click();
+  const appearancePopover = page.getByRole("dialog", { name: "Appearance" });
   await expect(appearancePopover).toBeVisible();
+  await expect(appearancePopover.getByText("Mode, style, and color", { exact: true })).toBeVisible();
+  await expect(appearancePopover.getByRole("combobox", { name: "UI language" })).toHaveCount(0);
+  await expect(appearancePopover.getByRole("button", { name: "Activity", exact: true })).toHaveCount(0);
+
+  const modeGroup = appearancePopover.getByRole("group", { name: "Mode" });
+  const modeBox = await modeGroup.boundingBox();
+  expect(modeBox).not.toBeNull();
+  expect(modeBox!.x).toBeGreaterThanOrEqual(0);
+  expect(modeBox!.x + modeBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 
   await modeGroup.getByRole("combobox").click();
   await page.getByRole("listbox").getByRole("option", { name: "Dark", exact: true }).click();
@@ -2046,8 +2047,8 @@ test("mobile header orders actions and separates popovers from the quick-action 
   expect(colorGroupBox!.x + colorGroupBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   expect(colorGroupBox!.y + colorGroupBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Account menu" }).click();
-  await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Activity", exact: true }).click();
+  await page.getByRole("button", { name: "Notifications", exact: true }).click();
+  await page.getByRole("dialog", { name: "Notifications" }).getByRole("button", { name: "Open Activity" }).click();
   await expect(page).toHaveURL(/\/workflows\?activity=1/);
 });
 
@@ -2061,7 +2062,7 @@ test("opening an appearance floating select keeps fixed mobile surfaces stable",
   const footerBefore = await footer.boundingBox();
   expect(footerBefore).not.toBeNull();
 
-  await page.getByRole("dialog", { name: "Appearance" }).getByRole("combobox", { name: "UI language" }).click();
+  await page.getByRole("dialog", { name: "Appearance" }).getByRole("combobox", { name: "Mode" }).click();
   await expect(page.locator("body")).not.toHaveAttribute("data-scroll-locked");
 
   const footerAfter = await footer.boundingBox();
@@ -2077,7 +2078,7 @@ test("@desktop header popovers render above page content", async ({ page }) => {
 
   const appearanceButton = page.getByRole("button", { name: "Open appearance settings" });
   await appearanceButton.click();
-  await expect(page.getByText("UI language, mode, style, and color", { exact: true })).toBeVisible();
+  await expect(page.getByText("Mode, style, and color", { exact: true })).toBeVisible();
   const modeGroup = page.getByRole("group", { name: "Mode" });
   await expect(modeGroup).toBeVisible();
   const headerBox = await page.locator("header").filter({ has: appearanceButton }).boundingBox();

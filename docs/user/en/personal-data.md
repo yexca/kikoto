@@ -4,8 +4,8 @@
 
 Sign in and open **Settings**: listening history is in the **History** tab,
 personal tags are in **Tags**, and **Your data** is the
-last section of **Account**. The mobile account menu and Quick actions open
-each one directly. They show only your account's data.
+last section of **Account**. The account menu behind your avatar and Quick
+actions open each one directly. They show only your account's data.
 
 ## Personal tags
 
