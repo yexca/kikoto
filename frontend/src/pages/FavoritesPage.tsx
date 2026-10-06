@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
+import { DemoContentNotice } from "@/components/DemoReadOnlyNotice";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { PageSizePicker } from "@/components/collection/PageSizePicker";
 import { Button } from "@/components/ui/button";
@@ -845,6 +846,11 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
 
   return (
     <section className="relative">
+      {auth.demoMode && (
+        <div className="mb-5">
+          <DemoContentNotice surface="works" />
+        </div>
+      )}
       <div className={mobileNavigationLayout ? "" : "flex items-start gap-6"}>
         {!mobileNavigationLayout && <FavoriteShelfSidebar navigation={navigation} />}
 

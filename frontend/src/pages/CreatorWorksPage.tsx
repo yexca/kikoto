@@ -32,6 +32,7 @@ import { retainVisibleSelection, withSelection } from "@/components/work-collect
 import { VoiceWorkOptionsSheet, type VoiceWorkFilter } from "@/pages/VoiceWorkOptionsSheet";
 import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
 import { useAuth } from "@/auth/AuthProvider";
+import { DemoContentNotice } from "@/components/DemoReadOnlyNotice";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { usePageHeaderBack } from "@/app/pageHeader";
@@ -153,6 +154,7 @@ export function CreatorWorksPage({ kind, active = true }: { kind: CreatorKind; a
 }
 
 function VoiceCreatorWorksPage({ active }: { active: boolean }) {
+  const { demoMode } = useAuth();
   const [path, setPath] = useState(window.location.pathname);
   useEffect(() => {
     if (!active) return;
@@ -175,6 +177,11 @@ function VoiceCreatorWorksPage({ active }: { active: boolean }) {
   }, [personId]);
   return (
     <>
+      {demoMode && (
+        <div className="mb-5">
+          <DemoContentNotice surface="works" />
+        </div>
+      )}
       {personId > 0 && <VoiceDetailPage personId={personId} active={active} />}
       {(listVisited || personId === 0) && (
         <div hidden={personId > 0}>
