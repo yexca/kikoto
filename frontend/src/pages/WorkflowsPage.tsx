@@ -5,6 +5,7 @@ import { usePageHeaderBack } from "@/app/pageHeader";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
+import { LazyRemoteFetchWorkspaceDialog, useRemoteFetchWorkspace } from "@/features/work-detail/workflows";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { AvailabilityWatchPanel } from "@/features/workflows/availability-watch/AvailabilityWatchPanel";
 import { RunDetail } from "@/features/workflows/RunDetail";
@@ -20,12 +21,12 @@ import { WorkflowNavigator } from "@/features/workflows/WorkflowNavigator";
 import {
   configurableSystemWorkflowCodes,
   manuallyRunnableSystemWorkflows,
-  readOnlySystemWorkflowCodes,
   workflowCopy,
   type CurrentTriggerRunOptions,
   type DLsitePopularRunOptions,
   type LocalScanMode,
   type RemotePopularRunOptions,
+  type RemoteFetchRunOptions,
   type SystemRunKind,
   type SystemRunOptions,
 } from "@/features/workflows/workflowPageModel";
@@ -103,6 +104,12 @@ export function WorkflowsPage({
     "loading",
   );
   const [recentDefinitionRuns, setRecentDefinitionRuns] = useState<WorkflowRun[]>([]);
+  const fetchWorkspace = useRemoteFetchWorkspace({
+    onWorksChanged: () => {
+      void refreshRecentRuns("remote_work_fetch");
+      showQueuedRun();
+    },
+  });
   const workflowMetaRequestSeq = useRef(0);
   const recentRunsRequestSeq = useRef(0);
 
@@ -187,7 +194,6 @@ export function WorkflowsPage({
       .filter(
         (definition) =>
           configurableSystemWorkflowCodes.has(definition.code) ||
-          readOnlySystemWorkflowCodes.has(definition.code) ||
           presetByCode.has(definition.code) ||
           definition.code === linkedCode,
       )
@@ -360,6 +366,16 @@ export function WorkflowsPage({
     }
   };
 
+  const runRemoteFetch = async (options: RemoteFetchRunOptions) => {
+    if (readOnly || !canRun || !canManageDownloads) return false;
+    return fetchWorkspace.open({
+      sourceId: options.sourceId,
+      remoteCode: options.workCode,
+      sourceDisplayName: options.sourceDisplayName,
+      excludeExtensions: options.excludeExtensions,
+    });
+  };
+
   const runDLsitePopularCollection = async (options: DLsitePopularRunOptions) => {
     setRunningSystemAction("dlsite_popular");
     try {
@@ -396,6 +412,7 @@ export function WorkflowsPage({
   };
 
   const systemActionBusy = (kind: SystemRunKind) => {
+    if (kind === "remote_fetch") return fetchWorkspace.isBusy;
     if (kind === "local_scan") return isRunningScan;
     if (kind === "metadata_sync") return isSyncingMetadata;
     return runningSystemAction === kind;
@@ -407,6 +424,7 @@ export function WorkflowsPage({
       return canRun && canSyncMetadata;
     if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
     if (kind === "remote_popular") return canRun && canTagWorks && remoteSourceAvailability !== "unavailable";
+    if (kind === "remote_fetch") return canRun && canManageDownloads;
     // Follow runs refresh catalogs and sync metadata; the optional tag checks tags:write itself.
     if (kind === "preset") return canRun && canSyncMetadata;
     return canRun;
@@ -593,6 +611,7 @@ export function WorkflowsPage({
                     canRunSystemAction={systemActionAllowed}
                     onRunSystemAction={runSystemAction}
                     onRunRemotePopular={runPopularCollection}
+                    onRunRemoteFetch={runRemoteFetch}
                     canFetchRemotePopular={canManageDownloads}
                     canConfigureMetadataSync={canManageSources}
                     canTag={canTagWorks}
@@ -615,6 +634,7 @@ export function WorkflowsPage({
           </div>
         )}
       </WorkflowRunSlotProvider>
+      <LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
 
       {triggerEditor && triggerEditorDefinition && (
         <TriggerModal
