@@ -1,7 +1,7 @@
 # Settings
 [English](../en/settings.md) · [简体中文](../zh-Hans/settings.md) · [繁體中文](../zh-Hant/settings.md) · [日本語](../ja/settings.md) · [한국어](../ko/settings.md)
 
-Settings exposes account controls, playback preferences, and recommendation preferences. Appearance and UI language are available from the header appearance menu. Instance and user administration remain in Maintenance.
+Settings exposes account controls, playback preferences, and recommendation preferences. Appearance is available from the header appearance menu; UI language and the preferred metadata language are in the account menu behind your avatar, or behind **Sign in**. Instance and user administration remain in Maintenance.
 
 ## Multilingual titles
 
@@ -49,7 +49,7 @@ Settings uses Account, Playback, History, Recommendations, and Tags tabs, shown 
 
 Saving recommendation settings creates a new recommendation session for the current tab. Other open tabs keep their existing snapshots until a new session is created. Saving folder preferences updates subsequent directory selection without stopping the player. Failed saves retain the draft and the previous persisted values. Demo mode keeps these server-backed preferences read-only.
 
-Appearance is available only from the header menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Every signed-in user also sees **Preferred metadata language** directly below the UI language. It is a personal choice: it decides which title edition, introduction and tag names that user sees, orders title sorting by those titles, and is asked first when Kikoto queries a remote source for that user. The options are **Origin**, Japanese, English, Simplified Chinese, Traditional Chinese, and Korean. Without a choice it shows **Origin**, each work's original language, and choosing **Origin** clears the preference; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition. Every language shows the same tags: they come from the original edition. Anonymous visitors see the original language. Everything stored or shared, such as stored titles and tag names, background syncs, creator catalog refreshes, remote metadata fallback, and Activity text, always uses each work's original language, so one user's choice never changes what others see.
+Appearance is available only from the header menu, and the UI language from the header account menu. The globe option follows the browser or device language; its tooltip and accessible name identify automatic selection. Every signed-in user also sees **Preferred metadata language** directly below the UI language. It is a personal choice: it decides which title edition, introduction and tag names that user sees, orders title sorting by those titles, and is asked first when Kikoto queries a remote source for that user. The options are **Origin**, Japanese, English, Simplified Chinese, Traditional Chinese, and Korean. Without a choice it shows **Origin**, each work's original language, and choosing **Origin** clears the preference; an edition without the chosen language falls back to `Origin`. Shared tag names use manual names and the learned dictionary in the same language priority, independently of whether that language has an edition. Every language shows the same tags: they come from the original edition. Anonymous visitors see the original language. Everything stored or shared, such as stored titles and tag names, background syncs, creator catalog refreshes, remote metadata fallback, and Activity text, always uses each work's original language, so one user's choice never changes what others see.
 
 ## Maintenance Organization
 
@@ -97,7 +97,7 @@ Maintenance uses one horizontal row of tabs, scrolling horizontally on narrow sc
   or voice actor catalog is marked Attention once its last refresh is older
   than that. Older `/settings?tab=metadata` links open Library. There is no
   instance metadata language: each user's own choice is in the header
-  Appearance menu, and a remote source's fallback language is in its source
+  account menu, and a remote source's fallback language is in its source
   settings.
 - Cache & Fetch contains configuration only: playback cache policy, transfer
   safety, and collapsed download pacing, with one save action that is enabled

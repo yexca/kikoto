@@ -91,6 +91,9 @@ test("@smoke renders the anonymous library shell", async ({ page }) => {
   const accountSheet = page.getByRole("dialog", { name: "Account" });
   await expect(accountSheet).toBeVisible();
   await expect(accountSheet.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+  // Anonymous visitors choose the UI language here but have no personal metadata language.
+  await expect(accountSheet.getByRole("combobox", { name: "UI language" })).toBeVisible();
+  await expect(accountSheet.getByRole("combobox", { name: "Preferred metadata language" })).toHaveCount(0);
 });
 
 test("@smoke opens About without an update icon when current", async ({ page }) => {
