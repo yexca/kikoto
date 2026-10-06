@@ -431,7 +431,7 @@ function AuthenticatedApp() {
       <div
         className={cx(
           "app-shell min-h-dvh bg-background lg:grid",
-          sidebarCollapsed ? "lg:grid-cols-[76px_minmax(0,1fr)]" : "lg:grid-cols-[248px_minmax(0,1fr)]",
+          sidebarCollapsed ? "lg:grid-cols-[4.75rem_minmax(0,1fr)]" : "lg:grid-cols-[13rem_minmax(0,1fr)]",
         )}
       >
         <aside className="theme-shell-surface sticky top-0 hidden h-screen border-r bg-card lg:flex lg:flex-col">
