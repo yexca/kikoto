@@ -298,6 +298,9 @@ export const surfaceHans = {
   permissions: {
     demoReadOnly: "演示模式为只读。",
     demoReadOnlyNotice: "演示模式：可以查看全部功能，但无法更改服务器数据。",
+    demoLibraryNotice:
+      "演示模式：Kikoto 本身不提供任何作品，仅用于管理用户自己购买的音声作品。此处使用的演示作品均为 DLsite 的免费作品，版权归原作者所有。",
+    demoWorksNotice: "演示模式：作品仅用于演示，版权归原作者所有。",
     permissionDenied: "您的账户没有使用此功能的权限。",
   },
   workflow: {

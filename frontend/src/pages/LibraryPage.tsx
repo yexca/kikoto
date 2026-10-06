@@ -45,6 +45,7 @@ import {
 } from "@/lib/librarySearchClauses";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useAuth } from "@/auth/AuthProvider";
+import { DemoContentNotice } from "@/components/DemoReadOnlyNotice";
 import { useTranslation } from "react-i18next";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { type ClientPrincipalID, currentClientStorageScope } from "@/lib/clientStorageScope";
@@ -1756,6 +1757,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     activeTab.kind === "source" ? t("library.refreshingRemoteWorks") : t("library.refreshingLibraryWorks");
   const browseContent = (
     <div className="relative space-y-5" hidden={!showBrowse}>
+      {auth.demoMode && <DemoContentNotice surface="library" />}
       <MetadataOnboardingNotice active={active && showBrowse} />
       <section className="flex flex-wrap items-center gap-2" data-toast-avoid>
         <div className="order-1 min-w-0 max-w-full">
