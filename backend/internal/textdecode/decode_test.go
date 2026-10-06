@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/encoding/simplifiedchinese"
 	unicodeencoding "golang.org/x/text/encoding/unicode"
 )
 
@@ -22,6 +23,32 @@ func TestDecodeDetectsCommonJapaneseTextEncodings(t *testing.T) {
 		{name: "iso_2022_jp", encoding: japanese.ISO2022JP},
 	}
 	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			content, err := test.encoding.NewEncoder().Bytes([]byte(expected))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := Decode(context.Background(), content, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != expected {
+				t.Fatalf("decoded text = %q, want %q", got, expected)
+			}
+		})
+	}
+}
+
+func TestDecodeDetectsSimplifiedChineseTextEncodings(t *testing.T) {
+	// chardet names this family "GB-18030", which the IANA index does not know.
+	expected := strings.Repeat("[00:01.00]\u6d4b\u8bd5\u97f3\u58f0\uff0c\u8fd9\u662f\u4e00\u6bb5\u793a\u4f8b\u6b4c\u8bcd\u3002\r\n", 8)
+	for _, test := range []struct {
+		name     string
+		encoding encoding.Encoding
+	}{
+		{name: "gbk", encoding: simplifiedchinese.GBK},
+		{name: "gb18030", encoding: simplifiedchinese.GB18030},
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			content, err := test.encoding.NewEncoder().Bytes([]byte(expected))
 			if err != nil {

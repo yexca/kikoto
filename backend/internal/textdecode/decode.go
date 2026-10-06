@@ -13,6 +13,7 @@ import (
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/ianaindex"
 	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/encoding/simplifiedchinese"
 	unicodeencoding "golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/encoding/unicode/utf32"
 )
@@ -139,6 +140,10 @@ func decodeCharset(content []byte, charset string) (string, bool) {
 		return decodeBytes(content, utf32.UTF32(utf32.LittleEndian, utf32.UseBOM))
 	case "cp932", "ms932", "shift-jis", "shiftjis", "sjis", "windows-31j":
 		return decodeBytes(content, japanese.ShiftJIS)
+	case "gb-18030", "gb18030", "gbk", "gb2312", "cp936":
+		// chardet reports "GB-18030", which is not an IANA name. GB18030 is a
+		// superset of GBK and GB2312, so it decodes all three.
+		return decodeBytes(content, simplifiedchinese.GB18030)
 	}
 	charsetEncoding, err := ianaindex.IANA.Encoding(charset)
 	if err != nil || charsetEncoding == nil {
