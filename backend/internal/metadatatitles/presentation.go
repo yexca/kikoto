@@ -15,8 +15,8 @@ type Variant struct {
 	Description string
 	Origin      bool
 	// RemoteSource names the remote source whose title the work row holds.
-	// A remote title declares no language: it is never an edition, only the
-	// last provider step before the work's own title.
+	// Remote titles use only provider-declared edition languages. A title
+	// without such a declaration remains the languageless fallback.
 	RemoteSource string
 }
 
@@ -90,12 +90,12 @@ func ForLanguage(variants []Variant, manual map[string]string, language string, 
 		result.Title, result.Source, result.Language = title, "manual", language
 		return result, true
 	}
-	result.Title = Display(selected.Title, !selected.Origin)
+	result.Title = Display(selected.Title, !selected.Origin && selected.RemoteSource == "")
 	result.Source = "original"
-	if found {
-		result.Source = "dlsite"
-	} else if selected.RemoteSource != "" {
+	if selected.RemoteSource != "" {
 		result.Source, result.SourceName = "remote", selected.RemoteSource
+	} else if found {
+		result.Source = "dlsite"
 	}
 	if title := strings.TrimSpace(manual[""]); title != "" {
 		result.Title, result.Source, result.SourceName = title, "manual", ""

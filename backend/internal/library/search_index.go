@@ -307,6 +307,10 @@ func loadSearchDocuments(ctx context.Context, tx *sql.Tx, ids []int64) (map[int6
 		{`SELECT variant.work_id, variant.title
 			FROM dlsite_metadata_variant AS variant
 			WHERE variant.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.title }},
+		{`SELECT variant.work_id, variant.title FROM remote_metadata_title_variant AS variant
+			WHERE variant.work_id IN (%s) AND NOT EXISTS (
+			 SELECT 1 FROM metadata_snapshot AS snapshot JOIN metadata_provider AS provider ON provider.id=snapshot.provider_id
+			 WHERE snapshot.work_id=variant.work_id AND provider.code NOT GLOB 'kikoeru_source_*')`, func(d *searchDocument) *[]string { return &d.title }},
 		{`SELECT link.work_id, tag.display_name
 			FROM work_tag AS link
 			INNER JOIN tag ON tag.id = link.tag_id

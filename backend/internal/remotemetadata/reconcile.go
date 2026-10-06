@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
 )
 
@@ -85,6 +86,9 @@ func ReconcileWorkTx(ctx context.Context, tx *sql.Tx, workID int64) (Result, err
 // ClearTx removes every remote provenance row of a work. DLsite metadata or
 // the absence of remote snapshots makes them obsolete.
 func ClearTx(ctx context.Context, tx *sql.Tx, workID int64) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM remote_metadata_title_variant WHERE work_id = ?", workID); err != nil {
+		return err
+	}
 	_, err := tx.ExecContext(ctx, "DELETE FROM work_metadata_field_source WHERE work_id = ?", workID)
 	return err
 }
@@ -184,6 +188,18 @@ func firstInput(inputs []snapshotInput, has func(Work) bool) (snapshotInput, boo
 }
 
 func applyFields(ctx context.Context, tx *sql.Tx, workID int64, inputs []snapshotInput, higher bool) error {
+	if !higher {
+		titles, err := projectTitles(ctx, tx, workID, inputs)
+		if err != nil {
+			return err
+		}
+		if selected, ok := titles[dlsite.OriginMetadataLanguage]; ok {
+			// Shared titles always use the original edition. A viewer's personal
+			// priority only selects from the stored variants at read time. Without
+			// an original title, keep the source's own title as the fallback.
+			inputs = append([]snapshotInput{{providerID: selected.providerID, work: Work{Title: selected.Title}}}, inputs...)
+		}
+	}
 	var code, title, age string
 	var release sql.NullString
 	var duration sql.NullInt64

@@ -149,3 +149,18 @@
   development schema-050 baseline checksums remain available for upgrades.
 
 Changes through v0.7.1 are summarized in [v0.7.1](v0.7.1.md).
+
+## Remote metadata titles
+
+Remote sources can supply language titles through the edition relationships
+and sibling titles already returned in their work metadata. These titles join
+the library's language priority, detail language menu, title editor, title sort
+and search while the work has no DLsite metadata. They do not create additional
+library works or file locations, and no sibling lookup is performed.
+The shared title uses the original edition; personal language preferences
+select from the stored titles without changing shared metadata.
+
+Migration `057_remote_language_titles.sql` queues existing remote snapshots
+for background projection. New installations use `057_v0.7.1.sql`, generated
+from the current `VERSION`; existing installations continue through the
+numbered migration chain. See [migration guidance](../development/migrations.md).

@@ -3,9 +3,12 @@ package library
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/internal/remotemetadata"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -26,6 +29,74 @@ func titleSortCodes(t *testing.T, store *Store, languages []string, ordinals ...
 		}
 	}
 	return codes
+}
+
+// Stored remote edition titles participate in the same title sort and search
+// queues as DLsite titles, without requiring a second library work.
+func TestRemoteLanguageTitlesSortSearchAndRefresh(t *testing.T) {
+	db := openSearchTestDB(t, "../../migrations")
+	ctx := context.Background()
+	workID := insertSearchWork(t, db, 30, "Zulu original")
+	insertSearchWork(t, db, 31, "Bravo original")
+	provider := execSearchFixture(t, db, `INSERT INTO metadata_provider(code,display_name) VALUES ('kikoeru_source_example_remote_a','Example Remote A')`)
+	code := testfixture.WorkCode(testfixture.PrefixRJ, 30)
+	translated := testfixture.WorkCode(testfixture.PrefixRJ, 32)
+	raw, err := json.Marshal(map[string]any{
+		"source_id": code, "title": "Zulu original",
+		"language_editions":             []map[string]any{{"workno": code, "lang": "JPN"}, {"workno": translated, "lang": "CHI_HANS"}},
+		"other_language_editions_in_db": []map[string]any{{"source_id": translated, "lang": "CHI_HANS", "title": "Alpha translated"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := execSearchFixture(t, db, `INSERT INTO metadata_snapshot(work_id,provider_id,external_id,snapshot_json) VALUES (?,?,?,?)`, workID, provider, code, string(raw))
+	project := func() {
+		t.Helper()
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		if _, err := remotemetadata.ReconcileWorkTx(ctx, tx, workID); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	project()
+	store := NewStore(db)
+	if err := store.RefreshTitleLanguages(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := titleSortCodes(t, store, []string{"zh-cn"}, 30, 31); !reflect.DeepEqual(got, []string{"RJ00000030", "RJ00000031"}) {
+		t.Fatalf("remote Chinese title order=%v", got)
+	}
+	if got := titleSortCodes(t, store, []string{"origin"}, 30, 31); !reflect.DeepEqual(got, []string{"RJ00000031", "RJ00000030"}) {
+		t.Fatalf("remote original title order=%v", got)
+	}
+	if err := store.RefreshSearchIndex(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var indexed string
+	if err := db.QueryRow("SELECT title FROM work_search WHERE rowid=?", workID).Scan(&indexed); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(indexed, "alpha translated") {
+		t.Fatalf("remote title missing from search: %q", indexed)
+	}
+	raw, err = json.Marshal(map[string]any{"source_id": code, "title": "Zulu original"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	execSearchFixture(t, db, `UPDATE metadata_snapshot SET snapshot_json=? WHERE id=?`, string(raw), snapshot)
+	project()
+	if err := store.RefreshTitleLanguages(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := titleSortCodes(t, store, []string{"zh-cn"}, 30, 31); !reflect.DeepEqual(got, []string{"RJ00000031", "RJ00000030"}) {
+		t.Fatalf("removed remote translation still sorted first: %v", got)
+	}
 }
 
 func titleLanguageVariant(t *testing.T, db *sql.DB, logicalID, workID int64, ordinal int, language, title string) int64 {
