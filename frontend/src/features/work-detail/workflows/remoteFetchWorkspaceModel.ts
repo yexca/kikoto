@@ -81,6 +81,37 @@ export function setRemoteFetchExtensionIncluded(
   return next;
 }
 
+// File-type filters list the extensions actually present, most common first.
+export function remoteFetchExtensions(paths: string[]) {
+  const counts = new Map<string, number>();
+  for (const path of paths) {
+    const name = path.split(/[\\/]/).pop() ?? "";
+    const dot = name.lastIndexOf(".");
+    if (dot <= 0 || dot === name.length - 1) continue;
+    const extension = name.slice(dot + 1).toLowerCase();
+    counts.set(extension, (counts.get(extension) ?? 0) + 1);
+  }
+  return Array.from(counts, ([extension, count]) => ({ extension, count })).sort(
+    (left, right) => right.count - left.count || left.extension.localeCompare(right.extension),
+  );
+}
+
+// Returns null when no selected file reports a size, so the UI can omit the total.
+export function remoteFetchSelectedBytes(root: TreeNode, selectedPaths: ReadonlySet<string>) {
+  let total = 0;
+  let known = false;
+  const visit = (node: TreeNode) => {
+    for (const file of node.files) {
+      if (!selectedPaths.has(file.sourcePath) || file.sizeBytes === null) continue;
+      total += file.sizeBytes;
+      known = true;
+    }
+    for (const child of node.children.values()) visit(child);
+  };
+  visit(root);
+  return known ? total : null;
+}
+
 export function canPublishRemoteFetchSelection(state: RemoteFetchPublishState) {
   return (
     !state.readOnly &&

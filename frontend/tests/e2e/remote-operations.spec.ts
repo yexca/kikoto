@@ -198,14 +198,15 @@ test("mobile Fetch prepares language editions and switches between local, remote
   await expect(page.getByLabel("Select RJ00000051")).toBeEnabled();
   await page.getByLabel("Include MP3").click();
   await expect(page.getByLabel("Include MP3")).not.toBeChecked();
-  await expect(page.getByText("0 remote / 1")).toBeVisible();
+  await expect(page.getByText("0 of 1 selected")).toBeVisible();
   await page.getByRole("button", { name: "All", exact: true }).click();
   await expect(page.getByLabel("Include MP3")).toBeChecked();
   await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeEnabled();
   await page.getByRole("button", { name: "After Fetch", exact: true }).click();
   await expect(page.getByText("Add", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Local files", exact: true }).click();
   await expect(page.getByText("Publish target", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Local files", exact: true }).click();
+  await expect(page.getByText("Selected local files are copied into the published folder.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Publish Fetch" })).toBeVisible();
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByText("Local files", { exact: true }).last()).toBeVisible();
