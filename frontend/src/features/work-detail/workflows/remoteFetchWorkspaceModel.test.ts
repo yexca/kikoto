@@ -6,6 +6,7 @@ import {
   createDemoRemoteFetchPlan,
   createRemoteFetchDraft,
   createRemoteFetchRequestId,
+  remoteFetchExtensions,
   remoteFetchExtensionSelection,
   selectRemoteFetchEdition,
   setRemoteFetchExtensionIncluded,
@@ -135,6 +136,16 @@ describe("remote fetch workspace model", () => {
       checked: true,
       indeterminate: false,
     });
+  });
+
+  it("lists the extensions present, most common first", () => {
+    const paths = ["Disc/01.MP3", "Disc/02.mp3", "Disc/cover.jpg", "Disc/README", "Disc\\03.wav", "Disc/.hidden"];
+
+    expect(remoteFetchExtensions(paths)).toEqual([
+      { extension: "mp3", count: 2 },
+      { extension: "jpg", count: 1 },
+      { extension: "wav", count: 1 },
+    ]);
   });
 
   it("changes one extension without discarding other selected files", () => {
