@@ -33,6 +33,12 @@ export const surfaceJapanese = {
       "各言語の提供元タイトルより優先されます。言語別の手動タイトルがあれば、そちらを優先します。版や紹介文は変わりません。",
     coverHint: "画像はコピーされるため、元のファイルを移動してもカバーは残ります。",
     currentCover: "現在のカバー",
+    dlsiteCover: "DLsite のカバー",
+    sourceCover: "{{source}} のカバー",
+    originalCover: "元のカバー",
+    coverNotDownloaded: "未取得",
+    manualCover: "手動カバー",
+    coverRevertHint: "保存すると手動カバーが削除され、元のカバーに戻ります。",
     searchCircles: "サークルを検索、または名前を入力",
     searchSeries: "シリーズを検索、または名前を入力",
     seriesCircleId: "サークル ID",
@@ -71,7 +77,7 @@ export const surfaceJapanese = {
     },
     descriptions: {
       title: "表示言語ごとにタイトルを編集します。手動タイトルはメタデータを更新しても保持されます。",
-      cover: "この作品のローカル画像から 1 枚をカバーに選びます。",
+      cover: "この作品の元のカバーか、ローカル画像から 1 枚を選びます。",
       tags: "この作品のタグを追加・削除し、各タグの言語別の名前を編集します。タグ名は共有されるため、変更はそのタグを持つすべての作品に反映されます。",
       credits:
         "候補を選ぶと既存のサークル、シリーズ、声優にリンクされます。編集したクレジットはメタデータを更新しても固定されます。",

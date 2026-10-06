@@ -346,6 +346,60 @@ func TestSetWorkCoverOverrideCopiesOnlyAvailableLocalImage(t *testing.T) {
 	}
 }
 
+func TestWorkCoverCandidatesKeepProviderCoverBesideManualCover(t *testing.T) {
+	dataRoot := t.TempDir()
+	cacheRoot := t.TempDir()
+	fixture := newManualOverrideFixture(t, config.Config{DataRoot: dataRoot, CacheRoot: cacheRoot})
+	providerPath := filepath.Join(cacheRoot, "cover", filepath.FromSlash(coverAssetRelativePath("RJ00000000", ".jpg")))
+	if err := os.MkdirAll(filepath.Dir(providerPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(providerPath, []byte("synthetic provider cover"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(cacheRoot, "manual"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheRoot, "manual", "work-cover.jpg"), []byte("synthetic manual cover"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec(`
+		INSERT INTO work_manual_override (work_id, field_name, value_json, asset_path)
+		VALUES (?, 'cover', '{}', 'work-cover.jpg')
+	`, fixture.workID); err != nil {
+		t.Fatal(err)
+	}
+	list := func(workID string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodGet, "/api/works/"+workID+"/cover-candidates", nil)
+		request.SetPathValue("id", workID)
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{
+			ID: fixture.userID, Permissions: []string{"library:read"},
+		}))
+		response := httptest.NewRecorder()
+		fixture.server.listWorkCoverCandidates(response, request)
+		return response
+	}
+	response := list(strconv.FormatInt(fixture.workID, 10))
+	if response.Code != http.StatusOK {
+		t.Fatalf("cover candidates status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var got struct {
+		ProviderCoverURL string `json:"providerCoverUrl"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got.ProviderCoverURL, "/api/assets/covers/RJ/000/RJ00000000.jpg?v=") {
+		t.Fatalf("provider cover = %q", got.ProviderCoverURL)
+	}
+	if current := fixture.server.coverURL("RJ00000000"); current != "/api/assets/manual/work-cover.jpg" {
+		t.Fatalf("displayed cover = %q", current)
+	}
+	if missing := list("999"); missing.Code != http.StatusNotFound {
+		t.Fatalf("missing work status = %d, body = %s", missing.Code, missing.Body.String())
+	}
+}
+
 func setManualCoverRequest(t *testing.T, fixture manualOverrideFixture, locationID int64) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(

@@ -2615,7 +2615,7 @@ export const api = {
     putJSONBody<WorkMetadataLinkResult>(`/api/works/${id}/metadata-link`, { sourceCode }),
   deleteWorkMetadataLink: (id: number) => deleteJSON<WorkMetadataLinkResult>(`/api/works/${id}/metadata-link`),
   listWorkCoverCandidates: (id: number) =>
-    getJSON<{ candidates: WorkCoverCandidate[] }>(`/api/works/${id}/cover-candidates`),
+    getJSON<{ candidates: WorkCoverCandidate[]; providerCoverUrl: string }>(`/api/works/${id}/cover-candidates`),
   setWorkCoverOverride: (id: number, locationId: number) =>
     postJSONBody<WorkManualOverrides>(`/api/works/${id}/cover-override`, { locationId }),
   suggestCircles: (query: string, limit = 20) =>

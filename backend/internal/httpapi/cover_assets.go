@@ -114,6 +114,16 @@ func (s *Server) coverURL(primaryCode string) string {
 	if manualURL := s.manualCoverURL(code); manualURL != "" {
 		return manualURL
 	}
+	return s.providerCoverURL(code)
+}
+
+// providerCoverURL is the metadata cover cached for a code, ignoring any
+// manual cover, so the editor can offer it as a choice beside local images.
+func (s *Server) providerCoverURL(primaryCode string) string {
+	code := strings.ToUpper(strings.TrimSpace(primaryCode))
+	if code == "" {
+		return ""
+	}
 	for _, extension := range []string{".jpg", ".jpeg", ".png", ".webp"} {
 		file := coverAssetRelativePath(code, extension)
 		path := filepath.Join(s.cfg.CacheRoot, "cover", filepath.FromSlash(file))
@@ -125,7 +135,17 @@ func (s *Server) coverURL(primaryCode string) string {
 }
 
 func (s *Server) workCoverURL(ctx context.Context, workID int64, primaryCode string) (string, error) {
-	if coverURL := s.coverURL(primaryCode); coverURL != "" {
+	return s.workCoverURLFrom(ctx, workID, primaryCode, s.coverURL)
+}
+
+// workProviderCoverURL is the cover a work shows once its manual cover is removed.
+func (s *Server) workProviderCoverURL(ctx context.Context, workID int64, primaryCode string) (string, error) {
+	return s.workCoverURLFrom(ctx, workID, primaryCode, s.providerCoverURL)
+}
+
+// An edition without its own cover borrows the canonical work's cover.
+func (s *Server) workCoverURLFrom(ctx context.Context, workID int64, primaryCode string, lookup func(string) string) (string, error) {
+	if coverURL := lookup(primaryCode); coverURL != "" {
 		return coverURL, nil
 	}
 	var canonicalCode string
@@ -144,7 +164,7 @@ func (s *Server) workCoverURL(ctx context.Context, workID int64, primaryCode str
 	if strings.EqualFold(strings.TrimSpace(canonicalCode), strings.TrimSpace(primaryCode)) {
 		return "", nil
 	}
-	return s.coverURL(canonicalCode), nil
+	return lookup(canonicalCode), nil
 }
 
 func coverAssetRelativePath(code string, extension string) string {

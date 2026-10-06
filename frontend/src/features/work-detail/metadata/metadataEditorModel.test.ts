@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  coverFieldStatus,
   manualValueStatus,
   metadataEditorInitialState,
   normalizedMetadataLinkCode,
   payloadChangesCredits,
+  providerCoverSource,
   workMetadataOverridePayload,
 } from "./metadataEditorModel";
 
@@ -116,5 +118,27 @@ describe("manual value status", () => {
     expect(manualValueStatus("Draft", undefined)).toBe("edited");
     expect(manualValueStatus("Draft", "Own")).toBe("edited");
     expect(manualValueStatus("", "Own")).toBe("reverting");
+  });
+});
+
+describe("cover choice", () => {
+  it("names a remote source only when it filled the cover", () => {
+    expect(providerCoverSource({ status: "available", checkedAt: "" })).toBe("");
+    expect(
+      providerCoverSource({
+        status: "remote_fallback",
+        checkedAt: "",
+        source: "Example Remote A",
+        fields: [{ field: "cover", source: "Example Remote B" }],
+      }),
+    ).toBe("Example Remote B");
+  });
+
+  it("reports a staged return to the original cover before the changed selection", () => {
+    const manualCover = { assetPath: "covers/1.png", originalPath: "RJ00000000/cover.png", url: "/cover.png" };
+    expect(coverFieldStatus({ manualCover, selectedCoverId: null, initialCoverId: 7, reverted: true })).toBe(
+      "reverting",
+    );
+    expect(coverFieldStatus({ selectedCoverId: null, initialCoverId: null, reverted: false })).toBe("source");
   });
 });

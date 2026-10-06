@@ -6,12 +6,18 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type WorkDetail, type WorkMetadataLinkResult } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
-import { MetadataEditorCoverSection, coverFieldStatus } from "./MetadataEditorCoverSection";
+import { MetadataEditorCoverSection } from "./MetadataEditorCoverSection";
 import { MetadataEditorCreditsSection, useMetadataCreditsEditor } from "./MetadataEditorCreditsSection";
 import { MetadataEditorSourceSection, type StagedMetadataLink } from "./MetadataEditorSourceSection";
 import { WorkMetadataTagsSection } from "./WorkMetadataTagsSection";
 import { WorkTitleEditor } from "./WorkTitleEditor";
-import { metadataEditorInitialState, payloadChangesCredits } from "./metadataEditorModel";
+import {
+  coverFieldStatus,
+  metadataEditorInitialState,
+  payloadChangesCredits,
+  providerCoverSource,
+  type CoverChoice,
+} from "./metadataEditorModel";
 import { changedTitles, currentTitles } from "./titleEditorModel";
 import { useWorkCoverCandidates } from "./useMetadataSuggestions";
 import { useWorkMetadataTagsEditor } from "./useWorkMetadataTagsEditor";
@@ -65,6 +71,14 @@ export function WorkMetadataEditorModal({
 
   const titles = changedTitles(titleDrafts, manual, currentTitles(work));
   const coverChanged = coverState.selectedCoverId !== coverState.initialCoverId;
+  const coverChoice: CoverChoice = coverReverted
+    ? "provider"
+    : (coverState.selectedCoverId ?? (manual.cover ? "manual" : "provider"));
+  // Choosing the original cover over a saved manual cover stages its removal.
+  const selectCover = (choice: CoverChoice) => {
+    coverState.setSelectedCoverId(typeof choice === "number" ? choice : null);
+    setCoverReverted(choice === "provider" && Boolean(manual.cover));
+  };
   const changed: Record<MetadataEditorSection, boolean> = {
     title: Object.keys(titles).length > 0,
     cover: coverChanged || coverReverted,
@@ -231,8 +245,10 @@ export function WorkMetadataEditorModal({
             {section === "cover" && (
               <MetadataEditorCoverSection
                 manualCover={manual.cover}
+                providerCoverUrl={coverState.providerCoverUrl}
+                providerSource={providerCoverSource(work.metadataSync)}
                 candidates={coverState.coverCandidates}
-                selectedCoverId={coverState.selectedCoverId}
+                selected={coverChoice}
                 status={coverFieldStatus({
                   manualCover: manual.cover,
                   selectedCoverId: coverState.selectedCoverId,
@@ -240,12 +256,7 @@ export function WorkMetadataEditorModal({
                   reverted: coverReverted,
                 })}
                 loading={coverState.loadingCovers}
-                onSelect={(locationId) => {
-                  coverState.setSelectedCoverId(locationId);
-                  setCoverReverted(false);
-                }}
-                onRevert={() => setCoverReverted(true)}
-                onUndoRevert={() => setCoverReverted(false)}
+                onSelect={selectCover}
               />
             )}
             {section === "tags" && <WorkMetadataTagsSection editor={tagEditor} />}
