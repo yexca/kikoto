@@ -754,7 +754,8 @@ export const japaneseResource = {
         technologies: "主要技術",
         license: "ライセンス",
         copyright: "Copyright (C) 2026 yexca。",
-        usageNotice: "Kikoto はいかなるサービスも提供しません。ご自身で購入した音声作品を管理するためだけに使用してください。",
+        usageNotice:
+          "Kikoto はいかなるサービスも提供しません。ご自身で購入した音声作品を管理するためだけに使用してください。",
         licenseText:
           "Kikoto は <license>GNU AGPL v3</license> でライセンスされたフリーソフトウェアです。無保証で提供され、対応する完全なソースコードはプロジェクトリポジトリで確認できます。",
         groups: {
