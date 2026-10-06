@@ -2,7 +2,7 @@ import type { MetadataTagOverride } from "./api";
 import type { MetadataTag } from "./api";
 
 export function sameMetadataTagName(left: string, right: string) {
-  return left.trim().toLocaleLowerCase() === right.trim().toLocaleLowerCase();
+  return sameNameKey(left) === sameNameKey(right);
 }
 export function exactMetadataTag(entries: MetadataTag[], name: string) {
   return entries.find(
@@ -59,4 +59,50 @@ export function changedMetadataTagNames(
       .map(([language]) => [language, drafts[language].trim()] as const)
       .filter(([language, name]) => name !== (previous[language] ?? "")),
   );
+}
+
+type MetadataTagName = MetadataTag["names"][number];
+
+/** The languages a tag list shows as columns; every other name is listed as Other. */
+export const metadataTagNameLanguages = metadataTagLanguages.filter(([language]) => language !== "");
+
+/**
+ * The name a language shows for a tag, in the server's precedence: that
+ * language's manual name, the all-language manual name, the DLsite dictionary
+ * name, then a remote source's name.
+ */
+export function metadataTagLanguageName(
+  tag: Pick<MetadataTag, "names">,
+  language: string,
+): MetadataTagName | undefined {
+  const find = (source: string, nameLanguage: string) =>
+    tag.names.find((name) => name.source === source && name.language === nameLanguage && name.name.trim() !== "");
+  return find("manual", language) ?? find("manual", "") ?? find("dlsite", language) ?? find("provider", language);
+}
+
+/**
+ * Every known name no language column shows, once each ignoring case: names
+ * a manual name replaced, names without a language, and a stored display
+ * name that has no name record.
+ */
+export function otherMetadataTagNames(tag: Pick<MetadataTag, "names" | "displayName">): MetadataTagName[] {
+  const seen = new Set<string>();
+  for (const [language] of metadataTagNameLanguages) {
+    const shown = metadataTagLanguageName(tag, language);
+    if (shown) seen.add(sameNameKey(shown.name));
+  }
+  const result: MetadataTagName[] = [];
+  const add = (name: MetadataTagName) => {
+    const key = sameNameKey(name.name);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    result.push({ ...name, name: name.name.trim() });
+  };
+  tag.names.forEach(add);
+  add({ language: "", name: tag.displayName, source: "stored" });
+  return result;
+}
+
+function sameNameKey(name: string) {
+  return name.trim().toLocaleLowerCase();
 }

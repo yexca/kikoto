@@ -77,11 +77,7 @@ func EnsureGenreTx(ctx context.Context, tx *sql.Tx, genreID int64) (int64, error
 	if err != nil {
 		return 0, err
 	}
-	priorities, err := PreferredLanguages(ctx, tx)
-	if err != nil {
-		return 0, err
-	}
-	return id, RefreshNamesTx(ctx, tx, priorities, id)
+	return id, RefreshNamesTx(ctx, tx, StoredLanguages, id)
 }
 
 // Older imported names without ids keep a stable concept until a provider id

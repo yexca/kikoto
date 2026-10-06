@@ -13,7 +13,6 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { LibraryLayoutSection } from "@/features/library-setup/LibraryLayoutSection";
-import { MetadataDefaultsSection } from "@/features/maintenance/MetadataDefaultsSection";
 import { ProxySettingsSection } from "@/features/proxy";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { RemoteSourceDialog } from "@/features/sources/RemoteSourceDialog";
@@ -32,10 +31,11 @@ import { api, type AppSettings, type FileSource } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { UsersPage } from "@/pages/UsersPage";
 
-type MaintenanceTab = "library" | "metadata" | "cache" | "proxy" | "users";
+type MaintenanceTab = "library" | "cache" | "proxy" | "users";
 
 type RuntimeDraft = {
   localScanDepth: number;
+  catalogFreshnessDays: number;
   cacheEnabled: boolean;
   cacheLimitGb: number;
   transcodeCacheLimitGb: number;
@@ -51,6 +51,7 @@ type RuntimeDraft = {
 function runtimeDraftFromSettings(settings: AppSettings): RuntimeDraft {
   return {
     localScanDepth: settings.localScanDepth,
+    catalogFreshnessDays: settings.catalogFreshnessDays,
     cacheEnabled: settings.cacheEnabled,
     cacheLimitGb: settings.cacheLimitGb,
     transcodeCacheLimitGb: settings.transcodeCacheLimitGb ?? 5,
@@ -360,6 +361,26 @@ export function MaintenancePage({
               </SettingsRow>
             </SettingsSection>
 
+            <SettingsSection
+              title={t("maintenance.library.creatorCatalogs")}
+              footer={saveButton(["catalogFreshnessDays"], t("maintenance.library.saveCreatorCatalogs"))}
+            >
+              <SettingsRow
+                title={t("maintenance.library.catalogFreshnessDays")}
+                description={t("maintenance.library.catalogFreshnessDescription")}
+              >
+                <SettingsNumberInput
+                  disabled={readOnly}
+                  label={t("maintenance.library.catalogFreshnessDays")}
+                  value={draft.catalogFreshnessDays}
+                  min={1}
+                  max={365}
+                  unit={t("sourceSetup.days")}
+                  onChange={(catalogFreshnessDays) => patchDraft({ catalogFreshnessDays })}
+                />
+              </SettingsRow>
+            </SettingsSection>
+
             <RemoteSourceList
               sources={remoteSources}
               checkingSourceId={checkingSourceId}
@@ -380,10 +401,6 @@ export function MaintenancePage({
             />
 
             <StoragePaths settings={settings} remoteSources={remoteSources} />
-          </div>
-        ) : activeTab === "metadata" && settings ? (
-          <div className="space-y-6">
-            <MetadataDefaultsSection settings={settings} readOnly={readOnly} onSaved={setSettings} />
           </div>
         ) : activeTab === "cache" && draft ? (
           <CacheFetchSettings

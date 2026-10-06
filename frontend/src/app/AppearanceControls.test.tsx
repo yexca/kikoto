@@ -40,7 +40,6 @@ describe("AppearanceControls", () => {
         {...props}
         metadataLanguage={{
           value: "origin",
-          defaultValue: "ja-jp",
           busy: false,
           failed: false,
           readOnly: false,
@@ -51,27 +50,5 @@ describe("AppearanceControls", () => {
     const groups = [...rendered.matchAll(/role="group" aria-label="([^"]+)"/g)].map((match) => match[1]);
     expect(groups.slice(0, 3)).toEqual(["UI language", "Preferred metadata language", "Mode"]);
     expect(rendered).toContain(">Origin<");
-  });
-
-  it("names the instance default a user follows until choosing a language", () => {
-    const rendered = renderToStaticMarkup(
-      <AppearanceControls
-        mode="system"
-        preset="anthropic"
-        palette="original"
-        onModeChange={vi.fn()}
-        onPresetChange={vi.fn()}
-        onPaletteChange={vi.fn()}
-        metadataLanguage={{
-          value: "default",
-          defaultValue: "ja-jp",
-          busy: false,
-          failed: false,
-          readOnly: false,
-          onChange: vi.fn(),
-        }}
-      />,
-    );
-    expect(rendered).toContain(">Server default (Japanese)<");
   });
 });

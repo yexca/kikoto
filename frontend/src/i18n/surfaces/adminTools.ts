@@ -29,7 +29,7 @@ export const adminToolsEnglish = {
       "Lets the Metadata sync remote fallback use this source when DLsite has no record of a work.",
     fallbackLanguage: "Fallback language",
     fallbackLanguageDescription:
-      "Requests ask in each viewer's preferred metadata language first and in this language last, for sources that lack the preferred one.",
+      "Requests ask in the viewer's preferred metadata language first and in this language last. Viewers who show original titles, anonymous visitors, and background jobs ask in this language only.",
     customLanguage: "Custom ({{language}})",
     connection: "Connection details",
     connectionDescription: "API URL, public site, and work links",

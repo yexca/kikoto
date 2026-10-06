@@ -7,28 +7,25 @@ import {
   dlsiteMetadataLanguagesFor,
   preferredDlsiteMetadataLanguage,
   type DlsiteMetadataLanguage,
-  type MetadataLanguageChoice,
 } from "./metadataLanguageModel";
 
 export type MetadataDisplayLanguageState = {
-  /** Null until the preference has loaded; "default" follows the instance default. */
-  value: MetadataLanguageChoice | null;
-  /** The instance default shown with the "default" choice. */
-  defaultValue: DlsiteMetadataLanguage | null;
+  /** Null until the preference has loaded; "origin" when the user has no preference. */
+  value: DlsiteMetadataLanguage | null;
   busy: boolean;
   failed: boolean;
-  change: (next: MetadataLanguageChoice) => Promise<void>;
+  change: (next: DlsiteMetadataLanguage) => Promise<void>;
 };
 
 /**
  * Loads and saves the signed-in user's preferred metadata language. The
  * preference is read only once `enabled` becomes true, so surfaces that open
- * on demand do not request it for every page view. A saved change refreshes
- * the visible page through the user preference event.
+ * on demand do not request it for every page view. Choosing the original
+ * language clears the preference. A saved change refreshes the visible page
+ * through the user preference event.
  */
 export function useMetadataDisplayLanguage(enabled: boolean, userId: number | null): MetadataDisplayLanguageState {
-  const [value, setValue] = useState<MetadataLanguageChoice | null>(null);
-  const [defaultValue, setDefaultValue] = useState<DlsiteMetadataLanguage | null>(null);
+  const [value, setValue] = useState<DlsiteMetadataLanguage | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [loadedUserId, setLoadedUserId] = useState<number | null>(null);
@@ -42,10 +39,7 @@ export function useMetadataDisplayLanguage(enabled: boolean, userId: number | nu
       .getUserPreferences(controller.signal)
       .then((preferences) => {
         if (controller.signal.aborted) return;
-        setDefaultValue(preferredDlsiteMetadataLanguage(preferences.defaultMetadataLanguages));
-        setValue(
-          preferences.metadataLanguages ? preferredDlsiteMetadataLanguage(preferences.metadataLanguages) : "default",
-        );
+        setValue(preferredDlsiteMetadataLanguage(preferences.metadataLanguages));
         setLoadedUserId(userId);
       })
       .catch(() => {
@@ -54,18 +48,15 @@ export function useMetadataDisplayLanguage(enabled: boolean, userId: number | nu
     return () => controller.abort();
   }, [enabled, loaded, userId]);
 
-  const change = async (next: MetadataLanguageChoice) => {
+  const change = async (next: DlsiteMetadataLanguage) => {
     if (busy || next === value || userId === null) return;
     setBusy(true);
     setFailed(false);
     try {
       const preferences = await api.updateUserPreferences({
-        metadataLanguages: next === "default" ? null : dlsiteMetadataLanguagesFor(next),
+        metadataLanguages: next === "origin" ? null : dlsiteMetadataLanguagesFor(next),
       });
-      setDefaultValue(preferredDlsiteMetadataLanguage(preferences.defaultMetadataLanguages));
-      setValue(
-        preferences.metadataLanguages ? preferredDlsiteMetadataLanguage(preferences.metadataLanguages) : "default",
-      );
+      setValue(preferredDlsiteMetadataLanguage(preferences.metadataLanguages));
       window.dispatchEvent(new CustomEvent(USER_PREFERENCES_CHANGED, { detail: currentClientStorageScope(userId) }));
     } catch {
       setFailed(true);
@@ -74,5 +65,5 @@ export function useMetadataDisplayLanguage(enabled: boolean, userId: number | nu
     }
   };
 
-  return { value: loaded ? value : null, defaultValue, busy, failed, change };
+  return { value: loaded ? value : null, busy, failed, change };
 }

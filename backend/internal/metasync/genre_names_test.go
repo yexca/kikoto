@@ -100,9 +100,6 @@ func genreName(t *testing.T, db *sql.DB, genre int64, language string) string {
 func TestLearnGenreNamesRequestsPerMissingGenreSet(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
-	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('dlsite_metadata_languages', '["zh-cn","origin"]')`); err != nil {
-		t.Fatal(err)
-	}
 	works := seedGenreWorks(t, db, map[int][]int64{30: {1, 2, 3}, 31: {2, 3, 4}, 32: {5}, 33: {1}})
 	if _, err := db.Exec(`INSERT INTO dlsite_genre_name (genre_id, language, name) VALUES (1, 'zh-cn', 'Example Known Genre')`); err != nil {
 		t.Fatal(err)
@@ -143,8 +140,10 @@ func TestLearnGenreNamesRequestsPerMissingGenreSet(t *testing.T) {
 	if err := db.QueryRow("SELECT exhausted FROM dlsite_genre_name_gap WHERE genre_id = 4 AND language = 'zh-cn'").Scan(&exhausted); err != nil || !exhausted {
 		t.Fatalf("unnamed genre not exhausted: %v %v", exhausted, err)
 	}
+	// A learned name serves viewers who prefer it; the stored shared name
+	// stays in the original language.
 	var displayName string
-	if err := db.QueryRow(`SELECT tag.display_name FROM tag JOIN metadata_tag AS concept ON concept.tag_id = tag.id WHERE concept.dlsite_genre_id = 2`).Scan(&displayName); err != nil || displayName != "Example Genre zh-cn 2" {
+	if err := db.QueryRow(`SELECT tag.display_name FROM tag JOIN metadata_tag AS concept ON concept.tag_id = tag.id WHERE concept.dlsite_genre_id = 2`).Scan(&displayName); err != nil || displayName != "Example Genre JA 2" {
 		t.Fatalf("display name = %q %v", displayName, err)
 	}
 	var dirty int

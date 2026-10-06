@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
@@ -54,15 +55,21 @@ func TestLoadWorkMetadataPresentationReturnsPriorityDefaultAndAllVariants(t *tes
 	`, logicalID, originID, providerID, logicalID, simplifiedID, providerID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`
-		INSERT INTO app_setting (key, value_json) VALUES ('dlsite_metadata_languages', '["zh-cn","origin"]')
-		ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json
-	`); err != nil {
+	server := NewServer(db, config.Config{})
+	// Without a preference the original edition is the default; a viewer's
+	// own priority selects its edition.
+	anonymous, err := server.loadWorkMetadataPresentation(context.Background(), originID)
+	if err != nil {
 		t.Fatal(err)
 	}
-
-	server := NewServer(db, config.Config{})
-	presentation, err := server.loadWorkMetadataPresentation(context.Background(), originID)
+	if anonymous.DefaultVariantKey != "RJ00000030" || len(anonymous.Variants) != 2 {
+		t.Fatalf("anonymous presentation = %+v", anonymous)
+	}
+	viewer, viewerCtx := metadataLanguageUser(t, db, "synthetic-language-zh")
+	if response := patchMetadataLanguages(t, server, viewer, `{"metadataLanguages":["zh-cn"]}`); response.Code != http.StatusOK {
+		t.Fatalf("save: %d %s", response.Code, response.Body.String())
+	}
+	presentation, err := server.loadWorkMetadataPresentation(viewerCtx, originID)
 	if err != nil {
 		t.Fatal(err)
 	}

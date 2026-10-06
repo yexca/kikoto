@@ -13,17 +13,17 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 )
 
-// Metadata language has two scopes. The instance default (app_setting
-// dlsite_metadata_languages) drives everything stored or shared: projected
-// work titles and tag display names, background syncs, catalog snapshots,
-// remote metadata fallback and Activity text. A signed-in user may choose a
-// personal priority that only changes what that user's requests present:
-// titles, tag names, default editions, title sorting and live remote-source
-// requests. Stored provider data never depends on a personal choice.
+// Metadata language has two scopes. Everything stored or shared uses each
+// work's original language: projected work titles and tag display names,
+// background syncs, catalog snapshots, remote metadata fallback and Activity
+// text. A signed-in user may choose a personal priority that only changes what
+// that user's requests present: titles, tag names, default editions, title
+// sorting and live remote-source requests. Stored provider data never depends
+// on a personal choice.
 
 // viewerMetadataLanguages is the normalized priority for the request's user:
-// the user's own choice when set, otherwise the instance default. Requests
-// without a user, including anonymous browsing, use the instance default.
+// the user's own choice when set, otherwise the original language. Requests
+// without a user, including anonymous browsing, use the original language.
 func (s *Server) viewerMetadataLanguages(ctx context.Context) []string {
 	memo, _ := ctx.Value(metadataLanguageMemoKey).(*metadataLanguageMemo)
 	if memo != nil {
@@ -100,8 +100,8 @@ func withMetadataLanguageMemo(ctx context.Context) context.Context {
 }
 
 // userMetadataLanguages returns the user's own normalized priority and false
-// when the user follows the instance default. An unreadable stored value
-// follows the instance default rather than failing the request.
+// when the user has no preference. An unreadable stored value counts as no
+// preference rather than failing the request.
 func (s *Server) userMetadataLanguages(ctx context.Context, userID int64) ([]string, bool) {
 	if s.db == nil {
 		return nil, false
@@ -129,7 +129,7 @@ func (s *Server) userMetadataLanguages(ctx context.Context, userID int64) ([]str
 }
 
 // sameMetadataLanguages reports whether two normalized priorities present the
-// same names, so a viewer on the instance default can reuse projected values.
+// same names, so a viewer without a preference can reuse projected values.
 func sameMetadataLanguages(left, right []string) bool {
 	left, right = dlsite.NormalizeMetadataPriority(left), dlsite.NormalizeMetadataPriority(right)
 	if len(left) != len(right) {
@@ -144,7 +144,7 @@ func sameMetadataLanguages(left, right []string) bool {
 }
 
 // learnedMetadataLanguages is every language some presentation may prefer:
-// the instance default and each user's own choice. Background tag name
+// the original language and each user's own choice. Background tag name
 // learning covers this union so a personal language also gets learned names.
 func (s *Server) learnedMetadataLanguages(ctx context.Context) []string {
 	seen := map[string]bool{}

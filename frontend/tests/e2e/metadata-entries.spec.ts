@@ -525,6 +525,67 @@ test("@desktop shared tag dialog edits names and reviews reversible merges", asy
   await page.screenshot({ path: "test-results/metadata-tag-management.png", fullPage: true });
 });
 
+test("tags are listed by id with the name each language shows", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "library:write"],
+  });
+  const genre = metadataTagFixture({
+    id: 7,
+    key: "dlsite-genre:9001",
+    displayName: "Synthetic Japanese genre",
+    dlsiteGenreId: 9001,
+    source: "dlsite",
+    names: [
+      { language: "ja-jp", name: "Synthetic Japanese genre", source: "dlsite" },
+      { language: "en-us", name: "Synthetic authored English", source: "manual" },
+      { language: "en-us", name: "Synthetic English genre", source: "dlsite" },
+      { language: "zh-cn", name: "Synthetic remote Chinese", source: "provider" },
+      { language: "", name: "Synthetic unlabeled", source: "provider" },
+    ],
+  });
+  const custom = metadataTagFixture({ id: 9, displayName: "Synthetic custom tag", names: [] });
+  const requests: URLSearchParams[] = [];
+  await page.route("**/api/metadata/tags?*", (route) => {
+    requests.push(new URL(route.request().url()).searchParams);
+    return route.fulfill({
+      json: { tags: [genre, custom], total: 2, page: 1, pageSize: 25 } satisfies ApiResponse<"listMetadataTags">,
+    });
+  });
+  await page.goto("/metadata?view=tags");
+  const table = page.getByRole("table", { name: "Tags", exact: true });
+  await expect(table.getByRole("columnheader")).toHaveText([
+    "ID",
+    "Japanese",
+    "Simplified Chinese",
+    "Traditional Chinese",
+    "English",
+    "Korean",
+    "Other names",
+    "Works",
+    "Manage",
+  ]);
+  // The list is ordered by id, so no language preference changes it.
+  expect(requests[0].get("sort")).toBe("id");
+  const row = table.getByRole("row").filter({ hasText: "DLsite 9001" });
+  await expect(row.getByRole("rowheader")).toHaveText("7 DLsite 9001");
+  await expect(row.getByRole("cell")).toHaveText([
+    "Synthetic Japanese genre",
+    "Synthetic remote Chinese",
+    "—",
+    "Synthetic authored English",
+    "—",
+    /^Synthetic English genre · English\s*Synthetic unlabeled$/,
+    "1",
+    "Manage",
+  ]);
+  // A stored name without name records is still listed.
+  const customRow = table.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "9", exact: true }) });
+  await expect(customRow.getByRole("listitem")).toHaveText(["Synthetic custom tag"]);
+  // The wide table scrolls inside its own box; the page never scrolls sideways.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("hidden tag matches are explained and cannot be silently created in the work editor", async ({ page }) => {
   await metadataWorkEditor(page);
   const hidden = metadataTagFixture({ displayName: "Example hidden tag", hidden: true, resolvedHidden: true });

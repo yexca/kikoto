@@ -9,12 +9,29 @@
   Chinese text instead of falling back to a single-byte charset, and a
   single-byte charset declared by a remote source no longer overrides a
   confident Japanese, Chinese, or Korean detection.
-- Metadata settings are reorganized. **Default metadata language** and
-  **Catalog freshness days** move to a new **Metadata** tab under Settings
-  administration, and **Remote metadata fallback** moves to **Configure**
-  on the Metadata sync workflow, offered to administrators with
-  `sources:write`. Each saves only its own values. The Metadata page's
-  settings popover keeps the DLsite proxy shortcut and links to both.
+- Metadata settings are reorganized. **Catalog freshness days** moves to a
+  new **Creator catalogs** section in `Settings -> Library` with its own
+  **Save catalog settings** button, and **Remote metadata fallback** moves to
+  **Configure** on the Metadata sync workflow, offered to administrators with
+  `sources:write`. The Metadata page's settings popover keeps the DLsite proxy
+  shortcut and links to both as **Catalog freshness** and **Remote metadata
+  fallback**.
+- The instance-wide default metadata language is removed. Stored and shared
+  metadata (projected titles and tag names, background syncs, creator catalog
+  refreshes, remote metadata fallback, and Activity text) always uses each
+  work's original language, and `GET`/`PATCH /api/settings` no longer carry
+  `dlsiteMetadataLanguage(s)` (PATCH ignores them). On upgrade, startup removes
+  the old setting; if it held a language other than Origin, the startup
+  metadata tag backfill projects stored titles and tag names again in the
+  original language. No schema change is involved.
+- Metadata → Tags is keyed and ordered by the shared tag ID, so the list no
+  longer depends on a language setting. The ID cell also shows the DLsite genre
+  id and, only for hidden or merged tags, their status. Columns show the name
+  each of Japanese, Simplified Chinese, Traditional Chinese, English, and
+  Korean displays, with all-language manual names muted, followed by **Other
+  names**, Works, and Manage. Search also matches remote-source names, and a
+  numeric query matches the tag ID or DLsite genre id. On narrow screens the
+  table scrolls sideways in its own box with Manage pinned to the right.
 - The metadata editor on work detail and Metadata → Works is reorganized into
   Title, Cover, Tags, Credits, and Metadata source sections that mark unsaved
   changes. Every language title has its own row, covers are picked from a
@@ -28,18 +45,19 @@
 - Preferred metadata language is now a personal choice for every signed-in
   user in the header Appearance menu. It selects that user's titles,
   introductions, tag names and default detail edition, sorts lists by the
-  titles shown, and leads that user's remote-source requests. **Server
-  default** follows the instance default, which administrators now set as
-  **Default metadata language** in `Settings -> Metadata`; anonymous visitors,
-  stored titles and tag names, and background requests use it. A work's shared
+  titles shown, and leads that user's remote-source requests. Without a choice
+  it shows **Origin**, each work's original language, which anonymous visitors
+  also see; choosing **Origin** clears the preference. A work's shared
   tags always come from its original edition, so every language shows the same
   tags. Remote sources replace the per-source request language with a
   **Fallback language** in the source dialog: requests send the viewer's
-  languages first and the fallback last, and cached remote works are separated
-  by language. Tag name learning covers every user's language. Schema 056 adds
-  the personal preference and per-language sort titles, and is packaged in
-  `056_v0.7.1.sql`; the schema-055 development baseline is retired with its
-  checksum kept for upgrades.
+  languages first and the fallback last, while viewers on Origin, anonymous
+  visitors, and background jobs such as crawls, downloads, and fallback
+  lookups ask in the fallback language only. Cached remote works are separated
+  by language. Tag name learning covers every language some user prefers.
+  Schema 056 adds the personal preference and per-language sort titles, and is
+  packaged in `056_v0.7.1.sql`; the schema-055 development baseline is retired
+  with its checksum kept for upgrades.
 - Language-scoped manual titles follow configured language priority before DLsite
   editions. Editors directly edit owned manual titles, show inherited/provider
   sources as hints, preserve drafts across resets, and save only changes.
@@ -90,7 +108,7 @@
   JSON values are kept without preventing startup.
 - Shared metadata tags have stable identities, manual locale names, global
   hiding, reversible merge mappings, and per-work additions/removals. Display
-  names follow the configured metadata language priority and learned dictionary.
+  names follow the viewer's metadata language priority and learned dictionary.
   Effective tags drive display, multilingual search, workflows, and recommendation
   similarity. Normal sync refreshes only learned tag names immediately. Detail
   language switches prefer names in that variant's locale. Merged source names

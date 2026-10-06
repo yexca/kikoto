@@ -21,9 +21,6 @@ func TestNormalProductSyncRefreshesOnlyLearnedTagNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	work, _ := result.LastInsertId()
-	if _, err := db.Exec("INSERT INTO app_setting(key,value_json) VALUES ('dlsite_metadata_languages','[\"en-us\",\"origin\"]')"); err != nil {
-		t.Fatal(err)
-	}
 	// An unrelated concept deliberately has an old chosen name. Normal sync
 	// must not recalculate the whole dictionary while refreshing one genre.
 	tx, err := db.Begin()

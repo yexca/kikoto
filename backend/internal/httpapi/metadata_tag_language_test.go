@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"net/http"
 	"reflect"
 	"testing"
 
@@ -31,7 +32,6 @@ func TestMetadataLanguageVariantsLocalizeSharedTagsAndSelectProjectedSource(t *t
 		metadataReviewExec(t, db, "INSERT INTO dlsite_metadata_variant(logical_work_id,work_id,provider_id,external_id,edition_language,request_locale,title,tags_json) VALUES (?,?,?,?,?,?,?,'[]')", logical, work, provider, code, language, locale, "Synthetic title "+[]string{"Japanese", "Chinese", "English"}[ordinal])
 		metadataReviewExec(t, db, "INSERT INTO work_dlsite_genre(work_id,genre_id) VALUES (?,1)", work)
 	}
-	metadataReviewExec(t, db, "INSERT INTO app_setting(key,value_json) VALUES ('dlsite_metadata_languages','[\"zh-cn\",\"origin\"]')")
 	metadataReviewExec(t, db, "INSERT INTO dlsite_genre_name(genre_id,language,name) VALUES (1,'ja-jp','Synthetic Japanese tag'),(1,'zh-cn','合成中文标签')")
 	tx, err := db.Begin()
 	if err != nil {
@@ -47,12 +47,18 @@ func TestMetadataLanguageVariantsLocalizeSharedTagsAndSelectProjectedSource(t *t
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	if err := metasync.ProjectDLsiteMetadata(ctx, db, []string{"zh-cn", "origin"}); err != nil {
+	if err := metasync.ProjectDLsiteMetadata(ctx, db, metadatatags.StoredLanguages); err != nil {
 		t.Fatal(err)
 	}
 	s := NewServer(db, config.Config{})
+	// A Chinese-preferring viewer gets the Chinese edition by default for the
+	// original work; every other edition defaults to itself.
+	viewer, viewerCtx := metadataLanguageUser(t, db, "synthetic-tag-language-zh")
+	if response := patchMetadataLanguages(t, s, viewer, `{"metadataLanguages":["zh-cn"]}`); response.Code != http.StatusOK {
+		t.Fatalf("save: %d %s", response.Code, response.Body.String())
+	}
 	for ordinal, work := range works {
-		view, err := s.loadWorkMetadataPresentation(ctx, work)
+		view, err := s.loadWorkMetadataPresentation(withMetadataLanguageMemo(viewerCtx), work)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -74,11 +80,12 @@ func TestMetadataLanguageVariantsLocalizeSharedTagsAndSelectProjectedSource(t *t
 	if err := db.QueryRow("SELECT title FROM work WHERE id=?", works[0]).Scan(&title); err != nil {
 		t.Fatal(err)
 	}
-	if title != "Synthetic title Chinese" {
+	// The stored projection stays in the original language.
+	if title != "Synthetic title Japanese" {
 		t.Fatalf("canonical projection title=%q", title)
 	}
 	tags, err := metadatatags.Read(ctx, db, works[0])
-	if err != nil || len(tags) != 1 || tags[0].DisplayName != "合成中文标签" {
+	if err != nil || len(tags) != 1 || tags[0].DisplayName != "Synthetic Japanese tag" {
 		t.Fatalf("default projected tags=%v, %v", tags, err)
 	}
 }

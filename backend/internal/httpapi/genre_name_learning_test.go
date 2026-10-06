@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -31,14 +30,27 @@ func (c *genreNameTestClient) FetchProductWithLocale(_ context.Context, code, lo
 	}}, nil
 }
 
-func newGenreNameFixture(t *testing.T, languages string) (*Server, *sql.DB, *genreNameTestClient) {
+// setGenreNameUserLanguages stores a user's personal metadata language
+// priority directly, without the request side effect of queueing learning.
+func setGenreNameUserLanguages(t *testing.T, db *sql.DB, name, languages string) {
+	t.Helper()
+	userID, _ := metadataLanguageUser(t, db, name)
+	setUserMetadataLanguages(t, db, userID, languages)
+}
+
+// newGenreNameFixture seeds one work with an unnamed genre. A non-empty
+// userLanguages gives one user that personal priority.
+func newGenreNameFixture(t *testing.T, userLanguages string) (*Server, *sql.DB, *genreNameTestClient) {
 	t.Helper()
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
 	client := &genreNameTestClient{}
 	server.dlsiteClient = client
-	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '0'), ('dlsite_metadata_languages', ?)`, languages); err != nil {
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '0')`); err != nil {
 		t.Fatal(err)
+	}
+	if userLanguages != "" {
+		setGenreNameUserLanguages(t, db, "synthetic-genre-language", userLanguages)
 	}
 	result, err := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, 'Example Work')", testfixture.WorkCode(testfixture.PrefixRJ, 50))
 	if err != nil {
@@ -52,17 +64,15 @@ func newGenreNameFixture(t *testing.T, languages string) (*Server, *sql.DB, *gen
 	return server, db, client
 }
 
-// Learning is queued only for a preferred non-Japanese language with unnamed
-// genres, and a second request joins the queued run.
+// Learning is queued only for a user's preferred non-Japanese language with
+// unnamed genres, and a second request joins the queued run.
 func TestGenreNameLearningQueuesOneRunOnlyWhenNamesAreMissing(t *testing.T) {
-	server, db, _ := newGenreNameFixture(t, `["origin"]`)
+	server, db, _ := newGenreNameFixture(t, "")
 	ctx := context.Background()
 	if runID, err := server.enqueueGenreNameLearning(ctx, "test"); err != nil || runID != 0 {
-		t.Fatalf("Japanese-only priority queued %d %v", runID, err)
+		t.Fatalf("origin-only languages queued %d %v", runID, err)
 	}
-	if _, err := db.Exec(`UPDATE app_setting SET value_json = '["zh-cn","origin"]' WHERE key = 'dlsite_metadata_languages'`); err != nil {
-		t.Fatal(err)
-	}
+	setGenreNameUserLanguages(t, db, "synthetic-genre-language-zh", `["zh-cn","origin"]`)
 	first, err := server.enqueueGenreNameLearning(ctx, "test")
 	if err != nil || first == 0 {
 		t.Fatalf("missing names did not queue: %d %v", first, err)
@@ -77,16 +87,13 @@ func TestGenreNameLearningQueuesOneRunOnlyWhenNamesAreMissing(t *testing.T) {
 	}
 }
 
-// Adding a preferred language queues learning; the run learns the names,
-// reports progress and results in Activity, and leaves nothing pending.
+// A user choosing a personal language queues learning; the run learns the
+// names, reports progress and results in Activity, and leaves nothing pending.
 func TestGenreNameLearningRunsAfterLanguagePriorityChange(t *testing.T) {
-	server, db, client := newGenreNameFixture(t, `["origin"]`)
-	request := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"dlsiteMetadataLanguages":["en-us","origin"]}`))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"sources:write"}}))
-	response := httptest.NewRecorder()
-	server.updateSettings(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("settings: %d %s", response.Code, response.Body)
+	server, db, client := newGenreNameFixture(t, "")
+	userID, _ := metadataLanguageUser(t, db, "synthetic-genre-language-en")
+	if response := patchMetadataLanguages(t, server, userID, `{"metadataLanguages":["en-us"]}`); response.Code != http.StatusOK {
+		t.Fatalf("preferences: %d %s", response.Code, response.Body)
 	}
 	var runID int64
 	if err := db.QueryRow("SELECT id FROM workflow_run WHERE workflow_code = ? AND trigger_reason = 'language_priority'", genreNameWorkflowCode).Scan(&runID); err != nil {
@@ -111,7 +118,9 @@ func TestGenreNameLearningRunsAfterLanguagePriorityChange(t *testing.T) {
 	if err := db.QueryRow("SELECT name FROM dlsite_genre_name WHERE genre_id = 11 AND language = 'en-us'").Scan(&name); err != nil || name != "Example Genre en-us" {
 		t.Fatalf("learned name = %q %v", name, err)
 	}
-	if err := db.QueryRow(`SELECT tag.display_name FROM tag JOIN metadata_tag AS concept ON concept.tag_id = tag.id WHERE concept.dlsite_genre_id = 11`).Scan(&display); err != nil || display != "Example Genre en-us" {
+	// The learned name serves that user; the stored shared name stays in the
+	// original language.
+	if err := db.QueryRow(`SELECT tag.display_name FROM tag JOIN metadata_tag AS concept ON concept.tag_id = tag.id WHERE concept.dlsite_genre_id = 11`).Scan(&display); err != nil || display != "Example Genre JA" {
 		t.Fatalf("display name = %q %v", display, err)
 	}
 	if runID, err := server.enqueueGenreNameLearning(context.Background(), "test"); err != nil || runID != 0 {

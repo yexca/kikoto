@@ -7,6 +7,7 @@ import { CollectionPagination } from "@/components/collection/CollectionPaginati
 import { api, ApiError, type MetadataCircle, type MetadataTag } from "@/lib/api";
 import { MaintenanceToolbar, useMaintenanceSearch, type MaintenanceToolbarSlots } from "./MaintenanceControls";
 import { MetadataTagDialog } from "./MetadataTagDialog";
+import { MetadataTagTable } from "./MetadataTagTable";
 import { MetadataCircleDialog } from "./MetadataCircleDialog";
 
 const PAGE_SIZES = [25, 50, 100] as const;
@@ -49,7 +50,7 @@ export function MetadataEntryMaintenance({
     const request =
       kind === "tags"
         ? api
-            .listMetadataTags({ ...options, includeHidden: true })
+            .listMetadataTags({ ...options, includeHidden: true, sort: "id" })
             .then((next) => ({ entries: next.tags, total: next.total, pendingWorkCount: next.pendingWorkCount }))
         : api.listMetadataCircles(options).then((next) => ({ entries: next.circles, total: next.total }));
     void request
@@ -104,7 +105,7 @@ export function MetadataEntryMaintenance({
         slots={toolbar}
         query={search.draft}
         label={t(kind === "tags" ? "metadataEntries.searchTags" : "metadataEntries.searchCircles")}
-        placeholder={t("metadataEntries.name")}
+        placeholder={t(kind === "tags" ? "metadataEntries.nameOrId" : "metadataEntries.name")}
         loading={loading}
         pageSize={pageSize}
         pageSizeOptions={PAGE_SIZES}
@@ -140,41 +141,29 @@ export function MetadataEntryMaintenance({
       {loading && !loaded ? (
         <p className="p-4 text-sm text-muted-foreground">{t("common.loading")}</p>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-left text-sm" aria-label={t(`metadataEntries.${kind}`)}>
-            <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2">{t("metadataEntries.name")}</th>
-                <th className="px-3 py-2">{t("metadataEntries.knownNames")}</th>
-                <th className="px-3 py-2">{t("metadataEntries.workCount")}</th>
-                {kind === "tags" && <th className="px-3 py-2">{t("metadataEntries.status")}</th>}
-                <th className="px-3 py-2">
-                  <span className="sr-only">{t("metadataEntries.manage")}</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.entries.map((entry) => {
-                const tag = kind === "tags" ? (entry as MetadataTag) : null;
-                const names = tag
-                  ? [...new Set(tag.names.map((value) => value.name))]
-                  : (entry as MetadataCircle).aliases.map((value) => value.alias);
-                return (
+        <div className="relative overflow-x-auto rounded-md border">
+          {kind === "tags" ? (
+            <MetadataTagTable tags={result.entries as MetadataTag[]} onManage={setManaged} />
+          ) : (
+            <table className="w-full text-left text-sm" aria-label={t("metadataEntries.circles")}>
+              <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2">{t("metadataEntries.name")}</th>
+                  <th className="px-3 py-2">{t("metadataEntries.knownNames")}</th>
+                  <th className="px-3 py-2">{t("metadataEntries.workCount")}</th>
+                  <th className="px-3 py-2">
+                    <span className="sr-only">{t("metadataEntries.manage")}</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {(result.entries as MetadataCircle[]).map((entry) => (
                   <tr key={entry.id} className="border-b last:border-0">
                     <td className="px-3 py-3 font-medium">{entry.displayName}</td>
-                    <td className="max-w-sm px-3 py-3 text-muted-foreground">{names.join(" · ") || "—"}</td>
+                    <td className="max-w-sm px-3 py-3 text-muted-foreground">
+                      {entry.aliases.map((value) => value.alias).join(" · ") || "—"}
+                    </td>
                     <td className="px-3 py-3 tabular-nums">{entry.workCount}</td>
-                    {tag && (
-                      <td className="px-3 py-3 text-muted-foreground">
-                        {t(
-                          tag.hidden
-                            ? "metadataEntries.hidden"
-                            : tag.mergedIntoTagId
-                              ? "metadataEntries.merged"
-                              : "metadataEntries.active",
-                        )}
-                      </td>
-                    )}
                     <td className="px-3 py-3 text-right">
                       <Button
                         variant="outline"
@@ -186,10 +175,10 @@ export function MetadataEntryMaintenance({
                       </Button>
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          )}
           {!result.entries.length && !failed && (
             <p className="p-6 text-center text-sm text-muted-foreground">{t("metadataEntries.empty")}</p>
           )}

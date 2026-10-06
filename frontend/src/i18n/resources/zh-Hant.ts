@@ -275,7 +275,8 @@ const adminToolsHant = {
     metadataCapability: "提供作品中繼資料",
     metadataCapabilityDescription: "允許中繼資料同步的遠端備援在 DLsite 沒有記錄時使用此來源。",
     fallbackLanguage: "備援語言",
-    fallbackLanguageDescription: "要求先使用檢視者偏好的中繼資料語言，最後使用此語言，用於沒有偏好語言的來源。",
+    fallbackLanguageDescription:
+      "要求先使用檢視者偏好的中繼資料語言，最後使用此語言。顯示原語言的使用者、匿名訪客與背景工作只使用此語言。",
     customLanguage: "自訂（{{language}}）",
     connection: "連線詳細資料",
     connectionDescription: "API URL、公開網站與作品連結",
@@ -634,7 +635,6 @@ export const zhHantResource = {
         metadataLanguage: "優先展示 metadata 語言",
         metadataLanguageSaveFailed: "無法儲存 metadata 語言。",
         metadataLanguageLoadFailed: "無法讀取 metadata 語言。",
-        metadataLanguageDefault: "伺服器預設（{{language}}）",
       },
       account: {
         account: "帳戶",

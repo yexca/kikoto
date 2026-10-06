@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,20 +54,30 @@ func (s *Server) listMetadataTags(w http.ResponseWriter, r *http.Request) {
 		includeHidden = false
 	}
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	// A numeric query also finds the tag or DLsite genre with that id, so the
+	// list can be searched by the ids it shows.
+	queryID, _ := strconv.ParseInt(query, 10, 64)
 	where := `TRIM(tag.display_name)<>'' AND (? OR (concept.hidden=0 AND concept.merged_into_tag_id IS NULL)) AND (
  ?='' OR INSTR(LOWER(tag.display_name),LOWER(?))>0
+ OR (?>0 AND (tag.id=? OR concept.dlsite_genre_id=?))
  OR EXISTS(SELECT 1 FROM metadata_tag_name WHERE tag_id=tag.id AND INSTR(LOWER(name),LOWER(?))>0)
+ OR EXISTS(SELECT 1 FROM metadata_tag_provider_name WHERE tag_id=tag.id AND INSTR(LOWER(name),LOWER(?))>0)
  OR EXISTS(SELECT 1 FROM dlsite_genre_name WHERE genre_id=concept.dlsite_genre_id AND INSTR(LOWER(name),LOWER(?))>0))`
 	if s.cfg.IsDemo() {
 		where += ` AND EXISTS(SELECT 1 FROM work_tag AS link JOIN work AS demo_work ON demo_work.id=link.work_id WHERE link.tag_id=concept.tag_id AND ` + contentpolicy.DemoEligibleWorkSQL("demo_work") + `)`
 	}
-	args := []any{includeHidden, query, query, query, query}
+	args := []any{includeHidden, query, query, queryID, queryID, queryID, query, query, query}
 	resolveMerged := !s.cfg.IsDemo() && r.URL.Query().Get("resolveMerged") == "true"
 	from := "metadata_tag AS concept INNER JOIN tag ON tag.id=concept.tag_id"
-	selectedID, orderName := "tag.id", "tag.display_name"
+	selectedID, order := "tag.id", "LOWER(tag.display_name),tag.id"
 	if resolveMerged {
 		from += " INNER JOIN metadata_tag_resolution AS resolution ON resolution.source_tag_id=concept.tag_id INNER JOIN tag AS target ON target.id=resolution.resolved_tag_id"
-		selectedID, orderName = "resolution.resolved_tag_id", "target.display_name"
+		selectedID, order = "resolution.resolved_tag_id", "LOWER(target.display_name),resolution.resolved_tag_id"
+	}
+	// The management list orders by id, which does not depend on any
+	// language; completion keeps name order.
+	if r.URL.Query().Get("sort") == "id" {
+		order = selectedID
 	}
 	result := metadataTagPage{Tags: []metadatatags.Tag{}, Page: page, PageSize: size}
 	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(DISTINCT "+selectedID+") FROM "+from+" WHERE "+where, args...).Scan(&result.Total); err != nil {
@@ -74,7 +85,7 @@ func (s *Server) listMetadataTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	args = append(args, size, (page-1)*size)
-	rows, err := s.db.QueryContext(r.Context(), "SELECT DISTINCT "+selectedID+" FROM "+from+" WHERE "+where+" ORDER BY LOWER("+orderName+"),"+selectedID+" LIMIT ? OFFSET ?", args...)
+	rows, err := s.db.QueryContext(r.Context(), "SELECT DISTINCT "+selectedID+" FROM "+from+" WHERE "+where+" ORDER BY "+order+" LIMIT ? OFFSET ?", args...)
 	if err != nil {
 		writeError(w, err)
 		return

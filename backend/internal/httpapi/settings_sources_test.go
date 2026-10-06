@@ -292,74 +292,34 @@ func TestUpdateSettingsRecommendationConfigPreservesOrExplicitlySetsExplorationA
 	}
 }
 
-func TestDLsiteMetadataLanguagePriorityUsesArrayAndLegacyFallback(t *testing.T) {
+func TestSettingsNoLongerExposeOrStoreInstanceMetadataLanguage(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
-	request := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"dlsiteMetadataLanguages":["zh-cn","en-us","ja-jp"]}`))
+	request := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"dlsiteMetadataLanguages":["zh-cn","origin"],"dlsiteMetadataLanguage":"zh-cn"}`))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"sources:write"}}))
 	response := httptest.NewRecorder()
 	server.updateSettings(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-	var settings appSettingsResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &settings); err != nil {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"zh-cn", "en-us", "ja-jp", "origin"}
-	if !reflect.DeepEqual(settings.DLsiteMetadataLanguages, want) || settings.DLsiteMetadataLanguage != want[0] {
-		t.Fatalf("language settings = %v / %q, want %v / %q", settings.DLsiteMetadataLanguages, settings.DLsiteMetadataLanguage, want, want[0])
-	}
-	var stored []string
-	var legacy string
-	var raw string
-	if err := db.QueryRow("SELECT value_json FROM app_setting WHERE key = ?", dlsiteMetadataLanguagesSetting).Scan(&raw); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.QueryRow("SELECT value_json FROM app_setting WHERE key = ?", dlsiteMetadataLanguageSetting).Scan(&raw); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal([]byte(raw), &legacy); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(stored, want) || legacy != want[0] {
-		t.Fatalf("stored language settings = %v / %q", stored, legacy)
-	}
-
-	legacyDB := openMigratedTestDB(t)
-	if _, err := legacyDB.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('dlsite_metadata_language', '"en-us"')`); err != nil {
-		t.Fatal(err)
-	}
-	legacyServer := NewServer(legacyDB, config.Config{})
-	loaded := legacyServer.instanceMetadataLanguages(context.Background())
-	if !reflect.DeepEqual(loaded, []string{"en-us", "origin"}) {
-		t.Fatalf("legacy preference = %v", loaded)
-	}
-	freshDB := openMigratedTestDB(t)
-	freshServer := NewServer(freshDB, config.Config{})
-	if loaded := freshServer.instanceMetadataLanguages(context.Background()); !reflect.DeepEqual(loaded, []string{"origin"}) {
-		t.Fatalf("fresh preference = %v", loaded)
-	}
-}
-
-func TestDLsiteMetadataLanguagePriorityRejectsInvalidLists(t *testing.T) {
-	for _, body := range []string{
-		`{"dlsiteMetadataLanguages":[]}`,
-		`{"dlsiteMetadataLanguages":["fr-fr"]}`,
-		`{"dlsiteMetadataLanguages":["ja-jp","en-us","zh-cn","zh-tw","ko-kr","ja-jp"]}`,
-	} {
-		db := openMigratedTestDB(t)
-		server := NewServer(db, config.Config{})
-		request := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(body))
-		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"sources:write"}}))
-		response := httptest.NewRecorder()
-		server.updateSettings(response, request)
-		if response.Code != http.StatusBadRequest {
-			t.Fatalf("body %s status = %d, want %d", body, response.Code, http.StatusBadRequest)
+	for _, key := range []string{"dlsiteMetadataLanguages", "dlsiteMetadataLanguage"} {
+		if _, ok := fields[key]; ok {
+			t.Fatalf("settings response still has %s: %s", key, response.Body.String())
 		}
+	}
+	var stored int
+	if err := db.QueryRow("SELECT COUNT(*) FROM app_setting WHERE key IN (?,?)", dlsiteMetadataLanguagesSetting, dlsiteMetadataLanguageSetting).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != 0 {
+		t.Fatalf("PATCH stored %d instance metadata language settings", stored)
+	}
+	if loaded := server.instanceMetadataLanguages(context.Background()); !reflect.DeepEqual(loaded, []string{"origin"}) {
+		t.Fatalf("instance metadata languages = %v, want origin", loaded)
 	}
 }
 

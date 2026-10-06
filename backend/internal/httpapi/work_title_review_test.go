@@ -48,10 +48,8 @@ func newTitleReviewFamily(t *testing.T, originalLanguage string, translations bo
 
 func TestTranslationTitlesUseFamilyPositionAndTheirOwnEdition(t *testing.T) {
 	f := newTitleReviewFamily(t, "JPN", true)
-	ctx := context.Background()
-	if _, err := f.db.Exec(`INSERT INTO app_setting(key,value_json) VALUES ('dlsite_metadata_languages','["zh-cn","origin"]') ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json`); err != nil {
-		t.Fatal(err)
-	}
+	ctx := metadataLanguageViewer(f.userID)
+	setUserMetadataLanguages(t, f.db, f.userID, `["zh-cn","origin"]`)
 	detail, err := f.server.loadWorkDetail(ctx, f.userID, f.workID, false)
 	if err != nil {
 		t.Fatal(err)
@@ -126,10 +124,8 @@ func TestUniversalManualTitleDoesNotInventLanguageOptions(t *testing.T) {
 	if response := updateManualOverridesRequest(t, f, `{"title":"Example universal manual"}`); response.Code != http.StatusOK {
 		t.Fatal(response.Body.String())
 	}
-	if _, err := f.db.Exec(`INSERT INTO app_setting(key,value_json) VALUES ('dlsite_metadata_languages','["zh-cn","origin"]') ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json`); err != nil {
-		t.Fatal(err)
-	}
-	detail, err := f.server.loadWorkDetail(context.Background(), f.userID, f.workID, false)
+	setUserMetadataLanguages(t, f.db, f.userID, `["zh-cn","origin"]`)
+	detail, err := f.server.loadWorkDetail(metadataLanguageViewer(f.userID), f.userID, f.workID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,10 +139,8 @@ func TestUniversalManualTitleDoesNotInventLanguageOptions(t *testing.T) {
 // the original when an earlier preferred language has no edition.
 func TestUniversalManualTitleKeepsTheDefaultEdition(t *testing.T) {
 	f := newTitleReviewFamily(t, "JPN", true)
-	ctx := context.Background()
-	if _, err := f.db.Exec(`INSERT INTO app_setting(key,value_json) VALUES ('dlsite_metadata_languages','["zh-tw","zh-cn","origin"]') ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json`); err != nil {
-		t.Fatal(err)
-	}
+	ctx := metadataLanguageViewer(f.userID)
+	setUserMetadataLanguages(t, f.db, f.userID, `["zh-tw","zh-cn","origin"]`)
 	before, err := f.server.loadWorkDetail(ctx, f.userID, f.workID, false)
 	if err != nil {
 		t.Fatal(err)

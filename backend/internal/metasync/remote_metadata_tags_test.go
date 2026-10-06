@@ -49,17 +49,14 @@ func remoteWorkTags(t *testing.T, db *sql.DB, workID int64) (map[string]bool, bo
 func TestRemoteSnapshotTagsFoldIntoSharedTagsOnlyWhileFallbackIsEnabled(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
-	priorities := []string{"en-us", "origin"}
+	// Shared tags are stored in the original language.
+	priorities := metadatatags.StoredLanguages
 	code := testfixture.WorkCode(testfixture.PrefixRJ, 10)
 	result, err := db.Exec("INSERT INTO work (primary_code, title) VALUES (?, ?)", code, code)
 	if err != nil {
 		t.Fatal(err)
 	}
 	workID, _ := result.LastInsertId()
-	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('dlsite_metadata_languages', '["en-us","origin"]')
-		ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json`); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := db.Exec(`INSERT INTO dlsite_genre_name (genre_id, language, name) VALUES (1, 'ja-jp', 'Example Genre'), (1, 'en-us', 'Example Genre EN')`); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +85,7 @@ func TestRemoteSnapshotTagsFoldIntoSharedTagsOnlyWhileFallbackIsEnabled(t *testi
 		return string(raw)
 	}
 	if _, err := db.Exec(`INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, ?, ?)`, workID, providerID, code,
-		snapshot(map[string]any{"name": "example genre"}, map[string]any{"name": "Example Remote Tag", "i18n": map[string]any{"en-us": map[string]any{"name": "Example Remote Tag EN"}}})); err != nil {
+		snapshot(map[string]any{"name": "example genre"}, map[string]any{"name": "Example Remote Tag", "i18n": map[string]any{"ja-jp": map[string]any{"name": "Example Remote Tag"}, "en-us": map[string]any{"name": "Example Remote Tag EN"}}})); err != nil {
 		t.Fatal(err)
 	}
 
@@ -103,7 +100,7 @@ func TestRemoteSnapshotTagsFoldIntoSharedTagsOnlyWhileFallbackIsEnabled(t *testi
 	}
 	projectRemoteWork(t, db, workID, priorities)
 	names, projected := remoteWorkTags(t, db, workID)
-	if !projected || len(names) != 2 || !names["Example Genre EN"] || !names["Example Remote Tag EN"] {
+	if !projected || len(names) != 2 || !names["Example Genre"] || !names["Example Remote Tag"] {
 		t.Fatalf("enabled fallback tags: %v projected=%v", names, projected)
 	}
 	var tagSource int64

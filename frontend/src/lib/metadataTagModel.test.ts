@@ -6,6 +6,8 @@ import {
   providerMetadataTagName,
   metadataTagOverrideKey,
   exactMetadataTag,
+  metadataTagLanguageName,
+  otherMetadataTagNames,
   sameMetadataTagName,
 } from "./metadataTagModel";
 
@@ -63,5 +65,41 @@ describe("metadata tag names", () => {
       "": "",
       "zh-cn": "Synthetic edit",
     });
+  });
+});
+
+describe("metadata tag names by language", () => {
+  const tag = {
+    displayName: "Synthetic Japanese",
+    names: [
+      { language: "ja-jp", name: "Synthetic authored Japanese", source: "manual" },
+      { language: "ja-jp", name: "Synthetic Japanese", source: "dlsite" },
+      { language: "en-us", name: "Synthetic English", source: "dlsite" },
+      { language: "en-us", name: "Synthetic remote English", source: "provider" },
+      { language: "zh-cn", name: "Synthetic remote Chinese", source: "provider" },
+      { language: "", name: "Synthetic unlabeled", source: "provider" },
+    ],
+  };
+
+  it("shows each language's name in the server's precedence", () => {
+    expect(metadataTagLanguageName(tag, "ja-jp")?.name).toBe("Synthetic authored Japanese");
+    expect(metadataTagLanguageName(tag, "en-us")?.name).toBe("Synthetic English");
+    expect(metadataTagLanguageName(tag, "zh-cn")?.name).toBe("Synthetic remote Chinese");
+    expect(metadataTagLanguageName(tag, "ko-kr")).toBeUndefined();
+    // An all-language manual name applies before dictionary names.
+    const universal = { names: [...tag.names, { language: "", name: "Synthetic universal", source: "manual" }] };
+    expect(metadataTagLanguageName(universal, "en-us")?.name).toBe("Synthetic universal");
+    expect(metadataTagLanguageName(universal, "ja-jp")?.name).toBe("Synthetic authored Japanese");
+  });
+
+  it("lists every name no language shows once, including a stored name without records", () => {
+    expect(otherMetadataTagNames(tag).map((name) => [name.language, name.name])).toEqual([
+      ["ja-jp", "Synthetic Japanese"],
+      ["en-us", "Synthetic remote English"],
+      ["", "Synthetic unlabeled"],
+    ]);
+    expect(otherMetadataTagNames({ displayName: " Synthetic legacy ", names: [] })).toEqual([
+      { language: "", name: "Synthetic legacy", source: "stored" },
+    ]);
   });
 });

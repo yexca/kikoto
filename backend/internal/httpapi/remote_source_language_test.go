@@ -29,9 +29,10 @@ func TestRemoteAcceptLanguageEndsWithSourceFallback(t *testing.T) {
 	}
 }
 
-// A viewer's live request asks in that viewer's language; requests whose
-// results are stored for everyone ask in the instance default languages.
-func TestRemoteSourceRequestsUseViewerOrInstanceLanguages(t *testing.T) {
+// A viewer's live request asks in that viewer's language first and the
+// source fallback last; a viewer without a preference, anonymous browsing and
+// requests whose results are stored for everyone ask in the fallback alone.
+func TestRemoteSourceRequestsUseViewerOrFallbackLanguages(t *testing.T) {
 	var mu sync.Mutex
 	seen := []string{}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -46,10 +47,16 @@ func TestRemoteSourceRequestsUseViewerOrInstanceLanguages(t *testing.T) {
 	userID := metadataReviewExec(t, server.db, "INSERT INTO user_account (username, display_name, role) VALUES ('synthetic-remote-viewer', 'Example viewer', 'user')")
 	metadataReviewExec(t, server.db, `INSERT INTO user_preference (user_id, metadata_languages) VALUES (?, '["zh-cn","origin"]')`, userID)
 	viewerCtx := context.WithValue(context.Background(), currentUserKey, currentUser{ID: userID, Role: "user"})
+	plainUserID := metadataReviewExec(t, server.db, "INSERT INTO user_account (username, display_name, role) VALUES ('synthetic-remote-plain', 'Example plain viewer', 'user')")
+	plainCtx := context.WithValue(context.Background(), currentUserKey, currentUser{ID: plainUserID, Role: "user"})
 	source, err := server.loadRemoteSourceForUse(context.Background(), 7)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A non-default fallback shows that requests without a preference send
+	// the fallback alone rather than a Japanese original language.
+	custom := source
+	custom.Config.RequestLanguage = "en-US"
 
 	clients := []struct {
 		name   string
@@ -60,6 +67,11 @@ func TestRemoteSourceRequestsUseViewerOrInstanceLanguages(t *testing.T) {
 		{"anonymous browse", server.kikoeruClientForSource(context.Background(), source), "ja-JP"},
 		{"crawl", server.kikoeruCrawlClientForSource(viewerCtx, source), "ja-JP"},
 		{"metadata fallback", server.remoteMetadataClient(viewerCtx, source), "ja-JP"},
+		{"viewer browse, custom fallback", server.kikoeruClientForSource(viewerCtx, custom), "zh-CN, en-US;q=0.9"},
+		{"viewer without preference, custom fallback", server.kikoeruClientForSource(plainCtx, custom), "en-US"},
+		{"anonymous browse, custom fallback", server.kikoeruClientForSource(context.Background(), custom), "en-US"},
+		{"crawl, custom fallback", server.kikoeruCrawlClientForSource(viewerCtx, custom), "en-US"},
+		{"metadata fallback, custom fallback", server.remoteMetadataClient(viewerCtx, custom), "en-US"},
 	}
 	for _, check := range clients {
 		mu.Lock()

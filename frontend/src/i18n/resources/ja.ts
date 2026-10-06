@@ -276,7 +276,7 @@ const adminToolsJapanese = {
       "DLsite に記録がない作品で、メタデータ同期のリモート補完がこのソースを使えるようにします。",
     fallbackLanguage: "フォールバック言語",
     fallbackLanguageDescription:
-      "リクエストは閲覧者が優先するメタデータ言語を先に、この言語を最後に指定します。優先言語のないソース向けです。",
+      "リクエストは閲覧者が優先するメタデータ言語を先に、この言語を最後に指定します。原語で表示する閲覧者、匿名の訪問者、バックグラウンド処理はこの言語だけを指定します。",
     customLanguage: "カスタム（{{language}}）",
     connection: "接続の詳細",
     connectionDescription: "API URL、公開サイト、作品リンク",
@@ -657,7 +657,6 @@ export const japaneseResource = {
         metadataLanguage: "優先表示するメタデータ言語",
         metadataLanguageSaveFailed: "メタデータ言語を保存できませんでした。",
         metadataLanguageLoadFailed: "メタデータ言語を読み込めませんでした。",
-        metadataLanguageDefault: "サーバーの既定（{{language}}）",
       },
       account: {
         account: "アカウント",

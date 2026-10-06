@@ -3,33 +3,13 @@ package metadatatags
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"errors"
 	"strings"
 )
 
-// PreferredLanguages is the stored instance policy, also used when a shared
-// concept is created outside a syncer's explicitly selected request profile.
-func PreferredLanguages(ctx context.Context, q Querier) ([]string, error) {
-	var raw string
-	err := q.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key='dlsite_metadata_languages'").Scan(&raw)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-	var values []string
-	if err == nil && json.Unmarshal([]byte(raw), &values) == nil {
-		return values, nil
-	}
-	err = q.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key='dlsite_metadata_language'").Scan(&raw)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-	var value string
-	if err == nil && json.Unmarshal([]byte(raw), &value) == nil {
-		return []string{value}, nil
-	}
-	return []string{"origin"}, nil
-}
+// StoredLanguages is the priority of every stored display name. Stored and
+// shared metadata always use the original language; a viewer's own language
+// is applied when a request presents tags.
+var StoredLanguages = []string{"origin"}
 
 // EqualFold matches Unicode case variants; names are definitions, not substring
 // search keys. Creation and reuse happen inside the caller's write transaction.

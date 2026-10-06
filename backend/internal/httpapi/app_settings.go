@@ -12,7 +12,6 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/library"
-	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/proxyconfig"
 )
 
@@ -23,20 +22,18 @@ type appSettingsResponse struct {
 	LocalScanDepth         int  `json:"localScanDepth"`
 	// LocalScanDepthMinimum is the shallowest depth that still reaches every
 	// Fetch folder; scans use at least this depth.
-	LocalScanDepthMinimum     int      `json:"localScanDepthMinimum"`
-	CacheEnabled              bool     `json:"cacheEnabled"`
-	CacheLimitGB              int      `json:"cacheLimitGb"`
-	TranscodeCacheLimitGB     int      `json:"transcodeCacheLimitGb"`
-	RemoteDownloadLimitGB     int      `json:"remoteDownloadLimitGb"`
-	FetchStagingRetentionDays int      `json:"fetchStagingRetentionDays"`
-	RemoteSaveTemplate        string   `json:"remoteSaveTemplate"`
-	RemoteDelayBase           float64  `json:"remoteDelayBaseSeconds"`
-	RemoteDelayRandom         float64  `json:"remoteDelayRandomSeconds"`
-	RemoteBackoff             float64  `json:"remoteBackoffSeconds"`
-	RemoteMaxBackoff          float64  `json:"remoteMaxBackoffSeconds"`
-	CatalogFreshnessDays      int      `json:"catalogFreshnessDays"`
-	DLsiteMetadataLanguage    string   `json:"dlsiteMetadataLanguage"`
-	DLsiteMetadataLanguages   []string `json:"dlsiteMetadataLanguages"`
+	LocalScanDepthMinimum     int     `json:"localScanDepthMinimum"`
+	CacheEnabled              bool    `json:"cacheEnabled"`
+	CacheLimitGB              int     `json:"cacheLimitGb"`
+	TranscodeCacheLimitGB     int     `json:"transcodeCacheLimitGb"`
+	RemoteDownloadLimitGB     int     `json:"remoteDownloadLimitGb"`
+	FetchStagingRetentionDays int     `json:"fetchStagingRetentionDays"`
+	RemoteSaveTemplate        string  `json:"remoteSaveTemplate"`
+	RemoteDelayBase           float64 `json:"remoteDelayBaseSeconds"`
+	RemoteDelayRandom         float64 `json:"remoteDelayRandomSeconds"`
+	RemoteBackoff             float64 `json:"remoteBackoffSeconds"`
+	RemoteMaxBackoff          float64 `json:"remoteMaxBackoffSeconds"`
+	CatalogFreshnessDays      int     `json:"catalogFreshnessDays"`
 	// RemoteMetadataFallback is the opt-in remote source lookup for works
 	// DLsite reports as not found, with its ordered source list.
 	RemoteMetadataFallback remoteMetadataFallbackSettings `json:"remoteMetadataFallback"`
@@ -75,8 +72,6 @@ type settingsUpdatePayload struct {
 	RemoteBackoff                 *float64                        `json:"remoteBackoffSeconds"`
 	RemoteMaxBackoff              *float64                        `json:"remoteMaxBackoffSeconds"`
 	CatalogFreshnessDays          *int                            `json:"catalogFreshnessDays"`
-	DLsiteMetadataLanguage        *string                         `json:"dlsiteMetadataLanguage"`
-	DLsiteMetadataLanguages       *[]string                       `json:"dlsiteMetadataLanguages"`
 	RemoteMetadataFallback        *remoteMetadataFallbackSettings `json:"remoteMetadataFallback"`
 	Proxy                         *proxySettingsPayload           `json:"proxy"`
 	KikoeruImportPrivateAddresses *bool                           `json:"kikoeruImportPrivateAddresses"`
@@ -186,14 +181,6 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if payload.LocalScanDepth != nil || payload.RemoteSaveTemplate != nil {
 		s.notifyFilesystemTriggerConfigChanged()
-	}
-	if payload.DLsiteMetadataLanguages != nil || payload.DLsiteMetadataLanguage != nil {
-		if err := metasync.ProjectDLsiteMetadata(r.Context(), s.db, s.instanceMetadataLanguages(r.Context())); err != nil {
-			writeError(w, err)
-			return
-		}
-		// A newly preferred language may need genre names.
-		s.queueGenreNameLearning(r.Context(), "language_priority")
 	}
 	if payload.TranscodeCacheLimitGB != nil {
 		if _, err := s.enforceTranscodeCacheLimit(r.Context(), 0); err != nil {
@@ -307,19 +294,6 @@ func applyGeneralSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePay
 }
 
 func applyMetadataSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePayload) error {
-	if payload.DLsiteMetadataLanguages != nil || payload.DLsiteMetadataLanguage != nil {
-		languages, err := requestedDLsiteMetadataLanguages(payload)
-		if err != nil {
-			return err
-		}
-		if err := upsertSetting(r, tx, dlsiteMetadataLanguagesSetting, languages); err != nil {
-			return err
-		}
-		// Keep the legacy scalar in sync so older clients and deployments can still read the preference.
-		if err := upsertSetting(r, tx, dlsiteMetadataLanguageSetting, languages[0]); err != nil {
-			return err
-		}
-	}
 	if payload.DirectoryRoutingRules != nil {
 		rules := normalizeDirectoryRoutingRules(*payload.DirectoryRoutingRules)
 		if len(rules) > 20 {
@@ -330,21 +304,6 @@ func applyMetadataSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePa
 		}
 	}
 	return nil
-}
-
-func requestedDLsiteMetadataLanguages(payload settingsUpdatePayload) ([]string, error) {
-	if payload.DLsiteMetadataLanguages != nil {
-		languages, err := validateDLsiteMetadataLanguages(*payload.DLsiteMetadataLanguages)
-		if err != nil {
-			return nil, invalidSettings(err.Error())
-		}
-		return languages, nil
-	}
-	language := normalizeDLsiteLanguage(*payload.DLsiteMetadataLanguage)
-	if language == "" {
-		return nil, invalidSettings("unsupported dlsiteMetadataLanguage")
-	}
-	return completeDLsiteMetadataLanguages([]string{language}), nil
 }
 
 func applyRecommendationSettings(
@@ -397,7 +356,6 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 	if err != nil {
 		return appSettingsResponse{}, err
 	}
-	metadataLanguages := s.instanceMetadataLanguages(r.Context())
 	minimumScanDepth, err := s.requiredLocalScanDepth(r.Context())
 	if err != nil {
 		return appSettingsResponse{}, err
@@ -425,8 +383,6 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		RemoteBackoff:                 s.settingFloat(r, "remote_rate_limit_backoff_seconds", 30),
 		RemoteMaxBackoff:              s.settingFloat(r, "remote_max_backoff_seconds", 300),
 		CatalogFreshnessDays:          s.catalogFreshnessDays(r.Context()),
-		DLsiteMetadataLanguage:        metadataLanguages[0],
-		DLsiteMetadataLanguages:       metadataLanguages,
 		RemoteMetadataFallback:        remoteMetadataFallback,
 		Proxy:                         s.proxySettingsResponse(proxyConfig),
 		KikoeruImportPrivateAddresses: s.settingBool(r, kikoeruImportPrivateAddressesSetting, false),
@@ -559,39 +515,22 @@ func parseDLsiteMetadataLanguages(values []string) ([]string, bool) {
 
 func validateDLsiteMetadataLanguages(values []string) ([]string, error) {
 	if len(values) == 0 {
-		return nil, fmt.Errorf("dlsiteMetadataLanguages must contain at least one language")
+		return nil, fmt.Errorf("metadataLanguages must contain at least one language")
 	}
 	if len(values) > maxDLsiteMetadataLanguages {
-		return nil, fmt.Errorf("dlsiteMetadataLanguages must contain at most %d languages", maxDLsiteMetadataLanguages)
+		return nil, fmt.Errorf("metadataLanguages must contain at most %d languages", maxDLsiteMetadataLanguages)
 	}
 	normalized, ok := parseDLsiteMetadataLanguages(values)
 	if !ok {
-		return nil, fmt.Errorf("unsupported dlsiteMetadataLanguages")
+		return nil, fmt.Errorf("unsupported metadataLanguages")
 	}
 	return completeDLsiteMetadataLanguages(normalized), nil
 }
 
-func (s *Server) instanceMetadataLanguages(ctx context.Context) []string {
-	if s.db == nil {
-		return append([]string(nil), defaultDLsiteMetadataLanguages...)
-	}
-	var raw string
-	if err := s.db.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key = ?", dlsiteMetadataLanguagesSetting).Scan(&raw); err == nil {
-		var values []string
-		if json.Unmarshal([]byte(raw), &values) == nil {
-			if normalized, ok := parseDLsiteMetadataLanguages(values); ok {
-				return completeDLsiteMetadataLanguages(normalized)
-			}
-		}
-	}
-	var legacyRaw string
-	if err := s.db.QueryRowContext(ctx, "SELECT value_json FROM app_setting WHERE key = ?", dlsiteMetadataLanguageSetting).Scan(&legacyRaw); err == nil {
-		var legacy string
-		if json.Unmarshal([]byte(legacyRaw), &legacy) == nil {
-			if normalized := normalizeDLsiteLanguage(legacy); normalized != "" {
-				return completeDLsiteMetadataLanguages([]string{normalized})
-			}
-		}
-	}
+// instanceMetadataLanguages is the language of everything stored or shared:
+// projected work titles and tag display names, background syncs, catalog
+// snapshots, remote metadata fallback and Activity text. It is always the
+// original language; a personal choice only changes what that user sees.
+func (s *Server) instanceMetadataLanguages(context.Context) []string {
 	return append([]string(nil), defaultDLsiteMetadataLanguages...)
 }
