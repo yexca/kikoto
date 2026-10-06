@@ -726,8 +726,7 @@ export const koreanResource = {
         updateAvailable: "업데이트 사용 가능: {{version}}",
         sourceCode: "소스 코드",
         releaseNotes: "릴리스 노트",
-        intro:
-          "Kikoto는 DLsite 스타일 작품, 통합 메타데이터, 호환 원격 소스와 브라우저 재생에 초점을 둔 로컬 우선 개인 오디오 라이브러리입니다.",
+        intro: "감상에 집중한 나만의 오디오 라이브러리.",
         builtWithAi: "AI로 개발",
         aiCredit: "이 소프트웨어는 yexca가 AI Agent의 도움을 받아 개발합니다.",
         modelHistoryTitle: "사용한 AI 모델",
