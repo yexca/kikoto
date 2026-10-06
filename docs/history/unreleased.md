@@ -1,5 +1,11 @@
 # Unreleased
 
+- Text previews and lyrics decode GBK and GB18030 files, which previously
+  appeared as Latin mojibake. A file that mixes UTF-8 lines with one legacy
+  encoding, or carries a few corrupt bytes, keeps its detected Japanese or
+  Chinese text instead of falling back to a single-byte charset, and a
+  single-byte charset declared by a remote source no longer overrides a
+  confident Japanese, Chinese, or Korean detection.
 - Metadata settings are reorganized. **Default metadata language** and
   **Catalog freshness days** move to a new **Metadata** tab under Settings
   administration, and **Remote metadata fallback** moves to **Configure**
