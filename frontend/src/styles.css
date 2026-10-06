@@ -1053,6 +1053,16 @@
     animation-delay: -0.2s;
   }
 
+  /* The About page's record peeking out of the cover sleeve. The vinyl stays
+     dark in both modes like the artwork; only its label follows the palette. */
+  .about-record {
+    background:
+      radial-gradient(circle, hsl(var(--background)) 0 3%, transparent 3.5%),
+      radial-gradient(circle, hsl(var(--primary)) 0 30%, transparent 30.5%),
+      repeating-radial-gradient(circle, hsl(24 8% 11%) 0 1.5px, hsl(24 6% 17%) 1.5px 3px);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 0.06);
+  }
+
   @keyframes player-now-playing-bar {
     from {
       transform: scaleY(0.35);

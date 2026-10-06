@@ -424,6 +424,7 @@ export const englishResource = {
         technologies: "Core technologies",
         license: "License",
         copyright: "Copyright (C) 2026 yexca.",
+        usageNotice: "Kikoto does not provide any service. It is intended only for managing audio works you have purchased yourself.",
         licenseText:
           "Kikoto is free software licensed under <license>GNU AGPL v3</license>. It is provided without warranty; the complete corresponding source is available in the project repository.",
         groups: {
