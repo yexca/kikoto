@@ -20,6 +20,10 @@ import (
 
 var detectionSlots = make(chan struct{}, 2)
 
+// confidentDetection is the chardet confidence at which a multibyte result is
+// trusted over a single-byte charset that would also accept the bytes.
+const confidentDetection = 50
+
 var (
 	utf8BOM    = []byte{0xef, 0xbb, 0xbf}
 	utf16BEBOM = []byte{0xfe, 0xff}
@@ -54,9 +58,16 @@ func Decode(ctx context.Context, content []byte, contentType string) (string, er
 	if utf8.Valid(content) {
 		return string(content), nil
 	}
+	// A single-byte charset maps every byte to some character, so a declared one
+	// (a common server default) is only a hint: a confident multibyte detection
+	// that decodes cleanly takes precedence over it.
+	declaredText, hasDeclaredText := "", false
 	if declared != "" {
 		if decoded, ok := decodeCharset(content, declared); ok && !strings.ContainsRune(decoded, utf8.RuneError) {
-			return decoded, nil
+			if !isSingleByteCharset(declared) {
+				return decoded, nil
+			}
+			declaredText, hasDeclaredText = decoded, true
 		}
 	}
 
@@ -82,12 +93,41 @@ func Decode(ctx context.Context, content []byte, contentType string) (string, er
 			}
 			return strings.ToLower(results[i].Charset) < strings.ToLower(results[j].Charset)
 		})
+		// Confident multibyte candidates that failed a strict decode, in
+		// confidence order. They usually mean a file mixes UTF-8 with one legacy
+		// encoding or carries a few corrupt bytes.
+		var lenient []string
 		for _, result := range results {
+			singleByte := isSingleByteCharset(result.Charset)
+			if singleByte && (len(lenient) > 0 || hasDeclaredText) {
+				continue
+			}
+			if hasDeclaredText && result.Confidence < confidentDetection {
+				continue
+			}
 			decoded, ok := decodeCharset(content, result.Charset)
-			if ok && !strings.ContainsRune(decoded, utf8.RuneError) {
+			if !ok {
+				continue
+			}
+			if !strings.ContainsRune(decoded, utf8.RuneError) {
+				return decoded, nil
+			}
+			if !singleByte && result.Confidence >= confidentDetection {
+				lenient = append(lenient, result.Charset)
+			}
+		}
+		for _, charset := range lenient {
+			if decoded, replaced := decodeMixedLines(content, charset); replaced == 0 {
 				return decoded, nil
 			}
 		}
+		if len(lenient) > 0 {
+			decoded, _ := decodeMixedLines(content, lenient[0])
+			return decoded, nil
+		}
+	}
+	if hasDeclaredText {
+		return declaredText, nil
 	}
 
 	if decoded, ok := decodeBytes(content, japanese.ShiftJIS); ok && !strings.ContainsRune(decoded, utf8.RuneError) {
@@ -145,14 +185,48 @@ func decodeCharset(content []byte, charset string) (string, bool) {
 		// superset of GBK and GB2312, so it decodes all three.
 		return decodeBytes(content, simplifiedchinese.GB18030)
 	}
+	charsetEncoding, ok := lookupCharset(charset)
+	if !ok {
+		return "", false
+	}
+	return decodeBytes(content, charsetEncoding)
+}
+
+func lookupCharset(charset string) (encoding.Encoding, bool) {
 	charsetEncoding, err := ianaindex.IANA.Encoding(charset)
 	if err != nil || charsetEncoding == nil {
 		charsetEncoding, err = ianaindex.MIME.Encoding(charset)
 	}
-	if err != nil || charsetEncoding == nil {
-		return "", false
+	return charsetEncoding, err == nil && charsetEncoding != nil
+}
+
+func isSingleByteCharset(charset string) bool {
+	charsetEncoding, ok := lookupCharset(charset)
+	if !ok {
+		return false
 	}
-	return decodeBytes(content, charsetEncoding)
+	_, singleByte := charsetEncoding.(*charmap.Charmap)
+	return singleByte
+}
+
+// decodeMixedLines keeps lines that are already valid UTF-8 and decodes the
+// rest with charset, returning the text and its count of replacement runes.
+func decodeMixedLines(content []byte, charset string) (string, int) {
+	var decoded strings.Builder
+	decoded.Grow(len(content) * 3 / 2)
+	for line := range bytes.SplitAfterSeq(content, []byte{'\n'}) {
+		if utf8.Valid(line) {
+			decoded.Write(line)
+			continue
+		}
+		text, ok := decodeCharset(line, charset)
+		if !ok {
+			text = strings.ToValidUTF8(string(line), string(utf8.RuneError))
+		}
+		decoded.WriteString(text)
+	}
+	text := decoded.String()
+	return text, strings.Count(text, string(utf8.RuneError))
 }
 
 func decodeBytes(content []byte, charset encoding.Encoding) (string, bool) {
