@@ -36,6 +36,12 @@ export const surfaceEnglish = {
       "Overrides provider titles in every language. Per-language manual titles take precedence; the edition and description stay the same.",
     coverHint: "The image is copied, so the cover stays even if the file later moves.",
     currentCover: "Current cover",
+    dlsiteCover: "DLsite cover",
+    sourceCover: "{{source}} cover",
+    originalCover: "Original cover",
+    coverNotDownloaded: "Not downloaded",
+    manualCover: "Manual cover",
+    coverRevertHint: "Saving removes the manual cover, so the original cover shows again.",
     searchCircles: "Search circles or type a name",
     searchSeries: "Search series or type a name",
     seriesCircleId: "Circle ID",
@@ -73,7 +79,7 @@ export const surfaceEnglish = {
     },
     descriptions: {
       title: "Edit a title for each display language. Your manual titles survive metadata refreshes.",
-      cover: "Choose one of this work's local images as its cover.",
+      cover: "Choose this work's original cover or one of its local images.",
       tags: "Add or remove tags for this work, and edit each tag's name by language. Tag names are shared, so a renamed tag changes on every work that has it.",
       credits:
         "Pick a suggestion to link an existing circle, series, or voice actor. Edited credits stay fixed when metadata refreshes.",

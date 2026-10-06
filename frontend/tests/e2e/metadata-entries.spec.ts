@@ -32,11 +32,11 @@ async function metadataWorkEditor(page: Page) {
     route.fulfill({ json: workDetailFixture({ ...work, title: "Synthetic metadata work" }, { manualOverrides: {} }) }),
   );
   await page.route("**/api/works/1/cover-candidates", (route) =>
-    route.fulfill({ json: { candidates: [] } satisfies ApiResponse<"listWorkCoverCandidates"> }),
+    route.fulfill({ json: { candidates: [], providerCoverUrl: "" } satisfies ApiResponse<"listWorkCoverCandidates"> }),
   );
 }
 
-test("language title rows use source placeholders and stage reverts beside other drafts", async ({ page }) => {
+test("language title rows prefill current titles and stage reverts beside other drafts", async ({ page }) => {
   await metadataWorkEditor(page);
   const detail = workDetailFixture(work, {
     manualOverrides: { titles: { "ja-jp": "Example Japanese" } },
@@ -91,15 +91,14 @@ test("language title rows use source placeholders and stage reverts beside other
   await advanced.focus();
   await advanced.press("Enter");
   await expect(advanced).toHaveAttribute("aria-expanded", "true");
-  await expect(universalTitle).toHaveValue("");
-  await expect(universalTitle).toHaveAttribute("placeholder", "Example original");
+  await expect(universalTitle).toHaveValue("Example original");
   await expect(universalTitle).toHaveAccessibleDescription(
     "Overrides provider titles in every language. Per-language manual titles take precedence; the edition and description stay the same.",
   );
   await expect(
     dialog.getByRole("group", { name: "Universal title" }).getByText("Current source: Original title", { exact: true }),
   ).toBeVisible();
-  await expect(chinese).toHaveAttribute("placeholder", "Example Chinese");
+  await expect(chinese).toHaveValue("Example Chinese");
   await expect(
     dialog
       .getByRole("group", { name: "Simplified Chinese" })
@@ -152,9 +151,7 @@ test("@desktop per-language title fields each occupy a full-width row", async ({
   }
 });
 
-test("own titles are editable while inherited titles stay hints and clearing matches visible changes", async ({
-  page,
-}) => {
+test("inherited titles prefill without becoming overrides and clearing matches visible changes", async ({ page }) => {
   await metadataWorkEditor(page);
   const detail = workDetailFixture(work, {
     manualOverrides: { title: "Example universal", titles: { "ja-jp": "Example Japanese" } },
@@ -192,13 +189,15 @@ test("own titles are editable while inherited titles stay hints and clearing mat
   const universalTitle = dialog.getByRole("textbox", { name: "Universal title", exact: true });
   await expect(universalTitle).toBeVisible();
   await expect(universalTitle).toHaveValue("Example universal");
-  await expect(englishTitle).toHaveValue("");
-  await expect(englishTitle).toHaveAttribute("placeholder", "Example universal");
+  await expect(englishTitle).toHaveValue("Example universal");
   await expect(english.getByText("Current source: Manual title (all languages)", { exact: true })).toBeVisible();
   await expect(english.getByRole("button", { name: /Revert/ })).toHaveCount(0);
   await englishTitle.fill("Example temporary inherited edit");
   await expect(save).toBeEnabled();
+  await englishTitle.fill("Example universal");
+  await expect(save).toBeDisabled();
   await englishTitle.clear();
+  await expect(englishTitle).toHaveAttribute("placeholder", "Example universal");
   await expect(save).toBeDisabled();
   await expect(dialog.getByText("No unsaved changes", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -247,6 +246,7 @@ test("@desktop cover-only metadata saves do not freeze any displayed scalar fiel
             selected: false,
           },
         ],
+        providerCoverUrl: "",
       } satisfies ApiResponse<"listWorkCoverCandidates">,
     }),
   );
@@ -269,6 +269,59 @@ test("@desktop cover-only metadata saves do not freeze any displayed scalar fiel
   await expect(dialog).toHaveCount(0);
   expect(cover).toEqual({ locationId: 7 });
   expect(scalarWrites).toEqual([]);
+});
+
+test("@desktop the original DLsite cover is a choice beside local images", async ({ page }) => {
+  await metadataWorkEditor(page);
+  const detail = workDetailFixture(work, {
+    manualOverrides: {
+      cover: { assetPath: "covers/1.png", originalPath: `${work.primaryCode}/cover.png`, url: "/synthetic-cover.png" },
+    },
+  });
+  await page.route("**/api/works/1?includeMedia=false", (route) => route.fulfill({ json: detail }));
+  await page.route("**/api/works/1/cover-candidates", (route) =>
+    route.fulfill({
+      json: {
+        candidates: [
+          {
+            locationId: 7,
+            fileName: "cover.png",
+            path: `${work.primaryCode}/cover.png`,
+            previewUrl: "/synthetic-cover.png",
+            sizeBytes: 128,
+            selected: true,
+          },
+        ],
+        providerCoverUrl: "/synthetic-provider-cover.jpg",
+      } satisfies ApiResponse<"listWorkCoverCandidates">,
+    }),
+  );
+  const requests: string[] = [];
+  await page.route("**/api/works/1/manual-overrides/cover", (route) => {
+    requests.push(`${route.request().method()} cover`);
+    return route.fulfill({ json: { ok: true, deleted: 1 } });
+  });
+  await page.route("**/api/works/1/cover-override", (route) => {
+    requests.push("set cover");
+    return route.fulfill({ json: {} });
+  });
+  await page.goto("/metadata");
+  await page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("tab", { name: "Cover" }).click();
+  const original = dialog.getByRole("button", { name: /^DLsite cover/ });
+  const local = dialog.getByRole("button", { name: /cover\.png/ });
+  await expect(original).toHaveAttribute("aria-pressed", "false");
+  await expect(local).toHaveAttribute("aria-pressed", "true");
+  await original.click();
+  await expect(original).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog.getByRole("group", { name: "Cover" }).getByText("Reverts on save")).toBeVisible();
+  await local.click();
+  await expect(dialog.getByText("No unsaved changes", { exact: true })).toBeVisible();
+  await original.click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(requests).toEqual(["DELETE cover"]);
 });
 
 test("@desktop override reverts and a metadata link wait for Save", async ({ page }) => {

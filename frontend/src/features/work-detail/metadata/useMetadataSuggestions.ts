@@ -62,6 +62,7 @@ export function useDebouncedSuggestion<T>(
 
 export function useWorkCoverCandidates(workId: number, toast: ReturnType<typeof useToast>) {
   const [coverCandidates, setCoverCandidates] = useState<WorkCoverCandidate[]>([]);
+  const [providerCoverUrl, setProviderCoverUrl] = useState("");
   const [selectedCoverId, setSelectedCoverId] = useState<number | null>(null);
   const [initialCoverId, setInitialCoverId] = useState<number | null>(null);
   const [loadingCovers, setLoadingCovers] = useState(false);
@@ -74,6 +75,7 @@ export function useWorkCoverCandidates(workId: number, toast: ReturnType<typeof 
       .then((result) => {
         if (cancelled) return;
         setCoverCandidates(result.candidates);
+        setProviderCoverUrl(result.providerCoverUrl ?? "");
         const selected = result.candidates.find((candidate) => candidate.selected)?.locationId ?? null;
         setSelectedCoverId(selected);
         setInitialCoverId(selected);
@@ -89,5 +91,5 @@ export function useWorkCoverCandidates(workId: number, toast: ReturnType<typeof 
     };
   }, [toast, workId]);
 
-  return { coverCandidates, selectedCoverId, setSelectedCoverId, initialCoverId, loadingCovers };
+  return { coverCandidates, providerCoverUrl, selectedCoverId, setSelectedCoverId, initialCoverId, loadingCovers };
 }
