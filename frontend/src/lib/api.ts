@@ -2776,7 +2776,8 @@ export const api = {
   updateMediaProgress: (
     id: number,
     payload: { locationId: number; positionSeconds: number; durationSeconds: number | null; completed: boolean },
-  ) => patchJSONBody<MediaProgressUpdate>(`/api/media-items/${id}/progress`, payload),
+    signal?: AbortSignal,
+  ) => sendJSONBody<MediaProgressUpdate>("PATCH", `/api/media-items/${id}/progress`, payload, { signal }),
   listFileSources: () => getJSON<FileSource[]>("/api/file-sources"),
   getSettings: () => getJSON<AppSettings>("/api/settings"),
   updateAccessPolicy: (payload: AccessPolicy) => patchJSONBody<AccessPolicy>("/api/access-policy", payload),

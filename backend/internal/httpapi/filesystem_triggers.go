@@ -315,7 +315,7 @@ func (s *Server) loadFilesystemWatcherConfig(ctx context.Context) (filesystemWat
 			return filesystemWatcherConfig{}, err
 		}
 		roots = append(roots, unregistered...)
-		sort.Slice(roots, func(i, j int) bool { return strings.ToLower(roots[i]) < strings.ToLower(roots[j]) })
+		sort.Strings(roots)
 	}
 	return filesystemWatcherConfig{ScanDepth: scanDepth, ExcludedRoots: roots}, nil
 }
@@ -341,7 +341,7 @@ func sameFilesystemWatcherConfig(left filesystemWatcherConfig, right filesystemW
 		return false
 	}
 	for index := range left.ExcludedRoots {
-		if !strings.EqualFold(left.ExcludedRoots[index], right.ExcludedRoots[index]) {
+		if left.ExcludedRoots[index] != right.ExcludedRoots[index] {
 			return false
 		}
 	}
@@ -425,9 +425,8 @@ func relativeFilesystemChangePaths(root string, paths []string) ([]string, error
 			return nil, errors.New("filesystem change path is outside the data root")
 		}
 		rel = filepath.ToSlash(rel)
-		key := strings.ToLower(rel)
-		if !seen[key] {
-			seen[key] = true
+		if !seen[rel] {
+			seen[rel] = true
 			result = append(result, rel)
 		}
 	}

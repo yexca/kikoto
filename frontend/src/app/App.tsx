@@ -530,7 +530,6 @@ function AuthenticatedApp() {
                 canView={navigationHasPermission}
                 onLogout={() => void auth.logout()}
                 onOpenLogin={() => setLoginOpen(true)}
-                onOpenPage={openPage}
                 onOpenPath={openPath}
                 onOpenCommandPalette={openCommandPalette}
                 onLocaleChange={updateLocale}

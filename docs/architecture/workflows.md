@@ -225,7 +225,7 @@ distributed request lock between separate application processes.
 The Workflows page lists every visible definition in one workflow list, grouped
 by a frontend-owned category keyed by workflow code: Basic (local scan, local
 files, metadata sync), Collect (popular collections), Follow (preset follow
-workflows), and Remote (Availability Watch and Fetch history). A code without a
+workflows), and Remote (Availability Watch and Fetch). A code without a
 category, such as a read-only run context, stays with Basic. Each entry shows
 its latest run's status and time and the enabled automation that starts it
 (Startup, schedule, or folder watch). The page reads each listed workflow's
@@ -269,8 +269,8 @@ Recent runs and list rows open full run details inside the same panel; returning
 to the list retains the global scope. There is no separate Activity page.
 Legacy `/activity` and `/runs` links redirect into Workflows; a linked run resolves
 its workflow before loading history, including a read-only context for workflows
-without a configurable definition. Account and notification entries open this
-same surface. Events, candidates, progress, retries, and cancellation remain
+without a configurable definition. The header notification panel and Quick
+actions open this same surface. Events, candidates, progress, retries, and cancellation remain
 available within the panel.
 
 The active list contains running and queued jobs; Needs attention contains
@@ -614,7 +614,13 @@ plan, and creates staging, backup, and quarantine entries under that pool.
 
 `remote_work_fetch` runs are named `Fetch <code>`, expose `workCode` in run
 records, match Activity search by code, and record the queuing workflow as
-their trigger reason. The Workflows page lists Fetch as a read-only tab.
+their trigger reason. The Workflows page's Fetch run form accepts one work code
+and an enabled compatible remote file source. Its Filter group excludes selected
+file extensions from the initial remote selection, with no exclusions by default;
+the same exclusions apply when choosing another language edition. Run opens the
+shared Fetch workspace to review files, destination, and conflicts before
+publication. Submission uses the existing source Fetch endpoints, permission
+checks, and idempotent request scope; Fetch has no automation triggers.
 
 ## Source Availability
 

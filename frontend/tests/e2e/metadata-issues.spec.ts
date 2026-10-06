@@ -233,7 +233,7 @@ test("@desktop personal metadata language refreshes the current list and preserv
   await selected.click();
   const audio = await page.locator("audio").first().elementHandle();
   expect(audio).not.toBeNull();
-  await page.getByRole("button", { name: "Open appearance settings" }).click();
+  await page.getByRole("button", { name: "User menu" }).click();
   const language = page.getByRole("combobox", { name: "Preferred metadata language" });
   // Without a preference each work shows its original language.
   await expect(language).toHaveText("Origin");

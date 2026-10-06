@@ -10,6 +10,8 @@ import type {
   MaintenanceWorkPage,
   RemoteCollectionRunResult,
   RemoteWorkTrackResult,
+  RemoteWorkSavePlan,
+  RemoteWorkSaveResult,
   WorkflowCandidate,
   WorkflowDefinition,
   WorkflowEvent,
@@ -30,6 +32,9 @@ import {
   fileSourceFixture,
   fixtureTimestamp,
   librarySourceFixture,
+  remoteTrackFixture,
+  remoteWorkDetailFixture,
+  remoteWorkTracksFixture,
   runtimeSettingsFixture,
   workflowRunDetailFixture,
   workflowRunFixture,
@@ -736,6 +741,247 @@ async function openWorkflow(page: Page, name: string) {
   await workflowList(page).getByRole("button", { name, exact: true }).click();
   await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
 }
+
+async function mockFetchRunOptions(page: Page) {
+  await mockWorkflows(page);
+  await page.route("**/api/workflow-definitions", (route) =>
+    route.fulfill({
+      json: [
+        ...systemDefinitions,
+        workflowDefinitionFixture({
+          id: 9,
+          code: "remote_work_fetch",
+          displayName: "Fetch remote work",
+          description: "Review and fetch selected files.",
+        }),
+      ],
+    }),
+  );
+  await page.route("**/api/library-sources", (route) =>
+    route.fulfill({
+      json: [
+        librarySourceFixture({ id: 8 }),
+        librarySourceFixture({ id: 9, code: "example_remote_b", displayName: "Example Remote B" }),
+        librarySourceFixture({ id: 10, enabled: false, displayName: "Example Disabled" }),
+        librarySourceFixture({ id: 11, sourceType: "local", displayName: "Example Local" }),
+      ],
+    }),
+  );
+  const plans: { code: string; paths: string[] }[] = [];
+  const submissions: Record<string, unknown>[] = [];
+  const detail = (code: string) =>
+    remoteWorkDetailFixture({
+      sourceId: 9,
+      sourceCode: "example_remote_b",
+      sourceName: "Example Remote B",
+      primaryCode: code,
+      remoteCode: code,
+      tracks: ["track.mp3", "track.WAV", "cover.webp"].map((title) =>
+        remoteTrackFixture({
+          title,
+          hash: title,
+          downloadUrl: `https://source.example.invalid/${title}`,
+          sizeBytes: 12,
+        }),
+      ),
+    });
+  const plan = (code: string, paths: string[]): RemoteWorkSavePlan => ({
+    sourceId: 9,
+    primaryCode: code,
+    saveRoot: `example_remote_b/${code}`,
+    fetchRoot: { rootPath: "example_remote_b", status: "ready", conflict: false, message: "" },
+    localFiles: [],
+    items: paths.map((path) => ({
+      itemKey: `remote:${path}`,
+      path,
+      kind: "audio",
+      sizeBytes: 12,
+      sourceKind: "remote",
+      action: "cache_download",
+      status: "remote_only",
+      sourcePath: "",
+      localSourcePath: "",
+      cachePath: "",
+      targetPath: `example_remote_b/${code}/${path}`,
+      originalTargetPath: `example_remote_b/${code}/${path}`,
+      resolution: "auto",
+      remoteSourceId: 9,
+      remoteSourceCode: "example_remote_b",
+      remoteSourceName: "Example Remote B",
+      remotePath: path,
+      sourceOptions: [],
+      mediaItemId: 0,
+      localPaths: [],
+      targetExists: false,
+      targetConflict: false,
+      targetConflictReason: "",
+      targetSizeBytes: null,
+    })),
+    summary: {
+      total: paths.length,
+      skipExisting: 0,
+      cacheHit: 0,
+      cacheDownload: paths.length,
+      promote: paths.length,
+      conflict: 0,
+    },
+    preparation: {
+      requestedCode: code,
+      canonicalCode: "RJ00000000",
+      metadataStatus: "complete",
+      warnings: [],
+      editions: ["RJ00000000", "RJ00000001"].map((primaryCode, index) => ({
+        workId: index + 1,
+        primaryCode,
+        title: "Example Work",
+        metadataLanguage: index ? "en-us" : "ja-jp",
+        editionLabel: "",
+        translationKind: index ? "official" : "origin",
+        classificationSource: "metadata",
+        makerId: "",
+        originMakerId: "",
+        origin: index === 0,
+        localRoots: [],
+        sources: [],
+      })),
+    },
+  });
+  await page.route(/\/api\/remote-sources\/9\/works\/RJ0000000[01](?:\/.*)?$/, async (route) => {
+    const url = new URL(route.request().url());
+    const code = url.pathname.split("/")[5];
+    if (url.pathname.endsWith("/tracks")) {
+      await route.fulfill({ json: remoteWorkTracksFixture(detail(code)) });
+    } else if (url.pathname.endsWith("/fetch-plan")) {
+      const payload = route.request().postDataJSON() as { paths: string[] };
+      plans.push({ code, paths: payload.paths });
+      await route.fulfill({ json: plan(code, payload.paths) });
+    } else if (url.pathname.endsWith("/fetch")) {
+      const payload = route.request().postDataJSON() as Record<string, unknown> & { paths: string[] };
+      submissions.push(payload);
+      await route.fulfill({
+        status: 202,
+        json: {
+          runId: 92,
+          jobId: 93,
+          workId: 1,
+          primaryCode: code,
+          status: "queued",
+          saveRoot: `example_remote_b/${code}`,
+          savedFiles: 0,
+          skippedFiles: 0,
+          cachedFiles: 0,
+          promotedFiles: 0,
+          plan: plan(code, payload.paths).summary,
+          requestId: String(payload.requestId),
+          deduplicated: false,
+        } satisfies RemoteWorkSaveResult,
+      });
+    } else {
+      await route.fulfill({ json: detail(code) });
+    }
+  });
+  return { plans, submissions };
+}
+
+for (const suffix of ["", " @desktop"]) {
+  test(`Fetch run options apply source and extension filters through edition review and publication${suffix}`, async ({
+    page,
+  }) => {
+    const { plans, submissions } = await mockFetchRunOptions(page);
+    await page.goto("/workflows?workflow=remote_work_fetch");
+    const options = page.getByRole("region", { name: "Run options", exact: true });
+    const run = options.getByRole("button", { name: "Run", exact: true });
+    await expect(run).toBeDisabled();
+    await options.getByRole("textbox", { name: "Work code", exact: true }).fill(" rj00000000 ");
+    const source = options.getByRole("combobox", { name: "Remote source", exact: true });
+    await source.selectOption("9");
+    await expect(source.getByRole("option")).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Run at startup", exact: true })).toHaveCount(0);
+    await options.getByRole("checkbox", { name: "Exclude WAV", exact: true }).click();
+    await options.getByRole("textbox", { name: "Other extensions to exclude", exact: true }).fill(".WEBP");
+    await run.click();
+    const preview = page.getByRole("dialog", { name: "Fetch selection", exact: true });
+    await expect(preview).toBeVisible();
+    expect(plans[0]).toEqual({ code: "RJ00000000", paths: ["track.mp3"] });
+    expect(submissions).toHaveLength(0);
+    await expect(preview.getByRole("checkbox", { name: "Include WAV", exact: true })).not.toBeChecked();
+    await preview.getByRole("checkbox", { name: "Select RJ00000001", exact: true }).click();
+    await expect.poll(() => plans.at(-1)).toEqual({ code: "RJ00000001", paths: ["track.mp3"] });
+    await preview.getByRole("button", { name: "Publish Fetch", exact: true }).click();
+    await expect(preview).toHaveCount(0);
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]).toMatchObject({
+      paths: ["track.mp3"],
+      localPaths: [],
+      targetRoot: "example_remote_b/RJ00000001",
+    });
+    expect(submissions[0].requestId).toMatch(/^fetch:/);
+  });
+}
+
+test("Fetch run options retain defaults, retry source loading, and stop when filters exclude every file", async ({
+  page,
+}) => {
+  const { plans, submissions } = await mockFetchRunOptions(page);
+  await page.route("**/api/library-sources", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: "Sources unavailable", code: "unavailable", retryable: true } satisfies ApiErrorBody,
+    }),
+  );
+  await page.goto("/workflows?workflow=remote_work_fetch");
+  const options = page.getByRole("region", { name: "Run options", exact: true });
+  await expect(options.getByRole("alert")).toContainText("Remote sources could not be loaded.");
+  await options.getByRole("textbox", { name: "Work code", exact: true }).fill("RJ00000000");
+  await page.route("**/api/library-sources", (route) => route.fulfill({ json: [librarySourceFixture({ id: 9 })] }));
+  await options.getByRole("button", { name: "Retry", exact: true }).click();
+  const run = options.getByRole("button", { name: "Run", exact: true });
+  await expect(run).toBeEnabled();
+  for (const checkbox of await options.getByRole("checkbox").all()) await expect(checkbox).not.toBeChecked();
+  await run.click();
+  const preview = page.getByRole("dialog", { name: "Fetch selection", exact: true });
+  await expect(preview).toBeVisible();
+  expect(plans[0].paths).toEqual(["track.mp3", "track.WAV", "cover.webp"]);
+  await preview.getByRole("button", { name: "Close", exact: true }).click();
+  await options.getByRole("checkbox", { name: "Exclude WAV", exact: true }).click();
+  await options.getByRole("checkbox", { name: "Exclude MP3", exact: true }).click();
+  await options.getByRole("textbox", { name: "Other extensions to exclude", exact: true }).fill("webp");
+  await run.click();
+  await expect(options.getByRole("status")).toContainText("Fetch preview could not be opened.");
+  await expect(preview).toHaveCount(0);
+  expect(plans).toHaveLength(1);
+  expect(submissions).toHaveLength(0);
+});
+
+test("demo Fetch run options remain inspectable without preparing or publishing files", async ({ page }) => {
+  const { plans, submissions } = await mockFetchRunOptions(page);
+  await page.route("**/api/runtime-settings", (route) =>
+    route.fulfill({
+      json: runtimeSettingsFixture({ mode: "demo", demoMode: true, anonymousAccessEnabled: false }),
+    }),
+  );
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: authenticatedStateFixture({
+        username: "__demo__",
+        displayName: "Demo",
+        role: "user",
+        permissions: ["library:read", "playback:use"],
+        demoMode: true,
+      }),
+    }),
+  );
+  await page.goto("/workflows?workflow=remote_work_fetch");
+  const options = page.getByRole("region", { name: "Run options", exact: true });
+  await options.getByRole("textbox", { name: "Work code", exact: true }).fill("RJ00000000");
+  await options.getByRole("combobox", { name: "Remote source", exact: true }).selectOption("9");
+  await options.getByRole("checkbox", { name: "Exclude WAV", exact: true }).click();
+  await expect(options.getByRole("button", { name: "Run", exact: true })).toBeDisabled();
+  await expect(page.getByRole("dialog", { name: "Fetch selection", exact: true })).toHaveCount(0);
+  expect(plans).toHaveLength(0);
+  expect(submissions).toHaveLength(0);
+});
 
 test("definitions foreground runnable presets and show DLsite popular run options inline", async ({ page }) => {
   await mockWorkflows(page);
@@ -1622,11 +1868,11 @@ test("activity preserves its loading state until the scoped request completes", 
   await mockWorkflows(page);
   await page.route("**/api/workflow-runs?**", async (route) => {
     const params = new URL(route.request().url()).searchParams;
-    if (params.get("view") !== "attention") {
+    // The header notification summary reads the unscoped attention list.
+    if (params.get("view") !== "attention" || !params.get("workflowCode")) {
       await route.fallback();
       return;
     }
-    expect(params.get("workflowCode")).toBeTruthy();
     await gate;
     await route.fulfill({
       json: workflowRunsPageFixture([], {
@@ -1709,7 +1955,7 @@ test("remote popular shows an unavailable overlay without a compatible source", 
   await expect(page).toHaveURL(/\/settings\?tab=library#remote-sources$/);
 });
 
-test("mobile header orders actions and separates popovers from the quick-action sheet", async ({ page }) => {
+test("mobile header orders actions and keeps languages in the account panel", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockWorkflows(page);
   await page.goto("/workflows");
@@ -1741,27 +1987,15 @@ test("mobile header orders actions and separates popovers from the quick-action 
   const accountPopover = page.getByRole("dialog", { name: "Account" });
   await expect(accountPopover).toBeVisible();
   expect(await accountPopover.evaluate((element) => getComputedStyle(element).zIndex)).toBe("50");
-  await expect(accountPopover.getByRole("button", { name: "Activity", exact: true })).toBeVisible();
-  await expect(accountPopover.getByText("Appearance", { exact: true })).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await expect(accountPopover).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Open appearance settings" }).click();
-  const appearancePopover = page.getByRole("dialog", { name: "Appearance" });
-  await expect(appearancePopover).toBeVisible();
-  await expect(appearancePopover.getByText("UI language, mode, style, and color", { exact: true })).toBeVisible();
-  await expect(appearancePopover.getByRole("button", { name: "Activity", exact: true })).toHaveCount(0);
-
-  const modeGroup = appearancePopover.getByRole("group", { name: "Mode" });
-  const modeBox = await modeGroup.boundingBox();
-  expect(modeBox).not.toBeNull();
-  expect(modeBox!.x).toBeGreaterThanOrEqual(0);
-  expect(modeBox!.x + modeBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-
+  // Activity lives behind Notifications; the account panel holds personal entries and languages.
+  await expect(accountPopover.getByRole("button", { name: "Activity", exact: true })).toHaveCount(0);
+  await expect(accountPopover.getByRole("button", { name: /^Review/ })).toHaveCount(0);
+  await expect(accountPopover.getByRole("group", { name: "Mode" })).toHaveCount(0);
   await expect(
-    appearancePopover.getByText("Choose the language used by the Kikoto interface.", { exact: true }),
+    accountPopover.getByText("Choose the language used by the Kikoto interface.", { exact: true }),
   ).toHaveCount(0);
-  await appearancePopover.getByRole("combobox", { name: "UI language" }).click();
+
+  await accountPopover.getByRole("combobox", { name: "UI language" }).click();
   const languageListbox = page.getByRole("listbox");
   await expect(languageListbox.getByRole("option")).toHaveCount(6);
   const languageListboxBox = await languageListbox.boundingBox();
@@ -1770,21 +2004,34 @@ test("mobile header orders actions and separates popovers from the quick-action 
   expect(languageListboxBox!.x + languageListboxBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   expect(languageListboxBox!.y + languageListboxBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await languageListbox.getByRole("option", { name: "Auto", exact: true }).click();
-  await expect(appearancePopover).toBeVisible();
-  await expect(appearancePopover.getByRole("combobox", { name: "UI language" })).toHaveCSS("box-shadow", "none");
+  await expect(accountPopover).toBeVisible();
+  await expect(accountPopover.getByRole("combobox", { name: "UI language" })).toHaveCSS("box-shadow", "none");
 
-  const appearanceBox = await appearancePopover.boundingBox();
-  expect(appearanceBox).not.toBeNull();
-  await appearancePopover.getByRole("combobox", { name: "UI language" }).click();
-  await page.mouse.click(appearanceBox!.x + 12, appearanceBox!.y + 12);
+  await accountPopover.getByRole("combobox", { name: "UI language" }).click();
+  await accountPopover.getByText("@admin", { exact: true }).click();
   await expect(languageListbox).toBeHidden();
-  await expect(appearancePopover).toBeVisible();
+  await expect(accountPopover).toBeVisible();
 
-  await appearancePopover.getByRole("combobox", { name: "UI language" }).click();
+  await accountPopover.getByRole("combobox", { name: "UI language" }).click();
   await expect(languageListbox).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(languageListbox).toBeHidden();
+  await expect(accountPopover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(accountPopover).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open appearance settings" }).click();
+  const appearancePopover = page.getByRole("dialog", { name: "Appearance" });
   await expect(appearancePopover).toBeVisible();
+  await expect(appearancePopover.getByText("Mode, style, and color", { exact: true })).toBeVisible();
+  await expect(appearancePopover.getByRole("combobox", { name: "UI language" })).toHaveCount(0);
+  await expect(appearancePopover.getByRole("button", { name: "Activity", exact: true })).toHaveCount(0);
+
+  const modeGroup = appearancePopover.getByRole("group", { name: "Mode" });
+  const modeBox = await modeGroup.boundingBox();
+  expect(modeBox).not.toBeNull();
+  expect(modeBox!.x).toBeGreaterThanOrEqual(0);
+  expect(modeBox!.x + modeBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 
   await modeGroup.getByRole("combobox").click();
   await page.getByRole("listbox").getByRole("option", { name: "Dark", exact: true }).click();
@@ -1800,8 +2047,8 @@ test("mobile header orders actions and separates popovers from the quick-action 
   expect(colorGroupBox!.x + colorGroupBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   expect(colorGroupBox!.y + colorGroupBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Account menu" }).click();
-  await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Activity", exact: true }).click();
+  await page.getByRole("button", { name: "Notifications", exact: true }).click();
+  await page.getByRole("dialog", { name: "Notifications" }).getByRole("button", { name: "Open Activity" }).click();
   await expect(page).toHaveURL(/\/workflows\?activity=1/);
 });
 
@@ -1815,7 +2062,7 @@ test("opening an appearance floating select keeps fixed mobile surfaces stable",
   const footerBefore = await footer.boundingBox();
   expect(footerBefore).not.toBeNull();
 
-  await page.getByRole("dialog", { name: "Appearance" }).getByRole("combobox", { name: "UI language" }).click();
+  await page.getByRole("dialog", { name: "Appearance" }).getByRole("combobox", { name: "Mode" }).click();
   await expect(page.locator("body")).not.toHaveAttribute("data-scroll-locked");
 
   const footerAfter = await footer.boundingBox();
@@ -1831,7 +2078,7 @@ test("@desktop header popovers render above page content", async ({ page }) => {
 
   const appearanceButton = page.getByRole("button", { name: "Open appearance settings" });
   await appearanceButton.click();
-  await expect(page.getByText("UI language, mode, style, and color", { exact: true })).toBeVisible();
+  await expect(page.getByText("Mode, style, and color", { exact: true })).toBeVisible();
   const modeGroup = page.getByRole("group", { name: "Mode" });
   await expect(modeGroup).toBeVisible();
   const headerBox = await page.locator("header").filter({ has: appearanceButton }).boundingBox();
@@ -1990,7 +2237,6 @@ test("demo settings keeps account and workflows read-only while allowing appeara
     "Recommendations",
     "Tags",
     "Library",
-    "Metadata",
     "Cache & Fetch",
     "Proxy",
     "Cleanup",

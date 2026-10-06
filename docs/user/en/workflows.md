@@ -22,6 +22,12 @@ Workflows make backend actions inspectable.
 
 ## Current Behavior
 
+- **Fetch** has Run options for one work code and an enabled compatible remote
+  source. Under **Filter**, select the file extensions to exclude or enter
+  additional extensions separated by commas. Nothing is excluded by default.
+  **Run** opens the Fetch preview; review the files and destination before
+  **Publish Fetch** queues the run. The exclusions also apply when switching
+  language editions. Fetch runs manually and has no automation triggers.
 - Local scan records folder discovery and local source presence without waiting
   for a metadata provider. Metadata sync, source availability, remote sync,
   cache, fetch, cleanup, circle refresh, and bulk remote actions record separate
@@ -35,12 +41,14 @@ Workflows make backend actions inspectable.
 - Needs attention contains terminal runs with unresolved candidates that need a user
   decision. Routine partial or skipped outcomes remain in History and keep
   their warning status, summary, and events for inspection.
-- The header notification center combines Review items with completed or failed
-  Fetch results. Fetch notifications open the local work detail and can be
-  dismissed independently for the signed-in user.
+- The header notification center shows **Updates** (your completed or failed
+  workflow results, such as Fetch) and, for workflow operators, the runs that
+  **Need attention**, with the newest running job above both. Fetch
+  notifications open the local work detail and can be dismissed independently
+  for the signed-in user; **Open Activity** opens the full panel.
 - The workflow list groups every workflow by category: Basic (local scan, local
   files, and metadata sync), Collect (popular collections), Follow (the preset
-  follow workflows), and Remote (Availability Watch and Fetch history), each in
+  follow workflows), and Remote (Availability Watch and Fetch), each in
   a fixed order. Every entry shows its latest run's status and time, and small
   icons mark an enabled Startup trigger, schedule, or folder watcher. Wide
   layouts keep the list beside the selected workflow; **Hide tab names** below

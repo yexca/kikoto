@@ -3,13 +3,28 @@
 On mobile, the app header is a compact tool bar ordered as Quick actions,
 Notifications (when authenticated), Appearance, and account. Quick actions
 opens the searchable Command Palette in a bottom sheet; Notifications,
-Appearance, and account use anchored popovers. Appearance owns mode, style, and
-color choices, and for a signed-in user the personal preferred metadata
-language: **Origin** is shown when the user has no preference and choosing it
-clears the stored preference, and a saved change refreshes the routed page through the user preference event; the account surface owns Activity, account settings, native
-connection actions, and authentication actions. On desktop, Quick actions and
-the same command palette remain a centered surface while the header popovers
-stay anchored to their triggers.
+Appearance, and account use anchored popovers. Wider screens show Quick actions as a search field with its
+keyboard shortcut, group the native server connection, Notifications, and
+Appearance in one header tray, and end with the account avatar. On desktop the
+command palette remains a centered surface while the header popovers stay
+anchored to their triggers.
+
+Appearance owns only mode, style, and color choices.
+
+The account panel (`app/header/AccountPanel`) opens from the avatar, or from
+Sign in for anonymous visitors, on every screen size. It shows the profile, the
+personal Settings tabs as shortcuts, the UI language, Settings and Users, and
+sign-in or sign-out; on phones it also holds the native connection actions. A
+signed-in user also chooses the personal preferred metadata language there:
+**Origin** is shown when the user has no preference and choosing it clears the
+stored preference, and a saved change refreshes the routed page through the
+user preference event. The
+notification panel (`app/header/NotificationCenter`) splits personal workflow
+notifications (**Updates**) from the global **Needs attention** runs for
+workflow operators, shows the newest running job above both, and links into
+Activity. Its badge counts unread notifications plus runs needing attention,
+and a dot marks running work. It polls every 30 seconds, every 5 seconds while
+open over a running job, and skips hidden documents.
 
 `MobileSheet` is the shared bottom-sheet primitive. It animates in from the
 bottom and out toward the bottom, supports Escape and outside dismissal, and

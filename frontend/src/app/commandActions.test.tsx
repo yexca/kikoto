@@ -35,12 +35,7 @@ describe("commandActions", () => {
       onOpenPath: vi.fn(),
     });
 
-    expect(actions.map((action) => action.id)).toEqual([
-      "page:library",
-      "activity:running",
-      "activity:review",
-      "activity:failed",
-    ]);
+    expect(actions.map((action) => action.id)).toEqual(["page:library", "activity:open", "activity:history"]);
   });
 
   it("offers each personal Settings tab as its own destination to library readers", () => {

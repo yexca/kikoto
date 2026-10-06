@@ -1227,8 +1227,8 @@ test("@desktop appearance saves a personal metadata language for any signed-in u
     return route.fulfill({ status: 403, json: forbidden });
   });
   await page.goto("/settings?tab=playback");
-  await page.getByRole("button", { name: "Open appearance settings" }).click();
-  const groups = page.getByRole("group");
+  await page.getByRole("button", { name: "User menu" }).click();
+  const groups = page.getByRole("dialog", { name: "Account" }).getByRole("group");
   await expect(groups.nth(0)).toHaveAccessibleName("UI language");
   await expect(groups.nth(1)).toHaveAccessibleName("Preferred metadata language");
   const metadataLanguage = page.getByRole("combobox", { name: "Preferred metadata language" });
