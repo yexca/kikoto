@@ -141,6 +141,11 @@ test("@desktop per-language title fields each occupy a full-width row", async ({
   await page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
   const languages = ["Japanese", "Simplified Chinese", "Traditional Chinese", "English", "Korean"];
+  await expect(dialog.getByRole("textbox", { name: languages[0], exact: true })).toBeVisible();
+  // The dialog zooms in on open; measure only once that transform has settled.
+  await dialog.evaluate((element) =>
+    Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished)),
+  );
   const boxes = await Promise.all(
     languages.map((name) => dialog.getByRole("textbox", { name, exact: true }).boundingBox()),
   );
