@@ -33,20 +33,17 @@ export default defineConfig({
   },
   plugins: [react(), serviceWorkerBuildPlugin()],
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         // Framework libraries change far less often than app code, so a
         // separate chunk stays in the browser cache across releases. Only list
         // libraries the entry already loads; anything listed here loads eagerly.
-        manualChunks: {
-          vendor: [
-            "react",
-            "react/jsx-runtime",
-            "react-dom",
-            "react-dom/client",
-            "i18next",
-            "react-i18next",
-            "tailwind-merge",
+        codeSplitting: {
+          groups: [
+            {
+              name: "vendor",
+              test: /[\\/]node_modules[\\/](react|react-dom|scheduler|i18next|react-i18next|html-parse-stringify|void-elements|use-sync-external-store|tailwind-merge)[\\/]/,
+            },
           ],
         },
       },
