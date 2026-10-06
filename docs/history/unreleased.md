@@ -1,5 +1,8 @@
 # Unreleased
 
+- The expanded desktop sidebar is narrower, giving pages 40px more width at the
+  default font size, and its width now follows the browser's default font size
+  so navigation labels keep their room. The collapsed rail keeps its width.
 - Text previews and lyrics decode GBK and GB18030 files, which previously
   appeared as Latin mojibake. A file that mixes UTF-8 lines with one legacy
   encoding, or carries a few corrupt bytes, keeps its detected Japanese or
