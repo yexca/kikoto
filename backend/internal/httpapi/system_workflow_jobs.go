@@ -305,7 +305,7 @@ func (s *Server) persistLocalScanFolderBatch(ctx context.Context, fileSourceID i
 	}
 	defer func() { _ = tx.Rollback() }()
 	for _, folder := range folders {
-		seenRoots[strings.ToLower(normalizeFolderRootPath(folder.RelPath))] = true
+		seenRoots[normalizeFolderRootPath(folder.RelPath)] = true
 		if _, err := s.persistLocalScanFolder(ctx, tx, fileSourceID, folder, state); err != nil {
 			return err
 		}

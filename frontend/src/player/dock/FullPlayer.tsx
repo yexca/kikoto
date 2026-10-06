@@ -228,7 +228,7 @@ export function FullPlayer({
         className="relative z-10 flex h-full flex-col pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] pt-[var(--safe-area-top)] lg:px-0 lg:pt-0"
         style={{ touchAction: sidePanelOpen ? undefined : "pan-x" }}
         onPointerDown={(event) => {
-          if (!isMobile) return;
+          if (!isMobile || !event.isPrimary || event.button !== 0) return;
           const target = event.target as HTMLElement;
           const isHandle = Boolean(target.closest("[data-player-handle]"));
           const isPanelDragZone = Boolean(target.closest("[data-player-drag-zone]"));
@@ -236,26 +236,38 @@ export function FullPlayer({
           const rect = event.currentTarget.getBoundingClientRect();
           if (!isHandle && event.clientY > rect.top + rect.height * 0.6) return;
           if (target.closest("input, [data-player-no-drag]")) return;
+          suppressCollapseClickRef.current = false;
           dragRef.current = {
             pointerId: event.pointerId,
             startY: event.clientY,
             startedAt: performance.now(),
             moved: false,
           };
-          event.currentTarget.setPointerCapture(event.pointerId);
+          // Keep a handle click targeted at its button; capture only once a
+          // gesture actually becomes a drag.
         }}
         onPointerMove={(event) => {
           const drag = dragRef.current;
           if (!isMobile || !drag || drag.pointerId !== event.pointerId) return;
+          if (event.buttons === 0) {
+            dragRef.current = null;
+            setDragOffset(0);
+            return;
+          }
           const offset = Math.max(0, event.clientY - drag.startY);
-          if (offset > 6) drag.moved = true;
+          if (offset > 6 && !drag.moved) {
+            drag.moved = true;
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
           setDragOffset(offset);
         }}
         onPointerUp={(event) => {
           const drag = dragRef.current;
           if (!drag || drag.pointerId !== event.pointerId) return;
           dragRef.current = null;
-          event.currentTarget.releasePointerCapture(event.pointerId);
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
           const offset = Math.max(0, event.clientY - drag.startY);
           const velocity = offset / Math.max(1, performance.now() - drag.startedAt);
           suppressCollapseClickRef.current = drag.moved;

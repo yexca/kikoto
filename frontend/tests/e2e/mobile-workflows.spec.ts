@@ -1990,7 +1990,6 @@ test("demo settings keeps account and workflows read-only while allowing appeara
     "Recommendations",
     "Tags",
     "Library",
-    "Metadata",
     "Cache & Fetch",
     "Proxy",
     "Cleanup",

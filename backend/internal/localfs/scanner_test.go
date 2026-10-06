@@ -163,6 +163,30 @@ func TestDiscoverChangedFoldersLeavesRemovedWorkForDatabaseReconciliation(t *tes
 	}
 }
 
+func TestDiscoverChangedFoldersKeepsCaseDistinctDuplicateCandidates(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "A"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "a"), 0o755); os.IsExist(err) {
+		t.Skip("requires a case-sensitive filesystem")
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	code := testfixture.WorkCode(testfixture.PrefixRJ, 0)
+	writeFile(t, filepath.Join(root, "A", code, "track.wav"))
+	writeFile(t, filepath.Join(root, "a", code, "track.wav"))
+	for _, paths := range [][]string{{"A", "a"}, {"A/" + code, "a/" + code}} {
+		folders, summary, err := DiscoverChangedFolders(root, Options{ScanDepth: 2}, paths)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(folders) != 2 || len(summary.DuplicateGroups) != 1 || len(summary.DuplicateGroups[0].Folders) != 2 {
+			t.Fatalf("changes %v: folders=%+v duplicate groups=%+v, want both case-distinct candidates", paths, folders, summary.DuplicateGroups)
+		}
+	}
+}
+
 func TestDiscoverChangedFoldersDoesNotTreatDirectorySymlinkAsWorkRoot(t *testing.T) {
 	root := t.TempDir()
 	target := t.TempDir()
