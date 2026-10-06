@@ -1061,6 +1061,20 @@ export const surfaceJapanese = {
     },
     noExcludedExtensions: "なし",
     excludeExtensionsDescription: "Fetch 時にこれらの拡張子のファイルを除外します",
+    fetchRun: {
+      workCode: "作品コード",
+      codePlaceholder: "例: RJ00000000",
+      extensionsPlaceholder: "例: opus, webp, 7z",
+      codeHint: "RJ00000000 など、有効な作品コードを1つ入力してください。",
+      excludeType: "{{extension}} を除外",
+      otherExtensions: "その他の除外する拡張子",
+      invalidExtensions: "拡張子は英数字のみで入力し、カンマで区切ってください。",
+      previewHint:
+        "実行すると Fetch のプレビューが開きます。選択したファイルと保存先を確認してから公開してください。初期設定ではどのファイル形式も除外しません。",
+      sourcesFailed: "リモートソースを読み込めませんでした。",
+      prepareFailed:
+        "Fetch のプレビューを開けませんでした。ソース、作品コード、フィルターを確認して再試行してください。",
+    },
     extensionsToExclude: "除外する拡張子",
     availabilityWatchRunFailed: "可用性ウォッチの実行をキューに追加できませんでした。",
     extensionsPlaceholder: "例：wav, flac",

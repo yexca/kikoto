@@ -9,6 +9,7 @@ import {
 } from "@/features/workflows/run-forms/LibraryRunPanels";
 import { DLsitePopularRunPanel, RemotePopularRunPanel } from "@/features/workflows/run-forms/PopularRunPanels";
 import { PresetRunPanel } from "@/features/workflows/run-forms/PresetRunPanel";
+import { RemoteFetchRunPanel } from "@/features/workflows/run-forms/RemoteFetchRunPanel";
 import type { RunFormLayout } from "@/features/workflows/RunOptionControls";
 import { isActiveRunStatus, isDemoShowcaseActiveRun } from "@/features/workflows/runPresentation";
 import { WorkflowAutomationPanel } from "@/features/workflows/triggers/WorkflowAutomationPanel";
@@ -20,6 +21,7 @@ import {
   type CurrentTriggerRunOptions,
   type DLsitePopularRunOptions,
   type RemotePopularRunOptions,
+  type RemoteFetchRunOptions,
   type SystemRunKind,
   type SystemRunOptions,
   type WorkflowNode,
@@ -52,6 +54,7 @@ export function WorkflowDetail({
   canRunSystemAction,
   onRunSystemAction,
   onRunRemotePopular,
+  onRunRemoteFetch,
   onOpenRemoteSourceSettings,
   canFetchRemotePopular = false,
   canConfigureMetadataSync = false,
@@ -78,6 +81,7 @@ export function WorkflowDetail({
   canRunSystemAction?: (kind: SystemRunKind) => boolean;
   onRunSystemAction?: (kind: SystemRunKind, options?: SystemRunOptions) => Promise<void>;
   onRunRemotePopular?: (options: RemotePopularRunOptions) => Promise<void>;
+  onRunRemoteFetch?: (options: RemoteFetchRunOptions) => Promise<boolean>;
   onOpenRemoteSourceSettings?: () => void;
   canFetchRemotePopular?: boolean;
   /** Offers the metadata sync configuration, which edits instance settings. */
@@ -141,6 +145,14 @@ export function WorkflowDetail({
         canFetch={canFetchRemotePopular}
         onRun={onRunRemotePopular}
         onTriggerRunOptionsChange={onTriggerRunOptionsChange}
+      />
+    ) : runKind === "remote_fetch" && onRunRemoteFetch ? (
+      <RemoteFetchRunPanel
+        key={definition.code}
+        layout={layout}
+        running={running}
+        allowed={allowed}
+        onRun={onRunRemoteFetch}
       />
     ) : runKind === "preset" && preset && onRunPreset ? (
       <PresetRunPanel
