@@ -492,7 +492,7 @@ function RemoteFetchEditionOption({
       <input
         type="radio"
         name="remote-fetch-edition"
-        className="sr-only"
+        className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-lg opacity-0 disabled:cursor-default"
         checked={selected}
         disabled={disabled || checking}
         aria-label={t("remoteFetch.selectEdition", { code: edition.primaryCode })}

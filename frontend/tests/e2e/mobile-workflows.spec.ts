@@ -906,7 +906,7 @@ for (const suffix of ["", " @desktop"]) {
     expect(plans[0]).toEqual({ code: "RJ00000000", paths: ["track.mp3"] });
     expect(submissions).toHaveLength(0);
     await expect(preview.getByRole("checkbox", { name: "Include WAV", exact: true })).not.toBeChecked();
-    await preview.getByRole("checkbox", { name: "Select RJ00000001", exact: true }).click();
+    await preview.getByRole("radio", { name: "Select RJ00000001", exact: true }).click();
     await expect.poll(() => plans.at(-1)).toEqual({ code: "RJ00000001", paths: ["track.mp3"] });
     await preview.getByRole("button", { name: "Publish Fetch", exact: true }).click();
     await expect(preview).toHaveCount(0);
