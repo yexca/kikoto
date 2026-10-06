@@ -43,7 +43,7 @@ catalog freshness (under `Settings -> Library`), and production instance
 access. There is no instance-wide metadata language.
 
 Each signed-in user may choose an own preferred metadata language in the
-header Appearance menu. Users who do not, anonymous visitors, stored titles and
+header account menu. Users who do not, anonymous visitors, stored titles and
 tag names, and background work use each work's original language. A request
 to a remote source on behalf of a user with a preferred language sends
 `Accept-Language` with that user's languages first and the source's fallback

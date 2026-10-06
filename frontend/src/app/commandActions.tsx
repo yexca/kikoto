@@ -1,4 +1,4 @@
-import { Activity, Clock3, ListChecks, Play, RotateCcw, ScanLine } from "lucide-react";
+import { Activity, Clock3, Play, RotateCcw, ScanLine } from "lucide-react";
 
 import { type NavigationItem, type PageID } from "@/app/navigation";
 import { api } from "@/lib/api";
@@ -86,25 +86,18 @@ export function commandActions({
   const activityActions: CommandAction[] = canView("workflows:run")
     ? [
         {
-          id: "activity:running",
-          label: text("commands.runningRuns", "Running runs"),
-          description: text("commands.runningRunsDescription", "Open current workflow activity"),
+          id: "activity:open",
+          label: text("commands.openActivity", "Activity"),
+          description: text("commands.openActivityDescription", "Running jobs and runs needing attention"),
           icon: <Activity className="h-4 w-4" />,
           run: () => onOpenPath("/workflows?activity=1"),
         },
         {
-          id: "activity:review",
-          label: text("commands.reviewRuns", "Review runs"),
-          description: text("commands.reviewRunsDescription", "Open workflow runs needing review"),
-          icon: <ListChecks className="h-4 w-4" />,
-          run: () => onOpenPath("/workflows?activity=1&view=review"),
-        },
-        {
-          id: "activity:failed",
-          label: text("commands.failedRuns", "Failed runs"),
-          description: text("commands.failedRunsDescription", "Open failed workflow runs"),
+          id: "activity:history",
+          label: text("commands.activityHistory", "Workflow history"),
+          description: text("commands.activityHistoryDescription", "Finished and acknowledged workflow runs"),
           icon: <Clock3 className="h-4 w-4" />,
-          run: () => onOpenPath("/workflows?activity=1&view=failed"),
+          run: () => onOpenPath("/workflows?activity=1&view=history"),
         },
       ]
     : [];
