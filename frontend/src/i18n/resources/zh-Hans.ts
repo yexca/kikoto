@@ -707,7 +707,7 @@ export const zhHansResource = {
         updateAvailable: "有可用更新：{{version}}",
         sourceCode: "源代码",
         releaseNotes: "发布说明",
-        intro: "Kikoto 是一款本地优先的个人音频库，专注于 DLsite 风格作品、统一元数据、兼容的远程来源和浏览器播放。",
+        intro: "以聆听为中心的个人音声库。",
         builtWithAi: "使用 AI 构建",
         aiCredit: "本软件由 yexca 在 AI Agent 的协助下开发。",
         modelHistoryTitle: "使用的 AI 模型",
