@@ -3,7 +3,7 @@ import {
   BookOpen,
   Boxes,
   FolderCode,
-  Github,
+  CodeXml,
   RefreshCw,
   Scale,
   ScrollText,
@@ -178,7 +178,7 @@ function Identity({ update }: { update: AppUpdate | null }) {
       <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
         <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{t("about.intro")}</p>
         <ul className="mt-3 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
-          <IdentityLink href={KIKOTO_GITHUB_ENDPOINTS.repositoryURL} icon={Github} label={t("about.sourceCode")} />
+          <IdentityLink href={KIKOTO_GITHUB_ENDPOINTS.repositoryURL} icon={CodeXml} label={t("about.sourceCode")} />
           <IdentityLink href={githubReleaseURL(APP_CLIENT_VERSION)} icon={ScrollText} label={t("about.releaseNotes")} />
           <IdentityLink
             href={KIKOTO_GITHUB_ENDPOINTS.licenseURL}
