@@ -744,6 +744,8 @@ export const koreanResource = {
         technologies: "주요 기술",
         license: "라이선스",
         copyright: "Copyright (C) 2026 yexca.",
+        usageNotice:
+          "Kikoto는 어떠한 서비스도 제공하지 않으며, 사용자가 직접 구매한 음성 작품을 관리하는 용도로만 사용됩니다.",
         licenseText:
           "Kikoto는 <license>GNU AGPL v3</license>에 따라 라이선스된 자유 소프트웨어입니다. 보증 없이 제공되며 전체 소스는 프로젝트 저장소에서 확인할 수 있습니다.",
         groups: {

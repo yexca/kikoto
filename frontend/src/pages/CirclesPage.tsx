@@ -72,6 +72,7 @@ import { coalesceRuns } from "@/lib/inflightRequests";
 import { DLSITE_ENDPOINTS } from "@/lib/official-links";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import { useAuth } from "@/auth/AuthProvider";
+import { DemoContentNotice } from "@/components/DemoReadOnlyNotice";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { usePageHeaderBack } from "@/app/pageHeader";
@@ -132,6 +133,7 @@ const circleFilterOptions: readonly { value: CircleFilter; label: string }[] = [
 const circleFilters: readonly CircleFilter[] = [...circleFilterOptions.map((option) => option.value), "stale"];
 
 export function CirclesPage({ active = true }: { active?: boolean }) {
+  const { demoMode } = useAuth();
   const [path, setPath] = useState(window.location.pathname);
   useEffect(() => {
     if (!active) return;
@@ -155,6 +157,11 @@ export function CirclesPage({ active = true }: { active?: boolean }) {
   }, [showList]);
   return (
     <>
+      {demoMode && (
+        <div className="mb-5">
+          <DemoContentNotice surface="works" />
+        </div>
+      )}
       {route && <CircleDetailPage externalId={route.externalId} seriesCode={route.seriesCode} active={active} />}
       {(listVisited || showList) && (
         <div hidden={route !== null}>

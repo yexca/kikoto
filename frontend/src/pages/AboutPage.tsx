@@ -1,15 +1,4 @@
-import {
-  ArrowUpRight,
-  BookOpen,
-  Boxes,
-  FolderCode,
-  CodeXml,
-  RefreshCw,
-  Scale,
-  ScrollText,
-  Sparkles,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowUpRight, CodeXml, RefreshCw, Scale, ScrollText, type LucideIcon } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -17,6 +6,7 @@ import { APP_CLIENT_VERSION, githubReleaseURL } from "@/lib/appInfo";
 import { api, type AppUpdate } from "@/lib/api";
 import { KIKOTO_GITHUB_ENDPOINTS } from "@/lib/official-links";
 import { cn } from "@/lib/tailwindClassNames";
+import { NowPlayingBars } from "@/player/dock/playerControls";
 
 const referenceProjects = [
   {
@@ -65,6 +55,7 @@ const technologyGroups = [
 ] as const;
 
 const LICENSE_SPDX_ID = "AGPL-3.0";
+const AUTHOR = "yexca";
 
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -72,52 +63,34 @@ export function AboutPage() {
   const { t } = useTranslation();
   const update = useAvailableUpdate();
   return (
-    <div className="theme-card-surface w-full max-w-5xl overflow-hidden rounded-lg border bg-card text-card-foreground">
-      <Identity update={update} />
-      <div className="grid border-t lg:grid-cols-2 lg:divide-x">
-        <div className="divide-y">
-          <InfoSection icon={BookOpen} title={t("about.softwareOverview")}>
-            <div className="space-y-2 text-sm leading-6 text-muted-foreground">
-              <p>{t("about.overviewOne")}</p>
-              <p>{t("about.overviewTwo")}</p>
-            </div>
-          </InfoSection>
-          <InfoSection icon={Sparkles} title={t("about.builtWithAi")}>
-            <p className="text-sm leading-6 text-muted-foreground">{t("about.aiCredit")}</p>
-            <ModelTimeline />
-          </InfoSection>
-        </div>
-        <div className="divide-y border-t lg:border-t-0">
-          <InfoSection icon={FolderCode} title={t("about.referenceProjects")}>
-            <ReferenceList />
-          </InfoSection>
-          <InfoSection icon={Boxes} title={t("about.technologies")}>
-            <TechnologyList />
-          </InfoSection>
+    <div className="w-full max-w-5xl">
+      <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[19rem_minmax(0,1fr)]">
+        <Sleeve update={update} />
+        <div className="min-w-0">
+          <p className="max-w-2xl text-lg leading-8 text-foreground [font-family:var(--font-heading)] sm:text-xl sm:leading-9">
+            {t("about.intro")}
+          </p>
+          <div className="mt-8 space-y-9">
+            <Track number={1} title={t("about.softwareOverview")}>
+              <div className="max-w-2xl space-y-3 text-sm leading-6 text-muted-foreground">
+                <p>{t("about.overviewOne")}</p>
+                <p>{t("about.overviewTwo")}</p>
+              </div>
+            </Track>
+            <Track number={2} title={t("about.builtWithAi")}>
+              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{t("about.aiCredit")}</p>
+              <ModelTimeline />
+            </Track>
+            <Track number={3} title={t("about.referenceProjects")}>
+              <ReferenceList />
+            </Track>
+            <Track number={4} title={t("about.technologies")}>
+              <TechnologyCredits />
+            </Track>
+          </div>
+          <FinePrint />
         </div>
       </div>
-      <footer className="flex items-start gap-3 border-t bg-muted/35 px-4 py-3 text-xs leading-5 text-muted-foreground sm:px-5">
-        <Scale className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-        <p>
-          <span className="font-medium text-foreground">{t("about.copyright")}</span>{" "}
-          <Trans
-            i18nKey="about.licenseText"
-            components={{
-              license: (
-                <a
-                  href={KIKOTO_GITHUB_ENDPOINTS.licenseURL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={cn(
-                    "rounded-sm font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-foreground",
-                    focusRing,
-                  )}
-                />
-              ),
-            }}
-          />
-        </p>
-      </footer>
     </div>
   );
 }
@@ -139,24 +112,20 @@ function useAvailableUpdate() {
   return update;
 }
 
-function Identity({ update }: { update: AppUpdate | null }) {
+/** The record sleeve: artwork, title, edition, and the outbound project links. */
+function Sleeve({ update }: { update: AppUpdate | null }) {
   const { t } = useTranslation();
   return (
     <section
       aria-label={t("about.label")}
-      className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-x-4 gap-y-3 p-4 sm:grid-cols-[7.5rem_minmax(0,1fr)] sm:gap-x-5 sm:p-5"
+      className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-x-5 gap-y-5 sm:grid-cols-[9rem_minmax(0,1fr)] lg:sticky lg:top-[calc(var(--header-height)+1.5rem)] lg:grid-cols-1 lg:items-start lg:self-start"
     >
-      <img
-        src="/kikoto-about-cover.webp"
-        alt=""
-        width={240}
-        height={240}
-        className="aspect-square w-full rounded-[var(--player-radius-cover)] border object-cover sm:row-span-2 sm:self-start"
-      />
+      <Artwork />
       <div className="min-w-0">
-        <h2 className="text-2xl font-semibold leading-tight tracking-tight">{t("app.name")}</h2>
-        <div className="mt-1.5 flex flex-wrap items-center gap-2">
-          <span className="rounded-[var(--badge-radius)] border bg-background px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{AUTHOR}</p>
+        <h2 className="mt-1 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">{t("app.name")}</h2>
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <span className="rounded-[var(--badge-radius)] border bg-card px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
             {APP_CLIENT_VERSION}
           </span>
           {update?.releaseUrl && (
@@ -175,24 +144,40 @@ function Identity({ update }: { update: AppUpdate | null }) {
           )}
         </div>
       </div>
-      <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
-        <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{t("about.intro")}</p>
-        <ul className="mt-3 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
-          <IdentityLink href={KIKOTO_GITHUB_ENDPOINTS.repositoryURL} icon={CodeXml} label={t("about.sourceCode")} />
-          <IdentityLink href={githubReleaseURL(APP_CLIENT_VERSION)} icon={ScrollText} label={t("about.releaseNotes")} />
-          <IdentityLink
-            href={KIKOTO_GITHUB_ENDPOINTS.licenseURL}
-            icon={Scale}
-            label={t("about.license")}
-            meta={LICENSE_SPDX_ID}
-          />
-        </ul>
-      </div>
+      <ul className="col-span-2 grid grid-cols-3 gap-2 lg:col-span-1 lg:grid-cols-1 lg:gap-0 lg:divide-y lg:border-y">
+        <SleeveLink href={KIKOTO_GITHUB_ENDPOINTS.repositoryURL} icon={CodeXml} label={t("about.sourceCode")} />
+        <SleeveLink href={githubReleaseURL(APP_CLIENT_VERSION)} icon={ScrollText} label={t("about.releaseNotes")} />
+        <SleeveLink
+          href={KIKOTO_GITHUB_ENDPOINTS.licenseURL}
+          icon={Scale}
+          label={t("about.license")}
+          meta={LICENSE_SPDX_ID}
+        />
+      </ul>
     </section>
   );
 }
 
-function IdentityLink({
+/** Cover art with a record that slides a little further out of the sleeve on hover. */
+function Artwork() {
+  return (
+    <div className="group relative mr-[22%] lg:mr-[30%]">
+      <div
+        aria-hidden="true"
+        className="about-record absolute inset-y-[4%] left-[22%] aspect-square lg:left-[30%] rounded-full transition-transform duration-500 ease-out group-hover:translate-x-[10%] motion-reduce:transition-none"
+      />
+      <img
+        src="/kikoto-about-cover.webp"
+        alt=""
+        width={240}
+        height={240}
+        className="relative aspect-square w-full rounded-[var(--player-radius-cover)] border object-cover"
+      />
+    </div>
+  );
+}
+
+function SleeveLink({
   href,
   icon: Icon,
   label,
@@ -210,29 +195,36 @@ function IdentityLink({
         target="_blank"
         rel="noreferrer"
         className={cn(
-          "touch-target group flex min-h-11 flex-col items-center justify-center gap-1 rounded-[var(--control-radius)] border bg-background px-2 py-1.5 text-center text-xs font-medium text-foreground transition-colors hover:bg-muted active:bg-accent sm:inline-flex sm:h-[var(--control-height-sm)] sm:min-h-0 sm:flex-row sm:gap-2 sm:px-3 sm:py-0 sm:text-sm",
+          "touch-target group flex min-h-11 flex-col items-center justify-center gap-1 rounded-[var(--control-radius)] border bg-card px-2 py-1.5 text-center text-xs font-medium text-foreground transition-colors hover:bg-muted active:bg-accent",
+          "lg:min-h-0 lg:flex-row lg:justify-start lg:gap-3 lg:rounded-none lg:border-0 lg:bg-transparent lg:px-1 lg:py-2.5 lg:text-left lg:text-sm",
           focusRing,
         )}
       >
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
-        {label}
+        <span className="lg:flex-1">{label}</span>
         {meta && (
-          <span className="hidden text-xs font-normal tabular-nums text-muted-foreground sm:inline">{meta}</span>
+          <span className="hidden text-xs font-normal tabular-nums text-muted-foreground lg:inline">{meta}</span>
         )}
-        <ArrowUpRight aria-hidden="true" className="hidden h-3.5 w-3.5 text-muted-foreground sm:block" />
+        <ArrowUpRight
+          aria-hidden="true"
+          className="hidden h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:-translate-y-px group-hover:translate-x-px group-hover:text-foreground lg:block"
+        />
       </a>
     </li>
   );
 }
 
-function InfoSection({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: ReactNode }) {
+/** A liner-notes section, numbered like a track on the record. */
+function Track({ number, title, children }: { number: number; title: string; children: ReactNode }) {
   return (
-    <section className="p-4 sm:p-5">
-      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-        <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        {title}
+    <section aria-label={title}>
+      <h3 className="flex items-baseline gap-3 border-b pb-2.5">
+        <span aria-hidden="true" className="w-6 shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
+          {String(number).padStart(2, "0")}
+        </span>
+        <span className="text-base font-semibold [font-family:var(--font-heading)]">{title}</span>
       </h3>
-      {children}
+      <div className="pt-4 sm:pl-9">{children}</div>
     </section>
   );
 }
@@ -246,50 +238,35 @@ function ModelTimeline() {
   const { t } = useTranslation();
   const entries = [...aiModelHistory].reverse();
   return (
-    <div className="mt-4">
+    <div className="mt-5">
       <h4 className="text-xs font-medium text-muted-foreground">{t("about.modelHistoryTitle")}</h4>
-      <ol className="mt-2.5" aria-label={t("about.modelHistoryDescription")}>
+      <ol className="mt-2 divide-y divide-dashed" aria-label={t("about.modelHistoryDescription")}>
         {entries.map((entry, index) => {
           const current = index === 0;
-          const last = index === entries.length - 1;
           return (
             <li
               key={entry.from ?? "start"}
-              className="relative grid grid-cols-[0.75rem_minmax(0,1fr)] gap-x-3 pb-3 last:pb-0 sm:pb-2.5"
+              className="grid grid-cols-[1rem_minmax(0,1fr)] items-start gap-x-3 py-2 sm:grid-cols-[1rem_8.5rem_minmax(0,1fr)]"
             >
-              {!last && <span aria-hidden="true" className="absolute -bottom-2 left-[5.5px] top-3 w-px bg-border" />}
-              <span
-                aria-hidden="true"
+              <span className="flex h-5 items-center text-primary">
+                {current && <NowPlayingBars playing className="h-3" />}
+              </span>
+              <p
                 className={cn(
-                  "relative mt-1 h-3 w-3 rounded-full border-2",
-                  current ? "border-primary bg-primary ring-4 ring-primary/15" : "border-border bg-card",
+                  "text-xs leading-5 tabular-nums",
+                  current ? "font-semibold text-foreground" : "text-muted-foreground",
                 )}
-              />
-              <div className="min-w-0 sm:flex sm:items-start sm:gap-3">
-                <p
-                  className={cn(
-                    "text-xs leading-5 tabular-nums sm:w-28 sm:shrink-0",
-                    current ? "font-semibold text-foreground" : "font-medium text-muted-foreground",
-                  )}
-                >
-                  {versionRange(entry, t)}
-                </p>
-                <ul className="mt-1 flex min-w-0 flex-wrap gap-1 sm:mt-0">
-                  {entry.models.map((model) => (
-                    <li
-                      key={model}
-                      className={cn(
-                        "rounded-[var(--badge-radius)] border px-1.5 text-xs leading-5",
-                        current
-                          ? "border-primary/25 bg-primary/10 text-foreground"
-                          : "bg-background text-muted-foreground",
-                      )}
-                    >
-                      {model}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              >
+                {versionRange(entry, t)}
+              </p>
+              <p
+                className={cn(
+                  "col-start-2 text-sm leading-5 sm:col-start-3",
+                  current ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {entry.models.join(" · ")}
+              </p>
             </li>
           );
         })}
@@ -301,13 +278,13 @@ function ModelTimeline() {
 function ReferenceList() {
   const { t } = useTranslation();
   return (
-    <ul className="-mx-2 -my-1.5">
+    <ul className="-mx-2 space-y-1">
       {referenceProjects.map((project) => {
         const [owner, repository] = project.name.split("/");
         return (
           <li
             key={project.name}
-            className="group relative rounded-[var(--control-radius)] px-2 py-1.5 transition-colors hover:bg-muted"
+            className="group relative rounded-[var(--control-radius)] px-2 py-2 transition-colors hover:bg-muted"
           >
             <a
               href={project.url}
@@ -322,7 +299,7 @@ function ReferenceList() {
                 className="ml-1 inline h-3.5 w-3.5 align-[-0.125em] text-muted-foreground transition-colors group-hover:text-foreground"
               />
             </a>
-            <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{t(project.description)}</p>
+            <p className="mt-0.5 max-w-2xl text-xs leading-5 text-muted-foreground">{t(project.description)}</p>
           </li>
         );
       })}
@@ -330,17 +307,18 @@ function ReferenceList() {
   );
 }
 
-function TechnologyList() {
+/** Technologies laid out like album credits: role on the left, names on the right. */
+function TechnologyCredits() {
   const { t } = useTranslation();
   return (
-    <dl className="grid gap-y-3 text-sm sm:grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)] sm:gap-x-3 sm:gap-y-2">
+    <dl className="grid gap-y-4 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)] sm:gap-x-4 sm:gap-y-3">
       {technologyGroups.map((group) => (
         <div key={group.title} className="min-w-0 sm:contents">
-          <dt className="pt-px text-xs font-medium leading-5 text-muted-foreground">
+          <dt className="text-xs font-medium uppercase leading-6 tracking-[0.08em] text-muted-foreground">
             {t(`about.groups.${group.title}`)}
           </dt>
           <dd>
-            <ul className="flex flex-wrap gap-x-1.5 leading-6 text-foreground [&>li:not(:last-child)]:after:ml-1.5 [&>li:not(:last-child)]:after:text-muted-foreground [&>li:not(:last-child)]:after:content-['·']">
+            <ul className="flex flex-wrap gap-x-1.5 text-sm leading-6 text-foreground [&>li:not(:last-child)]:after:ml-1.5 [&>li:not(:last-child)]:after:text-muted-foreground [&>li:not(:last-child)]:after:content-['·']">
               {group.items.map((item) => (
                 <li key={item}>{item}</li>
               ))}
@@ -349,5 +327,33 @@ function TechnologyList() {
         </div>
       ))}
     </dl>
+  );
+}
+
+function FinePrint() {
+  const { t } = useTranslation();
+  return (
+    <footer className="mt-12 space-y-2 border-t pt-4 text-xs leading-5 text-muted-foreground sm:pl-9">
+      <p className="max-w-2xl font-medium text-foreground">{t("about.usageNotice")}</p>
+      <p className="max-w-2xl">
+        <span className="font-medium text-foreground">{t("about.copyright")}</span>{" "}
+        <Trans
+          i18nKey="about.licenseText"
+          components={{
+            license: (
+              <a
+                href={KIKOTO_GITHUB_ENDPOINTS.licenseURL}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(
+                  "rounded-sm font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-foreground",
+                  focusRing,
+                )}
+              />
+            ),
+          }}
+        />
+      </p>
+    </footer>
   );
 }
