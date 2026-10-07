@@ -1198,6 +1198,33 @@ test("@desktop Metadata sync configuration saves the remote metadata fallback or
   await expect(toggle).toHaveAttribute("aria-checked", "true");
 });
 
+test("@desktop Metadata sync configuration saves purchase bonus linking alone", async ({ page }) => {
+  await mockWorkflows(page);
+  let settings = appSettingsFixture({ remoteMetadataFallback: { enabled: false, sourceIds: [] } });
+  const saved: unknown[] = [];
+  await page.route("**/api/settings", async (route) => {
+    if (route.request().method() === "PATCH") {
+      const body = route.request().postDataJSON() as Partial<typeof settings>;
+      saved.push(body);
+      settings = { ...settings, ...body };
+    }
+    await route.fulfill({ json: settings });
+  });
+  await page.goto("/workflows?workflow=metadata_sync");
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Configuration", exact: true });
+  // Linking defaults to on when the instance has never saved it.
+  const toggle = dialog.getByRole("switch", { name: "Link purchase bonuses to their work", exact: true });
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await toggle.click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => saved.length).toBe(1);
+  expect(saved[0]).toEqual({ purchaseBonusAutoLink: false });
+
+  await page.getByRole("button", { name: "Configure", exact: true }).click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+});
+
 test("a follow shortcut fills the circle id and says it did", async ({ page }) => {
   await mockWorkflows(page);
   await page.route("**/api/workflow-*", async (route) => {

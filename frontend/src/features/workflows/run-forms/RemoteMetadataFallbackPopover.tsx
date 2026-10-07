@@ -20,11 +20,13 @@ import { api, type FileSource, type RemoteMetadataFallbackSettings } from "@/lib
 
 const fallbackCopy = (key: string, options?: Record<string, unknown>) =>
   workflowCopy(`remoteMetadataFallback.${key}`, options);
+const bonusCopy = (key: string) => workflowCopy(`purchaseBonus.${key}`);
 
 /**
  * Metadata sync configuration: the opt-in remote metadata fallback, its switch
- * and the ordered metadata-capable sources. It reads the instance settings
- * when opened and saves only the fallback.
+ * and the ordered metadata-capable sources, and purchase bonus linking. It
+ * reads the instance settings when opened and saves only the values changed
+ * here.
  */
 export function RemoteMetadataFallbackPopover({
   anchorRef,
@@ -39,6 +41,8 @@ export function RemoteMetadataFallbackPopover({
   const [sources, setSources] = useState<FileSource[] | null>(null);
   const [saved, setSaved] = useState<RemoteMetadataFallbackSettings>(defaultRemoteMetadataFallback);
   const [value, setValue] = useState<RemoteMetadataFallbackSettings>(defaultRemoteMetadataFallback);
+  const [savedBonusAutoLink, setSavedBonusAutoLink] = useState(true);
+  const [bonusAutoLink, setBonusAutoLink] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [revision, setRevision] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -57,6 +61,9 @@ export function RemoteMetadataFallbackPopover({
         setSources(settings.fileSources);
         setSaved(current);
         setValue(current);
+        const autoLink = settings.purchaseBonusAutoLink ?? true;
+        setSavedBonusAutoLink(autoLink);
+        setBonusAutoLink(autoLink);
       })
       .catch(() => {
         if (active) setLoadFailed(true);
@@ -67,16 +74,21 @@ export function RemoteMetadataFallbackPopover({
   }, [revision]);
 
   const next = sources ? normalizedRemoteMetadataFallback(sources, value) : value;
-  const dirty = sources !== null && !sameRemoteMetadataFallback(next, saved);
+  const fallbackDirty = sources !== null && !sameRemoteMetadataFallback(next, saved);
+  const bonusDirty = sources !== null && bonusAutoLink !== savedBonusAutoLink;
+  const dirty = fallbackDirty || bonusDirty;
   const disabled = readOnly || saving;
 
   const save = async () => {
     if (!dirty || disabled) return;
     setSaving(true);
     try {
-      // Only the fallback is sent, so this form never overwrites other settings.
-      await api.updateSettings({ remoteMetadataFallback: next });
-      toast.success(fallbackCopy("saved"));
+      // Only changed values are sent, so this form never overwrites other settings.
+      await api.updateSettings({
+        ...(fallbackDirty ? { remoteMetadataFallback: next } : {}),
+        ...(bonusDirty ? { purchaseBonusAutoLink: bonusAutoLink } : {}),
+      });
+      toast.success(fallbackDirty ? fallbackCopy("saved") : bonusCopy("saved"));
       onClose();
     } catch (cause) {
       toast.notify(toastFromError(cause, fallbackCopy("saveFailed")));
@@ -121,6 +133,27 @@ export function RemoteMetadataFallbackPopover({
             <RemoteMetadataFallbackFields sources={sources} value={value} disabled={disabled} onChange={setValue} />
           )}
         </section>
+        {sources && (
+          <section className="grid gap-2 border-t pt-3" aria-labelledby="purchase-bonus-title">
+            <div>
+              <h5 id="purchase-bonus-title" className="text-sm font-medium">
+                {bonusCopy("title")}
+              </h5>
+              <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{bonusCopy("description")}</p>
+            </div>
+            <div className="flex min-h-[var(--control-height-sm)] items-center justify-between gap-3 text-sm">
+              <span id="purchase-bonus-auto-link" className="min-w-0">
+                {bonusCopy("autoLink")}
+              </span>
+              <Switch
+                checked={bonusAutoLink}
+                disabled={disabled}
+                aria-labelledby="purchase-bonus-auto-link"
+                onCheckedChange={setBonusAutoLink}
+              />
+            </div>
+          </section>
+        )}
         <div className="flex justify-end gap-2 border-t pt-3">
           <Button size="sm" variant="ghost" onClick={onClose}>
             {workflowCopy("cancel")}

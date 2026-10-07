@@ -51,6 +51,9 @@ type DLsiteSyncer struct {
 	triggerReason    string
 	triggerID        int64
 	productURL       func(dlsite.Product) string
+	// Purchase bonus detection; see WithPurchaseBonusLinking.
+	purchaseBonusAutoLink bool
+	purchaseBonusRecheck  bool
 }
 
 type DLsiteSyncResult struct {
@@ -79,6 +82,9 @@ type DLsiteFamilySyncResult struct {
 	SkippedCodes         []string `json:"skippedCodes"`
 	Failures             []string `json:"failures"`
 	RequestedUnavailable bool     `json:"requestedUnavailable"`
+	// PurchaseBonusParent names the parent product metadata sync detected for
+	// the requested purchase bonus in this attempt.
+	PurchaseBonusParent string `json:"purchaseBonusParent,omitempty"`
 }
 
 // DLsiteDemoFamilySyncResult describes the bounded language-edition metadata
@@ -488,9 +494,24 @@ func (s *DLsiteSyncer) syncFamilyCode(
 	skipped map[string]bool,
 	products map[string]dlsite.Product,
 ) error {
-	product, _, err := s.syncFetchedProduct(ctx, code, s.fetchProductForEdition)
+	fetch := s.fetchProductForEdition
+	var bonus purchaseBonusOutcome
+	if strings.EqualFold(code, requestedCode) {
+		// Only the requested work can be a purchase bonus: DLsite declares no
+		// family relationship that would reach one from another code.
+		fetch = func(ctx context.Context, code string) (dlsite.Product, error) {
+			return s.fetchPurchaseBonusProduct(ctx, code, &bonus)
+		}
+	}
+	product, workID, err := s.syncFetchedProduct(ctx, code, fetch)
 	if err != nil {
 		return s.recordFamilyFetchFailure(ctx, requestedCode, code, err, result, skipped)
+	}
+	if err := s.recordPurchaseBonusOutcome(ctx, workID, bonus); err != nil {
+		return err
+	}
+	if bonus.status == PurchaseBonusLinked {
+		result.PurchaseBonusParent = bonus.parentCode
 	}
 	products[code] = product
 	result.SyncedCodes = append(result.SyncedCodes, code)
@@ -919,7 +940,8 @@ func (s *DLsiteSyncer) loadTargets(ctx context.Context, scope DLsiteSyncScope) (
 				FROM work_edition AS edition
 				INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 				WHERE edition.work_id = work.id
-			), '')
+			), ''),
+			EXISTS (SELECT 1 FROM work_purchase_bonus AS bonus WHERE bonus.work_id = work.id)
 		FROM work
 		WHERE NOT EXISTS (
 			SELECT 1
@@ -940,11 +962,12 @@ func (s *DLsiteSyncer) loadTargets(ctx context.Context, scope DLsiteSyncScope) (
 		target        workTarget
 		snapshot      string
 		canonicalCode string
+		bonusDecided  bool
 	}
 	pending := []snapshotTarget{}
 	for rows.Next() {
 		var item snapshotTarget
-		if err := rows.Scan(&item.target.ID, &item.target.PrimaryCode, &item.snapshot, &item.canonicalCode); err != nil {
+		if err := rows.Scan(&item.target.ID, &item.target.PrimaryCode, &item.snapshot, &item.canonicalCode, &item.bonusDecided); err != nil {
 			return nil, 0, err
 		}
 		item.target.PrimaryCode = strings.ToUpper(strings.TrimSpace(item.target.PrimaryCode))
@@ -964,6 +987,12 @@ func (s *DLsiteSyncer) loadTargets(ctx context.Context, scope DLsiteSyncScope) (
 	targets := []workTarget{}
 	for _, item := range pending {
 		if scope.Full || strings.TrimSpace(item.snapshot) == "" {
+			targets = append(targets, item.target)
+			continue
+		}
+		if s.purchaseBonusAutoLink && !item.bonusDecided && snapshotIsPurchaseBonus(item.snapshot) {
+			// A stored purchase bonus without a detection decision is revisited
+			// once, so existing bonuses are linked by a normal sync.
 			targets = append(targets, item.target)
 			continue
 		}
@@ -1132,6 +1161,10 @@ func (s *DLsiteSyncer) applyProduct(ctx context.Context, workID int64, product d
 	}
 	if product.MetadataSourceCode != "" {
 		kikotoMeta["metadata_source_code"] = product.MetadataSourceCode
+	}
+	if product.PurchaseBonusParentCode != "" {
+		kikotoMeta["purchase_bonus_parent_code"] = product.PurchaseBonusParentCode
+		kikotoMeta["purchase_bonus_inherited"] = product.PurchaseBonusInherited
 	}
 	raw := snapshotWithKikotoMeta(baseRaw, kikotoMeta)
 	if err := upsertDLsiteMetadataSnapshot(ctx, tx, workID, providerID, product.WorkNo, raw, variantKey, editionLanguage, requestLocale, contentHash); err != nil {

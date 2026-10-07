@@ -53,6 +53,8 @@ type workDetail struct {
 	Translations     []workTranslation          `json:"translations"`
 	ManualOverrides  workManualOverrides        `json:"manualOverrides"`
 	MetadataLink     *workMetadataLink          `json:"metadataLink"`
+	PurchaseBonus    *workPurchaseBonus         `json:"purchaseBonus"`
+	PurchaseBonuses  []workPurchaseBonusWork    `json:"purchaseBonuses"`
 	SourcePresence   []sourcePresenceItem       `json:"sourcePresence"`
 	LocalFolders     []workFolderLocationDetail `json:"localFolders"`
 	MediaItems       []mediaItemDetail          `json:"mediaItems"`
@@ -248,6 +250,12 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 		return workDetail{}, err
 	}
 	if work.MetadataLink, err = s.loadWorkMetadataLink(ctx, id); err != nil {
+		return workDetail{}, err
+	}
+	if work.PurchaseBonus, err = s.loadWorkPurchaseBonus(ctx, id); err != nil {
+		return workDetail{}, err
+	}
+	if work.PurchaseBonuses, err = s.loadWorkPurchaseBonuses(ctx, id); err != nil {
 		return workDetail{}, err
 	}
 	if !includeMedia {

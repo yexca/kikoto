@@ -21,6 +21,7 @@ import type {
   WorkMetadataPresentation,
   WorkMetadataSyncRunResult,
   WorkMetadataSyncStatus,
+  WorkPurchaseBonus,
   WorkSourceUntrackResult,
   WorkTranslation,
 } from "../../../src/lib/api";
@@ -167,6 +168,7 @@ type MockApplicationFixture = {
   detailMetadataPresentation?: WorkMetadataPresentation;
   detailMetadataSync?: WorkMetadataSyncStatus;
   detailLocalFolders?: WorkFolderLocation[];
+  detailPurchaseBonus?: WorkPurchaseBonus;
   /** Summary the finished media cleanup run reports, such as a forgotten work. */
   cleanupRunSummary?: Record<string, unknown>;
   metadataSyncControl?: {
@@ -462,6 +464,7 @@ export async function mockApplication(
           translations: fixture.detailTranslations ?? [],
           localFolders: fixture.detailLocalFolders ?? [],
           ...(fixture.detailMetadataPresentation ? { metadataPresentation: fixture.detailMetadataPresentation } : {}),
+          ...(fixture.detailPurchaseBonus ? { purchaseBonus: fixture.detailPurchaseBonus } : {}),
           metadataSync: fixture.metadataSyncControl?.detailReady
             ? { status: "available", checkedAt: "2026-01-01T00:01:00Z" }
             : (fixture.detailMetadataSync ?? { status: "available", checkedAt: "" }),

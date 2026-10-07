@@ -193,6 +193,8 @@ func (s *Server) syncWorkMetadataFamily(ctx context.Context, code string) (metas
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithMetadataPriority(s.instanceMetadataLanguages(ctx)).
 		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.instanceMetadataLanguages(ctx))).
+		// A single-work refresh also retries a bonus whose parent was not found.
+		WithPurchaseBonusLinking(s.settingBoolContext(ctx, purchaseBonusAutoLinkSetting, true), true).
 		WithRequestPacing(
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),

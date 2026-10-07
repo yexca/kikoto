@@ -71,6 +71,34 @@ all metadata sync runs share the `metadata:provider` resource. Local scan
 follow-ups coalesce only into a queued unscoped `missing` run. A retry repeats
 the failed run's scope.
 
+### Purchase Bonus Detection
+
+`app_setting.metadata_purchase_bonus_auto_link` (default on, saved from the
+Metadata sync Configure popover) lets metadata sync link a purchase bonus to
+its parent product (see [data model](data-model.md#purchase-bonuses)
+for `work_purchase_bonus`). Only the requested work of a family sync is
+considered, and only when DLsite reports it permanently free with a bonus
+marker such as `【早期購入特典】` in its title or short introduction;
+`【特典付き】` marks a paid product that includes a bonus and is excluded.
+
+The parent must share the bonus's maker. Stored works of that maker are scored
+first, without a request. Otherwise the maker's profile is read newest first,
+stopping after the first page that lists a lower code of the same prefix and
+after at most 10 pages, without series catalogs; the 5 unchecked codes nearest
+the bonus are requested for scoring only and never stored. A candidate matches
+by an identical normalized title reading (`work_name_kana`), or by the same
+release day plus the title quoted in the bonus marker appearing in order in its
+title. The strongest evidence must name exactly one candidate; otherwise the
+bonus is recorded `unmatched`. A request failure records nothing and leaves the
+bonus's own metadata intact for a later run.
+
+Bulk sync revisits a stored bonus snapshot without a decision once, even in
+`missing` mode, and skips `unmatched` bonuses. The per-work
+`metadata_family_sync` job, queued by detail refresh, Metadata recovery and a
+manual link change, also retries `unmatched` bonuses. A linked bonus inherits
+from its parent on every sync, independent of the setting. The job summary
+names a newly detected parent as `purchase_bonus_parent`.
+
 ## Genre Name Learning
 
 `metadata_genre_names` ("Learn tag names") is a single-flight system workflow
@@ -127,7 +155,7 @@ editor, gated by `library:write`. The list loads on navigation, filter
 changes, recovery actions, saves, and manual refresh, never on a timer.
 Metadata settings open in a popover anchored to the header, with the current list retained underneath.
 Shared tags and circles use searchable management tables and review dialogs.
-Tag and circle changes, work metadata edits, cover overrides, metadata links,
+Tag and circle changes, work metadata edits, cover overrides, metadata links, purchase bonus links,
 and source untracking require `library:write`, granted to admin and
 super_admin. Voice alias management retains `metadata:sync`.
 

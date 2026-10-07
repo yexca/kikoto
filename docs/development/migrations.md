@@ -82,7 +82,7 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain ends at
-`057_remote_language_titles.sql`, with `057_v0.7.1.sql` generated
+`058_work_purchase_bonus.sql`, with `058_v0.7.1.sql` generated
 from the current `VERSION` file. Released migrations and baselines, including
 `047_v0.7.1.sql`, remain immutable and available for ledger validation.
 
@@ -104,8 +104,8 @@ retry counters and backoff deadlines, and
 snapshot-writer
 triggers, queues existing works, and requests one new startup backfill to repair
 older projections and locale-name precedence. Hidden/merged states now commit
-before batched work projection. Existing databases apply 048–057 through the
-numbered chain; empty databases use the schema-057 baseline. The earlier
+before batched work projection. Existing databases apply 048–058 through the
+numbered chain; empty databases use the schema-058 baseline. The earlier
 development schema-050, integrated schema-053, schema-054 and schema-055
 baselines and the metadata-branch schema-051/052 baselines are retired; their checksums remain
 available for ledger validation.
@@ -130,6 +130,11 @@ its title-sort/search invalidation triggers. Existing remote snapshots are
 queued for the normal background projection; no work, edition or provider
 request is created by the migration. The schema-056 baseline stays packaged
 and immutable for upgrades, and fresh installations use schema 057.
+Migration 058 adds `work_purchase_bonus`, the link from a purchase bonus work to
+its parent product's family by code, with its parent-code and foreign-key
+indexes. It creates no rows: existing bonuses are detected by the next metadata
+sync. The schema-057 baseline stays packaged and immutable for upgrades, and
+fresh installations use schema 058.
 v0.7.1 shipped schema 047. Snapshot triggers queue only existing works, preserve
 committed projection markers, and permit snapshots to outlive a deleted work.
 Startup moves old flat

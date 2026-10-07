@@ -4,11 +4,12 @@ import { Image, Link2, Tags, Type, Users, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { api, type WorkDetail, type WorkMetadataLinkResult } from "@/lib/api";
+import { api, type WorkDetail, type WorkMetadataSyncRunResult } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
 import { MetadataEditorCoverSection } from "./MetadataEditorCoverSection";
 import { MetadataEditorCreditsSection, useMetadataCreditsEditor } from "./MetadataEditorCreditsSection";
 import { MetadataEditorSourceSection, type StagedMetadataLink } from "./MetadataEditorSourceSection";
+import { MetadataEditorPurchaseBonusSection, type StagedPurchaseBonus } from "./MetadataEditorPurchaseBonusSection";
 import { WorkMetadataTagsSection } from "./WorkMetadataTagsSection";
 import { WorkTitleEditor } from "./WorkTitleEditor";
 import {
@@ -52,7 +53,8 @@ export function WorkMetadataEditorModal({
   initialSection?: MetadataEditorSection;
   onClose: () => void;
   onSaved: () => void;
-  onLinkChanged: (result: WorkMetadataLinkResult) => void;
+  /** A metadata link or purchase bonus change, with the refresh it queued. */
+  onLinkChanged: (result: { sync?: WorkMetadataSyncRunResult }) => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -65,6 +67,7 @@ export function WorkMetadataEditorModal({
   const coverState = useWorkCoverCandidates(work.id, toast);
   const [coverReverted, setCoverReverted] = useState(false);
   const [stagedLink, setStagedLink] = useState<StagedMetadataLink>(null);
+  const [stagedBonus, setStagedBonus] = useState<StagedPurchaseBonus>(null);
   const [saving, setSaving] = useState(false);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const tabRefs = useRef<Partial<Record<MetadataEditorSection, HTMLButtonElement | null>>>({});
@@ -84,7 +87,7 @@ export function WorkMetadataEditorModal({
     cover: coverChanged || coverReverted,
     tags: tagEditor.changed,
     credits: payloadChangesCredits(credits.payload),
-    source: stagedLink !== null,
+    source: stagedLink !== null || stagedBonus !== null,
   };
   const changedSections = sections.filter((item) => changed[item.id]);
   const dirty = changedSections.length > 0;
@@ -119,19 +122,45 @@ export function WorkMetadataEditorModal({
         await api.deleteWorkManualOverride(work.id, "cover");
         applied = true;
       }
-      let linkResult: WorkMetadataLinkResult | null = null;
-      if (stagedLink?.action === "link") linkResult = await api.setWorkMetadataLink(work.id, stagedLink.code);
-      else if (stagedLink?.action === "unlink") linkResult = await api.deleteWorkMetadataLink(work.id);
-      if (linkResult) {
+      const linkMessages: string[] = [];
+      let linkSync: WorkMetadataSyncRunResult | undefined;
+      let linkChanged = false;
+      if (stagedLink) {
+        const linkResult =
+          stagedLink.action === "link"
+            ? await api.setWorkMetadataLink(work.id, stagedLink.code)
+            : await api.deleteWorkMetadataLink(work.id);
+        applied = true;
+        linkChanged = true;
+        linkSync = linkResult.sync;
         const refreshing = Boolean(linkResult.sync && linkResult.sync.runId > 0);
-        toast.success(
-          stagedLink?.action === "unlink"
+        linkMessages.push(
+          stagedLink.action === "unlink"
             ? t("libraryDetail.metadataLinkRemoved")
             : t(refreshing ? "libraryDetail.metadataLinkSavedRefreshing" : "libraryDetail.metadataLinkSaved", {
                 code: linkResult.link?.sourceCode ?? "",
               }),
         );
-        onLinkChanged(linkResult);
+      }
+      if (stagedBonus) {
+        const bonusResult =
+          stagedBonus.action === "link"
+            ? await api.setWorkPurchaseBonus(work.id, stagedBonus.code)
+            : await api.deleteWorkPurchaseBonus(work.id);
+        applied = true;
+        linkChanged = true;
+        if (bonusResult.sync && bonusResult.sync.runId > 0) linkSync = bonusResult.sync;
+        linkMessages.push(
+          stagedBonus.action === "unlink"
+            ? t("metadataEditor.purchaseBonus.removed")
+            : t("metadataEditor.purchaseBonus.saved", {
+                code: bonusResult.purchaseBonus?.parentCode ?? stagedBonus.code,
+              }),
+        );
+      }
+      if (linkChanged) {
+        toast.success(linkMessages.join(" "));
+        onLinkChanged({ sync: linkSync });
       } else {
         toast.success(t("libraryDetail.metadataOverridesSaved"));
         onSaved();
@@ -262,12 +291,20 @@ export function WorkMetadataEditorModal({
             {section === "tags" && <WorkMetadataTagsSection editor={tagEditor} />}
             {section === "credits" && <MetadataEditorCreditsSection editor={credits} />}
             {section === "source" && (
-              <MetadataEditorSourceSection
-                link={work.metadataLink}
-                primaryCode={work.primaryCode}
-                staged={stagedLink}
-                onStage={setStagedLink}
-              />
+              <div className="space-y-4">
+                <MetadataEditorSourceSection
+                  link={work.metadataLink}
+                  primaryCode={work.primaryCode}
+                  staged={stagedLink}
+                  onStage={setStagedLink}
+                />
+                <MetadataEditorPurchaseBonusSection
+                  bonus={work.purchaseBonus}
+                  primaryCode={work.primaryCode}
+                  staged={stagedBonus}
+                  onStage={setStagedBonus}
+                />
+              </div>
             )}
           </fieldset>
         </DialogBody>

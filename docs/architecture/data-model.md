@@ -321,6 +321,31 @@ code never becomes a work, edition, or alias, and its family is not walked.
 Saving a link rechecks a work previously recorded as `not_found`; removing it
 keeps the stored metadata until the work's own code is synchronized again.
 
+### Purchase Bonuses
+
+`work_purchase_bonus` (migration `058`) attaches a purchase bonus
+(`購入特典`, `早期購入特典`) to the family of the product it was distributed with.
+DLsite declares no relationship between the two: the bonus has no translation,
+edition, or bonus field naming its parent, and its public page is unlisted. The
+bonus is not an edition. It keeps its own work, singleton edition family,
+playback cursor, availability, Library card and deletion, because every family
+reader treats a sibling `work_edition` as an interchangeable language edition.
+The row stores the parent by code only; the parent never becomes a work, edition
+or alias, and the detail resolves it at read time to the work with that code or
+the canonical work of the family declaring it as an alias. A parent's detail
+lists linked bonuses whose code belongs to its family.
+
+`status` is `linked` (with `parent_code`), `unmatched` (detection found no
+single parent) or `dismissed` (a user removed the link); `origin` is `detected`
+or `user`. Detection never replaces a user's link or dismissal, and a dismissed
+work is not detected again. Metadata sync stores a linked bonus's own product
+and fills only its empty genres, credits (`creaters`) and series fields from
+the parent product, requested in the bonus's locale. The snapshot keeps the
+bonus's code, title, introduction, cover and release date, and records
+`_kikoto.purchase_bonus_parent_code` and `_kikoto.purchase_bonus_inherited`, so
+the existing tag, credit, card-summary and search projections need no bonus
+logic. A dismissal queues a refresh that stores the bonus's own product again.
+
 ### Remote Metadata Fallback
 
 Remote file sources may describe works, but they never create a work or a

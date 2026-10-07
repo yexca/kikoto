@@ -213,6 +213,9 @@ func (s *Server) executeWorkMetadataSyncJob(ctx context.Context, job workflowJob
 		"work_id": payload.WorkID, "primary_code": payload.PrimaryCode, "canonical_code": family.CanonicalCode,
 		"synced_codes": family.SyncedCodes, "skipped_codes": family.SkippedCodes, "failures": family.Failures,
 	}
+	if family.PurchaseBonusParent != "" {
+		summary["purchase_bonus_parent"] = family.PurchaseBonusParent
+	}
 	if err := s.finishWorkMetadataSyncJob(ctx, job, status, level, summary, len(family.SyncedCodes)); err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
@@ -344,6 +347,7 @@ func (s *Server) newDLsiteMetadataSyncer(ctx context.Context) *metasync.DLsiteSy
 		WithCacheRoot(s.cfg.CacheRoot).
 		WithMetadataPriority(s.instanceMetadataLanguages(ctx)).
 		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.instanceMetadataLanguages(ctx))).
+		WithPurchaseBonusLinking(s.settingBoolContext(ctx, purchaseBonusAutoLinkSetting, true), false).
 		WithRequestPacing(
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),

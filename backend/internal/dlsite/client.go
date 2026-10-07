@@ -103,6 +103,11 @@ type Product struct {
 	// MetadataSourceCode is set when Kikoto stores this product's metadata on
 	// another work through a user-declared metadata link.
 	MetadataSourceCode string `json:"-"`
+	// PurchaseBonusParentCode is set when Kikoto filled this purchase bonus's
+	// empty fields from its parent product; PurchaseBonusInherited names the
+	// filled groups.
+	PurchaseBonusParentCode string   `json:"-"`
+	PurchaseBonusInherited  []string `json:"-"`
 }
 
 func (product Product) IsPermanentlyFree() *bool {
@@ -346,6 +351,12 @@ type MakerCatalogOptions struct {
 	KnownWorkCodes map[string]bool
 	Delay          time.Duration
 	Languages      []string
+	// StopBelowCode ends paging after the first page listing a work code with
+	// the same prefix and a lower number. Profile pages list newer works
+	// first, so the codes around StopBelowCode have been seen by then.
+	StopBelowCode string
+	// SkipSeries leaves the maker's series catalogs unrequested.
+	SkipSeries bool
 }
 
 type RankingOptions struct {
@@ -762,7 +773,7 @@ func (c *Client) fetchMakerCatalogFromSite(ctx context.Context, site string, mak
 			state.reachedEnd = true
 			break
 		}
-		if state.reachedEnd {
+		if state.reachedEnd || pageListsCodeBelow(profile.WorkCodes, options.StopBelowCode) {
 			break
 		}
 	}
@@ -773,7 +784,9 @@ func (c *Client) fetchMakerCatalogFromSite(ctx context.Context, site string, mak
 	state.firstProfile.RawHTML = state.firstRaw
 	state.firstProfile.PagesFetched = state.pagesFetched
 	state.firstProfile.ReachedEnd = state.reachedEnd
-	state.firstProfile.Series = c.fetchMakerSeriesCatalogs(ctx, state.firstProfile.Series, languages)
+	if !options.SkipSeries {
+		state.firstProfile.Series = c.fetchMakerSeriesCatalogs(ctx, state.firstProfile.Series, languages)
+	}
 	return state.firstProfile, nil
 }
 
@@ -1247,6 +1260,34 @@ func normalizeCodeSet(codes map[string]bool) map[string]bool {
 		}
 	}
 	return result
+}
+
+func pageListsCodeBelow(codes []string, limit string) bool {
+	limitPrefix, limitNumber, ok := SplitWorkCode(limit)
+	if !ok {
+		return false
+	}
+	for _, code := range codes {
+		prefix, number, ok := SplitWorkCode(code)
+		if ok && prefix == limitPrefix && number < limitNumber {
+			return true
+		}
+	}
+	return false
+}
+
+// SplitWorkCode splits a DLsite work code such as RJ01234567 into its
+// upper-case prefix and number.
+func SplitWorkCode(code string) (string, int64, bool) {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if len(code) < 3 {
+		return "", 0, false
+	}
+	number, err := strconv.ParseInt(code[2:], 10, 64)
+	if err != nil || number < 0 || code[0] < 'A' || code[0] > 'Z' || code[1] < 'A' || code[1] > 'Z' {
+		return "", 0, false
+	}
+	return code[:2], number, true
 }
 
 func codesBeforeFirstKnown(codes []string, known map[string]bool) ([]string, bool) {
