@@ -41,10 +41,10 @@ Sources describe where files come from.
   not replace the unified local work detail model.
 - Compatible remote work responses map the source's current `price`. The value
   is not persisted as price history or treated as an authoritative regular
-  price. In Demo mode, Remote Source paging always adds `$age:general$` and
-  `$-price:1$` to the upstream search. Detail and media access repeat the same
-  filtered search with an exact work code; returned age and price fields are not
-  interpreted locally as policy inputs.
+  price.
+- Demo mode never contacts a remote server. Its only remote source, Remote
+  Kikoeru, is simulated in process from a random selection of the admitted
+  local works, and the Library shows a notice above it saying so.
 - `kikoeru_compatible_number178` retains its adapter for migrated sources but is
   rejected by new source and configuration-seed inputs. The historical
   `kikoeru_compilable_number178` spelling is migrated automatically.

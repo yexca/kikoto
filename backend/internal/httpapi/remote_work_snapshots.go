@@ -108,7 +108,7 @@ func (s *Server) loadRemoteWork(ctx context.Context, sourceID int64, code string
 		return remoteSourceForUse{}, kikoeru.Work{}, fmt.Errorf("source is not an enabled kikoeru-compatible source")
 	}
 	client := s.kikoeruClientForSourceWithLanguages(source, sourceRequestInteractive, languages)
-	remoteWork, _, err := s.resolveRemoteWorkForAccess(ctx, client, code)
+	remoteWork, _, err := s.resolveKikoeruWork(ctx, client, code)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			_ = s.updateSourceHealth(ctx, sourceID, "unavailable")

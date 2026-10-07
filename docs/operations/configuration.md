@@ -68,7 +68,9 @@ Remote sources can be seeded on first startup from
 `config/remote-sources.yml` when `KIKOTO_REMOTE_SOURCES_ENABLED=true`. Compose
 mounts that file at `/config/remote-sources.yml`; direct backend runs also check
 `../config/remote-sources.yml` and the legacy `.yaml` extension. Keep real
-source details in the mounted configuration file, not in the repository.
+source details in the mounted configuration file, not in the repository. Demo
+mode ignores the seed file and simulates its only remote source from admitted
+local works; see [Demo Stack](docker.md#demo-stack).
 
 Set `api_url` to the upstream service base URL, such as
 `https://example.invalid`. The client appends paths such as `/api/health` and
