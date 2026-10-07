@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/localfs"
 )
 
 func TestLocalMediaProbeBatchesOnlyPendingLocalFiles(t *testing.T) {
@@ -137,15 +138,23 @@ func newLocalProbeTestServer(t *testing.T, files int) *Server {
 		}
 	}
 	for index := 1; index <= files; index++ {
-		path := fmt.Sprintf("track-%d.mp3", index)
+		path := fmt.Sprintf("RJ00000000/track-%d.mp3", index)
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(s.cfg.DataRoot, path)), 0o700); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(s.cfg.DataRoot, path), []byte("media"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec("INSERT INTO media_item (id, work_id, kind, title) VALUES (?, 1, 'audio', 'Example Track')", index); err != nil {
+		info, err := os.Stat(filepath.Join(s.cfg.DataRoot, path))
+		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.Exec(`INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, size_bytes, availability)
-			VALUES (?, ?, 1, 'local', ?, 5, 'available')`, index, index, path); err != nil {
+		version := localfs.FileVersion(info)
+		if _, err := db.Exec("INSERT INTO media_item (id, work_id, kind, title, size_bytes, file_version, has_audio) VALUES (?, 1, 'audio', 'Example Track', 5, ?, 1)", index, version); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, size_bytes, file_version, availability)
+			VALUES (?, ?, 1, 'local', ?, 5, ?, 'available')`, index, index, path, version); err != nil {
 			t.Fatal(err)
 		}
 	}

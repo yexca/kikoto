@@ -1,6 +1,7 @@
 package localfs
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -27,6 +28,7 @@ type LocalFile struct {
 	Title           string
 	Extension       string
 	SizeBytes       int64
+	FileVersion     string
 	DurationSeconds *int64
 	HasAudio        *bool
 }
@@ -474,6 +476,7 @@ func collectFiles(root string, workPath string) ([]LocalFile, error) {
 			Title:       title,
 			Extension:   extension,
 			SizeBytes:   info.Size(),
+			FileVersion: FileVersion(info),
 		})
 		return nil
 	})
@@ -481,6 +484,12 @@ func collectFiles(root string, workPath string) ([]LocalFile, error) {
 		return files[i].WorkRelPath < files[j].WorkRelPath
 	})
 	return files, err
+}
+
+// FileVersion is an observation of the file, independent of its logical path
+// identity. Nanosecond mtime detects same-size replacements during rescanning.
+func FileVersion(info os.FileInfo) string {
+	return fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
 }
 
 func normalizeExtensions(values []string) map[string]struct{} {

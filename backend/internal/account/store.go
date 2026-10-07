@@ -235,8 +235,32 @@ func (s *Store) upgradePasswordHash(ctx context.Context, userID int64, password 
 }
 
 func (s *Store) DeleteSession(ctx context.Context, sessionID string) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM user_session WHERE id = ?", sessionKey(sessionID))
-	return err
+	return s.DeleteSessions(ctx, sessionID)
+}
+
+// DeleteSessions revokes every credential presented at logout atomically. A
+// mixed bearer/cookie request must not report success after a partial revoke.
+func (s *Store) DeleteSessions(ctx context.Context, sessionIDs ...string) error {
+	keys := make(map[string]bool)
+	for _, id := range sessionIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			keys[sessionKey(id)] = true
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for key := range keys {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM user_session WHERE id = ?", key); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func PermissionsForRole(role string) []string {

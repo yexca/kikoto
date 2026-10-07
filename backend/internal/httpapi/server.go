@@ -45,6 +45,9 @@ type Server struct {
 	metadataTransport              *metadataTransport
 	metadataHTTPClient             *http.Client
 	remoteWorkCacheMu              sync.Mutex
+	remoteSourceConfigMu           sync.RWMutex
+	manualCoverMu                  sync.Mutex
+	remoteWorkCacheGenerations     map[int64]uint64
 	remoteWorkCache                map[string]remoteWorkSnapshot
 	remoteWorkCacheCalls           map[string]*remoteWorkCall
 	remoteWorkTracksCache          map[string]remoteWorkTracksSnapshot
@@ -103,6 +106,7 @@ func NewServer(db *sql.DB, cfg config.Config) *Server {
 		dlsiteEndpoints:                dlsiteEndpoints,
 		metadataCoordinator:            metasync.NewCoordinator(),
 		remoteWorkCache:                map[string]remoteWorkSnapshot{},
+		remoteWorkCacheGenerations:     map[int64]uint64{},
 		remoteWorkCacheCalls:           map[string]*remoteWorkCall{},
 		remoteWorkTracksCache:          map[string]remoteWorkTracksSnapshot{},
 		remoteWorkTracksCacheCalls:     map[string]*remoteWorkTracksCall{},

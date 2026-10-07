@@ -2,6 +2,7 @@ import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 
 import { clearNativeAssetTransport, configureNativeAssetTransport } from "@/lib/nativeAssetTransport";
+import { changeApiSession } from "@/lib/apiSession";
 
 const SERVER_URL_STORAGE_KEY = "kikoto:mobile-server-url";
 const SESSION_TOKEN_STORAGE_KEY = "kikoto:mobile-session-token";
@@ -42,7 +43,10 @@ export async function setStoredServerURL(value: string) {
   const normalized = normalizeServerURL(value);
   // Clear the old credential durably before publishing a different server.
   // The base path is part of the identity: one origin may host multiple instances.
-  if (normalized !== getStoredServerURL()) await clearStoredSessionToken();
+  if (normalized !== getStoredServerURL()) {
+    await clearStoredSessionToken();
+    changeApiSession();
+  }
   localStorage.setItem(SERVER_URL_STORAGE_KEY, normalized);
   if (!isNativeApp()) return;
   await Promise.all([
@@ -52,6 +56,7 @@ export async function setStoredServerURL(value: string) {
 }
 
 export async function clearStoredServerURL() {
+  changeApiSession();
   localStorage.removeItem(SERVER_URL_STORAGE_KEY);
   localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
   if (!isNativeApp()) return;
@@ -69,6 +74,7 @@ export function getStoredSessionToken() {
 export async function setStoredSessionToken(value: string) {
   if (value.trim()) {
     const token = value.trim();
+    if (token !== getStoredSessionToken()) changeApiSession();
     localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, token);
     if (!isNativeApp()) return;
     await Promise.all([
@@ -79,6 +85,7 @@ export async function setStoredSessionToken(value: string) {
 }
 
 export async function clearStoredSessionToken() {
+  changeApiSession();
   localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
   if (!isNativeApp()) return;
   const serverUrl = getStoredServerURL();
@@ -96,6 +103,7 @@ export async function hydrateNativeConfig() {
   ]);
   const serverUrl = server.value?.trim() ?? "";
   const credential = serverUrl ? (token.value?.trim() ?? "") : "";
+  if (serverUrl !== getStoredServerURL() || credential !== getStoredSessionToken()) changeApiSession();
   if (serverUrl) localStorage.setItem(SERVER_URL_STORAGE_KEY, serverUrl);
   else localStorage.removeItem(SERVER_URL_STORAGE_KEY);
   if (credential) localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, credential);

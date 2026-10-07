@@ -20,6 +20,7 @@ func (s *Server) startStartupMetadataRepairs() {
 			run func(context.Context) error
 		}{
 			{"startup_cover_migration", s.migrateFlatCoverCache},
+			{"startup_manual_asset_cleanup", s.cleanupUnreferencedManualAssets},
 			{"startup_metadata_tag_backfill", func(ctx context.Context) error {
 				if err := retireInstanceMetadataLanguage(ctx, s.db); err != nil {
 					return err

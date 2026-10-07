@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type ManagedUser struct {
@@ -54,6 +56,9 @@ var (
 	ErrInvalidCurrentPassword = errors.New("current password is incorrect")
 	ErrPasswordUnchanged      = errors.New("new password must differ from current password")
 	ErrInvalidUILocale        = errors.New("invalid interface language")
+	ErrLastSuperAdmin         = errors.New("at least one enabled super administrator is required")
+	ErrInvalidUserRole        = errors.New("role must be super_admin, admin, or user")
+	ErrGrantSuperAdmin        = errors.New("only super administrators can grant the super administrator role")
 )
 
 func (s *Store) ListManagedUsers(ctx context.Context) ([]ManagedUser, error) {
@@ -78,8 +83,12 @@ func (s *Store) ListManagedUsers(ctx context.Context) ([]ManagedUser, error) {
 }
 
 func (s *Store) LoadManagedUser(ctx context.Context, id int64) (ManagedUser, error) {
+	return loadManagedUser(ctx, s.db, id)
+}
+
+func loadManagedUser(ctx context.Context, db sqlutil.RowQuerier, id int64) (ManagedUser, error) {
 	var user ManagedUser
-	err := s.db.QueryRowContext(ctx, `SELECT id, username, display_name, role, enabled, created_at, updated_at FROM user_account WHERE id = ?`, id).
+	err := db.QueryRowContext(ctx, `SELECT id, username, display_name, role, enabled, created_at, updated_at FROM user_account WHERE id = ?`, id).
 		Scan(&user.ID, &user.Username, &user.DisplayName, &user.Role, &user.Enabled, &user.CreatedAt, &user.UpdatedAt)
 	return user, err
 }
@@ -126,6 +135,17 @@ func (s *Store) UpdateManagedUser(ctx context.Context, input UpdateUserInput) (M
 		return ManagedUser{}, err
 	}
 	defer tx.Rollback()
+	current, err := loadManagedUser(ctx, tx, input.ID)
+	if err != nil {
+		return ManagedUser{}, err
+	}
+	if err := preserveEnabledSuperAdmin(ctx, tx, current, input.Role, input.Enabled); err != nil {
+		return ManagedUser{}, err
+	}
+	return s.commitManagedUserUpdate(ctx, tx, input)
+}
+
+func (s *Store) commitManagedUserUpdate(ctx context.Context, tx *sql.Tx, input UpdateUserInput) (ManagedUser, error) {
 	if _, err := tx.ExecContext(ctx, `UPDATE user_account SET display_name = ?, role = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, input.DisplayName, input.Role, input.Enabled, input.ID); err != nil {
 		return ManagedUser{}, err
 	}
@@ -144,10 +164,14 @@ func (s *Store) UpdateManagedUser(ctx context.Context, input UpdateUserInput) (M
 	if err := insertAuditLog(ctx, tx, input.ActorUserID, "user.update", input.ID); err != nil {
 		return ManagedUser{}, err
 	}
+	updated, err := loadManagedUser(ctx, tx, input.ID)
+	if err != nil {
+		return ManagedUser{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return ManagedUser{}, err
 	}
-	return s.LoadManagedUser(ctx, input.ID)
+	return updated, nil
 }
 
 func (s *Store) UpdateOwnAccount(ctx context.Context, input UpdateOwnAccountInput) (User, error) {
@@ -251,6 +275,17 @@ func (s *Store) DeleteManagedUser(ctx context.Context, actorUserID int64, userID
 		return err
 	}
 	defer tx.Rollback()
+	current, err := loadManagedUser(ctx, tx, userID)
+	if err != nil {
+		return err
+	}
+	if err := preserveEnabledSuperAdmin(ctx, tx, current, "", false); err != nil {
+		return err
+	}
+	return deleteManagedUserTx(ctx, tx, actorUserID, userID)
+}
+
+func deleteManagedUserTx(ctx context.Context, tx *sql.Tx, actorUserID, userID int64) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM user_account WHERE id = ?", userID); err != nil {
 		return err
 	}
@@ -261,12 +296,23 @@ func (s *Store) DeleteManagedUser(ctx context.Context, actorUserID int64, userID
 }
 
 func (s *Store) EnsureAnotherEnabledSuperAdmin(ctx context.Context, userID int64) error {
+	return ensureAnotherEnabledSuperAdmin(ctx, s.db, userID)
+}
+
+func preserveEnabledSuperAdmin(ctx context.Context, tx *sql.Tx, current ManagedUser, role string, enabled bool) error {
+	if current.Role == "super_admin" && current.Enabled && (role != "super_admin" || !enabled) {
+		return ensureAnotherEnabledSuperAdmin(ctx, tx, current.ID)
+	}
+	return nil
+}
+
+func ensureAnotherEnabledSuperAdmin(ctx context.Context, db sqlutil.RowQuerier, userID int64) error {
 	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM user_account WHERE role = 'super_admin' AND enabled = 1 AND id != ?`, userID).Scan(&count); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM user_account WHERE role = 'super_admin' AND enabled = 1 AND id != ?`, userID).Scan(&count); err != nil {
 		return err
 	}
 	if count == 0 {
-		return errors.New("at least one enabled super administrator is required")
+		return ErrLastSuperAdmin
 	}
 	return nil
 }
@@ -275,11 +321,11 @@ func ValidateUserWrite(actor User, role string, password string, passwordRequire
 	switch role {
 	case "super_admin":
 		if actor.Role != "super_admin" {
-			return errors.New("only super administrators can grant the super administrator role")
+			return ErrGrantSuperAdmin
 		}
 	case "admin", "user":
 	default:
-		return errors.New("role must be super_admin, admin, or user")
+		return ErrInvalidUserRole
 	}
 	if !passwordRequired && password == "" {
 		return nil

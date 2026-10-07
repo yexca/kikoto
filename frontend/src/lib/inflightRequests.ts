@@ -12,12 +12,15 @@ type InflightEntry = {
   promise: Promise<unknown>;
   controller: AbortController;
   subscribers: number;
+  invalidate: () => void;
 };
 
 export type InflightRequests = {
   run<T>(key: string, request: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T>;
   /** Stops new callers from joining requests already in flight; current callers keep theirs. */
   forgetAll(): void;
+  /** Rejects pending results and prevents even an uncancellable request from publishing stale data. */
+  invalidateAll(): void;
   size(): number;
 };
 
@@ -34,14 +37,21 @@ export function createInflightRequests(): InflightRequests {
 
   function start(key: string, request: (signal: AbortSignal) => Promise<unknown>) {
     const controller = new AbortController();
-    const entry: InflightEntry = { promise: Promise.resolve(), controller, subscribers: 0 };
+    let invalidate = () => {};
+    const invalidated = new Promise<never>((_, reject) => {
+      invalidate = () => {
+        reject(new DOMException("The request is no longer current.", "AbortError"));
+        controller.abort();
+      };
+    });
+    const entry: InflightEntry = { promise: Promise.resolve(), controller, subscribers: 0, invalidate };
     let promise: Promise<unknown>;
     try {
       promise = request(controller.signal);
     } catch (error) {
       promise = Promise.reject(error);
     }
-    entry.promise = promise.finally(() => forget(key, entry));
+    entry.promise = Promise.race([promise, invalidated]).finally(() => forget(key, entry));
     // Every subscriber attaches its own handlers; this keeps a request whose
     // subscribers all aborted from surfacing as an unhandled rejection.
     entry.promise.catch(() => undefined);
@@ -71,6 +81,11 @@ export function createInflightRequests(): InflightRequests {
       });
     },
     forgetAll: () => entries.clear(),
+    invalidateAll: () => {
+      const pending = [...entries.values()];
+      entries.clear();
+      for (const entry of pending) entry.invalidate();
+    },
     size: () => entries.size,
   };
 }

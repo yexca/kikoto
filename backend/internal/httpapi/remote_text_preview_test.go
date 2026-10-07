@@ -114,17 +114,9 @@ func newRemoteTextPreviewServer(t *testing.T, endpoint string, textURL string) *
 	`, endpoint, endpoint); err != nil {
 		t.Fatal(err)
 	}
-	source := remoteSourceForUse{
-		ID:          7,
-		Code:        "remote_fixture",
-		DisplayName: "Remote fixture",
-		SourceType:  sourceTypeKikoeruCompatible,
-		Enabled:     true,
-		Endpoint: fileSourceEndpoint{
-			APIURL:                endpoint,
-			BaseURL:               endpoint,
-			RestrictOutboundHosts: true,
-		},
+	source, err := server.currentRemoteCacheSource(context.Background(), 7)
+	if err != nil {
+		t.Fatal(err)
 	}
 	work := kikoeru.Work{ID: 71, SourceID: "RJ00000000", Title: "Synthetic work"}
 	tracks := []kikoeru.Track{{Type: "text", Title: "01.lrc", MediaStreamURL: textURL}}

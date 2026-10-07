@@ -476,6 +476,13 @@ Important tables:
 - `media_item`
 - `media_file_location`
 
+Migration `059` adds `file_version` to media items and locations. Local scans
+observe file size and nanosecond modification time independently of the stable
+path fingerprint. Changed observations clear duration/audio metadata without
+replacing media ids or personal state. Probes compare their location id and
+expected version in the write transaction, rejecting delayed results after a
+rescan. Legacy versions are established on the next visible scan or probe.
+
 Presence can describe that a source knows about a work. Concrete playback,
 download, local, and cache paths belong in media file locations.
 
