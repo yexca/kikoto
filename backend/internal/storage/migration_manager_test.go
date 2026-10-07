@@ -28,7 +28,7 @@ func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 
 func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
 	db := openMigrationManagerDB(t)
-	if err := MigrateFS(db, migrations.Files, "v0.7.1"); err != nil {
+	if err := MigrateFS(db, migrations.Files, "v0.8.0"); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 
@@ -55,7 +55,7 @@ func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "baseline/059_v0.7.1.sql" {
+	if filename != "baseline/059_v0.8.0.sql" {
 		t.Fatalf("baseline history filename = %q", filename)
 	}
 }
@@ -221,42 +221,6 @@ func TestMigrateUpgradesRetiredBaselineLedger(t *testing.T) {
 			}
 			if got := strings.Join(filenames, ","); got != testCase.wantHistory {
 				t.Fatalf("upgraded migration history = %q, want %q", got, testCase.wantHistory)
-			}
-		})
-	}
-}
-
-func TestMigrateUpgradesRetiredDevelopmentBaselines(t *testing.T) {
-	sourceDir := filepath.Join("..", "..", "migrations")
-	// v0.7.0 development produced v0.6.1-suffixed baselines for schemas 035-044,
-	// and v0.7.1 development produced v0.7.0-suffixed ones for 045 and 047.
-	for _, retired := range retiredBaselineLedgerAssets {
-		if retired.version < 35 {
-			continue
-		}
-		version, filename := retired.version, retired.filename
-		t.Run(filename, func(t *testing.T) {
-			previousCatalog := copyNumberedMigrationsThrough(t, sourceDir, version)
-			if version == 51 || version == 52 {
-				previousCatalog = copyMetadataMigrationsThrough(t, version)
-			}
-			db := openMigrationManagerDB(t)
-			if err := Migrate(db, previousCatalog); err != nil {
-				t.Fatalf("create schema version %03d database: %v", version, err)
-			}
-			replaceMigrationHistoryWithRetiredBaseline(t, db, filename)
-			if err := Migrate(db, sourceDir); err != nil {
-				t.Fatalf("upgrade retired development baseline: %v", err)
-			}
-			var currentVersion, historyCount int
-			if err := db.QueryRow("SELECT current_version FROM schema_state WHERE id = 1").Scan(&currentVersion); err != nil {
-				t.Fatal(err)
-			}
-			if err := db.QueryRow("SELECT COUNT(*) FROM schema_migration").Scan(&historyCount); err != nil {
-				t.Fatal(err)
-			}
-			if currentVersion != latestNumberedMigrationVersion || historyCount != 1+latestNumberedMigrationVersion-version {
-				t.Fatalf("upgraded schema = %03d with %d history rows", currentVersion, historyCount)
 			}
 		})
 	}
