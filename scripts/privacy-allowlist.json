@@ -33,10 +33,11 @@
     {
       "url": "https://github.com/yexca/kikoto/**",
       "files": [
+        "README.md",
         "backend/internal/httpapi/app_update_endpoints.go",
         "frontend/src/lib/official-links.ts"
       ],
-      "reason": "Kikoto's public repository, release pages, and About links."
+      "reason": "Kikoto's public repository, release pages, README Android download link, and About links."
     },
     {
       "url": "https://api.github.com/repos/yexca/kikoto/**",
