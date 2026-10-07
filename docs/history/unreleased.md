@@ -1,5 +1,24 @@
 # Unreleased
 
+- Shared frontend reads are isolated by session/server generation. Account changes
+  and writes invalidate pending reads, including reads started during a write;
+  individual callers retain independent cancellation.
+- Logout clears the client cookie but reports a retryable failure if persistent
+  session revocation fails. Bearer and cookie credentials are revoked together.
+- Remote work and track caches validate current enabled source configuration and
+  outbound policy. Source changes detach old calls and reject late results.
+- User demotion, disabling and deletion retain an enabled super administrator in
+  the same write transaction as the change and its audit record. Partial updates
+  and environment-managed account restrictions use that transaction's state.
+- Manual covers publish a new complete asset before changing the database
+  reference. Failed or oversized copies preserve the saved cover; replacement,
+  reset and startup cleanup remove unreferenced assets.
+- Schema 059 versions local files by size and nanosecond modification time.
+  Rescanning a changed file clears duration/audio metadata, including same-size
+  replacements, and late probes cannot overwrite newer observations. Work,
+  media and personal-state identities remain stable. Existing databases apply
+  `059_local_media_file_version.sql`; fresh installs use `059_v0.7.1.sql`.
+
 - The expanded desktop sidebar is narrower, giving pages 40px more width at the
   default font size, and its width now follows the browser's default font size
   so navigation labels keep their room. The collapsed rail keeps its width.

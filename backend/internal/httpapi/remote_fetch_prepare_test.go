@@ -172,15 +172,19 @@ func TestRemoteFetchMetadataReadyRejectsRemoteOnlyWorkShell(t *testing.T) {
 }
 
 func TestRemoteWorkTrackCacheReusesSnapshot(t *testing.T) {
-	server := NewServer(nil, config.Config{})
+	server := newRemoteTextPreviewServer(t, "https://source.example.invalid", "https://source.example.invalid/track.mp3")
+	source, err := server.currentRemoteCacheSource(context.Background(), 7)
+	if err != nil {
+		t.Fatal(err)
+	}
 	key := server.remoteWorkCacheKey(context.Background(), 7, "RJ00000002")
 	server.remoteWorkCache[key] = remoteWorkSnapshot{
-		Source:    remoteSourceForUse{ID: 7, Code: "cached"},
+		Source:    source,
 		Work:      kikoeru.Work{ID: 95, SourceID: "RJ00000002"},
 		ExpiresAt: time.Now().Add(time.Minute),
 	}
 	server.remoteWorkTracksCache[key] = remoteWorkTracksSnapshot{
-		Source:    remoteSourceForUse{ID: 7, Code: "cached"},
+		Source:    source,
 		Work:      kikoeru.Work{ID: 95, SourceID: "RJ00000002"},
 		Tracks:    []kikoeru.Track{{Type: "audio", Title: "Cached track"}},
 		ExpiresAt: time.Now().Add(time.Minute),

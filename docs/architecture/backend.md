@@ -50,7 +50,12 @@ The backend is a Go HTTP API with SQLite persistence.
 Local duration probing runs in one service-scoped worker. Indexing coalesces
 wakeups instead of retaining file lists in waiting goroutines. The worker reads
 at most 64 pending local locations at a time, skips complete duration metadata,
-and resumes missing metadata on startup. A pass has a fixed location-id frontier;
+and resumes missing or unversioned metadata on startup. Local file observations
+include size and nanosecond modification time; scans clear derived duration and
+audio metadata after a change, and probes commit only against their observed
+location id and file version. Probe reads use the same online-pool and work-root
+depth scope as scans. Identical size and preserved modification time cannot be
+distinguished without content hashing. A pass has a fixed location-id frontier;
 indexing during a pass requests one follow-up. Existing FFprobe time, output,
 and concurrency limits still apply, and shutdown cancels active probing.
 

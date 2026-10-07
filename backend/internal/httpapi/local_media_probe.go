@@ -14,6 +14,7 @@ const localMediaProbeBatchSize = 64
 type localMediaProbeTarget struct {
 	locationID   int64
 	fileSourceID int64
+	workID       int64
 	kind         string
 	file         localfs.LocalFile
 }
@@ -82,13 +83,13 @@ func (s *Server) probeMissingLocalMedia(ctx context.Context, probe func(context.
 
 func (s *Server) loadLocalMediaProbeBatch(ctx context.Context, afterID, lastID int64) ([]localMediaProbeTarget, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT location.id, location.file_source_id, location.path, location.size_bytes, item.kind
+		SELECT location.id, location.file_source_id, item.work_id, location.path, location.size_bytes, location.file_version, item.kind
 		FROM media_file_location AS location
 		INNER JOIN media_item AS item ON item.id = location.media_item_id
 		WHERE location.id > ? AND location.id <= ?
 			AND location.location_type = 'local' AND location.availability = 'available'
 			AND item.kind IN ('audio', 'video') AND location.size_bytes IS NOT NULL
-			AND (location.duration_seconds IS NULL OR item.duration_seconds IS NULL)
+			AND (location.file_version = '' OR location.duration_seconds IS NULL OR item.duration_seconds IS NULL OR item.has_audio IS NULL)
 		ORDER BY location.id LIMIT ?
 	`, afterID, lastID, localMediaProbeBatchSize)
 	if err != nil {
@@ -98,7 +99,7 @@ func (s *Server) loadLocalMediaProbeBatch(ctx context.Context, afterID, lastID i
 	batch := make([]localMediaProbeTarget, 0, localMediaProbeBatchSize)
 	for rows.Next() {
 		var target localMediaProbeTarget
-		if err := rows.Scan(&target.locationID, &target.fileSourceID, &target.file.RelPath, &target.file.SizeBytes, &target.kind); err != nil {
+		if err := rows.Scan(&target.locationID, &target.fileSourceID, &target.workID, &target.file.RelPath, &target.file.SizeBytes, &target.file.FileVersion, &target.kind); err != nil {
 			return nil, err
 		}
 		batch = append(batch, target)
@@ -107,6 +108,10 @@ func (s *Server) loadLocalMediaProbeBatch(ctx context.Context, afterID, lastID i
 }
 
 func (s *Server) probeLocalMediaTarget(ctx context.Context, target localMediaProbeTarget, probe func(context.Context, string) (int64, bool, bool)) error {
+	allowed, err := s.localMediaPathInScanScope(ctx, target.workID, target.fileSourceID, target.file.RelPath)
+	if err != nil || !allowed {
+		return err
+	}
 	root, err := filepath.Abs(s.cfg.DataRoot)
 	if err != nil {
 		return err
@@ -124,16 +129,24 @@ func (s *Server) probeLocalMediaTarget(ctx context.Context, target localMediaPro
 	if err != nil || !before.Mode().IsRegular() || before.Size() != file.SizeBytes {
 		return nil
 	}
+	file.FileVersion = localfs.FileVersion(before)
+	if target.file.FileVersion != "" && target.file.FileVersion != file.FileVersion {
+		return nil
+	}
 	duration, hasAudio, ok := probe(ctx, file.AbsPath)
 	if !ok {
 		return ctx.Err()
 	}
 	after, err := os.Stat(file.AbsPath)
-	if err != nil || after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
+	if err != nil || !os.SameFile(before, after) || localfs.FileVersion(after) != file.FileVersion {
 		return nil
 	}
 	if target.kind == "audio" {
 		hasAudio = true
 	}
-	return s.updateLocalMediaMetadata(ctx, target.fileSourceID, file, duration, hasAudio)
+	allowed, err = s.localMediaPathInScanScope(ctx, target.workID, target.fileSourceID, file.RelPath)
+	if err != nil || !allowed {
+		return err
+	}
+	return s.updateLocalMediaMetadata(ctx, target.locationID, file, target.file.FileVersion, duration, hasAudio)
 }

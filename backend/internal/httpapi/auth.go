@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -30,6 +31,12 @@ func (s *Server) BootstrapDemo(ctx context.Context) error {
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Logout only needs the presented credentials. Even an unavailable
+		// session lookup must reach client cleanup and explicit revoke failure.
+		if r.Method == http.MethodPost && r.URL.Path == "/api/auth/logout" {
+			next.ServeHTTP(w, r.WithContext(withMetadataLanguageMemo(r.Context())))
+			return
+		}
 		user, err := s.currentUserFromRequest(r.Context(), r)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -296,12 +303,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
-	if sessionID := bearerSessionID(r); sessionID != "" {
-		_ = s.accountStore.DeleteSession(r.Context(), sessionID)
-	}
+	sessionIDs := []string{bearerSessionID(r)}
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
-		_ = s.accountStore.DeleteSession(r.Context(), cookie.Value)
+		sessionIDs = append(sessionIDs, cookie.Value)
 	}
+	err := s.accountStore.DeleteSessions(r.Context(), sessionIDs...)
 	s.setSessionCookie(r, w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
@@ -310,6 +316,11 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
+	if err != nil {
+		slog.Error("logout session revocation failed", "error", err)
+		writeAPIError(w, http.StatusServiceUnavailable, "session_revocation_failed", "local sign-out completed, but session revocation failed", true)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

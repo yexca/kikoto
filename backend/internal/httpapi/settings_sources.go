@@ -306,6 +306,8 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	s.remoteSourceConfigMu.Lock()
+	defer s.remoteSourceConfigMu.Unlock()
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, err)
@@ -415,6 +417,8 @@ func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source id"})
 		return
 	}
+	s.remoteSourceConfigMu.Lock()
+	defer s.remoteSourceConfigMu.Unlock()
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, err)

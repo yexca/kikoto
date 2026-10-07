@@ -17,6 +17,7 @@ vi.mock("@/lib/serverConfig", () => ({
 vi.mock("@/lib/mobileDiagnostics", () => ({ recordApiError }));
 
 import { api, ApiError, assetURL, mediaDownloadURL } from "./api";
+import { changeApiSession } from "./apiSession";
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -27,6 +28,7 @@ function jsonResponse(payload: unknown, status = 200) {
 
 describe("API client transport", () => {
   beforeEach(() => {
+    changeApiSession();
     clearStoredSessionToken.mockReset();
     getStoredServerURL.mockReset();
     getStoredServerURL.mockReturnValue("");
@@ -79,7 +81,9 @@ describe("API client transport", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse([]))
-      .mockResolvedValueOnce(jsonResponse({ authenticated: true, sessionToken: "new-synthetic-token" }));
+      .mockResolvedValueOnce(
+        jsonResponse({ authenticated: true, user: { id: 1 }, sessionToken: "synthetic-new-token" }),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
     await api.listUsers();
@@ -96,7 +100,7 @@ describe("API client transport", () => {
     expect(loginURL).toBe("https://mobile.example.invalid/kikoto/api/auth/login");
     expect(loginInit.method).toBe("POST");
     expect(loginInit.body).toBe(JSON.stringify({ username: "synthetic-user", password: "synthetic-password" }));
-    expect(setStoredSessionToken).toHaveBeenCalledWith("new-synthetic-token");
+    expect(setStoredSessionToken).toHaveBeenCalledWith("synthetic-new-token");
   });
 
   it("waits for native credential synchronization before completing login", async () => {
@@ -105,7 +109,9 @@ describe("API client transport", () => {
     const nextSessionValue = ["new", "synthetic", "value"].join("-");
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(jsonResponse({ authenticated: true, [["session", "Token"].join("")]: nextSessionValue }));
+      .mockResolvedValue(
+        jsonResponse({ authenticated: true, user: { id: 1 }, [["session", "Token"].join("")]: nextSessionValue }),
+      );
     vi.stubGlobal("fetch", fetchMock);
     let releaseCredentialWrite = () => {};
     setStoredSessionToken.mockReturnValue(
@@ -226,5 +232,101 @@ describe("API client transport", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/workflow-runs/41/events/stream?afterId=11");
     expect(new Headers(init.headers).get("Accept")).toBe("text/event-stream");
+  });
+
+  it("isolates tag requests across a cookie login and discards an old response", async () => {
+    let respondOld!: (response: Response) => void;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            respondOld = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ authenticated: true, user: { id: 2 } }))
+      .mockResolvedValueOnce(jsonResponse({ scope: "work", tags: [{ name: "Example new tag" }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const old = api.listUserTags("work");
+    const discarded = expect(old).rejects.toMatchObject({ name: "AbortError" });
+    await api.login("synthetic-user", "synthetic-password");
+    const fresh = api.listUserTags("work");
+    respondOld(jsonResponse({ scope: "work", tags: [{ name: "Example old tag" }] }));
+    await discarded;
+    await expect(fresh).resolves.toMatchObject({ tags: [{ name: "Example new tag" }] });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("invalidates reads before and after a settings write, including reads started during it", async () => {
+    const pending: ((response: Response) => void)[] = [];
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => pending.push(resolve)));
+    vi.stubGlobal("fetch", fetchMock);
+    const before = api.getRuntimeSettings();
+    const discardedBefore = expect(before).rejects.toMatchObject({ name: "AbortError" });
+    const write = api.updateSettings({ cacheEnabled: false });
+    const during = api.getRuntimeSettings();
+    const discardedDuring = expect(during).rejects.toMatchObject({ name: "AbortError" });
+    pending[1](jsonResponse({ cacheEnabled: false }));
+    await write;
+    const after = api.getRuntimeSettings();
+    pending[0](jsonResponse({ cacheEnabled: true }));
+    pending[2](jsonResponse({ cacheEnabled: true }));
+    pending[3](jsonResponse({ cacheEnabled: false }));
+    await Promise.all([discardedBefore, discardedDuring]);
+    await expect(after).resolves.toMatchObject({ cacheEnabled: false });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("shares tag reads while independently cancelling each subscriber", async () => {
+    let respond!: (response: Response) => void;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          respond = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    const cancelled = api.listUserTags("work", controller.signal);
+    const remaining = api.listUserTags("work");
+    controller.abort();
+    await expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
+    const signal = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].signal;
+    expect(signal?.aborted).toBe(false);
+    respond(jsonResponse({ scope: "work", tags: [] }));
+    await expect(remaining).resolves.toMatchObject({ tags: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a delayed body from a previous session even after fetch returned", async () => {
+    let finishBody!: (value: unknown) => void;
+    const response = jsonResponse({});
+    vi.spyOn(response, "json").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishBody = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    const read = api.listUsers();
+    const rejected = expect(read).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(finishBody).toBeTypeOf("function"));
+    changeApiSession();
+    finishBody([{ id: 1 }]);
+    await rejected;
+  });
+
+  it("discards a network failure from an earlier session without publishing diagnostics", async () => {
+    let fail!: (error: Error) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>((_, reject) => (fail = reject))),
+    );
+    const read = api.listUsers();
+    const rejected = expect(read).rejects.toMatchObject({ name: "AbortError" });
+    changeApiSession();
+    fail(new TypeError("Example old network failure"));
+    await rejected;
+    expect(recordApiError).not.toHaveBeenCalled();
   });
 });
