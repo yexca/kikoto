@@ -47,6 +47,7 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoContentNotice, DemoRemoteSourceNotice } from "@/components/DemoReadOnlyNotice";
 import { useTranslation } from "react-i18next";
+import { useDeferredBusy } from "@/hooks/useDeferredBusy";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { type ClientPrincipalID, currentClientStorageScope } from "@/lib/clientStorageScope";
 import {
@@ -2426,6 +2427,7 @@ function RemoteSourceResults({
   visibleWorks,
   remoteError,
   isInitialLoading,
+  skeletonCount,
   searchClauses,
   mobileColumns,
   desktopColumns,
@@ -2446,6 +2448,7 @@ function RemoteSourceResults({
   visibleWorks: RemoteWork[];
   remoteError: NonNullable<RemoteWorksResponse["error"]> | null;
   isInitialLoading: boolean;
+  skeletonCount: number;
   searchClauses: SearchClause[];
   mobileColumns: LibraryColumnSetting;
   desktopColumns: LibraryColumnSetting;
@@ -2465,8 +2468,13 @@ function RemoteSourceResults({
   onRetry: () => void;
   t: TFunction;
 }) {
+  const showSkeleton = useDeferredBusy(isInitialLoading);
   if (isInitialLoading) {
-    return <RemoteWorkGridSkeleton mobileColumns={mobileColumns} desktopColumns={desktopColumns} />;
+    // A fast first page replaces the previous view directly; placeholders
+    // appear only when the wait is noticeable.
+    return showSkeleton ? (
+      <RemoteWorkGridSkeleton count={skeletonCount} mobileColumns={mobileColumns} desktopColumns={desktopColumns} />
+    ) : null;
   }
   if (remoteError) return <RemoteSourceErrorCard error={remoteError} onRetry={onRetry} />;
   if (visibleWorks.length === 0) {
@@ -2562,7 +2570,15 @@ function RemoteSourcePanel({
 }) {
   const toast = useToast();
   const { t } = useTranslation();
-  const isInitialLoading = loading && result === null;
+  // Errors also produce a result, so no result means the first page is still on its way.
+  const isInitialLoading = result === null;
+  useEffect(() => {
+    if (result?.status === "ok") remoteSourceLoadedCounts.set(source.id, result.works.length);
+  }, [result, source.id]);
+  const skeletonCount = Math.min(
+    defaultRemoteSkeletonCount,
+    Math.max(1, remoteSourceLoadedCounts.get(source.id) ?? defaultRemoteSkeletonCount),
+  );
   const { page } = viewState;
   const browse = remoteSourceBrowseModel({ result, viewState, onPageChange });
   const selection = useRemoteSourceSelection({
@@ -2592,7 +2608,7 @@ function RemoteSourcePanel({
 
   return (
     <section className="space-y-3 pb-4 lg:pb-8">
-      {!model.remoteError && remoteTopPagination}
+      {!model.remoteError && !isInitialLoading && remoteTopPagination}
       {selectionMode && (
         <RemoteSourceSelectionBar
           t={t}
@@ -2616,6 +2632,7 @@ function RemoteSourcePanel({
         visibleWorks={model.visibleWorks}
         remoteError={model.remoteError}
         isInitialLoading={isInitialLoading}
+        skeletonCount={skeletonCount}
         searchClauses={searchClauses}
         mobileColumns={mobileColumns}
         desktopColumns={desktopColumns}
@@ -2632,7 +2649,9 @@ function RemoteSourcePanel({
         onRetry={onRetry}
         t={t}
       />
-      {!model.remoteError && <WorkCollectionPagination {...remotePaginationProps} placement="bottom" />}
+      {!model.remoteError && !isInitialLoading && (
+        <WorkCollectionPagination {...remotePaginationProps} placement="bottom" />
+      )}
       {saveConfirm && (
         <FetchConfirmDialog
           count={saveConfirm.codes.length}
@@ -2922,16 +2941,23 @@ function RemoteWorkCard({
   );
 }
 
+// The last page each remote source returned in this session sizes its loading
+// skeleton, so a small catalog does not flash a full grid of placeholders.
+const remoteSourceLoadedCounts = new Map<number, number>();
+const defaultRemoteSkeletonCount = 12;
+
 function RemoteWorkGridSkeleton({
+  count,
   mobileColumns,
   desktopColumns,
 }: {
+  count: number;
   mobileColumns: LibraryColumnSetting;
   desktopColumns: LibraryColumnSetting;
 }) {
   return (
     <section className={workCollectionClassName()} style={workCollectionStyle(mobileColumns, desktopColumns)}>
-      {Array.from({ length: 12 }, (_, index) => (
+      {Array.from({ length: count }, (_, index) => (
         <div key={index} className="overflow-hidden rounded-lg border bg-card">
           <div className="p-1.5 pb-0">
             <div className="aspect-[4/3] animate-pulse rounded-[calc(var(--radius)-4px)] bg-muted" />
