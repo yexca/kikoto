@@ -100,6 +100,22 @@ test("title editor current marker follows the selected metadata language", async
   ).toHaveCount(0);
 });
 
+test("a purchase bonus links to its parent work", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    detailPurchaseBonus: {
+      status: "linked",
+      parentCode: "RJ00000001",
+      origin: "detected",
+      parentWork: { id: 2, code: "RJ00000001", title: "Example Work 1" },
+      updatedAt: "",
+    },
+  });
+  await page.goto("/RJ00000000");
+  const parent = page.getByRole("group", { name: "Bonus for", exact: true });
+  await parent.getByRole("button", { name: "Example Work 1", exact: true }).click();
+  await expect(page).toHaveURL(/\/RJ00000001$/);
+});
+
 test("unknown routes and missing work codes render not found states", async ({ page }) => {
   await mockApplication(page);
   await page.goto("/missing-route");

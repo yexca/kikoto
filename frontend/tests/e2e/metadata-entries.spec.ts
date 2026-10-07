@@ -373,6 +373,53 @@ test("@desktop override reverts and a metadata link wait for Save", async ({ pag
   expect(link).toEqual({ sourceCode: "RJ00000001" });
 });
 
+test("@desktop a purchase bonus link shows the detected parent and waits for Save", async ({ page }) => {
+  await metadataWorkEditor(page);
+  const detail = workDetailFixture(work, {
+    purchaseBonus: {
+      status: "linked",
+      parentCode: "RJ00000001",
+      origin: "detected",
+      evidence: "title_kana",
+      url: "",
+      parentWork: { id: 2, code: "RJ00000001", title: "Example Work 1" },
+      updatedAt: "",
+    },
+  });
+  await page.route("**/api/works/1?includeMedia=false", (route) => route.fulfill({ json: detail }));
+  const requests: unknown[] = [];
+  await page.route("**/api/works/1/purchase-bonus", (route) => {
+    requests.push({ method: route.request().method(), body: route.request().postDataJSON() });
+    return route.fulfill({
+      json: {
+        purchaseBonus: { status: "linked", parentCode: "RJ00000002", origin: "user", updatedAt: "" },
+      } satisfies ApiResponse<"setWorkPurchaseBonus">,
+    });
+  });
+  await page.goto("/metadata");
+  await page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("tab", { name: "Metadata source" }).click();
+  const bonus = dialog.getByRole("region", { name: "Purchase bonus", exact: true });
+  await expect(bonus.getByText("Bonus for Example Work 1 (RJ00000001)", { exact: true })).toBeVisible();
+  await expect(bonus.getByText("Found by metadata sync", { exact: true })).toBeVisible();
+
+  await bonus.getByRole("button", { name: "Remove bonus link", exact: true }).click();
+  await expect(
+    bonus.getByText("The bonus link to RJ00000001 will be removed after you save.", { exact: true }),
+  ).toBeVisible();
+  await bonus.getByRole("button", { name: "Undo", exact: true }).click();
+  await bonus.getByLabel("Parent work code", { exact: true }).fill("rj00000002");
+  await bonus.getByRole("button", { name: "Link as bonus", exact: true }).click();
+  await expect(
+    bonus.getByText("Will be linked as a bonus for RJ00000002 after you save.", { exact: true }),
+  ).toBeVisible();
+  expect(requests).toEqual([]);
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(requests).toEqual([{ method: "PUT", body: { parentCode: "RJ00000002" } }]);
+});
+
 test("work tag edits autocomplete, create, remove and reset without scalar writes", async ({ page }) => {
   await metadataWorkEditor(page);
   const inherited = metadataTagFixture({ id: 2, displayName: "Synthetic inherited tag" });

@@ -394,8 +394,12 @@ hint changes nothing.
 and Metadata source tabs, each marked while it holds unsaved changes. Every
 change is a draft until Save: credit reverts become explicit `null` or empty
 PATCH fields (`MetadataEditorReverts`), a cover revert deletes the cover
-override, and a staged metadata link is written last, so its refresh result
-reaches `onLinkChanged`. A failure after a partial save reloads the caller and
+override, and a staged metadata link and purchase bonus link are written last,
+so the refresh they queue reaches `onLinkChanged`. The Metadata source tab holds
+both: `MetadataEditorSourceSection` for the metadata link and
+`MetadataEditorPurchaseBonusSection` for the parent of a purchase bonus. Work
+detail renders the relation with `DetailPurchaseBonusLine`: Bonus for on a
+bonus, and Bonuses on a work whose family has linked bonuses in the library. A failure after a partial save reloads the caller and
 keeps the editor open. Cancel with drafts asks before discarding them. Credit
 and tag inputs share `SuggestionCombobox`, an in-flow listbox with arrow-key and
 Enter selection. The work detail's metadata-unavailable notice opens the editor

@@ -359,6 +359,10 @@ export type WorkDetail = {
   translations: WorkTranslation[];
   manualOverrides: WorkManualOverrides;
   metadataLink?: WorkMetadataLink | null;
+  /** Set when this work is a purchase bonus with a link decision. */
+  purchaseBonus?: WorkPurchaseBonus | null;
+  /** Linked purchase bonuses whose parent belongs to this work's family. */
+  purchaseBonuses?: WorkPurchaseBonusWork[] | null;
   sourcePresence: SourcePresenceItem[] | null;
   localFolders: WorkFolderLocation[];
   mediaItems: MediaItem[];
@@ -373,6 +377,31 @@ export type WorkMetadataLink = {
 
 export type WorkMetadataLinkResult = {
   link: WorkMetadataLink | null;
+  sync?: WorkMetadataSyncRunResult;
+};
+
+/**
+ * The parent product a purchase bonus belongs to. The bonus stays its own work;
+ * `parentWork` is set while the library has a work in the parent's family.
+ */
+export type WorkPurchaseBonus = {
+  status: "linked" | "unmatched" | "dismissed";
+  parentCode?: string;
+  origin: "detected" | "user";
+  evidence?: string;
+  url?: string;
+  parentWork?: WorkPurchaseBonusWork | null;
+  updatedAt: string;
+};
+
+export type WorkPurchaseBonusWork = {
+  id: number;
+  code: string;
+  title: string;
+};
+
+export type WorkPurchaseBonusResult = {
+  purchaseBonus: WorkPurchaseBonus | null;
   sync?: WorkMetadataSyncRunResult;
 };
 
@@ -735,6 +764,8 @@ export type AppSettings = {
   remoteMaxBackoffSeconds: number;
   catalogFreshnessDays: number;
   remoteMetadataFallback?: RemoteMetadataFallbackSettings;
+  /** Metadata sync attaches a detected purchase bonus to its parent work's family. */
+  purchaseBonusAutoLink?: boolean;
   proxy: ProxySettings;
   /** Lets every account enter a private or LAN address for a Kikoeru account import. */
   kikoeruImportPrivateAddresses: boolean;
@@ -2614,6 +2645,9 @@ export const api = {
   setWorkMetadataLink: (id: number, sourceCode: string) =>
     putJSONBody<WorkMetadataLinkResult>(`/api/works/${id}/metadata-link`, { sourceCode }),
   deleteWorkMetadataLink: (id: number) => deleteJSON<WorkMetadataLinkResult>(`/api/works/${id}/metadata-link`),
+  setWorkPurchaseBonus: (id: number, parentCode: string) =>
+    putJSONBody<WorkPurchaseBonusResult>(`/api/works/${id}/purchase-bonus`, { parentCode }),
+  deleteWorkPurchaseBonus: (id: number) => deleteJSON<WorkPurchaseBonusResult>(`/api/works/${id}/purchase-bonus`),
   listWorkCoverCandidates: (id: number) =>
     getJSON<{ candidates: WorkCoverCandidate[]; providerCoverUrl: string }>(`/api/works/${id}/cover-candidates`),
   setWorkCoverOverride: (id: number, locationId: number) =>
@@ -2795,6 +2829,7 @@ export const api = {
     remoteMaxBackoffSeconds?: number;
     catalogFreshnessDays?: number;
     remoteMetadataFallback?: RemoteMetadataFallbackSettings;
+    purchaseBonusAutoLink?: boolean;
     proxy?: ProxySettingsPayload;
     kikoeruImportPrivateAddresses?: boolean;
     directoryRoutingRules?: DirectoryRoutingRule[];

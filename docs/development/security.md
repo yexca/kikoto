@@ -99,6 +99,25 @@ after DLsite reports it as not found:
 - Run output, Activity, and the API expose source codes, display names and
   fixed outcomes only. Detailed upstream errors stay in protected logs.
 
+### Purchase bonus detection
+
+Metadata sync may look up a purchase bonus's parent product (see
+[workflows](../architecture/workflows.md#purchase-bonus-detection)):
+
+- Requests use the built-in DLsite metadata client and its shared outbound
+  transport: the maker profile pages and `product.json` on the configured DLsite
+  origin, never a URL taken from a response.
+- The maker id and candidate codes come from DLsite responses and are
+  untrusted. The maker id must be two letters and digits and is path-escaped;
+  candidate codes must match the work-code pattern and the bonus's prefix.
+- Each bonus reads at most 10 profile pages, without series catalogs, and at
+  most 5 candidate products, through the syncer's request pacing, retries and
+  the client's response limits. A linked bonus adds one parent request per sync.
+- Candidate and parent products are scored or merged in memory and never
+  stored as works, editions or aliases. A failed lookup records nothing and
+  keeps detailed errors in protected logs; job output names only the detected
+  parent code.
+
 `POST /api/user-data/kikoeru/database` streams an uploaded Kikoeru SQLite file,
 up to 512 MiB, to a temporary file that is deleted when the request ends. The
 file is opened read-only and immutable with `trusted_schema` off, only the base

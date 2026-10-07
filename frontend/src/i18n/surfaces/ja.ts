@@ -56,6 +56,23 @@ export const surfaceJapanese = {
     ownMetadata: "この作品自身のメタデータ ({{code}}) を使用しています。",
     linkHint:
       "RJ と数字のような DLsite コードを入力してください。保存するとリンク先のコードからメタデータを更新します。",
+    purchaseBonus: {
+      title: "購入特典",
+      linked: "{{code}} の特典",
+      linkedTitle: "{{title}}（{{code}}）の特典",
+      detected: "メタデータ同期で検出",
+      none: "元の作品に関連付けられていません。",
+      unmatched: "メタデータ同期では元の作品が見つかりませんでした。",
+      dismissed: "関連付けなし。メタデータ同期は元の作品を探しません。",
+      linkPending: "保存すると {{code}} の特典として関連付けます。",
+      unlinkPending: "保存すると {{code}} との特典の関連付けを解除します。",
+      remove: "特典の関連付けを解除",
+      code: "元の作品のコード",
+      link: "特典として関連付け",
+      hint: "早期購入特典などの購入特典向けです。特典のタイトルとファイルはそのままで、足りないタグ、声優、シリーズを元の作品から引き継ぎます。",
+      saved: "{{code}} の特典として関連付けました。",
+      removed: "特典の関連付けを解除しました。",
+    },
     searchTags: "タグを検索、または新しいタグを入力",
     tagHint:
       "Enter で選択中のタグを追加するか、入力した名前でタグを作成します。タグの言語ボタンで言語別の名前を編集できます。",
@@ -1040,6 +1057,13 @@ export const surfaceJapanese = {
       loadFailed: "リモートメタデータの補完を読み込めませんでした。",
       loading: "リモートメタデータの補完を読み込み中",
     },
+    purchaseBonus: {
+      title: "購入特典",
+      description:
+        "DLsite は早期購入特典などの購入特典がどの作品のものかを示しません。メタデータ同期でサークルの作品から探し、その作品ファミリーに特典として加えられます。",
+      autoLink: "購入特典を元の作品に関連付ける",
+      saved: "購入特典の関連付けを保存しました。",
+    },
     metadataSyncScope: {
       label: "作品",
       hint: "ライブラリにある作品だけを更新します。新しいカタログ作品はフォローワークフローで追加されます。",
@@ -1286,6 +1310,8 @@ export const surfaceJapanese = {
     circle: "サークル",
     series: "シリーズ",
     voiceActors: "声優",
+    purchaseBonusFor: "特典の対象",
+    purchaseBonuses: "購入特典",
     metadataLinkCurrent: "{{code}} のメタデータを使用中",
     metadataLinkCode: "使用する DLsite 作品番号",
     metadataLinkCodePlaceholder: "RJ00000000",

@@ -200,6 +200,10 @@ DLsite names genres in the requested language even for Japanese-only works. When
 
 The listed order also decides which source wins when several remote sources describe the same work, even with the switch off. Turning the switch off stops new lookups and removes remote tags from shared tags again; titles, dates, circles, and covers already filled stay until DLsite or a manual value replaces them. Metadata issues name the source that filled a work DLsite does not have.
 
+### Purchase bonuses
+
+**Link purchase bonuses to their work** is set from the same **Configure** on the Metadata sync workflow and is on by default. A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), is a free DLsite product that does not say which work it belongs to. When metadata sync stores such a product, it looks for the parent among the circle's works already in the library, then on the circle's DLsite page, reading at most 10 pages and checking the 5 work codes nearest the bonus. A parent is linked only when exactly one work shares the bonus's title reading, or its release date and the title quoted in the bonus marker. Bonuses already in the library are checked by the next metadata sync. When no parent is found, refreshing that work's metadata from its detail page checks again. Turning the switch off stops new detection and keeps existing links; see [purchase bonuses](work-detail.md#purchase-bonuses) for what a link changes.
+
 ## Related Docs
 
 - [Configuration](../../operations/configuration.md)

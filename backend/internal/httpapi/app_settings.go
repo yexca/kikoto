@@ -37,7 +37,10 @@ type appSettingsResponse struct {
 	// RemoteMetadataFallback is the opt-in remote source lookup for works
 	// DLsite reports as not found, with its ordered source list.
 	RemoteMetadataFallback remoteMetadataFallbackSettings `json:"remoteMetadataFallback"`
-	Proxy                  proxySettingsResponse          `json:"proxy"`
+	// PurchaseBonusAutoLink lets metadata sync attach a detected purchase
+	// bonus to its parent work's family.
+	PurchaseBonusAutoLink bool                  `json:"purchaseBonusAutoLink"`
+	Proxy                 proxySettingsResponse `json:"proxy"`
 	// KikoeruImportPrivateAddresses lets every account enter a private or LAN
 	// address for a Kikoeru account import; administrators always can.
 	KikoeruImportPrivateAddresses bool                         `json:"kikoeruImportPrivateAddresses"`
@@ -73,6 +76,7 @@ type settingsUpdatePayload struct {
 	RemoteMaxBackoff              *float64                        `json:"remoteMaxBackoffSeconds"`
 	CatalogFreshnessDays          *int                            `json:"catalogFreshnessDays"`
 	RemoteMetadataFallback        *remoteMetadataFallbackSettings `json:"remoteMetadataFallback"`
+	PurchaseBonusAutoLink         *bool                           `json:"purchaseBonusAutoLink"`
 	Proxy                         *proxySettingsPayload           `json:"proxy"`
 	KikoeruImportPrivateAddresses *bool                           `json:"kikoeruImportPrivateAddresses"`
 	DirectoryRoutingRules         *[]directoryRule                `json:"directoryRoutingRules"`
@@ -294,6 +298,9 @@ func applyGeneralSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePay
 }
 
 func applyMetadataSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePayload) error {
+	if err := upsertOptionalBoolSetting(r, tx, payload.PurchaseBonusAutoLink, purchaseBonusAutoLinkSetting); err != nil {
+		return err
+	}
 	if payload.DirectoryRoutingRules != nil {
 		rules := normalizeDirectoryRoutingRules(*payload.DirectoryRoutingRules)
 		if len(rules) > 20 {
@@ -384,6 +391,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		RemoteMaxBackoff:              s.settingFloat(r, "remote_max_backoff_seconds", 300),
 		CatalogFreshnessDays:          s.catalogFreshnessDays(r.Context()),
 		RemoteMetadataFallback:        remoteMetadataFallback,
+		PurchaseBonusAutoLink:         s.settingBool(r, purchaseBonusAutoLinkSetting, true),
 		Proxy:                         s.proxySettingsResponse(proxyConfig),
 		KikoeruImportPrivateAddresses: s.settingBool(r, kikoeruImportPrivateAddressesSetting, false),
 		DirectoryRoutingRules:         s.settingDirectoryRules(r, "directory_routing_rules", defaultDirectoryRoutingRules()),

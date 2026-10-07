@@ -20,7 +20,7 @@ import {
   type VoiceCredit,
   type WorkDetail,
   type WorkMetadataPresentation,
-  type WorkMetadataLinkResult,
+  type WorkMetadataSyncRunResult,
   type WorkMetadataSyncStatus,
 } from "@/lib/api";
 import {
@@ -766,6 +766,8 @@ function persistedWorkDetailPresentation({
     sourceInfo,
     voiceActors: hero.voiceActors,
     voiceCredits: fields.voiceCredits,
+    purchaseBonus: work?.purchaseBonus,
+    purchaseBonuses: work?.purchaseBonuses,
     tags: fields.tags,
     personalTags,
     loading,
@@ -870,7 +872,7 @@ function PersistedMetadataEditorOverlay({
   selectedMetadataVariantKey: string;
   onClose: () => void;
   onSaved: () => void;
-  onLinkChanged: (result: WorkMetadataLinkResult) => void;
+  onLinkChanged: (result: { sync?: WorkMetadataSyncRunResult }) => void;
 }) {
   const { demoMode } = useAuth();
   if (!section || !work) return null;
@@ -1541,7 +1543,7 @@ export function PersistedWorkDetailController({
     await onWorksChanged();
   };
 
-  const metadataLinkChanged = async (result: WorkMetadataLinkResult) => {
+  const metadataLinkChanged = async (result: { sync?: WorkMetadataSyncRunResult }) => {
     // A new link queues a refresh from the linked code; the run watcher reloads
     // the detail again when that refresh finishes.
     if (result.sync && result.sync.runId > 0 && result.sync.status !== "unavailable") {

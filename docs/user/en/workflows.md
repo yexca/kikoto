@@ -149,8 +149,9 @@ Workflows make backend actions inspectable.
   **Refresh** (Missing or outdated, or All metadata). Its interval triggers
   store the same choice. Administrators with `sources:write` also see
   **Configure** beside **Run**: it sets the instance-wide
-  [remote metadata fallback](settings.md#remote-metadata-fallback) and saves
-  only that setting.
+  [remote metadata fallback](settings.md#remote-metadata-fallback) and
+  [purchase bonus linking](settings.md#purchase-bonuses), and saves only those
+  settings.
 - User-authored custom workflows, the DAG editor, slash commands, and the
   definition run dialog were removed. Upgrading deletes existing user
   definitions and their triggers; their runs stay in Activity history.

@@ -164,3 +164,23 @@ Migration `057_remote_language_titles.sql` queues existing remote snapshots
 for background projection. New installations use `057_v0.7.1.sql`, generated
 from the current `VERSION`; existing installations continue through the
 numbered migration chain. See [migration guidance](../development/migrations.md).
+
+## Purchase bonus metadata
+
+A purchase bonus such as an early purchase bonus (`【早期購入特典】`) is a free
+DLsite product that does not name the work it belongs to, so it used to show
+only its own title. Metadata sync now links it to that work by checking the
+circle's works in the library and the nearest codes on the circle's DLsite page.
+A bonus links only when its title reading, or its release date and quoted title,
+names exactly one work. The **Link purchase bonuses to their work** switch in
+the Metadata sync Configure popover is on by default. A library editor can also
+link or unlink a bonus in the metadata editor's Metadata source tab.
+
+A linked bonus stays its own work with its own title, files, cover and
+playback. It takes the tags, voice actors and series it lacks from the parent.
+Its detail links to the parent, and the parent's detail lists its bonuses. The
+parent code never becomes a library work.
+
+Migration `058_work_purchase_bonus.sql` adds the link table. New installations
+use `058_v0.7.1.sql`; existing installations continue through the numbered
+migration chain. See [migration guidance](../development/migrations.md).

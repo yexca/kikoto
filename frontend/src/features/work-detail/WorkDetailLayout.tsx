@@ -59,6 +59,7 @@ import { formatBytes, formatDuration } from "@/features/work-detail/media/mediaT
 import { sourceTabStatusClass } from "@/features/work-detail/source/sourceContextModel";
 import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
 import type { SourceActionLayout } from "@/features/work-detail/WorkDetailActionBars";
+import { DetailPurchaseBonusLine } from "@/features/work-detail/DetailPurchaseBonusLine";
 
 export type UnifiedWorkDetailPresentation = {
   coverUrl: string;
@@ -96,6 +97,8 @@ export type UnifiedWorkDetailPresentation = {
   sourceInfo: ActiveSourceInfoModel;
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
+  purchaseBonus?: WorkDetail["purchaseBonus"];
+  purchaseBonuses?: WorkDetail["purchaseBonuses"];
   tags: string[];
   personalTags?: ReactNode;
   loading?: boolean;
@@ -187,6 +190,8 @@ function DesktopWorkDetailLayout({
     sourceInfo,
     voiceActors,
     voiceCredits,
+    purchaseBonus,
+    purchaseBonuses,
     tags,
     personalTags,
     dlsiteFetchedAt,
@@ -244,6 +249,7 @@ function DesktopWorkDetailLayout({
               versionMenu={versionMenu}
             />
             <DetailCreditLine voiceActors={voiceActors} voiceCredits={voiceCredits} entityResolver={entityResolver} />
+            <DetailPurchaseBonusLine purchaseBonus={purchaseBonus} purchaseBonuses={purchaseBonuses} />
             <DetailTagLine tags={tags} personalTags={personalTags} />
             <DetailStatStrip {...presentation} />
             <MetadataSyncNotice
@@ -558,6 +564,8 @@ function MobileWorkDetailLayout({
   sourceInfo,
   voiceActors,
   voiceCredits,
+  purchaseBonus,
+  purchaseBonuses,
   tags,
   personalTags,
   loading,
@@ -601,6 +609,8 @@ function MobileWorkDetailLayout({
   sourceInfo: ActiveSourceInfoModel;
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
+  purchaseBonus?: WorkDetail["purchaseBonus"];
+  purchaseBonuses?: WorkDetail["purchaseBonuses"];
   tags: string[];
   personalTags?: ReactNode;
   loading?: boolean;
@@ -659,6 +669,8 @@ function MobileWorkDetailLayout({
       />
 
       <DetailCreditLine voiceActors={voiceActors} voiceCredits={voiceCredits} entityResolver={entityResolver} />
+
+      <DetailPurchaseBonusLine purchaseBonus={purchaseBonus} purchaseBonuses={purchaseBonuses} />
 
       <DetailTagLine tags={tags} personalTags={personalTags} />
 
