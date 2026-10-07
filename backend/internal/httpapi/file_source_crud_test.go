@@ -54,7 +54,7 @@ func TestFileSourceHandlersListUpdateAndDeleteConfiguredRemoteSources(t *testing
 	if err := json.NewDecoder(list.Body).Decode(&sources); err != nil {
 		t.Fatal(err)
 	}
-	if list.Code != http.StatusOK || len(sources) != 1 || sources[0].ID != created.ID {
+	if list.Code != http.StatusOK || len(sources) != 1 || sources[0].ID != created.ID || !sources[0].MetadataCapable {
 		t.Fatalf("list status = %d, sources = %#v", list.Code, sources)
 	}
 

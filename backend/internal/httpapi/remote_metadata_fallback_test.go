@@ -318,27 +318,46 @@ func TestRemoteFallbackRequestBoundary(t *testing.T) {
 		}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			outsideHits.Store(0)
-			f := newRemoteFallbackFixture(t, 23, dlsite.ErrNoProduct)
-			remote := httptest.NewServer(tc.handler(f.code))
-			defer remote.Close()
-			f.enable(t, f.addSource(t, "A", 10, remote.URL))
-			result, err := f.server.runRemoteMetadataFallback(context.Background(), f.workID, f.code)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var snapshots int
-			if err := f.db.QueryRow(`SELECT COUNT(*) FROM metadata_snapshot WHERE work_id = ?`, f.workID).Scan(&snapshots); err != nil {
-				t.Fatal(err)
-			}
-			if outsideHits.Load() != 0 {
-				t.Fatalf("unconfigured origin contacted %d times", outsideHits.Load())
-			}
-			if tc.filled != (result.Status == remoteFallbackFilled) || tc.filled != (snapshots == 1) {
-				t.Fatalf("result=%+v snapshots=%d", result, snapshots)
-			}
-			if !tc.filled && f.providerStatus(t, "kikoeru_source_example_remote_a") != "failed" {
-				t.Fatalf("boundary failure was not recorded as failed")
+			for _, explicit := range []bool{false, true} {
+				t.Run(strconv.FormatBool(explicit), func(t *testing.T) {
+					outsideHits.Store(0)
+					f := newRemoteFallbackFixture(t, 23, dlsite.ErrNoProduct)
+					remote := httptest.NewServer(tc.handler(f.code))
+					defer remote.Close()
+					sourceID := f.addSource(t, "A", 10, remote.URL)
+					var filled bool
+					if explicit {
+						if _, err := f.server.enqueueWorkMetadataSyncForSource(context.Background(), f.workID, false, sourceID); err != nil {
+							t.Fatal(err)
+						}
+						_ = f.server.runNextQueuedWorkflowJob(context.Background())
+						var status string
+						if err := f.db.QueryRow("SELECT status FROM workflow_run ORDER BY id DESC LIMIT 1").Scan(&status); err != nil {
+							t.Fatal(err)
+						}
+						filled = status == "succeeded"
+					} else {
+						f.enable(t, sourceID)
+						result, err := f.server.runRemoteMetadataFallback(context.Background(), f.workID, f.code)
+						if err != nil {
+							t.Fatal(err)
+						}
+						filled = result.Status == remoteFallbackFilled
+					}
+					var snapshots int
+					if err := f.db.QueryRow(`SELECT COUNT(*) FROM metadata_snapshot WHERE work_id = ?`, f.workID).Scan(&snapshots); err != nil {
+						t.Fatal(err)
+					}
+					if outsideHits.Load() != 0 {
+						t.Fatalf("unconfigured origin contacted %d times", outsideHits.Load())
+					}
+					if tc.filled != filled || tc.filled != (snapshots == 1) {
+						t.Fatalf("filled=%t snapshots=%d", filled, snapshots)
+					}
+					if !tc.filled && f.providerStatus(t, "kikoeru_source_example_remote_a") != "failed" {
+						t.Fatalf("boundary failure was not recorded as failed")
+					}
+				})
 			}
 		})
 	}
@@ -347,37 +366,57 @@ func TestRemoteFallbackRequestBoundary(t *testing.T) {
 // Cancellation releases a lookup that the source never answers and records no
 // outcome for it.
 func TestRemoteFallbackCancellation(t *testing.T) {
-	f := newRemoteFallbackFixture(t, 24, dlsite.ErrNoProduct)
-	started := make(chan struct{})
-	release := make(chan struct{})
-	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		close(started)
-		select {
-		case <-r.Context().Done():
-		case <-release:
-		}
-	}))
-	defer remote.Close()
-	defer close(release)
-	f.enable(t, f.addSource(t, "A", 10, remote.URL))
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() {
-		_, err := f.server.runRemoteMetadataFallback(ctx, f.workID, f.code)
-		done <- err
-	}()
-	<-started
-	cancel()
-	select {
-	case err := <-done:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("cancelled lookup returned %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("cancelled lookup did not return")
-	}
-	if status := f.providerStatus(t, "kikoeru_source_example_remote_a"); status != "" {
-		t.Fatalf("cancelled lookup recorded %q", status)
+	for _, explicit := range []bool{false, true} {
+		t.Run(strconv.FormatBool(explicit), func(t *testing.T) {
+			f := newRemoteFallbackFixture(t, 24, dlsite.ErrNoProduct)
+			started := make(chan struct{})
+			release := make(chan struct{})
+			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				close(started)
+				select {
+				case <-r.Context().Done():
+				case <-release:
+				}
+			}))
+			defer remote.Close()
+			defer close(release)
+			sourceID := f.addSource(t, "A", 10, remote.URL)
+			if explicit {
+				if _, err := f.server.enqueueWorkMetadataSyncForSource(context.Background(), f.workID, false, sourceID); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				f.enable(t, sourceID)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() {
+				if explicit {
+					done <- f.server.runNextQueuedWorkflowJob(ctx)
+				} else {
+					_, err := f.server.runRemoteMetadataFallback(ctx, f.workID, f.code)
+					done <- err
+				}
+			}()
+			select {
+			case <-started:
+			case <-time.After(5 * time.Second):
+				cancel()
+				t.Fatal("metadata lookup did not start")
+			}
+			cancel()
+			select {
+			case err := <-done:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("cancelled lookup returned %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("cancelled lookup did not return")
+			}
+			if status := f.providerStatus(t, "kikoeru_source_example_remote_a"); status != "" {
+				t.Fatalf("cancelled lookup recorded %q", status)
+			}
+		})
 	}
 }
 

@@ -187,11 +187,12 @@ type fileSourceEndpoint struct {
 }
 
 type librarySource struct {
-	ID          int64  `json:"id"`
-	Code        string `json:"code"`
-	DisplayName string `json:"displayName"`
-	SourceType  string `json:"sourceType"`
-	Enabled     bool   `json:"enabled"`
+	ID              int64  `json:"id"`
+	Code            string `json:"code"`
+	DisplayName     string `json:"displayName"`
+	SourceType      string `json:"sourceType"`
+	Enabled         bool   `json:"enabled"`
+	MetadataCapable bool   `json:"metadataCapable"`
 }
 
 var sourceCodePattern = regexp.MustCompile(`[^a-z0-9_]+`)
@@ -199,7 +200,7 @@ var remoteRequestLanguagePattern = regexp.MustCompile(`^[A-Za-z]{2,8}(?:[-_][A-Z
 
 func (s *Server) listLibrarySources(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT id, code, display_name, source_type, enabled
+		SELECT id, code, display_name, source_type, enabled, config_json
 		FROM file_source
 		WHERE source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
 		ORDER BY priority ASC, id ASC
@@ -212,10 +213,12 @@ func (s *Server) listLibrarySources(w http.ResponseWriter, r *http.Request) {
 	sources := []librarySource{}
 	for rows.Next() {
 		var source librarySource
-		if err := rows.Scan(&source.ID, &source.Code, &source.DisplayName, &source.SourceType, &source.Enabled); err != nil {
+		var configJSON string
+		if err := rows.Scan(&source.ID, &source.Code, &source.DisplayName, &source.SourceType, &source.Enabled, &configJSON); err != nil {
 			writeError(w, err)
 			return
 		}
+		source.MetadataCapable = remotemetadata.SupportsMetadata(source.SourceType, configJSON)
 		sources = append(sources, source)
 	}
 	if err := rows.Err(); err != nil {

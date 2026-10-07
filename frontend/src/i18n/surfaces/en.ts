@@ -1774,6 +1774,8 @@ export const surfaceEnglish = {
     metadata: "Metadata",
     metadataRefreshRunning: "Metadata refresh running",
     refreshMetadata: "Refresh metadata",
+    metadataRefreshSources: "More metadata sources",
+    refreshMetadataFrom: "From {{source}}",
     editMetadata: "Edit metadata",
     source: "Source",
     sourceActionsFor: "Source actions for {{source}}",

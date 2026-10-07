@@ -11,6 +11,7 @@ import {
   ListMusic,
   MicVocal,
   PauseCircle,
+  Plus,
   Repeat2,
   Star,
   X,
@@ -20,6 +21,7 @@ import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
 import { FavoriteListIconGlyph } from "@/components/favorite-list/FavoriteListIconGlyph";
+import { FavoriteListQuickCreate } from "@/components/favorite-list/FavoriteListQuickCreate";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -923,6 +925,7 @@ export function WorkCardListButton({
   disabled,
   showLabel = false,
   responsiveLabel = false,
+  allowCreate = false,
   ensureWorkId,
   onSaved,
 }: {
@@ -931,27 +934,34 @@ export function WorkCardListButton({
   disabled?: boolean;
   showLabel?: boolean;
   responsiveLabel?: boolean;
+  allowCreate?: boolean;
   ensureWorkId?: () => Promise<number | null>;
   onSaved?: (favorite: boolean, workId: number) => void;
 }) {
   const toast = useToast();
   const { t } = useTranslation();
+  const { demoMode, hasPermission } = useAuth();
   const [open, setOpen] = useState(false);
   const [resolvedWorkId, setResolvedWorkId] = useState<number | null>(null);
   const [lists, setLists] = useState<FavoriteList[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [listsLoaded, setListsLoaded] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const ref = useRef<HTMLDivElement | null>(null);
   const effectiveWorkId = workId ?? resolvedWorkId;
   const bottomCollisionPadding = isMobileViewport() ? 168 : 12;
+  const canCreate = allowCreate && !demoMode && hasPermission("favorites:write");
 
   useEffect(() => {
     if (!open || !effectiveWorkId) return;
     let cancelled = false;
     setLoading(true);
+    setListsLoaded(false);
+    setCreating(false);
     setError("");
     Promise.all([api.listFavoriteLists(), api.getWorkFavoriteLists(effectiveWorkId)])
       .then(([allLists, workLists]) => {
@@ -960,6 +970,7 @@ export function WorkCardListButton({
         setSelected(
           new Set(workLists.filter((list) => list.kind !== "marked" && list.selected).map((list) => list.id)),
         );
+        setListsLoaded(true);
       })
       .catch((nextError) => {
         if (!cancelled) {
@@ -987,7 +998,7 @@ export function WorkCardListButton({
   };
 
   const save = async () => {
-    if (!effectiveWorkId) return;
+    if (!effectiveWorkId || !listsLoaded || loading || saving || creating) return;
     setSaving(true);
     setError("");
     try {
@@ -1045,7 +1056,21 @@ export function WorkCardListButton({
         bottomCollisionPadding={bottomCollisionPadding}
         className="w-56 p-2 text-left"
       >
-        <div className="text-sm font-semibold">{t("workCard.lists")}</div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">{t("workCard.lists")}</div>
+          {canCreate && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1 px-2"
+              disabled={disabled || !listsLoaded || loading || saving || creating}
+              onClick={() => setCreating(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t("favorites.addList")}
+            </Button>
+          )}
+        </div>
         <div className="app-scroll mt-2 max-h-56 space-y-1.5 overflow-auto">
           {loading ? (
             <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">
@@ -1082,6 +1107,17 @@ export function WorkCardListButton({
             <div className="rounded-md border bg-background px-2.5 py-2 text-xs text-muted-foreground">{error}</div>
           )}
         </div>
+        {canCreate && creating && (
+          <FavoriteListQuickCreate
+            disabled={Boolean(disabled || loading || saving)}
+            onCancel={() => setCreating(false)}
+            onCreated={(list) => {
+              setLists((current) => [...current, list]);
+              toggle(list.id, true);
+              setCreating(false);
+            }}
+          />
+        )}
         <div className="mt-2 flex justify-end gap-1">
           <Button
             variant="ghost"
@@ -1098,7 +1134,7 @@ export function WorkCardListButton({
             className="h-8 w-8"
             title={saving ? t("workCard.saving") : t("workCard.save")}
             aria-label={saving ? t("workCard.saving") : t("workCard.save")}
-            disabled={loading || saving}
+            disabled={disabled || !listsLoaded || loading || saving || creating}
             onClick={() => void save()}
           >
             <Check className="h-4 w-4" />

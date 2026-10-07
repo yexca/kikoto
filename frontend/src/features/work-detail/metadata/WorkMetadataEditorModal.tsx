@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Image, Link2, Tags, Type, Users, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,7 @@ export function WorkMetadataEditorModal({
   selectedMetadataVariantKey,
   readOnly = false,
   initialSection = "title",
+  refreshActions,
   onClose,
   onSaved,
   onLinkChanged,
@@ -51,6 +52,7 @@ export function WorkMetadataEditorModal({
   selectedMetadataVariantKey?: string;
   readOnly?: boolean;
   initialSection?: MetadataEditorSection;
+  refreshActions?: ReactNode;
   onClose: () => void;
   onSaved: () => void;
   /** A metadata link or purchase bonus change, with the refresh it queued. */
@@ -326,7 +328,14 @@ export function WorkMetadataEditorModal({
           </>
         ) : (
           <>
-            <span className="min-w-0 truncate text-xs text-muted-foreground" aria-live="polite">
+            {refreshActions}
+            <span
+              className={cn(
+                "min-w-0 truncate text-xs text-muted-foreground",
+                refreshActions && "order-last basis-full sm:order-none sm:basis-auto sm:flex-1",
+              )}
+              aria-live="polite"
+            >
               {dirty
                 ? t("metadataEditor.unsavedSections", {
                     sections: changedSections.map((item) => sectionLabel(item.id)).join(" · "),

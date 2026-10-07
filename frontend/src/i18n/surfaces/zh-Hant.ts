@@ -1726,6 +1726,8 @@ export const surfaceHant = {
     metadata: "中繼資料",
     metadataRefreshRunning: "正在重新整理中繼資料",
     refreshMetadata: "重新整理中繼資料",
+    metadataRefreshSources: "更多中繼資料來源",
+    refreshMetadataFrom: "來自 {{source}}",
     editMetadata: "編輯中繼資料",
     source: "來源",
     sourceActionsFor: "{{source}} 的來源操作",

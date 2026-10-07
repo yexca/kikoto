@@ -1806,6 +1806,8 @@ export const surfaceKorean = {
     metadata: "메타데이터",
     metadataRefreshRunning: "메타데이터 새로 고침 진행 중",
     refreshMetadata: "메타데이터 새로 고침",
+    metadataRefreshSources: "다른 메타데이터 소스",
+    refreshMetadataFrom: "{{source}}에서",
     editMetadata: "메타데이터 편집",
     source: "소스",
     sourceActionsFor: "{{source}} 소스 작업",

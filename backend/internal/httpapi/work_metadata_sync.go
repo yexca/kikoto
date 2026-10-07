@@ -21,6 +21,7 @@ type workMetadataSyncPayload struct {
 	WorkID      int64  `json:"workId"`
 	PrimaryCode string `json:"primaryCode"`
 	FamilyCode  string `json:"familyCode"`
+	SourceID    int64  `json:"sourceId,omitempty"`
 }
 
 type workMetadataSyncRunResult struct {
@@ -41,8 +42,36 @@ func (s *Server) createWorkMetadataSyncRun(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
 		return
 	}
-	result, err := s.enqueueWorkMetadataSync(r.Context(), workID)
+	var options struct {
+		SourceID *int64 `json:"sourceId"`
+	}
+	if r.Body != nil {
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&options); err != nil && !errors.Is(err, io.EOF) {
+			writeAPIError(w, http.StatusBadRequest, "invalid_metadata_source", "invalid metadata refresh options", false)
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+			writeAPIError(w, http.StatusBadRequest, "invalid_metadata_source", "invalid metadata refresh options", false)
+			return
+		}
+	}
+	var sourceID int64
+	if options.SourceID != nil {
+		sourceID = *options.SourceID
+		if sourceID <= 0 {
+			writeAPIError(w, http.StatusBadRequest, "invalid_metadata_source", "invalid metadata source", false)
+			return
+		}
+	}
+	result, err := s.enqueueWorkMetadataSyncForSource(r.Context(), workID, false, sourceID)
 	if err != nil {
+		if errors.Is(err, errMetadataSourceUnavailable) {
+			writeAPIError(w, http.StatusBadRequest, "metadata_source_unavailable", "metadata source is unavailable", false)
+			return
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
 			return
@@ -62,8 +91,20 @@ func (s *Server) enqueueWorkMetadataSync(ctx context.Context, workID int64) (wor
 }
 
 func (s *Server) enqueueWorkMetadataSyncWithOptions(ctx context.Context, workID int64, recheckUnavailable bool) (workMetadataSyncRunResult, error) {
+	return s.enqueueWorkMetadataSyncForSource(ctx, workID, recheckUnavailable, 0)
+}
+
+func (s *Server) enqueueWorkMetadataSyncForSource(ctx context.Context, workID int64, recheckUnavailable bool, sourceID int64) (workMetadataSyncRunResult, error) {
 	s.metadataSyncMu.Lock()
 	defer s.metadataSyncMu.Unlock()
+	var selectedSource remoteSourceForUse
+	if sourceID != 0 {
+		var err error
+		selectedSource, err = s.loadMetadataRefreshSource(ctx, sourceID)
+		if err != nil {
+			return workMetadataSyncRunResult{}, err
+		}
+	}
 
 	var payload workMetadataSyncPayload
 	var providerUnavailable bool
@@ -88,7 +129,8 @@ func (s *Server) enqueueWorkMetadataSyncWithOptions(ctx context.Context, workID 
 	}
 	payload.PrimaryCode = strings.ToUpper(strings.TrimSpace(payload.PrimaryCode))
 	payload.FamilyCode = strings.ToUpper(strings.TrimSpace(payload.FamilyCode))
-	if providerUnavailable && !recheckUnavailable {
+	payload.SourceID = sourceID
+	if sourceID == 0 && providerUnavailable && !recheckUnavailable {
 		return workMetadataSyncRunResult{
 			WorkID: payload.WorkID, PrimaryCode: payload.PrimaryCode, Status: "unavailable",
 		}, nil
@@ -113,6 +155,9 @@ func (s *Server) enqueueWorkMetadataSyncWithOptions(ctx context.Context, workID 
 		return workMetadataSyncRunResult{}, err
 	}
 	displayName := fmt.Sprintf("Refresh metadata for %s", payload.PrimaryCode)
+	if sourceID != 0 {
+		displayName += " from " + selectedSource.DisplayName
+	}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "metadata_family_sync", displayName, "queued", "manual", "work_detail", payload, map[string]any{"work_id": workID, "family_code": payload.FamilyCode})
 	if err != nil {
 		return workMetadataSyncRunResult{}, err
@@ -161,7 +206,7 @@ func (s *Server) activeWorkMetadataSync(ctx context.Context, payload workMetadat
 			return workMetadataSyncRunResult{}, false, err
 		}
 		var active workMetadataSyncPayload
-		if json.Unmarshal([]byte(inputJSON), &active) != nil || !strings.EqualFold(active.FamilyCode, payload.FamilyCode) {
+		if json.Unmarshal([]byte(inputJSON), &active) != nil || !strings.EqualFold(active.FamilyCode, payload.FamilyCode) || active.SourceID != payload.SourceID || (payload.SourceID != 0 && active.WorkID != payload.WorkID) {
 			continue
 		}
 		return workMetadataSyncRunResult{
@@ -177,6 +222,9 @@ func (s *Server) executeWorkMetadataSyncJob(ctx context.Context, job workflowJob
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
+	}
+	if payload.SourceID != 0 {
+		return s.executeRemoteWorkMetadataSyncJob(ctx, job, payload)
 	}
 	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "syncing", map[string]any{"familyCode": payload.FamilyCode}, 0, 1)
 	family, err := s.syncWorkMetadataFamily(ctx, payload.PrimaryCode)
@@ -304,9 +352,13 @@ func (s *Server) finishWorkMetadataSyncJob(ctx context.Context, job workflowJobR
 	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, status, mustJSON(summary), job.RunID); err != nil {
 		return err
 	}
+	eventType, message := "metadata.family_synced", fmt.Sprintf("Refreshed metadata for %d family editions", syncedCodes)
+	if sourceCode, ok := summary["source_code"].(string); ok {
+		eventType, message = "metadata.source_refreshed", "Requested fresh work metadata from "+sourceCode
+	}
 	if err := workflow.InsertEvent(ctx, tx, job.RunID, workflow.EventSpec{
-		NodeRunID: job.NodeRunID, JobID: job.ID, Level: level, Type: "metadata.family_synced",
-		Message: fmt.Sprintf("Refreshed metadata for %d family editions", syncedCodes), Detail: summary,
+		NodeRunID: job.NodeRunID, JobID: job.ID, Level: level, Type: eventType,
+		Message: message, Detail: summary,
 	}); err != nil {
 		return err
 	}
