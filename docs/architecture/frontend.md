@@ -3,9 +3,11 @@
 On mobile, the app header is a compact tool bar ordered as Quick actions,
 Notifications (when authenticated), Appearance, and account. Quick actions
 opens the searchable Command Palette in a bottom sheet; Notifications,
-Appearance, and account use anchored popovers. Wider screens show Quick actions as a search field with its
-keyboard shortcut, group the native server connection, Notifications, and
-Appearance in one header tray, and end with the account avatar. On desktop the
+Appearance, and account use anchored popovers. Wider screens group Quick
+actions, the native server connection, Notifications, and Appearance in one
+header tray and end with the account avatar. Quick actions is always an icon
+button, never a search field, so it is not confused with library search; its
+tooltip names the keyboard shortcut. On desktop the
 command palette remains a centered surface while the header popovers stay
 anchored to their triggers.
 

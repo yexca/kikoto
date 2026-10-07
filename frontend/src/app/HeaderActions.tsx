@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, LogIn, Search, Server } from "lucide-react";
+import { ChevronDown, LogIn, Server, Zap } from "lucide-react";
 
 import { AppearanceControls } from "@/app/AppearanceControls";
 import { AccountPanel, ServerSection } from "@/app/header/AccountPanel";
@@ -32,7 +32,6 @@ import { useMetadataDisplayLanguage } from "@/features/maintenance/useMetadataDi
 import { Button } from "@/components/ui/button";
 import type { CurrentUser } from "@/lib/api";
 import { isNativeApp } from "@/lib/serverConfig";
-import { cn } from "@/lib/tailwindClassNames";
 import type { UiLocale } from "@/i18n";
 import { useLocale } from "@/i18n/LocaleProvider";
 
@@ -47,12 +46,14 @@ type HeaderActionsProps = {
   onLocaleChange: (locale: UiLocale) => Promise<void>;
 };
 
-const commandShortcutLabel =
-  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K";
+const appleShortcuts = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const commandShortcutLabel = appleShortcuts ? "⌘K" : "Ctrl K";
+const commandShortcutKeys = appleShortcuts ? "Meta+K" : "Control+K";
 
 // Phones show Quick actions, Notifications, Appearance, and the account avatar,
-// whose panel also holds the native server actions. Wider screens add a search
-// field and group the server connection, Notifications, and Appearance in a tray.
+// whose panel also holds the native server actions. Wider screens group Quick
+// actions, the server connection, Notifications, and Appearance in a tray. Quick
+// actions stays an icon so it is not mistaken for the library search field.
 export function HeaderActions({
   user,
   canView,
@@ -160,31 +161,19 @@ export function HeaderActions({
 
   return (
     <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
-      <button
-        type="button"
-        aria-label={t("header.quickActions")}
-        title={t("header.quickActions")}
-        className="hidden h-[var(--control-height)] w-44 items-center gap-2 rounded-full border bg-background/70 pl-3 pr-1.5 text-sm text-muted-foreground transition-[color,background-color,border-color,transform] hover:border-ring/40 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100 md:flex xl:w-72"
-        onClick={onOpenCommandPalette}
-      >
-        <Search className="h-4 w-4 shrink-0" />
-        <span className="min-w-0 flex-1 truncate text-left">{t("commands.searchPlaceholder")}</span>
-        <kbd className="hidden shrink-0 rounded-full border bg-card px-2 py-0.5 font-sans text-3xs font-medium leading-4 text-muted-foreground xl:inline">
-          {commandShortcutLabel}
-        </kbd>
-      </button>
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label={t("header.quickActions")}
-        title={t("header.quickActions")}
-        className={cn(trayButtonClass, "md:hidden")}
-        onClick={onOpenCommandPalette}
-      >
-        <Search className="h-4 w-4" />
-      </Button>
-
       <div className="contents sm:flex sm:items-center sm:gap-0.5 sm:rounded-full sm:border sm:bg-background/70 sm:p-0.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t("header.quickActions")}
+          aria-keyshortcuts={commandShortcutKeys}
+          title={`${t("header.quickActions")} (${commandShortcutLabel})`}
+          className={trayButtonClass}
+          onClick={onOpenCommandPalette}
+        >
+          <Zap className="h-4 w-4" />
+        </Button>
+
         {native && (
           <div className="hidden sm:block">
             <HeaderPopover
