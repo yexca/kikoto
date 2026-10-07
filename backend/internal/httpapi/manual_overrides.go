@@ -273,7 +273,21 @@ func (s *Server) listWorkCoverCandidates(w http.ResponseWriter, r *http.Request)
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"candidates": candidates})
+	var primaryCode string
+	if err := s.db.QueryRowContext(r.Context(), "SELECT primary_code FROM work WHERE id = ?", workID).Scan(&primaryCode); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	providerCoverURL, err := s.workProviderCoverURL(r.Context(), workID, primaryCode)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"candidates": candidates, "providerCoverUrl": providerCoverURL})
 }
 
 func (s *Server) setWorkCoverOverride(w http.ResponseWriter, r *http.Request) {

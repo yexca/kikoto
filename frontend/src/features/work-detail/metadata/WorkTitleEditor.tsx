@@ -6,13 +6,19 @@ import { Badge } from "@/components/ui/badge";
 import type { WorkDetail } from "@/lib/api";
 import { metadataTagLanguages } from "@/lib/metadataTagModel";
 import { MetadataEditorField } from "./MetadataEditorFields";
-import { manualValueStatus } from "./metadataEditorModel";
-import { manualTitles, titleLanguageMarkers, titleSourceLabel } from "./titleEditorModel";
+import {
+  currentTitles,
+  manualTitles,
+  titleFieldStatus,
+  titleLanguageMarkers,
+  titleSourceLabel,
+} from "./titleEditorModel";
 
 /**
  * Shows per-language titles first, with the universal title in advanced options.
  * Existing universal titles and drafts open those options for editing or reset.
- * An empty row's placeholder shows the title it currently inherits.
+ * Every row starts with the title it currently shows, so editing starts from
+ * the existing text; keeping or clearing an inherited title leaves it inherited.
  */
 export function WorkTitleEditor({
   work,
@@ -27,6 +33,7 @@ export function WorkTitleEditor({
 }) {
   const { t } = useTranslation();
   const manual = manualTitles(work.manualOverrides ?? {});
+  const current = currentTitles(work);
   const markers = titleLanguageMarkers(work, selectedMetadataVariantKey);
   const [allLanguages, ...languages] = metadataTagLanguages;
   const [advancedOpen, setAdvancedOpen] = useState(() => Boolean(manual[""] || drafts[""]));
@@ -35,7 +42,7 @@ export function WorkTitleEditor({
   const row = ([language, label]: (typeof metadataTagLanguages)[number], labelKey: string = label) => {
     const own = manual[language];
     const choice = work.titleChoices?.[language];
-    const status = manualValueStatus(drafts[language], own);
+    const status = titleFieldStatus(drafts[language], own, current[language]);
     const sourceLabel = titleSourceLabel(language, manual, choice);
     const inherited = own ? (language ? manual[""] : undefined) : (choice?.title ?? manual[""] ?? work.title);
     const id = `work-title-${language || "all"}`;
@@ -80,7 +87,7 @@ export function WorkTitleEditor({
           aria-describedby={language ? undefined : universalDescriptionId}
           fieldSize="sm"
           className="w-full"
-          value={drafts[language] ?? own ?? ""}
+          value={drafts[language] ?? current[language]}
           placeholder={inherited || t("metadataEditor.inheritedTitle")}
           onChange={(event) => onDraft(language, event.target.value)}
         />

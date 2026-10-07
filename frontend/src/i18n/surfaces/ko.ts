@@ -33,6 +33,12 @@ export const surfaceKorean = {
       "각 언어의 제공자 제목보다 우선합니다. 언어별 수동 제목이 있으면 그 제목을 우선하며, 판본과 소개는 바뀌지 않습니다.",
     coverHint: "이미지는 복사되므로 나중에 파일을 옮겨도 커버가 유지됩니다.",
     currentCover: "현재 커버",
+    dlsiteCover: "DLsite 커버",
+    sourceCover: "{{source}} 커버",
+    originalCover: "원본 커버",
+    coverNotDownloaded: "받지 않음",
+    manualCover: "수동 커버",
+    coverRevertHint: "저장하면 수동 커버가 제거되고 원본 커버가 다시 표시됩니다.",
     searchCircles: "서클을 검색하거나 이름을 입력하세요",
     searchSeries: "시리즈를 검색하거나 이름을 입력하세요",
     seriesCircleId: "서클 ID",
@@ -70,7 +76,7 @@ export const surfaceKorean = {
     },
     descriptions: {
       title: "표시 언어별로 제목을 수정합니다. 수동 제목은 메타데이터를 새로 고쳐도 유지됩니다.",
-      cover: "이 작품의 로컬 이미지 중 하나를 커버로 선택합니다.",
+      cover: "이 작품의 원본 커버나 로컬 이미지 중 하나를 선택합니다.",
       tags: "이 작품의 태그를 추가하거나 삭제하고 태그마다 언어별 이름을 편집합니다. 태그 이름은 공유되므로 변경하면 그 태그가 있는 모든 작품에 적용됩니다.",
       credits:
         "제안을 선택하면 기존 서클, 시리즈, 성우와 연결됩니다. 편집한 크레디트는 메타데이터를 새로 고쳐도 유지됩니다.",

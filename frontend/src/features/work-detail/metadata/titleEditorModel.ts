@@ -1,5 +1,7 @@
 import type { WorkDetail, WorkManualOverrides, WorkTitleChoice } from "@/lib/api";
+import { metadataTagLanguages } from "@/lib/metadataTagModel";
 import { resolveMetadataVariant } from "../metadataPresentationModel";
+import { manualValueStatus } from "./metadataEditorModel";
 
 /** Uses declared metadata languages, preserving an unknown original language. */
 export function titleLanguageMarkers(
@@ -18,14 +20,47 @@ export function manualTitles(manual: WorkManualOverrides): Record<string, string
   return { ...(manual.title ? { "": manual.title } : {}), ...manual.titles };
 }
 
-export function changedTitles(drafts: Record<string, string>, manual: WorkManualOverrides) {
+/**
+ * The title each scope shows before editing: its own manual title, or the
+ * title it currently inherits from the universal title or a provider.
+ */
+export function currentTitles(
+  work: Pick<WorkDetail, "title" | "titleChoices" | "manualOverrides">,
+): Record<string, string> {
+  const manual = manualTitles(work.manualOverrides ?? {});
+  return Object.fromEntries(
+    metadataTagLanguages.map(([language]) => [
+      language,
+      manual[language] || work.titleChoices?.[language]?.title || manual[""] || work.title,
+    ]),
+  );
+}
+
+/**
+ * A draft only changes a scope when it differs from what the scope already
+ * shows. Clearing or keeping an inherited title leaves it inherited.
+ */
+function titleDraftChanges(title: string, own: string | undefined, current: string | undefined) {
+  return own ? title !== own : title !== "" && title !== current;
+}
+
+export function changedTitles(
+  drafts: Record<string, string>,
+  manual: WorkManualOverrides,
+  current: Record<string, string> = {},
+) {
   const previous = manualTitles(manual);
   return Object.fromEntries(
     Object.entries(drafts)
       .map(([language, title]) => [language, title.trim()] as const)
-      .filter(([language, title]) => title !== (previous[language] ?? ""))
+      .filter(([language, title]) => titleDraftChanges(title, previous[language], current[language]))
       .map(([language, title]) => [language, title || null]),
   );
+}
+
+export function titleFieldStatus(draft: string | undefined, own: string | undefined, current: string | undefined) {
+  if (draft !== undefined && !titleDraftChanges(draft.trim(), own, current)) return own ? "manual" : "source";
+  return manualValueStatus(draft, own);
 }
 
 export type TitleSourceLabel = { key: string; values?: Record<string, string> };

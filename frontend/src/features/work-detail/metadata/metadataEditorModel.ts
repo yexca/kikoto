@@ -143,3 +143,31 @@ export function normalizedMetadataLinkCode(value: string, primaryCode: string): 
   if (!metadataLinkCodePattern.test(code) || code === primaryCode.trim().toUpperCase()) return null;
   return code;
 }
+
+/**
+ * The cover a draft shows: the provider's original cover, a manual cover whose
+ * file is no longer indexed, or an indexed local image by location id.
+ */
+export type CoverChoice = "provider" | "manual" | number;
+
+export function coverFieldStatus({
+  manualCover,
+  selectedCoverId,
+  initialCoverId,
+  reverted,
+}: {
+  manualCover?: WorkDetail["manualOverrides"]["cover"];
+  selectedCoverId: number | null;
+  initialCoverId: number | null;
+  reverted: boolean;
+}): MetadataFieldStatus {
+  if (reverted) return "reverting";
+  if (selectedCoverId !== initialCoverId) return "edited";
+  return manualCover ? "manual" : "source";
+}
+
+/** A remote source names the cached cover only when it filled metadata DLsite does not have. */
+export function providerCoverSource(metadataSync: WorkDetail["metadataSync"] | undefined) {
+  if (metadataSync?.status !== "remote_fallback") return "";
+  return metadataSync.fields?.find((field) => field.field === "cover")?.source || metadataSync.source || "";
+}

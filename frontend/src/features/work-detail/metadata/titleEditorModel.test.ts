@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { changedTitles, titleLanguageMarkers, titleSourceLabel } from "./titleEditorModel";
+import {
+  changedTitles,
+  currentTitles,
+  titleFieldStatus,
+  titleLanguageMarkers,
+  titleSourceLabel,
+} from "./titleEditorModel";
 
 describe("title language markers", () => {
   const work = {
@@ -44,11 +50,35 @@ describe("language title drafts", () => {
       "zh-cn": "Example Chinese",
     });
   });
+  it("treats a kept or cleared prefilled inherited title as unchanged", () => {
+    const current = { "": "Global", "ja-jp": "Japanese", "zh-cn": "Example Chinese" };
+    expect(changedTitles({ "zh-cn": " Example Chinese ", "en-us": "" }, manual, current)).toEqual({});
+    expect(changedTitles({ "zh-cn": "Example Chinese revised" }, manual, current)).toEqual({
+      "zh-cn": "Example Chinese revised",
+    });
+    expect(titleFieldStatus("Example Chinese", undefined, "Example Chinese")).toBe("source");
+    expect(titleFieldStatus("", undefined, "Example Chinese")).toBe("source");
+    expect(titleFieldStatus("", "Japanese", "Japanese")).toBe("reverting");
+  });
   it("clears only the edited language and preserves authored prefixes", () => {
     expect(changedTitles({ "ja-jp": "", "zh-cn": "【简体中文版】Authored" }, manual)).toEqual({
       "ja-jp": null,
       "zh-cn": "【简体中文版】Authored",
     });
+  });
+});
+
+describe("current titles", () => {
+  it("prefills own, inherited universal, provider, and fallback titles", () => {
+    const titles = currentTitles({
+      title: "Example fallback",
+      manualOverrides: { title: "Global", titles: { "": "Global", "ja-jp": "Japanese" } },
+      titleChoices: {
+        "zh-cn": { title: "Example Chinese", language: "zh-cn", source: "dlsite", code: "RJ00000001", description: "" },
+      },
+    });
+    expect(titles).toMatchObject({ "": "Global", "ja-jp": "Japanese", "zh-cn": "Example Chinese", "en-us": "Global" });
+    expect(currentTitles({ title: "Example fallback", manualOverrides: {} })["ko-kr"]).toBe("Example fallback");
   });
 });
 
