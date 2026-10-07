@@ -266,6 +266,12 @@ sources:
 	if !reflect.DeepEqual(seeds[0], want) {
 		t.Fatalf("seed = %#v, want %#v", seeds[0], want)
 	}
+	if seeds := loadRemoteSourceSeedsForMode(ModeProduction, []string{seedPath}); len(seeds) != 1 {
+		t.Fatalf("production seeds = %#v, want the opted-in seed", seeds)
+	}
+	if seeds := loadRemoteSourceSeedsForMode(ModeDemo, []string{seedPath}); seeds != nil {
+		t.Fatalf("demo seeds = %#v, want nil even when opted in", seeds)
+	}
 }
 
 func TestParseRemoteSourceSeedAppliesSafeFallbacks(t *testing.T) {

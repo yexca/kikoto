@@ -111,23 +111,6 @@ describe("sourceContextModel", () => {
     });
   });
 
-  it("labels a Demo tracked example without implying a remote directory exists", () => {
-    const presences = [
-      {
-        type: "tracked",
-        availability: "available",
-        fileSourceId: 7,
-        fileSourceType: "demo_showcase",
-        fileSourceName: "Example Track (Demo)",
-      },
-    ] as NonNullable<WorkDetail["sourcePresence"]>;
-
-    expect(buildTrackedPresenceOptions([], [], presences)[0]).toMatchObject({
-      status: "degraded",
-      statusLabel: "Demo Track example; play from Local",
-    });
-  });
-
   it("keeps tracked presences from different family editions distinct", () => {
     const base = {
       type: "tracked",

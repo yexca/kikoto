@@ -172,8 +172,9 @@ Set `KIKOTO_DEMO_IMAGE` to a reviewed version or digest when reproducibility is
 required.
 
 It listens on `http://127.0.0.1:7655` by default. Override the host port with
-`KIKOTO_DEMO_PORT`. Set `KIKOTO_DEMO_REMOTE_SOURCES_ENABLED=true` only when the
-isolated Demo configuration includes a sanitized `remote-sources.yml`.
+`KIKOTO_DEMO_PORT`. Demo never seeds or contacts a real remote source:
+`KIKOTO_REMOTE_SOURCES_ENABLED` and `remote-sources.yml` are ignored in Demo
+mode.
 
 The stack deliberately uses separate mounts:
 
@@ -197,10 +198,17 @@ watching remains disabled.
 Provider eligibility is verified at startup; a continuously running Demo does
 not automatically revalidate a provider's later age or price changes.
 
-After that scan, Demo selects up to four admitted local works with a stable
-code-based shuffle for the Library's Tracked tab. The disabled Example Track
-source is illustrative: it does not contact a remote service, and playback
-continues from the admitted local files. Demo also refreshes a completed example
+After that scan, Demo replaces any remote source in its database with one
+simulated Kikoeru-compatible source named Remote Kikoeru at the reserved
+`https://remote-kikoeru.invalid` endpoint. On every start it randomly selects
+half of the admitted local works, up to 24, as that source's catalog, and up to
+four of those for the Library's Tracked tab. The remaining admitted works are
+recorded as not found on the source. Browsing, work details, directory trees,
+and playback for Remote Kikoeru run through the normal remote-source code path,
+but an in-process transport answers them from the admitted local files and
+refuses every other destination, so no request leaves the container. The
+Library shows a notice above the source stating that it is simulated and not a
+real server. Demo also refreshes a completed example
 for each workflow, plus one running and three attention-needed examples with
 illustrative jobs. These Activity details are synthetic; no example job is
 executed. The running example has no live elapsed-time clock or job event
@@ -209,8 +217,7 @@ stream, so it can remain visible during a long-lived Demo deployment. Actual
 but are not exposed through the public workflow-run API. Repeated starts replace
 the examples and remove Tracked examples that no longer pass admission.
 
-`./demo/config` contains the isolated Demo SQLite database and optional source
-seed file. `./demo/cache` contains only isolated or sanitized assets; startup
+`./demo/config` contains the isolated Demo SQLite database. `./demo/cache` contains only isolated or sanitized assets; startup
 may add covers after the provider eligibility check. Never point a public Demo
 deployment at production or personal runtime directories. The
 service creates a reserved passwordless `__demo__` identity in the Demo

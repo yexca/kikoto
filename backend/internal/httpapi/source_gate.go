@@ -253,6 +253,9 @@ func (s *Server) sourcePlaybackHTTPClient(source remoteSourceForUse, timeout tim
 }
 
 func (s *Server) sourceClient(source remoteSourceForUse, timeout time.Duration, class sourceRequestClass) *http.Client {
+	if s.cfg.IsDemo() {
+		return s.demoRemoteHTTPClient(timeout)
+	}
 	// The stored proxy configuration is cached after its first load, so this
 	// resolves without a request context in practice.
 	route, err := s.resolveProxyRoute(context.Background(), proxyconfig.ScopeRemote, source.ID)

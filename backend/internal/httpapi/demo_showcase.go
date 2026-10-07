@@ -5,14 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"hash/fnv"
-	"sort"
 
-	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
-const demoShowcaseSourceCode = "demo_showcase"
 const demoShowcaseRunReason = workflow.DemoShowcaseTriggerReason
 
 // These are the definitions shown as tabs on the Workflows page. The sample
@@ -39,7 +35,6 @@ var demoShowcaseActivityExamples = []struct {
 type demoShowcaseWork struct {
 	id   int64
 	code string
-	hash uint64
 }
 
 // SeedDemoShowcase refreshes only synthetic Demo presentation state after the
@@ -54,34 +49,9 @@ func (s *Server) SeedDemoShowcase(ctx context.Context) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO file_source (code, display_name, source_type, enabled)
-		VALUES (?, 'Example Track (Demo)', 'demo_showcase', 0)
-		ON CONFLICT(code) DO UPDATE SET display_name = excluded.display_name,
-			source_type = excluded.source_type, enabled = 0
-	`, demoShowcaseSourceCode); err != nil {
-		return err
-	}
-	var sourceID int64
-	if err := tx.QueryRowContext(ctx, "SELECT id FROM file_source WHERE code = ?", demoShowcaseSourceCode).Scan(&sourceID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM work_source_presence WHERE file_source_id = ?", sourceID); err != nil {
-		return err
-	}
-
-	works, err := demoShowcaseEligibleWorks(ctx, tx)
+	works, err := s.seedDemoRemoteSource(ctx, tx)
 	if err != nil {
 		return err
-	}
-	for _, work := range works {
-		if err := upsertWorkSourcePresence(ctx, tx, workSourcePresence{
-			WorkID: work.id, FileSourceID: sourceID, PresenceType: "tracked",
-			RemoteCode: work.code, Availability: "available",
-			RawJSON: `{"demoShowcase":true}`,
-		}); err != nil {
-			return err
-		}
 	}
 
 	if _, err := tx.ExecContext(ctx, "DELETE FROM workflow_run WHERE trigger_reason = ?", demoShowcaseRunReason); err != nil {
@@ -101,52 +71,6 @@ func (s *Server) SeedDemoShowcase(ctx context.Context) error {
 		return err
 	}
 	return tx.Commit()
-}
-
-func demoShowcaseEligibleWorks(ctx context.Context, tx *sql.Tx) ([]demoShowcaseWork, error) {
-	rows, err := tx.QueryContext(ctx, `
-		SELECT work.id, work.primary_code FROM work
-		WHERE `+contentpolicy.DemoEligibleWorkSQL("work")+`
-			AND EXISTS (SELECT 1 FROM work_source_presence AS presence
-				INNER JOIN file_source AS source ON source.id = presence.file_source_id
-				WHERE presence.work_id = work.id AND presence.presence_type = 'local'
-					AND presence.availability = 'available' AND source.source_type = 'local_folder')
-		ORDER BY work.primary_code
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	works := []demoShowcaseWork{}
-	for rows.Next() {
-		var work demoShowcaseWork
-		if err := rows.Scan(&work.id, &work.code); err != nil {
-			return nil, err
-		}
-		h := fnv.New64a()
-		_, _ = h.Write([]byte(work.code))
-		work.hash = h.Sum64()
-		works = append(works, work)
-		if len(works) > 4 {
-			sort.Slice(works, func(i, j int) bool {
-				if works[i].hash == works[j].hash {
-					return works[i].code < works[j].code
-				}
-				return works[i].hash < works[j].hash
-			})
-			works = works[:4]
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	sort.Slice(works, func(i, j int) bool {
-		if works[i].hash == works[j].hash {
-			return works[i].code < works[j].code
-		}
-		return works[i].hash < works[j].hash
-	})
-	return works, nil
 }
 
 func seedDemoWorkflowRun(ctx context.Context, tx *sql.Tx, code, status, exampleError string, works []demoShowcaseWork) error {
