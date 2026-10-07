@@ -21,6 +21,12 @@ export function DemoContentNotice({ surface }: { surface: "library" | "works" })
   );
 }
 
+/** Demo remote sources are simulated in process; say so above every remote source view. */
+export function DemoRemoteSourceNotice({ sourceName }: { sourceName: string }) {
+  const { t } = useTranslation();
+  return <DemoNotice message={t("permissions.demoRemoteSourceNotice", { source: sourceName })} />;
+}
+
 function DemoNotice({ message }: { message: string }) {
   return (
     <div

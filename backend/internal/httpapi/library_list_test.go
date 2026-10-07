@@ -7,12 +7,10 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
-	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -204,65 +202,6 @@ func TestDemoModeReturnsOnlyAllAgesPermanentlyFreeWorks(t *testing.T) {
 		if recorder.Code != wantStatus {
 			t.Fatalf("work %s status = %d, want %d; body = %s", workID, recorder.Code, wantStatus, recorder.Body.String())
 		}
-	}
-}
-
-func TestDemoRemoteSourcePageUsesFilteredUpstreamPagination(t *testing.T) {
-	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		keyword, _ := url.PathUnescape(strings.TrimPrefix(r.URL.EscapedPath(), "/api/search/"))
-		wantKeyword := `$age:general$ $-price:1$ $tag:Wanted$ ambient`
-		if keyword != wantKeyword {
-			t.Errorf("keyword = %q, want %q", keyword, wantKeyword)
-		}
-		if r.URL.Query().Get("page") != "3" || r.URL.Query().Get("pageSize") != "17" {
-			t.Errorf("pagination query = %q", r.URL.RawQuery)
-		}
-		if r.URL.Query().Get("order") != "dl_count" || r.URL.Query().Get("sort") != "asc" || r.URL.Query().Get("seed") != "42" {
-			t.Errorf("sort query = %q", r.URL.RawQuery)
-		}
-		_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{
-			// Demo trusts the upstream filtered page and does not inspect these fields.
-			Works:      []kikoeru.Work{{ID: 11, SourceID: "RJ00000006", Title: "Filtered remote work"}},
-			Pagination: kikoeru.Pagination{CurrentPage: 3, PageSize: 17, TotalCount: 57},
-		})
-	}))
-	defer remote.Close()
-
-	server := NewServer(openMigratedTestDB(t), config.Config{Mode: config.ModeDemo})
-	works, total, sortApplied, err := server.demoRemoteSourcePage(
-		context.Background(), 0, 1, kikoeru.NewClient(remote.URL, remote.Client()), sourceTypeKikoeruCompatible,
-		`ambient $tag:Wanted$`, "dl_count", "asc", "42", 3, 17, "ja-jp", false,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if total != 57 || len(works) != 1 || works[0].RemoteCode != "RJ00000006" || !sortApplied {
-		t.Fatalf("demo remote page = total %d works %#v sortApplied %t", total, works, sortApplied)
-	}
-}
-
-func TestDemoRemoteWorkAccessUsesFilteredExactCodeSearch(t *testing.T) {
-	paid := int64(900)
-	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		keyword, _ := url.PathUnescape(strings.TrimPrefix(r.URL.EscapedPath(), "/api/search/"))
-		if keyword != `$age:general$ $-price:1$ RJ00000006` {
-			t.Errorf("keyword = %q", keyword)
-		}
-		_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{Works: []kikoeru.Work{
-			{ID: 10, SourceID: "RJ00000005"},
-			// Search membership is authoritative; response fields are presentation data.
-			{ID: 11, SourceID: "RJ00000006", AgeCategoryString: "adult", Price: &paid},
-		}})
-	}))
-	defer remote.Close()
-
-	server := NewServer(openMigratedTestDB(t), config.Config{Mode: config.ModeDemo})
-	work, _, err := server.resolveRemoteWorkForAccess(context.Background(), kikoeru.NewClient(remote.URL, remote.Client()), "rj00000006")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if work.ID != 11 {
-		t.Fatalf("resolved work = %#v, want exact filtered match", work)
 	}
 }
 

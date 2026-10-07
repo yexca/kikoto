@@ -326,6 +326,8 @@ export const surfaceJapanese = {
     demoReadOnlyNotice: "デモモード：すべての機能を表示できますが、サーバーのデータは変更できません。",
     demoLibraryNotice:
       "デモモード：Kikoto 自体は作品を一切提供せず、ご自身で購入した音声作品を管理するためだけのソフトウェアです。このデモで使用している作品はすべて DLsite の無料作品であり、著作権は原作者に帰属します。",
+    demoRemoteSourceNotice:
+      "デモモード：{{source}} はシミュレートされたリモートソースで、実際のサーバーではありません。作品はこのデモのローカル作品からランダムに選ばれています。",
     demoWorksNotice: "デモモード：作品はデモ用途でのみ表示しており、著作権は原作者に帰属します。",
     permissionDenied: "この機能を使用する権限がありません。",
   },

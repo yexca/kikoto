@@ -123,7 +123,7 @@ func Load() (Config, error) {
 		RootUsername:        strings.TrimSpace(os.Getenv("KIKOTO_ROOT_USERNAME")),
 		RootPassword:        rootPassword,
 		RootPasswordReset:   reset,
-		RemoteSourceSeeds:   loadRemoteSourceSeeds(),
+		RemoteSourceSeeds:   loadRemoteSourceSeedsForMode(mode, remoteSourceSeedFilePaths()),
 		HostProxyHost:       hostProxyHost,
 	}, nil
 }
@@ -322,8 +322,13 @@ func envBool(key string, fallback bool) bool {
 	}
 }
 
-func loadRemoteSourceSeeds() []RemoteSourceSeed {
-	return loadRemoteSourceSeedsFromPaths(remoteSourceSeedFilePaths())
+// loadRemoteSourceSeedsForMode never seeds a real endpoint into Demo, which
+// simulates its remote source from admitted local works instead.
+func loadRemoteSourceSeedsForMode(mode Mode, paths []string) []RemoteSourceSeed {
+	if mode == ModeDemo {
+		return nil
+	}
+	return loadRemoteSourceSeedsFromPaths(paths)
 }
 
 func remoteSourceSeedFilePaths() []string {

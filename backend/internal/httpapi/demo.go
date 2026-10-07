@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"path/filepath"
@@ -11,10 +10,7 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
-	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
-
-const demoRemoteSourceFilterQuery = "$age:general$ $-price:1$"
 
 func (s *Server) demoReadOnlyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,34 +52,6 @@ func (s *Server) demoWorkWhere(where string, alias string) string {
 		return where
 	}
 	return "(" + where + ") AND " + contentpolicy.DemoEligibleWorkSQL(alias)
-}
-
-func demoRemoteSourceQueryPlan(query string, sourceType string) remoteSourceQueryPlan {
-	plan := planRemoteSourceQuery(query, sourceType)
-	plan.PushdownQuery = strings.TrimSpace(demoRemoteSourceFilterQuery + " " + plan.PushdownQuery)
-	return plan
-}
-
-func (s *Server) resolveRemoteWorkForAccess(ctx context.Context, client *kikoeru.Client, code string) (kikoeru.Work, json.RawMessage, error) {
-	if !s.cfg.IsDemo() {
-		return s.resolveKikoeruWork(ctx, client, code)
-	}
-	requestedCode := strings.ToUpper(strings.TrimSpace(code))
-	page, err := client.SearchWorksSortedSeeded(ctx, 1, 100, demoRemoteSourceFilterQuery+" "+requestedCode, "id", "asc", "")
-	if err != nil {
-		return kikoeru.Work{}, nil, err
-	}
-	for _, work := range page.Works {
-		if !strings.EqualFold(normalizedRemoteWorkCode(work), requestedCode) {
-			continue
-		}
-		raw, err := json.Marshal(work)
-		if err != nil {
-			return kikoeru.Work{}, nil, err
-		}
-		return work, raw, nil
-	}
-	return kikoeru.Work{}, nil, sql.ErrNoRows
 }
 
 func (s *Server) demoMediaLocationEligible(ctx context.Context, locationID int64) (bool, error) {

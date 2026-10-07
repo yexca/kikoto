@@ -138,10 +138,6 @@ func (s *Server) writeRemoteWorksDisabled(w http.ResponseWriter, sourceID int64,
 func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Request, userID int64, source remoteSourceForUse, diagnosticURL string, request remoteSourceWorksRequest) error {
 	ctx := r.Context()
 	client := s.kikoeruClientForSource(ctx, source)
-	if s.cfg.IsDemo() {
-		works, total, sortApplied, err := s.demoRemoteSourcePageWithLanguages(ctx, userID, source.ID, client, source.SourceType, request.Query, request.UpstreamOrder, request.Direction, request.Seed, request.Page, request.PageSize, request.Languages, request.IncludeRecommendation)
-		return s.writeRemoteSourceWorksResult(w, ctx, source, diagnosticURL, request, works, total, sortApplied, err)
-	}
 	if len(request.Plan.PostFilterClauses) > 0 {
 		works, total, sortApplied, err := s.remotePostFilteredPageWithLanguages(ctx, userID, source.ID, client, request.Plan, request.UpstreamOrder, request.Direction, request.Seed, request.Page, request.PageSize, request.Languages)
 		return s.writeRemoteSourceWorksResult(w, ctx, source, diagnosticURL, request, works, total, sortApplied, err)
@@ -213,54 +209,6 @@ func (s *Server) writeRemoteWorksUnavailable(
 	})
 }
 
-func (s *Server) demoRemoteSourcePage(
-	ctx context.Context,
-	userID int64,
-	sourceID int64,
-	client *kikoeru.Client,
-	sourceType string,
-	query string,
-	upstreamOrder string,
-	direction string,
-	seed string,
-	page int,
-	pageSize int,
-	language string,
-	includeRecommendation bool,
-) ([]remoteWorkSummary, int, bool, error) {
-	return s.demoRemoteSourcePageWithLanguages(ctx, userID, sourceID, client, sourceType, query, upstreamOrder, direction, seed, page, pageSize, []string{language}, includeRecommendation)
-}
-
-func (s *Server) demoRemoteSourcePageWithLanguages(
-	ctx context.Context,
-	userID int64,
-	sourceID int64,
-	client *kikoeru.Client,
-	sourceType string,
-	query string,
-	upstreamOrder string,
-	direction string,
-	seed string,
-	page int,
-	pageSize int,
-	languages []string,
-	includeRecommendation bool,
-) ([]remoteWorkSummary, int, bool, error) {
-	plan := demoRemoteSourceQueryPlan(query, sourceType)
-	if len(plan.PostFilterClauses) > 0 {
-		return s.remotePostFilteredPageWithLanguages(ctx, userID, sourceID, client, plan, upstreamOrder, direction, seed, page, pageSize, languages, includeRecommendation)
-	}
-	remotePage, err := client.SearchWorksSortedSeeded(ctx, page, pageSize, plan.PushdownQuery, upstreamOrder, direction, seed)
-	if err != nil {
-		return nil, 0, false, err
-	}
-	works, err := s.remoteWorkSummariesWithLanguages(ctx, userID, sourceID, remotePage.Works, languages, includeRecommendation)
-	if err != nil {
-		return nil, 0, false, err
-	}
-	return works, firstPositiveInt(remotePage.Pagination.TotalCount, remotePage.Pagination.Total, remotePage.Pagination.Count), remotePage.SortApplied, nil
-}
-
 func (s *Server) remotePostFilteredPage(
 	ctx context.Context,
 	userID int64,
@@ -298,13 +246,7 @@ func (s *Server) remotePostFilteredPageWithLanguages(
 	seen := map[string]bool{}
 	sortApplied := true
 	for upstreamPage := 1; upstreamPage <= maxUpstreamPages; upstreamPage++ {
-		var result kikoeru.WorksPage
-		var err error
-		if s.cfg.IsDemo() {
-			result, err = client.SearchWorksSortedSeeded(ctx, upstreamPage, upstreamPageSize, plan.PushdownQuery, order, direction, seed)
-		} else {
-			result, err = client.ListWorksSortedSeeded(ctx, upstreamPage, upstreamPageSize, plan.PushdownQuery, order, direction, seed)
-		}
+		result, err := client.ListWorksSortedSeeded(ctx, upstreamPage, upstreamPageSize, plan.PushdownQuery, order, direction, seed)
 		if err != nil {
 			return nil, 0, false, err
 		}

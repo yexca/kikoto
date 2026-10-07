@@ -89,9 +89,10 @@ The Library is the main browsing surface for works.
   legacy aggregate Library links return to the normal Library.
 - When `KIKOTO_MODE=demo`, backend list, detail, and media responses admit
   only all-ages, permanently free works. Local works use normalized commercial
-  metadata, where unknown metadata and temporary free promotions are excluded;
-  Remote Sources use their filtered search contract. Demo sessions can play
-  admitted full media but cannot mutate library, settings, or workflow state.
+  metadata, where unknown metadata and temporary free promotions are excluded.
+  The simulated Remote Kikoeru source only republishes admitted local works.
+  Demo sessions can play admitted full media but cannot mutate library,
+  settings, or workflow state.
 
 Work cards use the same summary model on every collection surface, including
 voice credits when they are known. Compact cards show at most two voice names

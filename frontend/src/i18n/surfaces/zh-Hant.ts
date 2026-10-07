@@ -319,6 +319,8 @@ export const surfaceHant = {
     demoReadOnlyNotice: "示範模式：可以檢視全部功能，但無法變更伺服器資料。",
     demoLibraryNotice:
       "示範模式：Kikoto 本身不提供任何作品，僅用於管理使用者自己購買的音聲作品。此處使用的示範作品皆為 DLsite 的免費作品，版權歸原作者所有。",
+    demoRemoteSourceNotice:
+      "示範模式：{{source}} 是模擬的遠端來源，並非真實伺服器。其中的作品是從本示範的本機作品中隨機選取的。",
     demoWorksNotice: "示範模式：作品僅用於示範，版權歸原作者所有。",
     permissionDenied: "您的帳戶沒有使用此功能的權限。",
   },
