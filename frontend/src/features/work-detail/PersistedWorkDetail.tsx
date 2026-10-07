@@ -94,7 +94,11 @@ import {
   useMediaCleanupWorkflow,
 } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
 import { DirectoryManagerDialog } from "@/features/work-detail/dialogs/DirectoryManagerDialog";
-import { WorkMetadataEditorModal, type MetadataEditorSection } from "@/features/work-detail/metadata";
+import {
+  WorkMetadataEditorModal,
+  WorkMetadataRefreshControl,
+  type MetadataEditorSection,
+} from "@/features/work-detail/metadata";
 import { ReforkConfirmDialog } from "@/features/work-detail/dialogs/ReforkConfirmDialog";
 import type { ClientPrincipalID } from "@/lib/clientStorageScope";
 import { useAuth } from "@/auth/AuthProvider";
@@ -366,7 +370,6 @@ type PersistedDetailActionsProps = {
 };
 
 function PersistedIdentityActions(props: PersistedDetailActionsProps) {
-  const { demoMode } = useAuth();
   if (!props.work) return <DetailSkeletonActions />;
   const busy =
     props.isSyncingDetail || props.fetchBusy || props.isRefreshingLocalFiles || props.cleanupBusy || props.isResuming;
@@ -380,10 +383,7 @@ function PersistedIdentityActions(props: PersistedDetailActionsProps) {
       onListSaved={props.onListSaved}
       onResume={!props.playbackCursorLoading && props.hasResumableCursor ? props.onResume : undefined}
       onMark={props.onMark}
-      onSync={props.canSyncMetadata || demoMode ? props.onSyncMetadata : undefined}
-      syncDisabled={demoMode}
       onEditMetadata={props.onEditMetadata}
-      metadataSyncBusy={props.isSyncingDetail || Boolean(props.activeMetadataRunId)}
     />
   );
 }
@@ -861,6 +861,7 @@ function PersistedMetadataEditorOverlay({
   section,
   work,
   selectedMetadataVariantKey,
+  refreshActions,
   onClose,
   onSaved,
   onLinkChanged,
@@ -868,18 +869,20 @@ function PersistedMetadataEditorOverlay({
   section: MetadataEditorSection | null;
   work: WorkDetail | null;
   selectedMetadataVariantKey: string;
+  refreshActions?: ReactNode;
   onClose: () => void;
   onSaved: () => void;
   onLinkChanged: (result: WorkMetadataLinkResult) => void;
 }) {
-  const { demoMode } = useAuth();
+  const { demoMode, hasPermission } = useAuth();
   if (!section || !work) return null;
   return (
     <WorkMetadataEditorModal
       work={work}
       selectedMetadataVariantKey={selectedMetadataVariantKey}
-      readOnly={demoMode}
+      readOnly={demoMode || !hasPermission("library:write")}
       initialSection={section}
+      refreshActions={refreshActions}
       onClose={onClose}
       onSaved={onSaved}
       onLinkChanged={onLinkChanged}
@@ -1395,12 +1398,12 @@ export function PersistedWorkDetailController({
     }
   };
 
-  const syncDetailMetadata = async () => {
+  const syncDetailMetadata = async (sourceId?: number) => {
     if (!work?.primaryCode || activeMetadataRunId || isSyncingDetail) return;
     setIsSyncingDetail(true);
     setMessage("");
     try {
-      const result = await api.syncWorkMetadata(work.id);
+      const result = await api.syncWorkMetadata(work.id, sourceId);
       if (result.runId <= 0 || result.status === "unavailable") {
         await onWorkReload(work.id, true);
         await onWorksChanged();
@@ -1858,6 +1861,16 @@ export function PersistedWorkDetailController({
         section={metadataEditorSection}
         work={work}
         selectedMetadataVariantKey={selectedMetadataVariantKey}
+        refreshActions={
+          canSyncMetadata || auth.demoMode ? (
+            <WorkMetadataRefreshControl
+              sources={sources}
+              busy={isSyncingDetail || Boolean(activeMetadataRunId)}
+              disabled={auth.demoMode}
+              onRefresh={(sourceId) => void syncDetailMetadata(sourceId)}
+            />
+          ) : undefined
+        }
         onClose={() => setMetadataEditorSection(null)}
         onSaved={() => void metadataSaved()}
         onLinkChanged={(result) => void metadataLinkChanged(result)}

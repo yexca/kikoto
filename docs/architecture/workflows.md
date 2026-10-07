@@ -758,6 +758,17 @@ choices; an undeclared remote title remains the languageless fallback.
 
 ## Remote Metadata Fallback
 
+The detail metadata editor also offers an explicit `From <source name>`
+refresh for each enabled source with declared metadata capability. The existing
+`POST /api/works/{id}/metadata-sync` endpoint accepts an optional `sourceId`;
+an empty body retains the DLsite family refresh. A source refresh requests only
+the current work, bypasses cached descriptions, and operates independently of
+automatic fallback settings and DLsite availability. It preserves manual and
+DLsite precedence and uses the same bounded request policy described below.
+Submission and execution both validate the source's capability and enabled
+state. Repeated requests for the same work and source reuse the active run;
+Activity records source codes and fixed outcomes without endpoint details.
+
 When the administrator enables it from the Metadata sync Configure popover, the per-work metadata
 job (`metadata_family_sync`, also queued by Metadata recovery and detail
 refresh) asks the selected sources after DLsite reports the requested product

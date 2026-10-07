@@ -79,6 +79,13 @@ to one destination and reads that user's reviews and playlists:
 
 ### Remote metadata fallback
 
+Explicit detail-editor refreshes from a selected source use this same transport
+and persistence boundary, bypass cached descriptions, and require
+`metadata:sync`. They validate the source's enabled state and declared metadata
+capability at submission and execution, and use the existing workflow's bounded
+retry budget. Only the requested existing work is updated; no file presence,
+media location, or catalog crawl is created.
+
 The opt-in fallback asks administrator-configured remote sources for one work
 after DLsite reports it as not found:
 

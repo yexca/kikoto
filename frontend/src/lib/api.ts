@@ -690,6 +690,8 @@ export type LibrarySource = {
   displayName: string;
   sourceType: string;
   enabled: boolean;
+  /** Absent on older servers; compatible remote types then retain their default capability. */
+  metadataCapable?: boolean;
 };
 
 export type UserPreferences = {
@@ -2966,7 +2968,10 @@ export const api = {
     options
       ? postJSONBody<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync", options)
       : postJSON<DLsiteSyncResult>("/api/workflow-runs/dlsite-sync"),
-  syncWorkMetadata: (workId: number) => postJSON<WorkMetadataSyncRunResult>(`/api/works/${workId}/metadata-sync`),
+  syncWorkMetadata: (workId: number, sourceId?: number) =>
+    sourceId === undefined
+      ? postJSON<WorkMetadataSyncRunResult>(`/api/works/${workId}/metadata-sync`)
+      : postJSONBody<WorkMetadataSyncRunResult>(`/api/works/${workId}/metadata-sync`, { sourceId }),
   listMetadataIssues: (page: number, query: string, status: string, runId: number | null, signal?: AbortSignal) => {
     const params = new URLSearchParams({ page: String(page), q: query, status });
     if (runId) params.set("runId", String(runId));

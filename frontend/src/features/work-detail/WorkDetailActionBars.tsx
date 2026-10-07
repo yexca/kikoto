@@ -5,7 +5,6 @@ import {
   Cloud,
   Clock3,
   Database,
-  Edit3,
   ExternalLink,
   FolderCog,
   GitFork,
@@ -35,11 +34,7 @@ export function WorkIdentityActionBar({
   onListSaved,
   onResume,
   onMark,
-  onSync,
   onEditMetadata,
-  metadataSyncBusy = false,
-  syncDisabled = false,
-  syncLabel,
 }: {
   busy: boolean;
   listeningStatus: ListeningStatus;
@@ -49,16 +44,9 @@ export function WorkIdentityActionBar({
   onListSaved?: (favorite: boolean, workID: number) => void;
   onResume?: () => void;
   onMark: (status: ListeningStatus) => void;
-  onSync?: () => void;
   onEditMetadata?: () => void;
-  metadataSyncBusy?: boolean;
-  /** Demo shows the refresh action without letting it start a sync. */
-  syncDisabled?: boolean;
-  syncLabel?: string;
 }) {
   const { t } = useTranslation();
-  const [manageMenuOpen, setManageMenuOpen] = useState(false);
-  const manageMenuRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <>
@@ -80,62 +68,23 @@ export function WorkIdentityActionBar({
         disabled={busy}
         showLabel
         responsiveLabel
+        allowCreate
         ensureWorkId={onEnsureListWork}
         onSaved={onListSaved}
       />
-      {(onSync || onEditMetadata) && (
-        <div className="relative" ref={manageMenuRef}>
-          <Button
-            variant="outline"
-            size="sm"
-            className="relative h-8 w-8 px-0 sm:w-auto sm:pl-3 sm:pr-7"
-            title={t("detailActions.manageMetadata")}
-            aria-label={t("detailActions.manageMetadata")}
-            disabled={busy}
-            onClick={() => setManageMenuOpen((open) => !open)}
-          >
-            <Database className="h-4 w-4" />
-            <span className="hidden sm:inline">{t("detailActions.metadata")}</span>
-            <ChevronDown className="absolute right-2 hidden h-3 w-3 sm:block" />
-          </Button>
-          <AnchoredPopover
-            open={manageMenuOpen}
-            anchorRef={manageMenuRef}
-            onOpenChange={setManageMenuOpen}
-            className="w-52 p-1 text-sm"
-            zIndex={70}
-          >
-            {onSync && (
-              <button
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
-                disabled={metadataSyncBusy || syncDisabled}
-                onClick={() => {
-                  setManageMenuOpen(false);
-                  onSync();
-                }}
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${metadataSyncBusy ? "animate-spin" : ""}`} />
-                <span>
-                  {metadataSyncBusy
-                    ? t("detailActions.metadataRefreshRunning")
-                    : (syncLabel ?? t("detailActions.refreshMetadata"))}
-                </span>
-              </button>
-            )}
-            {onEditMetadata && (
-              <button
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-muted"
-                onClick={() => {
-                  setManageMenuOpen(false);
-                  onEditMetadata();
-                }}
-              >
-                <Edit3 className="h-3.5 w-3.5" />
-                <span>{t("detailActions.editMetadata")}</span>
-              </button>
-            )}
-          </AnchoredPopover>
-        </div>
+      {onEditMetadata && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-8 px-0 sm:w-auto sm:px-3"
+          title={t("detailActions.editMetadata")}
+          aria-label={t("detailActions.editMetadata")}
+          disabled={busy}
+          onClick={onEditMetadata}
+        >
+          <Database className="h-4 w-4" />
+          <span className="hidden sm:inline">{t("detailActions.metadata")}</span>
+        </Button>
       )}
     </>
   );

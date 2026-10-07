@@ -16,6 +16,14 @@ For provider display, any non-original edition in the work family is a translati
 
 ## Editing metadata
 
+The Hero **Metadata** button opens the editor directly. **Refresh metadata**
+is at the bottom left and runs the usual DLsite refresh. When an enabled remote
+source supports metadata, the adjacent arrow opens `From <source name>`
+choices. Selecting one requests fresh metadata for this work from that source;
+manual edits and DLsite values keep their precedence, and unsaved editor drafts
+remain in place. This explicit refresh does not require automatic remote
+fallback to be enabled.
+
 Admin and super_admin can edit work metadata with `library:write`. Save sends only fields changed from the initial editor values; selecting a cover alone preserves automatic titles, circles, series, and voice credits. Clearing a field resets only its override. Existing frozen title overrides that exactly match a trimmed DLsite title in the same family are removed during upgrade; circle, series, and voice overrides are kept.
 
 The editor groups fields into Title, Cover, Tags, Credits, and Metadata source sections; a dot marks each section with unsaved changes, and the footer lists them. Every change stays a draft until Save, including Revert on a manual circle, series, voice actor list, or cover and a new or removed metadata link, so switching sections never loses an edit. Cancel asks before discarding drafts. Circle, series, and voice actors offer suggestions that link a known entry; their identifiers stay visible beneath the name and remain editable under Edit IDs. Covers are picked from a thumbnail grid of the work's local images. Ctrl+Enter saves.
@@ -168,7 +176,8 @@ Until a background update finishes, the work keeps its last saved tag set, inclu
 - Show one fixed Resume action. It is disabled without a positive unfinished
   work cursor; direct file activation starts from the beginning.
 - Update quick listening status.
-- Manage favorite-list membership.
+- Manage favorite-list membership. **Add list** creates a list inside the List
+  menu and selects it; **Save** applies membership alongside existing choices.
 - Edit personal work tags separately from provider metadata tags.
 - Sync metadata.
 - Sync/cache/fetch from compatible remote sources.

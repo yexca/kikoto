@@ -126,9 +126,19 @@ func (s *Server) runRemoteMetadataFallback(ctx context.Context, workID int64, co
 // fillWorkFromRemoteSource applies one source's description of the work. The
 // response is untrusted: it must decode within bounds and name the same code.
 func (s *Server) fillWorkFromRemoteSource(ctx context.Context, workID int64, code string, source remoteSourceForUse) (string, bool, error) {
-	raw, cached, err := s.cachedRemoteWorkJSON(ctx, workID, code, source)
-	if err != nil {
-		return remoteFallbackFailed, false, err
+	return s.requestWorkMetadataFromRemoteSource(ctx, workID, code, source, true)
+}
+
+// Explicit refreshes bypass stored snapshots; fallback may reuse a known description.
+func (s *Server) requestWorkMetadataFromRemoteSource(ctx context.Context, workID int64, code string, source remoteSourceForUse, useCached bool) (string, bool, error) {
+	var raw []byte
+	var cached bool
+	var err error
+	if useCached {
+		raw, cached, err = s.cachedRemoteWorkJSON(ctx, workID, code, source)
+		if err != nil {
+			return remoteFallbackFailed, false, err
+		}
 	}
 	if raw == nil {
 		requestCtx, cancel := context.WithTimeout(ctx, remoteMetadataFallbackTimeout)
@@ -158,7 +168,18 @@ func (s *Server) fillWorkFromRemoteSource(ctx context.Context, workID int64, cod
 		return remoteFallbackFailed, cached, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := upsertRemoteWork(ctx, tx, source, remoteWork, raw); err != nil {
+	// Update the requested existing work only. No work, file presence or media
+	// location is created by a metadata lookup, even if a work was deleted mid-request.
+	providerID, err := upsertRemoteWorkMetadata(ctx, tx, source, workID, code, remoteWork, raw)
+	if err != nil {
+		return remoteFallbackFailed, cached, err
+	}
+	if err := syncVoiceCreditSnapshot(ctx, tx, voiceCreditSnapshotRow{
+		WorkID: workID, ProviderID: sql.NullInt64{Int64: providerID, Valid: true}, Raw: string(raw),
+	}); err != nil {
+		return remoteFallbackFailed, cached, err
+	}
+	if _, err := remotemetadata.ReconcileWorkTx(ctx, tx, workID); err != nil {
 		return remoteFallbackFailed, cached, err
 	}
 	// Apply shared tags now; later snapshot writes reach the durable queue.

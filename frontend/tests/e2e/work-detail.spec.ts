@@ -89,7 +89,6 @@ test("title editor current marker follows the selected metadata language", async
   await page.goto("/RJ00000000");
   await page.getByRole("button", { name: "Metadata language", exact: true }).click();
   await page.getByRole("menuitemradio", { name: "Original · Japanese", exact: true }).click();
-  await page.getByRole("button", { name: "Manage metadata", exact: true }).click();
   await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
   const japanese = dialog.getByRole("group", { name: "Japanese", exact: true });

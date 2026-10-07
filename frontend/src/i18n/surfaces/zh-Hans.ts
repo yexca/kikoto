@@ -1697,6 +1697,8 @@ export const surfaceHans = {
     metadata: "元数据",
     metadataRefreshRunning: "正在刷新元数据",
     refreshMetadata: "刷新元数据",
+    metadataRefreshSources: "更多元数据来源",
+    refreshMetadataFrom: "来自 {{source}}",
     editMetadata: "编辑元数据",
     source: "来源",
     sourceActionsFor: "{{source}} 的来源操作",

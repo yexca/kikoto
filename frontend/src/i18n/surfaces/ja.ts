@@ -1784,6 +1784,8 @@ export const surfaceJapanese = {
     metadata: "メタデータ",
     metadataRefreshRunning: "メタデータを更新中",
     refreshMetadata: "メタデータを更新",
+    metadataRefreshSources: "その他のメタデータ提供元",
+    refreshMetadataFrom: "{{source}}から",
     editMetadata: "メタデータを編集",
     source: "ソース",
     sourceActionsFor: "{{source}} のソース操作",
