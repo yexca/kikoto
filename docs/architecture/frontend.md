@@ -372,6 +372,18 @@ stacks, upstream bodies, private endpoints, and local paths are diagnostic data,
 not anonymous UI. A page that already has useful local data should keep it
 visible while the failed remote or media stage renders an inline Retry state.
 
+Shared API reads belong to a server and session generation. Account, session,
+credential, and server changes reject their old results and errors, including
+response bodies still being decoded. Each caller can cancel independently.
+Writes fence reuse both when they start and when their response body settles;
+progress and other personal writes leave current directory reads running.
+A local-directory refresh or source untracking can interrupt that work's shared
+read. A still-current caller waits for the write to settle and automatically
+retries, at most twice, preserving the detail shell and global player. Session
+changes, caller cancellation, and ordinary network or API failures do not
+trigger this recovery. Background workflow completion still uses the existing
+explicit refresh paths; in-flight sharing does not cache settled responses.
+
 ## Multilingual title presentation
 
 `WorkTitleEditor` lists per-language titles first in a single column, with independent drafts.

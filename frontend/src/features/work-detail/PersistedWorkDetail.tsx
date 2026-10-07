@@ -1004,6 +1004,7 @@ export function PersistedWorkDetailController({
   const [editionError, setEditionError] = useState("");
   const [editionErrorCode, setEditionErrorCode] = useState("");
   const editionRequestSeq = useRef(0);
+  const editionController = useRef<AbortController | null>(null);
   const [selectedMetadataVariantKey, setSelectedMetadataVariantKey] = useState("");
   const [isResuming, setIsResuming] = useState(false);
   const [reforkTarget, setReforkTarget] = useState<ReforkTarget | null>(null);
@@ -1214,18 +1215,27 @@ export function PersistedWorkDetailController({
 
   useEffect(() => {
     editionRequestSeq.current += 1;
+    editionController.current?.abort();
+    editionController.current = null;
     setActiveEdition(null);
     setActiveEditionCode("");
     setEditionLoadingCode("");
     setEditionError("");
     setEditionErrorCode("");
     setSelectedMetadataVariantKey("");
-  }, [work?.id]);
+    return () => {
+      editionRequestSeq.current += 1;
+      editionController.current?.abort();
+      editionController.current = null;
+    };
+  }, [principalID, work?.id]);
 
   const selectEdition = useStableCallback(async (translation: WorkDetail["translations"][number]) => {
     if (!translation.workId || !work) return;
     disableAutomaticPlaybackRouting();
     const requestSeq = ++editionRequestSeq.current;
+    editionController.current?.abort();
+    editionController.current = null;
     setEditionError("");
     setEditionErrorCode("");
     if (translation.workId === work.id) {
@@ -1236,8 +1246,10 @@ export function PersistedWorkDetailController({
       return;
     }
     setEditionLoadingCode(translation.primaryCode);
+    const controller = new AbortController();
+    editionController.current = controller;
     try {
-      const detail = await api.getWork(translation.workId);
+      const detail = await api.getWork(translation.workId, controller.signal);
       if (requestSeq !== editionRequestSeq.current) return;
       setCachedWorkMedia(detail.id, principalID, detail.mediaItems);
       setActiveEdition(detail);
@@ -1245,10 +1257,14 @@ export function PersistedWorkDetailController({
       setActiveSourceKey("local");
     } catch (error) {
       if (requestSeq !== editionRequestSeq.current) return;
+      if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
       setEditionError(directoryLoadErrorMessage(error));
       setEditionErrorCode(translation.primaryCode);
     } finally {
-      if (requestSeq === editionRequestSeq.current) setEditionLoadingCode("");
+      if (requestSeq === editionRequestSeq.current) {
+        editionController.current = null;
+        setEditionLoadingCode("");
+      }
     }
   });
 
@@ -1815,7 +1831,7 @@ export function PersistedWorkDetailController({
     activeMetadataVariant,
     sourceInfo,
     displayTranslations,
-    activeEditionCode,
+    activeEditionCode: editionLoadingCode || activeEditionCode,
     selectedRemoteDetail,
     personalTags,
     loading: isDetailLoading,

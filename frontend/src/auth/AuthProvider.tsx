@@ -9,6 +9,7 @@ import {
   type InitialSetupPayload,
   type RuntimeSettings,
 } from "@/lib/api";
+import { ApiSessionChangedError, apiSessionVersion } from "@/lib/apiSession";
 
 type AuthContextValue = {
   isLoading: boolean;
@@ -85,7 +86,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // than presenting it as signed out, so a restart during an outage does not
   // send a signed-in viewer to the login page.
   const bootstrap = useCallback(async () => {
+    const version = apiSessionVersion();
     const [authResult, runtimeResult] = await Promise.allSettled([refresh(), refreshRuntime()]);
+    if (version !== apiSessionVersion()) return;
     let failed = false;
     if (authResult.status === "rejected") {
       if (isServerUnavailable(authResult.reason)) failed = true;
@@ -116,14 +119,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAuth(state);
       },
       logout: async () => {
+        let logoutFailed = false;
+        let logoutError: unknown;
         try {
           await api.logout();
-        } finally {
-          await Promise.all([
-            refresh().catch(() => setAuth({ authenticated: false })),
-            refreshRuntime().catch(() => setAnonymousAccessEnabled(false)),
-          ]);
+        } catch (error) {
+          if (error instanceof ApiSessionChangedError) throw error;
+          logoutFailed = true;
+          logoutError = error;
         }
+        await Promise.all([
+          refresh().catch((error) => {
+            if (!(error instanceof ApiSessionChangedError)) setAuth({ authenticated: false });
+          }),
+          refreshRuntime().catch((error) => {
+            if (!(error instanceof ApiSessionChangedError)) setAnonymousAccessEnabled(false);
+          }),
+        ]);
+        if (logoutFailed) throw logoutError;
       },
       refresh,
       refreshRuntime,

@@ -1,6 +1,13 @@
 import { normalizeCatalogSyncState, type CatalogSyncState } from "@/lib/catalogSyncState";
-import { sharedInflightRequests } from "@/lib/inflightRequests";
-import { apiSessionVersion, assertApiSession, changeApiSession, observeApiPrincipal } from "@/lib/apiSession";
+import { combineAbortSignals, retryInvalidatedRequest, sharedInflightRequests } from "@/lib/inflightRequests";
+import { apiMutationResources, apiReadResources } from "@/lib/apiRequestResources";
+import {
+  apiSessionSignal,
+  apiSessionVersion,
+  assertApiSession,
+  changeApiSession,
+  observeApiPrincipal,
+} from "@/lib/apiSession";
 
 export type { CatalogSyncState } from "@/lib/catalogSyncState";
 
@@ -2076,50 +2083,89 @@ export class ApiError extends Error {
 }
 
 async function responseError(response: Response, fallback: string) {
-  const payload = await response.json().catch(() => ({ error: fallback, code: "", retryable: false }));
-  assertApiSession(responseSessionVersions.get(response) ?? apiSessionVersion());
-  const message = payload.error ?? fallback;
-  recordApiError({
-    method: "HTTP",
-    path: response.url || fallback,
-    status: response.status,
-    message,
-  });
-  return new ApiError(message, response.status, payload.code ?? "", payload.retryable === true);
+  try {
+    assertResponseCurrent(response);
+    const payload = await response.json().catch(() => ({ error: fallback, code: "", retryable: false }));
+    assertResponseCurrent(response);
+    const message = payload.error ?? fallback;
+    recordApiError({
+      method: "HTTP",
+      path: response.url || fallback,
+      status: response.status,
+      message,
+    });
+    return new ApiError(message, response.status, payload.code ?? "", payload.retryable === true);
+  } finally {
+    responseContexts.get(response)?.complete();
+  }
 }
 
 export function mediaDownloadURL(locationId: number) {
   return assetURL(`/api/media/${locationId}/download`);
 }
 
-async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
+async function requestJSON<T>(path: string, init: RequestInit = {}): Promise<T> {
   const version = apiSessionVersion();
-  const response = await fetchAPI(path, { signal });
-  assertApiSession(version);
-  if (!response.ok) {
-    throw await responseError(response, `GET ${path} failed with ${response.status}`);
-  }
-  const result = await readApiJSON<T>(response);
-  assertApiSession(version);
-  return result;
-}
-
-const responseSessionVersions = new WeakMap<Response, number>();
-
-async function readApiJSON<T>(response: Response): Promise<T> {
-  const version = responseSessionVersions.get(response) ?? apiSessionVersion();
   try {
-    return (await response.json()) as T;
+    const response = await fetchAPI(path, init);
+    if (!response.ok) {
+      throw await responseError(response, `${init.method ?? "GET"} ${path} failed with ${response.status}`);
+    }
+    return await readApiJSON<T>(response);
   } finally {
     assertApiSession(version);
+    init.signal?.throwIfAborted();
+  }
+}
+
+function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return requestJSON<T>(path, { signal });
+}
+
+const responseContexts = new WeakMap<Response, { version: number; signal: AbortSignal; complete: () => void }>();
+
+function assertResponseCurrent(response: Response) {
+  const context = responseContexts.get(response);
+  if (!context) return;
+  assertApiSession(context.version);
+  context.signal.throwIfAborted();
+}
+
+async function readApiJSON<T>(response: Response): Promise<T> {
+  try {
+    assertResponseCurrent(response);
+    return (await response.json()) as T;
+  } finally {
+    // A session or caller can change while the response body is being read,
+    // including when decoding fails. Neither old results nor old errors escape.
+    try {
+      assertResponseCurrent(response);
+    } finally {
+      responseContexts.get(response)?.complete();
+    }
   }
 }
 
 // Concurrent callers of the same idempotent GET share one request. A caller's
 // abort only detaches that caller; a settled request is never reused.
-function sharedGetJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const key = `${apiSessionVersion()}:${API_BASE()}:${path}`;
-  return sharedInflightRequests.run(key, (shared) => getJSON<T>(path, shared), signal);
+async function sharedGetJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const version = apiSessionVersion();
+  const key = JSON.stringify([version, API_BASE(), path]);
+  const cancellation = combineAbortSignals(apiSessionSignal(), signal);
+  const current = cancellation.signal;
+  try {
+    return await retryInvalidatedRequest(
+      () => sharedInflightRequests.run(key, (shared) => getJSON<T>(path, shared), current, apiReadResources(path)),
+      current,
+    );
+  } finally {
+    try {
+      assertApiSession(version);
+      current.throwIfAborted();
+    } finally {
+      cancellation.dispose();
+    }
+  }
 }
 
 async function streamWorkflowRunEvents(
@@ -2139,7 +2185,11 @@ async function streamWorkflowRunEvents(
   }
   if (!response.body) throw new Error("Workflow event stream is unavailable.");
 
+  assertResponseCurrent(response);
   const reader = response.body.getReader();
+  const cancel = () => void reader.cancel().catch(() => undefined);
+  const current = responseContexts.get(response)!.signal;
+  current.addEventListener("abort", cancel, { once: true });
   const decoder = new TextDecoder();
   let buffer = "";
   let eventName = "";
@@ -2149,7 +2199,7 @@ async function streamWorkflowRunEvents(
 
   const dispatch = () => {
     if (dataLines.length === 0) return;
-    assertApiSession(responseSessionVersions.get(response) ?? apiSessionVersion());
+    assertResponseCurrent(response);
     const data = dataLines.join("\n");
     const payload: unknown = JSON.parse(data);
     if (eventName === "workflow" && typeof payload === "object" && payload !== null && "id" in payload) {
@@ -2188,6 +2238,7 @@ async function streamWorkflowRunEvents(
   try {
     while (!terminal) {
       const { value, done } = await reader.read();
+      assertResponseCurrent(response);
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       let newline = buffer.indexOf("\n");
@@ -2203,64 +2254,49 @@ async function streamWorkflowRunEvents(
       if (buffer) consumeLine(buffer);
       dispatch();
     }
+  } catch (error) {
+    assertResponseCurrent(response);
+    throw error;
   } finally {
+    current.removeEventListener("abort", cancel);
     reader.releaseLock();
+    responseContexts.get(response)?.complete();
   }
   if (terminal) return;
   throw new Error("Workflow event stream closed.");
 }
 
-async function postJSON<T>(path: string): Promise<T> {
-  const response = await fetchAPI(path, { method: "POST" });
-  if (!response.ok) {
-    throw await responseError(response, `POST ${path} failed with ${response.status}`);
-  }
-  return readApiJSON<T>(response);
+function postJSON<T>(path: string): Promise<T> {
+  return requestJSON<T>(path, { method: "POST" });
 }
 
 async function postJSONBody<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
-  const response = await fetchAPI(path, {
+  return requestJSON<T>(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     signal,
   });
-  if (!response.ok) {
-    throw await responseError(response, `POST ${path} failed with ${response.status}`);
-  }
-  return readApiJSON<T>(response);
 }
 
 async function patchJSONBody<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetchAPI(path, {
+  return requestJSON<T>(path, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) {
-    throw await responseError(response, `PATCH ${path} failed with ${response.status}`);
-  }
-  return readApiJSON<T>(response);
 }
 
 async function putJSONBody<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetchAPI(path, {
+  return requestJSON<T>(path, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) {
-    throw await responseError(response, `PUT ${path} failed with ${response.status}`);
-  }
-  return readApiJSON<T>(response);
 }
 
-async function deleteJSON<T>(path: string): Promise<T> {
-  const response = await fetchAPI(path, { method: "DELETE" });
-  if (!response.ok) {
-    throw await responseError(response, `DELETE ${path} failed with ${response.status}`);
-  }
-  return readApiJSON<T>(response);
+function deleteJSON<T>(path: string): Promise<T> {
+  return requestJSON<T>(path, { method: "DELETE" });
 }
 
 // A write that may outlive the page (a pagehide flush) opts into keepalive.
@@ -2270,25 +2306,17 @@ async function sendJSONBody<T>(
   body: unknown,
   init: Pick<RequestInit, "signal" | "keepalive"> = {},
 ): Promise<T> {
-  const response = await fetchAPI(path, {
+  return requestJSON<T>(path, {
     ...init,
     method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) {
-    throw await responseError(response, `${method} ${path} failed with ${response.status}`);
-  }
-  return readApiJSON<T>(response);
 }
 
 /** A multipart upload; the browser sets the boundary, so no content type is forced. */
 async function sendFormData<T>(path: string, body: FormData, init: Pick<RequestInit, "signal"> = {}): Promise<T> {
-  const response = await fetchAPI(path, { ...init, method: "POST", body });
-  if (!response.ok) {
-    throw await responseError(response, `POST ${path} failed with ${response.status}`);
-  }
-  return readApiJSON<T>(response);
+  return requestJSON<T>(path, { ...init, method: "POST", body });
 }
 
 /**
@@ -2321,17 +2349,43 @@ function requestInit(init: RequestInit = {}, authenticate = true): RequestInit {
 async function fetchAPI(path: string, init: RequestInit = {}, baseURL?: string, authenticate = true) {
   const url = apiURL(path, baseURL);
   const method = (init.method ?? "GET").toUpperCase();
-  // A read that starts after a write must not join a read that began before it.
-  const write = method !== "GET" && method !== "HEAD";
   const version = apiSessionVersion();
-  if (write) sharedInflightRequests.invalidateAll();
+  const cancellation = combineAbortSignals(apiSessionSignal(), init.signal);
+  const signal = cancellation.signal;
+  const resources = method !== "GET" && method !== "HEAD" ? apiMutationResources(path) : null;
+  let settleWrite = () => {};
+  const settled = new Promise<void>((resolve) => {
+    settleWrite = resolve;
+  });
+  const invalidateResources = () => {
+    if (!resources) return;
+    if (resources.forget === null) sharedInflightRequests.forgetAll();
+    else sharedInflightRequests.forgetResources(resources.forget);
+    sharedInflightRequests.invalidateResources(resources.interrupt, settled);
+  };
+  let completed = false;
+  const complete = () => {
+    if (completed) return;
+    completed = true;
+    cancellation.dispose();
+    // The body can still be loading after headers arrive. Fence reads from
+    // the whole mutation, including a failed decode or HTTP error response.
+    if (version === apiSessionVersion()) invalidateResources();
+    settleWrite();
+  };
+  let returnedResponse = false;
+  signal.throwIfAborted();
+  invalidateResources();
   try {
-    const response = await fetch(url, requestInit(init, authenticate));
+    const response = await fetch(url, requestInit({ ...init, signal }, authenticate));
     assertApiSession(version);
-    responseSessionVersions.set(response, version);
+    signal.throwIfAborted();
+    responseContexts.set(response, { version, signal, complete });
+    returnedResponse = true;
     return response;
   } catch (error) {
     assertApiSession(version);
+    signal.throwIfAborted();
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     recordApiError({
       method: init.method ?? "GET",
@@ -2340,19 +2394,25 @@ async function fetchAPI(path: string, init: RequestInit = {}, baseURL?: string, 
     });
     throw error;
   } finally {
-    // Reads started during the mutation may also have observed pre-commit state.
-    if (write && version === apiSessionVersion()) sharedInflightRequests.invalidateAll();
+    // JSON/error decoding completes successful transports. Network failures
+    // complete here. Old writes never affect reads in a newer session.
+    if (!returnedResponse) complete();
   }
 }
 
 async function login(username: string, password: string) {
   changeApiSession();
+  const version = apiSessionVersion();
   const state = await postJSONBody<AuthState>("/api/auth/login", { username, password });
+  assertApiSession(version);
   if (state.authenticated && state.sessionToken) {
     const syncing = setStoredSessionToken(state.sessionToken);
-    const version = apiSessionVersion();
-    await syncing;
-    assertApiSession(version);
+    const syncingVersion = apiSessionVersion();
+    try {
+      await syncing;
+    } finally {
+      assertApiSession(syncingVersion);
+    }
   }
   changeApiSession();
   observeApiPrincipal(state.authenticated ? state.user.id : null);
@@ -2361,12 +2421,17 @@ async function login(username: string, password: string) {
 
 async function completeInitialSetup(payload: InitialSetupPayload) {
   changeApiSession();
+  const version = apiSessionVersion();
   const state = await postJSONBody<AuthState>("/api/auth/setup", payload);
+  assertApiSession(version);
   if (state.authenticated && state.sessionToken) {
     const syncing = setStoredSessionToken(state.sessionToken);
-    const version = apiSessionVersion();
-    await syncing;
-    assertApiSession(version);
+    const syncingVersion = apiSessionVersion();
+    try {
+      await syncing;
+    } finally {
+      assertApiSession(syncingVersion);
+    }
   }
   changeApiSession();
   observeApiPrincipal(state.authenticated ? state.user.id : null);
@@ -2379,11 +2444,14 @@ async function logout() {
   try {
     return await postJSON<{ ok: boolean }>("/api/auth/logout");
   } finally {
-    if (version === apiSessionVersion()) {
-      const clearing = isNativeApp() ? clearStoredSessionToken() : Promise.resolve();
-      const clearedVersion = apiSessionVersion();
+    assertApiSession(version);
+    const clearing = isNativeApp() ? clearStoredSessionToken() : Promise.resolve();
+    const clearedVersion = apiSessionVersion();
+    try {
       await clearing;
-      if (clearedVersion === apiSessionVersion()) changeApiSession();
+    } finally {
+      assertApiSession(clearedVersion);
+      changeApiSession();
     }
   }
 }
@@ -2400,7 +2468,9 @@ export const api = {
     return readApiJSON<HealthStatus>(response);
   },
   me: async () => {
+    const version = apiSessionVersion();
     const state = await getJSON<AuthState>("/api/auth/me");
+    assertApiSession(version);
     observeApiPrincipal(state.authenticated ? state.user.id : null);
     return state;
   },
@@ -2519,14 +2589,17 @@ export const api = {
   getRemoteSourceWorkTracks: (id: number, code: string, signal?: AbortSignal) =>
     getJSON<RemoteWorkTracksResponse>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/tracks`, signal),
   getRemoteSourceWork: async (id: number, code: string, signal?: AbortSignal) => {
+    const version = apiSessionVersion();
     const metadata = await getJSON<RemoteWorkMetadata>(
       `/api/remote-sources/${id}/works/${encodeURIComponent(code)}`,
       signal,
     );
+    assertApiSession(version);
     const tracks = await getJSON<RemoteWorkTracksResponse>(
       `/api/remote-sources/${id}/works/${encodeURIComponent(metadata.remoteCode || code)}/tracks`,
       signal,
     );
+    assertApiSession(version);
     return { ...metadata, tracks: tracks.tracks };
   },
   getSourceAvailability: (code: string) =>
@@ -2601,10 +2674,7 @@ export const api = {
     deleteJSON<WorkSourceUntrackResult>(`/api/works/${workId}/tracked-sources/${sourceId}`),
   // Components that mount together often ask for the same work; they share one
   // in-flight request, and nothing is cached once it settles.
-  getWork: (id: number, signal?: AbortSignal) => {
-    const path = `/api/works/${id}`;
-    return sharedGetJSON<WorkDetail>(path, signal);
-  },
+  getWork: (id: number, signal?: AbortSignal) => sharedGetJSON<WorkDetail>(`/api/works/${id}`, signal),
   getWorkSummary: (id: number, signal?: AbortSignal) =>
     getJSON<WorkDetail>(`/api/works/${id}?includeMedia=false`, signal),
   getWorkMedia: (id: number, signal?: AbortSignal) =>

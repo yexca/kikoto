@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/auth/AuthProvider";
+import { apiSessionForPrincipal } from "@/lib/apiSession";
 import { currentClientStorageScope, currentScopedStorageKey } from "@/lib/clientStorageScope";
 
 import { audioElementEventProps } from "./audioElementEvents";
@@ -180,7 +181,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // Listening history belongs to a signed-in principal with playback permission.
   const listeningScope =
     auth.user && !auth.demoMode && auth.hasPermission("playback:use") ? currentClientStorageScope(auth.user.id) : null;
-  useListeningSessionRecorder(refs.audioRef, listeningScope, currentTrack);
+  useListeningSessionRecorder(refs.audioRef, listeningScope, currentTrack, apiSessionForPrincipal(principalID));
   useRestoredQueueRevalidation(restoredQueue, engine, setQueue, setCurrentIndex);
   usePersistPlayerQueue({
     storageKey: playerQueueStorageKey,

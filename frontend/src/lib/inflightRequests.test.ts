@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { coalesceRuns, createInflightRequests } from "@/lib/inflightRequests";
+import {
+  coalesceRuns,
+  combineAbortSignals,
+  createInflightRequests,
+  ResourceInvalidatedError,
+  retryInvalidatedRequest,
+} from "@/lib/inflightRequests";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -22,6 +28,29 @@ function abortable<T>() {
   });
   return { pending, signals, request };
 }
+
+describe("request cancellation lifetimes", () => {
+  it.each(["session", "caller"] as const)("preserves the %s cancellation reason", (source) => {
+    const session = new AbortController();
+    const caller = new AbortController();
+    const linked = combineAbortSignals(session.signal, caller.signal);
+    const reason = new Error(`${source} cancelled the request`);
+    (source === "session" ? session : caller).abort(reason);
+    expect(linked.signal.reason).toBe(reason);
+    expect((source === "session" ? caller : session).signal.aborted).toBe(false);
+    linked.dispose();
+  });
+
+  it("releases cancellation listeners when a request finishes", () => {
+    const session = new AbortController();
+    const caller = new AbortController();
+    const linked = combineAbortSignals(session.signal, caller.signal);
+    linked.dispose();
+    session.abort();
+    caller.abort();
+    expect(linked.signal.aborted).toBe(false);
+  });
+});
 
 describe("createInflightRequests", () => {
   it("shares one request between concurrent callers with the same key", async () => {
@@ -156,6 +185,108 @@ describe("createInflightRequests", () => {
 
     await expect(inflight.run("work:1", request, aborting.signal)).rejects.toMatchObject({ name: "AbortError" });
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it("evicts only affected resources without interrupting existing callers", async () => {
+    const inflight = createInflightRequests();
+    const old = abortable<string>();
+    const other = abortable<string>();
+    const before = inflight.run("work:1", old.request, undefined, ["work:1"]);
+    const unaffected = inflight.run("work:2", other.request, undefined, ["work:2"]);
+    inflight.forgetResources(["work:1"]);
+    const fresh = inflight.run("work:1", async () => "new detail", undefined, ["work:1"]);
+    const joined = inflight.run("work:2", other.request, undefined, ["work:2"]);
+
+    expect(old.signals[0].aborted).toBe(false);
+    old.pending.resolve("old detail");
+    other.pending.resolve("other detail");
+    await expect(Promise.all([before, fresh, unaffected, joined])).resolves.toEqual([
+      "old detail",
+      "new detail",
+      "other detail",
+      "other detail",
+    ]);
+    expect(other.request).toHaveBeenCalledOnce();
+  });
+
+  it("rejects forgotten reads on a session change even when the transport ignores abort", async () => {
+    const inflight = createInflightRequests();
+    const old = deferred<string>();
+    const during = deferred<string>();
+    const before = inflight.run("work", () => old.promise);
+    inflight.forgetAll();
+    const detached = inflight.run("work", () => during.promise);
+    const reason = new DOMException("The session has changed.", "AbortError");
+    inflight.invalidateAll(reason);
+
+    await expect(before).rejects.toBe(reason);
+    await expect(detached).rejects.toBe(reason);
+    const after = inflight.run("work", async () => "current detail");
+    old.resolve("stale detail");
+    during.reject(new Error("stale failure"));
+    await expect(after).resolves.toBe("current detail");
+  });
+
+  it("distinguishes resource invalidation from caller cancellation and preserves other resources", async () => {
+    const inflight = createInflightRequests();
+    const edited = abortable<string>();
+    const other = abortable<string>();
+    const settled = deferred<void>();
+    const first = inflight.run("work:1", edited.request, undefined, ["work:1"]);
+    const unaffected = inflight.run("work:2", other.request, undefined, ["work:2"]);
+    inflight.invalidateResources(["work:1"], settled.promise);
+
+    await expect(first).rejects.toMatchObject({ name: "ResourceInvalidatedError", settled: settled.promise });
+    expect(edited.signals[0].reason).toBeInstanceOf(ResourceInvalidatedError);
+    expect(other.signals[0].aborted).toBe(false);
+    settled.resolve();
+    other.pending.resolve("other directory");
+    await expect(unaffected).resolves.toBe("other directory");
+  });
+});
+
+describe("resource read recovery", () => {
+  it("waits for the update then coalesces surviving callers into one fresh read", async () => {
+    const inflight = createInflightRequests();
+    const old = deferred<string>();
+    const update = deferred<void>();
+    const request = vi.fn().mockReturnValueOnce(old.promise).mockResolvedValue("fresh directory");
+    const read = () => inflight.run("work", request, undefined, ["work"]);
+    const first = retryInvalidatedRequest(read);
+    const second = retryInvalidatedRequest(read);
+    inflight.invalidateResources(["work"], update.promise);
+    await Promise.resolve();
+    expect(request).toHaveBeenCalledOnce();
+
+    update.resolve();
+    await expect(Promise.all([first, second])).resolves.toEqual(["fresh directory", "fresh directory"]);
+    expect(request).toHaveBeenCalledTimes(2);
+    old.reject(new Error("old network failure"));
+  });
+
+  it("stops recovery immediately when the caller cancels while waiting for a write", async () => {
+    const update = deferred<void>();
+    const read = vi.fn().mockRejectedValue(new ResourceInvalidatedError(update.promise));
+    const caller = new AbortController();
+    const result = retryInvalidatedRequest(read, caller.signal);
+    await Promise.resolve();
+    const reason = new Error("Caller left the directory");
+    caller.abort(reason);
+
+    await expect(result).rejects.toBe(reason);
+    update.resolve();
+    expect(read).toHaveBeenCalledOnce();
+  });
+
+  it("bounds resource recovery and never retries an ordinary failure", async () => {
+    const invalidated = vi.fn().mockRejectedValue(new ResourceInvalidatedError());
+    await expect(retryInvalidatedRequest(invalidated)).rejects.toBeInstanceOf(ResourceInvalidatedError);
+    expect(invalidated).toHaveBeenCalledTimes(3);
+
+    const failure = new Error("Network request failed");
+    const failed = vi.fn().mockRejectedValue(failure);
+    await expect(retryInvalidatedRequest(failed)).rejects.toBe(failure);
+    expect(failed).toHaveBeenCalledOnce();
   });
 });
 

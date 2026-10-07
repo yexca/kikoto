@@ -30,6 +30,8 @@ import {
   setStoredServerURL,
   setStoredSessionToken,
 } from "./serverConfig";
+import { apiSessionVersion } from "./apiSession";
+import { sharedInflightRequests } from "./inflightRequests";
 
 function memoryStorage(): Storage {
   const values = new Map<string, string>();
@@ -119,8 +121,10 @@ describe("mobile server configuration", () => {
     nativePlatform.mockReturnValue(true);
     await setStoredServerURL("https://source.example.invalid/first");
     await setStoredSessionToken("synthetic-token");
+    const session = apiSessionVersion();
     await setStoredServerURL("https://source.example.invalid/first/");
     expect(getStoredSessionToken()).toBe("synthetic-token");
+    expect(apiSessionVersion()).toBe(session);
 
     let releaseRemoval = () => {};
     preferenceRemove.mockReturnValueOnce(
@@ -131,8 +135,19 @@ describe("mobile server configuration", () => {
     const change = setStoredServerURL("https://source.example.invalid/second");
     expect(getStoredSessionToken()).toBe("");
     expect(getStoredServerURL()).toBe("https://source.example.invalid/first");
+    let releaseOldRead!: (value: string) => void;
+    const oldRead = sharedInflightRequests.run(
+      "interim-server-read",
+      () =>
+        new Promise<string>((resolve) => {
+          releaseOldRead = resolve;
+        }),
+    );
+    const rejected = expect(oldRead).rejects.toMatchObject({ name: "AbortError", message: "The session has changed." });
     releaseRemoval();
     await change;
+    await rejected;
+    releaseOldRead("old server data");
 
     expect(getStoredServerURL()).toBe("https://source.example.invalid/second");
     expect(configureNativeAssetTransport).toHaveBeenLastCalledWith("https://source.example.invalid/second", "");

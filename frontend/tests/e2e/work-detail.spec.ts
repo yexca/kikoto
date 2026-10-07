@@ -7,9 +7,18 @@ import {
   readScopedPlayerState,
   mediaFixture,
   seedPlayer,
+  silentWav,
 } from "./fixtures/player-library";
-import type { MaintenanceWorkPage, Work, WorkTranslation } from "../../src/lib/api";
-import { mediaItemFixture, mediaLocationFixture, workflowRunDetailFixture, workflowRunFixture } from "./fixtures/api";
+import type { LocalMediaRefreshResult, MaintenanceWorkPage, Work, WorkTranslation } from "../../src/lib/api";
+import {
+  mediaItemFixture,
+  mediaLocationFixture,
+  workDetailFixture,
+  workFixture,
+  workTranslationFixture,
+  workflowRunDetailFixture,
+  workflowRunFixture,
+} from "./fixtures/api";
 
 test("selected metadata title and introduction follow playback without changing directory edition", async ({
   page,
@@ -751,6 +760,168 @@ test("local work detail stays loading while an automatically selected local edit
   releaseEdition();
   await expect(page.getByText("translated.mp3", { exact: true })).toBeVisible();
 });
+
+for (const update of ["progress save", "directory refresh", "cancelled directory recovery"] as const) {
+  test(`a pending directory edition handles a ${update} while playback continues`, async ({ page }) => {
+    const detailTranslations = [
+      workTranslationFixture({
+        workId: 1,
+        primaryCode: "RJ00000000",
+        title: "Example original",
+        metadataLanguage: "JPN",
+        editionLabel: "Japanese",
+        origin: true,
+        official: false,
+        current: true,
+        hasMedia: true,
+        mediaState: "indexed_available",
+        localAvailable: true,
+      }),
+      workTranslationFixture({
+        workId: 2,
+        primaryCode: "RJ00000001",
+        title: "Example edition",
+        metadataLanguage: "ENG",
+        editionLabel: "English",
+        origin: false,
+        current: false,
+        official: true,
+        translationKind: "official",
+        hasMedia: false,
+        mediaState: "present_unindexed",
+        localAvailable: true,
+      }),
+    ];
+    await mockApplication(
+      page,
+      undefined,
+      false,
+      1,
+      0,
+      [mediaFixture(1, "original.mp3", "RJ00000000/original.mp3", "audio")],
+      undefined,
+      { authenticated: true, detailTranslations },
+    );
+    await seedPlayer(page, persistedTrack, 1);
+    const wav = silentWav(180);
+    await page.route("**/api/media/1/stream*", (route) => {
+      const range = /^bytes=(\d+)-(\d*)$/.exec(route.request().headers().range ?? "");
+      const start = range ? Number(range[1]) : 0;
+      const end = range?.[2] ? Math.min(Number(range[2]), wav.length - 1) : wav.length - 1;
+      return route.fulfill({
+        status: range ? 206 : 200,
+        contentType: "audio/wav",
+        headers: {
+          "Accept-Ranges": "bytes",
+          ...(range ? { "Content-Range": `bytes ${start}-${end}/${wav.length}` } : {}),
+        },
+        body: wav.subarray(start, end + 1),
+      });
+    });
+    let saves = 0;
+    await page.route("**/api/media-items/1/progress", (route) => {
+      saves += 1;
+      return route.fulfill({
+        json: {
+          workId: 1,
+          mediaWorkId: 1,
+          mediaItemId: 1,
+          fileSourceId: 1,
+          locationId: 1,
+          locationType: "local",
+          ...route.request().postDataJSON(),
+          lastPlayedAt: "2026-01-01T00:00:00Z",
+        },
+      });
+    });
+    let releaseEdition!: () => void;
+    const editionGate = new Promise<void>((resolve) => {
+      releaseEdition = resolve;
+    });
+    let editionRequests = 0;
+    await page.route(/\/api\/works\/2$/, async (route) => {
+      editionRequests += 1;
+      await editionGate;
+      await route.fulfill({
+        json: workDetailFixture(workFixture({ id: 2, primaryCode: "RJ00000001", title: "Example edition" }), {
+          translations: detailTranslations,
+          mediaItems: [mediaFixture(201, "translated.mp3", "RJ00000001/translated.mp3", "audio")],
+        }),
+      });
+    });
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    let refreshRequests = 0;
+    await page.route("**/api/works/2/local-files/refresh", async (route) => {
+      refreshRequests += 1;
+      await refreshGate;
+      await route.fulfill({
+        json: { workId: 2, fileSourceId: 1, status: "succeeded", indexedFiles: 1 } satisfies LocalMediaRefreshResult,
+      });
+    });
+    let refreshing: Promise<unknown> | undefined;
+    try {
+      await page.goto("/");
+      await page.getByText("Test track", { exact: true }).click();
+      await page.getByRole("button", { name: "Play", exact: true }).click();
+      await expect(page.locator("audio")).toHaveJSProperty("paused", false);
+      await page.getByRole("button", { name: "Collapse player", exact: true }).click();
+      await page.getByText(work.title, { exact: true }).click();
+      await expect(page.getByText("original.mp3", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Directory edition", exact: true }).click();
+      await page.getByRole("menuitemradio", { name: /RJ00000001/ }).click();
+      await expect.poll(() => editionRequests).toBe(1);
+      await expect(page.getByTestId("directory-skeleton")).toBeVisible();
+
+      if (update === "progress save") {
+        const before = saves;
+        await page.getByText("Test track", { exact: true }).click();
+        await page.getByRole("slider", { name: "Seek", exact: true }).fill("5");
+        await expect
+          .poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.currentTime))
+          .toBeGreaterThan(4);
+        await page.getByRole("button", { name: "Collapse player", exact: true }).click();
+        await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+        await expect.poll(() => saves).toBeGreaterThan(before);
+      } else {
+        // Another active caller refreshes the same directory through the real
+        // API transport while this page's shared edition read is pending.
+        refreshing = page.evaluate(async () => {
+          const apiModule = "/src/lib/api.ts";
+          const { api } = await import(apiModule);
+          await api.refreshWorkLocalFiles(2);
+        });
+        await expect.poll(() => refreshRequests).toBe(1);
+        if (update === "cancelled directory recovery") {
+          await page.getByRole("button", { name: "Directory edition", exact: true }).click();
+          await page.getByRole("menuitemradio", { name: /RJ00000000/ }).click();
+          await expect(page.getByText("original.mp3", { exact: true })).toBeVisible();
+        }
+      }
+      await expect(page.getByRole("heading", { name: work.title, exact: true })).toBeVisible();
+      await expect(page.getByTestId("directory-load-error")).toHaveCount(0);
+      expect(editionRequests).toBe(1);
+      releaseEdition();
+      releaseRefresh();
+      await refreshing;
+      if (update === "cancelled directory recovery") {
+        await expect(page.getByText("original.mp3", { exact: true })).toBeVisible();
+        await expect(page.getByText("translated.mp3", { exact: true })).toHaveCount(0);
+      } else {
+        await expect(page.getByText("translated.mp3", { exact: true })).toBeVisible();
+      }
+      expect(editionRequests).toBe(update === "directory refresh" ? 2 : 1);
+      await expect(page.getByTestId("directory-load-error")).toHaveCount(0);
+      await expect(page.locator("audio")).toHaveJSProperty("paused", false);
+    } finally {
+      releaseEdition();
+      releaseRefresh();
+      await refreshing;
+    }
+  });
+}
 
 test("mobile work detail keeps tags in the hero and work-code utilities together", async ({ page }) => {
   const detailWork: Work = {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { PLAYBACK_CURSOR_UPDATED_EVENT, type PlaybackCursorUpdatedDetail } from "@/lib/appEvents";
 import { api, ApiError } from "@/lib/api";
+import { apiSessionForPrincipal, apiSessionVersion } from "@/lib/apiSession";
 import {
   currentClientStorageScope,
   isClientStorageScopeOnCurrentServer,
@@ -69,6 +70,7 @@ async function saveProgressWithBusyRetry(
 export function usePlaybackProgress(engine: PlaybackEngine, canSaveRemotely: boolean, principalID: ClientPrincipalID) {
   const { refs, currentTrack, currentPlaybackInstanceKey, duration, durationLocationId } = engine;
   const scope = currentClientStorageScope(principalID);
+  const session = apiSessionForPrincipal(principalID);
   const currentScopeRef = useRef<string | null>(null);
   currentScopeRef.current = canSaveRemotely ? scope : null;
   const lastSavedRef = useRef<ProgressSaveMarker | null>(null);
@@ -77,14 +79,19 @@ export function usePlaybackProgress(engine: PlaybackEngine, canSaveRemotely: boo
 
   useEffect(() => {
     lastSavedRef.current = null;
-    if (!canSaveRemotely) return;
+    if (!canSaveRemotely || session === null) return;
+    // Transport sessions change before React publishes the next account. A
+    // confirmed session creates a fresh queue, even for the same principal.
     const controller = new AbortController();
     const queue: ProgressSaveQueue = {
       inFlight: false,
       pending: new Map(),
       controller,
       isCurrent: () =>
-        !controller.signal.aborted && currentScopeRef.current === scope && isClientStorageScopeOnCurrentServer(scope),
+        !controller.signal.aborted &&
+        apiSessionVersion() === session &&
+        currentScopeRef.current === scope &&
+        isClientStorageScopeOnCurrentServer(scope),
     };
     saveQueueRef.current = queue;
     return () => {
@@ -94,7 +101,7 @@ export function usePlaybackProgress(engine: PlaybackEngine, canSaveRemotely: boo
       queue.pending.clear();
       if (saveQueueRef.current === queue) saveQueueRef.current = null;
     };
-  }, [canSaveRemotely, scope]);
+  }, [canSaveRemotely, scope, session]);
 
   const queueProgressSave = (mediaItemId: number, payload: ProgressSavePayload) => {
     const queueState = saveQueueRef.current;

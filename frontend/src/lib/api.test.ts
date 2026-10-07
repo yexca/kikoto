@@ -17,7 +17,17 @@ vi.mock("@/lib/serverConfig", () => ({
 vi.mock("@/lib/mobileDiagnostics", () => ({ recordApiError }));
 
 import { api, ApiError, assetURL, mediaDownloadURL } from "./api";
-import { changeApiSession } from "./apiSession";
+import { apiSessionVersion, changeApiSession, observeApiPrincipal } from "./apiSession";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -199,6 +209,264 @@ describe("API client transport", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps an edition and unrelated settings read alive during a progress save", async () => {
+    const directory = deferred<Response>();
+    const runtime = deferred<Response>();
+    const write = deferred<Response>();
+    const fetchMock = vi.fn((url: string, _init: RequestInit) => {
+      if (url === "/api/works/2") return directory.promise;
+      if (url === "/api/runtime-settings") return runtime.promise;
+      return write.promise;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const edition = api.getWork(2);
+    const settings = api.getRuntimeSettings();
+    const saving = api.updateMediaProgress(1, {
+      locationId: 1,
+      positionSeconds: 10,
+      durationSeconds: 60,
+      completed: false,
+    });
+    const joinedSettings = api.getRuntimeSettings();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    write.resolve(jsonResponse({}));
+    await saving;
+    expect((fetchMock.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(false);
+    directory.resolve(jsonResponse({ id: 2, primaryCode: "RJ00000001" }));
+    runtime.resolve(jsonResponse({ mode: "production" }));
+
+    await expect(edition).resolves.toMatchObject({ id: 2 });
+    await expect(Promise.all([settings, joinedSettings])).resolves.toEqual([
+      { mode: "production" },
+      { mode: "production" },
+    ]);
+    expect(recordApiError).not.toHaveBeenCalled();
+  });
+
+  it("fences affected reads from before and during a write, including a failed write", async () => {
+    const before = deferred<Response>();
+    const during = deferred<Response>();
+    const write = deferred<Response>();
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(before.promise)
+      .mockReturnValueOnce(write.promise)
+      .mockReturnValueOnce(during.promise)
+      .mockResolvedValueOnce(jsonResponse({ id: 1, title: "Current work" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const oldRead = api.getWork(1);
+    const saving = api.updateMediaProgress(1, {
+      locationId: 1,
+      positionSeconds: 10,
+      durationSeconds: 60,
+      completed: false,
+    });
+    const concurrentRead = api.getWork(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    write.resolve(jsonResponse({ error: "Database busy", code: "database_busy", retryable: true }, 503));
+    await expect(saving).rejects.toMatchObject({ code: "database_busy" });
+    await expect(api.getWork(1)).resolves.toMatchObject({ title: "Current work" });
+    before.resolve(jsonResponse({ id: 1, title: "Before write" }));
+    during.resolve(jsonResponse({ id: 1, title: "During write" }));
+    await expect(oldRead).resolves.toMatchObject({ title: "Before write" });
+    await expect(concurrentRead).resolves.toMatchObject({ title: "During write" });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("refreshes shared settings and tag suggestions after a write settles", async () => {
+    const oldSettings = deferred<Response>();
+    const duringTags = deferred<Response>();
+    const write = deferred<Response>();
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(oldSettings.promise)
+      .mockReturnValueOnce(write.promise)
+      .mockReturnValueOnce(duringTags.promise)
+      .mockResolvedValueOnce(jsonResponse({ mode: "production", cacheEnabled: true }))
+      .mockResolvedValueOnce(jsonResponse({ scope: "work", tags: [{ id: 1, name: "Example tag" }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const settings = api.getRuntimeSettings();
+    const saving = api.updateSettings({ cacheEnabled: true });
+    const tags = api.listUserTags("work");
+    write.resolve(jsonResponse({}));
+    await saving;
+    await expect(api.getRuntimeSettings()).resolves.toMatchObject({ cacheEnabled: true });
+    await expect(api.listUserTags("work")).resolves.toMatchObject({ tags: [{ name: "Example tag" }] });
+    oldSettings.resolve(jsonResponse({ mode: "production", cacheEnabled: false }));
+    duringTags.resolve(jsonResponse({ scope: "work", tags: [] }));
+    await Promise.all([settings, tags]);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
+  it("fences reads until the mutation body finishes, including a decode failure", async () => {
+    const body = deferred<unknown>();
+    const during = deferred<Response>();
+    const response = jsonResponse({});
+    const readingBody = vi.spyOn(response, "json").mockReturnValue(body.promise);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response)
+      .mockReturnValueOnce(during.promise)
+      .mockResolvedValueOnce(jsonResponse({ mode: "production", cacheEnabled: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const saving = api.updateSettings({ cacheEnabled: true });
+    await vi.waitFor(() => expect(readingBody).toHaveBeenCalledOnce());
+    const interim = api.getRuntimeSettings();
+    body.reject(new SyntaxError("Mutation body failed to decode"));
+    await expect(saving).rejects.toBeInstanceOf(SyntaxError);
+    await expect(api.getRuntimeSettings()).resolves.toMatchObject({ cacheEnabled: true });
+    during.resolve(jsonResponse({ mode: "production", cacheEnabled: false }));
+    await interim;
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("automatically recovers an affected directory after a structural write without retrying the write", async () => {
+    const old = deferred<Response>();
+    const write = deferred<Response>();
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(write.promise)
+      .mockResolvedValueOnce(jsonResponse({ id: 2, title: "Refreshed edition" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const read = api.getWork(2);
+    const refreshing = api.refreshWorkLocalFiles(2);
+    await Promise.resolve();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    write.resolve(jsonResponse({ workId: 2 }));
+    await refreshing;
+    await expect(read).resolves.toMatchObject({ title: "Refreshed edition" });
+    old.reject(new Error("Old transport failed"));
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/works/2",
+      "/api/works/2/local-files/refresh",
+      "/api/works/2",
+    ]);
+    expect(recordApiError).not.toHaveBeenCalled();
+  });
+
+  it("does not recover a directory after its session changes while waiting for a write", async () => {
+    const old = deferred<Response>();
+    const write = deferred<Response>();
+    const fetchMock = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(write.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const read = api.getWork(2);
+    const refreshing = api.refreshWorkLocalFiles(2);
+    changeApiSession();
+    await expect(read).rejects.toMatchObject({ name: "AbortError", message: "The session has changed." });
+    write.resolve(jsonResponse({ workId: 2 }));
+    old.resolve(jsonResponse({ id: 2 }));
+    await expect(refreshing).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(recordApiError).not.toHaveBeenCalled();
+  });
+
+  it.each(["success", "http failure", "network failure"] as const)(
+    "rejects a late %s from the previous account",
+    async (result) => {
+      const old = deferred<Response>();
+      const fresh = deferred<Response>();
+      const fetchMock = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise);
+      vi.stubGlobal("fetch", fetchMock);
+      observeApiPrincipal(1);
+      const pending = api.getWorkSummary(1);
+      const epoch = apiSessionVersion();
+      observeApiPrincipal(2);
+      expect(apiSessionVersion()).toBeGreaterThan(epoch);
+      const current = api.getWorkSummary(1);
+      if (result === "network failure") old.reject(new Error("Previous server failure"));
+      else
+        old.resolve(
+          jsonResponse(
+            result === "success" ? { id: 1 } : { error: "Previous HTTP failure" },
+            result === "success" ? 200 : 503,
+          ),
+        );
+      await expect(pending).rejects.toMatchObject({ name: "AbortError", message: "The session has changed." });
+      fresh.resolve(jsonResponse({ id: 1, title: "Current account view" }));
+      await expect(current).resolves.toMatchObject({ title: "Current account view" });
+      expect(recordApiError).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["success", "decode failure", "http failure"] as const)(
+    "rejects an old response body's %s",
+    async (result) => {
+      const body = deferred<unknown>();
+      const response = jsonResponse({}, result === "http failure" ? 503 : 200);
+      const readingBody = vi.spyOn(response, "json").mockReturnValue(body.promise);
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+      const pending = api.getWorkSummary(1);
+      await vi.waitFor(() => expect(readingBody).toHaveBeenCalledOnce());
+      changeApiSession();
+      if (result === "decode failure") body.reject(new SyntaxError("Old body failed to decode"));
+      else body.resolve(result === "success" ? { id: 1 } : { error: "Old HTTP failure" });
+      await expect(pending).rejects.toMatchObject({ name: "AbortError", message: "The session has changed." });
+      expect(recordApiError).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not let an old write's completion evict current-session reads", async () => {
+    const write = deferred<Response>();
+    const read = deferred<Response>();
+    const fetchMock = vi.fn().mockReturnValueOnce(write.promise).mockReturnValueOnce(read.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const saving = api.updateSettings({ cacheEnabled: true });
+    changeApiSession();
+    const first = api.getRuntimeSettings();
+    write.resolve(jsonResponse({}));
+    await expect(saving).rejects.toMatchObject({ name: "AbortError" });
+    const joined = api.getRuntimeSettings();
+    read.resolve(jsonResponse({ mode: "production" }));
+    await Promise.all([first, joined]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("fences a logout/login cycle into the same account", async () => {
+    const old = deferred<Response>();
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+      .mockResolvedValueOnce(jsonResponse({ authenticated: true, user: { id: 1 } }))
+      .mockResolvedValueOnce(jsonResponse({ id: 1, title: "New session view" }));
+    vi.stubGlobal("fetch", fetchMock);
+    observeApiPrincipal(1);
+    const pending = api.getWork(1);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError", message: "The session has changed." });
+    await api.logout();
+    await api.login("synthetic-user", "synthetic-password");
+    await rejected;
+    old.resolve(jsonResponse({ id: 1, title: "Old session view" }));
+    await expect(api.getWork(1)).resolves.toMatchObject({ title: "New session view" });
+  });
+
+  it("rejects a delayed mutation body failure after a session change", async () => {
+    const body = deferred<unknown>();
+    const response = jsonResponse({});
+    const readingBody = vi.spyOn(response, "json").mockReturnValue(body.promise);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    const pending = api.updateSettings({ cacheEnabled: true });
+    await vi.waitFor(() => expect(readingBody).toHaveBeenCalledOnce());
+    changeApiSession();
+    body.reject(new SyntaxError("Old write body failed to decode"));
+    await expect(pending).rejects.toMatchObject({ name: "AbortError", message: "The session has changed." });
+    expect(recordApiError).not.toHaveBeenCalled();
+  });
+
+  it("stops a workflow event stream when its session changes", async () => {
+    const body = new ReadableStream<Uint8Array>();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body)));
+    const onMessage = vi.fn();
+    const pending = api.streamWorkflowRunEvents(41, 0, new AbortController().signal, onMessage);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError", message: "The session has changed." });
+    await vi.waitFor(() => expect(body.locked).toBe(true));
+    changeApiSession();
+    await rejected;
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(body.locked).toBe(false);
+  });
+
   it("sends the manual Fetch disk reserve by default", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
     vi.stubGlobal("fetch", fetchMock);
@@ -257,23 +525,24 @@ describe("API client transport", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("invalidates reads before and after a settings write, including reads started during it", async () => {
+  it("fences pre-write and mid-write settings reuse without aborting their existing callers", async () => {
     const pending: ((response: Response) => void)[] = [];
     const fetchMock = vi.fn(() => new Promise<Response>((resolve) => pending.push(resolve)));
     vi.stubGlobal("fetch", fetchMock);
     const before = api.getRuntimeSettings();
-    const discardedBefore = expect(before).rejects.toMatchObject({ name: "AbortError" });
     const write = api.updateSettings({ cacheEnabled: false });
     const during = api.getRuntimeSettings();
-    const discardedDuring = expect(during).rejects.toMatchObject({ name: "AbortError" });
     pending[1](jsonResponse({ cacheEnabled: false }));
     await write;
     const after = api.getRuntimeSettings();
     pending[0](jsonResponse({ cacheEnabled: true }));
     pending[2](jsonResponse({ cacheEnabled: true }));
     pending[3](jsonResponse({ cacheEnabled: false }));
-    await Promise.all([discardedBefore, discardedDuring]);
-    await expect(after).resolves.toMatchObject({ cacheEnabled: false });
+    await expect(Promise.all([before, during, after])).resolves.toEqual([
+      { cacheEnabled: true },
+      { cacheEnabled: true },
+      { cacheEnabled: false },
+    ]);
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 

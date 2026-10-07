@@ -45,6 +45,8 @@ export async function setStoredServerURL(value: string) {
   // The base path is part of the identity: one origin may host multiple instances.
   if (normalized !== getStoredServerURL()) {
     await clearStoredSessionToken();
+    // Requests may have started against the old server while native credential
+    // removal was pending. Fence those too, at the point the new URL is published.
     changeApiSession();
   }
   localStorage.setItem(SERVER_URL_STORAGE_KEY, normalized);

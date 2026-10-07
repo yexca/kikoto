@@ -1,18 +1,38 @@
 import { sharedInflightRequests } from "@/lib/inflightRequests";
 
-// Cookie sessions have no readable token. A generation also distinguishes a
-// logout/login cycle into the same account and a switch to another server.
+// A cookie session has no readable token. The generation also distinguishes a
+// logout/login into the same account, and native credential/server changes.
 let generation = 0;
 let principal: number | null | undefined;
+let controller = new AbortController();
+
+export class ApiSessionChangedError extends DOMException {
+  constructor() {
+    super("The session has changed.", "AbortError");
+  }
+}
 
 export function apiSessionVersion() {
   return generation;
 }
 
+/** Only resume account-owned queues once this session has confirmed their owner. */
+export function apiSessionForPrincipal(id: number | null) {
+  return principal === id ? generation : null;
+}
+
+export function apiSessionSignal() {
+  return controller.signal;
+}
+
 export function changeApiSession() {
   generation += 1;
   principal = undefined;
-  sharedInflightRequests.invalidateAll();
+  const previous = controller;
+  controller = new AbortController();
+  const reason = new ApiSessionChangedError();
+  previous.abort(reason);
+  sharedInflightRequests.invalidateAll(reason);
 }
 
 export function observeApiPrincipal(id: number | null) {
@@ -21,5 +41,5 @@ export function observeApiPrincipal(id: number | null) {
 }
 
 export function assertApiSession(version: number) {
-  if (version !== generation) throw new DOMException("The session has changed.", "AbortError");
+  if (version !== generation) throw new ApiSessionChangedError();
 }

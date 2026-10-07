@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, type RefObject } from "react";
 
 import { ApiError } from "@/lib/api";
+import { apiSessionVersion } from "@/lib/apiSession";
 import { isClientStorageScopeOnCurrentServer } from "@/lib/clientStorageScope";
 import { LISTENING_HISTORY_CLEARED_CODE, listeningApi } from "@/lib/listeningApi";
 import { subscribeListeningHistoryCleared } from "@/lib/listeningHistoryEvents";
@@ -48,7 +49,9 @@ export function useListeningSessionRecorder(
   mediaRef: RefObject<HTMLMediaElement | null>,
   scope: string | null,
   track: Pick<PlayerTrack, "queueItemId" | "workId"> | null,
+  session: number | null,
 ) {
+  const recordingScope = session === null ? null : scope;
   const workId = track && track.workId > 0 ? track.workId : 0;
   const activationKey = track?.queueItemId ?? null;
   const target = useMemo<ListeningTarget | null>(
@@ -56,17 +59,21 @@ export function useListeningSessionRecorder(
     [activationKey, workId],
   );
   const trackerRef = useRef<ListeningSessionTracker | null>(null);
-  const stateRef = useRef({ scope, target });
-  stateRef.current = { scope, target };
+  const stateRef = useRef({ scope: recordingScope, target, session });
+  stateRef.current = { scope: recordingScope, target, session };
 
   useEffect(() => {
     const media = mediaRef.current;
     if (!media) return;
     // Requests carry whatever credentials are configured when they start. The
-    // tracker learns about a new principal or server one effect later, so a
-    // request for any other scope is refused here rather than sent.
+    // tracker learns about a new principal or server one effect later. Its
+    // scope also pins the session, so a transition refuses old reports before
+    // React publishes the next principal.
     const whileScopeIsCurrent = <T>(requestScope: string, request: () => Promise<T>) =>
-      stateRef.current.scope === requestScope && isClientStorageScopeOnCurrentServer(requestScope)
+      stateRef.current.scope === requestScope &&
+      stateRef.current.session === session &&
+      apiSessionVersion() === session &&
+      isClientStorageScopeOnCurrentServer(requestScope)
         ? request()
         : Promise.reject(new Error("The listening scope is no longer current."));
     const tracker = new ListeningSessionTracker({
@@ -118,7 +125,7 @@ export function useListeningSessionRecorder(
       tracker.dispose();
       if (trackerRef.current === tracker) trackerRef.current = null;
     };
-  }, [mediaRef]);
+  }, [mediaRef, session]);
 
   // A cleared history must not regain the time of sessions measured before it.
   useEffect(() => {
@@ -127,6 +134,9 @@ export function useListeningSessionRecorder(
   }, [scope]);
 
   useEffect(() => {
-    trackerRef.current?.update({ scope, target, advancing: isMediaAdvancing(mediaRef.current) }, performance.now());
-  }, [mediaRef, scope, target]);
+    trackerRef.current?.update(
+      { scope: recordingScope, target, advancing: isMediaAdvancing(mediaRef.current) },
+      performance.now(),
+    );
+  }, [mediaRef, recordingScope, target]);
 }

@@ -22,14 +22,29 @@ test("compact layout collapse button responds to a mouse click @desktop", async 
   await expect(page.getByRole("region", { name: "Now playing", exact: true })).toHaveCount(0);
 });
 
-for (const result of ["success", "database_busy"] as const) {
-  test(`queued playback saves stop on sign-out after a ${result} response`, async ({ page }) => {
+for (const result of ["success", "database_busy", "logout_failure"] as const) {
+  const title =
+    result === "logout_failure"
+      ? "playback saves resume when a failed sign-out confirms the same account"
+      : `queued playback saves stop on sign-out after a ${result} response`;
+  test(title, async ({ page }) => {
     await mockApplication(page, undefined, false, 1, 0, [], undefined, {
       authenticated: true,
     });
     await seedPlayer(page, persistedTrack, 1);
     await seedPlayer(page, { ...persistedTrack, title: "Example B track" }, 2);
     let owner: number | null = 1;
+    let authReads = 0;
+    let historyLookups = 0;
+    if (result === "logout_failure") {
+      await page.route("**/api/listening-sessions", (route) => {
+        if (route.request().method() === "GET") {
+          historyLookups += 1;
+          return route.fulfill({ json: { generation: 0 } });
+        }
+        return route.fulfill({ json: { recorded: true } });
+      });
+    }
     let releaseFirst!: () => void;
     const firstReleased = new Promise<void>((resolve) => {
       releaseFirst = resolve;
@@ -39,8 +54,9 @@ for (const result of ["success", "database_busy"] as const) {
       signalLeak = () => resolve(true);
     });
     const saves: { owner: number | null; position: number }[] = [];
-    await page.route("**/api/auth/me", (route) =>
-      route.fulfill({
+    await page.route("**/api/auth/me", (route) => {
+      authReads += 1;
+      return route.fulfill({
         json:
           owner === null
             ? { authenticated: false }
@@ -48,10 +64,15 @@ for (const result of ["success", "database_busy"] as const) {
                 id: owner,
                 username: `synthetic-user-${owner}`,
                 devMode: false,
+                permissions: ["library:read", "playback:use", "favorites:write"],
               }),
-      }),
-    );
+      });
+    });
     await page.route("**/api/auth/logout", async (route) => {
+      if (result === "logout_failure") {
+        await route.fulfill({ status: 503, json: { error: "Sign-out unavailable", retryable: true } });
+        return;
+      }
       owner = null;
       await route.fulfill({ json: { ok: true } });
     });
@@ -86,7 +107,10 @@ for (const result of ["success", "database_busy"] as const) {
       if (owner === 2) signalLeak();
       if (saves.length === 1) await firstReleased;
       if (result === "database_busy" && saves.length === 1) {
-        await route.fulfill({ status: 503, json: { error: "Database busy", code: "database_busy", retryable: true } });
+        await route.fulfill({
+          status: 503,
+          json: { error: "Database busy", code: "database_busy", retryable: true },
+        });
         return;
       }
       await route.fulfill({
@@ -122,8 +146,19 @@ for (const result of ["success", "database_busy"] as const) {
       await page.getByRole("button", { name: "Collapse player", exact: true }).focus();
       await page.keyboard.press("Enter");
       await expect(page.getByRole("region", { name: "Now playing", exact: true })).toHaveCount(0);
+      const beforeAuthReads = authReads;
       await page.getByRole("button", { name: "Account menu", exact: true }).click();
       await page.getByRole("button", { name: "Sign out", exact: true }).click();
+      if (result === "logout_failure") {
+        await expect.poll(() => authReads).toBeGreaterThan(beforeAuthReads);
+        await expect.poll(() => historyLookups).toBeGreaterThan(1);
+        releaseFirst();
+        await checkpoint(40);
+        await expect.poll(() => saves.some((save) => save.owner === 1 && save.position >= 40)).toBe(true);
+        expect(saves.every((save) => save.owner === 1)).toBe(true);
+        await expect(page.locator("audio")).toHaveJSProperty("paused", false);
+        return;
+      }
       await page.getByRole("button", { name: "Sign in", exact: true }).click();
       await page
         .getByRole("dialog", { name: "Account", exact: true })
