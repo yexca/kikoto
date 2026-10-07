@@ -22,9 +22,14 @@ func (s *Server) ensureLocalMediaIndexed(ctx context.Context, workID int64) erro
 		SELECT COUNT(*)
 		FROM media_item AS item
 		INNER JOIN media_file_location AS location ON location.media_item_id = item.id
+		INNER JOIN work_source_presence AS presence
+			ON presence.work_id = item.work_id AND presence.file_source_id = location.file_source_id
 		WHERE item.work_id = ?
 			AND location.location_type = 'local'
 			AND location.availability = 'available'
+			AND presence.presence_type = 'local' AND presence.availability = 'available'
+			AND (location.path = presence.source_url
+				OR substr(location.path, 1, length(presence.source_url) + 1) = presence.source_url || '/')
 	`, workID).Scan(&existing); err != nil {
 		return err
 	}
@@ -277,7 +282,7 @@ func (s *Server) persistIndexedLocalWork(ctx context.Context, workID, fileSource
 	}), workID, fileSourceID); err != nil {
 		return err
 	}
-	if _, err := markMissingLocalLocationsForWork(ctx, tx, workID, fileSourceID, seenPaths); err != nil {
+	if _, err := markMissingLocalLocationsForWork(ctx, tx, workID, fileSourceID, seenPaths, relPath); err != nil {
 		return err
 	}
 	return tx.Commit()

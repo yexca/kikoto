@@ -216,7 +216,7 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 	if err != nil {
 		return localScanResult{}, nil, err
 	}
-	state := localScanPersistState{duplicateCodes: localScanDuplicateCodes(scanSummary.DuplicateGroups), seenWorkIDs: map[int64]bool{}, reconciledWorkIDs: map[int64]bool{}}
+	state := localScanPersistState{scope: scope, duplicateCodes: localScanDuplicateCodes(scanSummary.DuplicateGroups), seenWorkIDs: map[int64]bool{}, reconciledWorkIDs: map[int64]bool{}}
 	seenRoots := map[string]bool{}
 	for start := 0; start < len(workFolders); start += localScanFolderCommitBatch {
 		batch := workFolders[start:min(start+localScanFolderCommitBatch, len(workFolders))]
@@ -237,7 +237,7 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 		return localScanResult{}, nil, err
 	}
 	for _, workID := range missingWorkIDs {
-		missing, err := markAvailableLocalLocationsMissingForWork(ctx, tx, workID, fileSourceID)
+		missing, err := markAvailableLocalLocationsMissingForWork(ctx, tx, workID, fileSourceID, scope)
 		if err != nil {
 			return localScanResult{}, nil, err
 		}
@@ -314,6 +314,7 @@ func (s *Server) persistLocalScanFolderBatch(ctx context.Context, fileSourceID i
 }
 
 type localScanPersistState struct {
+	scope                                                localScanScope
 	updatedLocations, skippedLocations, missingLocations int
 	newWorkCodes                                         []string
 	seenWorkIDs, reconciledWorkIDs                       map[int64]bool
@@ -358,7 +359,7 @@ func (s *Server) persistLocalScanFolder(ctx context.Context, tx *sql.Tx, fileSou
 	// A duplicate stays reviewable. Invalidating either folder here would
 	// choose a winner before the user has reviewed the candidate.
 	if !state.duplicateCodes[code] && !state.reconciledWorkIDs[workID] {
-		missingLocations, err = markLocalLocationsMissingForChangedFolder(ctx, tx, workID, fileSourceID, folder.RelPath)
+		missingLocations, err = markLocalLocationsMissingForChangedFolder(ctx, tx, workID, fileSourceID, folder.RelPath, state.scope)
 		if err != nil {
 			return 0, err
 		}

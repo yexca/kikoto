@@ -36,6 +36,46 @@ function servePreparedAudio(route: Route, media: Buffer) {
   return serveSeekableAudio(route, media, { "X-Kikoto-Playback-Delivery": "transcoded" });
 }
 
+for (const mode of ["Order", "Loop", "Repeat one"] as const) {
+  test(`single-track queue handles audio ending in ${mode} mode`, async ({ page }) => {
+    await mockApplication(page);
+    await seedPlayer(page);
+    const audio = silentWav(4);
+    await page.route(/\/api\/media\/1\/stream(?:\?.*)?$/, (route) => serveSeekableAudio(route, audio));
+    await page.goto("/");
+    await page.getByText("Test track", { exact: true }).click();
+    if (mode !== "Order") {
+      await page.getByRole("button", { name: "Order. Change playback mode", exact: true }).click();
+    }
+    if (mode === "Repeat one") {
+      await page.getByRole("button", { name: "Loop. Change playback mode", exact: true }).click();
+    }
+    await expect(page.getByRole("button", { name: `${mode}. Change playback mode`, exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    const element = page.locator("audio");
+    await expect(element).toHaveJSProperty("paused", false);
+
+    for (let ending = 0; ending < (mode === "Order" ? 1 : 2); ending += 1) {
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            const audio = document.querySelector("audio")!;
+            audio.addEventListener("ended", () => resolve(), { once: true });
+            audio.currentTime = audio.duration - 0.05;
+          }),
+      );
+      if (mode === "Order") {
+        await expect(element).toHaveJSProperty("paused", true);
+        await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+      } else {
+        await expect(element).toHaveJSProperty("paused", false);
+        await expect.poll(() => element.evaluate((audio: HTMLAudioElement) => audio.currentTime)).toBeLessThan(1);
+        await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+      }
+    }
+  });
+}
+
 test("full player collapses from the upper content area and double-tapping its cover opens work detail", async ({
   page,
 }) => {

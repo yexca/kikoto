@@ -60,7 +60,9 @@ export function audioElementEventProps(
     }
     refs.completedPlaybackInstanceRef.current = currentPlaybackInstanceKey;
     saveProgress(true, true);
-    if (mode === "single" && audio) {
+    // A one-track loop leaves the queue index unchanged, so restart the
+    // element explicitly instead of relying on a source-change effect.
+    if ((mode === "single" || (mode === "loop" && queueLength === 1)) && audio) {
       audio.currentTime = 0;
       refs.sourceLoadingRef.current = false;
       updatePlayingState(true);

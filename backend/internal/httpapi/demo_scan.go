@@ -248,7 +248,7 @@ func (s *Server) storeDemoLocalWork(ctx context.Context, fileSourceID int64, wor
 			return err
 		}
 	}
-	if _, err := markMissingLocalLocationsForWork(ctx, tx, workID, fileSourceID, seenPaths); err != nil {
+	if _, err := markMissingLocalLocationsForWork(ctx, tx, workID, fileSourceID, seenPaths, ""); err != nil {
 		return err
 	}
 	return tx.Commit()

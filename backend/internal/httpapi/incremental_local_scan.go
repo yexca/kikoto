@@ -80,7 +80,7 @@ func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflo
 		return err
 	}
 	result, runSummary, _, err := s.persistIncrementalLocalScanResults(
-		ctx, job, payload, workFolders, scanSummary, knownRoots, nodeIDs,
+		ctx, job, payload, scope, workFolders, scanSummary, knownRoots, nodeIDs,
 	)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
@@ -200,6 +200,7 @@ func newIncrementalLocalScanPersistence(
 	ctx context.Context,
 	tx *sql.Tx,
 	payload localScanJobPayload,
+	scope localScanScope,
 	fileSourceID int64,
 	knownRoots []knownLocalWorkRoot,
 ) *incrementalLocalScanPersistence {
@@ -207,6 +208,7 @@ func newIncrementalLocalScanPersistence(
 		server: server, ctx: ctx, tx: tx, dataRoot: payload.Root,
 		changedPaths: payload.ChangedPaths, fileSourceID: fileSourceID, knownRoots: knownRoots,
 		state: localScanPersistState{
+			scope:          scope,
 			duplicateCodes: map[string]bool{}, seenWorkIDs: map[int64]bool{}, reconciledWorkIDs: map[int64]bool{},
 		},
 		affectedWorkIDs: map[int64]bool{}, seenRoots: map[string]bool{},
@@ -245,7 +247,7 @@ func (persistence *incrementalLocalScanPersistence) persistFolder(folder localfs
 	if err != nil {
 		return err
 	}
-	missing, err := markMissingLocalLocationsForWork(persistence.ctx, persistence.tx, workID, persistence.fileSourceID, seenPaths)
+	missing, err := markMissingLocalLocationsForWork(persistence.ctx, persistence.tx, workID, persistence.fileSourceID, seenPaths, folder.RelPath)
 	if err != nil {
 		return err
 	}
@@ -306,7 +308,7 @@ func (persistence *incrementalLocalScanPersistence) markMissingWorks() error {
 		`, workID, persistence.fileSourceID); err != nil {
 			return err
 		}
-		missing, err := markAvailableLocalLocationsMissingForWork(persistence.ctx, persistence.tx, workID, persistence.fileSourceID)
+		missing, err := markAvailableLocalLocationsMissingForWork(persistence.ctx, persistence.tx, workID, persistence.fileSourceID, persistence.state.scope)
 		if err != nil {
 			return err
 		}
@@ -331,6 +333,7 @@ func (s *Server) persistIncrementalLocalScanResults(
 	ctx context.Context,
 	job workflowJobRecord,
 	payload localScanJobPayload,
+	scope localScanScope,
 	workFolders []localfs.WorkFolder,
 	scanSummary localfs.Summary,
 	knownRoots []knownLocalWorkRoot,
@@ -345,7 +348,7 @@ func (s *Server) persistIncrementalLocalScanResults(
 	if err != nil {
 		return localScanResult{}, nil, 0, err
 	}
-	persistence := newIncrementalLocalScanPersistence(s, ctx, tx, payload, fileSourceID, knownRoots)
+	persistence := newIncrementalLocalScanPersistence(s, ctx, tx, payload, scope, fileSourceID, knownRoots)
 	if err := persistence.persistFolders(workFolders); err != nil {
 		return localScanResult{}, nil, 0, err
 	}
