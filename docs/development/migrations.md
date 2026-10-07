@@ -82,7 +82,7 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain ends at
-`059_local_media_file_version.sql`, with `059_v0.7.1.sql` generated
+`059_local_media_file_version.sql`, with `059_v0.8.0.sql` generated
 from the current `VERSION` file. Released migrations and baselines, including
 `047_v0.7.1.sql`, remain immutable and available for ledger validation.
 
@@ -105,10 +105,7 @@ snapshot-writer
 triggers, queues existing works, and requests one new startup backfill to repair
 older projections and locale-name precedence. Hidden/merged states now commit
 before batched work projection. Existing databases apply 048–059 through the
-numbered chain; empty databases use the schema-059 baseline. The earlier
-development schema-050, integrated schema-053, schema-054 and schema-055
-baselines and the metadata-branch schema-051/052 baselines are retired; their checksums remain
-available for ledger validation.
+numbered chain; empty databases use the schema-059 baseline.
 Migration 053 preserves existing all-language authored overrides while adding
 language-scoped titles and rebuilding indexes/search triggers. It never changes
 released/applied numbered SQL or reconstructs existing data from a baseline.
@@ -128,20 +125,17 @@ come from the original edition. It changes no existing rows directly.
 Migration 057 adds the bounded `remote_metadata_title_variant` projection and
 its title-sort/search invalidation triggers. Existing remote snapshots are
 queued for the normal background projection; no work, edition or provider
-request is created by the migration. The schema-056 baseline stays packaged
-and immutable for upgrades, and fresh installations use schema 057.
+request is created by the migration.
 Migration 058 adds `work_purchase_bonus`, the link from a purchase bonus work to
 its parent product's family by code, with its parent-code and foreign-key
 indexes. It creates no rows: existing bonuses are detected by the next metadata
-sync. The schema-057 baseline stays packaged and immutable for upgrades, and
-schema 058 remains packaged for its history.
+sync.
 Migration 059 adds a `file_version` observation to local media items and
 locations. Size and nanosecond modification time invalidate derived duration
 and audio metadata when rescanning, while media ids and personal state stay
 unchanged. Legacy observations remain empty until a scan or bounded probe
 establishes their version; probes validate both disk observations and the stored
-version before committing. The schema-058 baseline remains immutable;
-fresh installations use schema 059. No media files are read by the migration.
+version before committing. No media files are read by the migration.
 v0.7.1 shipped schema 047. Snapshot triggers queue only existing works, preserve
 committed projection markers, and permit snapshots to outlive a deleted work.
 Startup moves old flat
@@ -150,30 +144,6 @@ nested cache once and never replaces an existing provider cover.
 Startup cover migration, shared-tag backfill and orphan manual-asset cleanup
 record durable status separately; failed cover files do not stop migration of
 the remaining files, and incomplete repairs retry next startup.
-
-### Metadata Development Branch Compatibility
-
-Two development histories used the same migration numbers before integration.
-The root chain preserves the `main` history: 051 adds favorite-list icons, 052
-adds the tag projection queue, and 053 adds language-scoped titles. SQL that may
-already have run on the metadata branch remains unchanged in
-`backend/migrations/compat/metadata/`: 051 adds the queue, 052 adds scoped titles,
-and a new 053 appends favorite-list icons. These archived files are embedded but
-are not part of the root chain or fresh-install baseline generation.
-
-Startup selects the metadata history only from its recorded migration filenames
-or its exact historical baseline checksum, then validates the complete ledger
-against that history before applying SQL. Both branches used
-`baseline/051_v0.7.1.sql`, so a missing checksum on that ambiguous row stops the
-upgrade. The packaged 051 baseline remains the original `main` asset; the
-metadata 051 and 052 baseline checksums are ledger-only aliases. Tampered or
-mixed branch histories remain errors, and table shapes are never used to infer
-which branch ran.
-
-Existing filenames, versions, checksums, timestamps, and baseline state are
-preserved. Each history appends its missing changes and reaches the same schema
-at 053. All future root migrations from 054 onward apply to both histories.
-Existing databases are never rebuilt from a baseline.
 
 Migration 047 adds `work_dlsite_genre` and
 `dlsite_genre_name`, backfills them from each work's latest DLsite snapshot
@@ -317,9 +287,8 @@ baseline during upgrade.
 
 The released v0.6.1 baseline remains `034_v0.6.0.sql`. Baselines 035–044 that
 were generated during v0.7.0 development with a v0.6.1 suffix were not part of
-the v0.6.1 release. Their files have been removed, while checksum-only ledger
-entries allow development databases created from those snapshots to continue
-through the numbered chain.
+the v0.6.1 release. Their files were removed, and v0.8.0 also removed their
+checksum-only ledger entries; see [v0.8.0 Upgrade](#v080-upgrade).
 
 ## v0.7.1 Upgrade
 
@@ -332,6 +301,32 @@ baseline during upgrade.
 
 The released v0.7.0 baseline remains `044_v0.7.0.sql`. Baselines 045 and 047
 that were generated during v0.7.1 development with a v0.7.0 suffix were not
-part of the v0.7.0 release. Their files have been removed, while
-checksum-only ledger entries allow development databases created from those
-snapshots to continue through the numbered chain.
+part of the v0.7.0 release. Their files were removed, and v0.8.0 also
+removed their checksum-only ledger entries; see [v0.8.0 Upgrade](#v080-upgrade).
+
+## v0.8.0 Upgrade
+
+Existing v0.7.1 databases advance from schema 047 through numbered migrations
+048–059. The migrations queue existing works for background tag projection,
+title builds, remote title projection, and search indexing instead of
+rewriting them during startup; migration 048 removes only all-language title
+overrides that exactly match a DLsite title from the same work family. New
+installations use `059_v0.8.0.sql`; existing installations never apply a
+baseline during upgrade.
+
+The released v0.7.1 baseline remains `047_v0.7.1.sql`. Baselines from schema
+050 onward that were generated during v0.8.0 development with a v0.7.1 suffix
+were not part of the v0.7.1 release, and their files have been removed.
+
+v0.8.0 also stops accepting databases that only unreleased development builds
+could create. The catalog no longer carries checksum-only entries for the
+development baselines generated between v0.6.1 and v0.8.0 (035–044 with a
+v0.6.1 suffix, 045 and 047 with a v0.7.0 suffix, and 050–059 with a v0.7.1
+suffix), and the metadata redesign branch's alternative 051–053 history and
+its `compat/metadata/` SQL are removed. A database whose ledger references
+one of these is refused at startup with a ledger validation error; recreate it
+or restore it from a backup of a released version. Databases created by a
+released version, including those whose ledger starts at `033_v0.5.5.sql` or
+`034_v0.5.5.sql`, and those created from the retained pre-release
+`031_current.sql` and `032_current.sql` snapshots, upgrade through the
+numbered chain as before.

@@ -1,15 +1,16 @@
 package storage
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 	"github.com/yexca/kikoto/backend/migrations"
 )
 
-func TestLanguageTitleMigrationPreservesRetiredBaselineDataAndSearchTriggers(t *testing.T) {
+func TestLanguageTitleMigrationPreservesTitleOverridesAndSearchTriggers(t *testing.T) {
 	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyMetadataMigrationsThrough(t, 51)); err != nil {
+	if err := Migrate(db, copyNumberedMigrationsThrough(t, filepath.Join("..", "..", "migrations"), 52)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec("INSERT INTO work(primary_code,title) VALUES (?,'Example Work')", testfixture.WorkCode(testfixture.PrefixRJ, 0)); err != nil {
@@ -21,7 +22,6 @@ func TestLanguageTitleMigrationPreservesRetiredBaselineDataAndSearchTriggers(t *
  SELECT id,'cover','{}','synthetic-cover.png' FROM work;`); err != nil {
 		t.Fatal(err)
 	}
-	replaceMigrationHistoryWithRetiredBaseline(t, db, "baseline/051_v0.7.1.sql")
 	if err := MigrateFS(db, migrations.Files, "test"); err != nil {
 		t.Fatal(err)
 	}

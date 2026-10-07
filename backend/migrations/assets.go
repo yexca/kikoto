@@ -7,7 +7,7 @@ import "embed"
 // migration tests, while production no longer depends on a separately mounted
 // migrations directory.
 //
-//go:embed *.sql baseline/*.sql compat/metadata/*.sql
+//go:embed *.sql baseline/*.sql
 var Files embed.FS
 
 //go:generate go run ../cmd/schema-baseline -migrations . -version-file ../../VERSION
