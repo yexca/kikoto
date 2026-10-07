@@ -116,11 +116,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAuth(state);
       },
       logout: async () => {
-        await api.logout();
-        await Promise.all([
-          refresh().catch(() => setAuth({ authenticated: false })),
-          refreshRuntime().catch(() => setAnonymousAccessEnabled(false)),
-        ]);
+        try {
+          await api.logout();
+        } finally {
+          await Promise.all([
+            refresh().catch(() => setAuth({ authenticated: false })),
+            refreshRuntime().catch(() => setAnonymousAccessEnabled(false)),
+          ]);
+        }
       },
       refresh,
       refreshRuntime,

@@ -8,13 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/download"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
@@ -227,6 +227,10 @@ func (s *Server) deleteWorkManualOverride(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid override field"})
 		return
 	}
+	if field == "cover" {
+		s.manualCoverMu.Lock()
+		defer s.manualCoverMu.Unlock()
+	}
 	language := r.URL.Query().Get("language")
 	if !validTitleLanguage(language) || (field != "title" && language != "") {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid override language"})
@@ -238,6 +242,13 @@ func (s *Server) deleteWorkManualOverride(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
+	var oldAsset string
+	if field == "cover" {
+		if err := tx.QueryRowContext(r.Context(), "SELECT asset_path FROM work_manual_override WHERE work_id = ? AND field_name = 'cover'", workID).Scan(&oldAsset); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			writeError(w, err)
+			return
+		}
+	}
 	result, err := tx.ExecContext(r.Context(), "DELETE FROM work_manual_override WHERE work_id = ? AND field_name = ? AND language = ?", workID, field, language)
 	if err != nil {
 		writeError(w, err)
@@ -252,6 +263,7 @@ func (s *Server) deleteWorkManualOverride(w http.ResponseWriter, r *http.Request
 		return
 	}
 	deleted, _ := result.RowsAffected()
+	_ = s.removeUnreferencedManualAsset(oldAsset)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": deleted})
 }
 
@@ -307,13 +319,38 @@ func (s *Server) setWorkCoverOverride(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 		return
 	}
+	s.manualCoverMu.Lock()
+	defer s.manualCoverMu.Unlock()
 	assetPath, originalPath, err := s.copyManualCoverFromLocation(r.Context(), workID, payload.LocationID)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		if errors.Is(err, errManualCoverCandidate) {
+			writeAPIError(w, http.StatusBadRequest, "invalid_cover_candidate", "cover candidate is unavailable or not an image", false)
+		} else if errors.Is(err, download.ErrLimitExceeded) {
+			writeAPIError(w, http.StatusRequestEntityTooLarge, "cover_too_large", "cover exceeds the size limit", false)
+		} else {
+			writeError(w, err)
+		}
+		return
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = s.removeUnreferencedManualAsset(assetPath)
+		}
+	}()
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	var oldAsset string
+	if err := tx.QueryRowContext(r.Context(), "SELECT asset_path FROM work_manual_override WHERE work_id = ? AND field_name = 'cover'", workID).Scan(&oldAsset); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		writeError(w, err)
 		return
 	}
 	valueJSON := mustJSON(map[string]string{"source": "local_file", "originalPath": originalPath})
-	_, err = s.db.ExecContext(r.Context(), `
+	_, err = tx.ExecContext(r.Context(), `
 		INSERT INTO work_manual_override (work_id, field_name, value_json, asset_path, updated_by_user_id, created_at, updated_at)
 		VALUES (?, 'cover', ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		ON CONFLICT(work_id, field_name, language) DO UPDATE SET
@@ -326,11 +363,17 @@ func (s *Server) setWorkCoverOverride(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	overrides, err := s.loadWorkManualOverrides(r.Context(), workID)
+	overrides, err := s.loadWorkManualOverridesFrom(r.Context(), tx, workID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, err)
+		return
+	}
+	committed = true
+	_ = s.removeUnreferencedManualAsset(oldAsset)
 	writeJSON(w, http.StatusOK, overrides)
 }
 
@@ -341,7 +384,15 @@ func (s *Server) workIDExists(ctx context.Context, workID int64) bool {
 }
 
 func (s *Server) loadWorkManualOverrides(ctx context.Context, workID int64) (workManualOverrides, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return s.loadWorkManualOverridesFrom(ctx, s.db, workID)
+}
+
+type manualOverrideQuerier interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func (s *Server) loadWorkManualOverridesFrom(ctx context.Context, db manualOverrideQuerier, workID int64) (workManualOverrides, error) {
+	rows, err := db.QueryContext(ctx, `
 		SELECT field_name, value_json, asset_path, language
 		FROM work_manual_override
 		WHERE work_id = ?
@@ -582,62 +633,6 @@ func (s *Server) workCoverCandidates(ctx context.Context, workID int64) ([]workC
 		candidates = append(candidates, candidate)
 	}
 	return candidates, rows.Err()
-}
-
-func (s *Server) copyManualCoverFromLocation(ctx context.Context, workID int64, locationID int64) (string, string, error) {
-	if locationID <= 0 {
-		return "", "", fmt.Errorf("invalid cover candidate")
-	}
-	var relPath string
-	var kind string
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT location.path, item.kind
-		FROM media_file_location AS location
-		INNER JOIN media_item AS item ON item.id = location.media_item_id
-		WHERE location.id = ?
-			AND item.work_id = ?
-			AND location.location_type = 'local'
-			AND location.availability = 'available'
-	`, locationID, workID).Scan(&relPath, &kind); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", "", fmt.Errorf("cover candidate not found")
-		}
-		return "", "", err
-	}
-	if kind != "image" || localFileKind(relPath) != "image" {
-		return "", "", fmt.Errorf("cover candidate is not an image")
-	}
-	sourcePath, err := safeDataPath(s.cfg.DataRoot, relPath)
-	if err != nil {
-		return "", "", fmt.Errorf("invalid cover candidate path")
-	}
-	source, err := os.Open(sourcePath)
-	if err != nil {
-		return "", "", err
-	}
-	defer source.Close()
-	if err := os.MkdirAll(filepath.Join(s.cfg.CacheRoot, "manual"), 0o755); err != nil {
-		return "", "", err
-	}
-	ext := strings.ToLower(filepath.Ext(relPath))
-	if ext == "" {
-		ext = ".jpg"
-	}
-	hash := sha1.Sum([]byte(fmt.Sprintf("%d:%d:%s", workID, locationID, filepath.ToSlash(relPath))))
-	assetPath := fmt.Sprintf("work-%d-cover-%s%s", workID, hex.EncodeToString(hash[:])[:12], ext)
-	targetPath, err := safeCachePath(filepath.Join(s.cfg.CacheRoot, "manual"), assetPath)
-	if err != nil {
-		return "", "", err
-	}
-	target, err := os.Create(targetPath)
-	if err != nil {
-		return "", "", err
-	}
-	defer target.Close()
-	if _, err := io.Copy(target, source); err != nil {
-		return "", "", err
-	}
-	return assetPath, filepath.ToSlash(relPath), nil
 }
 
 func upsertManualTextOverride(ctx context.Context, tx *sql.Tx, workID int64, field string, value *string, userID int64) error {

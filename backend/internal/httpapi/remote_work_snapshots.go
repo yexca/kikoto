@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -28,13 +29,14 @@ type remoteWorkSnapshot struct {
 }
 
 type remoteSourceForUse struct {
-	ID          int64
-	Code        string
-	DisplayName string
-	SourceType  string
-	Enabled     bool
-	Config      fileSourceConfig
-	Endpoint    fileSourceEndpoint
+	ID              int64
+	Code            string
+	DisplayName     string
+	SourceType      string
+	Enabled         bool
+	Config          fileSourceConfig
+	Endpoint        fileSourceEndpoint
+	cacheGeneration uint64
 }
 
 func (s *Server) loadRemoteSourceForUse(ctx context.Context, id int64) (remoteSourceForUse, error) {
@@ -133,48 +135,72 @@ func (s *Server) loadRemoteWorkCached(ctx context.Context, sourceID int64, code 
 }
 
 func (s *Server) loadRemoteWorkCachedWithLanguages(ctx context.Context, sourceID int64, code string, languages []string) (remoteSourceForUse, kikoeru.Work, error) {
+	s.remoteSourceConfigMu.RLock()
+	source, err := s.currentRemoteCacheSource(ctx, sourceID)
+	if err != nil {
+		s.remoteSourceConfigMu.RUnlock()
+		return remoteSourceForUse{}, kikoeru.Work{}, err
+	}
 	key := remoteWorkCacheKeyForLanguages(sourceID, code, languages)
 	now := time.Now()
 	s.remoteWorkCacheMu.Lock()
 	snapshot, found := s.remoteWorkCache[key]
-	if found && now.Before(snapshot.ExpiresAt) {
+	if found && now.Before(snapshot.ExpiresAt) && sameRemoteCacheSource(snapshot.Source, source) {
 		s.remoteWorkCacheMu.Unlock()
-		return snapshot.Source, snapshot.Work, nil
+		s.remoteSourceConfigMu.RUnlock()
+		return source, snapshot.Work, nil
 	}
 	if found {
 		delete(s.remoteWorkCache, key)
 	}
-	if call := s.remoteWorkCacheCalls[key]; call != nil {
+	if call := s.remoteWorkCacheCalls[key]; call != nil && sameRemoteCacheSource(call.source, source) {
 		s.remoteWorkCacheMu.Unlock()
+		s.remoteSourceConfigMu.RUnlock()
 		select {
 		case <-ctx.Done():
 			return remoteSourceForUse{}, kikoeru.Work{}, ctx.Err()
 		case <-call.done:
+			if call.err == nil {
+				if err := s.validateRemoteCacheResult(ctx, call.source); err != nil {
+					return remoteSourceForUse{}, kikoeru.Work{}, err
+				}
+			}
 			return call.source, call.work, call.err
 		}
 	}
-	call := &remoteWorkCall{done: make(chan struct{})}
+	call := &remoteWorkCall{done: make(chan struct{}), source: source}
 	s.remoteWorkCacheCalls[key] = call
 	s.remoteWorkCacheMu.Unlock()
+	s.remoteSourceConfigMu.RUnlock()
 
-	source, work, err := s.loadRemoteWork(ctx, sourceID, code, languages)
-	call.source, call.work, call.err = source, work, err
-	defer func() {
-		s.remoteWorkCacheMu.Lock()
+	client := s.kikoeruClientForSourceWithLanguages(source, sourceRequestInteractive, languages)
+	work, _, err := s.resolveKikoeruWork(ctx, client, code)
+	s.remoteSourceConfigMu.RLock()
+	defer s.remoteSourceConfigMu.RUnlock()
+	current, currentErr := s.currentRemoteCacheSource(ctx, sourceID)
+	if currentErr != nil || !sameRemoteCacheSource(source, current) {
+		err = errRemoteSourceChanged
+	} else {
+		s.recordRemoteCacheHealth(ctx, sourceID, err)
+	}
+	s.remoteWorkCacheMu.Lock()
+	defer s.remoteWorkCacheMu.Unlock()
+	if s.remoteWorkCacheCalls[key] != call {
+		err = errRemoteSourceChanged
+	} else {
 		delete(s.remoteWorkCacheCalls, key)
-		close(call.done)
-		s.remoteWorkCacheMu.Unlock()
-	}()
+	}
+	call.work, call.err = work, err
+	close(call.done)
 	if err != nil {
 		return remoteSourceForUse{}, kikoeru.Work{}, err
 	}
-	s.remoteWorkCacheMu.Lock()
+	now = time.Now()
 	pruneRemoteWorkSnapshots(s.remoteWorkCache, now)
 	if len(s.remoteWorkCache) >= 64 {
 		deleteOldestRemoteWorkSnapshot(s.remoteWorkCache)
 	}
 	s.remoteWorkCache[key] = remoteWorkSnapshot{Source: source, Work: work, ExpiresAt: now.Add(2 * time.Minute)}
-	s.remoteWorkCacheMu.Unlock()
 	return source, work, nil
 }
 
@@ -194,49 +220,119 @@ func (s *Server) loadRemoteWorkTracksCachedWithLanguages(ctx context.Context, so
 	if err != nil {
 		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
 	}
+	s.remoteSourceConfigMu.RLock()
+	current, err := s.currentRemoteCacheSource(ctx, sourceID)
+	if err != nil || !sameRemoteCacheSource(source, current) {
+		s.remoteSourceConfigMu.RUnlock()
+		return remoteSourceForUse{}, kikoeru.Work{}, nil, errRemoteSourceChanged
+	}
 	key := remoteWorkCacheKeyForLanguages(sourceID, code, languages)
 	now := time.Now()
 	s.remoteWorkCacheMu.Lock()
 	snapshot, found := s.remoteWorkTracksCache[key]
-	if found && now.Before(snapshot.ExpiresAt) {
+	if found && now.Before(snapshot.ExpiresAt) && sameRemoteCacheSource(snapshot.Source, source) && snapshot.Work.ID == work.ID {
 		s.remoteWorkCacheMu.Unlock()
-		return snapshot.Source, snapshot.Work, snapshot.Tracks, nil
+		s.remoteSourceConfigMu.RUnlock()
+		return source, work, snapshot.Tracks, nil
 	}
 	if found {
 		delete(s.remoteWorkTracksCache, key)
 	}
-	if call := s.remoteWorkTracksCacheCalls[key]; call != nil {
+	if call := s.remoteWorkTracksCacheCalls[key]; call != nil && sameRemoteCacheSource(call.source, source) && call.work.ID == work.ID {
 		s.remoteWorkCacheMu.Unlock()
+		s.remoteSourceConfigMu.RUnlock()
 		select {
 		case <-ctx.Done():
 			return remoteSourceForUse{}, kikoeru.Work{}, nil, ctx.Err()
 		case <-call.done:
+			if call.err == nil {
+				if err := s.validateRemoteCacheResult(ctx, call.source); err != nil {
+					return remoteSourceForUse{}, kikoeru.Work{}, nil, err
+				}
+			}
 			return call.source, call.work, call.tracks, call.err
 		}
 	}
-	call := &remoteWorkTracksCall{done: make(chan struct{})}
+	call := &remoteWorkTracksCall{done: make(chan struct{}), source: source, work: work}
 	s.remoteWorkTracksCacheCalls[key] = call
 	s.remoteWorkCacheMu.Unlock()
+	s.remoteSourceConfigMu.RUnlock()
 
-	tracks, err := s.loadRemoteTracks(ctx, source, work, languages)
-	call.source, call.work, call.tracks, call.err = source, work, tracks, err
-	defer func() {
-		s.remoteWorkCacheMu.Lock()
+	tracks, _, err := s.kikoeruClientForSourceWithLanguages(source, sourceRequestInteractive, languages).Tracks(ctx, work.ID)
+	s.remoteSourceConfigMu.RLock()
+	defer s.remoteSourceConfigMu.RUnlock()
+	current, currentErr := s.currentRemoteCacheSource(ctx, sourceID)
+	if currentErr != nil || !sameRemoteCacheSource(source, current) {
+		err = errRemoteSourceChanged
+	} else {
+		s.recordRemoteCacheHealth(ctx, sourceID, err)
+	}
+	s.remoteWorkCacheMu.Lock()
+	defer s.remoteWorkCacheMu.Unlock()
+	if s.remoteWorkTracksCacheCalls[key] != call {
+		err = errRemoteSourceChanged
+	} else {
 		delete(s.remoteWorkTracksCacheCalls, key)
-		close(call.done)
-		s.remoteWorkCacheMu.Unlock()
-	}()
+	}
+	call.tracks, call.err = tracks, err
+	close(call.done)
 	if err != nil {
 		return remoteSourceForUse{}, kikoeru.Work{}, nil, err
 	}
-	s.remoteWorkCacheMu.Lock()
+	now = time.Now()
 	pruneRemoteWorkTracksSnapshots(s.remoteWorkTracksCache, now)
 	if len(s.remoteWorkTracksCache) >= 64 {
 		deleteOldestRemoteWorkTracksSnapshot(s.remoteWorkTracksCache)
 	}
 	s.remoteWorkTracksCache[key] = remoteWorkTracksSnapshot{Source: source, Work: work, Tracks: tracks, ExpiresAt: now.Add(2 * time.Minute)}
-	s.remoteWorkCacheMu.Unlock()
 	return source, work, tracks, nil
+}
+
+var errRemoteSourceChanged = errors.New("remote source configuration changed; retry the request")
+
+// Called after validating the configuration under remoteSourceConfigMu, so an
+// obsolete request cannot change the health of the newly configured source.
+func (s *Server) recordRemoteCacheHealth(ctx context.Context, sourceID int64, requestErr error) {
+	if requestErr == nil {
+		_ = s.updateSourceHealth(ctx, sourceID, "healthy")
+	} else if !errors.Is(requestErr, sql.ErrNoRows) {
+		_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
+	}
+}
+
+// Called under remoteSourceConfigMu. Cached data never grants permission to use
+// an old endpoint, disabled source or obsolete outbound policy.
+func (s *Server) currentRemoteCacheSource(ctx context.Context, id int64) (remoteSourceForUse, error) {
+	source, err := s.loadRemoteSourceForUse(ctx, id)
+	if err != nil {
+		return remoteSourceForUse{}, err
+	}
+	if !source.Enabled || !isKikoeruSourceType(source.SourceType) {
+		return remoteSourceForUse{}, errors.New("source is not an enabled kikoeru-compatible source")
+	}
+	s.remoteWorkCacheMu.Lock()
+	source.cacheGeneration = s.remoteWorkCacheGenerations[id]
+	s.remoteWorkCacheMu.Unlock()
+	return source, nil
+}
+
+func sameRemoteCacheSource(a, b remoteSourceForUse) bool {
+	aJSON, _ := json.Marshal(a)
+	bJSON, _ := json.Marshal(b)
+	return a.cacheGeneration == b.cacheGeneration && sha256.Sum256(aJSON) == sha256.Sum256(bJSON)
+}
+
+func (s *Server) validateRemoteCacheResult(ctx context.Context, source remoteSourceForUse) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.remoteSourceConfigMu.RLock()
+	defer s.remoteSourceConfigMu.RUnlock()
+	current, err := s.currentRemoteCacheSource(ctx, source.ID)
+	if err != nil || !sameRemoteCacheSource(source, current) {
+		return errRemoteSourceChanged
+	}
+	return nil
 }
 
 type remoteWorkCall struct {
@@ -311,6 +407,7 @@ func (s *Server) invalidateRemoteWorkCache(sourceID int64) {
 	prefix := strconv.FormatInt(sourceID, 10) + ":"
 	s.remoteWorkCacheMu.Lock()
 	defer s.remoteWorkCacheMu.Unlock()
+	s.remoteWorkCacheGenerations[sourceID]++
 	for key := range s.remoteWorkCache {
 		if strings.HasPrefix(key, prefix) {
 			delete(s.remoteWorkCache, key)
@@ -319,6 +416,16 @@ func (s *Server) invalidateRemoteWorkCache(sourceID int64) {
 	for key := range s.remoteWorkTracksCache {
 		if strings.HasPrefix(key, prefix) {
 			delete(s.remoteWorkTracksCache, key)
+		}
+	}
+	for key := range s.remoteWorkCacheCalls {
+		if strings.HasPrefix(key, prefix) {
+			delete(s.remoteWorkCacheCalls, key)
+		}
+	}
+	for key := range s.remoteWorkTracksCacheCalls {
+		if strings.HasPrefix(key, prefix) {
+			delete(s.remoteWorkTracksCacheCalls, key)
 		}
 	}
 }

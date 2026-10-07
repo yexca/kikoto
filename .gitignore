@@ -1,6 +1,10 @@
-documents/
-harness/
 sample/
+
+# CodeGraph
+.codegraph/
+
+# claude
+.claude/
 
 data/*
 !data/.gitkeep
