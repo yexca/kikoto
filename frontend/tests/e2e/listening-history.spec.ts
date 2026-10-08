@@ -1,9 +1,12 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 import { syntheticWorkCode } from "../../src/test-support/workCode";
+import type { DatedListeningReport, PlaybackReport } from "../../src/lib/playbackReportApi";
+import { authenticatedStateFixture } from "./fixtures/api";
+import { playbackReportResultFixture, readPlaybackReportOutbox } from "./fixtures/playback-reports";
 import { mockApplication, queuedTrackFixture, seedPlayerQueue, silentWav } from "./fixtures/player-library";
 
-type SessionReport = { generation: number; sessionId: string; workId: number; listenedSeconds: number };
+type SessionReport = DatedListeningReport;
 
 type ListeningEvent =
   | { kind: "lookup"; generation: number }
@@ -27,40 +30,30 @@ function serveSeekableAudio(route: Route, media: Buffer) {
 
 /**
  * Models the listening API: GET returns the account's history generation,
- * DELETE clears history and increments it, and a report for any other
- * generation is rejected like the server's HTTP 409.
+ * DELETE increments it. Merged reports acknowledge history and progress
+ * separately, returning the current generation even when history is stale.
  */
 async function mockListeningServer(page: Page, options: { failFirstReport?: boolean } = {}) {
   const server = { generation: 0, events: [] as ListeningEvent[] };
   let reportCount = 0;
   await page.route("**/api/listening-sessions", async (route) => {
-    if (route.request().method() === "GET") {
-      server.events.push({ kind: "lookup", generation: server.generation });
-      await route.fulfill({ headers: { "Cache-Control": "no-store" }, json: { generation: server.generation } });
-      return;
-    }
-    const report = route.request().postDataJSON() as SessionReport;
-    reportCount += 1;
-    if (report.generation !== server.generation) {
-      server.events.push({ kind: "report", report, accepted: false });
-      await route.fulfill({
-        status: 409,
-        json: {
-          error: "Listening history was cleared. Start a new listening session.",
-          code: "listening_history_cleared",
-          retryable: false,
-        },
-      });
-      return;
-    }
-    if (options.failFirstReport && reportCount === 1) {
+    expect(route.request().method()).toBe("GET");
+    server.events.push({ kind: "lookup", generation: server.generation });
+    await route.fulfill({ headers: { "Cache-Control": "no-store" }, json: { generation: server.generation } });
+  });
+  await page.route("**/api/playback-reports", async (route) => {
+    expect(route.request().method()).toBe("POST");
+    const batch = route.request().postDataJSON() as PlaybackReport;
+    if (batch.history.length) reportCount += 1;
+    if (options.failFirstReport && reportCount === 1 && batch.history.length) {
       // The report fails transiently, so it is still waiting for a retry.
-      server.events.push({ kind: "report", report, accepted: false });
+      for (const report of batch.history) server.events.push({ kind: "report", report, accepted: false });
       await route.fulfill({ status: 503, json: { error: "unavailable", retryable: true } });
       return;
     }
-    server.events.push({ kind: "report", report, accepted: true });
-    await route.fulfill({ json: { recorded: true } });
+    for (const report of batch.history)
+      server.events.push({ kind: "report", report, accepted: report.generation === server.generation });
+    await route.fulfill({ json: playbackReportResultFixture(batch, server.generation) });
   });
   await page.route("**/api/listening-statistics*", (route) =>
     route.fulfill({ json: statisticsFixture(new URL(route.request().url()).searchParams.get("range") ?? "all") }),
@@ -118,7 +111,6 @@ async function openPlayableQueue(page: Page) {
   await seedPlayerQueue(page, [queuedTrackFixture(0, "Test track")], 1);
   const media = silentWav(180);
   await page.route(/\/api\/media\/1\/stream(?:\?.*)?$/, (route) => serveSeekableAudio(route, media));
-  await page.route(/\/api\/media-items\/\d+\/progress$/, (route) => route.fulfill({ status: 204, body: "" }));
 }
 
 async function startPlayback(page: Page) {
@@ -135,10 +127,11 @@ test("clearing history during playback never reports pre-clear time again and ke
   const { server, reports } = await mockListeningServer(page, { failFirstReport: true });
   await page.goto("/");
 
-  await startPlayback(page);
   // The generation is established before anything is measured or reported.
   await expect.poll(() => server.events[0]).toEqual({ kind: "lookup", generation: 0 });
-  await page.clock.fastForward(16_000);
+  await expect.poll(async () => (await readPlaybackReportOutbox(page))?.generation).toBe(0);
+  await startPlayback(page);
+  await page.clock.fastForward(31_000);
   await expect.poll(() => reports().length).toBe(1);
   const preClear = reports()[0];
   expect(preClear.generation).toBe(0);
@@ -154,14 +147,16 @@ test("clearing history during playback never reports pre-clear time again and ke
   expect(reports()).toHaveLength(1);
   // The player looks up the new generation after the clear.
   await expect.poll(() => server.events.slice(clearedAt).some((event) => event.kind === "lookup")).toBe(true);
+  // Receiving the lookup is earlier than applying its generation to the durable queue.
+  await expect.poll(async () => (await readPlaybackReportOutbox(page))?.generation).toBe(1);
 
-  await page.clock.fastForward(16_000);
+  await page.clock.fastForward(31_000);
   await expect.poll(() => reports().length).toBeGreaterThan(1);
   const afterClear = reports().slice(1);
   expect(afterClear.every((report) => report.sessionId !== preClear.sessionId)).toBe(true);
   expect(afterClear.every((report) => report.generation === 1 && report.accepted)).toBe(true);
   expect(afterClear[0].workId).toBe(1);
-  expect(afterClear[0].listenedSeconds).toBeLessThanOrEqual(17);
+  expect(afterClear[0].listenedSeconds).toBeLessThanOrEqual(32);
   expect(await audioPaused(page)).toBe(false);
 });
 
@@ -172,30 +167,31 @@ test("a stale report after another device clears history restarts counting under
   const { server, reports } = await mockListeningServer(page);
   await page.goto("/");
 
+  await expect.poll(async () => (await readPlaybackReportOutbox(page))?.generation).toBe(0);
   await startPlayback(page);
-  await page.clock.fastForward(16_000);
+  await page.clock.fastForward(31_000);
   await expect.poll(() => reports().length).toBe(1);
   const beforeClear = reports()[0];
   expect(beforeClear).toMatchObject({ generation: 0, accepted: true });
 
   // Another device clears history; this player learns of it only from its next report.
   server.generation = 1;
-  await page.clock.fastForward(16_000);
+  await page.clock.fastForward(31_000);
   await expect.poll(() => reports().length).toBe(2);
   expect(reports()[1]).toMatchObject({ generation: 0, sessionId: beforeClear.sessionId, accepted: false });
   const rejectedAt = server.events.findIndex((event) => event.kind === "report" && !event.accepted);
   const lookupsAfterRejection = () => server.events.slice(rejectedAt).filter((event) => event.kind === "lookup");
-  await expect.poll(lookupsAfterRejection).toEqual([{ kind: "lookup", generation: 1 }]);
-
-  await page.clock.fastForward(16_000);
+  // The merged acknowledgement supplies the new generation directly.
+  await expect.poll(async () => (await readPlaybackReportOutbox(page))?.generation).toBe(1);
+  expect(lookupsAfterRejection()).toEqual([]);
+  await page.clock.fastForward(31_000);
   await expect.poll(() => reports().length).toBeGreaterThan(2);
-  // One rejected report refreshes the generation once.
-  expect(lookupsAfterRejection()).toHaveLength(1);
+  expect(lookupsAfterRejection()).toEqual([]);
   const afterRejection = reports().slice(2);
   // The rejected session is never resent, and new time is counted from the refresh only.
   expect(afterRejection.every((report) => report.sessionId !== beforeClear.sessionId)).toBe(true);
   expect(afterRejection.every((report) => report.generation === 1 && report.accepted)).toBe(true);
-  expect(afterRejection[0].listenedSeconds).toBeLessThanOrEqual(17);
+  expect(afterRejection[0].listenedSeconds).toBeLessThanOrEqual(32);
   expect(await audioPaused(page)).toBe(false);
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
@@ -204,17 +200,15 @@ test("an earlier account's late generation lookup never applies to the next acco
   await openPlayableQueue(page);
   await seedPlayerQueue(page, [queuedTrackFixture(0, "Test track")], 2);
   let signedIn: 1 | 2 | null = 1;
-  const account = (id: 1 | 2) => ({
-    authenticated: true,
-    user: {
+  const account = (id: 1 | 2) =>
+    authenticatedStateFixture({
       id,
       username: `synthetic-user-${id}`,
       displayName: `Listener ${id}`,
       role: "user",
       permissions: ["library:read", "playback:use", "favorites:write"],
       devMode: false,
-    },
-  });
+    });
   await page.route("**/api/auth/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/auth/me") {
@@ -240,17 +234,18 @@ test("an earlier account's late generation lookup never applies to the next acco
   const reports: Array<{ account: 1 | 2 | null; report: SessionReport }> = [];
   await page.route("**/api/listening-sessions", async (route) => {
     const requestAccount = signedIn;
-    if (route.request().method() === "GET") {
-      const lookup = { account: requestAccount, settled: false };
-      lookups.push(lookup);
-      if (requestAccount === 1) await firstLookupGate;
-      await route.fulfill({ json: { generation: requestAccount ? generations[requestAccount] : 0 } }).catch(() => {});
-      lookup.settled = true;
-      return;
-    }
-    const report = route.request().postDataJSON() as SessionReport;
-    reports.push({ account: requestAccount, report });
-    await route.fulfill({ json: { recorded: true } });
+    expect(route.request().method()).toBe("GET");
+    const lookup = { account: requestAccount, settled: false };
+    lookups.push(lookup);
+    if (requestAccount === 1) await firstLookupGate;
+    await route.fulfill({ json: { generation: requestAccount ? generations[requestAccount] : 0 } }).catch(() => {});
+    lookup.settled = true;
+  });
+  await page.route("**/api/playback-reports", async (route) => {
+    const requestAccount = signedIn;
+    const batch = route.request().postDataJSON() as PlaybackReport;
+    for (const report of batch.history) reports.push({ account: requestAccount, report });
+    await route.fulfill({ json: playbackReportResultFixture(batch, requestAccount ? generations[requestAccount] : 0) });
   });
   await page.goto("/");
   await expect.poll(() => lookups.some((lookup) => lookup.account === 1)).toBe(true);
@@ -264,13 +259,14 @@ test("an earlier account's late generation lookup never applies to the next acco
   await page.getByLabel("Password").fill("synthetic-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).last().click();
   await expect.poll(() => lookups.some((lookup) => lookup.account === 2 && lookup.settled)).toBe(true);
+  await expect.poll(async () => (await readPlaybackReportOutbox(page, 2))?.generation).toBe(generations[2]);
 
   releaseFirstLookup();
   await expect
     .poll(() => lookups.filter((lookup) => lookup.account === 1).every((lookup) => lookup.settled))
     .toBe(true);
   await startPlayback(page);
-  await page.clock.fastForward(16_000);
+  await page.clock.fastForward(31_000);
   await expect.poll(() => reports.length).toBeGreaterThan(0);
   expect(reports.every(({ account, report }) => account === 2 && report.generation === generations[2])).toBe(true);
   // A signed-out player has no listening scope and never looks one up.

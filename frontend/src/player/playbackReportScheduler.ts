@@ -29,6 +29,7 @@ type Dependencies = {
   onCursor: (cursor: NonNullable<PlaybackReportResult["progress"][number]["cursor"]>) => void;
   warn: () => void;
 };
+type Cursor = NonNullable<PlaybackReportResult["progress"][number]["cursor"]>;
 const statuses = new Set<ReportStatus>(["recorded", "stale", "history_cleared", "invalid", "not_found", "conflict"]);
 const backoff = (failures: number) =>
   Math.min(REPORT_RETRY_MIN_MS * 2 ** Math.min(failures - 1, 10), REPORT_RETRY_MAX_MS);
@@ -54,6 +55,8 @@ export class PlaybackReportScheduler {
   private historyTotals = new Map<string, number>();
   private lastProgress: string | null = null;
   private listeners = new Set<() => void>();
+  private workIdentities = new Map<number, number>();
+  private confirmedCursors = new Map<number, { order: number; cursor: Cursor }>();
 
   constructor(private readonly deps: Dependencies) {
     this.nextPeriodic = deps.now() + PLAYBACK_REPORT_INTERVAL_MS;
@@ -221,6 +224,7 @@ export class PlaybackReportScheduler {
       this.nextPeriodic = this.deps.now() + PLAYBACK_REPORT_INTERVAL_MS;
       if (!batch.progress.length && !batch.history.length) return;
       const sent = batch;
+      const sentWorkIds = new Map(this.state.progress.map((entry) => [entry.report.reportId, entry.workId]));
       const result = await this.deps.send(sent, this.controller.signal, keepalive);
       if (!this.current()) return;
       if (
@@ -260,18 +264,40 @@ export class PlaybackReportScheduler {
       if (!this.current()) return;
       if (epoch === this.epoch && (this.generation === null || result.generation >= this.generation))
         this.setGeneration(result.generation, true);
-      // An older response cannot make the Library show a cursor already superseded locally.
-      for (const ack of result.progress)
-        if (
-          ack.cursor &&
-          ack.status === "recorded" &&
-          !this.state.progress.some(
-            (e) =>
-              e.report.order > sent.progress.find((r) => r.reportId === ack.reportId)!.order &&
-              e.workId === ack.cursor!.workId,
-          )
-        )
-          this.deps.onCursor(ack.cursor);
+      // Replies identify both the unified work and the played edition. Learn all
+      // identities before publishing, including when one batch crosses editions.
+      for (const ack of result.progress) {
+        const order = sent.progress.find((r) => r.reportId === ack.reportId)!.order;
+        if (ack.status === "stale") {
+          const identity = this.workIdentities.get(sentWorkIds.get(ack.reportId)!);
+          // A later stale report implies a still newer server cursor. It cannot
+          // make a deferred older confirmation authoritative again.
+          for (const [workId, confirmed] of this.confirmedCursors)
+            if (order > confirmed.order && (identity === undefined || identity === workId))
+              this.confirmedCursors.delete(workId);
+        }
+        if (!ack.cursor || ack.status !== "recorded") continue;
+        const cursor = ack.cursor;
+        for (const id of [cursor.workId, cursor.mediaWorkId, sentWorkIds.get(ack.reportId)!])
+          this.workIdentities.set(id, cursor.workId);
+        if (order > (this.confirmedCursors.get(cursor.workId)?.order ?? 0))
+          this.confirmedCursors.set(cursor.workId, { order, cursor });
+      }
+      while (this.workIdentities.size > 128) this.workIdentities.delete(this.workIdentities.keys().next().value!);
+      while (this.confirmedCursors.size > MAX_OUTBOX_PROGRESS)
+        this.confirmedCursors.delete(this.confirmedCursors.keys().next().value!);
+      for (const [workId, confirmed] of this.confirmedCursors) {
+        const newer = this.state.progress.filter((entry) => entry.report.order > confirmed.order);
+        if (newer.some((entry) => this.workIdentities.get(entry.workId) === workId)) {
+          this.confirmedCursors.delete(workId);
+          continue;
+        }
+        // A newer unacknowledged edition may share this cursor. Defer until its
+        // response identifies the family instead of broadcasting a stale value.
+        if (newer.some((entry) => !this.workIdentities.has(entry.workId))) continue;
+        this.confirmedCursors.delete(workId);
+        this.deps.onCursor(confirmed.cursor);
+      }
       if (
         result.history.some((a) => a.status !== "recorded") ||
         result.progress.some((a) => a.status !== "recorded" && a.status !== "stale")

@@ -1,5 +1,9 @@
 # Unreleased
 
+- Explicit personal-progress imports protect their cursor from earlier offline
+  reports, while later playback and backward seeks remain writable. Resume-cache
+  updates reject superseded confirmations across original and translated editions.
+
 - Playback progress and listening history share a 30-second periodic report.
   A bounded server/account-scoped IndexedDB outbox restores unconfirmed reports
   after reload, preserves backward-seek ordering, and retries temporary failures

@@ -1,34 +1,7 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import type { PlaybackReport } from "../../src/lib/playbackReportApi";
 import { mockApplication, persistedTrack, seedPlayer, silentWav } from "./fixtures/player-library";
-import { playbackReportResultFixture } from "./fixtures/playback-reports";
-
-async function readOutbox(page: Page) {
-  return page.evaluate(async () => {
-    if (!(await indexedDB.databases()).some((db) => db.name === "kikoto-playback-reports")) return undefined;
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("kikoto-playback-reports", 1);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    try {
-      return await new Promise<
-        | {
-            history: { report: { sessionId: string; listenedSeconds: number } }[];
-            progress: unknown[];
-            generation: number;
-          }
-        | undefined
-      >((resolve) => {
-        const tx = db.transaction("outbox");
-        const request = tx.objectStore("outbox").get(`${encodeURIComponent(location.origin)}:user-1`);
-        request.onsuccess = () => resolve(request.result);
-      });
-    } finally {
-      db.close();
-    }
-  });
-}
+import { playbackReportResultFixture, readPlaybackReportOutbox as readOutbox } from "./fixtures/playback-reports";
 
 test("refresh restores unconfirmed listening and progress, confirms once, and keeps navigation playback", async ({
   page,
