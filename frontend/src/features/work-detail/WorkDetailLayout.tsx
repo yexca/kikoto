@@ -55,6 +55,7 @@ import {
 } from "@/features/work-detail/metadataPresentationModel";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { ageRatingPresentation } from "@/lib/ageRating";
+import { openLibraryAgeRatingSearch } from "@/lib/libraryAgeRatingSearch";
 import { formatBytes, formatDuration } from "@/features/work-detail/media/mediaTreeModel";
 import { sourceTabStatusClass } from "@/features/work-detail/source/sourceContextModel";
 import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
@@ -475,7 +476,18 @@ function DetailStatStrip({
     {
       key: "age",
       label: i18n.t("library.searchClauseKinds.age"),
-      value: age.label === "Unknown" ? "—" : age.label,
+      value: age.known ? (
+        <button
+          type="button"
+          className="touch-target relative rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={i18n.t("library.searchClauseLabels.age", { value: age.label })}
+          onClick={() => openLibraryAgeRatingSearch(ageRating)}
+        >
+          {age.label}
+        </button>
+      ) : (
+        "—"
+      ),
       valueClassName: age.textClassName,
     },
     {

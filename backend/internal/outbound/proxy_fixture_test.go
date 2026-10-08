@@ -15,7 +15,7 @@ import (
 func newRespondingProxy(t *testing.T, onConnect func(*http.Request), destination http.Handler) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodConnect || request.Host != net.JoinHostPort(testfixture.PublicIPv4().String(), "80") {
+		if request.Method != http.MethodConnect || request.Host != net.JoinHostPort(testfixture.DocumentationIPv4().String(), "80") {
 			t.Errorf("proxy target = %s %q, want CONNECT to validated numeric address", request.Method, request.Host)
 			http.Error(w, "invalid target", http.StatusBadRequest)
 			return

@@ -14,6 +14,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func presetTestRaw(spec presetWorkflowSpec, extra map[string]any) map[string]any {
@@ -110,7 +111,7 @@ func TestNormalizePresetWorkflowInputsRejectsInvalidValues(t *testing.T) {
 		raw  map[string]any
 		want string
 	}{
-		{"invalid circle", circle, map[string]any{"circleId": "RJ123456"}, "circleId must list"},
+		{"invalid circle", circle, map[string]any{"circleId": testfixture.WorkCode(testfixture.PrefixRJ, 0)}, "circleId must list"},
 		{"unknown key", circle, map[string]any{"circleId": "RG12345", "definitionId": 3}, "unknown preset input"},
 		{"legacy action", circle, map[string]any{"circleId": "RG12345", "action": "track", "sourceId": 91}, "follow options changed"},
 		{"legacy new works switch", voice, map[string]any{"personId": 7, "sourceIds": []any{91}, "newWorks": false}, "follow options changed"},

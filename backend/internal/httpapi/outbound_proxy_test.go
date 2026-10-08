@@ -228,7 +228,7 @@ func TestMetadataClientFollowsProxyRouteChanges(t *testing.T) {
 	if _, err := server.metadataHTTPClient.Get(server.dlsiteEndpoints.WorkURL("RJ00000001")); err == nil {
 		t.Fatal("request through refusing proxy unexpectedly succeeded")
 	}
-	if firstCount.Load() != 1 || firstTarget.Load() != net.JoinHostPort(testfixture.PublicIPv4().String(), "443") {
+	if firstCount.Load() != 1 || firstTarget.Load() != net.JoinHostPort(testfixture.DocumentationIPv4().String(), "443") {
 		t.Fatalf("first proxy saw %d CONNECT requests to %v", firstCount.Load(), firstTarget.Load())
 	}
 
@@ -252,7 +252,7 @@ func TestMetadataClientFailsOverToNextProxyByPriority(t *testing.T) {
 
 	decodeProxySettings(t, patchSettingsAsSourceWriter(t, server, proxySettingsBody(t, proxies, map[string]any{"dlsite": routeTo()})))
 	_, _ = server.metadataHTTPClient.Get(server.dlsiteEndpoints.WorkURL("RJ00000001"))
-	if count.Load() != 1 || target.Load() != net.JoinHostPort(testfixture.PublicIPv4().String(), "443") {
+	if count.Load() != 1 || target.Load() != net.JoinHostPort(testfixture.DocumentationIPv4().String(), "443") {
 		t.Fatalf("second proxy saw %d CONNECT requests to %v after the first was unreachable", count.Load(), target.Load())
 	}
 }
@@ -383,7 +383,7 @@ func TestAppUpdateCheckFollowsOtherProxyRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	policyFor := func(proxy *url.URL) (*outbound.Policy, error) {
-		return outbound.NewPolicy([]outbound.Destination{{URL: server.appUpdateEndpoints.releasesAPIURL}}, outbound.Options{Proxy: proxy, Resolver: syntheticPublicResolver{}})
+		return outbound.NewPolicy([]outbound.Destination{{URL: server.appUpdateEndpoints.releasesAPIURL, AllowPrivate: true}}, outbound.Options{Proxy: proxy, Resolver: syntheticDocumentationResolver{}})
 	}
 	policy, err := policyFor(nil)
 	if err != nil {
