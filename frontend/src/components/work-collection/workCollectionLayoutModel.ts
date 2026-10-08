@@ -14,7 +14,7 @@ export const workCollectionDesktopColumnOptions = [
 const autoColumnMinWidth = "16rem";
 
 export function workCollectionClassName() {
-  return "grid gap-4 [grid-template-columns:var(--mobile-grid-template)] lg:[grid-template-columns:var(--desktop-grid-template)]";
+  return "grid gap-3 sm:gap-4 [grid-template-columns:var(--mobile-grid-template)] lg:[grid-template-columns:var(--desktop-grid-template)]";
 }
 
 export function workCollectionStyle(
