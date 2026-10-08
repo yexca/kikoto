@@ -18,5 +18,6 @@ class KikotoBridgeViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(KikotoAssetTransportPlugin())
         bridge?.registerPluginInstance(KikotoPersonalDataPlugin())
         bridge?.registerPluginInstance(KikotoEdgeBackPlugin())
+        bridge?.registerPluginInstance(KikotoLyricsPictureInPicturePlugin())
     }
 }

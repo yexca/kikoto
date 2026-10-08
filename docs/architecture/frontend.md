@@ -262,9 +262,17 @@ and player intent, including pending play requests.
 - Keep high-frequency playback position out of bridge and notification rebuild
   paths. Browser time rendering is sampled, Android bridge updates are
   coalesced and periodically calibrated, and the Android build does not register
-  a second browser Media Session. Native media controls and the lyrics overlay
-  exist only on Android; the iOS shell uses the WebView Media Session and
-  Picture-in-Picture.
+  a second browser Media Session. Native media controls exist only on Android;
+  the iOS shell keeps the WebView Media Session. Screen lyrics use a native
+  surface in both shells, chosen by registered capability
+  (`lib/nativeLyricsOverlay`): the Android overlay, or on iOS an app-local
+  Picture-in-Picture plugin that draws the current line into an
+  `AVSampleBufferDisplayLayer`, because WKWebView reports no web
+  Picture-in-Picture and rejects `requestPictureInPicture`. Both receive the
+  timed track once plus playback corrections and advance lines on their own
+  clock, so they stay in sync while the web view is in the background. The
+  Picture-in-Picture window's play and pause go back to the web player rather
+  than to a second media session.
 - Native shells attach the session credential to media and image requests on
   the configured server, limited to fixed cover, manual, media, and HLS routes.
   Android intercepts those WebView requests. WKWebView cannot intercept its own
