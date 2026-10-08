@@ -261,8 +261,16 @@ and player intent, including pending play requests.
 - Keep playback global so navigation does not interrupt the current queue.
 - Keep high-frequency playback position out of bridge and notification rebuild
   paths. Browser time rendering is sampled, Android bridge updates are
-  coalesced and periodically calibrated, and a Native build does not register a
-  second browser Media Session.
+  coalesced and periodically calibrated, and the Android build does not register
+  a second browser Media Session. Native media controls and the lyrics overlay
+  exist only on Android; the iOS shell uses the WebView Media Session and
+  Picture-in-Picture.
+- Native shells attach the session credential to media and image requests on
+  the configured server, limited to fixed cover, manual, media, and HLS routes.
+  Android intercepts those WebView requests. WKWebView cannot intercept its own
+  http(s) requests, so `assetURL` rewrites the same routes to the app-owned
+  `kikoto-asset://asset` scheme on iOS, and the native handler re-validates
+  each route and redirect hop before streaming from the configured origin.
 - Treat bottom navigation, safe areas, Compact player placement, page clearance,
   and update notices as one fixed-surface layout contract.
 - Size mobile search and modal layers against the visual viewport. The frontend

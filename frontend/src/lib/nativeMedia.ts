@@ -1,6 +1,6 @@
 import { registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 
-import { isNativeApp } from "@/lib/serverConfig";
+import { isAndroidApp } from "@/lib/serverConfig";
 
 type NativeMediaState = {
   title: string;
@@ -54,8 +54,9 @@ const KikotoMedia = registerPlugin<KikotoMediaPlugin>("KikotoMedia");
 let pendingMediaState: NativeMediaState | null = null;
 let mediaUpdatePromise: Promise<void> | null = null;
 
+// Other native shells use the WebView Media Session and Picture-in-Picture instead.
 export function supportsNativeMedia() {
-  return isNativeApp();
+  return isAndroidApp();
 }
 
 export function updateNativeMedia(state: NativeMediaState) {

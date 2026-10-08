@@ -93,6 +93,22 @@
       "reason": "Public upstream Capacitor issues, pull requests, and releases documenting the Android 10 keyboard-layout fix."
     },
     {
+      "url": "https://github.com/ionic-team/capacitor-swift-pm.git",
+      "files": [
+        "frontend/ios/App/CapApp-SPM/Package.swift",
+        "frontend/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      ],
+      "reason": "Public upstream Capacitor Swift package that the generated iOS shell resolves through Swift Package Manager."
+    },
+    {
+      "url": "http://www.apple.com/DTDs/PropertyList-1.0.dtd",
+      "files": [
+        "frontend/ios/App/App/Info.plist",
+        "frontend/ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist"
+      ],
+      "reason": "Standard Apple property-list DOCTYPE identifier in Xcode-generated plists; it is not fetched."
+    },
+    {
       "url": "https://registry.npmjs.org/**",
       "files": ["frontend/package-lock.json"],
       "reason": "Public npm registry tarball URLs resolved in the npm lockfile."
