@@ -33,7 +33,7 @@ func TestSOCKSProxyReceivesNumericValidatedDestination(t *testing.T) {
 				result <- serveSOCKSFixture(connection, t)
 			}()
 			proxyURL, _ := ParseProxyURL(scheme + "://" + listener.Addr().String())
-			policy, err := NewPolicy([]Destination{{URL: "http://source.test"}}, Options{Proxy: proxyURL, Resolver: publicTestResolver()})
+			policy, err := NewPolicy([]Destination{{URL: "http://source.test", AllowPrivate: true}}, Options{Proxy: proxyURL, Resolver: documentationTestResolver()})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -71,7 +71,7 @@ func serveSOCKSFixture(connection net.Conn, t *testing.T) error {
 	if _, err := io.ReadFull(connection, target[:]); err != nil {
 		return err
 	}
-	if target[0] != 5 || target[1] != 1 || target[3] != 1 || !net.IP(target[4:8]).Equal(testfixture.PublicIPv4()) || binary.BigEndian.Uint16(target[8:]) != 80 {
+	if target[0] != 5 || target[1] != 1 || target[3] != 1 || !net.IP(target[4:8]).Equal(testfixture.DocumentationIPv4()) || binary.BigEndian.Uint16(target[8:]) != 80 {
 		t.Errorf("SOCKS received a destination other than the validated numeric address: %v", target)
 	}
 	if _, err := connection.Write([]byte{5, 0, 0, 1, 127, 0, 0, 1, 0, 80}); err != nil {

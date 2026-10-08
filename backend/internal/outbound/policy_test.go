@@ -146,7 +146,7 @@ func TestPublicPolicyRejectsPrivateAndReservedAddresses(t *testing.T) {
 		"10.0.0.1",
 		"169.254.1.1",
 		"100.64.0.1",
-		"192.0.2.1",
+		testfixture.DocumentationIPv4().String(),
 		"198.18.0.1",
 		"203.0.113.1",
 		"::1",
@@ -163,13 +163,19 @@ func TestPublicPolicyRejectsPrivateAndReservedAddresses(t *testing.T) {
 	}
 }
 
-func TestPolicyRejectsCompleteDNSAnswerWhenAnyAddressIsPrivate(t *testing.T) {
+func TestPolicyRejectsCompleteDNSAnswerWhenAnyAddressIsUnusable(t *testing.T) {
+	allowedAddress := testfixture.DocumentationIPv4()
+	// The configured-origin exception permits the documentation address, so
+	// this verifies that a later rejected answer prevents dialing the first one.
+	if err := validateAddress(netip.MustParseAddr(allowedAddress.String()), true); err != nil {
+		t.Fatalf("first DNS answer must be allowed for the configured origin: %v", err)
+	}
 	var dialed atomic.Bool
-	policy, err := NewPolicy([]Destination{{URL: "https://source.test"}}, Options{
+	policy, err := NewPolicy([]Destination{{URL: "https://source.test", AllowPrivate: true}}, Options{
 		Resolver: resolverFunc(func(context.Context, string) ([]net.IPAddr, error) {
 			return []net.IPAddr{
-				{IP: net.ParseIP("93.184.216.34")},
-				{IP: net.ParseIP("127.0.0.1")},
+				{IP: allowedAddress},
+				{IP: net.IPv4zero},
 			}, nil
 		}),
 		DialContext: func(context.Context, string, string) (net.Conn, error) {
@@ -181,7 +187,7 @@ func TestPolicyRejectsCompleteDNSAnswerWhenAnyAddressIsPrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := policy.dial(context.Background(), "tcp", "source.test:443"); err == nil {
-		t.Fatal("mixed public/private DNS answer unexpectedly succeeded")
+		t.Fatal("mixed usable/unusable DNS answer unexpectedly succeeded")
 	}
 	if dialed.Load() {
 		t.Fatal("dialer was called before the complete DNS answer was validated")
@@ -446,13 +452,13 @@ func TestProxyTransportRoutesThroughConfiguredPrivateProxy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{
+	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test", AllowPrivate: true}}, Options{
 		Proxy: proxyURL,
 		Resolver: resolverFunc(func(_ context.Context, host string) ([]net.IPAddr, error) {
 			if host != "metadata.test" {
 				return nil, fmt.Errorf("unexpected destination %q", host)
 			}
-			return []net.IPAddr{{IP: testfixture.PublicIPv4()}}, nil
+			return []net.IPAddr{{IP: testfixture.DocumentationIPv4()}}, nil
 		}),
 	})
 	if err != nil {
@@ -481,7 +487,7 @@ func TestProxyTransportRevalidatesRedirects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{Proxy: proxyURL, Resolver: publicTestResolver()})
+	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test", AllowPrivate: true}}, Options{Proxy: proxyURL, Resolver: documentationTestResolver()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -495,7 +501,7 @@ func TestProxyPolicyRejectsDirectDials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{Proxy: proxyURL, Resolver: publicTestResolver()})
+	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test", AllowPrivate: true}}, Options{Proxy: proxyURL, Resolver: documentationTestResolver()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -520,7 +526,7 @@ func TestProxyTransportAuthenticatesToProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxyURL.User = url.UserPassword("synthetic-user", "synthetic-password")
-	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test"}}, Options{Proxy: proxyURL, Resolver: publicTestResolver()})
+	policy, err := NewPolicy([]Destination{{URL: "http://metadata.test", AllowPrivate: true}}, Options{Proxy: proxyURL, Resolver: documentationTestResolver()})
 	if err != nil {
 		t.Fatal(err)
 	}

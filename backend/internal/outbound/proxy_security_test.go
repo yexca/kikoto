@@ -18,9 +18,9 @@ import (
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
-func publicTestResolver() Resolver {
+func documentationTestResolver() Resolver {
 	return resolverFunc(func(context.Context, string) ([]net.IPAddr, error) {
-		return []net.IPAddr{{IP: testfixture.PublicIPv4()}}, nil
+		return []net.IPAddr{{IP: testfixture.DocumentationIPv4()}}, nil
 	})
 }
 
@@ -51,9 +51,9 @@ func TestPrivateOriginExceptionDoesNotCrossSchemes(t *testing.T) {
 	}
 }
 
-func TestProxyRejectsPrivateAndMixedDestinationAddressesBeforeConnecting(t *testing.T) {
+func TestProxyRejectsNonPublicDestinationAddressesBeforeConnecting(t *testing.T) {
 	for _, scheme := range []string{"http", "https", "socks5", "socks5h"} {
-		for _, addresses := range [][]string{{"127.0.0.1"}, {net.IPv4(169, 254, 1, 1).String()}, {"::1"}, {"2001:db8::1"}, {testfixture.PublicIPv4().String(), net.IPv4(10, 0, 0, 1).String()}} {
+		for _, addresses := range [][]string{{"127.0.0.1"}, {net.IPv4(169, 254, 1, 1).String()}, {"::1"}, {"2001:db8::1"}, {testfixture.DocumentationIPv4().String(), net.IPv4(10, 0, 0, 1).String()}} {
 			t.Run(scheme+"/"+strings.Join(addresses, ","), func(t *testing.T) {
 				proxyURL, err := ParseProxyURL(scheme + "://127.0.0.1:1")
 				if err != nil {
