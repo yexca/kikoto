@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { Input, NativeSelect } from "@/components/ui/input";
+import { Input, NativeSelect, otherCredentialFieldProps } from "@/components/ui/input";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import type { OutboundProxy, ProxyScheme } from "@/lib/api";
 
@@ -181,7 +181,7 @@ export function ProxyDialog({
                 <Field label={t("maintenance.proxy.dialog.username")}>
                   <Input
                     value={draft.username}
-                    autoComplete="off"
+                    {...otherCredentialFieldProps}
                     spellCheck={false}
                     maxLength={255}
                     onChange={(event) => patch({ username: event.target.value })}
@@ -190,7 +190,7 @@ export function ProxyDialog({
                 <Field label={t("maintenance.proxy.dialog.password")}>
                   <Input
                     type="password"
-                    autoComplete="new-password"
+                    {...otherCredentialFieldProps}
                     maxLength={255}
                     value={draft.password ?? ""}
                     placeholder={draft.hasPassword ? t("maintenance.proxy.dialog.passwordSaved") : undefined}
