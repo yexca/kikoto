@@ -1,5 +1,6 @@
 import { expect, test, type Route } from "@playwright/test";
-import type { MediaProgressUpdate } from "../../src/lib/api";
+import type { PlaybackReport } from "../../src/lib/playbackReportApi";
+import { playbackReportResultFixture } from "./fixtures/playback-reports";
 import {
   persistedTrack,
   persistedPlayerTracks,
@@ -860,28 +861,12 @@ test("a restored queue resumes its cursor without overwriting it before the list
   const media = silentWav(180);
   await page.route(/\/api\/media\/1\/stream(?:\?.*)?$/, (route) => serveSeekableAudio(route, media));
   const saves: { mediaItemId: number; positionSeconds: number }[] = [];
-  await page.route(/\/api\/media-items\/(\d+)\/progress$/, async (route) => {
-    const mediaItemId = Number(/media-items\/(\d+)/.exec(route.request().url())?.[1]);
-    const body = route.request().postDataJSON() as {
-      locationId: number;
-      positionSeconds: number;
-      durationSeconds: number | null;
-      completed: boolean;
-    };
-    saves.push({ mediaItemId, positionSeconds: body.positionSeconds });
+  await page.route("**/api/playback-reports", async (route) => {
+    const report = route.request().postDataJSON() as PlaybackReport;
+    for (const body of report.progress)
+      saves.push({ mediaItemId: body.mediaItemId, positionSeconds: body.positionSeconds });
     await route.fulfill({
-      json: {
-        workId: 1,
-        mediaWorkId: 1,
-        mediaItemId,
-        fileSourceId: 1,
-        locationId: body.locationId,
-        locationType: "local",
-        positionSeconds: body.positionSeconds,
-        durationSeconds: body.durationSeconds,
-        completed: body.completed,
-        lastPlayedAt: "2026-01-01 00:00:00",
-      } satisfies MediaProgressUpdate,
+      json: playbackReportResultFixture(report),
     });
   });
   await page.goto("/");

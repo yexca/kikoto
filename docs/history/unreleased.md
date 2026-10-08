@@ -1,5 +1,12 @@
 # Unreleased
 
+- Playback progress and listening history share a 30-second periodic report.
+  A bounded server/account-scoped IndexedDB outbox restores unconfirmed reports
+  after reload, preserves backward-seek ordering, and retries temporary failures
+  without inflating cumulative time or counts. Offline listening uses its actual
+  UTC dates. Migration 062 preserves existing personal records and adds ordered
+  cursors and cumulative session dates; legacy report APIs remain available.
+
 - Remote recommendation badges score both known and transient works from the
   displayed page in one batch and appear progressively. Toggling badges does
   not reload the remote source; a scoring failure keeps the cards available and

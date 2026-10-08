@@ -1,8 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/auth/AuthProvider";
-import { apiSessionForPrincipal } from "@/lib/apiSession";
-import { currentClientStorageScope, currentScopedStorageKey } from "@/lib/clientStorageScope";
+import { currentScopedStorageKey } from "@/lib/clientStorageScope";
 
 import { audioElementEventProps } from "./audioElementEvents";
 import type { LyricsChoice } from "./lyricsMatching";
@@ -31,7 +30,6 @@ import { usePlayerKeyboardShortcuts } from "./usePlayerKeyboardShortcuts";
 import { usePlayerQueueActions } from "./usePlayerQueueActions";
 import { usePersistPlayerQueue, useRestoredPlayerQueue, useRestoredQueueRevalidation } from "./usePlayerQueueStorage";
 import { usePlaybackSeekPreferences, usePlayerSeeking } from "./usePlayerSeeking";
-import { useListeningSessionRecorder } from "./useListeningSessionRecorder";
 import { useRemoteStreamCaching } from "./useRemoteStreamCaching";
 import { useSleepRewindPreference, useSleepTimer } from "./useSleepTimer";
 import { useBrowserMediaSession, useNativeMediaBridge } from "./useSystemMediaControls";
@@ -161,7 +159,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   } = usePlaybackCompatibility(playbackCompatibilityStorageKey, engine);
   const { saveProgress, flushProgress, checkpointProgress } = usePlaybackProgress(
     engine,
-    Boolean(auth.user) && !auth.demoMode,
+    Boolean(auth.user) && !auth.demoMode && auth.hasPermission("playback:use"),
     principalID,
   );
   const { sleepRewindMinutes, setSleepRewindMinutes } = useSleepRewindPreference(principalID);
@@ -178,10 +176,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     rewindMinutes: sleepRewindMinutes,
     checkpointProgress,
   });
-  // Listening history belongs to a signed-in principal with playback permission.
-  const listeningScope =
-    auth.user && !auth.demoMode && auth.hasPermission("playback:use") ? currentClientStorageScope(auth.user.id) : null;
-  useListeningSessionRecorder(refs.audioRef, listeningScope, currentTrack, apiSessionForPrincipal(principalID));
   useRestoredQueueRevalidation(restoredQueue, engine, setQueue, setCurrentIndex);
   usePersistPlayerQueue({
     storageKey: playerQueueStorageKey,

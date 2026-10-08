@@ -1,4 +1,6 @@
 import { type Page } from "@playwright/test";
+import type { PlaybackReport } from "../../../src/lib/playbackReportApi";
+import { playbackReportResultFixture } from "./playback-reports";
 import type {
   FavoriteList,
   LibrarySource,
@@ -235,6 +237,14 @@ export async function mockApplication(
 ) {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname === "/api/listening-sessions" && route.request().method() === "GET") {
+      await route.fulfill({ json: { generation: 0 } });
+      return;
+    }
+    if (url.pathname === "/api/playback-reports") {
+      await route.fulfill({ json: playbackReportResultFixture(route.request().postDataJSON() as PlaybackReport) });
+      return;
+    }
     if (url.pathname === "/api/auth/me") {
       await route.fulfill({
         json: fixture.authenticated
