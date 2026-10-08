@@ -439,9 +439,19 @@ export async function mockApplication(
       await route.fulfill({ status: 200, contentType: "text/event-stream", body: "" });
       return;
     }
-    const detailMatch = url.pathname.match(/^\/api\/works\/(\d+)$/);
+    const readWorkID = (value: string) => {
+      if (/^\d+$/.test(value)) return Number(value);
+      if (value === (fixture.work ?? work).primaryCode) return 1;
+      const ordinal = Number(value.slice(2));
+      return value.startsWith("RJ") && ordinal < workCount ? ordinal + 1 : null;
+    };
+    const detailMatch = url.pathname.match(/^\/api\/works\/(\d+|[RBV]J\d{8}|CC\d{8})$/);
     if (detailMatch) {
-      const id = Number(detailMatch[1]);
+      const id = readWorkID(detailMatch[1]);
+      if (id === null) {
+        await route.fulfill({ status: 404, json: { error: "work not found" } satisfies ApiErrorBody });
+        return;
+      }
       await fixture.beforeWorkDetailResponse?.(id);
       if (id === 1 && fixture.metadataSyncControl) fixture.metadataSyncControl.detailRequests += 1;
       const fixtureWork = fixture.work ?? work;
@@ -473,8 +483,13 @@ export async function mockApplication(
       });
       return;
     }
-    const mediaMatch = url.pathname.match(/^\/api\/works\/(\d+)\/media$/);
+    const mediaMatch = url.pathname.match(/^\/api\/works\/(\d+|[RBV]J\d{8}|CC\d{8})\/media$/);
     if (mediaMatch) {
+      const workId = readWorkID(mediaMatch[1]);
+      if (workId === null) {
+        await route.fulfill({ status: 404, json: { error: "work not found" } satisfies ApiErrorBody });
+        return;
+      }
       fixture.onMediaRequest?.();
       if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
       if (fixture.mediaBusy) {
@@ -488,7 +503,6 @@ export async function mockApplication(
         });
         return;
       }
-      const workId = Number(mediaMatch[1]);
       const restoredTracks =
         mediaItems.length > 0 ? [] : (persistedPlayerTracks.get(page) ?? []).filter((track) => track.workId === workId);
       const restoredMediaItems = restoredTracks.map((track) =>
@@ -857,11 +871,11 @@ export async function mockRemoteSource(
       });
       return;
     }
-    if (url.pathname === "/api/works/1") {
+    if (url.pathname === "/api/works/1" || url.pathname === "/api/works/RJ00000000") {
       await route.fulfill({ json: workDetailFixture(work) });
       return;
     }
-    if (url.pathname === "/api/works/1/media") {
+    if (url.pathname === "/api/works/1/media" || url.pathname === "/api/works/RJ00000000/media") {
       await route.fulfill({
         json: { workId: 1, mediaWorkId: 1, mediaItems: [] } satisfies ApiResponse<"getWorkMedia">,
       });

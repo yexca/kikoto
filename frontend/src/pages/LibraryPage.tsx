@@ -3463,26 +3463,29 @@ async function resolveAndOpenWork(
     setMediaLoading(true);
     setNotFound(false);
     setMediaError("");
-    const resolved = await api.resolveWorkCode(code, signal);
-    if (signal.aborted) return;
-    setSelectedWorkPreview(workPreviewFromResolve(resolved));
+    let resolvedCode = code;
+    let resolvedID: number | null = null;
     await loadWorkDetailStages(
-      resolved.workId,
+      code,
       principalID,
       signal,
-      setSelectedWork,
-      (mediaItems) =>
-        setSelectedWork((current) => (current?.id === resolved.workId ? { ...current, mediaItems } : current)),
+      (work) => {
+        resolvedCode = work.primaryCode;
+        resolvedID = work.id;
+        setSelectedWorkPreview(work);
+        setSelectedWork(work);
+      },
+      (mediaItems) => setSelectedWork((current) => (current?.id === resolvedID ? { ...current, mediaItems } : current)),
       (error) => setMediaError(directoryLoadErrorMessage(error)),
     );
     if (signal.aborted) return;
     if (
-      resolved.resolvedCode &&
-      resolved.resolvedCode.toUpperCase() !== code.toUpperCase() &&
+      resolvedCode &&
+      resolvedCode.toUpperCase() !== code.toUpperCase() &&
       workDetailCodeFromLocation(window.location.pathname, window.location.search)?.toUpperCase() === code.toUpperCase()
     ) {
-      window.history.replaceState(window.history.state ?? {}, "", `/${resolved.resolvedCode}${window.location.search}`);
-      setSelectedCode(resolved.resolvedCode);
+      window.history.replaceState(window.history.state ?? {}, "", `/${resolvedCode}${window.location.search}`);
+      setSelectedCode(resolvedCode);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
   } catch (error) {
@@ -3593,22 +3596,6 @@ function workPreviewFromHistory(code: string | null): WorkPreview | null {
   const preview = historyPreviewObject<WorkPreview>(code, "primaryCode");
   if (!preview) return null;
   return { id: historyPreviewID(preview.id), ...workPreviewFieldsFromHistory(preview) };
-}
-
-function workPreviewFromResolve(resolved: Awaited<ReturnType<typeof api.resolveWorkCode>>): WorkPreview {
-  return {
-    id: resolved.workId,
-    primaryCode: resolved.resolvedCode,
-    title: resolved.title || resolved.resolvedCode,
-    coverUrl: resolved.coverUrl,
-    circle: resolved.circle,
-    circleExternalId: resolved.circleExternalId,
-    rating: resolved.rating,
-    sales: resolved.sales,
-    releaseDate: resolved.releaseDate,
-    tags: resolved.tags,
-    voiceActors: resolved.voiceActors,
-  };
 }
 
 function remoteWorkPreview(work: RemoteWork): WorkPreview {

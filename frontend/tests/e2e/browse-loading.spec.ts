@@ -11,6 +11,10 @@ for (const direct of [false, true]) {
     });
     let summaryRequests = 0;
     let mediaRequests = 0;
+    let resolveRequests = 0;
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/api/works/RJ00000000/resolve") resolveRequests++;
+    });
     await mockApplication(
       page,
       undefined,
@@ -38,6 +42,7 @@ for (const direct of [false, true]) {
       releaseSummary();
       await expect(page.getByTestId("directory-file-row").filter({ hasText: "track.mp3" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Mark: Unmarked" })).toBeVisible();
+      if (direct) expect(resolveRequests).toBe(0);
     } finally {
       releaseSummary();
     }

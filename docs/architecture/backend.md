@@ -86,6 +86,12 @@ updating them or scheduling title projections. Legacy snapshots can resolve
 their declared origin without a write. Metadata ingestion and synchronization
 own relationship maintenance.
 
+`GET /api/works/{id}?includeMedia=false` and `GET /api/works/{id}/media`
+also accept a work code in `{id}`. Code reads use that same read-only canonical
+resolution, including aliases and legacy origins. Numeric reads retain exact
+edition identity. This lets direct links request summary and directory in
+parallel while retaining the existing access and Demo visibility checks.
+
 Cold recommendation session preparation admits at most 32 active or queued
 requests and serializes writes before borrowing a database connection. Warm
 sessions remain reads. Cancellation releases a queue place; a full queue

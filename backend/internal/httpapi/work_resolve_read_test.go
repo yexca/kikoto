@@ -22,6 +22,7 @@ func TestResolveIsReadOnlyForCanonicalAliasEditionAndLegacySnapshot(t *testing.T
 	 INSERT INTO work_code_alias(logical_work_id,provider_id,primary_code) VALUES(1,2,'RJ00000004');
 	 INSERT INTO metadata_snapshot(work_id,provider_id,external_id,snapshot_json) VALUES
 	 (3,2,'example','{"workno":"RJ00000002","base_code":"RJ00000003"}');
+	 UPDATE work SET age_rating='R18' WHERE id=1;
 	 DELETE FROM work_title_language_dirty`)
 	server := NewServer(db, config.Config{})
 	metadataReviewExec(t, db, `PRAGMA query_only=ON`)
@@ -47,6 +48,63 @@ func TestResolveIsReadOnlyForCanonicalAliasEditionAndLegacySnapshot(t *testing.T
 			if result.WorkID != item.id || result.ResolvedCode != item.resolved {
 				t.Fatalf("resolve %s: %+v", item.code, result)
 			}
+		}
+		for _, read := range []struct {
+			suffix      string
+			handler     http.HandlerFunc
+			identityKey string
+		}{
+			{"?includeMedia=false", server.getWork, "id"},
+			{"/media", server.getWorkMedia, "workId"},
+		} {
+			request := httptest.NewRequest(http.MethodGet, "/api/works/"+item.code+read.suffix, nil)
+			request.SetPathValue("id", item.code)
+			response := httptest.NewRecorder()
+			read.handler(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("code read %s%s: %d %s", item.code, read.suffix, response.Code, response.Body.String())
+			}
+			var body map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body[read.identityKey] != float64(item.id) {
+				t.Fatalf("code read changed canonical identity: %v", body)
+			}
+		}
+	}
+	// Numeric callers can still explicitly open the alternate edition.
+	request := httptest.NewRequest(http.MethodGet, "/api/works/2?includeMedia=false", nil)
+	request.SetPathValue("id", "2")
+	response := httptest.NewRecorder()
+	server.getWork(response, request)
+	var edition workDetail
+	if err := json.Unmarshal(response.Body.Bytes(), &edition); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != 200 || edition.ID != 2 || edition.PrimaryCode != "RJ00000001" {
+		t.Fatalf("numeric edition changed: %d %+v", response.Code, edition)
+	}
+	for _, item := range []struct {
+		value  string
+		status int
+	}{{"not-a-code", 400}, {"RJ00000099", 404}} {
+		request := httptest.NewRequest(http.MethodGet, "/api/works/"+item.value, nil)
+		request.SetPathValue("id", item.value)
+		response := httptest.NewRecorder()
+		server.getWork(response, request)
+		if response.Code != item.status {
+			t.Fatalf("invalid/unknown code %s: %d", item.value, response.Code)
+		}
+	}
+	demo := NewServer(db, config.Config{Mode: config.ModeDemo})
+	for _, handler := range []http.HandlerFunc{demo.getWork, demo.getWorkMedia} {
+		request := httptest.NewRequest(http.MethodGet, "/api/works/RJ00000004?includeMedia=false", nil)
+		request.SetPathValue("id", "RJ00000004")
+		response := httptest.NewRecorder()
+		handler(response, request)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("code alias bypassed Demo visibility: %d %s", response.Code, response.Body.String())
 		}
 	}
 	var dirty, count int

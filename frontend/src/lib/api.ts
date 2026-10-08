@@ -2722,10 +2722,13 @@ export const api = {
   // Components that mount together often ask for the same work; they share one
   // in-flight request, and nothing is cached once it settles.
   getWork: (id: number, signal?: AbortSignal) => sharedGetJSON<WorkDetail>(`/api/works/${id}`, signal),
-  getWorkSummary: (id: number, signal?: AbortSignal) =>
-    getJSON<WorkDetail>(`/api/works/${id}?includeMedia=false`, signal),
-  getWorkMedia: (id: number, signal?: AbortSignal) =>
-    getJSON<{ workId: number; mediaWorkId: number; mediaItems: MediaItem[] }>(`/api/works/${id}/media`, signal),
+  getWorkSummary: (id: number | string, signal?: AbortSignal) =>
+    getJSON<WorkDetail>(`/api/works/${encodeURIComponent(id)}?includeMedia=false`, signal),
+  getWorkMedia: (id: number | string, signal?: AbortSignal) =>
+    getJSON<{ workId: number; mediaWorkId: number; mediaItems: MediaItem[] }>(
+      `/api/works/${encodeURIComponent(id)}/media`,
+      signal,
+    ),
   refreshWorkLocalFiles: (id: number, fileSourceId?: number | null) =>
     postJSONBody<LocalMediaRefreshResult>(`/api/works/${id}/local-files/refresh`, { fileSourceId: fileSourceId ?? 0 }),
   listMetadataTags: ({
