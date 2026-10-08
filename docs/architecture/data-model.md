@@ -475,6 +475,7 @@ Important tables:
 - `work_source_presence`
 - `media_item`
 - `media_file_location`
+- `media_lyrics_assignment`
 
 Migration `059` adds `file_version` to media items and locations. Local scans
 observe file size and nanosecond modification time independently of the stable
@@ -485,6 +486,15 @@ rescan. Legacy versions are established on the next visible scan or probe.
 
 Presence can describe that a source knows about a work. Concrete playback,
 download, local, and cache paths belong in media file locations.
+
+Migration `061` adds `media_lyrics_assignment`, the library-level lyrics file
+of an audio media item. It relates two media items of the same work, so a
+rescan that keeps media ids keeps the assignment; deleting either item removes
+it. The audio item may belong to any edition of the requested work's family,
+because a work detail can show a sibling edition's local media. `origin`
+records how the row was made: `manual` from the lyrics manager, or
+`remote_fetch` when a remote lyrics download assigned the file it published. Clients rank a user's
+`user_media_lyrics_preference` first, then this assignment, then name matching.
 
 ## Workflows
 
@@ -566,7 +576,8 @@ those foreign keys without turning a raw path into the progress owner. Migration
 family.
 
 Lyrics preferences relate an audio media item to a lyrics media item; runtime
-location selection remains a file-source concern.
+location selection remains a file-source concern. A personal preference
+overrides the shared `media_lyrics_assignment` for that user only.
 
 ## Recommendation Snapshots
 

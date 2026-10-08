@@ -669,7 +669,34 @@ export type MediaItem = {
   fingerprint: string;
   progress: MediaProgress | null;
   preferredLyricsMediaItemId?: number | null;
+  /** The library-level lyrics file shared by every user unless they choose another. */
+  assignedLyricsMediaItemId?: number | null;
   locations: MediaFileLocation[];
+};
+
+export type LyricsAssignmentChange = {
+  audioMediaItemId: number;
+  /** Null restores automatic name matching. */
+  lyricsMediaItemId: number | null;
+};
+
+/** Downloads lyrics of a family edition from a remote source into a new folder of a local work folder. */
+export type LyricsFetchRequest = {
+  sourceId: number;
+  remoteCode: string;
+  folderId: number;
+  /** Remote tree paths of the lyrics files to download. */
+  files: string[];
+  /** Downloaded files to assign as the library lyrics of local tracks. */
+  assignments: { audioMediaItemId: number; path: string }[];
+};
+
+export type LyricsFetchResult = {
+  workId: number;
+  /** The new folder, relative to the library. */
+  folder: string;
+  downloaded: number;
+  assigned: number;
 };
 
 export type MediaProgress = {
@@ -2838,6 +2865,12 @@ export const api = {
     deleteJSON<{ audioMediaItemId: number; lyricsMediaItemId: null }>(
       `/api/media/${audioMediaItemId}/lyrics-preference`,
     ),
+  fetchWorkLyrics: (workId: number, request: LyricsFetchRequest) =>
+    postJSONBody<LyricsFetchResult>(`/api/works/${workId}/lyrics-fetch`, request),
+  setWorkLyricsAssignments: (workId: number, assignments: LyricsAssignmentChange[]) =>
+    putJSONBody<{ workId: number; assignments: LyricsAssignmentChange[] }>(`/api/works/${workId}/lyrics-assignments`, {
+      assignments,
+    }),
   cacheMediaLocation: (locationId: number) => postJSON<MediaCacheResult>(`/api/media/${locationId}/cache`),
   cacheRemoteSourceWorkMedia: (id: number, code: string, path: string) =>
     postJSONBody<MediaCacheResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/cache`, { path }),

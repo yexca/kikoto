@@ -153,6 +153,25 @@ A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), 
   preview, and reveal actions, and a directory control can show all folded
   lyrics. File management and Fetch selection continue to show the complete
   unfiltered tree.
+- The local source's **Manage lyrics** option lists every local audio file
+  with a lyrics choice. A user with library write access can assign any local
+  lyrics file of the work, including translated lyrics whose names do not
+  match the audio, or align a lyrics folder to the tracks by track number (or
+  by position when both folders hold the same number of files). Each row
+  previews the first lines and warns when the last timed line starts after the
+  track ends. Assignments are shared by every listener and become the Auto
+  choice; a listener's own choice still takes priority.
+- When a compatible remote source is configured, **Manage lyrics** also has a
+  **From remote** tab for users who can download files. Pick a source and an
+  edition of the work's family (a translated edition is chosen first, since
+  DLsite usually ships lyrics with translations), list its lyrics files, choose
+  which to download and which track each one belongs to, and preview them with
+  the same timing check. The files are saved to a new folder named after the
+  edition's language, its code, and the download time, for example
+  `Lyrics - CHI_HANS - RJ00000001 - 20261008-153012`, inside the work folder.
+  Kikoto never replaces an existing file or folder, then rescans the work and
+  stores the chosen assignments. The edition you read from is not added to the
+  library.
 - Lists naturally sorted folders before naturally sorted files. Folder playback
   follows that same visible order.
 - Keeps available non-playable files such as images and text in Directory while

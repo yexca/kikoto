@@ -663,6 +663,7 @@ function MoreActions({
 }
 
 function lyricsMatchReasonLabel(reason: LyricsChoice["reason"]) {
+  if (reason === "assigned") return i18n.t("libraryDetail.assignedLyrics");
   if (reason === "exact_sidecar") return i18n.t("libraryDetail.exactSidecar");
   if (reason === "same_stem") return i18n.t("libraryDetail.matchingFileName");
   if (reason === "normalized_name") return i18n.t("libraryDetail.normalizedFileName");

@@ -106,6 +106,32 @@ after DLsite reports it as not found:
 - Run output, Activity, and the API expose source codes, display names and
   fixed outcomes only. Detailed upstream errors stay in protected logs.
 
+### Remote lyrics download
+
+`POST /api/works/{id}/lyrics-fetch` downloads lyrics files of one family
+edition from an administrator-configured compatible source into a new folder
+of an existing local work folder. It requires `downloads:manage`, plus
+`library:write` when the request also assigns tracks.
+
+- The remote code must be an edition of the requested work's family, and the
+  target must be an active local folder of that family on an online storage
+  pool. The edition's tree is read through the remote snapshot cache; it is
+  not stored as a work, presence, or media location.
+- Each requested path must be a `.lrc`, `.vtt`, `.srt`, `.ass`, or `.txt` file
+  in that tree. Its source-returned URL must be HTTP(S) without credentials and
+  pass the source's outbound policy before any request; redirects are validated
+  at every hop by the shared source transport, and only configured origins keep
+  the private-address exception.
+- Downloads use the source's download lane with a 30-second bound per file,
+  2 MiB per file, 32 MiB and 200 files per request, and a 2-minute request
+  bound. Cancellation stops the request and removes the staging folder.
+- Files are staged in `.kikoto-staging` on the target's pool. Publication
+  claims the timestamped folder with an exclusive create, so an existing entry
+  of that name is never replaced, then moves the staged files into it; a failed
+  move removes only what the request added.
+- Errors expose fixed messages only. Upstream URLs, local paths, and detailed
+  failures stay in protected logs.
+
 ### Purchase bonus detection
 
 Metadata sync may look up a purchase bonus's parent product (see

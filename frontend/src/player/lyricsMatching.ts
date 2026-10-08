@@ -10,7 +10,7 @@ export type LyricsMatch = {
   title: string;
   path: string;
   displayPath?: string;
-  reason: "exact_sidecar" | "same_stem" | "normalized_name" | "shared_folder";
+  reason: "assigned" | "exact_sidecar" | "same_stem" | "normalized_name" | "shared_folder";
 };
 
 export type LyricsChoice = LyricsMatch & { url?: string };
@@ -66,6 +66,37 @@ export function findLyricsMatches(audioPath: string, items: MediaItem[]): Lyrics
     path: candidate.path,
     reason: candidate.reason,
   }));
+}
+
+/**
+ * Lists the lyrics choices of a local audio file. A library-level assignment
+ * leads the list even when its name does not match, so it becomes the
+ * automatic choice; name matches follow in their usual order.
+ */
+export function findLocalLyricsChoices(
+  audioPath: string,
+  items: MediaItem[],
+  assignedLyricsMediaItemId?: number | null,
+): LyricsMatch[] {
+  const matches = findLyricsMatches(audioPath, items);
+  const assigned = assignedLyricsMediaItemId ? assignedLyricsChoice(items, assignedLyricsMediaItemId) : null;
+  if (!assigned) return matches;
+  return [assigned, ...matches.filter((match) => match.mediaItemId !== assigned.mediaItemId)];
+}
+
+function assignedLyricsChoice(items: MediaItem[], mediaItemId: number): LyricsMatch | null {
+  const item = items.find((candidate) => candidate.id === mediaItemId);
+  const location = item?.locations.find(
+    (candidate) => candidate.locationType === "local" && candidate.availability === "available",
+  );
+  if (!item || !location) return null;
+  return {
+    mediaItemId: item.id,
+    locationId: location.id,
+    title: fileName(location.path),
+    path: location.path,
+    reason: "assigned",
+  };
 }
 
 export function findRemoteLyricsMatches(audioPath: string, candidates: RemoteLyricsCandidate[]): RemoteLyricsMatch[] {

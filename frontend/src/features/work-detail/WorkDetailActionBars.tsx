@@ -2,6 +2,7 @@ import {
   BookmarkPlus,
   Check,
   ChevronDown,
+  Captions,
   Cloud,
   Clock3,
   Database,
@@ -112,6 +113,7 @@ export function MediaContextActionBar({
   onManageCache,
   manageCacheDisabled = false,
   onManageFiles,
+  onManageLyrics,
   onRefreshLocalFiles,
 }: {
   busy: boolean;
@@ -134,6 +136,7 @@ export function MediaContextActionBar({
   onManageCache?: () => void;
   manageCacheDisabled?: boolean;
   onManageFiles?: () => void;
+  onManageLyrics?: () => void;
   onRefreshLocalFiles?: () => void;
   /** `list` renders the actions inline, for a panel that already names the source. */
   layout?: SourceActionLayout;
@@ -154,6 +157,7 @@ export function MediaContextActionBar({
     remoteSourceWorkUrl ||
     onManageCache ||
     onManageFiles ||
+    onManageLyrics ||
     onRefreshLocalFiles ||
     sourceDetailsLoading,
   );
@@ -301,7 +305,9 @@ export function MediaContextActionBar({
           <span className="min-w-0 flex-1 truncate">{t("detailActions.openOrigin")}</span>
         </a>
       )}
-      {(onManageCache || onManageFiles || onRefreshLocalFiles) && <div className="my-1 border-t first:hidden" />}
+      {(onManageCache || onManageFiles || onManageLyrics || onRefreshLocalFiles) && (
+        <div className="my-1 border-t first:hidden" />
+      )}
       {onRefreshLocalFiles && (
         <SourceOptionButton
           layout={layout}
@@ -328,6 +334,15 @@ export function MediaContextActionBar({
           label={t("detailActions.manageFiles")}
           disabled={busy}
           onClick={() => runOption(onManageFiles)}
+        />
+      )}
+      {onManageLyrics && (
+        <SourceOptionButton
+          layout={layout}
+          icon={<Captions className="h-4 w-4" />}
+          label={t("detailActions.manageLyrics")}
+          disabled={busy}
+          onClick={() => runOption(onManageLyrics)}
         />
       )}
     </>
