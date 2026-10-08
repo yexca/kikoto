@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input, NativeSelect } from "@/components/ui/input";
+import { TokenInput } from "@/components/ui/token-input";
 import {
   OptionField,
   RunBlockerNote,
@@ -12,7 +13,8 @@ import {
 } from "@/features/workflows/RunOptionControls";
 import { workflowCopy, type RemoteFetchRunOptions } from "@/features/workflows/workflowPageModel";
 import { api, type LibrarySource } from "@/lib/api";
-import { parseFetchExtensions } from "@/lib/remoteFetchFilters";
+import { isFetchExtension, normalizeFetchExtension } from "@/lib/remoteFetchFilters";
+import { WORD_TOKEN_SEPARATORS } from "@/lib/tokenDraft";
 import { isWorkCode } from "@/lib/workCode";
 
 const commonExtensions = ["wav", "flac", "mp3", "m4a", "ogg", "mp4", "jpg", "png", "zip", "pdf", "txt", "lrc"];
@@ -34,14 +36,13 @@ export function RemoteFetchRunPanel({
   const [sourceId, setSourceId] = useState(0);
   const [code, setCode] = useState("");
   const [excluded, setExcluded] = useState<string[]>([]);
-  const [otherExtensions, setOtherExtensions] = useState("");
+  const [customExtensions, setCustomExtensions] = useState<string[]>([]);
   const [loadingSources, setLoadingSources] = useState(true);
   const [sourceError, setSourceError] = useState(false);
   const [sourceRevision, setSourceRevision] = useState(0);
   const [preparationError, setPreparationError] = useState(false);
   const workCode = code.trim().toUpperCase();
-  const customExtensions = parseFetchExtensions(otherExtensions);
-  const invalidExtensions = customExtensions.some((extension) => !/^[a-z0-9]{1,16}$/.test(extension));
+  const invalidExtensions = customExtensions.some((extension) => !isFetchExtension(extension));
   const selectedSource = sources.find((source) => source.id === sourceId);
 
   useEffect(() => {
@@ -198,15 +199,16 @@ export function RemoteFetchRunPanel({
             </div>
           </OptionField>
           <OptionField label={workflowCopy("fetchRun.otherExtensions")} htmlFor="fetch-run-other-extensions" stacked>
-            <Input
+            <TokenInput
               id="fetch-run-other-extensions"
-              fieldSize="sm"
-              value={otherExtensions}
+              values={customExtensions}
+              normalize={normalizeFetchExtension}
+              isValid={isFetchExtension}
+              separators={WORD_TOKEN_SEPARATORS}
               placeholder={workflowCopy("fetchRun.extensionsPlaceholder")}
-              aria-invalid={invalidExtensions}
               disabled={running}
-              onChange={(event) => {
-                setOtherExtensions(event.target.value);
+              onChange={(values) => {
+                setCustomExtensions(values);
                 setPreparationError(false);
               }}
             />

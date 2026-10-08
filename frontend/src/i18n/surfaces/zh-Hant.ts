@@ -83,7 +83,8 @@ export const surfaceHant = {
       bonus: "購買特典",
     },
     searchTags: "搜尋標籤或輸入新標籤",
-    tagHint: "按 Enter 新增醒目提示的標籤，或用輸入的名稱建立標籤。點標籤上的語言按鈕可依語言編輯名稱。",
+    tagHint:
+      "按 Enter 新增醒目提示的標籤，或用輸入的名稱建立標籤。用逗號分隔可一次新增多個標籤。點標籤上的語言按鈕可依語言編輯名稱。",
     tagAdded: "已新增至本作品",
     editTagNames: "依語言編輯 {{name}} 的名稱",
     tagNamesFor: "{{name}} 的名稱",
@@ -133,6 +134,7 @@ export const surfaceHant = {
   },
   metadataEntries: {
     hiddenNameConflict: "這個名稱對應已隱藏的標籤。請先在中繼資料管理中取消隱藏，再新增。",
+    hiddenNamesSkipped: "以下名稱對應已隱藏的標籤，未新增：{{names}}。請先在中繼資料管理中取消隱藏。",
     pendingWorks: "背景標籤更新佇列還有 {{count}} 個作品。重新整理可查看進度。",
     namePriority: "逐一嘗試偏好語言：該語言的手動名稱 > 所有語言手動名稱 > 提供方名稱。",
 
@@ -542,7 +544,7 @@ export const surfaceHant = {
       ruleName: "規則名稱",
       aliases: "別名",
       negativeAliases: "排除別名",
-      keywordHint: "使用逗號或換行分隔單字。",
+      keywordHint: "輸入逗號或按 Enter 逐一新增單字。",
       matchKeywords: "{{count}} 個匹配關鍵字",
       exclusions: "{{count}} 個排除項",
       edit: "編輯",

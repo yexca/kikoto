@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Languages, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMetadataEntrySuggestions } from "@/hooks/useMetadataEntrySuggestions";
-import type { MetadataTag } from "@/lib/api";
+import { api, type MetadataTag } from "@/lib/api";
 import { exactMetadataTag, sameMetadataTagName } from "@/lib/metadataTagModel";
 import { cn } from "@/lib/tailwindClassNames";
 import { MetadataEditorField, SuggestionCombobox } from "./MetadataEditorFields";
@@ -17,6 +17,12 @@ export function WorkMetadataTagsSection({ editor }: { editor: WorkMetadataTagsEd
   const [namingId, setNamingId] = useState<number | null>(null);
   const naming = editor.tags.find((tag) => tag.id === namingId);
   const suggestions = useMetadataEntrySuggestions("tags", query);
+  const [hiddenNames, setHiddenNames] = useState<string[]>([]);
+  // A typed list resolves across awaits, so each step reads the latest draft.
+  const editorRef = useRef(editor);
+  useEffect(() => {
+    editorRef.current = editor;
+  });
   const add = (tag: MetadataTag) => {
     if (tag.resolvedHidden) return;
     editor.add(tag);
@@ -30,6 +36,32 @@ export function WorkMetadataTagsSection({ editor }: { editor: WorkMetadataTagsEd
       editor.stage(query);
       setQuery("");
     }
+  };
+  // Each name in a comma-separated list joins an existing tag when one matches, else becomes a new tag.
+  const addNames = async (names: string[]) => {
+    const unique = names.filter(
+      (name, index) => names.findIndex((other) => sameMetadataTagName(other, name)) === index,
+    );
+    const hidden: string[] = [];
+    for (const name of unique) {
+      if (editorRef.current.tags.some((tag) => sameMetadataTagName(tag.displayName, name))) continue;
+      let match: MetadataTag | undefined;
+      try {
+        const page = await api.listMetadataTags({
+          query: name,
+          pageSize: 20,
+          includeHidden: true,
+          resolveMerged: true,
+        });
+        match = exactMetadataTag(page.tags, name);
+      } catch {
+        // Saving a new tag with an existing name still joins that tag.
+      }
+      if (match?.resolvedHidden) hidden.push(name);
+      else if (match) editorRef.current.add(match);
+      else editorRef.current.stage(name);
+    }
+    setHiddenNames(hidden);
   };
   const status: MetadataFieldStatus = editor.changed ? "edited" : editor.hasOverrides ? "manual" : "source";
   if (editor.failed)
@@ -126,6 +158,7 @@ export function WorkMetadataTagsSection({ editor }: { editor: WorkMetadataTagsEd
           placeholder={t("metadataEditor.searchTags")}
           onChange={setQuery}
           onSubmitText={create}
+          onSubmitTokens={(names) => void addNames(names)}
           options={options}
           footer={
             (existing?.resolvedHidden || suggestions.failed) && (
@@ -144,6 +177,11 @@ export function WorkMetadataTagsSection({ editor }: { editor: WorkMetadataTagsEd
             )
           }
         />
+        {hiddenNames.length > 0 && (
+          <p role="alert" className="text-xs text-muted-foreground">
+            {t("metadataEntries.hiddenNamesSkipped", { names: hiddenNames.join(", ") })}
+          </p>
+        )}
         <p className="text-xs text-muted-foreground">{t("metadataEditor.tagHint")}</p>
       </div>
       {editor.canRestore && (

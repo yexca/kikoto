@@ -1,8 +1,9 @@
 import { ArrowDown, ArrowUp, GripVertical, Plus, Save, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SettingsSection } from "@/components/settings/SettingsSection";
-import { Input, Textarea } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
+import { TokenInput } from "@/components/ui/token-input";
 import type { DirectoryRoutingRule } from "@/lib/api";
 import i18n from "@/i18n";
 const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.${key}`, options);
@@ -252,12 +253,16 @@ function TagListInput({
   value: string[];
   onChange: (value: string[]) => void;
 }) {
+  const id = useId();
+  // Not a wrapping label: it would forward clicks to the first token's remove button.
   return (
-    <label className="grid gap-1 text-sm">
-      <span className="font-medium">{label}</span>
-      <Textarea value={value.join(", ")} onChange={(event) => onChange(splitRuleTokens(event.target.value))} />
+    <div className="grid gap-1 text-sm">
+      <label htmlFor={id} className="font-medium">
+        {label}
+      </label>
+      <TokenInput id={id} values={value} onChange={onChange} />
       <span className="text-xs text-muted-foreground">{maintenanceCopy("routing.keywordHint")}</span>
-    </label>
+    </div>
   );
 }
 
@@ -267,16 +272,5 @@ function TextInput({ label, value, onChange }: { label: string; value: string; o
       <span className="font-medium">{label}</span>
       <Input value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
-  );
-}
-
-function splitRuleTokens(value: string) {
-  return Array.from(
-    new Set(
-      value
-        .split(/[\n,]/)
-        .map((item) => item.trim())
-        .filter(Boolean),
-    ),
   );
 }

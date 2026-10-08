@@ -484,12 +484,19 @@ test("favorites detail Back and mobile tab switches preserve filters, selection,
   await expect(page.getByRole("list", { name: "My tags", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Edit tags" }).click();
   const tagEditor = page.getByRole("dialog", { name: "Edit tags" });
-  await tagEditor.getByRole("combobox", { name: "Search or create a tag" }).fill("Night");
-  await tagEditor.getByRole("combobox", { name: "Search or create a tag" }).press("Enter");
-  await tagEditor.getByRole("option", { name: /Focus/ }).click();
-  await expect(tagEditor.getByRole("option", { name: /Night/ })).toHaveAttribute("aria-selected", "true");
-  await expect(tagEditor.getByRole("option", { name: /Focus/ })).toHaveAttribute("aria-selected", "true");
+  const tagSearch = tagEditor.getByRole("combobox", { name: "Search or create a tag" });
+  await tagSearch.fill("Night");
+  await tagSearch.press("Enter");
+  // A typed list adds every tag at once, keeps tags already selected, reuses an existing spelling,
+  // and leaves the unfinished name in the field.
+  await tagSearch.fill("quiet, focus，Rain, Dra");
+  await expect(tagSearch).toHaveValue("Dra");
+  await tagSearch.fill("");
+  for (const name of [/Quiet/, /Night/, /Focus/, /Rain/]) {
+    await expect(tagEditor.getByRole("option", { name })).toHaveAttribute("aria-selected", "true");
+  }
   await tagEditor.getByRole("option", { name: /Night/ }).click();
+  await tagEditor.getByRole("option", { name: /Rain/ }).click();
   await expect(tagEditor.getByRole("option", { name: /Night/ })).toHaveAttribute("aria-selected", "false");
   await page.keyboard.press("Escape");
   await expect(tagEditor).toBeHidden();

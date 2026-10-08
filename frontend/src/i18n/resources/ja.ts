@@ -935,6 +935,7 @@ export const japaneseResource = {
         serverVersion: "サーバーバージョン",
         notConfigured: "未設定",
         back: "戻る",
+        removeItem: "{{value}} を削除",
       },
       errors: {
         network: "ネットワーク要求に失敗しました。",

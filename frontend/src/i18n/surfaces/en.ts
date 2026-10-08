@@ -88,7 +88,7 @@ export const surfaceEnglish = {
     },
     searchTags: "Search tags or type a new one",
     tagHint:
-      "Enter adds the highlighted tag, or creates one from the typed name. The language button on a tag edits its name in each language.",
+      "Enter adds the highlighted tag, or creates one from the typed name. A comma adds several tags at once. The language button on a tag edits its name in each language.",
     tagAdded: "Added to this work",
     editTagNames: "Edit names of {{name}} by language",
     tagNamesFor: "Names of {{name}}",
@@ -141,6 +141,8 @@ export const surfaceEnglish = {
   },
   metadataEntries: {
     hiddenNameConflict: "This name resolves to a hidden tag. Unhide it in Metadata before adding it.",
+    hiddenNamesSkipped:
+      "Not added, because these names resolve to hidden tags: {{names}}. Unhide them in Metadata first.",
     pendingWorks: "{{count}} works remain in the background tag update queue. Refresh to check progress.",
     namePriority:
       "For each preferred language: its manual name, then the all-language manual name, then the provider name.",
@@ -473,7 +475,7 @@ export const surfaceEnglish = {
       ruleName: "Rule name",
       aliases: "Aliases",
       negativeAliases: "Negative aliases",
-      keywordHint: "Separate words with commas or new lines.",
+      keywordHint: "Type a comma or press Enter to add each word.",
       matchKeywords: "{{count}} match keywords",
       exclusions: "{{count}} exclusions",
       edit: "Edit",

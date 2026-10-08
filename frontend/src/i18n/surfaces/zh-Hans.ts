@@ -83,7 +83,8 @@ export const surfaceHans = {
       bonus: "购买特典",
     },
     searchTags: "搜索标签或输入新标签",
-    tagHint: "按 Enter 添加高亮的标签，或用输入的名称新建标签。点标签上的语言按钮可按语言编辑名称。",
+    tagHint:
+      "按 Enter 添加高亮的标签，或用输入的名称新建标签。用逗号分隔可一次添加多个标签。点标签上的语言按钮可按语言编辑名称。",
     tagAdded: "已添加到本作品",
     editTagNames: "按语言编辑 {{name}} 的名称",
     tagNamesFor: "{{name}} 的名称",
@@ -133,6 +134,7 @@ export const surfaceHans = {
   },
   metadataEntries: {
     hiddenNameConflict: "这个名称对应已隐藏的标签。请先在元数据管理中取消隐藏，再添加。",
+    hiddenNamesSkipped: "以下名称对应已隐藏的标签，未添加：{{names}}。请先在元数据管理中取消隐藏。",
     pendingWorks: "后台标签更新队列还有 {{count}} 个作品。刷新可查看进度。",
     namePriority: "逐个尝试首选语言：该语言的手动名称 > 所有语言手动名称 > 提供方名称。",
 
@@ -541,7 +543,7 @@ export const surfaceHans = {
       ruleName: "规则名称",
       aliases: "别名",
       negativeAliases: "排除别名",
-      keywordHint: "使用逗号或换行分隔单词。",
+      keywordHint: "输入逗号或按 Enter 逐个添加单词。",
       matchKeywords: "{{count}} 个匹配关键词",
       exclusions: "{{count}} 个排除项",
       edit: "编辑",
