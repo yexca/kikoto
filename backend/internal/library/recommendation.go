@@ -5,10 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 )
 
-const RecommendationAlgorithmVersion = "heuristic-v4"
+const RecommendationAlgorithmVersion = "heuristic-v5"
 
 const recommendationScoreUserArgumentCount = 9
 
@@ -40,14 +41,16 @@ type RecommendationConfig struct {
 }
 
 type RecommendationSignals struct {
-	ListeningStatus       string `json:"listeningStatus"`
-	Favorite              bool   `json:"favorite"`
-	PositiveTagMatches    int    `json:"positiveTagMatches"`
-	PositiveVoiceMatches  int    `json:"positiveVoiceMatches"`
-	PositiveCircleMatches int    `json:"positiveCircleMatches"`
-	NegativeTagMatches    int    `json:"negativeTagMatches"`
-	NegativeVoiceMatches  int    `json:"negativeVoiceMatches"`
-	NegativeCircleMatches int    `json:"negativeCircleMatches"`
+	DiversityPenalty      int                     `json:"diversityPenalty,omitempty"`
+	Affinity              *RecommendationAffinity `json:"affinity,omitempty"`
+	ListeningStatus       string                  `json:"listeningStatus"`
+	Favorite              bool                    `json:"favorite"`
+	PositiveTagMatches    int                     `json:"positiveTagMatches"`
+	PositiveVoiceMatches  int                     `json:"positiveVoiceMatches"`
+	PositiveCircleMatches int                     `json:"positiveCircleMatches"`
+	NegativeTagMatches    int                     `json:"negativeTagMatches"`
+	NegativeVoiceMatches  int                     `json:"negativeVoiceMatches"`
+	NegativeCircleMatches int                     `json:"negativeCircleMatches"`
 }
 
 type RecommendationComponent struct {
@@ -61,6 +64,7 @@ type RecommendationComponent struct {
 // RecommendationOrdering describes the seed-derived adjustment applied after
 // affinity scoring while works are ordered within one recommendation lane.
 type RecommendationOrdering struct {
+	DiversityPenalty int     `json:"diversityPenalty,omitempty"`
 	Seed             int64   `json:"seed"`
 	ExplorationBoost float64 `json:"explorationBoost"`
 	Jitter           float64 `json:"jitter"`
@@ -298,9 +302,9 @@ func recommendationScoreExpression(config RecommendationConfig) string {
 	return recommendationScoreFromSignalExpressions(
 		config,
 		"COALESCE(user_work_state.favorite, 0)",
-		positiveTagMatchCountExpression,
-		positiveVoiceMatchCountExpression,
-		positiveCircleMatchCountExpression,
+		positiveAffinityExpression("tag"),
+		positiveAffinityExpression("voice"),
+		positiveAffinityExpression("circle"),
 		negativeTagMatchCountExpression(config.NegativeMinEvidence),
 		negativeVoiceMatchCountExpression(config.NegativeMinEvidence),
 		negativeCircleMatchCountExpression(config.NegativeMinEvidence),
@@ -317,9 +321,9 @@ func recommendationScoreFromSignalExpressions(
 	negativeVoiceExpression string,
 	negativeCircleExpression string,
 ) string {
-	positiveTag := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.TagCap, positiveTagExpression, config.TagWeight)
-	positiveVoice := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.VoiceCap, positiveVoiceExpression, config.VoiceWeight)
-	positiveCircle := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.CircleCap, positiveCircleExpression, config.CircleWeight)
+	positiveTag := fmt.Sprintf("MIN(%d, ROUND(COALESCE(%s, 0) * %d))", config.TagCap, positiveTagExpression, config.TagWeight)
+	positiveVoice := fmt.Sprintf("MIN(%d, ROUND(COALESCE(%s, 0) * %d))", config.VoiceCap, positiveVoiceExpression, config.VoiceWeight)
+	positiveCircle := fmt.Sprintf("MIN(%d, ROUND(COALESCE(%s, 0) * %d))", config.CircleCap, positiveCircleExpression, config.CircleWeight)
 	negativeTag := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeTagCap, negativeTagExpression, config.NegativeTagWeight)
 	negativeVoice := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeVoiceCap, negativeVoiceExpression, config.NegativeVoiceWeight)
 	negativeCircle := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeCircleCap, negativeCircleExpression, config.NegativeCircleWeight)
@@ -350,18 +354,20 @@ func (s *Store) RecommendationBreakdownWithConfig(ctx context.Context, userID, w
 		return buildRecommendationBreakdown(config, RecommendationSignals{ListeningStatus: "none"}), nil
 	}
 	query := fmt.Sprintf(`SELECT COALESCE(user_work_state.listening_status, 'none'), COALESCE(user_work_state.favorite, 0),
-		%s, %s, %s, %s, %s, %s
+		%s, %s, %s, %s, %s, %s, %s, %s, %s
 		FROM work
 		LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
 		WHERE work.id = ?`, positiveTagMatchCountExpression, positiveVoiceMatchCountExpression, positiveCircleMatchCountExpression,
-		negativeTagMatchCountExpression(config.NegativeMinEvidence), negativeVoiceMatchCountExpression(config.NegativeMinEvidence), negativeCircleMatchCountExpression(config.NegativeMinEvidence))
-	args := append(recommendationUserArgs(userID), userID, workID)
+		negativeTagMatchCountExpression(config.NegativeMinEvidence), negativeVoiceMatchCountExpression(config.NegativeMinEvidence), negativeCircleMatchCountExpression(config.NegativeMinEvidence), positiveAffinityExpression("tag"), positiveAffinityExpression("voice"), positiveAffinityExpression("circle"))
+	args := append(recommendationUserArgs(userID), userID, userID, userID, userID, workID)
 	var signals RecommendationSignals
+	signals.Affinity = &RecommendationAffinity{}
 	var favorite int
 	err := s.db.QueryRowContext(ctx, query, args...).Scan(
 		&signals.ListeningStatus, &favorite,
 		&signals.PositiveTagMatches, &signals.PositiveVoiceMatches, &signals.PositiveCircleMatches,
 		&signals.NegativeTagMatches, &signals.NegativeVoiceMatches, &signals.NegativeCircleMatches,
+		&signals.Affinity.Tags, &signals.Affinity.Voices, &signals.Affinity.Circles,
 	)
 	if err != nil {
 		return RecommendationBreakdown{}, err
@@ -382,9 +388,13 @@ func (s *Store) RecommendationScore(ctx context.Context, userID, workID int64) (
 }
 
 func buildRecommendationBreakdown(config RecommendationConfig, signals RecommendationSignals) RecommendationBreakdown {
-	tags := minInt(config.TagCap, signals.PositiveTagMatches*config.TagWeight)
-	voices := minInt(config.VoiceCap, signals.PositiveVoiceMatches*config.VoiceWeight)
-	circles := minInt(config.CircleCap, signals.PositiveCircleMatches*config.CircleWeight)
+	affinity := RecommendationAffinity{Tags: float64(signals.PositiveTagMatches), Voices: float64(signals.PositiveVoiceMatches), Circles: float64(signals.PositiveCircleMatches)}
+	if signals.Affinity != nil {
+		affinity = *signals.Affinity
+	}
+	tags := minInt(config.TagCap, int(math.Round(affinity.Tags*float64(config.TagWeight))))
+	voices := minInt(config.VoiceCap, int(math.Round(affinity.Voices*float64(config.VoiceWeight))))
+	circles := minInt(config.CircleCap, int(math.Round(affinity.Circles*float64(config.CircleWeight))))
 	favorite := 0
 	if signals.Favorite {
 		favorite = config.FavoriteBonus
@@ -458,14 +468,20 @@ func recommendationSeededHash(workID, randomSeed int64) int64 {
 // RecommendationOrderingFor returns the deterministic ordering adjustment for
 // one work and a particular browse seed. Affinity remains an integer score for
 // badges and telemetry; RankingScore is only for the current lane ordering.
-func RecommendationOrderingFor(workID int64, affinityScore int, randomSeed int64, config RecommendationConfig) RecommendationOrdering {
+func RecommendationOrderingFor(workID int64, affinityScore int, randomSeed int64, config RecommendationConfig, diversityPenalty ...int) RecommendationOrdering {
 	hash := recommendationSeededHash(workID, randomSeed)
 	proportion := float64(hash) / float64(recommendationHashModulus)
-	explorationBoost := proportion * float64(config.ExplorationAmplitude)
-	jitter := (proportion*2.0 - 1.0) * float64(config.JitterAmplitude)
-	totalAdjustment := explorationBoost + jitter
+	explorationBoost := proportion * float64(config.ExplorationAmplitude) * float64(100-affinityScore) / 100
+	jitterHash := recommendationSeededHash(workID, randomSeed+104729)
+	jitter := (float64(jitterHash)/float64(recommendationHashModulus)*2.0 - 1.0) * float64(config.JitterAmplitude)
+	penalty := 0
+	if len(diversityPenalty) > 0 {
+		penalty = diversityPenalty[0]
+	}
+	totalAdjustment := explorationBoost + jitter - float64(penalty)
 	return RecommendationOrdering{
 		Seed:             randomSeed,
+		DiversityPenalty: penalty,
 		ExplorationBoost: explorationBoost,
 		Jitter:           jitter,
 		TotalAdjustment:  totalAdjustment,
@@ -641,7 +657,7 @@ func recommendationListSelectSQL(baseSelect string, direction string, randomSeed
 
 func recommendationOrderedSelectSQL(baseSelect string, direction string, randomSeed int64, config RecommendationConfig, projection string) string {
 	_, direction = normalizeSort("recommend", direction)
-	withinLane := recommendationExplorationOrderBy("id", direction, randomSeed, config.JitterAmplitude, config.ExplorationAmplitude)
+	withinLane := recommendationExplorationOrderBy("id", direction, randomSeed, config.JitterAmplitude, config.ExplorationAmplitude, "recommendation_diversity_penalty")
 	position := recommendationLanePositionExpression(config, "recommendation_lane", "recommendation_lane_rank")
 	suppressed := recommendationLaneSuppressedExpression(config, "recommendation_lane")
 	return `WITH recommendation_candidates AS (` + baseSelect + `),
@@ -665,17 +681,21 @@ func recommendationOrderedSelectSQL(baseSelect string, direction string, randomS
 // giving each candidate a deterministic, seed-specific discovery boost. A new
 // seed therefore surfaces different plausible works without breaking stable
 // pagination for the current browse session.
-func recommendationExplorationOrderBy(idExpression string, direction string, randomSeed int64, jitterAmplitude int, explorationAmplitude int) string {
+func recommendationExplorationOrderBy(idExpression string, direction string, randomSeed int64, jitterAmplitude int, explorationAmplitude int, diversityExpression ...string) string {
 	hash := seededHashExpression(idExpression, randomSeed)
 	exploration := "0"
 	if explorationAmplitude > 0 {
-		exploration = fmt.Sprintf("((%s / 2147483647.0) * %d)", hash, explorationAmplitude)
+		exploration = fmt.Sprintf("((%s / 2147483647.0) * %d * (100 - recommend_score) / 100.0)", hash, explorationAmplitude)
 	}
 	jitter := "0"
 	if jitterAmplitude > 0 {
-		jitter = fmt.Sprintf("(((%s / 2147483647.0) * 2.0 - 1.0) * %d)", hash, jitterAmplitude)
+		jitter = fmt.Sprintf("(((%s / 2147483647.0) * 2.0 - 1.0) * %d)", seededHashExpression(idExpression, randomSeed+104729), jitterAmplitude)
 	}
-	return fmt.Sprintf("(recommend_score + %s + %s) %s, %s ASC, %s ASC", exploration, jitter, direction, hash, idExpression)
+	penalty := "0"
+	if len(diversityExpression) > 0 {
+		penalty = diversityExpression[0]
+	}
+	return fmt.Sprintf("(recommend_score + %s + %s - %s) %s, %s ASC, %s ASC", exploration, jitter, penalty, direction, hash, idExpression)
 }
 
 func minInt(left, right int) int {

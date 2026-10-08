@@ -1327,7 +1327,8 @@ export const surfaceKorean = {
     rankingScore: "순위 점수",
     loadingScore: "점수 로드 중",
     recommendationExplanation:
-      "청취 상태가 추천 구성에서의 위치를 결정합니다. 각 상태에서 친화도는 현재 시드 탐색 부스트와 결과 변동에 따라 조정됩니다.",
+      "청취 상태가 추천 구성을 결정합니다. 선호도는 반복된 긍정적 반응을 반영하고 흔한 태그의 비중을 줄입니다. 같은 상태에서는 근거가 적은 작품에 탐색 가점을 주며, 독립적인 변동과 작은 제작자 다양성 조정이 순위에 반영됩니다.",
+    diversityAdjustment: "제작자 다양성",
     matchedSignals: "{{count}}개 신호 일치",
     rawScoreBounded: "원시 점수 {{raw}}, 제한 후 {{score}}",
     directoryUnavailable: "디렉터리를 사용할 수 없음",

@@ -77,7 +77,7 @@ func (s *Server) getWorkRecommendation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if randomSeed != nil {
-		ordering := library.RecommendationOrderingFor(workID, breakdown.Score, *randomSeed, orderingConfig)
+		ordering := library.RecommendationOrderingFor(workID, breakdown.Score, *randomSeed, orderingConfig, breakdown.Signals.DiversityPenalty)
 		breakdown.Ordering = &ordering
 	}
 	writeJSON(w, http.StatusOK, breakdown)

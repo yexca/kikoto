@@ -1258,7 +1258,8 @@ export const surfaceHans = {
     rankingScore: "排名分数",
     loadingScore: "正在加载分数",
     recommendationExplanation:
-      "聆听状态决定推荐组合中的位置。在每种状态内，亲和度会根据当前种子探索加成和结果变化进行调整。",
+      "聆听状态决定推荐组合。亲和度会考虑多次正向反馈，并降低常见标签的权重。在每种状态内，探索更偏向证据较少的作品；独立的随机变化和小幅创作者多样性调整影响排序。",
+    diversityAdjustment: "创作者多样性",
     matchedSignals: "匹配了 {{count}} 个信号",
     rawScoreBounded: "原始 {{raw}}，限制为 {{score}}",
     directoryUnavailable: "目录不可用",

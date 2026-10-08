@@ -76,6 +76,7 @@ export type WorkCardViewModel = {
   sourceBadges: WorkCardBadge[];
   recommended?: boolean;
   recommendationScore?: number;
+  recommendationRevealDelay?: number;
 };
 
 export function WorkCardShell({
@@ -155,6 +156,7 @@ export function WorkCardShell({
         selection={selection}
         recommended={work.recommended}
         recommendationScore={work.recommendationScore}
+        recommendationRevealDelay={work.recommendationRevealDelay}
         onRecommendationOpen={onRecommendationOpen}
       />
       <WorkCardBody
@@ -215,6 +217,7 @@ export function WorkCardMedia({
   selection,
   recommended = false,
   recommendationScore,
+  recommendationRevealDelay,
   onRecommendationOpen,
 }: {
   coverUrl?: string;
@@ -226,6 +229,7 @@ export function WorkCardMedia({
   selection?: ReactNode;
   recommended?: boolean;
   recommendationScore?: number;
+  recommendationRevealDelay?: number;
   onRecommendationOpen?: () => void;
 }) {
   const { t } = useTranslation();
@@ -272,7 +276,16 @@ export function WorkCardMedia({
             </button>
           ) : (
             <div
-              className={cn(coverChipClassName, "absolute left-1.5 top-1.5 h-7 tabular-nums")}
+              className={cn(
+                coverChipClassName,
+                "absolute left-1.5 top-1.5 h-7 tabular-nums",
+                recommendationRevealDelay !== undefined && "recommendation-reveal",
+              )}
+              style={
+                recommendationRevealDelay === undefined
+                  ? undefined
+                  : { animationDelay: `${recommendationRevealDelay}ms` }
+              }
               title={t("workCard.recommendedForYou")}
               aria-label={t("workCard.recommendedForYou")}
             >

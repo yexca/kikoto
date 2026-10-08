@@ -62,6 +62,14 @@ export function RecommendationExplanationDialog({
                     {formatRecommendationAdjustment(state.breakdown.ordering.jitter)}
                   </span>
                 </div>
+                {Boolean(state.breakdown.ordering.diversityPenalty) && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">{i18n.t("libraryDetail.diversityAdjustment")}</span>
+                    <span className="font-medium tabular-nums">
+                      {formatRecommendationAdjustment(-(state.breakdown.ordering.diversityPenalty ?? 0))}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-3 border-t pt-2">
                   <span className="font-medium">{i18n.t("libraryDetail.rankingScore")}</span>
                   <span className="font-semibold tabular-nums">{state.breakdown.ordering.rankingScore.toFixed(1)}</span>

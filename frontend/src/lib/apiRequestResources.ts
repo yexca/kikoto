@@ -18,7 +18,8 @@ export function apiMutationResources(path: string): {
   if (/^\/api\/media-items\/\d+\/progress$/.test(pathname) || pathname === "/api/listening-sessions") {
     return { forget: ["work-state"], interrupt: [] };
   }
-  if (pathname === "/api/recommendation-events") return { forget: [], interrupt: [] };
+  if (pathname === "/api/recommendation-events" || /^\/api\/remote-sources\/\d+\/recommendations$/.test(pathname))
+    return { forget: [], interrupt: [] };
 
   const work = /^\/api\/works\/(\d+)(?:\/|$)/.exec(pathname);
   if (work) {

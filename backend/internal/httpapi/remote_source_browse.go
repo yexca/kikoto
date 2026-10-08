@@ -141,6 +141,9 @@ func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Reque
 	client := s.kikoeruClientForSource(ctx, source)
 	if len(request.Plan.PostFilterClauses) > 0 {
 		works, total, sortApplied, err := s.remotePostFilteredPageWithLanguages(ctx, userID, source.ID, client, request.Plan, request.UpstreamOrder, request.Direction, request.Seed, request.Page, request.PageSize, request.Languages)
+		if err == nil && request.IncludeRecommendation {
+			err = s.scoreRemoteWorkSummaries(r, userID, works)
+		}
 		return s.writeRemoteSourceWorksResult(w, ctx, source, diagnosticURL, request, works, total, sortApplied, err)
 	}
 	remotePage, err := client.ListWorksSortedSeeded(ctx, request.Page, request.PageSize, request.Plan.PushdownQuery, request.UpstreamOrder, request.Direction, request.Seed)
@@ -150,9 +153,14 @@ func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Reque
 		return nil
 	}
 	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
-	works, err := s.remoteWorkSummariesWithLanguages(ctx, userID, source.ID, remotePage.Works, request.Languages, request.IncludeRecommendation)
+	works, err := s.remoteWorkSummariesWithLanguages(ctx, userID, source.ID, remotePage.Works, request.Languages)
 	if err != nil {
 		return err
+	}
+	if request.IncludeRecommendation {
+		if err := s.scoreRemoteWorkSummaries(r, userID, works); err != nil {
+			return err
+		}
 	}
 	writeJSON(w, http.StatusOK, remoteWorksResponse{SourceID: source.ID, Works: works, Page: request.Page, PageSize: request.PageSize, Total: remotePageTotal(remotePage), Status: "ok", Sort: request.Sort, Direction: request.Direction, SortApplied: remotePage.SortApplied})
 	return nil
