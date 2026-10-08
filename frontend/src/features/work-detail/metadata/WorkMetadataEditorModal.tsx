@@ -8,6 +8,7 @@ import { api, type WorkDetail, type WorkMetadataSyncRunResult } from "@/lib/api"
 import { cn } from "@/lib/tailwindClassNames";
 import { MetadataEditorCoverSection } from "./MetadataEditorCoverSection";
 import { MetadataEditorCreditsSection, useMetadataCreditsEditor } from "./MetadataEditorCreditsSection";
+import { MetadataEditorFamilySection } from "./MetadataEditorFamilySection";
 import { MetadataEditorSourceSection, type StagedMetadataLink } from "./MetadataEditorSourceSection";
 import { MetadataEditorPurchaseBonusSection, type StagedPurchaseBonus } from "./MetadataEditorPurchaseBonusSection";
 import { WorkMetadataTagsSection } from "./WorkMetadataTagsSection";
@@ -306,6 +307,7 @@ export function WorkMetadataEditorModal({
                   staged={stagedBonus}
                   onStage={setStagedBonus}
                 />
+                <MetadataEditorFamilySection work={work} />
               </div>
             )}
           </fieldset>

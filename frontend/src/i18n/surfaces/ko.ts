@@ -72,6 +72,17 @@ export const surfaceKorean = {
       saved: "{{code}}의 특전으로 연결했습니다.",
       removed: "특전 연결을 해제했습니다.",
     },
+    family: {
+      title: "작품 패밀리",
+      description: "하나의 작품으로 묶인 언어판과 거기에 연결된 구매 특전입니다.",
+      editions: "이 패밀리의 판",
+      bonuses: "이 패밀리의 구매 특전",
+      alone: "이 패밀리에는 {{code}}만 있습니다.",
+      current: "현재",
+      local: "라이브러리에 있음",
+      metadataOnly: "메타데이터만",
+      bonus: "구매 특전",
+    },
     searchTags: "태그를 검색하거나 새 태그를 입력하세요",
     tagHint:
       "Enter를 누르면 강조된 태그를 추가하거나 입력한 이름으로 태그를 만듭니다. 태그의 언어 버튼으로 언어별 이름을 편집합니다.",

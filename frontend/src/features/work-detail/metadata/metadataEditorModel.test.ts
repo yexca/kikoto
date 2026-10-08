@@ -6,6 +6,7 @@ import {
   normalizedMetadataLinkCode,
   payloadChangesCredits,
   providerCoverSource,
+  workFamilyEditions,
   workMetadataOverridePayload,
 } from "./metadataEditorModel";
 
@@ -140,5 +141,30 @@ describe("cover choice", () => {
       "reverting",
     );
     expect(coverFieldStatus({ selectedCoverId: null, initialCoverId: null, reverted: false })).toBe("source");
+  });
+
+  it("lists a family's original edition first, then by language and code", () => {
+    const edition = (primaryCode: string, metadataLanguage: string, origin = false) => ({
+      workId: null,
+      primaryCode,
+      title: primaryCode,
+      metadataLanguage,
+      editionLabel: "",
+      origin,
+      official: !origin,
+      translationKind: origin ? ("origin" as const) : ("official" as const),
+      current: false,
+      hasMedia: false,
+      mediaState: "metadata_only" as const,
+      localAvailable: false,
+    });
+    expect(
+      workFamilyEditions([
+        edition("RJ00000012", "zh-cn"),
+        edition("RJ00000011", "en-us"),
+        edition("RJ00000003", "zh-cn"),
+        edition("RJ00000010", "ja-jp", true),
+      ]).map((item) => item.primaryCode),
+    ).toEqual(["RJ00000010", "RJ00000011", "RJ00000003", "RJ00000012"]);
   });
 });
