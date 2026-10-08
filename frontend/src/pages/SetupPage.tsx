@@ -80,6 +80,7 @@ export function SetupPage() {
             <label className="grid gap-1.5 text-sm font-medium">
               {t("setup.setupToken")}
               <Input
+                name="setup-token"
                 value={setupToken}
                 onChange={(event) => setSetupToken(event.target.value)}
                 autoComplete="one-time-code"
@@ -101,6 +102,7 @@ export function SetupPage() {
             <label className="grid gap-1.5 text-sm font-medium">
               {t("setup.username")}
               <Input
+                name="username"
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
                 autoComplete="username"
@@ -110,6 +112,7 @@ export function SetupPage() {
             <label className="grid gap-1.5 text-sm font-medium">
               {t("setup.password")}
               <Input
+                name="password"
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -125,6 +128,7 @@ export function SetupPage() {
             <label className="grid gap-1.5 text-sm font-medium">
               {t("setup.confirmPassword")}
               <Input
+                name="confirm-password"
                 type="password"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}

@@ -29,6 +29,18 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className, field
 ));
 Input.displayName = "Input";
 
+/**
+ * For a credential that is not the viewer's own Kikoto sign-in, such as another
+ * user's account or a proxy login. Browsers and password managers then neither
+ * fill the viewer's saved sign-in nor offer to save the value as it.
+ */
+const otherCredentialFieldProps = {
+  autoComplete: "off",
+  "data-1p-ignore": "",
+  "data-bwignore": "",
+  "data-lpignore": "true",
+} as const;
+
 const nativeSelectVariants = cva(cn(fieldBase, "cursor-pointer pr-2"), {
   variants: { fieldSize: fieldSizeVariants },
   defaultVariants: { fieldSize: "default" },
@@ -51,4 +63,4 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttribu
 );
 Textarea.displayName = "Textarea";
 
-export { Input, NativeSelect, Textarea, inputVariants };
+export { Input, NativeSelect, Textarea, inputVariants, otherCredentialFieldProps };
