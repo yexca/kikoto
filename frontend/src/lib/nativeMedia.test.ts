@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const isNativeApp = vi.hoisted(() => vi.fn(() => false));
+const isAndroidApp = vi.hoisted(() => vi.fn(() => false));
 const plugin = vi.hoisted(() => ({
   update: vi.fn(),
   stop: vi.fn(),
@@ -11,7 +11,7 @@ const plugin = vi.hoisted(() => ({
 const registerPlugin = vi.hoisted(() => vi.fn(() => plugin));
 
 vi.mock("@capacitor/core", () => ({ registerPlugin }));
-vi.mock("@/lib/serverConfig", () => ({ isNativeApp }));
+vi.mock("@/lib/serverConfig", () => ({ isAndroidApp }));
 
 import {
   abandonNativeAudioFocus,
@@ -39,8 +39,8 @@ const mediaState = {
 
 describe("native media bridge", () => {
   beforeEach(() => {
-    isNativeApp.mockReset();
-    isNativeApp.mockReturnValue(false);
+    isAndroidApp.mockReset();
+    isAndroidApp.mockReturnValue(false);
     plugin.update.mockReset();
     plugin.stop.mockReset();
     plugin.requestAudioFocus.mockReset();
@@ -63,7 +63,7 @@ describe("native media bridge", () => {
   });
 
   it("forwards media lifecycle calls and listener cleanup on native platforms", async () => {
-    isNativeApp.mockReturnValue(true);
+    isAndroidApp.mockReturnValue(true);
     plugin.update.mockResolvedValue(undefined);
     plugin.stop.mockResolvedValue(undefined);
     plugin.requestAudioFocus.mockResolvedValue({ granted: true });
@@ -88,7 +88,7 @@ describe("native media bridge", () => {
   });
 
   it("contains unavailable native-plugin failures", async () => {
-    isNativeApp.mockReturnValue(true);
+    isAndroidApp.mockReturnValue(true);
     plugin.update.mockRejectedValue(new Error("plugin unavailable"));
     plugin.stop.mockRejectedValue(new Error("plugin unavailable"));
     plugin.requestAudioFocus.mockRejectedValue(new Error("plugin unavailable"));
@@ -101,7 +101,7 @@ describe("native media bridge", () => {
   });
 
   it("coalesces bridge updates while one native call is in flight", async () => {
-    isNativeApp.mockReturnValue(true);
+    isAndroidApp.mockReturnValue(true);
     let releaseFirst: () => void = () => {};
     plugin.update.mockImplementationOnce(
       () =>

@@ -217,6 +217,18 @@ To run JVM tests and build the APK together, use `make android-test android-buil
 Both targets share `android-sync`, which builds the frontend and synchronizes
 Capacitor once per Make invocation. Either target also works independently.
 
+The iOS shell under `frontend/ios` builds only on macOS with Xcode and its iOS
+platform component installed:
+
+```sh
+make ios-build
+```
+
+The target synchronizes Capacitor through `ios-sync` and writes an unsigned
+`kikoto-<version>-unsigned.ipa` under `frontend/ios/App/build`. The IPA is not
+installable as built; a sideloading tool re-signs it with the installing
+user's identity. The iOS shell has no unit-test suite or CI job.
+
 CI runs the following dependency graph:
 
 ```text

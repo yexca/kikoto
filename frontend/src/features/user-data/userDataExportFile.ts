@@ -3,7 +3,7 @@ import { registerPlugin } from "@capacitor/core";
 import { isNativeApp } from "@/lib/serverConfig";
 
 type KikotoPersonalDataPlugin = {
-  /** Opens the Android document picker for `kikoto-user-data.json`; `saved` is false when the user cancels. */
+  /** Opens the system document picker for `kikoto-user-data.json`; `saved` is false when the user cancels. */
   saveExport(options: { data: string }): Promise<{ saved: boolean }>;
 };
 
@@ -18,7 +18,7 @@ type BrowserDownloadEnvironment = {
 };
 
 /**
- * Saves an exported personal-data document. The Android app hands the JSON to
+ * Saves an exported personal-data document. A native app hands the JSON to
  * the system document picker and waits for the user's choice; a browser
  * downloads it as a file. The JSON is compact so a large export stays within
  * the import size limit when it is imported again.

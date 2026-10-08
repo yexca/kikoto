@@ -9,9 +9,9 @@ import {
   nativeLyricsOverlayStatus,
   requestNativeLyricsOverlayPermission,
   showNativeLyricsOverlay,
+  supportsNativeMedia,
   updateNativeLyricsOverlayPlayback,
 } from "@/lib/nativeMedia";
-import { isNativeApp } from "@/lib/serverConfig";
 
 export type ScreenLyricLine = { time: number; text: string };
 
@@ -76,7 +76,7 @@ function documentPictureInPicture(): DocumentPictureInPictureAPI | null {
 
 export function screenLyricsBackend(): ScreenLyricsBackend | null {
   if (typeof window === "undefined" || typeof document === "undefined") return null;
-  if (isNativeApp()) return "native";
+  if (supportsNativeMedia()) return "native";
   if (documentPictureInPicture()) return "document-pip";
   if (
     document.pictureInPictureEnabled &&

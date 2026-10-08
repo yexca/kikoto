@@ -39,7 +39,8 @@ version.
 
 `VERSION` is the single source for the application semantic version and uses
 the `v<major>.<minor>.<patch>` format. Vite reads it directly, release builds
-inject it into the Go backend, and Android derives `versionName` from it.
+inject it into the Go backend, Android derives `versionName` from it, and the
+iOS build passes it without the `v` prefix as both bundle versions.
 Android derives its default monotonic `versionCode` as
 `major * 1,000,000 + minor * 1,000 + patch`.
 
