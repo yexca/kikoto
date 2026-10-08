@@ -953,12 +953,25 @@ export const surfaceEnglish = {
       saved: "Purchase bonus linking saved.",
     },
     metadataSyncScope: {
+      dlsite: "DLsite",
+      workCodesPlaceholder: "RJ00000000\nRJ00000001",
+      source: "Metadata source",
+      sourceHint: "Refreshes this source's metadata. Manual edits and DLsite values keep their precedence.",
+      workCodes: "Work codes",
+      workCodesHint: "Enter up to 100 existing work codes, separated by spaces, commas or new lines.",
+      worksRequired: "Enter 1 to 100 valid work codes already in the library.",
+      sourceRequired: "Choose an enabled metadata source.",
+      fallbackRequired: "Choose 1 to 16 enabled fallback sources.",
+      sourcesFailed: "Metadata sources could not be loaded.",
+      fallbackHint: "For this run, try the selected sources in order only when DLsite reports a work as not found.",
+      bonusHint: "Automatically identify and link purchase bonuses for this run. Existing links continue to apply.",
       label: "Works",
       hint: "Only works already in the library are refreshed; new catalog works are added by the follow workflows.",
       scopes: {
         all: "All works",
         circle: "Circle",
         voice: "Voice actor",
+        works: "Selected works",
       },
       mode: "Refresh",
       modes: {
@@ -969,6 +982,7 @@ export const surfaceEnglish = {
       circlePlaceholder: "RG12345",
       circleRequired: "Enter a circle ID such as RG12345.",
       voiceRequired: "Choose a voice actor.",
+      voiceSourceRequired: "Voice actor sync requires an enabled remote metadata source.",
     },
     presetOptionalFilters: {
       maxWorks: "Limit works per run",

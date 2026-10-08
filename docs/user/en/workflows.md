@@ -145,13 +145,20 @@ Workflows make backend actions inspectable.
   that it needs reconfiguring. Open the trigger, check its Run options, save it,
   and turn it on again.
 - Metadata sync refreshes works already in the library. Its Run options choose
-  **Works** (All works, one circle's works, or one voice actor's works) and
-  **Refresh** (Missing or outdated, or All metadata). Its interval triggers
-  store the same choice. Administrators with `sources:write` also see
-  **Configure** beside **Run**: it sets the instance-wide
+  **Works** (All works, one circle, one voice actor, or Selected works),
+  **Metadata source** tabs, and **Refresh** (Missing or outdated, or All metadata).
+  All works and Selected works default to DLsite and can select an enabled
+  metadata-capable remote source. Circle shows only DLsite. Voice actor shows
+  only remote sources and is unavailable until one is configured and enabled.
+  Selected works accepts up to 100 existing codes separated by spaces, commas
+  or newlines and defaults to All metadata. With DLsite selected, Run options
+  also show the
   [remote metadata fallback](settings.md#remote-metadata-fallback) and
-  [purchase bonus linking](settings.md#purchase-bonuses), and saves only those
-  settings.
+  [purchase bonus linking](settings.md#purchase-bonuses). These choices apply
+  to this run. Interval triggers store the same options, and retries keep them.
+  Remote refresh preserves manual edits and DLsite precedence; Missing or
+  outdated checks metadata from the selected source. The source selector and
+  fallback controls are hidden when no capable enabled remote is configured.
 - User-authored custom workflows, the DAG editor, slash commands, and the
   definition run dialog were removed. Upgrading deletes existing user
   definitions and their triggers; their runs stay in Activity history.

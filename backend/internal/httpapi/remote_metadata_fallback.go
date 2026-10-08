@@ -49,10 +49,18 @@ type remoteMetadataFallbackResult struct {
 // Each source is asked once through workInfo; a matching cached catalog
 // response is reused instead of a request. It never creates a work.
 func (s *Server) runRemoteMetadataFallback(ctx context.Context, workID int64, code string) (remoteMetadataFallbackResult, error) {
-	result := remoteMetadataFallbackResult{Status: remoteFallbackDisabled, Attempts: []remoteMetadataFallbackAttempt{}}
 	settings, err := remotemetadata.LoadSettings(ctx, s.db)
-	if err != nil || !settings.Enabled {
-		return result, err
+	if err != nil {
+		return remoteMetadataFallbackResult{}, err
+	}
+	return s.runRemoteMetadataFallbackWithSettings(ctx, workID, code, settings)
+}
+
+// Run choices control requests only. Stored projection ordering is unchanged.
+func (s *Server) runRemoteMetadataFallbackWithSettings(ctx context.Context, workID int64, code string, settings remotemetadata.Settings) (remoteMetadataFallbackResult, error) {
+	result := remoteMetadataFallbackResult{Status: remoteFallbackDisabled, Attempts: []remoteMetadataFallbackAttempt{}}
+	if !settings.Enabled {
+		return result, nil
 	}
 	var hasDLsite bool
 	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS (

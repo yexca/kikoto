@@ -32,12 +32,13 @@ func TestMetadataSyncScopeSelectsExistingCreatorWorks(t *testing.T) {
 		}
 	}
 	server := NewServer(db, config.Config{})
+	sourceID := (remoteFallbackFixture{db: db}).addSource(t, "A", 10, "https://source.example.invalid")
 	for _, testCase := range []struct {
 		options metadataSyncOptions
 		want    []int64
 	}{
 		{metadataSyncOptions{Scope: "circle", CircleID: "rg00001"}, []int64{1, 2}},
-		{metadataSyncOptions{Scope: "voice", PersonID: 7, Mode: "full"}, []int64{1, 4}},
+		{metadataSyncOptions{Scope: "voice", PersonID: 7, SourceID: sourceID, Mode: "full"}, []int64{1, 4}},
 	} {
 		options, err := server.validateMetadataSyncOptions(context.Background(), testCase.options)
 		if err != nil {
@@ -102,9 +103,11 @@ func TestCreateMetadataSyncRunValidatesScope(t *testing.T) {
 		return response
 	}
 	for body, want := range map[string]string{
-		`{"scope":"circle","circleId":"RJ00000001"}`: "circleId",
-		`{"scope":"voice","personId":404}`:           "voice actor not found",
-		`{"scope":"all","mode":"deep"}`:              "mode",
+		`{"scope":"circle","circleId":"RJ00000001"}`:           "circleId",
+		`{"scope":"voice","personId":404,"sourceId":1}`:        "voice actor not found",
+		`{"scope":"circle","circleId":"RG00001","sourceId":1}`: "circle metadata sync requires DLsite",
+		`{"scope":"voice","personId":7}`:                       "voice actor metadata sync requires a remote metadata source",
+		`{"scope":"all","mode":"deep"}`:                        "mode",
 	} {
 		if response := post(body); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), want) {
 			t.Fatalf("%s = %d, %s", body, response.Code, response.Body.String())

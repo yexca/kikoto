@@ -356,8 +356,16 @@ including an empty one, is authoritative. Code checks the declared capability
 and source type, never a display name. A remote source's provider identity is
 `kikoeru_source_<source code>`.
 
-`app_setting.remote_metadata_fallback` stores `{"enabled", "sourceIds"}`,
-default off with no sources. Selected metadata-capable sources form the
+The metadata workflow stores `sourceId`, `workCodes`, `remoteMetadataFallback`
+and `purchaseBonusAutoLink` alongside its scope and mode in run, job and trigger
+JSON. These are execution options, not instance-setting mutations. Retries keep
+the saved values. Existing per-work jobs snapshot their legacy defaults when
+queued. No schema migration is needed.
+
+The retained legacy `app_setting.remote_metadata_fallback` stores `{"enabled", "sourceIds"}`,
+default off with no sources. It continues to govern stored metadata presentation
+and legacy per-work refresh defaults. It is independent of a bulk run's request
+choices. Selected metadata-capable sources form the
 fallback order. Every remote source is ranked, with the selected ones first in
 that order and the others by source priority and id. The ranking decides every
 remote value, so the result no longer depends on which source wrote last.

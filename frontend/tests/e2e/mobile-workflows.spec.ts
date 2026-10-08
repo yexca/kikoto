@@ -26,16 +26,16 @@ import type {
   WorkflowTrigger,
 } from "../../src/lib/api";
 import {
-  appSettingsFixture,
   authenticatedStateFixture,
   currentUserFixture,
-  fileSourceFixture,
   fixtureTimestamp,
   librarySourceFixture,
   remoteTrackFixture,
   remoteWorkDetailFixture,
   remoteWorkTracksFixture,
   runtimeSettingsFixture,
+  voiceSummaryFixture,
+  voiceSummaryPageFixture,
   workflowRunDetailFixture,
   workflowRunFixture,
   workflowRunsPageFixture,
@@ -1145,84 +1145,230 @@ test("workflow deep links do not override a later workflow selection", async ({ 
   await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toHaveCount(0);
 });
 
-test("@desktop Metadata sync configuration saves the remote metadata fallback order", async ({ page }) => {
-  await mockWorkflows(page);
-  const remote = (id: number, priority: number, capabilities?: string[]) =>
-    fileSourceFixture({
-      id,
-      code: `example_remote_${id}`,
-      displayName: `Example Remote ${String.fromCharCode(64 + id)}`,
-      sourceType: "kikoeru_compatible",
-      priority,
-      config: capabilities ? { capabilities } : {},
+async function mockMetadataRun(page: Page) {
+  const submissions: Record<string, unknown>[] = [];
+  await page.route("**/api/workflow-runs/dlsite-sync", async (route) => {
+    submissions.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 202,
+      json: {
+        runId: 91,
+        jobId: 92,
+        status: "queued",
+        targetWorks: 0,
+        syncedWorks: 0,
+        skippedWorks: 0,
+        failedWorks: 0,
+        unavailableWorks: 0,
+        reviewCandidates: [],
+        failures: [],
+      },
     });
-  let settings = appSettingsFixture({
-    fileSources: [remote(1, 10), remote(2, 20), remote(3, 30, [])],
-    remoteMetadataFallback: { enabled: false, sourceIds: [] },
   });
-  const saved: unknown[] = [];
-  await page.route("**/api/settings", async (route) => {
-    if (route.request().method() === "PATCH") {
-      const body = route.request().postDataJSON() as Partial<typeof settings>;
-      saved.push(body);
-      settings = { ...settings, ...body };
-    }
-    await route.fulfill({ json: settings });
+  return submissions;
+}
+
+test("@desktop Metadata sync saves fallback order and bonus choices in this run only", async ({ page }) => {
+  await mockWorkflows(page);
+  const submissions = await mockMetadataRun(page);
+  await page.route("**/api/library-sources", (route) =>
+    route.fulfill({
+      json: [
+        librarySourceFixture({ id: 1, displayName: "Example Remote A" }),
+        librarySourceFixture({ id: 2, displayName: "Example Remote B" }),
+        librarySourceFixture({ id: 3, metadataCapable: false, displayName: "Example No Metadata" }),
+        librarySourceFixture({ id: 4, enabled: false, displayName: "Example Disabled" }),
+      ],
+    }),
+  );
+  const settingsWrites: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "PATCH" && request.url().endsWith("/api/settings"))
+      settingsWrites.push(request.postData() ?? "");
   });
   await page.goto("/workflows?workflow=metadata_sync");
-  await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toBeVisible();
-
-  await page.getByRole("button", { name: "Configure", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Configuration", exact: true });
-  const order = dialog.getByRole("list", { name: "Fallback source order", exact: true });
-  // Only sources that declare the metadata capability are offered.
+  const options = page.getByRole("region", { name: "Run options", exact: true });
+  await expect(page.getByRole("button", { name: "Configure", exact: true })).toHaveCount(0);
+  await options.getByRole("switch", { name: "Look up works DLsite does not have", exact: true }).click();
+  const order = options.getByRole("list", { name: "Fallback source order", exact: true });
   await expect(order.getByRole("listitem")).toHaveText(["Example Remote A", "Example Remote B"]);
-  const save = dialog.getByRole("button", { name: "Save", exact: true });
-  await expect(save).toBeDisabled();
-  const toggle = dialog.getByRole("switch", { name: "Look up works DLsite does not have", exact: true });
-  await expect(toggle).toHaveAttribute("aria-checked", "false");
-  await toggle.click();
-  await dialog.getByRole("checkbox", { name: "Use Example Remote A", exact: true }).click();
-  await dialog.getByRole("checkbox", { name: "Use Example Remote B", exact: true }).click();
-  await dialog.getByRole("button", { name: "Move Example Remote B earlier", exact: true }).click();
+  await options.getByRole("checkbox", { name: "Use Example Remote A", exact: true }).click();
+  await options.getByRole("checkbox", { name: "Use Example Remote B", exact: true }).click();
+  await options.getByRole("button", { name: "Move Example Remote B earlier", exact: true }).click();
   await expect(order.getByRole("listitem")).toHaveText(["Example Remote B", "Example Remote A"]);
-  await save.click();
-  await expect.poll(() => saved.length).toBe(1);
-  // Only the fallback is sent, so this form never overwrites other settings.
-  expect(saved[0]).toEqual({ remoteMetadataFallback: { enabled: true, sourceIds: [2, 1] } });
-  await expect(dialog).toHaveCount(0);
-
-  // Reopening reads the saved order back.
-  await page.getByRole("button", { name: "Configure", exact: true }).click();
-  await expect(order.getByRole("listitem")).toHaveText(["Example Remote B", "Example Remote A"]);
-  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await options.getByRole("switch", { name: "Link purchase bonuses to their work", exact: true }).click();
+  await options.getByRole("button", { name: "Run", exact: true }).click();
+  await expect
+    .poll(() => submissions)
+    .toEqual([
+      {
+        scope: "all",
+        mode: "missing",
+        remoteMetadataFallback: { enabled: true, sourceIds: [2, 1] },
+        purchaseBonusAutoLink: false,
+      },
+    ]);
+  expect(settingsWrites).toEqual([]);
 });
 
-test("@desktop Metadata sync configuration saves purchase bonus linking alone", async ({ page }) => {
+test("Metadata sync selects multiple works and stores source choices in triggers", async ({ page }) => {
   await mockWorkflows(page);
-  let settings = appSettingsFixture({ remoteMetadataFallback: { enabled: false, sourceIds: [] } });
-  const saved: unknown[] = [];
-  await page.route("**/api/settings", async (route) => {
-    if (route.request().method() === "PATCH") {
-      const body = route.request().postDataJSON() as Partial<typeof settings>;
-      saved.push(body);
-      settings = { ...settings, ...body };
-    }
-    await route.fulfill({ json: settings });
+  await page.route("**/api/workflow-triggers/73", async (route) => {
+    const payload = route.request().postDataJSON() as Partial<WorkflowTrigger>;
+    await route.fulfill({
+      json: { ...workflowTriggers[0], id: 73, workflowCode: "metadata_sync", ...payload } satisfies WorkflowTrigger,
+    });
   });
+  const submissions = await mockMetadataRun(page);
   await page.goto("/workflows?workflow=metadata_sync");
-  await page.getByRole("button", { name: "Configure", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Configuration", exact: true });
-  // Linking defaults to on when the instance has never saved it.
-  const toggle = dialog.getByRole("switch", { name: "Link purchase bonuses to their work", exact: true });
-  await expect(toggle).toHaveAttribute("aria-checked", "true");
-  await toggle.click();
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
-  await expect.poll(() => saved.length).toBe(1);
-  expect(saved[0]).toEqual({ purchaseBonusAutoLink: false });
+  const options = page.getByRole("region", { name: "Run options", exact: true });
+  await options.getByRole("button", { name: "Selected works", exact: true }).click();
+  await expect(options.getByRole("button", { name: "Run", exact: true })).toBeDisabled();
+  await options.getByRole("textbox", { name: "Work codes", exact: true }).fill("rj00000002，RJ00000001 rj00000002");
+  await expect(options.getByRole("button", { name: "All metadata", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await options
+    .getByRole("group", { name: "Metadata source", exact: true })
+    .getByRole("button", { name: "Remote Test", exact: true })
+    .click();
+  await expect(options.getByRole("switch", { name: "Look up works DLsite does not have", exact: true })).toHaveCount(0);
+  await expect(options.getByRole("switch", { name: "Link purchase bonuses to their work", exact: true })).toHaveCount(
+    0,
+  );
+  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "New schedule", exact: true });
+  await dialog.getByRole("checkbox", { name: "Customize run options", exact: true }).click();
+  await expect(dialog.getByRole("textbox", { name: "Work codes", exact: true })).toHaveValue(
+    "rj00000002，RJ00000001 rj00000002",
+  );
+  await expect(
+    dialog
+      .getByRole("group", { name: "Metadata source", exact: true })
+      .getByRole("button", { name: "Remote Test", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  const request = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/api/workflow-triggers"),
+  );
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  expect(JSON.parse((await request).postDataJSON().configJson)).toEqual({
+    scope: "works",
+    mode: "full",
+    workCodes: ["RJ00000001", "RJ00000002"],
+    sourceId: 8,
+  });
+  await page.getByRole("button", { name: "Edit Scheduled workflow", exact: true }).click();
+  const edit = page.getByRole("dialog", { name: "Edit trigger", exact: true });
+  await expect(edit.getByRole("textbox", { name: "Work codes", exact: true })).toHaveValue("RJ00000001\nRJ00000002");
+  await expect(
+    edit
+      .getByRole("group", { name: "Metadata source", exact: true })
+      .getByRole("button", { name: "Remote Test", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await edit
+    .getByRole("group", { name: "Metadata source", exact: true })
+    .getByRole("button", { name: "DLsite", exact: true })
+    .click();
+  await edit.getByRole("switch", { name: "Look up works DLsite does not have", exact: true }).click();
+  await edit.getByRole("checkbox", { name: "Use Remote Test", exact: true }).click();
+  await edit.getByRole("switch", { name: "Link purchase bonuses to their work", exact: true }).click();
+  const update = page.waitForRequest(
+    (request) => request.method() === "PATCH" && /\/api\/workflow-triggers\/\d+$/.test(request.url()),
+  );
+  await edit.getByRole("button", { name: "Save", exact: true }).click();
+  expect(JSON.parse((await update).postDataJSON().configJson)).toEqual({
+    scope: "works",
+    mode: "full",
+    workCodes: ["RJ00000001", "RJ00000002"],
+    remoteMetadataFallback: { enabled: true, sourceIds: [8] },
+    purchaseBonusAutoLink: false,
+  });
+  await options.getByRole("button", { name: "Run", exact: true }).click();
+  await expect
+    .poll(() => submissions)
+    .toEqual([{ scope: "works", mode: "full", workCodes: ["RJ00000001", "RJ00000002"], sourceId: 8 }]);
+});
 
-  await page.getByRole("button", { name: "Configure", exact: true }).click();
-  await expect(toggle).toHaveAttribute("aria-checked", "false");
+test("Metadata sync keeps DLsite available without remote sources and recovers source loading", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.route("**/api/library-sources", (route) => route.fulfill({ status: 503, json: { error: "Unavailable" } }));
+  await page.goto("/workflows?workflow=metadata_sync");
+  const options = page.getByRole("region", { name: "Run options", exact: true });
+  await expect(options.getByRole("alert")).toContainText("Metadata sources could not be loaded.");
+  await expect(options.getByRole("button", { name: "Run", exact: true })).toBeEnabled();
+  await page.route("**/api/library-sources", (route) => route.fulfill({ json: [] }));
+  await options.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(options.getByRole("alert")).toHaveCount(0);
+  await expect(options.getByRole("group", { name: "Metadata source", exact: true }).getByRole("button")).toHaveText([
+    "DLsite",
+  ]);
+  await expect(options.getByRole("button", { name: "Voice actor", exact: true })).toBeDisabled();
+  await expect(options).toContainText("Voice actor sync requires an enabled remote metadata source.");
+  await expect(options.getByRole("switch", { name: "Look up works DLsite does not have", exact: true })).toHaveCount(0);
+  await expect(
+    options.getByRole("switch", { name: "Link purchase bonuses to their work", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "New schedule", exact: true });
+  await dialog.getByRole("checkbox", { name: "Customize run options", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Voice actor", exact: true })).toBeDisabled();
+});
+
+test("Metadata sync limits source tabs by creator scope in runs and triggers", async ({ page }) => {
+  await mockWorkflows(page);
+  await page.route("**/api/library-sources", (route) =>
+    route.fulfill({
+      json: [
+        librarySourceFixture({ id: 8, displayName: "Example Remote A" }),
+        librarySourceFixture({ id: 9, code: "example_remote_b", displayName: "Example Remote B" }),
+      ],
+    }),
+  );
+  await page.route("**/api/voices?**", (route) =>
+    route.fulfill({
+      json: voiceSummaryPageFixture([voiceSummaryFixture({ personId: 7, displayName: "Example Voice" })]),
+    }),
+  );
+  const submissions = await mockMetadataRun(page);
+  await page.goto("/workflows?workflow=metadata_sync");
+  const options = page.getByRole("region", { name: "Run options", exact: true });
+  const sources = options.getByRole("group", { name: "Metadata source", exact: true });
+  await expect(sources.getByRole("button")).toHaveText(["DLsite", "Example Remote A", "Example Remote B"]);
+  await sources.getByRole("button", { name: "Example Remote B", exact: true }).click();
+  await options.getByRole("button", { name: "Circle", exact: true }).click();
+  await expect(sources.getByRole("button")).toHaveText(["DLsite"]);
+  await expect(sources.getByRole("button", { name: "DLsite", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await options.getByRole("button", { name: "Voice actor", exact: true }).click();
+  await expect(sources.getByRole("button")).toHaveText(["Example Remote A", "Example Remote B"]);
+  await expect(sources.getByRole("button", { name: "Example Remote A", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await sources.getByRole("button", { name: "Example Remote B", exact: true }).click();
+  await expect(options.getByRole("switch")).toHaveCount(0);
+  await options.getByRole("textbox", { name: "Voice actor", exact: true }).fill("Example");
+  await options.getByRole("option", { name: "Example Voice #7", exact: true }).click();
+  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "New schedule", exact: true });
+  await dialog.getByRole("checkbox", { name: "Customize run options", exact: true }).click();
+  const triggerSources = dialog.getByRole("group", { name: "Metadata source", exact: true });
+  await expect(triggerSources.getByRole("button")).toHaveText(["Example Remote A", "Example Remote B"]);
+  await dialog.getByRole("button", { name: "Circle", exact: true }).click();
+  await expect(triggerSources.getByRole("button")).toHaveText(["DLsite"]);
+  await dialog.getByRole("button", { name: "Voice actor", exact: true }).click();
+  const request = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/api/workflow-triggers"),
+  );
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+  expect(JSON.parse((await request).postDataJSON().configJson)).toEqual({
+    scope: "voice",
+    mode: "missing",
+    personId: 7,
+    sourceId: 8,
+  });
+  await options.getByRole("button", { name: "Run", exact: true }).click();
+  await expect.poll(() => submissions).toEqual([{ scope: "voice", mode: "missing", personId: 7, sourceId: 9 }]);
 });
 
 test("a follow shortcut fills the circle id and says it did", async ({ page }) => {
