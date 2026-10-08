@@ -578,6 +578,7 @@ Important tables:
 - `recommendation_snapshot`
 - `recommendation_snapshot_state`
 - `recommendation_client_session`
+- `recommendation_generation_profile`
 
 A recommendation generation materializes one user's affinity score and
 listening lane for every work from a specific algorithm version, configuration,
@@ -587,12 +588,29 @@ affinity calculation. Current favorite and listening state still comes from
 `user_work_state` for card rendering; a later client session builds a new
 generation only when an input revision changed. The revision triggers fire
 only when a value the scorer reads changes (the work, tag, person, circle, or
-role of a relation, a tag namespace, or a user's listening status or
+role of a relation, a tag namespace, an entity name or alias, or a user's listening status or
 favorite), so a metadata refresh that rewrites provenance or timestamps does
 not rebuild recommendations. Existing sessions retain their
 generation until they expire, so a refresh cannot change another open tab's
 ordering. A released recommendation algorithm version invalidates its older
 generation binding and rebuilds it before the session is reused.
+
+`heuristic-v5` aggregates supporting works once per entity, excludes the
+candidate's own feedback, and scales positive evidence from 1 to 2 over the
+first five supporting works. Tag specificity is `1 - 0.5 * frequency / work_count`;
+contributions are rounded after summation and retain the configured caps.
+Exploration is proportional to the remaining affinity headroom, while jitter
+uses a separate seeded hash. A generation stores weighted affinity and a creator
+diversity penalty of 0–8 (two points per later work in the same listening lane
+and circle, with voice as the fallback). The penalty affects ordering only.
+
+Migration 060 stores the generation's evidence counts and name mappings in
+`recommendation_generation_profile`. The authenticated remote recommendations
+endpoint accepts at most 100 transient candidates from the displayed page,
+reads known work scores in one query, and matches unknown candidates against
+this frozen profile. Localized tag names and creator aliases resolve to one
+entity; repeated names count once and ambiguous names are ignored. Scoring does
+not fetch upstream metadata or create works, tags, creators, or source presence.
 
 ## Modeling Rules
 

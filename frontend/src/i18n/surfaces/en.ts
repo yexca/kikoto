@@ -75,6 +75,17 @@ export const surfaceEnglish = {
       saved: "Linked as a bonus for {{code}}.",
       removed: "Bonus link removed.",
     },
+    family: {
+      title: "Work family",
+      description: "Language editions grouped as one work, and the purchase bonuses linked to them.",
+      editions: "Editions in this family",
+      bonuses: "Purchase bonuses in this family",
+      alone: "This family has only {{code}}.",
+      current: "Current",
+      local: "In library",
+      metadataOnly: "Metadata only",
+      bonus: "Purchase bonus",
+    },
     searchTags: "Search tags or type a new one",
     tagHint:
       "Enter adds the highlighted tag, or creates one from the typed name. The language button on a tag edits its name in each language.",
@@ -1339,7 +1350,8 @@ export const surfaceEnglish = {
     rankingScore: "Ranking score",
     loadingScore: "Loading score",
     recommendationExplanation:
-      "Listening state controls placement in the recommendation mix. Within each state, affinity is adjusted by the current seeded discovery boost and result variation.",
+      "Listening state controls the mix. Affinity reflects repeated positive evidence and gives common tags less weight. Within each state, discovery favors weaker evidence; independent variation and a small creator diversity adjustment affect ordering.",
+    diversityAdjustment: "Creator diversity",
     matchedSignals: "{{count}} matched signal(s)",
     rawScoreBounded: "Raw {{raw}}, bounded to {{score}}",
     directoryUnavailable: "Directory unavailable",

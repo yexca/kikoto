@@ -49,8 +49,8 @@ import {
 import { openWorkCodeRoute, type WorkPreview } from "@/features/work-detail/workDetailShared";
 import {
   metadataSourceGroups,
+  metadataLanguageChoices,
   metadataVariantLabel as metadataVariantLabelFor,
-  orderedMetadataVariants,
   resolveMetadataVariant,
 } from "@/features/work-detail/metadataPresentationModel";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -1163,10 +1163,11 @@ function MetadataLanguageMenu({
   activeMetadataVariantKey: string;
   onMetadataVariantSelect?: (key: string) => void;
 }) {
-  const metadataVariants = orderedMetadataVariants(metadataPresentation?.variants ?? []);
   const activeMetadataVariant = resolveMetadataVariant(metadataPresentation, activeMetadataVariantKey);
-  const label = activeMetadataVariant
-    ? metadataVariantLabel(activeMetadataVariant, metadataVariants)
+  const choices = metadataLanguageChoices(metadataPresentation, activeMetadataVariantKey);
+  const activeChoice = choices.find((choice) => choice.variant.key === activeMetadataVariant?.key);
+  const label = activeChoice
+    ? metadataVariantLabel(activeChoice.variant)
     : metadataLanguage
       ? languageLabel(metadataLanguage)
       : "";
@@ -1176,15 +1177,15 @@ function MetadataLanguageMenu({
       icon={<Languages className="h-3 w-3 shrink-0" />}
       label={label}
       menuLabel={i18n.t("libraryDetail.metadataLanguage")}
-      interactive={metadataVariants.length > 1}
+      interactive={choices.length > 1}
     >
       {(close) => (
         <div role="menu" aria-label={i18n.t("libraryDetail.metadataLanguage")}>
-          {metadataVariants.map((variant) => {
-            const active = variant.key === activeMetadataVariant?.key;
+          {choices.map((choice) => {
+            const active = choice === activeChoice;
             return (
               <button
-                key={variant.key}
+                key={choice.key}
                 type="button"
                 role="menuitemradio"
                 aria-checked={active}
@@ -1192,11 +1193,11 @@ function MetadataLanguageMenu({
                   active ? "bg-primary/10 font-medium text-primary" : "hover:bg-accent hover:text-accent-foreground"
                 }`}
                 onClick={() => {
-                  if (!active) onMetadataVariantSelect?.(variant.key);
+                  if (!active) onMetadataVariantSelect?.(choice.variant.key);
                   close();
                 }}
               >
-                <span className="truncate">{metadataVariantLabel(variant, metadataVariants)}</span>
+                <span className="truncate">{metadataVariantLabel(choice.variant)}</span>
                 {active && <Check className="h-4 w-4 shrink-0" />}
               </button>
             );
@@ -1223,6 +1224,7 @@ function DirectoryEditionMenu({
   remoteVersions: boolean;
 }) {
   const [showAllEditions, setShowAllEditions] = useState(false);
+  const compact = useCompactDetailLayout();
   const availabilityScope: WorkVersionAvailabilityScope = remoteVersions ? "source" : "local";
   const collapsedGroups = groupWorkVersions(translations, {
     activeCode: activeVersionCode,
@@ -1251,9 +1253,13 @@ function DirectoryEditionMenu({
     (version) => version.primaryCode.trim().toUpperCase() === activeCode,
   );
   const activeLanguage = activeGroup?.language ? languageLabel(activeGroup.language) : "";
+  // The language chip beside this one already names the language, so a narrow
+  // header shows only "Origin" rather than truncating "Origin · language".
   const label =
     activeVersion?.translationKind === "origin" && activeLanguage
-      ? `${workVersionKindLabel(activeVersion)} · ${activeLanguage}`
+      ? compact
+        ? workVersionKindLabel(activeVersion)
+        : `${workVersionKindLabel(activeVersion)} · ${activeLanguage}`
       : activeLanguage || activeVersionCode;
 
   const selectVersion = (translation: WorkDetail["translations"][number], close: () => void) => {
@@ -1363,11 +1369,8 @@ function DirectoryEditionMenu({
   );
 }
 
-function metadataVariantLabel(
-  variant: WorkMetadataPresentation["variants"][number],
-  variants: WorkMetadataPresentation["variants"],
-) {
-  return metadataVariantLabelFor(variant, variants, {
+function metadataVariantLabel(variant: WorkMetadataPresentation["variants"][number]) {
+  return metadataVariantLabelFor(variant, {
     original: i18n.t("libraryDetail.original"),
     language: languageLabel,
   });

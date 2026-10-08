@@ -336,8 +336,8 @@ func TestStoreListPageRecommendSortUsesPositiveHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if candidateScore != 40 || likedScore != 35 {
-		t.Fatalf("recommend scores = candidate %d liked %d, want affinity 40 and 35", candidateScore, likedScore)
+	if candidateScore != 38 || likedScore != 35 {
+		t.Fatalf("recommend scores = candidate %d liked %d, want affinity 38 and 35", candidateScore, likedScore)
 	}
 }
 
@@ -392,8 +392,8 @@ func TestRecommendationSessionSnapshotRefreshesOnlyForNewSession(t *testing.T) {
 	}
 
 	firstScore := listCandidateScore("session-a")
-	if firstScore != 40 {
-		t.Fatalf("first session score = %d, want 40", firstScore)
+	if firstScore != 38 {
+		t.Fatalf("first session score = %d, want 38", firstScore)
 	}
 	var generationCount int
 	if err := db.QueryRow("SELECT COUNT(*) FROM recommendation_generation WHERE user_id = ?", userID).Scan(&generationCount); err != nil {

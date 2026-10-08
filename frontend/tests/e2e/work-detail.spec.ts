@@ -709,7 +709,8 @@ test("local work detail lists Origin first and expands from local to all edition
   await page.keyboard.press("Escape");
 
   const editionTrigger = page.getByRole("button", { name: "Directory edition", exact: true });
-  await expect(editionTrigger).toHaveText("Origin · Japanese");
+  // The language chip beside it names the language, so a phone shows only the edition kind.
+  await expect(editionTrigger).toHaveText("Origin");
   await editionTrigger.click();
   const versionMenu = page.getByRole("dialog", { name: "Directory edition", exact: true });
   await expect(versionMenu.getByRole("group", { name: "Japanese versions" })).toBeVisible();
@@ -725,6 +726,17 @@ test("local work detail lists Origin first and expands from local to all edition
       .getByRole("menu", { name: "Simplified Chinese DLsite codes", exact: true })
       .getByRole("menuitemradio", { name: /RJ00000002 Official Remote only/ }),
   ).toBeDisabled();
+  await page.keyboard.press("Escape");
+
+  await page.route("**/api/works/1/cover-candidates", (route) => route.fulfill({ json: { candidates: [] } }));
+  await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await editor.getByRole("tab", { name: "Metadata source" }).click();
+  const family = editor.getByRole("list", { name: "Editions in this family", exact: true }).getByRole("listitem");
+  await expect(family).toHaveCount(4);
+  await expect(family.first()).toContainText("RJ00000000");
+  await expect(family.first()).toContainText("Current");
+  await expect(family.filter({ hasText: "RJ00000003" })).toContainText("Metadata only");
 });
 
 test("local work detail stays loading while an automatically selected local edition is opening", async ({ page }) => {
