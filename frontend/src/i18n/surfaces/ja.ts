@@ -73,6 +73,17 @@ export const surfaceJapanese = {
       saved: "{{code}} の特典として関連付けました。",
       removed: "特典の関連付けを解除しました。",
     },
+    family: {
+      title: "作品ファミリー",
+      description: "ひとつの作品としてまとめられた言語版と、それらに関連付けられた購入特典です。",
+      editions: "このファミリーの版",
+      bonuses: "このファミリーの購入特典",
+      alone: "このファミリーには {{code}} のみがあります。",
+      current: "表示中",
+      local: "ライブラリにあり",
+      metadataOnly: "メタデータのみ",
+      bonus: "購入特典",
+    },
     searchTags: "タグを検索、または新しいタグを入力",
     tagHint:
       "Enter で選択中のタグを追加するか、入力した名前でタグを作成します。タグの言語ボタンで言語別の名前を編集できます。",

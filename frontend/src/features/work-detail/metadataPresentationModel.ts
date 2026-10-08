@@ -32,16 +32,48 @@ export type MetadataVariantLabels = {
  * provider never declared stays unknown, but its label shows only "Original"
  * rather than an unknown-language placeholder; other editions keep theirs.
  */
-export function metadataVariantLabel(
-  variant: WorkMetadataVariant,
-  variants: WorkMetadataVariant[],
-  labels: MetadataVariantLabels,
-): string {
-  const language = variant.language.trim().toLowerCase();
-  const sameLanguageCount = variants.filter((candidate) => candidate.language.trim().toLowerCase() === language).length;
-  let prefix = labels.language(variant.language);
-  if (variant.origin) prefix = language ? `${labels.original} · ${prefix}` : labels.original;
-  return sameLanguageCount > 1 ? `${prefix} · ${variant.key}` : prefix;
+export function metadataVariantLabel(variant: WorkMetadataVariant, labels: MetadataVariantLabels): string {
+  const label = labels.language(variant.language);
+  if (!variant.origin) return label;
+  return variant.language.trim() ? `${labels.original} · ${label}` : labels.original;
+}
+
+export type MetadataLanguageChoice = {
+  key: string;
+  /** The variant this language shows; selecting the choice selects its key. */
+  variant: WorkMetadataVariant;
+};
+
+/**
+ * Collapses metadata variants into one choice per display language. Titles are
+ * edited per language, so several provider editions in one language present as
+ * that language: the selected or default edition when it is one of them,
+ * otherwise the original edition, otherwise the first in server order. Editions
+ * without a declared language cannot be merged and stay separate.
+ */
+export function metadataLanguageChoices(
+  presentation: WorkMetadataPresentation | null | undefined,
+  selectedKey: string,
+): MetadataLanguageChoice[] {
+  const variants = orderedMetadataVariants(presentation?.variants ?? []);
+  const active = resolveMetadataVariant(presentation, selectedKey);
+  const defaultKey = presentation?.defaultVariantKey?.trim() ?? "";
+  const groups = new Map<string, WorkMetadataVariant[]>();
+  for (const variant of variants) {
+    const language = variant.language.trim().toLowerCase();
+    const key = language ? `language:${language}` : `edition:${variant.key}`;
+    groups.set(key, [...(groups.get(key) ?? []), variant]);
+  }
+  return Array.from(groups, ([key, members]) => {
+    const preferred =
+      members.find((variant) => variant.key === active?.key) ??
+      members.find((variant) => variant.key === defaultKey) ??
+      members.find((variant) => variant.origin) ??
+      members[0];
+    // The original language keeps its marker even when another edition shows it.
+    const origin = members.some((variant) => variant.origin);
+    return { key, variant: origin === preferred.origin ? preferred : { ...preferred, origin } };
+  });
 }
 
 export type MetadataSourceGroup = { source: string; fields: string[] };

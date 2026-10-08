@@ -171,3 +171,17 @@ export function providerCoverSource(metadataSync: WorkDetail["metadataSync"] | u
   if (metadataSync?.status !== "remote_fallback") return "";
   return metadataSync.fields?.find((field) => field.field === "cover")?.source || metadataSync.source || "";
 }
+
+/**
+ * The language editions of a work's family, original first, then grouped by
+ * language in a stable code order so the current work keeps its place.
+ */
+export function workFamilyEditions(translations: WorkDetail["translations"]): WorkDetail["translations"] {
+  const language = (value: string) => value.trim().toLowerCase();
+  return [...translations].sort(
+    (left, right) =>
+      Number(right.origin) - Number(left.origin) ||
+      language(left.metadataLanguage).localeCompare(language(right.metadataLanguage)) ||
+      left.primaryCode.localeCompare(right.primaryCode, undefined, { numeric: true }),
+  );
+}
