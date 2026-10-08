@@ -140,7 +140,7 @@ func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Reque
 	ctx := r.Context()
 	client := s.kikoeruClientForSource(ctx, source)
 	if len(request.Plan.PostFilterClauses) > 0 {
-		works, total, sortApplied, err := s.remotePostFilteredPageWithLanguages(ctx, userID, source.ID, client, request.Plan, request.UpstreamOrder, request.Direction, request.Seed, request.Page, request.PageSize, request.Languages)
+		works, total, sortApplied, err := s.remotePostFilteredPageUsing(ctx, userID, source.ID, request.Plan, request.Page, request.PageSize, request.Languages, s.remoteBrowsePageLoader(ctx, userID, source, request, client))
 		if err == nil && request.IncludeRecommendation {
 			err = s.scoreRemoteWorkSummaries(r, userID, works)
 		}
@@ -249,13 +249,19 @@ func (s *Server) remotePostFilteredPageWithLanguages(
 	languages []string,
 	includeRecommendation ...bool,
 ) ([]remoteWorkSummary, int, bool, error) {
+	return s.remotePostFilteredPageUsing(ctx, userID, sourceID, plan, page, pageSize, languages, func(upstreamPage int) (kikoeru.WorksPage, error) {
+		return client.ListWorksSortedSeeded(ctx, upstreamPage, 100, plan.PushdownQuery, order, direction, seed)
+	}, includeRecommendation...)
+}
+
+func (s *Server) remotePostFilteredPageUsing(ctx context.Context, userID, sourceID int64, plan remoteSourceQueryPlan, page, pageSize int, languages []string, loadPage func(int) (kikoeru.WorksPage, error), includeRecommendation ...bool) ([]remoteWorkSummary, int, bool, error) {
 	const upstreamPageSize = 100
 	const maxUpstreamPages = 100
 	filtered := []remoteWorkSummary{}
 	seen := map[string]bool{}
 	sortApplied := true
 	for upstreamPage := 1; upstreamPage <= maxUpstreamPages; upstreamPage++ {
-		result, err := client.ListWorksSortedSeeded(ctx, upstreamPage, upstreamPageSize, plan.PushdownQuery, order, direction, seed)
+		result, err := loadPage(upstreamPage)
 		if err != nil {
 			return nil, 0, false, err
 		}
