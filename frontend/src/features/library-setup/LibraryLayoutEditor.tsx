@@ -10,6 +10,7 @@ import { FloatingSelect } from "@/components/ui/floating-select";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, ApiError, type LibraryLayout, type LibraryMode, type LibraryMigrationPreview } from "@/lib/api";
+import { SITE_MAINTENANCE_EVENT } from "@/lib/appEvents";
 
 type Draft = { mode: LibraryMode; pools: string[]; fetchPool: string };
 
@@ -120,6 +121,7 @@ export function LibraryLayoutEditor({
           : { mode: "standard" },
         migrationPreview.hash,
       );
+      window.dispatchEvent(new Event(SITE_MAINTENANCE_EVENT));
       setMigrationPreview(null);
     } catch (error) {
       reportSaveError(error);
