@@ -492,8 +492,8 @@ of an audio media item. It relates two media items of the same work, so a
 rescan that keeps media ids keeps the assignment; deleting either item removes
 it. The audio item may belong to any edition of the requested work's family,
 because a work detail can show a sibling edition's local media. `origin`
-records how the row was made (`manual` today; `remote_fetch` is reserved for
-lyrics downloaded from a remote source). Clients rank a user's
+records how the row was made: `manual` from the lyrics manager, or
+`remote_fetch` when a remote lyrics download assigned the file it published. Clients rank a user's
 `user_media_lyrics_preference` first, then this assignment, then name matching.
 
 ## Workflows

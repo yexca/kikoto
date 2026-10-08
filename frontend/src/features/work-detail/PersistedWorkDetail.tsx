@@ -865,11 +865,13 @@ function PersistedDirectoryManagerOverlay({
 function PersistedLyricsManagerOverlay({
   open,
   work,
+  remoteSources,
   onClose,
   onSaved,
 }: {
   open: boolean;
   work: WorkDetail | null;
+  remoteSources: RemoteSourceAvailability[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -879,6 +881,8 @@ function PersistedLyricsManagerOverlay({
     <LyricsManagerDialog
       work={work}
       readOnly={demoMode || !hasPermission("library:write")}
+      remoteSources={remoteSources.map((remote) => remote.source).filter((source) => source.enabled)}
+      canDownload={!demoMode && hasPermission("downloads:manage")}
       onClose={onClose}
       onSaved={onSaved}
     />
@@ -1921,6 +1925,7 @@ export function PersistedWorkDetailController({
       <PersistedLyricsManagerOverlay
         open={isLyricsManagerOpen}
         work={localDirectoryWork}
+        remoteSources={remoteSources}
         onClose={() => setIsLyricsManagerOpen(false)}
         onSaved={lyricsAssignmentsSaved}
       />

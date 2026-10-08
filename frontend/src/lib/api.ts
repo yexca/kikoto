@@ -679,6 +679,25 @@ export type LyricsAssignmentChange = {
   lyricsMediaItemId: number | null;
 };
 
+/** Downloads lyrics of a family edition from a remote source into a new folder of a local work folder. */
+export type LyricsFetchRequest = {
+  sourceId: number;
+  remoteCode: string;
+  folderId: number;
+  /** Remote tree paths of the lyrics files to download. */
+  files: string[];
+  /** Downloaded files to assign as the library lyrics of local tracks. */
+  assignments: { audioMediaItemId: number; path: string }[];
+};
+
+export type LyricsFetchResult = {
+  workId: number;
+  /** The new folder, relative to the library. */
+  folder: string;
+  downloaded: number;
+  assigned: number;
+};
+
 export type MediaProgress = {
   positionSeconds: number;
   durationSeconds: number | null;
@@ -2832,6 +2851,8 @@ export const api = {
     deleteJSON<{ audioMediaItemId: number; lyricsMediaItemId: null }>(
       `/api/media/${audioMediaItemId}/lyrics-preference`,
     ),
+  fetchWorkLyrics: (workId: number, request: LyricsFetchRequest) =>
+    postJSONBody<LyricsFetchResult>(`/api/works/${workId}/lyrics-fetch`, request),
   setWorkLyricsAssignments: (workId: number, assignments: LyricsAssignmentChange[]) =>
     putJSONBody<{ workId: number; assignments: LyricsAssignmentChange[] }>(`/api/works/${workId}/lyrics-assignments`, {
       assignments,

@@ -161,3 +161,24 @@ func TestLyricsAssignmentsRequireLibraryWrite(t *testing.T) {
 		t.Fatalf("unknown work status = %d, want 404", response.Code)
 	}
 }
+
+func TestDemoRejectsLyricsMutationsBeforeTheHandler(t *testing.T) {
+	server := NewServer(openMigratedTestDB(t), config.Config{Mode: config.ModeDemo})
+	if err := server.BootstrapDemo(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.LoadAccessPolicy(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	routes := server.Routes()
+	for _, testCase := range []struct{ method, path, body string }{
+		{http.MethodPut, "/api/works/1/lyrics-assignments", `{"assignments":[{"audioMediaItemId":1,"lyricsMediaItemId":2}]}`},
+		{http.MethodPost, "/api/works/1/lyrics-fetch", `{"sourceId":1,"remoteCode":"RJ00000001","folderId":1,"files":["a.vtt"]}`},
+	} {
+		response := httptest.NewRecorder()
+		routes.ServeHTTP(response, httptest.NewRequest(testCase.method, testCase.path, strings.NewReader(testCase.body)))
+		if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), `"code":"demo_read_only"`) {
+			t.Fatalf("%s %s = %d %s", testCase.method, testCase.path, response.Code, response.Body.String())
+		}
+	}
+}

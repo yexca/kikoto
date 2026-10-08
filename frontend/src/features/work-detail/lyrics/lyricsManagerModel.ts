@@ -81,6 +81,26 @@ export function initialLyricsAssignmentDraft(audio: LyricsManagerAudio[]): Map<n
   return new Map(audio.map((entry) => [entry.mediaItemId, entry.assignedLyricsMediaItemId]));
 }
 
+/**
+ * Moves the draft onto reloaded entries, for example after a download stored
+ * new assignments: rows the user edited keep their edit, others take the new
+ * stored value.
+ */
+export function rebaseLyricsAssignmentDraft(
+  previous: LyricsManagerAudio[],
+  next: LyricsManagerAudio[],
+  draft: LyricsAssignmentDraft,
+): Map<number, number | null> {
+  const stored = new Map(previous.map((entry) => [entry.mediaItemId, entry.assignedLyricsMediaItemId]));
+  return new Map(
+    next.map((entry) => {
+      const id = entry.mediaItemId;
+      const edited = draft.has(id) && stored.has(id) && draft.get(id) !== stored.get(id);
+      return [id, edited ? (draft.get(id) ?? null) : entry.assignedLyricsMediaItemId];
+    }),
+  );
+}
+
 /** The changes needed to turn the stored assignments into the draft. */
 export function lyricsAssignmentChanges(
   audio: LyricsManagerAudio[],

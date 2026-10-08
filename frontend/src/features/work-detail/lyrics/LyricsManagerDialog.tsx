@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Captions, FileText, Folder, ListOrdered, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Captions, CloudDownload, FileText, Folder, ListChecks, ListOrdered, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { FloatingSelect, type FloatingSelectOption } from "@/components/ui/floating-select";
+import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import {
   alignLyricsByOrder,
@@ -14,16 +15,22 @@ import {
   lyricsAssignmentChanges,
   lyricsFolders,
   lyricsManagerEntries,
-  lyricsTimingCheck,
+  rebaseLyricsAssignmentDraft,
   type LyricsManagerAudio,
   type LyricsManagerFile,
 } from "@/features/work-detail/lyrics/lyricsManagerModel";
+import { LyricsPreview, loadLocalLyricsText } from "@/features/work-detail/lyrics/LyricsPreview";
+import {
+  RemoteLyricsDownloadButton,
+  RemoteLyricsPanel,
+  useRemoteLyricsFetch,
+} from "@/features/work-detail/lyrics/RemoteLyricsPanel";
 import { formatTrackDuration } from "@/features/work-detail/media/mediaTreeModel";
-import { api, type WorkDetail } from "@/lib/api";
-import { parseTimedLyrics } from "@/lib/timedLyrics";
+import { api, type LibrarySource, type WorkDetail } from "@/lib/api";
 
 const automaticValue = "auto";
-const previewLineCount = 6;
+
+type LyricsManagerTab = "assign" | "remote";
 
 /**
  * Lets a library manager choose the lyrics file every listener uses for each
@@ -32,11 +39,17 @@ const previewLineCount = 6;
 export function LyricsManagerDialog({
   work,
   readOnly,
+  remoteSources = [],
+  canDownload = false,
   onClose,
   onSaved,
 }: {
   work: WorkDetail;
   readOnly: boolean;
+  /** Enabled compatible remote sources that may hold an edition of this work. */
+  remoteSources?: LibrarySource[];
+  /** Whether the viewer may download files into the library. */
+  canDownload?: boolean;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -46,6 +59,26 @@ export function LyricsManagerDialog({
   const folders = useMemo(() => lyricsFolders(entries.lyrics), [entries.lyrics]);
   const lyricsByID = useMemo(() => new Map(entries.lyrics.map((file) => [file.mediaItemId, file])), [entries.lyrics]);
   const [draft, setDraft] = useState(() => initialLyricsAssignmentDraft(entries.audio));
+  const [tab, setTab] = useState<LyricsManagerTab>("assign");
+  const remote = useRemoteLyricsFetch({
+    work,
+    audio: entries.audio,
+    sources: remoteSources,
+    canAssign: !readOnly,
+    onFetched: async () => {
+      await onSaved();
+      setTab("assign");
+    },
+  });
+  const remoteAvailable = canDownload && remote.available && entries.audio.length > 0;
+  // A download reloads the work. Keep the user's unsaved edits on the new entries.
+  const previousAudio = useRef(entries.audio);
+  useEffect(() => {
+    if (previousAudio.current === entries.audio) return;
+    const previous = previousAudio.current;
+    previousAudio.current = entries.audio;
+    setDraft((current) => rebaseLyricsAssignmentDraft(previous, entries.audio, current));
+  }, [entries.audio]);
   const [alignFolder, setAlignFolder] = useState(() => folders[0]?.folder ?? "");
   const [alignMessage, setAlignMessage] = useState("");
   const [previewAudioID, setPreviewAudioID] = useState<number | null>(null);
@@ -53,6 +86,7 @@ export function LyricsManagerDialog({
   const changes = useMemo(() => lyricsAssignmentChanges(entries.audio, draft), [entries.audio, draft]);
   const groups = useMemo(() => groupByFolder(entries.audio), [entries.audio]);
   const editable = !readOnly && !saving && entries.lyrics.length > 0;
+  const busy = saving || remote.fetching;
 
   const assign = (audioID: number, lyricsID: number | null) =>
     setDraft((current) => new Map(current).set(audioID, lyricsID));
@@ -97,91 +131,146 @@ export function LyricsManagerDialog({
   }));
 
   return (
-    <Dialog onClose={onClose} size="full" dismissible={!saving} className="max-h-[90vh] max-w-4xl sm:max-h-[90vh]">
+    <Dialog onClose={onClose} size="full" dismissible={!busy} className="max-h-[90vh] max-w-4xl sm:max-h-[90vh]">
       <DialogHeader
         title={t("lyricsManager.title")}
         description={t("lyricsManager.description")}
         icon={<Captions className="h-4 w-4" />}
-        onClose={saving ? undefined : onClose}
+        onClose={busy ? undefined : onClose}
         closeLabel={t("content.close")}
-      />
-      {editable && folders.length > 0 && (
-        <div className="flex shrink-0 flex-wrap items-end gap-2 border-b px-5 py-3">
-          <div className="min-w-0 flex-1 basis-56">
-            <div className="mb-1 text-xs font-medium text-muted-foreground">{t("lyricsManager.alignFrom")}</div>
-            <FloatingSelect
-              value={alignFolder}
-              options={folderOptions}
-              onValueChange={(value) => {
-                setAlignFolder(value);
-                setAlignMessage("");
-              }}
-              ariaLabel={t("lyricsManager.alignFrom")}
-            />
+      >
+        {remoteAvailable && (
+          <div className={segmentedListClassName("mt-3")} role="tablist" aria-label={t("lyricsManager.title")}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "assign"}
+              className={segmentedItemClassName(tab === "assign")}
+              disabled={busy}
+              onClick={() => setTab("assign")}
+            >
+              <ListChecks className="h-4 w-4" />
+              {t("lyricsManager.tabAssign")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "remote"}
+              className={segmentedItemClassName(tab === "remote")}
+              disabled={busy}
+              onClick={() => setTab("remote")}
+            >
+              <CloudDownload className="h-4 w-4" />
+              {t("lyricsManager.tabRemote")}
+            </button>
           </div>
-          <Button variant="outline" onClick={alignByOrder}>
-            <ListOrdered className="h-4 w-4" />
-            {t("lyricsManager.alignByOrder")}
-          </Button>
-          <Button variant="ghost" onClick={restoreAutomatic}>
-            <RotateCcw className="h-4 w-4" />
-            {t("lyricsManager.restoreAutomatic")}
-          </Button>
-          {alignMessage && (
-            <p role="status" className="w-full text-xs text-muted-foreground">
-              {alignMessage}
-            </p>
+        )}
+      </DialogHeader>
+      {tab === "remote" && remoteAvailable ? (
+        <>
+          <DialogBody>
+            <RemoteLyricsPanel state={remote} audio={entries.audio} />
+          </DialogBody>
+          <DialogFooter>
+            <span className="mr-auto text-xs text-muted-foreground" role="status">
+              {remote.listing.status === "ready"
+                ? t("lyricsManager.downloadSummary", {
+                    files: remote.request.files.length,
+                    tracks: remote.request.assignments.length,
+                  })
+                : ""}
+            </span>
+            <Button variant="ghost" onClick={onClose} disabled={busy}>
+              {t("lyricsManager.cancel")}
+            </Button>
+            <RemoteLyricsDownloadButton state={remote} />
+          </DialogFooter>
+        </>
+      ) : (
+        <>
+          {editable && folders.length > 0 && (
+            <div className="flex shrink-0 flex-wrap items-end gap-2 border-b px-5 py-3">
+              <div className="min-w-0 flex-1 basis-56">
+                <div className="mb-1 text-xs font-medium text-muted-foreground">{t("lyricsManager.alignFrom")}</div>
+                <FloatingSelect
+                  value={alignFolder}
+                  options={folderOptions}
+                  onValueChange={(value) => {
+                    setAlignFolder(value);
+                    setAlignMessage("");
+                  }}
+                  ariaLabel={t("lyricsManager.alignFrom")}
+                />
+              </div>
+              <Button variant="outline" onClick={alignByOrder}>
+                <ListOrdered className="h-4 w-4" />
+                {t("lyricsManager.alignByOrder")}
+              </Button>
+              <Button variant="ghost" onClick={restoreAutomatic}>
+                <RotateCcw className="h-4 w-4" />
+                {t("lyricsManager.restoreAutomatic")}
+              </Button>
+              {alignMessage && (
+                <p role="status" className="w-full text-xs text-muted-foreground">
+                  {alignMessage}
+                </p>
+              )}
+            </div>
           )}
-        </div>
+          <DialogBody className="space-y-4">
+            {readOnly && <p className="text-sm text-muted-foreground">{t("lyricsManager.readOnly")}</p>}
+            {entries.audio.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("lyricsManager.noAudio")}</p>
+            ) : entries.lyrics.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {remoteAvailable ? t("lyricsManager.noLyricsTryRemote") : t("lyricsManager.noLyrics")}
+              </p>
+            ) : (
+              groups.map(([folder, audio]) => (
+                <section key={folder} aria-label={folder || t("lyricsManager.rootFolder")}>
+                  <h4 className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <Folder className="h-3.5 w-3.5" />
+                    <span className="truncate">{folder || t("lyricsManager.rootFolder")}</span>
+                  </h4>
+                  <ul className="divide-y rounded-lg border">
+                    {audio.map((entry) => (
+                      <LyricsAssignmentRow
+                        key={entry.mediaItemId}
+                        entry={entry}
+                        draftValue={draft.has(entry.mediaItemId) ? (draft.get(entry.mediaItemId) ?? null) : null}
+                        effectiveLyrics={lyricsByID.get(effectiveLyricsMediaItemId(entry, draft) ?? 0) ?? null}
+                        lyrics={entries.lyrics}
+                        lyricsByID={lyricsByID}
+                        disabled={!editable}
+                        previewOpen={previewAudioID === entry.mediaItemId}
+                        onAssign={(lyricsID) => assign(entry.mediaItemId, lyricsID)}
+                        onTogglePreview={() =>
+                          setPreviewAudioID((current) => (current === entry.mediaItemId ? null : entry.mediaItemId))
+                        }
+                      />
+                    ))}
+                  </ul>
+                </section>
+              ))
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <span className="mr-auto text-xs text-muted-foreground" role="status">
+              {changes.length > 0
+                ? t("lyricsManager.pending", { count: changes.length })
+                : t("lyricsManager.noChanges")}
+            </span>
+            <Button variant="ghost" onClick={onClose} disabled={saving}>
+              {t("lyricsManager.cancel")}
+            </Button>
+            {!readOnly && (
+              <Button onClick={() => void save()} disabled={busy || changes.length === 0}>
+                {saving ? t("lyricsManager.saving") : t("lyricsManager.save")}
+              </Button>
+            )}
+          </DialogFooter>
+        </>
       )}
-      <DialogBody className="space-y-4">
-        {readOnly && <p className="text-sm text-muted-foreground">{t("lyricsManager.readOnly")}</p>}
-        {entries.audio.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("lyricsManager.noAudio")}</p>
-        ) : entries.lyrics.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("lyricsManager.noLyrics")}</p>
-        ) : (
-          groups.map(([folder, audio]) => (
-            <section key={folder} aria-label={folder || t("lyricsManager.rootFolder")}>
-              <h4 className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Folder className="h-3.5 w-3.5" />
-                <span className="truncate">{folder || t("lyricsManager.rootFolder")}</span>
-              </h4>
-              <ul className="divide-y rounded-lg border">
-                {audio.map((entry) => (
-                  <LyricsAssignmentRow
-                    key={entry.mediaItemId}
-                    entry={entry}
-                    draftValue={draft.has(entry.mediaItemId) ? (draft.get(entry.mediaItemId) ?? null) : null}
-                    effectiveLyrics={lyricsByID.get(effectiveLyricsMediaItemId(entry, draft) ?? 0) ?? null}
-                    lyrics={entries.lyrics}
-                    lyricsByID={lyricsByID}
-                    disabled={!editable}
-                    previewOpen={previewAudioID === entry.mediaItemId}
-                    onAssign={(lyricsID) => assign(entry.mediaItemId, lyricsID)}
-                    onTogglePreview={() =>
-                      setPreviewAudioID((current) => (current === entry.mediaItemId ? null : entry.mediaItemId))
-                    }
-                  />
-                ))}
-              </ul>
-            </section>
-          ))
-        )}
-      </DialogBody>
-      <DialogFooter>
-        <span className="mr-auto text-xs text-muted-foreground" role="status">
-          {changes.length > 0 ? t("lyricsManager.pending", { count: changes.length }) : t("lyricsManager.noChanges")}
-        </span>
-        <Button variant="ghost" onClick={onClose} disabled={saving}>
-          {t("lyricsManager.cancel")}
-        </Button>
-        {!readOnly && (
-          <Button onClick={() => void save()} disabled={saving || changes.length === 0}>
-            {saving ? t("lyricsManager.saving") : t("lyricsManager.save")}
-          </Button>
-        )}
-      </DialogFooter>
     </Dialog>
   );
 }
@@ -261,7 +350,12 @@ function LyricsAssignmentRow({
         </Button>
       </div>
       {previewOpen && effectiveLyrics && (
-        <LyricsPreview file={effectiveLyrics} durationSeconds={entry.durationSeconds} />
+        <LyricsPreview
+          label={effectiveLyrics.path}
+          loadKey={`local:${effectiveLyrics.locationId}`}
+          load={() => loadLocalLyricsText(effectiveLyrics.locationId)}
+          durationSeconds={entry.durationSeconds}
+        />
       )}
     </li>
   );
@@ -274,88 +368,6 @@ function LyricsFileLabel({ file }: { file: LyricsManagerFile }) {
       {file.folder && <span className="truncate text-xs text-muted-foreground">{file.folder}</span>}
     </span>
   );
-}
-
-type LyricsPreviewState = { locationID: number; text: string } | { locationID: number; failed: true };
-
-function LyricsPreview({ file, durationSeconds }: { file: LyricsManagerFile; durationSeconds: number | null }) {
-  const { t } = useTranslation();
-  const [state, setState] = useState<LyricsPreviewState | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .getMediaText(file.locationId)
-      .then((result) => {
-        if (!cancelled) setState({ locationID: file.locationId, text: result.content });
-      })
-      .catch(() => {
-        if (!cancelled) setState({ locationID: file.locationId, failed: true });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [file.locationId]);
-  const current = state?.locationID === file.locationId ? state : null;
-  const text = current && "text" in current ? current.text : null;
-  const check = useMemo(
-    () => (text === null ? null : lyricsTimingCheck(text, durationSeconds)),
-    [text, durationSeconds],
-  );
-  const lines = useMemo(() => (text === null ? [] : previewLines(text)), [text]);
-  return (
-    <div className="mt-2 rounded-md border bg-muted/40 px-3 py-2 text-xs">
-      <div className="mb-1 truncate font-medium" title={file.path}>
-        {file.path}
-      </div>
-      {!current ? (
-        <p className="text-muted-foreground">{t("lyricsManager.previewLoading")}</p>
-      ) : !check ? (
-        <p className="text-muted-foreground">{t("lyricsManager.previewFailed")}</p>
-      ) : (
-        <>
-          {check.exceedsAudio ? (
-            <p className="mb-1 flex items-start gap-1.5 rounded border border-warning-border bg-warning-surface px-2 py-1 text-warning-foreground">
-              <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
-              {t("lyricsManager.timingExceeds", {
-                time: formatLyricsTime(check.lastLineSeconds),
-                duration: formatLyricsTime(durationSeconds),
-              })}
-            </p>
-          ) : (
-            <p className="mb-1 text-muted-foreground">
-              {check.timed
-                ? t("lyricsManager.timingOk", { count: check.lineCount, time: formatLyricsTime(check.lastLineSeconds) })
-                : t("lyricsManager.untimed")}
-            </p>
-          )}
-          <ul className="space-y-0.5">
-            {lines.map((line, index) => (
-              <li key={index} className="truncate">
-                {line}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** The first lines as playback shows them: timed lines with their start, else the raw text. */
-function previewLines(text: string) {
-  const parsed = parseTimedLyrics(text);
-  if (parsed.timed) {
-    return parsed.lines.slice(0, previewLineCount).map((line) => `${formatLyricsTime(line.time)}  ${line.text}`);
-  }
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, previewLineCount);
-}
-
-function formatLyricsTime(seconds: number | null) {
-  return formatTrackDuration(seconds) || "0:00";
 }
 
 function groupByFolder(audio: LyricsManagerAudio[]) {
