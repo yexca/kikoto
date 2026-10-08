@@ -133,6 +133,14 @@ Work cards should show browsing-level facts:
 - File availability badges.
 - Listening progress.
 
+A narrow work card (a container under 12.5rem, such as two mobile columns or
+many desktop columns) keeps the same facts with tighter type and spacing. It
+folds personal tags ahead of metadata tags into one measured row, leaving the
+rest in the overflow popover, names only the first file source on the cover
+with a count of the rest, and keeps the 44px action row. The card's
+container query owns this breakpoint; tag measurement reads the row count from
+it, not from the viewport.
+
 Work detail pages should show decision-level facts:
 
 - Metadata source.

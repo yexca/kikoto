@@ -270,7 +270,7 @@ test("recommendation badge refresh keeps the result grid fixed while the request
   await expect(page.getByRole("button", { name: "Hide recommendation badges", exact: true })).toBeVisible();
 });
 
-test("cards keep two complete tag rows and readable Sales and Rate metrics at compact and desktop widths", async ({
+test("narrow cards fold personal and metadata tags into one row while wide cards keep two tag rows and readable metrics", async ({
   page,
 }) => {
   const tags = Array.from({ length: 14 }, (_, index) => `Long metadata tag ${index + 1}`);
@@ -279,12 +279,22 @@ test("cards keep two complete tag rows and readable Sales and Rate metrics at co
     name: `Personal tag ${index + 1}`,
     color: "",
   }));
-  await mockApplication(page, undefined, false, 1, 0, [], undefined, { work: { ...work, tags, userTags } });
+  const sourcePresence = [
+    { type: "local", availability: "available" },
+    ...["Remote A", "Remote B"].map((name, index) => ({
+      type: "source",
+      availability: "available",
+      fileSourceId: index + 7,
+      fileSourceName: name,
+    })),
+  ];
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    work: { ...work, tags, userTags, sourcePresence } as typeof work,
+  });
   await page.setViewportSize({ width: 412, height: 915 });
   await page.goto("/?mobileColumns=2&desktopColumns=5");
 
   await expect(page.getByText("R18", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Personal tag 10", exact: true })).toBeVisible();
   const card = page.getByTestId("work-card").first();
   const tagRows = card.getByTestId("work-card-tags");
   const rate = card.getByRole("img", { name: "Rate 4.50 out of 5 from 240 ratings", exact: true });
@@ -294,7 +304,7 @@ test("cards keep two complete tag rows and readable Sales and Rate metrics at co
   await expect(rate).toBeVisible();
   await expect(rate).toContainText("(240)");
 
-  const assertTagRowsAreComplete = async (minimumCardWidth: number, maximumCardWidth: number) => {
+  const assertTagRowsAreComplete = async (rows: number, minimumCardWidth: number, maximumCardWidth: number) => {
     await expect
       .poll(async () =>
         tagRows.evaluate((element) => {
@@ -303,7 +313,7 @@ test("cards keep two complete tag rows and readable Sales and Rate metrics at co
             .size;
         }),
       )
-      .toBe(2);
+      .toBe(rows);
     const layout = await tagRows.evaluate((element) => {
       const bounds = element.getBoundingClientRect();
       const row = element.firstElementChild;
@@ -324,22 +334,32 @@ test("cards keep two complete tag rows and readable Sales and Rate metrics at co
     expect(layout.lastBottom).toBeLessThanOrEqual(layout.containerBottom + 0.75);
     expect(layout.containerHeight).toBeGreaterThanOrEqual(layout.lastBottom - layout.firstTop - 0.75);
   };
-  await assertTagRowsAreComplete(160, 205);
+  // A narrow cover names only the first source and counts the rest beside the price.
+  await expect(card.getByText("Local", { exact: true })).toBeVisible();
+  await expect(card.getByText("Remote A", { exact: true })).toBeHidden();
+  await expect(card.getByText("+2", { exact: true })).toBeVisible();
+  // A two-column phone card spends one row on tags and leads with the user's own tags.
+  await assertTagRowsAreComplete(1, 160, 200);
+  await expect(tagRows.getByRole("button", { name: "Personal tag 1", exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Personal tag 10", exact: true })).toHaveCount(0);
 
   let overflow = page.locator('button[aria-label^="Show "][aria-label$=" more tags"]');
   await expect(overflow).toBeVisible();
   await overflow.click();
+  await expect(page.getByRole("button", { name: "Personal tag 10", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Long metadata tag 14", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
 
   await page.setViewportSize({ width: 1600, height: 900 });
-  await assertTagRowsAreComplete(210, 280);
+  await assertTagRowsAreComplete(2, 210, 280);
+  await expect(card.getByText("Remote A", { exact: true })).toBeVisible();
+  await expect(card.getByText("+1", { exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Personal tag 10", exact: true })).toBeVisible();
 
   overflow = page.locator('button[aria-label^="Show "][aria-label$=" more tags"]');
   await expect(overflow).toBeVisible();
   await overflow.click();
   await expect(page.getByRole("button", { name: "Long metadata tag 14", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Personal tag 10", exact: true })).toBeVisible();
 });
 
 test("recently played opens from a toolbar popover and returns to the work", async ({ page }) => {

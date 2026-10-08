@@ -168,7 +168,7 @@ export function WorkCardShell({
 
   return (
     <Card
-      className="group h-full transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-within:border-primary/40 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      className="group @container/work-card h-full transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-within:border-primary/40 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
       data-testid="work-card"
     >
       <CardContent className="flex h-full flex-col rounded-[inherit] p-0">
@@ -239,7 +239,7 @@ export function WorkCardMedia({
     </>
   );
   return (
-    <div className="p-1.5 pb-0">
+    <div className="p-1.5 pb-0 @max-[12.5rem]/work-card:p-1 @max-[12.5rem]/work-card:pb-0">
       <div className="relative aspect-[4/3] overflow-hidden rounded-[calc(var(--radius)-4px)] bg-muted after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-inset after:ring-foreground/5">
         {coverUrl ? (
           <img
@@ -311,7 +311,9 @@ const coverChipClassName =
 
 // File availability rides on the cover so it reads at a glance without a
 // dedicated row. Only availability badges get a status dot; other badges a
-// view model adds (catalog state, for example) stay neutral.
+// view model adds (catalog state, for example) stay neutral. A regular card
+// shows two badges; a narrow card shows only the first so its label stays
+// readable beside the price, and counts the rest.
 function CoverAvailability({ badges }: { badges: WorkCardBadge[] }) {
   const { t } = useTranslation();
   const items: WorkCardBadge[] =
@@ -320,12 +322,14 @@ function CoverAvailability({ badges }: { badges: WorkCardBadge[] }) {
       : [{ key: "source:unavailable", label: t("workCard.sourceUnavailable"), variant: "warning" }];
   const visible = items.slice(0, 2);
   const hidden = items.slice(2);
+  const narrowHidden = items.slice(1);
+  const overflowChipClassName = cn(coverChipClassName, "shrink-0 font-medium");
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
-      {visible.map((badge) => (
+      {visible.map((badge, index) => (
         <span
           key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
-          className={cn(coverChipClassName, "min-w-0 font-medium")}
+          className={cn(coverChipClassName, "min-w-0 font-medium", index > 0 && "@max-[12.5rem]/work-card:hidden")}
           title={badge.title ?? badge.label}
         >
           <span
@@ -337,10 +341,18 @@ function CoverAvailability({ badges }: { badges: WorkCardBadge[] }) {
       ))}
       {hidden.length > 0 && (
         <span
-          className={cn(coverChipClassName, "shrink-0 font-medium")}
+          className={cn(overflowChipClassName, "@max-[12.5rem]/work-card:hidden")}
           title={hidden.map((badge) => badge.label).join(", ")}
         >
           +{hidden.length}
+        </span>
+      )}
+      {narrowHidden.length > 0 && (
+        <span
+          className={cn(overflowChipClassName, "hidden @max-[12.5rem]/work-card:inline-flex")}
+          title={narrowHidden.map((badge) => badge.label).join(", ")}
+        >
+          +{narrowHidden.length}
         </span>
       )}
     </div>
@@ -371,8 +383,11 @@ function WorkCardBody({
   const circleLabel = !work.circle || work.circle === "Unknown circle" ? t("workCard.unknownCircle") : work.circle;
   const codeText = work.code || t("workCard.source");
   return (
-    <div className="flex flex-1 flex-col gap-2.5 px-3 pb-3 pt-2.5">
-      <div className="space-y-1">
+    // Narrow cards (two mobile columns, or many desktop columns) tighten type
+    // and spacing so a row of cards still fits the viewport; the facts shown
+    // stay the same.
+    <div className="flex flex-1 flex-col gap-2.5 px-3 pb-3 pt-2.5 @max-[12.5rem]/work-card:gap-1.5 @max-[12.5rem]/work-card:px-2 @max-[12.5rem]/work-card:pb-2 @max-[12.5rem]/work-card:pt-2">
+      <div className="space-y-1 @max-[12.5rem]/work-card:space-y-0.5">
         <div className="flex min-h-4 min-w-0 items-center gap-2">
           <span
             className="min-w-0 flex-1 truncate font-mono text-2xs font-medium tracking-wide text-muted-foreground"
@@ -395,11 +410,14 @@ function WorkCardBody({
             </span>
           )}
         </div>
-        <h3 className="line-clamp-2 min-h-10 text-[0.9375rem] font-semibold leading-5" title={work.title}>
+        <h3
+          className="line-clamp-2 min-h-10 text-[0.9375rem] font-semibold leading-5 @max-[12.5rem]/work-card:min-h-9 @max-[12.5rem]/work-card:text-sm @max-[12.5rem]/work-card:leading-[1.125rem]"
+          title={work.title}
+        >
           {work.title}
         </h3>
         <div
-          className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left text-[0.8125rem] text-muted-foreground"
+          className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left text-[0.8125rem] text-muted-foreground @max-[12.5rem]/work-card:text-xs"
           title={[circleLabel, work.series].filter(Boolean).join(" / ")}
         >
           {onCircleOpen ? (
@@ -466,82 +484,86 @@ function WorkCardBody({
           </div>
         </div>
       )}
-      <MeasuredBadgeList badges={work.dlsiteTags} emptyLabel={t("workCard.noDlsiteTags")} onBadgeClick={onTagOpen} />
-      {work.userTags && work.userTags.length > 0 && (
-        <div className="flex min-h-6 flex-wrap gap-1.5">
-          {work.userTags.map((tag) => {
-            const chip = (
-              <span
-                className={cn(
-                  tagChipClassName,
-                  "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20",
-                  tag.onClick && "hover:bg-primary/15",
-                )}
-                title={tag.title}
-              >
-                {tag.label}
-              </span>
-            );
-            return tag.onClick ? (
-              <button
-                key={tag.key ?? tag.label}
-                type="button"
-                className={tagButtonClassName}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  tag.onClick?.();
-                }}
-              >
-                {chip}
-              </button>
-            ) : (
-              <span key={tag.key ?? tag.label} className="max-w-full">
-                {chip}
-              </span>
-            );
-          })}
-        </div>
-      )}
+      <WorkCardTags
+        dlsiteTags={work.dlsiteTags}
+        userTags={work.userTags ?? []}
+        emptyLabel={t("workCard.noDlsiteTags")}
+        onTagOpen={onTagOpen}
+      />
       <WorkCardMetrics rating={work.rating ?? null} ratingCount={work.ratingCount ?? null} sales={work.sales ?? null} />
     </div>
   );
 }
 
+// Chips stay tappable at their regular size in the overflow popover, which
+// renders outside the card; only chips inside a narrow card shrink.
 const tagChipClassName =
-  "inline-block h-6 max-w-full truncate rounded-[var(--badge-radius)] bg-muted px-2 align-top text-xs leading-6 text-muted-foreground transition-colors";
+  "inline-block h-6 max-w-full truncate rounded-[var(--badge-radius)] bg-muted px-2 align-top text-xs leading-6 text-muted-foreground transition-colors @max-[12.5rem]/work-card:h-5 @max-[12.5rem]/work-card:px-1.5 @max-[12.5rem]/work-card:text-2xs @max-[12.5rem]/work-card:leading-5";
+
+const personalTagChipClassName = "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20";
 
 const tagButtonClassName =
-  "max-w-full rounded-[var(--badge-radius)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "flex max-w-full rounded-[var(--badge-radius)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-function MeasuredBadgeList({
-  badges,
+const tagRowClassName = "flex min-w-0 flex-wrap gap-1.5 @max-[12.5rem]/work-card:gap-1";
+
+type WorkCardTagItem = { badge: WorkCardBadge; personal: boolean };
+
+function tagItemKey({ badge, personal }: WorkCardTagItem) {
+  return `${personal ? "personal" : "dlsite"}:${badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}`;
+}
+
+/**
+ * DLsite tags get a measured number of rows and an overflow popover. A regular
+ * card gives them two rows and lists every personal tag in its own row below.
+ * A narrow card folds both into one row, personal tags first, so the user's own
+ * tags stay visible without adding height. The row count comes from the card's
+ * container query (`--work-card-tag-rows`), so CSS owns the breakpoint.
+ */
+function WorkCardTags({
+  dlsiteTags,
+  userTags,
   emptyLabel,
-  onBadgeClick,
+  onTagOpen,
 }: {
-  badges: WorkCardBadge[];
+  dlsiteTags: WorkCardBadge[];
+  userTags: WorkCardBadge[];
   emptyLabel: string;
-  onBadgeClick?: (label: string) => void;
+  onTagOpen?: (label: string) => void;
 }) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const measurementRef = useRef<HTMLDivElement | null>(null);
   const overflowRef = useRef<HTMLButtonElement | null>(null);
-  const [visibleCount, setVisibleCount] = useState(badges.length);
+  const [layout, setLayout] = useState({ rows: 2, visibleCount: dlsiteTags.length });
   const [open, setOpen] = useState(false);
+  const personalItems = userTags.map((badge) => ({ badge, personal: true }));
+  const dlsiteItems = dlsiteTags.map((badge) => ({ badge, personal: false }));
+  const folded = layout.rows < 2;
+  const listItems = folded ? [...personalItems, ...dlsiteItems] : dlsiteItems;
+  const separateItems = folded ? [] : personalItems;
   // Card view models rebuild badge arrays on every parent render; re-measure only
   // when the rendered badge content changes.
-  const badgeLayoutKey = JSON.stringify(badges.map((badge) => [badge.key, badge.label, badge.variant]));
+  const badgeLayoutKey = JSON.stringify(
+    [...personalItems, ...dlsiteItems].map(({ badge, personal }) => [personal, badge.key, badge.label, badge.variant]),
+  );
 
   const measure = useCallback(() => {
-    const containerWidth = containerRef.current?.clientWidth ?? 0;
+    const container = containerRef.current;
     const measurement = measurementRef.current;
-    if (containerWidth <= 0 || !measurement) return;
-    const widths = Array.from(measurement.querySelectorAll<HTMLElement>("[data-measured-badge]")).map(
-      (element) => element.getBoundingClientRect().width,
-    );
+    const containerWidth = container?.clientWidth ?? 0;
+    if (!container || !measurement || containerWidth <= 0) return;
+    const rows = Number.parseInt(getComputedStyle(container).getPropertyValue("--work-card-tag-rows"), 10) || 2;
+    const gap = Number.parseFloat(getComputedStyle(measurement).columnGap) || 0;
+    const widths = Array.from(measurement.querySelectorAll<HTMLElement>("[data-measured-badge]"))
+      .filter((element) => rows < 2 || element.dataset.measuredBadge !== "personal")
+      .map((element) => element.getBoundingClientRect().width);
     const overflowWidth =
       measurement.querySelector<HTMLElement>("[data-measured-overflow]")?.getBoundingClientRect().width ?? 0;
-    setVisibleCount(visibleBadgeCountForRows(widths, containerWidth, overflowWidth));
+    const visibleCount = visibleBadgeCountForRows(widths, containerWidth, overflowWidth, rows, gap);
+    setLayout((current) =>
+      current.rows === rows && current.visibleCount === visibleCount ? current : { rows, visibleCount },
+    );
   }, []);
 
   // badgeLayoutKey is the re-measure trigger; measure itself reads only the DOM.
@@ -562,86 +584,96 @@ function MeasuredBadgeList({
     };
   }, [badgeLayoutKey, measure]);
 
+  const safeVisibleCount = Math.min(layout.visibleCount, listItems.length);
+  const visibleItems = listItems.slice(0, safeVisibleCount);
+  const hiddenItems = listItems.slice(safeVisibleCount);
+  const hasHiddenItems = hiddenItems.length > 0;
+
   useEffect(() => {
-    if (visibleCount >= badges.length) setOpen(false);
-  }, [badges.length, visibleCount]);
+    if (!hasHiddenItems) setOpen(false);
+  }, [hasHiddenItems]);
 
-  if (badges.length === 0) {
-    return (
-      <div className="flex min-h-6 items-center">
-        <span className="text-xs text-muted-foreground/70">{emptyLabel}</span>
-      </div>
-    );
-  }
+  const renderBadge = (item: WorkCardTagItem, onSelected?: () => void) => (
+    <CardBadge
+      key={tagItemKey(item)}
+      badge={item.badge}
+      personal={item.personal}
+      // Personal tags carry their own search; the DLsite tag search must not apply to them.
+      onBadgeClick={item.personal ? undefined : onTagOpen}
+      onSelected={onSelected}
+    />
+  );
 
-  const safeVisibleCount = Math.min(visibleCount, badges.length);
-  const visibleBadges = badges.slice(0, safeVisibleCount);
-  const hiddenBadges = badges.slice(safeVisibleCount);
   return (
-    <div ref={containerRef} className="relative min-h-6 min-w-0" data-testid="work-card-tags">
-      <div className="flex min-w-0 flex-wrap gap-1.5">
-        {visibleBadges.map((badge) => (
-          <CardBadge
-            key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
-            badge={badge}
-            onBadgeClick={onBadgeClick}
-          />
-        ))}
-        {hiddenBadges.length > 0 && (
-          <button
-            ref={overflowRef}
-            type="button"
-            className={tagButtonClassName}
-            aria-label={t("workCard.showMoreTags", { count: hiddenBadges.length })}
-            aria-expanded={open}
-            onClick={(event) => {
-              event.stopPropagation();
-              setOpen((current) => !current);
-            }}
-          >
-            <span className={cn(tagChipClassName, tagOverflowClassName)}>+{hiddenBadges.length}</span>
-          </button>
-        )}
-      </div>
-      {/* Only widths are measured. A zero-height, clipped column keeps the stacked tags from
-          extending the page's scroll height below the last row of cards. */}
+    <>
       <div
-        ref={measurementRef}
-        className="pointer-events-none invisible absolute inset-x-0 top-0 -z-10 flex h-0 flex-col items-start overflow-hidden"
-        aria-hidden="true"
+        ref={containerRef}
+        className="relative min-h-6 min-w-0 [--work-card-tag-rows:2] @max-[12.5rem]/work-card:min-h-5 @max-[12.5rem]/work-card:[--work-card-tag-rows:1]"
+        data-testid="work-card-tags"
       >
-        {badges.map((badge) => (
-          <span
-            key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
-            data-measured-badge
-            className={tagChipClassName}
-          >
-            {badge.label}
-          </span>
-        ))}
-        <span data-measured-overflow className={cn(tagChipClassName, tagOverflowClassName)}>
-          +{badges.length}
-        </span>
-      </div>
-      <AnchoredPopover
-        open={open}
-        anchorRef={overflowRef}
-        onOpenChange={setOpen}
-        bottomCollisionPadding={isMobileViewport() ? 168 : 12}
-        className="w-[min(20rem,calc(100vw-1.5rem))] p-2"
-      >
-        <div className="flex flex-wrap gap-1.5">
-          {hiddenBadges.map((badge) => (
-            <CardBadge
-              key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
-              badge={badge}
-              onBadgeClick={onBadgeClick}
-              onSelected={() => setOpen(false)}
-            />
+        {listItems.length === 0 ? (
+          <div className="flex min-h-6 items-center @max-[12.5rem]/work-card:min-h-5">
+            <span className="text-xs text-muted-foreground/70 @max-[12.5rem]/work-card:text-2xs">{emptyLabel}</span>
+          </div>
+        ) : (
+          <div className={tagRowClassName}>
+            {visibleItems.map((item) => renderBadge(item))}
+            {hasHiddenItems && (
+              <button
+                ref={overflowRef}
+                type="button"
+                className={tagButtonClassName}
+                aria-label={t("workCard.showMoreTags", { count: hiddenItems.length })}
+                aria-expanded={open}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setOpen((current) => !current);
+                }}
+              >
+                <span className={cn(tagChipClassName, tagOverflowClassName)}>+{hiddenItems.length}</span>
+              </button>
+            )}
+          </div>
+        )}
+        {/* Only widths are measured. A zero-height, clipped column keeps the stacked tags from
+            extending the page's scroll height below the last row of cards. */}
+        <div
+          ref={measurementRef}
+          className={cn(
+            tagRowClassName,
+            "pointer-events-none invisible absolute inset-x-0 top-0 -z-10 h-0 flex-col flex-nowrap items-start overflow-hidden",
+          )}
+          aria-hidden="true"
+        >
+          {[...personalItems, ...dlsiteItems].map((item) => (
+            <span
+              key={tagItemKey(item)}
+              data-measured-badge={item.personal ? "personal" : "dlsite"}
+              className={tagChipClassName}
+            >
+              {item.badge.label}
+            </span>
           ))}
+          <span data-measured-overflow className={cn(tagChipClassName, tagOverflowClassName)}>
+            +{personalItems.length + dlsiteItems.length}
+          </span>
         </div>
-      </AnchoredPopover>
-    </div>
+        <AnchoredPopover
+          open={open}
+          anchorRef={overflowRef}
+          onOpenChange={setOpen}
+          bottomCollisionPadding={isMobileViewport() ? 168 : 12}
+          className="w-[min(20rem,calc(100vw-1.5rem))] p-2"
+        >
+          <div className="flex flex-wrap gap-1.5">
+            {hiddenItems.map((item) => renderBadge(item, () => setOpen(false)))}
+          </div>
+        </AnchoredPopover>
+      </div>
+      {separateItems.length > 0 && (
+        <div className="flex min-h-6 flex-wrap gap-1.5">{separateItems.map((item) => renderBadge(item))}</div>
+      )}
+    </>
   );
 }
 
@@ -650,10 +682,12 @@ const tagOverflowClassName =
 
 function CardBadge({
   badge,
+  personal = false,
   onBadgeClick,
   onSelected,
 }: {
   badge: WorkCardBadge;
+  personal?: boolean;
   onBadgeClick?: (label: string) => void;
   onSelected?: () => void;
 }) {
@@ -662,8 +696,9 @@ function CardBadge({
     <span
       className={cn(
         tagChipClassName,
+        personal && personalTagChipClassName,
         badge.variant === "warning" && "bg-warning-surface text-warning-foreground",
-        clickable && "hover:bg-primary/10 hover:text-primary",
+        clickable && (personal ? "hover:bg-primary/15" : "hover:bg-primary/10 hover:text-primary"),
       )}
       title={badge.title}
     >
@@ -683,7 +718,7 @@ function CardBadge({
       {chip}
     </button>
   ) : (
-    <span className="max-w-full">{chip}</span>
+    <span className="flex max-w-full">{chip}</span>
   );
 }
 
@@ -752,10 +787,13 @@ function WorkCardMetrics({
   // Each stat stays whole and wraps as a unit on narrow cards instead of
   // truncating its number.
   return (
-    <div className="mt-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs text-muted-foreground">
+    <div className="mt-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs text-muted-foreground @max-[12.5rem]/work-card:gap-x-2 @max-[12.5rem]/work-card:gap-y-0.5 @max-[12.5rem]/work-card:pt-0 @max-[12.5rem]/work-card:text-2xs">
       <span className="inline-flex shrink-0 items-center gap-1" title={ratingLabel} role="img" aria-label={ratingLabel}>
         <Star
-          className={cn("h-3.5 w-3.5", normalizedRating !== null && "fill-primary text-primary")}
+          className={cn(
+            "h-3.5 w-3.5 @max-[12.5rem]/work-card:h-3 @max-[12.5rem]/work-card:w-3",
+            normalizedRating !== null && "fill-primary text-primary",
+          )}
           aria-hidden="true"
         />
         <span className="font-semibold tabular-nums text-foreground">

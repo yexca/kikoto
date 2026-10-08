@@ -1,4 +1,9 @@
 # Unreleased
 
-No unreleased changes are recorded yet. Changes through v0.8.0 are summarized
-in [v0.8.0](v0.8.0.md).
+- Narrow work cards, such as two mobile columns or six or more desktop
+  columns, use tighter type and spacing. Personal tags lead a single tag row
+  shared with DLsite tags, and the remaining tags open from the overflow
+  control. The cover names only the first file source and counts the rest,
+  and the rating and Sales row uses smaller type. A two-column phone card is
+  about a fifth shorter, so a second row of works fits on screen. Wider cards
+  keep their layout.
