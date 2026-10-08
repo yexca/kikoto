@@ -2065,7 +2065,7 @@ function creatorListSearch(options: CreatorListOptions) {
 
 export function assetURL(path: string) {
   if (!path) return "";
-  return apiURL(path);
+  return nativeAssetURL(apiURL(path), API_BASE());
 }
 
 export class ApiError extends Error {
@@ -3147,3 +3147,4 @@ import {
   setStoredSessionToken,
 } from "@/lib/serverConfig";
 import { recordApiError } from "@/lib/mobileDiagnostics";
+import { nativeAssetURL } from "@/lib/nativeAssetTransport";
