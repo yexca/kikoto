@@ -22,7 +22,7 @@ export function LibraryMigrationGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Outside maintenance nothing polls: a request every few seconds would reach
     // every page, and on sign-in password managers read it as a submitted login.
-    // A request the server refuses for maintenance switches back to polling.
+    // A confirmed migration or a request refused for maintenance resumes polling.
     if (maintenance === false) {
       const enterMaintenance = () => setMaintenance(true);
       window.addEventListener(SITE_MAINTENANCE_EVENT, enterMaintenance);
