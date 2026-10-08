@@ -25,7 +25,7 @@ func TestProxyCONNECTCancellationClosesPendingHandshake(t *testing.T) {
 	}))
 	defer proxyServer.Close()
 	proxyURL, _ := ParseProxyURL(proxyServer.URL)
-	policy, err := NewPolicy([]Destination{{URL: "http://source.test"}}, Options{Proxy: proxyURL, Resolver: publicTestResolver()})
+	policy, err := NewPolicy([]Destination{{URL: "http://source.test", AllowPrivate: true}}, Options{Proxy: proxyURL, Resolver: documentationTestResolver()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestProxyCONNECTRejectsOversizedResponseHeaders(t *testing.T) {
 	}))
 	defer proxyServer.Close()
 	proxyURL, _ := ParseProxyURL(proxyServer.URL)
-	policy, err := NewPolicy([]Destination{{URL: "http://source.test"}}, Options{Proxy: proxyURL, Resolver: publicTestResolver()})
+	policy, err := NewPolicy([]Destination{{URL: "http://source.test", AllowPrivate: true}}, Options{Proxy: proxyURL, Resolver: documentationTestResolver()})
 	if err != nil {
 		t.Fatal(err)
 	}

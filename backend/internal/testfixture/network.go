@@ -2,10 +2,10 @@ package testfixture
 
 import "net"
 
-// PublicIPv4 returns a deterministic public-address classification fixture for
-// DNS mocks. Tests must use an injected dialer or a local proxy fixture and must
-// never connect to this address. Documentation/reserved ranges cannot represent
-// a successful public-policy decision because the transport rejects them.
-func PublicIPv4() net.IP {
-	return net.IPv4(93, 184, 216, 34)
+// DocumentationIPv4 returns a deterministic address from the RFC 5737 TEST-NET-1
+// range for DNS mocks. Tests must use an injected dialer or a local proxy fixture
+// and must never connect to this address. Successful transport tests must explicitly
+// allow the configured origin's reserved addresses; public policies must reject it.
+func DocumentationIPv4() net.IP {
+	return net.IPv4(192, 0, 2, 10)
 }

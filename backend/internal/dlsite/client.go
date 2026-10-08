@@ -1276,7 +1276,7 @@ func pageListsCodeBelow(codes []string, limit string) bool {
 	return false
 }
 
-// SplitWorkCode splits a DLsite work code such as RJ01234567 into its
+// SplitWorkCode splits a DLsite work code such as RJ00000000 into its
 // upper-case prefix and number.
 func SplitWorkCode(code string) (string, int64, bool) {
 	code = strings.ToUpper(strings.TrimSpace(code))
