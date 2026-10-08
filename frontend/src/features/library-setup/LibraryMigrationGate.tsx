@@ -6,6 +6,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type LibraryMigrationStatus } from "@/lib/api";
+import { SITE_MAINTENANCE_EVENT } from "@/lib/appEvents";
 
 /** The maintenance check stays outside the app shell so failed media requests
  * cannot replace the progress view. The backend remains the access boundary. */
@@ -19,6 +20,14 @@ export function LibraryMigrationGate({ children }: { children: ReactNode }) {
   const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
+    // Outside maintenance nothing polls: a request every few seconds would reach
+    // every page, and on sign-in password managers read it as a submitted login.
+    // A request the server refuses for maintenance switches back to polling.
+    if (maintenance === false) {
+      const enterMaintenance = () => setMaintenance(true);
+      window.addEventListener(SITE_MAINTENANCE_EVENT, enterMaintenance);
+      return () => window.removeEventListener(SITE_MAINTENANCE_EVENT, enterMaintenance);
+    }
     let alive = true;
     const refresh = async () => {
       try {
@@ -38,7 +47,7 @@ export function LibraryMigrationGate({ children }: { children: ReactNode }) {
       }
     };
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 2000);
+    const timer = maintenance ? window.setInterval(() => void refresh(), 2000) : undefined;
     return () => {
       alive = false;
       window.clearInterval(timer);

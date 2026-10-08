@@ -1,6 +1,7 @@
 import { normalizeCatalogSyncState, type CatalogSyncState } from "@/lib/catalogSyncState";
 import { combineAbortSignals, retryInvalidatedRequest, sharedInflightRequests } from "@/lib/inflightRequests";
 import { apiMutationResources, apiReadResources } from "@/lib/apiRequestResources";
+import { SITE_MAINTENANCE_EVENT } from "@/lib/appEvents";
 import {
   apiSessionSignal,
   apiSessionVersion,
@@ -2126,6 +2127,7 @@ async function responseError(response: Response, fallback: string) {
       status: response.status,
       message,
     });
+    if (payload.code === "site_maintenance") globalThis.dispatchEvent?.(new Event(SITE_MAINTENANCE_EVENT));
     return new ApiError(message, response.status, payload.code ?? "", payload.retryable === true);
   } finally {
     responseContexts.get(response)?.complete();

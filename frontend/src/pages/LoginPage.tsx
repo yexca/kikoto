@@ -57,11 +57,17 @@ export function LoginPage({ embedded = false, onSuccess }: { embedded?: boolean;
         <form className="space-y-3" onSubmit={submit}>
           <label className="grid gap-1.5 text-sm font-medium">
             {t("login.username")}
-            <Input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
+            <Input
+              name="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              autoComplete="username"
+            />
           </label>
           <label className="grid gap-1.5 text-sm font-medium">
             {t("login.password")}
             <Input
+              name="password"
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
