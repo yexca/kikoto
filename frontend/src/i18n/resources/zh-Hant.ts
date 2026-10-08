@@ -903,6 +903,7 @@ export const zhHantResource = {
         serverVersion: "伺服器版本",
         notConfigured: "未設定",
         back: "返回",
+        removeItem: "移除 {{value}}",
       },
       errors: {
         network: "網路要求失敗。",

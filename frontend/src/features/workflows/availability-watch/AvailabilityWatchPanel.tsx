@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input, NativeSelect } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/input";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { TokenInput } from "@/components/ui/token-input";
 import {
   AvailabilityWatchMonitoringDialog,
   AvailabilityWatchReadyDialog,
@@ -36,6 +37,8 @@ import {
   type WorkflowRun,
   type WorkflowTrigger,
 } from "@/lib/api";
+import { normalizeFetchExtension } from "@/lib/remoteFetchFilters";
+import { WORD_TOKEN_SEPARATORS } from "@/lib/tokenDraft";
 
 type AvailabilityWatchDialog = "monitoring" | "ready" | null;
 
@@ -255,13 +258,6 @@ export function AvailabilityWatchPanel({
   );
 }
 
-function availabilityWatchExtensions(value: string) {
-  return value
-    .split(/[\s,;，；]+/u)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function availabilityWatchActionOptions(canManageDownloads: boolean) {
   return [
     { value: "monitor" as const, label: workflowCopy("monitorOnly") },
@@ -387,7 +383,7 @@ function AvailabilityWatchConfigurePopover({
   const [action, setAction] = useState<AvailabilityWatch["action"]>(watch.action);
   const [sourceId, setSourceId] = useState(watch.sourceId ?? 0);
   const [excludeEnabled, setExcludeEnabled] = useState(watch.excludeExtensions.length > 0);
-  const [excluded, setExcluded] = useState(watch.excludeExtensions.join(", "));
+  const [excluded, setExcluded] = useState(watch.excludeExtensions);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const disabled = readOnly || saving;
@@ -399,7 +395,7 @@ function AvailabilityWatchConfigurePopover({
       const saved = await api.updateAvailabilityWatch({
         action,
         sourceId: sourceId || null,
-        excludeExtensions: excludeEnabled ? availabilityWatchExtensions(excluded) : [],
+        excludeExtensions: excludeEnabled ? excluded : [],
       });
       onSaved(saved);
       toast.success(workflowCopy("availabilityWatchSaved"));
@@ -455,11 +451,12 @@ function AvailabilityWatchConfigurePopover({
             disabled={disabled}
           />
           {excludeEnabled && (
-            <Input
-              fieldSize="sm"
-              aria-label={workflowCopy("extensionsToExclude")}
-              value={excluded}
-              onChange={(event) => setExcluded(event.target.value)}
+            <TokenInput
+              ariaLabel={workflowCopy("extensionsToExclude")}
+              values={excluded}
+              onChange={setExcluded}
+              normalize={normalizeFetchExtension}
+              separators={WORD_TOKEN_SEPARATORS}
               placeholder={workflowCopy("extensionsPlaceholder")}
               disabled={disabled}
             />

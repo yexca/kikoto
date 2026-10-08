@@ -923,6 +923,7 @@ export const koreanResource = {
         serverVersion: "서버 버전",
         notConfigured: "구성되지 않음",
         back: "뒤로",
+        removeItem: "{{value}} 삭제",
       },
       errors: {
         network: "네트워크 요청에 실패했습니다.",

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { appendTokens, splitTokenDraft, WORD_TOKEN_SEPARATORS } from "@/lib/tokenDraft";
 import { syntheticWorkCode } from "@/test-support/workCode";
-import { parseWorkCodes } from "./WorkCodesField";
+import { normalizeWorkCodeToken, parseWorkCodes } from "./WorkCodesField";
 
-describe("parseWorkCodes", () => {
+describe("work code tokens", () => {
   it("accepts documented ASCII and full-width separators", () => {
     const codes = [
       syntheticWorkCode("RJ", 0),
@@ -11,19 +12,14 @@ describe("parseWorkCodes", () => {
       syntheticWorkCode("VJ", 0),
       syntheticWorkCode("CC", 0),
     ];
-    expect(parseWorkCodes(`${codes[0].toLowerCase()}; ${codes[1]}，${codes[2]}\n${codes[3]}`)).toEqual({
-      codes,
-      duplicates: [],
-      invalid: [],
-    });
+    const pasted = `${codes[0].toLowerCase()}; ${codes[1]}，${codes[2]}\n${codes[3]} `;
+    const { tokens } = splitTokenDraft(pasted, WORD_TOKEN_SEPARATORS);
+    expect(appendTokens([], tokens, normalizeWorkCodeToken)).toEqual(codes);
   });
 
-  it("reports duplicate and invalid tokens without hiding valid codes", () => {
+  it("drops duplicates and keeps invalid tokens visible next to valid codes", () => {
     const code = syntheticWorkCode("RJ", 0);
-    expect(parseWorkCodes(`${code} ${code} RJ0000 nope`)).toEqual({
-      codes: [code],
-      duplicates: [code],
-      invalid: ["RJ0000", "nope"],
-    });
+    const values = appendTokens([code], [code.toLowerCase(), "RJ0000", "nope"], normalizeWorkCodeToken);
+    expect(parseWorkCodes(values)).toEqual({ codes: [code], invalid: ["RJ0000", "NOPE"] });
   });
 });

@@ -1,10 +1,18 @@
+export function normalizeFetchExtension(extension: string) {
+  return extension.trim().toLowerCase().replace(/^\./, "");
+}
+
+export function isFetchExtension(extension: string) {
+  return /^[a-z0-9]{1,16}$/.test(extension);
+}
+
 /** Extension exclusions narrow the initial Fetch selection before a plan is requested. */
 export function parseFetchExtensions(value: string) {
   return Array.from(
     new Set(
       value
         .split(/[\s,;，；]+/)
-        .map((extension) => extension.trim().toLowerCase().replace(/^\./, ""))
+        .map(normalizeFetchExtension)
         .filter(Boolean),
     ),
   );

@@ -1,9 +1,10 @@
-import { useId, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { RotateCcw, Undo2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useTokenDraftHandlers } from "@/components/ui/token-input";
 import { cn } from "@/lib/tailwindClassNames";
 import type { MetadataFieldStatus } from "./metadataEditorModel";
 
@@ -110,6 +111,7 @@ export function SuggestionCombobox({
   placeholder,
   ariaLabel,
   onSubmitText,
+  onSubmitTokens,
   onFocus,
 }: {
   id?: string;
@@ -123,6 +125,8 @@ export function SuggestionCombobox({
   ariaLabel?: string;
   /** Called on Enter when no option is highlighted. */
   onSubmitText?: (value: string) => void;
+  /** When set, a comma or line break submits each finished name and keeps the rest typed. */
+  onSubmitTokens?: (values: string[]) => void;
   onFocus?: () => void;
 }) {
   const { t } = useTranslation();
@@ -135,6 +139,16 @@ export function SuggestionCombobox({
   const hasContent = options.length > 0 || truncated || Boolean(footer);
   const open = focused && !dismissed && hasContent && value.trim() !== "";
   const activeOption = open && active >= 0 ? options[active] : undefined;
+
+  const changeText = (text: string) => {
+    setDismissed(false);
+    setActive(-1);
+    onChange(text);
+  };
+  const tokenHandlers = useTokenDraftHandlers({
+    onCommit: (names) => onSubmitTokens?.(names),
+    onDraftChange: changeText,
+  });
 
   const select = (option: SuggestionOption) => {
     if (option.disabled) return;
@@ -197,11 +211,9 @@ export function SuggestionCombobox({
           setActive(-1);
         }}
         onKeyDown={onKeyDown}
-        onChange={(event) => {
-          setDismissed(false);
-          setActive(-1);
-          onChange(event.target.value);
-        }}
+        {...(onSubmitTokens
+          ? tokenHandlers
+          : { onChange: (event: ChangeEvent<HTMLInputElement>) => changeText(event.target.value) })}
       />
       <div
         id={listId}

@@ -22,7 +22,7 @@ export function AvailabilityWatchMonitoringDialog({
   onSaved: (watch: AvailabilityWatch) => void;
 }) {
   const toast = useToast();
-  const [codes, setCodes] = useState(watch.targets.map((target) => target.workCode).join("\n"));
+  const [codes, setCodes] = useState(() => watch.targets.map((target) => target.workCode));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const parsed = parseWorkCodes(codes);

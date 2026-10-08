@@ -898,6 +898,7 @@ export const zhHansResource = {
         serverVersion: "服务器版本",
         notConfigured: "未配置",
         back: "返回",
+        removeItem: "移除 {{value}}",
       },
       errors: {
         network: "网络请求失败。",

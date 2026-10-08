@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildUserTagEditorOptions, toggleUserTag } from "./userTagEditorModel";
+import { addUserTags, buildUserTagEditorOptions, toggleUserTag } from "./userTagEditorModel";
 
 const suggestions = [
   { name: "Sleep", usageCount: 5 },
@@ -18,6 +18,22 @@ describe("toggleUserTag", () => {
   it("truncates to the backend limit by character, not UTF-16 unit", () => {
     const [tag] = toggleUserTag([], "🎧".repeat(45));
     expect(Array.from(tag)).toHaveLength(40);
+  });
+});
+
+describe("addUserTags", () => {
+  it("adds a typed list without toggling off tags that are already selected", () => {
+    expect(addUserTags(["Sleep", "Focus"], ["sleep", " Night ", "night", "Rain"])).toEqual([
+      "Sleep",
+      "Focus",
+      "Night",
+      "Rain",
+    ]);
+  });
+
+  it("keeps the same set when every name is already selected", () => {
+    const selected = ["Sleep"];
+    expect(addUserTags(selected, ["SLEEP", " "])).toBe(selected);
   });
 });
 
