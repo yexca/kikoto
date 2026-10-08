@@ -54,6 +54,14 @@ type DLsiteSyncer struct {
 	// Purchase bonus detection; see WithPurchaseBonusLinking.
 	purchaseBonusAutoLink bool
 	purchaseBonusRecheck  bool
+	unavailableHandler    func(context.Context, int64, string) (bool, error)
+}
+
+// WithUnavailableHandler composes an optional fallback for explicitly missing
+// DLsite products. Retryable provider failures never reach this handler.
+func (s *DLsiteSyncer) WithUnavailableHandler(handler func(context.Context, int64, string) (bool, error)) *DLsiteSyncer {
+	s.unavailableHandler = handler
+	return s
 }
 
 type DLsiteSyncResult struct {
@@ -246,8 +254,9 @@ func (s *DLsiteSyncer) SyncAll(ctx context.Context) (DLsiteSyncResult, error) {
 // refreshes works whose current snapshot would otherwise be skipped. A scope
 // never adds a work: catalog codes without a work are not targets.
 type DLsiteSyncScope struct {
-	WorkIDs []int64
-	Full    bool
+	WorkIDs            []int64
+	Full               bool
+	RecheckUnavailable bool
 }
 
 // SyncAllWithoutWorkflow applies the same metadata synchronization without
@@ -310,6 +319,16 @@ func (s *DLsiteSyncer) syncTarget(ctx context.Context, target workTarget) syncTa
 			return syncTargetResult{err: err, failures: []string{fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error())}}
 		}
 		if family.RequestedUnavailable {
+			if s.unavailableHandler != nil {
+				filled, fallbackErr := s.unavailableHandler(ctx, target.ID, target.PrimaryCode)
+				if ctx.Err() != nil {
+					return syncTargetResult{err: ctx.Err()}
+				}
+				if fallbackErr != nil {
+					return syncTargetResult{unavailable: true, failures: []string{target.PrimaryCode + ": remote metadata fallback failed"}}
+				}
+				return syncTargetResult{synced: filled, unavailable: true}
+			}
 			return syncTargetResult{unavailable: true}
 		}
 		return syncTargetResult{failures: []string{fmt.Sprintf("%s: %s", target.PrimaryCode, err.Error())}}
@@ -943,16 +962,16 @@ func (s *DLsiteSyncer) loadTargets(ctx context.Context, scope DLsiteSyncScope) (
 			), ''),
 			EXISTS (SELECT 1 FROM work_purchase_bonus AS bonus WHERE bonus.work_id = work.id)
 		FROM work
-		WHERE NOT EXISTS (
+		WHERE (? OR NOT EXISTS (
 			SELECT 1
 			FROM work_metadata_provider_state AS provider_state
 			INNER JOIN metadata_provider AS state_provider ON state_provider.id = provider_state.provider_id
 			WHERE provider_state.work_id = work.id
 				AND state_provider.code = 'dlsite'
 				AND provider_state.status = 'not_found'
-		)
+		))
 		ORDER BY work.id ASC
-	`)
+	`, scope.RecheckUnavailable)
 	if err != nil {
 		return nil, 0, err
 	}

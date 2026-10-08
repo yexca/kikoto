@@ -613,7 +613,6 @@ export function WorkflowsPage({
                     onRunRemotePopular={runPopularCollection}
                     onRunRemoteFetch={runRemoteFetch}
                     canFetchRemotePopular={canManageDownloads}
-                    canConfigureMetadataSync={canManageSources}
                     canTag={canTagWorks}
                     remoteSourceUnavailable={remoteSourceAvailability === "unavailable"}
                     onOpenRemoteSourceSettings={openRemoteSourcesSettings}

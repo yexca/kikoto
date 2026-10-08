@@ -113,10 +113,12 @@ describe("translation resources", () => {
       "maintenance.library.apiUrl",
       // Product name.
       "maintenance.proxy.scopes.dlsite",
+      "workflowPage.metadataSyncScope.dlsite",
       // Synthetic identifier examples.
       "workflowPage.presetTargetPlaceholders.circleId",
       "workflowPage.presetTargetPlaceholders.seriesId",
       "workflowPage.metadataSyncScope.circlePlaceholder",
+      "workflowPage.metadataSyncScope.workCodesPlaceholder",
     ]);
     const strings = (value: unknown, prefix: string): [string, string][] =>
       Object.entries(value as object).flatMap(([key, child]) => {

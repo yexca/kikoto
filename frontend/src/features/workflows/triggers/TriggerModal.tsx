@@ -9,6 +9,7 @@ import {
   metadataSyncBlockers,
   metadataSyncDefaultValues,
   metadataSyncPayload,
+  metadataSyncSourceId,
   metadataSyncValuesFromConfig,
   type MetadataSyncFormValues,
 } from "@/features/workflows/metadataSyncModel";
@@ -27,6 +28,7 @@ import {
 } from "@/features/workflows/run-forms/LibraryRunPanels";
 import { PresetParameterFields, presetBlockerText } from "@/features/workflows/run-forms/PresetRunPanel";
 import { TagTemplateField } from "@/features/workflows/run-forms/TagTemplateField";
+import { useMetadataSyncSources } from "@/features/workflows/useMetadataSyncSources";
 import {
   REMOTE_POPULAR_TAG_TEMPLATE,
   dlsitePopularDefaultTagTemplate,
@@ -106,6 +108,7 @@ export function TriggerModal({
       : {},
   );
   const isMetadataSync = definition.code === "metadata_sync";
+  const metadataSources = useMetadataSyncSources(isMetadataSync);
   const [metadataSyncValues, setMetadataSyncValues] = useState<MetadataSyncFormValues>(() =>
     trigger
       ? metadataSyncValuesFromConfig(parseJSONRecord(trigger.configJson))
@@ -123,7 +126,7 @@ export function TriggerModal({
     ? presetBlockers(preset, presetValues, { canTag, automated: true }).map((blocker) => presetBlockerText(blocker))
     : [];
   const systemConfigBlockers = isMetadataSync
-    ? metadataSyncBlockers(metadataSyncValues).map(metadataSyncBlockerText)
+    ? metadataSyncBlockers(metadataSyncValues, metadataSources.sources ?? undefined).map(metadataSyncBlockerText)
     : workflowSystemTriggerConfigBlockers(definition.code, systemConfig);
   // An unfiltered follow syncs every catalog work without metadata on each
   // automated run. It is allowed, but recommend a filter before saving one.
@@ -283,6 +286,10 @@ export function TriggerModal({
                 compact
                 values={metadataSyncValues}
                 onChange={setMetadataSyncValues}
+                sources={metadataSources.sources}
+                sourceLoadFailed={metadataSources.failed}
+                onRetrySources={metadataSources.retry}
+                disabled={saving || readOnly}
               />
             ) : showSystemOptions ? (
               <SystemWorkflowTriggerFields
@@ -320,7 +327,19 @@ export function TriggerModal({
           <Button variant="outline" onClick={onClose} disabled={saving}>
             {workflowCopy("cancel")}
           </Button>
-          <Button onClick={save} disabled={saving || automationBlockers.length > 0 || !displayName.trim()}>
+          <Button
+            onClick={save}
+            disabled={
+              saving ||
+              automationBlockers.length > 0 ||
+              !displayName.trim() ||
+              (isMetadataSync &&
+                metadataSources.sources === null &&
+                (metadataSyncValues.scope === "voice" ||
+                  metadataSyncSourceId(metadataSyncValues) > 0 ||
+                  metadataSyncValues.remoteMetadataFallback.enabled))
+            }
+          >
             <Save className="h-4 w-4" />
             {saving ? workflowCopy("saving") : trigger ? workflowCopy("save") : workflowCopy("addTrigger")}
           </Button>

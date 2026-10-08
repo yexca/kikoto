@@ -14,14 +14,17 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/remotemetadata"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 type workMetadataSyncPayload struct {
-	WorkID      int64  `json:"workId"`
-	PrimaryCode string `json:"primaryCode"`
-	FamilyCode  string `json:"familyCode"`
-	SourceID    int64  `json:"sourceId,omitempty"`
+	WorkID                 int64                           `json:"workId"`
+	PrimaryCode            string                          `json:"primaryCode"`
+	FamilyCode             string                          `json:"familyCode"`
+	SourceID               int64                           `json:"sourceId,omitempty"`
+	RemoteMetadataFallback *remoteMetadataFallbackSettings `json:"remoteMetadataFallback,omitempty"`
+	PurchaseBonusAutoLink  *bool                           `json:"purchaseBonusAutoLink,omitempty"`
 }
 
 type workMetadataSyncRunResult struct {
@@ -130,6 +133,15 @@ func (s *Server) enqueueWorkMetadataSyncForSource(ctx context.Context, workID in
 	payload.PrimaryCode = strings.ToUpper(strings.TrimSpace(payload.PrimaryCode))
 	payload.FamilyCode = strings.ToUpper(strings.TrimSpace(payload.FamilyCode))
 	payload.SourceID = sourceID
+	if sourceID == 0 {
+		fallback, err := s.loadRemoteMetadataFallbackSettings(ctx)
+		if err != nil {
+			return workMetadataSyncRunResult{}, err
+		}
+		payload.RemoteMetadataFallback = &fallback
+		autoLink := s.settingBoolContext(ctx, purchaseBonusAutoLinkSetting, true)
+		payload.PurchaseBonusAutoLink = &autoLink
+	}
 	if sourceID == 0 && providerUnavailable && !recheckUnavailable {
 		return workMetadataSyncRunResult{
 			WorkID: payload.WorkID, PrimaryCode: payload.PrimaryCode, Status: "unavailable",
@@ -209,6 +221,9 @@ func (s *Server) activeWorkMetadataSync(ctx context.Context, payload workMetadat
 		if json.Unmarshal([]byte(inputJSON), &active) != nil || !strings.EqualFold(active.FamilyCode, payload.FamilyCode) || active.SourceID != payload.SourceID || (payload.SourceID != 0 && active.WorkID != payload.WorkID) {
 			continue
 		}
+		if payload.SourceID == 0 && (mustJSON(active.RemoteMetadataFallback) != mustJSON(payload.RemoteMetadataFallback) || mustJSON(active.PurchaseBonusAutoLink) != mustJSON(payload.PurchaseBonusAutoLink)) {
+			continue
+		}
 		return workMetadataSyncRunResult{
 			RunID: runID, JobID: jobID, WorkID: payload.WorkID, PrimaryCode: payload.PrimaryCode,
 			Status: status, Deduplicated: true,
@@ -227,13 +242,21 @@ func (s *Server) executeWorkMetadataSyncJob(ctx context.Context, job workflowJob
 		return s.executeRemoteWorkMetadataSyncJob(ctx, job, payload)
 	}
 	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "syncing", map[string]any{"familyCode": payload.FamilyCode}, 0, 1)
-	family, err := s.syncWorkMetadataFamily(ctx, payload.PrimaryCode)
+	autoLink := true
+	if payload.PurchaseBonusAutoLink != nil {
+		autoLink = *payload.PurchaseBonusAutoLink
+	}
+	family, err := s.syncWorkMetadataFamilyWithBonus(ctx, payload.PrimaryCode, autoLink)
 	if err != nil {
 		if family.RequestedUnavailable {
 			// Only an explicit DLsite "not found" reaches the opt-in remote
 			// fallback; timeouts, rate limits and other retryable failures
 			// return above without contacting any remote source.
-			fallback, fallbackErr := s.runRemoteMetadataFallback(ctx, payload.WorkID, payload.PrimaryCode)
+			settings := remotemetadata.Settings{}
+			if payload.RemoteMetadataFallback != nil {
+				settings.Enabled, settings.SourceIDs = payload.RemoteMetadataFallback.Enabled, payload.RemoteMetadataFallback.SourceIDs
+			}
+			fallback, fallbackErr := s.runRemoteMetadataFallbackWithSettings(ctx, payload.WorkID, payload.PrimaryCode, settings)
 			if fallbackErr != nil {
 				if ctx.Err() != nil {
 					_ = s.failClaimedWorkflowJob(ctx, job, fallbackErr.Error())
@@ -373,7 +396,14 @@ func (s *Server) createDLsiteSyncRun(w http.ResponseWriter, r *http.Request) {
 	}
 	var options metadataSyncOptions
 	if r.Body != nil {
-		if err := json.NewDecoder(r.Body).Decode(&options); err != nil && !errors.Is(err, io.EOF) {
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&options); err != nil && !errors.Is(err, io.EOF) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 			return
 		}

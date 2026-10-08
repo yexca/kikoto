@@ -86,6 +86,14 @@ capability at submission and execution, and use the existing workflow's bounded
 retry budget. Only the requested existing work is updated; no file presence,
 media location, or catalog crawl is created.
 
+Metadata sync run and trigger options can select that same source for existing
+works. Codes are validated, normalized and limited to 100 for explicit lists;
+fallback orders are limited to 16 enabled, capable sources. Submission and
+execution validate capability, and the single executor requests one work at a
+time through the same bounded transport. Source selection, fallback order and
+bonus detection are persisted with the run and retained by retries. The run
+does not mutate the legacy stored projection policy or file availability.
+
 The opt-in fallback asks administrator-configured remote sources for one work
 after DLsite reports it as not found:
 

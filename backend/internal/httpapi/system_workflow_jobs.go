@@ -514,6 +514,9 @@ func (s *Server) enqueueDLsiteMetadataSyncFollowUp(ctx context.Context, sourceRu
 			AND job.status = 'queued'
 			AND COALESCE(json_extract(run.input_json, '$.scope'), 'all') = 'all'
 			AND COALESCE(json_extract(run.input_json, '$.mode'), 'missing') = 'missing'
+			AND COALESCE(json_extract(run.input_json, '$.sourceId'), 0) = 0
+			AND COALESCE(json_extract(run.input_json, '$.remoteMetadataFallback.enabled'), 0) = 0
+			AND COALESCE(json_extract(run.input_json, '$.purchaseBonusAutoLink'), 1) = 1
 		ORDER BY run.id ASC
 		LIMIT 1
 	`).Scan(&result.RunID, &result.JobID)
@@ -531,38 +534,60 @@ func (s *Server) enqueueDLsiteMetadataSyncFollowUp(ctx context.Context, sourceRu
 }
 
 func (s *Server) enqueueDLsiteMetadataSyncWithInput(ctx context.Context, triggerType string, triggerReason string, triggerID int64, input metadataSyncRunInput) (metasync.DLsiteSyncResult, error) {
+	options, err := s.validateMetadataSyncOptions(ctx, input.metadataSyncOptions)
+	if err != nil {
+		return metasync.DLsiteSyncResult{}, err
+	}
+	input.metadataSyncOptions = options
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return metasync.DLsiteSyncResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	options, err := input.normalized()
-	if err != nil {
-		return metasync.DLsiteSyncResult{}, err
-	}
-	input.metadataSyncOptions = options
 	// Each metadata sync scope is a singleton queue item. Repeated clicks
 	// subscribe the caller to the existing run instead of creating another
 	// scan; different scopes queue separately and share the provider resource.
-	var existingRunID, existingJobID int64
-	var existingStatus string
-	if err := tx.QueryRowContext(ctx, `
-		SELECT run.id, job.id, run.status
+	rows, err := tx.QueryContext(ctx, `
+		SELECT run.id, job.id, run.status, run.input_json
 		FROM workflow_run AS run
 		INNER JOIN workflow_job AS job ON job.workflow_run_id = run.id
 		WHERE run.workflow_code = 'metadata_sync'
 		  AND run.status IN ('queued', 'running')
 		  AND job.worker_type = 'metadata_sync'
 		  AND job.status IN ('queued', 'running')
-		  AND COALESCE(json_extract(run.input_json, '$.scope'), 'all') = ?
-		  AND COALESCE(json_extract(run.input_json, '$.mode'), 'missing') = ?
-		  AND COALESCE(json_extract(run.input_json, '$.circleId'), '') = ?
-		  AND COALESCE(json_extract(run.input_json, '$.personId'), 0) = ?
-		ORDER BY run.id ASC LIMIT 1
-	`, options.Scope, options.Mode, options.CircleID, options.PersonID).Scan(&existingRunID, &existingJobID, &existingStatus); err == nil {
-		return metasync.DLsiteSyncResult{RunID: existingRunID, JobID: existingJobID, Status: existingStatus, Deduplicated: true, ReviewCandidates: []metasync.DLsiteReviewCandidate{}, Failures: []string{}}, nil
-	} else if !errors.Is(err, sql.ErrNoRows) {
+		ORDER BY run.id ASC
+	`)
+	if err != nil {
 		return metasync.DLsiteSyncResult{}, err
+	}
+	var existing metasync.DLsiteSyncResult
+	for rows.Next() {
+		var candidate metasync.DLsiteSyncResult
+		var raw string
+		if err := rows.Scan(&candidate.RunID, &candidate.JobID, &candidate.Status, &raw); err != nil {
+			_ = rows.Close()
+			return metasync.DLsiteSyncResult{}, err
+		}
+		var active metadataSyncRunInput
+		if json.Unmarshal([]byte(raw), &active) != nil {
+			continue
+		}
+		normalized, err := active.normalized()
+		if err == nil && mustJSON(normalized) == mustJSON(options) {
+			existing = candidate
+			break
+		}
+	}
+	readErr := rows.Err()
+	_ = rows.Close()
+	if readErr != nil {
+		return metasync.DLsiteSyncResult{}, readErr
+	}
+	if existing.RunID != 0 {
+		existing.Deduplicated = true
+		existing.ReviewCandidates = []metasync.DLsiteReviewCandidate{}
+		existing.Failures = []string{}
+		return existing, nil
 	}
 	definitionID, err := workflow.EnsureDefinition(ctx, tx, "metadata_sync", "Sync work metadata", "Select works and sync normalized metadata snapshots.", map[string]any{
 		"nodes": []map[string]string{
@@ -627,7 +652,7 @@ func (s *Server) executeDLsiteMetadataSyncJob(ctx context.Context, job workflowJ
 			return err
 		}
 	}
-	options, err := input.normalized()
+	options, err := s.validateMetadataSyncOptions(ctx, input.metadataSyncOptions)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
@@ -635,7 +660,15 @@ func (s *Server) executeDLsiteMetadataSyncJob(ctx context.Context, job workflowJ
 	var result metasync.DLsiteSyncResult
 	scope, runErr := s.metadataSyncScope(ctx, options)
 	if runErr == nil {
-		result, runErr = s.newDLsiteMetadataSyncer(ctx).SyncScopeWithoutWorkflow(ctx, scope)
+		if options.SourceID > 0 {
+			result, runErr = s.syncMetadataScopeFromRemote(ctx, job, scope, options)
+		} else {
+			syncer := s.newDLsiteMetadataSyncer(ctx).WithPurchaseBonusLinking(*options.PurchaseBonusAutoLink, options.Scope == metadataSyncScopeWorks)
+			if options.RemoteMetadataFallback.Enabled {
+				syncer.WithUnavailableHandler(s.metadataSyncFallbackHandler(job, options.RemoteMetadataFallback))
+			}
+			result, runErr = syncer.SyncScopeWithoutWorkflow(ctx, scope)
+		}
 	}
 	if runErr == nil {
 		runErr = s.projectChangedSnapshots(ctx)
