@@ -7,10 +7,14 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MobileSheet, MobileSheetBody, MobileSheetHeader } from "@/components/ui/mobile-sheet";
+import { useTokenDraftHandlers } from "@/components/ui/token-input";
 import {
+  addUserTags,
   buildUserTagEditorOptions,
   maxUserTagNameLength,
+  normalizeUserTagName,
   toggleUserTag,
+  userTagKey,
   type UserTagEditorOption,
 } from "@/components/userTagEditorModel";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
@@ -100,12 +104,19 @@ export function UserTagRow({
     }
   }, []);
 
-  const toggle = (name: string) => {
-    const next = toggleUserTag(optimisticRef.current ?? savedNames, name);
+  const apply = (next: string[]) => {
     optimisticRef.current = next;
     setOptimistic(next);
     pendingRef.current = next;
     void flush();
+  };
+
+  const toggle = (name: string) => apply(toggleUserTag(optimisticRef.current ?? savedNames, name));
+
+  const add = (names: string[]) => {
+    const current = optimisticRef.current ?? savedNames;
+    const next = addUserTags(current, names);
+    if (next !== current) apply(next);
   };
 
   const openEditor = () => {
@@ -115,7 +126,14 @@ export function UserTagRow({
 
   const title = t("tags.edit");
   const editor = (
-    <UserTagEditor key={session} scope={scope} selected={selected} saving={optimistic !== null} onToggle={toggle} />
+    <UserTagEditor
+      key={session}
+      scope={scope}
+      selected={selected}
+      saving={optimistic !== null}
+      onToggle={toggle}
+      onAdd={add}
+    />
   );
 
   const visibleTags = compact ? selected.slice(0, 4) : selected;
@@ -230,11 +248,14 @@ function UserTagEditor({
   selected,
   saving,
   onToggle,
+  onAdd,
 }: {
   scope: UserTagScope;
   selected: string[];
   saving: boolean;
   onToggle: (name: string) => void;
+  /** Adds a comma-separated list at once; names already selected stay selected. */
+  onAdd: (names: string[]) => void;
 }) {
   const { t } = useTranslation();
   const listId = useId();
@@ -284,6 +305,18 @@ function UserTagEditor({
     inputRef.current?.focus();
   };
 
+  // A typed or pasted list reuses an existing tag's spelling, and pins the new ones like a create row.
+  const addNames = (names: string[]) => {
+    const known = new Map(
+      [...selected, ...pinned, ...(suggestions ?? []).map((tag) => tag.name)].map((name) => [userTagKey(name), name]),
+    );
+    const resolved = names.map(normalizeUserTagName).map((name) => known.get(userTagKey(name)) ?? name);
+    const created = resolved.filter((name) => !known.has(userTagKey(name)));
+    if (created.length > 0) setPinned((current) => addUserTags(current, created));
+    onAdd(resolved);
+  };
+  const draftHandlers = useTokenDraftHandlers({ onCommit: addNames, onDraftChange: updateQuery });
+
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     // Enter confirms an IME candidate before it ever means "choose this tag".
     if (event.nativeEvent.isComposing) return;
@@ -321,7 +354,7 @@ function UserTagEditor({
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={active >= 0 ? optionId(active) : undefined}
-          onChange={(event) => updateQuery(event.target.value)}
+          {...draftHandlers}
           onKeyDown={handleKeyDown}
         />
         {saving && (

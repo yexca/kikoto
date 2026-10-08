@@ -1,3 +1,5 @@
+import { appendTokens } from "@/lib/tokenDraft";
+
 /** Matches the backend's per-tag rune limit. */
 export const maxUserTagNameLength = 40;
 
@@ -21,6 +23,16 @@ export function toggleUserTag(selected: string[], name: string) {
     return selected.filter((tag) => userTagKey(tag) !== key);
   }
   return [...selected, normalized];
+}
+
+/**
+ * Adds every name that is not already selected, as when a comma-separated
+ * list is typed or pasted. Unlike a toggle it never removes a tag. Returns
+ * the same array when nothing changes.
+ */
+export function addUserTags(selected: string[], names: readonly string[]) {
+  const next = appendTokens(selected, names, normalizeUserTagName, userTagKey);
+  return next.length === selected.length ? selected : next;
 }
 
 /**

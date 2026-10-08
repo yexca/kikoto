@@ -1595,7 +1595,9 @@ test("availability watch shares pools, schedules checks, and handles ready works
   await pools.getByRole("button", { name: "Edit node", exact: true }).click();
   const monitoringDialog = page.getByRole("dialog", { name: "Edit monitoring pool" });
   const works = monitoringDialog.getByRole("textbox", { name: "Works" });
-  await works.fill("RJ00000000\nRJ00000001\nRJ00000002");
+  // Existing targets stay as tokens; a typed list adds new codes and drops duplicates.
+  await works.fill("RJ00000001, rj00000002,");
+  await expect(monitoringDialog.getByRole("listitem")).toHaveText(["RJ00000000", "RJ00000001", "RJ00000002"]);
   await expect(monitoringDialog.getByText("3 valid", { exact: true })).toBeVisible();
   await monitoringDialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(() => updates).toHaveLength(3);

@@ -769,6 +769,40 @@ test("hidden tag matches are explained and cannot be silently created in the wor
   await expect(dialog.getByRole("option", { name: "Create tag: Example hidden tag", exact: true })).toHaveCount(0);
 });
 
+test("a comma-separated tag list joins existing tags, stages new ones, and skips hidden names", async ({ page }) => {
+  await metadataWorkEditor(page);
+  const shared = metadataTagFixture({ id: 3, displayName: "Synthetic shared tag" });
+  const hidden = metadataTagFixture({ id: 5, displayName: "Example hidden tag", hidden: true, resolvedHidden: true });
+  const state: WorkMetadataTags = { tags: [], inheritedTags: [], overrides: [] };
+  const writes: unknown[] = [];
+  await page.route("**/api/works/1/metadata-tags", (route) => {
+    if (route.request().method() === "PUT") writes.push(route.request().postDataJSON());
+    return route.fulfill({ json: state });
+  });
+  await page.route("**/api/metadata/tags?*", (route) => {
+    const query = new URL(route.request().url()).searchParams.get("query")?.toLowerCase() ?? "";
+    const tags = [shared, hidden].filter((tag) => tag.displayName.toLowerCase().includes(query));
+    return route.fulfill({
+      json: { tags, total: tags.length, page: 1, pageSize: 20 } satisfies ApiResponse<"listMetadataTags">,
+    });
+  });
+  await page.goto("/metadata");
+  await page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await dialog.getByRole("tab", { name: /^Tags/ }).click();
+  const addTag = dialog.getByLabel("Add tag", { exact: true });
+  await addTag.fill("synthetic SHARED tag，Synthetic new tag、Example hidden tag, Synthetic unfinished");
+  // Only the text after the last separator stays typed.
+  await expect(addTag).toHaveValue("Synthetic unfinished");
+  await expect(dialog.getByRole("button", { name: "Remove Synthetic shared tag", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Remove Synthetic new tag", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("alert").filter({ hasText: "Example hidden tag" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Remove Example hidden tag", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => writes).toHaveLength(1);
+  expect(writes[0]).toEqual({ overrides: [{ tagId: 3, action: "add" }], newTags: ["Synthetic new tag"] });
+});
+
 test("admin merge targets mark hidden tags and explain the resulting visibility", async ({ page }) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
     authenticated: true,

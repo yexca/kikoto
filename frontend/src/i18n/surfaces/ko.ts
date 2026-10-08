@@ -85,7 +85,7 @@ export const surfaceKorean = {
     },
     searchTags: "태그를 검색하거나 새 태그를 입력하세요",
     tagHint:
-      "Enter를 누르면 강조된 태그를 추가하거나 입력한 이름으로 태그를 만듭니다. 태그의 언어 버튼으로 언어별 이름을 편집합니다.",
+      "Enter를 누르면 강조된 태그를 추가하거나 입력한 이름으로 태그를 만듭니다. 쉼표로 구분하면 여러 태그를 한 번에 추가합니다. 태그의 언어 버튼으로 언어별 이름을 편집합니다.",
     tagAdded: "이 작품에 추가됨",
     editTagNames: "{{name}}의 언어별 이름 편집",
     tagNamesFor: "{{name}}의 이름",
@@ -137,6 +137,8 @@ export const surfaceKorean = {
   },
   metadataEntries: {
     hiddenNameConflict: "이 이름은 숨겨진 태그와 일치합니다. 추가하기 전에 메타데이터 관리에서 숨김을 해제하세요.",
+    hiddenNamesSkipped:
+      "다음 이름은 숨겨진 태그와 일치하여 추가되지 않았습니다: {{names}}. 먼저 메타데이터 관리에서 숨김을 해제하세요.",
     pendingWorks: "백그라운드 태그 업데이트 대기 작품이 {{count}}개 있습니다. 새로고침하여 진행 상황을 확인하세요.",
     namePriority: "선호 언어마다 해당 언어의 수동 이름, 모든 언어 공통 수동 이름, 제공자 이름 순서로 선택합니다.",
 
@@ -554,7 +556,7 @@ export const surfaceKorean = {
       ruleName: "규칙 이름",
       aliases: "별칭",
       negativeAliases: "제외 별칭",
-      keywordHint: "쉼표나 줄바꿈으로 단어를 구분합니다.",
+      keywordHint: "쉼표를 입력하거나 Enter를 눌러 단어를 하나씩 추가합니다.",
       matchKeywords: "일치 키워드 {{count}}개",
       exclusions: "제외 {{count}}개",
       edit: "편집",

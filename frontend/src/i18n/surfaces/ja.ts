@@ -86,7 +86,7 @@ export const surfaceJapanese = {
     },
     searchTags: "タグを検索、または新しいタグを入力",
     tagHint:
-      "Enter で選択中のタグを追加するか、入力した名前でタグを作成します。タグの言語ボタンで言語別の名前を編集できます。",
+      "Enter で選択中のタグを追加するか、入力した名前でタグを作成します。カンマで区切ると複数のタグをまとめて追加できます。タグの言語ボタンで言語別の名前を編集できます。",
     tagAdded: "この作品に追加",
     editTagNames: "{{name}} の言語別の名前を編集",
     tagNamesFor: "{{name}} の名前",
@@ -138,6 +138,8 @@ export const surfaceJapanese = {
   },
   metadataEntries: {
     hiddenNameConflict: "この名前は非表示タグに一致します。追加する前にメタデータ管理で非表示を解除してください。",
+    hiddenNamesSkipped:
+      "次の名前は非表示タグに一致するため追加されませんでした：{{names}}。先にメタデータ管理で非表示を解除してください。",
     pendingWorks: "バックグラウンドのタグ更新待ちは {{count}} 作品です。更新して進捗を確認できます。",
     namePriority: "優先言語ごとに、言語別の手動名、全言語共通の手動名、提供元の名前の順に選びます。",
 
@@ -554,7 +556,7 @@ export const surfaceJapanese = {
       ruleName: "ルール名",
       aliases: "エイリアス",
       negativeAliases: "除外エイリアス",
-      keywordHint: "単語はカンマまたは改行で区切ります。",
+      keywordHint: "カンマまたは Enter で単語を 1 つずつ追加します。",
       matchKeywords: "{{count}}件の一致キーワード",
       exclusions: "{{count}}件の除外",
       edit: "編集",

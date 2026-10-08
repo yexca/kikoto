@@ -603,6 +603,7 @@ export const englishResource = {
         serverVersion: "Server version",
         notConfigured: "Not configured",
         back: "Back",
+        removeItem: "Remove {{value}}",
       },
       errors: {
         network: "Network request failed.",
