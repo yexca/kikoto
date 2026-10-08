@@ -152,6 +152,12 @@ export const collectionHans = {
   perPageLabel: "每页 {{itemLabel}} 数量",
   pageSize: "每页数量：{{value}}",
   itemsPerPage: "每页数量",
+  coverSources: "封面来源标记",
+  coverSourceModes: {
+    auto: "自动：只显示与当前来源不同或异常的标记",
+    always: "总是显示所有来源标记",
+    never: "从不显示来源标记",
+  },
   pageOption: "{{value}} / 页",
   controls: "{{label}}控件",
   filter: "筛选",

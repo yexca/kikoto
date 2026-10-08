@@ -1403,6 +1403,7 @@ export const surfaceJapanese = {
     checkingSources: "ソースを確認中",
     checkSources: "ソースを確認",
     checkSourcesLastChecked: "ソースを確認 · 最終確認 {{time}}",
+    sourceTabVisibility: "ソースタブの表示",
     openPath: "{{path}} を開く",
     matchedRules: "一致：{{rules}}",
     excludedRules: "除外：{{rules}}",

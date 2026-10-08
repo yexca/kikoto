@@ -1327,6 +1327,7 @@ export const surfaceHant = {
     checkingSources: "正在檢查來源",
     checkSources: "檢查來源",
     checkSourcesLastChecked: "檢查來源 · 上次檢查 {{time}}",
+    sourceTabVisibility: "來源標籤顯示",
     openPath: "開啟 {{path}}",
     matchedRules: "符合 {{rules}}",
     excludedRules: "排除 {{rules}}",

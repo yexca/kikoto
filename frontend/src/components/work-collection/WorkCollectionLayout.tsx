@@ -4,6 +4,7 @@ import type { TFunction } from "i18next";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { sourceVisibilityModes, type SourceVisibilityMode } from "@/components/source-visibility/sourceVisibility";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import i18n from "@/i18n";
@@ -80,6 +81,7 @@ export function WorkCollectionDisplayPicker({
   pageSize,
   pageSizeOptions,
   onPageSizeChange,
+  coverSources,
 }: {
   mobileColumns: WorkCollectionColumnSetting;
   desktopColumns: WorkCollectionColumnSetting;
@@ -89,6 +91,8 @@ export function WorkCollectionDisplayPicker({
   pageSize?: number;
   pageSizeOptions?: readonly number[];
   onPageSizeChange?: (value: number) => void;
+  /** Whether cover source marks show automatically (exceptions only), always, or never. */
+  coverSources?: { mode: SourceVisibilityMode; onChange: (mode: SourceVisibilityMode) => void };
 }) {
   const { t } = useTranslation("translation", { i18n });
   const [open, setOpen] = useState(false);
@@ -159,6 +163,20 @@ export function WorkCollectionDisplayPicker({
                 onSelect={() => onPageSizeChange(option)}
               >
                 {option}
+              </DisplayOptionButton>
+            ))}
+          </DisplayOptionGroup>
+        )}
+        {coverSources && (
+          <DisplayOptionGroup label={t("collection.coverSources")}>
+            {sourceVisibilityModes.map((mode) => (
+              <DisplayOptionButton
+                key={mode}
+                checked={coverSources.mode === mode}
+                label={t(`collection.coverSourceModes.${mode}`)}
+                onSelect={() => coverSources.onChange(mode)}
+              >
+                {t(`library.sourceVisibility.modes.${mode}`)}
               </DisplayOptionButton>
             ))}
           </DisplayOptionGroup>

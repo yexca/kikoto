@@ -3,18 +3,21 @@ import { useTranslation } from "react-i18next";
 
 import { api, type LibrarySource } from "@/lib/api";
 
+import { sourceVisibilityIcon, type SourceVisibilityRow } from "@/components/source-visibility/SourceVisibilityPicker";
+import {
+  remoteSourceVisibilityKey,
+  sourceVisibilityMode,
+  sourceVisible,
+  withSourceVisibilityMode,
+  type SourceVisibilityKey,
+  type SourceVisibilityMode,
+} from "@/components/source-visibility/sourceVisibility";
+
 import {
   autoLibrarySourceVisible,
-  librarySourceVisibilityMode,
-  librarySourceVisible,
   readLibrarySourceVisibility,
-  remoteSourceVisibilityKey,
-  withLibrarySourceVisibilityMode,
   writeLibrarySourceVisibility,
-  type LibrarySourceVisibilityKey,
-  type LibrarySourceVisibilityMode,
 } from "./librarySourceVisibility";
-import { librarySourceVisibilityIcon, type LibrarySourceVisibilityRow } from "./LibrarySourceVisibilityPicker";
 
 /**
  * Per-viewer visibility of the Library source bar entries. `refreshKey` re-checks
@@ -66,15 +69,15 @@ export function useLibrarySourceVisibility({
     };
   }, [active, refreshKey, storageScope]);
 
-  const rows = useMemo<LibrarySourceVisibilityRow[]>(() => {
-    const row = (key: LibrarySourceVisibilityKey, label: string, source?: LibrarySource) => {
-      const mode = librarySourceVisibilityMode(preferences, key);
+  const rows = useMemo<SourceVisibilityRow[]>(() => {
+    const row = (key: SourceVisibilityKey, label: string, source?: LibrarySource) => {
+      const mode = sourceVisibilityMode(preferences, key);
       return {
         key,
         label,
-        icon: librarySourceVisibilityIcon(key),
+        icon: sourceVisibilityIcon(key),
         mode,
-        visible: librarySourceVisible(mode, autoLibrarySourceVisible(key, { hasTrackedWorks, source })),
+        visible: sourceVisible(mode, autoLibrarySourceVisible(key, { hasTrackedWorks, source })),
         note: source && !source.enabled ? t("library.sourceVisibility.disabled") : undefined,
       };
     };
@@ -87,9 +90,9 @@ export function useLibrarySourceVisibility({
 
   const visibleKeys = useMemo(() => new Set(rows.filter((item) => item.visible).map((item) => item.key)), [rows]);
 
-  const changeMode = (key: LibrarySourceVisibilityKey, mode: LibrarySourceVisibilityMode) => {
+  const changeMode = (key: SourceVisibilityKey, mode: SourceVisibilityMode) => {
     setPreferences((current) => {
-      const next = withLibrarySourceVisibilityMode(current, key, mode);
+      const next = withSourceVisibilityMode(current, key, mode);
       writeLibrarySourceVisibility(storageScope, next);
       return next;
     });
