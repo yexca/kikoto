@@ -476,6 +476,24 @@ test("library search follows the user across scopes and survives navigation", as
   await expect(search).toHaveValue("tracked term");
 });
 
+test("touch text controls use 16px text so focusing them does not zoom the page", async ({ page }) => {
+  await mockApplication(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Search library" }).click();
+  const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
+  await expect(search).toBeVisible();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Sign in to Kikoto" })).toBeVisible();
+
+  // iOS WebKit zooms into a focused control whose text is under 16px and stays zoomed.
+  for (const control of [search, page.getByLabel("Username"), page.getByLabel("Password")]) {
+    expect(await control.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(
+      16,
+    );
+  }
+});
+
 test("library search conditions use accessible select menus", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 844 });
   await mockApplication(page);

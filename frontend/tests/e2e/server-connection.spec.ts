@@ -27,6 +27,12 @@ for (const width of [320, 393]) {
     await protocol.selectOption("https");
     await port.fill("65535");
 
+    // iOS WebKit zooms into a focused control whose text is under 16px.
+    for (const control of [address, protocol, port]) {
+      expect(
+        await control.evaluate((element) => parseFloat(getComputedStyle(element).fontSize)),
+      ).toBeGreaterThanOrEqual(16);
+    }
     for (const control of [address, protocol, port, page.getByRole("button", { name: "Connect", exact: true })]) {
       await expect(control).toBeVisible();
       const box = await control.boundingBox();
