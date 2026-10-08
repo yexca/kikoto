@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yexca/kikoto/backend/internal/agerating"
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/searchtext"
 )
@@ -536,7 +537,7 @@ func searchWhereClause(clause SearchClause, userID int64) (string, []any) {
 	case "exclude_user_tag":
 		return userTagContainsClause(true), []any{userID, folded}
 	case "age":
-		return familyAgeRatingContainsClause(), []any{folded, folded}
+		return familyAgeRatingClause(folded)
 	case "language":
 		return familyEditionLanguageContainsClause(), []any{folded, folded, folded, folded}
 	default:
@@ -684,14 +685,26 @@ func searchIndexColumn(kind string) string {
 	}
 }
 
-func familyAgeRatingContainsClause() string {
-	return `(instr(` + foldedSQL("work.age_rating") + `, ?) > 0 OR EXISTS (
+func familyAgeRatingClause(value string) (string, []any) {
+	aliases := agerating.Aliases(value)
+	match := func(column string) string { return `instr(` + foldedSQL(column) + `, ?) > 0` }
+	args := []any{value}
+	if len(aliases) > 0 {
+		match = func(column string) string {
+			return foldedSQL("TRIM("+column+")") + ` IN (` + strings.TrimSuffix(strings.Repeat("?,", len(aliases)), ",") + `)`
+		}
+		args = make([]any, len(aliases))
+		for index, alias := range aliases {
+			args[index] = alias
+		}
+	}
+	return `(` + match("work.age_rating") + ` OR EXISTS (
 		SELECT 1
 		FROM work_edition AS search_current_edition
 		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
 		INNER JOIN work AS search_sibling_work ON search_sibling_work.id = search_sibling_edition.work_id
-		WHERE search_current_edition.work_id = work.id AND instr(` + foldedSQL("search_sibling_work.age_rating") + `, ?) > 0
-	))`
+		WHERE search_current_edition.work_id = work.id AND ` + match("search_sibling_work.age_rating") + `
+	))`, append(args, args...)
 }
 
 func familyEditionLanguageContainsClause() string {

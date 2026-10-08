@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/download"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
@@ -498,6 +499,10 @@ func (s *Server) applyManualOverridesToDetail(ctx context.Context, work *workDet
 	for _, variant := range work.MetadataView.Variants {
 		if variant.Key == work.MetadataView.DefaultVariantKey {
 			work.Title, work.Description = variant.Title, variant.Description
+			work.MetadataLanguage = variant.Language
+			if variant.Origin {
+				work.MetadataLanguage = dlsite.OriginMetadataLanguage
+			}
 			break
 		}
 	}

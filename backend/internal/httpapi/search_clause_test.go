@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/library"
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func TestParseListSearchClauses(t *testing.T) {
@@ -18,6 +19,34 @@ func TestParseListSearchClauses(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("parseListSearchClauses() = %#v, want %#v", got, want)
+	}
+}
+
+func TestRemoteAgeSearchUsesProtocolValuesAndSharedAliases(t *testing.T) {
+	for _, sourceType := range []string{sourceTypeKikoeruCompatible, sourceTypeKikoeruCompatible178} {
+		plan := planRemoteSourceQuery("age:R18", sourceType)
+		if plan.PushdownQuery != "$age:adult$" || len(plan.PostFilterClauses) != 0 {
+			t.Fatalf("age plan=%+v", plan)
+		}
+		clauses := []listSearchClause{{Kind: "age", Value: "R18"}}
+		for _, age := range []string{"adult", "R-18", "18"} {
+			if !remoteWorkSummaryMatchesClauses(remoteWorkSummary{AgeRating: age}, clauses) {
+				t.Fatalf("age %q did not match R18", age)
+			}
+		}
+		if remoteWorkSummaryMatchesClauses(remoteWorkSummary{AgeRating: "r15"}, clauses) {
+			t.Fatal("R15 matched R18")
+		}
+		for _, query := range []string{"age:all", "age:全年齢", "age:全年龄"} {
+			if got := planRemoteSourceQuery(query, sourceType).PushdownQuery; got != "$age:general$" {
+				t.Fatalf("query %q pushdown=%q", query, got)
+			}
+		}
+	}
+	code := testfixture.WorkCode(testfixture.PrefixRJ, 0)
+	plan := planRemoteSourceQuery(code+" age:R18", sourceTypeKikoeruCompatible178)
+	if plan.PushdownQuery != code || len(plan.PostFilterClauses) != 1 || plan.PostFilterClauses[0].Kind != "age" {
+		t.Fatalf("compound age plan=%+v", plan)
 	}
 }
 

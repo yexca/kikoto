@@ -1,10 +1,30 @@
 package httpapi
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
+
+func TestRemoteDefaultMetadataKeepsCardTagLanguageFallback(t *testing.T) {
+	work := kikoeru.Work{SourceID: testfixture.WorkCode(testfixture.PrefixRJ, 0), Title: "Example Work", Tags: []kikoeru.Tag{
+		{Name: "Example base A", I18n: map[string]kikoeru.LocalizedTag{"zh-cn": {Name: "Example simplified A"}}},
+		{Name: "Example base B", I18n: map[string]kikoeru.LocalizedTag{"ENG": {Name: "Example English B"}}},
+	}}
+	languages := []string{"zh-cn", "en-us", "ja-jp"}
+	card := newRemoteCatalogProjectorWithLanguages(languages).project(1, work)
+	if !reflect.DeepEqual(card.Tags, []string{"Example simplified A", "Example English B"}) {
+		t.Fatalf("card tags=%v, want normalized language aliases and per-tag fallback", card.Tags)
+	}
+	view := remoteWorkMetadataPresentation(work, languages)
+	for _, variant := range view.Variants {
+		if variant.Key == view.DefaultVariantKey && !reflect.DeepEqual(variant.Tags, card.Tags) {
+			t.Fatalf("default detail tags=%v card tags=%v", variant.Tags, card.Tags)
+		}
+	}
+}
 
 func TestRemoteWorkMetadataPresentationUsesRequestDefaultAndActualI18nVariants(t *testing.T) {
 	work := kikoeru.Work{

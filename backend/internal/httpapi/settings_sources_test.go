@@ -1135,14 +1135,17 @@ func TestRemotePostFilteredPageCollectsMatchesAcrossUpstreamPages(t *testing.T) 
 	upstream := make([]kikoeru.Work, 0, 102)
 	for index := 1; index <= 102; index++ {
 		tags := []kikoeru.Tag{{Name: "Other"}}
+		age := "general"
 		if index == 1 || index == 102 {
 			tags = []kikoeru.Tag{{Name: "Wanted"}}
+			age = "adult"
 		}
 		upstream = append(upstream, kikoeru.Work{
-			ID:       int64(index),
-			SourceID: testfixture.WorkCodeAt(index - 1),
-			Title:    fmt.Sprintf("Work %d", index),
-			Tags:     tags,
+			ID:                int64(index),
+			SourceID:          testfixture.WorkCodeAt(index - 1),
+			Title:             fmt.Sprintf("Work %d", index),
+			Tags:              tags,
+			AgeCategoryString: age,
 		})
 	}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1169,27 +1172,31 @@ func TestRemotePostFilteredPageCollectsMatchesAcrossUpstreamPages(t *testing.T) 
 
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
-	works, total, sortApplied, err := server.remotePostFilteredPage(
-		context.Background(),
-		0,
-		7,
-		kikoeru.NewClient(remote.URL, remote.Client()),
-		remoteSourceQueryPlan{PostFilterClauses: []listSearchClause{{Kind: "tag", Value: "wanted"}}},
-		"create_date",
-		"desc",
-		"",
-		2,
-		1,
-		"ja-jp",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if total != 2 || len(works) != 1 || works[0].PrimaryCode != testfixture.WorkCodeAt(101) {
-		t.Fatalf("works = %+v, total = %d", works, total)
-	}
-	if !sortApplied {
-		t.Fatal("sortApplied = false, want true")
+	for _, clause := range []listSearchClause{{Kind: "tag", Value: "wanted"}, {Kind: "age", Value: "R18"}} {
+		t.Run(clause.Kind, func(t *testing.T) {
+			works, total, sortApplied, err := server.remotePostFilteredPage(
+				context.Background(),
+				0,
+				7,
+				kikoeru.NewClient(remote.URL, remote.Client()),
+				remoteSourceQueryPlan{PostFilterClauses: []listSearchClause{clause}},
+				"create_date",
+				"desc",
+				"",
+				2,
+				1,
+				"ja-jp",
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if total != 2 || len(works) != 1 || works[0].PrimaryCode != testfixture.WorkCodeAt(101) {
+				t.Fatalf("works = %+v, total = %d", works, total)
+			}
+			if !sortApplied {
+				t.Fatal("sortApplied = false, want true")
+			}
+		})
 	}
 }
 
