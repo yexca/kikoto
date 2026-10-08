@@ -5,13 +5,42 @@ export type AgeRatingPresentation = {
   badgeClassName: string;
 };
 
-export function ageRatingPresentation(value: string): AgeRatingPresentation {
+export type AgeRating = "adult" | "r15" | "general";
+
+const ageRatingAliases: Record<AgeRating, readonly string[]> = {
+  adult: ["adult", "r18", "r-18", "18"],
+  r15: ["r15", "r-15", "15"],
+  general: [
+    "general",
+    "all",
+    "all age",
+    "all ages",
+    "all-age",
+    "all-ages",
+    "all_age",
+    "all_ages",
+    "全年齢",
+    "全年龄",
+    "全年齡",
+  ],
+};
+
+export const ageRatingValues: AgeRating[] = ["general", "r15", "adult"];
+
+export function normalizeAgeRating(value: string): AgeRating | null {
   const normalized = value.trim().toLowerCase();
+  return ageRatingValues.find((rating) => ageRatingAliases[rating].includes(normalized)) ?? null;
+}
+
+export function ageRatingMatches(value: string, query: string): boolean {
+  const rating = normalizeAgeRating(query);
+  return rating ? normalizeAgeRating(value) === rating : value.toLowerCase().includes(query.trim().toLowerCase());
+}
+
+export function ageRatingPresentation(value: string): AgeRatingPresentation {
+  const normalized = normalizeAgeRating(value) ?? value.trim().toLowerCase();
   switch (normalized) {
     case "adult":
-    case "r18":
-    case "r-18":
-    case "18":
       return {
         label: "R18",
         known: true,
@@ -19,8 +48,6 @@ export function ageRatingPresentation(value: string): AgeRatingPresentation {
         badgeClassName: "border-destructive/40 bg-destructive/10 text-destructive",
       };
     case "r15":
-    case "r-15":
-    case "15":
       return {
         label: "R15",
         known: true,
@@ -28,9 +55,6 @@ export function ageRatingPresentation(value: string): AgeRatingPresentation {
         badgeClassName: "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300",
       };
     case "general":
-    case "all":
-    case "全年齢":
-    case "all ages":
       return {
         label: "全年齢",
         known: true,

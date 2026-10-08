@@ -40,6 +40,7 @@ import {
   type WorkEntityLink,
 } from "@/lib/api";
 import { ageRatingPresentation } from "@/lib/ageRating";
+import { openLibraryAgeRatingSearch } from "@/lib/libraryAgeRatingSearch";
 import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { cn } from "@/lib/tailwindClassNames";
 import { visibleBadgeCountForRows } from "./tagLayout";
@@ -385,14 +386,20 @@ function WorkCardBody({
             hasPlaybackHistory={work.hasPlaybackHistory === true}
           />
           {ageRating.known && (
-            <span
+            <button
+              type="button"
+              aria-label={t("library.searchClauseLabels.age", { value: ageRating.label })}
+              onClick={(event) => {
+                event.stopPropagation();
+                openLibraryAgeRatingSearch(work.ageRating ?? "");
+              }}
               className={cn(
-                "shrink-0 rounded-full border px-1.5 py-0.5 text-3xs font-semibold leading-none",
+                "touch-target relative shrink-0 rounded-full border px-1.5 py-0.5 text-3xs font-semibold leading-none hover:brightness-90 active:brightness-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 ageRating.badgeClassName,
               )}
             >
               {ageRating.label}
-            </span>
+            </button>
           )}
         </div>
         <h3 className="line-clamp-2 min-h-10 text-[0.9375rem] font-semibold leading-5" title={work.title}>

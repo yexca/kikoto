@@ -51,22 +51,18 @@ func TestMetadataLanguageVariantsLocalizeSharedTagsAndSelectProjectedSource(t *t
 		t.Fatal(err)
 	}
 	s := NewServer(db, config.Config{})
-	// A Chinese-preferring viewer gets the Chinese edition by default for the
-	// original work; every other edition defaults to itself.
+	// Every edition honors the viewer's metadata preference; each keeps its
+	// own fixed tag set, independently of the selected display language.
 	viewer, viewerCtx := metadataLanguageUser(t, db, "synthetic-tag-language-zh")
 	if response := patchMetadataLanguages(t, s, viewer, `{"metadataLanguages":["zh-cn"]}`); response.Code != http.StatusOK {
 		t.Fatalf("save: %d %s", response.Code, response.Body.String())
 	}
-	for ordinal, work := range works {
+	for _, work := range works {
 		view, err := s.loadWorkMetadataPresentation(withMetadataLanguageMemo(viewerCtx), work)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defaultOrdinal := ordinal
-		if ordinal == 0 {
-			defaultOrdinal = 1
-		}
-		if view.DefaultVariantKey != testfixture.WorkCode(testfixture.PrefixRJ, defaultOrdinal) {
+		if view.DefaultVariantKey != testfixture.WorkCode(testfixture.PrefixRJ, 1) {
 			t.Fatalf("work %d default=%s", work, view.DefaultVariantKey)
 		}
 		for _, variant := range view.Variants {

@@ -122,8 +122,9 @@ func remoteWorkMetadataPresentation(work kikoeru.Work, languages []string) workM
 	title := firstNonEmpty(strings.TrimSpace(work.Title), strings.TrimSpace(work.Name), normalizedRemoteWorkCode(work))
 	for _, language := range ordered {
 		tags := make([]string, 0, len(work.Tags))
+		tagLanguages := append([]string{language}, languages...)
 		for _, tag := range work.Tags {
-			if name := remoteTagNameForLanguage(tag, language); name != "" {
+			if name := remoteTagNameForLanguages(tag, tagLanguages); name != "" {
 				tags = append(tags, name)
 			}
 		}
@@ -137,14 +138,16 @@ func remoteWorkMetadataPresentation(work kikoeru.Work, languages []string) workM
 	return result
 }
 
-func remoteTagNameForLanguage(tag kikoeru.Tag, language string) string {
-	normalizedLanguage := normalizeRemotePresentationLanguage(language)
-	if localized, ok := tag.I18n[language]; ok && strings.TrimSpace(localized.Name) != "" {
-		return strings.TrimSpace(localized.Name)
-	}
-	for candidate, localized := range tag.I18n {
-		if normalizeRemotePresentationLanguage(candidate) == normalizedLanguage && strings.TrimSpace(localized.Name) != "" {
+func remoteTagNameForLanguages(tag kikoeru.Tag, languages []string) string {
+	for _, language := range languages {
+		normalizedLanguage := normalizeRemotePresentationLanguage(language)
+		if localized, ok := tag.I18n[language]; ok && strings.TrimSpace(localized.Name) != "" {
 			return strings.TrimSpace(localized.Name)
+		}
+		for candidate, localized := range tag.I18n {
+			if normalizeRemotePresentationLanguage(candidate) == normalizedLanguage && strings.TrimSpace(localized.Name) != "" {
+				return strings.TrimSpace(localized.Name)
+			}
 		}
 	}
 	return strings.TrimSpace(tag.Name)
@@ -173,7 +176,7 @@ func normalizeRemotePresentationLanguage(value string) string {
 func (projector remoteCatalogProjector) project(sourceID int64, work kikoeru.Work) remoteCatalogWorkProjection {
 	tags := make([]string, 0, len(work.Tags))
 	for _, tag := range work.Tags {
-		if name := kikoeru.TagNameForLanguages(tag, projector.languages); name != "" {
+		if name := remoteTagNameForLanguages(tag, projector.languages); name != "" {
 			tags = append(tags, name)
 		}
 	}

@@ -42,8 +42,7 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 	if !canonical {
 		for _, variant := range variants {
 			if variant.WorkID == workID {
-				selected, tagSource = variant, variant
-				selectedOK, tagSourceOK = true, true
+				tagSource, tagSourceOK = variant, true
 				break
 			}
 		}
@@ -127,25 +126,23 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 		result.Variants = append(result.Variants, workMetadataVariant{PresentationOnly: true, Key: originTitle.Code, Language: originTitle.Language, Title: originTitle.Title, Description: originTitle.Description, TitleSource: originTitle.Source, Origin: true, Tags: fallbackTags})
 		result.DefaultVariantKey = originTitle.Code
 	}
-	if canonical || len(variants) == 0 {
-		matched := false
+	matched := false
+	for _, variant := range result.Variants {
+		if (variant.Language == selectedTitle.Language || selectedTitle.Language == "") && firstNonEmpty(variant.MetadataCode, variant.Key) == selectedTitle.Code {
+			result.DefaultVariantKey, matched = variant.Key, true
+			break
+		}
+	}
+	if !matched && overrides.Titles[selectedTitle.Language] != "" && selectedTitle.Language != "" && len(result.Variants) > 0 {
+		tags := result.Variants[0].Tags
 		for _, variant := range result.Variants {
-			if (variant.Language == selectedTitle.Language || selectedTitle.Language == "") && firstNonEmpty(variant.MetadataCode, variant.Key) == selectedTitle.Code {
-				result.DefaultVariantKey, matched = variant.Key, true
-				break
+			if variant.Key == result.DefaultVariantKey {
+				tags = variant.Tags
 			}
 		}
-		if !matched && overrides.Titles[selectedTitle.Language] != "" && selectedTitle.Language != "" && len(result.Variants) > 0 {
-			tags := result.Variants[0].Tags
-			for _, variant := range result.Variants {
-				if variant.Key == result.DefaultVariantKey {
-					tags = variant.Tags
-				}
-			}
-			key := "manual:" + selectedTitle.Language
-			result.Variants = append(result.Variants, workMetadataVariant{PresentationOnly: true, Key: key, Language: selectedTitle.Language, Title: selectedTitle.Title, Description: selectedTitle.Description, TitleSource: selectedTitle.Source, Tags: tags})
-			result.DefaultVariantKey = key
-		}
+		key := "manual:" + selectedTitle.Language
+		result.Variants = append(result.Variants, workMetadataVariant{PresentationOnly: true, Key: key, Language: selectedTitle.Language, Title: selectedTitle.Title, Description: selectedTitle.Description, TitleSource: selectedTitle.Source, Tags: tags})
+		result.DefaultVariantKey = key
 	}
 	orderWorkMetadataVariants(result.Variants, viewerLanguages)
 	for _, language := range []string{"ja-jp", "zh-cn", "zh-tw", "en-us", "ko-kr"} {

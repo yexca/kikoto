@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/agerating"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
 
@@ -403,7 +404,11 @@ func remoteSourcePushdownQuery(clause listSearchClause) string {
 	case "duration_max":
 		return "$-duration:" + clause.Value + "$"
 	case "age":
-		return "$age:" + clause.Value + "$"
+		value := clause.Value
+		if aliases := agerating.Aliases(value); len(aliases) > 0 {
+			value = aliases[0]
+		}
+		return "$age:" + value + "$"
 	case "language":
 		return "$lang:" + clause.Value + "$"
 	case "code", "text":
@@ -438,7 +443,9 @@ func remoteWorkSummaryMatchesClause(work remoteWorkSummary, clause listSearchCla
 		return true
 	}
 	switch clause.Kind {
-	case "code", "circle", "age":
+	case "age":
+		return agerating.Matches(work.AgeRating, needle)
+	case "code", "circle":
 		return remoteWorkSummaryMatchesTextClause(work, clause.Kind, needle)
 	case "tag", "exclude_tag", "voice_actor", "user_tag", "exclude_user_tag":
 		return remoteWorkSummaryMatchesTagClause(work, clause.Kind, needle)

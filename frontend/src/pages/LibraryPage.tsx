@@ -13,6 +13,7 @@ import {
   type Work,
   type WorkDetail,
 } from "@/lib/api";
+import { ageRatingMatches, ageRatingPresentation, ageRatingValues, normalizeAgeRating } from "@/lib/ageRating";
 import {
   defaultLibraryBrowseState,
   libraryBrowseSearch,
@@ -3290,7 +3291,14 @@ function SearchClauseEditor({
             const kind = nextValue as SearchClauseKind;
             onChange({
               kind,
-              value: kind === "shelf" ? "true" : editor.draft.kind === "shelf" ? "" : editor.draft.value,
+              value:
+                kind === "shelf"
+                  ? "true"
+                  : kind === "age"
+                    ? (normalizeAgeRating(editor.draft.value) ?? "general")
+                    : editor.draft.kind === "shelf" || editor.draft.kind === "age"
+                      ? ""
+                      : editor.draft.value,
             });
           }}
           ariaLabel={t("library.searchClauseType")}
@@ -3310,6 +3318,14 @@ function SearchClauseEditor({
               { value: "true", label: t("library.included") },
               { value: "false", label: t("library.notIncluded") },
             ]}
+          />
+        ) : editor.draft.kind === "age" ? (
+          <FloatingSelect
+            value={normalizeAgeRating(value) ?? ""}
+            onValueChange={(nextValue) => onChange({ ...editor.draft, value: nextValue })}
+            ariaLabel={t("library.searchClauseKinds.age")}
+            className="w-full min-w-0"
+            options={ageRatingValues.map((rating) => ({ value: rating, label: ageRatingPresentation(rating).label }))}
           />
         ) : (
           <Input
@@ -3603,7 +3619,7 @@ const workClauseMatchers: Record<SearchClauseKind, WorkClauseMatcher> = {
   sales_min: (work, value) => work.sales !== null && work.sales >= numericClauseValue(value),
   duration_min: () => true,
   duration_max: () => true,
-  age: (work, value) => workMatchesText([work.primaryCode, work.title, ...work.tags], value),
+  age: (work, value) => ageRatingMatches(work.ageRating, value),
   language: (work, value) => workMatchesText([work.title, ...work.tags], value),
   shelf: (work, _value, clause) => workMatchesShelf(work, clause.value),
   text: (work, value) =>
@@ -3669,8 +3685,10 @@ function searchClauseLabel(clause: SearchClause, t?: TFunction) {
       return translate("library.searchClauseLabels.durationMin", `Duration >= ${clause.value}`);
     case "duration_max":
       return translate("library.searchClauseLabels.durationMax", `Duration <= ${clause.value}`);
-    case "age":
-      return translate("library.searchClauseLabels.age", `Age: ${clause.value}`);
+    case "age": {
+      const label = ageRatingPresentation(clause.value).label;
+      return t?.("library.searchClauseLabels.age", { value: label, defaultValue: `Age: ${label}` }) ?? `Age: ${label}`;
+    }
     case "language":
       return translate("library.searchClauseLabels.language", `Language: ${clause.value}`);
     case "shelf":
