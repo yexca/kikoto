@@ -3,58 +3,62 @@ import { useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
-import { segmentedItemClassName } from "@/components/ui/segmented";
 import { cn } from "@/lib/tailwindClassNames";
 
-import {
-  librarySourceVisibilityModes,
-  type LibrarySourceVisibilityKey,
-  type LibrarySourceVisibilityMode,
-} from "./librarySourceVisibility";
+import { sourceVisibilityModes, type SourceVisibilityKey, type SourceVisibilityMode } from "./sourceVisibility";
 
-export type LibrarySourceVisibilityRow = {
-  key: LibrarySourceVisibilityKey;
+export type SourceVisibilityRow = {
+  key: SourceVisibilityKey;
   label: string;
   icon: ReactNode;
-  mode: LibrarySourceVisibilityMode;
+  mode: SourceVisibilityMode;
   visible: boolean;
   note?: string;
 };
 
-const modeIcons: Record<LibrarySourceVisibilityMode, typeof Eye> = {
+const modeIcons: Record<SourceVisibilityMode, typeof Eye> = {
   auto: WandSparkles,
   always: Eye,
   never: EyeOff,
 };
 
-export function librarySourceVisibilityIcon(key: LibrarySourceVisibilityKey) {
+export function sourceVisibilityIcon(key: SourceVisibilityKey) {
   if (key === "local") return <HardDrive className="h-4 w-4" />;
   if (key === "tracked") return <GitBranchPlus className="h-4 w-4" />;
   return <Cloud className="h-4 w-4" />;
 }
 
-export function LibrarySourceVisibilityPicker({
+/** A trigger and popover that set each source's visibility mode in a source switcher. */
+export function SourceVisibilityPicker({
+  title,
   rows,
+  triggerClassName,
+  align = "start",
+  zIndex,
   onChange,
 }: {
-  rows: LibrarySourceVisibilityRow[];
-  onChange: (key: LibrarySourceVisibilityKey, mode: LibrarySourceVisibilityMode) => void;
+  title: string;
+  rows: SourceVisibilityRow[];
+  triggerClassName: (open: boolean) => string;
+  align?: "start" | "end";
+  zIndex?: number;
+  onChange: (key: SourceVisibilityKey, mode: SourceVisibilityMode) => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
-  const modeLabel = (mode: LibrarySourceVisibilityMode) => t(`library.sourceVisibility.modes.${mode}`);
+  const modeLabel = (mode: SourceVisibilityMode) => t(`library.sourceVisibility.modes.${mode}`);
 
   return (
     <>
       <button
         ref={anchorRef}
         type="button"
-        className={segmentedItemClassName(open, "px-2")}
+        className={triggerClassName(open)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label={t("library.sourceVisibility.title")}
-        title={t("library.sourceVisibility.title")}
+        aria-label={title}
+        title={title}
         onClick={() => setOpen((current) => !current)}
       >
         <SlidersHorizontal className="h-4 w-4" />
@@ -63,13 +67,14 @@ export function LibrarySourceVisibilityPicker({
         open={open}
         anchorRef={anchorRef}
         onOpenChange={setOpen}
-        align="start"
-        ariaLabel={t("library.sourceVisibility.title")}
+        align={align}
+        zIndex={zIndex}
+        ariaLabel={title}
         className="w-[min(20rem,calc(100vw-1.5rem))] p-1 text-sm"
       >
         <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground">
           <SlidersHorizontal className="h-4 w-4" />
-          <span>{t("library.sourceVisibility.title")}</span>
+          <span>{title}</span>
         </div>
         <ul className="space-y-0.5">
           {rows.map((row) => (
@@ -93,7 +98,7 @@ export function LibrarySourceVisibilityPicker({
                 aria-label={t("library.sourceVisibility.sourceLabel", { source: row.label })}
                 className="flex shrink-0 gap-0.5 rounded-md bg-muted p-0.5"
               >
-                {librarySourceVisibilityModes.map((mode) => {
+                {sourceVisibilityModes.map((mode) => {
                   const Icon = modeIcons[mode];
                   const selected = row.mode === mode;
                   return (

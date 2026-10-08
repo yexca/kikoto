@@ -849,7 +849,9 @@ test("remote detail Track completes in place and makes the forked Tracked source
   await expect(page).toHaveURL(/\/RJ00000051\?source=1/);
   const detailURL = page.url();
   const trackedTab = page.locator('button[title^="Tracked:"]');
-  await expect(trackedTab).toHaveAttribute("title", "Tracked: No tracked source linked");
+  // Nothing is tracked yet, so there is no Tracked tab to browse.
+  await expect(page.locator('button[title="Example Remote: Available"]')).toBeVisible();
+  await expect(trackedTab).toHaveCount(0);
 
   await page.getByRole("button", { name: /Source actions for/ }).click();
   await page.getByRole("menuitem", { name: "Track", exact: true }).click();
@@ -857,7 +859,7 @@ test("remote detail Track completes in place and makes the forked Tracked source
   await expect.poll(() => trackControl.trackRequests).toHaveLength(1);
   await expect(page.getByText("Track workflow #91 queued.", { exact: true })).toBeVisible();
   expect(page.url()).toBe(detailURL);
-  await expect(trackedTab).toHaveAttribute("title", "Tracked: No tracked source linked");
+  await expect(trackedTab).toHaveCount(0);
 
   trackControl.status = "succeeded";
   await expect(page.getByText("Track workflow #91 completed for RJ00000051.", { exact: true })).toBeVisible();
@@ -871,13 +873,10 @@ test("remote detail Track completes in place and makes the forked Tracked source
   await page.getByRole("menuitem", { name: /^Confirm untrack/ }).click();
   await expect.poll(() => trackControl.untrackRequests).toHaveLength(1);
   await expect(page.getByText("Untracked RJ00000051 from Example Remote.", { exact: true })).toBeVisible();
-  await expect(trackedTab).toHaveAttribute("title", "Tracked: No tracked source linked");
+  await expect(trackedTab).toHaveCount(0);
   await page.getByRole("button", { name: /Source actions for/ }).click();
   await expect(page.getByRole("menuitem", { name: /^Track/ })).toBeEnabled();
   await expect(page.getByRole("menuitem", { name: /^Untrack/ })).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await trackedTab.click();
-  await expect(page.getByText("Tracked is not selected for this preview.", { exact: true })).toBeVisible();
 });
 
 test("persisted remote result opens the canonical detail with its remote source selected", async ({ page }) => {

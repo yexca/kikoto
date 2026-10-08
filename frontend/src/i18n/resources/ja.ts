@@ -152,6 +152,12 @@ const collectionJapanese = {
   perPageLabel: "1ページあたりの{{itemLabel}}",
   pageSize: "1ページあたりの項目数：{{value}}",
   itemsPerPage: "1ページあたりの項目数",
+  coverSources: "カバーのソース表示",
+  coverSourceModes: {
+    auto: "自動：現在のソースと異なる、または問題のある表示のみ",
+    always: "すべてのソース表示を常に表示",
+    never: "ソース表示を表示しない",
+  },
   pageOption: "{{value}} / ページ",
   controls: "{{label}}コントロール",
   filter: "絞り込み",

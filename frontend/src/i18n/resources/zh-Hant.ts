@@ -153,6 +153,12 @@ const collectionHant = {
   perPageLabel: "每頁 {{itemLabel}} 數量",
   pageSize: "每頁數量：{{value}}",
   itemsPerPage: "每頁數量",
+  coverSources: "封面來源標記",
+  coverSourceModes: {
+    auto: "自動：只顯示與目前來源不同或異常的標記",
+    always: "總是顯示所有來源標記",
+    never: "從不顯示來源標記",
+  },
   pageOption: "{{value}} / 頁",
   controls: "{{label}}控制項",
   filter: "篩選",

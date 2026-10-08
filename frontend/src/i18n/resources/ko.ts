@@ -152,6 +152,12 @@ const collectionKorean = {
   perPageLabel: "페이지당 {{itemLabel}}",
   pageSize: "페이지당 항목 수: {{value}}",
   itemsPerPage: "페이지당 항목 수",
+  coverSources: "커버 소스 표시",
+  coverSourceModes: {
+    auto: "자동: 현재 소스와 다르거나 문제가 있는 표시만",
+    always: "모든 소스 표시를 항상 표시",
+    never: "소스 표시를 표시하지 않음",
+  },
   pageOption: "{{value}} / 페이지",
   controls: "{{label}} 컨트롤",
   filter: "필터",

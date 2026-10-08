@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LibrarySource } from "@/lib/api";
 
+import { sourceVisible, withSourceVisibilityMode } from "@/components/source-visibility/sourceVisibility";
+
 import {
   autoLibrarySourceVisible,
-  librarySourceVisible,
   readLibrarySourceVisibility,
-  withLibrarySourceVisibilityMode,
   writeLibrarySourceVisibility,
 } from "./librarySourceVisibility";
 
@@ -40,18 +40,14 @@ describe("library source visibility", () => {
   });
 
   it("lets explicit modes override automatic visibility", () => {
-    expect(librarySourceVisible("always", false)).toBe(true);
-    expect(librarySourceVisible("never", true)).toBe(false);
-    expect(librarySourceVisible("auto", false)).toBe(false);
+    expect(sourceVisible("always", false)).toBe(true);
+    expect(sourceVisible("never", true)).toBe(false);
+    expect(sourceVisible("auto", false)).toBe(false);
   });
 
   it("persists only explicit modes and drops unknown stored entries", () => {
-    const preferences = withLibrarySourceVisibilityMode(
-      withLibrarySourceVisibilityMode({}, "local", "never"),
-      "remote:1",
-      "always",
-    );
-    writeLibrarySourceVisibility("viewer", withLibrarySourceVisibilityMode(preferences, "local", "auto"));
+    const preferences = withSourceVisibilityMode(withSourceVisibilityMode({}, "local", "never"), "remote:1", "always");
+    writeLibrarySourceVisibility("viewer", withSourceVisibilityMode(preferences, "local", "auto"));
     expect(readLibrarySourceVisibility("viewer")).toEqual({ "remote:1": "always" });
 
     window.localStorage.setItem(

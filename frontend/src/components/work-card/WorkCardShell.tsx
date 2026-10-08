@@ -4,7 +4,12 @@ import {
   Check,
   CheckCircle2,
   Circle,
+  Cloud,
+  CloudOff,
+  Database,
   ExternalLink,
+  GitBranchPlus,
+  HardDrive,
   Headphones,
   History,
   Languages,
@@ -74,10 +79,16 @@ export type WorkCardViewModel = {
   dlsiteTags: WorkCardBadge[];
   userTags?: WorkCardBadge[];
   sourceBadges: WorkCardBadge[];
+  /** Icon-only marks rely on the label for their title and accessible name. */
+  sourceBadgeStyle?: CoverSourceBadgeStyle;
+  /** False when an empty mark list is intentional rather than a missing source. */
+  sourceUnavailableFallback?: boolean;
   recommended?: boolean;
   recommendationScore?: number;
   recommendationRevealDelay?: number;
 };
+
+export type CoverSourceBadgeStyle = "label" | "icon";
 
 export function WorkCardShell({
   work,
@@ -153,6 +164,8 @@ export function WorkCardShell({
         price={work.price ?? null}
         priceCurrency={work.priceCurrency}
         sourceBadges={work.sourceBadges}
+        sourceBadgeStyle={work.sourceBadgeStyle}
+        sourceUnavailableFallback={work.sourceUnavailableFallback}
         selection={selection}
         recommended={work.recommended}
         recommendationScore={work.recommendationScore}
@@ -214,6 +227,8 @@ export function WorkCardMedia({
   price,
   priceCurrency,
   sourceBadges = [],
+  sourceBadgeStyle = "label",
+  sourceUnavailableFallback = true,
   selection,
   recommended = false,
   recommendationScore,
@@ -226,6 +241,8 @@ export function WorkCardMedia({
   price: number | null;
   priceCurrency?: string;
   sourceBadges?: WorkCardBadge[];
+  sourceBadgeStyle?: CoverSourceBadgeStyle;
+  sourceUnavailableFallback?: boolean;
   selection?: ReactNode;
   recommended?: boolean;
   recommendationScore?: number;
@@ -294,7 +311,11 @@ export function WorkCardMedia({
           ))}
         {selection}
         <div className="absolute inset-x-1.5 bottom-1.5 flex items-end gap-1.5">
-          <CoverAvailability badges={sourceBadges} />
+          <CoverAvailability
+            badges={sourceBadges}
+            style={sourceBadgeStyle}
+            unavailableFallback={sourceUnavailableFallback}
+          />
           {price !== null && (
             <span
               className={cn(coverChipClassName, "ml-auto shrink-0 tabular-nums")}
@@ -328,12 +349,22 @@ const coverChipClassName =
 // view model adds (catalog state, for example) stay neutral. A regular card
 // shows two badges; a narrow card shows only the first so its label stays
 // readable beside the price, and counts the rest.
-function CoverAvailability({ badges }: { badges: WorkCardBadge[] }) {
+function CoverAvailability({
+  badges,
+  style,
+  unavailableFallback,
+}: {
+  badges: WorkCardBadge[];
+  style: CoverSourceBadgeStyle;
+  unavailableFallback: boolean;
+}) {
   const { t } = useTranslation();
   const items: WorkCardBadge[] =
-    badges.length > 0
+    badges.length > 0 || !unavailableFallback
       ? badges
       : [{ key: "source:unavailable", label: t("workCard.sourceUnavailable"), variant: "warning" }];
+  if (items.length === 0) return <div className="min-w-0 flex-1" />;
+  if (style === "icon") return <CoverAvailabilityIcons badges={items} />;
   const visible = items.slice(0, 2);
   const hidden = items.slice(2);
   const narrowHidden = items.slice(1);
@@ -371,6 +402,64 @@ function CoverAvailability({ badges }: { badges: WorkCardBadge[] }) {
       )}
     </div>
   );
+}
+
+// A shown mark already means the source holds the work, so icon marks drop the
+// dot and tint only a warning.
+function CoverAvailabilityIcons({ badges }: { badges: WorkCardBadge[] }) {
+  const visible = badges.slice(0, 3);
+  const hidden = badges.slice(3);
+  const narrowHidden = badges.slice(2);
+  const overflowChipClassName = cn(coverChipClassName, "shrink-0 font-medium");
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      {visible.map((badge, index) => {
+        const Icon = coverSourceIcon(badge);
+        return (
+          <span
+            key={badge.key ?? `${badge.label}:${badge.variant ?? "secondary"}`}
+            role="img"
+            aria-label={badge.title && badge.title !== badge.label ? `${badge.label} (${badge.title})` : badge.label}
+            title={badge.title && badge.title !== badge.label ? `${badge.label} · ${badge.title}` : badge.label}
+            className={cn(
+              coverChipClassName,
+              "w-6 shrink-0 justify-center px-0",
+              badge.variant === "warning" && "text-warning-foreground",
+              index > 1 && "@max-[12.5rem]/work-card:hidden",
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+          </span>
+        );
+      })}
+      {hidden.length > 0 && (
+        <span
+          className={cn(overflowChipClassName, "@max-[12.5rem]/work-card:hidden")}
+          title={hidden.map((badge) => badge.label).join(", ")}
+        >
+          +{hidden.length}
+        </span>
+      )}
+      {narrowHidden.length > 0 && (
+        <span
+          className={cn(overflowChipClassName, "hidden @max-[12.5rem]/work-card:inline-flex")}
+          title={narrowHidden.map((badge) => badge.label).join(", ")}
+        >
+          +{narrowHidden.length}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function coverSourceIcon(badge: WorkCardBadge) {
+  const key = badge.key ?? "";
+  if (key.startsWith("source:local")) return HardDrive;
+  if (key.startsWith("source:tracked")) return GitBranchPlus;
+  if (key.startsWith("source:cache")) return Database;
+  if (key.startsWith("source:missing") || key.startsWith("source:no-source") || key.startsWith("source:unavailable"))
+    return CloudOff;
+  return badge.variant === "warning" ? CloudOff : Cloud;
 }
 
 function availabilityDotClassName(badge: WorkCardBadge) {
