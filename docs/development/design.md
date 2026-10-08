@@ -198,6 +198,9 @@ Mobile:
   without horizontal scrolling and retain at least 44px touch targets.
 - Viewport-bounded popovers or sheets for filters and source picking.
 - Large touch targets.
+- Text inputs, textareas, and selects use at least 16px text on coarse
+  pointers so iOS WebKit never zooms into a focused control. The viewport keeps
+  pinch zoom; fine-pointer layouts keep their compact control text.
 - Player page optimized for one-handed listening.
 - Pressed feedback must not depend on hover availability.
 - Dynamic viewport and safe-area insets protect fixed controls in portrait and

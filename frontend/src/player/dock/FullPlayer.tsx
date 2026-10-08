@@ -21,7 +21,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ANDROID_BACK_EVENT } from "@/lib/appEvents";
+import { NATIVE_BACK_EVENT } from "@/lib/appEvents";
 import { useToast } from "@/components/ui/toast";
 import { assetURL } from "@/lib/api";
 import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
@@ -117,8 +117,8 @@ export function FullPlayer({
       if (sidePanel) return close(() => setSidePanel(null));
       close(() => onDockModeChange("compact"));
     };
-    window.addEventListener(ANDROID_BACK_EVENT, handleBack);
-    return () => window.removeEventListener(ANDROID_BACK_EVENT, handleBack);
+    window.addEventListener(NATIVE_BACK_EVENT, handleBack);
+    return () => window.removeEventListener(NATIVE_BACK_EVENT, handleBack);
   }, [isCustomSleepOpen, isMobile, isMoreOpen, isSleepOpen, isSourceOpen, onDockModeChange, sidePanel]);
 
   const toggleSidePanel = (value: PlayerSidePanel) => {

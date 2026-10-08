@@ -262,9 +262,17 @@ and player intent, including pending play requests.
 - Keep high-frequency playback position out of bridge and notification rebuild
   paths. Browser time rendering is sampled, Android bridge updates are
   coalesced and periodically calibrated, and the Android build does not register
-  a second browser Media Session. Native media controls and the lyrics overlay
-  exist only on Android; the iOS shell uses the WebView Media Session and
-  Picture-in-Picture.
+  a second browser Media Session. Native media controls exist only on Android;
+  the iOS shell keeps the WebView Media Session. Screen lyrics use a native
+  surface in both shells, chosen by registered capability
+  (`lib/nativeLyricsOverlay`): the Android overlay, or on iOS an app-local
+  Picture-in-Picture plugin that draws the current line into an
+  `AVSampleBufferDisplayLayer`, because WKWebView reports no web
+  Picture-in-Picture and rejects `requestPictureInPicture`. Both receive the
+  timed track once plus playback corrections and advance lines on their own
+  clock, so they stay in sync while the web view is in the background. The
+  Picture-in-Picture window's play and pause go back to the web player rather
+  than to a second media session.
 - Native shells attach the session credential to media and image requests on
   the configured server, limited to fixed cover, manual, media, and HLS routes.
   Android intercepts those WebView requests. WKWebView cannot intercept its own
@@ -315,6 +323,14 @@ and player intent, including pending play requests.
   including Favorites and nested creator routes. A resumed mobile detail uses
   its captured return entry; a direct link falls back to its workspace list.
   Tapping the active bottom-navigation destination remains workspace Up.
+- The Android back button and the iOS left-edge swipe share one back order
+  (`app/nativeBack`): command palette, sign-in, the topmost dialog, sheet, or
+  popover, the player's own panels and full view, then browser history. At the
+  Library root the Android button asks for a second press before leaving the
+  app; the iOS swipe does nothing and never leaves the app. The swipe comes
+  from an app-local native edge recognizer, offered only where that plugin is
+  registered, and yields when it starts on the Compact or Mini player, a
+  slider, or a horizontally scrollable region.
 - Keep provider tags to two measured card rows with an overflow popover. Card
   summaries use Circle / Series, DL sales, segmented rating, known available
   alternate-language state, and a compact playback-history indicator when a
@@ -331,6 +347,12 @@ and player intent, including pending play requests.
   storage. Navigation and reloads in one browser tab reuse it; a newly opened
   tab or native-app cold launch creates a new id and stable recommendation seed.
   Manual reshuffle changes the browse seed without replacing the session id.
+- A Library page, page-size, sort, filter, or search change returns to the start
+  of the new results once they render. Compact layouts jump to the page top
+  after any scroll still running from the user's gesture settles, because
+  WebKit abandons a long programmatic smooth scroll when the list is replaced
+  or touch momentum continues; desktop smoothly brings the results anchor into
+  view. The shared `collectionResultsScroll` owns this rule.
 - Keep scroll state per browser history entry. A push navigation starts at the
   top, while browser back/forward restores the originating entry after its
   content has rendered. The shell observes content height for up to ten seconds
