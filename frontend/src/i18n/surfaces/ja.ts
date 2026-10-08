@@ -73,6 +73,17 @@ export const surfaceJapanese = {
       saved: "{{code}} の特典として関連付けました。",
       removed: "特典の関連付けを解除しました。",
     },
+    family: {
+      title: "作品ファミリー",
+      description: "ひとつの作品としてまとめられた言語版と、それらに関連付けられた購入特典です。",
+      editions: "このファミリーの版",
+      bonuses: "このファミリーの購入特典",
+      alone: "このファミリーには {{code}} のみがあります。",
+      current: "表示中",
+      local: "ライブラリにあり",
+      metadataOnly: "メタデータのみ",
+      bonus: "購入特典",
+    },
     searchTags: "タグを検索、または新しいタグを入力",
     tagHint:
       "Enter で選択中のタグを追加するか、入力した名前でタグを作成します。タグの言語ボタンで言語別の名前を編集できます。",
@@ -1333,7 +1344,8 @@ export const surfaceJapanese = {
     rankingScore: "ランキングスコア",
     loadingScore: "スコアを読み込み中",
     recommendationExplanation:
-      "聴取状態によっておすすめ内の配置が決まります。各状態で、親和度は現在のシード付き探索ブーストと結果の変動によって調整されます。",
+      "視聴状態によっておすすめの構成が決まります。好みのスコアは繰り返しの肯定的な評価を考慮し、一般的なタグの重みを抑えます。同じ状態では、情報の少ない作品に探索の加点を行い、独立した変動と制作者の多様性の小さな調整を順位に反映します。",
+    diversityAdjustment: "制作者の多様性",
     matchedSignals: "{{count}} 件のシグナルに一致",
     rawScoreBounded: "生スコア {{raw}}、制限後 {{score}}",
     directoryUnavailable: "ディレクトリを利用できません",

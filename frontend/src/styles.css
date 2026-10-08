@@ -1287,3 +1287,22 @@ html[data-native-app="true"] .theme-shell-surface {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+
+@keyframes recommendation-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.recommendation-reveal {
+  animation: recommendation-reveal 160ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .recommendation-reveal {
+    animation: none;
+  }
+}

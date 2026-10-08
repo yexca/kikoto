@@ -82,8 +82,8 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain ends at
-`060_media_lyrics_assignment.sql`, with the development baseline
-`060_v0.8.0.sql` generated from the current `VERSION` file; the next release
+`061_media_lyrics_assignment.sql`, with the development baseline
+`061_v0.8.0.sql` generated from the current `VERSION` file; the next release
 regenerates it under its own suffix. Released migrations and baselines,
 including `047_v0.7.1.sql` and `059_v0.8.0.sql`, remain immutable and available
 for ledger validation.
@@ -106,8 +106,8 @@ retry counters and backoff deadlines, and
 snapshot-writer
 triggers, queues existing works, and requests one new startup backfill to repair
 older projections and locale-name precedence. Hidden/merged states now commit
-before batched work projection. Existing databases apply 048–059 through the
-numbered chain; empty databases use the schema-059 baseline.
+before batched work projection. Existing databases apply 048–060 through the
+numbered chain; empty databases use the schema-060 baseline.
 Migration 053 preserves existing all-language authored overrides while adding
 language-scoped titles and rebuilding indexes/search triggers. It never changes
 released/applied numbered SQL or reconstructs existing data from a baseline.
@@ -138,7 +138,13 @@ and audio metadata when rescanning, while media ids and personal state stay
 unchanged. Legacy observations remain empty until a scan or bounded probe
 establishes their version; probes validate both disk observations and the stored
 version before committing. No media files are read by the migration.
-Migration 060 adds `media_lyrics_assignment`, the library-level lyrics file of
+Migration 060 adds weighted affinity and creator diversity to recommendation
+snapshots and stores a frozen entity/name profile per generation for transient
+remote results. Name and alias changes advance the input revision for new
+sessions. Existing generations retain their records; the algorithm version
+change rebuilds an old client binding when it is next used. No catalog or work
+records are created by the migration.
+Migration 061 adds `media_lyrics_assignment`, the library-level lyrics file of
 an audio media item, with indexes on its lyrics and assigning-user foreign keys.
 It creates no rows; existing personal lyrics preferences are unchanged.
 v0.7.1 shipped schema 047. Snapshot triggers queue only existing works, preserve

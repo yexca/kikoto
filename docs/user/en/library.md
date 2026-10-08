@@ -58,9 +58,12 @@ The Library is the main browsing surface for works.
   insertions, and Shelved waits until scheduled states are exhausted. Explicit
   status filters still return every matching work. Within each state, a bounded
   affinity score uses favorite, tag, voice, and circle signals without treating
-  the candidate itself as taste history. A seeded discovery boost and result
-  variation adjust that affinity only for the current within-state ordering;
-  badges and telemetry retain the bounded affinity score. Relisten and favorite history are
+  the candidate itself as taste history. Repeated positive feedback strengthens
+  each matched signal up to five supporting works, and common tags carry less
+  weight. A seeded discovery boost favors weaker evidence; independent result
+  variation adjusts that affinity only for the current within-state ordering;
+  a small creator diversity adjustment also affects ordering. Badges and
+  telemetry retain the bounded affinity score. Relisten and favorite history are
   positive evidence; Finished alone is neutral. Each browser tab or native-app
   launch binds to an immutable recommendation generation, so navigation,
   pagination, filters, card mutations, and toolbar reshuffles do not recompute
@@ -70,6 +73,13 @@ The Library is the main browsing surface for works.
   current generation with a new stable seed. The seed keeps both state mixing
   and within-state variety pagination-safe, and the toolbar refresh action
   changes only that seed within the current generation.
+- Remote recommendation badges also score works that have not been imported,
+  using known localized tags and creator aliases. Turning badges on scores the
+  current page in one batch without reloading the remote source, then reveals
+  badges progressively (with reduced motion respected). Only scores meeting
+  your badge threshold are shown. A score failure leaves the works available
+  and offers Retry. Remote scores use the same frozen session preference profile
+  and do not import any works.
 - Shows a compact, horizontally scrollable recently-played strip above the
   Library controls. It is ordered per user from the one cursor owned by each
   logical work family and includes the latest track position without replacing

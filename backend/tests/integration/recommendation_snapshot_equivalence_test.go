@@ -127,6 +127,8 @@ func TestRecommendationGenerationMatchesLiveScoring(t *testing.T) {
 		if storedErr != nil {
 			t.Fatalf("snapshot breakdown for work %d failed: %v", index, storedErr)
 		}
+		// Diversity is generation placement, independent of affinity scoring.
+		stored.Signals.DiversityPenalty = 0
 		if !reflect.DeepEqual(stored, live) {
 			t.Errorf("work %d snapshot breakdown = %#v, want live breakdown %#v", index, stored, live)
 		}

@@ -128,6 +128,7 @@ import {
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { RecentlyPlayedPicker } from "@/pages/library/RecentlyPlayedPicker";
 import { Badge } from "@/components/ui/badge";
+import { useRemoteRecommendations, recommendationRevealDelay } from "@/pages/library/useRemoteRecommendations";
 import { RecommendationExplanationDialog } from "@/pages/library/RecommendationExplanationDialog";
 import {
   LazyRemoteFetchWorkspaceDialog,
@@ -436,6 +437,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const [recommendBadgesEnabled, setRecommendBadgesEnabled] = useState(
     () => window.localStorage.getItem("kikoto:recommend-badges") === "true",
   );
+  const remoteInlineRecommendations = auth.demoMode && recommendBadgesEnabled;
   const [sortDirection, setSortDirection] = useState<SortDirection>(initialBrowseState.direction);
   const [randomSeed, setRandomSeed] = useState(initialBrowseState.randomSeed);
   const [workPage, setWorkPage] = useState(initialBrowseState.page);
@@ -833,7 +835,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       librarySort,
       sortDirection,
       randomSeed,
-      recommendBadgesEnabled,
+      remoteInlineRecommendations,
     ]);
     // Switching to a local tab clears the remote result. The request key can
     // still match a previous successful load, so only reuse it while that
@@ -851,7 +853,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         remoteLibrarySort(librarySort),
         sortDirection,
         randomSeed,
-        recommendBadgesEnabled && librarySort !== "recommend",
+        remoteInlineRecommendations,
         controller.signal,
       )
       .then((result) => {
@@ -891,9 +893,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     showBrowse,
     hasPendingBrowseRestore,
     currentRemoteResultSourceId,
+    remoteInlineRecommendations,
     librarySort,
     randomSeed,
-    recommendBadgesEnabled,
     remoteSearchQuery,
     remoteSourceStates,
     sortDirection,
@@ -1413,7 +1415,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         remoteLibrarySort(librarySort),
         sortDirection,
         randomSeed,
-        recommendBadgesEnabled && librarySort !== "recommend",
+        remoteInlineRecommendations,
       )
       .then((result) => {
         if (requestSeq !== remoteRequestSeq.current) return;
@@ -1947,6 +1949,8 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         <div className="space-y-3">
           <RemoteSourcePanel
             source={activeTab.source}
+            recommendationsEnabled={active && showBrowse && recommendBadgesEnabled}
+            recommendationSessionId={recommendationSession.id}
             result={remoteResult}
             loading={isRemoteLoading}
             viewState={activeRemoteSourceState}
@@ -2426,6 +2430,7 @@ function RemoteSourceSelectionBar({
 function RemoteSourceResults({
   source,
   visibleWorks,
+  recommendations,
   remoteError,
   isInitialLoading,
   skeletonCount,
@@ -2447,6 +2452,7 @@ function RemoteSourceResults({
 }: {
   source: LibrarySource;
   visibleWorks: RemoteWork[];
+  recommendations: ReturnType<typeof useRemoteRecommendations>;
   remoteError: NonNullable<RemoteWorksResponse["error"]> | null;
   isInitialLoading: boolean;
   skeletonCount: number;
@@ -2496,10 +2502,11 @@ function RemoteSourceResults({
   return (
     <div className="space-y-2">
       <section className={workCollectionClassName()} style={workCollectionStyle(mobileColumns, desktopColumns)}>
-        {visibleWorks.map((work) => (
+        {visibleWorks.map((work, index) => (
           <div key={work.remoteId} className="h-full">
             <RemoteWorkCard
-              work={work}
+              work={{ ...work, recommendScore: recommendations.scores.get(work.primaryCode) ?? 0 }}
+              revealDelay={recommendationRevealDelay(index)}
               source={source}
               selected={bulkCodes.has(work.primaryCode)}
               selectable={Boolean(work.primaryCode)}
@@ -2533,6 +2540,8 @@ function RemoteSourceResults({
 
 function RemoteSourcePanel({
   source,
+  recommendationsEnabled,
+  recommendationSessionId,
   result,
   loading,
   viewState,
@@ -2550,6 +2559,8 @@ function RemoteSourcePanel({
   onRetry,
 }: {
   source: LibrarySource;
+  recommendationsEnabled: boolean;
+  recommendationSessionId: string;
   result: RemoteWorksResponse | null;
   loading: boolean;
   viewState: RemoteSourceViewState;
@@ -2592,6 +2603,13 @@ function RemoteSourcePanel({
     onPageChange,
   });
   const model = remoteSourcePanelModel({ browse, bulkCodes: selection.bulkCodes });
+  const auth = useAuth();
+  const recommendations = useRemoteRecommendations({
+    sourceId: source.id,
+    works: model.visibleWorks,
+    sessionId: recommendationSessionId,
+    enabled: recommendationsEnabled && !loading && Boolean(auth.user) && !auth.demoMode && result?.status === "ok",
+  });
   const actions = useRemoteSourceActions({
     source,
     selectedSyncable: model.selectedSyncable,
@@ -2628,9 +2646,24 @@ function RemoteSourcePanel({
           onFetch={() => void bulkSaveSelected()}
         />
       )}
+      {recommendations.failed && (
+        <div role="status" className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+          <span>{t("errors.unavailable")}</span>
+          <Button variant="outline" size="sm" onClick={recommendations.retry}>
+            {t("common.retry")}
+          </Button>
+        </div>
+      )}
       <RemoteSourceResults
         source={source}
         visibleWorks={model.visibleWorks}
+        recommendations={{
+          ...recommendations,
+          scores:
+            auth.demoMode && recommendationsEnabled
+              ? new Map(model.visibleWorks.map((work) => [work.primaryCode, work.recommendScore]))
+              : recommendations.scores,
+        }}
         remoteError={model.remoteError}
         isInitialLoading={isInitialLoading}
         skeletonCount={skeletonCount}
@@ -2855,6 +2888,7 @@ const WorkCard = memo(function WorkCard({
 
 function RemoteWorkCard({
   work,
+  revealDelay,
   source,
   selected,
   selectable,
@@ -2870,6 +2904,7 @@ function RemoteWorkCard({
   onListSaved,
 }: {
   work: RemoteWork;
+  revealDelay: number;
   source: LibrarySource;
   selected: boolean;
   selectable: boolean;
@@ -2884,7 +2919,10 @@ function RemoteWorkCard({
   onEnsureWork: () => Promise<number | null>;
   onListSaved: (workId: number, favorite: boolean) => void;
 }) {
-  const view = remoteWorkCardView(work, source, useAuth().recommendationThreshold);
+  const view = {
+    ...remoteWorkCardView(work, source, useAuth().recommendationThreshold),
+    recommendationRevealDelay: revealDelay,
+  };
 
   return (
     <WorkCardShell

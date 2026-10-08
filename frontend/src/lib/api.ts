@@ -83,6 +83,7 @@ export type RecommendationBreakdown = {
     seed: number;
     explorationBoost: number;
     jitter: number;
+    diversityPenalty?: number;
     totalAdjustment: number;
     rankingScore: number;
   };
@@ -2609,6 +2610,19 @@ export const api = {
   ) =>
     getJSON<RemoteWorksResponse>(
       `/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}&recommendBadges=${recommendBadges}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+      signal,
+    ),
+  scoreRemoteRecommendations: (
+    id: number,
+    payload: {
+      recommendationSession: string;
+      works: Array<Pick<RemoteWork, "primaryCode" | "workId" | "tags" | "voiceActors" | "circle">>;
+    },
+    signal?: AbortSignal,
+  ) =>
+    postJSONBody<{ scores: Array<{ primaryCode: string; score: number }> }>(
+      `/api/remote-sources/${id}/recommendations`,
+      payload,
       signal,
     ),
   getRemoteSourceWorkMetadata: (id: number, code: string, signal?: AbortSignal) =>
