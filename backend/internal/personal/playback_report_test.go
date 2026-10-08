@@ -2,8 +2,11 @@ package personal
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func reportFixture(t *testing.T) Store {
@@ -122,5 +125,43 @@ func TestPlaybackReportUsesCanonicalEditionWhenLogicalPointerIsAbsent(t *testing
 	result, err := s.RecordPlaybackReport(context.Background(), 1, PlaybackReport{Progress: []ProgressInput{progressFixture(1000, 20)}})
 	if err != nil || result.Progress[0].Cursor == nil || result.Progress[0].Cursor.WorkID != 1 || result.Progress[0].Cursor.MediaWorkID != 2 {
 		t.Fatalf("canonical edition fallback = %+v %v", result, err)
+	}
+	if identity := result.Progress[0].Identity; identity == nil || identity.WorkID != 1 || !reflect.DeepEqual(identity.EditionWorkIDs, []int64{1, 2}) {
+		t.Fatalf("canonical identity fallback = %+v", identity)
+	}
+}
+
+func TestPlaybackReportIdentifiesRecordedAndStaleFamiliesWithoutReturningStaleCursors(t *testing.T) {
+	s := reportFixture(t)
+	execFixture(t, s.DB, `INSERT INTO work_edition (work_id,logical_work_id,primary_code,is_canonical) VALUES (3,1,?,0)`, testfixture.WorkCode(testfixture.PrefixRJ, 2))
+	execFixture(t, s.DB, `INSERT INTO work (id,primary_code,title) VALUES (4,?,'Example Work 4')`, testfixture.WorkCode(testfixture.PrefixRJ, 3))
+	execFixture(t, s.DB, `INSERT INTO media_item (id,work_id,kind,title,fingerprint) VALUES (4,4,'audio','Example Track 4','synthetic-track-4')`)
+	ctx := context.Background()
+	b := progressFixture(3000, 80)
+	b.ReportID, b.MediaItemID, b.LocationID = "synthetic-progress-b", 4, nil
+	if _, err := s.RecordPlaybackReport(ctx, 1, PlaybackReport{Progress: []ProgressInput{b}}); err != nil {
+		t.Fatal(err)
+	}
+	b.Order, b.PositionSeconds = 2000, 20
+	a := progressFixture(1000, 120)
+	result, err := s.RecordPlaybackReport(ctx, 1, PlaybackReport{Progress: []ProgressInput{a, b}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Progress) != 2 || result.Progress[0].ReportID != a.ReportID || result.Progress[1].ReportID != b.ReportID {
+		t.Fatalf("report association = %+v", result)
+	}
+	first, second := result.Progress[0], result.Progress[1]
+	if first.Status != "recorded" || first.Cursor == nil || first.Identity == nil || first.Identity.WorkID != 1 || !reflect.DeepEqual(first.Identity.EditionWorkIDs, []int64{1, 2, 3}) {
+		t.Fatalf("recorded family = %+v", first)
+	}
+	if second.Status != "stale" || second.Cursor != nil || second.Identity == nil || second.Identity.WorkID != 4 || !reflect.DeepEqual(second.Identity.EditionWorkIDs, []int64{4}) {
+		t.Fatalf("unrelated stale family = %+v", second)
+	}
+	// A replay retains identity, even though no new cursor was written. The
+	// family includes the as-yet unplayed third edition, never unrelated works.
+	result, err = s.RecordPlaybackReport(ctx, 1, PlaybackReport{Progress: []ProgressInput{a}})
+	if err != nil || result.Progress[0].Status != "stale" || result.Progress[0].Cursor != nil || !reflect.DeepEqual(result.Progress[0].Identity, first.Identity) {
+		t.Fatalf("stale edition identity = %+v %v", result, err)
 	}
 }

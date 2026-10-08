@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DatedListeningReport, PlaybackReport, PlaybackReportResult } from "@/lib/playbackReportApi";
+import type { DatedListeningReport, PlaybackReport, PlaybackReportResult, ReportStatus } from "@/lib/playbackReportApi";
 import {
   emptyOutbox,
   MAX_OUTBOX_HISTORY,
@@ -99,11 +99,17 @@ async function harness(store = memoryOutbox()) {
 }
 
 describe("unified playback reports", () => {
-  const cursorAck = (report: PlaybackReport, workId: number, mediaWorkId: number): PlaybackReportResult => ({
+  const cursorAck = (
+    report: PlaybackReport,
+    workId: number,
+    mediaWorkId: number,
+    editionWorkIds = [...new Set([workId, mediaWorkId])],
+  ): PlaybackReportResult => ({
     ...ack(report),
     progress: report.progress.map((r) => ({
       reportId: r.reportId,
       status: "recorded",
+      identity: { workId, editionWorkIds },
       cursor: {
         workId,
         mediaWorkId,
@@ -138,7 +144,7 @@ describe("unified playback reports", () => {
     await h.tick(30_000);
     h.progress(20, after);
     await settle();
-    resolve(cursorAck(h.requests[0].report, 1, before));
+    resolve(cursorAck(h.requests[0].report, 1, before, [1, 2, 3]));
     await settle();
     expect(h.cursors).toEqual([]);
     expect(h.store.read().progress).toHaveLength(1);
@@ -186,17 +192,182 @@ describe("unified playback reports", () => {
     await h.tick(30_000);
     h.progress(20, edition);
     await settle();
-    resolve(cursorAck(h.requests[0].report, 1, 2));
+    resolve(cursorAck(h.requests[0].report, 1, 2, [1, 2, 3]));
     await settle();
     h.transport((r) =>
       Promise.resolve({
         ...ack(r),
-        progress: r.progress.map((p) => ({ reportId: p.reportId, status: "stale" })),
+        progress: r.progress.map((p) => ({
+          reportId: p.reportId,
+          status: "stale",
+          identity: { workId: 1, editionWorkIds: [1, 2, 3] },
+        })),
       }),
     );
     await h.tick(60_000);
     expect(h.store.read().progress).toEqual([]);
     expect(h.cursors).toEqual([]);
+  });
+
+  const rejectedStatuses: ReportStatus[] = ["stale", "not_found", "invalid", "conflict", "history_cleared"];
+  it.each(rejectedStatuses.flatMap((status) => [false, true].map((reversed) => ({ status, reversed }))))(
+    "isolates another work's $status acknowledgement (reversed: $reversed)",
+    async ({ status, reversed }) => {
+      const h = await harness();
+      h.progress(120, 1);
+      h.progress(20, 2);
+      h.transport((report) => {
+        const [a, b] = report.progress;
+        const result = cursorAck({ history: [], progress: [a] }, 1, 1);
+        // B has never established a local identity mapping. Older responses may
+        // omit identity entirely, including for a permanently rejected item.
+        result.progress.push({ reportId: b.reportId, status });
+        if (reversed) result.progress.reverse();
+        return Promise.resolve(result);
+      });
+      await h.tick(30_000);
+      expect(h.requests[0].report.progress[1].order).toBeGreaterThan(h.requests[0].report.progress[0].order);
+      expect(h.cursors).toHaveLength(1);
+      expect(h.cursors[0]).toMatchObject({ workId: 1, mediaWorkId: 1, positionSeconds: 120 });
+      const pending = h.store.read().progress;
+      if (status === "stale") expect(pending).toEqual([]);
+      else {
+        expect(pending).toHaveLength(1);
+        expect(pending[0]).toMatchObject({ workId: 2, blocked: true, report: { positionSeconds: 20 } });
+      }
+      h.scheduler.requestFlush();
+      await h.tick(60_000);
+      await h.tick(90_000);
+      expect(h.requests).toHaveLength(1);
+      expect(h.cursors).toHaveLength(1);
+      expect(h.store.read().progress).toEqual(pending);
+    },
+  );
+
+  it.each([false, true])("isolates a stale work with explicit ownership (reversed: %s)", async (reversed) => {
+    const h = await harness();
+    h.progress(120, 1);
+    h.progress(20, 2);
+    h.transport((report) => {
+      const [a, b] = report.progress;
+      const result = cursorAck({ history: [], progress: [a] }, 1, 1);
+      result.progress.push({ reportId: b.reportId, status: "stale", identity: { workId: 4, editionWorkIds: [2, 4] } });
+      if (reversed) result.progress.reverse();
+      return Promise.resolve(result);
+    });
+    await h.tick(30_000);
+    expect(h.store.read().progress).toEqual([]);
+    expect(h.cursors).toHaveLength(1);
+    expect(h.cursors[0]).toMatchObject({ workId: 1, positionSeconds: 120 });
+  });
+
+  it.each(["not_found", "invalid", "conflict", "history_cleared"] as const)(
+    "a quarantined %s edition cannot block its own family's valid confirmation",
+    async (status) => {
+      const h = await harness();
+      h.progress(120, 1);
+      h.progress(20, 2);
+      h.transport((report) => {
+        const [a, b] = report.progress;
+        const result = cursorAck({ history: [], progress: [a] }, 1, 1, [1, 2]);
+        result.progress.push({ reportId: b.reportId, status });
+        return Promise.resolve(result);
+      });
+      await h.tick(30_000);
+      expect(h.cursors).toHaveLength(1);
+      expect(h.cursors[0]).toMatchObject({ workId: 1, positionSeconds: 120 });
+      expect(h.store.read().progress).toHaveLength(1);
+      expect(h.store.read().progress[0]).toMatchObject({ workId: 2, blocked: true });
+      await h.tick(60_000);
+      expect(h.requests).toHaveLength(1);
+      expect(h.cursors).toHaveLength(1);
+      h.transport((r) => Promise.resolve(cursorAck(r, 1, 2, [1, 2])));
+      h.progress(10, 2);
+      await h.tick(90_000);
+      expect(h.store.read().progress).toEqual([]);
+      expect(h.cursors).toHaveLength(2);
+      expect(h.cursors[1]).toMatchObject({ workId: 1, mediaWorkId: 2, positionSeconds: 10 });
+    },
+  );
+
+  it.each([false, true])("reconciles same-batch edition confirmations by reportId (reversed: %s)", async (reversed) => {
+    for (const status of ["recorded", "stale"] as const) {
+      const h = await harness();
+      h.progress(120, 2);
+      h.progress(20, 3);
+      h.transport((report) => {
+        const [a, b] = report.progress;
+        const result = cursorAck({ history: [], progress: [a] }, 1, 2, [1, 2, 3]);
+        const latest = cursorAck({ history: [], progress: [b] }, 1, 3, [1, 2, 3]).progress[0];
+        result.progress.push(status === "recorded" ? latest : { ...latest, status, cursor: undefined });
+        if (reversed) result.progress.reverse();
+        return Promise.resolve(result);
+      });
+      await h.tick(30_000);
+      expect(h.store.read().progress).toEqual([]);
+      if (status === "stale") expect(h.cursors).toEqual([]);
+      else {
+        expect(h.cursors).toHaveLength(1);
+        expect(h.cursors[0]).toMatchObject({ workId: 1, mediaWorkId: 3, positionSeconds: 20 });
+      }
+      await h.tick(60_000);
+      expect(h.requests).toHaveLength(1);
+      expect(h.cursors).toHaveLength(status === "stale" ? 0 : 1);
+    }
+  });
+
+  it("publishes an unrelated work while a newer checkpoint is still in flight locally", async () => {
+    const h = await harness();
+    let resolve!: (value: PlaybackReportResult) => void;
+    h.transport(
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        }),
+    );
+    h.progress(120, 1);
+    await h.tick(30_000);
+    h.progress(20, 2);
+    await settle();
+    resolve(cursorAck(h.requests[0].report, 1, 1));
+    await settle();
+    expect(h.cursors).toHaveLength(1);
+    expect(h.cursors[0]).toMatchObject({ workId: 1, positionSeconds: 120 });
+    expect(h.store.read().progress[0]).toMatchObject({ workId: 2, report: { positionSeconds: 20 } });
+    h.transport((r) => Promise.resolve(cursorAck(r, 2, 2)));
+    await h.tick(60_000);
+    expect(h.cursors.map((c) => [c.workId, c.positionSeconds])).toEqual([
+      [1, 120],
+      [2, 20],
+    ]);
+    expect(h.store.read().progress).toEqual([]);
+  });
+
+  it("does not delete or quarantine new data when an older report is rejected", async () => {
+    const h = await harness();
+    let resolve!: (value: PlaybackReportResult) => void;
+    h.transport(
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        }),
+    );
+    h.progress(120);
+    await h.tick(30_000);
+    h.progress(20);
+    await settle();
+    resolve({
+      ...ack(h.requests[0].report),
+      progress: [{ reportId: h.requests[0].report.progress[0].reportId, status: "not_found" }],
+    });
+    await settle();
+    expect(h.store.read().progress[0]).toMatchObject({ workId: 1, blocked: false, report: { positionSeconds: 20 } });
+    h.transport((r) => Promise.resolve(cursorAck(r, 1, 1)));
+    await h.tick(60_000);
+    await h.tick(90_000);
+    expect(h.store.read().progress).toEqual([]);
+    expect(h.cursors).toHaveLength(1);
+    expect(h.cursors[0].positionSeconds).toBe(20);
   });
   it("sends one merged batch each 30s and coalesces identical event checkpoints", async () => {
     const h = await harness();

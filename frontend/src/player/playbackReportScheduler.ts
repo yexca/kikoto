@@ -264,40 +264,45 @@ export class PlaybackReportScheduler {
       if (!this.current()) return;
       if (epoch === this.epoch && (this.generation === null || result.generation >= this.generation))
         this.setGeneration(result.generation, true);
-      // Replies identify both the unified work and the played edition. Learn all
-      // identities before publishing, including when one batch crosses editions.
+      // Learn the entire batch's ownership before comparing confirmations. Family
+      // membership also identifies pending editions never acknowledged locally.
       for (const ack of result.progress) {
-        const order = sent.progress.find((r) => r.reportId === ack.reportId)!.order;
-        if (ack.status === "stale") {
-          const identity = this.workIdentities.get(sentWorkIds.get(ack.reportId)!);
-          // A later stale report implies a still newer server cursor. It cannot
-          // make a deferred older confirmation authoritative again.
-          for (const [workId, confirmed] of this.confirmedCursors)
-            if (order > confirmed.order && (identity === undefined || identity === workId))
-              this.confirmedCursors.delete(workId);
-        }
+        if (ack.status !== "recorded" && ack.status !== "stale") continue;
+        const identity =
+          ack.identity ?? (ack.cursor && { workId: ack.cursor.workId, editionWorkIds: [ack.cursor.mediaWorkId] });
+        if (!identity) continue;
+        for (const id of [identity.workId, ...identity.editionWorkIds, sentWorkIds.get(ack.reportId)!])
+          this.workIdentities.set(id, identity.workId);
+      }
+      for (const ack of result.progress) {
         if (!ack.cursor || ack.status !== "recorded") continue;
+        const order = sent.progress.find((r) => r.reportId === ack.reportId)!.order;
         const cursor = ack.cursor;
-        for (const id of [cursor.workId, cursor.mediaWorkId, sentWorkIds.get(ack.reportId)!])
-          this.workIdentities.set(id, cursor.workId);
         if (order > (this.confirmedCursors.get(cursor.workId)?.order ?? 0))
           this.confirmedCursors.set(cursor.workId, { order, cursor });
       }
-      while (this.workIdentities.size > 128) this.workIdentities.delete(this.workIdentities.keys().next().value!);
+      // Apply stale barriers after all recorded candidates, independent of reply
+      // order. Unknown ownership never invalidates another work's confirmation.
+      for (const ack of result.progress) {
+        if (ack.status !== "stale") continue;
+        const order = sent.progress.find((r) => r.reportId === ack.reportId)!.order;
+        const submittedWorkId = sentWorkIds.get(ack.reportId)!;
+        const workId = this.workIdentities.get(submittedWorkId) ?? submittedWorkId;
+        const confirmed = this.confirmedCursors.get(workId);
+        if (confirmed && order > confirmed.order) this.confirmedCursors.delete(workId);
+      }
       while (this.confirmedCursors.size > MAX_OUTBOX_PROGRESS)
         this.confirmedCursors.delete(this.confirmedCursors.keys().next().value!);
       for (const [workId, confirmed] of this.confirmedCursors) {
-        const newer = this.state.progress.filter((entry) => entry.report.order > confirmed.order);
+        const newer = this.state.progress.filter((entry) => !entry.blocked && entry.report.order > confirmed.order);
         if (newer.some((entry) => this.workIdentities.get(entry.workId) === workId)) {
           this.confirmedCursors.delete(workId);
           continue;
         }
-        // A newer unacknowledged edition may share this cursor. Defer until its
-        // response identifies the family instead of broadcasting a stale value.
-        if (newer.some((entry) => !this.workIdentities.has(entry.workId))) continue;
         this.confirmedCursors.delete(workId);
         this.deps.onCursor(confirmed.cursor);
       }
+      while (this.workIdentities.size > 128) this.workIdentities.delete(this.workIdentities.keys().next().value!);
       if (
         result.history.some((a) => a.status !== "recorded") ||
         result.progress.some((a) => a.status !== "recorded" && a.status !== "stale")

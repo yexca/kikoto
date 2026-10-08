@@ -287,14 +287,21 @@ stays below 48 KiB for fetch keepalive. Accepted/stale acknowledgements remove
 only the exact sent cursor or the acknowledged cumulative time; newer pending
 data survives an older response.
 
-Resume-cache events reconcile the acknowledged unified work with its media
-edition and the submitted work identity. A newer pending checkpoint prevents
-an older confirmation from being published. An unknown edition defers the
-confirmation until its response identifies the family; a newer stale response
-discards the deferred confirmation because the server has already moved on.
+Resume-cache events associate acknowledgements by `reportId`, reconcile the
+unified owner with the submitted and played work identities, and learn the
+whole batch's ownership before comparing confirmations. Recorded and stale
+responses include persisted edition membership, so a previously unacknowledged
+translation can still be recognized as belonging to the same unified work.
+Only a newer, non-quarantined checkpoint of that work prevents an older cursor
+event. A newer stale acknowledgement suppresses older recorded candidates for
+that owner, regardless of response order. Unknown identities are never assumed
+to belong to every work. Responses without the additive identity field still
+use cursor and previously learned ownership, without guessing unseen relations.
 
-Terminal item failures remain quarantined and
-do not stop other records. A new cursor observation can replace its quarantined
+Terminal item failures (`invalid`, `not_found`, `conflict`, or
+`history_cleared` for progress) remain quarantined, count against the existing
+capacity limits, and neither invalidate nor defer other cursor confirmations.
+A new cursor observation can replace its quarantined
 entry. Nonretryable HTTP failures quarantine the affected batch. Network errors,
 408, 429, database busy and retryable server errors retain data and use persistent
 exponential backoff from five seconds to five minutes, without an attempt-based

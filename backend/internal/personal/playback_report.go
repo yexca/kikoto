@@ -25,9 +25,17 @@ type PlaybackReport struct {
 }
 
 type ProgressResult struct {
-	ReportID string          `json:"reportId"`
-	Status   string          `json:"status"`
-	Cursor   *ProgressCursor `json:"cursor,omitempty"`
+	ReportID string            `json:"reportId"`
+	Status   string            `json:"status"`
+	Cursor   *ProgressCursor   `json:"cursor,omitempty"`
+	Identity *ProgressIdentity `json:"identity,omitempty"`
+}
+
+// Identity scopes confirmations to a unified work, including editions the
+// client has not reported before. It is also returned for stale checkpoints.
+type ProgressIdentity struct {
+	WorkID         int64   `json:"workId"`
+	EditionWorkIDs []int64 `json:"editionWorkIds"`
 }
 
 type ProgressCursor struct {
@@ -106,7 +114,17 @@ func (s Store) RecordPlaybackReport(ctx context.Context, user int64, input Playb
 		if e != nil {
 			return result, e
 		}
-		result.Progress = append(result.Progress, ProgressResult{ReportID: progress.ReportID, Status: status, Cursor: cursor})
+		ack := ProgressResult{ReportID: progress.ReportID, Status: status}
+		if cursor != nil {
+			ack.Identity, e = progressIdentity(ctx, tx, cursor)
+			if e != nil {
+				return result, e
+			}
+			if status == "recorded" {
+				ack.Cursor = cursor
+			}
+		}
+		result.Progress = append(result.Progress, ack)
 	}
 	for _, history := range input.History {
 		e := ErrInvalid
@@ -160,7 +178,26 @@ func recordProgress(ctx context.Context, tx *sql.Tx, user int64, p ProgressInput
 		return nil, "", err
 	}
 	if changed == 0 {
-		return nil, "stale", nil
+		return &cursor, "stale", nil
 	}
 	return &cursor, "recorded", nil
+}
+
+func progressIdentity(ctx context.Context, tx *sql.Tx, cursor *ProgressCursor) (*ProgressIdentity, error) {
+	// Read only persisted family membership in the report transaction. Neither
+	// catalog discovery nor a source-local identifier creates a new identity.
+	rows, err := tx.QueryContext(ctx, `SELECT ? UNION SELECT ? UNION SELECT sibling.work_id FROM work_edition played JOIN work_edition sibling ON sibling.logical_work_id=played.logical_work_id WHERE played.work_id=? ORDER BY 1`, cursor.WorkID, cursor.MediaWorkID, cursor.MediaWorkID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	identity := &ProgressIdentity{WorkID: cursor.WorkID, EditionWorkIDs: []int64{}}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		identity.EditionWorkIDs = append(identity.EditionWorkIDs, id)
+	}
+	return identity, rows.Err()
 }

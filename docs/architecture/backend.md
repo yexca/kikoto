@@ -120,6 +120,14 @@ items return separate statuses. A history-generation rejection therefore does
 not undo a valid resume checkpoint. A successful response acknowledges each
 submitted id and returns the generation observed by the transaction.
 
+Recorded and stale progress acknowledgements include an additive `identity`
+object: the unified cursor owner's `workId` and its persisted
+`editionWorkIds` (including the owner and played edition). Membership is read
+in the same transaction, without discovering or materializing works. Only a
+recorded checkpoint returns a `cursor`; stale identity is ownership evidence,
+not permission to publish the submitted position. Older clients may ignore the
+new field, and the legacy endpoints retain their existing response shapes.
+
 `PATCH /api/media-items/{id}/progress` and `GET/POST /api/listening-sessions`
 remain compatible for earlier web and native clients. Undated legacy sessions
 retain receipt-date accounting. Dated sessions retain occurrence UTC buckets

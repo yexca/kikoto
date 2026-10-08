@@ -23,7 +23,12 @@ export type ReportStatus = "recorded" | "stale" | "history_cleared" | "invalid" 
 export type PlaybackReportResult = {
   generation: number;
   history: { sessionId: string; status: ReportStatus }[];
-  progress: { reportId: string; status: ReportStatus; cursor?: MediaProgressUpdate }[];
+  progress: {
+    reportId: string;
+    status: ReportStatus;
+    cursor?: MediaProgressUpdate;
+    identity?: { workId: number; editionWorkIds: number[] };
+  }[];
 };
 
 export async function sendPlaybackReport(report: PlaybackReport, signal: AbortSignal, keepalive = false) {

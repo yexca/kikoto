@@ -53,6 +53,8 @@ func TestPlaybackReportPreservesLegacySaveAgainstOfflineReplay(t *testing.T) {
 	}
 	if result := send(); result.Progress[0].Status != "stale" {
 		t.Fatalf("offline replay = %+v", result)
+	} else if identity := result.Progress[0].Identity; identity == nil || identity.WorkID != 1 || len(identity.EditionWorkIDs) != 1 || identity.EditionWorkIDs[0] != 1 || result.Progress[0].Cursor != nil {
+		t.Fatalf("stale response identity = %+v", result)
 	}
 	var position float64
 	if err := db.QueryRow(`SELECT position_seconds FROM user_work_playback_cursor WHERE user_id=1`).Scan(&position); err != nil || position != 20 {

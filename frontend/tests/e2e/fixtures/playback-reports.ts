@@ -33,6 +33,7 @@ export function playbackReportResultFixture(report: PlaybackReport, generation =
     progress: report.progress.map((r) => ({
       reportId: r.reportId,
       status: "recorded",
+      identity: { workId: 1, editionWorkIds: [1] },
       cursor: {
         workId: 1,
         mediaWorkId: 1,
