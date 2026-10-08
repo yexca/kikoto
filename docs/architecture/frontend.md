@@ -315,6 +315,14 @@ and player intent, including pending play requests.
   including Favorites and nested creator routes. A resumed mobile detail uses
   its captured return entry; a direct link falls back to its workspace list.
   Tapping the active bottom-navigation destination remains workspace Up.
+- The Android back button and the iOS left-edge swipe share one back order
+  (`app/nativeBack`): command palette, sign-in, the topmost dialog, sheet, or
+  popover, the player's own panels and full view, then browser history. At the
+  Library root the Android button asks for a second press before leaving the
+  app; the iOS swipe does nothing and never leaves the app. The swipe comes
+  from an app-local native edge recognizer, offered only where that plugin is
+  registered, and yields when it starts on the Compact or Mini player, a
+  slider, or a horizontally scrollable region.
 - Keep provider tags to two measured card rows with an overflow popover. Card
   summaries use Circle / Series, DL sales, segmented rating, known available
   alternate-language state, and a compact playback-history indicator when a

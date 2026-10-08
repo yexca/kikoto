@@ -17,5 +17,6 @@ class KikotoBridgeViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(KikotoAssetTransportPlugin())
         bridge?.registerPluginInstance(KikotoPersonalDataPlugin())
+        bridge?.registerPluginInstance(KikotoEdgeBackPlugin())
     }
 }
