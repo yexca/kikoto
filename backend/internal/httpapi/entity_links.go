@@ -187,6 +187,10 @@ func (s *Server) syncWorkEntityMetadata(ctx context.Context, code string) error 
 }
 
 func (s *Server) syncWorkMetadataFamily(ctx context.Context, code string) (metasync.DLsiteFamilySyncResult, error) {
+	return s.syncWorkMetadataFamilyWithBonus(ctx, code, s.settingBoolContext(ctx, purchaseBonusAutoLinkSetting, true))
+}
+
+func (s *Server) syncWorkMetadataFamilyWithBonus(ctx context.Context, code string, autoLink bool) (metasync.DLsiteFamilySyncResult, error) {
 	syncer := metasync.NewDLsiteSyncer(s.db, s.dlsiteClient).
 		WithCoordinator(s.metadataCoordinator).
 		WithProductURLBuilder(s.dlsiteEndpoints.ProductURL).
@@ -194,7 +198,7 @@ func (s *Server) syncWorkMetadataFamily(ctx context.Context, code string) (metas
 		WithMetadataPriority(s.instanceMetadataLanguages(ctx)).
 		WithLanguages(dlsiteLanguageFallbacksForLanguages(s.instanceMetadataLanguages(ctx))).
 		// A single-work refresh also retries a bonus whose parent was not found.
-		WithPurchaseBonusLinking(s.settingBoolContext(ctx, purchaseBonusAutoLinkSetting, true), true).
+		WithPurchaseBonusLinking(autoLink, true).
 		WithRequestPacing(
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_request_delay_base_seconds", 0.5)),
 			durationFromSettingSeconds(s.settingFloatContext(ctx, "remote_rate_limit_backoff_seconds", 30)),

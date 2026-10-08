@@ -1062,12 +1062,25 @@ export const surfaceKorean = {
       saved: "구매 특전 연결을 저장했습니다.",
     },
     metadataSyncScope: {
+      dlsite: "DLsite",
+      workCodesPlaceholder: "RJ00000000\nRJ00000001",
+      source: "메타데이터 소스",
+      sourceHint: "선택한 소스의 메타데이터를 새로 고칩니다. 수동 편집과 DLsite 값의 우선순위는 유지됩니다.",
+      workCodes: "작품 코드",
+      workCodesHint: "라이브러리에 있는 작품 코드를 최대 100개까지 공백, 쉼표 또는 줄바꿈으로 구분해 입력하세요.",
+      worksRequired: "라이브러리에 있는 유효한 작품 코드를 1~100개 입력하세요.",
+      sourceRequired: "활성화된 메타데이터 소스를 선택하세요.",
+      fallbackRequired: "활성화된 대체 소스를 1~16개 선택하세요.",
+      sourcesFailed: "메타데이터 소스를 불러오지 못했습니다.",
+      fallbackHint: "이번 실행에서만 DLsite가 작품을 찾지 못했다고 응답하면 선택한 소스를 순서대로 시도합니다.",
+      bonusHint: "이번 실행에서 구매 특전을 자동으로 식별하고 연결합니다. 기존 연결은 계속 적용됩니다.",
       label: "작품",
       hint: "라이브러리에 있는 작품만 새로 고칩니다. 새 카탈로그 작품은 팔로우 워크플로에서 추가됩니다.",
       scopes: {
         all: "모든 작품",
         circle: "서클",
         voice: "성우",
+        works: "지정 작품",
       },
       mode: "새로 고침 대상",
       modes: {
@@ -1078,6 +1091,7 @@ export const surfaceKorean = {
       circlePlaceholder: "RG12345",
       circleRequired: "RG12345 같은 서클 ID를 입력하세요.",
       voiceRequired: "성우를 선택하세요.",
+      voiceSourceRequired: "성우 동기화에는 메타데이터를 지원하는 활성 원격 소스가 필요합니다.",
     },
     presetOptionalFilters: {
       maxWorks: "실행당 작품 수 제한",

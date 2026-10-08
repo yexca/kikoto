@@ -193,7 +193,7 @@ viewer read LRC, WebVTT, and SRT files the same way.
   shows group headings when expanded and accessible group descriptions at all
   sizes. The header settings popover keeps the DLsite proxy shortcut and
   links to Settings → Library (creator catalog freshness) and to the
-  Metadata sync configuration (remote metadata fallback). The Tags table is
+  Metadata sync Run options (remote metadata fallback). The Tags table is
   keyed and ordered by shared tag ID, so its rows never depend on a
   language setting. The ID cell carries the DLsite genre id and, only for a
   hidden or merged tag, its status; there is no separate status column. The
@@ -434,13 +434,13 @@ titles or rewrite provider values.
 
 ## Remote metadata fallback presentation
 
-The Metadata sync workflow's Configure popover, offered with `sources:write`,
-holds the Remote metadata fallback: an off-by-default switch and the
-metadata-capable remote sources, each with a checkbox and earlier/later
-controls for the fallback order. It reads the settings when opened and saves
-only the fallback. A pure model (`features/workflows/remoteMetadataFallbackModel`)
-orders the rows and drops ids that no longer name a capable source before
-saving. The remote source dialog has a
+Metadata sync and its trigger editor share Run options: scope, product codes,
+metadata source, refresh mode, and DLsite-only fallback and bonus detection.
+The source selector uses the public capability list and appears only with an
+enabled metadata-capable remote source. The fallback starts off and offers
+checkboxes plus earlier/later controls for this run's source order. Saving a
+trigger stores all options; running sends them as run input without PATCHing
+settings. Manual and DLsite precedence remain unchanged. The remote source dialog has a
 Provides work metadata switch that writes the `metadata` capability;
 `lib/remoteSourceCapabilities` holds the shared capability rule.
 

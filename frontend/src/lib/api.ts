@@ -1371,10 +1371,14 @@ export type WorkflowPresetParameter = {
 
 /** Existing works a metadata sync covers; an omitted scope is every work with missing metadata. */
 export type MetadataSyncOptions = {
-  scope: "all" | "circle" | "voice";
+  scope: "all" | "circle" | "voice" | "works";
   circleId?: string;
   personId?: number;
   mode: "missing" | "full";
+  workCodes?: string[];
+  sourceId?: number;
+  remoteMetadataFallback?: RemoteMetadataFallbackSettings;
+  purchaseBonusAutoLink?: boolean;
 };
 
 export type WorkflowPreset = {

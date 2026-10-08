@@ -1067,12 +1067,25 @@ export const surfaceJapanese = {
       saved: "購入特典の関連付けを保存しました。",
     },
     metadataSyncScope: {
+      dlsite: "DLsite",
+      workCodesPlaceholder: "RJ00000000\nRJ00000001",
+      source: "メタデータソース",
+      sourceHint: "選択したソースのメタデータを更新します。手動編集と DLsite の値が引き続き優先されます。",
+      workCodes: "作品コード",
+      workCodesHint: "ライブラリにある作品コードを最大 100 件、空白・カンマ・改行で区切って入力してください。",
+      worksRequired: "ライブラリにある有効な作品コードを 1〜100 件入力してください。",
+      sourceRequired: "有効なメタデータソースを選択してください。",
+      fallbackRequired: "有効なフォールバックソースを 1〜16 件選択してください。",
+      sourcesFailed: "メタデータソースを読み込めませんでした。",
+      fallbackHint: "今回の実行のみ：DLsite が作品なしと回答した場合に、選択したソースを順に試します。",
+      bonusHint: "今回の実行で購入特典を自動判定して関連付けます。既存の関連付けは引き続き有効です。",
       label: "作品",
       hint: "ライブラリにある作品だけを更新します。新しいカタログ作品はフォローワークフローで追加されます。",
       scopes: {
         all: "すべての作品",
         circle: "サークル",
         voice: "声優",
+        works: "指定した作品",
       },
       mode: "更新対象",
       modes: {
@@ -1083,6 +1096,7 @@ export const surfaceJapanese = {
       circlePlaceholder: "RG12345",
       circleRequired: "RG12345 のようなサークル ID を入力してください。",
       voiceRequired: "声優を選択してください。",
+      voiceSourceRequired: "声優の同期には、メタデータに対応した有効なリモートソースが必要です。",
     },
     presetOptionalFilters: {
       maxWorks: "1 回の実行の作品数を制限",

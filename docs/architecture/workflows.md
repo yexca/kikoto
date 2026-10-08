@@ -58,23 +58,42 @@ accept an optional scope:
 
 | Input | Values | Default |
 | --- | --- | --- |
-| `scope` | `all`, `circle` (with `circleId`), `voice` (with `personId`) | `all` |
+| `scope` | `all`, `circle` (with `circleId`), `voice` (with `personId`), `works` (with `workCodes`) | `all` |
 | `mode` | `missing` (no DLsite snapshot, or a stale origin link), `full` (every selected work) | `missing` |
+| `workCodes` | 1–100 existing product codes; normalized, sorted and deduplicated | none |
+| `sourceId` | An enabled metadata-capable remote source; omitted for DLsite. Circle requires DLsite; voice requires a remote source. | DLsite for all, circle and selected works |
+| `remoteMetadataFallback` | DLsite only: `enabled` and up to 16 ordered source ids | disabled |
+| `purchaseBonusAutoLink` | DLsite only: automatically detect purchase bonus links | true |
+
+Manual runs and interval triggers store the same normalized options. Selecting
+works in the UI defaults to full refresh and accepts whitespace, commas and
+newlines. Unknown codes are rejected without creating works. Remote missing
+mode checks the selected provider's snapshots, independently of DLsite;
+full mode bypasses cached remote descriptions. Source capability and enabled
+state are checked at submission and execution. DLsite full refresh of selected
+works also retries products previously reported unavailable.
+
+The source tabs show only DLsite for a circle, and only enabled metadata-capable
+remote sources for a voice actor. Voice actor scope is disabled until such a
+remote is configured. All works and selected works can use either source type.
+Run creation, trigger configuration, execution and retries enforce the same
+source restrictions.
 
 A circle scope covers works credited to the circle (circle, translator circle,
 or official translation brand) and works of its stored catalog that already
 exist. A voice actor scope covers works crediting the voice actor and works of
 the voice actor's catalog that already exist. An empty body keeps the previous
-behavior. Each scope is a separate singleton: repeating the same scope while it
-is queued or running joins that run, a different scope queues its own run, and
+behavior. Each complete option set is a separate singleton: repeating the same
+options while queued or running joins that run; different sources, fallback
+orders or bonus choices queue separate runs, and
 all metadata sync runs share the `metadata:provider` resource. Local scan
-follow-ups coalesce only into a queued unscoped `missing` run. A retry repeats
-the failed run's scope.
+follow-ups coalesce only into a queued DLsite unscoped `missing` run with default
+options. A retry repeats every option of the failed run. Run choices do not
+write instance settings or reorder existing remote metadata across the library.
 
 ### Purchase Bonus Detection
 
-`app_setting.metadata_purchase_bonus_auto_link` (default on, saved from the
-Metadata sync Configure popover) lets metadata sync link a purchase bonus to
+The run's `purchaseBonusAutoLink` option (default on) lets metadata sync link a purchase bonus to
 its parent product (see [data model](data-model.md#purchase-bonuses)
 for `work_purchase_bonus`). Only the requested work of a family sync is
 considered, and only when DLsite reports it permanently free with a bonus
@@ -797,14 +816,14 @@ Submission and execution both validate the source's capability and enabled
 state. Repeated requests for the same work and source reuse the active run;
 Activity records source codes and fixed outcomes without endpoint details.
 
-When the administrator enables it from the Metadata sync Configure popover, the per-work metadata
-job (`metadata_family_sync`, also queued by Metadata recovery and detail
-refresh) asks the selected sources after DLsite reports the requested product
+When enabled in the DLsite run options, bulk and scheduled metadata sync ask
+the selected sources after DLsite reports the requested product
 as not found. Timeouts, rate limits and other retryable DLsite failures fail or
 retry the job without contacting any remote source, so a DLsite outage cannot
-fan out to remote sources. Bulk and scheduled metadata sync keep their
-unavailable-product skip; recovering a not-found work from Metadata management
-runs the fallback. A work that already has DLsite metadata is skipped, and the
+fan out to remote sources. Fallback-enabled runs revisit unavailable works
+within their scope. The per-work `metadata_family_sync` job used by detail and
+Metadata recovery snapshots legacy fallback and bonus defaults when queued.
+A work that already has DLsite metadata is skipped, and the
 fallback never fills a language DLsite lacks.
 
 For works without DLsite metadata, the same response's `language_editions`

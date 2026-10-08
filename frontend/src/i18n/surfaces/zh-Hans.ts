@@ -999,12 +999,25 @@ export const surfaceHans = {
       saved: "已保存购买特典关联设置。",
     },
     metadataSyncScope: {
+      dlsite: "DLsite",
+      workCodesPlaceholder: "RJ00000000\nRJ00000001",
+      source: "元数据来源",
+      sourceHint: "刷新所选来源的元数据。手动修改和 DLsite 数据仍保持优先级。",
+      workCodes: "作品编号",
+      workCodesHint: "输入最多 100 个库中已有的作品编号，以空格、逗号或换行分隔。",
+      worksRequired: "请输入 1 至 100 个有效且已在库中的作品编号。",
+      sourceRequired: "请选择已启用的元数据来源。",
+      fallbackRequired: "请选择 1 至 16 个已启用的回退来源。",
+      sourcesFailed: "无法加载元数据来源。",
+      fallbackHint: "仅对本次运行生效：DLsite 明确未找到作品时，按顺序尝试所选来源。",
+      bonusHint: "本次运行自动识别并关联购买特典。已有的关联仍然有效。",
       label: "作品",
       hint: "仅刷新库中已有的作品；新的目录作品由关注工作流添加。",
       scopes: {
         all: "全部作品",
         circle: "社团",
         voice: "声优",
+        works: "指定作品",
       },
       mode: "刷新内容",
       modes: {
@@ -1015,6 +1028,7 @@ export const surfaceHans = {
       circlePlaceholder: "RG12345",
       circleRequired: "请输入社团 ID，例如 RG12345。",
       voiceRequired: "请选择声优。",
+      voiceSourceRequired: "声优同步需要配置已启用且支持元数据的远程来源。",
     },
     presetOptionalFilters: {
       maxWorks: "限制每次运行的作品数",

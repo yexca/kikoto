@@ -1000,12 +1000,25 @@ export const surfaceHant = {
       saved: "已儲存購買特典關聯設定。",
     },
     metadataSyncScope: {
+      dlsite: "DLsite",
+      workCodesPlaceholder: "RJ00000000\nRJ00000001",
+      source: "中繼資料來源",
+      sourceHint: "更新所選來源的中繼資料。手動修改和 DLsite 資料仍保持優先順序。",
+      workCodes: "作品編號",
+      workCodesHint: "輸入最多 100 個資料庫中已有的作品編號，以空格、逗號或換行分隔。",
+      worksRequired: "請輸入 1 至 100 個有效且已在資料庫中的作品編號。",
+      sourceRequired: "請選擇已啟用的中繼資料來源。",
+      fallbackRequired: "請選擇 1 至 16 個已啟用的備援來源。",
+      sourcesFailed: "無法載入中繼資料來源。",
+      fallbackHint: "僅對本次執行生效：DLsite 明確找不到作品時，依序嘗試所選來源。",
+      bonusHint: "本次執行自動識別並關聯購買特典。已有的關聯仍然有效。",
       label: "作品",
       hint: "僅重新整理資料庫中已有的作品；新的目錄作品由追蹤工作流程新增。",
       scopes: {
         all: "所有作品",
         circle: "社團",
         voice: "聲優",
+        works: "指定作品",
       },
       mode: "重新整理內容",
       modes: {
@@ -1016,6 +1029,7 @@ export const surfaceHant = {
       circlePlaceholder: "RG12345",
       circleRequired: "請輸入社團 ID，例如 RG12345。",
       voiceRequired: "請選擇聲優。",
+      voiceSourceRequired: "聲優同步需要設定已啟用且支援中繼資料的遠端來源。",
     },
     presetOptionalFilters: {
       maxWorks: "限制每次執行的作品數",

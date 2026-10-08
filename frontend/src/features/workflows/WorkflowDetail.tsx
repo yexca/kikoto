@@ -57,7 +57,6 @@ export function WorkflowDetail({
   onRunRemoteFetch,
   onOpenRemoteSourceSettings,
   canFetchRemotePopular = false,
-  canConfigureMetadataSync = false,
   canTag = false,
   remoteSourceUnavailable = false,
   onRunDLsitePopular,
@@ -84,8 +83,6 @@ export function WorkflowDetail({
   onRunRemoteFetch?: (options: RemoteFetchRunOptions) => Promise<boolean>;
   onOpenRemoteSourceSettings?: () => void;
   canFetchRemotePopular?: boolean;
-  /** Offers the metadata sync configuration, which edits instance settings. */
-  canConfigureMetadataSync?: boolean;
   canTag?: boolean;
   remoteSourceUnavailable?: boolean;
   onRunDLsitePopular?: (options: DLsitePopularRunOptions) => Promise<void>;
@@ -171,8 +168,6 @@ export function WorkflowDetail({
         layout={layout}
         running={running}
         allowed={allowed}
-        configurable={canConfigureMetadataSync}
-        readOnly={readOnly}
         onRun={(metadataSync) => onRunSystemAction("metadata_sync", { metadataSync })}
         onTriggerRunOptionsChange={onTriggerRunOptionsChange}
       />

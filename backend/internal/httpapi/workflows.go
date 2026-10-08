@@ -1443,10 +1443,12 @@ func (s *Server) dispatchWorkflowRetry(ctx context.Context, actor currentUser, r
 		if err := s.db.QueryRowContext(ctx, "SELECT input_json FROM workflow_run WHERE id = ?", runID).Scan(&inputJSON); err != nil {
 			return workflowRetryDispatchResult{}, err
 		}
-		_ = json.Unmarshal([]byte(inputJSON), &input)
+		if err := json.Unmarshal([]byte(inputJSON), &input); err != nil {
+			return workflowRetryDispatchResult{}, err
+		}
 		options, err := input.normalized()
 		if err != nil {
-			options = metadataSyncOptions{}
+			return workflowRetryDispatchResult{}, err
 		}
 		result, err := s.enqueueScopedDLsiteMetadataSync(ctx, "manual", "retry_run", 0, options)
 		return workflowRetryDispatchResult{NewRunID: result.RunID}, err
