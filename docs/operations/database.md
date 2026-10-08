@@ -97,7 +97,13 @@ Activity. On completion, the run summary and a `database.optimize` audit entry
 record the database size before and after compaction.
 
 Query planner statistics are also refreshed without compaction: at startup,
-every 24 hours, and after each full local scan and metadata sync. A refresh
+every 24 hours, and after committed scans, metadata sync, media indexing,
+remote tracking, and Fetch publication. Change notifications merge into one
+background worker: the first burst settles for one second and later passes
+wait at least 30 seconds. Each automatic pass has a five-second context budget
+and yields to a busy writer after at most 100 ms of SQLite lock waiting;
+failed passes retry through the same cooldown. Shutdown cancels pending work.
+A refresh
 runs `PRAGMA optimize=0x10002` with `analysis_limit=400`, which analyzes only
 tables whose statistics are missing or whose size changed substantially, so it
 is short on an unchanged library. Without statistics SQLite can pick a full

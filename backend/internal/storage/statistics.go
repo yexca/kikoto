@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
-	"log/slog"
 	"time"
 )
 
@@ -34,20 +33,30 @@ func OptimizeStatistics(ctx context.Context, db *sql.DB) (err error) {
 			err = closeErr
 		}
 	}()
-	var previousLimit int64
+	var previousLimit, previousBusyTimeout int64
 	if err := conn.QueryRowContext(ctx, `PRAGMA analysis_limit`).Scan(&previousLimit); err != nil {
 		return err
 	}
-	if _, err := conn.ExecContext(ctx, fmt.Sprintf("PRAGMA analysis_limit = %d", statisticsAnalysisLimit)); err != nil {
+	if err := conn.QueryRowContext(ctx, `PRAGMA busy_timeout`).Scan(&previousBusyTimeout); err != nil {
 		return err
 	}
-	// analysis_limit belongs to this connection. A connection whose limit
-	// cannot be restored is discarded rather than returned to the pool.
+	// SQLite's busy handler can outlive cancellation. Maintenance yields to
+	// application writes quickly; the worker retries a failed pass later.
+	// Both pragmas belong to this connection and must be restored.
 	defer func() {
-		if _, restoreErr := conn.ExecContext(context.Background(), fmt.Sprintf("PRAGMA analysis_limit = %d", previousLimit)); restoreErr != nil {
+		restoreCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if _, restoreErr := conn.ExecContext(restoreCtx, fmt.Sprintf("PRAGMA analysis_limit = %d; PRAGMA busy_timeout = %d", previousLimit, previousBusyTimeout)); restoreErr != nil {
 			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
 		}
 	}()
+	busyTimeout := previousBusyTimeout
+	if _, bounded := ctx.Deadline(); bounded {
+		busyTimeout = min(busyTimeout, 100)
+	}
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("PRAGMA analysis_limit = %d; PRAGMA busy_timeout = %d", statisticsAnalysisLimit, busyTimeout)); err != nil {
+		return err
+	}
 	_, err = conn.ExecContext(ctx, `PRAGMA optimize = 0x10002`)
 	return err
 }
@@ -57,16 +66,5 @@ func OptimizeStatistics(ctx context.Context, db *sql.DB) (err error) {
 // choose a full scan over an index, which makes a new install's Library slow
 // until someone compacts the database by hand.
 func MaintainStatistics(ctx context.Context, db *sql.DB, period time.Duration) {
-	ticker := time.NewTicker(period)
-	defer ticker.Stop()
-	for {
-		if err := OptimizeStatistics(ctx, db); err != nil && ctx.Err() == nil {
-			slog.Warn("refresh query planner statistics", "error", err)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
+	NewStatisticsMaintainer(db).Run(ctx, period)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
 	"net/http"
 
 	"github.com/yexca/kikoto/backend/internal/storage"
@@ -179,12 +178,8 @@ func (s *Server) finishDatabaseOptimizeJob(ctx context.Context, job workflowJobR
 	return tx.Commit()
 }
 
-// refreshQueryPlannerStatistics analyzes tables a bulk job has filled, such as
-// a new install's first scan or metadata sync, instead of leaving the planner
-// without statistics until the next daily pass. A failure only costs query
-// speed, so it is logged rather than failing the job.
+// refreshQueryPlannerStatistics schedules a coalesced, bounded pass after a
+// committed scan, metadata sync or media publication.
 func (s *Server) refreshQueryPlannerStatistics(ctx context.Context) {
-	if err := storage.OptimizeStatistics(ctx, s.db); err != nil && ctx.Err() == nil {
-		slog.Warn("refresh query planner statistics", "error", err)
-	}
+	s.statistics.Request(context.WithoutCancel(ctx))
 }

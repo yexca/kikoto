@@ -159,6 +159,7 @@ func (s *Server) finishFetchPresence(ctx context.Context, workID int64, remoteSo
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	s.refreshQueryPlannerStatistics(ctx)
 	return s.cleanupFetchCacheWithoutTrackedPresence(ctx, workID, remoteSourceIDs)
 }
 

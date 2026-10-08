@@ -114,6 +114,14 @@ build keeps React, i18next, and `tailwind-merge` in a separate `vendor` chunk
 so a release that changes only app code leaves it cached; list only libraries
 the entry already loads there, because everything in that chunk loads eagerly.
 
+Explicit local Library routes restore their saved filters, sort and page before
+starting the list read, while source configuration loads independently. Source
+routes still wait for configuration to identify their target. After work-code
+resolution, summary and media-directory reads start together. The summary can
+render first; a directory error preserves it. Edition redirects cancel the
+speculative directory before loading the canonical work. Both reads preserve
+principal-scoped media caching and reject cancelled or obsolete responses.
+
 The production build stamps `public/sw.js` with a build id derived from the
 version and the emitted file names. Each build therefore owns one service
 worker cache, and activating a new worker deletes the previous build's cache

@@ -508,10 +508,18 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 	}
 
 	workID, primaryCode, metadata, err := s.loadWorkCodeMetadata(ctx, code)
-	if err != nil {
-		return workResolveResponse{}, err
+	if errors.Is(err, sql.ErrNoRows) {
+		// Metadata-only aliases resolve through the stored family without
+		// materializing a new work or rewriting the edition projection.
+		ref, resolveErr := s.canonicalWorkForCode(ctx, code)
+		if resolveErr != nil {
+			return workResolveResponse{}, resolveErr
+		}
+		if ref.Known {
+			workID, primaryCode, metadata, err = s.loadWorkCodeMetadata(ctx, ref.Code)
+		}
 	}
-	if err := s.syncWorkEditionForWorkFromSnapshot(ctx, workID, primaryCode, metadata); err != nil {
+	if err != nil {
 		return workResolveResponse{}, err
 	}
 	baseCode := metadata.BaseCode
@@ -523,6 +531,13 @@ func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workRe
 		resolvedID = canonicalID
 		resolvedCode = canonicalCode
 		baseCode = canonicalCode
+	} else if baseCode != "" {
+		// Old snapshots can predate stored family relationships. Read their
+		// declared origin as a fallback; import/sync owns relationship writes.
+		if baseID, ok := s.workIDForCode(ctx, baseCode); ok {
+			resolvedID = baseID
+			resolvedCode = normalizeDLsiteCode(baseCode)
+		}
 	}
 	var title, priceCurrency string
 	var releaseDate sql.NullString

@@ -81,6 +81,16 @@ Work summary and media APIs remain separate. The media endpoint resolves the
 media-bearing edition and loads media items directly; it does not repeat the
 complete metadata, credit, tag, and manual-override detail projection.
 
+Work-code resolution reads persisted edition and alias relationships without
+updating them or scheduling title projections. Legacy snapshots can resolve
+their declared origin without a write. Metadata ingestion and synchronization
+own relationship maintenance.
+
+Cold recommendation session preparation admits at most 32 active or queued
+requests and serializes writes before borrowing a database connection. Warm
+sessions remain reads. Cancellation releases a queue place; a full queue
+returns a retryable 503.
+
 The Library list endpoint always returns one bounded page; a request without
 page parameters receives the first page of the default order. No endpoint
 returns the complete library in one response.
@@ -206,6 +216,16 @@ connections. Each origin has separate interactive, crawl, download, and playback
 lanes. The first three serialize response bodies; playback permits four active
 streams. Each lane admits at most 32 waiting requests, and queued cancellation
 does not wait for the active response to finish.
+
+Remote queries requiring local filtering retain only upstream pages for up to
+30 seconds, with at most 32 pages and 16 MiB of serialized data per server.
+Pages larger than 2 MiB bypass the cache. Keys distinguish the viewer, complete
+source configuration and invalidation generation, language, query and filter
+plan, ordering, recommendation seed, and upstream page. Every request reads
+current personal tags, marks and local availability again. Source configuration
+is checked before and after a cached read or upstream request. Cache misses
+use the existing outbound transport and request lanes; discovery never creates
+new work identities. Upstream metadata may lag by the cache lifetime.
 
 Remote covers accept JPEG, PNG, and WebP file signatures rather than trusting
 upstream MIME headers or filename extensions. Publication retains the bounded

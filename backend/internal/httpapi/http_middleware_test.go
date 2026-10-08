@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/library"
 )
 
 func TestCORSRequiresExplicitAllowedOrigin(t *testing.T) {
@@ -175,6 +176,16 @@ func TestWriteErrorHidesInternalMessage(t *testing.T) {
 		!strings.Contains(response.Body.String(), `"code":"internal_error"`) ||
 		!strings.Contains(response.Body.String(), `"retryable":false`) {
 		t.Fatalf("body = %q", response.Body.String())
+	}
+}
+
+func TestWriteErrorClassifiesFullRecommendationQueue(t *testing.T) {
+	response := httptest.NewRecorder()
+	writeError(response, library.ErrRecommendationBusy)
+	if response.Code != http.StatusServiceUnavailable ||
+		!strings.Contains(response.Body.String(), `"code":"service_unavailable"`) ||
+		!strings.Contains(response.Body.String(), `"retryable":true`) {
+		t.Fatalf("recommendation overflow = %d %s", response.Code, response.Body.String())
 	}
 }
 
