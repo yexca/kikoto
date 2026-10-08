@@ -183,6 +183,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/works/{id}/metadata-sync", s.createWorkMetadataSyncRun)
 	mux.HandleFunc("PUT /api/media/{id}/lyrics-preference", s.setMediaLyricsPreference)
 	mux.HandleFunc("DELETE /api/media/{id}/lyrics-preference", s.clearMediaLyricsPreference)
+	mux.HandleFunc("PUT /api/works/{id}/lyrics-assignments", s.setWorkLyricsAssignments)
 	mux.HandleFunc("GET /api/metadata/circles", s.listMetadataCircles)
 	mux.HandleFunc("GET /api/metadata/circles/{partyId}", s.getMetadataCircle)
 	mux.HandleFunc("PATCH /api/metadata/circles/{partyId}", s.changeMetadataCircle)

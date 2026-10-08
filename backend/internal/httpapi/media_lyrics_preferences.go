@@ -45,7 +45,7 @@ func (s *Server) setMediaLyricsPreference(w http.ResponseWriter, r *http.Request
 		writeMediaPreferenceLookupError(w, err)
 		return
 	}
-	if audioKind != "audio" || (lyricsKind != "text" && !(lyricsKind == "file" && isTextFile(lyricsPath))) || audioWorkID != lyricsWorkID {
+	if audioKind != "audio" || !isLyricsMediaKind(lyricsKind, lyricsPath) || audioWorkID != lyricsWorkID {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "lyrics preference must link audio and text media from the same work"})
 		return
 	}
@@ -77,6 +77,12 @@ func (s *Server) clearMediaLyricsPreference(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"audioMediaItemId": audioID, "lyricsMediaItemId": nil})
+}
+
+// isLyricsMediaKind reports whether a media item can be shown as lyrics: a
+// text item, or a generic file whose name is a known text format.
+func isLyricsMediaKind(kind string, path string) bool {
+	return kind == "text" || (kind == "file" && isTextFile(path))
 }
 
 func writeMediaPreferenceLookupError(w http.ResponseWriter, err error) {

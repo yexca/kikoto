@@ -668,7 +668,15 @@ export type MediaItem = {
   fingerprint: string;
   progress: MediaProgress | null;
   preferredLyricsMediaItemId?: number | null;
+  /** The library-level lyrics file shared by every user unless they choose another. */
+  assignedLyricsMediaItemId?: number | null;
   locations: MediaFileLocation[];
+};
+
+export type LyricsAssignmentChange = {
+  audioMediaItemId: number;
+  /** Null restores automatic name matching. */
+  lyricsMediaItemId: number | null;
 };
 
 export type MediaProgress = {
@@ -2824,6 +2832,10 @@ export const api = {
     deleteJSON<{ audioMediaItemId: number; lyricsMediaItemId: null }>(
       `/api/media/${audioMediaItemId}/lyrics-preference`,
     ),
+  setWorkLyricsAssignments: (workId: number, assignments: LyricsAssignmentChange[]) =>
+    putJSONBody<{ workId: number; assignments: LyricsAssignmentChange[] }>(`/api/works/${workId}/lyrics-assignments`, {
+      assignments,
+    }),
   cacheMediaLocation: (locationId: number) => postJSON<MediaCacheResult>(`/api/media/${locationId}/cache`),
   cacheRemoteSourceWorkMedia: (id: number, code: string, path: string) =>
     postJSONBody<MediaCacheResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/cache`, { path }),

@@ -1,7 +1,7 @@
 import type { MediaItem, RemoteTrack, RemoteWorkDetail, WorkDetail, WorkProgressSummary } from "../../../lib/api";
 import type { PlayerTrack, PlayerTrackLocation } from "../../../player/playerTypes";
 import {
-  findLyricsMatches,
+  findLocalLyricsChoices,
   findRemoteLyricsMatches,
   isLyricsPath,
   type LyricsChoice,
@@ -473,8 +473,10 @@ export function formatTrackDuration(value: number | null) {
 }
 
 export function toPlayerTrack(track: TreeTrack, work: WorkDetail, fallbackCoverUrl = ""): PlayerTrack {
-  const lyricsChoices = track.lyricsChoices ?? findLyricsMatches(track.sourcePath || track.title, work.mediaItems);
   const audioItem = work.mediaItems.find((item) => item.id === track.mediaItemId);
+  const lyricsChoices =
+    track.lyricsChoices ??
+    findLocalLyricsChoices(track.sourcePath || track.title, work.mediaItems, audioItem?.assignedLyricsMediaItemId);
   const automaticLyrics = lyricsChoices[0] ?? null;
   const preferredLyricsMediaItemId =
     track.preferredLyricsMediaItemId !== undefined
@@ -594,14 +596,15 @@ function attachLocalLyricsChoices(
   const displayFilesByLocationID = new Map(files.map((file) => [file.locationId, file]));
   for (const file of files) {
     if (file.kind !== "audio" && file.kind !== "video") continue;
-    const choices = findLyricsMatches(
+    const item = itemsByID.get(file.mediaItemId);
+    const choices = findLocalLyricsChoices(
       lyricsMatchPathsByLocationID.get(file.locationId) || file.sourcePath || file.title,
       items,
+      item?.assignedLyricsMediaItemId,
     ).map((choice) => ({
       ...choice,
       displayPath: displayFilesByLocationID.get(choice.locationId)?.sourcePath,
     }));
-    const item = itemsByID.get(file.mediaItemId);
     file.lyricsChoices = choices;
     file.autoLyricsLocationId = choices[0]?.locationId ?? null;
     file.preferredLyricsMediaItemId = item?.preferredLyricsMediaItemId ?? null;

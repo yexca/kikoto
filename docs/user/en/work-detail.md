@@ -153,6 +153,14 @@ A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), 
   preview, and reveal actions, and a directory control can show all folded
   lyrics. File management and Fetch selection continue to show the complete
   unfiltered tree.
+- The local source's **Manage lyrics** option lists every local audio file
+  with a lyrics choice. A user with library write access can assign any local
+  lyrics file of the work, including translated lyrics whose names do not
+  match the audio, or align a lyrics folder to the tracks by track number (or
+  by position when both folders hold the same number of files). Each row
+  previews the first lines and warns when the last timed line starts after the
+  track ends. Assignments are shared by every listener and become the Auto
+  choice; a listener's own choice still takes priority.
 - Lists naturally sorted folders before naturally sorted files. Folder playback
   follows that same visible order.
 - Keeps available non-playable files such as images and text in Directory while

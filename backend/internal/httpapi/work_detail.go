@@ -150,6 +150,7 @@ type mediaItemDetail struct {
 	Fingerprint                string               `json:"fingerprint"`
 	Progress                   *mediaProgressDetail `json:"progress"`
 	PreferredLyricsMediaItemID *int64               `json:"preferredLyricsMediaItemId"`
+	AssignedLyricsMediaItemID  *int64               `json:"assignedLyricsMediaItemId"`
 	Locations                  []fileLocationDetail `json:"locations"`
 }
 

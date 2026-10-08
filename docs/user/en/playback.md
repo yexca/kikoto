@@ -161,6 +161,11 @@ location, so source replacement can choose another available location. `Auto`
 clears the override and restores deterministic matching; an unavailable saved
 choice falls back without deleting the preference.
 
+A lyrics assignment saved in **Manage lyrics** is the library default for an
+audio file. Playback uses the listener's explicit choice first, then the
+library assignment, then name matching. An assignment whose lyrics file is no
+longer available falls back to name matching without being deleted.
+
 ## Cursor Boundary
 
 Explicit Resume applies persisted position. It targets the cursor's edition and

@@ -415,6 +415,26 @@ describe("mediaTreeModel", () => {
     expect(attachments.sharedLocationIds.size).toBe(0);
   });
 
+  it("uses a library lyrics assignment as the automatic choice for directory rows and playback", () => {
+    const audio = { ...localMediaItem(1, "audio", "library/RJ00000000/Main/01.mp3"), assignedLyricsMediaItemId: 4 };
+    const sidecar = localMediaItem(2, "text", "library/RJ00000000/Main/01.lrc");
+    const translated = localMediaItem(4, "text", "library/RJ00000000/Translated/Track1.vtt");
+    const tree = buildTree([audio, sidecar, translated], 1, "RJ00000000");
+    const track = flattenTracks(tree)[0];
+
+    expect(track.lyricsChoices).toMatchObject([
+      { locationId: 104, reason: "assigned", displayPath: "Translated/Track1.vtt" },
+      { locationId: 102, reason: "same_stem" },
+    ]);
+    expect(track.autoLyricsLocationId).toBe(104);
+    const work = {
+      id: 1,
+      primaryCode: "RJ00000000",
+      mediaItems: [audio, sidecar, translated],
+    } as Parameters<typeof toPreferredPlayerTrack>[1];
+    expect(toPreferredPlayerTrack({ ...track, lyricsChoices: undefined }, work).lyricsLocationId).toBe(104);
+  });
+
   it("collapses one generic folder lyric without duplicating its attachment row per audio", () => {
     const first = localMediaItem(1, "audio", "library/RJ00000000/Main/01.mp3");
     const second = localMediaItem(2, "audio", "library/RJ00000000/Main/02.mp3");

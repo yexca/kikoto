@@ -94,6 +94,7 @@ import {
   useMediaCleanupWorkflow,
 } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
 import { DirectoryManagerDialog } from "@/features/work-detail/dialogs/DirectoryManagerDialog";
+import { LyricsManagerDialog } from "@/features/work-detail/lyrics/LyricsManagerDialog";
 import {
   WorkMetadataEditorModal,
   WorkMetadataRefreshControl,
@@ -366,6 +367,7 @@ type PersistedDetailActionsProps = {
   onFork: (remote: RemoteSourceAvailability) => void;
   onFetch: () => void;
   onManage: () => void;
+  onManageLyrics?: () => void;
   onRefreshLocalFiles: () => void;
 };
 
@@ -398,6 +400,7 @@ function persistedMediaActionBindings(props: PersistedDetailActionsProps) {
     onManageCache: props.selectedTrackedPresence ? props.onManage : undefined,
     manageCacheDisabled: Boolean(props.selectedTrackedPresence) && !props.trackedCacheAvailable,
     onManageFiles: props.actionMode === "local" ? props.onManage : undefined,
+    onManageLyrics: props.actionMode === "local" ? props.onManageLyrics : undefined,
     onRefreshLocalFiles:
       props.actionMode === "local" && props.selectedSource?.kind === "local" ? props.onRefreshLocalFiles : undefined,
   };
@@ -859,6 +862,29 @@ function PersistedDirectoryManagerOverlay({
   );
 }
 
+function PersistedLyricsManagerOverlay({
+  open,
+  work,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  work: WorkDetail | null;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const { demoMode, hasPermission } = useAuth();
+  if (!open || !work) return null;
+  return (
+    <LyricsManagerDialog
+      work={work}
+      readOnly={demoMode || !hasPermission("library:write")}
+      onClose={onClose}
+      onSaved={onSaved}
+    />
+  );
+}
+
 function PersistedMetadataEditorOverlay({
   section,
   work,
@@ -990,6 +1016,7 @@ export function PersistedWorkDetailController({
     refreshAvailability,
   } = sourceContext;
   const [isManageOpen, setIsManageOpen] = useState(false);
+  const [isLyricsManagerOpen, setIsLyricsManagerOpen] = useState(false);
   const [metadataEditorSection, setMetadataEditorSection] = useState<MetadataEditorSection | null>(null);
   const [preview, setPreview] = useState<FilePreviewRequest | null>(null);
   const [isRefreshingLocalFiles, setIsRefreshingLocalFiles] = useState(false);
@@ -1416,6 +1443,19 @@ export function PersistedWorkDetailController({
     }
   };
 
+  const lyricsAssignmentsSaved = async () => {
+    const target = localDirectoryWork ?? work;
+    if (!target) return;
+    invalidateCachedWorkMedia(target.id, principalID);
+    if (activeEdition) {
+      const refreshed = await api.getWork(target.id);
+      setCachedWorkMedia(refreshed.id, principalID, refreshed.mediaItems);
+      setActiveEdition(refreshed);
+    } else {
+      await onWorkReload(target.id, true);
+    }
+  };
+
   const syncDetailMetadata = async (sourceId?: number) => {
     if (!work?.primaryCode || activeMetadataRunId || isSyncingDetail) return;
     setIsSyncingDetail(true);
@@ -1763,6 +1803,9 @@ export function PersistedWorkDetailController({
     onFork: requestForkSource,
     onFetch: openFetchWorkspace,
     onManage: () => setIsManageOpen(true),
+    onManageLyrics: localDirectoryWork?.mediaItems.some((item) => item.kind === "audio")
+      ? () => setIsLyricsManagerOpen(true)
+      : undefined,
     onRefreshLocalFiles: () => void refreshLocalFiles(),
   };
   const heroActions = <PersistedIdentityActions {...detailActionProps} />;
@@ -1874,6 +1917,12 @@ export function PersistedWorkDetailController({
         canForgetWork={canForgetWork}
         localRoot={localRoot}
         onClose={() => setIsManageOpen(false)}
+      />
+      <PersistedLyricsManagerOverlay
+        open={isLyricsManagerOpen}
+        work={localDirectoryWork}
+        onClose={() => setIsLyricsManagerOpen(false)}
+        onSaved={lyricsAssignmentsSaved}
       />
       <PersistedMetadataEditorOverlay
         section={metadataEditorSection}
