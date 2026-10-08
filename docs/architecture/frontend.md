@@ -331,6 +331,12 @@ and player intent, including pending play requests.
   storage. Navigation and reloads in one browser tab reuse it; a newly opened
   tab or native-app cold launch creates a new id and stable recommendation seed.
   Manual reshuffle changes the browse seed without replacing the session id.
+- A Library page, page-size, sort, filter, or search change returns to the start
+  of the new results once they render. Compact layouts jump to the page top
+  after any scroll still running from the user's gesture settles, because
+  WebKit abandons a long programmatic smooth scroll when the list is replaced
+  or touch momentum continues; desktop smoothly brings the results anchor into
+  view. The shared `collectionResultsScroll` owns this rule.
 - Keep scroll state per browser history entry. A push navigation starts at the
   top, while browser back/forward restores the originating entry after its
   content has rendered. The shell observes content height for up to ten seconds
