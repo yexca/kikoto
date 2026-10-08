@@ -1396,6 +1396,7 @@ export const surfaceEnglish = {
     checkingSources: "Checking sources",
     checkSources: "Check sources",
     checkSourcesLastChecked: "Check sources · Last checked {{time}}",
+    sourceTabVisibility: "Source tab visibility",
     openPath: "Open {{path}}",
     matchedRules: "matched {{rules}}",
     excludedRules: "excluded {{rules}}",

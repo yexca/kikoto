@@ -1,3 +1,5 @@
+import { remoteSourceVisibilityKey, type SourceVisibilityKey } from "@/components/source-visibility/sourceVisibility";
+import i18n from "@/i18n";
 import type { LibrarySource, MediaItem, RemoteWorkDetail, SourceAvailabilitySource, WorkDetail } from "@/lib/api";
 
 export type DetailSourceIntent = "local" | "tracked" | `remote-source:${number}`;
@@ -11,6 +13,10 @@ export type SourceTabInfo = {
   presence?: NonNullable<WorkDetail["sourcePresence"]>[number];
   status: "available" | "degraded" | "unavailable";
   statusLabel: string;
+  /** The viewer's visibility preference this tab follows. */
+  visibilityKey?: SourceVisibilityKey;
+  /** False for a placeholder the strip hides unless the viewer always shows it. */
+  autoVisible?: boolean;
 };
 
 export type TrackedPresence = NonNullable<WorkDetail["sourcePresence"]>[number];
@@ -51,6 +57,7 @@ export function buildSourceTabs(
   sourcePresence: NonNullable<WorkDetail["sourcePresence"]> = [],
   selectedTrackedOption?: TrackedPresenceOption,
 ): SourceTabInfo[] {
+  const localLabel = i18n.t("workCard.local");
   const sources = new Map<number, SourceTabInfo>();
   for (const item of items) {
     for (const location of item.locations) {
@@ -58,26 +65,31 @@ export function buildSourceTabs(
       if (!sources.has(location.fileSourceId)) {
         sources.set(location.fileSourceId, {
           key: `${location.fileSourceId}:${location.locationType}`,
-          label: "Local",
-          sourceName: location.fileSourceName || "Local",
+          label: localLabel,
+          sourceName: location.fileSourceName || localLabel,
           fileSourceId: location.fileSourceId,
           kind: "local",
           status: "available",
           statusLabel: "Local files available",
+          visibilityKey: "local",
         });
       }
     }
   }
   const availableRemotes = remoteSources.filter((remote) => remote.summary.status === "available");
   const pendingRemotes = remoteSources.filter((remote) => ["unknown", "error"].includes(remote.summary.status));
-  const tabs = Array.from(sources.values());
+  // Several local file sources (e.g. storage pools) are told apart by name.
+  const localTabs = Array.from(sources.values());
+  const tabs =
+    localTabs.length > 1 ? localTabs.map((tab) => ({ ...tab, label: tab.sourceName ?? tab.label })) : localTabs;
   if (tabs.length === 0) {
     tabs.push({
       key: "local",
-      label: "Local",
-      sourceName: "Local",
+      label: localLabel,
+      sourceName: localLabel,
       fileSourceId: -1,
       kind: "local",
+      visibilityKey: "local",
       status:
         availableRemotes.length > 0 || pendingRemotes.length > 0 || remoteSources.length === 0
           ? "degraded"
@@ -93,30 +105,40 @@ export function buildSourceTabs(
   const baseTabs: SourceTabInfo[] = [...tabs];
   const trackedOptions = buildTrackedPresenceOptions(items, remoteSources, sourcePresence);
   const activeTracked = selectedTrackedOption ?? trackedOptions.find((option) => option.forked) ?? trackedOptions[0];
+  const trackedLabel = i18n.t("workCard.tracked");
+  // Without a tracked presence there is nothing to browse, so the placeholder
+  // is shown only when the viewer asks for it.
   baseTabs.push(
     activeTracked
       ? {
           key: "tracked",
-          label: "Tracked",
+          label: trackedLabel,
           sourceName: activeTracked.label,
           fileSourceId: null,
           kind: "tracked",
           presence: activeTracked.presence,
           status: activeTracked.status,
           statusLabel: activeTracked.statusLabel,
+          visibilityKey: "tracked",
         }
       : {
           key: "tracked",
-          label: "Tracked",
-          sourceName: "Tracked",
+          label: trackedLabel,
+          sourceName: trackedLabel,
           fileSourceId: null,
           kind: "tracked",
           status: "degraded",
           statusLabel: "No tracked source linked",
+          visibilityKey: "tracked",
+          autoVisible: false,
         },
   );
   for (const remote of remoteSources) {
-    const status = remoteSourceTabStatus(remote.summary);
+    // A source an administrator turned off is likewise hidden by default.
+    const disabled = !remote.source.enabled || remote.summary.status === "disabled";
+    const status = disabled
+      ? { status: "unavailable" as const, statusLabel: "Disabled" }
+      : remoteSourceTabStatus(remote.summary);
     baseTabs.push({
       key: remoteSourceTabKey(remote.source.id),
       label: remote.source.displayName,
@@ -125,6 +147,8 @@ export function buildSourceTabs(
       kind: "remote",
       status: status.status,
       statusLabel: status.statusLabel,
+      visibilityKey: remoteSourceVisibilityKey(remote.source.id),
+      autoVisible: !disabled,
     });
   }
   return baseTabs;

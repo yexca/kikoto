@@ -146,6 +146,12 @@ export const collectionEnglish = {
   perPageLabel: "{{itemLabel}} per page",
   pageSize: "Items per page: {{value}}",
   itemsPerPage: "Items per page",
+  coverSources: "Cover source marks",
+  coverSourceModes: {
+    auto: "Auto: only marks that differ from the current source",
+    always: "Always show every source mark",
+    never: "Never show source marks",
+  },
   pageOption: "{{value}} / page",
   controls: "{{label}} controls",
   filter: "Filter",

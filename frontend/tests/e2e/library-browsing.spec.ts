@@ -334,10 +334,19 @@ test("narrow cards fold personal and metadata tags into one row while wide cards
     expect(layout.lastBottom).toBeLessThanOrEqual(layout.containerBottom + 0.75);
     expect(layout.containerHeight).toBeGreaterThanOrEqual(layout.lastBottom - layout.firstTop - 0.75);
   };
-  // A narrow cover names only the first source and counts the rest beside the price.
-  await expect(card.getByText("Local", { exact: true })).toBeVisible();
-  await expect(card.getByText("Remote A", { exact: true })).toBeHidden();
-  await expect(card.getByText("+2", { exact: true })).toBeVisible();
+  // The Local scope already implies Local and remote catalog listings are no exception, so the cover stays clear.
+  await expect(card.getByRole("img", { name: /^(Local|Remote)/ })).toHaveCount(0);
+  await page.getByRole("button", { name: /^Display options/ }).click();
+  await page
+    .getByRole("radiogroup", { name: "Cover source marks" })
+    .getByRole("radio", { name: "Always show every source mark" })
+    .click();
+  await page.keyboard.press("Escape");
+  // Every mark shows as an icon; a narrow cover keeps two and counts the rest.
+  await expect(card.getByRole("img", { name: /^Local/ })).toBeVisible();
+  await expect(card.getByRole("img", { name: "Remote A", exact: true })).toBeVisible();
+  await expect(card.getByRole("img", { name: "Remote B", exact: true })).toBeHidden();
+  await expect(card.getByText("+1", { exact: true })).toBeVisible();
   // A two-column phone card spends one row on tags and leads with the user's own tags.
   await assertTagRowsAreComplete(1, 160, 200);
   await expect(tagRows.getByRole("button", { name: "Personal tag 1", exact: true })).toBeVisible();
@@ -352,8 +361,8 @@ test("narrow cards fold personal and metadata tags into one row while wide cards
 
   await page.setViewportSize({ width: 1600, height: 900 });
   await assertTagRowsAreComplete(2, 210, 280);
-  await expect(card.getByText("Remote A", { exact: true })).toBeVisible();
-  await expect(card.getByText("+1", { exact: true })).toBeVisible();
+  await expect(card.getByRole("img", { name: "Remote B", exact: true })).toBeVisible();
+  await expect(card.getByText("+1", { exact: true })).toBeHidden();
   await expect(card.getByRole("button", { name: "Personal tag 10", exact: true })).toBeVisible();
 
   overflow = page.locator('button[aria-label^="Show "][aria-label$=" more tags"]');

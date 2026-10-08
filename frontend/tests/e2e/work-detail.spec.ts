@@ -160,6 +160,39 @@ test("detail quick marks preserve the cached directory tree", async ({ page }) =
   expect(mediaRequests).toBe(1);
 });
 
+test("a lone local source is named in the directory header until the viewer always shows its tab", async ({ page }) => {
+  const mediaItems = [
+    mediaItemFixture({
+      id: 1,
+      title: "track.mp3",
+      locations: [mediaLocationFixture({ id: 1, fileSourceName: "Main local library", path: "RJ00000000/track.mp3" })],
+    }),
+  ];
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, { authenticated: true });
+  await page.goto("/");
+  await page.getByText("Tagged mobile work", { exact: true }).click();
+
+  const directory = page.getByTestId("directory-panel");
+  await expect(directory.getByText("track.mp3", { exact: true })).toBeVisible();
+  await expect(directory.getByTitle("Local: Local files available")).toHaveText("Local · Main local library");
+  await expect(directory.getByRole("button", { name: /^(Local|Tracked)/ })).toHaveCount(0);
+
+  // The viewer can always show the lone tab, or show the hidden Tracked placeholder.
+  await directory.getByRole("button", { name: "Source tab visibility", exact: true }).click();
+  await page.getByRole("radiogroup", { name: "Local visibility" }).getByRole("radio", { name: "Always show" }).click();
+  await expect(directory.locator('button[title="Local: Local files available"]')).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page
+    .getByRole("radiogroup", { name: "Tracked visibility" })
+    .getByRole("radio", { name: "Always show" })
+    .click();
+  await expect(directory.locator('button[title="Tracked: No tracked source linked"]')).toBeVisible();
+  await page.reload();
+  await expect(directory.locator('button[title="Tracked: No tracked source linked"]')).toBeVisible();
+});
+
 test("work detail reserves a structured directory skeleton until media is ready", async ({ page }) => {
   const mediaItems = [mediaFixture(1, "track.mp3", "RJ00000000/track.mp3", "audio")];
   await mockApplication(page, undefined, false, 1, 800, mediaItems, undefined, { authenticated: true });

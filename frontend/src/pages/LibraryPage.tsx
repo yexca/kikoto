@@ -155,9 +155,11 @@ import type { TFunction } from "i18next";
 import { usePermissionGate } from "@/auth/usePermissionGate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { LibrarySourceVisibilityPicker } from "@/pages/library/LibrarySourceVisibilityPicker";
-import { remoteSourceVisibilityKey } from "@/pages/library/librarySourceVisibility";
+import { SourceVisibilityPicker } from "@/components/source-visibility/SourceVisibilityPicker";
+import { remoteSourceVisibilityKey, type SourceVisibilityMode } from "@/components/source-visibility/sourceVisibility";
 import { useLibrarySourceVisibility } from "@/pages/library/useLibrarySourceVisibility";
+import { libraryCoverSourceBadges } from "@/pages/library/libraryCoverSources";
+import { useLibraryCoverSourceMode } from "@/pages/library/useLibraryCoverSourceMode";
 import {
   dlsiteTagBadges,
   userTagBadges,
@@ -482,6 +484,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const workScope = localScope;
   const activePrimaryTab: "local" | "tracked" | null = activeTab.kind === "source" ? null : localScope;
   const activeRemoteSourceState = activeRemoteSourceViewState(activeTab, remoteSourceStates);
+  const [coverSourceMode, setCoverSourceMode] = useLibraryCoverSourceMode(browseStorageScope);
   const sourceVisibility = useLibrarySourceVisibility({
     storageScope: browseStorageScope,
     sources,
@@ -1845,6 +1848,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
               }
               changeWorkPageSize(value as LocalWorkPageSize);
             }}
+            coverSources={{ mode: coverSourceMode, onChange: setCoverSourceMode }}
           />
           {librarySort === "recommend" ? (
             <IconButton title={t("library.refreshRecommendations")} disabled={isLibraryLoading} onClick={reshuffle}>
@@ -1955,6 +1959,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             searchClauses={searchClauses}
             mobileColumns={mobileColumns}
             desktopColumns={desktopColumns}
+            coverSourceMode={coverSourceMode}
             onClearSearch={() => setSearchQuery("")}
             onPageChange={(page) => {
               queueResultsScroll();
@@ -2018,6 +2023,8 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
                   onFavoriteSaved={saveCardFavorite}
                   onTagOpen={openCardTag}
                   onUserTagOpen={openCardUserTag}
+                  coverSourceScope={localScope}
+                  coverSourceMode={coverSourceMode}
                   onUntrack={localScope === "tracked" ? untrackCardSource : undefined}
                   isUntracking={isUntracking}
                   onFetch={localScope === "tracked" ? fetchCardSource : undefined}
@@ -2071,7 +2078,12 @@ function LibraryPrimaryTabs({
   const shown = (key: Parameters<typeof visibleKeys.has>[0], selected: boolean) => selected || visibleKeys.has(key);
   return (
     <div className={segmentedListClassName()}>
-      <LibrarySourceVisibilityPicker rows={rows} onChange={changeMode} />
+      <SourceVisibilityPicker
+        title={t("library.sourceVisibility.title")}
+        rows={rows}
+        triggerClassName={(open) => segmentedItemClassName(open, "px-2")}
+        onChange={changeMode}
+      />
       {shown("local", active === "local") && (
         <TabButton
           active={active === "local"}
@@ -2432,6 +2444,7 @@ function RemoteSourceResults({
   searchClauses,
   mobileColumns,
   desktopColumns,
+  coverSourceMode,
   selectionMode,
   bulkCodes,
   isSyncingCode,
@@ -2453,6 +2466,7 @@ function RemoteSourceResults({
   searchClauses: SearchClause[];
   mobileColumns: LibraryColumnSetting;
   desktopColumns: LibraryColumnSetting;
+  coverSourceMode: SourceVisibilityMode;
   selectionMode: boolean;
   bulkCodes: Set<string>;
   isSyncingCode: string | null;
@@ -2501,6 +2515,7 @@ function RemoteSourceResults({
             <RemoteWorkCard
               work={work}
               source={source}
+              coverSourceMode={coverSourceMode}
               selected={bulkCodes.has(work.primaryCode)}
               selectable={Boolean(work.primaryCode)}
               selectionActive={selectionMode}
@@ -2541,6 +2556,7 @@ function RemoteSourcePanel({
   searchClauses,
   mobileColumns,
   desktopColumns,
+  coverSourceMode,
   onClearSearch,
   onPageChange,
   onOpenPreview,
@@ -2558,6 +2574,7 @@ function RemoteSourcePanel({
   searchClauses: SearchClause[];
   mobileColumns: LibraryColumnSetting;
   desktopColumns: LibraryColumnSetting;
+  coverSourceMode: SourceVisibilityMode;
   onClearSearch: () => void;
   onPageChange: (page: number) => void;
   onOpenPreview: (work: RemoteWork) => void;
@@ -2637,6 +2654,7 @@ function RemoteSourcePanel({
         searchClauses={searchClauses}
         mobileColumns={mobileColumns}
         desktopColumns={desktopColumns}
+        coverSourceMode={coverSourceMode}
         selectionMode={selectionMode}
         bulkCodes={selection.bulkCodes}
         isSyncingCode={isSyncingCode}
@@ -2733,6 +2751,8 @@ const WorkCard = memo(function WorkCard({
   onFavoriteSaved,
   onTagOpen,
   onUserTagOpen,
+  coverSourceScope,
+  coverSourceMode,
   onUntrack,
   isUntracking = false,
   onFetch,
@@ -2746,13 +2766,20 @@ const WorkCard = memo(function WorkCard({
   onFavoriteSaved: (work: Work, favorite: boolean) => void;
   onTagOpen: (tag: string) => void;
   onUserTagOpen: (tag: string) => void;
+  coverSourceScope: LocalLibraryScope;
+  coverSourceMode: SourceVisibilityMode;
   onUntrack?: (work: Work, source: SourcePresenceItem) => Promise<void>;
   isUntracking?: boolean;
   onFetch?: (work: Work, source: SourcePresenceItem) => void;
   isFetchBusy?: boolean;
 }) {
   const { t } = useTranslation();
-  const view = libraryWorkCardView(work, onUserTagOpen, showRecommendationScore, useAuth().recommendationThreshold);
+  const baseView = libraryWorkCardView(work, onUserTagOpen, showRecommendationScore, useAuth().recommendationThreshold);
+  const view: WorkCardViewModel = {
+    ...baseView,
+    ...libraryCoverSourceBadges(baseView.sourceBadges, { kind: coverSourceScope }, coverSourceMode),
+    sourceBadgeStyle: "icon",
+  };
   const trackedSources = trackedSourcesForWork(work);
   const trackedSource = trackedSources[0] ?? null;
   const untrackAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -2856,6 +2883,7 @@ const WorkCard = memo(function WorkCard({
 function RemoteWorkCard({
   work,
   source,
+  coverSourceMode,
   selected,
   selectable,
   selectionActive,
@@ -2871,6 +2899,7 @@ function RemoteWorkCard({
 }: {
   work: RemoteWork;
   source: LibrarySource;
+  coverSourceMode: SourceVisibilityMode;
   selected: boolean;
   selectable: boolean;
   selectionActive: boolean;
@@ -2884,7 +2913,12 @@ function RemoteWorkCard({
   onEnsureWork: () => Promise<number | null>;
   onListSaved: (workId: number, favorite: boolean) => void;
 }) {
-  const view = remoteWorkCardView(work, source, useAuth().recommendationThreshold);
+  const baseView = remoteWorkCardView(work, source, useAuth().recommendationThreshold);
+  const view: WorkCardViewModel = {
+    ...baseView,
+    ...libraryCoverSourceBadges(baseView.sourceBadges, { kind: "remote", sourceId: source.id }, coverSourceMode),
+    sourceBadgeStyle: "icon",
+  };
 
   return (
     <WorkCardShell

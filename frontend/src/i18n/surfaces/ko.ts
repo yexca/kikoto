@@ -1384,6 +1384,7 @@ export const surfaceKorean = {
     checkingSources: "소스 확인 중",
     checkSources: "소스 확인",
     checkSourcesLastChecked: "소스 확인 · 마지막 확인 {{time}}",
+    sourceTabVisibility: "소스 탭 표시",
     openPath: "{{path}} 열기",
     matchedRules: "일치: {{rules}}",
     excludedRules: "제외: {{rules}}",

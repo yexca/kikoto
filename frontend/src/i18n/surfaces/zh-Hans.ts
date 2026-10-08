@@ -1314,6 +1314,7 @@ export const surfaceHans = {
     checkingSources: "正在检查来源",
     checkSources: "检查来源",
     checkSourcesLastChecked: "检查来源 · 上次检查 {{time}}",
+    sourceTabVisibility: "来源标签显示",
     openPath: "打开 {{path}}",
     matchedRules: "匹配 {{rules}}",
     excludedRules: "排除 {{rules}}",
