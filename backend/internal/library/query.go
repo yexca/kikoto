@@ -824,7 +824,7 @@ func listSelectSQLWithTitleSort(
 			where,
 			true,
 			config,
-			", "+recommendationLane+" AS recommendation_lane",
+			", "+recommendationLane+" AS recommendation_lane, "+recommendationDiversityProjection(recommendationGenerationID)+" AS recommendation_diversity_penalty",
 			recommendationGenerationID,
 		)
 		return recommendationListSelectSQL(baseSelect, direction, randomSeed, config)

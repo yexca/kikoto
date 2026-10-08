@@ -22,7 +22,7 @@ func listPageSelectSQLWithSearchRank(where, sortKey, direction string, randomSee
 		if generationID > 0 {
 			lane = "recommendation_snapshot.listening_status"
 		}
-		extra = ", COALESCE(" + lane + ", 'none') AS recommendation_lane"
+		extra = ", COALESCE(" + lane + ", 'none') AS recommendation_lane, " + recommendationDiversityProjection(generationID) + " AS recommendation_diversity_penalty"
 	}
 	rankPrefix := ""
 	if searchRank != "" {

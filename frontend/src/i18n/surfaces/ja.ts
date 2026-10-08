@@ -1344,7 +1344,8 @@ export const surfaceJapanese = {
     rankingScore: "ランキングスコア",
     loadingScore: "スコアを読み込み中",
     recommendationExplanation:
-      "聴取状態によっておすすめ内の配置が決まります。各状態で、親和度は現在のシード付き探索ブーストと結果の変動によって調整されます。",
+      "視聴状態によっておすすめの構成が決まります。好みのスコアは繰り返しの肯定的な評価を考慮し、一般的なタグの重みを抑えます。同じ状態では、情報の少ない作品に探索の加点を行い、独立した変動と制作者の多様性の小さな調整を順位に反映します。",
+    diversityAdjustment: "制作者の多様性",
     matchedSignals: "{{count}} 件のシグナルに一致",
     rawScoreBounded: "生スコア {{raw}}、制限後 {{score}}",
     directoryUnavailable: "ディレクトリを利用できません",

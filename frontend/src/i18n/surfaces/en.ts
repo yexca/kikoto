@@ -1350,7 +1350,8 @@ export const surfaceEnglish = {
     rankingScore: "Ranking score",
     loadingScore: "Loading score",
     recommendationExplanation:
-      "Listening state controls placement in the recommendation mix. Within each state, affinity is adjusted by the current seeded discovery boost and result variation.",
+      "Listening state controls the mix. Affinity reflects repeated positive evidence and gives common tags less weight. Within each state, discovery favors weaker evidence; independent variation and a small creator diversity adjustment affect ordering.",
+    diversityAdjustment: "Creator diversity",
     matchedSignals: "{{count}} matched signal(s)",
     rawScoreBounded: "Raw {{raw}}, bounded to {{score}}",
     directoryUnavailable: "Directory unavailable",

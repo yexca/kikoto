@@ -1270,7 +1270,8 @@ export const surfaceHant = {
     rankingScore: "排名分數",
     loadingScore: "正在載入分數",
     recommendationExplanation:
-      "聆聽狀態決定推薦組合中的位置。在每種狀態內，親和度會根據目前種子探索加成和結果變化進行調整。",
+      "聆聽狀態決定推薦組合。親和度會考慮多次正向回饋，並降低常見標籤的權重。在每種狀態內，探索更偏向證據較少的作品；獨立的隨機變化和小幅創作者多樣性調整影響排序。",
+    diversityAdjustment: "創作者多樣性",
     matchedSignals: "符合 {{count}} 個訊號",
     rawScoreBounded: "原始 {{raw}}，限制為 {{score}}",
     directoryUnavailable: "目錄無法使用",
