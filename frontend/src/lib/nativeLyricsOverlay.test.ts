@@ -26,6 +26,7 @@ vi.mock("@/lib/nativeMedia", () => android);
 
 import {
   addNativeLyricsOverlayPlaybackListener,
+  addNativeLyricsOverlaySeekListener,
   hideNativeLyricsOverlay,
   hslTokenToHex,
   nativeLyricsOverlayStatus,
@@ -108,14 +109,43 @@ describe("native lyrics overlay routing", () => {
     });
   });
 
-  it("keeps the Android overlay payload free of Picture-in-Picture styling", async () => {
+  it("keeps the Android overlay payload free of Picture-in-Picture styling and progress", async () => {
     android.supportsNativeMedia.mockReturnValue(true);
     vi.stubGlobal("document", { documentElement: {} });
     vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: () => "0 0% 98%" }));
 
-    await showNativeLyricsOverlay(state);
+    await showNativeLyricsOverlay({ ...state, durationMs: 90_000 });
+    await updateNativeLyricsOverlayPlayback({ ...playback, durationMs: 90_000 });
 
     expect(android.showNativeLyricsOverlay).toHaveBeenCalledWith(state);
+    expect(android.updateNativeLyricsOverlayPlayback).toHaveBeenCalledWith(playback);
+  });
+
+  it("sends the track length to Picture-in-Picture and reports its skip-button seeks", async () => {
+    available.plugins.add("KikotoLyricsPictureInPicture");
+    const onSeek = vi.fn();
+
+    await updateNativeLyricsOverlayPlayback({ ...playback, durationMs: 90_000 });
+    await addNativeLyricsOverlaySeekListener(onSeek);
+    const [eventName, listener] = pictureInPicture.addListener.mock.calls[0] as unknown as [
+      string,
+      (event: { positionMs: number }) => void,
+    ];
+    listener({ positionMs: 25_000 });
+    listener({ positionMs: -5 });
+    listener({ positionMs: Number.NaN });
+
+    expect(pictureInPicture.update).toHaveBeenCalledWith({ ...playback, durationMs: 90_000 });
+    expect(eventName).toBe("seek");
+    expect(onSeek.mock.calls).toEqual([[25_000], [0]]);
+  });
+
+  it("registers no seek listener on the Android overlay", async () => {
+    android.supportsNativeMedia.mockReturnValue(true);
+    available.plugins.add("KikotoLyricsPictureInPicture");
+
+    expect(await addNativeLyricsOverlaySeekListener(vi.fn())).toBeTypeOf("function");
+    expect(pictureInPicture.addListener).not.toHaveBeenCalled();
   });
 
   it("offers no native surface in a browser", () => {

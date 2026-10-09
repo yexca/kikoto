@@ -28,6 +28,9 @@ public class KikotoLyricsPictureInPicturePlugin: CAPPlugin, CAPBridgedPlugin {
         presenter.onPlaybackControl = { [weak self] playing in
             self?.notifyListeners("playbackControl", data: ["playing": playing])
         }
+        presenter.onSeek = { [weak self] positionMs in
+            self?.notifyListeners("seek", data: ["positionMs": positionMs])
+        }
         return presenter
     }()
 
@@ -64,6 +67,7 @@ public class KikotoLyricsPictureInPicturePlugin: CAPPlugin, CAPBridgedPlugin {
                 positionMs: playback.positionMs,
                 playing: playback.playing,
                 playbackRate: playback.rate,
+                durationMs: playback.durationMs,
                 in: container
             )
             call.resolve()
@@ -73,7 +77,12 @@ public class KikotoLyricsPictureInPicturePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func update(_ call: CAPPluginCall) {
         let playback = Self.playback(call)
         DispatchQueue.main.async {
-            self.presenter.update(positionMs: playback.positionMs, playing: playback.playing, playbackRate: playback.rate)
+            self.presenter.update(
+                positionMs: playback.positionMs,
+                playing: playback.playing,
+                playbackRate: playback.rate,
+                durationMs: playback.durationMs
+            )
             call.resolve()
         }
     }
@@ -85,13 +94,15 @@ public class KikotoLyricsPictureInPicturePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    private static func playback(_ call: CAPPluginCall) -> (positionMs: Double, playing: Bool, rate: Double) {
+    private static func playback(_ call: CAPPluginCall) -> (positionMs: Double, playing: Bool, rate: Double, durationMs: Double) {
         let position = call.getDouble("positionMs") ?? 0
         let rate = call.getDouble("playbackRate") ?? 1
+        let duration = call.getDouble("durationMs") ?? 0
         return (
             position.isFinite ? position : 0,
             call.getBool("playing") ?? false,
-            rate.isFinite && rate > 0 && rate <= 16 ? rate : 1
+            rate.isFinite && rate > 0 && rate <= 16 ? rate : 1,
+            duration.isFinite && duration > 0 ? duration : 0
         )
     }
 

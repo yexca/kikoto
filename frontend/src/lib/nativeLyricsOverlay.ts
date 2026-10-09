@@ -14,6 +14,8 @@ export type NativeLyricsOverlayPlayback = {
   positionMs: number;
   playing: boolean;
   playbackRate: number;
+  /** Track length for the Picture-in-Picture progress bar and skip buttons; 0 when unknown. */
+  durationMs?: number;
 };
 
 export type NativeLyricsOverlayState = NativeLyricsOverlayPlayback & {
@@ -38,6 +40,7 @@ type LyricsPictureInPicturePlugin = {
     eventName: "playbackControl",
     listener: (event: { playing: boolean }) => void,
   ): Promise<PluginListenerHandle>;
+  addListener(eventName: "seek", listener: (event: { positionMs: number }) => void): Promise<PluginListenerHandle>;
 };
 
 const pictureInPicturePluginName = "KikotoLyricsPictureInPicture";
@@ -107,16 +110,22 @@ export async function requestNativeLyricsOverlayPermission() {
   if (!lyricsPictureInPicture()) await requestAndroidLyricsOverlayPermission();
 }
 
+/** The Android overlay has no progress bar, so its payload stays as it was. */
+function withoutDuration<T extends NativeLyricsOverlayPlayback>(value: T): Omit<T, "durationMs"> {
+  const { durationMs: _durationMs, ...rest } = value;
+  return rest;
+}
+
 export async function showNativeLyricsOverlay(state: NativeLyricsOverlayState) {
   const pictureInPicture = lyricsPictureInPicture();
-  if (!pictureInPicture) return showAndroidLyricsOverlay(state);
+  if (!pictureInPicture) return showAndroidLyricsOverlay(withoutDuration(state));
   const appearance = lyricsPictureInPictureAppearance();
   await pictureInPicture.show(appearance ? { ...state, appearance } : state).catch(() => {});
 }
 
 export async function updateNativeLyricsOverlayPlayback(playback: NativeLyricsOverlayPlayback) {
   const pictureInPicture = lyricsPictureInPicture();
-  if (!pictureInPicture) return updateAndroidLyricsOverlayPlayback(playback);
+  if (!pictureInPicture) return updateAndroidLyricsOverlayPlayback(withoutDuration(playback));
   await pictureInPicture.update(playback).catch(() => {});
 }
 
@@ -140,6 +149,18 @@ export async function addNativeLyricsOverlayPlaybackListener(onPlaying: (playing
   const pictureInPicture = lyricsPictureInPicture();
   if (!pictureInPicture) return () => {};
   const handle = await pictureInPicture.addListener("playbackControl", (event) => onPlaying(event.playing));
+  return () => {
+    void handle.remove();
+  };
+}
+
+/** A seek requested from the Picture-in-Picture window's skip buttons, as an absolute position. */
+export async function addNativeLyricsOverlaySeekListener(onSeek: (positionMs: number) => void) {
+  const pictureInPicture = lyricsPictureInPicture();
+  if (!pictureInPicture) return () => {};
+  const handle = await pictureInPicture.addListener("seek", (event) => {
+    if (Number.isFinite(event.positionMs)) onSeek(Math.max(0, event.positionMs));
+  });
   return () => {
     void handle.remove();
   };

@@ -35,11 +35,13 @@ export function PlayerDock() {
       track={track}
       activeLyricsLocationId={lyrics.activeLyricsLocationId}
       lines={lyrics.parsedLyrics.lines}
+      duration={player.duration}
       playing={player.isPlaying}
       playbackRate={player.playbackRate}
       onTogglePlay={player.togglePlay}
       onPrevious={player.previous}
       onNext={player.next}
+      onSeekTo={player.seekTo}
     />
   );
 
@@ -93,21 +95,25 @@ function ScreenLyricsSync({
   track,
   activeLyricsLocationId,
   lines,
+  duration,
   playing,
   playbackRate,
   onTogglePlay,
   onPrevious,
   onNext,
+  onSeekTo,
 }: {
   screenLyrics: ScreenLyricsController;
   track: PlayerTrack | null;
   activeLyricsLocationId: number | null;
   lines: TimedLyricLine[];
+  duration: number;
   playing: boolean;
   playbackRate: number;
   onTogglePlay: () => void;
   onPrevious: () => void;
   onNext: () => void;
+  onSeekTo: (seconds: number) => void;
 }) {
   const { currentTime } = usePlayerTime();
   const activeIndex = useActiveLyricIndex(lines);
@@ -120,10 +126,11 @@ function ScreenLyricsSync({
       lines,
       activeIndex,
       currentTime,
+      duration,
       playing,
       playbackRate,
     },
-    { onTogglePlay, onPrevious, onNext },
+    { onTogglePlay, onPrevious, onNext, onSeekTo },
   );
   return track ? portal : null;
 }

@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import {
   addNativeLyricsOverlayListener,
   addNativeLyricsOverlayPlaybackListener,
+  addNativeLyricsOverlaySeekListener,
   hideNativeLyricsOverlay,
   nativeLyricsOverlayStatus,
   requestNativeLyricsOverlayPermission,
@@ -25,6 +26,8 @@ export type ScreenLyricsSnapshot = {
   lines: ScreenLyricLine[];
   activeIndex: number;
   currentTime: number;
+  /** Track length in seconds; 0 while it is unknown. */
+  duration: number;
   playing: boolean;
   playbackRate: number;
 };
@@ -49,9 +52,15 @@ type NativeLyricsSync = {
   rate: number;
   at: number;
   position: number;
+  duration: number;
 };
 
-type ScreenLyricsControls = { onTogglePlay: () => void; onPrevious: () => void; onNext: () => void };
+type ScreenLyricsControls = {
+  onTogglePlay: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+  onSeekTo: (seconds: number) => void;
+};
 
 const EMPTY_SNAPSHOT: ScreenLyricsSnapshot = {
   trackKey: "",
@@ -60,6 +69,7 @@ const EMPTY_SNAPSHOT: ScreenLyricsSnapshot = {
   lines: [],
   activeIndex: -1,
   currentTime: 0,
+  duration: 0,
   playing: false,
   playbackRate: 1,
 };
@@ -227,10 +237,18 @@ export function useScreenLyrics() {
       if (disposed) dispose();
       else removePlayback = dispose;
     });
+    let removeSeek: (() => void) | null = null;
+    void addNativeLyricsOverlaySeekListener((positionMs) => {
+      controlsRef.current?.onSeekTo(positionMs / 1000);
+    }).then((dispose) => {
+      if (disposed) dispose();
+      else removeSeek = dispose;
+    });
     return () => {
       disposed = true;
       remove?.();
       removePlayback?.();
+      removeSeek?.();
     };
   }, [backend]);
 
@@ -285,7 +303,11 @@ export function useScreenLyricsSync(
         : (previous?.position ?? 0);
     const drifted = Math.abs(expectedPosition - snapshot.currentTime) > 1.2;
     const playbackChanged =
-      !previous || previous.playing !== snapshot.playing || previous.rate !== snapshot.playbackRate || drifted;
+      !previous ||
+      previous.playing !== snapshot.playing ||
+      previous.rate !== snapshot.playbackRate ||
+      previous.duration !== snapshot.duration ||
+      drifted;
     if (!trackChanged && !playbackChanged) return;
     nativeSyncRef.current = {
       trackKey: snapshot.trackKey,
@@ -294,11 +316,14 @@ export function useScreenLyricsSync(
       rate: snapshot.playbackRate,
       at: now,
       position: snapshot.currentTime,
+      duration: snapshot.duration,
     };
     const playback = {
       positionMs: Math.round(snapshot.currentTime * 1000),
       playing: snapshot.playing,
       playbackRate: snapshot.playbackRate,
+      durationMs:
+        Number.isFinite(snapshot.duration) && snapshot.duration > 0 ? Math.round(snapshot.duration * 1000) : 0,
     };
     if (trackChanged) {
       void showNativeLyricsOverlay({
@@ -313,6 +338,7 @@ export function useScreenLyricsSync(
     backend,
     open,
     snapshot.currentTime,
+    snapshot.duration,
     snapshot.lines,
     snapshot.playbackRate,
     snapshot.playing,

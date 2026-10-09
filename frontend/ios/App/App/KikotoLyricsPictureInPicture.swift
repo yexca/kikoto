@@ -36,6 +36,8 @@ struct KikotoLyricsAppearance {
 final class KikotoLyricsPictureInPicture: NSObject {
     var onClosed: (() -> Void)?
     var onPlaybackControl: ((Bool) -> Void)?
+    /// A skip-button seek, as the new absolute position in milliseconds.
+    var onSeek: ((Double) -> Void)?
 
     /// A wide strip keeps the window short so it covers less of the screen.
     private static let frameSize = CGSize(width: 960, height: 240)
@@ -54,6 +56,8 @@ final class KikotoLyricsPictureInPicture: NSObject {
     private var anchorTime = CACurrentMediaTime()
     private var playing = false
     private var playbackRate: Double = 1
+    /// The track length; with none known the window stays live, with no progress bar or skip buttons.
+    private var durationMs: Double = 0
 
     private var hostView: UIView?
     private var displayLayer: AVSampleBufferDisplayLayer?
@@ -75,11 +79,13 @@ final class KikotoLyricsPictureInPicture: NSObject {
         positionMs: Double,
         playing: Bool,
         playbackRate: Double,
+        durationMs: Double,
         in container: UIView
     ) {
         self.title = title
         self.appearance = appearance
         self.lines = lines
+        applyDuration(durationMs)
         applyPlayback(positionMs: positionMs, playing: playing, playbackRate: playbackRate)
         renderedKey = nil
         if controller == nil {
@@ -90,7 +96,8 @@ final class KikotoLyricsPictureInPicture: NSObject {
         }
     }
 
-    func update(positionMs: Double, playing: Bool, playbackRate: Double) {
+    func update(positionMs: Double, playing: Bool, playbackRate: Double, durationMs: Double) {
+        applyDuration(durationMs)
         applyPlayback(positionMs: positionMs, playing: playing, playbackRate: playbackRate)
         controller?.invalidatePlaybackState()
         renderIfNeeded()
@@ -109,6 +116,28 @@ final class KikotoLyricsPictureInPicture: NSObject {
         anchorTime = CACurrentMediaTime()
         self.playing = playing
         self.playbackRate = playbackRate > 0 ? playbackRate : 1
+        syncTimebase()
+    }
+
+    private func applyDuration(_ durationMs: Double) {
+        self.durationMs = durationMs.isFinite && durationMs > 0 ? durationMs : 0
+        // Skip buttons appear only for a seekable, finite range.
+        controller?.requiresLinearPlayback = self.durationMs <= 0
+    }
+
+    /// The window's progress bar reads the layer timebase, so it follows the
+    /// playback position rather than the host clock. A jump in position drops
+    /// queued frames; the next render presents the line for the new position.
+    private func syncTimebase() {
+        guard let displayLayer, let timebase = displayLayer.controlTimebase else { return }
+        CMTimebaseSetTime(timebase, time: CMTime(seconds: currentPositionMs() / 1000, preferredTimescale: 1000))
+        CMTimebaseSetRate(timebase, rate: playing ? playbackRate : 0)
+        if #available(iOS 17.0, *) {
+            displayLayer.sampleBufferRenderer.flush()
+        } else {
+            displayLayer.flush()
+        }
+        renderedKey = nil
     }
 
     private func start(in container: UIView) {
@@ -130,21 +159,19 @@ final class KikotoLyricsPictureInPicture: NSObject {
             sourceClock: CMClockGetHostTimeClock(),
             timebaseOut: &timebase
         ) == noErr, let timebase {
-            CMTimebaseSetTime(timebase, time: CMClockGetTime(CMClockGetHostTimeClock()))
-            CMTimebaseSetRate(timebase, rate: 1)
             layer.controlTimebase = timebase
         }
         host.layer.addSublayer(layer)
         container.insertSubview(host, at: 0)
         hostView = host
         displayLayer = layer
+        syncTimebase()
 
         let source = AVPictureInPictureController.ContentSource(sampleBufferDisplayLayer: layer, playbackDelegate: self)
         let pictureInPicture = AVPictureInPictureController(contentSource: source)
         pictureInPicture.delegate = self
-        // Lyrics follow the web player; the window offers no seeking.
-        pictureInPicture.requiresLinearPlayback = true
         controller = pictureInPicture
+        applyDuration(durationMs)
         renderIfNeeded()
 
         let tick = Timer(timeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
@@ -258,7 +285,13 @@ final class KikotoLyricsPictureInPicture: NSObject {
         let key = "\(primary)\u{1F}\(secondary)"
         let now = CACurrentMediaTime()
         guard key != renderedKey || now - renderedAt >= Self.refreshInterval,
-              let sample = Self.sampleBuffer(primary: primary, secondary: secondary, appearance: appearance) else { return }
+              let sample = Self.sampleBuffer(
+                  primary: primary,
+                  secondary: secondary,
+                  appearance: appearance,
+                  presentationTime: displayLayer.controlTimebase.map { CMTimebaseGetTime($0) }
+                      ?? CMClockGetTime(CMClockGetHostTimeClock())
+              ) else { return }
         renderedKey = key
         renderedAt = now
         if #available(iOS 17.0, *) {
@@ -268,7 +301,12 @@ final class KikotoLyricsPictureInPicture: NSObject {
         }
     }
 
-    private static func sampleBuffer(primary: String, secondary: String, appearance: KikotoLyricsAppearance) -> CMSampleBuffer? {
+    private static func sampleBuffer(
+        primary: String,
+        secondary: String,
+        appearance: KikotoLyricsAppearance,
+        presentationTime: CMTime
+    ) -> CMSampleBuffer? {
         let width = Int(frameSize.width)
         let height = Int(frameSize.height)
         let attributes: [CFString: Any] = [
@@ -317,7 +355,7 @@ final class KikotoLyricsPictureInPicture: NSObject {
         else { return nil }
         var timing = CMSampleTimingInfo(
             duration: .invalid,
-            presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()),
+            presentationTimeStamp: presentationTime,
             decodeTimeStamp: .invalid
         )
         var sample: CMSampleBuffer?
@@ -439,8 +477,9 @@ extension KikotoLyricsPictureInPicture: AVPictureInPictureSampleBufferPlaybackDe
     }
 
     func pictureInPictureControllerTimeRangeForPlayback(_ pictureInPictureController: AVPictureInPictureController) -> CMTimeRange {
-        // A live range: the window offers play and pause but no seeking.
-        CMTimeRange(start: .negativeInfinity, duration: .positiveInfinity)
+        // A known length shows progress and skip buttons; otherwise the range is live.
+        guard durationMs > 0 else { return CMTimeRange(start: .negativeInfinity, duration: .positiveInfinity) }
+        return CMTimeRange(start: .zero, duration: CMTime(seconds: durationMs / 1000, preferredTimescale: 1000))
     }
 
     func pictureInPictureControllerIsPlaybackPaused(_ pictureInPictureController: AVPictureInPictureController) -> Bool {
@@ -457,6 +496,14 @@ extension KikotoLyricsPictureInPicture: AVPictureInPictureSampleBufferPlaybackDe
         skipByInterval skipInterval: CMTime,
         completion completionHandler: @escaping () -> Void
     ) {
-        completionHandler()
+        defer { completionHandler() }
+        let interval = CMTimeGetSeconds(skipInterval)
+        guard durationMs > 0, interval.isFinite else { return }
+        // Move the lines at once; the web player seeks and confirms with an update.
+        let position = min(max(0, currentPositionMs() + interval * 1000), durationMs)
+        applyPlayback(positionMs: position, playing: playing, playbackRate: playbackRate)
+        pictureInPictureController.invalidatePlaybackState()
+        renderIfNeeded()
+        onSeek?(position)
     }
 }
