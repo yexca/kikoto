@@ -15,7 +15,11 @@ export function apiMutationResources(path: string): {
   const pathname = path.split("?", 1)[0];
   // Progress is embedded in full work reads, but saving it must never stop a
   // directory load. New callers still need a fresh view of personal state.
-  if (/^\/api\/media-items\/\d+\/progress$/.test(pathname) || pathname === "/api/listening-sessions") {
+  if (
+    /^\/api\/media-items\/\d+\/progress$/.test(pathname) ||
+    pathname === "/api/listening-sessions" ||
+    pathname === "/api/playback-reports"
+  ) {
     return { forget: ["work-state"], interrupt: [] };
   }
   if (pathname === "/api/recommendation-events" || /^\/api\/remote-sources\/\d+\/recommendations$/.test(pathname))

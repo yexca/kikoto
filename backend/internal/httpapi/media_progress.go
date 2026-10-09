@@ -158,9 +158,9 @@ func (s *Server) persistMediaProgress(
 			position_seconds,
 			duration_seconds,
 			completed,
-			last_played_at
+			last_played_at, report_order
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, work_id) DO UPDATE SET
 			media_item_id = excluded.media_item_id,
 			file_source_id = excluded.file_source_id,
@@ -170,9 +170,10 @@ func (s *Server) persistMediaProgress(
 			duration_seconds = excluded.duration_seconds,
 			completed = excluded.completed,
 			last_played_at = excluded.last_played_at,
-			updated_at = excluded.last_played_at
+			updated_at = excluded.last_played_at,
+			report_order = MAX(report_order + 1, excluded.report_order), report_id = ''
 	`, userID, workID, mediaItemID, fileSourceID, locationID, locationType,
-		payload.PositionSeconds, payload.DurationSeconds, payload.Completed, lastPlayedAt)
+		payload.PositionSeconds, payload.DurationSeconds, payload.Completed, lastPlayedAt, time.Now().UnixMilli())
 	if err != nil {
 		return err
 	}

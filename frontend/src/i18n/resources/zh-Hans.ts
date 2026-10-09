@@ -722,6 +722,9 @@ export const zhHansResource = {
         comfyReference:
           "Kikoto 曾经的工作流画布参考了该项目的交互设计；从未包含或改编其源代码，该画布当时使用 @xyflow/react 独立实现，现已停用。",
         cherryReference: "Kikoto 的 AGENTS.md 配置方式和程序版本管理设计参考了该项目。",
+        audiobookshelfReference: "Kikoto 的播放上报设计参考了该项目合并播放位置与实际收听时长的方式。",
+        navidromeReference: "Kikoto 的播放上报设计参考了该项目的事件合并、持久化上报队列和退避重试机制。",
+        jellyfinReference: "Kikoto 的播放上报设计参考了该项目将播放事件与定期进度上报结合的方式。",
         technologies: "主要技术栈",
         license: "许可证",
         copyright: "版权所有 (C) 2026 yexca。",

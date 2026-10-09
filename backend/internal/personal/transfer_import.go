@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math"
 	"sort"
+	"time"
 )
 
 type ImportPreview struct {
@@ -222,7 +223,9 @@ func importWork(ctx context.Context, tx *sql.Tx, user, id, media int64, w Backup
 		}
 	}
 	if p := w.Progress; p != nil && media > 0 {
-		_, err = tx.ExecContext(ctx, `INSERT INTO user_work_playback_cursor (user_id,work_id,media_item_id,position_seconds,duration_seconds,completed,last_played_at) VALUES (?,?,?,?,?,?,NULLIF(?,'')) ON CONFLICT(user_id,work_id) DO UPDATE SET media_item_id=excluded.media_item_id,file_source_id=NULL,location_id=NULL,location_type='',position_seconds=excluded.position_seconds,duration_seconds=excluded.duration_seconds,completed=excluded.completed,last_played_at=excluded.last_played_at,updated_at=CURRENT_TIMESTAMP`, user, id, media, p.PositionSeconds, p.DurationSeconds, p.Completed, p.LastPlayedAt)
+		// Import is a new explicit edit, regardless of the backup's historical date.
+		// The marker sorts after valid client ids so tied offline reports stay stale.
+		_, err = tx.ExecContext(ctx, `INSERT INTO user_work_playback_cursor (user_id,work_id,media_item_id,position_seconds,duration_seconds,completed,last_played_at,report_order,report_id) VALUES (?,?,?,?,?,?,NULLIF(?,''),?,'~import') ON CONFLICT(user_id,work_id) DO UPDATE SET media_item_id=excluded.media_item_id,file_source_id=NULL,location_id=NULL,location_type='',position_seconds=excluded.position_seconds,duration_seconds=excluded.duration_seconds,completed=excluded.completed,last_played_at=excluded.last_played_at,updated_at=CURRENT_TIMESTAMP,report_order=MAX(report_order+1,excluded.report_order),report_id=excluded.report_id`, user, id, media, p.PositionSeconds, p.DurationSeconds, p.Completed, p.LastPlayedAt, time.Now().UnixMilli())
 		if err != nil {
 			return err
 		}

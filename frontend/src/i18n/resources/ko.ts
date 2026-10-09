@@ -742,6 +742,12 @@ export const koreanResource = {
         comfyReference:
           "Kikoto의 이전 워크플로 캔버스는 이 프로젝트의 상호작용 설계를 참고했습니다. 소스 코드를 포함하거나 수정한 적은 없으며, 해당 캔버스는 @xyflow/react로 독립 구현했으나 현재는 더 이상 사용하지 않습니다.",
         cherryReference: "Kikoto의 AGENTS.md 구성 방식과 프로그램 버전 관리 설계는 이 프로젝트를 참고했습니다.",
+        audiobookshelfReference:
+          "Kikoto의 재생 보고 설계는 이 프로젝트가 재생 위치와 실제 감상 시간을 함께 보고하는 방식을 참고했습니다.",
+        navidromeReference:
+          "Kikoto의 재생 보고 설계는 이 프로젝트의 이벤트 병합, 영구 저장 보고 큐와 재시도 대기 시간을 늘리는 방식을 참고했습니다.",
+        jellyfinReference:
+          "Kikoto의 재생 보고 설계는 이 프로젝트가 재생 이벤트와 주기적인 진행 상황 보고를 함께 사용하는 방식을 참고했습니다.",
         technologies: "주요 기술",
         license: "라이선스",
         copyright: "Copyright (C) 2026 yexca.",

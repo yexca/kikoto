@@ -235,6 +235,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/user-tags/{id}/merge", s.changePersonalTag)
 	mux.HandleFunc("DELETE /api/user-tags/{id}", s.changePersonalTag)
 	mux.HandleFunc("POST /api/listening-sessions", s.recordListeningSession)
+	mux.HandleFunc("POST /api/playback-reports", s.recordPlaybackReport)
 	mux.HandleFunc("GET /api/listening-sessions", s.getListeningGeneration)
 	mux.HandleFunc("GET /api/listening-history", s.getListeningHistory)
 	mux.HandleFunc("DELETE /api/listening-history", s.clearListeningHistory)

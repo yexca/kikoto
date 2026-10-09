@@ -552,6 +552,7 @@ Important tables:
 - `user_work_tag`
 - `user_listening_session`
 - `user_listening_day`
+- `user_listening_session_day`
 - `user_listening_import`
 - `user_listening_generation`
 
@@ -563,6 +564,20 @@ measured totals without fabricating daily activity. Clearing history increments 
 including an unseen first report, to reject delayed retries; marks, lists and cursors stay intact.
 Export/import is a versioned work-code-based personal document, not a database
 or media backup.
+
+Migration `062` adds cumulative per-session UTC buckets in
+`user_listening_session_day`, with a cascading session foreign key. Dated
+reports credit only each bucket's increase to `user_listening_day`, count a
+session once on its actual start date, and keep occurrence time in the session's
+history timestamps. Existing undated history stays intact. The cursor's
+`report_order` and `report_id` provide a total checkpoint order independent of
+position. A repeated or older checkpoint is acknowledged without replacing a
+later cursor, including a later backward seek.
+An explicit personal-progress import establishes a new checkpoint order at
+import time, advancing beyond an existing order if necessary. A reserved
+server marker wins a tied client order. The backup's historical playback date
+remains presentation data, so an older offline report cannot undo the import;
+a strictly later checkpoint, including a backward seek, still replaces it.
 
 `user_session.id` is the hex SHA-256 digest of the bearer token issued to the
 client, never the token itself, so the database and its backups cannot be

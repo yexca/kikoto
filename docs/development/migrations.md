@@ -82,8 +82,8 @@ the complete numbered chain in a temporary SQLite database, and writes the
 final tables, indexes, views, triggers, and migration-provided reference rows
 to `migrations/baseline/<schema-version>_v<release>.sql`. For example, v0.5.0
 packages `migrations/baseline/032_v0.5.0.sql`. The current schema chain ends at
-`061_media_lyrics_assignment.sql`, with the development baseline
-`061_v0.8.0.sql` generated from the current `VERSION` file; the next release
+`062_playback_reports.sql`, with the development baseline
+`062_v0.8.0.sql` generated from the current `VERSION` file; the next release
 regenerates it under its own suffix. Released migrations and baselines,
 including `047_v0.7.1.sql` and `059_v0.8.0.sql`, remain immutable and available
 for ledger validation.
@@ -147,6 +147,11 @@ records are created by the migration.
 Migration 061 adds `media_lyrics_assignment`, the library-level lyrics file of
 an audio media item, with indexes on its lyrics and assigning-user foreign keys.
 It creates no rows; existing personal lyrics preferences are unchanged.
+Migration 062 adds ordered playback checkpoint columns and the cascading
+per-session UTC listening bucket table. Existing cursors, legacy sessions,
+daily totals and imported totals remain intact. Existing databases use the
+numbered chain; fresh installs use the generated schema-062 baseline. Historical
+migrations and packaged baselines are unchanged.
 v0.7.1 shipped schema 047. Snapshot triggers queue only existing works, preserve
 committed projection markers, and permit snapshots to outlive a deleted work.
 Startup moves old flat

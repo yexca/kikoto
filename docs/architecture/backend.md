@@ -123,6 +123,33 @@ after the SQLite setting and audit entry commit.
 
 ## HTTP Responses
 
+`POST /api/playback-reports` requires `playback:use`, accepts up to 32 resume
+checkpoints and 64 dated cumulative listening reports, and bounds JSON to
+128 KiB. Strict JSON/envelope errors reject the request before mutation.
+Finite nonnegative positions, matching media locations, valid session ids,
+bounded cumulative totals and sorted UTC date buckets are validated per item.
+Dates must sum to the cumulative total; accepted buckets cannot decrease or
+disappear. Occurrence timestamps cannot be more than five minutes in the future.
+All accepted items commit in one transaction; unexpected database errors or
+cancellation roll back the entire batch. Expected invalid/missing/conflicting
+items return separate statuses. A history-generation rejection therefore does
+not undo a valid resume checkpoint. A successful response acknowledges each
+submitted id and returns the generation observed by the transaction.
+
+Recorded and stale progress acknowledgements include an additive `identity`
+object: the unified cursor owner's `workId` and its persisted
+`editionWorkIds` (including the owner and played edition). Membership is read
+in the same transaction, without discovering or materializing works. Only a
+recorded checkpoint returns a `cursor`; stale identity is ownership evidence,
+not permission to publish the submitted position. Older clients may ignore the
+new field, and the legacy endpoints retain their existing response shapes.
+
+`PATCH /api/media-items/{id}/progress` and `GET/POST /api/listening-sessions`
+remain compatible for earlier web and native clients. Undated legacy sessions
+retain receipt-date accounting. Dated sessions retain occurrence UTC buckets
+and cannot switch to the legacy format under the same session id. Resume and
+history remain independent tables and are never inferred from one another.
+
 When the backend serves the bundled frontend, content-hashed files under
 `/assets/` are cached for a year as `immutable`. `index.html`, the SPA fallback,
 `sw.js`, and `manifest.webmanifest` use `no-cache`, and other static files
