@@ -83,6 +83,7 @@ export function HeaderActions({
   const metadataDisplayLanguage = useMetadataDisplayLanguage(
     canViewMetadataLanguage && (userOpen || mobileAccountOpen),
     user?.id ?? null,
+    user?.demoMode ?? false,
   );
 
   const changeLocale = async (next: UiLocale) => {
@@ -146,7 +147,6 @@ export function HeaderActions({
           value: metadataDisplayLanguage.value,
           busy: metadataDisplayLanguage.busy,
           failed: metadataDisplayLanguage.failed,
-          readOnly,
           onChange: metadataDisplayLanguage.change,
         }
       : undefined,

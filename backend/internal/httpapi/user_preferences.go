@@ -26,7 +26,7 @@ func (s *Server) loadUserPreferences(r *http.Request, userID int64) (userPrefere
 		RecommendationThreshold: s.settingInt(r, "recommendation_threshold", 50),
 		RecommendationDefaults:  library.DefaultRecommendationConfig(),
 	}
-	if languages, ok := s.userMetadataLanguages(r.Context(), userID); ok {
+	if languages, ok := s.ownMetadataLanguages(r.Context(), userID); ok {
 		result.MetadataLanguages = languages
 	}
 	var rules sql.NullString

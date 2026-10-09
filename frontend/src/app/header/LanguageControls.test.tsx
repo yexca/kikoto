@@ -21,7 +21,7 @@ describe("LanguageControls", () => {
     const rendered = renderToStaticMarkup(
       <LanguageControls
         {...props}
-        metadataLanguage={{ value: "origin", busy: false, failed: false, readOnly: false, onChange: vi.fn() }}
+        metadataLanguage={{ value: "origin", busy: false, failed: false, onChange: vi.fn() }}
       />,
     );
     const groups = [...rendered.matchAll(/role="group" aria-label="([^"]+)"/g)].map((match) => match[1]);
