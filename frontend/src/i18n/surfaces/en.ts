@@ -775,6 +775,7 @@ export const surfaceEnglish = {
     localMediaIndexCreateFailed: "Local work file refresh could not be created.",
     localMediaIndexIncrementalHint: "Index only local works whose folder has not been scanned yet.",
     localMediaIndexFullHint: "Re-index the files of every local work, including works that were already scanned.",
+    sourceHealthCheckCreateFailed: "Source health check could not be created.",
     metadataSyncCreateFailed: "Metadata sync run could not be created.",
     remotePopularQueueFailed: "Remote popular collection could not be queued.",
     remotePopularRequiresSource: "Configure a compatible remote source to use Remote popular.",
@@ -877,6 +878,7 @@ export const surfaceEnglish = {
       dlsite_popular_collection: "DLsite popular",
       availability_watch: "Availability Watch",
       remote_work_fetch: "Fetch",
+      source_health_check: "Source health",
       circle_follow: "Circle follow",
       series_follow: "Series follow",
       voice_follow: "VAs follow",
@@ -1190,6 +1192,11 @@ export const surfaceEnglish = {
       source_availability_check: {
         name: "Check source availability",
         description: "Check configured remote sources for a work.",
+      },
+      source_health_check: {
+        name: "Check source health",
+        description:
+          "Check each enabled remote source endpoint and record whether it is healthy or unavailable in the source settings.",
       },
       remote_source_sync: {
         name: "Track remote source",

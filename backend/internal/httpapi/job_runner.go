@@ -204,6 +204,7 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		"dlsite_popular_collection":  s.executeDLsitePopularCollectionJob,
 		"local_library_scan":         s.executeLocalScanJob,
 		localMediaIndexWorkerType:    s.executeLocalMediaIndexJob,
+		sourceHealthCheckWorkerType:  s.executeSourceHealthCheckJob,
 		"metadata_sync":              s.executeDLsiteMetadataSyncJob,
 		"metadata_family_sync":       s.executeWorkMetadataSyncJob,
 		genreNameWorkerType:          s.executeGenreNameLearningJob,

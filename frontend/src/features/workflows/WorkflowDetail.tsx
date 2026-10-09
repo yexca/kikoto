@@ -10,7 +10,7 @@ import {
 import { DLsitePopularRunPanel, RemotePopularRunPanel } from "@/features/workflows/run-forms/PopularRunPanels";
 import { PresetRunPanel } from "@/features/workflows/run-forms/PresetRunPanel";
 import { RemoteFetchRunPanel } from "@/features/workflows/run-forms/RemoteFetchRunPanel";
-import type { RunFormLayout } from "@/features/workflows/RunOptionControls";
+import { WorkflowRunButton, type RunFormLayout } from "@/features/workflows/RunOptionControls";
 import { isActiveRunStatus, isDemoShowcaseActiveRun } from "@/features/workflows/runPresentation";
 import { WorkflowAutomationPanel } from "@/features/workflows/triggers/WorkflowAutomationPanel";
 import { WorkflowDetailFrame } from "@/features/workflows/WorkflowDetailFrame";
@@ -124,6 +124,18 @@ export function WorkflowDetail({
         onRun={(localMediaIndexMode) => onRunSystemAction("local_media_index", { localMediaIndexMode })}
         onTriggerRunOptionsChange={onTriggerRunOptionsChange}
       />
+    ) : runKind === "source_health_check" && onRunSystemAction ? (
+      // The health check has no options, so Run sits in the header.
+      layout({
+        run: (
+          <WorkflowRunButton
+            running={running}
+            disabled={!allowed}
+            onClick={() => void onRunSystemAction("source_health_check")}
+          />
+        ),
+        options: null,
+      })
     ) : runKind === "dlsite_popular" && onRunDLsitePopular ? (
       <DLsitePopularRunPanel
         key={definition.code}

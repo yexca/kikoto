@@ -805,6 +805,10 @@ export const surfaceHans = {
       remote_bulk_action: { name: "运行远程批量操作", description: "选择远程作品并派发跟踪或获取工作流。" },
       remote_work_fetch: { name: "获取远程作品", description: "选择远程文件、缓存文件、发布到本地媒体库并同步位置。" },
       source_availability_check: { name: "检查来源可用性", description: "检查一个作品在已配置远程来源中的可用性。" },
+      source_health_check: {
+        name: "检查来源健康状态",
+        description: "检查每个已启用远程来源的端点，并在来源设置中记录其为健康或不可用。",
+      },
       remote_source_sync: { name: "跟踪远程来源", description: "跟踪一个远程作品及其选定来源目录，并创建可恢复任务。" },
       remote_popular_collection: {
         name: "收集远程热门作品",
@@ -833,6 +837,7 @@ export const surfaceHans = {
     localMediaIndexCreateFailed: "无法创建本地作品文件刷新运行。",
     localMediaIndexIncrementalHint: "只索引文件夹尚未扫描的本地作品。",
     localMediaIndexFullHint: "重新索引所有本地作品的文件，包括已经扫描过的作品。",
+    sourceHealthCheckCreateFailed: "无法创建来源健康检查运行。",
     metadataSyncCreateFailed: "无法创建元数据同步运行。",
     remotePopularQueueFailed: "无法将远程热门集合加入队列。",
     remotePopularRequiresSource: "请配置兼容的远程来源后再使用远程热门。",
@@ -935,6 +940,7 @@ export const surfaceHans = {
       dlsite_popular_collection: "DLsite 热门",
       availability_watch: "到货监控",
       remote_work_fetch: "获取",
+      source_health_check: "来源健康",
       circle_follow: "关注社团",
       series_follow: "关注系列",
       voice_follow: "关注声优",

@@ -859,6 +859,10 @@ export const surfaceJapanese = {
         name: "ソースの利用可能性を確認",
         description: "作品について設定済みリモートソースの利用可能性を確認します。",
       },
+      source_health_check: {
+        name: "ソースの状態を確認",
+        description: "有効な各リモートソースのエンドポイントを確認し、正常か利用不可かをソース設定に記録します。",
+      },
       remote_source_sync: {
         name: "リモートソースを追跡",
         description: "1つのリモート作品と選択したソースディレクトリを復旧可能なジョブで追跡します。",
@@ -900,6 +904,7 @@ export const surfaceJapanese = {
     localMediaIndexCreateFailed: "ローカル作品のファイル更新を作成できませんでした。",
     localMediaIndexIncrementalHint: "フォルダがまだスキャンされていないローカル作品のみをインデックスします。",
     localMediaIndexFullHint: "スキャン済みの作品を含め、すべてのローカル作品のファイルを再インデックスします。",
+    sourceHealthCheckCreateFailed: "ソースの状態確認を作成できませんでした。",
     metadataSyncCreateFailed: "メタデータ同期実行を作成できませんでした。",
     remotePopularQueueFailed: "リモート人気コレクションをキューに追加できませんでした。",
     remotePopularRequiresSource: "リモート人気を使用するには、互換性のあるリモートソースを設定してください。",
@@ -1002,6 +1007,7 @@ export const surfaceJapanese = {
       dlsite_popular_collection: "DLsite 人気",
       availability_watch: "配信状況の監視",
       remote_work_fetch: "取得",
+      source_health_check: "ソースの状態",
       circle_follow: "サークルフォロー",
       series_follow: "シリーズフォロー",
       voice_follow: "声優フォロー",

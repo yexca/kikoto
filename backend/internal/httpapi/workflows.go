@@ -247,13 +247,10 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		},
 	},
 	{
-		Code:        "source_health_check",
-		Name:        "Check source health",
-		Description: "Check configured remote source endpoints and fallback readiness. Not implemented as a runnable workflow yet.",
-		Nodes: []map[string]string{
-			{"id": "select", "type": "select_remote_source", "displayName": "Select remote source"},
-			{"id": "check", "type": "filter_candidates", "displayName": "Check endpoint"},
-		},
+		Code:        sourceHealthCheckWorkflowCode,
+		Name:        sourceHealthCheckDisplayName,
+		Description: sourceHealthCheckDescription,
+		Nodes:       sourceHealthCheckNodes,
 	},
 }
 
@@ -1432,6 +1429,12 @@ func (s *Server) dispatchWorkflowRetry(ctx context.Context, actor currentUser, r
 			return workflowRetryDispatchResult{}, errWorkflowRetryPermission
 		}
 		newRunID, err := s.retryLocalMediaIndex(ctx, runID)
+		return workflowRetryDispatchResult{NewRunID: newRunID}, err
+	case sourceHealthCheckWorkflowCode:
+		if !userHasPermission(actor, "sources:write") {
+			return workflowRetryDispatchResult{}, errWorkflowRetryPermission
+		}
+		newRunID, err := s.retrySourceHealthCheck(ctx)
 		return workflowRetryDispatchResult{NewRunID: newRunID}, err
 	case "metadata_sync":
 		if !userHasPermission(actor, "metadata:sync") {

@@ -1574,6 +1574,13 @@ export type LocalMediaIndexResult = {
   existing: boolean;
 };
 
+export type SourceHealthCheckResult = {
+  runId: number;
+  jobId: number;
+  status: string;
+  existing: boolean;
+};
+
 export type LocalScanResult = {
   runId: number;
   jobId: number;
@@ -3130,6 +3137,7 @@ export const api = {
     postJSONBody<LocalScanResult>("/api/workflow-runs/local-scan", payload),
   runLocalMediaIndex: (payload: { mode: LocalMediaIndexMode }) =>
     postJSONBody<LocalMediaIndexResult>("/api/workflow-runs/local-media-index", payload),
+  runSourceHealthCheck: () => postJSONBody<SourceHealthCheckResult>("/api/workflow-runs/source-health-check", {}),
   runRemotePopularCollection: (payload: {
     action: "track" | "fetch";
     sourceId: number;
