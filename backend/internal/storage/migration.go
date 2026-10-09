@@ -20,11 +20,15 @@ import (
 const (
 	migrationTable = "schema_migration"
 	schemaStateID  = 1
+
+	releasedBaselineDir    = "baseline"
+	developmentBaselineDir = "compat"
 )
 
 var (
-	migrationFilenamePattern = regexp.MustCompile(`^([0-9]{3})_[a-z0-9][a-z0-9_]*\.sql$`)
-	baselineFilenamePattern  = regexp.MustCompile(`^([0-9]{3})_v[0-9]+\.[0-9]+\.[0-9]+\.sql$`)
+	migrationFilenamePattern           = regexp.MustCompile(`^([0-9]{3})_[a-z0-9][a-z0-9_]*\.sql$`)
+	baselineFilenamePattern            = regexp.MustCompile(`^([0-9]{3})_v[0-9]+\.[0-9]+\.[0-9]+\.sql$`)
+	developmentBaselineFilenamePattern = regexp.MustCompile(`^([0-9]{3})_dev\.sql$`)
 )
 
 type migrationAsset struct {
@@ -35,11 +39,11 @@ type migrationAsset struct {
 	baseline bool
 }
 
-// retiredBaselineLedgerAssets keeps existing databases upgradeable after a
-// pre-release snapshot is removed or a mislabeled baseline is replaced. These entries
-// validate a recorded ledger row only; fresh databases can use only a packaged
-// baseline file, which may have been produced by an earlier app release when
-// the numbered SQL chain has not changed.
+// retiredBaselineLedgerAssets are checksum-only catalog entries for baseline
+// ledger rows whose files are not packaged: pre-release snapshots, the
+// mislabeled v0.6.0 baseline, and development snapshots generated after v0.8.0.
+// They validate a recorded ledger row in every mode and are never a
+// fresh-install input. A packaged file with the same name takes precedence.
 var retiredBaselineLedgerAssets = []migrationAsset{
 	{
 		version:  31,
@@ -61,13 +65,32 @@ var retiredBaselineLedgerAssets = []migrationAsset{
 		checksum: "36d96d1c03566f8a0939254871647d2f323ecb5c668544741e9ab92b9915564d",
 		baseline: true,
 	},
+	{
+		version:  60,
+		filename: "baseline/060_v0.8.0.sql",
+		checksum: "c0b23338b79402381d162381405f005a08c5eab33a1bf65130990eb4fb7aa23c",
+		baseline: true,
+	},
+	{
+		version:  61,
+		filename: "baseline/061_v0.8.0.sql",
+		checksum: "86263dbb1d59a6e999dc952dadffbccb186b0f49e48b3e9809fb0721ad8d0123",
+		baseline: true,
+	},
+	{
+		version:  62,
+		filename: "baseline/062_v0.8.0.sql",
+		checksum: "a938bffe6c055c2b8089cdd7133ae17afcfcb529512f28f12b8e86bc7bf774d3",
+		baseline: true,
+	},
 }
 
 type migrationCatalog struct {
-	migrations []migrationAsset
-	byFilename map[string]migrationAsset
-	baseline   *migrationAsset
-	current    int
+	migrations  []migrationAsset
+	byFilename  map[string]migrationAsset
+	baseline    *migrationAsset
+	current     int
+	development bool
 }
 
 type migrationHistory struct {
@@ -90,10 +113,6 @@ func Migrate(db *sql.DB, dir string) error {
 	return MigrateFS(db, os.DirFS(dir), buildinfo.Version)
 }
 
-// MigrateFS validates and applies a migration catalog. Pristine databases use
-// the highest-version packaged baseline snapshot; existing databases continue
-// through the immutable numbered chain. The baseline's release suffix does not
-// need to match appVersion when no numbered SQL changed.
 // MigrateOptions adjusts MigrateFS for the running application.
 type MigrateOptions struct {
 	// BeforeUpgrade runs once before the first numbered migration is applied
@@ -101,8 +120,17 @@ type MigrateOptions struct {
 	// Numbered migrations cannot be reverted, so an error stops the upgrade
 	// before the schema changes. It is not called for a fresh database.
 	BeforeUpgrade func(fromVersion int, toVersion int) error
+	// Development adds the development baselines in compat/ to the catalog.
+	// Without it the catalog ignores compat/ and refuses a database whose
+	// ledger records a development baseline.
+	Development bool
 }
 
+// MigrateFS validates and applies a migration catalog with production
+// options. Pristine databases use the highest-version released baseline;
+// existing databases continue through the immutable numbered chain.
+// The baseline's release suffix does not need to match appVersion when no
+// numbered SQL changed.
 func MigrateFS(db *sql.DB, migrationFS fs.FS, appVersion string) error {
 	return MigrateFSWithOptions(db, migrationFS, appVersion, MigrateOptions{})
 }
@@ -114,7 +142,7 @@ func MigrateFSWithOptions(db *sql.DB, migrationFS fs.FS, appVersion string, opti
 	if migrationFS == nil {
 		return errors.New("migrate database: nil migration filesystem")
 	}
-	catalog, classification, err := prepareMigrationCatalog(db, migrationFS)
+	catalog, classification, err := prepareMigrationCatalog(db, migrationFS, options.Development)
 	if err != nil {
 		return err
 	}
@@ -143,8 +171,8 @@ func MigrateFSWithOptions(db *sql.DB, migrationFS fs.FS, appVersion string, opti
 	return nil
 }
 
-func prepareMigrationCatalog(db *sql.DB, migrationFS fs.FS) (migrationCatalog, databaseClassification, error) {
-	catalog, err := loadMigrationCatalog(migrationFS)
+func prepareMigrationCatalog(db *sql.DB, migrationFS fs.FS, development bool) (migrationCatalog, databaseClassification, error) {
+	catalog, err := loadMigrationCatalog(migrationFS, development)
 	if err != nil {
 		return migrationCatalog{}, databaseClassification{}, err
 	}
@@ -273,12 +301,15 @@ func RecordSuccessfulStart(db *sql.DB, appVersion string) error {
 	return nil
 }
 
-func loadMigrationCatalog(migrationFS fs.FS) (migrationCatalog, error) {
+// loadMigrationCatalog reads the numbered chain and the released baselines.
+// In development it also reads compat/, whose baselines must lie strictly
+// between the highest released baseline and the chain head.
+func loadMigrationCatalog(migrationFS fs.FS, development bool) (migrationCatalog, error) {
 	migrations, _, err := loadNumberedMigrationAssets(migrationFS)
 	if err != nil {
 		return migrationCatalog{}, err
 	}
-	catalog := migrationCatalog{byFilename: make(map[string]migrationAsset)}
+	catalog := migrationCatalog{byFilename: make(map[string]migrationAsset), development: development}
 	for _, asset := range migrations {
 		catalog.migrations = append(catalog.migrations, asset)
 		catalog.byFilename[asset.filename] = asset
@@ -294,9 +325,20 @@ func loadMigrationCatalog(migrationFS fs.FS) (migrationCatalog, error) {
 	}
 	catalog.current = catalog.migrations[len(catalog.migrations)-1].version
 
-	baselines, err := loadMigrationBaselines(migrationFS, catalog.current)
+	baselines, err := loadMigrationBaselines(migrationFS, releasedBaselineDir, baselineFilenamePattern, 1, catalog.current)
 	if err != nil {
 		return migrationCatalog{}, err
+	}
+	if development {
+		minimum := 1
+		if len(baselines) > 0 {
+			minimum = baselines[len(baselines)-1].version + 1
+		}
+		developmentBaselines, err := loadMigrationBaselines(migrationFS, developmentBaselineDir, developmentBaselineFilenamePattern, minimum, catalog.current)
+		if err != nil {
+			return migrationCatalog{}, err
+		}
+		baselines = append(baselines, developmentBaselines...)
 	}
 	for index := range baselines {
 		baseline := baselines[index]
@@ -354,13 +396,15 @@ func validateMigrationSequence(migrations []migrationAsset) error {
 	return nil
 }
 
-func loadMigrationBaselines(migrationFS fs.FS, currentVersion int) ([]migrationAsset, error) {
-	entries, err := fs.ReadDir(migrationFS, "baseline")
+// loadMigrationBaselines reads the baseline SQL files in dir. Each version must
+// lie in [minimumVersion, currentVersion]; other files in dir are ignored.
+func loadMigrationBaselines(migrationFS fs.FS, dir string, pattern *regexp.Regexp, minimumVersion, currentVersion int) ([]migrationAsset, error) {
+	entries, err := fs.ReadDir(migrationFS, dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("read migration baselines: %w", err)
+		return nil, fmt.Errorf("read migration baselines in %s: %w", dir, err)
 	}
 	baselines := []migrationAsset{}
 	versions := map[int]string{}
@@ -368,25 +412,29 @@ func loadMigrationBaselines(migrationFS fs.FS, currentVersion int) ([]migrationA
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
 			continue
 		}
-		matches := baselineFilenamePattern.FindStringSubmatch(entry.Name())
+		filename := dir + "/" + entry.Name()
+		matches := pattern.FindStringSubmatch(entry.Name())
 		if matches == nil {
-			return nil, fmt.Errorf("invalid migration baseline filename %q", entry.Name())
+			return nil, fmt.Errorf("invalid migration baseline filename %q", filename)
 		}
 		version, _ := strconv.Atoi(matches[1])
 		if version == 0 {
 			return nil, errors.New("migration baseline version must be greater than zero")
 		}
 		if version > currentVersion {
-			return nil, fmt.Errorf("migration baseline version %03d exceeds current version %03d", version, currentVersion)
+			return nil, fmt.Errorf("migration baseline %s exceeds current version %03d", filename, currentVersion)
+		}
+		if version < minimumVersion {
+			return nil, fmt.Errorf("development baseline %s is not newer than the highest released baseline (%03d); remove it", filename, minimumVersion-1)
 		}
 		if previous, exists := versions[version]; exists {
-			return nil, fmt.Errorf("migration baseline version %03d is used by both %s and %s", version, previous, entry.Name())
+			return nil, fmt.Errorf("migration baseline version %03d is used by both %s and %s", version, previous, filename)
 		}
-		asset, err := readMigrationAsset(migrationFS, "baseline/"+entry.Name(), version, true)
+		asset, err := readMigrationAsset(migrationFS, filename, version, true)
 		if err != nil {
 			return nil, err
 		}
-		versions[version] = entry.Name()
+		versions[version] = filename
 		baselines = append(baselines, asset)
 	}
 	sort.Slice(baselines, func(i, j int) bool { return baselines[i].version < baselines[j].version })
@@ -587,6 +635,9 @@ func loadMigrationHistoryRows(db *sql.DB, catalog migrationCatalog) ([]migration
 		}
 		asset, exists := catalog.byFilename[row.filename]
 		if !exists {
+			if isDevelopmentBaselineFilename(row.filename) {
+				return nil, developmentBaselineLedgerError(row.filename, catalog.development)
+			}
 			if version := versionFromUnknownFilename(row.filename); version > catalog.current {
 				return nil, fmt.Errorf(
 					"database migration %s is newer than this binary supports (%03d)",
@@ -657,6 +708,20 @@ func validateMigrationHistorySequence(historyRows []migrationHistoryRow, history
 		history.current = row.asset.version
 	}
 	return nil
+}
+
+// isDevelopmentBaselineFilename reports whether a ledger filename names a
+// development baseline, compat/<schema>_dev.sql.
+func isDevelopmentBaselineFilename(filename string) bool {
+	name, found := strings.CutPrefix(filename, developmentBaselineDir+"/")
+	return found && developmentBaselineFilenamePattern.MatchString(name)
+}
+
+func developmentBaselineLedgerError(filename string, development bool) error {
+	if development {
+		return fmt.Errorf("database was created from development baseline %s, which this build does not package; recreate the database", filename)
+	}
+	return fmt.Errorf("database was created from development baseline %s; start it with KIKOTO_MODE=development or recreate the database", filename)
 }
 
 func versionFromUnknownFilename(filename string) int {
