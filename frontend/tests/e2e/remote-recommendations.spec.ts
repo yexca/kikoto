@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-import { remoteWorkFixture, remoteWorksResponseFixture } from "./fixtures/api";
+import {
+  authenticatedStateFixture,
+  remoteWorkFixture,
+  remoteWorksResponseFixture,
+  runtimeSettingsFixture,
+} from "./fixtures/api";
 import { mockRemoteSource } from "./fixtures/player-library";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
 
@@ -97,4 +102,56 @@ test("remote recommendation response cannot restore badges after disabling them"
   releaseResponse();
   await expect(page.getByLabel("Recommended for you", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
+});
+
+test("demo remote badges reuse the local score session on browse and retry", async ({ page }) => {
+  await mockRemoteSource(page, () => undefined);
+  await page.route("**/api/runtime-settings", (route) =>
+    route.fulfill({ json: runtimeSettingsFixture({ mode: "demo", demoMode: true }) }),
+  );
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: authenticatedStateFixture({ demoMode: true }) }));
+  const localRequests: URL[] = [];
+  await page.route("**/api/works?**", async (route) => {
+    localRequests.push(new URL(route.request().url()));
+    await route.fallback();
+  });
+  const requests: URL[] = [];
+  let failNextBrowse = false;
+  await page.route("**/api/remote-sources/1/works?*", async (route) => {
+    const url = new URL(route.request().url());
+    requests.push(url);
+    if (failNextBrowse) {
+      failNextBrowse = false;
+      await route.fulfill({
+        json: remoteWorksResponseFixture([], {
+          status: "unavailable",
+          error: { code: "unavailable", message: "Source temporarily unavailable", retryable: true },
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      json: remoteWorksResponseFixture([
+        remoteWorkFixture({
+          title: "Example Demo Work",
+          recommendScore: url.searchParams.get("recommendBadges") === "true" ? 72 : 0,
+        }),
+      ]),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await expect(page.getByText("Example Demo Work", { exact: true })).toBeVisible();
+  const session = localRequests.at(-1)?.searchParams.get("recommendationSession");
+  expect(session).toBeTruthy();
+  expect(requests.at(-1)?.searchParams.get("recommendationSession")).toBe(session);
+  await page.getByRole("button", { name: "Show recommendation badges", exact: true }).click();
+  await expect(page.getByLabel("Recommended for you", { exact: true })).toHaveText("72");
+  expect(requests.at(-1)?.searchParams.get("recommendationSession")).toBe(session);
+  failNextBrowse = true;
+  await page.getByRole("button", { name: "Descending", exact: true }).click();
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(page.getByText("Example Demo Work", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Recommended for you", { exact: true })).toHaveText("72");
+  expect(requests.at(-1)?.searchParams.get("recommendationSession")).toBe(session);
 });

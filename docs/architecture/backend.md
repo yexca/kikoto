@@ -126,9 +126,13 @@ visibility, and media-selection rules, so a direct link requests summary and
 directory in parallel without a preceding resolve.
 
 Cold recommendation session preparation admits at most 32 active or queued
-requests and runs one preparation write at a time, waiting before it borrows a
-database connection. Warm sessions are read-only. Cancellation releases a queue
-place; a full queue returns a retryable 503 `service_unavailable`.
+requests, coalesces matching tasks, bounds CPU preparation concurrency, and
+serializes short publication writes. Waiting tasks borrow no database connection.
+Warm sessions reuse frozen profiles. Cancellation releases a queue place; a full
+queue or an unpublished initial catalog returns a retryable 503
+`service_unavailable`. The shared catalog worker and versioning rules are in
+[Recommendation catalog and generations](data-model.md#recommendation-catalog-and-generations).
+Demo bypasses catalog preparation and uses the simulated scores described there.
 
 `PUT /api/works/{id}/lyrics-assignments` requires `library:write` and sets or
 clears, in one transaction, the shared lyrics file of up to 2,000 audio items
@@ -144,9 +148,15 @@ returns the complete library in one response.
 
 Library pagination selects normalized fields and ordering inputs before loading
 media aggregates, source presence, and metadata snapshots for the selected page.
-Both stages run in one SQL statement. Recommendation sessions retain their score
-and lane semantics, while voice credits are loaded in one batch per page and
-alternate-edition availability is loaded only when the media edition differs.
+Ordinary sorting projects only its selected page, then optionally scores up to
+100 displayed works. Recommendation sorting uses bounded candidate recall and
+lane windows over the complete exploration tail. Voice credits are loaded in
+one batch per page and alternate-edition availability is loaded only when the
+media edition differs. Optional badge failures return the page with
+`recommendationUnavailable`; recommendation-sort preparation failures remain
+retryable errors. The list returns `recommendationContext` for owner- and
+generation-validated query explanations. Count, complex filters, deep offsets,
+and large user feedback profiles retain their corresponding read costs.
 
 Public errors use a stable code and retryability decision without returning raw
 database, upstream, endpoint, or filesystem details. Logs and workflow Activity

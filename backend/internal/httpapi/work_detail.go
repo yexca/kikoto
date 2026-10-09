@@ -48,6 +48,7 @@ type workDetail struct {
 	VoiceCredits     []voiceCredit              `json:"voiceCredits"`
 	ListeningStatus  string                     `json:"listeningStatus"`
 	Favorite         bool                       `json:"favorite"`
+	RecommendScore   *int                       `json:"recommendScore,omitempty"`
 	MetadataView     workMetadataPresentation   `json:"metadataPresentation"`
 	MetadataSync     workMetadataSyncStatus     `json:"metadataSync"`
 	Translations     []workTranslation          `json:"translations"`
@@ -199,6 +200,19 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.cfg.IsDemo() {
+		sessionID := strings.TrimSpace(r.URL.Query().Get("recommendationSession"))
+		if sessionID != "" && !recommendationSessionIDPattern.MatchString(sessionID) {
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid recommendation session", false)
+			return
+		}
+		score, err := s.demoRecommendationScore(r.Context(), sessionID, work.PrimaryCode)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		work.RecommendScore = &score
+	}
 	writeJSON(w, http.StatusOK, work)
 }
 

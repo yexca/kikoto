@@ -379,7 +379,12 @@ var databaseCleanupDeleteQueries = map[string]string{
 	databaseCleanupTaskOldRecommendEvts: `DELETE FROM recommendation_event WHERE created_at < datetime('now', '` + databaseCleanupEventRetention + `')`,
 	databaseCleanupTaskStaleGenerations: `
 		DELETE FROM recommendation_generation
-		WHERE id IN (SELECT generation.id FROM recommendation_generation AS generation WHERE ` + staleRecommendationGenerationCondition + `)`,
+		WHERE id IN (SELECT generation.id FROM recommendation_generation AS generation WHERE ` + staleRecommendationGenerationCondition + `
+    AND NOT EXISTS (SELECT 1 FROM recommendation_snapshot cache WHERE cache.generation_id = generation.id)
+    AND NOT EXISTS (SELECT 1 FROM recommendation_generation_state cache WHERE cache.generation_id = generation.id)
+    AND NOT EXISTS (SELECT 1 FROM recommendation_query_context q JOIN recommendation_query_candidate cache ON cache.context_id = q.id WHERE q.generation_id = generation.id)
+    AND NOT EXISTS (SELECT 1 FROM recommendation_query_context q JOIN recommendation_query_checkpoint cache ON cache.context_id = q.id WHERE q.generation_id = generation.id)
+    LIMIT 128)`,
 }
 
 func (s *Server) staleMissingFolderLocations(ctx context.Context) ([]staleDiskRecord, error) {

@@ -1286,6 +1286,7 @@ export const surfaceHant = {
     useOtherWorkMetadata: "使用其他作品的中繼資料",
     metadataUnavailable: "中繼資料無法使用",
     affinityScore: "親和度分數",
+    demoRandomScore: "示範分數，隨機產生",
     shuffleAdjustment: "目前隨機調整",
     discoveryBoost: "探索加成",
     resultVariation: "結果變化",

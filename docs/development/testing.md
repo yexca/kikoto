@@ -47,7 +47,8 @@ Use these repository-reserved values unless the value itself is under test:
 | Several distinct works | `RJ00000001` through `RJ00000099` |
 | Another supported prefix | The equivalent all-zero form, such as `VJ00000000`, only when prefix behavior matters |
 | Generated work codes | Go `testfixture.WorkCode` or TypeScript `syntheticWorkCode`, with an explicit prefix and ordinal |
-| More than 100 distinct works | `WorkCodeAt` or `syntheticWorkCodeAt`, which deterministically spans the reserved prefix ranges |
+| 101–400 distinct works | `WorkCodeAt` or `syntheticWorkCodeAt`, which deterministically spans the reserved prefix ranges |
+| Isolated larger scale experiment | Go `HighCardinalityWorkCodeAt`, with explicit ordinals in its bounded zero-prefixed range |
 | Work, circle, or person name | `Example Work`, `Example Circle`, or `Example Voice` with a numeric suffix when needed |
 | Remote source | Code `example_remote_a`, display name `Example Remote A` |
 | Inert URL | `https://source.example.invalid/path` |
@@ -64,7 +65,11 @@ Fixture constructors are deterministic builders, not random generators. Pass an
 explicit ordinal so failures remain reproducible and parallel test order cannot
 change identities. Use the high-cardinality constructor only when one isolated
 fixture genuinely needs more than 100 unique works; its later ranges use the
-equivalent reserved BJ, VJ, and CC forms. Keep explicit literals when code length,
+equivalent reserved BJ, VJ, and CC forms. `WorkCodeAt` accepts ordinals 0–399;
+isolated recommendation scale experiments use `HighCardinalityWorkCodeAt` for
+0–399,999, spanning four prefixes with zero-prefixed `00000000`–`00099999`
+suffixes. This larger constructor belongs only to fixtures requiring more than
+400 identities. Keep explicit literals when code length,
 case, separators, or serialization is itself the behavior under test.
 
 For network tests:

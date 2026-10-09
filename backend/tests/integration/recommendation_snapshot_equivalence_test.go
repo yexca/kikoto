@@ -114,6 +114,15 @@ func TestRecommendationGenerationMatchesLiveScoring(t *testing.T) {
 	}
 
 	store := library.NewStore(db)
+	for {
+		processed, err := store.ProcessRecommendationCatalog(context.Background(), 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if processed == 0 {
+			break
+		}
+	}
 	snapshot, err := store.PrepareRecommendationSession(context.Background(), userID, "equivalence-session")
 	if err != nil {
 		t.Fatal(err)

@@ -14,16 +14,17 @@ import (
 )
 
 type remoteWorksResponse struct {
-	SourceID    int64               `json:"sourceId"`
-	Works       []remoteWorkSummary `json:"works"`
-	Page        int                 `json:"page"`
-	PageSize    int                 `json:"pageSize"`
-	Total       int                 `json:"total"`
-	Status      string              `json:"status"`
-	Error       *remoteWorksError   `json:"error,omitempty"`
-	Sort        string              `json:"sort"`
-	Direction   string              `json:"direction"`
-	SortApplied bool                `json:"sortApplied"`
+	SourceID                  int64               `json:"sourceId"`
+	Works                     []remoteWorkSummary `json:"works"`
+	Page                      int                 `json:"page"`
+	PageSize                  int                 `json:"pageSize"`
+	Total                     int                 `json:"total"`
+	Status                    string              `json:"status"`
+	Error                     *remoteWorksError   `json:"error,omitempty"`
+	Sort                      string              `json:"sort"`
+	Direction                 string              `json:"direction"`
+	SortApplied               bool                `json:"sortApplied"`
+	RecommendationUnavailable bool                `json:"recommendationUnavailable,omitempty"`
 }
 
 type remoteWorksError struct {
@@ -68,6 +69,13 @@ type remoteWorkSummary struct {
 }
 
 func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.IsDemo() {
+		sessionID := strings.TrimSpace(r.URL.Query().Get("recommendationSession"))
+		if sessionID != "" && !recommendationSessionIDPattern.MatchString(sessionID) {
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid recommendation session", false)
+			return
+		}
+	}
 	userID := optionalUserID(r.Context())
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
@@ -99,16 +107,17 @@ func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
 }
 
 type remoteSourceWorksRequest struct {
-	Page                  int
-	PageSize              int
-	Query                 string
-	Seed                  string
-	Plan                  remoteSourceQueryPlan
-	Sort                  string
-	UpstreamOrder         string
-	Direction             string
-	Languages             []string
-	IncludeRecommendation bool
+	Page                      int
+	PageSize                  int
+	Query                     string
+	Seed                      string
+	Plan                      remoteSourceQueryPlan
+	Sort                      string
+	UpstreamOrder             string
+	Direction                 string
+	Languages                 []string
+	IncludeRecommendation     bool
+	RecommendationUnavailable bool
 }
 
 func newRemoteSourceWorksRequest(r *http.Request, sourceType string, languages []string) remoteSourceWorksRequest {
@@ -142,7 +151,7 @@ func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Reque
 	if len(request.Plan.PostFilterClauses) > 0 {
 		works, total, sortApplied, err := s.remotePostFilteredPageUsing(ctx, userID, source.ID, request.Plan, request.Page, request.PageSize, request.Languages, s.remoteBrowsePageLoader(ctx, userID, source, request, client))
 		if err == nil && request.IncludeRecommendation {
-			err = s.scoreRemoteWorkSummaries(r, userID, works)
+			request.RecommendationUnavailable = s.scoreRemoteWorkSummaries(r, userID, works) != nil
 		}
 		return s.writeRemoteSourceWorksResult(w, ctx, source, diagnosticURL, request, works, total, sortApplied, err)
 	}
@@ -159,10 +168,10 @@ func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Reque
 	}
 	if request.IncludeRecommendation {
 		if err := s.scoreRemoteWorkSummaries(r, userID, works); err != nil {
-			return err
+			request.RecommendationUnavailable = true
 		}
 	}
-	writeJSON(w, http.StatusOK, remoteWorksResponse{SourceID: source.ID, Works: works, Page: request.Page, PageSize: request.PageSize, Total: remotePageTotal(remotePage), Status: "ok", Sort: request.Sort, Direction: request.Direction, SortApplied: remotePage.SortApplied})
+	writeJSON(w, http.StatusOK, remoteWorksResponse{SourceID: source.ID, Works: works, Page: request.Page, PageSize: request.PageSize, Total: remotePageTotal(remotePage), Status: "ok", Sort: request.Sort, Direction: request.Direction, SortApplied: remotePage.SortApplied, RecommendationUnavailable: request.RecommendationUnavailable})
 	return nil
 }
 
@@ -173,7 +182,7 @@ func (s *Server) writeRemoteSourceWorksResult(w http.ResponseWriter, ctx context
 		return nil
 	}
 	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
-	writeJSON(w, http.StatusOK, remoteWorksResponse{SourceID: source.ID, Works: works, Page: request.Page, PageSize: request.PageSize, Total: total, Status: "ok", Sort: request.Sort, Direction: request.Direction, SortApplied: sortApplied})
+	writeJSON(w, http.StatusOK, remoteWorksResponse{SourceID: source.ID, Works: works, Page: request.Page, PageSize: request.PageSize, Total: total, Status: "ok", Sort: request.Sort, Direction: request.Direction, SortApplied: sortApplied, RecommendationUnavailable: request.RecommendationUnavailable})
 	return nil
 }
 
@@ -230,9 +239,8 @@ func (s *Server) remotePostFilteredPage(
 	page int,
 	pageSize int,
 	language string,
-	includeRecommendation ...bool,
 ) ([]remoteWorkSummary, int, bool, error) {
-	return s.remotePostFilteredPageWithLanguages(ctx, userID, sourceID, client, plan, order, direction, seed, page, pageSize, []string{language}, includeRecommendation...)
+	return s.remotePostFilteredPageWithLanguages(ctx, userID, sourceID, client, plan, order, direction, seed, page, pageSize, []string{language})
 }
 
 func (s *Server) remotePostFilteredPageWithLanguages(
@@ -247,14 +255,13 @@ func (s *Server) remotePostFilteredPageWithLanguages(
 	page int,
 	pageSize int,
 	languages []string,
-	includeRecommendation ...bool,
 ) ([]remoteWorkSummary, int, bool, error) {
 	return s.remotePostFilteredPageUsing(ctx, userID, sourceID, plan, page, pageSize, languages, func(upstreamPage int) (kikoeru.WorksPage, error) {
 		return client.ListWorksSortedSeeded(ctx, upstreamPage, 100, plan.PushdownQuery, order, direction, seed)
-	}, includeRecommendation...)
+	})
 }
 
-func (s *Server) remotePostFilteredPageUsing(ctx context.Context, userID, sourceID int64, plan remoteSourceQueryPlan, page, pageSize int, languages []string, loadPage func(int) (kikoeru.WorksPage, error), includeRecommendation ...bool) ([]remoteWorkSummary, int, bool, error) {
+func (s *Server) remotePostFilteredPageUsing(ctx context.Context, userID, sourceID int64, plan remoteSourceQueryPlan, page, pageSize int, languages []string, loadPage func(int) (kikoeru.WorksPage, error)) ([]remoteWorkSummary, int, bool, error) {
 	const upstreamPageSize = 100
 	const maxUpstreamPages = 100
 	filtered := []remoteWorkSummary{}
@@ -266,7 +273,7 @@ func (s *Server) remotePostFilteredPageUsing(ctx context.Context, userID, source
 			return nil, 0, false, err
 		}
 		sortApplied = sortApplied && result.SortApplied
-		summaries, err := s.remoteWorkSummariesWithLanguages(ctx, userID, sourceID, result.Works, languages, includeRecommendation...)
+		summaries, err := s.remoteWorkSummariesWithLanguages(ctx, userID, sourceID, result.Works, languages)
 		if err != nil {
 			return nil, 0, false, err
 		}
@@ -520,16 +527,16 @@ func remoteWorkSummaryMatchesFreeText(work remoteWorkSummary, needle string) boo
 		stringSliceContainsSubstringFold(work.SearchUserTags, needle)
 }
 
-func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, language string, includeRecommendation ...bool) ([]remoteWorkSummary, error) {
-	return s.remoteWorkSummariesWithLanguages(ctx, userID, sourceID, works, []string{language}, includeRecommendation...)
+func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, language string) ([]remoteWorkSummary, error) {
+	return s.remoteWorkSummariesWithLanguages(ctx, userID, sourceID, works, []string{language})
 }
 
-func (s *Server) remoteWorkSummariesWithLanguages(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, languages []string, includeRecommendation ...bool) ([]remoteWorkSummary, error) {
+func (s *Server) remoteWorkSummariesWithLanguages(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, languages []string) ([]remoteWorkSummary, error) {
 	result := make([]remoteWorkSummary, 0, len(works))
 	seen := map[string]int{}
 	projector := newRemoteCatalogProjectorWithLanguages(languages)
 	for _, work := range works {
-		item, err := s.buildRemoteWorkSummary(ctx, userID, sourceID, projector, work, includeRecommendation...)
+		item, err := s.buildRemoteWorkSummary(ctx, userID, sourceID, projector, work)
 		if err != nil {
 			return nil, err
 		}
@@ -544,7 +551,7 @@ func (s *Server) remoteWorkSummariesWithLanguages(ctx context.Context, userID in
 	return s.enrichRemoteWorkSummaries(ctx, userID, result)
 }
 
-func (s *Server) buildRemoteWorkSummary(ctx context.Context, userID, sourceID int64, projector remoteCatalogProjector, work kikoeru.Work, includeRecommendation ...bool) (remoteWorkSummary, error) {
+func (s *Server) buildRemoteWorkSummary(ctx context.Context, userID, sourceID int64, projector remoteCatalogProjector, work kikoeru.Work) (remoteWorkSummary, error) {
 	projected := projector.project(sourceID, work)
 	code := projected.RemoteCode
 	displayCode := code
@@ -572,12 +579,6 @@ func (s *Server) buildRemoteWorkSummary(ctx context.Context, userID, sourceID in
 		}
 	}
 	recommendScore := 0
-	if workID != nil && len(includeRecommendation) > 0 && includeRecommendation[0] {
-		recommendScore, err = s.workRecommendationScore(ctx, userID, *workID)
-		if err != nil {
-			return remoteWorkSummary{}, err
-		}
-	}
 	status := "remote_only"
 	if workID != nil {
 		status = "synced"

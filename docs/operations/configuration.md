@@ -88,8 +88,10 @@ Set `api_url` to the upstream service base URL, such as
 After first startup, Settings is the source of truth for configured sources.
 
 Demo mode does not bootstrap or expose the root identity, recover or dispatch
-workflow jobs, or accept supplied sessions. Its HTTP API rejects all non-read
-methods, and the Demo identity has only library-read and playback permissions.
+workflow jobs, or accept supplied sessions. Its HTTP API rejects mutation
+requests, and the Demo identity has only library-read and playback permissions.
+The read-only remote recommendation POST uses
+[simulated scores](../architecture/data-model.md#recommendation-catalog-and-generations).
 Read requests are nevertheless allowed through administration, workflow,
 activity, source, and user surfaces so the isolated deployment can be shown;
 the frontend keeps those controls read-only and all writes are rejected before

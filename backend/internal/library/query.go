@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/yexca/kikoto/backend/internal/agerating"
@@ -15,13 +16,18 @@ import (
 type Store struct {
 	db *sql.DB
 	// searchIndexWake asks RunSearchIndexWorker for an immediate pass.
-	searchIndexWake     chan struct{}
-	recommendationWrite chan struct{}
-	recommendationQueue chan struct{}
+	searchIndexWake              chan struct{}
+	recommendationWrite          chan struct{}
+	recommendationQueue          chan struct{}
+	recommendationCPU            chan struct{}
+	recommendationMu             sync.Mutex
+	recommendationFlights        map[string]*recommendationPreparation
+	recommendationDiagnostics    recommendationDiagnostics
+	recommendationContextFlights map[string]*recommendationRecallPreparation
 }
 
 func NewStore(db *sql.DB) *Store {
-	return &Store{db: db, searchIndexWake: make(chan struct{}, 1), recommendationWrite: make(chan struct{}, 1), recommendationQueue: make(chan struct{}, 32)}
+	return &Store{db: db, searchIndexWake: make(chan struct{}, 1), recommendationWrite: make(chan struct{}, 1), recommendationQueue: make(chan struct{}, 32), recommendationCPU: make(chan struct{}, 2), recommendationFlights: make(map[string]*recommendationPreparation), recommendationContextFlights: make(map[string]*recommendationRecallPreparation)}
 }
 
 type ListOptions struct {
@@ -37,16 +43,23 @@ type ListOptions struct {
 	IncludeRecommendation   bool
 	RecommendationSessionID string
 	DemoOnly                bool
+	// VisibilityPredicateSQL is a static, trusted predicate supplied by app
+	// composition. It uses the work alias and contains no request text or binds.
+	// Ordinary pages apply it before counting and paging; recommendation pages
+	// reject it. Empty retains the ordinary Library membership.
+	VisibilityPredicateSQL string
 	// TitleLanguages is the viewer's metadata language priority for a title
 	// sort. Empty sorts by the work row's title.
 	TitleLanguages []string
 }
 
 type RawPage struct {
-	Works    []RawWork
-	Page     int
-	PageSize int
-	Total    int
+	Works                     []RawWork
+	Page                      int
+	PageSize                  int
+	Total                     int
+	RecommendationContext     string
+	RecommendationUnavailable bool
 }
 
 type MatchingListOptions struct {
@@ -98,21 +111,21 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 		options.PageSize = 24
 	}
 	s.PrepareSearch(ctx, options.Query)
-	where, args := listWhere(options.Scope, options.Status, options.Query, options.UserID, options.DemoOnly)
+	sortKey, _ := normalizeSort(options.Sort, options.Direction)
+	if sortKey == "recommend" {
+		if options.VisibilityPredicateSQL != "" {
+			return RawPage{}, fmt.Errorf("recommendation pages do not accept an extra visibility predicate")
+		}
+		return s.recommendationPage(ctx, options)
+	}
+	where, args := listOptionsWhere(options)
 	countArgs := append([]any{options.UserID}, args...)
 	var total int
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE "+where, countArgs...).Scan(&total); err != nil {
 		return RawPage{}, err
 	}
-	includeRecommendation := options.IncludeRecommendation || strings.EqualFold(strings.TrimSpace(options.Sort), "recommend")
-	config, recommendationGenerationID, err := s.listPageRecommendationContext(ctx, options, includeRecommendation)
-	if err != nil {
-		return RawPage{}, err
-	}
+	config := DefaultRecommendationConfig()
 	queryArgs := []any{}
-	if includeRecommendation && recommendationGenerationID == 0 {
-		queryArgs = append(queryArgs, recommendationUserArgs(options.UserID)...)
-	}
 	searchRank, searchRankArgs := searchExactRankSQL(options.Query)
 	titleSort := ""
 	if len(options.TitleLanguages) > 0 {
@@ -123,7 +136,7 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 	queryArgs = append(queryArgs, args...)
 	queryArgs = append(queryArgs, options.PageSize, (options.Page-1)*options.PageSize)
 	rows, err := s.db.QueryContext(ctx, listPageSelectSQLWithSearchRank(
-		where, options.Sort, options.Direction, options.RandomSeed, config, includeRecommendation, recommendationGenerationID, searchRank, titleSort,
+		where, options.Sort, options.Direction, options.RandomSeed, config, false, 0, searchRank, titleSort,
 	), queryArgs...)
 	if err != nil {
 		return RawPage{}, err
@@ -132,7 +145,27 @@ func (s *Store) ListPage(ctx context.Context, options ListOptions) (RawPage, err
 	if err != nil {
 		return RawPage{}, err
 	}
-	return RawPage{Works: works, Page: options.Page, PageSize: options.PageSize, Total: total}, nil
+	page := RawPage{Works: works, Page: options.Page, PageSize: options.PageSize, Total: total}
+	if options.IncludeRecommendation && len(works) > 0 {
+		snapshot, err := s.snapshotForRecommendation(ctx, options.UserID, options.RecommendationSessionID)
+		if err != nil {
+			page.RecommendationUnavailable = true
+			return page, nil
+		}
+		ids := make([]int64, len(works))
+		for index := range works {
+			ids[index] = works[index].ID
+		}
+		scores, err := s.scoreRecommendationWorks(ctx, snapshot, ids)
+		if err != nil {
+			page.RecommendationUnavailable = true
+			return page, nil
+		}
+		for index := range page.Works {
+			page.Works[index].RecommendScore = scores[page.Works[index].ID].Score
+		}
+	}
+	return page, nil
 }
 
 func (s *Store) listPageRecommendationContext(ctx context.Context, options ListOptions, include bool) (RecommendationConfig, int64, error) {
@@ -143,15 +176,8 @@ func (s *Store) listPageRecommendationContext(ctx context.Context, options ListO
 	if options.UserID <= 0 {
 		return s.LoadRecommendationConfig(ctx), anonymousRecommendationGenerationID, nil
 	}
-	if sessionID := strings.TrimSpace(options.RecommendationSessionID); sessionID != "" {
-		snapshot, err := s.PrepareRecommendationSession(ctx, options.UserID, sessionID)
-		if err != nil {
-			return RecommendationConfig{}, 0, err
-		}
-		return snapshot.Config, snapshot.GenerationID, nil
-	}
-	// A client without a recommendation session uses the dynamic path.
-	return s.LoadUserRecommendationConfig(ctx, options.UserID), 0, nil
+	snapshot, err := s.snapshotForRecommendation(ctx, options.UserID, options.RecommendationSessionID)
+	return snapshot.Config, snapshot.GenerationID, err
 }
 
 // ListMatching materializes the common Library projection for a predicate
@@ -402,6 +428,14 @@ func normalizeSort(sortKey string, direction string) (string, string) {
 		direction = "DESC"
 	}
 	return sortKey, direction
+}
+
+func listOptionsWhere(options ListOptions) (string, []any) {
+	where, args := listWhere(options.Scope, options.Status, options.Query, options.UserID, options.DemoOnly)
+	if options.VisibilityPredicateSQL != "" {
+		where += " AND (" + options.VisibilityPredicateSQL + ")"
+	}
+	return where, args
 }
 
 func listWhere(scope string, status string, queryText string, userID int64, demoOnly bool) (string, []any) {
