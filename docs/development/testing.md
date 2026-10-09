@@ -227,7 +227,9 @@ make ios-build
 The target synchronizes Capacitor through `ios-sync` and writes an unsigned
 `kikoto-<version>-unsigned.ipa` under `frontend/ios/App/build`. The IPA is not
 installable as built; a sideloading tool re-signs it with the installing
-user's identity. The iOS shell has no unit-test suite or CI job.
+user's identity. The iOS shell has no unit-test suite or pull-request CI job;
+the release workflow runs the same target on a macOS runner and attaches the
+IPA to the GitHub Release.
 
 CI runs the following dependency graph:
 

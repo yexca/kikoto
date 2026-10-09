@@ -194,8 +194,9 @@ stack. Production instances require sign-in by default; a super administrator
 can optionally enable read-only anonymous Library browsing and playback under
 `Maintenance -> Access`.
 
-Signed Android APKs are attached to each
-[GitHub Release](https://github.com/yexca/kikoto/releases).
+Signed Android APKs and unsigned iOS IPAs are attached to each
+[GitHub Release](https://github.com/yexca/kikoto/releases). The IPA must be
+re-signed by a sideloading tool before iOS will install it.
 
 ### Optional settings
 

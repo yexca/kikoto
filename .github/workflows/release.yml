@@ -210,6 +210,47 @@ jobs:
           path: frontend/release-artifacts/*.apk
           if-no-files-found: error
 
+  build_ipa:
+    name: Build and upload IPA
+    runs-on: macos-26
+    needs:
+      - verify_release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.19.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      # The IPA is unsigned; sideloading tools re-sign it with the installing
+      # user's identity, so no Apple signing secrets are involved.
+      - name: Build unsigned IPA
+        run: make ios-build
+
+      - name: Prepare IPA asset
+        env:
+          KIKOTO_VERSION_NAME: ${{ needs.verify_release.outputs.version_name }}
+        run: |
+          mkdir -p frontend/release-artifacts
+          cp "frontend/ios/App/build/kikoto-${GITHUB_REF_NAME}-unsigned.ipa" "frontend/release-artifacts/kikoto-${KIKOTO_VERSION_NAME}-unsigned.ipa"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: kikoto-ios-ipa
+          path: frontend/release-artifacts/*.ipa
+          if-no-files-found: error
+
   draft_release:
     name: Draft GitHub release
     runs-on: ubuntu-24.04
@@ -219,6 +260,7 @@ jobs:
       - verify_release
       - build_image
       - build_apk
+      - build_ipa
 
     steps:
       - name: Checkout
@@ -232,21 +274,28 @@ jobs:
           name: kikoto-android-apk
           path: release-artifacts
 
+      - name: Download IPA artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: kikoto-ios-ipa
+          path: release-artifacts
+
       # A draft is invisible to the unauthenticated Releases API that update
       # checks read, so users are not offered this version until the image is
       # pushed and the release is published below.
-      - name: Create or update draft release with APK
+      - name: Create or update draft release with APK and IPA
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           KIKOTO_VERSION_NAME: ${{ needs.verify_release.outputs.version_name }}
         run: |
           notes_file="docs/history/${GITHUB_REF_NAME}.md"
           apk="release-artifacts/kikoto-${KIKOTO_VERSION_NAME}.apk"
+          ipa="release-artifacts/kikoto-${KIKOTO_VERSION_NAME}-unsigned.ipa"
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file "$notes_file"
-            gh release upload "$GITHUB_REF_NAME" "$apk" --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$GITHUB_REF_NAME" "$apk" "$ipa" --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "$apk" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$notes_file"
+            gh release create "$GITHUB_REF_NAME" "$apk" "$ipa" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$notes_file"
           fi
 
   push_image:
