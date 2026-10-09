@@ -5,6 +5,7 @@ const isNativeApp = vi.hoisted(() => vi.fn(() => false));
 
 vi.mock("@/lib/appInfo", () => ({
   APP_CLIENT_VERSION: "v0.4.1",
+  appClientPlatformName: () => "Android",
   versionLabel: () => "android v0.4.1",
 }));
 vi.mock("@/lib/serverConfig", () => ({ getStoredServerURL, isNativeApp }));

@@ -314,8 +314,13 @@ and player intent, including pending play requests.
   replace Library's saved destination. Only Library-origin details and direct
   work links are resumed by its tab; existing cross-workspace detail snapshots
   are ignored so Library remains reachable after returning to a creator.
-- Distinguish Android client-old, server-old, and network-disconnected states;
+- Distinguish native client-old, server-old, and network-disconnected states;
   version actions open signed GitHub Releases and never imply silent install.
+  The client kind shown in the account panel, version messages, and copied
+  diagnostics comes from the running shell (`Capacitor.getPlatform()`), so the
+  iOS shell reports `ios` and Android keeps `android`. Every shell runs the same
+  bundle version, so `minAndroidClientVersion` (falling back to
+  `minClientVersion`) remains the shared minimum.
 - Use the shared work-collection layout and work-card view model whenever a
   surface presents works. Page-specific filters and statistics may differ, but
   grid behavior and responsive column choices should remain aligned.

@@ -1,7 +1,7 @@
 import { Network } from "@capacitor/network";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-import { APP_CLIENT_VERSION, appVersionStatus, githubReleaseURL } from "@/lib/appInfo";
+import { APP_CLIENT_VERSION, appClientPlatformName, appVersionStatus, githubReleaseURL } from "@/lib/appInfo";
 import { api, type HealthStatus } from "@/lib/api";
 import { recordDiagnostic } from "@/lib/mobileDiagnostics";
 import { getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
@@ -64,7 +64,9 @@ export function MobileRuntimeProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const applyHealth = useCallback((health: HealthStatus) => {
+    // Every native shell runs the same bundle and version, so the Android floor stays a shared floor.
     const minimumClientVersion = health.minAndroidClientVersion || health.minClientVersion || "";
+    const client = `${appClientPlatformName()} client ${APP_CLIENT_VERSION}`;
     const versionStatus = appVersionStatus(APP_CLIENT_VERSION, health.version, minimumClientVersion);
     const targetVersion =
       versionStatus === "client-update-required"
@@ -78,11 +80,11 @@ export function MobileRuntimeProvider({ children }: { children: React.ReactNode 
       kind: versionStatus === "compatible" ? "online" : versionStatus,
       message:
         versionStatus === "client-update-required"
-          ? `Android client ${APP_CLIENT_VERSION} is no longer supported. Version ${minimumClientVersion} or newer is required.`
+          ? `${client} is no longer supported. Version ${minimumClientVersion} or newer is required.`
           : versionStatus === "client-update-available"
-            ? `Android client ${APP_CLIENT_VERSION} is older than server ${health.version}.`
+            ? `${client} is older than server ${health.version}.`
             : versionStatus === "server-update-available"
-              ? `Server ${health.version} is older than Android client ${APP_CLIENT_VERSION}.`
+              ? `Server ${health.version} is older than ${client}.`
               : "Connected",
       serverVersion: health.version,
       minimumClientVersion,
