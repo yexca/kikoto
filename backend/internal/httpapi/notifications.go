@@ -158,8 +158,7 @@ func notificationPageParams(r *http.Request) (int, int) {
 	}
 	pageSizeValue := strings.TrimSpace(r.URL.Query().Get("pageSize"))
 	if pageSizeValue == "" {
-		// Keep the old limit parameter working for API clients during the
-		// transition to page/pageSize.
+		// limit is accepted as an alias of pageSize.
 		pageSizeValue = strings.TrimSpace(r.URL.Query().Get("limit"))
 	}
 	if parsed, err := strconv.Atoi(pageSizeValue); err == nil && parsed > 0 {

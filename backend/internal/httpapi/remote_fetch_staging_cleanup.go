@@ -212,8 +212,7 @@ func (s *Server) blockRemoteFetchStagingCleanup(ctx context.Context, candidate f
 // fetchStagingRunPath is the run directory that holds a Fetch's staging root.
 // A manifest records it inside the target's pool. Only the fixed
 // <pool>/.kikoto-staging/<run> shape is taken from the manifest; any other
-// recorded value falls back to the data-root run directory of earlier
-// releases, so a manifest can never point cleanup at another directory.
+// recorded value falls back to the data-root run directory, so a manifest can never point cleanup at another directory.
 func fetchStagingRunPath(dataRoot string, candidate fetchStagingCleanupCandidate) (string, error) {
 	runDirectory := ".kikoto-staging/" + strconv.FormatInt(candidate.RunID, 10)
 	relative := strings.TrimSuffix(strings.Trim(filepath.ToSlash(candidate.StagingRoot), "/"), "/work")

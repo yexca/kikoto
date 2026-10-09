@@ -441,7 +441,7 @@ for (const cancel of [false, true]) {
     const mocks = await mockBrowsePages(page, requests, { collectionSize: 24, deferWorks: true });
     await page.goto("/");
     await expect.poll(() => requests.works ?? 0).toBeGreaterThan(0);
-    // Keep the response pending beyond the former 500 ms retry window.
+    // Keep the response pending beyond any fixed retry window.
     await page.waitForTimeout(800);
     await expect.poll(() => page.evaluate(() => window.history.state.__kikotoScrollY)).toBe(1800);
     if (cancel) await page.mouse.wheel(0, -300);

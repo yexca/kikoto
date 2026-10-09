@@ -23,9 +23,8 @@ func (s *Server) mediaItemIDForRemotePath(ctx context.Context, workID int64, rem
 }
 
 // Registration normally resolves a remote item through its remote_stream row.
-// Releases that retired those rows before completing the manifest left some
-// published Fetches without them; the local location written before that
-// retirement still identifies the same media item.
+// A published Fetch may lack those rows; the local location it wrote still
+// identifies the same media item.
 func (s *Server) mediaItemIDForFetchItem(ctx context.Context, workID int64, localSourceID int64, item remoteWorkSavePlanItem) (int64, error) {
 	if item.MediaItemID > 0 {
 		return item.MediaItemID, nil

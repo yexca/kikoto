@@ -23,7 +23,7 @@ type coverGate struct {
 }
 
 // PublishCover serializes the rename for all extensions of a work, across the
-// built-in provider, remote fallback and legacy migration writers. The source
+// built-in provider, remote fallback and cover-cache migration writers. The source
 // is already complete and on the target filesystem. No hard-link support is
 // needed, and readers can only observe complete final files.
 func PublishCover(ctx context.Context, source, target string, replace bool) error {

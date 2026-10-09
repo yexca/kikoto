@@ -101,7 +101,7 @@ func Inherited(ctx context.Context, q Querier, sourceID int64, legacy []string) 
 }
 
 // Read the same dictionary-first identity that EnsureLegacyTx writes, so an
-// old snapshot without genre ids can still restore its inherited tags.
+// snapshot without genre ids can still restore its inherited tags.
 func legacyConceptID(ctx context.Context, q Querier, name string) (int64, error) {
 	var id int64
 	err := q.QueryRowContext(ctx, "SELECT concept.tag_id FROM metadata_tag AS concept INNER JOIN dlsite_genre_name AS name ON name.genre_id=concept.dlsite_genre_id WHERE LOWER(TRIM(name.name))=LOWER(?) ORDER BY concept.tag_id LIMIT 1", name).Scan(&id)

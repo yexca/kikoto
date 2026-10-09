@@ -43,8 +43,8 @@ func (s *Server) startStartupMetadataRepairs() {
 	})
 }
 
-// retireInstanceMetadataLanguage removes the former instance default
-// metadata language. Stored titles and tag names now always use the original
+// retireInstanceMetadataLanguage removes the instance default metadata
+// language settings. Stored titles and tag names always use the original
 // language, so a database projected in another language is marked for the
 // backfill that follows to project again.
 func retireInstanceMetadataLanguage(ctx context.Context, db *sql.DB) error {

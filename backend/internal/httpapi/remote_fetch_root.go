@@ -447,8 +447,8 @@ func remoteFetchManagedRootFromTemplate(template string, sourceCode string) (str
 	return "", false
 }
 
-// source_name is retained as a compatibility alias for templates saved before
-// source_code became the canonical token. Both names always resolve to the
+// source_name is an alias of source_code, the canonical token. Both names
+// always resolve to the
 // immutable file_source.code, never to its display name.
 func containsRemoteFetchSourceToken(value string) bool {
 	return strings.Contains(value, "<source_code>") || strings.Contains(value, "<source_name>")

@@ -224,7 +224,7 @@ test("@desktop personal pages are Settings tabs instead of sidebar entries", asy
   await expect(page).toHaveURL(/\/settings\?tab=tags$/);
   await expect(page.getByRole("list", { name: "Personal tags" })).toBeVisible();
 
-  // Links to the former standalone pages open the matching tab.
+  // The /user-data path opens the matching tab.
   await page.goto("/user-data");
   await expect(page).toHaveURL(/\/settings\?tab=data$/);
   await expect(tabs.getByRole("tab", { name: "Account" })).toHaveAttribute("aria-selected", "true");

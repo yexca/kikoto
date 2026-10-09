@@ -68,9 +68,8 @@ type libraryOnboardingCompletion struct {
 	WatchFolders bool `json:"watchFolders"`
 }
 
-// PrepareLibraryLayout retains the earlier standard layout while offering an
-// explicit, once-only upgrade choice to instances from before onboarding
-// existed. A fresh install stays unconfigured until onboarding and its
+// PrepareLibraryLayout keeps the standard layout for instances that predate
+// onboarding while offering an explicit, once-only upgrade choice. A fresh install stays unconfigured until onboarding and its
 // automatic scans start disabled.
 func (s *Server) PrepareLibraryLayout(ctx context.Context) error {
 	layout, err := s.loadLibraryLayout(ctx)

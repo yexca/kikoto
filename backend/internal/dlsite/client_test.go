@@ -260,9 +260,9 @@ func TestFetchProductReturnsNoProductSentinel(t *testing.T) {
 	}
 }
 
-// Regression: the home site failing transiently while the fallback site
-// reports an empty list was recorded as a permanent "not found", which made
-// routine refreshes skip the work indefinitely.
+// A transient home-site failure while the fallback site reports an empty list
+// stays a transient failure instead of becoming a permanent "not found", which
+// would make routine refreshes skip the work indefinitely.
 func TestFetchProductKeepsTransientFailureOverFallbackAbsence(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

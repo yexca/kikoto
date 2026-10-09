@@ -19,8 +19,8 @@ const METADATA_KEY = "metadata";
 export const PRESET_GROUPS = ["input", "filter", "action"] as const;
 
 /**
- * Inputs of the follow presets before they were reduced to input, filter, and
- * actions. A stored trigger that still carries one must be reconfigured.
+ * Inputs outside the follow presets' input, filter, and action set. A stored
+ * trigger that still carries one must be reconfigured.
  */
 const LEGACY_PRESET_INPUTS = new Set([
   "newWorks",
@@ -145,8 +145,8 @@ export function presetDefaultValues(preset: WorkflowPreset): PresetFormValues {
 }
 
 /**
- * Restores form values from stored inputs. Inputs the preset no longer
- * accepts are dropped, and a retired option falls back to the default.
+ * Restores form values from stored inputs. Inputs the preset does not accept
+ * are dropped, and an unsupported option falls back to the default.
  */
 export function presetValuesFromInputs(preset: WorkflowPreset, inputs: unknown): PresetFormValues {
   const values = presetDefaultValues(preset);

@@ -63,10 +63,10 @@ const allSettingsTabs: SettingsTab[] = [
   "tags",
   ...adminSettingsTabs,
 ];
-// Former tab ids stay valid links; each opens the tab that now holds its content.
+// Alias tab ids keep existing links valid; each opens the tab that holds its content.
 const settingsTabAliases: Record<string, SettingsLocation> = {
   data: { tab: "account", section: "data" },
-  // Catalog freshness moved to Library when the instance metadata language was removed.
+  // The metadata tab id opens Library, which holds catalog freshness.
   metadata: { tab: "library" },
 };
 

@@ -136,7 +136,7 @@ function roleAuthState(role: "admin" | "member") {
     : authenticatedStateFixture({ role: "user", permissions: memberPermissions, devMode: true });
 }
 
-// Deliberately off-contract: an older server sends a legacy catalog sync state
+// Deliberately off-contract: a server may send a legacy catalog sync state
 // (such as "fresh") or none at all, and src/lib/catalogSyncState.ts normalizes
 // both. Only these two fields leave the current creator summary contract.
 type LegacySyncCreator<T extends CircleSummary | VoiceSummary> = Omit<T, "syncState" | "syncReason"> & {

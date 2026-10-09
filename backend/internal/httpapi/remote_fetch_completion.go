@@ -105,7 +105,7 @@ func (s *Server) finishPublishedRemoteFetch(ctx context.Context, manifest remote
 	if err := s.completeRemoteFetchManifest(ctx, manifest, plan, summary, syncedLocations, removedCache); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
-	// Publication no longer depends on cache inputs. Apply its global limit
+	// Publication does not depend on cache inputs. Apply its global limit
 	// only after every selected file has been registered.
 	_, _ = s.runCacheLimitCleanup(ctx, manifest.RemoteSourceID, 0)
 	return remoteWorkSaveResult{

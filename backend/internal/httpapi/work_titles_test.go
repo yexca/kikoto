@@ -85,7 +85,7 @@ func TestScopedTitlePatchAndResetKeepOtherLanguagesAndFields(t *testing.T) {
 	if got.Titles[""] != "Global" || got.Titles["ja-jp"] != "Japanese manual" || got.Titles["zh-cn"] != "" || got.Circle == nil || got.Circle.Name != "Example authored circle" {
 		t.Fatalf("scoped reset: %+v", got)
 	}
-	// Legacy null remains a global reset, leaving the locale-specific title.
+	// A null title is a global reset, leaving the locale-specific title.
 	response = updateManualOverridesRequest(t, fixture, `{"title":null}`)
 	if response.Code != http.StatusOK {
 		t.Fatal(response.Body.String())

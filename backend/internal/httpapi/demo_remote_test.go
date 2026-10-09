@@ -98,7 +98,7 @@ func TestDemoRemoteSourceReplacesConfiguredSourcesWithRandomLocalCatalog(t *test
 	`); err != nil {
 		t.Fatal(err)
 	}
-	// Sources left by an earlier Demo deployment that still seeded real endpoints.
+	// Existing sources that carry real endpoints, beside the disabled showcase source.
 	if _, err := db.Exec(`
 		INSERT INTO file_source (code, display_name, source_type, enabled) VALUES
 			('earlier_remote', 'Earlier Remote', 'kikoeru_compatible', 1),

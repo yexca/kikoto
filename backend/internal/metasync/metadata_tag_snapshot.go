@@ -13,7 +13,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
 )
 
-// Older snapshots can predate both genre relations and metadata variants. They
+// Snapshots can predate both genre relations and metadata variants. They
 // are still provider input; normalize their declared tags instead of dropping
 // them when the global backfill finishes. No provider requests are made here.
 func snapshotTagNamesTx(ctx context.Context, tx *sql.Tx, workID int64) ([]string, error) {

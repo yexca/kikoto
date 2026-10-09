@@ -125,9 +125,9 @@ func (s *Server) remoteFetchMetadataReady(ctx context.Context, requestedCode str
 		return false, err
 	}
 
-	// Keep older installations and snapshots written before the variant table
-	// usable.  The request must match the canonical edition language; it is no
-	// longer assumed that the canonical/origin edition is Japanese.
+	// Snapshots written before the variant table existed stay usable. The
+	// request must match the canonical edition language; the canonical/origin
+	// edition is not assumed to be Japanese.
 	var snapshotJSON string
 	err = s.db.QueryRowContext(ctx, `
 		SELECT origin.metadata_language, snapshot.snapshot_json
@@ -175,11 +175,12 @@ func originSnapshotMatchesEditionLanguage(snapshotJSON string, editionLanguage s
 	}
 	// Unknown source languages are retained, but there is no reliable locale
 	// mapping to validate.  A non-empty provider declaration is sufficient for
-	// the legacy readiness check; future syncs still preserve the raw value.
+	// the readiness check; future syncs still preserve the raw value.
 	return strings.TrimSpace(payload.Kikoto.EditionLanguage) != "" || strings.TrimSpace(editionLanguage) != ""
 }
 
-// Kept as a compatibility shim for package-local callers and older tests.
+// originSnapshotUsesJapaneseLocale is an alias of
+// originSnapshotMatchesEditionLanguage.
 func originSnapshotUsesJapaneseLocale(snapshotJSON string, editionLanguage string) bool {
 	return originSnapshotMatchesEditionLanguage(snapshotJSON, editionLanguage)
 }

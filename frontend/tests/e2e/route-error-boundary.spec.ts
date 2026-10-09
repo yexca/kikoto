@@ -156,7 +156,7 @@ test("route render failures preserve the app shell and player", async ({ page })
 });
 
 test("a page chunk removed by an update offers a reload that loads the current version", async ({ page }) => {
-  // Until the reload, the page's chunk is missing as after a deploy replaced it.
+  // Until the reload, the page's chunk is missing, as when a deploy replaces it.
   let chunkMissing = true;
   await prepareRouteFailure(page, async (route) => {
     if (chunkMissing) await route.fulfill({ status: 404, body: "Not found" });

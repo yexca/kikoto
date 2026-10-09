@@ -32,8 +32,8 @@ func createSyntheticAAC(t *testing.T, duration string) string {
 	return input
 }
 
-// Raw AAC used to return an open-ended MP3 pipe with no duration or Range
-// contract. HEAD must now prepare the same complete, seekable file as GET.
+// Raw AAC is served as a complete, seekable file with a duration and Range
+// support. HEAD prepares the same file as GET.
 func TestCompatibleAACHasDurationRangesAndReusableCompleteCache(t *testing.T) {
 	if _, err := exec.LookPath("ffprobe"); err != nil {
 		t.Skip("ffprobe is not installed")

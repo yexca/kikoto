@@ -157,8 +157,8 @@ function versionRank(version: WorkTranslation, activeCode: string, scope: WorkVe
 }
 
 function legacyAvailabilityScope(remoteVersions: boolean): WorkVersionAvailabilityScope {
-  // The boolean argument predates explicit scopes and represented source-level
-  // availability in both modes. Keep that behavior for non-UI callers.
+  // The boolean argument does not select a scope: source-level availability
+  // applies in both modes.
   void remoteVersions;
   return "source";
 }

@@ -37,7 +37,7 @@ const (
 	demoRemotePageSizeMax       = 100
 )
 
-// legacyDemoShowcaseSourceCode named the disabled Example Track source that
+// legacyDemoShowcaseSourceCode names the disabled Example Track source that
 // the simulated remote source replaces.
 const legacyDemoShowcaseSourceCode = "demo_showcase"
 

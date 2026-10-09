@@ -80,7 +80,7 @@ func EnsureGenreTx(ctx context.Context, tx *sql.Tx, genreID int64) (int64, error
 	return id, RefreshNamesTx(ctx, tx, StoredLanguages, id)
 }
 
-// Older imported names without ids keep a stable concept until a provider id
+// Imported names without ids keep a stable concept until a provider id
 // can be learned. Known genre ids always take precedence over name matching.
 func EnsureLegacyTx(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
 	name = strings.TrimSpace(name)

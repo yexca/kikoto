@@ -29,7 +29,7 @@ const (
 
 // projectChangedSnapshots projects the works whose latest snapshot changed
 // since their last projection. Startup and metadata sync run it; an empty
-// record table, as after the upgrade that added it, projects every work once.
+// record table projects every work once.
 func (s *Server) projectChangedSnapshots(ctx context.Context) error {
 	if err := s.projectChangedDLsiteParties(ctx); err != nil {
 		return err

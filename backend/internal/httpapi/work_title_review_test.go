@@ -134,8 +134,8 @@ func TestUniversalManualTitleDoesNotInventLanguageOptions(t *testing.T) {
 	}
 }
 
-// A legacy editor left only universal titles. Such a title must replace the
-// displayed text without moving the default edition, introduction, or tags to
+// A manual title stored only as a universal title must replace the displayed
+// text without moving the default edition, introduction, or tags to
 // the original when an earlier preferred language has no edition.
 func TestUniversalManualTitleKeepsTheDefaultEdition(t *testing.T) {
 	f := newTitleReviewFamily(t, "JPN", true)

@@ -40,7 +40,7 @@ func (s *Server) resolveWorkCodeIdentity(ctx context.Context, code string) (reso
 	} else if canonicalID > 0 && canonicalCode != "" {
 		identity.WorkID, identity.Code, identity.BaseCode = canonicalID, canonicalCode, canonicalCode
 	} else if identity.BaseCode != "" {
-		// Compatibility with snapshots written before the persisted family.
+		// Snapshots that predate the persisted family resolve through the base code.
 		if baseID, ok := s.workIDForCode(ctx, identity.BaseCode); ok {
 			identity.WorkID = baseID
 			identity.Code = normalizeDLsiteCode(identity.BaseCode)

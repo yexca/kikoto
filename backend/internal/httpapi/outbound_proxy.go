@@ -19,7 +19,7 @@ import (
 const (
 	// outboundProxySetting stores the proxy list and routes as JSON.
 	outboundProxySetting = "outbound_proxy_config"
-	// legacyMetadataProxySetting held the former single DLsite proxy URL. It
+	// legacyMetadataProxySetting holds the single DLsite proxy URL. It
 	// is read until the proxy configuration is first saved, then removed.
 	legacyMetadataProxySetting = "metadata_proxy_url"
 )

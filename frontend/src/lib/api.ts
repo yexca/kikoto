@@ -756,7 +756,7 @@ export type LibrarySource = {
   displayName: string;
   sourceType: string;
   enabled: boolean;
-  /** Absent on older servers; compatible remote types then retain their default capability. */
+  /** Absent from servers that predate this field; compatible remote types then keep their default capability. */
   metadataCapable?: boolean;
 };
 

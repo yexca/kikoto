@@ -781,8 +781,8 @@ func (s *DLsiteSyncer) fetchOriginProduct(ctx context.Context, workno string) (d
 	if err != nil {
 		return dlsite.Product{}, err
 	}
-	// Older provider responses sometimes omit language_editions. Preserve the
-	// historical Japanese origin probe in that case so a localized discovery
+	// Provider responses sometimes omit language_editions. Probe the Japanese
+	// origin in that case so a localized discovery
 	// response cannot overwrite the canonical title.
 	if productEditionLanguage(product) == "" &&
 		strings.TrimSpace(product.TranslationInfo.Lang) == "" &&
