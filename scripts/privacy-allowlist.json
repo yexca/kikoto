@@ -88,6 +88,21 @@
       "reason": "Public AGENTS.md-configuration and application-versioning reference repository linked from the About page."
     },
     {
+      "url": "https://github.com/advplyr/audiobookshelf",
+      "files": ["frontend/src/pages/AboutPage.tsx"],
+      "reason": "Public reference for combined playback-position and listening-time reports linked from the About page."
+    },
+    {
+      "url": "https://github.com/navidrome/navidrome",
+      "files": ["frontend/src/pages/AboutPage.tsx"],
+      "reason": "Public reference for playback-event coalescing and durable reporting queues with retry backoff linked from the About page."
+    },
+    {
+      "url": "https://github.com/jellyfin/jellyfin-web",
+      "files": ["frontend/src/pages/AboutPage.tsx"],
+      "reason": "Public reference for playback-event and periodic-progress reporting linked from the About page."
+    },
+    {
       "url": "https://github.com/ionic-team/capacitor/**",
       "files": ["README.md"],
       "reason": "Public upstream Capacitor issues, pull requests, and releases documenting the Android 10 keyboard-layout fix."

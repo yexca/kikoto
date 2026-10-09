@@ -727,6 +727,9 @@ export const zhHantResource = {
         comfyReference:
           "Kikoto 過去的工作流程畫布參考了該專案的互動設計；從未包含或改編其原始碼，該畫布當時使用 @xyflow/react 獨立實作，現已停用。",
         cherryReference: "Kikoto 的 AGENTS.md 設定方式和程式版本管理設計參考了該專案。",
+        audiobookshelfReference: "Kikoto 的播放回報設計參考了該專案合併播放位置與實際聆聽時長的方式。",
+        navidromeReference: "Kikoto 的播放回報設計參考了該專案的事件合併、持久化回報佇列和退避重試機制。",
+        jellyfinReference: "Kikoto 的播放回報設計參考了該專案將播放事件與定期進度回報結合的方式。",
         technologies: "主要技術棧",
         license: "授權條款",
         copyright: "版權所有 (C) 2026 yexca。",
