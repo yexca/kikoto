@@ -17,7 +17,7 @@ Voice pages present persisted person and credit data.
   now.
 - Shows favorite, rating, note, and user tag state.
 - Shows confirmed aliases under the detail title. Alias review, duplicate
-  merge, and merge undo live in the Metadata page's **Voice aliases** view;
+  merge, and merge undo live in the Metadata page's **Voice actors** view;
   the detail **More** menu links there for users with `metadata:sync`.
 - Groups works with no provider voice credits under an `unknown` bucket.
 - Shows Local and Remote availability badges followed by user tags on voice

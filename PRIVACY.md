@@ -71,8 +71,8 @@ ends and are exported only when the user chooses to copy them.
 ## Anonymous Library Access
 
 Production mode requires authentication by default. A super administrator can
-enable anonymous Library browsing and media playback under Maintenance. While
-that setting is enabled, authentication still protects personal state,
+enable anonymous Library browsing and media playback under Settings -> Users.
+While that setting is enabled, authentication still protects personal state,
 configuration, and mutations, but it is not a privacy boundary for the complete
 Library. Restrict network access when the collection itself must remain private.
 
@@ -82,9 +82,14 @@ Kikoto may send requests to:
 
 - Metadata providers used to identify or enrich a work.
 - Remote source endpoints configured by an administrator.
-- Media, cover, or public-work URLs returned by a configured source when their
-  origins remain within that source's configured allowlist.
-- GitHub Releases when a user deliberately opens an update link.
+- Media, cover, or public-work URLs returned by a configured source. By default
+  these may use any public origin; a source with **Restrict outbound hosts**
+  stays on its configured origins and allowed hosts. See
+  [Deployment security](docs/operations/security.md).
+- A Kikoeru-compatible server whose address a user enters for a Kikoeru
+  account import, for that request only.
+- The GitHub Releases API, from the server, when someone opens the About page
+  (cached for six hours).
 
 Depending on the action, these requests may reveal the instance IP address,
 requested work identifier, search terms, source path, standard HTTP headers, or

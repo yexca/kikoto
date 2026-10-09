@@ -88,14 +88,14 @@
   Its optional, disabled-by-default metadata follow-up creates a separate run
   after scan completion, with its own retry and review state.
 
-## Current Limits
+## Limits
 
 - Fetch byte progress describes remote transfer into cache. Local staging copy,
   hashing, publication, and location registration remain visible as workflow
   phases rather than being folded into the transfer percentage.
-- Download-size enforcement is complete for the current file-writing paths,
-  but the broader outbound URL, redirect, address, and DNS-pinning contract is
-  still being hardened.
+- Every file-writing download path enforces a size limit. Outbound URL,
+  redirect, address, and DNS-pinning rules are described in
+  [Deployment security](security.md).
 
 ## Operational Guidance
 

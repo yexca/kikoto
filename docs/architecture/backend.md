@@ -6,23 +6,43 @@ The backend is a Go HTTP API with SQLite persistence.
 
 - Go standard `net/http`.
 - SQLite.
-- Embedded SQL migration catalog and generated fresh-install baseline in
-  `backend/migrations/`.
+- Embedded SQL migration catalog and generated fresh-install baselines in
+  `backend/migrations/` (see [Migrations](../development/migrations.md)).
 - Docker-first runtime.
 
 ## Main Packages
 
 - `backend/internal/httpapi`: HTTP handlers and feature orchestration.
+- `backend/internal/account`: user identity, password credentials, sessions,
+  and role permission expansion.
+- `backend/internal/accesspolicy`: the stored anonymous-access policy and its
+  cached effective value.
+- `backend/internal/library`: persisted work browsing: search parsing, list
+  queries and projection, batch enrichment, and recommendation sessions.
+- `backend/internal/storagepool`: storage pool layout below the data root and
+  the marker that distinguishes an online pool from an empty mount point.
 - `backend/internal/localfs`: local folder discovery.
+- `backend/internal/download`: the bounded atomic download writer, cover
+  publication, and raster image type detection.
 - `backend/internal/dlsite`: DLsite client and parsing.
 - `backend/internal/kikoeru`: Kikoeru-compatible client, including the
   account and SQLite readers used by personal data import.
 - `backend/internal/metasync`: metadata sync.
 - `backend/internal/remotemetadata`: remote source metadata ordering,
   bounded snapshot decoding, and reconciliation for the opt-in fallback.
+- `backend/internal/metadatatags`: shared metadata tag concepts, projection,
+  and selection, independent of provider snapshots and personal tags.
+- `backend/internal/metadatatitles`: display-title selection from edition,
+  declared remote, and manual titles without changing provider data.
+- `backend/internal/outbound`: the shared outbound transport policy, forward
+  proxy dialing, and proxy failover.
+- `backend/internal/proxyconfig`: outbound proxy configuration validation and
+  per-scope proxy resolution.
 - `backend/internal/storage`: database opening and migrations.
 - `backend/internal/sqlutil`: shared `database/sql` helpers with no application imports.
-- `backend/internal/workflow`: workflow persistence helpers.
+- `backend/internal/workflow`: workflow persistence helpers, lease-based
+  settlement of orphaned jobs, and release of jobs interrupted by a service stop
+  (recoverable jobs requeue from their checkpoint, others fail).
 - `backend/internal/personal`: account-owned tag changes, durable listening
   history, and transactional personal data transfer.
 
@@ -56,8 +76,20 @@ audio metadata after a change, and probes commit only against their observed
 location id and file version. Probe reads use the same online-pool and work-root
 depth scope as scans. Identical size and preserved modification time cannot be
 distinguished without content hashing. A pass has a fixed location-id frontier;
-indexing during a pass requests one follow-up. Existing FFprobe time, output,
-and concurrency limits still apply, and shutdown cancels active probing.
+indexing during a pass requests one follow-up. Duration probes share the
+bounded FFprobe runner with playback probes: at most two concurrent processes,
+two waiters that give up after one second, a five-second limit per probe
+including that wait, and 128 KiB of output. Shutdown cancels active probing.
+
+Compatibility preparation starts only from a playback request for that file,
+including the player's single next-track preload, which requests the same
+playback URL. The backend never prepares an unplayed queue, work, or library in
+the background, because speculative preparation would spend the two transcode
+slots and the shared cache quota without a demonstrated benefit.
+
+Query planner statistics are refreshed by one bounded background worker after
+committed bulk changes; GET requests never run analysis. Its triggers and
+bounds are in [Database maintenance](../operations/database.md#maintenance).
 
 ## Code Organization
 
@@ -77,25 +109,34 @@ state transitions that should not be spread across the frontend. The frontend
 should not fan out directly to every source when one aggregate endpoint can own
 the result and diagnostic trail.
 
-Work summary and media APIs remain separate. The media endpoint resolves the
+Work summary and media APIs are separate. The media endpoint resolves the
 media-bearing edition and loads media items directly; it does not repeat the
 complete metadata, credit, tag, and manual-override detail projection.
 
-Work-code resolution reads persisted edition and alias relationships without
-updating them or scheduling title projections. Legacy snapshots can resolve
-their declared origin without a write. Metadata ingestion and synchronization
-own relationship maintenance.
+`GET /api/works/{code}/resolve` reads persisted edition and alias relationships
+without updating them or scheduling title projections, so repeated resolution
+never writes. A legacy snapshot resolves its declared origin without a write.
+Metadata ingestion and synchronization own relationship maintenance.
 
 `GET /api/works/{id}?includeMedia=false` and `GET /api/works/{id}/media`
-also accept a work code in `{id}`. Code reads use that same read-only canonical
-resolution, including aliases and legacy origins. Numeric reads retain exact
-edition identity. This lets direct links request summary and directory in
-parallel while retaining the existing access and Demo visibility checks.
+accept either a numeric work id or a work code in `{id}`. A code uses the same
+read-only canonical resolution, including aliases and legacy origins; a numeric
+id selects that exact edition. Both forms apply the same access, Demo
+visibility, and media-selection rules, so a direct link requests summary and
+directory in parallel without a preceding resolve.
 
 Cold recommendation session preparation admits at most 32 active or queued
-requests and serializes writes before borrowing a database connection. Warm
-sessions remain reads. Cancellation releases a queue place; a full queue
-returns a retryable 503.
+requests and runs one preparation write at a time, waiting before it borrows a
+database connection. Warm sessions are read-only. Cancellation releases a queue
+place; a full queue returns a retryable 503 `service_unavailable`.
+
+`PUT /api/works/{id}/lyrics-assignments` requires `library:write` and sets or
+clears, in one transaction, the shared lyrics file of up to 2,000 audio items
+in the work's edition family; each lyrics file must be a text item of the same
+work as its audio. `PUT` and `DELETE /api/media/{id}/lyrics-preference` require
+`playback:use` and set or clear the signed-in user's own lyrics choice for one
+audio item under the same same-work rule. How clients rank preferences,
+assignments, and name matching is in [Data model](data-model.md).
 
 The Library list endpoint always returns one bounded page; a request without
 page parameters receives the first page of the default order. No endpoint
@@ -136,24 +177,25 @@ items return separate statuses. A history-generation rejection therefore does
 not undo a valid resume checkpoint. A successful response acknowledges each
 submitted id and returns the generation observed by the transaction.
 
-Recorded and stale progress acknowledgements include an additive `identity`
-object: the unified cursor owner's `workId` and its persisted
-`editionWorkIds` (including the owner and played edition). Membership is read
-in the same transaction, without discovering or materializing works. Only a
-recorded checkpoint returns a `cursor`; stale identity is ownership evidence,
-not permission to publish the submitted position. Older clients may ignore the
-new field, and the legacy endpoints retain their existing response shapes.
+Recorded and stale progress acknowledgements carry an `identity` object: the
+unified cursor owner's `workId` and its persisted `editionWorkIds` (including
+the owner and played edition). Membership is read in the same transaction,
+without discovering or materializing works. Only a recorded checkpoint returns
+a `cursor`; stale identity is ownership evidence, not permission to publish the
+submitted position. Acknowledgements without a stored cursor omit `identity`.
 
 `PATCH /api/media-items/{id}/progress` and `GET/POST /api/listening-sessions`
-remain compatible for earlier web and native clients. Undated legacy sessions
-retain receipt-date accounting. Dated sessions retain occurrence UTC buckets
-and cannot switch to the legacy format under the same session id. Resume and
-history remain independent tables and are never inferred from one another.
+serve web and native clients that do not send playback reports; their responses
+carry no `identity`. Undated sessions use receipt-date accounting. Dated
+sessions use occurrence UTC buckets and cannot switch to the undated format
+under the same session id. Resume and history are independent tables and are
+never inferred from one another.
 
 When the backend serves the bundled frontend, content-hashed files under
-`/assets/` are cached for a year as `immutable`. `index.html`, the SPA fallback,
-`sw.js`, and `manifest.webmanifest` use `no-cache`, and other static files
-use a one-hour public lifetime. A missing `/assets/` file returns 404 rather
+`/assets/` are cached for a year as `immutable`. HTML files including
+`index.html` and the SPA fallback, `sw.js`, `theme-bootstrap.js`, and
+`manifest.webmanifest` use `no-cache`, and other static files use a one-hour
+public lifetime. A missing `/assets/` file returns 404 rather
 than the app shell.
 
 A response middleware gzip-compresses JSON, HTML, CSS, JavaScript, SVG, and web
@@ -164,7 +206,7 @@ event streams, or media, cover, and asset routes, and it preserves flushing.
 Authentication responses are also excluded because a mobile sign-in response
 returns a session token next to the reflected username. Without that exclusion,
 compressed response length could leak the token (a BREACH-style attack). No other
-response currently embeds a credential or CSRF token. The split-deployment
+response embeds a credential or CSRF token. The split-deployment
 `frontend/nginx.conf` applies the same `/assets/` caching, `no-cache` app shell,
 and static compression.
 
@@ -236,7 +278,7 @@ that the failover always tries last. The DLsite transport and the pooled remote-
 transports rebuild when their resolved proxies change and close the previous
 idle connections. A legacy `metadata_proxy_url` value is read as a DLsite route
 until the proxy configuration is first saved. Connection, response-header, response-read idle,
-buffered-body, streamed-file, concurrency, and retry bounds remain specific to
+buffered-body, streamed-file, concurrency, and retry bounds are specific to
 the request class. See
 [Secure development](../development/security.md) and
 [Runtime security](../operations/security.md) before extending an outbound
@@ -249,6 +291,12 @@ connections. Each origin has separate interactive, crawl, download, and playback
 lanes. The first three serialize response bodies; playback permits four active
 streams. Each lane admits at most 32 waiting requests, and queued cancellation
 does not wait for the active response to finish.
+
+`POST /api/works/{id}/lyrics-fetch` downloads lyrics files from a configured
+source through that source's download lane and stages them on the target
+work's storage pool before publication. Its permissions, destination checks,
+and file, byte, and time limits are in
+[Remote lyrics download](../development/security.md#remote-lyrics-download).
 
 Remote queries requiring local filtering retain only upstream pages for up to
 30 seconds, with at most 32 pages and 16 MiB of serialized data per server.

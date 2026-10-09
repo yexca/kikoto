@@ -72,3 +72,7 @@ Security reporters should read:
 - Security implementation rules belong in
   [Secure development](development/security.md).
 - Durable design choices belong in [ADRs](decisions/index.md).
+- Release notes, pending changes, and per-release upgrade steps belong in
+  [History](history/index.md). Every other page describes only the current
+  system; see the writing rules in the
+  [repository agent guide](../AGENTS.md#documentation).

@@ -9,7 +9,8 @@
 
 ## The Backend Is Unhealthy
 
-- Check `http://127.0.0.1:7659/health`.
+- Check `http://127.0.0.1:7655/health` (the published host port; inside the
+  container the backend listens on `7659`).
 - Confirm the `config/` mount is writable.
 - Check the backend container logs.
 

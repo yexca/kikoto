@@ -16,12 +16,12 @@ does not update its environment.
 | --- | --- | --- |
 | `KIKOTO_HTTP_ADDR` | `127.0.0.1:7659` | Backend listen address. |
 | `KIKOTO_DB_PATH` | `../config/kikoto.db` | SQLite database path. |
-| `KIKOTO_DB_BACKUP_DIR` | `backups` beside the database | Verified database backups; see [Database backups](database.md#backups). |
+| `KIKOTO_DB_BACKUP_DIR` | `backups` beside the database | Verified database backups; see [Database backups](database.md#backups). Direct backend runs only: the Compose stacks do not pass it, so the container always uses `/config/backups`. |
 | `KIKOTO_DATA_ROOT` | `../data` | Local media library root. |
 | `KIKOTO_CACHE_ROOT` | `../cache` | Runtime cache root. |
 | `KIKOTO_STATIC_DIR` | Empty | Frontend asset directory; empty disables static file serving. |
 | `KIKOTO_LOCAL_SCAN_DEPTH` | `3` | Maximum local scan folder depth. |
-| `KIKOTO_MODE` | `production` | Runtime mode: `development` authenticates as root, `production` uses normal authentication, and `demo` uses a restricted passwordless Demo identity with content filtering. |
+| `KIKOTO_MODE` | `production` | Runtime mode: `development` authenticates as root and creates a fresh database from the development baseline in `backend/migrations/compat/` when one is packaged (see [Migrations](../development/migrations.md)), `production` uses normal authentication, and `demo` uses a restricted passwordless Demo identity with content filtering. |
 | `KIKOTO_SESSION_COOKIE_SECURE` | `false` | Add the Secure attribute to session cookies. |
 | `KIKOTO_ALLOWED_ORIGINS` | Empty | Comma-separated exact browser origins allowed to call a separately hosted API. Same-origin deployments should leave this empty. |
 | `KIKOTO_TRUSTED_PROXIES` | Empty | Comma-separated reverse-proxy IP addresses or CIDR prefixes whose `X-Forwarded-For` header identifies the client for sign-in throttling. Empty uses the direct peer address. An invalid entry stops startup. |
@@ -36,11 +36,19 @@ does not update its environment.
 
 ## Administrator Settings
 
-Maintenance manages local scan depth, cache behavior, the remote per-file
-download limit, failed Fetch staging retention, remote request pacing, outbound
-proxies and their scopes, file sources and their fallback languages, creator
-catalog freshness (under `Settings -> Library`), and production instance
-access. There is no instance-wide metadata language.
+Administrators manage the instance from the administration tabs in Settings:
+
+- **Library**: library storage, local scan depth, creator catalog freshness,
+  Kikoeru import address policy, and remote file sources with their fallback
+  languages. A saved scan depth (1–8) overrides `KIKOTO_LOCAL_SCAN_DEPTH`,
+  which is only the default.
+- **Cache & Fetch**: playback and transcode cache limits, the remote per-file
+  download limit, failed Fetch staging retention, and remote download pacing.
+- **Proxy**: outbound proxies and their scopes.
+- **Cleanup**: cache cleanup and database backups.
+- **Users**: accounts and production instance access.
+
+There is no instance-wide metadata language.
 
 Each signed-in user may choose an own preferred metadata language in the
 header account menu. Users who do not, anonymous visitors, stored titles and
@@ -54,7 +62,8 @@ back, or return mixed-language metadata.
 
 Production anonymous access is an SQLite-backed instance setting rather than an
 environment variable. It defaults to disabled. A super administrator can
-enable read-only Library browsing and playback under `Maintenance -> Access`;
+enable read-only Library browsing and playback under
+`Settings -> Users -> Instance access`;
 the change applies immediately in production and is audited. Development shows
 and saves the same option so its automatic root identity can inspect every
 production administration surface, but all development requests remain

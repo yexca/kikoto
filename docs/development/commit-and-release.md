@@ -35,6 +35,26 @@ file starts directly with the release body and does not repeat the tag as a
 level-one heading; the filename and GitHub Release title already identify the
 version.
 
+## Release Steps
+
+1. Set `VERSION` to the release tag.
+2. From `backend/`, run the baseline generator in release mode:
+
+   ```sh
+   go run ./cmd/schema-baseline -migrations ./migrations -version-file ../VERSION -release
+   ```
+
+   It writes `migrations/baseline/<schema>_<VERSION>.sql` when the numbered
+   chain is newer than the highest released baseline and deletes every
+   development baseline in `migrations/compat/`. Update the
+   [Release To Schema Map](migrations.md#release-to-schema-map) and the
+   accepted-ledger table in the same change.
+3. Move the content of `docs/history/unreleased.md` into
+   `docs/history/<tag>.md`, leave `unreleased.md` with only its heading, and
+   add the new page to the [history index](../history/index.md).
+4. Run the validation targets, commit, and push the tag described in
+   [Version Source](#version-source).
+
 ## Version Source
 
 `VERSION` is the single source for the application semantic version and uses

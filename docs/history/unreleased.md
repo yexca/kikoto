@@ -23,8 +23,8 @@
 - Recommendation heuristic v5 strengthens repeated positive evidence, reduces
   common-tag weight, favors weaker evidence in exploration, and mildly spreads
   creators within each listening lane. Affinity badges stay separate from
-  ranking adjustments. Migration 060 and its generated schema-060 baseline
-  preserve frozen affinity, diversity, and remote name matching per session.
+  ranking adjustments. Migration 060 preserves frozen affinity, diversity,
+  and remote name matching per session.
 
 - Narrow work cards, such as two mobile columns or six or more desktop
   columns, use tighter type and spacing. Personal tags lead a single tag row
@@ -33,3 +33,8 @@
   and the rating and Sales row uses smaller type. A two-column phone card is
   about a fifth shorter, so a second row of works fits on screen. Wider cards
   keep their layout.
+
+- The **Check source health** workflow in Workflows -> Remote checks every
+  enabled remote source with an API endpoint and records whether it is healthy
+  or unavailable, as **Check health** does in source settings. It runs
+  manually or from Startup and interval triggers.
