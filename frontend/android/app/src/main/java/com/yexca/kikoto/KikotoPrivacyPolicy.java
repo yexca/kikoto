@@ -9,8 +9,50 @@ final class KikotoPrivacyPolicy {
     static final String LOCK_SCREEN_HIDDEN = "hidden";
     static final String DEFAULT_LOCK_SCREEN_CONTENT = LOCK_SCREEN_HIDE_COVER;
     static final String HIDDEN_TITLE = "Kikoto";
+    static final int DEFAULT_APP_LOCK_TIMEOUT_SECONDS = 0;
+    static final long NOT_BACKGROUNDED = -1L;
+    private static final int[] APP_LOCK_TIMEOUTS_SECONDS = {0, 60, 300, 900};
 
     private KikotoPrivacyPolicy() {}
+
+    static int normalizeAppLockTimeoutSeconds(int value) {
+        for (int allowed : APP_LOCK_TIMEOUTS_SECONDS) {
+            if (allowed == value) return value;
+        }
+        return DEFAULT_APP_LOCK_TIMEOUT_SECONDS;
+    }
+
+    /**
+     * Whether returning to Kikoto needs an unlock. The lock needs a secure
+     * device screen lock to authenticate against, and applies once the app
+     * has spent at least the timeout outside the foreground.
+     */
+    static boolean appLockRequired(
+        boolean enabled,
+        boolean deviceSecure,
+        long backgroundedAtMs,
+        long nowMs,
+        int timeoutSeconds
+    ) {
+        if (!enabled || !deviceSecure || backgroundedAtMs == NOT_BACKGROUNDED) return false;
+        return nowMs - backgroundedAtMs >= normalizeAppLockTimeoutSeconds(timeoutSeconds) * 1000L;
+    }
+
+    /**
+     * Whether a session change discards the WebView's HTTP cache: signing out,
+     * replacing the session, or switching servers. Signing in to the server
+     * already in use keeps it, because nothing private was cached before.
+     */
+    static boolean sessionChangeClearsWebCache(
+        String previousServer,
+        String previousSession,
+        String nextServer,
+        String nextSession
+    ) {
+        if (previousServer == null || previousServer.isEmpty()) return false;
+        if (!previousServer.equals(nextServer)) return true;
+        return previousSession != null && !previousSession.isEmpty() && !previousSession.equals(nextSession);
+    }
 
     static String normalizeLockScreenContent(String value) {
         if (LOCK_SCREEN_FULL.equals(value) || LOCK_SCREEN_HIDE_COVER.equals(value) || LOCK_SCREEN_HIDDEN.equals(value)) {

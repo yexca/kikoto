@@ -33,13 +33,26 @@ describe("native privacy bridge", () => {
       recentsShield: true,
       lockScreenContent: "hideCover",
       speakerConfirm: true,
+      screenSecure: false,
+      appLock: false,
+      appLockTimeoutSeconds: 0,
     });
-    expect(normalizeNativePrivacySettings({ recentsShield: "no", lockScreenContent: "everything" })).toEqual(
-      DEFAULT_NATIVE_PRIVACY_SETTINGS,
-    );
     expect(
-      normalizeNativePrivacySettings({ recentsShield: false, lockScreenContent: "hidden", speakerConfirm: false }),
-    ).toEqual({ recentsShield: false, lockScreenContent: "hidden", speakerConfirm: false });
+      normalizeNativePrivacySettings({
+        recentsShield: "no",
+        lockScreenContent: "everything",
+        appLockTimeoutSeconds: 30,
+      }),
+    ).toEqual(DEFAULT_NATIVE_PRIVACY_SETTINGS);
+    const chosen = {
+      recentsShield: false,
+      lockScreenContent: "hidden",
+      speakerConfirm: false,
+      screenSecure: true,
+      appLock: true,
+      appLockTimeoutSeconds: 300,
+    };
+    expect(normalizeNativePrivacySettings(chosen)).toEqual(chosen);
   });
 
   it("does not call a native plugin in the browser", async () => {
@@ -51,7 +64,8 @@ describe("native privacy bridge", () => {
 
   it("announces saved settings to the page", async () => {
     isAndroidApp.mockReturnValue(true);
-    plugin.setSettings.mockResolvedValue({ recentsShield: false, lockScreenContent: "full", speakerConfirm: true });
+    const stored = { ...DEFAULT_NATIVE_PRIVACY_SETTINGS, recentsShield: false, lockScreenContent: "full" };
+    plugin.setSettings.mockResolvedValue(stored);
     const dispatchEvent = vi.fn();
     vi.stubGlobal("window", { dispatchEvent });
 
@@ -59,7 +73,7 @@ describe("native privacy bridge", () => {
 
     vi.unstubAllGlobals();
     expect(plugin.setSettings).toHaveBeenCalledWith({ recentsShield: false });
-    expect(saved).toEqual({ recentsShield: false, lockScreenContent: "full", speakerConfirm: true });
+    expect(saved).toEqual(stored);
     const event = dispatchEvent.mock.calls[0][0] as CustomEvent;
     expect(event.type).toBe(NATIVE_PRIVACY_SETTINGS_CHANGE_EVENT);
     expect(event.detail).toEqual(saved);

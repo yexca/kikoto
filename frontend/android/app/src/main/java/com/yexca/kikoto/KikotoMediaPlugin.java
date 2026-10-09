@@ -64,6 +64,11 @@ public class KikotoMediaPlugin extends Plugin {
                     payload.put("command", "pause");
                     notifyListeners("mediaControl", payload, true);
                     abandonAudioFocusInternal();
+                    // Lyrics on screen would keep showing what was playing.
+                    if (lyricsOverlay != null && lyricsOverlay.isRequested()) {
+                        lyricsOverlay.hide();
+                        notifyListeners("lyricsOverlayClosed", new JSObject());
+                    }
                 });
             }
         };

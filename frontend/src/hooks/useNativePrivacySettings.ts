@@ -1,12 +1,24 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   DEFAULT_NATIVE_PRIVACY_SETTINGS,
   getNativePrivacySettings,
   NATIVE_PRIVACY_SETTINGS_CHANGE_EVENT,
+  setNativeUnlockLabels,
   supportsNativePrivacy,
   type NativePrivacySettings,
 } from "@/lib/nativePrivacy";
+
+/** Keeps the Android app lock prompt in the app language, including for the next cold start. */
+export function useNativeUnlockLabels() {
+  const { t } = useTranslation();
+  const title = t("settings.unlockTitle");
+  const action = t("settings.unlockAction");
+  useEffect(() => {
+    void setNativeUnlockLabels({ title, action });
+  }, [action, title]);
+}
 
 /**
  * The Android device privacy settings, kept in sync with Settings. `loaded`

@@ -52,6 +52,43 @@ public class KikotoPrivacyPolicyTest {
     }
 
     @Test
+    public void appLockAppliesAfterTheTimeoutOnlyWithASecureDevice() {
+        long left = 10_000L;
+        assertTrue(KikotoPrivacyPolicy.appLockRequired(true, true, left, left, 0));
+        assertFalse(KikotoPrivacyPolicy.appLockRequired(true, true, left, left + 59_999L, 60));
+        assertTrue(KikotoPrivacyPolicy.appLockRequired(true, true, left, left + 60_000L, 60));
+
+        assertFalse(KikotoPrivacyPolicy.appLockRequired(false, true, left, left + 60_000L, 0));
+        assertFalse(KikotoPrivacyPolicy.appLockRequired(true, false, left, left + 60_000L, 0));
+        assertFalse(KikotoPrivacyPolicy.appLockRequired(
+            true, true, KikotoPrivacyPolicy.NOT_BACKGROUNDED, left, 0
+        ));
+    }
+
+    @Test
+    public void unknownAppLockTimeoutLocksImmediately() {
+        assertEquals(300, KikotoPrivacyPolicy.normalizeAppLockTimeoutSeconds(300));
+        assertEquals(0, KikotoPrivacyPolicy.normalizeAppLockTimeoutSeconds(30));
+        assertEquals(0, KikotoPrivacyPolicy.normalizeAppLockTimeoutSeconds(-1));
+    }
+
+    @Test
+    public void signingOutOrSwitchingServersClearsTheWebCache() {
+        String server = "https://server.example.invalid";
+        assertFalse(KikotoPrivacyPolicy.sessionChangeClearsWebCache("", "", server, "synthetic-session"));
+        assertFalse(KikotoPrivacyPolicy.sessionChangeClearsWebCache(server, "", server, "synthetic-session"));
+        assertFalse(KikotoPrivacyPolicy.sessionChangeClearsWebCache(
+            server, "synthetic-session", server, "synthetic-session"
+        ));
+
+        assertTrue(KikotoPrivacyPolicy.sessionChangeClearsWebCache(server, "synthetic-session", server, ""));
+        assertTrue(KikotoPrivacyPolicy.sessionChangeClearsWebCache(server, "synthetic-session", "", ""));
+        assertTrue(KikotoPrivacyPolicy.sessionChangeClearsWebCache(
+            server, "", "https://other.example.invalid", ""
+        ));
+    }
+
+    @Test
     public void mediaUsesThePhoneSpeakerOnlyWithoutAnExternalOutput() {
         assertTrue(KikotoPrivacyPolicy.routesMediaToPhoneSpeaker(new int[] {
             AudioDeviceInfo.TYPE_BUILTIN_EARPIECE,

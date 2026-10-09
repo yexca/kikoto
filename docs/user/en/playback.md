@@ -201,12 +201,14 @@ local or cached playback.
 
 ## Sleep and headphone privacy
 
-Sleep timers can rewind 0–120 minutes after pausing, clamped to the start of the current track. The same applies when finishing the track; Resume uses the rewound position. The preference is stored per server and account on the device. Android pauses when headphones disconnect, including in the background, and does not resume automatically on reconnection.
+Sleep timers can rewind 0–120 minutes after pausing, clamped to the start of the current track. The same applies when finishing the track; Resume uses the rewound position. The preference is stored per server and account on the device. Android pauses when headphones disconnect, including in the background, closes the floating lyrics overlay, and does not resume automatically on reconnection. Signing out or switching servers clears the app's web cache, so pages and images from the previous session are not kept on the device.
 
-On Android, **Privacy on this device** in Settings → Playback holds three choices that the app stores for the device, across every server and account:
+On Android, **Privacy on this device** in Settings → Playback holds choices that the app stores for the device, across every server and account:
 
 - **Hide content in recent apps** (on by default) shows a cover instead of the current page in recent apps. Android 13 and later leave the preview blank; earlier versions cover the window as Kikoto leaves the foreground, except in split-screen and freeform windows.
 - **Media controls while locked** (default **Hide cover**) sets what the media notification, the lock screen, and connected Bluetooth or car displays show while the device is locked: **Everything**, the text without the cover, or **App name only**. Unlocking restores the full controls.
 - **Confirm speaker playback** (on by default) asks before playback starts through the phone speaker when no headphones or other audio output are connected. One confirmation lasts until an audio output connects or disconnects. Play from the notification, the lock screen, or a media key waits for this confirmation in the app.
+- **Block screenshots and recording** (off by default) keeps Kikoto and its floating lyrics out of screenshots, screen recordings, and casting. It blocks your own screenshots as well.
+- **App lock** (off by default) covers Kikoto when you return to it until you unlock with a fingerprint, face, or the device screen lock; Kikoto stores no password of its own. **Lock after** sets how long Kikoto can stay in the background first: **Immediately** (the default), 1, 5, or 15 minutes. Starting the app always asks. The app lock needs a screen lock set up in Android settings. Playback and the media notification keep working while Kikoto is locked.
 
 See [Personal data](personal-data.md) for durable listening history and transfer.

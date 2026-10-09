@@ -11,6 +11,7 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
@@ -23,8 +24,8 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 /**
- * Device privacy settings, the recent apps cover, and whether media would
- * play from the phone speaker.
+ * Device privacy settings, the recent apps cover, screen capture protection,
+ * the app lock, and whether media would play from the phone speaker.
  */
 @CapacitorPlugin(name = "KikotoPrivacy")
 public class KikotoPrivacyPlugin extends Plugin {
@@ -32,10 +33,15 @@ public class KikotoPrivacyPlugin extends Plugin {
     private AudioDeviceCallback outputCallback;
     private boolean phoneSpeaker = true;
     private View recentsCover;
+    private KikotoAppLock appLock;
 
     @Override
     public void load() {
-        applyRecentsShield(KikotoPrivacySettings.read(getContext()));
+        KikotoPrivacySettings settings = KikotoPrivacySettings.read(getContext());
+        applyRecentsShield(settings);
+        applyScreenSecure(settings);
+        appLock = new KikotoAppLock(getActivity(), getBridge().getWebView());
+        appLock.onLaunch();
         audioManager = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
         if (audioManager == null) return;
         phoneSpeaker = currentOutputIsPhoneSpeaker();
@@ -60,7 +66,20 @@ public class KikotoPrivacyPlugin extends Plugin {
             outputCallback = null;
         }
         hideRecentsCover();
+        if (appLock != null) appLock.onDestroy();
         super.handleOnDestroy();
+    }
+
+    @Override
+    protected void handleOnStart() {
+        super.handleOnStart();
+        if (appLock != null) appLock.onStart();
+    }
+
+    @Override
+    protected void handleOnStop() {
+        super.handleOnStop();
+        if (appLock != null) appLock.onStop();
     }
 
     @Override
@@ -80,6 +99,7 @@ public class KikotoPrivacyPlugin extends Plugin {
     protected void handleOnResume() {
         super.handleOnResume();
         hideRecentsCover();
+        if (appLock != null) appLock.onResume();
     }
 
     @PluginMethod
@@ -89,23 +109,47 @@ public class KikotoPrivacyPlugin extends Plugin {
 
     @PluginMethod
     public void setSettings(PluginCall call) {
+        KikotoPrivacySettings.Change change = new KikotoPrivacySettings.Change();
+        change.recentsShield = call.getBoolean("recentsShield");
+        change.speakerConfirm = call.getBoolean("speakerConfirm");
+        change.screenSecure = call.getBoolean("screenSecure");
+        change.appLock = call.getBoolean("appLock");
+        // Unknown values keep the current choice.
         String lockScreenContent = call.getString("lockScreenContent");
         if (
             lockScreenContent != null &&
-            !lockScreenContent.equals(KikotoPrivacyPolicy.normalizeLockScreenContent(lockScreenContent))
+            lockScreenContent.equals(KikotoPrivacyPolicy.normalizeLockScreenContent(lockScreenContent))
         ) {
-            lockScreenContent = null;
+            change.lockScreenContent = lockScreenContent;
         }
-        KikotoPrivacySettings settings = KikotoPrivacySettings.update(
-            getContext(),
-            call.getBoolean("recentsShield"),
-            lockScreenContent,
-            call.getBoolean("speakerConfirm")
-        );
+        Integer timeout = call.getInt("appLockTimeoutSeconds");
+        if (timeout != null && timeout == KikotoPrivacyPolicy.normalizeAppLockTimeoutSeconds(timeout)) {
+            change.appLockTimeoutSeconds = timeout;
+        }
+        KikotoPrivacySettings settings = KikotoPrivacySettings.update(getContext(), change);
         Activity activity = getActivity();
-        if (activity != null) activity.runOnUiThread(() -> applyRecentsShield(settings));
+        if (activity != null) {
+            activity.runOnUiThread(() -> {
+                applyRecentsShield(settings);
+                applyScreenSecure(settings);
+                if (appLock != null) appLock.settingsChanged(settings);
+            });
+        }
         KikotoMediaService.refreshPrivacy(getContext());
         call.resolve(settingsResult(settings));
+    }
+
+    @PluginMethod
+    public void status(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("appLockAvailable", appLock != null && appLock.deviceSecure());
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void setUnlockLabels(PluginCall call) {
+        KikotoPrivacySettings.storeUnlockLabels(getContext(), call.getString("title"), call.getString("action"));
+        call.resolve();
     }
 
     @PluginMethod
@@ -138,6 +182,14 @@ public class KikotoPrivacyPlugin extends Plugin {
         activity.setRecentsScreenshotEnabled(!settings.recentsShield);
     }
 
+    /** Blocks screenshots, screen recording, and casting of the app window; floating lyrics follow it when attached. */
+    private void applyScreenSecure(KikotoPrivacySettings settings) {
+        Activity activity = getActivity();
+        if (activity == null) return;
+        if (settings.screenSecure) activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        else activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+    }
+
     private void showRecentsCover(Activity activity) {
         if (recentsCover != null) return;
         FrameLayout cover = new FrameLayout(activity);
@@ -165,6 +217,9 @@ public class KikotoPrivacyPlugin extends Plugin {
         result.put("recentsShield", settings.recentsShield);
         result.put("lockScreenContent", settings.lockScreenContent);
         result.put("speakerConfirm", settings.speakerConfirm);
+        result.put("screenSecure", settings.screenSecure);
+        result.put("appLock", settings.appLock);
+        result.put("appLockTimeoutSeconds", settings.appLockTimeoutSeconds);
         return result;
     }
 }
