@@ -5,7 +5,7 @@
 ## 環境要求
 
 - Docker 和 Docker Compose。
-- 本地開發可选：Go 1.26.6；Node.js 24.19.0 與 npm 11.17.0。
+- 本地開發可选：Go 1.26.9；Node.js 24.19.0 與 npm 11.17.0。
 
 ## 使用 Docker 运行
 

@@ -13,8 +13,10 @@ controlled, so small differences and encoding tails are not attributed to code.
 The baseline is a disposable archive with the identical measurement files
 copied in, rather than an unrelated checkout or dataset.
 
-The module selects **Go 1.26.6** through its toolchain directive; Go 1.26.4
-is the host launcher version. The final branch also integrates main's
+Both measurement revisions selected **Go 1.26.6** through their toolchain
+directive; Go 1.26.4 was the host launcher version. The current branch pins
+Go 1.26.9 for security fixes; these timing results predate that update.
+The final branch also integrates main's
 `524c2526` maintenance-notification fix in signed merge `532107d7`. That change
 does not alter backend measurement paths. The render comparison predates that
 merge; the final production and workflow checks include it.

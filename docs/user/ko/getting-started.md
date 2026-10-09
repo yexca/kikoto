@@ -5,7 +5,7 @@
 ## 요구 사항
 
 - Docker 및 Docker Compose.
-- 로컬 개발 시 선택 사항: Go 1.26.6, Node.js 24.19.0 및 npm 11.17.0.
+- 로컬 개발 시 선택 사항: Go 1.26.9, Node.js 24.19.0 및 npm 11.17.0.
 
 ## Docker로 실행
 
