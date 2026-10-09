@@ -1262,6 +1262,29 @@ svg.lucide {
   stroke-width: var(--icon-stroke);
 }
 
+/* iOS WebKit zooms into a focused text control whose text is smaller than
+   16px and keeps the page zoomed afterwards. Touch layouts give every text
+   entry control 16px text instead of disabling pinch zoom in the viewport.
+   Unlayered so it outranks compact text utilities on controls that do not
+   use the shared field primitives. */
+@media (pointer: coarse) {
+  input:not(
+    [type="checkbox"],
+    [type="radio"],
+    [type="range"],
+    [type="color"],
+    [type="file"],
+    [type="button"],
+    [type="submit"],
+    [type="reset"],
+    [type="image"]
+  ),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 @media (max-width: 1023px) {
   :root {
     --header-height: 3.5rem;

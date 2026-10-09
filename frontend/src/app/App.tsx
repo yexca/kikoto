@@ -51,7 +51,8 @@ import { ServerUnavailablePage } from "@/app/ServerUnavailablePage";
 import { PageActiveProvider, PageHeaderProvider, usePageHeaderBackState } from "@/app/pageHeader";
 import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
-import { ANDROID_BACK_EVENT, LOGIN_REQUEST_EVENT } from "@/lib/appEvents";
+import { LOGIN_REQUEST_EVENT } from "@/lib/appEvents";
+import { addNativeEdgeBackListener } from "@/lib/nativeEdgeBack";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { isWorkCodePath } from "@/lib/workCode";
@@ -78,6 +79,13 @@ import { normalizeLibraryBrowseLocation, readLastLibraryLocation } from "@/lib/l
 import { isCircleListLocation, readLastCircleListLocation } from "@/lib/circleNavigationState";
 import { isVoiceListLocation, readLastVoiceListLocation } from "@/lib/voiceNavigationState";
 import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
+import {
+  canNavigateHistoryBack,
+  closePlayerLayer,
+  closeTopDocumentLayer,
+  edgeSwipeStartsOnHorizontalGesture,
+  handleNativeBack,
+} from "@/app/nativeBack";
 import { readMobileTabSnapshot, writeMobileTabSnapshot } from "@/app/mobileTabState";
 import { isChunkLoadError, reloadApp } from "@/lib/chunkLoadError";
 import { preloadableComponent } from "@/lib/preloadableComponent";
@@ -359,33 +367,27 @@ function AuthenticatedApp() {
   useEffect(() => {
     if (!isNativeApp()) return;
     let disposed = false;
+    const goBack = () => {
+      const step = handleNativeBack({
+        commandPalette: {
+          open: commandPaletteOpen,
+          busy: commandPaletteBusy,
+          close: () => setCommandPaletteOpen(false),
+        },
+        login: { open: loginOpen, close: () => setLoginOpen(false) },
+        closeTopLayer: closeTopDocumentLayer,
+        closePlayerLayer,
+        canNavigateBack: canNavigateHistoryBack,
+        navigateBack: () => window.history.back(),
+      });
+      if (step === "commandPaletteBusy") toast.info(t("app.workflowSubmitting"));
+      return step;
+    };
     CapacitorApp.addListener("backButton", async () => {
       if (disposed) return;
-      if (commandPaletteOpen) {
-        if (commandPaletteBusy) {
-          toast.info(t("app.workflowSubmitting"));
-          return;
-        }
-        setCommandPaletteOpen(false);
-        return;
-      }
-      if (loginOpen) {
-        setLoginOpen(false);
-        return;
-      }
-      const closeable = document.querySelector("[data-android-back-close], [role='dialog']");
-      if (closeable) {
-        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-        return;
-      }
-      const playerEvent = new CustomEvent(ANDROID_BACK_EVENT, { cancelable: true });
-      window.dispatchEvent(playerEvent);
-      if (playerEvent.defaultPrevented) return;
-      if (window.history.length > 1 && window.location.pathname !== "/") {
-        exitBackDeadlineRef.current = 0;
-        window.history.back();
-        return;
-      }
+      const step = goBack();
+      if (step === "history") exitBackDeadlineRef.current = 0;
+      if (step !== "root") return;
       const now = Date.now();
       if (now < exitBackDeadlineRef.current) {
         await CapacitorApp.exitApp();
@@ -396,10 +398,26 @@ function AuthenticatedApp() {
       window.setTimeout(() => {
         if (Date.now() >= exitBackDeadlineRef.current) exitBackDeadlineRef.current = 0;
       }, 2100);
-      return;
     }).catch(() => {});
+    // An edge swipe follows the same order but never leaves the app: at the
+    // Library root it does nothing.
+    let removeEdgeBack: (() => void) | null = null;
+    void addNativeEdgeBackListener((swipe) => {
+      if (disposed) return;
+      const start = document.elementFromPoint(swipe.x, swipe.y);
+      if (edgeSwipeStartsOnHorizontalGesture(start, (element) => getComputedStyle(element as Element).overflowX)) {
+        return;
+      }
+      goBack();
+    })
+      .then((remove) => {
+        if (disposed) remove();
+        else removeEdgeBack = remove;
+      })
+      .catch(() => {});
     return () => {
       disposed = true;
+      removeEdgeBack?.();
       void CapacitorApp.removeAllListeners();
     };
   }, [commandPaletteBusy, commandPaletteOpen, loginOpen, t, toast]);

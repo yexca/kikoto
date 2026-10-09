@@ -143,6 +143,7 @@ import {
   RemoteOnlyWorkDetailController,
 } from "@/features/work-detail/lazyWorkDetail";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
+import { startResultsScroll, type PendingResultsScroll } from "@/components/collection/collectionResultsScroll";
 import {
   directoryLoadErrorMessage,
   dlsiteWorkURL,
@@ -464,7 +465,12 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const skipNextLibraryEffect = useRef(false);
   const skipNextRemoteEffect = useRef(false);
   const resultsAnchorRef = useRef<HTMLDivElement | null>(null);
-  const pendingResultsScroll = useRef(false);
+  const pendingResultsScroll = useRef<PendingResultsScroll | null>(null);
+  const cancelResultsScroll = useCallback(() => {
+    pendingResultsScroll.current?.cancel();
+    pendingResultsScroll.current = null;
+  }, []);
+  useEffect(() => () => pendingResultsScroll.current?.cancel(), []);
   const pendingScrollRestore = useRef<number | null>(null);
   const wasActive = useRef(active);
   const browseSurfaceActive = useRef(true);
@@ -571,7 +577,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     setRandomSeed(state.randomSeed);
     if (restoreScroll) {
       pendingScrollRestore.current = state.scrollY;
-      pendingResultsScroll.current = false;
+      cancelResultsScroll();
     }
     if (tab.kind === "source") {
       setRemoteSourceStates((states) => ({
@@ -584,20 +590,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     }
   });
   const completeResultsUpdate = () => {
-    if (!pendingResultsScroll.current) return;
-    pendingResultsScroll.current = false;
-    window.requestAnimationFrame(() => {
-      const behavior: ScrollBehavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "auto"
-        : "smooth";
-      if (window.matchMedia("(max-width: 1023px)").matches) {
-        window.scrollTo({ top: 0, behavior });
-        return;
-      }
-      const anchor = resultsAnchorRef.current;
-      if (!anchor) return;
-      anchor.scrollIntoView({ behavior, block: "start" });
-    });
+    const pending = pendingResultsScroll.current;
+    pendingResultsScroll.current = null;
+    pending?.complete(() => resultsAnchorRef.current);
   };
 
   useLayoutEffect(() => {
@@ -609,10 +604,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     restoreCurrentHistoryScroll(scrollY);
   });
 
-  const queueResultsScroll = () => {
+  const queueResultsScroll = useCallback(() => {
     pendingScrollRestore.current = null;
-    pendingResultsScroll.current = true;
-  };
+    cancelResultsScroll();
+    pendingResultsScroll.current = startResultsScroll();
+  }, [cancelResultsScroll]);
   const recordRecommendationEvents = useCallback(
     (events: RecommendationEventInput[]) => {
       if (!auth.user || auth.demoMode || events.length === 0) return;
@@ -650,7 +646,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       setDebouncedSearchQuery(searchQuery);
     }, librarySearchDebounceMs);
     return () => window.clearTimeout(timer);
-  }, [activeTab.kind, searchQuery, debouncedSearchQuery]);
+  }, [activeTab.kind, queueResultsScroll, searchQuery, debouncedSearchQuery]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -669,7 +665,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       setDebouncedRemoteSearchQuery(searchQuery);
     }, remoteSearchDebounceMs);
     return () => window.clearTimeout(timer);
-  }, [activeTab, searchQuery, debouncedRemoteSearchQuery]);
+  }, [activeTab, queueResultsScroll, searchQuery, debouncedRemoteSearchQuery]);
 
   useEffect(() => {
     if (!active || !showBrowse || !browseHydrated || hasPendingBrowseRestore() || activeTab.kind === "source") return;
@@ -735,7 +731,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         if (controller.signal.aborted || requestSeq !== libraryRequestSeq.current) return;
         setLibraryLoadError(libraryLoadErrorMessage(error));
         setOptimisticLibrarySearchClauses(null);
-        pendingResultsScroll.current = false;
+        cancelResultsScroll();
       })
       .finally(() => {
         if (!controller.signal.aborted && requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
@@ -745,6 +741,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     active,
     activeTab.kind,
     browseHydrated,
+    cancelResultsScroll,
     showBrowse,
     hasPendingBrowseRestore,
     librarySearchQuery,
@@ -1390,7 +1387,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         if (requestSeq !== libraryRequestSeq.current) return;
         setLibraryLoadError(error instanceof Error ? error.message : t("library.couldNotLoad"));
         setOptimisticLibrarySearchClauses(null);
-        pendingResultsScroll.current = false;
+        cancelResultsScroll();
       })
       .finally(() => {
         if (requestSeq === libraryRequestSeq.current) setIsLibraryLoading(false);
