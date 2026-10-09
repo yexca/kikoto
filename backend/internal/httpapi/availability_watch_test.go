@@ -10,8 +10,28 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
+
+// availabilityWatchDLsiteClient serves the given products and reports every
+// other code as absent from DLsite.
+type availabilityWatchDLsiteClient struct {
+	products map[string]dlsite.Product
+	requests []string
+}
+
+func (c *availabilityWatchDLsiteClient) FetchProduct(_ context.Context, code string) (dlsite.Product, error) {
+	c.requests = append(c.requests, code)
+	if product, ok := c.products[code]; ok {
+		return product, nil
+	}
+	return dlsite.Product{}, dlsite.ErrNoProduct
+}
+
+func (*availabilityWatchDLsiteClient) DownloadCover(context.Context, dlsite.Product, string) (string, error) {
+	return "", nil
+}
 
 func TestAvailabilityWatchRunRecordsActivityWithoutMaterializingUnknownWork(t *testing.T) {
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +65,7 @@ func TestAvailabilityWatchRunRecordsActivityWithoutMaterializingUnknownWork(t *t
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{})
+	server.dlsiteClient = &availabilityWatchDLsiteClient{}
 	queued, err := server.enqueueAvailabilityWatch(context.Background(), 1, workflowRunTrigger{Type: "manual", Reason: "test"})
 	if err != nil {
 		t.Fatal(err)
@@ -70,7 +91,7 @@ func TestAvailabilityWatchRunRecordsActivityWithoutMaterializingUnknownWork(t *t
 	`, queued.RunID, queued.RunID).Scan(&works, &runs, &succeededNodes, &notifications); err != nil {
 		t.Fatal(err)
 	}
-	if works != 0 || runs != 1 || succeededNodes != 4 || notifications != 2 {
+	if works != 0 || runs != 1 || succeededNodes != 5 || notifications != 2 {
 		t.Fatalf("works=%d runs=%d succeeded nodes=%d notifications=%d", works, runs, succeededNodes, notifications)
 	}
 }
@@ -104,6 +125,7 @@ func TestAvailabilityWatchRunKeepsUnavailableTargetsMonitoring(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{})
+	server.dlsiteClient = &availabilityWatchDLsiteClient{}
 	queued, err := server.enqueueAvailabilityWatch(context.Background(), 1, workflowRunTrigger{Type: "manual", Reason: "test"})
 	if err != nil {
 		t.Fatal(err)
@@ -143,6 +165,7 @@ func TestAvailabilityWatchRunRecordsMissingHealthySourceAsPartial(t *testing.T) 
 		}
 	}
 	server := NewServer(db, config.Config{})
+	server.dlsiteClient = &availabilityWatchDLsiteClient{}
 	queued, err := server.enqueueAvailabilityWatch(context.Background(), 1, workflowRunTrigger{Type: "manual", Reason: "test"})
 	if err != nil {
 		t.Fatal(err)
@@ -184,7 +207,7 @@ func TestAvailabilityWatchTargetUpdatePreservesUnchangedReadyState(t *testing.T)
 		}
 	}
 	server := NewServer(db, config.Config{})
-	if err := server.persistAvailabilityWatchTargets(context.Background(), 2, []string{"RJ00000000", "RJ00000002"}); err != nil {
+	if err := server.persistAvailabilityWatchTargets(context.Background(), 2, []string{"RJ00000000", "RJ00000002"}, true); err != nil {
 		t.Fatal(err)
 	}
 	var configuredBy int
@@ -308,7 +331,7 @@ func TestAvailabilityWatchExcludesNoExtensionsUntilConfigured(t *testing.T) {
 	if len(view.ExcludeExtensions) != 0 {
 		t.Fatalf("unconfigured watch excludes %v", view.ExcludeExtensions)
 	}
-	if err := server.persistAvailabilityWatchTargets(context.Background(), 1, []string{"RJ00000000"}); err != nil {
+	if err := server.persistAvailabilityWatchTargets(context.Background(), 1, []string{"RJ00000000"}, true); err != nil {
 		t.Fatal(err)
 	}
 	if view, err = server.loadAvailabilityWatch(context.Background()); err != nil {
@@ -316,5 +339,115 @@ func TestAvailabilityWatchExcludesNoExtensionsUntilConfigured(t *testing.T) {
 	}
 	if len(view.ExcludeExtensions) != 0 {
 		t.Fatalf("watch created from the pool excludes %v", view.ExcludeExtensions)
+	}
+}
+
+func TestAvailabilityWatchFamilyEditionSatisfiesWatchedCode(t *testing.T) {
+	const origin, translation = "RJ00000010", "RJ00000011"
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/health":
+			_ = json.NewEncoder(w).Encode("ok")
+		case "/api/search/" + translation:
+			_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{Works: []kikoeru.Work{{ID: 92, SourceID: translation, Title: "Translation"}}})
+		case "/api/search/" + origin:
+			_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{Works: []kikoeru.Work{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	db := openMigratedTestDB(t)
+	for _, statement := range []string{
+		`INSERT INTO user_account (id, username, role) VALUES (1, 'watch-admin', 'admin')`,
+		`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (1, 'example_remote', 'Example Remote', 'kikoeru_compatible', 1)`,
+		`INSERT INTO availability_watch (id, configured_by_user_id, action, source_id) VALUES (1, 1, 'monitor', 1)`,
+		`INSERT INTO availability_watch_target (id, watch_id, work_code, state, next_check_at) VALUES (1, 1, 'RJ00000010', 'monitoring', CURRENT_TIMESTAMP)`,
+		`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '0'), ('remote_request_delay_random_seconds', '0')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO file_source_endpoint (file_source_id, base_url, api_url) VALUES (1, ?, ?)`, remote.URL, remote.URL); err != nil {
+		t.Fatal(err)
+	}
+	editions := []dlsite.LanguageEdition{
+		{WorkNo: origin, DisplayOrder: 1, Label: "Japanese", Lang: "JPN"},
+		{WorkNo: translation, DisplayOrder: 2, Label: "English", Lang: "ENG"},
+	}
+	client := &availabilityWatchDLsiteClient{products: map[string]dlsite.Product{
+		origin:      {WorkNo: origin, ProductName: "Origin title", LanguageEditions: editions},
+		translation: {WorkNo: translation, ProductName: "Translation title", LanguageEditions: editions},
+	}}
+	server := NewServer(db, config.Config{})
+	server.dlsiteClient = client
+	run := func() {
+		t.Helper()
+		if _, err := server.enqueueAvailabilityWatch(context.Background(), 1, workflowRunTrigger{Type: "manual", Reason: "test"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := server.runNextQueuedWorkflowJob(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run()
+
+	var state, availableCode string
+	if err := db.QueryRow(`SELECT state, available_code FROM availability_watch_target WHERE id = 1`).Scan(&state, &availableCode); err != nil {
+		t.Fatal(err)
+	}
+	if state != "ready" || availableCode != translation {
+		t.Fatalf("target = state %q, available code %q", state, availableCode)
+	}
+	view, err := server.loadAvailabilityWatch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	codes := []string{}
+	for _, member := range view.Targets[0].Family {
+		codes = append(codes, member.Code)
+	}
+	if strings.Join(codes, ",") != origin+","+translation || view.Targets[0].Title != "Origin title" {
+		t.Fatalf("family = %+v, title %q", view.Targets[0].Family, view.Targets[0].Title)
+	}
+
+	// A fresh family is not requested from DLsite again on the next run.
+	if _, err := db.Exec(`UPDATE availability_watch_target SET state = 'monitoring', last_status = '' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	requests := len(client.requests)
+	run()
+	if len(client.requests) != requests {
+		t.Fatalf("fresh family requested again: %v", client.requests[requests:])
+	}
+}
+
+func TestAvailabilityWatchAddKeepsExistingTargets(t *testing.T) {
+	db := openMigratedTestDB(t)
+	for _, statement := range []string{
+		`INSERT INTO user_account (id, username, role) VALUES (1, 'watch-editor', 'admin')`,
+		`INSERT INTO availability_watch (id, configured_by_user_id) VALUES (1, 1)`,
+		`INSERT INTO availability_watch_target (id, watch_id, work_code, state) VALUES (1, 1, 'RJ00000000', 'monitoring')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := NewServer(db, config.Config{})
+	request := httptest.NewRequest(http.MethodPost, "/api/availability-watch/targets", strings.NewReader(`{"targetCodes":["rj00000001"]}`))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: 1, Permissions: []string{"workflows:run"}}))
+	response := httptest.NewRecorder()
+	server.addAvailabilityWatchTargets(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("add targets = %d, body = %s", response.Code, response.Body.String())
+	}
+	var active int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM availability_watch_target WHERE active = 1 AND work_code IN ('RJ00000000', 'RJ00000001')`).Scan(&active); err != nil {
+		t.Fatal(err)
+	}
+	if active != 2 {
+		t.Fatalf("active targets = %d, want 2", active)
 	}
 }

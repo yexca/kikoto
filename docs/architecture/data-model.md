@@ -595,8 +595,9 @@ and reusing the id for another work is rejected.
 [Availability Watch](workflows.md#availability-watch) configuration (action,
 source, excluded extensions and revision). `availability_watch_target` holds
 the normalized work codes in its pool with per-target check state, the source
-that became available, and child Track and Fetch run ids. A target is a code,
-not a work.
+that became available and the family edition it offered (`available_code`),
+the last family metadata refresh, and child Track and Fetch run ids. A target
+is a code, not a work.
 
 `filesystem_trigger_state` stores the fixed local-scan trigger's watched
 directory count and most recent event time. It is compact orchestration state,

@@ -129,9 +129,17 @@ Workflows make backend actions inspectable.
   output unless you scroll up. Select a stage to show only its lines, and
   select the run summary to open that run in Activity.
 - Availability Watch keeps a saved configuration. Its **Configuration** form
-  summarizes the saved values that `Run` uses, and `Configure` beside `Run`
-  opens a panel for the remote source, the action on availability, and optional
-  Fetch extension exclusions, which are off until enabled.
+  edits the remote source, the action on availability, and optional Fetch
+  extension exclusions (off until enabled) in place; `Save` beside `Run`
+  stores the changes, and `Run` waits until they are saved.
+- Below it, the **Watch pool** summarizes the watched works and when they were
+  last checked, and accepts pasted work codes to add. Works are split into
+  **Not available** and **Available**, and a long side folds behind
+  `Show all`. Before checking a code, a run refreshes its DLsite family, so a
+  work counts as available when a remote source offers any of its language
+  editions. Select a work to see its editions, which edition is available,
+  and to open or Track it. A work's `×` asks for a second click before it is
+  removed.
 - Follow a circle, Follow a series, and Follow a voice actor (tab **VAs
   follow**) are preset workflows. Their Run options have three sections:
   **Input** (the target and the catalog refresh, Incremental or Full),

@@ -1,5 +1,15 @@
 # Unreleased
 
+- Availability Watch treats a watched code as a work family. Before checking
+  a code, a run refreshes its DLsite family metadata (at most once a day), and
+  the work becomes available when a remote source offers any of its language
+  editions; Track, Fetch, and Open use the edition that was found. The
+  configuration is edited in place and stored with `Save` beside `Run`. The
+  Monitoring and Ready pools become one watch pool with a summary, quick
+  entry of pasted codes, Not available and Available sides, two-step removal,
+  and a view of each work's family. Migration 064 records the found edition
+  and the family refresh time on each watch target.
+
 - Settings on wide screens can show its tabs as a row above the content
   instead of the side column, and the Settings and Metadata rails name their
   tabs by default; a choice saved earlier on the device is kept. On phones the

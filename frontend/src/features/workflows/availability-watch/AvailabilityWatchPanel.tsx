@@ -1,16 +1,17 @@
-import { Edit3, Eye, Loader2, Save, Settings2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { Loader2, RotateCcw, Save } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { NativeSelect } from "@/components/ui/input";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { TokenInput } from "@/components/ui/token-input";
+import { AvailabilityWatchPool } from "@/features/workflows/availability-watch/AvailabilityWatchPool";
 import {
-  AvailabilityWatchMonitoringDialog,
-  AvailabilityWatchReadyDialog,
-} from "@/features/workflows/availability-watch/AvailabilityWatchDialogs";
+  availabilityWatchConfig,
+  availabilityWatchConfigDirty,
+  availabilityWatchConfigPayload,
+  type AvailabilityWatchConfig,
+} from "@/features/workflows/availability-watch/availabilityWatchModel";
 import {
   OptionField,
   SegmentedControl,
@@ -40,8 +41,6 @@ import {
 import { normalizeFetchExtension } from "@/lib/remoteFetchFilters";
 import { WORD_TOKEN_SEPARATORS } from "@/lib/tokenDraft";
 
-type AvailabilityWatchDialog = "monitoring" | "ready" | null;
-
 export function AvailabilityWatchPanel({
   definition,
   triggers,
@@ -68,7 +67,6 @@ export function AvailabilityWatchPanel({
   const toast = useToast();
   const [watch, setWatch] = useState<AvailabilityWatch | null>(null);
   const [sources, setSources] = useState<LibrarySource[]>([]);
-  const [dialog, setDialog] = useState<AvailabilityWatchDialog>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -105,22 +103,6 @@ export function AvailabilityWatchPanel({
     };
   }, []);
 
-  useEffect(() => {
-    const syncDialog = () => {
-      const search = new URLSearchParams(window.location.search);
-      if (search.get("workflow") === "availability_watch" && search.get("dialog") === "ready") {
-        setDialog("ready");
-      }
-    };
-    syncDialog();
-    window.addEventListener("popstate", syncDialog);
-    window.addEventListener("kikoto:navigation", syncDialog);
-    return () => {
-      window.removeEventListener("popstate", syncDialog);
-      window.removeEventListener("kikoto:navigation", syncDialog);
-    };
-  }, []);
-
   // Polling starts once a watch has loaded; each poll's fresh object must not restart the timer.
   const watchId = watch?.id;
   useEffect(() => {
@@ -135,25 +117,6 @@ export function AvailabilityWatchPanel({
       document.removeEventListener("visibilitychange", poll);
     };
   }, [refreshWatch, watchId]);
-
-  const openReady = () => {
-    const search = new URLSearchParams(window.location.search);
-    search.set("workflow", "availability_watch");
-    search.set("dialog", "ready");
-    search.delete("run");
-    window.history.replaceState(window.history.state, "", `/workflows?${search}`);
-    setDialog("ready");
-  };
-  const closeDialog = () => {
-    if (dialog === "ready") {
-      const search = new URLSearchParams(window.location.search);
-      search.set("workflow", "availability_watch");
-      search.delete("dialog");
-      search.delete("run");
-      window.history.replaceState(window.history.state, "", `/workflows?${search}`);
-    }
-    setDialog(null);
-  };
 
   if (loading) {
     return (
@@ -174,12 +137,10 @@ export function AvailabilityWatchPanel({
     );
   }
 
-  const monitoring = watch.targets.filter((target) => target.state === "monitoring" || target.state === "error");
-  const ready = watch.targets.filter(
-    (target) => target.state !== "monitoring" && target.state !== "error" && target.state !== "disabled",
-  );
   const nodes = parseNodes(definition.definitionJson);
   const layout = runFormLayout({ optionsTitle: workflowCopy("configuration") });
+  const sourceName = (sourceId: number | null) =>
+    sourceId ? (sources.find((source) => source.id === sourceId)?.displayName ?? `#${sourceId}`) : "";
 
   return (
     <WorkflowDetailFrame definition={definition} recentRuns={recentRuns} triggers={triggers} onOpenRun={onOpenRun}>
@@ -194,31 +155,17 @@ export function AvailabilityWatchPanel({
           onRunQueued={onRunQueued}
         />
 
-        <section
-          className="grid overflow-hidden rounded-lg border bg-card sm:grid-cols-2"
-          aria-label={workflowCopy("availabilityPools")}
-        >
-          <div className="flex min-w-0 items-center justify-between gap-3 px-4 py-3.5">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold">{workflowCopy("monitoring")}</div>
-              <div className="mt-1 text-2xl font-semibold">{monitoring.length}</div>
-            </div>
-            <Button size="sm" variant="outline" onClick={() => setDialog("monitoring")}>
-              <Edit3 className="h-4 w-4" />
-              {workflowCopy("editNode")}
-            </Button>
-          </div>
-          <div className="flex min-w-0 items-center justify-between gap-3 border-t px-4 py-3.5 sm:border-l sm:border-t-0">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold">{workflowCopy("ready")}</div>
-              <div className="mt-1 text-2xl font-semibold">{ready.length}</div>
-            </div>
-            <Button size="sm" variant="outline" onClick={openReady}>
-              <Eye className="h-4 w-4" />
-              {workflowCopy("view")}
-            </Button>
-          </div>
-        </section>
+        <AvailabilityWatchPool
+          watch={watch}
+          sourceName={sourceName}
+          readOnly={readOnly}
+          onWatchChange={setWatch}
+          onRefresh={() =>
+            void refreshWatch().catch((error) =>
+              toast.notify(toastFromError(error, workflowCopy("readyPoolRefreshFailed"))),
+            )
+          }
+        />
 
         <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} />
         <div className="workflow-detail-pair">
@@ -238,24 +185,20 @@ export function AvailabilityWatchPanel({
           </WorkflowPanel>
         </div>
       </div>
-
-      {dialog === "monitoring" && (
-        <AvailabilityWatchMonitoringDialog watch={watch} readOnly={readOnly} onClose={closeDialog} onSaved={setWatch} />
-      )}
-      {dialog === "ready" && (
-        <AvailabilityWatchReadyDialog
-          targets={ready}
-          readOnly={readOnly}
-          onClose={closeDialog}
-          onChanged={() =>
-            void refreshWatch().catch((error) =>
-              toast.notify(toastFromError(error, workflowCopy("readyPoolRefreshFailed"))),
-            )
-          }
-        />
-      )}
     </WorkflowDetailFrame>
   );
+}
+
+/** Any healthy source, then each enabled compatible source; a saved source that is no longer listed stays selectable. */
+function availabilityWatchSourceOptions(sources: LibrarySource[], selectedId: number) {
+  const options = [
+    { value: "0", label: workflowCopy("anyHealthySource") },
+    ...sources.map((source) => ({ value: String(source.id), label: source.displayName })),
+  ];
+  if (selectedId > 0 && !sources.some((source) => source.id === selectedId)) {
+    options.push({ value: String(selectedId), label: `#${selectedId}` });
+  }
+  return options;
 }
 
 function availabilityWatchActionOptions(canManageDownloads: boolean) {
@@ -268,8 +211,8 @@ function availabilityWatchActionOptions(canManageDownloads: boolean) {
 }
 
 /**
- * Availability Watch keeps a saved configuration, so its header offers
- * Configure beside Run and the section below summarizes what Run will use.
+ * Availability Watch keeps a saved configuration that is edited in place; the
+ * run bar saves it, and Run waits until the edits are saved.
  */
 function AvailabilityWatchRunForm({
   layout,
@@ -289,117 +232,29 @@ function AvailabilityWatchRunForm({
   onRunQueued: () => void;
 }) {
   const toast = useToast();
-  const configureRef = useRef<HTMLButtonElement | null>(null);
-  const [configuring, setConfiguring] = useState(false);
-  const [running, setRunning] = useState(false);
-  const sourceName = watch.sourceId
-    ? (sources.find((source) => source.id === watch.sourceId)?.displayName ?? `#${watch.sourceId}`)
-    : workflowCopy("anyHealthySource");
-  const actionName =
-    availabilityWatchActionOptions(true).find((option) => option.value === watch.action)?.label ?? watch.action;
-
-  const run = async () => {
-    setRunning(true);
-    try {
-      await api.runAvailabilityWatch();
-      onRunQueued();
-    } catch (error) {
-      toast.notify(toastFromError(error, workflowCopy("availabilityWatchRunFailed")));
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  const summary: [string, string][] = [
-    [workflowCopy("remoteSource"), sourceName],
-    [workflowCopy("whenAvailable"), actionName],
-    [
-      workflowCopy("excludeExtensions"),
-      watch.excludeExtensions.length > 0 ? watch.excludeExtensions.join(", ") : workflowCopy("noExcludedExtensions"),
-    ],
-  ];
-
-  return (
-    <>
-      {layout({
-        run: <WorkflowRunButton running={running} disabled={readOnly} onClick={() => void run()} />,
-        actions: (
-          <Button
-            ref={configureRef}
-            variant="outline"
-            aria-expanded={configuring}
-            onClick={() => setConfiguring((open) => !open)}
-          >
-            <Settings2 className="h-4 w-4" />
-            {workflowCopy("configure")}
-          </Button>
-        ),
-        options: (
-          <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-3">
-            {summary.map(([term, detail]) => (
-              <div key={term} className="min-w-0">
-                <dt className="text-xs text-muted-foreground">{term}</dt>
-                <dd className="mt-1 truncate text-sm font-medium" title={detail}>
-                  {detail}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        ),
-      })}
-      {configuring && (
-        <AvailabilityWatchConfigurePopover
-          anchorRef={configureRef}
-          watch={watch}
-          sources={sources}
-          readOnly={readOnly}
-          canManageDownloads={canManageDownloads}
-          onClose={() => setConfiguring(false)}
-          onSaved={onSaved}
-        />
-      )}
-    </>
-  );
-}
-
-function AvailabilityWatchConfigurePopover({
-  anchorRef,
-  watch,
-  sources,
-  readOnly,
-  canManageDownloads,
-  onClose,
-  onSaved,
-}: {
-  anchorRef: RefObject<HTMLButtonElement | null>;
-  watch: AvailabilityWatch;
-  sources: LibrarySource[];
-  readOnly: boolean;
-  canManageDownloads: boolean;
-  onClose: () => void;
-  onSaved: (watch: AvailabilityWatch) => void;
-}) {
-  const toast = useToast();
-  const [action, setAction] = useState<AvailabilityWatch["action"]>(watch.action);
-  const [sourceId, setSourceId] = useState(watch.sourceId ?? 0);
-  const [excludeEnabled, setExcludeEnabled] = useState(watch.excludeExtensions.length > 0);
-  const [excluded, setExcluded] = useState(watch.excludeExtensions);
+  const [config, setConfig] = useState(() => availabilityWatchConfig(watch));
   const [saving, setSaving] = useState(false);
+  const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  const dirty = availabilityWatchConfigDirty(config, watch);
   const disabled = readOnly || saving;
+  const update = (patch: Partial<AvailabilityWatchConfig>) => setConfig((current) => ({ ...current, ...patch }));
+
+  // A configuration saved elsewhere replaces the form only while it holds no edits.
+  const latest = useRef({ watch, dirty });
+  latest.current = { watch, dirty };
+  useEffect(() => {
+    if (!latest.current.dirty) setConfig(availabilityWatchConfig(latest.current.watch));
+  }, [watch.revision]);
 
   const save = async () => {
     setSaving(true);
     setError("");
     try {
-      const saved = await api.updateAvailabilityWatch({
-        action,
-        sourceId: sourceId || null,
-        excludeExtensions: excludeEnabled ? excluded : [],
-      });
+      const saved = await api.updateAvailabilityWatch(availabilityWatchConfigPayload(config));
+      setConfig(availabilityWatchConfig(saved));
       onSaved(saved);
       toast.success(workflowCopy("availabilityWatchSaved"));
-      onClose();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : workflowCopy("availabilityWatchSaveFailed"));
     } finally {
@@ -407,72 +262,79 @@ function AvailabilityWatchConfigurePopover({
     }
   };
 
-  return (
-    <AnchoredPopover
-      open
-      anchorRef={anchorRef}
-      onOpenChange={(open) => !open && onClose()}
-      ariaLabel={workflowCopy("configuration")}
-      className="w-[min(28rem,calc(100vw-1.5rem))] p-4"
-    >
+  const run = async () => {
+    setRunning(true);
+    try {
+      await api.runAvailabilityWatch();
+      onRunQueued();
+    } catch (runError) {
+      toast.notify(toastFromError(runError, workflowCopy("availabilityWatchRunFailed")));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return layout({
+    run: <WorkflowRunButton running={running} disabled={readOnly || dirty || saving} onClick={() => void run()} />,
+    actions: (
+      <Button variant="outline" onClick={() => void save()} disabled={disabled || !dirty}>
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        {workflowCopy("save")}
+      </Button>
+    ),
+    optionsActions: dirty && !saving && (
+      <Button size="sm" variant="ghost" onClick={() => setConfig(availabilityWatchConfig(watch))}>
+        <RotateCcw className="h-4 w-4" />
+        {workflowCopy("discardChanges")}
+      </Button>
+    ),
+    blocker: dirty && !readOnly && (
+      <span className="text-xs text-muted-foreground">{workflowCopy("saveBeforeRunning")}</span>
+    ),
+    options: (
       <div className="grid gap-4">
-        <h4 className="text-sm font-semibold">{workflowCopy("configuration")}</h4>
-        <OptionField label={workflowCopy("remoteSource")} htmlFor="availability-watch-source" stacked>
-          <NativeSelect
-            id="availability-watch-source"
-            fieldSize="sm"
-            value={sourceId}
-            onChange={(event) => setSourceId(Number(event.target.value))}
+        <OptionField label={workflowCopy("remoteSource")}>
+          <SegmentedControl
+            label={workflowCopy("remoteSource")}
+            value={String(config.sourceId)}
+            onChange={(sourceId) => update({ sourceId: Number(sourceId) })}
             disabled={disabled}
-          >
-            <option value={0}>{workflowCopy("anyHealthySource")}</option>
-            {sources.map((source) => (
-              <option key={source.id} value={source.id}>
-                {source.displayName}
-              </option>
-            ))}
-          </NativeSelect>
+            options={availabilityWatchSourceOptions(sources, config.sourceId)}
+          />
         </OptionField>
-        <OptionField label={workflowCopy("whenAvailable")} stacked>
+        <OptionField label={workflowCopy("whenAvailable")}>
           <SegmentedControl
             label={workflowCopy("whenAvailable")}
-            value={action}
-            onChange={setAction}
+            value={config.action}
+            onChange={(action) => update({ action })}
             disabled={disabled}
             options={availabilityWatchActionOptions(canManageDownloads)}
           />
         </OptionField>
-        <OptionField label={workflowCopy("excludeExtensions")} stacked>
-          <SwitchControl
-            label={workflowCopy("excludeExtensions")}
-            description={workflowCopy("excludeExtensionsDescription")}
-            checked={excludeEnabled}
-            onCheckedChange={setExcludeEnabled}
-            disabled={disabled}
-          />
-          {excludeEnabled && (
-            <TokenInput
-              ariaLabel={workflowCopy("extensionsToExclude")}
-              values={excluded}
-              onChange={setExcluded}
-              normalize={normalizeFetchExtension}
-              separators={WORD_TOKEN_SEPARATORS}
-              placeholder={workflowCopy("extensionsPlaceholder")}
+        <OptionField label={workflowCopy("excludeExtensions")}>
+          <div className="grid gap-2">
+            <SwitchControl
+              label={workflowCopy("excludeExtensions")}
+              description={workflowCopy("excludeExtensionsDescription")}
+              checked={config.excludeEnabled}
+              onCheckedChange={(excludeEnabled) => update({ excludeEnabled })}
               disabled={disabled}
             />
-          )}
+            {config.excludeEnabled && (
+              <TokenInput
+                ariaLabel={workflowCopy("extensionsToExclude")}
+                values={config.excludeExtensions}
+                onChange={(excludeExtensions) => update({ excludeExtensions })}
+                normalize={normalizeFetchExtension}
+                separators={WORD_TOKEN_SEPARATORS}
+                placeholder={workflowCopy("extensionsPlaceholder")}
+                disabled={disabled}
+              />
+            )}
+          </div>
         </OptionField>
         {error && <ErrorPanel error={error} />}
-        <div className="flex justify-end gap-2 border-t pt-3">
-          <Button size="sm" variant="ghost" onClick={onClose}>
-            {workflowCopy("cancel")}
-          </Button>
-          <Button size="sm" onClick={() => void save()} disabled={disabled}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {workflowCopy("save")}
-          </Button>
-        </div>
       </div>
-    </AnchoredPopover>
-  );
+    ),
+  });
 }
