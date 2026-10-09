@@ -1,8 +1,8 @@
 # 用户指南
 
-[English](../en/index.md) · [简体中文](index.md) · [繁體中文](../zh-Hant/index.md) · [日本語](../ja/index.md) · [한국어](../ko/index.md)
+[English](index.md) · [简体中文](../zh-Hans/index.md) · [繁體中文](../zh-Hant/index.md) · [日本語](../ja/index.md) · [한국어](../ko/index.md)
 
-本组文档介绍安装方式和用户可见的行为。若改动影响界面、可用操作或工作流名称，请先更新英文页面，再标记各译文待复核。
+这些页面介绍安装方法和用户可见的行为。如果某项变更会影响用户看到的内容、可用的操作或工作流的命名，请先更新英文页面，再将翻译标记为待审核。
 
 - [媒体库](library.md)
 - [作品详情](work-detail.md)
@@ -15,15 +15,15 @@
 
 ## 产品原则
 
-- 同一作品即使同时存在 Local、Cache、Tracked 和远程来源，也只显示为一个统一项目。
-- 远程来源发生故障时，Local 和 Cache 状态仍应可用。
-- 远程来源操作必须明确：Sync 更新来源数据，Cache 生成缓存文件，Fetch 将选定文件提升到本地 data 树。
-- 长时间运行或需要审核的操作应在 Activity 中可见。
+- 即使一部作品同时存在本地、缓存、已跟踪和远程来源的可用状态，它在媒体库中也只显示为一个统一的条目。
+- 远程来源出现故障时，本地和缓存状态应保持可用。
+- 远程来源的操作应当明确：同步更新来源数据，缓存将缓存文件落地，Fetch 则把选中的文件提升到本地数据目录树中。
+- 耗时较长或需要审阅的操作应当能在“活动”中看到。
 
 ## 相关文档
 
 - [核心边界](../../architecture/core-boundaries.md)
-- [来源存在状态](../../architecture/source-presence.md)
-- [前端指南](../../development/frontend-guidelines.md)
+- [来源存在性](../../architecture/source-presence.md)
+- [前端准则](../../development/frontend-guidelines.md)
 
 - [个人数据](personal-data.md)
