@@ -575,6 +575,8 @@ export const zhHansResource = {
         collapse: "收起",
         showTabNames: "展开标签页名称",
         hideTabNames: "收起标签页名称",
+        showTabsAbove: "标签页移到上方",
+        showTabsBeside: "标签页移到侧边",
         thisPage: "此页面",
         workflowSubmitting: "工作流请求仍在提交中。",
         pressBackAgain: "再次按返回键退出 Kikoto。",

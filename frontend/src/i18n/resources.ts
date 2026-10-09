@@ -265,6 +265,8 @@ export const englishResource = {
         collapse: "Collapse",
         showTabNames: "Show tab names",
         hideTabNames: "Hide tab names",
+        showTabsAbove: "Show tabs above",
+        showTabsBeside: "Show tabs beside",
         thisPage: "This page",
         workflowSubmitting: "The workflow request is still being submitted.",
         pressBackAgain: "Press back again to exit Kikoto.",

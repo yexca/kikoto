@@ -597,23 +597,68 @@ test("administrators see administration tabs after the personal tabs in one list
   await expect(page).toHaveURL(/\/settings$/);
 });
 
-test("@desktop the Settings rail can name every tab and remembers the choice", async ({ page }) => {
+test("@desktop the Settings rail names every tab by default and remembers hiding them", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings");
   const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
-  // An inactive tab's name is only visually hidden until the rail expands.
   const name = tabs.getByRole("tab", { name: "Recommendations", exact: true }).getByText("Recommendations");
   const nameWidth = async () => (await name.boundingBox())?.width ?? 0;
-  expect(await nameWidth()).toBeLessThanOrEqual(1);
+  await expect.poll(nameWidth).toBeGreaterThan(1);
+
+  // A collapsed rail keeps an inactive tab's name only visually hidden.
+  await page.getByRole("button", { name: "Hide tab names", exact: true }).click();
+  await expect.poll(nameWidth).toBeLessThanOrEqual(1);
+  await page.reload();
+  await expect.poll(nameWidth).toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "Show tab names", exact: true }).click();
   await expect.poll(nameWidth).toBeGreaterThan(1);
-  await page.reload();
-  await expect.poll(nameWidth).toBeGreaterThan(1);
+  await expect(page.getByRole("button", { name: "Hide tab names", exact: true })).toBeVisible();
+});
 
-  await page.getByRole("button", { name: "Hide tab names", exact: true }).click();
-  await expect.poll(nameWidth).toBeLessThanOrEqual(1);
-  await expect(page.getByRole("button", { name: "Show tab names", exact: true })).toBeVisible();
+test("@desktop the Settings tabs can move into a row above the content and back", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+  await page.goto("/settings?tab=library");
+  const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
+  await expect(tabs).toHaveAttribute("aria-orientation", "vertical");
+
+  await page.getByRole("button", { name: "Show tabs above", exact: true }).click();
+  await expect(tabs).toHaveAttribute("aria-orientation", "horizontal");
+  await page.reload();
+  await expect(tabs).toHaveAttribute("aria-orientation", "horizontal");
+  await expect(page.getByRole("button", { name: "Hide tab names", exact: true })).toHaveCount(0);
+
+  // The row stays on one line above the panel and names as much as fits: every tab, then the
+  // selected tab's group beside the other group's icons, then only the selected tab.
+  const namedTabs = () =>
+    tabs
+      .getByRole("tab")
+      .evaluateAll((buttons) =>
+        buttons.filter((button) => button.querySelector("span:not(.sr-only)")).map((button) => button.textContent),
+      );
+  const rowLayout = () =>
+    tabs.getByRole("tab").evaluateAll((buttons) => {
+      const panel = document.querySelector('[role="tabpanel"]')!.getBoundingClientRect();
+      const boxes = buttons.map((button) => button.getBoundingClientRect());
+      return {
+        lines: new Set(boxes.map((box) => Math.round(box.top))).size,
+        abovePanel: boxes.every((box) => box.bottom <= panel.top),
+        pageFits: document.documentElement.scrollWidth <= window.innerWidth,
+      };
+    });
+  const administration = ["Library", "Cache & Fetch", "Proxy", "Cleanup", "Users"];
+  for (const [width, named] of [
+    [1920, ["Account", "Playback", "History", "Recommendations", "Tags", ...administration]],
+    [1366, administration],
+    [1024, ["Library"]],
+  ] as const) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect.poll(namedTabs).toEqual(named);
+    expect(await rowLayout()).toEqual({ lines: 1, abovePanel: true, pageFits: true });
+  }
+
+  await page.getByRole("button", { name: "Show tabs beside", exact: true }).click();
+  await expect(tabs).toHaveAttribute("aria-orientation", "vertical");
 });
 
 test("personal playback seek intervals use the requested defaults and persist locally", async ({ page }) => {
@@ -777,8 +822,8 @@ for (const layout of ["mobile", "@desktop"]) {
       "true",
     );
     await expect(navigation).toHaveAttribute("aria-orientation", orientation);
-    // Only the wide rail can expand to name every tab; the compact row already names the active one.
-    await expect(page.getByRole("button", { name: "Show tab names", exact: true })).toHaveCount(
+    // Only the wide rail names every tab; the compact row already names the active one.
+    await expect(page.getByRole("button", { name: "Hide tab names", exact: true })).toHaveCount(
       orientation === "vertical" ? 1 : 0,
     );
     // A deep link to a later tab scrolls the compact row so the selected tab shows.
@@ -794,6 +839,15 @@ for (const layout of ["mobile", "@desktop"]) {
     expect(Math.max(...sharedEdge) - Math.min(...sharedEdge)).toBeLessThanOrEqual(1);
     const flow = boxes.map((box) => (orientation === "horizontal" ? box.left : box.top));
     expect(flow).toEqual([...flow].sort((a, b) => a - b));
+    if (orientation === "horizontal") {
+      // The row scrolls only sideways; a vertical wheel over it must not nudge the tabs.
+      const row = await navigation.boundingBox();
+      await page.mouse.move(row!.x + 20, row!.y + row!.height / 2);
+      await page.mouse.wheel(0, 40);
+      // Give a wheel scroll time to land before asserting that nothing moved.
+      await page.waitForTimeout(300);
+      expect(await navigation.evaluate((list) => list.scrollTop)).toBe(0);
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await expect(page.getByText("Storage paths", { exact: true })).toBeVisible();
     await navigation.getByRole("tab", { name: "Users", exact: true }).click();

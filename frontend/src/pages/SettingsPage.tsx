@@ -7,6 +7,7 @@ import {
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { SettingsNumberInput, SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 import { IconRail, type IconRailItem } from "@/components/ui/icon-rail";
+import { useRailOrientation } from "@/components/ui/rail-labels";
 import {
   Download,
   Eraser,
@@ -30,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { cx } from "@/lib/classNames";
 import { supportsNativePrivacy } from "@/lib/nativePrivacy";
 import { api, type CurrentUser } from "@/lib/api";
 import { validatePasswordChange, type PasswordChangeDraft } from "@/pages/accountSettings";
@@ -125,6 +127,7 @@ export function SettingsPage({
     backward: String(seekPreferences.seekBackwardSeconds),
   }));
   const [seekError, setSeekError] = useState<string | null>(null);
+  const [railOrientation, toggleRailOrientation] = useRailOrientation("kikoto:settings-rail-orientation");
   // Demo shows every administration surface read-only even though its identity
   // is not an administrator; the server rejects every write.
   const canViewAdministration = readOnly || user.role === "admin" || user.role === "super_admin";
@@ -337,13 +340,15 @@ export function SettingsPage({
   return (
     <div className="space-y-6">
       {readOnly && <DemoReadOnlyNotice />}
-      <div className="flex min-w-0 flex-col gap-6 lg:flex-row lg:gap-8">
+      <div className={cx("flex min-w-0 flex-col gap-6", railOrientation === "vertical" && "lg:flex-row lg:gap-8")}>
         <IconRail
           label={t("nav.settings")}
           labelsStorageKey="kikoto:settings-rail-labels-shown"
           items={railItems}
           selected={activeTab}
           onSelect={selectTab}
+          orientation={railOrientation}
+          onToggleOrientation={toggleRailOrientation}
         />
         <div className="min-w-0 flex-1">
           {activeTab === "account" && (
