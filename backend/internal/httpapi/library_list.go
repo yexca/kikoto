@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/demopresentation"
 	"github.com/yexca/kikoto/backend/internal/library"
 )
 
@@ -95,7 +96,7 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid recommendation session"})
 		return
 	}
-	page, err := s.libraryStore.ListPage(r.Context(), library.ListOptions{
+	options := library.ListOptions{
 		UserID: userID, Page: queryInt(r, "page", 1), PageSize: queryInt(r, "pageSize", 24),
 		Scope:  strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope"))),
 		Status: strings.TrimSpace(r.URL.Query().Get("status")), Query: strings.TrimSpace(r.URL.Query().Get("q")),
@@ -105,7 +106,17 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		RecommendationSessionID: recommendationSessionID,
 		DemoOnly:                s.cfg.IsDemo(),
 		TitleLanguages:          s.titleSortLanguages(r.Context(), r.URL.Query().Get("sort")),
-	})
+	}
+	showDemoScores := s.cfg.IsDemo() && (options.IncludeRecommendation || strings.EqualFold(options.Sort, "recommend"))
+	if s.cfg.IsDemo() {
+		options.VisibilityPredicateSQL = demoLibraryVisibilityPredicateSQL
+		if strings.EqualFold(options.Sort, "recommend") {
+			options.Sort = "random"
+		}
+		options.IncludeRecommendation = false
+		options.RecommendationSessionID = ""
+	}
+	page, err := s.libraryStore.ListPage(r.Context(), options)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -116,11 +127,18 @@ func (s *Server) listWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if showDemoScores {
+		for index := range works {
+			works[index].RecommendScore = demopresentation.RecommendationScore(recommendationSessionID, works[index].PrimaryCode)
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"works":    works,
-		"page":     page.Page,
-		"pageSize": page.PageSize,
-		"total":    page.Total,
+		"works":                     works,
+		"page":                      page.Page,
+		"pageSize":                  page.PageSize,
+		"total":                     page.Total,
+		"recommendationContext":     page.RecommendationContext,
+		"recommendationUnavailable": page.RecommendationUnavailable,
 	})
 }
 

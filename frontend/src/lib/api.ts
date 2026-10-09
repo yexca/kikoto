@@ -75,7 +75,8 @@ export type RecommendationConfig = {
   explorationAmplitude: number;
 };
 
-export type RecommendationBreakdown = {
+export type RecommendationAffinityBreakdown = {
+  scoreKind?: "affinity";
   algorithmVersion: string;
   lane: "unmarked" | "want" | "listening" | "finished" | "relisten" | "shelved";
   score: number;
@@ -106,6 +107,16 @@ export type RecommendationBreakdown = {
     cap: number;
   }>;
 };
+
+export type DemoRecommendationBreakdown = {
+  scoreKind: "demo_random";
+  algorithmVersion: "demo-random-v1";
+  score: number;
+  rawScore: number;
+  components: [];
+};
+
+export type RecommendationBreakdown = RecommendationAffinityBreakdown | DemoRecommendationBreakdown;
 
 export type RecommendationEventInput = {
   workId?: number;
@@ -289,6 +300,8 @@ export type WorksPage = {
   page: number;
   pageSize: number;
   total: number;
+  recommendationContext?: string;
+  recommendationUnavailable?: boolean;
 };
 
 export type UnlinkedWorkMaintenanceSkip = {
@@ -892,6 +905,7 @@ export type RemoteWorksResponse = {
   sort: LibrarySort;
   direction: SortDirection;
   sortApplied: boolean;
+  recommendationUnavailable?: boolean;
 };
 
 export type RemoteWork = {
@@ -2542,10 +2556,11 @@ export const api = {
     payload: { displayName?: string; role?: ManagedUser["role"]; password?: string; enabled?: boolean },
   ) => patchJSONBody<ManagedUser>(`/api/users/${id}`, payload),
   deleteUser: (id: number) => deleteJSON<{ ok: boolean }>(`/api/users/${id}`),
-  getWorkRecommendation: (id: number, recommendationSession = "", seed?: number) => {
+  getWorkRecommendation: (id: number, recommendationSession = "", seed?: number, recommendationContext = "") => {
     const params = new URLSearchParams();
     if (recommendationSession) params.set("recommendationSession", recommendationSession);
     if (seed !== undefined) params.set("seed", String(seed));
+    if (recommendationContext) params.set("recommendationContext", recommendationContext);
     const query = params.toString();
     return getJSON<RecommendationBreakdown>(`/api/works/${id}/recommendation${query ? `?${query}` : ""}`);
   },
@@ -2620,9 +2635,10 @@ export const api = {
     seed = 1,
     recommendBadges = false,
     signal?: AbortSignal,
+    recommendationSession = "",
   ) =>
     getJSON<RemoteWorksResponse>(
-      `/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}&recommendBadges=${recommendBadges}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}`,
+      `/api/remote-sources/${id}/works?page=${page}&pageSize=${pageSize}&sort=${encodeURIComponent(sort)}&direction=${encodeURIComponent(direction)}&seed=${seed}&recommendBadges=${recommendBadges}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ""}${recommendationSession ? `&recommendationSession=${encodeURIComponent(recommendationSession)}` : ""}`,
       signal,
     ),
   scoreRemoteRecommendations: (

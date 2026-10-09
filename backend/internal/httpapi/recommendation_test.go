@@ -41,6 +41,7 @@ func TestWorkRecommendationScoreUsesPositiveTagHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	publishRecommendationTestCatalog(t, server)
 	score, err := server.workRecommendationScore(context.Background(), userID, candidateID)
 	if err != nil {
 		t.Fatal(err)
@@ -58,6 +59,7 @@ func TestPausedSimilarityNeedsRepeatedEvidence(t *testing.T) {
 	linkRecommendationTag(t, db, firstPausedID, tagID)
 	setRecommendationState(t, db, userID, firstPausedID, "paused", false)
 
+	publishRecommendationTestCatalog(t, server)
 	breakdown, err := server.libraryStore.RecommendationBreakdown(context.Background(), userID, candidateID)
 	if err != nil {
 		t.Fatal(err)
@@ -69,6 +71,7 @@ func TestPausedSimilarityNeedsRepeatedEvidence(t *testing.T) {
 	secondPausedID := insertRecommendationWork(t, db, "RJ00000003", "Second shelved")
 	linkRecommendationTag(t, db, secondPausedID, tagID)
 	setRecommendationState(t, db, userID, secondPausedID, "paused", false)
+	publishRecommendationTestCatalog(t, server)
 	breakdown, err = server.libraryStore.RecommendationBreakdown(context.Background(), userID, candidateID)
 	if err != nil {
 		t.Fatal(err)
@@ -91,6 +94,7 @@ func TestPositiveHistoryBlocksPausedSimilarity(t *testing.T) {
 	linkRecommendationTag(t, db, likedID, tagID)
 	setRecommendationState(t, db, userID, likedID, "relisten", false)
 
+	publishRecommendationTestCatalog(t, server)
 	breakdown, err := server.libraryStore.RecommendationBreakdown(context.Background(), userID, candidateID)
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +112,7 @@ func TestFinishedHistoryIsNeutralAffinityEvidence(t *testing.T) {
 	linkRecommendationTag(t, db, finishedID, tagID)
 	setRecommendationState(t, db, userID, finishedID, "finished", false)
 
+	publishRecommendationTestCatalog(t, server)
 	breakdown, err := server.libraryStore.RecommendationBreakdown(context.Background(), userID, candidateID)
 	if err != nil {
 		t.Fatal(err)
@@ -127,6 +132,7 @@ func TestFavoritePausedHistoryDoesNotPropagateNegativePreference(t *testing.T) {
 		setRecommendationState(t, db, userID, workID, "paused", true)
 	}
 
+	publishRecommendationTestCatalog(t, server)
 	breakdown, err := server.libraryStore.RecommendationBreakdown(context.Background(), userID, candidateID)
 	if err != nil {
 		t.Fatal(err)
@@ -144,6 +150,7 @@ func TestRecommendationListScoreMatchesBreakdown(t *testing.T) {
 	linkRecommendationTag(t, db, likedID, tagID)
 	setRecommendationState(t, db, userID, likedID, "relisten", false)
 
+	publishRecommendationTestCatalog(t, server)
 	breakdown, err := server.libraryStore.RecommendationBreakdown(context.Background(), userID, candidateID)
 	if err != nil {
 		t.Fatal(err)
@@ -173,6 +180,7 @@ func TestRecommendationSeedOrderIsStableAndExploresAcrossSeeds(t *testing.T) {
 	setRecommendationState(t, db, userID, highID, "none", true)
 
 	listIDs := func(seed int64) []int64 {
+		publishRecommendationTestCatalog(t, server)
 		page, err := server.libraryStore.ListPage(context.Background(), library.ListOptions{
 			UserID: userID, Page: 1, PageSize: 100, Scope: "all", Status: "all", Sort: "recommend", Direction: "desc", RandomSeed: seed,
 		})
@@ -206,13 +214,24 @@ func TestRecommendationSeedOrderIsStableAndExploresAcrossSeeds(t *testing.T) {
 	}
 }
 
-func TestWorkRecommendationIncludesSeededOrderingFromSessionConfig(t *testing.T) {
+func TestWorkRecommendationContextUsesFrozenOrderingAndValidatesOwnership(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	userID, candidateID, _ := seedRecommendationUserCandidateAndTag(t, db)
+	publishRecommendationTestCatalog(t, server)
 	snapshot, err := server.libraryStore.PrepareRecommendationSession(context.Background(), userID, "session-ordering")
 	if err != nil {
 		t.Fatal(err)
+	}
+	page, err := server.libraryStore.ListPage(context.Background(), library.ListOptions{
+		UserID: userID, Page: 1, PageSize: 100, Scope: "all", Status: "all", Sort: "recommend", Direction: "desc", RandomSeed: 71,
+		RecommendationSessionID: "session-ordering",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.RecommendationContext == "" {
+		t.Fatal("list omitted recommendation context")
 	}
 	updatedConfig := snapshot.Config
 	updatedConfig.ExplorationAmplitude = 0
@@ -224,7 +243,7 @@ func TestWorkRecommendationIncludesSeededOrderingFromSessionConfig(t *testing.T)
 		t.Fatal(err)
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "/api/works/1/recommendation?recommendationSession=session-ordering&seed=71", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/works/1/recommendation?recommendationSession=session-ordering&recommendationContext="+page.RecommendationContext, nil)
 	request.SetPathValue("id", strconv.FormatInt(candidateID, 10))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID}))
 	response := httptest.NewRecorder()
@@ -237,51 +256,68 @@ func TestWorkRecommendationIncludesSeededOrderingFromSessionConfig(t *testing.T)
 		t.Fatal(err)
 	}
 	if breakdown.Ordering == nil {
-		t.Fatal("response omitted seeded ordering")
+		t.Fatal("response omitted context ordering")
 	}
-	want := library.RecommendationOrderingFor(candidateID, breakdown.Score, 71, snapshot.Config)
+	want := library.RecommendationOrderingFor(candidateID, breakdown.Score, 71, snapshot.Config, breakdown.Signals.DiversityPenalty)
 	if *breakdown.Ordering != want {
 		t.Fatalf("ordering = %+v, want %+v", *breakdown.Ordering, want)
 	}
-	current := library.RecommendationOrderingFor(candidateID, breakdown.Score, 71, updatedConfig)
-	if breakdown.Ordering.ExplorationBoost == current.ExplorationBoost {
-		t.Fatalf("ordering used current config %+v instead of frozen session config %+v", *breakdown.Ordering, snapshot.Config)
+
+	other, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('context-other', 'Example User', 'user')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherID, _ := other.LastInsertId()
+	for _, principal := range []int64{0, otherID} {
+		request := httptest.NewRequest(http.MethodGet, "/api/works/1/recommendation?recommendationSession=session-ordering&recommendationContext="+page.RecommendationContext, nil)
+		request.SetPathValue("id", strconv.FormatInt(candidateID, 10))
+		if principal > 0 {
+			request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: principal}))
+		}
+		response := httptest.NewRecorder()
+		server.getWorkRecommendation(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("principal %d status = %d, body = %s", principal, response.Code, response.Body.String())
+		}
 	}
 }
 
-func TestWorkRecommendationNormalizesInvalidSeedLikeRecommendationList(t *testing.T) {
+func TestWorkRecommendationWithoutContextReportsAffinityOnly(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
-	userID, candidateID, _ := seedRecommendationUserCandidateAndTag(t, db)
-	user := account.User{ID: userID}
-
-	requestForSeed := func(seed string) library.RecommendationOrdering {
-		t.Helper()
-		request := httptest.NewRequest(http.MethodGet, "/api/works/1/recommendation?seed="+seed, nil)
+	userID, candidateID, tagID := seedRecommendationUserCandidateAndTag(t, db)
+	likedID := insertRecommendationWork(t, db, "RJ00000002", "Example Liked Work")
+	linkRecommendationTag(t, db, likedID, tagID)
+	setRecommendationState(t, db, userID, likedID, "relisten", false)
+	publishRecommendationTestCatalog(t, server)
+	for _, suffix := range []string{"", "?seed=71", "?recommendationSession=affinity-only&seed=71"} {
+		request := httptest.NewRequest(http.MethodGet, "/api/works/1/recommendation"+suffix, nil)
 		request.SetPathValue("id", strconv.FormatInt(candidateID, 10))
-		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, user))
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID}))
 		response := httptest.NewRecorder()
 		server.getWorkRecommendation(response, request)
 		if response.Code != http.StatusOK {
-			t.Fatalf("seed %q status = %d, body = %s", seed, response.Code, response.Body.String())
+			t.Fatalf("%q status = %d, body = %s", suffix, response.Code, response.Body.String())
 		}
 		var breakdown library.RecommendationBreakdown
 		if err := json.Unmarshal(response.Body.Bytes(), &breakdown); err != nil {
 			t.Fatal(err)
 		}
-		if breakdown.Ordering == nil {
-			t.Fatalf("seed %q omitted ordering", seed)
+		if breakdown.Score != 38 || breakdown.Ordering != nil || breakdown.Signals.DiversityPenalty != 0 {
+			t.Fatalf("%q explanation = %+v, want affinity 38 without query ordering", suffix, breakdown)
 		}
-		return *breakdown.Ordering
 	}
+}
 
-	for _, invalidSeed := range []string{"0", "invalid"} {
-		ordering := requestForSeed(invalidSeed)
-		if ordering.Seed != 1 {
-			t.Fatalf("seed %q normalized to %d, want 1", invalidSeed, ordering.Seed)
+func publishRecommendationTestCatalog(t *testing.T, server *Server) {
+	t.Helper()
+	for {
+		processed, err := server.libraryStore.ProcessRecommendationCatalog(context.Background(), 64)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if want := requestForSeed("1"); ordering != want {
-			t.Fatalf("seed %q ordering = %+v, want seed 1 ordering %+v", invalidSeed, ordering, want)
+		if processed == 0 {
+			return
 		}
 	}
 }

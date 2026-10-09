@@ -14,12 +14,26 @@ import (
 
 func (s *Server) demoReadOnlyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.cfg.IsDemo() && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+		if s.cfg.IsDemo() && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions && !demoRecommendationReadRequest(r) {
 			writeAPIError(w, http.StatusForbidden, "demo_read_only", "demo mode is read-only", false)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// This bounded score batch is a read-only Demo display operation despite its
+// POST transport. All mutation endpoints retain the Demo read-only boundary.
+func demoRecommendationReadRequest(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) != 5 || parts[0] != "" || parts[1] != "api" || parts[2] != "remote-sources" || parts[4] != "recommendations" {
+		return false
+	}
+	id, err := strconv.ParseInt(parts[3], 10, 64)
+	return err == nil && id > 0
 }
 
 func (s *Server) demoWorkEligible(ctx context.Context, workID int64) (bool, error) {

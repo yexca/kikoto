@@ -124,6 +124,7 @@ func TestColdRecommendationWaitersLeaveConnectionsForLibraryReads(t *testing.T) 
 	metadataReviewExec(t, db, `INSERT INTO user_account(id,username,role) VALUES(1,'synthetic-user','user');
 	 INSERT INTO work(id,primary_code,title) VALUES(1,'RJ00000000','Example Work')`)
 	server := NewServer(db, config.Config{})
+	publishRecommendationTestCatalog(t, server)
 	held, err := db.Begin()
 	if err != nil {
 		t.Fatal(err)

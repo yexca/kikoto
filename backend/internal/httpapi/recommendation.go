@@ -53,22 +53,40 @@ func (s *Server) getWorkRecommendation(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid recommendation session"})
 		return
 	}
-	randomSeed := recommendationSeed(r)
+	if s.cfg.IsDemo() {
+		s.writeDemoRecommendation(w, r, workID, recommendationSessionID)
+		return
+	}
+	contextID := strings.TrimSpace(r.URL.Query().Get("recommendationContext"))
+	if contextID != "" && (!recommendationSessionIDPattern.MatchString(contextID) || userID <= 0 || recommendationSessionID == "") {
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid recommendation context", false)
+		return
+	}
 	var breakdown library.RecommendationBreakdown
-	var orderingConfig library.RecommendationConfig
 	if userID > 0 && recommendationSessionID != "" {
 		snapshot, snapshotErr := s.libraryStore.PrepareRecommendationSession(r.Context(), userID, recommendationSessionID)
 		if snapshotErr != nil {
 			writeError(w, snapshotErr)
 			return
 		}
-		orderingConfig = snapshot.Config
-		breakdown, err = s.libraryStore.RecommendationSnapshotBreakdown(r.Context(), snapshot, workID)
+		if contextID != "" {
+			breakdown, err = s.libraryStore.RecommendationContextBreakdown(r.Context(), userID, snapshot, contextID, workID)
+		} else {
+			breakdown, err = s.libraryStore.RecommendationSnapshotBreakdown(r.Context(), snapshot, workID)
+		}
 	} else {
-		orderingConfig = s.libraryStore.LoadUserRecommendationConfig(r.Context(), userID)
+		orderingConfig := s.libraryStore.LoadUserRecommendationConfig(r.Context(), userID)
 		breakdown, err = s.libraryStore.RecommendationBreakdownWithConfig(r.Context(), userID, workID, orderingConfig)
 	}
 	if err != nil {
+		if errors.Is(err, library.ErrRecommendationContextExpired) {
+			writeAPIError(w, http.StatusGone, "recommendation_context_expired", "recommendation context expired", false)
+			return
+		}
+		if errors.Is(err, library.ErrInvalidRecommendationContext) {
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid recommendation context", false)
+			return
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
 			return
@@ -76,19 +94,7 @@ func (s *Server) getWorkRecommendation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if randomSeed != nil {
-		ordering := library.RecommendationOrderingFor(workID, breakdown.Score, *randomSeed, orderingConfig, breakdown.Signals.DiversityPenalty)
-		breakdown.Ordering = &ordering
-	}
 	writeJSON(w, http.StatusOK, breakdown)
-}
-
-func recommendationSeed(r *http.Request) *int64 {
-	if _, present := r.URL.Query()["seed"]; !present {
-		return nil
-	}
-	seed := int64(queryInt(r, "seed", 1))
-	return &seed
 }
 
 func (s *Server) recordRecommendationEvents(w http.ResponseWriter, r *http.Request) {

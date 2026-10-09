@@ -1,12 +1,13 @@
 .PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-sync android-test android-build ios-sync ios-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
 .PHONY: ci-plan ci-plan-test ci-results ci-backend-static ci-backend-coverage ci-backend-race ci-production production-smoke production-e2e
 .PHONY: pr-description-check pr-description-test
-.PHONY: browse-performance browse-production-performance playback-performance
+.PHONY: browse-performance browse-production-performance playback-performance recommendation-performance
 
 GO ?= go
 DOCKER_BUILD ?= $(DOCKER) build
 DOCKER_BUILD_ARGS ?=
 E2E_ARGS ?=
+RECOMMENDATION_PERF_ARGS ?=
 GOLANGCI_LINT_VERSION ?= v2.13.1
 GOLANGCI_LINT_TIMEOUT ?= 5m
 GOLANGCI_LINT_PACKAGE := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
@@ -90,6 +91,9 @@ backend-test:
 # Opt-in synthetic experiments; run these sequentially on an otherwise idle host.
 browse-performance:
 	$(NODE) scripts/run-browse-performance.mjs sql
+
+recommendation-performance:
+	$(NODE) scripts/run-recommendation-performance.mjs $(RECOMMENDATION_PERF_ARGS)
 
 browse-production-performance: frontend-build
 	$(NODE) scripts/run-browse-performance.mjs browser

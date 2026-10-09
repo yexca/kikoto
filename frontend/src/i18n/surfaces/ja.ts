@@ -1360,6 +1360,7 @@ export const surfaceJapanese = {
     useOtherWorkMetadata: "別の作品のメタデータを使う",
     metadataUnavailable: "メタデータを取得できません",
     affinityScore: "親和性スコア",
+    demoRandomScore: "デモ用スコア（ランダム生成）",
     shuffleAdjustment: "現在のシャッフル調整",
     discoveryBoost: "探索ブースト",
     resultVariation: "結果の変動",

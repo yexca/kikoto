@@ -1367,6 +1367,7 @@ export const surfaceEnglish = {
     useOtherWorkMetadata: "Use another work's metadata",
     metadataUnavailable: "Metadata unavailable",
     affinityScore: "Affinity score",
+    demoRandomScore: "Demo score, randomly generated",
     shuffleAdjustment: "Current shuffle adjustment",
     discoveryBoost: "Discovery boost",
     resultVariation: "Result variation",

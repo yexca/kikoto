@@ -320,14 +320,15 @@ func TestStoreListPageRecommendSortUsesPositiveHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	page, err := library.NewStore(db).ListPage(context.Background(), library.ListOptions{UserID: userID, Page: 1, PageSize: 3, Sort: "recommend", Direction: "desc"})
+	store := library.NewStore(db)
+	publishRecommendationMetadata(t, db, store)
+	page, err := store.ListPage(context.Background(), library.ListOptions{UserID: userID, Page: 1, PageSize: 3, Sort: "recommend", Direction: "desc"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(page.Works) != 3 || page.Works[0].PrimaryCode != "RJ00000012" {
 		t.Fatalf("recommend order = %#v, want candidate first", page.Works)
 	}
-	store := library.NewStore(db)
 	candidateScore, err := store.RecommendationScore(context.Background(), userID, workIDs["RJ00000012"])
 	if err != nil {
 		t.Fatal(err)
@@ -373,6 +374,7 @@ func TestRecommendationSessionSnapshotRefreshesOnlyForNewSession(t *testing.T) {
 	}
 
 	store := library.NewStore(db)
+	publishRecommendationMetadata(t, db, store)
 	listCandidateScore := func(sessionID string) int {
 		t.Helper()
 		page, listErr := store.ListPage(context.Background(), library.ListOptions{
@@ -456,6 +458,7 @@ func TestRecommendationSessionSnapshotFreezesLaneUntilNewSession(t *testing.T) {
 	}
 
 	store := library.NewStore(db)
+	publishRecommendationMetadata(t, db, store)
 	list := func(sessionID string) []library.RawWork {
 		t.Helper()
 		page, listErr := store.ListPage(context.Background(), library.ListOptions{
@@ -508,11 +511,12 @@ func TestRecommendationSessionRebuildsWhenBoundGenerationUsesPriorAlgorithm(t *t
 	}
 
 	store := library.NewStore(db)
+	publishRecommendationMetadata(t, db, store)
 	first, err := store.PrepareRecommendationSession(context.Background(), userID, "session-version")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec("UPDATE recommendation_generation SET algorithm_version = 'heuristic-v3' WHERE id = ?", first.GenerationID); err != nil {
+	if _, err := db.Exec("UPDATE recommendation_generation SET algorithm_version = 'heuristic-v5' WHERE id = ?", first.GenerationID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -560,6 +564,7 @@ func TestStoreListPageRecommendSortIsStableForSeededTies(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	publishRecommendationMetadata(t, db, library.NewStore(db))
 	load := func(seed int64) []string {
 		codes := []string{}
 		for pageNumber := 1; pageNumber <= 3; pageNumber++ {
@@ -633,7 +638,9 @@ func TestRecommendationScoreDoesNotUseCandidateAsItsOwnTasteHistory(t *testing.T
 		t.Fatal(err)
 	}
 
-	score, err := library.NewStore(db).RecommendationScore(context.Background(), userID, workID)
+	store := library.NewStore(db)
+	publishRecommendationMetadata(t, db, store)
+	score, err := store.RecommendationScore(context.Background(), userID, workID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -679,6 +686,7 @@ func TestStoreListPageRecommendSortMixesLifecycleLanes(t *testing.T) {
 	}
 
 	store := library.NewStore(db)
+	publishRecommendationMetadata(t, db, store)
 	page, err := store.ListPage(context.Background(), library.ListOptions{
 		UserID: userID, Page: 1, PageSize: 24, Sort: "recommend", Direction: "desc", RandomSeed: 17,
 	})

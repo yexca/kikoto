@@ -34,6 +34,7 @@ func TestRemoteRecommendationsScoreTransientWorksWithoutFetchingOrMaterializing(
 		metadataReviewExec(t, s.db, "INSERT INTO work_party (work_id, party_id, role, source) VALUES (?, ?, 'circle', 'test')", workID, circleID)
 	}
 	user := currentUser{ID: userID, Role: "user", Permissions: []string{"library:read"}}
+	publishRecommendationTestCatalog(t, s)
 	candidates := []library.RecommendationCandidate{
 		{PrimaryCode: knownCode, WorkID: &knownID},
 		{PrimaryCode: testfixture.WorkCode(testfixture.PrefixRJ, 3), VoiceActors: []string{"Example Voice", "Example Voice"}, Circle: "Example Circle"},
@@ -116,6 +117,31 @@ func TestRemoteRecommendationBadgesSurvivePostFiltering(t *testing.T) {
 		}
 		if response.Code != http.StatusOK || len(result.Works) != 1 || result.Works[0].RecommendScore != 35 {
 			t.Fatalf("query=%q body=%s", query, response.Body.String())
+		}
+	}
+}
+
+func TestRemoteBrowseOptionalRecommendationFailurePreservesCardsAndHealth(t *testing.T) {
+	code := testfixture.WorkCode(testfixture.PrefixRJ, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"works": []map[string]any{{"id": 1, "source_id": code, "title": "Example Work"}}, "pagination": map[string]int{"totalCount": 1}})
+	}))
+	defer upstream.Close()
+	s := newRemoteTextPreviewServer(t, upstream.URL, upstream.URL+"/media/track.wav")
+	userID := metadataReviewExec(t, s.db, "INSERT INTO user_account (username, display_name, role) VALUES ('remote-badges-user', 'Example User', 'user')")
+	for _, query := range []string{"", "$-mytag:Example excluded$"} {
+		r := httptest.NewRequest(http.MethodGet, "/api/remote-sources/7/works?recommendBadges=true&q="+url.QueryEscape(query), nil)
+		r.SetPathValue("id", "7")
+		r = r.WithContext(context.WithValue(r.Context(), currentUserKey, currentUser{ID: userID}))
+		response := httptest.NewRecorder()
+		s.listRemoteSourceWorks(response, r)
+		var result remoteWorksResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if response.Code != http.StatusOK || result.Status != "ok" || result.Error != nil || result.Total != 1 || len(result.Works) != 1 || !result.RecommendationUnavailable {
+			t.Fatalf("query=%q status=%d body=%s", query, response.Code, response.Body.String())
 		}
 	}
 }

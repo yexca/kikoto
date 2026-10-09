@@ -16,7 +16,7 @@ import (
 
 var numberedMigrationFilePattern = regexp.MustCompile(`^[0-9]{3}_[a-z0-9][a-z0-9_]*\.sql$`)
 
-const latestNumberedMigrationVersion = 62
+const latestNumberedMigrationVersion = 63
 
 // latestReleasedBaseline is the newest file in migrations/baseline/, which
 // production uses for a fresh database.
@@ -119,8 +119,8 @@ func TestMigrateUpgradesExistingDatabaseThroughNumberedChain(t *testing.T) {
 	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "062_playback_reports.sql" {
-		t.Fatalf("applied migration = %q, want 062_playback_reports.sql", filename)
+	if filename != "063_recommendation_catalog.sql" {
+		t.Fatalf("applied migration = %q, want 063_recommendation_catalog.sql", filename)
 	}
 }
 
@@ -244,8 +244,9 @@ func TestMigrateUpgradesRetiredBaselineLedger(t *testing.T) {
 			if err := rows.Err(); err != nil {
 				t.Fatal(err)
 			}
-			if got := strings.Join(filenames, ","); got != testCase.wantHistory {
-				t.Fatalf("upgraded migration history = %q, want %q", got, testCase.wantHistory)
+			wantHistory := testCase.wantHistory + ",063_recommendation_catalog.sql"
+			if got := strings.Join(filenames, ","); got != wantHistory {
+				t.Fatalf("upgraded migration history = %q, want %q", got, wantHistory)
 			}
 			if err := MigrateFSWithOptions(db, os.DirFS(sourceDir), "test", MigrateOptions{Development: true}); err != nil {
 				t.Fatalf("restart retired baseline ledger in development mode: %v", err)

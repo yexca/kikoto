@@ -50,29 +50,38 @@ The Library is the main browsing surface for works.
 - Supports stable seeded random ordering. A seed keeps pagination consistent;
   reshuffling creates a new seed rather than reversing an order.
 - Defaults new Library views to personalized recommendation ordering while
-  preserving history/session-restored browse choices. Canonical URLs retain
-  only the query and non-default listening status; explicit browse parameters
-  in a link are still read. Recommendation placement separates listening
-  intent from affinity: Listening and Want receive leading slots, Unmarked
-  remains the primary discovery pool, Relisten and Finished receive bounded
-  insertions, and Shelved waits until scheduled states are exhausted. Explicit
-  status filters still return every matching work. Within each state, a bounded
-  affinity score uses favorite, tag, voice, and circle signals without treating
-  the candidate itself as taste history. Repeated positive feedback strengthens
-  each matched signal up to five supporting works, and common tags carry less
-  weight. A seeded discovery boost favors weaker evidence; independent result
-  variation adjusts that affinity only for the current within-state ordering;
-  a small creator diversity adjustment also affects ordering. Badges and
-  telemetry retain the bounded affinity score. Relisten and favorite history are
-  positive evidence; Finished alone is neutral. Each browser tab or native-app
-  launch binds to an immutable recommendation generation, so navigation,
-  pagination, filters, card mutations, and toolbar reshuffles do not recompute
-  affinity. Favorite and listening changes remain visible on cards immediately
-  but affect placement in the next client session. A new session rebuilds the
-  generation only when recommendation inputs changed; otherwise it reuses the
-  current generation with a new stable seed. The seed keeps both state mixing
-  and within-state variety pagination-safe, and the toolbar refresh action
-  changes only that seed within the current generation.
+  preserving restored browse choices. Canonical URLs retain the query and
+  non-default listening status; explicit browse parameters are also read.
+  Listening and Want receive leading slots, Unmarked is the main discovery
+  pool, Relisten and Finished receive bounded insertions, and zero-slot states
+  follow scheduled states. Each state shows a bounded set of recommendation
+  candidates first, then every remaining matching work in stable seeded
+  exploration order. Exact search matches still lead, totals include all
+  matches, and changing page size does not change the order. This order does
+  not rank the complete result set by personal affinity.
+- Affinity uses favorite, tag, voice, and circle evidence, excludes the
+  candidate's own feedback, strengthens repeated positive evidence up to five
+  supporting works, and discounts common tags. Favorite and Relisten history
+  are positive; Finished alone is neutral. Seeded discovery, variation, and
+  creator diversity affect candidate ordering, while badges retain affinity.
+  Ordinary-sort badges score only the current page. Explanations show real
+  affinity even outside the candidate set; query-specific ranking adjustments
+  appear only when the displayed recommendation context applies. If that
+  context expires, the explanation keeps the original session's affinity and
+  omits ranking adjustments.
+- A browser tab or native-app launch freezes its preference profile, listening
+  lanes, and shared metadata version in one generation. Navigation, filters,
+  pagination, card mutations, and reshuffles reuse that profile. Live favorite
+  and listening changes appear on cards immediately and affect ranking in a new
+  session. Shared features update in background, so a new session uses the
+  latest fully published version and may lag metadata edits. A reshuffle
+  changes only the seed. Browse membership and filters remain live: additions,
+  deletions, availability, permissions, or personal filters can move page
+  boundaries, while the same visible data stays deterministic and complete.
+- Ordinary browsing and playback stay available during initial recommendation
+  indexing. Failed optional badges offer an independent Retry with cards
+  retained; failed recommendation preparation offers Retry beside the last
+  loaded cards. The global player keeps playing during both failures.
 - Remote recommendation badges also score works that have not been imported,
   using known localized tags and creator aliases. Turning badges on scores the
   current page in one batch without reloading the remote source, then reveals
@@ -102,7 +111,10 @@ The Library is the main browsing surface for works.
   metadata, where unknown metadata and temporary free promotions are excluded.
   The simulated Remote Kikoeru source only republishes admitted local works.
   Demo sessions can play admitted full media but cannot mutate library,
-  settings, or workflow state.
+  settings, or workflow state. Recommendation scores are simulated random
+  values, labelled "Demo score, randomly generated" in explanations. They stay
+  stable for each work in a demo session across reshuffles and do not show
+  preference contributions or ranking adjustments.
 
 Work cards use the same summary model on every collection surface, including
 voice credits when they are known. Compact cards show at most two voice names

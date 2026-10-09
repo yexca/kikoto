@@ -1,4 +1,4 @@
-export const RECOMMENDATION_ALGORITHM_VERSION = "heuristic-v5";
+export const RECOMMENDATION_ALGORITHM_VERSION = "heuristic-v6";
 export const USER_PREFERENCES_CHANGED = "kikoto:user-preferences-changed";
 export type RecommendationClientSession = {
   id: string;

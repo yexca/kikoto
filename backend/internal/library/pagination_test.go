@@ -13,8 +13,8 @@ import (
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
-// Compare the paginated read with the existing complete projection: ties, nulls,
-// recommendation lanes and filters must not change the cards or their ordering.
+// Ordinary pagination retains its SQL projection and ordering. Optional badges
+// are read after paging from the frozen profile instead of a full score join.
 func TestListPagePreservesOrderedProjection(t *testing.T) {
 	store, userID := seedPaginationLibrary(t, 60, 2, 256)
 	ctx := context.Background()
@@ -25,30 +25,38 @@ func TestListPagePreservesOrderedProjection(t *testing.T) {
 	}{
 		{"anonymous", 0, ""}, {"live", userID, ""}, {"snapshot", userID, "synthetic-session"},
 	} {
-		for _, sortKey := range []string{"recent", "release", "title", "code", "rating", "sales", "random", "recommend"} {
+		for _, sortKey := range []string{"recent", "release", "title", "code", "rating", "sales", "random"} {
 			for _, direction := range []string{"asc", "desc"} {
 				t.Run(mode.name+"/"+sortKey+"/"+direction, func(t *testing.T) {
 					options := ListOptions{UserID: mode.userID, PageSize: 7, Sort: sortKey, Direction: direction, RandomSeed: 43, IncludeRecommendation: true, RecommendationSessionID: mode.session}
 					for _, query := range []string{"", "Example Work 1", "absent synthetic title"} {
 						options.Query = query
 						where, filterArgs := listWhere(options.Scope, options.Status, options.Query, options.UserID, false)
-						config, generationID, err := store.listPageRecommendationContext(ctx, options, true)
-						if err != nil {
-							t.Fatal(err)
-						}
 						args := []any{}
-						if generationID == 0 {
-							args = append(args, recommendationUserArgs(options.UserID)...)
-						}
 						args = append(args, options.UserID)
 						args = append(args, filterArgs...)
-						rows, err := store.db.QueryContext(ctx, listSelectSQLWithRecommendationGeneration(where, sortKey, direction, 43, config, true, generationID), args...)
+						rows, err := store.db.QueryContext(ctx, listSelectSQLWithRecommendationGeneration(where, sortKey, direction, 43, DefaultRecommendationConfig(), false, 0), args...)
 						if err != nil {
 							t.Fatal(err)
 						}
 						expected, err := ScanRows(rows)
 						if err != nil {
 							t.Fatal(err)
+						}
+						snapshot, err := store.snapshotForRecommendation(ctx, options.UserID, options.RecommendationSessionID)
+						if err != nil {
+							t.Fatal(err)
+						}
+						ids := make([]int64, len(expected))
+						for index := range expected {
+							ids[index] = expected[index].ID
+						}
+						scores, err := store.scoreRecommendationWorks(ctx, snapshot, ids)
+						if err != nil {
+							t.Fatal(err)
+						}
+						for index := range expected {
+							expected[index].RecommendScore = scores[expected[index].ID].Score
 						}
 						for _, pageNo := range []int{1, 2, 9, 10} {
 							options.Page = pageNo
@@ -135,7 +143,9 @@ func seedPaginationLibrary(t testing.TB, count, tracks, snapshotBytes int) (*Sto
 	statuses := []string{"none", "want_to_listen", "listening", "relisten", "finished", "paused"}
 	for index := 0; index < count; index++ {
 		code := testfixture.WorkCode(testfixture.PrefixRJ, index%100)
-		if count > 100 {
+		if count > 400 {
+			code = testfixture.HighCardinalityWorkCodeAt(index)
+		} else if count > 100 {
 			code = testfixture.WorkCodeAt(index)
 		}
 		var rating, sales, release any
@@ -160,7 +170,26 @@ func seedPaginationLibrary(t testing.TB, count, tracks, snapshotBytes int) (*Sto
 	if err := store.RefreshSearchIndex(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	publishRecommendationCatalog(t, store)
 	return store, userID
+}
+
+func publishRecommendationCatalog(t testing.TB, store *Store) {
+	t.Helper()
+	// Library fixtures author their effective relations directly, representing
+	// the completed metadata projection that server startup normally prepares.
+	if _, err := store.db.Exec("DELETE FROM work_metadata_tag_dirty"); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		processed, err := store.ProcessRecommendationCatalog(context.Background(), 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if processed == 0 {
+			return
+		}
+	}
 }
 
 // Nullable sort values stay after every known value in both directions, with

@@ -31,6 +31,7 @@ func TestRecommendationRepeatedEvidenceAndCommonTags(t *testing.T) {
 	}
 	exec("INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, 1, 'relisten')", userID)
 	ctx := context.Background()
+	scaleDrainCatalog(t, store)
 	first, err := store.RecommendationBreakdown(ctx, userID, 6)
 	if err != nil {
 		t.Fatal(err)
@@ -91,6 +92,7 @@ func TestRemoteRecommendationAliasesDeduplicateAndFreeze(t *testing.T) {
 		{PrimaryCode: testfixture.WorkCode(testfixture.PrefixRJ, 92), Tags: []string{"Example Tag", "Example Localized Tag", "Example Provider Tag"}},
 	}
 	ctx := context.Background()
+	scaleDrainCatalog(t, store)
 	first, err := store.ScoreRecommendationCandidates(ctx, userID, "aliases", candidates)
 	if err != nil {
 		t.Fatal(err)
@@ -99,6 +101,7 @@ func TestRemoteRecommendationAliasesDeduplicateAndFreeze(t *testing.T) {
 		t.Fatalf("alias scores=%+v", first)
 	}
 	exec("DELETE FROM person_alias WHERE alias = 'Example Alias'")
+	scaleDrainCatalog(t, store)
 	candidates[0].VoiceActors = []string{"Example Alias"}
 	frozen, err := store.ScoreRecommendationCandidates(ctx, userID, "aliases", candidates)
 	if err != nil {
@@ -130,7 +133,12 @@ func TestRecommendationDiversityPromotesOtherCreatorsWithinLane(t *testing.T) {
 	exec("INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, 8, 'listening')", userID)
 	exec("INSERT INTO app_setting (key, value_json) VALUES ('recommendation_config', ?)", `{"jitterAmplitude":0,"explorationAmplitude":0}`)
 	ctx := context.Background()
+	scaleDrainCatalog(t, store)
 	snapshot, err := store.PrepareRecommendationSession(ctx, userID, "diversity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.ListPage(ctx, ListOptions{UserID: userID, Page: 1, PageSize: 24, Sort: "recommend", Direction: "desc", RecommendationSessionID: "diversity", RandomSeed: 43})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,17 +146,13 @@ func TestRecommendationDiversityPromotesOtherCreatorsWithinLane(t *testing.T) {
 		id      int64
 		penalty int
 	}{{1, 0}, {2, 2}, {5, 8}, {6, 8}, {7, 0}, {8, 0}} {
-		breakdown, err := store.RecommendationSnapshotBreakdown(ctx, snapshot, test.id)
+		breakdown, err := store.RecommendationContextBreakdown(ctx, userID, snapshot, page.RecommendationContext, test.id)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if breakdown.Score != 35 || breakdown.Signals.DiversityPenalty != test.penalty {
 			t.Fatalf("work %d=%+v", test.id, breakdown)
 		}
-	}
-	page, err := store.ListPage(ctx, ListOptions{UserID: userID, Page: 1, PageSize: 24, Sort: "recommend", Direction: "desc", RecommendationSessionID: "diversity", RandomSeed: 43})
-	if err != nil {
-		t.Fatal(err)
 	}
 	if len(page.Works) != 8 || page.Works[0].ID != 8 {
 		t.Fatalf("listening priority lost: %+v", page.Works)
@@ -161,7 +165,8 @@ func TestRecommendationDiversityPromotesOtherCreatorsWithinLane(t *testing.T) {
 		t.Fatalf("other creator not promoted: %+v", positions)
 	}
 	exec("DELETE FROM work_party WHERE work_id = 2")
-	frozen, err := store.RecommendationSnapshotBreakdown(ctx, snapshot, 2)
+	scaleDrainCatalog(t, store)
+	frozen, err := store.RecommendationContextBreakdown(ctx, userID, snapshot, page.RecommendationContext, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,6 +208,7 @@ func BenchmarkRemoteRecommendationBatch(b *testing.B) {
 		b.Fatal(err)
 	}
 	ctx := context.Background()
+	scaleDrainCatalog(b, store)
 	if _, err := store.PrepareRecommendationSession(ctx, userID, "benchmark"); err != nil {
 		b.Fatal(err)
 	}

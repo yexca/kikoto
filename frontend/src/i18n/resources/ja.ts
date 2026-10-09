@@ -7,6 +7,7 @@ const libraryJapanese = {
   workNotFound: "作品が見つかりません",
   markedAs: "{{code}}を{{status}}としてマークしました。",
   couldNotLoad: "ライブラリを読み込めませんでした。",
+  recommendationBadgesUnavailable: "おすすめバッジは一時的に利用できません。",
   workUnavailableInLibrary: "{{code}} は現在のライブラリまたは設定済みソースで利用できません。",
   refreshingRemoteWorks: "リモート作品を更新中",
   refreshingLibraryWorks: "ライブラリの作品を更新中",

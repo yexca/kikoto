@@ -126,14 +126,11 @@ func demoAdmittedLocalWorks(ctx context.Context, tx *sql.Tx) ([]demoShowcaseWork
 	rows, err := tx.QueryContext(ctx, `
 		SELECT work.id, work.primary_code FROM work
 		WHERE `+contentpolicy.DemoEligibleWorkSQL("work")+`
+			AND `+demoLibraryVisibilityPredicateSQL+`
 			AND EXISTS (SELECT 1 FROM work_source_presence AS presence
 				INNER JOIN file_source AS source ON source.id = presence.file_source_id
 				WHERE presence.work_id = work.id AND presence.presence_type = 'local'
 					AND presence.availability = 'available' AND source.source_type = 'local_folder')
-			AND NOT EXISTS (SELECT 1 FROM work_edition AS edition
-				INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
-				WHERE edition.work_id = work.id AND edition.is_canonical = 0
-					AND logical.canonical_work_id IS NOT NULL AND logical.canonical_work_id <> work.id)
 		ORDER BY work.primary_code
 	`)
 	if err != nil {
@@ -193,8 +190,12 @@ func (s *Server) demoRemoteCatalog(ctx context.Context) ([]kikoeru.Work, error) 
 		return []kikoeru.Work{}, err
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT work_id FROM work_source_presence
-		WHERE file_source_id = ? AND presence_type = ? AND availability = 'available'
+		SELECT work.id FROM work_source_presence AS presence
+		INNER JOIN work ON work.id = presence.work_id
+		WHERE presence.file_source_id = ? AND presence.presence_type = ? AND presence.availability = 'available'
+			AND `+contentpolicy.DemoEligibleWorkSQL("work")+`
+			AND `+demoLibraryVisibilityPredicateSQL+`
+		ORDER BY work.id
 		LIMIT ?
 	`, sourceID, sourcePresenceTypeRemoteSource, demoRemotePageSizeMax)
 	if err != nil {

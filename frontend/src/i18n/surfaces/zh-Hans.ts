@@ -1285,6 +1285,7 @@ export const surfaceHans = {
     useOtherWorkMetadata: "使用其他作品的元数据",
     metadataUnavailable: "元数据不可用",
     affinityScore: "亲和度分数",
+    demoRandomScore: "演示分数，随机生成",
     shuffleAdjustment: "当前随机调整",
     discoveryBoost: "发现加成",
     resultVariation: "结果变化",

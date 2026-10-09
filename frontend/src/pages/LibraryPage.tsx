@@ -66,6 +66,7 @@ import {
   useState,
 } from "react";
 import { readOrCreateRecommendationSession, RECOMMENDATION_ALGORITHM_VERSION } from "@/lib/recommendationSession";
+import { loadRecommendationExplanation } from "@/pages/library/recommendationExplanation";
 import {
   useWorkCollectionLayout,
   workCollectionClassName,
@@ -391,6 +392,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const initialBrowse = useRef(initialLibraryPageBrowseState(browseStorageScope, sessionDefaultBrowseState)).current;
   const initialBrowseState = initialBrowse.state;
   const [works, setWorks] = useState<Work[]>([]);
+  const [displayedRecommendationSort, setDisplayedRecommendationSort] = useState(false);
   const worksRef = useRef<Work[]>([]);
   worksRef.current = works;
   const [sources, setSources] = useState<LibrarySource[]>([]);
@@ -425,6 +427,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     preview?: RemoteWorkPreview;
   } | null>(null);
   const [libraryLoadError, setLibraryLoadError] = useState("");
+  const [recommendationUnavailable, setRecommendationUnavailable] = useState(false);
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">(initialBrowseState.status);
   const [searchQuery, setSearchQuery] = useState(initialBrowseState.query);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(() => Boolean(initialBrowseState.query.trim()));
@@ -704,9 +707,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         if (controller.signal.aborted || requestSeq !== libraryRequestSeq.current) return;
         loadedLibraryRequestKey.current = requestKey;
         setWorks(page.works);
+        setDisplayedRecommendationSort(librarySort === "recommend");
         setWorkTotal(page.total);
+        setRecommendationUnavailable(Boolean(page.recommendationUnavailable));
         if (librarySort === "recommend") {
-          const context = { id: createRecommendationContextID(), seed: randomSeed };
+          const context = { id: page.recommendationContext ?? "", seed: randomSeed };
           recommendationContextRef.current = context;
           recordRecommendationEvents(
             page.works.map((work, index) => ({
@@ -848,6 +853,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       sortDirection,
       randomSeed,
       remoteInlineRecommendations,
+      recommendationSession.id,
     ]);
     // Switching to a local tab clears the remote result. The request key can
     // still match a previous successful load, so only reuse it while that
@@ -867,6 +873,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         randomSeed,
         remoteInlineRecommendations,
         controller.signal,
+        recommendationSession.id,
       )
       .then((result) => {
         if (controller.signal.aborted || requestSeq !== remoteRequestSeq.current) return;
@@ -906,6 +913,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     hasPendingBrowseRestore,
     currentRemoteResultSourceId,
     remoteInlineRecommendations,
+    recommendationSession.id,
     librarySort,
     randomSeed,
     remoteSearchQuery,
@@ -1179,8 +1187,12 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
 
   const openRecommendationExplanation = (work: Work) => {
     setRecommendationDialog({ work, breakdown: null, loading: true, error: "" });
-    void api
-      .getWorkRecommendation(work.id, recommendationSession.id, randomSeed)
+    void loadRecommendationExplanation({
+      workID: work.id,
+      sessionID: recommendationSession.id,
+      seed: recommendationContextRef.current?.seed ?? randomSeed,
+      contextID: recommendationContextRef.current?.id ?? "",
+    })
       .then((breakdown) => {
         setRecommendationDialog((current) =>
           current?.work.id === work.id ? { ...current, breakdown, loading: false, error: "" } : current,
@@ -1378,7 +1390,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       .then((result) => {
         if (requestSeq !== libraryRequestSeq.current) return;
         setWorks(result.works);
+        setDisplayedRecommendationSort(librarySort === "recommend");
         setWorkTotal(result.total);
+        setRecommendationUnavailable(Boolean(result.recommendationUnavailable));
+        recommendationContextRef.current =
+          librarySort === "recommend" ? { id: result.recommendationContext ?? "", seed: randomSeed } : null;
         setLibraryLoadError("");
         setOptimisticLibrarySearchClauses(null);
         completeResultsUpdate();
@@ -1415,6 +1431,8 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         sortDirection,
         randomSeed,
         remoteInlineRecommendations,
+        undefined,
+        recommendationSession.id,
       )
       .then((result) => {
         if (requestSeq !== remoteRequestSeq.current) return;
@@ -1461,7 +1479,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       recommendationSession.id,
     );
     setWorks(page.works);
+    setDisplayedRecommendationSort(librarySort === "recommend");
     setWorkTotal(page.total);
+    setRecommendationUnavailable(Boolean(page.recommendationUnavailable));
+    recommendationContextRef.current =
+      librarySort === "recommend" ? { id: page.recommendationContext ?? "", seed: randomSeed } : null;
     setLibraryLoadError("");
   });
 
@@ -1996,27 +2018,43 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       ) : (
         <div className="space-y-3">
           {!libraryLoadError && localTopPagination}
-          {libraryLoadError ? (
+          {recommendationUnavailable && recommendBadgesEnabled && librarySort !== "recommend" && (
+            <div role="status" className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+              <span>{t("library.recommendationBadgesUnavailable")}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isLibraryLoading}
+                onClick={() => loadLibraryWorksNow(librarySearchQuery, currentWorkPage)}
+              >
+                {t("common.retry")}
+              </Button>
+            </div>
+          )}
+          {libraryLoadError && (
             <LibraryLoadErrorCard
               message={libraryLoadError}
               onRetry={() => loadLibraryWorksNow(librarySearchQuery, currentWorkPage)}
             />
-          ) : pagedWorks.length === 0 ? (
-            <EmptyLibraryWorksCard
-              scope={localScope}
-              filtered={searchQuery.trim() !== "" || statusFilter !== "all"}
-              onClear={() => {
-                setSearchQuery("");
-                changeStatusFilter("all");
-              }}
-            />
+          )}
+          {pagedWorks.length === 0 ? (
+            !libraryLoadError && (
+              <EmptyLibraryWorksCard
+                scope={localScope}
+                filtered={searchQuery.trim() !== "" || statusFilter !== "all"}
+                onClear={() => {
+                  setSearchQuery("");
+                  changeStatusFilter("all");
+                }}
+              />
+            )
           ) : (
             <section className={workCollectionClassName()} style={workCollectionStyle(mobileColumns, desktopColumns)}>
               {pagedWorks.map((work) => (
                 <WorkCard
                   key={work.id}
                   work={work}
-                  showRecommendationScore={librarySort === "recommend"}
+                  showRecommendationScore={displayedRecommendationSort}
                   onRecommendationOpen={openCardRecommendation}
                   onOpen={openCardWork}
                   onStatusChange={changeCardStatus}
@@ -3042,11 +3080,6 @@ function RemoteWorkGridSkeleton({
       ))}
     </section>
   );
-}
-
-function createRecommendationContextID() {
-  const random = window.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
-  return `library:${Date.now().toString(36)}:${random}`.slice(0, 64);
 }
 
 function libraryWorkCardView(

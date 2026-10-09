@@ -59,6 +59,8 @@ host:
 make browse-performance
 make browse-production-performance
 make playback-performance
+make recommendation-performance
+make recommendation-performance RECOMMENDATION_PERF_ARGS="--baseline <git-ref>"
 ```
 
 `scripts/run-browse-performance.mjs` implements all three modes.
@@ -68,6 +70,7 @@ make playback-performance
 | `make browse-performance` | `TestLibraryPagePerformance` (`internal/library`), then `TestBrowseMatrixPerformance` and `TestWorkCodeHTTPPerformance` (`internal/httpapi`), one package at a time with `KIKOTO_BROWSE_PERF=1`. |
 | `make browse-production-performance` | Builds the frontend, starts a production `vite preview` on `127.0.0.1:3102` unless `PLAYWRIGHT_BASE_URL` names an existing preview, and runs `browse-production-performance.spec.ts` on desktop Chromium with one worker. |
 | `make playback-performance` | Builds the frontend and runs `TestPlaybackStartupPerformance` with `KIKOTO_PLAYBACK_PERF=1`. The test serves the built assets itself and starts `playback-production-performance.spec.ts`. |
+| `make recommendation-performance` | Runs the opt-in recommendation scale experiment over 50,000 and 100,000 synthetic works, 100 users, and 20 concurrent cold requests. |
 
 The browser and playback targets require installed frontend dependencies and a
 Playwright Chromium. Playback also requires `ffmpeg` and `ffprobe` on `PATH`.
@@ -141,6 +144,38 @@ recommendation preparations, locally filtered remote pagination against a
 delayed loopback source, and cold AAC preparation. The spec measures
 controlled-latency browsing against the Vite development server. Run them
 directly only when a change touches those paths.
+
+### Recommendation scaling
+
+The recommendation experiment uses the bounded
+`testfixture.HighCardinalityWorkCodeAt` constructor, a file-backed migrated
+database, and the production connection pool. Its 100 users span zero, 10, 100,
+and 1,000 feedback works. Shared popular tags and creators exercise long posting
+lists. Catalog preparation runs separately from measured user preparation;
+normal GET requests consume only a fully published epoch.
+
+Run candidate and baseline revisions sequentially on the same idle hardware
+with identical fixture counts, feedback, seeds, filter cases, and connection
+limits. The `--baseline` runner archives the requested revision outside the
+workspace, copies the same harness and synthetic constructors, runs the
+baseline followed by the working tree, and removes its owned temporary checkout.
+`KIKOTO_RECOMMENDATION_PERF_WORKS` accepts comma-separated fixture counts and
+defaults to `50000,100000`. All 100 fixture users have seeded feedback. By
+default, 40 users prepare cold generations: 20 concurrent requests followed by
+20 sequential requests, with five users per feedback density. Another 20
+generations exercise retained-version storage. Set
+`KIKOTO_RECOMMENDATION_PERF_PREPARED_USERS=100` for the optional larger cold
+preparation stress case; storage reports name the number actually prepared.
+The experiment reports cold preparation and warm-request p50/p95,
+scored-work counts, read/write rows, derived storage by shared history,
+generations and contexts, allocation/heap measurements, write contention and
+connection waits, and candidate quality against affinity evidence. A count or
+deep-page scan may grow with the matching library, and profile preparation may
+grow with feedback; candidate scoring remains bounded independently of the
+library size. Structural limits are 2,000 scored recall works, 500 stored prefix
+rows per context, eight contexts per generation, and 100 ordinary page scores.
+Report each measured counter's scope; a logical row counter or cumulative
+allocation is not an SQLite page-read count or peak resident memory.
 
 ## Reading results
 
