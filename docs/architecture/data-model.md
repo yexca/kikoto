@@ -636,7 +636,7 @@ policy, backup and database maintenance changes, with the acting user, target
 and a JSON detail.
 
 `user_preference` stores optional account overrides for folder routing rules,
-recommendation configuration, badge threshold, and the personal metadata
+recommendation configuration, recommendation highlight threshold, and the personal metadata
 language priority (see [Metadata Language](#metadata-language)). A missing
 override uses the `app_setting` default, or the original language for
 metadata. New recommendation generations use the effective account

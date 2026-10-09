@@ -27,7 +27,8 @@ test("remote recommendation toggle scores the page in one batch without reloadin
   await page.route("**/api/remote-sources/1/recommendations", async (route) => {
     scoreRequests.push(route.request().postDataJSON());
     await route.fulfill({
-      json: { scores: works.map((work, index) => ({ primaryCode: work.primaryCode, score: 65 + index })) },
+      // The second score sits below the default highlight threshold of 50.
+      json: { scores: works.map((work, index) => ({ primaryCode: work.primaryCode, score: [65, 20][index] })) },
     });
   });
   await page.goto("/");
@@ -39,7 +40,7 @@ test("remote recommendation toggle scores the page in one batch without reloadin
   const badges = page.getByLabel("Recommended for you", { exact: true });
   await expect(badges).toHaveCount(2);
   await expect(badges.nth(0)).toHaveText("65");
-  await expect(badges.nth(1)).toHaveText("66");
+  await expect(badges.nth(1)).toHaveText("20");
   expect(scoreRequests).toHaveLength(1);
   expect(scoreRequests[0].recommendationSession).toBeTruthy();
   expect(scoreRequests[0].works.map(({ workId }) => workId)).toEqual([1, null]);

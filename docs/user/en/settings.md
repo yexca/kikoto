@@ -48,7 +48,7 @@ password is reset from the server host; see
 - **Recommendations** starts with the **Your recommendation activity** report
   of the signed-in user's own last 30 days (how impressions turned into opens
   and plays, the marks and reshuffles given, and the affinity score
-  distribution), followed by recommendation presets, badge threshold,
+  distribution), followed by recommendation presets, highlight threshold,
   variation, discovery boost, and advanced scoring. Saving creates a new
   recommendation session for the current tab; other open tabs keep their
   snapshots until a new session is created.

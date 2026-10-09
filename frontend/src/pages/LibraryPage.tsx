@@ -393,6 +393,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const initialBrowseState = initialBrowse.state;
   const [works, setWorks] = useState<Work[]>([]);
   const [displayedRecommendationSort, setDisplayedRecommendationSort] = useState(false);
+  // True when the loaded page carries ordinary-sort scores, so turning badges
+  // on never shows placeholder zeros before the scored page arrives.
+  const [displayedRecommendationBadges, setDisplayedRecommendationBadges] = useState(false);
   const worksRef = useRef<Work[]>([]);
   worksRef.current = works;
   const [sources, setSources] = useState<LibrarySource[]>([]);
@@ -708,6 +711,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         loadedLibraryRequestKey.current = requestKey;
         setWorks(page.works);
         setDisplayedRecommendationSort(librarySort === "recommend");
+        setDisplayedRecommendationBadges(
+          recommendBadgesEnabled && librarySort !== "recommend" && !page.recommendationUnavailable,
+        );
         setWorkTotal(page.total);
         setRecommendationUnavailable(Boolean(page.recommendationUnavailable));
         if (librarySort === "recommend") {
@@ -1391,6 +1397,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         if (requestSeq !== libraryRequestSeq.current) return;
         setWorks(result.works);
         setDisplayedRecommendationSort(librarySort === "recommend");
+        setDisplayedRecommendationBadges(
+          recommendBadgesEnabled && librarySort !== "recommend" && !result.recommendationUnavailable,
+        );
         setWorkTotal(result.total);
         setRecommendationUnavailable(Boolean(result.recommendationUnavailable));
         recommendationContextRef.current =
@@ -1480,6 +1489,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     );
     setWorks(page.works);
     setDisplayedRecommendationSort(librarySort === "recommend");
+    setDisplayedRecommendationBadges(
+      recommendBadgesEnabled && librarySort !== "recommend" && !page.recommendationUnavailable,
+    );
     setWorkTotal(page.total);
     setRecommendationUnavailable(Boolean(page.recommendationUnavailable));
     recommendationContextRef.current =
@@ -2054,7 +2066,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
                 <WorkCard
                   key={work.id}
                   work={work}
-                  showRecommendationScore={displayedRecommendationSort}
+                  showRecommendationScore={
+                    displayedRecommendationSort || (recommendBadgesEnabled && displayedRecommendationBadges)
+                  }
                   onRecommendationOpen={openCardRecommendation}
                   onOpen={openCardWork}
                   onStatusChange={changeCardStatus}
@@ -2554,6 +2568,7 @@ function RemoteSourceResults({
           <div key={work.remoteId} className="h-full">
             <RemoteWorkCard
               work={{ ...work, recommendScore: recommendations.scores.get(work.primaryCode) ?? 0 }}
+              recommendationScored={recommendations.scores.has(work.primaryCode)}
               revealDelay={recommendationRevealDelay(index)}
               source={source}
               coverSourceMode={coverSourceMode}
@@ -2949,6 +2964,7 @@ const WorkCard = memo(function WorkCard({
 
 function RemoteWorkCard({
   work,
+  recommendationScored,
   revealDelay,
   source,
   coverSourceMode,
@@ -2966,6 +2982,7 @@ function RemoteWorkCard({
   onListSaved,
 }: {
   work: RemoteWork;
+  recommendationScored: boolean;
   revealDelay: number;
   source: LibrarySource;
   coverSourceMode: SourceVisibilityMode;
@@ -2982,7 +2999,7 @@ function RemoteWorkCard({
   onEnsureWork: () => Promise<number | null>;
   onListSaved: (workId: number, favorite: boolean) => void;
 }) {
-  const baseView = remoteWorkCardView(work, source, useAuth().recommendationThreshold);
+  const baseView = remoteWorkCardView(work, source, recommendationScored, useAuth().recommendationThreshold);
   const view: WorkCardViewModel = {
     ...baseView,
     ...libraryCoverSourceBadges(baseView.sourceBadges, { kind: "remote", sourceId: source.id }, coverSourceMode),
@@ -3109,7 +3126,8 @@ function libraryWorkCardView(
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: userTagBadges(work.userTags ?? [], onUserTagOpen),
     sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
-    recommended: showRecommendationScore || recommendationBadgeVisible(work.recommendScore, threshold),
+    recommended: showRecommendationScore && Number.isFinite(work.recommendScore),
+    recommendationHighlighted: work.recommendScore >= threshold,
     recommendationScore: work.recommendScore,
   };
 }
@@ -3120,7 +3138,12 @@ function trackedSourcesForWork(work: Work) {
   );
 }
 
-function remoteWorkCardView(work: RemoteWork, source: LibrarySource, threshold: number): WorkCardViewModel {
+function remoteWorkCardView(
+  work: RemoteWork,
+  source: LibrarySource,
+  scored: boolean,
+  threshold: number,
+): WorkCardViewModel {
   const sourceLabel = source.displayName || source.code || i18n.t("workCard.remoteSource");
   return {
     code: work.primaryCode || work.remoteId,
@@ -3138,7 +3161,8 @@ function remoteWorkCardView(work: RemoteWork, source: LibrarySource, threshold: 
     hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: [],
-    recommended: recommendationBadgeVisible(work.recommendScore, threshold),
+    recommended: scored && Number.isFinite(work.recommendScore),
+    recommendationHighlighted: work.recommendScore >= threshold,
     recommendationScore: work.recommendScore,
     sourceBadges: work.remotePlayable
       ? [{ key: `source:remote:${source.id}`, label: sourceLabel, variant: "outline" }]
@@ -3451,11 +3475,6 @@ function SearchClauseEditor({
       </div>
     </div>
   );
-}
-
-function recommendationBadgeVisible(score: number | undefined, threshold: number) {
-  if (window.localStorage.getItem("kikoto:recommend-badges") !== "true") return false;
-  return Number.isFinite(score) && (score ?? 0) >= threshold;
 }
 
 function detailSourceIntentFromLocation(search: string): DetailSourceIntent {

@@ -1,5 +1,13 @@
 # Unreleased
 
+- Recommendation badges show every scored work's score in the Library and on
+  remote sources. The badge threshold setting becomes the highlight threshold:
+  scores at or above it keep the emphasized badge, and lower scores appear
+  muted. The score explanation shows the score on a gauge with the threshold
+  marked, the score composition as one stacked bar, and ranking adjustments on
+  a centered scale, and suggests favoriting or marking Relisten when no
+  preference evidence exists yet.
+
 - Settings on wide screens can show its tabs as a row above the content
   instead of the side column, and the Settings and Metadata rails name their
   tabs by default; a choice saved earlier on the device is kept. On phones the
