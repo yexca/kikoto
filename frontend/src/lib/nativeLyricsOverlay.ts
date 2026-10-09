@@ -21,9 +21,16 @@ export type NativeLyricsOverlayState = NativeLyricsOverlayPlayback & {
   lines: { timeMs: number; text: string }[];
 };
 
+/** Resolved theme colors as `#rrggbb`, so the native window follows the app theme. */
+export type LyricsPictureInPictureAppearance = {
+  background: string;
+  foreground: string;
+  accent: string;
+};
+
 type LyricsPictureInPicturePlugin = {
   status(): Promise<{ supported: boolean; permitted: boolean }>;
-  show(state: NativeLyricsOverlayState): Promise<void>;
+  show(state: NativeLyricsOverlayState & { appearance?: LyricsPictureInPictureAppearance }): Promise<void>;
   update(playback: NativeLyricsOverlayPlayback): Promise<void>;
   hide(): Promise<void>;
   addListener(eventName: "closed", listener: () => void): Promise<PluginListenerHandle>;
@@ -45,6 +52,37 @@ function lyricsPictureInPicture() {
   if (supportsNativeMedia() || !Capacitor.isPluginAvailable(pictureInPicturePluginName)) return null;
   pictureInPicturePlugin ??= registerPlugin<LyricsPictureInPicturePlugin>(pictureInPicturePluginName);
   return pictureInPicturePlugin;
+}
+
+/** Converts a design-token HSL triplet such as `36 38% 95%` to `#rrggbb`, or "" when it is not one. */
+export function hslTokenToHex(token: string) {
+  const match = /^(-?\d+(?:\.\d+)?)(?:deg)?\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%$/.exec(token.trim());
+  if (!match) return "";
+  const hue = (((Number(match[1]) % 360) + 360) % 360) / 360;
+  const saturation = Math.min(100, Number(match[2])) / 100;
+  const lightness = Math.min(100, Number(match[3])) / 100;
+  const q = lightness < 0.5 ? lightness * (1 + saturation) : lightness + saturation - lightness * saturation;
+  const p = 2 * lightness - q;
+  const channel = (offset: number) => {
+    let t = hue + offset;
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    const value = t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p;
+    return Math.round(value * 255)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${channel(1 / 3)}${channel(0)}${channel(-1 / 3)}`;
+}
+
+/** The active theme's background, text, and primary colors, or undefined outside a themed document. */
+function lyricsPictureInPictureAppearance(): LyricsPictureInPictureAppearance | undefined {
+  if (typeof document === "undefined") return undefined;
+  const styles = getComputedStyle(document.documentElement);
+  const background = hslTokenToHex(styles.getPropertyValue("--background"));
+  const foreground = hslTokenToHex(styles.getPropertyValue("--foreground"));
+  const accent = hslTokenToHex(styles.getPropertyValue("--primary"));
+  return background && foreground && accent ? { background, foreground, accent } : undefined;
 }
 
 /**
@@ -72,7 +110,8 @@ export async function requestNativeLyricsOverlayPermission() {
 export async function showNativeLyricsOverlay(state: NativeLyricsOverlayState) {
   const pictureInPicture = lyricsPictureInPicture();
   if (!pictureInPicture) return showAndroidLyricsOverlay(state);
-  await pictureInPicture.show(state).catch(() => {});
+  const appearance = lyricsPictureInPictureAppearance();
+  await pictureInPicture.show(appearance ? { ...state, appearance } : state).catch(() => {});
 }
 
 export async function updateNativeLyricsOverlayPlayback(playback: NativeLyricsOverlayPlayback) {

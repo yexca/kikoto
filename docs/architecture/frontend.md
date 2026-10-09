@@ -272,7 +272,12 @@ and player intent, including pending play requests.
   timed track once plus playback corrections and advance lines on their own
   clock, so they stay in sync while the web view is in the background. The
   Picture-in-Picture window's play and pause go back to the web player rather
-  than to a second media session.
+  than to a second media session. iOS composites Picture-in-Picture frames as
+  opaque video, so the window cannot be transparent; it uses a wide 4:1 frame
+  to cover less of the screen and draws a gradient from the active theme's
+  background, foreground, and primary tokens, which the web side resolves to
+  `#rrggbb` when it opens the window. Missing or malformed colors fall back to
+  the dark default.
 - Native shells attach the session credential to media and image requests on
   the configured server, limited to fixed cover, manual, media, and HLS routes.
   Android intercepts those WebView requests. WKWebView cannot intercept its own

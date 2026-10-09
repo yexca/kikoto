@@ -50,6 +50,7 @@ public class KikotoLyricsPictureInPicturePlugin: CAPPlugin, CAPBridgedPlugin {
                 return KikotoLyricLine(timeMs: time, text: Self.bounded(line["text"] as? String ?? ""))
             }
             .sorted { $0.timeMs < $1.timeMs }
+        let appearance = Self.appearance(call.getObject("appearance"))
         let playback = Self.playback(call)
         DispatchQueue.main.async {
             guard KikotoLyricsPictureInPicture.isSupported, let container = self.bridge?.viewController?.view else {
@@ -59,6 +60,7 @@ public class KikotoLyricsPictureInPicturePlugin: CAPPlugin, CAPBridgedPlugin {
             self.presenter.show(
                 title: title,
                 lines: lines,
+                appearance: appearance,
                 positionMs: playback.positionMs,
                 playing: playback.playing,
                 playbackRate: playback.rate,
@@ -90,6 +92,29 @@ public class KikotoLyricsPictureInPicturePlugin: CAPPlugin, CAPBridgedPlugin {
             position.isFinite ? position : 0,
             call.getBool("playing") ?? false,
             rate.isFinite && rate > 0 && rate <= 16 ? rate : 1
+        )
+    }
+
+    /// Theme colors as `#rrggbb`; any missing or malformed color keeps the default look.
+    private static func appearance(_ object: JSObject?) -> KikotoLyricsAppearance {
+        guard
+            let object,
+            let background = color(object["background"] as? String),
+            let foreground = color(object["foreground"] as? String),
+            let accent = color(object["accent"] as? String)
+        else { return .fallback }
+        return KikotoLyricsAppearance(background: background, foreground: foreground, accent: accent)
+    }
+
+    private static func color(_ hex: String?) -> UIColor? {
+        guard let hex, hex.count == 7, hex.hasPrefix("#"),
+              hex.dropFirst().allSatisfy(\.isHexDigit),
+              let value = UInt32(hex.dropFirst(), radix: 16) else { return nil }
+        return UIColor(
+            red: CGFloat((value >> 16) & 0xFF) / 255,
+            green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255,
+            alpha: 1
         )
     }
 

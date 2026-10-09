@@ -10,6 +10,20 @@ struct KikotoLyricLine {
     let text: String
 }
 
+/// Colors for the Picture-in-Picture frame, taken from the app theme.
+struct KikotoLyricsAppearance {
+    let background: UIColor
+    let foreground: UIColor
+    let accent: UIColor
+
+    /// The dark look used when the web app sends no theme.
+    static let fallback = KikotoLyricsAppearance(
+        background: UIColor(white: 0.07, alpha: 1),
+        foreground: .white,
+        accent: UIColor(white: 0.28, alpha: 1)
+    )
+}
+
 /// Renders the current lyric line into a Picture-in-Picture window.
 ///
 /// WKWebView exposes no usable web Picture-in-Picture, so the line is drawn
@@ -23,7 +37,10 @@ final class KikotoLyricsPictureInPicture: NSObject {
     var onClosed: (() -> Void)?
     var onPlaybackControl: ((Bool) -> Void)?
 
-    private static let frameSize = CGSize(width: 960, height: 400)
+    /// A wide strip keeps the window short so it covers less of the screen.
+    private static let frameSize = CGSize(width: 960, height: 240)
+    /// How far the background gradient moves toward the accent color.
+    private static let accentBlend: CGFloat = 0.22
     private static let tickInterval: TimeInterval = 0.2
     private static let startDelay: TimeInterval = 0.5
     private static let startTimeout: TimeInterval = 3
@@ -31,6 +48,7 @@ final class KikotoLyricsPictureInPicture: NSObject {
     private static let refreshInterval: CFTimeInterval = 1
 
     private var title = ""
+    private var appearance = KikotoLyricsAppearance.fallback
     private var lines: [KikotoLyricLine] = []
     private var anchorPositionMs: Double = 0
     private var anchorTime = CACurrentMediaTime()
@@ -50,8 +68,17 @@ final class KikotoLyricsPictureInPicture: NSObject {
         AVPictureInPictureController.isPictureInPictureSupported()
     }
 
-    func show(title: String, lines: [KikotoLyricLine], positionMs: Double, playing: Bool, playbackRate: Double, in container: UIView) {
+    func show(
+        title: String,
+        lines: [KikotoLyricLine],
+        appearance: KikotoLyricsAppearance,
+        positionMs: Double,
+        playing: Bool,
+        playbackRate: Double,
+        in container: UIView
+    ) {
         self.title = title
+        self.appearance = appearance
         self.lines = lines
         applyPlayback(positionMs: positionMs, playing: playing, playbackRate: playbackRate)
         renderedKey = nil
@@ -92,7 +119,7 @@ final class KikotoLyricsPictureInPicture: NSObject {
         }
         // The layer must be in the window hierarchy for Picture-in-Picture to
         // start. A small host behind the opaque web view keeps it there unseen.
-        let host = UIView(frame: CGRect(x: 0, y: 0, width: 192, height: 80))
+        let host = UIView(frame: CGRect(x: 0, y: 0, width: 192, height: 48))
         host.isUserInteractionEnabled = false
         let layer = AVSampleBufferDisplayLayer()
         layer.frame = host.bounds
@@ -231,7 +258,7 @@ final class KikotoLyricsPictureInPicture: NSObject {
         let key = "\(primary)\u{1F}\(secondary)"
         let now = CACurrentMediaTime()
         guard key != renderedKey || now - renderedAt >= Self.refreshInterval,
-              let sample = Self.sampleBuffer(primary: primary, secondary: secondary) else { return }
+              let sample = Self.sampleBuffer(primary: primary, secondary: secondary, appearance: appearance) else { return }
         renderedKey = key
         renderedAt = now
         if #available(iOS 17.0, *) {
@@ -241,7 +268,7 @@ final class KikotoLyricsPictureInPicture: NSObject {
         }
     }
 
-    private static func sampleBuffer(primary: String, secondary: String) -> CMSampleBuffer? {
+    private static func sampleBuffer(primary: String, secondary: String, appearance: KikotoLyricsAppearance) -> CMSampleBuffer? {
         let width = Int(frameSize.width)
         let height = Int(frameSize.height)
         let attributes: [CFString: Any] = [
@@ -267,14 +294,20 @@ final class KikotoLyricsPictureInPicture: NSObject {
             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
         ) else { return nil }
 
-        context.setFillColor(UIColor(white: 0.07, alpha: 1).cgColor)
-        context.fill(CGRect(origin: .zero, size: frameSize))
+        drawBackground(in: context, appearance: appearance)
         // UIKit text drawing expects a top-left origin.
         context.translateBy(x: 0, y: frameSize.height)
         context.scaleBy(x: 1, y: -1)
         UIGraphicsPushContext(context)
-        drawLine(primary, size: 60, minimumSize: 30, weight: .semibold, color: .white, centerY: frameSize.height * 0.42)
-        drawLine(secondary, size: 36, minimumSize: 22, weight: .regular, color: UIColor(white: 1, alpha: 0.62), centerY: frameSize.height * 0.76)
+        drawLine(primary, size: 64, minimumSize: 32, weight: .semibold, color: appearance.foreground, centerY: frameSize.height * 0.4)
+        drawLine(
+            secondary,
+            size: 38,
+            minimumSize: 24,
+            weight: .regular,
+            color: appearance.foreground.withAlphaComponent(0.62),
+            centerY: frameSize.height * 0.78
+        )
         UIGraphicsPopContext()
 
         var format: CMVideoFormatDescription?
@@ -308,6 +341,41 @@ final class KikotoLyricsPictureInPicture: NSObject {
             )
         }
         return sample
+    }
+
+    /// A diagonal wash from the theme background toward its accent color.
+    private static func drawBackground(in context: CGContext, appearance: KikotoLyricsAppearance) {
+        let start = appearance.background
+        let end = blend(appearance.background, appearance.accent, amount: accentBlend)
+        guard let gradient = CGGradient(
+            colorsSpace: context.colorSpace,
+            colors: [start.cgColor, end.cgColor] as CFArray,
+            locations: [0, 1]
+        ) else {
+            context.setFillColor(start.cgColor)
+            context.fill(CGRect(origin: .zero, size: frameSize))
+            return
+        }
+        // The context origin is bottom-left here, so this runs top-left to bottom-right.
+        context.drawLinearGradient(
+            gradient,
+            start: CGPoint(x: 0, y: frameSize.height),
+            end: CGPoint(x: frameSize.width, y: 0),
+            options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+        )
+    }
+
+    private static func blend(_ base: UIColor, _ tint: UIColor, amount: CGFloat) -> UIColor {
+        var (r1, g1, b1, a1): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
+        var (r2, g2, b2, a2): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
+        guard base.getRed(&r1, green: &g1, blue: &b1, alpha: &a1),
+              tint.getRed(&r2, green: &g2, blue: &b2, alpha: &a2) else { return base }
+        return UIColor(
+            red: r1 + (r2 - r1) * amount,
+            green: g1 + (g2 - g1) * amount,
+            blue: b1 + (b2 - b1) * amount,
+            alpha: 1
+        )
     }
 
     private static func drawLine(
