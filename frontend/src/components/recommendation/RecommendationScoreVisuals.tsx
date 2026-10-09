@@ -9,11 +9,11 @@ type AffinityOrdering = NonNullable<RecommendationAffinityBreakdown["ordering"]>
 
 // Deductions read as a texture rather than a status color: a shelved
 // similarity lowers affinity but is not an error.
-const deductionStyle: CSSProperties = {
+export const recommendationDeductionStyle: CSSProperties = {
   backgroundImage: "repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 5px)",
 };
 
-const positiveTones: Record<string, string> = {
+export const recommendationComponentTones: Record<string, string> = {
   base: "bg-muted-foreground/35",
   tags: "bg-primary",
   voices: "bg-primary/70",
@@ -30,7 +30,7 @@ const componentLabelKeys: Record<string, string> = {
   paused_similarity: "libraryDetail.componentShelved",
 };
 
-function clampPercent(value: number) {
+export function clampRecommendationPercent(value: number) {
   return Math.min(100, Math.max(0, value));
 }
 
@@ -39,7 +39,7 @@ function componentLabel(component: AffinityComponent) {
   return key ? i18n.t(key) : component.label;
 }
 
-function signed(value: number, digits = 0) {
+export function signedRecommendationValue(value: number, digits = 0) {
   const rounded = Math.abs(value) < 0.05 ? 0 : value;
   return `${rounded > 0 ? "+" : rounded < 0 ? "−" : ""}${Math.abs(rounded).toFixed(digits)}`;
 }
@@ -69,9 +69,10 @@ export function RecommendationScoreGauge({
   threshold?: number;
   label: string;
 }) {
-  const value = clampPercent(score);
+  const value = clampRecommendationPercent(score);
   const highlighted = threshold === undefined || score >= threshold;
-  const thresholdDegrees = GAUGE_START_DEGREES + (GAUGE_SWEEP_DEGREES * clampPercent(threshold ?? 0)) / 100;
+  const thresholdDegrees =
+    GAUGE_START_DEGREES + (GAUGE_SWEEP_DEGREES * clampRecommendationPercent(threshold ?? 0)) / 100;
   const tickInner = gaugePoint(thresholdDegrees, GAUGE_RADIUS - 9);
   const tickOuter = gaugePoint(thresholdDegrees, GAUGE_RADIUS + 9);
   return (
@@ -161,11 +162,11 @@ export function RecommendationComposition({
       key: component.key,
       left,
       width: Math.min(component.contribution, 100 - left),
-      tone: positiveTones[component.key] ?? "bg-primary/45",
+      tone: recommendationComponentTones[component.key] ?? "bg-primary/45",
     });
   }
-  const deductionLeft = clampPercent(cursor - deduction);
-  const deductionWidth = clampPercent(cursor) - deductionLeft;
+  const deductionLeft = clampRecommendationPercent(cursor - deduction);
+  const deductionWidth = clampRecommendationPercent(cursor) - deductionLeft;
   const legend = components.filter(
     (component) => component.key === "base" || component.contribution !== 0 || component.matchCount > 0,
   );
@@ -177,7 +178,7 @@ export function RecommendationComposition({
         {rankingScore !== undefined && (
           <span
             className="absolute top-0 h-0 w-0 -translate-x-1/2 border-x-[5px] border-t-[6px] border-x-transparent border-t-foreground"
-            style={{ left: `${clampPercent(rankingScore)}%` }}
+            style={{ left: `${clampRecommendationPercent(rankingScore)}%` }}
             title={`${i18n.t("libraryDetail.rankingScore")} ${rankingScore.toFixed(1)}`}
             aria-hidden="true"
           />
@@ -186,7 +187,7 @@ export function RecommendationComposition({
           className="relative h-4 overflow-hidden rounded-full bg-muted"
           role="img"
           aria-label={legend
-            .map((component) => `${componentLabel(component)} ${signed(component.contribution)}`)
+            .map((component) => `${componentLabel(component)} ${signedRecommendationValue(component.contribution)}`)
             .join(", ")}
         >
           {segments.map((segment) => (
@@ -201,21 +202,21 @@ export function RecommendationComposition({
           {deductionWidth > 0 && (
             <div
               className="absolute inset-y-0 bg-muted/70 text-foreground/45"
-              style={{ ...deductionStyle, left: `${deductionLeft}%`, width: `${deductionWidth}%` }}
+              style={{ ...recommendationDeductionStyle, left: `${deductionLeft}%`, width: `${deductionWidth}%` }}
             />
           )}
         </div>
         {threshold !== undefined && (
           <span
             className="absolute bottom-[-3px] top-[7px] w-0 -translate-x-1/2 border-l-2 border-dotted border-foreground/50"
-            style={{ left: `${clampPercent(threshold)}%` }}
+            style={{ left: `${clampRecommendationPercent(threshold)}%` }}
             title={i18n.t("libraryDetail.highlightThreshold", { value: threshold })}
             aria-hidden="true"
           />
         )}
         <span
           className="absolute bottom-[-3px] top-[7px] w-0.5 -translate-x-1/2 rounded-full bg-foreground"
-          style={{ left: `${clampPercent(score)}%` }}
+          style={{ left: `${clampRecommendationPercent(score)}%` }}
           aria-hidden="true"
         />
       </div>
@@ -227,14 +228,22 @@ export function RecommendationComposition({
         {legend.map((component) => (
           <div key={component.key} className="flex min-w-0 items-center gap-1.5">
             {component.key === "paused_similarity" ? (
-              <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-muted text-foreground/45" style={deductionStyle} />
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-sm bg-muted text-foreground/45"
+                style={recommendationDeductionStyle}
+              />
             ) : (
               <span
-                className={cn("h-2.5 w-2.5 shrink-0 rounded-sm", positiveTones[component.key] ?? "bg-primary/45")}
+                className={cn(
+                  "h-2.5 w-2.5 shrink-0 rounded-sm",
+                  recommendationComponentTones[component.key] ?? "bg-primary/45",
+                )}
               />
             )}
             <span className="truncate text-xs text-muted-foreground">{componentLabel(component)}</span>
-            <span className="text-xs font-semibold tabular-nums">{signed(component.contribution)}</span>
+            <span className="text-xs font-semibold tabular-nums">
+              {signedRecommendationValue(component.contribution)}
+            </span>
             {component.matchCount > 0 && component.key !== "favorite" && (
               <span
                 className="text-[10px] tabular-nums text-muted-foreground"
@@ -301,7 +310,9 @@ export function RecommendationAdjustment({ ordering }: { ordering: AffinityOrder
     <section className="space-y-3 border-t pt-4">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-xs font-medium text-muted-foreground">{i18n.t("libraryDetail.shuffleAdjustment")}</h3>
-        <span className="text-sm font-semibold tabular-nums">{signed(ordering.totalAdjustment, 1)}</span>
+        <span className="text-sm font-semibold tabular-nums">
+          {signedRecommendationValue(ordering.totalAdjustment, 1)}
+        </span>
       </div>
       <div className="relative">
         <div className="relative h-2.5 overflow-hidden rounded-full bg-muted">
@@ -309,7 +320,11 @@ export function RecommendationAdjustment({ ordering }: { ordering: AffinityOrder
             <div
               key={bar.key}
               className={cn("absolute inset-y-0", bar.tone)}
-              style={{ left: `${bar.left}%`, width: `${bar.width}%`, ...(bar.textured ? deductionStyle : undefined) }}
+              style={{
+                left: `${bar.left}%`,
+                width: `${bar.width}%`,
+                ...(bar.textured ? recommendationDeductionStyle : undefined),
+              }}
             />
           ))}
         </div>
@@ -321,19 +336,19 @@ export function RecommendationAdjustment({ ordering }: { ordering: AffinityOrder
         />
       </div>
       <div className="flex justify-between text-[10px] tabular-nums text-muted-foreground">
-        <span>{signed(-range)}</span>
+        <span>{signedRecommendationValue(-range)}</span>
         <span>0</span>
-        <span>{signed(range)}</span>
+        <span>{signedRecommendationValue(range)}</span>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {parts.map((part) => (
           <div key={part.key} className="flex items-center gap-1.5">
             <span
               className={cn("h-2.5 w-2.5 shrink-0 rounded-sm", part.tone)}
-              style={part.textured ? deductionStyle : undefined}
+              style={part.textured ? recommendationDeductionStyle : undefined}
             />
             <span className="text-xs text-muted-foreground">{part.label}</span>
-            <span className="text-xs font-semibold tabular-nums">{signed(part.value, 1)}</span>
+            <span className="text-xs font-semibold tabular-nums">{signedRecommendationValue(part.value, 1)}</span>
           </div>
         ))}
       </div>

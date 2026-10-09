@@ -6,7 +6,10 @@
   muted. The score explanation shows the score on a gauge with the threshold
   marked, the score composition as one stacked bar, and ranking adjustments on
   a centered scale, and suggests favoriting or marking Relisten when no
-  preference evidence exists yet.
+  preference evidence exists yet. Recommendation settings preview an
+  adjustable example work's score live, show how ordering variety can move
+  it, and replace the advanced number fields with a proportional mix bar, a
+  possible score range, and per-match step meters with sliders.
 
 - Settings on wide screens can show its tabs as a row above the content
   instead of the side column, and the Settings and Metadata rails name their

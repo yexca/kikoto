@@ -1034,14 +1034,14 @@ test("recommendation keeps common controls visible and advanced scoring collapse
   await expect(page).toHaveURL(/\/settings\?tab=recommendation$/);
 
   await expect(page.getByRole("button", { name: /Balanced/ })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByLabel("Badge threshold")).toBeVisible();
+  await expect(page.getByLabel("Highlight threshold")).toBeVisible();
   await expect(page.getByLabel("Result variation")).toBeVisible();
   await expect(page.getByLabel("Positive tag weight")).toBeHidden();
   await page.getByRole("button", { name: /Exploratory/ }).click();
   await expect(page.getByLabel("Result variation")).toHaveValue("8");
   await expect(page.getByLabel("Discovery boost")).toHaveValue("30");
   await page.getByText("Advanced scoring", { exact: true }).click();
-  await expect(page.getByLabel("Unmarked")).toHaveValue("16");
+  await expect(page.getByLabel("Unmarked", { exact: true })).toHaveValue("16");
   await expect(page.getByRole("spinbutton", { name: "Shelved", exact: true })).toHaveValue("0");
   await expect(page.getByLabel("Positive tag weight")).toBeVisible();
   await page.getByRole("button", { name: "Save recommendation settings" }).click();
@@ -1063,9 +1063,9 @@ test("recommendation restores all default weights and threshold before saving", 
   await page.goto("/settings?tab=recommendation");
   await expect(page.getByRole("tab", { name: "Recommendations", selected: true })).toBeVisible();
   await page.getByRole("button", { name: /Exploratory/ }).click();
-  await page.getByLabel("Badge threshold").focus();
-  await page.getByLabel("Badge threshold").press("End");
-  await expect(page.getByLabel("Badge threshold")).toHaveValue("100");
+  await page.getByLabel("Highlight threshold").focus();
+  await page.getByLabel("Highlight threshold").press("End");
+  await expect(page.getByLabel("Highlight threshold")).toHaveValue("100");
   await page.getByRole("button", { name: "Save recommendation settings" }).click();
   await expect.poll(() => settingsPayloads.length).toBe(1);
   await page.reload();
@@ -1081,7 +1081,7 @@ test("recommendation restores all default weights and threshold before saving", 
   await page.reload();
   await expect(page.getByLabel("Result variation")).toHaveValue("3");
   await expect(page.getByLabel("Discovery boost")).toHaveValue("18");
-  await expect(page.getByLabel("Badge threshold")).toHaveValue("50");
+  await expect(page.getByLabel("Highlight threshold")).toHaveValue("50");
 });
 
 test("@desktop work management owns metadata settings in a popover", async ({ page }, testInfo) => {

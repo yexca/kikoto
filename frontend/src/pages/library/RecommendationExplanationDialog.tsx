@@ -9,7 +9,7 @@ import {
   RecommendationAdjustment,
   RecommendationComposition,
   RecommendationScoreGauge,
-} from "@/pages/library/RecommendationScoreVisuals";
+} from "@/components/recommendation/RecommendationScoreVisuals";
 
 export function RecommendationExplanationDialog({
   state,
