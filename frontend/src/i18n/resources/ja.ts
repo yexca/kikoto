@@ -858,19 +858,43 @@ export const japaneseResource = {
         sourceFallbackDescription:
           "現在の場所で再生に失敗したとき、停止せずにトラックの次に利用できる場所で再生を続けます。",
         devicePrivacy: "このデバイスのプライバシー",
-        devicePrivacyDescription: "これらの設定はこのデバイスのすべてのアカウントに適用され、すぐに反映されます。",
-        hideMediaDetails: "システムのメディア表示でトラック情報を隠す",
-        hideMediaDetailsDescription:
-          "ロック画面、コントロールセンター、メディア通知、画面歌詞には、トラック、サークル、カバーの代わりに Kikoto と表示します。",
+        devicePrivacyDescription: "このデバイス上のすべてのサーバーとアカウントに適用されます。",
         appSwitcherBlur: "バックグラウンドでぼかす",
         appSwitcherBlurDescription:
-          "Appスイッチャーや、コントロールセンターなどの画面が重なっているときに Kikoto をぼかします。初期設定はオンです。",
-        speakerGuard: "スピーカーで再生する前に確認する",
-        speakerGuardDescription:
-          "ヘッドホンなどのオーディオ機器が接続されていないときは、再生を始める前に確認し、意図せず音が出るのを防ぎます。初期設定はオンです。",
+          "Appスイッチャーや、コントロールセンターなどの画面が重なっているときに Kikoto をぼかします。",
         screenCaptureCover: "画面収録やミラーリング中は隠す",
         screenCaptureCoverDescription:
-          "画面収録、AirPlay ミラーリングなどの画面キャプチャ中は Kikoto を覆い、画面歌詞を閉じます。初期設定はオンです。",
+          "画面収録、AirPlay ミラーリングなどの画面キャプチャ中は Kikoto を覆い、画面歌詞を閉じます。スクリーンショットは防げません。",
+        nowPlayingContent: "再生中の情報",
+        nowPlayingContentDescription:
+          "ロック画面、コントロールセンター、接続中の Bluetooth や車載ディスプレイに表示する、再生中のトラックの内容です。",
+        recentsShield: "最近のアプリで内容を隠す",
+        recentsShieldDescription: "最近のアプリには現在のページの代わりにカバーを表示します。",
+        lockScreenContent: "ロック中のメディアコントロール",
+        lockScreenContentDescription:
+          "デバイスのロック中に、メディア通知、ロック画面、接続中の Bluetooth や車載ディスプレイに表示する内容です。",
+        lockScreenContentOptions: {
+          full: "すべて表示",
+          hideCover: "カバーを隠す",
+          hidden: "アプリ名のみ",
+        },
+        speakerConfirm: "スピーカー再生の前に確認",
+        speakerConfirmDescription:
+          "ヘッドホンなどの音声出力が接続されていないとき、スマートフォンのスピーカーで再生する前に確認します。通知、ロック画面、メディアキーからの再生も、アプリ内での確認を待ちます。",
+        screenSecure: "スクリーンショットと録画を禁止",
+        screenSecureDescription:
+          "スクリーンショット、画面録画、キャストに Kikoto とフローティング歌詞が映りません。自分でのスクリーンショットもできなくなります。",
+        appLock: "アプリロック",
+        appLockDescription: "Kikoto に戻るときに、指紋、顔、またはデバイスの画面ロックで認証します。",
+        appLockUnavailable: "アプリロックを使うには、Android の設定で画面ロックを設定してください。",
+        appLockTimeout: "ロックまでの時間",
+        appLockTimeoutDescription: "Kikoto がバックグラウンドにどれだけいたらロックするかを選びます。",
+        appLockTimeoutImmediately: "すぐに",
+        appLockTimeoutMinutes_one: "{{count}} 分後",
+        appLockTimeoutMinutes_other: "{{count}} 分後",
+        unlockTitle: "Kikoto のロックを解除",
+        unlockAction: "ロック解除",
+        devicePrivacySaveFailed: "プライバシー設定を保存できませんでした。",
         displayName: "表示名",
         username: "ユーザー名",
         role: "ロール",

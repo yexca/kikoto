@@ -2,13 +2,13 @@ import { useCallback, useEffect, type RefObject } from "react";
 
 import { assetURL } from "@/lib/api";
 import { addNativeMediaListeners, stopNativeMedia, supportsNativeMedia, updateNativeMedia } from "@/lib/nativeMedia";
-import { addNativeAudioOutputLostListener } from "@/lib/nativePrivacy";
+import { addNativeOutputLostListener } from "@/lib/nativePrivacy";
 
 import type { PlaybackSeekPreferences } from "./playbackPreferences";
 import { NATIVE_MEDIA_POSITION_INTERVAL_MS } from "./playerProgress";
 import { bindMediaSessionActions, type PlayerRemoteControls } from "./playerRemoteControls";
 import type { PlayerTrack } from "./playerTypes";
-import { systemMediaDetails, useSystemMediaDetailsHidden } from "./systemMediaPrivacy";
+import { systemMediaDetails, useMediaSessionContent } from "./systemMediaPrivacy";
 import type { PlaybackRefs } from "./usePlaybackEngine";
 
 function absoluteAssetURL(path: string) {
@@ -43,7 +43,6 @@ export function useNativeMediaBridge({
   canNext: boolean;
   seekPreferences: PlaybackSeekPreferences;
 }) {
-  const detailsHidden = useSystemMediaDetailsHidden();
   useEffect(() => {
     if (!supportsNativeMedia()) return;
     let removeListeners: (() => void) | null = null;
@@ -100,10 +99,11 @@ export function useNativeMediaBridge({
     const durationMs = durationSeconds ? Math.floor(durationSeconds * 1000) : 0;
     const positionSeconds = refs.audioRef.current?.currentTime ?? 0;
     const positionMs = Math.min(Math.max(0, Math.floor(positionSeconds * 1000)), durationMs || Number.MAX_SAFE_INTEGER);
-    const details = systemMediaDetails(currentTrack, detailsHidden);
     void updateNativeMedia({
-      ...details,
-      coverUrl: details.coverUrl ? absoluteAssetURL(details.coverUrl) : "",
+      title: currentTrack.title || currentTrack.workTitle || "Kikoto",
+      artist: currentTrack.circle || currentTrack.workTitle || "Kikoto",
+      album: currentTrack.workTitle || currentTrack.workCode || "Kikoto",
+      coverUrl: currentTrack.coverUrl ? absoluteAssetURL(currentTrack.coverUrl) : "",
       playing: isPlaying,
       positionMs,
       durationMs,
@@ -117,7 +117,6 @@ export function useNativeMediaBridge({
     canNext,
     canPrevious,
     currentTrack,
-    detailsHidden,
     duration,
     durationLocationId,
     isPlaying,
@@ -172,8 +171,8 @@ export function useBrowserMediaSession({
   duration: number;
   playbackRate: number;
 }) {
-  const detailsHidden = useSystemMediaDetailsHidden();
-  const details = currentTrack ? systemMediaDetails(currentTrack, detailsHidden) : null;
+  const content = useMediaSessionContent();
+  const details = currentTrack ? systemMediaDetails(currentTrack, content) : null;
   const title = details?.title ?? "";
   const artist = details?.artist ?? "";
   const album = details?.album ?? "";
@@ -190,7 +189,7 @@ export function useBrowserMediaSession({
   useEffect(() => {
     let removeListener: (() => void) | null = null;
     let disposed = false;
-    void addNativeAudioOutputLostListener(() => controlsRef.current.pause()).then((remove) => {
+    void addNativeOutputLostListener(() => controlsRef.current.pause()).then((remove) => {
       if (disposed) remove();
       else removeListener = remove;
     });

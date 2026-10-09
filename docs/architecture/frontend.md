@@ -257,8 +257,22 @@ which sees every tab read-only.
 The player records cumulative listening time under an account/server scope;
 history clearing invalidates older reports using a server generation. Sleep
 rewind preferences share that scope and update the resume cursor only when the
-timer stops playback. Android output-disconnect events pause the media element
-and player intent, including pending play requests.
+timer stops playback. Android and iOS output-disconnect events pause the media
+element and player intent, including pending play requests. Every start of the
+media element passes the engine's start guard; in the native apps,
+`useSpeakerPlaybackGuard` holds starts through the device speaker until the
+in-app confirmation, so notification, lock screen, Control Center, and media
+key controls cannot bypass it. The device privacy settings (`lib/nativePrivacy`)
+are one contract that both native shells implement through their
+`KikotoPrivacy` plugin, and they live in native storage rather than
+account-scoped browser storage, because the recent apps or app switcher cover,
+the capture cover, the app lock, and the media notification apply them without
+the web view. The plugin's status declares whether the shell offers the app
+lock; only Android does. The app lock is native: it covers the window and authenticates through the system
+biometric or device credential prompt, storing no secret of its own; the web
+app only supplies its localized prompt labels. When the asset transport
+session is removed or replaced, or the server changes, the Android shell
+clears the WebView HTTP cache.
 
 ## Playback Reports
 
@@ -379,23 +393,19 @@ volatile queue with a diagnostic and a normal network loss window of up to
   private app preferences. iOS hydration moves a session found in app
   preferences into the Keychain, and removes a Keychain session when no server
   is configured, because Keychain items outlive app removal.
-- System media surfaces (the browser and iOS Media Session and the Android
-  media notification) take their text and artwork from `systemMediaDetails`,
-  and floating screen lyrics take their title from `screenLyricsLabels`; both
-  show only the app name while the device-wide hide-details choice is on.
-- The iOS shell's app-local privacy plugin covers the scene with a blur window
-  while it is inactive and while its scene capture state is active (screen
-  recording or mirroring). Both choices live in native defaults so the cover
-  applies without a web round trip; a capture that begins also closes the
-  Picture-in-Picture lyrics window. The same plugin pauses page media when the
-  audio route loses its output device, as Android does on
-  `ACTION_AUDIO_BECOMING_NOISY`, and reports every route change with whether
-  the device speaker is the output.
-- The playback engine asks `playbackStartGuardRef` before a paused player
-  starts. The speaker guard (`player/speakerGuard`) holds a start while the
-  reported output is the device speaker and opens a confirmation; a confirmed
-  start allows the speaker until the output moves to another device. Shells
-  that do not report their output never hold a start.
+- The Android media notification redacts itself natively while the device is
+  locked. The iOS lock screen and Control Center read the page's Media
+  Session, which cannot tell a locked device, so on iOS the Media Session
+  takes its text and artwork from `systemMediaDetails` with the device's
+  media controls choice at all times. A browser Media Session shows
+  everything.
+- The iOS privacy plugin covers the scene with a blur window while it is
+  inactive (the recent apps choice) and while its scene capture state is
+  active (the screen capture choice, because iOS cannot block a screenshot).
+  A capture that begins also closes the Picture-in-Picture lyrics window. The
+  same plugin pauses page media when the audio route loses its output device,
+  as Android does on `ACTION_AUDIO_BECOMING_NOISY`, and reports whether the
+  device speaker is the output.
 - Treat bottom navigation, safe areas, Compact player placement, page clearance,
   and update notices as one fixed-surface layout contract.
 - Size mobile search and modal layers against the visual viewport. The frontend

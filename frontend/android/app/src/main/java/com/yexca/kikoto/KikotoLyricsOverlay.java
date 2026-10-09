@@ -99,6 +99,10 @@ final class KikotoLyricsOverlay {
         detach();
     }
 
+    boolean isRequested() {
+        return requested;
+    }
+
     /** Floating lyrics only appear while the user is outside Kikoto. */
     void setAppForeground(boolean foreground) {
         appForeground = foreground;
@@ -167,11 +171,15 @@ final class KikotoLyricsOverlay {
             ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             : WindowManager.LayoutParams.TYPE_PHONE;
         int width = Math.min(context.getResources().getDisplayMetrics().widthPixels - dp(24), dp(420));
+        int flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
+        // The overlay attaches only while Kikoto is in the background, so the
+        // screen capture setting cannot change while it is shown.
+        if (KikotoPrivacySettings.read(context).screenSecure) flags |= WindowManager.LayoutParams.FLAG_SECURE;
         params = new WindowManager.LayoutParams(
             width,
             WindowManager.LayoutParams.WRAP_CONTENT,
             type,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            flags,
             PixelFormat.TRANSLUCENT
         );
         // Open centered on screen; dragging moves the overlay vertically from there.

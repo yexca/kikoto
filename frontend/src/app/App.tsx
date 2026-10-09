@@ -52,6 +52,7 @@ import { PageActiveProvider, PageHeaderProvider, usePageHeaderBackState } from "
 import { useScrollRestoration } from "@/app/scrollRestoration";
 import { MobileRuntimeProvider, useMobileRuntime } from "@/app/MobileRuntime";
 import { LOGIN_REQUEST_EVENT } from "@/lib/appEvents";
+import { useNativeUnlockLabels } from "@/hooks/useNativePrivacySettings";
 import { addNativeEdgeBackListener } from "@/lib/nativeEdgeBack";
 import { isNativeApp } from "@/lib/serverConfig";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
@@ -153,6 +154,7 @@ export function App() {
 
 function AuthenticatedApp() {
   useScrollRestoration();
+  useNativeUnlockLabels();
   const auth = useAuth();
   const { t } = useTranslation();
   const locale = useLocale();

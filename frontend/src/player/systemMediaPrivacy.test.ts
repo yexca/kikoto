@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PlayerTrack } from "./playerTypes";
-import { screenLyricsLabels, systemMediaDetails } from "./systemMediaPrivacy";
+import { systemMediaDetails } from "./systemMediaPrivacy";
 
 const track = {
   title: "Track 01",
@@ -12,8 +12,8 @@ const track = {
 } as PlayerTrack;
 
 describe("system media details", () => {
-  it("shows the track, circle, work, and cover by default", () => {
-    expect(systemMediaDetails(track, false)).toEqual({
+  it("shows the track, circle, work, and cover for everything", () => {
+    expect(systemMediaDetails(track, "full")).toEqual({
       title: "Track 01",
       artist: "Synthetic Circle",
       album: "Synthetic Work",
@@ -21,13 +21,16 @@ describe("system media details", () => {
     });
   });
 
-  it("shows only the app name when details are hidden", () => {
-    expect(systemMediaDetails(track, true)).toEqual({ title: "Kikoto", artist: "", album: "", coverUrl: "" });
+  it("keeps the text but drops the cover when the cover is hidden", () => {
+    expect(systemMediaDetails(track, "hideCover")).toEqual({
+      title: "Track 01",
+      artist: "Synthetic Circle",
+      album: "Synthetic Work",
+      coverUrl: "",
+    });
   });
 
-  it("keeps the track title out of screen lyrics when details are hidden", () => {
-    expect(screenLyricsLabels(track, false)).toEqual({ title: "Track 01", subtitle: "Synthetic Circle" });
-    expect(screenLyricsLabels(track, true)).toEqual({ title: "Kikoto", subtitle: "" });
-    expect(screenLyricsLabels(null, true)).toEqual({ title: "", subtitle: "" });
+  it("shows only the app name when details are hidden", () => {
+    expect(systemMediaDetails(track, "hidden")).toEqual({ title: "Kikoto", artist: "", album: "", coverUrl: "" });
   });
 });

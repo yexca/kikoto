@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { supportsNativePrivacy } from "@/lib/nativePrivacy";
 import { api, type CurrentUser } from "@/lib/api";
 import { validatePasswordChange, type PasswordChangeDraft } from "@/pages/accountSettings";
 import { CleanupPage } from "@/pages/CleanupPage";
@@ -536,7 +537,7 @@ export function SettingsPage({
                 </SettingsSection>
               </form>
               <PlaybackSourcePreferences userId={user.id} />
-              <DevicePrivacyPreferences />
+              {supportsNativePrivacy() && <DevicePrivacyPreferences />}
               <UserPreferencePanels userId={user.id} section="playback" readOnly={readOnly} />
             </div>
           )}

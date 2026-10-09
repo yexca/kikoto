@@ -25,6 +25,10 @@ export function isAndroidApp() {
   return Capacitor.getPlatform() === "android";
 }
 
+export function isIOSApp() {
+  return Capacitor.getPlatform() === "ios";
+}
+
 export function normalizeServerURL(value: string) {
   let next = value.trim();
   if (!next) throw new Error("Server address is required.");

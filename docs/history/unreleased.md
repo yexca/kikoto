@@ -1,15 +1,23 @@
 # Unreleased
 
-- Settings -> Playback -> **Privacy on this device** collects device-wide
-  privacy choices. Every client can hide track details from the lock screen,
-  Control Center, media notifications, and screen lyrics. The iOS app blurs
-  itself in the app switcher and under system screens such as Control Center,
-  hides itself and closes screen lyrics while the screen is recorded or
-  mirrored, and asks before starting playback through the device speaker; all
-  three are on by default. The iOS app also pauses when headphones or another
-  external audio output disconnect, and keeps its session in the Keychain with
-  this-device-only access instead of app preferences and WebView storage; an
-  existing session moves to the Keychain on the next launch.
+- The Android and iOS apps add **Privacy on this device** in Settings →
+  Playback, stored for the device across every server and account. Recent
+  apps and the iOS app switcher show a cover instead of the current page, the
+  system media controls hide the cover (on Android while the device is
+  locked), and playback through the device speaker waits for a confirmation
+  when no headphones are connected. All three are on by default; the media
+  controls can also show everything or only the app name. An opt-in choice
+  blocks screenshots, recording, and casting of the Android app and its
+  floating lyrics; on iOS it covers the app and closes screen lyrics while the
+  screen is recorded or mirrored. Android also offers an opt-in app lock that
+  unlocks with a biometric or the device screen lock after a chosen time in
+  the background. Disconnecting headphones closes the Android floating lyrics,
+  and signing out or switching servers clears the Android app's web cache.
+
+- The iOS app pauses when headphones or another external audio output
+  disconnect, and keeps its session in the Keychain with this-device-only
+  access instead of app preferences and WebView storage; an existing session
+  moves to the Keychain on the next launch.
 
 - The release workflow builds an unsigned iOS IPA on a macOS runner alongside
   the signed APK and attaches it to the GitHub Release as

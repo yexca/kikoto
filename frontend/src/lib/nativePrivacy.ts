@@ -1,74 +1,133 @@
-import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
+import { registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 
-/** Whether playback would use the device's own speaker rather than headphones or another output. */
-export type NativeAudioOutput = { speaker: boolean };
+import { isAndroidApp, isIOSApp } from "@/lib/serverConfig";
 
-type KikotoPrivacyPlugin = {
-  appSwitcherShield(): Promise<{ enabled: boolean }>;
-  setAppSwitcherShield(options: { enabled: boolean }): Promise<void>;
-  screenCaptureShield(): Promise<{ enabled: boolean }>;
-  setScreenCaptureShield(options: { enabled: boolean }): Promise<void>;
-  audioOutput(): Promise<NativeAudioOutput>;
-  addListener(eventName: "audioOutputLost", listener: () => void): Promise<PluginListenerHandle>;
-  addListener(
-    eventName: "audioOutputChange",
-    listener: (output: NativeAudioOutput) => void,
-  ): Promise<PluginListenerHandle>;
+/** What the lock screen media controls show: everything, everything except the cover, or only the app name. */
+export type LockScreenMediaContent = "full" | "hideCover" | "hidden";
+
+export const LOCK_SCREEN_MEDIA_CONTENTS: readonly LockScreenMediaContent[] = ["full", "hideCover", "hidden"];
+
+/** Time outside Kikoto before returning needs an unlock; 0 locks on every return. */
+export const APP_LOCK_TIMEOUTS_SECONDS = [0, 60, 300, 900] as const;
+export type AppLockTimeoutSeconds = (typeof APP_LOCK_TIMEOUTS_SECONDS)[number];
+
+export type NativePrivacySettings = {
+  /** Recent apps show a cover instead of the app's content. */
+  recentsShield: boolean;
+  lockScreenContent: LockScreenMediaContent;
+  /** Playback through the phone speaker waits for confirmation. */
+  speakerConfirm: boolean;
+  /** Screenshots, screen recording, and casting show nothing of Kikoto or its floating lyrics. */
+  screenSecure: boolean;
+  /** Returning to Kikoto needs a biometric or the device screen lock. */
+  appLock: boolean;
+  appLockTimeoutSeconds: AppLockTimeoutSeconds;
 };
 
-const pluginName = "KikotoPrivacy";
-let plugin: KikotoPrivacyPlugin | null = null;
+export const DEFAULT_NATIVE_PRIVACY_SETTINGS: NativePrivacySettings = {
+  recentsShield: true,
+  lockScreenContent: "hideCover",
+  speakerConfirm: true,
+  screenSecure: false,
+  appLock: false,
+  appLockTimeoutSeconds: 0,
+};
 
-function nativePlugin() {
-  plugin ??= registerPlugin<KikotoPrivacyPlugin>(pluginName);
-  return plugin;
-}
+export const NATIVE_PRIVACY_SETTINGS_CHANGE_EVENT = "kikoto:native-privacy-settings-change";
 
-/** The iOS shell registers this app-local plugin; Android reports output loss through its media plugin. */
+type KikotoPrivacyPlugin = {
+  getSettings(): Promise<NativePrivacySettings>;
+  setSettings(change: Partial<NativePrivacySettings>): Promise<NativePrivacySettings>;
+  status(): Promise<{ appLockSupported: boolean; appLockAvailable: boolean }>;
+  setUnlockLabels(labels: { title: string; action: string }): Promise<void>;
+  outputStatus(): Promise<{ phoneSpeaker: boolean }>;
+  addListener(
+    eventName: "outputChanged",
+    listenerFunc: (event: { phoneSpeaker: boolean }) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(eventName: "outputLost", listenerFunc: () => void): Promise<PluginListenerHandle>;
+};
+
+const KikotoPrivacy = registerPlugin<KikotoPrivacyPlugin>("KikotoPrivacy");
+
+/** These settings belong to the device, so the native shell stores them for every server and account. */
 export function supportsNativePrivacy() {
-  return Capacitor.isPluginAvailable(pluginName);
+  return isAndroidApp() || isIOSApp();
 }
 
-/** Whether the app is blurred while it is not the active app. The native default is on. */
-export async function nativeAppSwitcherShield() {
-  if (!supportsNativePrivacy()) return false;
-  return (await nativePlugin().appSwitcherShield()).enabled;
+export function normalizeNativePrivacySettings(value: unknown): NativePrivacySettings {
+  const defaults = DEFAULT_NATIVE_PRIVACY_SETTINGS;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return defaults;
+  const candidate = value as Partial<Record<keyof NativePrivacySettings, unknown>>;
+  return {
+    recentsShield: typeof candidate.recentsShield === "boolean" ? candidate.recentsShield : defaults.recentsShield,
+    lockScreenContent: LOCK_SCREEN_MEDIA_CONTENTS.includes(candidate.lockScreenContent as LockScreenMediaContent)
+      ? (candidate.lockScreenContent as LockScreenMediaContent)
+      : defaults.lockScreenContent,
+    speakerConfirm: typeof candidate.speakerConfirm === "boolean" ? candidate.speakerConfirm : defaults.speakerConfirm,
+    screenSecure: typeof candidate.screenSecure === "boolean" ? candidate.screenSecure : defaults.screenSecure,
+    appLock: typeof candidate.appLock === "boolean" ? candidate.appLock : defaults.appLock,
+    appLockTimeoutSeconds: APP_LOCK_TIMEOUTS_SECONDS.includes(candidate.appLockTimeoutSeconds as AppLockTimeoutSeconds)
+      ? (candidate.appLockTimeoutSeconds as AppLockTimeoutSeconds)
+      : defaults.appLockTimeoutSeconds,
+  };
 }
 
-export async function setNativeAppSwitcherShield(enabled: boolean) {
+/**
+ * Whether the shell offers the app lock, and whether the device has a screen
+ * lock for it to authenticate against.
+ */
+export async function nativeAppLockStatus() {
+  if (!supportsNativePrivacy()) return { supported: false, available: false };
+  const status = await KikotoPrivacy.status().catch(() => null);
+  return { supported: status?.appLockSupported === true, available: status?.appLockAvailable === true };
+}
+
+/** Stores the unlock prompt's title and button in the app language for the native lock screen. */
+export async function setNativeUnlockLabels(labels: { title: string; action: string }) {
   if (!supportsNativePrivacy()) return;
-  await nativePlugin().setAppSwitcherShield({ enabled });
+  await KikotoPrivacy.setUnlockLabels(labels).catch(() => {});
 }
 
-/** Whether the app is hidden while the screen is recorded or mirrored. The native default is on. */
-export async function nativeScreenCaptureShield() {
+export async function getNativePrivacySettings() {
+  if (!supportsNativePrivacy()) return DEFAULT_NATIVE_PRIVACY_SETTINGS;
+  return normalizeNativePrivacySettings(await KikotoPrivacy.getSettings().catch(() => null));
+}
+
+export async function updateNativePrivacySettings(change: Partial<NativePrivacySettings>) {
+  if (!supportsNativePrivacy()) return DEFAULT_NATIVE_PRIVACY_SETTINGS;
+  const settings = normalizeNativePrivacySettings(await KikotoPrivacy.setSettings(change));
+  window.dispatchEvent(
+    new CustomEvent<NativePrivacySettings>(NATIVE_PRIVACY_SETTINGS_CHANGE_EVENT, { detail: settings }),
+  );
+  return settings;
+}
+
+/** Whether media would play from the phone itself; null when the shell cannot tell. */
+export async function nativeOutputIsPhoneSpeaker() {
   if (!supportsNativePrivacy()) return false;
-  return (await nativePlugin().screenCaptureShield()).enabled;
+  const status = await KikotoPrivacy.outputStatus().catch(() => null);
+  return typeof status?.phoneSpeaker === "boolean" ? status.phoneSpeaker : null;
 }
 
-export async function setNativeScreenCaptureShield(enabled: boolean) {
-  if (!supportsNativePrivacy()) return;
-  await nativePlugin().setScreenCaptureShield({ enabled });
-}
-
-export async function nativeAudioOutput(): Promise<NativeAudioOutput | null> {
-  if (!supportsNativePrivacy()) return null;
-  return await nativePlugin().audioOutput();
-}
-
-/** Called after every audio route change with the new output. */
-export async function addNativeAudioOutputListener(listener: (output: NativeAudioOutput) => void) {
+export async function addNativeOutputListener(onChange: (phoneSpeaker: boolean) => void) {
   if (!supportsNativePrivacy()) return () => {};
-  const handle = await nativePlugin().addListener("audioOutputChange", listener);
+  const handle = await KikotoPrivacy.addListener("outputChanged", (event) => {
+    if (typeof event.phoneSpeaker === "boolean") onChange(event.phoneSpeaker);
+  });
   return () => {
     void handle.remove();
   };
 }
 
-/** Called when the audio output in use disappears, such as unplugged or disconnected headphones. */
-export async function addNativeAudioOutputLostListener(listener: () => void) {
+/**
+ * Called when the audio output in use disappears, such as unplugged or
+ * disconnected headphones. The iOS shell reports it here; the Android media
+ * plugin pauses on its own.
+ */
+export async function addNativeOutputLostListener(onLost: () => void) {
   if (!supportsNativePrivacy()) return () => {};
-  const handle = await nativePlugin().addListener("audioOutputLost", listener);
+  const handle = await KikotoPrivacy.addListener("outputLost", onLost);
   return () => {
     void handle.remove();
   };

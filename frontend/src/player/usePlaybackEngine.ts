@@ -36,8 +36,8 @@ function createPlaybackRefs() {
     playbackErrorAbortRef: { current: null as AbortController | null },
     playbackErrorHandlerRef: { current: () => {} },
     nativeMediaSyncRef: { current: () => {} },
-    /** Asked before a paused player starts; false holds the start, such as one that would use the speaker. */
-    playbackStartGuardRef: { current: (): boolean => true },
+    // Returns false to hold a start; the guard owns any follow-up, such as a confirmation.
+    playbackStartGuardRef: { current: (() => true) as () => boolean },
   };
 }
 
@@ -86,7 +86,6 @@ export function usePlaybackEngine(queue: PlayerTrack[], currentIndex: number) {
   const updatePlayingState = useCallback(
     (next: PlayingStateUpdate) => {
       const resolved = typeof next === "function" ? next(refs.isPlayingRef.current) : next;
-      if (resolved && !refs.isPlayingRef.current && !refs.playbackStartGuardRef.current()) return;
       if (resolved) cancelPlaybackErrorCheck();
       refs.isPlayingRef.current = resolved;
       setIsPlaying(resolved);
@@ -123,6 +122,12 @@ export function usePlaybackEngine(queue: PlayerTrack[], currentIndex: number) {
 
   const requestAudioPlay = useCallback(
     (audio: HTMLAudioElement, playbackKey: string | null) => {
+      if (!refs.playbackStartGuardRef.current()) {
+        refs.sourceLoadingRef.current = false;
+        setIsBuffering(false);
+        updatePlayingState(false);
+        return;
+      }
       const generation = refs.playbackGenerationRef.current + 1;
       refs.playbackGenerationRef.current = generation;
       const request = { generation, playbackKey };

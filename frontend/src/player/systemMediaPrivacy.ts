@@ -1,51 +1,20 @@
-import { useEffect, useState } from "react";
+import { useNativePrivacySettings } from "@/hooks/useNativePrivacySettings";
+import { supportsNativePrivacy, type LockScreenMediaContent } from "@/lib/nativePrivacy";
 
 import type { PlayerTrack } from "./playerTypes";
 
-/**
- * Whether the lock screen, Control Center, media notifications, and floating
- * screen lyrics show only the app name. The choice belongs to the device
- * rather than an account, so a different sign-in cannot expose the track. Off
- * by default.
- */
-export const SYSTEM_MEDIA_DETAILS_HIDDEN_STORAGE_KEY = "kikoto:system-media-details-hidden:v1";
-export const SYSTEM_MEDIA_PRIVACY_CHANGE_EVENT = "kikoto:system-media-privacy-change";
-
 const APP_NAME = "Kikoto";
 
-export function getSystemMediaDetailsHidden() {
-  try {
-    return localStorage.getItem(SYSTEM_MEDIA_DETAILS_HIDDEN_STORAGE_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-
-export function storeSystemMediaDetailsHidden(hidden: boolean) {
-  try {
-    if (hidden) localStorage.setItem(SYSTEM_MEDIA_DETAILS_HIDDEN_STORAGE_KEY, "true");
-    else localStorage.removeItem(SYSTEM_MEDIA_DETAILS_HIDDEN_STORAGE_KEY);
-  } catch {
-    // The choice still applies to this page when browser storage is unavailable.
-  }
-  window.dispatchEvent(new CustomEvent<boolean>(SYSTEM_MEDIA_PRIVACY_CHANGE_EVENT, { detail: hidden }));
-}
-
-export function useSystemMediaDetailsHidden() {
-  const [hidden, setHidden] = useState(getSystemMediaDetailsHidden);
-  useEffect(() => {
-    const syncCustomEvent = (event: Event) => setHidden((event as CustomEvent<boolean>).detail === true);
-    const syncStorageEvent = (event: StorageEvent) => {
-      if (event.key === SYSTEM_MEDIA_DETAILS_HIDDEN_STORAGE_KEY) setHidden(getSystemMediaDetailsHidden());
-    };
-    window.addEventListener(SYSTEM_MEDIA_PRIVACY_CHANGE_EVENT, syncCustomEvent);
-    window.addEventListener("storage", syncStorageEvent);
-    return () => {
-      window.removeEventListener(SYSTEM_MEDIA_PRIVACY_CHANGE_EVENT, syncCustomEvent);
-      window.removeEventListener("storage", syncStorageEvent);
-    };
-  }, []);
-  return hidden;
+/**
+ * What the Media Session shows. The iOS shell applies the device's choice
+ * there, because its lock screen and Control Center read the page's Media
+ * Session and cannot tell whether the device is locked. The Android media
+ * notification applies the choice natively while the device is locked, and a
+ * browser shows everything.
+ */
+export function useMediaSessionContent(): LockScreenMediaContent {
+  const { settings } = useNativePrivacySettings();
+  return supportsNativePrivacy() ? settings.lockScreenContent : "full";
 }
 
 export type SystemMediaDetails = {
@@ -57,19 +26,12 @@ export type SystemMediaDetails = {
 };
 
 /** What the operating system's media surfaces show for a track. */
-export function systemMediaDetails(track: PlayerTrack, hidden: boolean): SystemMediaDetails {
-  if (hidden) return { title: APP_NAME, artist: "", album: "", coverUrl: "" };
+export function systemMediaDetails(track: PlayerTrack, content: LockScreenMediaContent): SystemMediaDetails {
+  if (content === "hidden") return { title: APP_NAME, artist: "", album: "", coverUrl: "" };
   return {
     title: track.title || track.workTitle || APP_NAME,
     artist: track.circle || track.workTitle || APP_NAME,
     album: track.workTitle || track.workCode || APP_NAME,
-    coverUrl: track.coverUrl,
+    coverUrl: content === "full" ? track.coverUrl : "",
   };
-}
-
-/** The title and subtitle a floating screen lyrics window shows next to the lyric lines. */
-export function screenLyricsLabels(track: PlayerTrack | null, hidden: boolean) {
-  if (!track) return { title: "", subtitle: "" };
-  if (hidden) return { title: APP_NAME, subtitle: "" };
-  return { title: track.title, subtitle: track.circle || track.workTitle || "" };
 }

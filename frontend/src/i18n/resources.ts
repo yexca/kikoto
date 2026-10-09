@@ -527,19 +527,43 @@ export const englishResource = {
         sourceFallbackDescription:
           "When the current location fails, continue from the track's next available location instead of stopping.",
         devicePrivacy: "Privacy on this device",
-        devicePrivacyDescription: "These choices apply to every account on this device and take effect immediately.",
-        hideMediaDetails: "Hide track details from system controls",
-        hideMediaDetailsDescription:
-          "The lock screen, Control Center, media notifications, and screen lyrics show Kikoto instead of the track, circle, and cover.",
+        devicePrivacyDescription: "Applies to this device for every server and account.",
         appSwitcherBlur: "Blur in the background",
         appSwitcherBlurDescription:
-          "Blurs Kikoto in the app switcher and whenever another screen, such as Control Center, covers it. On by default.",
-        speakerGuard: "Ask before playing through the speaker",
-        speakerGuardDescription:
-          "Starting playback without headphones or another audio device asks first, so nothing plays out loud by accident. On by default.",
+          "Blurs Kikoto in the app switcher and whenever another screen, such as Control Center, covers it.",
         screenCaptureCover: "Hide while the screen is recorded or mirrored",
         screenCaptureCoverDescription:
-          "Covers Kikoto and closes screen lyrics while a screen recording, AirPlay mirroring, or another capture is active. On by default.",
+          "Covers Kikoto and closes screen lyrics while a screen recording, AirPlay mirroring, or another capture is active. Screenshots are not blocked.",
+        nowPlayingContent: "Now Playing details",
+        nowPlayingContentDescription:
+          "What the lock screen, Control Center, and connected Bluetooth or car displays show for the current track.",
+        recentsShield: "Hide content in recent apps",
+        recentsShieldDescription: "Recent apps show a cover instead of the current page.",
+        lockScreenContent: "Media controls while locked",
+        lockScreenContentDescription:
+          "What the media notification, lock screen, and connected Bluetooth or car displays show while the device is locked.",
+        lockScreenContentOptions: {
+          full: "Everything",
+          hideCover: "Hide cover",
+          hidden: "App name only",
+        },
+        speakerConfirm: "Confirm speaker playback",
+        speakerConfirmDescription:
+          "Without headphones or another audio output, ask before playing through the phone speaker. Play from the notification, lock screen, or a media key waits for this confirmation in the app.",
+        screenSecure: "Block screenshots and recording",
+        screenSecureDescription:
+          "Screenshots, screen recording, and casting show nothing of Kikoto or its floating lyrics. This also blocks your own screenshots.",
+        appLock: "App lock",
+        appLockDescription: "Returning to Kikoto needs your fingerprint, face, or device screen lock.",
+        appLockUnavailable: "Set up a screen lock in Android settings to use the app lock.",
+        appLockTimeout: "Lock after",
+        appLockTimeoutDescription: "How long Kikoto can stay in the background before it locks.",
+        appLockTimeoutImmediately: "Immediately",
+        appLockTimeoutMinutes_one: "{{count}} minute",
+        appLockTimeoutMinutes_other: "{{count}} minutes",
+        unlockTitle: "Unlock Kikoto",
+        unlockAction: "Unlock",
+        devicePrivacySaveFailed: "Could not save the privacy setting.",
         displayName: "Display name",
         username: "Username",
         role: "Role",
