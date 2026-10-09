@@ -2,6 +2,7 @@ import { normalizeCatalogSyncState, type CatalogSyncState } from "@/lib/catalogS
 import { combineAbortSignals, retryInvalidatedRequest, sharedInflightRequests } from "@/lib/inflightRequests";
 import { apiMutationResources, apiReadResources } from "@/lib/apiRequestResources";
 import { SITE_MAINTENANCE_EVENT } from "@/lib/appEvents";
+import { DEMO_METADATA_LANGUAGES_HEADER, demoMetadataLanguagesHeaderValue } from "@/lib/demoMetadataLanguages";
 import {
   apiSessionSignal,
   apiSessionVersion,
@@ -2215,7 +2216,7 @@ async function readApiJSON<T>(response: Response): Promise<T> {
 // abort only detaches that caller; a settled request is never reused.
 async function sharedGetJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
   const version = apiSessionVersion();
-  const key = JSON.stringify([version, API_BASE(), path]);
+  const key = JSON.stringify([version, API_BASE(), path, demoMetadataLanguagesHeaderValue()]);
   const cancellation = combineAbortSignals(apiSessionSignal(), signal);
   const current = cancellation.signal;
   try {
@@ -2397,6 +2398,8 @@ export const apiTransport = {
 
 function requestInit(init: RequestInit = {}, authenticate = true): RequestInit {
   const headers = new Headers(init.headers);
+  const demoMetadataLanguages = demoMetadataLanguagesHeaderValue();
+  if (authenticate && demoMetadataLanguages) headers.set(DEMO_METADATA_LANGUAGES_HEADER, demoMetadataLanguages);
   if (isNativeApp()) {
     headers.set("X-Kikoto-Mobile", "1");
     if (authenticate) {

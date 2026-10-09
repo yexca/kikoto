@@ -18,6 +18,7 @@ vi.mock("@/lib/mobileDiagnostics", () => ({ recordApiError }));
 
 import { api, ApiError, assetURL, mediaDownloadURL } from "./api";
 import { apiSessionVersion, changeApiSession, observeApiPrincipal } from "./apiSession";
+import { setDemoMetadataLanguageUser, writeDemoMetadataLanguages } from "./demoMetadataLanguages";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -67,6 +68,43 @@ describe("API client transport", () => {
     expect(new Headers(init.headers).get("Authorization")).toBeNull();
     expect(assetURL("/assets/example-cover.jpg")).toBe("/assets/example-cover.jpg");
     expect(mediaDownloadURL(7)).toBe("/api/media/7/download");
+  });
+
+  it("sends a Demo visitor's browser-local metadata language with authenticated requests", async () => {
+    const stored = new Map<string, string>();
+    vi.stubGlobal("window", { location: { origin: "https://demo.example.invalid" } });
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => stored.set(key, value),
+      removeItem: (key: string) => stored.delete(key),
+    });
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) =>
+      Promise.resolve(jsonResponse(url.endsWith("/health") ? { status: "ok" } : [])),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      setDemoMetadataLanguageUser(7);
+      writeDemoMetadataLanguages(["zh-cn", "origin"]);
+      await api.listUsers();
+      await api.health("https://server.example.invalid");
+      // A reload restores the choice from this browser.
+      setDemoMetadataLanguageUser(null);
+      setDemoMetadataLanguageUser(7);
+      await api.listUsers();
+      writeDemoMetadataLanguages(null);
+      await api.listUsers();
+      writeDemoMetadataLanguages(["en-us", "origin"]);
+      setDemoMetadataLanguageUser(null);
+      await api.listUsers();
+    } finally {
+      setDemoMetadataLanguageUser(null);
+    }
+
+    const headers = fetchMock.mock.calls.map(([, init]) =>
+      new Headers(init?.headers).get("X-Kikoto-Metadata-Languages"),
+    );
+    expect(headers).toEqual(["zh-cn,origin", null, "zh-cn,origin", null, null]);
   });
 
   it("does not send the old native session to a candidate server", async () => {

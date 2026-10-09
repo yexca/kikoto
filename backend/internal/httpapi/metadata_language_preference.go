@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -19,7 +20,8 @@ import (
 // text. A signed-in user may choose a personal priority that only changes what
 // that user's requests present: titles, tag names, default editions, title
 // sorting and live remote-source requests. Stored provider data never depends
-// on a personal choice.
+// on a personal choice. Every Demo visitor shares one account, so a Demo
+// visitor's choice stays in the browser and arrives with each request.
 
 // viewerMetadataLanguages is the normalized priority for the request's user:
 // the user's own choice when set, otherwise the original language. Requests
@@ -76,7 +78,7 @@ func (s *Server) titleSortLanguages(ctx context.Context, sort string) []string {
 
 func (s *Server) loadViewerMetadataLanguages(ctx context.Context) ([]string, bool) {
 	if user, ok := userFromContext(ctx); ok && user.ID > 0 {
-		if languages, ok := s.userMetadataLanguages(ctx, user.ID); ok {
+		if languages, ok := s.ownMetadataLanguages(ctx, user.ID); ok {
 			return languages, true
 		}
 	}
@@ -97,6 +99,41 @@ const metadataLanguageMemoKey contextKey = "metadataLanguageMemo"
 
 func withMetadataLanguageMemo(ctx context.Context) context.Context {
 	return context.WithValue(ctx, metadataLanguageMemoKey, &metadataLanguageMemo{})
+}
+
+// demoMetadataLanguagesHeader carries a Demo visitor's browser-local priority
+// as comma-separated languages. Other modes ignore it.
+const demoMetadataLanguagesHeader = "X-Kikoto-Metadata-Languages"
+
+// maxDemoMetadataLanguagesHeaderBytes bounds the header well above the longest
+// valid priority.
+const maxDemoMetadataLanguagesHeaderBytes = 128
+
+const demoMetadataLanguagesKey contextKey = "demoMetadataLanguages"
+
+// withDemoMetadataLanguages records the request's Demo priority. An absent,
+// oversized, or invalid header means no preference.
+func withDemoMetadataLanguages(ctx context.Context, r *http.Request) context.Context {
+	raw := strings.TrimSpace(r.Header.Get(demoMetadataLanguagesHeader))
+	if raw == "" || len(raw) > maxDemoMetadataLanguagesHeaderBytes {
+		return ctx
+	}
+	languages, ok := parseDLsiteMetadataLanguages(strings.Split(raw, ","))
+	if !ok {
+		return ctx
+	}
+	return context.WithValue(ctx, demoMetadataLanguagesKey, completeDLsiteMetadataLanguages(languages))
+}
+
+// ownMetadataLanguages is the request user's own priority and false when the
+// user has none: the request header in Demo, where the shared account's stored
+// value is ignored, and the stored preference otherwise.
+func (s *Server) ownMetadataLanguages(ctx context.Context, userID int64) ([]string, bool) {
+	if s.cfg.IsDemo() {
+		languages, ok := ctx.Value(demoMetadataLanguagesKey).([]string)
+		return append([]string(nil), languages...), ok
+	}
+	return s.userMetadataLanguages(ctx, userID)
 }
 
 // userMetadataLanguages returns the user's own normalized priority and false

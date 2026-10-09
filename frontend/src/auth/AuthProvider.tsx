@@ -10,6 +10,7 @@ import {
   type RuntimeSettings,
 } from "@/lib/api";
 import { ApiSessionChangedError, apiSessionVersion } from "@/lib/apiSession";
+import { setDemoMetadataLanguageUser } from "@/lib/demoMetadataLanguages";
 
 type AuthContextValue = {
   isLoading: boolean;
@@ -44,7 +45,12 @@ function isServerUnavailable(error: unknown) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [auth, setAuth] = useState<AuthState | null>(null);
+  const [auth, setAuthState] = useState<AuthState | null>(null);
+  // Requests made for a Demo session carry its browser-local metadata language.
+  const setAuth = useCallback((state: AuthState) => {
+    setDemoMetadataLanguageUser(state.authenticated && state.user.demoMode ? state.user.id : null);
+    setAuthState(state);
+  }, []);
   const [isLoading, setIsLoading] = useState(true);
   const [bootstrapFailed, setBootstrapFailed] = useState(false);
   const [runtimeMode, setRuntimeMode] = useState<RuntimeSettings["mode"]>("production");
@@ -74,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const state = await api.me();
     setAuth(state);
     setBootstrapFailed(false);
-  }, []);
+  }, [setAuth]);
 
   const refreshRuntime = useCallback(async () => {
     const settings = await api.getRuntimeSettings();
@@ -96,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     if (runtimeResult.status === "rejected" && isServerUnavailable(runtimeResult.reason)) failed = true;
     setBootstrapFailed(failed);
-  }, [refresh, refreshRuntime]);
+  }, [refresh, refreshRuntime, setAuth]);
 
   useEffect(() => {
     void bootstrap().finally(() => setIsLoading(false));
@@ -158,6 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshRuntime,
       runtimeMode,
       recommendationThreshold,
+      setAuth,
       userId,
     ],
   );
