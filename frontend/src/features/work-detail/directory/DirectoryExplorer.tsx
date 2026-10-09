@@ -42,6 +42,7 @@ import {
 import {
   FolderPickerButton,
   FolderRail,
+  FolderRailToggle,
   type FolderNavigatorProps,
 } from "@/features/work-detail/directory/FolderNavigator";
 import { useLivePlaybackCursor } from "@/features/work-detail/directory/useLivePlaybackCursor";
@@ -60,6 +61,30 @@ const trackPageSize = 160;
 const imagePageSize = 24;
 // Below this width the folder column would squeeze file names; the navigator moves behind a button.
 const folderRailMinWidthRem = 38;
+const folderRailHiddenKey = "kikoto:work-folder-rail-hidden";
+
+/** Remembers whether this viewer hid the folder column on wide directories. */
+function useFolderRailHidden() {
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return localStorage.getItem(folderRailHiddenKey) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const toggle = useCallback(() => {
+    setHidden((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem(folderRailHiddenKey, String(next));
+      } catch {
+        // The choice still applies to this page view.
+      }
+      return next;
+    });
+  }, []);
+  return [hidden, toggle] as const;
+}
 
 /** Whether an element is at least `minWidthRem` wide, measured before paint and on resize. */
 function useWidthAtLeast(element: HTMLElement | null, minWidthRem: number) {
@@ -324,6 +349,7 @@ export function DirectoryExplorer({
   );
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const wide = useWidthAtLeast(container, folderRailMinWidthRem);
+  const [railHidden, toggleRailHidden] = useFolderRailHidden();
   const [trackLimit, setTrackLimit] = useState(trackPageSize);
   const [imageLimit, setImageLimit] = useState(imagePageSize);
 
@@ -367,7 +393,7 @@ export function DirectoryExplorer({
   const currentLyricsAttachmentCount = allFiles.filter((file) => lyricsAttachments.contains(file.locationId)).length;
   const navigatorRows = useMemo(() => folderNavigatorRows(root, expandedKeys), [root, expandedKeys]);
   const hasFolders = treeHasFolders(root);
-  const showRail = hasFolders && wide;
+  const showRail = hasFolders && wide && !railHidden;
   const recommendedReason = routeSummary ? recommendationReason(routeSummary) : "";
 
   if (!hasFolders && root.files.length === 0) {
@@ -527,11 +553,12 @@ export function DirectoryExplorer({
   return (
     <div ref={setContainer}>
       <div className={cn(showRail && "grid grid-cols-[minmax(10rem,13rem)_minmax(0,1fr)] gap-4")}>
-        {showRail && <FolderRail {...navigatorProps} />}
+        {showRail && <FolderRail {...navigatorProps} onCollapse={toggleRailHidden} />}
         <div className="min-w-0 space-y-3">
           <div className="space-y-2">
             {hasFolders && (
               <div className="flex min-w-0 items-center gap-1.5">
+                {!showRail && wide && <FolderRailToggle expanded={false} onToggle={toggleRailHidden} />}
                 {!showRail && <FolderPickerButton {...navigatorProps} />}
                 <DirectoryBreadcrumb path={path} onChange={setPath} />
               </div>

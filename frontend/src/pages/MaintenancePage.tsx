@@ -1,5 +1,6 @@
 import { ArrowRight, Eraser, HardDriveDownload, Loader2, Save } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -12,11 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { libraryLayoutSummary } from "@/features/library-setup/libraryLayoutSummary";
 import { LibraryLayoutSection } from "@/features/library-setup/LibraryLayoutSection";
+import { useLibraryLayout } from "@/features/library-setup/useLibraryLayout";
 import { ProxySettingsSection } from "@/features/proxy";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { RemoteSourceDialog } from "@/features/sources/RemoteSourceDialog";
-import { RemoteSourceList } from "@/features/sources/RemoteSourceList";
+import { LibrarySourceList, type LocalLibraryEntry } from "@/features/sources/LibrarySourceList";
 import { KikoeruImportAccessSection } from "@/features/user-data/KikoeruImportAccessSection";
 import {
   DATA_PREFIX,
@@ -27,7 +30,7 @@ import {
   sourcePayload,
   storagePathPreview,
 } from "@/features/sources/remoteSourceModel";
-import { api, type AppSettings, type FileSource } from "@/lib/api";
+import { api, type AppSettings, type FileSource, type LibraryLayout } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { UsersPage } from "@/pages/UsersPage";
 
@@ -103,6 +106,7 @@ export function MaintenancePage({
   const [sourcePendingDelete, setSourcePendingDelete] = useState<FileSource | null>(null);
   const [deletingSourceId, setDeletingSourceId] = useState<number | null>(null);
   const openedLinkedSource = useRef(false);
+  const libraryLayout = useLibraryLayout(activeTab === "library" && canManageSources);
 
   const remoteSources = useMemo(
     () => settings?.fileSources.filter((source) => REMOTE_SOURCE_TYPES.has(source.sourceType)) ?? [],
@@ -335,7 +339,29 @@ export function MaintenancePage({
           <SettingsSkeleton />
         ) : activeTab === "library" && draft ? (
           <div className="space-y-6">
-            <LibraryLayoutSection readOnly={readOnly} />
+            <LibrarySourceList
+              local={localLibraryEntry(libraryLayout, localSource?.displayName ?? t("maintenance.mainLocalLibrary"), t)}
+              sources={remoteSources}
+              checkingSourceId={checkingSourceId}
+              togglingSourceId={togglingSourceId}
+              readOnly={readOnly}
+              onCreate={openCreateSource}
+              onEdit={openEditSource}
+              onDelete={setSourcePendingDelete}
+              onCheck={checkSourceHealth}
+              onToggleEnabled={toggleSourceEnabled}
+            />
+
+            <SettingsGroupDivider label={t("maintenance.library.settingsGroup")} />
+
+            <LibraryLayoutSection
+              id="library-storage"
+              layout={libraryLayout.layout}
+              failed={libraryLayout.failed}
+              readOnly={readOnly}
+              onSaved={libraryLayout.setLayout}
+            />
+
             <SettingsSection
               title={t("maintenance.library.local")}
               description={localSource?.displayName ?? t("maintenance.mainLocalLibrary")}
@@ -380,18 +406,6 @@ export function MaintenancePage({
                 />
               </SettingsRow>
             </SettingsSection>
-
-            <RemoteSourceList
-              sources={remoteSources}
-              checkingSourceId={checkingSourceId}
-              togglingSourceId={togglingSourceId}
-              readOnly={readOnly}
-              onCreate={openCreateSource}
-              onEdit={openEditSource}
-              onDelete={setSourcePendingDelete}
-              onCheck={checkSourceHealth}
-              onToggleEnabled={toggleSourceEnabled}
-            />
 
             <KikoeruImportAccessSection
               privateAddresses={draft.kikoeruImportPrivateAddresses}
@@ -751,6 +765,45 @@ function StoragePaths({ settings, remoteSources }: { settings: AppSettings | nul
           </label>
         ))}
       </SettingsDisclosure>
+    </div>
+  );
+}
+
+/** The local library's row in the library overview: its storage mode and whether its storage is online. */
+function localLibraryEntry(
+  { layout, failed }: { layout: LibraryLayout | null; failed: boolean },
+  name: string,
+  t: TFunction,
+): LocalLibraryEntry {
+  const onConfigure = () =>
+    document.getElementById("library-storage")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  if (!layout) {
+    return {
+      name,
+      detail: failed ? t("librarySetup.loadFailed") : t("common.loading"),
+      status: "unknown",
+      onConfigure,
+    };
+  }
+  const summary = libraryLayoutSummary(layout);
+  const state =
+    summary.mode === "pools"
+      ? t("maintenance.library.poolsOnline", { online: summary.online, total: summary.total })
+      : t(summary.online > 0 ? "librarySetup.online" : "librarySetup.offline");
+  return {
+    name,
+    detail: `${t(`librarySetup.modes.${summary.mode}.name`)} · ${state}`,
+    status: summary.total === 0 ? "unknown" : summary.online === summary.total ? "online" : "offline",
+    onConfigure,
+  };
+}
+
+/** Separates the overview at the top of a tab from the configuration sections below it. */
+function SettingsGroupDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 px-1 pt-2">
+      <h2 className="shrink-0 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h2>
+      <span className="h-px flex-1 bg-border" aria-hidden="true" />
     </div>
   );
 }

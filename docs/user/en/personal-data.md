@@ -21,12 +21,22 @@ should stop creating dated tags. Explicit date templates remain supported.
 ## Listening history
 
 The listening report covers the last 30 days, the last 12 months, or all
-time. For the chosen range it shows listening time, plays, works, and active
-days; a chart by UTC day, month, or year (all time switches to years after
-three years) with the average and busiest period; and the most listened works
-as cover cards ranked by listening time. Imported totals have no dates, so they
-count only in All time. The full history, cover cards ordered by last listening
-time, is collapsed below the report and loads when opened.
+time. For the chosen range it shows:
+
+- Listening time, plays, works, and active days, with the time per active day,
+  the time per play, the top work's share of the time, and the share of days in
+  the range with listening.
+- A chart by UTC day, month, or year (all time switches to years after three
+  years) with the average and busiest period.
+- The five most listened works, expandable to ten, each with its time and its
+  share of the range's listening.
+- Rhythm: the current and longest runs of days, months, or years with
+  listening, and either the average listening per weekday (30 days) or how many
+  months or years had listening.
+
+Imported totals have no dates, so they count only in All time. The full
+history, ordered by last listening time with each work's time, plays, and last
+listening date, is collapsed below the report and loads when opened.
 Time measures actual listening, excluding paused, buffering, and seek time;
 speed changes do not multiply it. Concurrent players count independently.
 Client interruptions or disconnection may leave some time unreported.

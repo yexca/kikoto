@@ -129,6 +129,9 @@ A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), 
   When the directory is wide enough and the work has folders, a sticky folder
   column sits beside the selected folder's contents; otherwise a Folders button
   opens the same navigator as a bottom sheet on phones or a popover elsewhere.
+  **Hide folder panel** in the column's header gives the contents the full
+  width and leaves **Show folder panel** beside the Folders button; the choice
+  is remembered on that device.
   The navigator lists naturally sorted folders with their playable or image
   counts, opens small trees completely and larger ones toward the selected,
   recommended, and playing folders, merges a folder that holds only one
