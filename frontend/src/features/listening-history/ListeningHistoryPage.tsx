@@ -225,7 +225,7 @@ export function ListeningHistoryPage({
               </div>
               <ol
                 aria-label={t("personal.history.topWorks")}
-                className="app-scrollbar -mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-1"
+                className="app-scrollbar -mx-1 flex snap-x gap-3 overflow-x-auto overflow-y-hidden px-1 pb-1"
               >
                 {topWorks.map((item, index) => (
                   <li key={item.workId} className="w-32 shrink-0 snap-start sm:w-auto sm:min-w-0 sm:flex-1 sm:basis-0">

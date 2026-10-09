@@ -131,7 +131,12 @@ export function LyricsManagerDialog({
   }));
 
   return (
-    <Dialog onClose={onClose} size="full" dismissible={!busy} className="max-h-[90vh] max-w-4xl sm:max-h-[90vh]">
+    <Dialog
+      onClose={onClose}
+      size="full"
+      dismissible={!busy}
+      className="max-h-[min(90vh,var(--dialog-max-height))] max-w-4xl"
+    >
       <DialogHeader
         title={t("lyricsManager.title")}
         description={t("lyricsManager.description")}

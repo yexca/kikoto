@@ -1,5 +1,11 @@
 # Unreleased
 
+- On phones, bottom sheets such as Quick actions and tall dialogs stay below
+  the status bar and notch, so their handle and close action remain reachable
+  and a sheet always leaves a strip above it that dismisses it. The work
+  detail stats row and other horizontal strips no longer scroll vertically
+  and swallow page swipes.
+
 - Availability Watch treats a watched code as a work family. Before checking
   a code, a run refreshes its DLsite family metadata (at most once a day), and
   the work becomes available when a remote source offers any of its language

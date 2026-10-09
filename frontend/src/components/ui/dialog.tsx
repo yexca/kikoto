@@ -174,7 +174,7 @@ export function Dialog({
   return (
     <div
       className={cn(
-        "dialog-scrim fixed inset-0 grid place-items-center p-3 duration-150 animate-in fade-in-0 sm:p-4",
+        "dialog-scrim fixed inset-0 grid place-items-center p-[var(--dialog-inset)] duration-150 animate-in fade-in-0",
         layerClassNames[layer],
         overlayClassName,
       )}
@@ -193,7 +193,7 @@ export function Dialog({
           tabIndex={-1}
           data-kikoto-dialog={marker}
           className={cn(
-            "theme-floating-surface flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden rounded-[var(--radius)] border bg-popover text-popover-foreground shadow-2xl outline-none duration-200 animate-in fade-in-0 zoom-in-[0.97] slide-in-from-bottom-2 sm:max-h-[calc(100dvh-2rem)]",
+            "theme-floating-surface flex max-h-[var(--dialog-max-height)] w-full flex-col overflow-hidden rounded-[var(--radius)] border bg-popover text-popover-foreground shadow-2xl outline-none duration-200 animate-in fade-in-0 zoom-in-[0.97] slide-in-from-bottom-2",
             sizeClassNames[size],
             className,
           )}

@@ -169,7 +169,7 @@ function RemoteFetchSelectionPanel({
       dismissible={!disabled}
       ariaLabel={t("remoteFetch.title")}
       marker="remote-fetch"
-      className="h-[calc(100dvh-1.5rem)] max-w-7xl bg-background sm:h-[calc(100dvh-2rem)] md:h-[90dvh]"
+      className="h-[var(--dialog-max-height)] max-w-7xl bg-background md:h-[min(90dvh,var(--dialog-max-height))]"
     >
       <RemoteFetchDialogHeader
         readOnly={readOnly}
@@ -435,7 +435,7 @@ function RemoteFetchEditionPicker({
       <div
         role="radiogroup"
         aria-label={t("remoteFetch.languages")}
-        className="app-scroll -mx-3 flex gap-2 overflow-x-auto px-3 pb-0.5 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0"
+        className="app-scroll -mx-3 flex gap-2 overflow-x-auto overflow-y-hidden px-3 pb-0.5 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0"
       >
         {preparation.editions.map((edition) => (
           <RemoteFetchEditionOption

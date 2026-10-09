@@ -117,7 +117,7 @@ export function FavoriteContinueStrip({ works, onOpen }: { works: Work[]; onOpen
       <div
         id={regionID}
         hidden={!expanded}
-        className="app-scrollbar -mx-1 overflow-x-auto overscroll-x-contain px-1 pb-1"
+        className="app-scrollbar -mx-1 overflow-x-auto overflow-y-hidden overscroll-x-contain px-1 pb-1"
       >
         <ul className="flex w-max gap-3">
           {works.map((work) => (

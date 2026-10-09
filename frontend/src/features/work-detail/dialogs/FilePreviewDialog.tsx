@@ -193,8 +193,8 @@ export function FilePreviewDialog({
       onClose={onClose}
       size="full"
       ariaLabel={preview.title}
-      overlayClassName="p-0 sm:p-4"
-      className="h-[100dvh] max-h-[100dvh] rounded-none border-0 sm:h-[min(56rem,calc(100dvh-2rem))] sm:max-h-[calc(100dvh-2rem)] sm:rounded-[var(--radius)] sm:border"
+      overlayClassName="p-0 sm:p-[var(--dialog-inset)]"
+      className="h-[100dvh] max-h-[100dvh] rounded-none border-0 sm:h-[min(56rem,var(--dialog-max-height))] sm:max-h-[var(--dialog-max-height)] sm:rounded-[var(--radius)] sm:border"
     >
       <div ref={rootRef} className="flex min-h-0 flex-1 flex-col">
         <div className="flex shrink-0 items-center gap-1.5 border-b px-2 pb-2 pt-[max(0.5rem,var(--safe-area-top))] sm:gap-3 sm:px-4 sm:py-2.5">
@@ -551,7 +551,7 @@ function Filmstrip({
     selectedRef.current?.scrollIntoView?.({ block: "nearest", inline: "center" });
   }, [current]);
   return (
-    <div className="app-scrollbar flex shrink-0 gap-1.5 overflow-x-auto border-t bg-card px-3 pb-[max(0.5rem,var(--safe-area-bottom))] pt-2">
+    <div className="app-scrollbar flex shrink-0 gap-1.5 overflow-x-auto overflow-y-hidden border-t bg-card px-3 pb-[max(0.5rem,var(--safe-area-bottom))] pt-2">
       {images.map((image) => {
         const selected = samePreview(image, current);
         const thumbnail = image.kind === "image" && image.thumbnail ? image.url : "";
