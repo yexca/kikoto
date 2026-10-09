@@ -85,8 +85,9 @@ The Library is the main browsing surface for works.
 - Remote recommendation badges also score works that have not been imported,
   using known localized tags and creator aliases. Turning badges on scores the
   current page in one batch without reloading the remote source, then reveals
-  badges progressively (with reduced motion respected). Only scores meeting
-  your badge threshold are shown. A score failure leaves the works available
+  badges progressively (with reduced motion respected). Every scored work
+  shows its score; scores meeting your highlight threshold are emphasized and
+  lower scores appear muted. A score failure leaves the works available
   and offers Retry. Remote scores use the same frozen session preference profile
   and do not import any works.
 - Shows a compact, horizontally scrollable recently-played strip above the

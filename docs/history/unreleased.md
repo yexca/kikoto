@@ -1,5 +1,16 @@
 # Unreleased
 
+- Recommendation badges show every scored work's score in the Library and on
+  remote sources. The badge threshold setting becomes the highlight threshold:
+  scores at or above it keep the emphasized badge, and lower scores appear
+  muted. The score explanation shows the score on a gauge with the threshold
+  marked, the score composition as one stacked bar, and ranking adjustments on
+  a centered scale, and suggests favoriting or marking Relisten when no
+  preference evidence exists yet. Recommendation settings preview an
+  adjustable example work's score live, show how ordering variety can move
+  it, and replace the advanced number fields with a proportional mix bar, a
+  possible score range, and per-match step meters with sliders.
+
 - Demo visitors can choose the preferred metadata language in the account
   menu. The choice stays in that browser, so one visitor's choice never changes
   what another visitor sees.

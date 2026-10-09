@@ -1,45 +1,91 @@
 import { Save, RotateCcw } from "lucide-react";
-import { type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SettingsSection } from "@/components/settings/SettingsSection";
-import { Input } from "@/components/ui/input";
 import type { RecommendationConfig } from "@/lib/api";
 import i18n from "@/i18n";
+import {
+  RecommendationDimensionRow,
+  RecommendationLaneMix,
+  RecommendationOrderingBand,
+  RecommendationPreviewPanel,
+  RecommendationScoreRange,
+  RecommendationSliderField,
+} from "./RecommendationTuningControls";
+import {
+  defaultRecommendationExample,
+  recommendationExampleBreakdown,
+  type RecommendationExample,
+} from "./recommendationTuningModel";
 const maintenanceCopy = (key: string, options?: Record<string, unknown>) => i18n.t(`maintenance.${key}`, options);
 
 type RecommendationConfigKey = keyof RecommendationConfig;
 
-const recommendationLaneFields: Array<{ key: RecommendationConfigKey; label: string; min: number }> = [
-  { key: "unmarkedSlots", label: "recommendation.unmarked", min: 1 },
-  { key: "listeningSlots", label: "recommendation.listening", min: 0 },
-  { key: "wantSlots", label: "recommendation.want", min: 0 },
-  { key: "relistenSlots", label: "recommendation.relisten", min: 0 },
-  { key: "finishedSlots", label: "recommendation.finished", min: 0 },
-  { key: "shelvedSlots", label: "recommendation.shelved", min: 0 },
+type RecommendationDimension = {
+  title: string;
+  weightKey: RecommendationConfigKey;
+  capKey: RecommendationConfigKey;
+  weightLabel: string;
+  capLabel: string;
+  tone: string;
+};
+
+const positiveDimensions: RecommendationDimension[] = [
+  {
+    title: "libraryDetail.componentTags",
+    weightKey: "tagWeight",
+    capKey: "tagCap",
+    weightLabel: "recommendation.positiveTagWeight",
+    capLabel: "recommendation.positiveTagCap",
+    tone: "bg-primary",
+  },
+  {
+    title: "libraryDetail.componentVoices",
+    weightKey: "voiceWeight",
+    capKey: "voiceCap",
+    weightLabel: "recommendation.positiveVoiceWeight",
+    capLabel: "recommendation.positiveVoiceCap",
+    tone: "bg-primary/70",
+  },
+  {
+    title: "libraryDetail.componentCircles",
+    weightKey: "circleWeight",
+    capKey: "circleCap",
+    weightLabel: "recommendation.positiveCircleWeight",
+    capLabel: "recommendation.positiveCircleCap",
+    tone: "bg-primary/45",
+  },
 ];
 
-const recommendationPositiveFields: Array<{ key: RecommendationConfigKey; label: string; max: number }> = [
-  { key: "tagWeight", label: "recommendation.positiveTagWeight", max: 50 },
-  { key: "tagCap", label: "recommendation.positiveTagCap", max: 100 },
-  { key: "voiceWeight", label: "recommendation.positiveVoiceWeight", max: 50 },
-  { key: "voiceCap", label: "recommendation.positiveVoiceCap", max: 100 },
-  { key: "circleWeight", label: "recommendation.positiveCircleWeight", max: 50 },
-  { key: "circleCap", label: "recommendation.positiveCircleCap", max: 100 },
-  { key: "favoriteBonus", label: "recommendation.favoriteBonus", max: 50 },
-];
+const shelvedTone = "bg-foreground/10 text-foreground/50";
 
-const recommendationNegativeFields: Array<{ key: RecommendationConfigKey; label: string; min?: number; max: number }> =
-  [
-    { key: "negativeMinEvidence", label: "recommendation.shelvedEvidenceWorks", min: 1, max: 10 },
-    { key: "negativeTagWeight", label: "recommendation.shelvedTagWeight", max: 50 },
-    { key: "negativeTagCap", label: "recommendation.shelvedTagCap", max: 100 },
-    { key: "negativeVoiceWeight", label: "recommendation.shelvedVoiceWeight", max: 50 },
-    { key: "negativeVoiceCap", label: "recommendation.shelvedVoiceCap", max: 100 },
-    { key: "negativeCircleWeight", label: "recommendation.shelvedCircleWeight", max: 50 },
-    { key: "negativeCircleCap", label: "recommendation.shelvedCircleCap", max: 100 },
-    { key: "negativeTotalCap", label: "recommendation.shelvedTotalCap", max: 100 },
-  ];
+const shelvedDimensions: RecommendationDimension[] = [
+  {
+    title: "libraryDetail.componentTags",
+    weightKey: "negativeTagWeight",
+    capKey: "negativeTagCap",
+    weightLabel: "recommendation.shelvedTagWeight",
+    capLabel: "recommendation.shelvedTagCap",
+    tone: shelvedTone,
+  },
+  {
+    title: "libraryDetail.componentVoices",
+    weightKey: "negativeVoiceWeight",
+    capKey: "negativeVoiceCap",
+    weightLabel: "recommendation.shelvedVoiceWeight",
+    capLabel: "recommendation.shelvedVoiceCap",
+    tone: shelvedTone,
+  },
+  {
+    title: "libraryDetail.componentCircles",
+    weightKey: "negativeCircleWeight",
+    capKey: "negativeCircleCap",
+    weightLabel: "recommendation.shelvedCircleWeight",
+    capLabel: "recommendation.shelvedCircleCap",
+    tone: shelvedTone,
+  },
+];
 
 type RecommendationPreset = "balanced" | "familiar" | "exploratory" | "avoid_shelved";
 
@@ -65,6 +111,7 @@ export function RecommendationPreferences({
   onThresholdChange: (value: number) => void;
   onSave: () => Promise<void>;
 }) {
+  const [example, setExample] = useState<RecommendationExample>(defaultRecommendationExample);
   const updateField = (key: RecommendationConfigKey, value: number) => {
     onConfigChange({ ...config, [key]: value });
   };
@@ -73,16 +120,28 @@ export function RecommendationPreferences({
         recommendationConfigsEqual(config, recommendationPresetConfig(defaults, preset.key)),
       )?.key ?? "custom")
     : "custom";
-  const exampleScore = Math.max(
-    0,
-    Math.min(
-      100,
-      config.affinityBase +
-        Math.min(config.tagCap, config.tagWeight) +
-        Math.min(config.voiceCap, config.voiceWeight) +
-        Math.min(config.circleCap, config.circleWeight),
-    ),
-  );
+  const exampleScore = recommendationExampleBreakdown(config, example).score;
+  const positiveScale = Math.max(50, ...positiveDimensions.map((dimension) => config[dimension.capKey]));
+  const shelvedScale = Math.max(20, ...shelvedDimensions.map((dimension) => config[dimension.capKey]));
+  const dimensionRows = (dimensions: RecommendationDimension[], scaleMax: number, deduction: boolean) =>
+    dimensions.map((dimension) => (
+      <RecommendationDimensionRow
+        key={dimension.weightKey}
+        title={i18n.t(dimension.title)}
+        weightKey={dimension.weightKey}
+        capKey={dimension.capKey}
+        weightLabel={maintenanceCopy(dimension.weightLabel)}
+        capLabel={maintenanceCopy(dimension.capLabel)}
+        config={config}
+        defaults={defaults}
+        scaleMax={scaleMax}
+        maxWeight={50}
+        maxCap={100}
+        tone={dimension.tone}
+        deduction={deduction}
+        onChange={updateField}
+      />
+    ));
 
   return (
     <SettingsSection
@@ -135,99 +194,92 @@ export function RecommendationPreferences({
           </div>
         </section>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px]">
-          <RecommendationRangeField
-            label={maintenanceCopy("recommendation.badgeThreshold")}
-            value={threshold}
-            min={1}
-            max={100}
-            onChange={onThresholdChange}
-          />
-          <RecommendationRangeField
-            label={maintenanceCopy("recommendation.resultVariation")}
-            value={config.jitterAmplitude}
-            min={0}
-            max={10}
-            onChange={(value) => updateField("jitterAmplitude", value)}
-          />
-          <RecommendationRangeField
-            label={maintenanceCopy("recommendation.discoveryBoost")}
-            value={config.explorationAmplitude}
-            min={0}
-            max={40}
-            onChange={(value) => updateField("explorationAmplitude", value)}
-          />
-          <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
-            <div>
-              <div className="text-xs text-muted-foreground">{maintenanceCopy("recommendation.exampleScore")}</div>
-              <div className="text-2xl font-semibold tabular-nums">{exampleScore}</div>
+        <RecommendationPreviewPanel
+          config={config}
+          threshold={threshold}
+          example={example}
+          onThresholdChange={onThresholdChange}
+          onExampleChange={setExample}
+        />
+
+        <section className="rounded-md border bg-background p-4">
+          <h3 className="mb-4 text-sm font-semibold">{maintenanceCopy("recommendation.ordering")}</h3>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
+            <div className="space-y-4">
+              <RecommendationSliderField
+                label={maintenanceCopy("recommendation.resultVariation")}
+                value={config.jitterAmplitude}
+                min={0}
+                max={10}
+                defaultValue={defaults?.jitterAmplitude}
+                onChange={(value) => updateField("jitterAmplitude", value)}
+              />
+              <RecommendationSliderField
+                label={maintenanceCopy("recommendation.discoveryBoost")}
+                value={config.explorationAmplitude}
+                min={0}
+                max={40}
+                defaultValue={defaults?.explorationAmplitude}
+                onChange={(value) => updateField("explorationAmplitude", value)}
+              />
             </div>
-            <Badge variant={exampleScore >= threshold ? "secondary" : "outline"}>
-              {exampleScore >= threshold
-                ? maintenanceCopy("recommendation.badgeShown")
-                : maintenanceCopy("recommendation.belowThreshold")}
-            </Badge>
+            <RecommendationOrderingBand config={config} score={exampleScore} />
           </div>
-        </div>
+        </section>
 
         <details className="rounded-md border bg-background">
           <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
             {maintenanceCopy("recommendation.advancedScoring")}
           </summary>
-          <div className="space-y-5 border-t p-4">
-            <RecommendationFieldGroup title={maintenanceCopy("recommendation.mixSlots")}>
-              {recommendationLaneFields.map((field) => (
-                <RecommendationNumberField
-                  key={field.key}
-                  label={maintenanceCopy(field.label)}
-                  value={config[field.key]}
-                  defaultValue={defaults?.[field.key]}
-                  min={field.min}
-                  max={100}
-                  onChange={(value) => updateField(field.key, value)}
-                />
-              ))}
-              <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-4">
-                Listening and Want receive the leading slots, Unmarked remains the discovery pool, and zero-slot states
-                wait until scheduled states are exhausted. Explicit status filters still show every matching work.
-              </p>
-            </RecommendationFieldGroup>
+          <div className="space-y-6 border-t p-4">
+            <RecommendationGroup title={maintenanceCopy("recommendation.mixSlots")}>
+              <RecommendationLaneMix config={config} onChange={updateField} />
+            </RecommendationGroup>
 
-            <RecommendationFieldGroup title={maintenanceCopy("recommendation.positiveAffinity")}>
-              <RecommendationNumberField
-                label={maintenanceCopy("recommendation.affinityBaseline")}
-                value={config.affinityBase}
-                defaultValue={defaults?.affinityBase}
-                min={0}
-                max={100}
-                onChange={(value) => updateField("affinityBase", value)}
-              />
-              {recommendationPositiveFields.map((field) => (
-                <RecommendationNumberField
-                  key={field.key}
-                  label={maintenanceCopy(field.label)}
-                  value={config[field.key]}
-                  defaultValue={defaults?.[field.key]}
+            <RecommendationGroup title={maintenanceCopy("recommendation.positiveAffinity")}>
+              <RecommendationScoreRange config={config} threshold={threshold} />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <RecommendationSliderField
+                  label={maintenanceCopy("recommendation.affinityBaseline")}
+                  value={config.affinityBase}
                   min={0}
-                  max={field.max}
-                  onChange={(value) => updateField(field.key, value)}
+                  max={100}
+                  defaultValue={defaults?.affinityBase}
+                  onChange={(value) => updateField("affinityBase", value)}
                 />
-              ))}
-            </RecommendationFieldGroup>
+                <RecommendationSliderField
+                  label={maintenanceCopy("recommendation.favoriteBonus")}
+                  value={config.favoriteBonus}
+                  min={0}
+                  max={50}
+                  defaultValue={defaults?.favoriteBonus}
+                  onChange={(value) => updateField("favoriteBonus", value)}
+                />
+              </div>
+              {dimensionRows(positiveDimensions, positiveScale, false)}
+            </RecommendationGroup>
 
-            <RecommendationFieldGroup title={maintenanceCopy("recommendation.shelvedPenalty")}>
-              {recommendationNegativeFields.map((field) => (
-                <RecommendationNumberField
-                  key={field.key}
-                  label={maintenanceCopy(field.label)}
-                  value={config[field.key]}
-                  defaultValue={defaults?.[field.key]}
-                  min={field.min ?? 0}
-                  max={field.max}
-                  onChange={(value) => updateField(field.key, value)}
+            <RecommendationGroup title={maintenanceCopy("recommendation.shelvedPenalty")}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <RecommendationSliderField
+                  label={maintenanceCopy("recommendation.shelvedEvidenceWorks")}
+                  value={config.negativeMinEvidence}
+                  min={1}
+                  max={10}
+                  defaultValue={defaults?.negativeMinEvidence}
+                  onChange={(value) => updateField("negativeMinEvidence", value)}
                 />
-              ))}
-            </RecommendationFieldGroup>
+                <RecommendationSliderField
+                  label={maintenanceCopy("recommendation.shelvedTotalCap")}
+                  value={config.negativeTotalCap}
+                  min={0}
+                  max={100}
+                  defaultValue={defaults?.negativeTotalCap}
+                  onChange={(value) => updateField("negativeTotalCap", value)}
+                />
+              </div>
+              {dimensionRows(shelvedDimensions, shelvedScale, true)}
+            </RecommendationGroup>
           </div>
         </details>
       </div>
@@ -235,79 +287,12 @@ export function RecommendationPreferences({
   );
 }
 
-function RecommendationFieldGroup({ title, children }: { title: string; children: ReactNode }) {
+function RecommendationGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section>
-      <h3 className="mb-3 text-sm font-semibold">{title}</h3>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
+    <section className="space-y-3">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      {children}
     </section>
-  );
-}
-
-function RecommendationNumberField({
-  label,
-  value,
-  defaultValue,
-  min,
-  max,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  defaultValue?: number;
-  min: number;
-  max: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="grid gap-1 text-sm">
-      <span className="flex items-center justify-between gap-2 font-medium">
-        <span>{label}</span>
-        {defaultValue !== undefined && value !== defaultValue && (
-          <span className="text-3xs font-normal text-muted-foreground">
-            {maintenanceCopy("recommendation.defaultValue", { value: defaultValue })}
-          </span>
-        )}
-      </span>
-      <Input
-        className="min-w-0 tabular-nums"
-        type="number"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </label>
-  );
-}
-
-function RecommendationRangeField({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="grid gap-2 rounded-md border bg-background px-3 py-2 text-sm">
-      <span className="flex items-center justify-between gap-3 font-medium">
-        <span>{label}</span>
-        <span className="tabular-nums text-muted-foreground">{value}</span>
-      </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </label>
   );
 }
 
