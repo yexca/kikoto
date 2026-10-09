@@ -54,6 +54,14 @@ protect stored data.
 The browser stores presentation and continuity state such as theme, layout,
 player Dock mode, scoped browse restoration, and a validated playback queue.
 Account-bearing browser state is scoped by configured server identity and user.
+IndexedDB also retains a bounded outbox of unconfirmed playback checkpoints and
+cumulative listening sessions, with work/media/location ids and occurrence UTC
+timestamps. It contains no credentials, titles, source URLs or file paths.
+Confirmed records are removed; unconfirmed or quarantined reports remain in
+their original server/account scope across sign-out until acknowledged, history
+clearing invalidates them, or browser/app storage is cleared. Queue capacity and
+recovery behavior are described in
+[Playback reports](docs/architecture/frontend.md#playback-reports).
 
 The Android client stores the configured server address and a bearer session in
 the app's private preferences. Clearing the configured server clears the stored

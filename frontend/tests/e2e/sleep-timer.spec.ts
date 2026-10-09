@@ -8,6 +8,8 @@ import {
   seedPlayerQueue,
   silentWav,
 } from "./fixtures/player-library";
+import { playbackReportResultFixture } from "./fixtures/playback-reports";
+import type { PlaybackReport } from "../../src/lib/playbackReportApi";
 
 type ProgressSave = { mediaItemId: number; positionSeconds: number; completed: boolean };
 
@@ -57,31 +59,13 @@ async function openRestoredQueue(
     await options.mediaGate;
     await serveSeekableAudio(route, media);
   });
-  await page.route("**/api/listening-sessions", (route) => route.fulfill({ json: { ok: true } }));
   const saves: ProgressSave[] = [];
-  await page.route(/\/api\/media-items\/(\d+)\/progress$/, async (route) => {
-    const mediaItemId = Number(/media-items\/(\d+)/.exec(route.request().url())?.[1]);
-    const body = route.request().postDataJSON() as {
-      locationId: number;
-      positionSeconds: number;
-      durationSeconds: number | null;
-      completed: boolean;
-    };
-    saves.push({ mediaItemId, positionSeconds: body.positionSeconds, completed: body.completed });
-    await route.fulfill({
-      json: {
-        workId: 1,
-        mediaWorkId: 1,
-        mediaItemId,
-        fileSourceId: 1,
-        locationId: body.locationId,
-        locationType: "local",
-        positionSeconds: body.positionSeconds,
-        durationSeconds: body.durationSeconds,
-        completed: body.completed,
-        lastPlayedAt: "2026-01-01 00:00:00",
-      },
-    });
+  await page.route("**/api/playback-reports", async (route) => {
+    const report = route.request().postDataJSON() as PlaybackReport;
+    for (const body of report.progress) {
+      saves.push({ mediaItemId: body.mediaItemId, positionSeconds: body.positionSeconds, completed: body.completed });
+    }
+    await route.fulfill({ json: playbackReportResultFixture(report) });
   });
   await page.goto("/");
   return saves;

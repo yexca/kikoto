@@ -24,6 +24,21 @@ const referenceProjects = [
     url: "https://github.com/cherryhq/cherry-studio",
     description: "about.cherryReference",
   },
+  {
+    name: "advplyr/audiobookshelf",
+    url: "https://github.com/advplyr/audiobookshelf",
+    description: "about.audiobookshelfReference",
+  },
+  {
+    name: "navidrome/navidrome",
+    url: "https://github.com/navidrome/navidrome",
+    description: "about.navidromeReference",
+  },
+  {
+    name: "jellyfin/jellyfin-web",
+    url: "https://github.com/jellyfin/jellyfin-web",
+    description: "about.jellyfinReference",
+  },
 ] as const;
 
 // Stored oldest first, displayed newest first. A null bound means an open-ended range.

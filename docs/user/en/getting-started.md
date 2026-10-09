@@ -5,7 +5,7 @@
 
 - Docker and Docker Compose.
 - Optional for local development:
-  - Go 1.26.6.
+  - Go 1.26.9.
   - Node.js 24.19.0 with npm 11.17.0.
 
 ## Run With Docker

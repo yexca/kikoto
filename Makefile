@@ -1,6 +1,7 @@
 .PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-sync android-test android-build ios-sync ios-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
 .PHONY: ci-plan ci-plan-test ci-results ci-backend-static ci-backend-coverage ci-backend-race ci-production production-smoke production-e2e
 .PHONY: pr-description-check pr-description-test
+.PHONY: browse-performance browse-production-performance playback-performance
 
 GO ?= go
 DOCKER_BUILD ?= $(DOCKER) build
@@ -15,7 +16,7 @@ NPX ?= npx
 NODE ?= node
 DOCKER ?= docker
 DOCKER_IMAGE ?= kikoto:dev
-GO_IMAGE ?= golang:1.26.6@sha256:0d1d3a794be25f809dd2cb3160d8c73276c4056a9f8242a138e908ddeee7b6b6
+GO_IMAGE ?= golang:1.26.9@sha256:f1f0bcc2c524a3ced375fcb4d1ecb7aa371aa7070e112599aaca45cc02d0101b
 # Keep build contexts, .env lookup, mounts, and the project name rooted here.
 DOCKER_COMPOSE_DEV = $(DOCKER) compose --project-directory "$(CURDIR)" -f deploy/compose/dev.yml
 SMOKE_COMPOSE_PROJECT := kikoto-smoke
@@ -85,6 +86,16 @@ backend-vuln:
 
 backend-test:
 	cd backend && $(GO) test ./...
+
+# Opt-in synthetic experiments; run these sequentially on an otherwise idle host.
+browse-performance:
+	$(NODE) scripts/run-browse-performance.mjs sql
+
+browse-production-performance: frontend-build
+	$(NODE) scripts/run-browse-performance.mjs browser
+
+playback-performance: frontend-build
+	$(NODE) scripts/run-browse-performance.mjs playback
 
 backend-test-container:
 	$(DOCKER) run --rm -v "$(CURDIR)/backend:/src" -w /src $(GO_IMAGE) $(GO) test ./...

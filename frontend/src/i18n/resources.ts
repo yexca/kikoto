@@ -422,6 +422,12 @@ export const englishResource = {
           "Kikoto's former workflow canvas drew on this project's interaction design. Kikoto never included or adapted its source code; that canvas was an independent implementation built with @xyflow/react and has since been retired.",
         cherryReference:
           "Kikoto's AGENTS.md configuration approach and application version-management design were informed by this project.",
+        audiobookshelfReference:
+          "Kikoto's playback reporting design draws on this project's combined playback position and listening-time reports.",
+        navidromeReference:
+          "Kikoto's playback reporting design draws on this project's event coalescing and durable reporting queue with retry backoff.",
+        jellyfinReference:
+          "Kikoto's playback reporting design draws on this project's use of playback events alongside periodic progress reports.",
         technologies: "Core technologies",
         license: "License",
         copyright: "Copyright (C) 2026 yexca.",

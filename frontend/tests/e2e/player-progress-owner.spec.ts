@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { mockApplication, seedPlayer, persistedTrack, silentWav } from "./fixtures/player-library";
 import { authenticatedStateFixture } from "./fixtures/api";
+import { playbackReportResultFixture } from "./fixtures/playback-reports";
+import type { PlaybackReport } from "../../src/lib/playbackReportApi";
 
 test("mobile collapse button responds to a tap", async ({ page }) => {
   await mockApplication(page);
@@ -83,6 +85,7 @@ for (const result of ["success", "database_busy", "logout_failure"] as const) {
           id: 2,
           username: "synthetic-user-2",
           devMode: false,
+          permissions: ["library:read", "playback:use", "favorites:write"],
         }),
       });
     });
@@ -101,8 +104,13 @@ for (const result of ["success", "database_busy", "logout_failure"] as const) {
         body: wav.subarray(start, end + 1),
       });
     });
-    await page.route("**/api/media-items/1/progress", async (route) => {
-      const body = route.request().postDataJSON();
+    await page.route("**/api/playback-reports", async (route) => {
+      const report = route.request().postDataJSON() as PlaybackReport;
+      const body = report.progress[0];
+      if (!body) {
+        await route.fulfill({ json: playbackReportResultFixture(report) });
+        return;
+      }
       saves.push({ owner, position: body.positionSeconds });
       if (owner === 2) signalLeak();
       if (saves.length === 1) await firstReleased;
@@ -114,16 +122,7 @@ for (const result of ["success", "database_busy", "logout_failure"] as const) {
         return;
       }
       await route.fulfill({
-        json: {
-          workId: 1,
-          mediaWorkId: 1,
-          mediaItemId: 1,
-          fileSourceId: 1,
-          locationId: 1,
-          locationType: "local",
-          ...body,
-          lastPlayedAt: "2026-01-01T00:00:00Z",
-        },
+        json: playbackReportResultFixture(report),
       });
     });
     try {

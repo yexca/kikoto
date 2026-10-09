@@ -753,6 +753,12 @@ export const japaneseResource = {
           "Kikoto のかつてのワークフローキャンバスは、このプロジェクトの操作設計を参考にしていました。ソースコードを含めたり改変したりしたことはなく、キャンバスは @xyflow/react で独自に実装していましたが、現在は廃止されています。",
         cherryReference:
           "Kikoto の AGENTS.md 設定方法とアプリケーションのバージョン管理設計は、このプロジェクトを参考にしています。",
+        audiobookshelfReference:
+          "Kikoto の再生レポート設計は、このプロジェクトが再生位置と実際の聴取時間をまとめて報告する方式を参考にしています。",
+        navidromeReference:
+          "Kikoto の再生レポート設計は、このプロジェクトのイベント集約、永続化された送信キュー、待機時間を延ばす再試行方式を参考にしています。",
+        jellyfinReference:
+          "Kikoto の再生レポート設計は、このプロジェクトが再生イベントと定期的な進捗報告を組み合わせる方式を参考にしています。",
         technologies: "主要技術",
         license: "ライセンス",
         copyright: "Copyright (C) 2026 yexca。",

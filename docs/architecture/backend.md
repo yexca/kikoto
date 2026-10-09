@@ -81,6 +81,22 @@ Work summary and media APIs remain separate. The media endpoint resolves the
 media-bearing edition and loads media items directly; it does not repeat the
 complete metadata, credit, tag, and manual-override detail projection.
 
+Work-code resolution reads persisted edition and alias relationships without
+updating them or scheduling title projections. Legacy snapshots can resolve
+their declared origin without a write. Metadata ingestion and synchronization
+own relationship maintenance.
+
+`GET /api/works/{id}?includeMedia=false` and `GET /api/works/{id}/media`
+also accept a work code in `{id}`. Code reads use that same read-only canonical
+resolution, including aliases and legacy origins. Numeric reads retain exact
+edition identity. This lets direct links request summary and directory in
+parallel while retaining the existing access and Demo visibility checks.
+
+Cold recommendation session preparation admits at most 32 active or queued
+requests and serializes writes before borrowing a database connection. Warm
+sessions remain reads. Cancellation releases a queue place; a full queue
+returns a retryable 503.
+
 The Library list endpoint always returns one bounded page; a request without
 page parameters receives the first page of the default order. No endpoint
 returns the complete library in one response.
@@ -106,6 +122,33 @@ The cached effective value is loaded before the server starts and updated only
 after the SQLite setting and audit entry commit.
 
 ## HTTP Responses
+
+`POST /api/playback-reports` requires `playback:use`, accepts up to 32 resume
+checkpoints and 64 dated cumulative listening reports, and bounds JSON to
+128 KiB. Strict JSON/envelope errors reject the request before mutation.
+Finite nonnegative positions, matching media locations, valid session ids,
+bounded cumulative totals and sorted UTC date buckets are validated per item.
+Dates must sum to the cumulative total; accepted buckets cannot decrease or
+disappear. Occurrence timestamps cannot be more than five minutes in the future.
+All accepted items commit in one transaction; unexpected database errors or
+cancellation roll back the entire batch. Expected invalid/missing/conflicting
+items return separate statuses. A history-generation rejection therefore does
+not undo a valid resume checkpoint. A successful response acknowledges each
+submitted id and returns the generation observed by the transaction.
+
+Recorded and stale progress acknowledgements include an additive `identity`
+object: the unified cursor owner's `workId` and its persisted
+`editionWorkIds` (including the owner and played edition). Membership is read
+in the same transaction, without discovering or materializing works. Only a
+recorded checkpoint returns a `cursor`; stale identity is ownership evidence,
+not permission to publish the submitted position. Older clients may ignore the
+new field, and the legacy endpoints retain their existing response shapes.
+
+`PATCH /api/media-items/{id}/progress` and `GET/POST /api/listening-sessions`
+remain compatible for earlier web and native clients. Undated legacy sessions
+retain receipt-date accounting. Dated sessions retain occurrence UTC buckets
+and cannot switch to the legacy format under the same session id. Resume and
+history remain independent tables and are never inferred from one another.
 
 When the backend serves the bundled frontend, content-hashed files under
 `/assets/` are cached for a year as `immutable`. `index.html`, the SPA fallback,
@@ -206,6 +249,16 @@ connections. Each origin has separate interactive, crawl, download, and playback
 lanes. The first three serialize response bodies; playback permits four active
 streams. Each lane admits at most 32 waiting requests, and queued cancellation
 does not wait for the active response to finish.
+
+Remote queries requiring local filtering retain only upstream pages for up to
+30 seconds, with at most 32 pages and 16 MiB of serialized data per server.
+Pages larger than 2 MiB bypass the cache. Keys distinguish the viewer, complete
+source configuration and invalidation generation, language, query and filter
+plan, ordering, recommendation seed, and upstream page. Every request reads
+current personal tags, marks and local availability again. Source configuration
+is checked before and after a cached read or upstream request. Cache misses
+use the existing outbound transport and request lanes; discovery never creates
+new work identities. Upstream metadata may lag by the cache lifetime.
 
 Remote covers accept JPEG, PNG, and WebP file signatures rather than trusting
 upstream MIME headers or filename extensions. Publication retains the bounded

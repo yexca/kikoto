@@ -22,6 +22,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/proxyconfig"
+	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -32,6 +33,7 @@ type updateCheckCache struct {
 
 type Server struct {
 	db                             *sql.DB
+	statistics                     *storage.StatisticsMaintainer
 	accountStore                   *account.Store
 	accessPolicy                   *accesspolicy.Store
 	initialSetup                   initialSetupState
@@ -45,6 +47,7 @@ type Server struct {
 	metadataTransport              *metadataTransport
 	metadataHTTPClient             *http.Client
 	remoteWorkCacheMu              sync.Mutex
+	remoteBrowseCache              remoteBrowsePageCache
 	remoteSourceConfigMu           sync.RWMutex
 	manualCoverMu                  sync.Mutex
 	remoteWorkCacheGenerations     map[int64]uint64
@@ -101,7 +104,8 @@ type localMediaIndexCall struct {
 func NewServer(db *sql.DB, cfg config.Config) *Server {
 	dlsiteEndpoints := dlsite.DefaultEndpoints()
 	server := &Server{
-		db: db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
+		statistics: storage.NewStatisticsMaintainer(db),
+		db:         db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
 		loginThrottle:                  auththrottle.New(),
 		dlsiteEndpoints:                dlsiteEndpoints,
 		metadataCoordinator:            metasync.NewCoordinator(),
@@ -138,6 +142,10 @@ func (s *Server) newDLsiteClient() *dlsite.Client {
 // created, until ctx is cancelled.
 func (s *Server) RunSearchIndexWorker(ctx context.Context) {
 	s.libraryStore.RunSearchIndexWorker(ctx)
+}
+
+func (s *Server) RunStatisticsMaintenance(ctx context.Context) {
+	s.statistics.Run(ctx, storage.StatisticsMaintenancePeriod)
 }
 
 func (s *Server) Routes() http.Handler {
@@ -227,6 +235,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/user-tags/{id}/merge", s.changePersonalTag)
 	mux.HandleFunc("DELETE /api/user-tags/{id}", s.changePersonalTag)
 	mux.HandleFunc("POST /api/listening-sessions", s.recordListeningSession)
+	mux.HandleFunc("POST /api/playback-reports", s.recordPlaybackReport)
 	mux.HandleFunc("GET /api/listening-sessions", s.getListeningGeneration)
 	mux.HandleFunc("GET /api/listening-history", s.getListeningHistory)
 	mux.HandleFunc("DELETE /api/listening-history", s.clearListeningHistory)

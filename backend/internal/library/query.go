@@ -15,11 +15,13 @@ import (
 type Store struct {
 	db *sql.DB
 	// searchIndexWake asks RunSearchIndexWorker for an immediate pass.
-	searchIndexWake chan struct{}
+	searchIndexWake     chan struct{}
+	recommendationWrite chan struct{}
+	recommendationQueue chan struct{}
 }
 
 func NewStore(db *sql.DB) *Store {
-	return &Store{db: db, searchIndexWake: make(chan struct{}, 1)}
+	return &Store{db: db, searchIndexWake: make(chan struct{}, 1), recommendationWrite: make(chan struct{}, 1), recommendationQueue: make(chan struct{}, 32)}
 }
 
 type ListOptions struct {
@@ -408,14 +410,7 @@ func listWhere(scope string, status string, queryText string, userID int64, demo
 	args := []any{}
 	switch scope {
 	case "local":
-		clauses = append(clauses, `EXISTS (
-			SELECT 1 FROM work_source_presence AS scope_presence
-			WHERE (scope_presence.work_id = work.id OR scope_presence.work_id IN (
-				SELECT sibling.work_id FROM work_edition AS current_edition
-				INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
-				WHERE current_edition.work_id = work.id
-			)) AND scope_presence.presence_type = 'local' AND scope_presence.availability = 'available'
-		)`)
+		clauses = append(clauses, localPresenceWhereClause())
 	case "tracked":
 		clauses = append(clauses, `EXISTS (SELECT 1 FROM work_source_presence AS scope_presence WHERE scope_presence.work_id = work.id AND scope_presence.presence_type = 'tracked' AND scope_presence.availability = 'available')`)
 	case "remote":
@@ -447,6 +442,23 @@ func listWhere(scope string, status string, queryText string, userID int64, demo
 		clauses = append(clauses, contentpolicy.DemoEligibleWorkSQL("work"))
 	}
 	return strings.Join(clauses, " AND "), args
+}
+
+// Keep direct presence and edition-family presence as separate indexed probes.
+// The OR inside a presence scan made COUNT recheck every local presence against
+// every work; it also built an automatic index that did not include work_id.
+func localPresenceWhereClause() string {
+	return `(EXISTS (
+		SELECT 1 FROM work_source_presence AS scope_presence
+		WHERE scope_presence.work_id = work.id
+			AND scope_presence.presence_type = 'local' AND scope_presence.availability = 'available'
+	) OR EXISTS (
+		SELECT 1 FROM work_edition AS current_edition
+		INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+		INNER JOIN work_source_presence AS scope_presence ON scope_presence.work_id = sibling.work_id
+		WHERE current_edition.work_id = work.id
+			AND scope_presence.presence_type = 'local' AND scope_presence.availability = 'available'
+	))`
 }
 
 func canonicalVisibleWhereClause() string {
