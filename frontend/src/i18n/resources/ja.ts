@@ -857,6 +857,22 @@ export const japaneseResource = {
         sourceFallback: "失敗時に別のソースへ切り替え",
         sourceFallbackDescription:
           "現在の場所で再生に失敗したとき、停止せずにトラックの次に利用できる場所で再生を続けます。",
+        devicePrivacy: "このデバイスのプライバシー",
+        devicePrivacyDescription: "この Android デバイス上のすべてのサーバーとアカウントに適用されます。",
+        recentsShield: "最近のアプリで内容を隠す",
+        recentsShieldDescription: "最近のアプリには現在のページの代わりにカバーを表示します。",
+        lockScreenContent: "ロック中のメディアコントロール",
+        lockScreenContentDescription:
+          "デバイスのロック中に、メディア通知、ロック画面、接続中の Bluetooth や車載ディスプレイに表示する内容です。",
+        lockScreenContentOptions: {
+          full: "すべて表示",
+          hideCover: "カバーを隠す",
+          hidden: "アプリ名のみ",
+        },
+        speakerConfirm: "スピーカー再生の前に確認",
+        speakerConfirmDescription:
+          "ヘッドホンなどの音声出力が接続されていないとき、スマートフォンのスピーカーで再生する前に確認します。通知、ロック画面、メディアキーからの再生も、アプリ内での確認を待ちます。",
+        devicePrivacySaveFailed: "プライバシー設定を保存できませんでした。",
         displayName: "表示名",
         username: "ユーザー名",
         role: "ロール",

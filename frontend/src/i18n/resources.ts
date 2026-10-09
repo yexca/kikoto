@@ -526,6 +526,22 @@ export const englishResource = {
         sourceFallback: "Switch sources on failure",
         sourceFallbackDescription:
           "When the current location fails, continue from the track's next available location instead of stopping.",
+        devicePrivacy: "Privacy on this device",
+        devicePrivacyDescription: "Applies to this Android device for every server and account.",
+        recentsShield: "Hide content in recent apps",
+        recentsShieldDescription: "Recent apps show a cover instead of the current page.",
+        lockScreenContent: "Media controls while locked",
+        lockScreenContentDescription:
+          "What the media notification, lock screen, and connected Bluetooth or car displays show while the device is locked.",
+        lockScreenContentOptions: {
+          full: "Everything",
+          hideCover: "Hide cover",
+          hidden: "App name only",
+        },
+        speakerConfirm: "Confirm speaker playback",
+        speakerConfirmDescription:
+          "Without headphones or another audio output, ask before playing through the phone speaker. Play from the notification, lock screen, or a media key waits for this confirmation in the app.",
+        devicePrivacySaveFailed: "Could not save the privacy setting.",
         displayName: "Display name",
         username: "Username",
         role: "Role",

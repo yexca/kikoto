@@ -1797,6 +1797,10 @@ export const surfaceJapanese = {
     closePanel: "パネルを閉じる",
     seekToLine: "この行へ移動",
     followLyrics: "再生に追従",
+    speakerConfirmTitle: "スマートフォンのスピーカーで再生しますか？",
+    speakerConfirmDescription:
+      "ヘッドホンなどの音声出力が接続されていないため、周囲に音が聞こえます。音声出力を接続または切断すると、再度確認します。",
+    speakerConfirmPlay: "スピーカーで再生",
     track: "トラック",
     finishingTrack: "トラックの終了待ち",
     afterTimerExpires: "タイマー終了後に適用",

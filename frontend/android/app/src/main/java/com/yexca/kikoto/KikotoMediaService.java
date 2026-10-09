@@ -3,15 +3,20 @@ package com.yexca.kikoto;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.KeyguardManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
@@ -19,6 +24,7 @@ import android.support.v4.media.session.PlaybackStateCompat;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -32,6 +38,7 @@ public class KikotoMediaService extends Service {
     public static final String ACTION_UPDATE = "com.yexca.kikoto.media.UPDATE";
     public static final String ACTION_STOP = "com.yexca.kikoto.media.STOP";
     public static final String ACTION_CONTROL = "com.yexca.kikoto.media.CONTROL";
+    public static final String ACTION_REFRESH_PRIVACY = "com.yexca.kikoto.media.REFRESH_PRIVACY";
     public static final String BROADCAST_CONTROL = "com.yexca.kikoto.media.BROADCAST_CONTROL";
     public static final String EXTRA_COMMAND = "command";
     public static final String EXTRA_TITLE = "title";
@@ -54,6 +61,8 @@ public class KikotoMediaService extends Service {
     private static final long MAX_COVER_PIXELS = 32_000_000L;
     private static final int COVER_TARGET_SIZE = 512;
 
+    private static volatile boolean running = false;
+
     private MediaSessionCompat mediaSession;
     private ExecutorService coverExecutor;
     private Handler mainHandler;
@@ -72,11 +81,47 @@ public class KikotoMediaService extends Service {
     private int seekBackwardSeconds = 10;
     private int seekForwardSeconds = 30;
     private boolean foregroundStarted = false;
+    private boolean deviceLocked = false;
+    private BroadcastReceiver lockReceiver;
+
+    /** Republishes the media controls after the lock screen setting changes. */
+    static void refreshPrivacy(Context context) {
+        if (!running) return;
+        Intent intent = new Intent(context, KikotoMediaService.class);
+        intent.setAction(ACTION_REFRESH_PRIVACY);
+        try {
+            context.startService(intent);
+        } catch (RuntimeException ignored) {
+        }
+    }
 
     @Override
     public void onCreate() {
         super.onCreate();
+        running = true;
         createNotificationChannel();
+        deviceLocked = isDeviceLocked();
+        // The screen turns off before the lock screen shows, and USER_PRESENT
+        // follows an unlock, so the media controls are already redacted when
+        // the lock screen first draws them.
+        lockReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+                if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                    setDeviceLocked(true);
+                } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                    setDeviceLocked(false);
+                } else if (Intent.ACTION_SCREEN_ON.equals(action)) {
+                    setDeviceLocked(isDeviceLocked());
+                }
+            }
+        };
+        IntentFilter lockFilter = new IntentFilter();
+        lockFilter.addAction(Intent.ACTION_SCREEN_OFF);
+        lockFilter.addAction(Intent.ACTION_SCREEN_ON);
+        lockFilter.addAction(Intent.ACTION_USER_PRESENT);
+        ContextCompat.registerReceiver(this, lockReceiver, lockFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
         coverExecutor = Executors.newSingleThreadExecutor();
         mainHandler = new Handler(Looper.getMainLooper());
         mediaSession = new MediaSessionCompat(this, "Kikoto");
@@ -145,6 +190,10 @@ public class KikotoMediaService extends Service {
             if (command != null) sendCommand(command);
             return START_NOT_STICKY;
         }
+        if (ACTION_REFRESH_PRIVACY.equals(action)) {
+            republishPresentation();
+            return START_NOT_STICKY;
+        }
         if (ACTION_UPDATE.equals(action) && intent != null) {
             String nextTitle = value(intent, EXTRA_TITLE, title);
             String nextArtist = value(intent, EXTRA_ARTIST, artist);
@@ -203,6 +252,11 @@ public class KikotoMediaService extends Service {
 
     @Override
     public void onDestroy() {
+        running = false;
+        if (lockReceiver != null) {
+            unregisterReceiver(lockReceiver);
+            lockReceiver = null;
+        }
         coverRequestVersion++;
         if (mediaSession != null) {
             mediaSession.setActive(false);
@@ -217,17 +271,48 @@ public class KikotoMediaService extends Service {
         super.onDestroy();
     }
 
+    private KikotoPrivacyPolicy.MediaPresentation presentation() {
+        return KikotoPrivacyPolicy.mediaPresentation(
+            KikotoPrivacySettings.read(this).lockScreenContent,
+            deviceLocked,
+            title,
+            artist,
+            album
+        );
+    }
+
+    private boolean isDeviceLocked() {
+        KeyguardManager keyguard = getSystemService(KeyguardManager.class);
+        PowerManager power = getSystemService(PowerManager.class);
+        return (keyguard != null && keyguard.isKeyguardLocked()) || (power != null && !power.isInteractive());
+    }
+
+    private void setDeviceLocked(boolean locked) {
+        if (deviceLocked == locked) return;
+        deviceLocked = locked;
+        republishPresentation();
+    }
+
+    private void republishPresentation() {
+        if (!foregroundStarted) return;
+        updateMediaMetadata();
+        publishNotification();
+    }
+
     private Notification buildNotification() {
+        KikotoPrivacyPolicy.MediaPresentation shown = presentation();
         Intent openIntent = new Intent(this, MainActivity.class);
         PendingIntent contentIntent = PendingIntent.getActivity(this, 0, openIntent, pendingIntentFlags());
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID);
+        // While the device is locked the content is already redacted, so the
+        // notification itself may show on the lock screen.
         builder.setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(title)
-            .setContentText(artist)
-            .setSubText(album)
+            .setContentTitle(shown.title)
+            .setContentText(shown.artist)
+            .setSubText(shown.album)
             .setContentIntent(contentIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setLargeIcon(coverBitmap)
+            .setLargeIcon(shown.showCover ? coverBitmap : null)
             .setOnlyAlertOnce(true)
             .setOngoing(playing)
             .setShowWhen(false)
@@ -262,13 +347,14 @@ public class KikotoMediaService extends Service {
 
     private void updateMediaMetadata() {
         if (mediaSession == null) return;
+        KikotoPrivacyPolicy.MediaPresentation shown = presentation();
         MediaMetadataCompat.Builder metadata = new MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
-            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, title)
-            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
-            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, album);
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, shown.title)
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, shown.title)
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, shown.artist)
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, shown.album);
         if (durationMs > 0) metadata.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, durationMs);
-        if (coverBitmap != null) {
+        if (shown.showCover && coverBitmap != null) {
             metadata.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, coverBitmap);
             metadata.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, coverBitmap);
         }

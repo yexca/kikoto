@@ -1,5 +1,12 @@
 # Unreleased
 
+- The Android app adds **Privacy on this device** in Settings → Playback.
+  Recent apps show a cover instead of the current page, the media controls
+  hide the cover while the device is locked, and playback through the phone
+  speaker waits for a confirmation when no headphones are connected. All three
+  are on by default; the locked controls can also show everything or only the
+  app name.
+
 - The release workflow builds an unsigned iOS IPA on a macOS runner alongside
   the signed APK and attaches it to the GitHub Release as
   `kikoto-<version>-unsigned.ipa`. The draft is published only after the image,
