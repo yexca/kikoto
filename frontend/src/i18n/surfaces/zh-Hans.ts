@@ -938,7 +938,7 @@ export const surfaceHans = {
       metadata_genre_names: "标签名称",
       remote_popular_collection: "远程热门",
       dlsite_popular_collection: "DLsite 热门",
-      availability_watch: "到货监控",
+      availability_watch: "可用性监视",
       remote_work_fetch: "获取",
       source_health_check: "来源健康",
       circle_follow: "关注社团",

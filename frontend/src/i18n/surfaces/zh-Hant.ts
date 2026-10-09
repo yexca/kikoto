@@ -939,7 +939,7 @@ export const surfaceHant = {
       metadata_genre_names: "標籤名稱",
       remote_popular_collection: "遠端熱門",
       dlsite_popular_collection: "DLsite 熱門",
-      availability_watch: "到貨監控",
+      availability_watch: "可用性監視",
       remote_work_fetch: "取得",
       source_health_check: "來源健康",
       circle_follow: "關注社團",
