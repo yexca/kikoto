@@ -153,6 +153,13 @@ func TestPublicPolicyRejectsPrivateAndReservedAddresses(t *testing.T) {
 		"fc00::1",
 		"fe80::1",
 		"2001:db8::1",
+		"::ffff:127.0.0.1",
+		"64:ff9b::7f00:1",
+		"64:ff9b::a00:1",
+		"64:ff9b::a9fe:a9fe",
+		"64:ff9b:1::5db8:d822",
+		"::7f00:1",
+		"::ffff:0:7f00:1",
 	}
 	for _, value := range addresses {
 		t.Run(value, func(t *testing.T) {
@@ -160,6 +167,18 @@ func TestPublicPolicyRejectsPrivateAndReservedAddresses(t *testing.T) {
 				t.Fatalf("public policy unexpectedly accepted %s", value)
 			}
 		})
+	}
+}
+
+func TestNAT64AddressIsJudgedByEmbeddedIPv4(t *testing.T) {
+	if err := validateAddress(netip.MustParseAddr("64:ff9b::5db8:d822"), false); err != nil {
+		t.Fatalf("public IPv4 behind DNS64 was rejected: %v", err)
+	}
+	if err := validateAddress(netip.MustParseAddr("64:ff9b::a00:1"), true); err != nil {
+		t.Fatalf("configured private origin behind DNS64 was rejected: %v", err)
+	}
+	if err := validateAddress(netip.MustParseAddr("64:ff9b::f000:1"), true); err == nil {
+		t.Fatal("unusable IPv4 behind DNS64 was accepted for a private origin")
 	}
 }
 
