@@ -172,9 +172,9 @@ type fileLocationDetail struct {
 
 func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 	userID := optionalUserID(r.Context())
-	id, err := parseInt64PathValue(r, "id")
+	id, err := s.workReadID(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeWorkReadError(w, err)
 		return
 	}
 	if !s.requireDemoWork(w, r, id) {
@@ -204,9 +204,9 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getWorkMedia(w http.ResponseWriter, r *http.Request) {
 	userID := optionalUserID(r.Context())
-	id, err := parseInt64PathValue(r, "id")
+	id, err := s.workReadID(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		writeWorkReadError(w, err)
 		return
 	}
 	if !s.requireDemoWork(w, r, id) {
@@ -503,27 +503,11 @@ func (s *Server) loadWorkFolderLocations(ctx context.Context, workID int64) ([]w
 
 func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workResolveResponse, error) {
 	code = normalizeDLsiteCode(code)
-	if code == "" {
-		return workResolveResponse{}, sql.ErrNoRows
-	}
-
-	workID, primaryCode, metadata, err := s.loadWorkCodeMetadata(ctx, code)
+	identity, err := s.resolveWorkCodeIdentity(ctx, code)
 	if err != nil {
 		return workResolveResponse{}, err
 	}
-	if err := s.syncWorkEditionForWorkFromSnapshot(ctx, workID, primaryCode, metadata); err != nil {
-		return workResolveResponse{}, err
-	}
-	baseCode := metadata.BaseCode
-	resolvedCode := primaryCode
-	resolvedID := workID
-	if canonicalID, canonicalCode, err := s.loadCanonicalWorkForCode(ctx, primaryCode); err != nil {
-		return workResolveResponse{}, err
-	} else if canonicalID > 0 && canonicalCode != "" {
-		resolvedID = canonicalID
-		resolvedCode = canonicalCode
-		baseCode = canonicalCode
-	}
+	resolvedID, resolvedCode, baseCode, metadata := identity.WorkID, identity.Code, identity.BaseCode, identity.Metadata
 	var title, priceCurrency string
 	var releaseDate sql.NullString
 	var rating sql.NullFloat64

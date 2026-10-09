@@ -368,6 +368,7 @@ func (s *Server) persistIncrementalLocalScanResults(
 	if err := tx.Commit(); err != nil {
 		return localScanResult{}, nil, 0, err
 	}
+	s.refreshQueryPlannerStatistics(ctx)
 	return localScanResult{
 		RunID: job.RunID, JobID: job.ID, FileSourceID: fileSourceID, Status: "succeeded",
 		DetectedWorks: scanSummary.DetectedWorks, ScannedFiles: scanSummary.ScannedFiles,

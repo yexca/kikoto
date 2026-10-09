@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"strings"
 )
 
 func (s *Server) workCodeExists(ctx context.Context, code string) bool {
@@ -109,105 +108,6 @@ func (s *Server) familyWorkIDsForCode(ctx context.Context, code string) ([]int64
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
-}
-
-func (s *Server) syncWorkEditionForWorkFromSnapshot(ctx context.Context, workID int64, primaryCode string, metadata dlsiteSnapshotMetadata) error {
-	primaryCode = normalizeDLsiteCode(primaryCode)
-	if primaryCode == "" {
-		return nil
-	}
-	canonicalCode := normalizeDLsiteCode(metadata.BaseCode)
-	if canonicalCode == "" {
-		canonicalCode = primaryCode
-	}
-	var provider any
-	if providerID, err := s.metadataProviderID(ctx, "dlsite", "DLsite"); err != nil {
-		return err
-	} else {
-		provider = providerID
-	}
-	canonicalWorkID, _ := s.workIDForCode(ctx, canonicalCode)
-	var canonical any
-	if canonicalWorkID > 0 {
-		canonical = canonicalWorkID
-	}
-	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO logical_work (canonical_work_id, canonical_code, updated_at)
-		VALUES (?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(canonical_code) DO UPDATE SET
-			canonical_work_id = COALESCE(excluded.canonical_work_id, logical_work.canonical_work_id),
-			updated_at = CURRENT_TIMESTAMP
-	`, canonical, canonicalCode); err != nil {
-		return err
-	}
-	var logicalWorkID int64
-	if err := s.db.QueryRowContext(ctx, "SELECT id FROM logical_work WHERE canonical_code = ?", canonicalCode).Scan(&logicalWorkID); err != nil {
-		return err
-	}
-	isCanonical := 0
-	if strings.EqualFold(primaryCode, canonicalCode) {
-		isCanonical = 1
-	}
-	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, metadata_language, is_canonical, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(work_id) DO UPDATE SET
-			logical_work_id = excluded.logical_work_id,
-			provider_id = excluded.provider_id,
-			primary_code = excluded.primary_code,
-			base_code = excluded.base_code,
-			metadata_language = excluded.metadata_language,
-			is_canonical = excluded.is_canonical,
-			updated_at = CURRENT_TIMESTAMP
-	`, workID, logicalWorkID, provider, primaryCode, metadata.BaseCode, metadata.MetadataLanguage, isCanonical); err != nil {
-		return err
-	}
-	if isCanonical == 1 {
-		_, err := s.db.ExecContext(ctx, "UPDATE logical_work SET canonical_work_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", workID, logicalWorkID)
-		if err != nil {
-			return err
-		}
-	}
-	return s.syncKnownLanguageEditions(ctx, logicalWorkID, provider, canonicalCode, metadata.LanguageEditions)
-}
-
-func (s *Server) syncKnownLanguageEditions(ctx context.Context, logicalWorkID int64, provider any, canonicalCode string, editions []workTranslation) error {
-	for _, edition := range editions {
-		code := normalizeDLsiteCode(edition.PrimaryCode)
-		if code == "" {
-			continue
-		}
-		editionWorkID, ok := s.workIDForCode(ctx, code)
-		if !ok {
-			continue
-		}
-		isCanonical := 0
-		if strings.EqualFold(code, canonicalCode) {
-			isCanonical = 1
-		}
-		if _, err := s.db.ExecContext(ctx, `
-			INSERT INTO work_edition (work_id, logical_work_id, provider_id, primary_code, base_code, metadata_language, edition_label, is_canonical, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-			ON CONFLICT(work_id) DO UPDATE SET
-				logical_work_id = excluded.logical_work_id,
-				provider_id = excluded.provider_id,
-				primary_code = excluded.primary_code,
-				base_code = excluded.base_code,
-				metadata_language = CASE
-					WHEN excluded.metadata_language <> '' THEN excluded.metadata_language
-					ELSE work_edition.metadata_language
-				END,
-				edition_label = CASE
-					WHEN excluded.edition_label <> '' THEN excluded.edition_label
-					ELSE work_edition.edition_label
-				END,
-				is_canonical = excluded.is_canonical,
-				updated_at = CURRENT_TIMESTAMP
-		`, editionWorkID, logicalWorkID, provider, code, canonicalCode, edition.MetadataLanguage, edition.EditionLabel, isCanonical); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (s *Server) loadWorkEditionMetadata(ctx context.Context, workID int64) (string, string, error) {

@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestOptimizeStatisticsAnalyzesTablesFilledAfterTheLastPass(t *testing.T) {
@@ -39,5 +41,48 @@ func TestOptimizeStatisticsAnalyzesTablesFilledAfterTheLastPass(t *testing.T) {
 	}
 	if limit != 0 {
 		t.Fatalf("analysis_limit after pass = %d, want the connection default 0", limit)
+	}
+}
+
+func TestOptimizeStatisticsYieldsToWriterAndRestoresConnectionPolicy(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "example.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	db.SetMaxOpenConns(2)
+	if _, err := db.Exec(`CREATE TABLE item(id INTEGER PRIMARY KEY,kind TEXT); CREATE INDEX idx_item_kind ON item(kind);
+		WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<500)
+		INSERT INTO item SELECT n,'example' FROM seq`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if err := OptimizeStatistics(ctx, db); err == nil {
+		t.Fatal("maintenance acquired a held write lock")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("cancelled maintenance took %v", elapsed)
+	}
+	var timeout, limit int
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if err := conn.QueryRowContext(context.Background(), `PRAGMA busy_timeout`).Scan(&timeout); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.QueryRowContext(context.Background(), `PRAGMA analysis_limit`).Scan(&limit); err != nil {
+		t.Fatal(err)
+	}
+	if timeout != sqliteBusyTimeoutMillis || limit != 0 {
+		t.Fatalf("restored connection policy = %d/%d", timeout, limit)
 	}
 }

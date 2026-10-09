@@ -150,11 +150,11 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
       });
       return;
     }
-    if (url.pathname === "/api/works/1") {
+    if (url.pathname === "/api/works/1" || url.pathname === "/api/works/RJ00000000") {
       await route.fulfill({ json: workDetailFixture(cachedWork) });
       return;
     }
-    if (url.pathname === "/api/works/1/media") {
+    if (["/api/works/1/media", "/api/works/RJ00000000/media", "/api/works/RJ00000001/media"].includes(url.pathname)) {
       count("work-media");
       await route.fulfill({
         json: { workId: 1, mediaWorkId: 1, mediaItems: [] } satisfies ApiResponse<"getWorkMedia">,
@@ -165,12 +165,12 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
       await route.fulfill({ json: workResolveFixture(cachedWork) });
       return;
     }
-    if (url.pathname === "/api/works/RJ00000001/resolve") {
-      count("alias-resolve");
+    if (url.pathname === "/api/works/RJ00000001") {
+      count("alias-summary");
       await aliasResolution;
       try {
         await route.fulfill({
-          json: workResolveFixture(cachedWork, { requestedCode: "RJ00000001", isTranslation: true }),
+          json: workDetailFixture(cachedWork),
         });
       } finally {
         settleAliasResolution?.();
@@ -709,13 +709,13 @@ test("does not let an inactive Library detail redirect replace another mobile wo
     window.history.pushState({}, "", "/RJ00000001");
     window.dispatchEvent(new Event("kikoto:navigation"));
   });
-  await expect.poll(() => (requests["alias-resolve"] ?? 0) > 0).toBe(true);
+  await expect.poll(() => (requests["alias-summary"] ?? 0) > 0).toBe(true);
 
   await page.locator("footer").getByRole("button", { name: "Circles", exact: true }).click();
   await expect(page).toHaveURL(/\/circles(?:\?|$)/);
 
   mocks.releaseAliasResolution();
   await mocks.waitForAliasResolution();
-  expect(requests["work-media"] ?? 0).toBe(0);
+  expect(requests["work-media"] ?? 0).toBe(1);
   await expect(page).toHaveURL(/\/circles(?:\?|$)/);
 });

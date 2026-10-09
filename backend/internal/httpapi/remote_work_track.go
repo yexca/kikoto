@@ -411,6 +411,7 @@ func (s *Server) runRemoteWorkSyncWithIntent(ctx context.Context, sourceID int64
 	if err := tx.Commit(); err != nil {
 		return remoteWorkSyncResult{}, err
 	}
+	s.refreshQueryPlannerStatistics(ctx)
 	return remoteWorkSyncResult{
 		RunID:            runID,
 		JobID:            jobID,

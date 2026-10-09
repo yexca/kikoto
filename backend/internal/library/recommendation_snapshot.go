@@ -18,6 +18,8 @@ type RecommendationSessionSnapshot struct {
 
 const recommendationSessionRetentionSQL = "datetime('now', '-90 days')"
 
+var ErrRecommendationBusy = errors.New("recommendation preparation queue is full")
+
 // PrepareRecommendationSession binds a client session to one recommendation
 // generation. Existing compatible sessions never switch generations; an
 // obsolete algorithm version or a new session rebuilds when required inputs
@@ -36,6 +38,29 @@ func (s *Store) PrepareRecommendationSession(ctx context.Context, userID int64, 
 		return snapshot, nil
 	}
 
+	// Serialize cold generation writes before borrowing a pooled connection.
+	// Warm sessions remain read-only; queued cancellation releases its place.
+	select {
+	case s.recommendationQueue <- struct{}{}:
+		defer func() { <-s.recommendationQueue }()
+	default:
+		return RecommendationSessionSnapshot{}, ErrRecommendationBusy
+	}
+	select {
+	case s.recommendationWrite <- struct{}{}:
+		defer func() { <-s.recommendationWrite }()
+	case <-ctx.Done():
+		return RecommendationSessionSnapshot{}, ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return RecommendationSessionSnapshot{}, err
+	}
+	// Another queued request may already have bound this exact session.
+	if snapshot, found, err := boundRecommendationSession(ctx, s.db, userID, sessionID); err != nil {
+		return RecommendationSessionSnapshot{}, err
+	} else if found {
+		return snapshot, nil
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return RecommendationSessionSnapshot{}, err

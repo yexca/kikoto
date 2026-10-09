@@ -46,6 +46,7 @@ import {
 } from "@/lib/librarySearchClauses";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useAuth } from "@/auth/AuthProvider";
+import { loadWorkDetailStages } from "@/features/work-detail/loadWorkDetailStages";
 import { DemoContentNotice, DemoRemoteSourceNotice } from "@/components/DemoReadOnlyNotice";
 import { useTranslation } from "react-i18next";
 import { useDeferredBusy } from "@/hooks/useDeferredBusy";
@@ -53,6 +54,8 @@ import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { type ClientPrincipalID, currentClientStorageScope } from "@/lib/clientStorageScope";
 import {
   memo,
+  type Dispatch,
+  type SetStateAction,
   type ReactNode,
   Suspense,
   useCallback,
@@ -268,7 +271,11 @@ function initialLibraryPageBrowseState(browseStorageScope: string, sessionDefaul
   const sortPreference = readLibrarySortPreference(libraryBrowseKey(tab, scope, browseStorageScope));
   const state = libraryBrowseStateFromSearch(
     window.location.search,
-    readLibraryHistoryBrowseState(browseStorageScope) ?? { ...sessionDefaultBrowseState, ...sortPreference },
+    readLibraryHistoryBrowseState(browseStorageScope) ??
+      readLibraryBrowseState(libraryBrowseKey(tab, scope, browseStorageScope)) ?? {
+        ...sessionDefaultBrowseState,
+        ...sortPreference,
+      },
   );
   return { tab, scope, state };
 }
@@ -388,7 +395,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   worksRef.current = works;
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [sourceRoutesReady, setSourceRoutesReady] = useState(false);
-  const [browseHydrated, setBrowseHydrated] = useState(false);
+  const [browseHydrated, setBrowseHydrated] = useState(() => localBrowseRoute(window.location.pathname));
   const [activeTab, setActiveTab] = useState<LibraryTab>(initialBrowse.tab);
   const [localScope, setLocalScope] = useState<LocalLibraryScope>(initialBrowse.scope);
   const [remoteResult, setRemoteResult] = useState<RemoteWorksResponse | null>(null);
@@ -675,20 +682,24 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     const requestSeq = ++libraryRequestSeq.current;
     setLibraryLoadError("");
     setIsLibraryLoading(true);
-    api
-      .listWorksPage(
-        workPage,
-        workPageSize,
-        librarySearchQuery,
-        workScope,
-        statusFilter,
-        librarySort,
-        sortDirection,
-        randomSeed,
-        recommendBadgesEnabled && librarySort !== "recommend",
-        controller.signal,
-        recommendationSession.id,
-      )
+    // Let synchronous effect replacement cancel before issuing its GET.
+    void Promise.resolve()
+      .then(() => {
+        controller.signal.throwIfAborted();
+        return api.listWorksPage(
+          workPage,
+          workPageSize,
+          librarySearchQuery,
+          workScope,
+          statusFilter,
+          librarySort,
+          sortDirection,
+          randomSeed,
+          recommendBadgesEnabled && librarySort !== "recommend",
+          controller.signal,
+          recommendationSession.id,
+        );
+      })
       .then((page) => {
         if (controller.signal.aborted || requestSeq !== libraryRequestSeq.current) return;
         loadedLibraryRequestKey.current = requestKey;
@@ -752,7 +763,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     if (!active || auth.isLoading || sourceRoutesReady) return;
     const controller = new AbortController();
     let cancelled = false;
-    setBrowseHydrated(false);
+    if (!localBrowseRoute(window.location.pathname)) setBrowseHydrated(false);
     setSourceRoutesReady(false);
     api
       .listLibrarySources(controller.signal)
@@ -768,7 +779,8 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         const routeRemoteTarget = remoteTargetFromLocation(window.location.pathname, window.location.search, items);
         if (
           workDetailCodeFromLocation(window.location.pathname, window.location.search) === null &&
-          routeRemoteTarget === null
+          routeRemoteTarget === null &&
+          !localBrowseRoute(window.location.pathname)
         ) {
           const state = libraryBrowseStateFromSearch(
             window.location.search,
@@ -924,41 +936,28 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     setSelectedWorkPreview(work ?? historyPreview);
     if (workID !== null) {
       setIsSelectedMediaLoading(true);
-      api
-        .getWorkSummary(workID, controller.signal)
-        .then((detail) => {
-          if (detail.baseCode && detail.baseCode.toUpperCase() !== detail.primaryCode.toUpperCase()) {
-            return resolveAndOpenWork(
-              selectedCode,
-              principalID,
-              setSelectedWork,
-              setSelectedWorkPreview,
-              setSelectedCode,
-              setIsSelectedMediaLoading,
-              setSelectedWorkNotFound,
-              setSelectedMediaError,
-              controller.signal,
-            );
-          }
-          const cachedMedia = getCachedWorkMedia(detail.id, principalID);
-          setSelectedWork(cachedMedia ? { ...detail, mediaItems: cachedMedia } : detail);
-          if (cachedMedia) return;
-          return api
-            .getWorkMedia(detail.id, controller.signal)
-            .then((media) => {
-              setCachedWorkMedia(detail.id, principalID, media.mediaItems);
-              setSelectedWork((current) =>
-                current?.id === detail.id ? { ...current, mediaItems: media.mediaItems } : current,
-              );
-            })
-            .catch((error) => {
-              if (!(error instanceof DOMException && error.name === "AbortError")) {
-                setSelectedMediaError(directoryLoadErrorMessage(error));
-              }
-            });
-        })
+      void loadWorkDetailStages(
+        workID,
+        principalID,
+        controller.signal,
+        setSelectedWork,
+        (mediaItems) => setSelectedWork((current) => (current?.id === workID ? { ...current, mediaItems } : current)),
+        (error) => setSelectedMediaError(directoryLoadErrorMessage(error)),
+        () =>
+          resolveAndOpenWork(
+            selectedCode,
+            principalID,
+            setSelectedWork,
+            setSelectedWorkPreview,
+            setSelectedCode,
+            setIsSelectedMediaLoading,
+            setSelectedWorkNotFound,
+            setSelectedMediaError,
+            controller.signal,
+          ),
+      )
         .catch((error) => {
-          if (!(error instanceof DOMException && error.name === "AbortError")) {
+          if (!controller.signal.aborted && !(error instanceof DOMException && error.name === "AbortError")) {
             setSelectedWork(null);
             setSelectedWorkNotFound(error instanceof ApiError && error.status === 404);
           }
@@ -3449,51 +3448,64 @@ function detailRemoteCodeFromLocation(search: string) {
 async function resolveAndOpenWork(
   code: string,
   principalID: ClientPrincipalID,
-  setSelectedWork: (work: WorkDetail | null) => void,
+  setSelectedWork: Dispatch<SetStateAction<WorkDetail | null>>,
   setSelectedWorkPreview: (work: WorkPreview | null) => void,
   setSelectedCode: (code: string | null) => void,
   setMediaLoading: (loading: boolean) => void,
   setNotFound: (notFound: boolean) => void,
   setMediaError: (message: string) => void,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ) {
   try {
     setMediaLoading(true);
     setNotFound(false);
     setMediaError("");
-    const resolved = await api.resolveWorkCode(code, signal);
-    setSelectedWorkPreview(workPreviewFromResolve(resolved));
-    const work = await api.getWorkSummary(resolved.workId, signal);
-    const cachedMedia = getCachedWorkMedia(resolved.workId, principalID);
-    if (cachedMedia) {
-      setSelectedWork({ ...work, mediaItems: cachedMedia });
-    } else {
-      setSelectedWork(work);
-      try {
-        const media = await api.getWorkMedia(resolved.workId, signal);
-        setCachedWorkMedia(resolved.workId, principalID, media.mediaItems);
-        setSelectedWork({ ...work, mediaItems: media.mediaItems });
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setMediaError(directoryLoadErrorMessage(error));
-      }
-    }
+    let resolvedCode = code;
+    let resolvedID: number | null = null;
+    await loadWorkDetailStages(
+      code,
+      principalID,
+      signal,
+      (work) => {
+        resolvedCode = work.primaryCode;
+        resolvedID = work.id;
+        setSelectedWorkPreview(work);
+        setSelectedWork(work);
+      },
+      (mediaItems) => setSelectedWork((current) => (current?.id === resolvedID ? { ...current, mediaItems } : current)),
+      (error) => setMediaError(directoryLoadErrorMessage(error)),
+    );
+    if (signal.aborted) return;
     if (
-      resolved.resolvedCode &&
-      resolved.resolvedCode.toUpperCase() !== code.toUpperCase() &&
+      resolvedCode &&
+      resolvedCode.toUpperCase() !== code.toUpperCase() &&
       workDetailCodeFromLocation(window.location.pathname, window.location.search)?.toUpperCase() === code.toUpperCase()
     ) {
-      window.history.replaceState(window.history.state ?? {}, "", `/${resolved.resolvedCode}${window.location.search}`);
-      setSelectedCode(resolved.resolvedCode);
+      window.history.replaceState(window.history.state ?? {}, "", `/${resolvedCode}${window.location.search}`);
+      setSelectedCode(resolvedCode);
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") return;
+    if (signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
     setSelectedWork(null);
     setNotFound(error instanceof ApiError && error.status === 404);
   } finally {
     if (!signal?.aborted) setMediaLoading(false);
   }
+}
+
+function localBrowseRoute(path: string) {
+  const normalized = path.length > 1 ? path.replace(/\/+$/, "") : path;
+  return [
+    "/",
+    "/library",
+    "/tracked",
+    "/library/tracked",
+    "/no-source",
+    "/library/no-source",
+    "/library/all",
+    "/library/remote",
+  ].includes(normalized);
 }
 
 function knownLibraryRoute(path: string, search: string, sources: LibrarySource[]) {
@@ -3581,22 +3593,6 @@ function workPreviewFromHistory(code: string | null): WorkPreview | null {
   const preview = historyPreviewObject<WorkPreview>(code, "primaryCode");
   if (!preview) return null;
   return { id: historyPreviewID(preview.id), ...workPreviewFieldsFromHistory(preview) };
-}
-
-function workPreviewFromResolve(resolved: Awaited<ReturnType<typeof api.resolveWorkCode>>): WorkPreview {
-  return {
-    id: resolved.workId,
-    primaryCode: resolved.resolvedCode,
-    title: resolved.title || resolved.resolvedCode,
-    coverUrl: resolved.coverUrl,
-    circle: resolved.circle,
-    circleExternalId: resolved.circleExternalId,
-    rating: resolved.rating,
-    sales: resolved.sales,
-    releaseDate: resolved.releaseDate,
-    tags: resolved.tags,
-    voiceActors: resolved.voiceActors,
-  };
 }
 
 function remoteWorkPreview(work: RemoteWork): WorkPreview {
