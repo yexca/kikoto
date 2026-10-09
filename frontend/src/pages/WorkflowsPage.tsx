@@ -40,6 +40,7 @@ import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import {
   api,
   type MetadataSyncOptions,
+  type SourcePresenceCheckOptions,
   type WorkflowDefinition,
   type WorkflowPreset,
   type WorkflowRun,
@@ -340,14 +341,14 @@ export function WorkflowsPage({
     }
   };
 
-  const runSourceHealthCheck = async () => {
-    setRunningSystemAction("source_health_check");
+  const runSourcePresenceCheck = async (options: SourcePresenceCheckOptions) => {
+    setRunningSystemAction("source_presence_check");
     try {
-      await api.runSourceHealthCheck();
-      void refreshRecentRuns("source_health_check");
+      await api.runSourcePresenceCheck(options);
+      void refreshRecentRuns("source_presence_check");
       showQueuedRun();
     } catch (error) {
-      toast.notify(toastFromError(error, workflowCopy("sourceHealthCheckCreateFailed")));
+      toast.notify(toastFromError(error, workflowCopy("sourcePresenceCheckCreateFailed")));
     } finally {
       setRunningSystemAction(null);
     }
@@ -420,7 +421,8 @@ export function WorkflowsPage({
     if (kind === "local_scan") return runLocalScan(options.followUpRun ?? false);
     if (kind === "local_media_index") return runLocalMediaIndex(options.localMediaIndexMode ?? "incremental");
     if (kind === "metadata_sync") return runMetadataSync(options.metadataSync);
-    if (kind === "source_health_check") return runSourceHealthCheck();
+    if (kind === "source_presence_check" && options.sourcePresence)
+      return runSourcePresenceCheck(options.sourcePresence);
     if (kind === "remote_popular") return;
     if (kind === "dlsite_popular") return;
   };
@@ -439,7 +441,8 @@ export function WorkflowsPage({
     if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
     if (kind === "remote_popular") return canRun && canTagWorks && remoteSourceAvailability !== "unavailable";
     if (kind === "remote_fetch") return canRun && canManageDownloads;
-    if (kind === "source_health_check") return canRun && canManageSources;
+    if (kind === "source_presence_check")
+      return canRun && canManageSources && remoteSourceAvailability !== "unavailable";
     // Follow runs refresh catalogs and sync metadata; the optional tag checks tags:write itself.
     if (kind === "preset") return canRun && canSyncMetadata;
     return canRun;

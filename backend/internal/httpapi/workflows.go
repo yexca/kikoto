@@ -247,10 +247,10 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		},
 	},
 	{
-		Code:        sourceHealthCheckWorkflowCode,
-		Name:        sourceHealthCheckDisplayName,
-		Description: sourceHealthCheckDescription,
-		Nodes:       sourceHealthCheckNodes,
+		Code:        sourcePresenceCheckWorkflowCode,
+		Name:        sourcePresenceCheckDisplayName,
+		Description: sourcePresenceCheckDescription,
+		Nodes:       sourcePresenceCheckNodes,
 	},
 }
 
@@ -1430,11 +1430,11 @@ func (s *Server) dispatchWorkflowRetry(ctx context.Context, actor currentUser, r
 		}
 		newRunID, err := s.retryLocalMediaIndex(ctx, runID)
 		return workflowRetryDispatchResult{NewRunID: newRunID}, err
-	case sourceHealthCheckWorkflowCode:
+	case sourcePresenceCheckWorkflowCode:
 		if !userHasPermission(actor, "sources:write") {
 			return workflowRetryDispatchResult{}, errWorkflowRetryPermission
 		}
-		newRunID, err := s.retrySourceHealthCheck(ctx)
+		newRunID, err := s.retrySourcePresenceCheck(ctx, runID)
 		return workflowRetryDispatchResult{NewRunID: newRunID}, err
 	case "metadata_sync":
 		if !userHasPermission(actor, "metadata:sync") {
