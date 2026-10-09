@@ -112,7 +112,11 @@ changes only what that user's requests present: selected titles and
 introductions, tag names, the default detail edition, title sorting, and live
 remote-source requests. Requests without a user use the original language. No
 stored provider value depends on a personal priority, and a personal change
-rewrites nothing.
+rewrites nothing. Every Demo visitor shares one account, so in Demo the
+priority arrives with each request as a comma-separated
+`X-Kikoto-Metadata-Languages` header, an absent or invalid header means no
+preference, and the shared account's stored value is ignored. Demo responses
+vary on that header. Other modes ignore it.
 
 The startup metadata tag backfill deletes the unused instance keys
 `app_setting.dlsite_metadata_languages` and `app_setting.dlsite_metadata_language`

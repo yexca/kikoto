@@ -1,5 +1,9 @@
 # Unreleased
 
+- Demo visitors can choose the preferred metadata language in the account
+  menu. The choice stays in that browser, so one visitor's choice never changes
+  what another visitor sees.
+
 - Settings on wide screens can show its tabs as a row above the content
   instead of the side column, and the Settings and Metadata rails name their
   tabs by default; a choice saved earlier on the device is kept. On phones the
