@@ -9,7 +9,7 @@ import type { PlaybackRefs } from "./usePlaybackEngine";
 const allowPlaybackStart = () => true;
 
 /**
- * Installs the Android speaker confirmation as the engine's start guard.
+ * Installs the speaker confirmation as the engine's start guard.
  * Every start passes through that guard, so player buttons, queue actions,
  * notification and lock screen controls, and media keys all wait for the same
  * confirmation in the app.

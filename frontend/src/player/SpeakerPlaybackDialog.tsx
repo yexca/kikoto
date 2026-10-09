@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 
-/** Asks before playback starts through the Android phone speaker. */
+/** Asks before playback starts through the device speaker. */
 export function SpeakerPlaybackDialog({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
   const { t } = useTranslation();
   return (

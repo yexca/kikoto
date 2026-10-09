@@ -527,7 +527,16 @@ export const englishResource = {
         sourceFallbackDescription:
           "When the current location fails, continue from the track's next available location instead of stopping.",
         devicePrivacy: "Privacy on this device",
-        devicePrivacyDescription: "Applies to this Android device for every server and account.",
+        devicePrivacyDescription: "Applies to this device for every server and account.",
+        appSwitcherBlur: "Blur in the background",
+        appSwitcherBlurDescription:
+          "Blurs Kikoto in the app switcher and whenever another screen, such as Control Center, covers it.",
+        screenCaptureCover: "Hide while the screen is recorded or mirrored",
+        screenCaptureCoverDescription:
+          "Covers Kikoto and closes screen lyrics while a screen recording, AirPlay mirroring, or another capture is active. Screenshots are not blocked.",
+        nowPlayingContent: "Now Playing details",
+        nowPlayingContentDescription:
+          "What the lock screen, Control Center, and connected Bluetooth or car displays show for the current track.",
         recentsShield: "Hide content in recent apps",
         recentsShieldDescription: "Recent apps show a cover instead of the current page.",
         lockScreenContent: "Media controls while locked",

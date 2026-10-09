@@ -10,8 +10,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window = UIWindow(windowScene: windowScene)
         window?.rootViewController = KikotoBridgeViewController()
         window?.makeKeyAndVisible()
+        KikotoPrivacyShield.shared.attach(windowScene)
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
+    }
+
+    func sceneWillResignActive(_ scene: UIScene) {
+        // Resigning active precedes the app switcher gesture and its snapshot.
+        KikotoPrivacyShield.shared.setInactive(true)
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        KikotoPrivacyShield.shared.setInactive(false)
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {

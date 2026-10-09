@@ -21,8 +21,8 @@ export function useNativeUnlockLabels() {
 }
 
 /**
- * The Android device privacy settings, kept in sync with Settings. `loaded`
- * stays false until the native shell answers, and outside Android.
+ * The device privacy settings, kept in sync with Settings. `loaded` stays
+ * false until the native shell answers, and outside the Android and iOS apps.
  */
 export function useNativePrivacySettings() {
   const [state, setState] = useState<{ settings: NativePrivacySettings; loaded: boolean }>({

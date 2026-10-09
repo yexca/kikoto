@@ -2,11 +2,13 @@ import { useCallback, useEffect, type RefObject } from "react";
 
 import { assetURL } from "@/lib/api";
 import { addNativeMediaListeners, stopNativeMedia, supportsNativeMedia, updateNativeMedia } from "@/lib/nativeMedia";
+import { addNativeOutputLostListener } from "@/lib/nativePrivacy";
 
 import type { PlaybackSeekPreferences } from "./playbackPreferences";
 import { NATIVE_MEDIA_POSITION_INTERVAL_MS } from "./playerProgress";
 import { bindMediaSessionActions, type PlayerRemoteControls } from "./playerRemoteControls";
 import type { PlayerTrack } from "./playerTypes";
+import { systemMediaDetails, useMediaSessionContent } from "./systemMediaPrivacy";
 import type { PlaybackRefs } from "./usePlaybackEngine";
 
 function absoluteAssetURL(path: string) {
@@ -150,8 +152,9 @@ export function useNativeMediaBridge({
 }
 
 /**
- * The browser Media Session (lock screen, headset keys, OS media overlay). A
- * native build owns these controls through its own notification instead.
+ * The browser Media Session (lock screen, headset keys, OS media overlay),
+ * also used by the iOS shell. A native build with its own media notification
+ * owns these controls instead.
  */
 export function useBrowserMediaSession({
   controlsRef,
@@ -168,15 +171,32 @@ export function useBrowserMediaSession({
   duration: number;
   playbackRate: number;
 }) {
-  const hasTrack = currentTrack !== null;
-  const title = currentTrack?.title ?? "";
-  const workTitle = currentTrack?.workTitle ?? "";
-  const circle = currentTrack?.circle ?? "";
-  const coverUrl = currentTrack?.coverUrl ?? "";
+  const content = useMediaSessionContent();
+  const details = currentTrack ? systemMediaDetails(currentTrack, content) : null;
+  const title = details?.title ?? "";
+  const artist = details?.artist ?? "";
+  const album = details?.album ?? "";
+  const coverUrl = details?.coverUrl ?? "";
+  const hasTrack = details !== null;
 
   useEffect(() => {
     if (supportsNativeMedia() || !("mediaSession" in navigator)) return;
     return bindMediaSessionActions(navigator.mediaSession, () => controlsRef.current);
+  }, [controlsRef]);
+
+  // The iOS shell reports a lost audio output, such as disconnected
+  // headphones, so playback pauses instead of moving to the speaker.
+  useEffect(() => {
+    let removeListener: (() => void) | null = null;
+    let disposed = false;
+    void addNativeOutputLostListener(() => controlsRef.current.pause()).then((remove) => {
+      if (disposed) remove();
+      else removeListener = remove;
+    });
+    return () => {
+      disposed = true;
+      removeListener?.();
+    };
   }, [controlsRef]);
 
   useEffect(() => {
@@ -184,12 +204,12 @@ export function useBrowserMediaSession({
     navigator.mediaSession.metadata = hasTrack
       ? new MediaMetadata({
           title,
-          artist: circle || workTitle,
-          album: workTitle,
+          artist,
+          album,
           artwork: coverUrl ? [{ src: absoluteAssetURL(coverUrl) }] : [],
         })
       : null;
-  }, [circle, coverUrl, hasTrack, title, workTitle]);
+  }, [album, artist, coverUrl, hasTrack, title]);
 
   useEffect(() => {
     if (supportsNativeMedia() || !("mediaSession" in navigator)) return;

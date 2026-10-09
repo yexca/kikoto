@@ -1,20 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const isAndroidApp = vi.hoisted(() => vi.fn(() => false));
+const isIOSApp = vi.hoisted(() => vi.fn(() => false));
 const plugin = vi.hoisted(() => ({
   getSettings: vi.fn(),
   setSettings: vi.fn(),
   outputStatus: vi.fn(),
+  status: vi.fn(),
   addListener: vi.fn(),
 }));
 const registerPlugin = vi.hoisted(() => vi.fn(() => plugin));
 
 vi.mock("@capacitor/core", () => ({ registerPlugin }));
-vi.mock("@/lib/serverConfig", () => ({ isAndroidApp }));
+vi.mock("@/lib/serverConfig", () => ({ isAndroidApp, isIOSApp }));
 
 import {
   DEFAULT_NATIVE_PRIVACY_SETTINGS,
   getNativePrivacySettings,
+  nativeAppLockStatus,
   NATIVE_PRIVACY_SETTINGS_CHANGE_EVENT,
   nativeOutputIsPhoneSpeaker,
   normalizeNativePrivacySettings,
@@ -25,6 +28,8 @@ describe("native privacy bridge", () => {
   beforeEach(() => {
     isAndroidApp.mockReset();
     isAndroidApp.mockReturnValue(false);
+    isIOSApp.mockReset();
+    isIOSApp.mockReturnValue(false);
     for (const method of Object.values(plugin)) method.mockReset();
   });
 
@@ -60,6 +65,17 @@ describe("native privacy bridge", () => {
     expect(await nativeOutputIsPhoneSpeaker()).toBe(false);
     expect(plugin.getSettings).not.toHaveBeenCalled();
     expect(plugin.outputStatus).not.toHaveBeenCalled();
+  });
+
+  it("offers the app lock only where the shell declares it", async () => {
+    expect(await nativeAppLockStatus()).toEqual({ supported: false, available: false });
+    isIOSApp.mockReturnValue(true);
+    plugin.status.mockResolvedValue({ appLockSupported: false, appLockAvailable: false });
+    expect(await nativeAppLockStatus()).toEqual({ supported: false, available: false });
+    isIOSApp.mockReturnValue(false);
+    isAndroidApp.mockReturnValue(true);
+    plugin.status.mockResolvedValue({ appLockSupported: true, appLockAvailable: true });
+    expect(await nativeAppLockStatus()).toEqual({ supported: true, available: true });
   });
 
   it("announces saved settings to the page", async () => {

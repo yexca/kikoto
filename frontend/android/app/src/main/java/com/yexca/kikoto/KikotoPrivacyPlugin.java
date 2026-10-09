@@ -142,6 +142,7 @@ public class KikotoPrivacyPlugin extends Plugin {
     @PluginMethod
     public void status(PluginCall call) {
         JSObject result = new JSObject();
+        result.put("appLockSupported", true);
         result.put("appLockAvailable", appLock != null && appLock.deviceSecure());
         call.resolve(result);
     }

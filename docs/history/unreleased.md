@@ -1,15 +1,23 @@
 # Unreleased
 
-- The Android app adds **Privacy on this device** in Settings → Playback.
-  Recent apps show a cover instead of the current page, the media controls
-  hide the cover while the device is locked, and playback through the phone
-  speaker waits for a confirmation when no headphones are connected. All three
-  are on by default; the locked controls can also show everything or only the
-  app name. Two opt-in choices block screenshots, recording, and casting of
-  the app and its floating lyrics, and add an app lock that unlocks with a
-  biometric or the device screen lock after a chosen time in the background.
-  Disconnecting headphones also closes the floating lyrics, and signing out or
-  switching servers clears the app's web cache.
+- The Android and iOS apps add **Privacy on this device** in Settings →
+  Playback, stored for the device across every server and account. Recent
+  apps and the iOS app switcher show a cover instead of the current page, the
+  system media controls hide the cover (on Android while the device is
+  locked), and playback through the device speaker waits for a confirmation
+  when no headphones are connected. All three are on by default; the media
+  controls can also show everything or only the app name. An opt-in choice
+  blocks screenshots, recording, and casting of the Android app and its
+  floating lyrics; on iOS it covers the app and closes screen lyrics while the
+  screen is recorded or mirrored. Android also offers an opt-in app lock that
+  unlocks with a biometric or the device screen lock after a chosen time in
+  the background. Disconnecting headphones closes the Android floating lyrics,
+  and signing out or switching servers clears the Android app's web cache.
+
+- The iOS app pauses when headphones or another external audio output
+  disconnect, and keeps its session in the Keychain with this-device-only
+  access instead of app preferences and WebView storage; an existing session
+  moves to the Keychain on the next launch.
 
 - The release workflow builds an unsigned iOS IPA on a macOS runner alongside
   the signed APK and attaches it to the GitHub Release as

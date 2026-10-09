@@ -858,7 +858,16 @@ export const japaneseResource = {
         sourceFallbackDescription:
           "現在の場所で再生に失敗したとき、停止せずにトラックの次に利用できる場所で再生を続けます。",
         devicePrivacy: "このデバイスのプライバシー",
-        devicePrivacyDescription: "この Android デバイス上のすべてのサーバーとアカウントに適用されます。",
+        devicePrivacyDescription: "このデバイス上のすべてのサーバーとアカウントに適用されます。",
+        appSwitcherBlur: "バックグラウンドでぼかす",
+        appSwitcherBlurDescription:
+          "Appスイッチャーや、コントロールセンターなどの画面が重なっているときに Kikoto をぼかします。",
+        screenCaptureCover: "画面収録やミラーリング中は隠す",
+        screenCaptureCoverDescription:
+          "画面収録、AirPlay ミラーリングなどの画面キャプチャ中は Kikoto を覆い、画面歌詞を閉じます。スクリーンショットは防げません。",
+        nowPlayingContent: "再生中の情報",
+        nowPlayingContentDescription:
+          "ロック画面、コントロールセンター、接続中の Bluetooth や車載ディスプレイに表示する、再生中のトラックの内容です。",
         recentsShield: "最近のアプリで内容を隠す",
         recentsShieldDescription: "最近のアプリには現在のページの代わりにカバーを表示します。",
         lockScreenContent: "ロック中のメディアコントロール",

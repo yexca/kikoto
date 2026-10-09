@@ -3,9 +3,18 @@ import { Preferences } from "@capacitor/preferences";
 
 import { clearNativeAssetTransport, configureNativeAssetTransport } from "@/lib/nativeAssetTransport";
 import { changeApiSession } from "@/lib/apiSession";
+import {
+  clearNativeSessionCredential,
+  readNativeSessionCredential,
+  writeNativeSessionCredential,
+} from "@/lib/nativeSessionCredential";
 
 const SERVER_URL_STORAGE_KEY = "kikoto:mobile-server-url";
 const SESSION_TOKEN_STORAGE_KEY = "kikoto:mobile-session-token";
+
+// Native shells hold the session in memory and in their native credential
+// store, never in WebView storage, which device backups include.
+let nativeSession = "";
 
 export function isNativeApp() {
   return Capacitor.isNativePlatform();
@@ -14,6 +23,10 @@ export function isNativeApp() {
 /** The Android shell is the only native build with media, overlay, and asset transport plugins. */
 export function isAndroidApp() {
   return Capacitor.getPlatform() === "android";
+}
+
+export function isIOSApp() {
+  return Capacitor.getPlatform() === "ios";
 }
 
 export function normalizeServerURL(value: string) {
@@ -66,15 +79,17 @@ export async function clearStoredServerURL() {
   changeApiSession();
   localStorage.removeItem(SERVER_URL_STORAGE_KEY);
   localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+  nativeSession = "";
   if (!isNativeApp()) return;
   await Promise.all([
     Preferences.remove({ key: SERVER_URL_STORAGE_KEY }),
-    Preferences.remove({ key: SESSION_TOKEN_STORAGE_KEY }),
+    clearNativeSessionCredential(),
     clearNativeAssetTransport(),
   ]);
 }
 
 export function getStoredSessionToken() {
+  if (isNativeApp()) return nativeSession;
   return localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) ?? "";
 }
 
@@ -82,10 +97,13 @@ export async function setStoredSessionToken(value: string) {
   if (value.trim()) {
     const token = value.trim();
     if (token !== getStoredSessionToken()) changeApiSession();
-    localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, token);
-    if (!isNativeApp()) return;
+    if (!isNativeApp()) {
+      localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, token);
+      return;
+    }
+    nativeSession = token;
     await Promise.all([
-      Preferences.set({ key: SESSION_TOKEN_STORAGE_KEY, value: token }),
+      writeNativeSessionCredential(token),
       configureNativeAssetTransport(getStoredServerURL(), token),
     ]);
   }
@@ -94,10 +112,11 @@ export async function setStoredSessionToken(value: string) {
 export async function clearStoredSessionToken() {
   changeApiSession();
   localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+  nativeSession = "";
   if (!isNativeApp()) return;
   const serverUrl = getStoredServerURL();
   await Promise.all([
-    Preferences.remove({ key: SESSION_TOKEN_STORAGE_KEY }),
+    clearNativeSessionCredential(),
     serverUrl ? configureNativeAssetTransport(serverUrl, "") : clearNativeAssetTransport(),
   ]);
 }
@@ -106,15 +125,17 @@ export async function hydrateNativeConfig() {
   if (!isNativeApp()) return;
   const [server, token] = await Promise.all([
     Preferences.get({ key: SERVER_URL_STORAGE_KEY }),
-    Preferences.get({ key: SESSION_TOKEN_STORAGE_KEY }),
+    readNativeSessionCredential(),
   ]);
   const serverUrl = server.value?.trim() ?? "";
-  const credential = serverUrl ? (token.value?.trim() ?? "") : "";
+  const credential = serverUrl ? token : "";
   if (serverUrl !== getStoredServerURL() || credential !== getStoredSessionToken()) changeApiSession();
   if (serverUrl) localStorage.setItem(SERVER_URL_STORAGE_KEY, serverUrl);
   else localStorage.removeItem(SERVER_URL_STORAGE_KEY);
-  if (credential) localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, credential);
-  else localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+  localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+  nativeSession = credential;
+  // A Keychain item outlives an app removal that cleared the server address.
+  if (!serverUrl && token) await clearNativeSessionCredential();
   if (serverUrl) await configureNativeAssetTransport(serverUrl, credential);
   else await clearNativeAssetTransport();
 }

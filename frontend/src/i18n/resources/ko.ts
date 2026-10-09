@@ -847,7 +847,15 @@ export const koreanResource = {
         sourceFallbackDescription:
           "현재 위치에서 재생에 실패하면 멈추지 않고 트랙의 다음 사용 가능한 위치에서 계속 재생합니다.",
         devicePrivacy: "이 기기의 개인정보 보호",
-        devicePrivacyDescription: "이 Android 기기의 모든 서버와 계정에 적용됩니다.",
+        devicePrivacyDescription: "이 기기의 모든 서버와 계정에 적용됩니다.",
+        appSwitcherBlur: "백그라운드에서 흐리게 표시",
+        appSwitcherBlurDescription: "앱 전환기에서, 그리고 제어 센터 등이 화면을 가릴 때 Kikoto를 흐리게 표시합니다.",
+        screenCaptureCover: "화면 녹화나 미러링 중 숨기기",
+        screenCaptureCoverDescription:
+          "화면 녹화, AirPlay 미러링 등 화면 캡처가 진행되는 동안 Kikoto를 가리고 화면 가사를 닫습니다. 스크린샷은 막지 않습니다.",
+        nowPlayingContent: "재생 중 정보",
+        nowPlayingContentDescription:
+          "잠금 화면, 제어 센터, 연결된 Bluetooth 또는 차량 디스플레이에 표시할 현재 트랙의 내용입니다.",
         recentsShield: "최근 앱에서 내용 숨기기",
         recentsShieldDescription: "최근 앱에 현재 페이지 대신 가림 화면을 표시합니다.",
         lockScreenContent: "잠금 중 미디어 컨트롤",
