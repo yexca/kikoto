@@ -581,6 +581,8 @@ export const zhHantResource = {
         collapse: "收合",
         showTabNames: "展開分頁名稱",
         hideTabNames: "收合分頁名稱",
+        showTabsAbove: "分頁移到上方",
+        showTabsBeside: "分頁移到側邊",
         thisPage: "此頁面",
         workflowSubmitting: "工作流程要求仍在提交中。",
         pressBackAgain: "再次按返回鍵以退出 Kikoto。",

@@ -1,5 +1,10 @@
 # Unreleased
 
+- Settings on wide screens can show its tabs as a row above the content
+  instead of the side column, and the Settings and Metadata rails name their
+  tabs by default; a choice saved earlier on the device is kept. On phones the
+  Settings and Metadata tab rows no longer scroll vertically by a few pixels.
+
 - The Android and iOS apps add **Privacy on this device** in Settings →
   Playback, stored for the device across every server and account. Recent
   apps and the iOS app switcher show a cover instead of the current page, the

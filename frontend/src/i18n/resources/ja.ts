@@ -602,6 +602,8 @@ export const japaneseResource = {
         collapse: "折りたたむ",
         showTabNames: "タブ名を表示",
         hideTabNames: "タブ名を隠す",
+        showTabsAbove: "タブを上部に表示",
+        showTabsBeside: "タブを横に表示",
         thisPage: "このページ",
         workflowSubmitting: "ワークフロー要求を送信中です。",
         pressBackAgain: "もう一度戻るボタンを押すと Kikoto を終了します。",

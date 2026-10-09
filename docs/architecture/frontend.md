@@ -180,11 +180,16 @@ viewer read LRC, WebVTT, and SRT files the same way.
   tuning; and personal tags) followed, after a divider, by the Library,
   Cache & Fetch, Proxy, Cleanup, and Users administration tabs, which share an
   Administration accessible description. Wide layouts show a sticky vertical
-  rail of icons; compact layouts show one scrollable row of icons with only the
-  active tab labelled, and keep the active tab in view. Every tab keeps its
-  label as the accessible name and tooltip. A toggle below the wide rail shows
-  every label beside its icon; Settings, Metadata, Favorites, and the Workflows
-  list each store their own choice locally. Section headings are plain text,
+  rail of icons; compact layouts show one row of icons that scrolls only
+  sideways, with only the active tab labelled, and keep the active tab in
+  view. Every tab keeps its label as the accessible name and tooltip. A toggle
+  below the wide rail shows or hides the labels beside the icons; labels show
+  by default, and Settings, Metadata, Favorites, and the Workflows list each
+  store their own choice locally. Settings also offers a wide-layout row above
+  the content that names as much as fits on one line (every tab, then the
+  selected tab's divider-bounded group beside the other group's icons, then
+  only the selected tab) and wraps instead of scrolling; the
+  orientation is stored locally as well. Section headings are plain text,
   and a switch or number field stays beside its label even on a phone.
   Listening history shows a 30-day, 12-month, or all-time report of totals,
   activity, and most listened works as cover cards, with the full per-work

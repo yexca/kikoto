@@ -594,6 +594,8 @@ export const koreanResource = {
         collapse: "접기",
         showTabNames: "탭 이름 표시",
         hideTabNames: "탭 이름 숨기기",
+        showTabsAbove: "탭을 위에 표시",
+        showTabsBeside: "탭을 옆에 표시",
         thisPage: "이 페이지",
         workflowSubmitting: "워크플로 요청을 제출하는 중입니다.",
         pressBackAgain: "Kikoto를 종료하려면 뒤로 버튼을 한 번 더 누르세요.",
