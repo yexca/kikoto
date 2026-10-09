@@ -183,8 +183,8 @@ viewer read LRC, WebVTT, and SRT files the same way.
   rail of icons; compact layouts show one scrollable row of icons with only the
   active tab labelled, and keep the active tab in view. Every tab keeps its
   label as the accessible name and tooltip. A toggle below the wide rail shows
-  every label beside its icon; Settings, Metadata, and the Workflows list each
-  store their own choice locally. Section headings are plain text,
+  every label beside its icon; Settings, Metadata, Favorites, and the Workflows
+  list each store their own choice locally. Section headings are plain text,
   and a switch or number field stays beside its label even on a phone.
   Listening history shows a 30-day, 12-month, or all-time report of totals,
   activity, and most listened works as cover cards, with the full per-work
@@ -197,9 +197,9 @@ viewer read LRC, WebVTT, and SRT files the same way.
   searchable table and management dialog. Tag and circle edits require
   `library:write`; voice aliases retain `metadata:sync`. The URLs
   `?view=tags`, `?view=circles`, and `?view=aliases&voice=<id>` select
-  those views; existing voice deep links remain valid. The shared icon rail
-  shows group headings when expanded and accessible group descriptions at all
-  sizes. The header settings popover keeps the DLsite proxy shortcut and
+  those views. The shared icon rail shows group headings when expanded and
+  accessible group descriptions at all sizes. The page's Metadata settings
+  popover holds the DLsite proxy shortcut and
   links to Settings → Library (creator catalog freshness) and to the
   Metadata sync Run options (remote metadata fallback). The Tags table is
   keyed and ordered by shared tag ID, so its rows never depend on a
@@ -209,9 +209,11 @@ viewer read LRC, WebVTT, and SRT files the same way.
   and scrolls sideways inside its own box on narrow screens with the Manage
   column pinned to the right edge.
 
-- Workflows: horizontal definition tabs and a right-side Activity summary.
+- Workflows: a category-grouped workflow navigator beside the selected
+  workflow on wide screens, collapsible to an icon rail; on phones the navigator
+  is the landing list. Activity opens from the status strip as an anchored
+  popover, or a sheet on phones.
 - Activity run details inside the Workflows panel, also reachable through notifications.
-- Users.
 - Global player dock.
 
 The work metadata editor freezes its initial normalized values and sends only
@@ -494,7 +496,7 @@ volatile queue with a diagnostic and a normal network loss window of up to
 
 The global player and app shell are continuity infrastructure. Route and domain
 error boundaries should sit inside them so a render failure in Library,
-Maintenance, or a remote panel does not stop playback or discard navigation.
+Settings, or a remote panel does not stop playback or discard navigation.
 
 Fallbacks must use sanitized copy and offer a relevant recovery action. Raw
 stacks, upstream bodies, private endpoints, and local paths are diagnostic data,

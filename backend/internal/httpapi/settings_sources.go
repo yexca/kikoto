@@ -487,18 +487,8 @@ func (s *Server) checkFileSourceHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	started := time.Now()
-	checkCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	probeErr := s.checkRemoteSourceHealth(checkCtx, source)
-	cancel()
-	status := "healthy"
-	if probeErr != nil {
-		status = "unavailable"
-	}
-	if _, err := s.db.ExecContext(r.Context(), `
-		UPDATE file_source_endpoint
-		SET health_status = ?, last_checked_at = CURRENT_TIMESTAMP
-		WHERE file_source_id = ?
-	`, status, id); err != nil {
+	probe, err := s.checkAndRecordRemoteSourceHealth(r.Context(), source)
+	if err != nil {
 		writeError(w, err)
 		return
 	}
@@ -508,11 +498,45 @@ func (s *Server) checkFileSourceHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, fileSourceHealthCheckResult{
-		Healthy:       probeErr == nil,
+		Healthy:       probe.Err == nil,
 		HealthStatus:  updated.HealthStatus,
 		LastCheckedAt: updated.LastCheckedAt,
 		ElapsedMS:     time.Since(started).Milliseconds(),
 	})
+}
+
+// remoteSourceHealthCheckTimeout bounds one explicit source health check.
+const remoteSourceHealthCheckTimeout = 10 * time.Second
+
+// remoteSourceHealthProbe is the outcome of one explicit health check. Err
+// keeps the upstream failure for protected logs; callers expose only Status.
+type remoteSourceHealthProbe struct {
+	Status string
+	Err    error
+}
+
+// checkAndRecordRemoteSourceHealth probes one remote source and always
+// records the result with a fresh check time, so the source settings list
+// shows it. A cancelled caller records nothing and returns its context error.
+func (s *Server) checkAndRecordRemoteSourceHealth(ctx context.Context, source remoteSourceForUse) (remoteSourceHealthProbe, error) {
+	checkCtx, cancel := context.WithTimeout(ctx, remoteSourceHealthCheckTimeout)
+	probeErr := s.checkRemoteSourceHealth(checkCtx, source)
+	cancel()
+	if err := ctx.Err(); err != nil {
+		return remoteSourceHealthProbe{}, err
+	}
+	probe := remoteSourceHealthProbe{Status: "healthy", Err: probeErr}
+	if probeErr != nil {
+		probe.Status = "unavailable"
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE file_source_endpoint
+		SET health_status = ?, last_checked_at = CURRENT_TIMESTAMP
+		WHERE file_source_id = ?
+	`, probe.Status, source.ID); err != nil {
+		return remoteSourceHealthProbe{}, err
+	}
+	return probe, nil
 }
 
 func (s *Server) updateSourceHealth(ctx context.Context, sourceID int64, status string) error {

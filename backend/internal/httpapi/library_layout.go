@@ -14,7 +14,7 @@ import (
 )
 
 // Library layout settings. The initial mode is chosen during onboarding or
-// inherited as standard for an earlier instance. Later mode and Fetch-pool
+// inherited as standard by an instance that predates onboarding. Later mode and Fetch-pool
 // changes use the durable, confirmed migration path.
 const (
 	settingLibraryMode    = "library_mode"

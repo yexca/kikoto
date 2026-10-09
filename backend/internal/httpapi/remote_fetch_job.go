@@ -367,8 +367,8 @@ func (s *Server) markRemoteFetchPublished(ctx context.Context, jobID, nodeID int
 
 // remoteFetchPublicationFailureNode names the publication step an error
 // belongs to: the first of Assemble, Verify, and Publish that has not
-// succeeded, so a staging failure no longer leaves Assemble running while
-// Publish reports the error.
+// succeeded, so a staging failure is not reported on Publish while Assemble
+// keeps running.
 func (s *Server) remoteFetchPublicationFailureNode(ctx context.Context, runID int64, fallback int64) int64 {
 	var nodeRunID int64
 	if err := s.db.QueryRowContext(ctx, `

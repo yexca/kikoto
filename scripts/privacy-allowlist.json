@@ -34,10 +34,26 @@
       "url": "https://github.com/yexca/kikoto/**",
       "files": [
         "README.md",
+        "docs/readme/README.*.md",
         "backend/internal/httpapi/app_update_endpoints.go",
         "frontend/src/lib/official-links.ts"
       ],
       "reason": "Kikoto's public repository, release pages, README Android download link, and About links."
+    },
+    {
+      "url": "https://img.shields.io/**",
+      "files": ["README.md", "docs/readme/README.*.md"],
+      "reason": "Public README status badges for the release, demo, Docker image, and license."
+    },
+    {
+      "url": "https://kikoto.yexca.net",
+      "files": ["README.md", "docs/readme/README.*.md"],
+      "reason": "Kikoto's public live demo linked from the README badges."
+    },
+    {
+      "url": "https://hub.docker.com/r/yexca/kikoto",
+      "files": ["README.md", "docs/readme/README.*.md"],
+      "reason": "Kikoto's public Docker Hub image page linked from the README badges."
     },
     {
       "url": "https://api.github.com/repos/yexca/kikoto/**",
@@ -74,7 +90,7 @@
     },
     {
       "url": "https://github.com/kikoeru-project/kikoeru-express/blob/unstable/routes/review.js",
-      "files": ["docs/user/en/personal-data.md"],
+      "files": ["docs/user/*/personal-data.md"],
       "reason": "Public upstream review API source documenting the personal listening-state import mapping."
     },
     {

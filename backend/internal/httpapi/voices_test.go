@@ -275,9 +275,9 @@ func TestLoadVoiceAliasCandidatesAttachesAliasesAfterReleasingCursor(t *testing.
 	}
 }
 
-// Regression: the merged-away name stays a confirmed alias of the target, and
-// the startup snapshot projection must resolve it instead of recreating the
-// source person and splitting its credits again.
+// The merged-away name stays a confirmed alias of the target, and the startup
+// snapshot projection must resolve it instead of recreating the source person
+// and splitting its credits.
 func TestVoiceSnapshotSyncKeepsMergedPersonMerged(t *testing.T) {
 	db := openMigratedTestDB(t)
 	for _, statement := range []string{

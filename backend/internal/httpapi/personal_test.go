@@ -165,7 +165,7 @@ func TestListeningStatisticsRangeAndCachedCovers(t *testing.T) {
 	if len(stats.TopWorks) != 1 || !strings.HasPrefix(stats.TopWorks[0].CoverURL, "/api/assets/covers/") {
 		t.Fatalf("top works = %+v", stats.TopWorks)
 	}
-	// Clients that predate ranges still receive the lifetime report with Daily.
+	// A request without a range returns the lifetime report with Daily.
 	response = request("")
 	if err := json.NewDecoder(response.Body).Decode(&stats); err != nil || stats.Range != personal.RangeAll || len(stats.Daily) != 1 {
 		t.Fatalf("default = %+v, %v", stats, err)

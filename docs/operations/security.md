@@ -137,7 +137,7 @@ password stays readable to anyone who can inspect the container environment.
 ## Authentication and Cookies
 
 A super administrator can change **Anonymous access** under
-`Maintenance -> Access` in production or development. The setting is stored in
+`Settings -> Users -> Instance access` in production or development. The setting is stored in
 SQLite and recorded in the audit log. In production it takes effect without a
 restart. When disabled, unauthenticated clients can reach only health,
 authentication bootstrap, and runtime-setting endpoints before the frontend

@@ -14,6 +14,7 @@ export const builtInWorkflowOrder = [
   "dlsite_popular_collection",
   "availability_watch",
   "remote_work_fetch",
+  "source_health_check",
   "circle_follow",
   "series_follow",
   "voice_follow",
@@ -31,6 +32,7 @@ const workflowCategoryByCode: Record<string, WorkflowCategory> = {
   voice_follow: "follow",
   availability_watch: "remote",
   remote_work_fetch: "remote",
+  source_health_check: "remote",
 };
 
 /** Workflows without a declared category, such as a read-only run context, stay with the basic set. */

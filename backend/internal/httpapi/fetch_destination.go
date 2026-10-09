@@ -101,8 +101,7 @@ func (s *Server) ensureFetchTargetWritable(ctx context.Context, targetRoot strin
 // fetchTransactionPool returns the pool whose root holds the staging, backup,
 // and trash entries for a Fetch into targetRoot. Publication and rollback
 // rename between those entries and the target, so they must share its pool
-// and filesystem. The standard pool keeps the data-root directories of
-// earlier releases.
+// and filesystem. The standard pool uses the data-root directories.
 func (s *Server) fetchTransactionPool(ctx context.Context, targetRoot string) (string, error) {
 	layout, err := s.loadLibraryLayout(ctx)
 	if err != nil {

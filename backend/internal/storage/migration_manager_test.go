@@ -18,6 +18,13 @@ var numberedMigrationFilePattern = regexp.MustCompile(`^[0-9]{3}_[a-z0-9][a-z0-9
 
 const latestNumberedMigrationVersion = 62
 
+// latestReleasedBaseline is the newest file in migrations/baseline/, which
+// production uses for a fresh database.
+const (
+	latestReleasedBaselineVersion  = 59
+	latestReleasedBaselineFilename = "baseline/059_v0.8.0.sql"
+)
+
 func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 	lf := []byte("CREATE TABLE probe (id INTEGER);\n-- stable\n")
 	crlf := bytes.ReplaceAll(lf, []byte("\n"), []byte("\r\n"))
@@ -26,7 +33,7 @@ func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 	}
 }
 
-func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
+func TestMigrateFreshDatabaseUsesLatestReleasedBaseline(t *testing.T) {
 	db := openMigrationManagerDB(t)
 	if err := MigrateFS(db, migrations.Files, "v0.8.0"); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
@@ -40,23 +47,23 @@ func TestMigrateFreshDatabaseReusesBaselineAcrossAppReleases(t *testing.T) {
 	`).Scan(&current, &baseline, &baselineChecksum, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if current != latestNumberedMigrationVersion || baseline != latestNumberedMigrationVersion || baselineChecksum == "" || dirty != "" {
-		t.Fatalf("schema state = current %d, baseline %d, checksum %q, dirty %q; want %d/%d/non-empty/empty", current, baseline, baselineChecksum, dirty, latestNumberedMigrationVersion, latestNumberedMigrationVersion)
+	if current != latestNumberedMigrationVersion || baseline != latestReleasedBaselineVersion || baselineChecksum == "" || dirty != "" {
+		t.Fatalf("schema state = current %d, baseline %d, checksum %q, dirty %q; want %d/%d/non-empty/empty", current, baseline, baselineChecksum, dirty, latestNumberedMigrationVersion, latestReleasedBaselineVersion)
 	}
 
 	var historyCount int
 	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migration").Scan(&historyCount); err != nil {
 		t.Fatal(err)
 	}
-	if historyCount != 1 {
-		t.Fatalf("migration history count = %d, want baseline only", historyCount)
+	if want := 1 + latestNumberedMigrationVersion - latestReleasedBaselineVersion; historyCount != want {
+		t.Fatalf("migration history count = %d, want baseline plus later numbered migrations (%d)", historyCount, want)
 	}
 	var filename string
-	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestNumberedMigrationVersion).Scan(&filename); err != nil {
+	if err := db.QueryRow("SELECT filename FROM schema_migration WHERE version = ?", latestReleasedBaselineVersion).Scan(&filename); err != nil {
 		t.Fatal(err)
 	}
-	if filename != "baseline/062_v0.8.0.sql" {
-		t.Fatalf("baseline history filename = %q", filename)
+	if filename != latestReleasedBaselineFilename {
+		t.Fatalf("baseline history filename = %q, want %q", filename, latestReleasedBaselineFilename)
 	}
 }
 
@@ -190,6 +197,24 @@ func TestMigrateUpgradesRetiredBaselineLedger(t *testing.T) {
 			previousVersion: 32,
 			wantHistory:     "baseline/032_current.sql,033_metadata_sync_issues.sql,034_user_preferences.sql,035_remove_custom_workflow_definitions.sql,036_work_search_index.sql,037_list_and_foreign_key_indexes.sql,038_metadata_snapshot_card_summary.sql,039_reconfigure_follow_triggers.sql,040_hash_session_tokens.sql,041_creator_lookup_indexes.sql,042_snapshot_projection_state.sql,043_personal_listening_history.sql,044_library_upgrade.sql,045_work_metadata_link.sql,046_work_search_variant_title.sql,047_dlsite_genre_dictionary.sql,048_unfreeze_matching_titles.sql,049_shared_metadata_tags.sql,050_circle_identity_management.sql,051_favorite_list_icon.sql,052_metadata_tag_projection_queue.sql,053_language_scoped_titles.sql,054_remote_metadata_fallback.sql,055_genre_name_learning.sql,056_user_metadata_language.sql,057_remote_language_titles.sql,058_work_purchase_bonus.sql,059_local_media_file_version.sql,060_recommendation_affinity.sql,061_media_lyrics_assignment.sql,062_playback_reports.sql",
 		},
+		{
+			name:            "development snapshot 060 continues through the numbered chain",
+			baseline:        "baseline/060_v0.8.0.sql",
+			previousVersion: 60,
+			wantHistory:     "baseline/060_v0.8.0.sql,061_media_lyrics_assignment.sql,062_playback_reports.sql",
+		},
+		{
+			name:            "development snapshot 061 continues through the numbered chain",
+			baseline:        "baseline/061_v0.8.0.sql",
+			previousVersion: 61,
+			wantHistory:     "baseline/061_v0.8.0.sql,062_playback_reports.sql",
+		},
+		{
+			name:            "development snapshot 062 is accepted",
+			baseline:        "baseline/062_v0.8.0.sql",
+			previousVersion: 62,
+			wantHistory:     "baseline/062_v0.8.0.sql",
+		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			previousCatalog := copyNumberedMigrationsThrough(t, sourceDir, testCase.previousVersion)
@@ -221,6 +246,9 @@ func TestMigrateUpgradesRetiredBaselineLedger(t *testing.T) {
 			}
 			if got := strings.Join(filenames, ","); got != testCase.wantHistory {
 				t.Fatalf("upgraded migration history = %q, want %q", got, testCase.wantHistory)
+			}
+			if err := MigrateFSWithOptions(db, os.DirFS(sourceDir), "test", MigrateOptions{Development: true}); err != nil {
+				t.Fatalf("restart retired baseline ledger in development mode: %v", err)
 			}
 		})
 	}
@@ -283,16 +311,28 @@ func TestMigrateBaselineMatchesCompleteIncrementalChain(t *testing.T) {
 	if err := Migrate(incremental, incrementalDir); err != nil {
 		t.Fatalf("incremental Migrate() error = %v", err)
 	}
-	baseline := openMigrationManagerDB(t)
-	if err := Migrate(baseline, migrationDir); err != nil {
-		t.Fatalf("baseline Migrate() error = %v", err)
-	}
-
-	if got, want := schemaSnapshot(t, baseline), schemaSnapshot(t, incremental); !equalStringMaps(got, want) {
-		t.Fatalf("baseline schema differs from complete incremental chain\n%s", diffStringMaps(got, want))
-	}
-	if got, want := dataSnapshot(t, baseline), dataSnapshot(t, incremental); !equalStringMaps(got, want) {
-		t.Fatalf("baseline seed data differs from complete incremental chain\n%s", diffStringMaps(got, want))
+	// Production selects the newest released baseline; development selects
+	// the newest baseline across baseline/ and compat/, which also proves the
+	// packaged compat/ files form a valid development catalog.
+	for _, mode := range []struct {
+		name        string
+		development bool
+	}{
+		{name: "production", development: false},
+		{name: "development", development: true},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			baseline := openMigrationManagerDB(t)
+			if err := MigrateFSWithOptions(baseline, os.DirFS(migrationDir), "test", MigrateOptions{Development: mode.development}); err != nil {
+				t.Fatalf("baseline Migrate() error = %v", err)
+			}
+			if got, want := schemaSnapshot(t, baseline), schemaSnapshot(t, incremental); !equalStringMaps(got, want) {
+				t.Fatalf("baseline schema differs from complete incremental chain\n%s", diffStringMaps(got, want))
+			}
+			if got, want := dataSnapshot(t, baseline), dataSnapshot(t, incremental); !equalStringMaps(got, want) {
+				t.Fatalf("baseline seed data differs from complete incremental chain\n%s", diffStringMaps(got, want))
+			}
+		})
 	}
 }
 
@@ -570,8 +610,8 @@ func TestMigrateConcurrentStartupIsIdempotent(t *testing.T) {
 	if err := first.QueryRow("SELECT COUNT(*) FROM schema_migration").Scan(&history); err != nil {
 		t.Fatal(err)
 	}
-	if current != latestNumberedMigrationVersion || history != 1 {
-		t.Fatalf("concurrent migration state = version %d, history %d; want %d/1", current, history, latestNumberedMigrationVersion)
+	if want := 1 + latestNumberedMigrationVersion - latestReleasedBaselineVersion; current != latestNumberedMigrationVersion || history != want {
+		t.Fatalf("concurrent migration state = version %d, history %d; want %d/%d", current, history, latestNumberedMigrationVersion, want)
 	}
 }
 

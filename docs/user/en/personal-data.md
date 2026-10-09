@@ -110,11 +110,11 @@ account or database reads run at a time.
 
 | Kikoeru progress | Kikoto mark |
 | --- | --- |
-| `marked` | Want to listen |
+| `marked` | Want |
 | `listening` | Listening |
 | `listened` | Finished |
 | `replay` | Relisten |
-| `postponed` | Paused |
+| `postponed` | Shelved |
 | empty / null | Unmarked |
 
 The mapping follows the upstream [Kikoeru review API](https://github.com/kikoeru-project/kikoeru-express/blob/unstable/routes/review.js).

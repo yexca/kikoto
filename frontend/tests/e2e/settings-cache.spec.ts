@@ -1123,7 +1123,7 @@ test("@desktop administrators set catalog freshness in Library settings", async 
   expect(saves[0]).not.toHaveProperty("dlsiteMetadataLanguages");
   await expect(save).toBeDisabled();
 
-  // The former Metadata tab link opens Library.
+  // The metadata tab id opens Library.
   await page.goto("/settings?tab=metadata");
   await expect(page.getByRole("tab", { name: "Library", exact: true })).toHaveAttribute("aria-selected", "true");
 });

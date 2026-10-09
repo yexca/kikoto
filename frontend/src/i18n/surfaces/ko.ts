@@ -858,6 +858,11 @@ export const surfaceKorean = {
         name: "소스 사용 가능 여부 확인",
         description: "작품에 대해 구성된 원격 소스의 사용 가능 여부를 확인합니다.",
       },
+      source_health_check: {
+        name: "소스 상태 확인",
+        description:
+          "활성화된 각 원격 소스의 엔드포인트를 확인하고 정상 또는 사용할 수 없음 상태를 소스 설정에 기록합니다.",
+      },
       remote_source_sync: {
         name: "원격 소스 추적",
         description: "원격 작품과 선택한 소스 디렉터리를 복구 가능한 작업으로 추적합니다.",
@@ -896,6 +901,7 @@ export const surfaceKorean = {
     localMediaIndexCreateFailed: "로컬 작품 파일 새로 고침 실행을 생성하지 못했습니다.",
     localMediaIndexIncrementalHint: "폴더를 아직 스캔하지 않은 로컬 작품만 색인합니다.",
     localMediaIndexFullHint: "이미 스캔한 작품을 포함해 모든 로컬 작품의 파일을 다시 색인합니다.",
+    sourceHealthCheckCreateFailed: "소스 상태 확인 실행을 생성하지 못했습니다.",
     metadataSyncCreateFailed: "메타데이터 동기화를 생성하지 못했습니다.",
     remotePopularQueueFailed: "원격 인기 모음을 대기열에 추가하지 못했습니다.",
     remotePopularRequiresSource: "원격 인기를 사용하려면 호환되는 원격 소스를 구성하세요.",
@@ -998,6 +1004,7 @@ export const surfaceKorean = {
       dlsite_popular_collection: "DLsite 인기",
       availability_watch: "가용성 모니터링",
       remote_work_fetch: "가져오기",
+      source_health_check: "소스 상태",
       circle_follow: "서클 팔로우",
       series_follow: "시리즈 팔로우",
       voice_follow: "성우 팔로우",

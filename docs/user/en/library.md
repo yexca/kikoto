@@ -51,8 +51,8 @@ The Library is the main browsing surface for works.
   reshuffling creates a new seed rather than reversing an order.
 - Defaults new Library views to personalized recommendation ordering while
   preserving history/session-restored browse choices. Canonical URLs retain
-  only the query and non-default listening status; legacy explicit browse
-  parameters remain readable. Recommendation placement separates listening
+  only the query and non-default listening status; explicit browse parameters
+  in a link are still read. Recommendation placement separates listening
   intent from affinity: Listening and Want receive leading slots, Unmarked
   remains the primary discovery pool, Relisten and Finished receive bounded
   insertions, and Shelved waits until scheduled states are exhausted. Explicit
@@ -92,11 +92,11 @@ The Library is the main browsing surface for works.
 - Keeps the active Local, Tracked, or remote-source page size in the first-row
   action toolbar and leaves the compact top pagination focused on result context
   and page navigation.
-- Keeps database cleanup out of Library. Maintenance -> Work maintenance -> No available source provides
-  paged search, source checks, and confirmed local-information deletion for
-  logical families with no available source or media location.
-- Legacy No source Library links redirect to the no-source view in Work maintenance;
-  legacy aggregate Library links return to the normal Library.
+- Keeps database cleanup out of Library. Metadata -> No available source
+  provides paged search, source checks, and confirmed local-information
+  deletion for logical families with no available source or media location.
+- `/no-source` and `/library/no-source` links open Metadata -> No available
+  source; `/library/all` and `/library/remote` links open the Library.
 - When `KIKOTO_MODE=demo`, backend list, detail, and media responses admit
   only all-ages, permanently free works. Local works use normalized commercial
   metadata, where unknown metadata and temporary free promotions are excluded.
@@ -132,41 +132,12 @@ scrollable row. The open shelf has a header with a cover mosaic, its count, how
 many works are finished, and the works you are listening to. Works can be shown
 as cards or as a denser list with each work's resume point.
 
-## TODO
-
-### Large-Library Recommendation Candidate Retrieval
-
-If measured recommendation-generation latency becomes material as libraries
-grow, evaluate a two-stage retrieval and ranking path instead of immediately
-scoring every work. This is a scale-triggered option, not current behavior or a
-committed replacement for exact full-library snapshots.
-
-- Build one candidate pool from several indexed channels: positive tag, voice,
-  and circle affinity; explicit listening-intent lanes; recent or new works;
-  and a bounded exploration share for works without a positive match.
-- Merge and deduplicate channel results before applying the existing exact
-  affinity scoring and lane mix. Independent per-tag quotas are insufficient
-  because overlapping tags can shrink the pool, bias multi-tag works, and make
-  its final size unpredictable.
-- Prefer deterministic weighted sampling without replacement, derived from the
-  recommendation generation and work identity, over separate random queries
-  for each tag.
-- Size and persist the candidate pool for an explicit pagination horizon. A
-  stable deterministic tail or expansion rule must prevent duplicates,
-  omissions, and earlier-page reordering when browsing beyond that horizon.
-- Preserve the immutable client-session generation contract. Pagination and
-  ordinary reshuffles must not rebuild or silently replace the candidate pool.
-- Adopt this path only after representative high-cardinality benchmarks show
-  that full generation misses a concrete latency or SQLite-contention target;
-  include realistic entity relationships and user history, not work count
-  alone, in that decision.
-
 ## Identity
 
 Library cards represent unified works, not per-source copies. Remote cards can
 track or sync a work before it has local files, but the resulting state attaches
 to the same unified work identity. Track also persists the selected source tree
-and opens that source in Tracked, so a second Fork is not required.
+and opens that source in Tracked.
 
 ## Source Tabs
 

@@ -202,6 +202,7 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
       "local_media_delete",
       "local_location_cleanup",
       "remote_popular_collection",
+      "source_health_check",
     ].includes(run.workflowCode);
   if (!cancellable && !retryable) {
     return null;

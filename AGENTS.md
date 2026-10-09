@@ -37,9 +37,9 @@ snapshots for that work.
   discovered code as a `work`. Local, tracked, cached, or explicitly requested
   works are the automatic metadata roots. Stop and discuss before broadening a
   provider crawl.
-- During the first stable-version phase, DLsite-style `primary_code` remains the
-  main identity key. Do not redesign around source-local ids or a new identity
-  system until the current product is stable.
+- DLsite-style `primary_code` is the identity key. Do not redesign around
+  source-local ids or a new identity system; stop and discuss before proposing
+  one.
 
 Fetch publication directories such as `.kikoto-staging`, `.kikoto-backup`, and
 the reviewable `.kikoto-trash` must remain on the filesystem of the storage
@@ -124,6 +124,30 @@ app composition -> domain feature -> shared application code -> primitives
 - Pure visual assertions are appropriate only for a documented layout,
   accessibility, or responsive contract.
 
+## Documentation
+
+Docs describe the current system and its current decisions, not how it got
+there. Where each topic belongs is in
+[Documentation Rules](docs/README.md#documentation-rules).
+
+- Write in present tense. Do not narrate change: no "previously", "no longer",
+  "now", "as before", "was removed", "migration NNN adds", version-dated
+  asides, PR/issue/commit references, or before/after comparisons.
+- When behavior changes, rewrite the affected section as if it had always been
+  this way instead of appending a paragraph. Search for and remove every
+  statement the change contradicts, including user pages, operations pages,
+  and translations.
+- Compatibility that still runs is current behavior. State it as a rule
+  ("`/maintenance` redirects to Settings"), not as a story.
+- History belongs only in `docs/history/` (release notes, with pending changes
+  and per-release upgrade steps in `unreleased.md`) and in the context of ADRs
+  in `docs/decisions/`.
+- Reference docs contain no TODOs, plans, roadmaps, or dated measurement logs.
+- State each rule or fact in one place and link to it instead of restating it.
+- When an English user page changes, update the matching locale pages in the
+  same change. If a translation cannot be updated, remove the stale passage
+  rather than leave it contradicting the English page.
+
 ## Validation Commands
 
 The `Makefile` is the canonical entry point for repository validation. Prefer
@@ -136,7 +160,8 @@ the Makefile has no target for the required check.
   `make ci-backend` for backend behavior, and `make ci-frontend` for frontend
   behavior.
 - Use `make smoke` for Docker/runtime changes, `make frontend-e2e` for browser
-  workflow changes, `make android-build` for Android changes, `make ios-build`
+  workflow changes, `make android-test android-build` for Android changes,
+  `make ios-build`
   for iOS shell changes on macOS with Xcode, and
   `make DOCKER_IMAGE=kikoto:ci docker-build` for production image changes.
 - `make ci-local` runs the complete locally portable Actions sequence, including
@@ -145,8 +170,9 @@ the Makefile has no target for the required check.
   available.
 - Keep validation proportional: do not run the full aggregate target for a
   narrow change when its affected target is sufficient.
-- Before every commit, run `make sensitive-check` against the actual working
-  tree diff and review any findings. This privacy check is intentionally
+- Before every commit, run `make sensitive-check` and review any findings. It
+  scans tracked changes against `HEAD` plus untracked files, so run it before
+  committing rather than after. This privacy check is intentionally
   separate from the GitHub Actions validation sequence.
 - Do not bypass the privacy scan with source comments. An approved built-in
   public endpoint belongs in `scripts/privacy-allowlist.json` with its
@@ -170,25 +196,23 @@ Release and migration boundaries are derived from repository state:
 - `001_initial.sql` and every numbered migration after it are immutable once
   released. Add the next contiguous number after the highest existing
   migration for a schema change; never edit an applied migration.
-- For a fresh install, use the highest packaged baseline whose schema version
-  matches the numbered chain. A release with no new numbered SQL reuses that
-  baseline; do not create a release-only duplicate with the same schema
-  version.
+- An empty database applies the highest baseline the mode reads, then any
+  later numbered migrations. Released baselines live in `baseline/`;
+  development baselines of the unreleased chain live in `compat/`, which only
+  `KIKOTO_MODE=development` reads. After a numbered migration changes, run
+  `go generate ./migrations` to refresh the development baseline. A release
+  runs the generator with `-release`, which writes a released baseline only
+  when the chain changed and clears `compat/`. Never add a second released
+  baseline for an existing schema version.
 - Existing databases must continue through the numbered migration chain and
   must never be reconstructed from a fresh-install baseline.
 - Before release or migration work, inspect `VERSION`, the highest numbered
-  migration, and the packaged baseline filenames. Keep the corresponding
-  release notes and migration documentation aligned with those files.
+  migration, and the baseline filenames in `baseline/` and `compat/`. Details
+  are in [Migrations](docs/development/migrations.md); release steps are in
+  [Commit And Release](docs/development/commit-and-release.md#release-steps).
 
-Before handoff, run validation proportional to the change:
-
-- Use the corresponding Makefile target: `make ci-backend` for backend
-  behavior, `make ci-frontend` for frontend behavior, `make frontend-e2e` for
-  browser workflows, `make smoke` for Docker/runtime changes, and
-  `make frontend-docs` for public documentation changes.
-- Use `make android-build` for Android changes and
-  `make DOCKER_IMAGE=kikoto:ci docker-build` for production image changes.
-- `make sensitive-check`, reviewing the tracked-file scan over the actual diff.
+Before handoff, run the smallest sufficient targets from
+[Validation Commands](#validation-commands), then `make sensitive-check`.
 
 Public tracked code and docs must use generic remote-source examples, reserved
 domains, and obviously synthetic identifiers. Never commit real configured

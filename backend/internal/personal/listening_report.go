@@ -31,7 +31,7 @@ const allTimeMonthlyLimit = 36
 const topWorkLimit = 10
 
 // ParseStatisticsRange accepts the public range names. An empty value is the
-// all-time report that clients predating ranges expect.
+// all-time report that clients without a range expect.
 func ParseStatisticsRange(value string) (StatisticsRange, error) {
 	switch StatisticsRange(value) {
 	case "":
@@ -66,7 +66,7 @@ type Statistics struct {
 	Granularity     Granularity     `json:"granularity"`
 	// Series covers the whole range oldest first; periods without listening are zero.
 	Series []ListeningPeriod `json:"series"`
-	// Daily is the sparse last 30 UTC days for clients that predate Series.
+	// Daily is the sparse last 30 UTC days for clients that do not read Series.
 	Daily    []ListeningDay `json:"daily"`
 	TopWorks []HistoryItem  `json:"topWorks"`
 }

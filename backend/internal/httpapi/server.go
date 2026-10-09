@@ -361,6 +361,7 @@ func (s *Server) Routes() http.Handler {
 	handleSlowFirstResponse("POST /api/workflow-candidates/{id}/archived-root-review", s.reviewArchivedFetchRoots)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
 	mux.HandleFunc("POST /api/workflow-runs/local-media-index", s.createLocalMediaIndexRun)
+	mux.HandleFunc("POST /api/workflow-runs/source-health-check", s.createSourceHealthCheckRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-bulk", s.createRemoteBulkRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-popular", s.createRemotePopularCollectionRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-popular", s.createDLsitePopularCollectionRun)

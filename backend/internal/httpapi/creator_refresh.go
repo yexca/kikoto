@@ -71,7 +71,7 @@ func (s *Server) queueCreatorRefresh(ctx context.Context, actor currentUser, cod
 	if len(plan.Definition.Nodes) == 0 {
 		return creatorRefreshRun{}, creatorRefreshError{status: http.StatusBadRequest, message: "choose at least one step to run"}
 	}
-	// A detail refresh is authorized by metadata:sync, as before the merge. Its
+	// A detail refresh is authorized by metadata:sync. Its
 	// graph holds only refresh steps, so the run carries workflows:run on the
 	// viewer's behalf and every step still checks its own permission.
 	permissions := uniqueStrings(append(append([]string{}, actor.Permissions...), "workflows:run"))

@@ -6,13 +6,15 @@ Kikoto uses SQLite for the current product stage.
 
 The current schema is stored under `backend/migrations/`. Numbered migrations
 are immutable after release and are applied in a contiguous order. The backend
-embeds the numbered catalog and the optional generated baseline into the
-executable; production containers do not depend on a migrations directory
-being mounted beside the binary.
+embeds the numbered catalog and the generated baselines into the executable;
+production containers do not depend on a migrations directory being mounted
+beside the binary.
 
-On an empty database, startup uses the highest-version packaged baseline (the
+On an empty database, startup uses the highest-version released baseline (the
 release suffix may belong to an earlier application release when no numbered
-SQL changed) and then applies any newer numbered files. On an existing
+SQL changed) and then applies any newer numbered files. Only
+`KIKOTO_MODE=development` also reads the development baselines of the
+unreleased chain, and the other modes refuse a database created from one. On an existing
 database, startup validates
 `schema_migration` and applies only the next numbered files so user data and
 backfills are preserved. The `schema_state` row records the schema version
@@ -133,8 +135,10 @@ backup is always complete.
 
 A fresh install and an up-to-date database start without a pre-migration
 backup. Because numbered migrations cannot be reverted, startup stops without
-changing the schema when the pre-migration backup fails; free space or point
-`KIKOTO_DB_BACKUP_DIR` at a writable directory and start again. Routine
+changing the schema when the pre-migration backup fails; free space on the
+configuration volume and start again. A direct backend run can instead point
+`KIKOTO_DB_BACKUP_DIR` at a writable directory; the Compose stacks always use
+`/config/backups`. Routine
 backups run as `database_backup` workflow runs and appear in Activity; a
 manual backup also writes a `database.backup` audit entry. Only one backup can
 be queued or running. Settings lists backup names, kinds, sizes, and times
@@ -148,9 +152,10 @@ survive a drive failure.
 
 To restore, stop Kikoto, move `kikoto.db`, `kikoto.db-wal`, and
 `kikoto.db-shm` aside, copy the chosen backup to `kikoto.db`, and start the
-application image whose schema matches it. A pre-migration backup matches the
-release before the upgrade named in its file name (`v040-to-v041`, for
-example). Back up the cache and data directories separately if they are
+application image whose schema matches it. A pre-migration backup's file name
+records the schema versions of the upgrade (`v047-to-v059`, for example); it
+matches the release that ran the first schema, which
+[Migrations](../development/migrations.md) maps to releases. Back up the cache and data directories separately if they are
 important for your deployment.
 
 Restoring only the database does not roll back Fetch staging, backup, or trash

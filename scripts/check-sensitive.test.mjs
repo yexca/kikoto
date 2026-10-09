@@ -177,6 +177,20 @@ test("rejects wildcards outside the URL path and malformed globs", () => {
   }
 });
 
+test("ends a Markdown link target at its closing parenthesis before CJK text", () => {
+  const endpoint = approvedEndpoint();
+  const allowlist = approvedAllowlist();
+  const findings = [];
+  for (const [line, suffix] of ["를 따릅니다.", "。", " follows."].entries()) {
+    scanLine(
+      { file: ownerFile, line: line + 1, text: `[API](${endpoint})${suffix}` },
+      findings,
+      allowlist,
+    );
+  }
+  assert.deepEqual(findings, []);
+});
+
 test("allows an exact approved endpoint only in its declared file", () => {
   const endpoint = approvedEndpoint();
   const allowlist = approvedAllowlist();

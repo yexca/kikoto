@@ -12,7 +12,7 @@ import (
 )
 
 // preMigrationBackupsKept bounds the snapshots taken before schema upgrades.
-// Each is a full database copy, and older ones only matter for older releases.
+// Each is a full database copy, so only the most recent are kept.
 const preMigrationBackupsKept = 3
 
 // preMigrationBackup snapshots the database before a schema upgrade. Numbered

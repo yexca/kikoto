@@ -14,8 +14,8 @@ import (
 	"github.com/yexca/kikoto/backend/internal/download"
 )
 
-// Check legacy cached covers too: older versions could persist arbitrary
-// upstream content. Serve the same open file that was checked, without sniffing
+// Check legacy cached covers too, which may hold arbitrary upstream
+// content. Serve the same open file that was checked, without sniffing
 // or allowing an active document even when a URL is opened directly.
 func serveCoverFile(w http.ResponseWriter, r *http.Request, filePath, identity string) {
 	switch strings.ToLower(filepath.Ext(filePath)) {

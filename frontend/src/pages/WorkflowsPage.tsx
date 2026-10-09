@@ -340,6 +340,19 @@ export function WorkflowsPage({
     }
   };
 
+  const runSourceHealthCheck = async () => {
+    setRunningSystemAction("source_health_check");
+    try {
+      await api.runSourceHealthCheck();
+      void refreshRecentRuns("source_health_check");
+      showQueuedRun();
+    } catch (error) {
+      toast.notify(toastFromError(error, workflowCopy("sourceHealthCheckCreateFailed")));
+    } finally {
+      setRunningSystemAction(null);
+    }
+  };
+
   const runMetadataSync = async (options?: MetadataSyncOptions) => {
     setIsSyncingMetadata(true);
     try {
@@ -407,6 +420,7 @@ export function WorkflowsPage({
     if (kind === "local_scan") return runLocalScan(options.followUpRun ?? false);
     if (kind === "local_media_index") return runLocalMediaIndex(options.localMediaIndexMode ?? "incremental");
     if (kind === "metadata_sync") return runMetadataSync(options.metadataSync);
+    if (kind === "source_health_check") return runSourceHealthCheck();
     if (kind === "remote_popular") return;
     if (kind === "dlsite_popular") return;
   };
@@ -425,6 +439,7 @@ export function WorkflowsPage({
     if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
     if (kind === "remote_popular") return canRun && canTagWorks && remoteSourceAvailability !== "unavailable";
     if (kind === "remote_fetch") return canRun && canManageDownloads;
+    if (kind === "source_health_check") return canRun && canManageSources;
     // Follow runs refresh catalogs and sync metadata; the optional tag checks tags:write itself.
     if (kind === "preset") return canRun && canSyncMetadata;
     return canRun;

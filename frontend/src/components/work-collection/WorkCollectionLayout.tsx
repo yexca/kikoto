@@ -255,7 +255,7 @@ function readStoredLayout(fallback: StoredWorkCollectionLayout): StoredWorkColle
       mobileColumns: isWorkCollectionMobileColumnSetting(value.mobileColumns)
         ? value.mobileColumns
         : fallback.mobileColumns,
-      // Desktop no longer offers one or two columns; an older choice reverts to the default.
+      // A stored desktop column choice outside the supported options reverts to the default.
       desktopColumns: isWorkCollectionDesktopColumnSetting(value.desktopColumns)
         ? value.desktopColumns
         : isWorkCollectionDesktopColumnSetting(fallback.desktopColumns)

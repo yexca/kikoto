@@ -11,12 +11,19 @@ Important tables:
 - `work_edition`
 - `work_code_alias`
 - `work_external_id`
+- `work_metadata_link`
+- `work_purchase_bonus`
+- `work_manual_override`
 - `metadata_provider`
 - `metadata_snapshot`
 - `metadata_snapshot_card_summary`
+- `party_metadata_snapshot`
 - `dlsite_metadata_variant`
+- `work_title_language`
 - `remote_metadata_title_variant`
+- `work_metadata_field_source`
 - `work_metadata_sync_state`
+- `work_metadata_provider_state`
 - `metadata_sync_attempt`
 - `metadata_sync_attempt_work`
 - `metadata_sync_attempt_run`
@@ -26,32 +33,38 @@ Important tables:
 - `metadata_tag_name`
 - `metadata_tag_provider_name`
 - `work_tag_override`
-- `party_alias`
-- `party_merge_review`
 - `work_dlsite_genre`
 - `dlsite_genre_name`
 - `dlsite_genre_name_request`
 - `dlsite_genre_name_gap`
 - `party`
+- `work_party`
+- `party_alias`
+- `party_merge_review`
+- `party_catalog_item`
+- `party_catalog_refresh_state`
 - `person`
+- `person_alias`
+- `person_merge_review`
 - `work_credit`
 - `work_snapshot_projection`
-- `work_metadata_field_source`
 
 DLsite metadata sync stores raw snapshots and updates normalized fields used by
 library and detail views.
 
-Voice credits and DLsite circle relations are projected from each work's
-latest snapshot. `work_snapshot_projection` records, per work and projection,
-the snapshot and a hash of the projection input it last produced. Startup and
-each metadata sync project only works whose latest snapshot changed since that
-record, in bounded batches; a new snapshot whose projection input is unchanged,
-such as a new sales count, writes nothing but the record. Triggers drop a
-record when a credit or circle relation is removed or reassigned, or when the
-work's imported circle catalog row changes, so the next pass restores what the
-snapshot still declares. A projection never removes a credit its snapshot no
-longer names. `party_metadata_snapshot` keeps the two latest snapshots per
-circle and provider, as `metadata_snapshot` does per work.
+`work_party` relates a work to a circle (`role = 'circle'`) and records the
+provider that supplied the relation; `work_credit` relates a work to a person
+in a role such as `voice_actor`. Voice credits and DLsite circle relations are
+projected from each work's latest snapshot. `work_snapshot_projection` records,
+per work and projection, the snapshot and a hash of the projection input it
+last produced. Startup and each metadata sync project only works whose latest
+snapshot changed since that record, in bounded batches; a new snapshot whose
+projection input is unchanged, such as a new sales count, writes nothing but
+the record. Triggers drop a record when a credit or circle relation is removed
+or reassigned, or when the work's imported circle catalog row changes, so the
+next pass restores what the snapshot still declares. A projection never removes
+a credit its snapshot does not name. `party_metadata_snapshot` keeps the two
+latest snapshots per circle and provider, as `metadata_snapshot` does per work.
 
 `metadata_snapshot_card_summary` holds one compact, versioned card summary per
 snapshot (circle, base and edition codes, release date, rating count, series,
@@ -80,65 +93,71 @@ been resolved, a later failure does not reopen its old Activity association.
 Shared issue responses contain fixed statuses rather than upstream error text.
 Failure tracking never creates a work solely from a discovered catalog code.
 
-For DLsite, `dlsite_metadata_variant` stores the title and tags for each
-provider-declared language edition in a logical work family. The `origin`
-display token refers to the canonical edition even when its source language is
-not Japanese. A language priority only changes the normalized title/tag
-projection; the request locale and the raw snapshot remain provenance data.
+### Metadata Language
+
+For DLsite, `dlsite_metadata_variant` stores the title and tags of each
+provider-declared language edition in a logical work family, one row per
+edition work. The `origin` display token refers to the canonical edition even
+when its source language is not Japanese. A language priority only changes
+the normalized title/tag projection; the request locale and the raw snapshot
+remain provenance data.
 
 Metadata language has two scopes. Everything stored or shared uses each work's
 original language (the `origin` priority): the projected `work.title`,
 `tag.display_name`, background syncs, catalog snapshots, remote metadata
 fallback and Activity text. There is no instance-wide language setting. A
 signed-in user may store an own priority in `user_preference.metadata_languages`
-(migration `056`; `NULL`, also stored when the user picks `origin`, means no
-preference). It changes only what that user's requests present: selected
-titles and introductions, tag names, the default detail edition, title
-sorting, and live remote-source requests. Requests without a user use the
-original language. No stored provider value depends on a personal priority,
-and a personal change rewrites nothing.
+(`NULL`, also stored when the user picks `origin`, means no preference). It
+changes only what that user's requests present: selected titles and
+introductions, tag names, the default detail edition, title sorting, and live
+remote-source requests. Requests without a user use the original language. No
+stored provider value depends on a personal priority, and a personal change
+rewrites nothing.
 
-The former instance default keys `app_setting.dlsite_metadata_languages` and
-`app_setting.dlsite_metadata_language` are deleted by the startup metadata tag
-backfill. When either held a language other than `origin`, the same step sets
-`metadata_projection_pending` first, so the backfill projects stored titles and
-tag names again in the original language. No schema change is involved.
+The startup metadata tag backfill deletes the unused instance keys
+`app_setting.dlsite_metadata_languages` and `app_setting.dlsite_metadata_language`
+when present. When either holds a language other than `origin`, the same step
+first sets `metadata_projection_pending`, so the backfill projects stored
+titles and tag names again in the original language.
 
-`work_title_language` (migration `056`) holds each work's title for every
-language that title selection can stop at: each supported language with its own
-edition or language-specific manual title, and always `origin`. Selection over
-a priority therefore equals the first present row in that priority, so a title
-sort reads `COALESCE` over the viewer's languages and falls back to
-`work.title` while a work is queued. Triggers on editions, variants, title
-overrides and work titles queue whole families in `work_title_language_dirty`;
-the search index worker rebuilds them in bounded batches.
+`work_title_language` holds each work's title for every language that title
+selection can stop at: each supported language with its own edition or
+language-specific manual title, and always `origin`. Selection over a priority
+therefore equals the first present row in that priority, so a title sort reads
+`COALESCE` over the viewer's languages and falls back to `work.title` while a
+work is queued. Triggers on editions, variants, title overrides and work titles
+queue whole families in `work_title_language_dirty`; the search index worker
+rebuilds them in bounded batches.
+
+### DLsite Genres
 
 DLsite genre ids are stable across request locales. `work_dlsite_genre`
-(migration `047`) records the ids each edition carries, and
-`dlsite_genre_name` learns one name per id and request locale from fetched
-products: `name_base` is the Japanese name and `name` is the name for the
-locale that was requested. Names are keyed by request locale rather than
-edition language because an edition without its own locale is requested in
-`ja-jp` and reports Japanese names. Known ids feed shared metadata tag
-concepts and their display names; dictionary learning never creates works.
+records the ids each edition carries, and `dlsite_genre_name` learns one name
+per id and request locale from fetched products: a response's `name_base` is
+stored as the `ja-jp` name, and its `name` under the locale that was requested.
+Names are keyed by request locale rather than edition language because an
+edition without its own locale is requested in `ja-jp` and reports Japanese
+names. Known ids feed shared metadata tag concepts and their display names;
+dictionary learning never creates works.
 
 DLsite reports genre names in the requested locale whether or not a work has a
 translated edition, so a Japanese-only work still has preferred-language tag
-names once the dictionary knows them. Genre name learning (migration `055`)
-fills missing cells for each preferred non-Japanese language: it asks for the
-known, requestable work whose genres cover the most unnamed genres, so requests
-grow with the missing genre sets rather than the number of works. It stores only
-the response's genre names for genre ids the library already knows; it writes no
-work, edition, relation, snapshot, title or introduction.
+names once the dictionary knows them. Genre name learning fills missing cells
+for each preferred non-Japanese language, the union of every account's
+priority; saving a personal priority queues it. It asks for the known,
+requestable work whose genres cover the most unnamed genres, so requests grow
+with the missing genre sets rather than the number of works. It stores only
+the response's genre names for genre ids the library already knows; it writes
+no work, edition, relation, snapshot, title or introduction.
 `dlsite_genre_name_request` records each answered request (`learned`,
 `no_names`, or `not_found`) so a work is never asked again in that language;
 failed requests are not recorded and stay retryable. Works DLsite already
-reported as not found are not requested. `dlsite_genre_name_gap` counts answered
-lookups that did not name a genre; after two such answers, or when no
-requestable work carries the genre, the genre and language pair is exhausted and
-no longer selected. New names refresh the affected concepts' display names in
-the same transaction, and the dictionary triggers invalidate the related works'
-search documents.
+reported as not found are not requested. `dlsite_genre_name_gap` counts
+answered lookups that did not name a genre; after two such answers, or when no
+requestable work carries the genre, the genre and language pair is exhausted
+and is not selected again. New names refresh the affected concepts' display
+names in the same transaction, and the dictionary triggers invalidate the
+related works' search documents.
 
 ### Shared Metadata Tags
 
@@ -146,10 +165,11 @@ A shared tag has one `tag` row in namespace `metadata`, with an empty
 `language` and a stable `normalized_name`: `dlsite-genre:<id>` for a
 known genre, or `custom:<id>` for an authored concept. Imported names without
 ids retain a deterministic `dlsite-name:<hash>` concept until a provider id
-is available. The old `dlsite` rows remain readable during startup backfill.
-`metadata_tag` holds the genre id, hidden flag, merge target, and author.
-`metadata_tag_name` holds manual names by locale; an empty locale applies to
-all languages. Personal `user_tag` records remain account-owned and separate.
+is available. Tag rows in the `dlsite` namespace remain readable until the
+startup backfill replaces them. `metadata_tag` holds the genre id, hidden
+flag, merge target, and author. `metadata_tag_name` holds manual names by
+locale; an empty locale applies to all languages. Personal `user_tag` records
+remain account-owned and separate.
 
 A display name tries each locale of a priority in order: that locale's manual
 name, the universal manual name, then its genre dictionary name, then Japanese
@@ -170,10 +190,11 @@ language priority selects (otherwise the first edition with a title in the
 fixed supported-language order), and each other edition's own genres, follows
 merge mappings, adds manual concepts, and applies removals and hiding. Every
 language therefore shows the same tag set; detail language variants rename
-those tags but never swap them for another edition's genres. Removal wins when an addition and a removal resolve to the same
-concept. Effective `work_tag` rows drive cards, detail language chips,
-creator lists, search, workflow predicates, and recommendation similarity.
-`tags_json` retains the provider's original names for provenance.
+those tags but never swap them for another edition's genres. Removal wins when
+an addition and a removal resolve to the same concept. Effective `work_tag`
+rows drive cards, detail language chips, creator lists, search, workflow
+predicates, and recommendation similarity. `tags_json` retains the provider's
+original names for provenance.
 
 `work_metadata_tag_base` retains each work's original provider concept ids
 before hiding, removals, or merge resolution. Snapshot-only DLsite names and
@@ -188,15 +209,15 @@ before any relation changes, with a protected diagnostic. Valid normalized input
 and manual additions still project.
 `work_metadata_tag_projection` records the work and selected source work whose
 base has been projected, including an intentionally empty result. Snapshot
-writes retain the marker and committed links until a queued replacement commits. Reads
-retain snapshot fallback for unprojected works; a global backfill completion
-marker alone never makes an empty work authoritative.
+writes retain the marker and committed links until a queued replacement
+commits. Reads retain snapshot fallback for unprojected works; a global
+backfill completion marker alone never makes an empty work authoritative.
 
 Search expands dictionary, manual, and original display names from the effective
 concept and all concepts resolving to it through `metadata_tag_resolution`.
 Source-name and merge changes invalidate affected documents even when the
 effective display name and links stay unchanged. Undo removes the former
-source names from works that now resolve only to the target.
+source names from works that resolve only to the target.
 Tag merges retain the original concept and override ids; undo clears the
 mapping, and cycles are rejected. Only the final merge target's hidden flag
 controls visibility. A merged source's hidden flag is dormant until undo;
@@ -204,10 +225,9 @@ merging into a hidden target hides the result for every related work.
 After each work is projected, hidden final concepts and removed work tags do
 not participate in display, search, or recommendation inputs. `work_tag` remains
 the committed per-work read boundary while background repair is pending, so
-merging does not filter away the old source link before its replacement commits.
-Relation
-changes advance the existing recommendation input revision, so the algorithm
-version is unchanged and new sessions rebuild their generation.
+merging does not filter away the source link before its replacement commits.
+Relation changes advance the existing recommendation input revision, so the
+algorithm version is unchanged and new sessions rebuild their generation.
 
 Custom creation trims the name and reuses an existing concept when any known
 locale name matches with Unicode case folding. It resolves a matched merged
@@ -216,26 +236,32 @@ source to its final target. A match resolving to a hidden target returns
 custom tags are created and attached in
 the work-save transaction, so cancellation and failed saves leave no new orphan.
 
-`work_metadata_tag_dirty` (migration 052) is the durable per-work projection
+`work_metadata_tag_dirty` is the durable per-work projection
 queue with persistent `retry_count` and Unix-second `retry_after`. Snapshot
 insert/update/delete triggers queue only existing works and dependent
 projections without invalidating markers; inserts and updates also cover stored
 edition siblings. Hide/merge/undo enqueue the connected component before and
 after the state change in the same transaction. Processing selects, projects,
 and acknowledges at most 64 works in one bounded write transaction. Failure or
-cancellation retains the whole batch; repeated processing is idempotent. A failed
-work is deferred separately for exponential retries from 30 seconds to five
-minutes, so later works proceed. Backoff survives restart and counts as pending. Both
-mutation responses and tag lists report the instance-wide `pendingWorkCount`.
-Demo reads count only eligible demo works.
+cancellation retains the whole batch; repeated processing is idempotent. A
+failed work is deferred separately for exponential retries from 30 seconds to
+five minutes, so later works proceed. Backoff survives restart and counts as
+pending. Both mutation responses and tag lists report the instance-wide
+`pendingWorkCount`. Demo reads count only eligible demo works.
 Relation changes invalidate search and advance recommendation input revisions.
 
-### Circle Identity
+### Circle and Voice Actor Identity
 
 `party.manual_name` takes precedence over `provider_name`; provider
 refreshes preserve authored names. `party_alias` stores confirmed alternate
 names, including names retained by a merge. Aliases participate in creator
 suggestions, work search, and matching an existing circle from a remote record.
+
+`party_catalog_item` holds a circle's discovered catalog per provider, keyed by
+circle, provider and canonical code, with title, release date, catalog status
+and the raw entry; a catalog item is not a work. `party_catalog_refresh_state`
+records each circle and provider's latest catalog refresh attempt, mode,
+status, run and error.
 
 A circle merge transfers work relations, every maker id, catalogs, retained
 snapshots, series membership, personal state and tags, and earlier merge
@@ -246,12 +272,19 @@ and after records. Undo applies only captured differences, keeps unrelated new
 rows, and rejects a later change to data it would restore. Nested merges undo
 in reverse order. Review responses expose names and status, not raw snapshots.
 
-Migration 053 rebuilds `work_manual_override` with primary key
-`(work_id, field_name, language)`. Existing rows retain `language=''`, timestamps,
-authorship and cover assets. Only title allows a nonempty language (`ja-jp`,
-`zh-cn`, `zh-tw`, `en-us`, `ko-kr`); other fields remain universal. Field and
-foreign-key indexes and all migration-036 search invalidation triggers are
-recreated, including language-only updates.
+`person_alias` holds a voice actor's confirmed alternate names; an alias with
+source `primary_name` cannot be deleted. `person_merge_review` retains each
+voice actor merge's names, a protected snapshot, and its `merged` or `undone`
+status. Voice actor merge behavior is described under
+[Voice Catalog Discovery](#voice-catalog-discovery).
+
+### Manual Overrides and Titles
+
+`work_manual_override` has primary key `(work_id, field_name, language)`. Only
+`title` allows a nonempty language (`ja-jp`, `zh-cn`, `zh-tw`, `en-us`,
+`ko-kr`); every other field uses the universal `language = ''`. Search
+invalidation triggers on title, circle, series, and voice actor overrides also
+fire on a language-only update.
 
 Display title selection picks the first preferred language with its own manual
 title or DLsite edition, then shows its language manual title, the universal
@@ -259,10 +292,11 @@ manual title, or that edition's title. A universal manual title replaces only
 the text: it never selects an edition, so the default edition, description, and
 tags match the presentation without it. `origin` matches the canonical
 edition's declared language and never infers a language from text or request
-locale. Unknown origin languages use the universal manual title or original title. Manual titles
-without a corresponding provider edition use the original description; otherwise
-the description is read from the selected edition's work row. Missing translated
-introductions remain empty rather than silently borrowing Japanese text.
+locale. Unknown origin languages use the universal manual title or original
+title. Manual titles without a corresponding provider edition use the original
+description; otherwise the description is read from the selected edition's work
+row. Missing translated introductions remain empty rather than silently
+borrowing Japanese text.
 
 `metadatatitles` holds the shared pure selection/display policy. Every
 non-canonical edition is a translation, independent of translator classification.
@@ -287,16 +321,16 @@ remains a languageless fallback. Remote titles receive no translation-label
 stripping, and their metadata choices never become playable editions or proof
 of a successful DLsite synchronization.
 
-The optional PATCH `titles` map updates only supplied language keys; `null` or
-empty values remove that language. Legacy `title` remains the universal value;
-using both forms in one request is rejected. GET returns `titles` plus compatible
-universal `title`. DELETE `.../manual-overrides/title?language=zh-cn` resets only
-that title scope; an omitted language resets only the universal scope.
-
 `PATCH /api/works/{id}/manual-overrides` updates only supplied fields;
 explicit null or empty values reset that field. Omitted relations remain
-unchanged. Migration 048 clears only title overrides exactly matching a
-trimmed provider title in the work's own edition or logical family.
+unchanged. The optional `titles` map updates only supplied language keys;
+`null` or empty values remove that language. The compatible `title` field is
+the universal value; using both forms in one request is rejected. GET returns
+`titles` plus the universal `title`. DELETE
+`.../manual-overrides/title?language=zh-cn` resets only that title scope; an
+omitted language resets only the universal scope.
+
+### Normalized Fields and Metadata Links
 
 `work.rating_average`, `work.sales_count`, and the current commercial fields are
 normalized projections maintained by metadata sync. Interactive rating/sales
@@ -310,20 +344,20 @@ Demo mode.
 alias may reference a persisted edition work, but metadata-only aliases do not
 create works and do not imply local or remote file availability.
 
-`work_metadata_link` (migration `045`) records a user-declared DLsite product
-whose metadata a work uses, for example when a bonus edition is no longer
-published and the regular edition is sold under another code. Metadata sync
-for a linked work requests only the linked code and stores the result on the
-linked work under its own code: the snapshot's product codes are rewritten to
-the work, its translation and language-edition relationships are removed, and
+`work_metadata_link` records a user-declared DLsite product whose metadata a
+work uses, for example when a bonus edition is withdrawn from sale and the
+regular edition is sold under another code. Metadata sync for a linked work
+requests only the linked code and stores the result on the linked work under
+its own code: the snapshot's product codes are rewritten to the work, its
+translation and language-edition relationships are removed, and
 `_kikoto.metadata_source_code` keeps the source for traceability. The linked
 code never becomes a work, edition, or alias, and its family is not walked.
-Saving a link rechecks a work previously recorded as `not_found`; removing it
-keeps the stored metadata until the work's own code is synchronized again.
+Saving a link rechecks a work recorded as `not_found`; removing it keeps the
+stored metadata until the work's own code is synchronized again.
 
 ### Purchase Bonuses
 
-`work_purchase_bonus` (migration `058`) attaches a purchase bonus
+`work_purchase_bonus` attaches a purchase bonus
 (`購入特典`, `早期購入特典`) to the family of the product it was distributed with.
 DLsite declares no relationship between the two: the bonus has no translation,
 edition, or bonus field naming its parent, and its public page is unlisted. The
@@ -343,8 +377,8 @@ and fills only its empty genres, credits (`creaters`) and series fields from
 the parent product, requested in the bonus's locale. The snapshot keeps the
 bonus's code, title, introduction, cover and release date, and records
 `_kikoto.purchase_bonus_parent_code` and `_kikoto.purchase_bonus_inherited`, so
-the existing tag, credit, card-summary and search projections need no bonus
-logic. A dismissal queues a refresh that stores the bonus's own product again.
+the tag, credit, card-summary and search projections need no bonus logic. A
+dismissal queues a refresh that stores the bonus's own product again.
 
 ### Remote Metadata Fallback
 
@@ -356,19 +390,22 @@ including an empty one, is authoritative. Code checks the declared capability
 and source type, never a display name. A remote source's provider identity is
 `kikoeru_source_<source code>`.
 
+`app_setting.remote_metadata_fallback` is the instance policy
+`{"enabled", "sourceIds"}`, default off with no sources. `enabled` gates the
+lookup after DLsite reports a work as not found and the folding of remote tags
+into shared tags. `sourceIds` lists at most 16 distinct metadata-capable
+sources and forms the fallback order. Every remote source is ranked, with the
+selected ones first in that order and the others by source priority and id.
+The ranking decides every stored remote value, independent of which source
+wrote last.
+
 The metadata workflow stores `sourceId`, `workCodes`, `remoteMetadataFallback`
 and `purchaseBonusAutoLink` alongside its scope and mode in run, job and trigger
-JSON. These are execution options, not instance-setting mutations. Retries keep
-the saved values. Existing per-work jobs snapshot their legacy defaults when
-queued. No schema migration is needed.
-
-The retained legacy `app_setting.remote_metadata_fallback` stores `{"enabled", "sourceIds"}`,
-default off with no sources. It continues to govern stored metadata presentation
-and legacy per-work refresh defaults. It is independent of a bulk run's request
-choices. Selected metadata-capable sources form the
-fallback order. Every remote source is ranked, with the selected ones first in
-that order and the others by source priority and id. The ranking decides every
-remote value, so the result no longer depends on which source wrote last.
+JSON. These are execution options, not instance-setting mutations, and a bulk
+run's fallback choice is independent of the instance policy. Retries keep the
+saved values. A per-work refresh without a selected source snapshots the
+instance policy and the purchase-bonus auto-link setting into its job when it
+is queued.
 
 `remotemetadata.ReconcileWorkTx` derives a work's normalized fields from the
 latest stored snapshot of each remote provider. Snapshots are untrusted:
@@ -379,14 +416,14 @@ tag, more than 32 entries in either edition collection, or snapshots over
 Release dates must start with `YYYY-MM-DD`. For each field the first-ranked
 source with a value wins. Without DLsite (or another non-remote provider)
 metadata, the winner replaces title, release date, age rating and duration;
-with it, remote values only fill an empty field, as before.
-`work_metadata_field_source` (migration `054`) records the provider of each
+with it, remote values only fill an empty field.
+`work_metadata_field_source` records the provider of each
 remote-filled value (`title`, `release_date`, `age_rating`, `duration`,
 `circle`, `tags`, `cover`). It holds rows only while the work has no DLsite
 metadata; projection clears them when DLsite data arrives, so DLsite always
 takes over.
 
-`remote_metadata_title_variant` (migration `057`) holds the first-ranked
+`remote_metadata_title_variant` holds the first-ranked
 provider's title per supported language and original edition for an existing
 work. A title's language comes from the provider's edition declarations,
 never the request locale or title text. `language_editions` supplies code and
@@ -398,13 +435,12 @@ remain the provenance source; projection reads no remote catalog.
 
 The shared title projection always uses the original edition when it has a
 stored title; otherwise it keeps the source's own title as the fallback.
-Each viewer selects their own title from the stored variants. Legacy instance
-language settings never affect this projection. The title editor, detail
-language menu, title sort and search share these values. Snapshot refreshes
-and source-order changes replace the projection through the existing bounded
-queue. Turning the fallback off retains these titles as passive metadata;
-DLsite takeover removes the remote projection and never fills a missing
-DLsite language from a remote source.
+Each viewer selects their own title from the stored variants. The title
+editor, detail language menu, title sort and search share these values.
+Snapshot refreshes and source-order changes replace the projection through the
+bounded queue. Turning the fallback off retains these titles as passive
+metadata; DLsite takeover removes the remote projection and never fills a
+missing DLsite language from a remote source.
 
 The winning circle name links an existing circle by name or confirmed alias.
 Only an active fallback source (switch on, selected, capable, enabled) may
@@ -417,12 +453,13 @@ While the fallback is enabled, the first active source whose snapshot declares
 tags supplies a remote-only work's shared-tag base. Each tag reuses the concept
 whose display, manual, dictionary or provider name equals its primary or any
 localized name, ignoring case, so a remote name matching a DLsite genre joins
-that genre. An unmatched tag gets the deterministic name concept used by legacy
-imports. Its localized names go to `metadata_tag_provider_name`, only for
-concepts without a genre id and only into absent cells. They rank after manual
-and dictionary names in display precedence, are searchable, and invalidate
-search when they change. Remote refreshes reach the durable projection queue
-through the snapshot triggers, so tags follow the latest snapshot.
+that genre. An unmatched tag gets the same deterministic `dlsite-name:<hash>`
+concept as an imported name without a genre id. Its localized names go to
+`metadata_tag_provider_name`, only for concepts without a genre id and only
+into absent cells. They rank after manual and dictionary names in display
+precedence, are searchable, and invalidate search when they change. Remote
+refreshes reach the durable projection queue through the snapshot triggers, so
+tags follow the latest snapshot.
 
 `work_metadata_sync_state` and `work_metadata_provider_state` record remote
 providers' outcomes as well as DLsite's. When DLsite reported the work not found
@@ -431,12 +468,12 @@ and remote values remain, the detail's `metadataSync.status` is
 Metadata issue list names that source on the DLsite row.
 
 Turning the switch off stops new lookups and requeues every work with a remote
-snapshot. Remote tags then leave shared tags again and their snapshot display
+snapshot. Remote tags then leave shared tags and their snapshot display
 returns. Filled titles, dates, circles and covers, their provenance and the
 snapshots stay as passive remote data under the same ordering until DLsite or
 manual values replace them. Changing the order, or a source's enabled state or
 capability, requeues the affected works the same way, and pending remote issues
-of a source the fallback no longer uses are cleared.
+of a source the fallback does not use are cleared.
 
 ## Voice Catalog Discovery
 
@@ -481,27 +518,37 @@ Important tables:
 - `file_source`
 - `file_source_endpoint`
 - `work_source_presence`
+- `work_folder_location`
 - `media_item`
 - `media_file_location`
 - `media_lyrics_assignment`
 
-Migration `059` adds `file_version` to media items and locations. Local scans
-observe file size and nanosecond modification time independently of the stable
-path fingerprint. Changed observations clear duration/audio metadata without
-replacing media ids or personal state. Probes compare their location id and
-expected version in the write transaction, rejecting delayed results after a
-rescan. Legacy versions are established on the next visible scan or probe.
-
 Presence can describe that a source knows about a work. Concrete playback,
 download, local, and cache paths belong in media file locations.
 
-Migration `061` adds `media_lyrics_assignment`, the library-level lyrics file
-of an audio media item. It relates two media items of the same work, so a
-rescan that keeps media ids keeps the assignment; deleting either item removes
-it. The audio item may belong to any edition of the requested work's family,
-because a work detail can show a sibling edition's local media. `origin`
-records how the row was made: `manual` from the lyrics manager, or
-`remote_fetch` when a remote lyrics download assigned the file it published. Clients rank a user's
+`work_folder_location` binds a work to one concrete folder root on a file
+source, unique per source and root path, separately from the aggregated
+presence row, so cleanup and the directory UI address a stable folder identity.
+`role` is `external` for a scanned folder or `managed_fetch` for a folder a
+Fetch published; `state` is `active`, `missing`, or a review-driven cleanup
+state (`pending_cleanup`, `ignored`). A scan marks only folders it could
+observe as missing.
+
+`media_item.file_version` and `media_file_location.file_version` version local
+file observations. Local scans observe file size and nanosecond modification
+time independently of the stable path fingerprint. Changed observations clear
+duration/audio metadata without replacing media ids or personal state. Probes
+compare their location id and expected version in the write transaction,
+rejecting delayed results after a rescan. An empty version is established on
+the next visible scan or probe.
+
+`media_lyrics_assignment` is the library-level lyrics file of an audio media
+item. It relates two media items of the same work, so a rescan that keeps media
+ids keeps the assignment; deleting either item removes it. The audio item may
+belong to any edition of the requested work's family, because a work detail can
+show a sibling edition's local media. `origin` records how the row was made:
+`manual` from the lyrics manager, or `remote_fetch` when a remote lyrics
+download assigned the file it published. Clients rank a user's
 `user_media_lyrics_preference` first, then this assignment, then name matching.
 
 ## Workflows
@@ -514,19 +561,42 @@ Important tables:
 - `workflow_run`
 - `workflow_node_run`
 - `workflow_job`
+- `workflow_event`
+- `workflow_notification`
 - `workflow_candidate`
 - `workflow_run_review`
+- `remote_fetch_manifest`
+- `remote_fetch_manifest_item`
+- `remote_fetch_request`
+- `availability_watch`
+- `availability_watch_target`
 
 Workflow records make scans, metadata sync, source checks, remote fetches, and
 review actions inspectable. `workflow_job.priority` is durable queue-ordering
 metadata; higher values claim first, with creation time and id as FIFO
-tie-breakers.
+tie-breakers. `workflow_event` is a run's event log (level, type, message and
+detail), optionally tied to a node run or job. `workflow_notification` holds at
+most one notification per user, run and type, such as ready Availability Watch
+works or the first metadata prompt; database cleanup can remove dismissed ones.
 
 `workflow_job.progress_bytes_current`, `progress_bytes_total`, and
 `progress_bytes_unknown_items` preserve Fetch transfer progress without
-overloading file-count progress. `remote_fetch_manifest.staging_cleaned_at`
-records retention cleanup while the manifest and its reviewable run history
-remain available for retry.
+overloading file-count progress. `remote_fetch_manifest` is the plan and state
+of one Fetch run: the work, remote and local sources, edition code, and target,
+staging and backup roots. `remote_fetch_manifest_item` holds one planned file
+per target path with its action, expected size, hash, state and conflict
+resolution. `remote_fetch_manifest.staging_cleaned_at` records retention
+cleanup while the manifest and its reviewable run history remain available for
+retry. `remote_fetch_request` maps a client-supplied request id to its source,
+work code, run and result, so a repeated request returns the original result
+and reusing the id for another work is rejected.
+
+`availability_watch` holds the single shared
+[Availability Watch](workflows.md#availability-watch) configuration (action,
+source, excluded extensions and revision). `availability_watch_target` holds
+the normalized work codes in its pool with per-target check state, the source
+that became available, and child Track and Fetch run ids. A target is a code,
+not a work.
 
 `filesystem_trigger_state` stores the fixed local-scan trigger's watched
 directory count and most recent event time. It is compact orchestration state,
@@ -540,11 +610,11 @@ that occurred while Kikoto was stopped.
 Important tables:
 
 - `user_account`
+- `user_password_credential`
 - `user_session`
 - `user_preference`
 - `user_work_state`
 - `user_work_playback_cursor`
-- `user_media_progress` (legacy migration source)
 - `user_media_lyrics_preference`
 - `favorite_list`
 - `favorite_list_item`
@@ -555,34 +625,40 @@ Important tables:
 - `user_listening_session_day`
 - `user_listening_import`
 - `user_listening_generation`
+- `audit_log`
 
-Migration `043` separates durable listening history from recommendation events.
-Sessions belong to an account and canonical work, accept monotonic cumulative
-seconds, and survive recommendation retention cleanup. UTC daily buckets receive
-only newly reported seconds. Imported totals store positive differences above
-measured totals without fabricating daily activity. Clearing history increments an account generation checked on every report,
-including an unseen first report, to reject delayed retries; marks, lists and cursors stay intact.
-Export/import is a versioned work-code-based personal document, not a database
-or media backup.
-
-Migration `062` adds cumulative per-session UTC buckets in
-`user_listening_session_day`, with a cascading session foreign key. Dated
-reports credit only each bucket's increase to `user_listening_day`, count a
-session once on its actual start date, and keep occurrence time in the session's
-history timestamps. Existing undated history stays intact. The cursor's
-`report_order` and `report_id` provide a total checkpoint order independent of
-position. A repeated or older checkpoint is acknowledged without replacing a
-later cursor, including a later backward seek.
-An explicit personal-progress import establishes a new checkpoint order at
-import time, advancing beyond an existing order if necessary. A reserved
-server marker wins a tied client order. The backup's historical playback date
-remains presentation data, so an older offline report cannot undo the import;
-a strictly later checkpoint, including a backward seek, still replaces it.
-
+`user_password_credential` holds one Argon2id password hash per account.
 `user_session.id` is the hex SHA-256 digest of the bearer token issued to the
 client, never the token itself, so the database and its backups cannot be
 replayed as a sign-in. The account store hashes every token before a lookup or
-delete.
+delete. `audit_log` records administrative actions, such as account, access
+policy, backup and database maintenance changes, with the acting user, target
+and a JSON detail.
+
+`user_preference` stores optional account overrides for folder routing rules,
+recommendation configuration, badge threshold, and the personal metadata
+language priority (see [Metadata Language](#metadata-language)). A missing
+override uses the `app_setting` default, or the original language for
+metadata. New recommendation generations use the effective account
+configuration; existing session bindings remain immutable.
+
+Listening history is durable and separate from `recommendation_event`.
+Sessions belong to an account and canonical work, accept monotonic cumulative
+seconds, and survive recommendation retention cleanup. Imported totals store
+positive differences above measured totals without fabricating daily activity.
+Clearing history increments an account generation checked on every report,
+including an unseen first report, to reject delayed retries; marks, lists and
+cursors stay intact. Export/import is a versioned work-code-based personal
+document, not a database or media backup.
+
+`user_listening_session.dated_report` marks whether a session reports by
+occurrence date; a report in the other form conflicts with the stored session.
+Undated reports credit only newly reported seconds to the current UTC day in
+`user_listening_day`. Dated reports keep cumulative per-session UTC buckets in
+`user_listening_session_day`, with a cascading session foreign key; they credit
+only each bucket's increase to `user_listening_day`, count a session once on
+its actual start date, and keep occurrence time in the session's history
+timestamps.
 
 `favorite_list` distinguishes a system `marked` list from ordinary user lists.
 The system list has no stored items: it derives membership from a non-`none`
@@ -594,9 +670,18 @@ shows the default list icon, and the system list never reports one.
 `user_work_playback_cursor` stores at most one Resume position for each user and
 canonical logical work family. It references the active edition's logical media
 item and records the last file source/location context; location deletion clears
-those foreign keys without turning a raw path into the progress owner. Migration
-`022` seeds each cursor from the newest legacy `user_media_progress` row in that
-family.
+those foreign keys without turning a raw path into the progress owner. The
+per-track `user_media_progress` table is retained in the schema, but no runtime
+code reads or writes it.
+
+The cursor's `report_order` and `report_id` provide a total checkpoint order
+independent of position. A repeated or older checkpoint is acknowledged without
+replacing a later cursor, including a later backward seek. An explicit
+personal-progress import establishes a new checkpoint order at import time,
+advancing beyond an existing order if necessary. A reserved server marker wins
+a tied client order. The backup's historical playback date remains presentation
+data, so an older offline report cannot undo the import; a strictly later
+checkpoint, including a backward seek, still replaces it.
 
 Lyrics preferences relate an audio media item to a lyrics media item; runtime
 location selection remains a file-source concern. A personal preference
@@ -622,9 +707,9 @@ affinity calculation. Current favorite and listening state still comes from
 `user_work_state` for card rendering; a later client session builds a new
 generation only when an input revision changed. The revision triggers fire
 only when a value the scorer reads changes (the work, tag, person, circle, or
-role of a relation, a tag namespace, an entity name or alias, or a user's listening status or
-favorite), so a metadata refresh that rewrites provenance or timestamps does
-not rebuild recommendations. Existing sessions retain their
+role of a relation, a tag namespace, an entity name or alias, or a user's
+listening status or favorite), so a metadata refresh that rewrites provenance
+or timestamps does not rebuild recommendations. Existing sessions retain their
 generation until they expire, so a refresh cannot change another open tab's
 ordering. A released recommendation algorithm version invalidates its older
 generation binding and rebuilds it before the session is reused.
@@ -638,13 +723,13 @@ uses a separate seeded hash. A generation stores weighted affinity and a creator
 diversity penalty of 0–8 (two points per later work in the same listening lane
 and circle, with voice as the fallback). The penalty affects ordering only.
 
-Migration 060 stores the generation's evidence counts and name mappings in
-`recommendation_generation_profile`. The authenticated remote recommendations
-endpoint accepts at most 100 transient candidates from the displayed page,
-reads known work scores in one query, and matches unknown candidates against
-this frozen profile. Localized tag names and creator aliases resolve to one
-entity; repeated names count once and ambiguous names are ignored. Scoring does
-not fetch upstream metadata or create works, tags, creators, or source presence.
+`recommendation_generation_profile` stores each generation's evidence counts and
+name mappings. The authenticated remote recommendations endpoint accepts at
+most 100 transient candidates from the displayed page, reads known work scores
+in one query, and matches unknown candidates against this frozen profile.
+Localized tag names and creator aliases resolve to one entity; repeated names
+count once and ambiguous names are ignored. Scoring does not fetch upstream
+metadata or create works, tags, creators, or source presence.
 
 ## Modeling Rules
 
@@ -660,19 +745,21 @@ not fetch upstream metadata or create works, tags, creators, or source presence.
 - `work_search` is a derived FTS5 trigram index with one row per work
   (`rowid = work.id`) holding folded code/alias, title, circle, voice actor,
   and tag text, including relevant manual overrides. The title column also
-  holds the work's own DLsite variant title, so an origin title stays
-  searchable after the priority projection rewrites `work.title`. The tag
-  column also holds every learned `dlsite_genre_name` for the work's genre
-  ids, so a tag matches in each language the library has fetched. Matching
-  remains a substring test; a Library page orders works whose indexed value
-  equals a text, circle, voice, or tag needle exactly ahead of partial
-  matches, then applies the selected sort. Folding applies NFKC,
-  Unicode lowercase, and katakana-to-hiragana mapping. Triggers queue changed
-  works in `work_search_dirty`; a background worker rebuilds queued documents
-  in bounded batches. A search rebuilds a queue of at most 64 works itself, so
-  an edit is searchable at once; a longer queue leaves the search on the
-  previous index state and wakes the worker instead of holding the request. Edition-family matching is applied at query time, so the
-  index never duplicates a sibling's text or creates another work identity.
+  holds the work's own `dlsite_metadata_variant` title and, for a work without
+  non-remote metadata, its `remote_metadata_title_variant` titles, so each
+  stored edition title matches independently of the projected `work.title`.
+  The tag column also holds every learned `dlsite_genre_name` for the work's
+  genre ids, so a tag matches in each language the library has fetched.
+  Matching remains a substring test; a Library page orders works whose indexed
+  value equals a text, circle, voice, or tag needle exactly ahead of partial
+  matches, then applies the selected sort. Folding applies NFKC, Unicode
+  lowercase, and katakana-to-hiragana mapping. Triggers queue changed works in
+  `work_search_dirty`; a background worker rebuilds queued documents in bounded
+  batches. A search rebuilds a queue of at most 64 works itself, so an edit is
+  searchable at once; a longer queue leaves the search on the previous index
+  state and wakes the worker instead of holding the request. Edition-family
+  matching is applied at query time, so the index never duplicates a sibling's
+  text or creates another work identity.
 - User state should survive metadata refresh and source replacement.
 - Playback is a work cursor, not a set of independent per-track bookmarks.
 
@@ -680,10 +767,5 @@ not fetch upstream metadata or create works, tags, creators, or source presence.
 
 - [Core boundaries](core-boundaries.md)
 - [Source presence](source-presence.md)
+- [Workflows](workflows.md)
 - [Migrations](../development/migrations.md)
-
-`user_preference` stores optional account overrides for folder routing rules,
-recommendation configuration, and badge threshold. Missing overrides use existing
-`app_setting` defaults. Migration `034` adds this table without rewriting existing
-instance settings or recommendation sessions. New recommendation generations use
-the effective account configuration; existing session bindings remain immutable.

@@ -150,8 +150,8 @@ Work detail pages should show decision-level facts:
 - File locations.
 - Cache/download actions.
 
-Use cards for repeated objects, not for every section. Settings and Maintenance
-pages should share a consistent content width, section spacing, field rhythm,
+Use cards for repeated objects, not for every section. Settings tabs
+should share a consistent content width, section spacing, field rhythm,
 and destructive-action placement. Wide diagnostic tables may opt out of the
 content cap, but ordinary forms should not define their own page-local width.
 

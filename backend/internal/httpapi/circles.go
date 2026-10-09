@@ -167,9 +167,9 @@ const circleCatalogProjection = `(
 )`
 
 // circlePartyVisibilityPredicate is built only with trusted SQL aliases from
-// this file. The catalog evidence clause covers old databases where a
-// translation edition was persisted before its work_party relation was
-// materialized; unknown or incomplete editions deliberately remain visible.
+// this file. The catalog evidence clause covers translation editions whose
+// work_party relation is not materialized; unknown or incomplete editions
+// deliberately remain visible.
 func circlePartyVisibilityPredicate(partyRef string) string {
 	return fmt.Sprintf(`(
 		EXISTS (
@@ -1017,8 +1017,8 @@ func (s *Server) upsertAuthoritativeWorkParty(ctx context.Context, workID int64,
 }
 
 // reconcileDLsiteCircleOwnership repairs the circle relations of workIDs,
-// including relations created before the translation-aware projection
-// existed. It is deliberately driven by the persisted edition maker ids, never
+// including relations that lack the translation-aware projection. It is
+// deliberately driven by the persisted edition maker ids, never
 // by catalog display names.
 func (s *Server) reconcileDLsiteCircleOwnership(ctx context.Context, workIDs []int64) error {
 	if len(workIDs) == 0 {
@@ -2824,7 +2824,7 @@ func renameParty(ctx context.Context, tx *sql.Tx, partyID int64, name string) er
 
 // partyMetadataSnapshotRetention is how many snapshots each circle keeps per
 // provider, matching metadata_snapshot's retention per work. Nothing reads
-// older rows, so keeping every refresh only grew the database.
+// older rows, so keeping more would only grow the database.
 const partyMetadataSnapshotRetention = 2
 
 // insertPartyMetadataSnapshot records raw unless the circle already retains

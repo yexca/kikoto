@@ -17,8 +17,8 @@ Workflows make backend actions inspectable.
   time. List rows and **Recent runs** open details inside the same panel: start
   and finish times, duration, trigger, steps, candidates, run actions, and a
   collapsed **Diagnostic log** of run events. **Back to runs** returns to the
-  list. Old Activity links automatically open Workflows and select the run
-  context; the separate full Activity page has been removed.
+  list. Activity has no page of its own: `/activity` and `/runs` links open
+  Workflows with the Activity panel and select the linked run.
 
 ## Current Behavior
 
@@ -48,7 +48,8 @@ Workflows make backend actions inspectable.
   for the signed-in user; **Open Activity** opens the full panel.
 - The workflow list groups every workflow by category: Basic (local scan, local
   files, and metadata sync), Collect (popular collections), Follow (the preset
-  follow workflows), and Remote (Availability Watch and Fetch), each in
+  follow workflows), and Remote (Availability Watch, Fetch, and Check source
+  health), each in
   a fixed order. Every entry shows its latest run's status and time, and small
   icons mark an enabled Startup trigger, schedule, or folder watcher. Wide
   layouts keep the list beside the selected workflow; **Hide tab names** below
@@ -72,13 +73,14 @@ Workflows make backend actions inspectable.
   metadata sync shortcut selects the existing workflow here.
 - Built-in local scan, metadata sync, remote popular, and DLsite popular
   workflows support editable interval triggers; local scan and the two popular
-  collectors also support Startup triggers. Local scan ships
-  with the default Startup trigger and does not check remote availability or
-  synchronize metadata. Manual, Startup, and interval scans expose a
+  collectors also support Startup triggers. Local scan does not check remote
+  availability or synchronize metadata. Manual, Startup, and interval scans expose a
   disabled-by-default `Follow-up run`; enabling it queues an independent
   metadata run after the scan finishes. Metadata sync has no Startup trigger,
   so it cannot compete with a scan follow-up.
-- Local scan also ships with one fixed, enabled folder watcher. It can be paused,
+- Local scan has one Startup trigger and one fixed folder watcher. On a new
+  install both start off, and library setup offers to turn them on. The
+  watcher can be paused,
   resumed, or switched between Incremental and Full, but it cannot be created,
   duplicated, converted, renamed, or deleted. Incremental is the default. The
   watcher registers discovery directories and every descendant directory below
@@ -91,7 +93,7 @@ Workflows make backend actions inspectable.
   registers its own published locations directly; Manual, Startup, and interval
   scans always inspect the complete data tree. Changes during an active run
   produce at most one follow-up scan. Paused events are discarded; offline
-  changes rely on the default Startup scan.
+  changes rely on the Startup scan.
 - **Refresh local work files** sits second, after the local scan. It indexes the
   media files inside local work folders that a scan has already discovered, so
   opening a work does not index a large folder on demand. **Incremental** (the
@@ -99,6 +101,13 @@ Workflows make backend actions inspectable.
   re-indexes every available local work. One run is queued or running at a
   time, and starting another returns the active run. It supports Startup and
   interval triggers that store the mode, and ships without a default trigger.
+- **Check source health** sits in Remote, after Fetch. It checks each enabled
+  remote source that has an API endpoint, the same way as **Check health** in
+  source settings, and records whether it is healthy or unavailable. The
+  result appears in the source list under Settings > Library, and the run is
+  partial when any source is unavailable. It has no run options, so `Run` is in
+  its header. It supports Startup and interval triggers and ships without a
+  default trigger. Running it requires permission to manage sources.
 - Remote and DLsite popular collection surfaces edit tag templates with a
   current-value preview, the complete workflow-specific variable list, and an
   explicit warning when the rendered tag exceeds 40 characters. Manual runs
@@ -113,8 +122,12 @@ Workflows make backend actions inspectable.
   player. Options apply to the next manual run only and reset when another
   workflow is selected.
   Local scan shows its follow-up option there; built-in workflows without run
-  parameters show `Run` in their header instead. The latest run's stages and
-  log follow the form, then the triggers and recent runs.
+  parameters show `Run` in their header instead.
+- The run monitor follows the form, then the triggers and recent runs. It
+  shows the latest run's stages and its log, side by side when there is room.
+  While a run is active, new log lines stream in and the log follows the latest
+  output unless you scroll up. Select a stage to show only its lines, and
+  select the run summary to open that run in Activity.
 - Availability Watch keeps a saved configuration. Its **Configuration** form
   summarizes the saved values that `Run` uses, and `Configure` beside `Run`
   opens a panel for the remote source, the action on availability, and optional
@@ -138,12 +151,11 @@ Workflows make backend actions inspectable.
   default; turn it on to tag the synced works. A trigger popover warns when an
   automated follow has no filter and recommends turning one on. With Sync
   metadata off, a circle or voice actor follow only refreshes the catalog (and
-  checks sources). Track and Fetch are no longer follow actions; use Remote
-  popular, Availability Watch, or a work's detail page instead. Automated runs
-  use incremental catalog refresh; a full refresh is manual only.
-- Upgrading disables follow triggers saved before these options, and each shows
-  that it needs reconfiguring. Open the trigger, check its Run options, save it,
-  and turn it on again.
+  checks sources). Follow workflows do not Track or Fetch; use Remote popular,
+  Availability Watch, or a work's detail page for that. Automated runs use
+  incremental catalog refresh; a full refresh is manual only.
+- A follow trigger marked as needing reconfiguration stays off. Open it, check
+  its Run options, save it, and turn it on again.
 - Metadata sync refreshes works already in the library. Its Run options choose
   **Works** (All works, one circle, one voice actor, or Selected works),
   **Metadata source** tabs, and **Refresh** (Missing or outdated, or All metadata).
@@ -159,9 +171,11 @@ Workflows make backend actions inspectable.
   Remote refresh preserves manual edits and DLsite precedence; Missing or
   outdated checks metadata from the selected source. The source selector and
   fallback controls are hidden when no capable enabled remote is configured.
-- User-authored custom workflows, the DAG editor, slash commands, and the
-  definition run dialog were removed. Upgrading deletes existing user
-  definitions and their triggers; their runs stay in Activity history.
+- Workflows are built in; users cannot author their own. Custom workflows
+  preserved from an older installation are reviewed during library setup,
+  where exact preset matches can become disabled triggers and others can be
+  exported; see [Getting started](getting-started.md). Their earlier runs stay
+  in Activity history.
 - DLsite popular collection supports 24-hour, 7-day, 30-day, and annual voice
   rankings. Recent periods can be limited to works released within 30 days;
   annual runs select an explicit year and default to a template containing
@@ -182,15 +196,12 @@ Workflows make backend actions inspectable.
   history and steps but has no Run form: a Fetch always starts from a work.
   Fetches queued by Availability Watch, bulk actions, popular collections, or
   preset workflows record that origin as their trigger reason.
-- On a new install, the local scan's Startup trigger and folder watcher start
-  off; library setup offers to turn them on. An upgraded instance keeps its
-  existing triggers.
 - A scan never marks works missing in a place it cannot see: an unmounted data
   folder or offline storage pool, or folders deeper than the scan depth. A scan
   of an unmounted standard library fails and changes nothing; a scan that skips
   an offline pool finishes as partial and names the pool.
 
-## Current Limits
+## Limits
 
 - Retry and checkpoint recovery apply only to workflow families that explicitly
   declare their jobs recoverable; an arbitrary failed node cannot be resumed in
@@ -208,5 +219,3 @@ Workflows make backend actions inspectable.
 - [Architecture workflows](../../architecture/workflows.md)
 - [Reliability](../../operations/reliability.md)
 - [Testing](../../development/testing.md)
-
-Run monitor: each workflow page lists its stages on the left and the most recent run's log on the right. While a run is active, new log lines stream in and the log follows the latest output unless you scroll up. Select a stage to show only its lines, and select the run summary to open that run in Activity.

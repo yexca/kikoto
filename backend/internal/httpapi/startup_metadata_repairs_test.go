@@ -128,7 +128,7 @@ func TestStartupRepairsFailIndependentlyContinueOtherCoversAndRetry(t *testing.T
 	}
 }
 
-// Retiring the former instance metadata language deletes both settings and,
+// Retiring the instance metadata language deletes both settings and,
 // when a database was projected in another language, re-projects stored tag
 // names in the original language.
 func TestRetireInstanceMetadataLanguageReprojectsNonOriginDatabases(t *testing.T) {
@@ -155,7 +155,7 @@ func TestRetireInstanceMetadataLanguageReprojectsNonOriginDatabases(t *testing.T
 			if err := tx.Commit(); err != nil {
 				t.Fatal(err)
 			}
-			// A completed projection that used the former instance language.
+			// A completed projection in a non-original language.
 			metadataReviewExec(t, db, "UPDATE tag SET display_name='合成中文标签' WHERE id=?", tag)
 			metadataReviewExec(t, db, `INSERT INTO app_setting(key,value_json) VALUES ('metadata_tag_projection_version','1')
 				ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json`)

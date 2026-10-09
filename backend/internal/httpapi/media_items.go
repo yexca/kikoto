@@ -214,9 +214,9 @@ func (s *Server) loadMediaLocationRows(ctx context.Context, mediaWorkID int64, m
 }
 
 func inferMediaItemKinds(mediaItems []mediaItemDetail) {
-	// Older scans may have stored files before an extension was recognized.
+	// A file stored before its extension was recognized keeps the kind "file".
 	// Derive the playable kind from the concrete location so existing media
-	// becomes usable without requiring a destructive rescan.
+	// is usable without a destructive rescan.
 	for index := range mediaItems {
 		if mediaItems[index].Kind != "file" {
 			continue

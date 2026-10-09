@@ -17,8 +17,8 @@ const (
 	catalogSyncNotApplicable = "not_applicable"
 )
 
-// catalogFreshnessDays keeps the former circle-only value working after the
-// setting became a shared creator-catalog freshness window.
+// catalogFreshnessDays reads the shared creator-catalog freshness window and
+// falls back to the circle_auto_refresh_days value when it is unset.
 func (s *Server) catalogFreshnessDays(ctx context.Context) int {
 	days := s.settingIntContext(ctx, "catalog_freshness_days", -1)
 	if days == -1 {

@@ -121,8 +121,7 @@ func (s *Server) validateLocalScanDepthSettings(ctx context.Context, payload set
 }
 
 // effectiveLocalScanDepth is the configured depth raised to the required
-// minimum, so a depth saved before the minimum existed, or set through the
-// environment, never hides Fetched works from a scan.
+// minimum, so a saved or environment-set depth below the minimum never hides Fetched works from a scan.
 func (s *Server) effectiveLocalScanDepth(ctx context.Context) int {
 	configured := s.configuredLocalScanDepth(ctx)
 	required, err := s.requiredLocalScanDepth(ctx)

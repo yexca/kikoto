@@ -280,7 +280,7 @@ func (s *Server) buildLibraryMigrationPlan(ctx context.Context, requested librar
 			return layoutMigrationPlan{}, invalidLibraryLayout("storage_pool_offline", "Bring every current storage pool online before changing modes.")
 		}
 	}
-	// Checking an older standard root may create its durable pool marker.
+	// Checking a standard root may create its durable pool marker.
 	// Include the saved marker ID in both preview and confirmation hashes.
 	if !current.poolsMode() {
 		current, err = s.loadLibraryLayout(ctx)

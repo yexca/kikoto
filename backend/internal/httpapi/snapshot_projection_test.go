@@ -25,8 +25,9 @@ func recommendationInputRevision(t *testing.T, db *sql.DB) int {
 	return revision
 }
 
-// Regression: startup and every metadata sync projected the whole library,
-// rewriting each credit and advancing the recommendation revision per row.
+// Startup and metadata sync project only works whose snapshot changed;
+// projecting the whole library would rewrite each credit and advance the
+// recommendation revision per row.
 func TestSnapshotProjectionOnlyWritesChangedProjectionInputs(t *testing.T) {
 	db := openMigratedTestDB(t)
 	ctx := context.Background()
@@ -85,8 +86,8 @@ func TestSnapshotProjectionOnlyWritesChangedProjectionInputs(t *testing.T) {
 	}
 }
 
-// Regression: every circle refresh appended a party snapshot that nothing read
-// or removed.
+// A circle refresh keeps a bounded number of party snapshots instead of
+// appending one per refresh that nothing reads.
 func TestMakerProfileRefreshRetainsBoundedCircleSnapshots(t *testing.T) {
 	db := openMigratedTestDB(t)
 	ctx := context.Background()

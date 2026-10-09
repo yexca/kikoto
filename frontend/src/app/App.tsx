@@ -97,7 +97,7 @@ import {
 } from "@/app/remoteTrackWorkflows";
 
 // A workspace that stays hidden skips renders driven by the shell; the active
-// workspace, and one being shown or hidden, render as before. Context updates
+// workspace, and one being shown or hidden, render normally. Context updates
 // still reach hidden workspaces.
 function renderOnlyWhileActive<Props extends { active?: boolean }>(Page: ComponentType<Props>) {
   return memo(Page, (previous, next) => previous.active === false && next.active === false);
@@ -769,7 +769,7 @@ const browsePages: Record<CachedBrowsePage, { preload: () => Promise<unknown> }>
 };
 // Fetch the current location's workspace chunk alongside the session request
 // rather than after the shell mounts. A direct work link also starts the work
-// detail chunk now instead of waiting for the Library chunk to evaluate.
+// detail chunk immediately instead of waiting for the Library chunk to evaluate.
 const initialPage = pageFromPath(window.location.pathname);
 if (isCachedBrowsePage(initialPage)) void browsePages[initialPage].preload().catch(() => {});
 if (

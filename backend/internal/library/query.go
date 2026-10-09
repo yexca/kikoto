@@ -150,8 +150,7 @@ func (s *Store) listPageRecommendationContext(ctx context.Context, options ListO
 		}
 		return snapshot.Config, snapshot.GenerationID, nil
 	}
-	// Older clients without a recommendation session retain the dynamic path
-	// until they are upgraded.
+	// A client without a recommendation session uses the dynamic path.
 	return s.LoadUserRecommendationConfig(ctx, options.UserID), 0, nil
 }
 

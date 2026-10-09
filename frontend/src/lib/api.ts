@@ -756,7 +756,7 @@ export type LibrarySource = {
   displayName: string;
   sourceType: string;
   enabled: boolean;
-  /** Absent on older servers; compatible remote types then retain their default capability. */
+  /** Absent from servers that predate this field; compatible remote types then keep their default capability. */
   metadataCapable?: boolean;
 };
 
@@ -1571,6 +1571,13 @@ export type LocalMediaIndexResult = {
   jobId: number;
   status: string;
   mode: LocalMediaIndexMode;
+  existing: boolean;
+};
+
+export type SourceHealthCheckResult = {
+  runId: number;
+  jobId: number;
+  status: string;
   existing: boolean;
 };
 
@@ -3130,6 +3137,7 @@ export const api = {
     postJSONBody<LocalScanResult>("/api/workflow-runs/local-scan", payload),
   runLocalMediaIndex: (payload: { mode: LocalMediaIndexMode }) =>
     postJSONBody<LocalMediaIndexResult>("/api/workflow-runs/local-media-index", payload),
+  runSourceHealthCheck: () => postJSONBody<SourceHealthCheckResult>("/api/workflow-runs/source-health-check", {}),
   runRemotePopularCollection: (payload: {
     action: "track" | "fetch";
     sourceId: number;

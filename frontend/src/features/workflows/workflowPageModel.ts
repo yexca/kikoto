@@ -31,6 +31,7 @@ export type SystemRunKind =
   | "remote_popular"
   | "remote_fetch"
   | "dlsite_popular"
+  | "source_health_check"
   | "preset";
 
 export type SystemRunOptions = {
@@ -93,6 +94,7 @@ export const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = 
   remote_popular_collection: ["remote_popular"],
   remote_work_fetch: ["remote_fetch"],
   dlsite_popular_collection: ["dlsite_popular"],
+  source_health_check: ["source_health_check"],
 };
 
 export const configurableSystemWorkflowCodes = new Set(Object.keys(manuallyRunnableSystemWorkflows));

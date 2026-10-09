@@ -39,15 +39,12 @@ KIKOTO_IMAGE=yexca/kikoto:0.1.1 docker compose up -d
 KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d
 ```
 
-Default ports:
-
-- Frontend: `7655`
-- Backend: `7659`
-
-The default Compose mapping publishes `7655` on every host interface. For a
+The container serves the web app and API together on port `7659`, and the
+default Compose mapping publishes it as host port `7655` on every host
+interface. For a
 host-only instance, change it to `127.0.0.1:7655:7659`. Otherwise protect the
 port with a host firewall, trusted VPN, or reverse proxy. Production requires
-sign-in by default; enabling anonymous access under Maintenance intentionally
+sign-in by default; enabling anonymous access under Settings -> Users intentionally
 exposes Library and media reads to every client that can reach the port.
 
 Default mounts:
@@ -171,7 +168,8 @@ docker compose --project-directory . -f deploy/compose/demo.yml up -d
 Set `KIKOTO_DEMO_IMAGE` to a reviewed version or digest when reproducibility is
 required.
 
-It listens on `http://127.0.0.1:7655` by default. Override the host port with
+It publishes host port `7655` on every host interface by default, so open
+`http://127.0.0.1:7655` locally. Override the host port with
 `KIKOTO_DEMO_PORT`. Demo never seeds or contacts a real remote source:
 `KIKOTO_REMOTE_SOURCES_ENABLED` and `remote-sources.yml` are ignored in Demo
 mode.

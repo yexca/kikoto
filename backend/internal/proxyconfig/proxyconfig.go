@@ -306,7 +306,7 @@ func (proxy Proxy) URL(hostAddress string) (*url.URL, error) {
 	return parsed, nil
 }
 
-// FromLegacyURL converts the former single metadata proxy setting into a
+// FromLegacyURL converts the legacy single metadata proxy URL setting into a
 // custom proxy used by the DLsite route. An empty value is an empty config.
 func FromLegacyURL(value string) (Config, error) {
 	value = strings.TrimSpace(value)

@@ -55,9 +55,8 @@ const (
 
 var presetWorkflowTagTokens = []string{"date", "target"}
 
-// presetWorkflowLegacyInputs are inputs of the follow presets before they were
-// reduced to input, filter, and actions. A stored trigger that still carries one
-// must be reconfigured rather than silently reinterpreted.
+// presetWorkflowLegacyInputs are inputs outside the follow presets' input,
+// filter, and action set. A stored trigger that still carries one must be reconfigured rather than silently reinterpreted.
 var presetWorkflowLegacyInputs = map[string]bool{
 	"newWorks": true, "existing": true, "action": true, "sourceId": true, "metadataRefresh": true,
 	"excludeExtensions": true, "maxFiles": true, "maxGiB": true, "minFreeGiB": true,

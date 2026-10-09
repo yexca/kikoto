@@ -192,7 +192,7 @@ The production Compose stack serves the web application and API on the same
 host port, `7655`. Port `7659` is exposed separately only by the development
 stack. Production instances require sign-in by default; a super administrator
 can optionally enable read-only anonymous Library browsing and playback under
-`Maintenance -> Access`.
+`Settings -> Users -> Instance access`.
 
 Signed Android APKs and unsigned iOS IPAs are attached to each
 [GitHub Release](https://github.com/yexca/kikoto/releases). The IPA must be
