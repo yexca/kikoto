@@ -1760,6 +1760,10 @@ export const surfaceEnglish = {
     closePanel: "Close panel",
     seekToLine: "Jump to this line",
     followLyrics: "Follow playback",
+    speakerConfirmTitle: "Play through the phone speaker?",
+    speakerConfirmDescription:
+      "No headphones or other audio output are connected, so people nearby can hear playback. Kikoto asks again after an audio output connects or disconnects.",
+    speakerConfirmPlay: "Play aloud",
     track: "Track",
     finishingTrack: "Finishing track",
     afterTimerExpires: "After the timer expires",

@@ -1792,6 +1792,10 @@ export const surfaceKorean = {
     closePanel: "패널 닫기",
     seekToLine: "이 줄로 이동",
     followLyrics: "재생 따라가기",
+    speakerConfirmTitle: "휴대폰 스피커로 재생할까요?",
+    speakerConfirmDescription:
+      "헤드폰 등 오디오 출력 장치가 연결되어 있지 않아 주변 사람이 소리를 들을 수 있습니다. 오디오 출력을 연결하거나 해제하면 다시 확인합니다.",
+    speakerConfirmPlay: "스피커로 재생",
     track: "트랙",
     finishingTrack: "현재 트랙 종료 대기 중",
     afterTimerExpires: "타이머 종료 후 적용",

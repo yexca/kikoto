@@ -32,6 +32,8 @@ import { usePersistPlayerQueue, useRestoredPlayerQueue, useRestoredQueueRevalida
 import { usePlaybackSeekPreferences, usePlayerSeeking } from "./usePlayerSeeking";
 import { useRemoteStreamCaching } from "./useRemoteStreamCaching";
 import { useSleepRewindPreference, useSleepTimer } from "./useSleepTimer";
+import { SpeakerPlaybackDialog } from "./SpeakerPlaybackDialog";
+import { useSpeakerPlaybackGuard } from "./useSpeakerPlaybackGuard";
 import { useBrowserMediaSession, useNativeMediaBridge } from "./useSystemMediaControls";
 
 export { lyricsPreferenceKey, preferredLyricsMediaItemID } from "./lyricsPreference";
@@ -235,6 +237,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     [hasTrack, updatePlayingState],
   );
   const pause = useCallback(() => updatePlayingState(false), [updatePlayingState]);
+  const speakerGuard = useSpeakerPlaybackGuard({ refs, play });
   const togglePlay = useCallback(
     () => updatePlayingState((value) => (hasTrack ? !value : false)),
     [hasTrack, updatePlayingState],
@@ -416,6 +419,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       <PlayerContext.Provider value={value}>
         <PlayerTimeContext.Provider value={timeValue}>{children}</PlayerTimeContext.Provider>
         <audio ref={refs.audioRef} preload="metadata" {...audioEvents} />
+        {speakerGuard.confirming && (
+          <SpeakerPlaybackDialog onCancel={speakerGuard.cancel} onConfirm={speakerGuard.confirm} />
+        )}
       </PlayerContext.Provider>
     </LibraryPlayerContext.Provider>
   );

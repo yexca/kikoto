@@ -33,7 +33,9 @@ password is reset from the server host; see
 
 - **Playback** contains the backward and forward seek intervals, **Playback
   sources**, and **Folder preference**. Seek intervals default to 10 and 30
-  seconds and accept whole-second values from 1 through 300.
+  seconds and accept whole-second values from 1 through 300. The Android app
+  also shows **Privacy on this device**, described in
+  [Sleep and headphone privacy](playback.md#sleep-and-headphone-privacy).
 - **Playback sources**: **Quick source switching** makes the Now Playing
   source label a menu for choosing another location of the current track, and
   **Switch sources on failure** lets a failed location continue from the

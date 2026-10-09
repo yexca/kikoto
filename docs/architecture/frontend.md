@@ -258,7 +258,18 @@ The player records cumulative listening time under an account/server scope;
 history clearing invalidates older reports using a server generation. Sleep
 rewind preferences share that scope and update the resume cursor only when the
 timer stops playback. Android output-disconnect events pause the media element
-and player intent, including pending play requests.
+and player intent, including pending play requests. Every start of the media
+element passes the engine's start guard; on Android, `useSpeakerPlaybackGuard`
+holds starts through the phone speaker until the in-app confirmation, so
+notification, lock screen, and media key controls cannot bypass it. The
+Android device privacy settings (`lib/nativePrivacy`) live in native storage
+rather than account-scoped browser storage, because the recent apps cover, the
+app lock, and the media notification apply them without the web view. The app
+lock is native: it covers the window and authenticates through the system
+biometric or device credential prompt, storing no secret of its own; the web
+app only supplies its localized prompt labels. When the asset transport
+session is removed or replaced, or the server changes, the Android shell
+clears the WebView HTTP cache.
 
 ## Playback Reports
 

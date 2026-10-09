@@ -1,5 +1,16 @@
 # Unreleased
 
+- The Android app adds **Privacy on this device** in Settings → Playback.
+  Recent apps show a cover instead of the current page, the media controls
+  hide the cover while the device is locked, and playback through the phone
+  speaker waits for a confirmation when no headphones are connected. All three
+  are on by default; the locked controls can also show everything or only the
+  app name. Two opt-in choices block screenshots, recording, and casting of
+  the app and its floating lyrics, and add an app lock that unlocks with a
+  biometric or the device screen lock after a chosen time in the background.
+  Disconnecting headphones also closes the floating lyrics, and signing out or
+  switching servers clears the app's web cache.
+
 - The release workflow builds an unsigned iOS IPA on a macOS runner alongside
   the signed APK and attaches it to the GitHub Release as
   `kikoto-<version>-unsigned.ipa`. The draft is published only after the image,

@@ -1,4 +1,9 @@
-import { PlaybackSourcePreferences, RecommendationActivity, UserPreferencePanels } from "@/features/preferences";
+import {
+  DevicePrivacyPreferences,
+  PlaybackSourcePreferences,
+  RecommendationActivity,
+  UserPreferencePanels,
+} from "@/features/preferences";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { SettingsNumberInput, SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 import { IconRail, type IconRailItem } from "@/components/ui/icon-rail";
@@ -25,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { supportsNativePrivacy } from "@/lib/nativePrivacy";
 import { api, type CurrentUser } from "@/lib/api";
 import { validatePasswordChange, type PasswordChangeDraft } from "@/pages/accountSettings";
 import { CleanupPage } from "@/pages/CleanupPage";
@@ -531,6 +537,7 @@ export function SettingsPage({
                 </SettingsSection>
               </form>
               <PlaybackSourcePreferences userId={user.id} />
+              {supportsNativePrivacy() && <DevicePrivacyPreferences />}
               <UserPreferencePanels userId={user.id} section="playback" readOnly={readOnly} />
             </div>
           )}
