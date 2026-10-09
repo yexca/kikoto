@@ -60,6 +60,9 @@ test("recovery validates history generation before sending old history", async (
   await seedPlayer(page, persistedTrack, 1);
   await page.goto("/");
   await expect.poll(async () => (await readOutbox(page))?.generation).toBe(0);
+  // Seed the outbox from a static same-origin page. A live app that already
+  // verified generation 0 would legitimately flush it on pagehide.
+  await page.goto("/offline.html");
   await page.evaluate(async () => {
     const request = indexedDB.open("kikoto-playback-reports", 1);
     const db = await new Promise<IDBDatabase>((resolve) => {
@@ -116,7 +119,7 @@ test("recovery validates history generation before sending old history", async (
     reports.push(report);
     return route.fulfill({ json: playbackReportResultFixture(report, 1) });
   });
-  await page.reload();
+  await page.goto("/");
   await expect.poll(() => reports.length).toBe(1);
   expect(reports[0].history).toEqual([]);
   expect(reports[0].progress[0].positionSeconds).toBe(20);

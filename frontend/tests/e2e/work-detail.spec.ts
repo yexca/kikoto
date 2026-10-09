@@ -10,6 +10,7 @@ import {
   silentWav,
 } from "./fixtures/player-library";
 import type { LocalMediaRefreshResult, MaintenanceWorkPage, Work, WorkTranslation } from "../../src/lib/api";
+import type { PlaybackReport } from "../../src/lib/playbackReportApi";
 import {
   mediaItemFixture,
   mediaLocationFixture,
@@ -19,6 +20,7 @@ import {
   workflowRunDetailFixture,
   workflowRunFixture,
 } from "./fixtures/api";
+import { playbackReportResultFixture } from "./fixtures/playback-reports";
 
 test("selected metadata title and introduction follow playback without changing directory edition", async ({
   page,
@@ -864,20 +866,10 @@ for (const update of ["progress save", "directory refresh", "cancelled directory
       });
     });
     let saves = 0;
-    await page.route("**/api/media-items/1/progress", (route) => {
-      saves += 1;
-      return route.fulfill({
-        json: {
-          workId: 1,
-          mediaWorkId: 1,
-          mediaItemId: 1,
-          fileSourceId: 1,
-          locationId: 1,
-          locationType: "local",
-          ...route.request().postDataJSON(),
-          lastPlayedAt: "2026-01-01T00:00:00Z",
-        },
-      });
+    await page.route("**/api/playback-reports", (route) => {
+      const report = route.request().postDataJSON() as PlaybackReport;
+      saves += report.progress.filter((body) => body.mediaItemId === 1).length;
+      return route.fulfill({ json: playbackReportResultFixture(report) });
     });
     let releaseEdition!: () => void;
     const editionGate = new Promise<void>((resolve) => {
