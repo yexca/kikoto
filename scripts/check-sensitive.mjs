@@ -440,6 +440,12 @@ function isAllowedIPv4(value) {
 }
 
 function parseURL(candidate) {
+  // A Markdown link target ends at the first unmatched ")", even when text
+  // without a separating space, such as CJK prose, follows it.
+  const closing = candidate.indexOf(")");
+  if (closing >= 0 && !candidate.slice(0, closing).includes("(")) {
+    candidate = candidate.slice(0, closing);
+  }
   const normalized = candidate
     .replace(/\$\([^)]+\)/gu, "0")
     .replace(/\$\{[^}]+\}/gu, "placeholder")
