@@ -34,6 +34,24 @@ public class KikotoLyricsPictureInPicturePlugin: CAPPlugin, CAPBridgedPlugin {
         return presenter
     }()
 
+    override public func load() {
+        // Screen recordings and mirrored displays would show the floating window.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenCaptureDidBegin),
+            name: KikotoPrivacyShield.screenCaptureDidBegin,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func screenCaptureDidBegin() {
+        presenter.close()
+    }
+
     @objc func status(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             call.resolve(["supported": KikotoLyricsPictureInPicture.isSupported, "permitted": true])

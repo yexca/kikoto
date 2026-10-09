@@ -530,10 +530,16 @@ export const englishResource = {
         devicePrivacyDescription: "These choices apply to every account on this device and take effect immediately.",
         hideMediaDetails: "Hide track details from system controls",
         hideMediaDetailsDescription:
-          "The lock screen, Control Center, and media notifications show Kikoto instead of the track, circle, and cover.",
+          "The lock screen, Control Center, media notifications, and screen lyrics show Kikoto instead of the track, circle, and cover.",
         appSwitcherBlur: "Blur in the background",
         appSwitcherBlurDescription:
           "Blurs Kikoto in the app switcher and whenever another screen, such as Control Center, covers it. On by default.",
+        speakerGuard: "Ask before playing through the speaker",
+        speakerGuardDescription:
+          "Starting playback without headphones or another audio device asks first, so nothing plays out loud by accident. On by default.",
+        screenCaptureCover: "Hide while the screen is recorded or mirrored",
+        screenCaptureCoverDescription:
+          "Covers Kikoto and closes screen lyrics while a screen recording, AirPlay mirroring, or another capture is active. On by default.",
         displayName: "Display name",
         username: "Username",
         role: "Role",

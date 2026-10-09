@@ -36,6 +36,8 @@ function createPlaybackRefs() {
     playbackErrorAbortRef: { current: null as AbortController | null },
     playbackErrorHandlerRef: { current: () => {} },
     nativeMediaSyncRef: { current: () => {} },
+    /** Asked before a paused player starts; false holds the start, such as one that would use the speaker. */
+    playbackStartGuardRef: { current: (): boolean => true },
   };
 }
 
@@ -84,6 +86,7 @@ export function usePlaybackEngine(queue: PlayerTrack[], currentIndex: number) {
   const updatePlayingState = useCallback(
     (next: PlayingStateUpdate) => {
       const resolved = typeof next === "function" ? next(refs.isPlayingRef.current) : next;
+      if (resolved && !refs.isPlayingRef.current && !refs.playbackStartGuardRef.current()) return;
       if (resolved) cancelPlaybackErrorCheck();
       refs.isPlayingRef.current = resolved;
       setIsPlaying(resolved);

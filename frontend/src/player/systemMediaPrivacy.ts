@@ -3,9 +3,10 @@ import { useEffect, useState } from "react";
 import type { PlayerTrack } from "./playerTypes";
 
 /**
- * Whether the lock screen, Control Center, and media notifications show only
- * the app name. The choice belongs to the device rather than an account, so a
- * different sign-in cannot expose the track. Off by default.
+ * Whether the lock screen, Control Center, media notifications, and floating
+ * screen lyrics show only the app name. The choice belongs to the device
+ * rather than an account, so a different sign-in cannot expose the track. Off
+ * by default.
  */
 export const SYSTEM_MEDIA_DETAILS_HIDDEN_STORAGE_KEY = "kikoto:system-media-details-hidden:v1";
 export const SYSTEM_MEDIA_PRIVACY_CHANGE_EVENT = "kikoto:system-media-privacy-change";
@@ -64,4 +65,11 @@ export function systemMediaDetails(track: PlayerTrack, hidden: boolean): SystemM
     album: track.workTitle || track.workCode || APP_NAME,
     coverUrl: track.coverUrl,
   };
+}
+
+/** The title and subtitle a floating screen lyrics window shows next to the lyric lines. */
+export function screenLyricsLabels(track: PlayerTrack | null, hidden: boolean) {
+  if (!track) return { title: "", subtitle: "" };
+  if (hidden) return { title: APP_NAME, subtitle: "" };
+  return { title: track.title, subtitle: track.circle || track.workTitle || "" };
 }

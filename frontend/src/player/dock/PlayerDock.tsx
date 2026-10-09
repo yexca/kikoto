@@ -5,6 +5,7 @@ import { usePlayer, usePlayerTime } from "@/player/PlayerProvider";
 import { persistDockMode, restoreDockMode } from "@/player/playerPersistence";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
 import { useScreenLyrics, useScreenLyricsSync, type ScreenLyricsController } from "@/player/screenLyrics";
+import { screenLyricsLabels, useSystemMediaDetailsHidden } from "@/player/systemMediaPrivacy";
 
 import { CompactPlayer } from "./CompactPlayer";
 import { FullPlayer } from "./FullPlayer";
@@ -117,12 +118,13 @@ function ScreenLyricsSync({
 }) {
   const { currentTime } = usePlayerTime();
   const activeIndex = useActiveLyricIndex(lines);
+  const detailsHidden = useSystemMediaDetailsHidden();
   const portal = useScreenLyricsSync(
     screenLyrics,
     {
-      trackKey: `${track?.queueItemId ?? track?.locationId ?? ""}:${activeLyricsLocationId ?? ""}`,
-      title: track?.title ?? "",
-      subtitle: track?.circle || track?.workTitle || "",
+      // Changing what the window may show sends the native window its new title.
+      trackKey: `${track?.queueItemId ?? track?.locationId ?? ""}:${activeLyricsLocationId ?? ""}:${detailsHidden ? "private" : ""}`,
+      ...screenLyricsLabels(track, detailsHidden),
       lines,
       activeIndex,
       currentTime,

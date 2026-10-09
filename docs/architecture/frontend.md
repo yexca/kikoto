@@ -381,12 +381,21 @@ volatile queue with a diagnostic and a normal network loss window of up to
   is configured, because Keychain items outlive app removal.
 - System media surfaces (the browser and iOS Media Session and the Android
   media notification) take their text and artwork from `systemMediaDetails`,
-  which shows only the app name while the device-wide hide-details choice is
-  on. The iOS shell's app-local privacy plugin covers the scene with a blur
-  window while it is inactive; the choice lives in native defaults so the cover
-  applies without a web round trip. The same plugin pauses page media when the
+  and floating screen lyrics take their title from `screenLyricsLabels`; both
+  show only the app name while the device-wide hide-details choice is on.
+- The iOS shell's app-local privacy plugin covers the scene with a blur window
+  while it is inactive and while its scene capture state is active (screen
+  recording or mirroring). Both choices live in native defaults so the cover
+  applies without a web round trip; a capture that begins also closes the
+  Picture-in-Picture lyrics window. The same plugin pauses page media when the
   audio route loses its output device, as Android does on
-  `ACTION_AUDIO_BECOMING_NOISY`, and reports it so the player records a pause.
+  `ACTION_AUDIO_BECOMING_NOISY`, and reports every route change with whether
+  the device speaker is the output.
+- The playback engine asks `playbackStartGuardRef` before a paused player
+  starts. The speaker guard (`player/speakerGuard`) holds a start while the
+  reported output is the device speaker and opens a confirmation; a confirmed
+  start allows the speaker until the output moves to another device. Shells
+  that do not report their output never hold a start.
 - Treat bottom navigation, safe areas, Compact player placement, page clearance,
   and update notices as one fixed-surface layout contract.
 - Size mobile search and modal layers against the visual viewport. The frontend

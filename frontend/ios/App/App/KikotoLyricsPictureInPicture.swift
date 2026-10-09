@@ -103,6 +103,17 @@ final class KikotoLyricsPictureInPicture: NSObject {
         renderIfNeeded()
     }
 
+    /// Closes Picture-in-Picture on the app's own initiative and reports it
+    /// like a close from the window.
+    func close() {
+        guard let controller else { return }
+        if controller.isPictureInPictureActive {
+            controller.stopPictureInPicture()
+        } else {
+            finish()
+        }
+    }
+
     /// Closes Picture-in-Picture for the web app without reporting it back.
     func hide() {
         if let controller, controller.isPictureInPictureActive {

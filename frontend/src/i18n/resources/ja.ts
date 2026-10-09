@@ -861,10 +861,16 @@ export const japaneseResource = {
         devicePrivacyDescription: "これらの設定はこのデバイスのすべてのアカウントに適用され、すぐに反映されます。",
         hideMediaDetails: "システムのメディア表示でトラック情報を隠す",
         hideMediaDetailsDescription:
-          "ロック画面、コントロールセンター、メディア通知には、トラック、サークル、カバーの代わりに Kikoto と表示します。",
+          "ロック画面、コントロールセンター、メディア通知、画面歌詞には、トラック、サークル、カバーの代わりに Kikoto と表示します。",
         appSwitcherBlur: "バックグラウンドでぼかす",
         appSwitcherBlurDescription:
           "Appスイッチャーや、コントロールセンターなどの画面が重なっているときに Kikoto をぼかします。初期設定はオンです。",
+        speakerGuard: "スピーカーで再生する前に確認する",
+        speakerGuardDescription:
+          "ヘッドホンなどのオーディオ機器が接続されていないときは、再生を始める前に確認し、意図せず音が出るのを防ぎます。初期設定はオンです。",
+        screenCaptureCover: "画面収録やミラーリング中は隠す",
+        screenCaptureCoverDescription:
+          "画面収録、AirPlay ミラーリングなどの画面キャプチャ中は Kikoto を覆い、画面歌詞を閉じます。初期設定はオンです。",
         displayName: "表示名",
         username: "ユーザー名",
         role: "ロール",

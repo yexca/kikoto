@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PlayerTrack } from "./playerTypes";
-import { systemMediaDetails } from "./systemMediaPrivacy";
+import { screenLyricsLabels, systemMediaDetails } from "./systemMediaPrivacy";
 
 const track = {
   title: "Track 01",
@@ -23,5 +23,11 @@ describe("system media details", () => {
 
   it("shows only the app name when details are hidden", () => {
     expect(systemMediaDetails(track, true)).toEqual({ title: "Kikoto", artist: "", album: "", coverUrl: "" });
+  });
+
+  it("keeps the track title out of screen lyrics when details are hidden", () => {
+    expect(screenLyricsLabels(track, false)).toEqual({ title: "Track 01", subtitle: "Synthetic Circle" });
+    expect(screenLyricsLabels(track, true)).toEqual({ title: "Kikoto", subtitle: "" });
+    expect(screenLyricsLabels(null, true)).toEqual({ title: "", subtitle: "" });
   });
 });

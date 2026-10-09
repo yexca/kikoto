@@ -201,6 +201,6 @@ local or cached playback.
 
 ## Sleep and headphone privacy
 
-Sleep timers can rewind 0–120 minutes after pausing, clamped to the start of the current track. The same applies when finishing the track; Resume uses the rewound position. The preference is stored per server and account on the device. The Android and iOS apps pause when headphones or another external audio output disconnect, including in the background, and do not resume automatically on reconnection. To keep track details off the lock screen and out of the app switcher, see **Privacy on this device** in [Settings](settings.md).
+Sleep timers can rewind 0–120 minutes after pausing, clamped to the start of the current track. The same applies when finishing the track; Resume uses the rewound position. The preference is stored per server and account on the device. The Android and iOS apps pause when headphones or another external audio output disconnect, including in the background, and do not resume automatically on reconnection. The iOS app also asks before starting playback through the device speaker. To change that, or to keep track details off the lock screen and out of the app switcher, see **Privacy on this device** in [Settings](settings.md).
 
 See [Personal data](personal-data.md) for durable listening history and transfer.

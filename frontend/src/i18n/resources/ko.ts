@@ -849,10 +849,17 @@ export const koreanResource = {
         devicePrivacy: "이 기기의 개인정보 보호",
         devicePrivacyDescription: "이 설정은 이 기기의 모든 계정에 적용되며 즉시 반영됩니다.",
         hideMediaDetails: "시스템 미디어 컨트롤에서 트랙 정보 숨기기",
-        hideMediaDetailsDescription: "잠금 화면, 제어 센터, 미디어 알림에 트랙, 서클, 커버 대신 Kikoto만 표시합니다.",
+        hideMediaDetailsDescription:
+          "잠금 화면, 제어 센터, 미디어 알림, 화면 가사에 트랙, 서클, 커버 대신 Kikoto만 표시합니다.",
         appSwitcherBlur: "백그라운드에서 흐리게 표시",
         appSwitcherBlurDescription:
           "앱 전환기에서, 그리고 제어 센터 등이 화면을 가릴 때 Kikoto를 흐리게 표시합니다. 기본값은 켜짐입니다.",
+        speakerGuard: "스피커로 재생하기 전에 확인",
+        speakerGuardDescription:
+          "헤드폰이나 다른 오디오 기기가 연결되어 있지 않으면 재생을 시작하기 전에 확인하여 의도치 않게 소리가 나오지 않게 합니다. 기본값은 켜짐입니다.",
+        screenCaptureCover: "화면 녹화나 미러링 중 숨기기",
+        screenCaptureCoverDescription:
+          "화면 녹화, AirPlay 미러링 등 화면 캡처가 진행되는 동안 Kikoto를 가리고 화면 가사를 닫습니다. 기본값은 켜짐입니다.",
         displayName: "표시 이름",
         username: "사용자 이름",
         role: "역할",

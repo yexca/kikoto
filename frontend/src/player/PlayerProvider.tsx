@@ -31,6 +31,8 @@ import { usePlayerQueueActions } from "./usePlayerQueueActions";
 import { usePersistPlayerQueue, useRestoredPlayerQueue, useRestoredQueueRevalidation } from "./usePlayerQueueStorage";
 import { usePlaybackSeekPreferences, usePlayerSeeking } from "./usePlayerSeeking";
 import { useRemoteStreamCaching } from "./useRemoteStreamCaching";
+import { SpeakerGuardDialog } from "./SpeakerGuardDialog";
+import { useSpeakerGuard } from "./speakerGuard";
 import { useSleepRewindPreference, useSleepTimer } from "./useSleepTimer";
 import { useBrowserMediaSession, useNativeMediaBridge } from "./useSystemMediaControls";
 
@@ -235,6 +237,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     [hasTrack, updatePlayingState],
   );
   const pause = useCallback(() => updatePlayingState(false), [updatePlayingState]);
+  const speakerGuard = useSpeakerGuard();
+  refs.playbackStartGuardRef.current = speakerGuard.allowsStart;
+  const { allowSpeaker } = speakerGuard;
+  const playThroughSpeaker = useCallback(() => {
+    allowSpeaker();
+    play();
+  }, [allowSpeaker, play]);
   const togglePlay = useCallback(
     () => updatePlayingState((value) => (hasTrack ? !value : false)),
     [hasTrack, updatePlayingState],
@@ -416,6 +425,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       <PlayerContext.Provider value={value}>
         <PlayerTimeContext.Provider value={timeValue}>{children}</PlayerTimeContext.Provider>
         <audio ref={refs.audioRef} preload="metadata" {...audioEvents} />
+        {speakerGuard.prompting && <SpeakerGuardDialog onPlay={playThroughSpeaker} onCancel={speakerGuard.dismiss} />}
       </PlayerContext.Provider>
     </LibraryPlayerContext.Provider>
   );
