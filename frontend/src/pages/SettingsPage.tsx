@@ -1,4 +1,9 @@
-import { PlaybackSourcePreferences, RecommendationActivity, UserPreferencePanels } from "@/features/preferences";
+import {
+  DevicePrivacyPreferences,
+  PlaybackSourcePreferences,
+  RecommendationActivity,
+  UserPreferencePanels,
+} from "@/features/preferences";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { SettingsNumberInput, SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 import { IconRail, type IconRailItem } from "@/components/ui/icon-rail";
@@ -531,6 +536,7 @@ export function SettingsPage({
                 </SettingsSection>
               </form>
               <PlaybackSourcePreferences userId={user.id} />
+              <DevicePrivacyPreferences />
               <UserPreferencePanels userId={user.id} section="playback" readOnly={readOnly} />
             </div>
           )}

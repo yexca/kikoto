@@ -32,13 +32,20 @@ password is reset from the server host; see
 ## Playback, History, And Recommendations
 
 - **Playback** contains the backward and forward seek intervals, **Playback
-  sources**, and **Folder preference**. Seek intervals default to 10 and 30
+  sources**, **Privacy on this device**, and **Folder preference**. Seek intervals default to 10 and 30
   seconds and accept whole-second values from 1 through 300.
 - **Playback sources**: **Quick source switching** makes the Now Playing
   source label a menu for choosing another location of the current track, and
   **Switch sources on failure** lets a failed location continue from the
   track's next available location. Both are off by default and apply
   immediately.
+- **Privacy on this device**: **Hide track details from system controls**
+  makes the lock screen, Control Center, and media notifications show Kikoto
+  instead of the track, circle, and cover; it is off by default. The iOS app
+  also offers **Blur in the background**, on by default, which blurs Kikoto in
+  the app switcher and whenever Control Center, Notification Center, or another
+  system screen covers it. Both choices belong to the device rather than an
+  account and apply immediately.
 - **Folder preference** holds ordered folder matching and exclusion rules.
   Saving updates subsequent directory selection without stopping the player.
 - **History** shows the listening report (30 days, 12 months, or all time) and

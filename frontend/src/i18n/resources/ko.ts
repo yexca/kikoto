@@ -846,6 +846,13 @@ export const koreanResource = {
         sourceFallback: "실패 시 다른 소스로 전환",
         sourceFallbackDescription:
           "현재 위치에서 재생에 실패하면 멈추지 않고 트랙의 다음 사용 가능한 위치에서 계속 재생합니다.",
+        devicePrivacy: "이 기기의 개인정보 보호",
+        devicePrivacyDescription: "이 설정은 이 기기의 모든 계정에 적용되며 즉시 반영됩니다.",
+        hideMediaDetails: "시스템 미디어 컨트롤에서 트랙 정보 숨기기",
+        hideMediaDetailsDescription: "잠금 화면, 제어 센터, 미디어 알림에 트랙, 서클, 커버 대신 Kikoto만 표시합니다.",
+        appSwitcherBlur: "백그라운드에서 흐리게 표시",
+        appSwitcherBlurDescription:
+          "앱 전환기에서, 그리고 제어 센터 등이 화면을 가릴 때 Kikoto를 흐리게 표시합니다. 기본값은 켜짐입니다.",
         displayName: "표시 이름",
         username: "사용자 이름",
         role: "역할",

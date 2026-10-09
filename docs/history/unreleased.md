@@ -1,5 +1,14 @@
 # Unreleased
 
+- The iOS app blurs itself in the app switcher and under system screens such as
+  Control Center. The blur is on by default and switchable under Settings ->
+  Playback -> **Privacy on this device**. The iOS app pauses when headphones or
+  another external audio output disconnect, and keeps its session in the
+  Keychain with this-device-only access instead of app preferences and WebView
+  storage; an existing session moves to the Keychain on the next launch. Every
+  client can hide track details from the lock screen, Control Center, and media
+  notifications.
+
 - The release workflow builds an unsigned iOS IPA on a macOS runner alongside
   the signed APK and attaches it to the GitHub Release as
   `kikoto-<version>-unsigned.ipa`. The draft is published only after the image,

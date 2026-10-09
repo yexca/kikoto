@@ -49,7 +49,7 @@ Kikoto does not currently provide application-level encryption at rest. Host
 filesystem permissions, disk encryption, backup controls, and container access
 protect stored data.
 
-## Browser and Android Data
+## Browser and Mobile App Data
 
 The browser stores presentation and continuity state such as theme, layout,
 player Dock mode, scoped browse restoration, and a validated playback queue.
@@ -64,8 +64,11 @@ recovery behavior are described in
 [Playback reports](docs/architecture/frontend.md#playback-reports).
 
 The Android client stores the configured server address and a bearer session in
-the app's private preferences. Clearing the configured server clears the stored
-session. Recent Android diagnostics are kept in memory until the app process
+the app's private preferences. The iOS client stores the configured server
+address in its app preferences and the bearer session in the Keychain, readable
+after the first unlock and never restored from a backup or moved to another
+device. Neither app keeps the session in WebView storage. Clearing the
+configured server clears the stored session. Recent Android diagnostics are kept in memory until the app process
 ends and are exported only when the user chooses to copy them.
 
 ## Anonymous Library Access

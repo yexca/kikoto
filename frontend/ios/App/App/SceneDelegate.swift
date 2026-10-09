@@ -14,6 +14,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
     }
 
+    func sceneWillResignActive(_ scene: UIScene) {
+        // Resigning active precedes the app switcher gesture and its snapshot.
+        guard let windowScene = scene as? UIWindowScene else { return }
+        KikotoPrivacyShield.shared.cover(windowScene)
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        KikotoPrivacyShield.shared.uncover()
+    }
+
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         SceneDelegateProxy.shared.scene(scene, openURLContexts: URLContexts)
     }

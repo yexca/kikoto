@@ -526,6 +526,14 @@ export const englishResource = {
         sourceFallback: "Switch sources on failure",
         sourceFallbackDescription:
           "When the current location fails, continue from the track's next available location instead of stopping.",
+        devicePrivacy: "Privacy on this device",
+        devicePrivacyDescription: "These choices apply to every account on this device and take effect immediately.",
+        hideMediaDetails: "Hide track details from system controls",
+        hideMediaDetailsDescription:
+          "The lock screen, Control Center, and media notifications show Kikoto instead of the track, circle, and cover.",
+        appSwitcherBlur: "Blur in the background",
+        appSwitcherBlurDescription:
+          "Blurs Kikoto in the app switcher and whenever another screen, such as Control Center, covers it. On by default.",
         displayName: "Display name",
         username: "Username",
         role: "Role",

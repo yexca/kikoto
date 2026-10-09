@@ -2,11 +2,13 @@ import { useCallback, useEffect, type RefObject } from "react";
 
 import { assetURL } from "@/lib/api";
 import { addNativeMediaListeners, stopNativeMedia, supportsNativeMedia, updateNativeMedia } from "@/lib/nativeMedia";
+import { addNativeAudioOutputLostListener } from "@/lib/nativePrivacy";
 
 import type { PlaybackSeekPreferences } from "./playbackPreferences";
 import { NATIVE_MEDIA_POSITION_INTERVAL_MS } from "./playerProgress";
 import { bindMediaSessionActions, type PlayerRemoteControls } from "./playerRemoteControls";
 import type { PlayerTrack } from "./playerTypes";
+import { systemMediaDetails, useSystemMediaDetailsHidden } from "./systemMediaPrivacy";
 import type { PlaybackRefs } from "./usePlaybackEngine";
 
 function absoluteAssetURL(path: string) {
@@ -41,6 +43,7 @@ export function useNativeMediaBridge({
   canNext: boolean;
   seekPreferences: PlaybackSeekPreferences;
 }) {
+  const detailsHidden = useSystemMediaDetailsHidden();
   useEffect(() => {
     if (!supportsNativeMedia()) return;
     let removeListeners: (() => void) | null = null;
@@ -97,11 +100,10 @@ export function useNativeMediaBridge({
     const durationMs = durationSeconds ? Math.floor(durationSeconds * 1000) : 0;
     const positionSeconds = refs.audioRef.current?.currentTime ?? 0;
     const positionMs = Math.min(Math.max(0, Math.floor(positionSeconds * 1000)), durationMs || Number.MAX_SAFE_INTEGER);
+    const details = systemMediaDetails(currentTrack, detailsHidden);
     void updateNativeMedia({
-      title: currentTrack.title || currentTrack.workTitle || "Kikoto",
-      artist: currentTrack.circle || currentTrack.workTitle || "Kikoto",
-      album: currentTrack.workTitle || currentTrack.workCode || "Kikoto",
-      coverUrl: currentTrack.coverUrl ? absoluteAssetURL(currentTrack.coverUrl) : "",
+      ...details,
+      coverUrl: details.coverUrl ? absoluteAssetURL(details.coverUrl) : "",
       playing: isPlaying,
       positionMs,
       durationMs,
@@ -115,6 +117,7 @@ export function useNativeMediaBridge({
     canNext,
     canPrevious,
     currentTrack,
+    detailsHidden,
     duration,
     durationLocationId,
     isPlaying,
@@ -150,8 +153,9 @@ export function useNativeMediaBridge({
 }
 
 /**
- * The browser Media Session (lock screen, headset keys, OS media overlay). A
- * native build owns these controls through its own notification instead.
+ * The browser Media Session (lock screen, headset keys, OS media overlay),
+ * also used by the iOS shell. A native build with its own media notification
+ * owns these controls instead.
  */
 export function useBrowserMediaSession({
   controlsRef,
@@ -168,15 +172,32 @@ export function useBrowserMediaSession({
   duration: number;
   playbackRate: number;
 }) {
-  const hasTrack = currentTrack !== null;
-  const title = currentTrack?.title ?? "";
-  const workTitle = currentTrack?.workTitle ?? "";
-  const circle = currentTrack?.circle ?? "";
-  const coverUrl = currentTrack?.coverUrl ?? "";
+  const detailsHidden = useSystemMediaDetailsHidden();
+  const details = currentTrack ? systemMediaDetails(currentTrack, detailsHidden) : null;
+  const title = details?.title ?? "";
+  const artist = details?.artist ?? "";
+  const album = details?.album ?? "";
+  const coverUrl = details?.coverUrl ?? "";
+  const hasTrack = details !== null;
 
   useEffect(() => {
     if (supportsNativeMedia() || !("mediaSession" in navigator)) return;
     return bindMediaSessionActions(navigator.mediaSession, () => controlsRef.current);
+  }, [controlsRef]);
+
+  // The iOS shell reports a lost audio output, such as disconnected
+  // headphones, so playback pauses instead of moving to the speaker.
+  useEffect(() => {
+    let removeListener: (() => void) | null = null;
+    let disposed = false;
+    void addNativeAudioOutputLostListener(() => controlsRef.current.pause()).then((remove) => {
+      if (disposed) remove();
+      else removeListener = remove;
+    });
+    return () => {
+      disposed = true;
+      removeListener?.();
+    };
   }, [controlsRef]);
 
   useEffect(() => {
@@ -184,12 +205,12 @@ export function useBrowserMediaSession({
     navigator.mediaSession.metadata = hasTrack
       ? new MediaMetadata({
           title,
-          artist: circle || workTitle,
-          album: workTitle,
+          artist,
+          album,
           artwork: coverUrl ? [{ src: absoluteAssetURL(coverUrl) }] : [],
         })
       : null;
-  }, [circle, coverUrl, hasTrack, title, workTitle]);
+  }, [album, artist, coverUrl, hasTrack, title]);
 
   useEffect(() => {
     if (supportsNativeMedia() || !("mediaSession" in navigator)) return;

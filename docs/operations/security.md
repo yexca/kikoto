@@ -200,7 +200,7 @@ browser origin differs from the API origin. Also list the public HTTPS origin
 when TLS terminates at a reverse proxy and the proxy connects to Kikoto over
 HTTP. Do not use an open or reflected origin policy at the proxy.
 
-## HTTPS and Android
+## HTTPS and Mobile Apps
 
 The Android client permits cleartext HTTP for trusted local-NAS deployments and
 stores a bearer session for the configured server. Use HTTPS or a trusted VPN
@@ -208,6 +208,10 @@ across shared, wireless, or public networks. Clearing the configured server in
 the app also clears its stored session. The app opts out of Android cloud
 backup and device-to-device transfer, so that session stays on the device; a
 restored or transferred install signs in again.
+
+The iOS client also permits cleartext HTTP. It keeps its bearer session in the
+Keychain with this-device-only access, so a backup restore or a new device
+signs in again.
 
 ## Runtime Secrets and Private Data
 

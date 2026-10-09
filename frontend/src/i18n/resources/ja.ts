@@ -857,6 +857,14 @@ export const japaneseResource = {
         sourceFallback: "失敗時に別のソースへ切り替え",
         sourceFallbackDescription:
           "現在の場所で再生に失敗したとき、停止せずにトラックの次に利用できる場所で再生を続けます。",
+        devicePrivacy: "このデバイスのプライバシー",
+        devicePrivacyDescription: "これらの設定はこのデバイスのすべてのアカウントに適用され、すぐに反映されます。",
+        hideMediaDetails: "システムのメディア表示でトラック情報を隠す",
+        hideMediaDetailsDescription:
+          "ロック画面、コントロールセンター、メディア通知には、トラック、サークル、カバーの代わりに Kikoto と表示します。",
+        appSwitcherBlur: "バックグラウンドでぼかす",
+        appSwitcherBlurDescription:
+          "Appスイッチャーや、コントロールセンターなどの画面が重なっているときに Kikoto をぼかします。初期設定はオンです。",
         displayName: "表示名",
         username: "ユーザー名",
         role: "ロール",

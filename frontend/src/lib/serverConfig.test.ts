@@ -6,6 +6,9 @@ const preferenceSet = vi.hoisted(() => vi.fn());
 const preferenceRemove = vi.hoisted(() => vi.fn());
 const clearNativeAssetTransport = vi.hoisted(() => vi.fn());
 const configureNativeAssetTransport = vi.hoisted(() => vi.fn());
+const readNativeSessionCredential = vi.hoisted(() => vi.fn());
+const writeNativeSessionCredential = vi.hoisted(() => vi.fn());
+const clearNativeSessionCredential = vi.hoisted(() => vi.fn());
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: nativePlatform },
@@ -18,6 +21,11 @@ vi.mock("@capacitor/preferences", () => ({
   },
 }));
 vi.mock("@/lib/nativeAssetTransport", () => ({ clearNativeAssetTransport, configureNativeAssetTransport }));
+vi.mock("@/lib/nativeSessionCredential", () => ({
+  clearNativeSessionCredential,
+  readNativeSessionCredential,
+  writeNativeSessionCredential,
+}));
 
 import {
   clearStoredServerURL,
@@ -57,6 +65,12 @@ describe("mobile server configuration", () => {
     clearNativeAssetTransport.mockResolvedValue(undefined);
     configureNativeAssetTransport.mockReset();
     configureNativeAssetTransport.mockResolvedValue(undefined);
+    readNativeSessionCredential.mockReset();
+    readNativeSessionCredential.mockResolvedValue("");
+    writeNativeSessionCredential.mockReset();
+    writeNativeSessionCredential.mockResolvedValue(undefined);
+    clearNativeSessionCredential.mockReset();
+    clearNativeSessionCredential.mockResolvedValue(undefined);
     vi.stubGlobal("localStorage", memoryStorage());
   });
 
@@ -91,11 +105,10 @@ describe("mobile server configuration", () => {
     await clearStoredSessionToken();
   });
 
-  it("synchronizes native preferences during writes, clears, and hydration", async () => {
+  it("keeps the native session in its credential store and never in WebView storage", async () => {
     nativePlatform.mockReturnValue(true);
-    preferenceGet.mockImplementation(async ({ key }: { key: string }) => ({
-      value: key.endsWith("url") ? "https://native.example.invalid" : "native-token",
-    }));
+    preferenceGet.mockResolvedValue({ value: "https://native.example.invalid" });
+    readNativeSessionCredential.mockResolvedValue("native-token");
 
     await setStoredServerURL("https://source.example.invalid");
     await setStoredSessionToken("synthetic-token");
@@ -103,18 +116,34 @@ describe("mobile server configuration", () => {
       key: "kikoto:mobile-server-url",
       value: "https://source.example.invalid",
     });
-    expect(preferenceSet).toHaveBeenCalledWith({ key: "kikoto:mobile-session-token", value: "synthetic-token" });
+    expect(writeNativeSessionCredential).toHaveBeenCalledWith("synthetic-token");
+    expect(getStoredSessionToken()).toBe("synthetic-token");
+    expect(localStorage.getItem("kikoto:mobile-session-token")).toBeNull();
 
     await clearStoredServerURL();
     expect(preferenceRemove).toHaveBeenCalledWith({ key: "kikoto:mobile-server-url" });
-    expect(preferenceRemove).toHaveBeenCalledWith({ key: "kikoto:mobile-session-token" });
+    expect(clearNativeSessionCredential).toHaveBeenCalled();
+    expect(getStoredSessionToken()).toBe("");
 
+    localStorage.setItem("kikoto:mobile-session-token", "webview-token");
     await hydrateNativeConfig();
     expect(getStoredServerURL()).toBe("https://native.example.invalid");
     expect(getStoredSessionToken()).toBe("native-token");
-    expect(preferenceGet).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem("kikoto:mobile-session-token")).toBeNull();
     expect(configureNativeAssetTransport).toHaveBeenLastCalledWith("https://native.example.invalid", "native-token");
     expect(clearNativeAssetTransport).toHaveBeenCalled();
+  });
+
+  it("removes a stored native session that has no configured server", async () => {
+    nativePlatform.mockReturnValue(true);
+    preferenceGet.mockResolvedValue({ value: null });
+    readNativeSessionCredential.mockResolvedValue("orphaned-token");
+
+    await hydrateNativeConfig();
+
+    expect(getStoredSessionToken()).toBe("");
+    expect(clearNativeSessionCredential).toHaveBeenCalledOnce();
+    expect(clearNativeAssetTransport).toHaveBeenCalledOnce();
   });
 
   it("retains a session for the same server and clears it before switching instances", async () => {
@@ -127,7 +156,7 @@ describe("mobile server configuration", () => {
     expect(apiSessionVersion()).toBe(session);
 
     let releaseRemoval = () => {};
-    preferenceRemove.mockReturnValueOnce(
+    clearNativeSessionCredential.mockReturnValueOnce(
       new Promise<void>((resolve) => {
         releaseRemoval = resolve;
       }),
@@ -151,6 +180,6 @@ describe("mobile server configuration", () => {
 
     expect(getStoredServerURL()).toBe("https://source.example.invalid/second");
     expect(configureNativeAssetTransport).toHaveBeenLastCalledWith("https://source.example.invalid/second", "");
-    expect(preferenceRemove).toHaveBeenCalledWith({ key: "kikoto:mobile-session-token" });
+    expect(clearNativeSessionCredential).toHaveBeenCalled();
   });
 });

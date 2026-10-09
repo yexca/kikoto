@@ -373,6 +373,20 @@ volatile queue with a diagnostic and a normal network loss window of up to
   http(s) requests, so `assetURL` rewrites the same routes to the app-owned
   `kikoto-asset://asset` scheme on iOS, and the native handler re-validates
   each route and redirect hop before streaming from the configured origin.
+- Native shells hold the bearer session in memory and in a native credential
+  store, never in WebView storage (`lib/nativeSessionCredential`): the iOS
+  Keychain with after-first-unlock, this-device-only access, or Android's
+  private app preferences. iOS hydration moves a session found in app
+  preferences into the Keychain, and removes a Keychain session when no server
+  is configured, because Keychain items outlive app removal.
+- System media surfaces (the browser and iOS Media Session and the Android
+  media notification) take their text and artwork from `systemMediaDetails`,
+  which shows only the app name while the device-wide hide-details choice is
+  on. The iOS shell's app-local privacy plugin covers the scene with a blur
+  window while it is inactive; the choice lives in native defaults so the cover
+  applies without a web round trip. The same plugin pauses page media when the
+  audio route loses its output device, as Android does on
+  `ACTION_AUDIO_BECOMING_NOISY`, and reports it so the player records a pause.
 - Treat bottom navigation, safe areas, Compact player placement, page clearance,
   and update notices as one fixed-surface layout contract.
 - Size mobile search and modal layers against the visual viewport. The frontend
