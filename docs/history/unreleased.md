@@ -11,6 +11,10 @@
   it, and replace the advanced number fields with a proportional mix bar, a
   possible score range, and per-match step meters with sliders.
 
+- Demo visitors can choose the preferred metadata language in the account
+  menu. The choice stays in that browser, so one visitor's choice never changes
+  what another visitor sees.
+
 - Settings on wide screens can show its tabs as a row above the content
   instead of the side column, and the Settings and Metadata rails name their
   tabs by default; a choice saved earlier on the device is kept. On phones the
@@ -78,7 +82,12 @@
   about a fifth shorter, so a second row of works fits on screen. Wider cards
   keep their layout.
 
-- The **Check source health** workflow in Workflows -> Remote checks every
-  enabled remote source with an API endpoint and records whether it is healthy
-  or unavailable, as **Check health** does in source settings. It runs
-  manually or from Startup and interval triggers.
+- The **Check works on a source** workflow in Workflows -> Remote asks one
+  remote source whether library works exist there and records the result on
+  each work. It checks local library works or all works in the database, by
+  default only those without an available remote source, up to a chosen number
+  of works per run, starting with works the source has never checked. It first checks the
+  source's health and records nothing for works when the source is
+  unavailable. It runs manually or from Startup and interval triggers. It
+  replaces the non-runnable **Check source health** entry; **Check health** in
+  source settings is unchanged.

@@ -14,7 +14,6 @@ export type MetadataLanguageControl = {
   value: DlsiteMetadataLanguage | null;
   busy: boolean;
   failed: boolean;
-  readOnly: boolean;
   onChange: (value: DlsiteMetadataLanguage) => void | Promise<void>;
 };
 
@@ -66,7 +65,7 @@ export function LanguageControls({
         <AppearanceGroup label={t("appearance.metadataLanguage")}>
           <FloatingSelect
             value={metadataLanguage.value ?? "origin"}
-            disabled={metadataLanguage.readOnly || metadataLanguage.busy || metadataLanguage.value === null}
+            disabled={metadataLanguage.busy || metadataLanguage.value === null}
             ariaBusy={metadataLanguage.busy || (metadataLanguage.value === null && !metadataLanguage.failed)}
             ariaInvalid={metadataLanguage.failed}
             ariaLabel={t("appearance.metadataLanguage")}

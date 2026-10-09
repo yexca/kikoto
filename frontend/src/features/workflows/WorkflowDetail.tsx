@@ -10,7 +10,8 @@ import {
 import { DLsitePopularRunPanel, RemotePopularRunPanel } from "@/features/workflows/run-forms/PopularRunPanels";
 import { PresetRunPanel } from "@/features/workflows/run-forms/PresetRunPanel";
 import { RemoteFetchRunPanel } from "@/features/workflows/run-forms/RemoteFetchRunPanel";
-import { WorkflowRunButton, type RunFormLayout } from "@/features/workflows/RunOptionControls";
+import { SourcePresenceRunPanel } from "@/features/workflows/run-forms/SourcePresenceRunPanel";
+import type { RunFormLayout } from "@/features/workflows/RunOptionControls";
 import { isActiveRunStatus, isDemoShowcaseActiveRun } from "@/features/workflows/runPresentation";
 import { WorkflowAutomationPanel } from "@/features/workflows/triggers/WorkflowAutomationPanel";
 import { WorkflowDetailFrame } from "@/features/workflows/WorkflowDetailFrame";
@@ -124,18 +125,15 @@ export function WorkflowDetail({
         onRun={(localMediaIndexMode) => onRunSystemAction("local_media_index", { localMediaIndexMode })}
         onTriggerRunOptionsChange={onTriggerRunOptionsChange}
       />
-    ) : runKind === "source_health_check" && onRunSystemAction ? (
-      // The health check has no options, so Run sits in the header.
-      layout({
-        run: (
-          <WorkflowRunButton
-            running={running}
-            disabled={!allowed}
-            onClick={() => void onRunSystemAction("source_health_check")}
-          />
-        ),
-        options: null,
-      })
+    ) : runKind === "source_presence_check" && onRunSystemAction ? (
+      <SourcePresenceRunPanel
+        key={definition.code}
+        layout={layout}
+        running={running}
+        allowed={allowed}
+        onRun={(sourcePresence) => onRunSystemAction("source_presence_check", { sourcePresence })}
+        onTriggerRunOptionsChange={onTriggerRunOptionsChange}
+      />
     ) : runKind === "dlsite_popular" && onRunDLsitePopular ? (
       <DLsitePopularRunPanel
         key={definition.code}
@@ -221,7 +219,7 @@ export function WorkflowDetail({
             )}
           </div>
         </div>
-        {definition.code === "remote_popular_collection" && remoteSourceUnavailable && (
+        {remoteSourceUnavailable && remoteSourceRequiredCopy[definition.code] && (
           <div
             className="absolute inset-0 z-10 grid place-items-center rounded-lg bg-background/80 p-6 text-center backdrop-blur-sm"
             role="status"
@@ -229,8 +227,10 @@ export function WorkflowDetail({
             <div className="max-w-sm space-y-3 rounded-lg border bg-card/95 p-6 shadow-lg">
               <AlertCircle className="mx-auto h-8 w-8 text-warning-foreground" />
               <div>
-                <h4 className="font-semibold">{workflowCopy("remotePopularRequiresSource")}</h4>
-                <p className="mt-1 text-sm text-muted-foreground">{workflowCopy("remotePopularSourceHint")}</p>
+                <h4 className="font-semibold">{workflowCopy(remoteSourceRequiredCopy[definition.code].title)}</h4>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {workflowCopy(remoteSourceRequiredCopy[definition.code].hint)}
+                </p>
               </div>
               {onOpenRemoteSourceSettings && (
                 <Button variant="outline" onClick={onOpenRemoteSourceSettings}>
@@ -245,6 +245,12 @@ export function WorkflowDetail({
     </WorkflowDetailFrame>
   );
 }
+
+/** Workflows that cover their form with a prompt to configure a source while no compatible remote source is enabled. */
+const remoteSourceRequiredCopy: Record<string, { title: string; hint: string }> = {
+  remote_popular_collection: { title: "remotePopularRequiresSource", hint: "remotePopularSourceHint" },
+  source_presence_check: { title: "sourcePresenceRequiresSource", hint: "sourcePresenceSourceHint" },
+};
 
 /** A bordered surface for one configuration area of the selected workflow. */
 export function WorkflowPanel({ children, className = "" }: { children: ReactNode; className?: string }) {

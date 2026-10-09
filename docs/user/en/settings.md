@@ -80,7 +80,10 @@ stay visible for inspection even though the Demo identity is not an
 administrator, and every change in them is disabled. Appearance and playback
 controls remain available because theme mode, style, color, seek intervals, and
 playback source options are browser-local preferences and do not modify Demo
-server data. Playback preferences are isolated by server identity and
+server data. The UI language and the preferred metadata language also remain
+available: every Demo visitor shares one account, so Demo keeps both choices in
+that browser, and one visitor's choice never changes what another sees.
+Playback preferences are isolated by server identity and
 authenticated user, or by the anonymous principal when anonymous access is
 enabled.
 

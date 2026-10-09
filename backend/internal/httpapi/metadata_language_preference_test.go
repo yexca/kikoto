@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
 	"github.com/yexca/kikoto/backend/internal/metasync"
@@ -254,5 +255,84 @@ func TestViewerLanguageSelectsTitlesTagsAndEditionWithoutChangingStoredValues(t 
 	}
 	if storedTitle != "Synthetic original title" || storedTag != "合成日本語タグ" {
 		t.Fatalf("stored projection = %q / %q", storedTitle, storedTag)
+	}
+}
+
+// demoPreferenceLanguages requests the signed-in user's preferences through
+// the full route stack, optionally presenting a Demo language header.
+func demoPreferenceLanguages(t *testing.T, server *Server, header string) ([]string, *httptest.ResponseRecorder) {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodGet, "/api/auth/me/preferences", nil)
+	if header != "" {
+		request.Header.Set(demoMetadataLanguagesHeader, header)
+	}
+	response := httptest.NewRecorder()
+	server.Routes().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("preferences: %d %s", response.Code, response.Body.String())
+	}
+	var preferences userPreferences
+	if err := json.Unmarshal(response.Body.Bytes(), &preferences); err != nil {
+		t.Fatal(err)
+	}
+	return preferences.MetadataLanguages, response
+}
+
+// Demo visitors share one account, so each visitor's language arrives with
+// the request and the shared account never stores or supplies one.
+func TestDemoMetadataLanguageComesFromTheRequest(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{Mode: config.ModeDemo})
+	if err := server.BootstrapDemo(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var demoID int64
+	if err := db.QueryRow("SELECT id FROM user_account WHERE username = ?", account.DemoUsername).Scan(&demoID); err != nil {
+		t.Fatal(err)
+	}
+	setUserMetadataLanguages(t, db, demoID, `["ko-kr"]`)
+
+	got, response := demoPreferenceLanguages(t, server, "zh-cn")
+	if !reflect.DeepEqual(got, []string{"zh-cn", "origin"}) {
+		t.Fatalf("header languages = %v", got)
+	}
+	if !strings.Contains(strings.Join(response.Header().Values("Vary"), ","), demoMetadataLanguagesHeader) {
+		t.Fatalf("Vary = %v", response.Header().Values("Vary"))
+	}
+	for _, header := range []string{"", "xx-yy", "zh-cn,zh-cn", strings.Repeat("zh-cn,", 30)} {
+		if got, _ := demoPreferenceLanguages(t, server, header); got != nil {
+			t.Fatalf("header %q languages = %v, want none", header, got)
+		}
+	}
+
+	ctx := withDemoMetadataLanguages(context.WithValue(context.Background(), currentUserKey, currentUser{ID: demoID}), httptest.NewRequest(http.MethodGet, "/", nil))
+	if got := server.viewerMetadataLanguages(ctx); !reflect.DeepEqual(got, []string{"origin"}) {
+		t.Fatalf("headerless demo viewer = %v", got)
+	}
+
+	request := httptest.NewRequest(http.MethodPatch, "/api/auth/me/preferences", strings.NewReader(`{"metadataLanguages":["zh-cn"]}`))
+	patch := httptest.NewRecorder()
+	server.Routes().ServeHTTP(patch, request)
+	if patch.Code != http.StatusForbidden {
+		t.Fatalf("demo save: %d %s", patch.Code, patch.Body.String())
+	}
+}
+
+// Outside Demo the header is ignored and the stored choice applies.
+func TestMetadataLanguageHeaderIsIgnoredOutsideDemo(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{Mode: config.ModeDevelopment, RootUsername: "root"})
+	createTestAdministrator(t, server, "root", "synthetic-password")
+	var rootID int64
+	if err := db.QueryRow("SELECT id FROM user_account WHERE username = 'root'").Scan(&rootID); err != nil {
+		t.Fatal(err)
+	}
+	setUserMetadataLanguages(t, db, rootID, `["ko-kr"]`)
+	got, response := demoPreferenceLanguages(t, server, "zh-cn")
+	if !reflect.DeepEqual(got, []string{"ko-kr", "origin"}) {
+		t.Fatalf("languages = %v", got)
+	}
+	if values := response.Header().Values("Vary"); strings.Contains(strings.Join(values, ","), demoMetadataLanguagesHeader) {
+		t.Fatalf("Vary = %v", values)
 	}
 }
