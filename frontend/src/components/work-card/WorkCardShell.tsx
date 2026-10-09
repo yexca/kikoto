@@ -84,6 +84,8 @@ export type WorkCardViewModel = {
   /** False when an empty mark list is intentional rather than a missing source. */
   sourceUnavailableFallback?: boolean;
   recommended?: boolean;
+  /** Scores at or above the personal threshold keep the emphasized chip. */
+  recommendationHighlighted?: boolean;
   recommendationScore?: number;
   recommendationRevealDelay?: number;
 };
@@ -168,6 +170,7 @@ export function WorkCardShell({
         sourceUnavailableFallback={work.sourceUnavailableFallback}
         selection={selection}
         recommended={work.recommended}
+        recommendationHighlighted={work.recommendationHighlighted}
         recommendationScore={work.recommendationScore}
         recommendationRevealDelay={work.recommendationRevealDelay}
         onRecommendationOpen={onRecommendationOpen}
@@ -231,6 +234,7 @@ export function WorkCardMedia({
   sourceUnavailableFallback = true,
   selection,
   recommended = false,
+  recommendationHighlighted = true,
   recommendationScore,
   recommendationRevealDelay,
   onRecommendationOpen,
@@ -245,6 +249,7 @@ export function WorkCardMedia({
   sourceUnavailableFallback?: boolean;
   selection?: ReactNode;
   recommended?: boolean;
+  recommendationHighlighted?: boolean;
   recommendationScore?: number;
   recommendationRevealDelay?: number;
   onRecommendationOpen?: () => void;
@@ -256,7 +261,10 @@ export function WorkCardMedia({
     price !== null && price > 0 && regularPrice !== null && regularPrice > price ? regularPrice : null;
   const recommendationContent = (
     <>
-      <Star className="h-3.5 w-3.5 fill-primary text-primary" aria-hidden="true" />
+      <Star
+        className={cn("h-3.5 w-3.5", recommendationHighlighted ? "fill-primary text-primary" : "text-muted-foreground")}
+        aria-hidden="true"
+      />
       {Number.isFinite(recommendationScore) && <span>{recommendationScore}</span>}
     </>
   );
@@ -281,7 +289,11 @@ export function WorkCardMedia({
           (onRecommendationOpen ? (
             <button
               type="button"
-              className={cn(coverChipClassName, "absolute left-1.5 top-1.5 h-7 tabular-nums hover:bg-background")}
+              className={cn(
+                coverChipClassName,
+                "absolute left-1.5 top-1.5 h-7 tabular-nums hover:bg-background",
+                !recommendationHighlighted && "font-medium text-muted-foreground",
+              )}
               title={t("workCard.explainRecommendationScore")}
               aria-label={`${t("workCard.explainRecommendationScore")} ${recommendationScore ?? 0}`}
               onClick={(event) => {
@@ -296,6 +308,7 @@ export function WorkCardMedia({
               className={cn(
                 coverChipClassName,
                 "absolute left-1.5 top-1.5 h-7 tabular-nums",
+                !recommendationHighlighted && "font-medium text-muted-foreground",
                 recommendationRevealDelay !== undefined && "recommendation-reveal",
               )}
               style={

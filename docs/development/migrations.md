@@ -252,6 +252,6 @@ matches the backup.
 | v0.7.0 | `044` | `044_v0.7.0.sql` |
 | v0.7.1 | `047` | `047_v0.7.1.sql` |
 | v0.8.0 | `059` | `059_v0.8.0.sql` |
-| Unreleased (`main`) | `063` | `059_v0.8.0.sql`; `compat/063_dev.sql` in development mode |
+| Unreleased (`main`) | `064` | `059_v0.8.0.sql`; `compat/064_dev.sql` in development mode |
 
 Per-release upgrade steps are in the [release notes](../history/index.md).

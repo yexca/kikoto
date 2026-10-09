@@ -46,8 +46,12 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			writeError(w, err)
 			return
 		}
-		ctx := withMetadataLanguageMemo(context.WithValue(r.Context(), currentUserKey, user))
-		next.ServeHTTP(w, r.WithContext(ctx))
+		ctx := context.WithValue(r.Context(), currentUserKey, user)
+		if s.cfg.IsDemo() {
+			w.Header().Add("Vary", demoMetadataLanguagesHeader)
+			ctx = withDemoMetadataLanguages(ctx, r)
+		}
+		next.ServeHTTP(w, r.WithContext(withMetadataLanguageMemo(ctx)))
 	})
 }
 

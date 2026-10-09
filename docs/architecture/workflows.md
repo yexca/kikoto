@@ -43,8 +43,8 @@ Remote sources:
   provide a work (see [Source Availability](#source-availability)).
 - `unlinked_work_source_check`: check remote sources for selected works that
   have no available source, from the Metadata no-source view.
-- `source_health_check`: probe every enabled remote source endpoint and record
-  its health (see [Source Health Check](#source-health-check)).
+- `source_presence_check`: check whether library works exist on one remote
+  source (see [Source Presence Check](#source-presence-check)).
 - `availability_watch`: see [Availability Watch](#availability-watch).
 - `remote_work_fetch`: Fetch one remote work into the local library.
 - `remote_bulk_action`: dispatch per-work Track or Fetch workflows for several
@@ -324,7 +324,7 @@ The Workflows page lists the manually runnable built-in workflows and the
 preset workflows in one workflow list, grouped by a frontend-owned category
 keyed by workflow code: Basic (local scan, local files, metadata sync), Collect
 (popular collections), Follow (preset follow workflows), and Remote
-(Availability Watch, Fetch, and source health). A linked run of any other workflow adds a
+(Availability Watch, Fetch, and works on a source). A linked run of any other workflow adds a
 read-only entry for it, which stays with Basic. Each entry shows
 its latest run's status and time and the enabled automation that starts it
 (Startup, schedule, or folder watch). The page reads each listed workflow's
@@ -731,27 +731,47 @@ Source-change checks first probe source health, then check candidate works only
 against reachable sources. The local library scan does not check remote source
 availability.
 
-## Source Health Check
+## Source Presence Check
 
-`source_health_check` checks every enabled remote source whose type supports
-health checks and that has an API endpoint. Each source is probed through the
-same helper as the manual **Check health** action in source settings, with the
-same 10-second timeout, and its `health_status` (`healthy` or `unavailable`)
-and `last_checked_at` are written whether or not the status changed, so the
-source list shows the result. Sources are probed one at a time; cancellation
-stops before the next source and records nothing for the interrupted probe.
+`source_presence_check` asks one remote source whether library works exist
+there. Its options are:
 
-The run `succeeds` when every checked source is healthy, including when no
-source qualifies, and is `partial` when any source is unavailable; it `fails`
-only on an internal error. The summary records the checked, healthy, and
-unavailable counts and each source's id, display name, and status. Upstream
-errors, which can name the endpoint, go only to the server log.
+- `sourceId`: an enabled source whose type supports work lookups and that has
+  an API endpoint. A run request or trigger that names any other source is
+  rejected, and a queued run whose source changed fails without a retry.
+- `library`: `local` (the default) selects works with an available local
+  presence; `all` selects every work with a primary code.
+- `filter`: `no_remote_source` (the default) selects works without an
+  available source or tracked presence and without an available remote stream
+  location; `all` applies no filter.
+- `limit`: the most works one run checks, from 1 to 1000 (default 100).
 
-One run is queued or running at a time: a manual start, retry, or trigger
-dispatch while one is active returns that run. Manual runs
-(`POST /api/workflow-runs/source-health-check`), retries, and Startup and
-interval triggers require `workflows:run` and `sources:write`; trigger config is
-an empty object. No trigger is seeded.
+When more works match than the limit, works the source has never been asked
+about come first, then the works it checked longest ago, so repeated runs
+cover the whole selection. The selection is fixed when the run starts and kept
+in its checkpoint.
+
+The run first probes the source with the same helper and 10-second timeout as
+the manual **Check health** action in source settings and records its
+`health_status`. An unavailable source fails the run before any work is
+checked, so an outage never marks works missing. Each selected work is then
+looked up once through the source's paced crawl lane, as a per-work
+[source availability](#source-availability) check does, and recorded as that
+work's `source` presence (`available`, `missing`, or `unavailable`). The run
+never creates works. After five failed lookups in a row it stops and leaves
+the remaining works for a later run.
+
+The run `succeeds` when every lookup answered, is `partial` when any lookup
+failed, and `fails` on an unavailable source or an internal error. The summary
+records the source, the options, and the selected, checked, available,
+missing, failed, skipped, and unchecked counts. Upstream errors, which can
+name the endpoint, go only to the server log.
+
+One run per source is queued or running at a time: a manual start, retry, or
+trigger dispatch for that source while one is active returns that run. Manual
+runs (`POST /api/workflow-runs/source-presence-check`), retries, and Startup
+and interval triggers require `workflows:run` and `sources:write`; a trigger
+stores the run options in its config. No trigger is seeded.
 
 ## Availability Watch
 

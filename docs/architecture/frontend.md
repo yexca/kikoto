@@ -20,7 +20,9 @@ sign-in or sign-out; on phones it also holds the native connection actions. A
 signed-in user also chooses the personal preferred metadata language there:
 **Origin** is shown when the user has no preference and choosing it clears the
 stored preference, and a saved change refreshes the routed page through the
-user preference event. The
+user preference event. Demo keeps the choice in browser storage scoped to the
+server and Demo user, and the API client sends it with authenticated requests
+(see [Metadata Language](data-model.md#metadata-language)). The
 notification panel (`app/header/NotificationCenter`) splits personal workflow
 notifications (**Updates**) from the global **Needs attention** runs for
 workflow operators, shows the newest running job above both, and links into

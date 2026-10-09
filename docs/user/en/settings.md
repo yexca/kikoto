@@ -48,8 +48,13 @@ password is reset from the server host; see
 - **Recommendations** starts with the **Your recommendation activity** report
   of the signed-in user's own last 30 days (how impressions turned into opens
   and plays, the marks and reshuffles given, and the affinity score
-  distribution), followed by recommendation presets, badge threshold,
-  variation, discovery boost, and advanced scoring. Saving creates a new
+  distribution), followed by recommendation presets, a live preview, ordering
+  variety, and advanced scoring. The live preview scores an adjustable example
+  work on a gauge beside the highlight threshold and shows its composition;
+  ordering variety shows how variation and discovery boost can move that
+  example's ranking. Advanced scoring shows the mix slots as one proportional
+  bar, the possible score range, and each tag, voice, and circle weight as a
+  meter of per-match steps up to its cap. Saving creates a new
   recommendation session for the current tab; other open tabs keep their
   snapshots until a new session is created.
 
@@ -75,7 +80,10 @@ stay visible for inspection even though the Demo identity is not an
 administrator, and every change in them is disabled. Appearance and playback
 controls remain available because theme mode, style, color, seek intervals, and
 playback source options are browser-local preferences and do not modify Demo
-server data. Playback preferences are isolated by server identity and
+server data. The UI language and the preferred metadata language also remain
+available: every Demo visitor shares one account, so Demo keeps both choices in
+that browser, and one visitor's choice never changes what another sees.
+Playback preferences are isolated by server identity and
 authenticated user, or by the anonymous principal when anonymous access is
 enabled.
 

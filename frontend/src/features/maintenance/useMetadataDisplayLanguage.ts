@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
+import { writeDemoMetadataLanguages } from "@/lib/demoMetadataLanguages";
 import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 import {
   dlsiteMetadataLanguagesFor,
@@ -21,10 +22,15 @@ export type MetadataDisplayLanguageState = {
  * Loads and saves the signed-in user's preferred metadata language. The
  * preference is read only once `enabled` becomes true, so surfaces that open
  * on demand do not request it for every page view. Choosing the original
- * language clears the preference. A saved change refreshes the visible page
- * through the user preference event.
+ * language clears the preference. Demo keeps the choice in this browser,
+ * because every Demo visitor shares one account. A saved change refreshes the
+ * visible page through the user preference event.
  */
-export function useMetadataDisplayLanguage(enabled: boolean, userId: number | null): MetadataDisplayLanguageState {
+export function useMetadataDisplayLanguage(
+  enabled: boolean,
+  userId: number | null,
+  demoMode = false,
+): MetadataDisplayLanguageState {
   const [value, setValue] = useState<DlsiteMetadataLanguage | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -53,10 +59,14 @@ export function useMetadataDisplayLanguage(enabled: boolean, userId: number | nu
     setBusy(true);
     setFailed(false);
     try {
-      const preferences = await api.updateUserPreferences({
-        metadataLanguages: next === "origin" ? null : dlsiteMetadataLanguagesFor(next),
-      });
-      setValue(preferredDlsiteMetadataLanguage(preferences.metadataLanguages));
+      const metadataLanguages = next === "origin" ? null : dlsiteMetadataLanguagesFor(next);
+      if (demoMode) {
+        writeDemoMetadataLanguages(metadataLanguages);
+        setValue(next);
+      } else {
+        const preferences = await api.updateUserPreferences({ metadataLanguages });
+        setValue(preferredDlsiteMetadataLanguage(preferences.metadataLanguages));
+      }
       window.dispatchEvent(new CustomEvent(USER_PREFERENCES_CHANGED, { detail: currentClientStorageScope(userId) }));
     } catch {
       setFailed(true);
