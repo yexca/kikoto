@@ -1,5 +1,5 @@
 import { Save, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -27,6 +27,7 @@ import {
   metadataSyncBlockerText,
 } from "@/features/workflows/run-forms/LibraryRunPanels";
 import { PresetParameterFields, presetBlockerText } from "@/features/workflows/run-forms/PresetRunPanel";
+import { SourcePresenceFields } from "@/features/workflows/run-forms/SourcePresenceRunPanel";
 import { TagTemplateField } from "@/features/workflows/run-forms/TagTemplateField";
 import { useMetadataSyncSources } from "@/features/workflows/useMetadataSyncSources";
 import {
@@ -53,7 +54,14 @@ import {
   type AutomationTriggerType,
   type CreatableAutomationTriggerType,
 } from "@/features/workflows/workflowTriggerModel";
-import { api, type LibrarySource, type WorkflowDefinition, type WorkflowPreset, type WorkflowTrigger } from "@/lib/api";
+import {
+  api,
+  type LibrarySource,
+  type SourcePresenceCheckOptions,
+  type WorkflowDefinition,
+  type WorkflowPreset,
+  type WorkflowTrigger,
+} from "@/lib/api";
 
 export function TriggerModal({
   definition,
@@ -118,7 +126,8 @@ export function TriggerModal({
     Boolean(preset) ||
     isMetadataSync ||
     definition.code === "remote_popular_collection" ||
-    definition.code === "dlsite_popular_collection";
+    definition.code === "dlsite_popular_collection" ||
+    definition.code === "source_presence_check";
   const [customize, setCustomize] = useState(() => customizable && Boolean(trigger));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -140,7 +149,8 @@ export function TriggerModal({
   ];
 
   useEffect(() => {
-    if (definition.code !== "remote_popular_collection" || systemConfig.sourceId > 0) return;
+    const needsSource = definition.code === "remote_popular_collection" || definition.code === "source_presence_check";
+    if (!needsSource || systemConfig.sourceId > 0) return;
     let active = true;
     api
       .listLibrarySources()
@@ -525,6 +535,10 @@ function SystemWorkflowTriggerFields({
     );
   }
 
+  if (definitionCode === "source_presence_check") {
+    return <SourcePresenceTriggerFields value={value} onChange={onChange} />;
+  }
+
   if (definitionCode === "dlsite_popular_collection") {
     const defaultTemplate = dlsitePopularDefaultTagTemplate(value.period);
     const tokens = dlsitePopularTagTemplateTokens(value.period, value.releaseWindow, value.year, new Date());
@@ -593,4 +607,47 @@ function SystemWorkflowTriggerFields({
   }
 
   return null;
+}
+
+/** Edits the source presence options stored in the shared system trigger config. */
+function SourcePresenceTriggerFields({
+  value,
+  onChange,
+}: {
+  value: SystemWorkflowTriggerConfig;
+  onChange: Dispatch<SetStateAction<SystemWorkflowTriggerConfig>>;
+}) {
+  const options: SourcePresenceCheckOptions = {
+    sourceId: value.sourceId,
+    library: value.library,
+    filter: value.presenceFilter,
+    limit: value.limit,
+  };
+  const changeOptions = useCallback(
+    (update: SetStateAction<SourcePresenceCheckOptions>) =>
+      onChange((current) => {
+        const next =
+          typeof update === "function"
+            ? update({
+                sourceId: current.sourceId,
+                library: current.library,
+                filter: current.presenceFilter,
+                limit: current.limit,
+              })
+            : update;
+        return {
+          ...current,
+          sourceId: next.sourceId,
+          library: next.library,
+          presenceFilter: next.filter,
+          limit: next.limit,
+        };
+      }),
+    [onChange],
+  );
+  return (
+    <div className="grid gap-3">
+      <SourcePresenceFields stacked value={options} onChange={changeOptions} />
+    </div>
+  );
 }

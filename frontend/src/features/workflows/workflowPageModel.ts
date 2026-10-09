@@ -1,7 +1,13 @@
 import i18n from "@/i18n";
 import type { MetadataSyncFormValues } from "@/features/workflows/metadataSyncModel";
 import type { PresetFormValues } from "@/features/workflows/presetWorkflowModel";
-import type { MetadataSyncOptions, WorkflowDefinition } from "@/lib/api";
+import type {
+  MetadataSyncOptions,
+  SourcePresenceCheckOptions,
+  SourcePresenceFilter,
+  SourcePresenceLibrary,
+  WorkflowDefinition,
+} from "@/lib/api";
 
 /** Copy, built-in workflow tables, and run option types shared by the Workflows page panels. */
 
@@ -31,14 +37,19 @@ export type SystemRunKind =
   | "remote_popular"
   | "remote_fetch"
   | "dlsite_popular"
-  | "source_health_check"
+  | "source_presence_check"
   | "preset";
 
 export type SystemRunOptions = {
   followUpRun?: boolean;
   localMediaIndexMode?: LocalScanMode;
   metadataSync?: MetadataSyncOptions;
+  sourcePresence?: SourcePresenceCheckOptions;
 };
+
+/** Works one source presence check asks the source about; the backend enforces the same maximum. */
+export const SOURCE_PRESENCE_DEFAULT_LIMIT = 100;
+export const SOURCE_PRESENCE_MAX_LIMIT = 1000;
 
 export type DLsitePopularPeriod = "day" | "week" | "month" | "year";
 export type LocalScanMode = "incremental" | "full";
@@ -72,6 +83,8 @@ export type SystemWorkflowTriggerConfig = {
   sourceId: number;
   action: "track" | "fetch";
   limit: number;
+  library: SourcePresenceLibrary;
+  presenceFilter: SourcePresenceFilter;
   period: DLsitePopularPeriod;
   releaseWindow: "30d" | "";
   year: number;
@@ -94,7 +107,7 @@ export const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = 
   remote_popular_collection: ["remote_popular"],
   remote_work_fetch: ["remote_fetch"],
   dlsite_popular_collection: ["dlsite_popular"],
-  source_health_check: ["source_health_check"],
+  source_presence_check: ["source_presence_check"],
 };
 
 export const configurableSystemWorkflowCodes = new Set(Object.keys(manuallyRunnableSystemWorkflows));

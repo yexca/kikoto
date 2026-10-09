@@ -1588,7 +1588,17 @@ export type LocalMediaIndexResult = {
   existing: boolean;
 };
 
-export type SourceHealthCheckResult = {
+export type SourcePresenceLibrary = "local" | "all";
+export type SourcePresenceFilter = "all" | "no_remote_source";
+
+export type SourcePresenceCheckOptions = {
+  sourceId: number;
+  library: SourcePresenceLibrary;
+  filter: SourcePresenceFilter;
+  limit: number;
+};
+
+export type SourcePresenceCheckResult = {
   runId: number;
   jobId: number;
   status: string;
@@ -3153,7 +3163,8 @@ export const api = {
     postJSONBody<LocalScanResult>("/api/workflow-runs/local-scan", payload),
   runLocalMediaIndex: (payload: { mode: LocalMediaIndexMode }) =>
     postJSONBody<LocalMediaIndexResult>("/api/workflow-runs/local-media-index", payload),
-  runSourceHealthCheck: () => postJSONBody<SourceHealthCheckResult>("/api/workflow-runs/source-health-check", {}),
+  runSourcePresenceCheck: (payload: SourcePresenceCheckOptions) =>
+    postJSONBody<SourcePresenceCheckResult>("/api/workflow-runs/source-presence-check", payload),
   runRemotePopularCollection: (payload: {
     action: "track" | "fetch";
     sourceId: number;

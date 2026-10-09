@@ -48,8 +48,8 @@ Workflows make backend actions inspectable.
   for the signed-in user; **Open Activity** opens the full panel.
 - The workflow list groups every workflow by category: Basic (local scan, local
   files, and metadata sync), Collect (popular collections), Follow (the preset
-  follow workflows), and Remote (Availability Watch, Fetch, and Check source
-  health), each in
+  follow workflows), and Remote (Availability Watch, Fetch, and Check works on
+  a source), each in
   a fixed order. Every entry shows its latest run's status and time, and small
   icons mark an enabled Startup trigger, schedule, or folder watcher. Wide
   layouts keep the list beside the selected workflow; **Hide tab names** below
@@ -101,13 +101,21 @@ Workflows make backend actions inspectable.
   re-indexes every available local work. One run is queued or running at a
   time, and starting another returns the active run. It supports Startup and
   interval triggers that store the mode, and ships without a default trigger.
-- **Check source health** sits in Remote, after Fetch. It checks each enabled
-  remote source that has an API endpoint, the same way as **Check health** in
-  source settings, and records whether it is healthy or unavailable. The
-  result appears in the source list under Settings > Library, and the run is
-  partial when any source is unavailable. It has no run options, so `Run` is in
-  its header. It supports Startup and interval triggers and ships without a
-  default trigger. Running it requires permission to manage sources.
+- **Check works on a source** sits in Remote, after Fetch. It asks one remote
+  source whether library works exist there and records the answer on each
+  work, as checking availability on a work does; it never adds works. Its
+  options choose the source, the works (**Local library**, the default, or
+  **All works in database**), a filter (**No remote source**, the default, for
+  works that no remote source currently provides, or **All**), and **Works per
+  run** (50 to 1000, default 100). Without an enabled compatible remote source,
+  the workflow is covered by a prompt to configure one. Each work is one lookup on the source. When more works match,
+  the ones this source has never checked come first, then the ones checked
+  longest ago, so repeated runs cover the whole library. The run first checks
+  the source's health, as **Check health** in source settings does, and stops
+  without recording any work when the source is unavailable; it is partial
+  when some lookups failed. One run per source is active at a time. It
+  supports Startup and interval triggers that store these options and ships
+  without a default trigger. Running it requires permission to manage sources.
 - Remote and DLsite popular collection surfaces edit tag templates with a
   current-value preview, the complete workflow-specific variable list, and an
   explicit warning when the rendered tag exceeds 40 characters. Manual runs
