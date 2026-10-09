@@ -98,7 +98,8 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		Description: "Monitor a shared pool of work codes and dispatch configured actions when a remote source becomes available.",
 		Nodes: []map[string]string{
 			{"id": "targets", "type": "select_works", "displayName": "Monitoring pool"},
-			{"id": "check", "type": "check_source_availability", "displayName": "Check source availability"},
+			{"id": "metadata", "type": "sync_metadata", "displayName": "Refresh family metadata"},
+			{"id": "check", "type": "check_source_availability", "displayName": "Check family availability"},
 			{"id": "ready", "type": "filter_candidates", "displayName": "Ready pool"},
 			{"id": "dispatch", "type": "dispatch_child_workflows", "displayName": "Dispatch configured action"},
 		},

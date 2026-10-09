@@ -351,7 +351,7 @@ plots those runs oldest first; ordinary successes stay neutral so failures,
 partial results, and active runs stand out.
 
 Run options form a run form that ends in a run bar holding Run, any workflow
-action such as Availability Watch Configure, and the first reason Run is
+action such as Availability Watch Save, and the first reason Run is
 unavailable. The bar sticks above the page's fixed bottom controls while a long
 form scrolls. Preset option groups (Input, Filter, Actions) become columns once
 the form is wide enough. A workflow without run options keeps Run in its header.
@@ -785,13 +785,28 @@ configuration records the user whose permissions govern its scheduled
 execution.
 
 It supports at most one interval schedule trigger and may also be run directly
-from its configuration surface. Each execution snapshots the active pool,
-records a normal workflow run, node runs, and durable job, then leaves unknown
-remote results as availability state instead of materializing new `work` rows.
-Newly available works move into the Ready pool; configured Track and Fetch
+from its configuration surface. Each execution snapshots the active pool and
+records a normal workflow run, node runs, and durable job. Before checking a
+target, the run synchronizes the code's DLsite family metadata when it has not
+been refreshed within a day; a watched code is an explicitly requested metadata
+root, so this may create its edition works. A metadata failure marks only the
+metadata node partial and the check uses the family already known; a code
+DLsite does not list is checked alone. The target is available when a remote
+source offers any edition of its family: the watched code first, then the
+other editions and provider-declared edition codes, at most 32. The target
+records which edition was found, and Track, Fetch, and opening the remote work
+use that edition. Remote results never materialize new `work` rows.
+
+Available targets form the pool's Available side; configured Track and Fetch
 actions are child workflows with their own histories. A successful run that
-finds new ready works creates a notification for enabled administrators, and
-the notification opens the shared Ready pool.
+finds new available works creates a notification for enabled administrators,
+and the notification opens the pool's Available side.
+
+`PUT /api/availability-watch/targets` replaces the pool;
+`POST /api/availability-watch/targets` adds codes without deactivating
+targets added by someone else. The view returns each target's title and
+cached cover (its own, or the family original's) and its known family editions
+with their titles and languages.
 
 ## Voice Catalog Refresh
 

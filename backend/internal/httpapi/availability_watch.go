@@ -33,14 +33,19 @@ type availabilityWatchView struct {
 type availabilityWatchTarget struct {
 	ID                int64  `json:"id"`
 	WorkCode          string `json:"workCode"`
+	Title             string `json:"title"`
+	CoverURL          string `json:"coverUrl"`
 	State             string `json:"state"`
 	NextCheckAt       string `json:"nextCheckAt"`
 	LastCheckedAt     string `json:"lastCheckedAt"`
 	LastStatus        string `json:"lastStatus"`
 	LastError         string `json:"lastError"`
 	AvailableSourceID *int64 `json:"availableSourceId"`
-	TrackRunID        *int64 `json:"trackRunId"`
-	FetchRunID        *int64 `json:"fetchRunId"`
+	// AvailableCode is the family edition a remote source offered.
+	AvailableCode string                          `json:"availableCode"`
+	TrackRunID    *int64                          `json:"trackRunId"`
+	FetchRunID    *int64                          `json:"fetchRunId"`
+	Family        []availabilityWatchFamilyMember `json:"family"`
 }
 
 type availabilityWatchConfigUpdate struct {
@@ -87,6 +92,7 @@ type availabilityWatchExecutionTarget struct {
 	LastStatus        string
 	Epoch             int
 	AvailableSourceID int64
+	AvailableCode     string
 	Active            bool
 }
 
@@ -94,6 +100,8 @@ type availabilityWatchExecution struct {
 	result           availabilityWatchRunResult
 	readySeen        map[string]bool
 	dispatchFailures int
+	syncer           dlsiteFamilyMetadataSyncer
+	metadata         availabilityWatchFamilyMetadata
 }
 
 func (s *Server) getAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +155,16 @@ func (s *Server) updateAvailabilityWatch(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) updateAvailabilityWatchTargets(w http.ResponseWriter, r *http.Request) {
+	s.writeAvailabilityWatchTargets(w, r, true)
+}
+
+// addAvailabilityWatchTargets adds codes to the shared pool without
+// deactivating targets another user added meanwhile.
+func (s *Server) addAvailabilityWatchTargets(w http.ResponseWriter, r *http.Request) {
+	s.writeAvailabilityWatchTargets(w, r, false)
+}
+
+func (s *Server) writeAvailabilityWatchTargets(w http.ResponseWriter, r *http.Request, replace bool) {
 	actor, ok := s.requirePermission(w, r, "workflows:run")
 	if !ok {
 		return
@@ -161,7 +179,25 @@ func (s *Server) updateAvailabilityWatchTargets(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if err := s.persistAvailabilityWatchTargets(r.Context(), actor.ID, codes); err != nil {
+	if !replace {
+		var total int
+		if err := s.db.QueryRowContext(r.Context(), `
+			SELECT
+				(SELECT COUNT(*) FROM availability_watch_target WHERE watch_id = ? AND active = 1)
+				+ (SELECT COUNT(*) FROM json_each(?) AS code WHERE NOT EXISTS (
+					SELECT 1 FROM availability_watch_target AS target
+					WHERE target.watch_id = ? AND target.active = 1 AND target.work_code = code.value
+				))
+		`, availabilityWatchID, mustJSON(codes), availabilityWatchID).Scan(&total); err != nil {
+			writeError(w, err)
+			return
+		}
+		if total > 1000 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many work codes; maximum is 1000"})
+			return
+		}
+	}
+	if err := s.persistAvailabilityWatchTargets(r.Context(), actor.ID, codes, replace); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -213,7 +249,7 @@ func (s *Server) trackAvailabilityWatchTarget(w http.ResponseWriter, r *http.Req
 	var code string
 	var sourceID sql.NullInt64
 	err = s.db.QueryRowContext(r.Context(), `
-		SELECT work_code, available_source_id
+		SELECT COALESCE(NULLIF(available_code, ''), work_code), available_source_id
 		FROM availability_watch_target
 		WHERE id = ? AND watch_id = ? AND active = 1
 			AND state IN ('ready', 'action_queued', 'completed')
@@ -336,7 +372,7 @@ func (s *Server) persistAvailabilityWatchConfig(ctx context.Context, userID int6
 	return tx.Commit()
 }
 
-func (s *Server) persistAvailabilityWatchTargets(ctx context.Context, userID int64, codes []string) error {
+func (s *Server) persistAvailabilityWatchTargets(ctx context.Context, userID int64, codes []string, replace bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -360,6 +396,7 @@ func (s *Server) persistAvailabilityWatchTargets(ctx context.Context, userID int
 				last_status = CASE WHEN availability_watch_target.active = 0 THEN '' ELSE availability_watch_target.last_status END,
 				last_error = CASE WHEN availability_watch_target.active = 0 THEN '' ELSE availability_watch_target.last_error END,
 				available_source_id = CASE WHEN availability_watch_target.active = 0 THEN NULL ELSE availability_watch_target.available_source_id END,
+				available_code = CASE WHEN availability_watch_target.active = 0 THEN '' ELSE availability_watch_target.available_code END,
 				track_run_id = CASE WHEN availability_watch_target.active = 0 THEN NULL ELSE availability_watch_target.track_run_id END,
 				fetch_run_id = CASE WHEN availability_watch_target.active = 0 THEN NULL ELSE availability_watch_target.fetch_run_id END,
 				revision = availability_watch_target.revision + CASE WHEN availability_watch_target.active = 0 THEN 1 ELSE 0 END,
@@ -367,6 +404,9 @@ func (s *Server) persistAvailabilityWatchTargets(ctx context.Context, userID int
 		`, availabilityWatchID, code); err != nil {
 			return err
 		}
+	}
+	if !replace {
+		return tx.Commit()
 	}
 	if len(codes) == 0 {
 		_, err = tx.ExecContext(ctx, `
@@ -416,7 +456,7 @@ func (s *Server) loadAvailabilityWatch(ctx context.Context) (availabilityWatchVi
 	_ = json.Unmarshal([]byte(rawExcluded), &view.ExcludeExtensions)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, work_code, state, COALESCE(next_check_at, ''), COALESCE(last_checked_at, ''),
-			last_status, last_error, available_source_id, track_run_id, fetch_run_id
+			last_status, last_error, available_source_id, available_code, track_run_id, fetch_run_id
 		FROM availability_watch_target
 		WHERE watch_id = ? AND active = 1
 		ORDER BY CASE state WHEN 'ready' THEN 0 WHEN 'action_queued' THEN 0 WHEN 'completed' THEN 0 ELSE 1 END, work_code
@@ -428,7 +468,7 @@ func (s *Server) loadAvailabilityWatch(ctx context.Context) (availabilityWatchVi
 	for rows.Next() {
 		var target availabilityWatchTarget
 		var availableSourceID, trackRunID, fetchRunID sql.NullInt64
-		if err := rows.Scan(&target.ID, &target.WorkCode, &target.State, &target.NextCheckAt, &target.LastCheckedAt, &target.LastStatus, &target.LastError, &availableSourceID, &trackRunID, &fetchRunID); err != nil {
+		if err := rows.Scan(&target.ID, &target.WorkCode, &target.State, &target.NextCheckAt, &target.LastCheckedAt, &target.LastStatus, &target.LastError, &availableSourceID, &target.AvailableCode, &trackRunID, &fetchRunID); err != nil {
 			return view, err
 		}
 		if availableSourceID.Valid {
@@ -440,9 +480,28 @@ func (s *Server) loadAvailabilityWatch(ctx context.Context) (availabilityWatchVi
 		if fetchRunID.Valid {
 			target.FetchRunID = &fetchRunID.Int64
 		}
+		target.Family = []availabilityWatchFamilyMember{}
 		view.Targets = append(view.Targets, target)
 	}
-	return view, rows.Err()
+	if err := rows.Err(); err != nil {
+		return view, err
+	}
+	_ = rows.Close()
+	families, err := s.loadAvailabilityWatchFamilies(ctx, `
+		SELECT work_code FROM availability_watch_target WHERE watch_id = ? AND active = 1
+	`, availabilityWatchID)
+	if err != nil {
+		return view, err
+	}
+	for index := range view.Targets {
+		target := &view.Targets[index]
+		if family := families[target.WorkCode]; family != nil {
+			target.Family = family
+			target.Title = availabilityWatchFamilyTitle(target.WorkCode, family)
+			target.CoverURL = s.availabilityWatchFamilyCover(target.WorkCode, family)
+		}
+	}
+	return view, nil
 }
 
 func userHasPermission(user currentUser, permission string) bool {
@@ -543,23 +602,24 @@ func (s *Server) enqueueAvailabilityWatch(ctx context.Context, userID int64, tri
 	}); err != nil {
 		return availabilityWatchRunResult{}, err
 	}
-	checkNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "check", NodeType: "check_source_availability", DisplayName: "Check source availability", Position: 2,
-		Status: "queued", Input: map[string]any{"source_id": payload.SourceID, "target_count": len(targets)},
+	metadataNodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
+		NodeID: "metadata", NodeType: "sync_metadata", DisplayName: "Refresh family metadata", Position: 2,
+		Status: "queued", Input: map[string]any{"target_count": len(targets)},
 	})
 	if err != nil {
 		return availabilityWatchRunResult{}, err
 	}
 	for _, node := range []workflow.NodeRunSpec{
-		{NodeID: "ready", NodeType: "filter_candidates", DisplayName: "Filter ready works", Position: 3, Status: "queued"},
-		{NodeID: "dispatch", NodeType: "dispatch_child_workflows", DisplayName: "Dispatch configured action", Position: 4, Status: "queued", Input: map[string]any{"action": payload.Action}},
+		{NodeID: "check", NodeType: "check_source_availability", DisplayName: "Check family availability", Position: 3, Status: "queued", Input: map[string]any{"source_id": payload.SourceID, "target_count": len(targets)}},
+		{NodeID: "ready", NodeType: "filter_candidates", DisplayName: "Filter ready works", Position: 4, Status: "queued"},
+		{NodeID: "dispatch", NodeType: "dispatch_child_workflows", DisplayName: "Dispatch configured action", Position: 5, Status: "queued", Input: map[string]any{"action": payload.Action}},
 	} {
 		if _, err := workflow.InsertNodeRun(ctx, tx, runID, node); err != nil {
 			return availabilityWatchRunResult{}, err
 		}
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: checkNodeID, WorkerType: "availability_watch", Status: "queued",
+		NodeRunID: metadataNodeID, WorkerType: "availability_watch", Status: "queued",
 		Priority: workflowJobPriorityForTrigger(trigger.Type), ResourceKey: "availability:watch", Payload: payload,
 		Checkpoint: map[string]any{"phase": "queued"}, Recoverable: false, MaxRetries: 1, ProgressTotal: len(targets),
 	})
@@ -577,7 +637,8 @@ func (s *Server) enqueueAvailabilityWatch(ctx context.Context, userID int64, tri
 func availabilityWatchDefinition() map[string]any {
 	return map[string]any{"nodes": []map[string]string{
 		{"id": "targets", "type": "select_works", "displayName": "Monitoring pool"},
-		{"id": "check", "type": "check_source_availability", "displayName": "Check source availability"},
+		{"id": "metadata", "type": "sync_metadata", "displayName": "Refresh family metadata"},
+		{"id": "check", "type": "check_source_availability", "displayName": "Check family availability"},
 		{"id": "ready", "type": "filter_candidates", "displayName": "Ready pool"},
 		{"id": "dispatch", "type": "dispatch_child_workflows", "displayName": "Dispatch configured action"},
 	}}
@@ -605,6 +666,7 @@ func (s *Server) executeAvailabilityWatchJob(ctx context.Context, job workflowJo
 			NewlyAvailableCodes: []string{}, ReadyCodes: []string{}, Failures: []string{},
 		},
 		readySeen: map[string]bool{},
+		syncer:    s.newDLsiteMetadataSyncer(ctx),
 	}
 	for index, snapshot := range payload.Targets {
 		if err := ctx.Err(); err != nil {
@@ -619,7 +681,7 @@ func (s *Server) executeAvailabilityWatchJob(ctx context.Context, job workflowJo
 	if len(execution.result.Failures) > 0 {
 		execution.result.Status = "partial"
 	}
-	if err := s.finishAvailabilityWatchJob(ctx, job, nodeIDs, execution.result, execution.dispatchFailures); err != nil {
+	if err := s.finishAvailabilityWatchJob(ctx, job, nodeIDs, execution); err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch run could not be finalized")
 		return err
 	}
@@ -644,7 +706,7 @@ func (s *Server) executeAvailabilityWatchTarget(
 	}
 	code := strings.ToUpper(strings.TrimSpace(snapshot.WorkCode))
 	if availabilityWatchTargetNeedsCheck(target.State) {
-		ready, err := s.checkAvailabilityWatchExecutionTarget(ctx, job, payload, snapshot.ID, code, healthy, &target, &execution.result)
+		ready, err := s.checkAvailabilityWatchExecutionTarget(ctx, job, payload, snapshot.ID, code, healthy, &target, execution)
 		if err != nil || !ready {
 			return err
 		}
@@ -665,21 +727,45 @@ func (s *Server) checkAvailabilityWatchExecutionTarget(
 	code string,
 	healthy map[int64]bool,
 	target *availabilityWatchExecutionTarget,
-	result *availabilityWatchRunResult,
+	execution *availabilityWatchExecution,
 ) (bool, error) {
+	result := &execution.result
 	result.Checked++
+	if err := s.refreshAvailabilityWatchFamilyMetadata(ctx, execution.syncer, targetID, code, &execution.metadata); err != nil {
+		if ctx.Err() == nil {
+			_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch family metadata state could not be saved")
+		}
+		return false, err
+	}
 	if len(healthy) == 0 {
 		result.Failures = append(result.Failures, code+": no healthy remote source")
 		_ = s.updateAvailabilityWatchTargetError(ctx, targetID, target.Revision, "Remote source is unavailable")
 		return false, nil
 	}
-	response, err := s.checkWorkSourceAvailabilityForSourcesWithHealth(ctx, code, payload.SourceID, healthy, "availability_watch", "workflow_run")
+	familyCodes, err := s.availabilityWatchFamilyCodes(ctx, code)
 	if err != nil {
-		result.Failures = append(result.Failures, code+": availability check failed")
-		_ = s.updateAvailabilityWatchTargetError(ctx, targetID, target.Revision, "Availability check failed")
-		return false, nil
+		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch family could not be loaded")
+		return false, err
 	}
-	available := firstAvailableSource(response)
+	// Any edition of the family satisfies the watch; the watched code is
+	// asked first.
+	var available *sourceAvailabilitySummary
+	availableCode := ""
+	for _, familyCode := range familyCodes {
+		response, err := s.checkWorkSourceAvailabilityForSourcesWithHealth(ctx, familyCode, payload.SourceID, healthy, "availability_watch", "workflow_run")
+		if err != nil {
+			if ctx.Err() != nil {
+				return false, ctx.Err()
+			}
+			result.Failures = append(result.Failures, code+": availability check failed")
+			_ = s.updateAvailabilityWatchTargetError(ctx, targetID, target.Revision, "Availability check failed")
+			return false, nil
+		}
+		if hit := firstAvailableSource(response); hit != nil {
+			available, availableCode = hit, familyCode
+			break
+		}
+	}
 	if available == nil {
 		if err := s.updateAvailabilityWatchTargetNotFound(ctx, targetID, target.Revision); err != nil {
 			_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch result could not be saved")
@@ -691,12 +777,13 @@ func (s *Server) checkAvailabilityWatchExecutionTarget(
 		target.Epoch++
 		result.NewlyAvailableCodes = append(result.NewlyAvailableCodes, code)
 	}
-	if err := s.updateAvailabilityWatchTargetReady(ctx, targetID, target.Revision, available.SourceID, target.Epoch); err != nil {
+	if err := s.updateAvailabilityWatchTargetReady(ctx, targetID, target.Revision, available.SourceID, availableCode, target.Epoch); err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch result could not be saved")
 		return false, err
 	}
 	target.State = "ready"
 	target.AvailableSourceID = available.SourceID
+	target.AvailableCode = availableCode
 	return true, nil
 }
 
@@ -723,7 +810,11 @@ func (s *Server) dispatchReadyAvailabilityWatchTarget(
 	if target.State != "ready" || payload.Action == "monitor" {
 		return nil
 	}
-	trackRunID, fetchRunID, err := s.dispatchAvailabilityWatchTarget(ctx, payload, targetID, code, target.AvailableSourceID, target.Epoch)
+	availableCode := target.AvailableCode
+	if availableCode == "" {
+		availableCode = code
+	}
+	trackRunID, fetchRunID, err := s.dispatchAvailabilityWatchTarget(ctx, payload, targetID, availableCode, target.AvailableSourceID, target.Epoch)
 	if err != nil {
 		execution.dispatchFailures++
 		execution.result.Failures = append(execution.result.Failures, code+": configured action could not be queued")
@@ -747,10 +838,10 @@ func (s *Server) loadAvailabilityWatchExecutionTarget(ctx context.Context, targe
 	var target availabilityWatchExecutionTarget
 	var nullableSourceID sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT state, revision, last_status, availability_epoch, available_source_id, active
+		SELECT state, revision, last_status, availability_epoch, available_source_id, available_code, active
 		FROM availability_watch_target WHERE id = ? AND watch_id = ?
 	`, targetID, availabilityWatchID).Scan(
-		&target.State, &target.Revision, &target.LastStatus, &target.Epoch, &nullableSourceID, &target.Active,
+		&target.State, &target.Revision, &target.LastStatus, &target.Epoch, &nullableSourceID, &target.AvailableCode, &target.Active,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return availabilityWatchExecutionTarget{}, nil
@@ -778,20 +869,20 @@ func (s *Server) updateAvailabilityWatchTargetNotFound(ctx context.Context, targ
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE availability_watch_target
 		SET state = 'monitoring', last_checked_at = CURRENT_TIMESTAMP, last_status = 'not_found',
-			last_error = '', available_source_id = NULL, next_check_at = NULL, updated_at = CURRENT_TIMESTAMP
+			last_error = '', available_source_id = NULL, available_code = '', next_check_at = NULL, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ? AND active = 1 AND revision = ?
 	`, targetID, revision)
 	return err
 }
 
-func (s *Server) updateAvailabilityWatchTargetReady(ctx context.Context, targetID int64, revision int, sourceID int64, epoch int) error {
+func (s *Server) updateAvailabilityWatchTargetReady(ctx context.Context, targetID int64, revision int, sourceID int64, availableCode string, epoch int) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE availability_watch_target
 		SET state = 'ready', last_checked_at = CURRENT_TIMESTAMP, last_status = 'available',
-			last_error = '', available_source_id = ?, availability_epoch = ?, next_check_at = NULL,
-			updated_at = CURRENT_TIMESTAMP
+			last_error = '', available_source_id = ?, available_code = ?, availability_epoch = ?,
+			next_check_at = NULL, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ? AND active = 1 AND revision = ?
-	`, sourceID, epoch, targetID, revision)
+	`, sourceID, availableCode, epoch, targetID, revision)
 	return err
 }
 
@@ -831,12 +922,22 @@ func (s *Server) dispatchAvailabilityWatchTarget(ctx context.Context, payload av
 	return trackRunID, fetchRunID, nil
 }
 
-func (s *Server) finishAvailabilityWatchJob(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, result availabilityWatchRunResult, dispatchFailures int) error {
+func (s *Server) finishAvailabilityWatchJob(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, execution availabilityWatchExecution) error {
+	result, dispatchFailures, metadata := execution.result, execution.dispatchFailures, execution.metadata
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Metadata failures fall back to the known family, so they mark only
+	// their own node partial.
+	metadataStatus := "succeeded"
+	if len(metadata.Failed) > 0 {
+		metadataStatus = "partial"
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, metadataStatus, mustJSON(map[string]any{"synced": len(metadata.Synced), "fresh": metadata.Skipped, "failures": metadata.Failed}), strings.Join(metadata.Failed, "\n"), nodeIDs["metadata"]); err != nil {
+		return err
+	}
 	errorMessage := strings.Join(result.Failures, "\n")
 	checkStatus := "succeeded"
 	if len(result.Failures) > dispatchFailures {

@@ -1442,17 +1442,32 @@ export type WorkflowPresetRunResult = {
   inputs: Record<string, unknown>;
 };
 
+export type AvailabilityWatchFamilyMember = {
+  code: string;
+  /** Empty for a provider-declared edition without its own work. */
+  title: string;
+  language: string;
+  canonical: boolean;
+};
+
 export type AvailabilityWatchTarget = {
   id: number;
   workCode: string;
+  title: string;
+  /** The watched code's cover, or its family original's; empty when none is cached. */
+  coverUrl: string;
   state: "monitoring" | "ready" | "action_queued" | "completed" | "error" | "disabled";
   nextCheckAt: string;
   lastCheckedAt: string;
   lastStatus: string;
   lastError: string;
   availableSourceId: number | null;
+  /** The family edition the remote source offered. */
+  availableCode: string;
   trackRunId: number | null;
   fetchRunId: number | null;
+  /** Empty until the watch has fetched the code's family metadata. */
+  family: AvailabilityWatchFamilyMember[];
 };
 
 export type AvailabilityWatch = {
@@ -3097,6 +3112,8 @@ export const api = {
   }) => putJSONBody<AvailabilityWatch>("/api/availability-watch", payload),
   updateAvailabilityWatchTargets: (targetCodes: string[]) =>
     putJSONBody<AvailabilityWatch>("/api/availability-watch/targets", { targetCodes }),
+  addAvailabilityWatchTargets: (targetCodes: string[]) =>
+    postJSONBody<AvailabilityWatch>("/api/availability-watch/targets", { targetCodes }),
   removeAvailabilityWatchTarget: (id: number) => deleteJSON<{ ok: boolean }>(`/api/availability-watch/targets/${id}`),
   trackAvailabilityWatchTarget: (id: number) =>
     postJSON<RemoteWorkTrackResult>(`/api/availability-watch/targets/${id}/track`),
