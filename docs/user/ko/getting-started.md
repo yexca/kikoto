@@ -29,6 +29,10 @@ KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bce
 
 서명된 Android APK는 GitHub Releases에 있습니다. 클라이언트는 연결된 서버와 버전을 비교하고, 설치는 Android 시스템에서 사용자가 직접 확인해야 합니다.
 
+## iOS 클라이언트
+
+각 GitHub Release에는 서명되지 않은 iOS IPA(`kikoto-<버전>-unsigned.ipa`)도 포함됩니다. 다운로드한 그대로는 iOS에 설치할 수 없으며, 사이드로딩 도구가 설치할 때 본인의 Apple 계정으로 다시 서명합니다. Android 클라이언트와 마찬가지로 연결된 서버와 버전을 비교합니다.
+
 ## 첫 라이브러리 설정
 
 1. 지원되는 오디오 작품 폴더를 `data/` 아래에 두거나, 각 스토리지 디스크를 `data/`의 폴더로 마운트합니다(아래 참고).

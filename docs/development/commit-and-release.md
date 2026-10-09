@@ -45,21 +45,24 @@ Android derives its default monotonic `versionCode` as
 `major * 1,000,000 + minor * 1,000 + patch`.
 
 The release tag must exactly match `VERSION` and point to a commit pushed to
-`main`. Before publishing images or APKs, the release workflow looks up the
-ordinary `CI` workflow run for that exact commit on `main`. If that run is still
-in progress, release waits for it; a successful conclusion permits the release
-builds, while a failed, cancelled, or timed-out run stops the release before
-publication work begins. This reuses the commit's existing CI result instead of
-running the full validation suite a second time.
+`main`. Before publishing images or app packages, the release workflow looks up
+the ordinary `CI` workflow run for that exact commit on `main`. If that run is
+still in progress, release waits for it; a successful conclusion permits the
+release builds, while a failed, cancelled, or timed-out run stops the release
+before publication work begins. This reuses the commit's existing CI result
+instead of running the full validation suite a second time.
 
 ## Publication Order
 
 A release is published as one unit so users are never offered a version whose
-image or APK is missing:
+image, APK, or IPA is missing:
 
-1. The production image and the signed APK are built in parallel. The image is
+1. The production image, the signed APK, and the unsigned IPA are built in
+   parallel. The IPA uses `make ios-build` on a macOS runner and needs no Apple
+   signing secrets; sideloading tools re-sign it at install time. The image is
    built without pushing, so no registry tag moves yet.
-2. After both builds succeed, the APK is attached to a draft GitHub Release.
+2. After all builds succeed, the APK and IPA are attached to a draft GitHub
+   Release.
 3. The image is then pushed with its version tags and `latest`, reusing the
    build cache from step 1.
 4. The draft is published last.

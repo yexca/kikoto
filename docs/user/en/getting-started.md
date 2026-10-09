@@ -63,6 +63,13 @@ component to update. Network failures retain a separate Reconnect action.
 Kikoto does not silently install Android packages. Opening a Release and
 installing its APK remains an explicit user-confirmed Android system flow.
 
+## iOS Client
+
+Each GitHub Release also includes an unsigned iOS IPA,
+`kikoto-<version>-unsigned.ipa`. iOS cannot install it as downloaded; a
+sideloading tool re-signs it with your own Apple account during installation.
+Like the Android client, it compares its version with the connected server.
+
 ## First Library Setup
 
 1. Put supported audio work folders under `data/`, or mount each storage disk

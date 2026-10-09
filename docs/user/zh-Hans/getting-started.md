@@ -39,6 +39,10 @@ KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bce
 
 Kikoto 不会静默安装 Android 软件包。打开 Release 并安装 APK 始终是由用户确认的 Android 系统流程。
 
+## iOS 客户端
+
+每个 GitHub Release 也附带未签名的 iOS IPA（`kikoto-<版本>-unsigned.ipa`）。iOS 无法直接安装下载的文件；需要通过侧载工具在安装时使用你自己的 Apple 账号重新签名。与 Android 客户端相同，它会将自身版本与连接的服务器比较。
+
 ## 首次设置媒体库
 
 1. 将受支持的音频作品目录放入 `data/`，或将每块存储盘挂载为 `data/` 下的文件夹（见下文）。

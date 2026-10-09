@@ -1,5 +1,10 @@
 # Unreleased
 
+- The release workflow builds an unsigned iOS IPA on a macOS runner alongside
+  the signed APK and attaches it to the GitHub Release as
+  `kikoto-<version>-unsigned.ipa`. The draft is published only after the image,
+  APK, and IPA all succeed. Sideloading tools re-sign the IPA at install time.
+
 - Explicit personal-progress imports protect their cursor from earlier offline
   reports, while later playback and backward seeks remain writable. Resume-cache
   updates reject superseded confirmations across original and translated editions.
