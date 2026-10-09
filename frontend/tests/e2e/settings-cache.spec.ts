@@ -1325,3 +1325,33 @@ test("modal dialogs keep Tab focus inside the top-most dialog", async ({ page })
   await expect(confirmation).toHaveCount(0);
   await expect(details).toBeVisible();
 });
+
+test("password forms tell password managers whose credential each field holds", async ({ page }) => {
+  await mockCacheSettings(page, () => undefined);
+
+  // Changing the viewer's own password names their account so the saved sign-in is updated.
+  await page.goto("/settings");
+  const passwordForm = page.locator("form").filter({ has: page.getByLabel("Current password", { exact: true }) });
+  await expect(passwordForm.locator('input[autocomplete="username"]')).toHaveValue("admin");
+
+  // Another user's account must never be filled from or saved as the viewer's sign-in.
+  await page.goto("/settings?tab=users");
+  await page.getByRole("button", { name: "Add user", exact: true }).click();
+  const userDialog = page.getByRole("dialog", { name: "Add user", exact: true });
+  await expect(userDialog.getByRole("textbox", { name: "Username", exact: true })).toHaveAttribute(
+    "autocomplete",
+    "off",
+  );
+  await expect(userDialog.getByLabel("Password", { exact: true })).toHaveAttribute("autocomplete", "off");
+  await userDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+  // Neither may a proxy login.
+  await page.goto("/settings?tab=proxy");
+  await page.getByRole("button", { name: "Add proxy", exact: true }).click();
+  const proxyDialog = page.getByRole("dialog", { name: "Add proxy", exact: true });
+  await expect(proxyDialog.getByRole("textbox", { name: "Username", exact: true })).toHaveAttribute(
+    "autocomplete",
+    "off",
+  );
+  await expect(proxyDialog.getByLabel("Password", { exact: true })).toHaveAttribute("autocomplete", "off");
+});

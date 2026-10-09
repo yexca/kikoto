@@ -115,9 +115,7 @@ func run() error {
 		return fmt.Errorf("listen: %w", err)
 	}
 	slog.Info("kikoto api listening", "addr", cfg.HTTPAddr)
-	server.Go(func(ctx context.Context) {
-		storage.MaintainStatistics(ctx, db, storage.StatisticsMaintenancePeriod)
-	})
+	server.Go(server.RunStatisticsMaintenance)
 	server.Go(server.RunSearchIndexWorker)
 	if !cfg.IsDemo() {
 		server.Go(server.ResumeLibraryMigration)

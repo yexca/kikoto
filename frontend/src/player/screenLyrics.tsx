@@ -5,13 +5,14 @@ import { useTranslation } from "react-i18next";
 
 import {
   addNativeLyricsOverlayListener,
+  addNativeLyricsOverlayPlaybackListener,
   hideNativeLyricsOverlay,
   nativeLyricsOverlayStatus,
   requestNativeLyricsOverlayPermission,
   showNativeLyricsOverlay,
+  supportsNativeLyricsOverlay,
   updateNativeLyricsOverlayPlayback,
-} from "@/lib/nativeMedia";
-import { isNativeApp } from "@/lib/serverConfig";
+} from "@/lib/nativeLyricsOverlay";
 
 export type ScreenLyricLine = { time: number; text: string };
 
@@ -74,24 +75,40 @@ function documentPictureInPicture(): DocumentPictureInPictureAPI | null {
   return api ?? null;
 }
 
+export type ScreenLyricsCapabilities = {
+  nativeOverlay: boolean;
+  documentPictureInPicture: boolean;
+  videoPictureInPicture: boolean;
+};
+
+/**
+ * A native surface wins because it keeps advancing while the web view is in
+ * the background; WKWebView also reports no web Picture-in-Picture at all.
+ */
+export function selectScreenLyricsBackend(capabilities: ScreenLyricsCapabilities): ScreenLyricsBackend | null {
+  if (capabilities.nativeOverlay) return "native";
+  if (capabilities.documentPictureInPicture) return "document-pip";
+  if (capabilities.videoPictureInPicture) return "video-pip";
+  return null;
+}
+
 export function screenLyricsBackend(): ScreenLyricsBackend | null {
   if (typeof window === "undefined" || typeof document === "undefined") return null;
-  if (isNativeApp()) return "native";
-  if (documentPictureInPicture()) return "document-pip";
-  if (
-    document.pictureInPictureEnabled &&
-    typeof HTMLCanvasElement !== "undefined" &&
-    typeof HTMLCanvasElement.prototype.captureStream === "function"
-  ) {
-    return "video-pip";
-  }
-  return null;
+  return selectScreenLyricsBackend({
+    nativeOverlay: supportsNativeLyricsOverlay(),
+    documentPictureInPicture: documentPictureInPicture() !== null,
+    videoPictureInPicture:
+      document.pictureInPictureEnabled &&
+      typeof HTMLCanvasElement !== "undefined" &&
+      typeof HTMLCanvasElement.prototype.captureStream === "function",
+  });
 }
 
 /**
  * Keeps the current lyric line visible outside the page: a Document
  * Picture-in-Picture window on desktop browsers, a canvas-backed video
- * Picture-in-Picture fallback elsewhere, and a native overlay on Android.
+ * Picture-in-Picture fallback elsewhere, and a native surface in the app
+ * shells: the Android overlay or the iOS Picture-in-Picture plugin.
  *
  * This hook owns the open state and does not depend on the playback clock, so
  * its host does not re-render on every time update. Pair it with
@@ -105,6 +122,7 @@ export function useScreenLyrics() {
   const videoPipRef = useRef<VideoPictureInPicture | null>(null);
   const snapshotRef = useRef<ScreenLyricsSnapshot>(EMPTY_SNAPSHOT);
   const nativeSyncRef = useRef<NativeLyricsSync | null>(null);
+  const controlsRef = useRef<ScreenLyricsControls | null>(null);
 
   const closeVideoPip = useCallback(() => {
     const current = videoPipRef.current;
@@ -202,9 +220,17 @@ export function useScreenLyrics() {
       if (disposed) dispose();
       else remove = dispose;
     });
+    let removePlayback: (() => void) | null = null;
+    void addNativeLyricsOverlayPlaybackListener((playing) => {
+      if (snapshotRef.current.playing !== playing) controlsRef.current?.onTogglePlay();
+    }).then((dispose) => {
+      if (disposed) dispose();
+      else removePlayback = dispose;
+    });
     return () => {
       disposed = true;
       remove?.();
+      removePlayback?.();
     };
   }, [backend]);
 
@@ -220,6 +246,7 @@ export function useScreenLyrics() {
     snapshotRef,
     nativeSyncRef,
     videoPipRef,
+    controlsRef,
   };
 }
 
@@ -235,14 +262,16 @@ export function useScreenLyricsSync(
   snapshot: ScreenLyricsSnapshot,
   controls: ScreenLyricsControls,
 ): ReactNode {
-  const { backend, open, pipWindow, stop, snapshotRef, nativeSyncRef, videoPipRef } = screenLyrics;
+  const { backend, open, pipWindow, stop, snapshotRef, nativeSyncRef, videoPipRef, controlsRef } = screenLyrics;
 
-  // The video Picture-in-Picture timer and its first frame read the latest snapshot.
+  // The video Picture-in-Picture timer, its first frame, and native play or pause
+  // requests read the latest snapshot and controls.
   useEffect(() => {
     snapshotRef.current = snapshot;
+    controlsRef.current = controls;
   });
 
-  // Native overlay: send the whole timed track once, then only playback corrections so the
+  // Native surface: send the whole timed track once, then only playback corrections so the
   // overlay can keep advancing on its own while the WebView is in the background.
   useEffect(() => {
     if (backend !== "native" || !open) return;

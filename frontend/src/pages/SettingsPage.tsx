@@ -431,6 +431,8 @@ export function SettingsPage({
                       </>
                     }
                   >
+                    {/* Names the account so password managers update its saved sign-in. */}
+                    <input type="text" name="username" autoComplete="username" value={user.username} readOnly hidden />
                     <PasswordField
                       id="current-password"
                       label={t("settings.currentPassword")}
@@ -678,6 +680,7 @@ function PasswordField({
     <SettingsRow title={label} htmlFor={id}>
       <Input
         id={id}
+        name={id}
         className="w-full sm:w-64"
         type="password"
         value={value}

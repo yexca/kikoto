@@ -136,7 +136,8 @@ the Makefile has no target for the required check.
   `make ci-backend` for backend behavior, and `make ci-frontend` for frontend
   behavior.
 - Use `make smoke` for Docker/runtime changes, `make frontend-e2e` for browser
-  workflow changes, `make android-build` for Android changes, and
+  workflow changes, `make android-build` for Android changes, `make ios-build`
+  for iOS shell changes on macOS with Xcode, and
   `make DOCKER_IMAGE=kikoto:ci docker-build` for production image changes.
 - `make ci-local` runs the complete locally portable Actions sequence, including
   Docker validation but excluding the Android SDK build. `make ci` adds the

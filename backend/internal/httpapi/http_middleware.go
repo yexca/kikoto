@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/library"
 )
 
 const maxJSONRequestBytes int64 = 1 << 20
@@ -74,6 +76,10 @@ func defaultErrorClassification(status int) (string, bool) {
 }
 
 func writeError(w http.ResponseWriter, err error) {
+	if errors.Is(err, library.ErrRecommendationBusy) {
+		writeAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "recommendations are busy; please retry", true)
+		return
+	}
 	// A cancelled request context means the client left or the request used
 	// its first-response budget, typically while waiting for a database
 	// connection. Either way the work can be retried.

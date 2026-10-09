@@ -1,6 +1,7 @@
 import { normalizeCatalogSyncState, type CatalogSyncState } from "@/lib/catalogSyncState";
 import { combineAbortSignals, retryInvalidatedRequest, sharedInflightRequests } from "@/lib/inflightRequests";
 import { apiMutationResources, apiReadResources } from "@/lib/apiRequestResources";
+import { SITE_MAINTENANCE_EVENT } from "@/lib/appEvents";
 import {
   apiSessionSignal,
   apiSessionVersion,
@@ -2097,7 +2098,7 @@ function creatorListSearch(options: CreatorListOptions) {
 
 export function assetURL(path: string) {
   if (!path) return "";
-  return apiURL(path);
+  return nativeAssetURL(apiURL(path), API_BASE());
 }
 
 export class ApiError extends Error {
@@ -2126,6 +2127,7 @@ async function responseError(response: Response, fallback: string) {
       status: response.status,
       message,
     });
+    if (payload.code === "site_maintenance") globalThis.dispatchEvent?.(new Event(SITE_MAINTENANCE_EVENT));
     return new ApiError(message, response.status, payload.code ?? "", payload.retryable === true);
   } finally {
     responseContexts.get(response)?.complete();
@@ -2720,10 +2722,13 @@ export const api = {
   // Components that mount together often ask for the same work; they share one
   // in-flight request, and nothing is cached once it settles.
   getWork: (id: number, signal?: AbortSignal) => sharedGetJSON<WorkDetail>(`/api/works/${id}`, signal),
-  getWorkSummary: (id: number, signal?: AbortSignal) =>
-    getJSON<WorkDetail>(`/api/works/${id}?includeMedia=false`, signal),
-  getWorkMedia: (id: number, signal?: AbortSignal) =>
-    getJSON<{ workId: number; mediaWorkId: number; mediaItems: MediaItem[] }>(`/api/works/${id}/media`, signal),
+  getWorkSummary: (id: number | string, signal?: AbortSignal) =>
+    getJSON<WorkDetail>(`/api/works/${encodeURIComponent(id)}?includeMedia=false`, signal),
+  getWorkMedia: (id: number | string, signal?: AbortSignal) =>
+    getJSON<{ workId: number; mediaWorkId: number; mediaItems: MediaItem[] }>(
+      `/api/works/${encodeURIComponent(id)}/media`,
+      signal,
+    ),
   refreshWorkLocalFiles: (id: number, fileSourceId?: number | null) =>
     postJSONBody<LocalMediaRefreshResult>(`/api/works/${id}/local-files/refresh`, { fileSourceId: fileSourceId ?? 0 }),
   listMetadataTags: ({
@@ -3198,3 +3203,4 @@ import {
   setStoredSessionToken,
 } from "@/lib/serverConfig";
 import { recordApiError } from "@/lib/mobileDiagnostics";
+import { nativeAssetURL } from "@/lib/nativeAssetTransport";

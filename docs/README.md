@@ -52,6 +52,7 @@ Developers should read:
 - [Backend](architecture/backend.md)
 - [Frontend](architecture/frontend.md)
 - [Testing](development/testing.md)
+- [Browsing performance validation](development/browse-performance.md)
 - [Secure development](development/security.md)
 - [Commit and release](development/commit-and-release.md)
 

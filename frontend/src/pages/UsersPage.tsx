@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Lock, Plus, Save, Search, Trash2, UserCog } 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { Input, NativeSelect } from "@/components/ui/input";
+import { Input, NativeSelect, otherCredentialFieldProps } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
@@ -475,7 +475,7 @@ function UserDetails({
               placeholder={
                 permissions.environmentManaged ? t("admin.environmentCredential") : t("admin.keepCurrentCredential")
               }
-              autoComplete="new-password"
+              {...otherCredentialFieldProps}
             />
           </label>
         </DialogBody>
@@ -599,7 +599,7 @@ function UserCreateModal({
             <Input
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              autoComplete="username"
+              {...otherCredentialFieldProps}
               required
             />
           </label>
@@ -623,7 +623,7 @@ function UserCreateModal({
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder={t("admin.atLeastEight")}
-              autoComplete="new-password"
+              {...otherCredentialFieldProps}
               required
             />
           </label>

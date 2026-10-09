@@ -285,7 +285,11 @@ func (s *Server) persistIndexedLocalWork(ctx context.Context, workID, fileSource
 	if _, err := markMissingLocalLocationsForWork(ctx, tx, workID, fileSourceID, seenPaths, relPath); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.refreshQueryPlannerStatistics(ctx)
+	return nil
 }
 
 func persistIndexedLocalFiles(ctx context.Context, tx *sql.Tx, workID, fileSourceID int64, folder localfs.WorkFolder) (map[string]bool, error) {

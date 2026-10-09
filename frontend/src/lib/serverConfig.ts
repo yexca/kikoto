@@ -11,6 +11,11 @@ export function isNativeApp() {
   return Capacitor.isNativePlatform();
 }
 
+/** The Android shell is the only native build with media, overlay, and asset transport plugins. */
+export function isAndroidApp() {
+  return Capacitor.getPlatform() === "android";
+}
+
 export function normalizeServerURL(value: string) {
   let next = value.trim();
   if (!next) throw new Error("Server address is required.");

@@ -2,7 +2,7 @@ import { Maximize2, PanelBottom } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ANDROID_BACK_EVENT } from "@/lib/appEvents";
+import { NATIVE_BACK_EVENT } from "@/lib/appEvents";
 import { cn } from "@/lib/tailwindClassNames";
 import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
@@ -72,8 +72,8 @@ export function MiniPlayer({
       setActionsOpen(false);
       event.preventDefault();
     };
-    window.addEventListener(ANDROID_BACK_EVENT, handleBack);
-    return () => window.removeEventListener(ANDROID_BACK_EVENT, handleBack);
+    window.addEventListener(NATIVE_BACK_EVENT, handleBack);
+    return () => window.removeEventListener(NATIVE_BACK_EVENT, handleBack);
   }, [actionsOpen, isMobile]);
 
   const showDesktopActions = () => {

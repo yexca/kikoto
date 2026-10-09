@@ -151,7 +151,9 @@ Playback is handled by a global browser audio player.
   a floating overlay above other apps while Kikoto is in the background. The
   overlay opens centered on screen and can be dragged vertically. It requires
   the "Display over other apps" permission and advances lines from the playback
-  clock even when the WebView is throttled.
+  clock even when the WebView is throttled. The iOS app shows the lines in a
+  Picture-in-Picture window that stays above other apps and keeps advancing
+  while Kikoto is in the background.
 - Every player mode reserves the same bottom page space, so switching between
   mini, compact, and full modes does not change the page height.
 
