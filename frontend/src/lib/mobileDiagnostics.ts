@@ -1,4 +1,4 @@
-import { APP_CLIENT_VERSION, versionLabel } from "@/lib/appInfo";
+import { APP_CLIENT_VERSION, appClientPlatformName, versionLabel } from "@/lib/appInfo";
 import { getStoredServerURL, isNativeApp } from "@/lib/serverConfig";
 
 type DiagnosticEvent = {
@@ -35,7 +35,7 @@ export function buildMobileDiagnosticsText({
   user?: string;
 }) {
   const lines = [
-    "Kikoto Android diagnostics",
+    `Kikoto ${appClientPlatformName()} diagnostics`,
     `Generated: ${new Date().toISOString()}`,
     `Client: ${versionLabel()}`,
     `Client version: ${APP_CLIENT_VERSION}`,

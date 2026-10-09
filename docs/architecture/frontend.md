@@ -354,7 +354,17 @@ volatile queue with a diagnostic and a normal network loss window of up to
   timed track once plus playback corrections and advance lines on their own
   clock, so they stay in sync while the web view is in the background. The
   Picture-in-Picture window's play and pause go back to the web player rather
-  than to a second media session.
+  than to a second media session. When the track length is known, the iOS
+  window drives its layer timebase from the playback position, so the system
+  shows progress and skip buttons; a skip moves the lines at once and reports
+  the new absolute position to the web player's `seekTo`. iOS chooses the skip
+  interval, and without a known length the window stays live with play and
+  pause only. The Android overlay payload carries no duration. iOS composites Picture-in-Picture frames as
+  opaque video, so the window cannot be transparent; it uses a wide 4:1 frame
+  to cover less of the screen and draws a gradient from the active theme's
+  background, foreground, and primary tokens, which the web side resolves to
+  `#rrggbb` when it opens the window. Missing or malformed colors fall back to
+  the dark default.
 - Native shells attach the session credential to media and image requests on
   the configured server, limited to fixed cover, manual, media, and HLS routes.
   Android intercepts those WebView requests. WKWebView cannot intercept its own
@@ -396,8 +406,13 @@ volatile queue with a diagnostic and a normal network loss window of up to
   replace Library's saved destination. Only Library-origin details and direct
   work links are resumed by its tab; existing cross-workspace detail snapshots
   are ignored so Library remains reachable after returning to a creator.
-- Distinguish Android client-old, server-old, and network-disconnected states;
+- Distinguish native client-old, server-old, and network-disconnected states;
   version actions open signed GitHub Releases and never imply silent install.
+  The client kind shown in the account panel, version messages, and copied
+  diagnostics comes from the running shell (`Capacitor.getPlatform()`), so the
+  iOS shell reports `ios` and Android keeps `android`. Every shell runs the same
+  bundle version, so `minAndroidClientVersion` (falling back to
+  `minClientVersion`) remains the shared minimum.
 - Use the shared work-collection layout and work-card view model whenever a
   surface presents works. Page-specific filters and statistics may differ, but
   grid behavior and responsive column choices should remain aligned.

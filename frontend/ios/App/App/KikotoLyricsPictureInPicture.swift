@@ -10,6 +10,20 @@ struct KikotoLyricLine {
     let text: String
 }
 
+/// Colors for the Picture-in-Picture frame, taken from the app theme.
+struct KikotoLyricsAppearance {
+    let background: UIColor
+    let foreground: UIColor
+    let accent: UIColor
+
+    /// The dark look used when the web app sends no theme.
+    static let fallback = KikotoLyricsAppearance(
+        background: UIColor(white: 0.07, alpha: 1),
+        foreground: .white,
+        accent: UIColor(white: 0.28, alpha: 1)
+    )
+}
+
 /// Renders the current lyric line into a Picture-in-Picture window.
 ///
 /// WKWebView exposes no usable web Picture-in-Picture, so the line is drawn
@@ -22,8 +36,13 @@ struct KikotoLyricLine {
 final class KikotoLyricsPictureInPicture: NSObject {
     var onClosed: (() -> Void)?
     var onPlaybackControl: ((Bool) -> Void)?
+    /// A skip-button seek, as the new absolute position in milliseconds.
+    var onSeek: ((Double) -> Void)?
 
-    private static let frameSize = CGSize(width: 960, height: 400)
+    /// A wide strip keeps the window short so it covers less of the screen.
+    private static let frameSize = CGSize(width: 960, height: 240)
+    /// How far the background gradient moves toward the accent color.
+    private static let accentBlend: CGFloat = 0.22
     private static let tickInterval: TimeInterval = 0.2
     private static let startDelay: TimeInterval = 0.5
     private static let startTimeout: TimeInterval = 3
@@ -31,11 +50,14 @@ final class KikotoLyricsPictureInPicture: NSObject {
     private static let refreshInterval: CFTimeInterval = 1
 
     private var title = ""
+    private var appearance = KikotoLyricsAppearance.fallback
     private var lines: [KikotoLyricLine] = []
     private var anchorPositionMs: Double = 0
     private var anchorTime = CACurrentMediaTime()
     private var playing = false
     private var playbackRate: Double = 1
+    /// The track length; with none known the window stays live, with no progress bar or skip buttons.
+    private var durationMs: Double = 0
 
     private var hostView: UIView?
     private var displayLayer: AVSampleBufferDisplayLayer?
@@ -50,9 +72,20 @@ final class KikotoLyricsPictureInPicture: NSObject {
         AVPictureInPictureController.isPictureInPictureSupported()
     }
 
-    func show(title: String, lines: [KikotoLyricLine], positionMs: Double, playing: Bool, playbackRate: Double, in container: UIView) {
+    func show(
+        title: String,
+        lines: [KikotoLyricLine],
+        appearance: KikotoLyricsAppearance,
+        positionMs: Double,
+        playing: Bool,
+        playbackRate: Double,
+        durationMs: Double,
+        in container: UIView
+    ) {
         self.title = title
+        self.appearance = appearance
         self.lines = lines
+        applyDuration(durationMs)
         applyPlayback(positionMs: positionMs, playing: playing, playbackRate: playbackRate)
         renderedKey = nil
         if controller == nil {
@@ -63,7 +96,8 @@ final class KikotoLyricsPictureInPicture: NSObject {
         }
     }
 
-    func update(positionMs: Double, playing: Bool, playbackRate: Double) {
+    func update(positionMs: Double, playing: Bool, playbackRate: Double, durationMs: Double) {
+        applyDuration(durationMs)
         applyPlayback(positionMs: positionMs, playing: playing, playbackRate: playbackRate)
         controller?.invalidatePlaybackState()
         renderIfNeeded()
@@ -82,6 +116,28 @@ final class KikotoLyricsPictureInPicture: NSObject {
         anchorTime = CACurrentMediaTime()
         self.playing = playing
         self.playbackRate = playbackRate > 0 ? playbackRate : 1
+        syncTimebase()
+    }
+
+    private func applyDuration(_ durationMs: Double) {
+        self.durationMs = durationMs.isFinite && durationMs > 0 ? durationMs : 0
+        // Skip buttons appear only for a seekable, finite range.
+        controller?.requiresLinearPlayback = self.durationMs <= 0
+    }
+
+    /// The window's progress bar reads the layer timebase, so it follows the
+    /// playback position rather than the host clock. A jump in position drops
+    /// queued frames; the next render presents the line for the new position.
+    private func syncTimebase() {
+        guard let displayLayer, let timebase = displayLayer.controlTimebase else { return }
+        CMTimebaseSetTime(timebase, time: CMTime(seconds: currentPositionMs() / 1000, preferredTimescale: 1000))
+        CMTimebaseSetRate(timebase, rate: playing ? playbackRate : 0)
+        if #available(iOS 17.0, *) {
+            displayLayer.sampleBufferRenderer.flush()
+        } else {
+            displayLayer.flush()
+        }
+        renderedKey = nil
     }
 
     private func start(in container: UIView) {
@@ -92,7 +148,7 @@ final class KikotoLyricsPictureInPicture: NSObject {
         }
         // The layer must be in the window hierarchy for Picture-in-Picture to
         // start. A small host behind the opaque web view keeps it there unseen.
-        let host = UIView(frame: CGRect(x: 0, y: 0, width: 192, height: 80))
+        let host = UIView(frame: CGRect(x: 0, y: 0, width: 192, height: 48))
         host.isUserInteractionEnabled = false
         let layer = AVSampleBufferDisplayLayer()
         layer.frame = host.bounds
@@ -103,21 +159,19 @@ final class KikotoLyricsPictureInPicture: NSObject {
             sourceClock: CMClockGetHostTimeClock(),
             timebaseOut: &timebase
         ) == noErr, let timebase {
-            CMTimebaseSetTime(timebase, time: CMClockGetTime(CMClockGetHostTimeClock()))
-            CMTimebaseSetRate(timebase, rate: 1)
             layer.controlTimebase = timebase
         }
         host.layer.addSublayer(layer)
         container.insertSubview(host, at: 0)
         hostView = host
         displayLayer = layer
+        syncTimebase()
 
         let source = AVPictureInPictureController.ContentSource(sampleBufferDisplayLayer: layer, playbackDelegate: self)
         let pictureInPicture = AVPictureInPictureController(contentSource: source)
         pictureInPicture.delegate = self
-        // Lyrics follow the web player; the window offers no seeking.
-        pictureInPicture.requiresLinearPlayback = true
         controller = pictureInPicture
+        applyDuration(durationMs)
         renderIfNeeded()
 
         let tick = Timer(timeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
@@ -231,7 +285,13 @@ final class KikotoLyricsPictureInPicture: NSObject {
         let key = "\(primary)\u{1F}\(secondary)"
         let now = CACurrentMediaTime()
         guard key != renderedKey || now - renderedAt >= Self.refreshInterval,
-              let sample = Self.sampleBuffer(primary: primary, secondary: secondary) else { return }
+              let sample = Self.sampleBuffer(
+                  primary: primary,
+                  secondary: secondary,
+                  appearance: appearance,
+                  presentationTime: displayLayer.controlTimebase.map { CMTimebaseGetTime($0) }
+                      ?? CMClockGetTime(CMClockGetHostTimeClock())
+              ) else { return }
         renderedKey = key
         renderedAt = now
         if #available(iOS 17.0, *) {
@@ -241,7 +301,12 @@ final class KikotoLyricsPictureInPicture: NSObject {
         }
     }
 
-    private static func sampleBuffer(primary: String, secondary: String) -> CMSampleBuffer? {
+    private static func sampleBuffer(
+        primary: String,
+        secondary: String,
+        appearance: KikotoLyricsAppearance,
+        presentationTime: CMTime
+    ) -> CMSampleBuffer? {
         let width = Int(frameSize.width)
         let height = Int(frameSize.height)
         let attributes: [CFString: Any] = [
@@ -267,14 +332,20 @@ final class KikotoLyricsPictureInPicture: NSObject {
             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
         ) else { return nil }
 
-        context.setFillColor(UIColor(white: 0.07, alpha: 1).cgColor)
-        context.fill(CGRect(origin: .zero, size: frameSize))
+        drawBackground(in: context, appearance: appearance)
         // UIKit text drawing expects a top-left origin.
         context.translateBy(x: 0, y: frameSize.height)
         context.scaleBy(x: 1, y: -1)
         UIGraphicsPushContext(context)
-        drawLine(primary, size: 60, minimumSize: 30, weight: .semibold, color: .white, centerY: frameSize.height * 0.42)
-        drawLine(secondary, size: 36, minimumSize: 22, weight: .regular, color: UIColor(white: 1, alpha: 0.62), centerY: frameSize.height * 0.76)
+        drawLine(primary, size: 64, minimumSize: 32, weight: .semibold, color: appearance.foreground, centerY: frameSize.height * 0.4)
+        drawLine(
+            secondary,
+            size: 38,
+            minimumSize: 24,
+            weight: .regular,
+            color: appearance.foreground.withAlphaComponent(0.62),
+            centerY: frameSize.height * 0.78
+        )
         UIGraphicsPopContext()
 
         var format: CMVideoFormatDescription?
@@ -284,7 +355,7 @@ final class KikotoLyricsPictureInPicture: NSObject {
         else { return nil }
         var timing = CMSampleTimingInfo(
             duration: .invalid,
-            presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()),
+            presentationTimeStamp: presentationTime,
             decodeTimeStamp: .invalid
         )
         var sample: CMSampleBuffer?
@@ -308,6 +379,41 @@ final class KikotoLyricsPictureInPicture: NSObject {
             )
         }
         return sample
+    }
+
+    /// A diagonal wash from the theme background toward its accent color.
+    private static func drawBackground(in context: CGContext, appearance: KikotoLyricsAppearance) {
+        let start = appearance.background
+        let end = blend(appearance.background, appearance.accent, amount: accentBlend)
+        guard let gradient = CGGradient(
+            colorsSpace: context.colorSpace,
+            colors: [start.cgColor, end.cgColor] as CFArray,
+            locations: [0, 1]
+        ) else {
+            context.setFillColor(start.cgColor)
+            context.fill(CGRect(origin: .zero, size: frameSize))
+            return
+        }
+        // The context origin is bottom-left here, so this runs top-left to bottom-right.
+        context.drawLinearGradient(
+            gradient,
+            start: CGPoint(x: 0, y: frameSize.height),
+            end: CGPoint(x: frameSize.width, y: 0),
+            options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+        )
+    }
+
+    private static func blend(_ base: UIColor, _ tint: UIColor, amount: CGFloat) -> UIColor {
+        var (r1, g1, b1, a1): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
+        var (r2, g2, b2, a2): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
+        guard base.getRed(&r1, green: &g1, blue: &b1, alpha: &a1),
+              tint.getRed(&r2, green: &g2, blue: &b2, alpha: &a2) else { return base }
+        return UIColor(
+            red: r1 + (r2 - r1) * amount,
+            green: g1 + (g2 - g1) * amount,
+            blue: b1 + (b2 - b1) * amount,
+            alpha: 1
+        )
     }
 
     private static func drawLine(
@@ -371,8 +477,9 @@ extension KikotoLyricsPictureInPicture: AVPictureInPictureSampleBufferPlaybackDe
     }
 
     func pictureInPictureControllerTimeRangeForPlayback(_ pictureInPictureController: AVPictureInPictureController) -> CMTimeRange {
-        // A live range: the window offers play and pause but no seeking.
-        CMTimeRange(start: .negativeInfinity, duration: .positiveInfinity)
+        // A known length shows progress and skip buttons; otherwise the range is live.
+        guard durationMs > 0 else { return CMTimeRange(start: .negativeInfinity, duration: .positiveInfinity) }
+        return CMTimeRange(start: .zero, duration: CMTime(seconds: durationMs / 1000, preferredTimescale: 1000))
     }
 
     func pictureInPictureControllerIsPlaybackPaused(_ pictureInPictureController: AVPictureInPictureController) -> Bool {
@@ -389,6 +496,14 @@ extension KikotoLyricsPictureInPicture: AVPictureInPictureSampleBufferPlaybackDe
         skipByInterval skipInterval: CMTime,
         completion completionHandler: @escaping () -> Void
     ) {
-        completionHandler()
+        defer { completionHandler() }
+        let interval = CMTimeGetSeconds(skipInterval)
+        guard durationMs > 0, interval.isFinite else { return }
+        // Move the lines at once; the web player seeks and confirms with an update.
+        let position = min(max(0, currentPositionMs() + interval * 1000), durationMs)
+        applyPlayback(positionMs: position, playing: playing, playbackRate: playbackRate)
+        pictureInPictureController.invalidatePlaybackState()
+        renderIfNeeded()
+        onSeek?(position)
     }
 }
