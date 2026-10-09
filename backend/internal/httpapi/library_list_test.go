@@ -88,6 +88,45 @@ func TestListWorksPageClosesOuterRowsBeforeEnrichment(t *testing.T) {
 	}
 }
 
+func TestOrdinaryLibraryPageSurvivesRecommendationBackfill(t *testing.T) {
+	db := openMigratedTestDB(t)
+	userID := metadataReviewExec(t, db, "INSERT INTO user_account (username, display_name, role) VALUES ('badges-user', 'Example User', 'user')")
+	metadataReviewExec(t, db, "INSERT INTO work (primary_code, title) VALUES ('RJ00000000', 'Example Work')")
+	server := NewServer(db, config.Config{})
+	request := func() struct {
+		Works                     []libraryWorkSummary `json:"works"`
+		Total                     int                  `json:"total"`
+		RecommendationUnavailable bool                 `json:"recommendationUnavailable"`
+	} {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodGet, "/api/works?sort=recent&recommendBadges=true&recommendationSession=badge-retry", nil)
+		r = r.WithContext(context.WithValue(r.Context(), currentUserKey, currentUser{ID: userID}))
+		response := httptest.NewRecorder()
+		server.listWorks(response, r)
+		if response.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+		}
+		var result struct {
+			Works                     []libraryWorkSummary `json:"works"`
+			Total                     int                  `json:"total"`
+			RecommendationUnavailable bool                 `json:"recommendationUnavailable"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	first := request()
+	if first.Total != 1 || len(first.Works) != 1 || !first.RecommendationUnavailable {
+		t.Fatalf("backfill response=%+v", first)
+	}
+	publishRecommendationTestCatalog(t, server)
+	retry := request()
+	if retry.Total != 1 || len(retry.Works) != 1 || retry.RecommendationUnavailable || retry.Works[0].RecommendScore != 35 {
+		t.Fatalf("retry response=%+v", retry)
+	}
+}
+
 // The Library list never returns the complete catalog: a request without page
 // parameters is bounded to the first default page.
 func TestListWorksWithoutPageParametersReturnsFirstPage(t *testing.T) {
@@ -117,6 +156,7 @@ func TestListWorksPageBindsValidatedRecommendationSession(t *testing.T) {
 	workID, _ := workResult.LastInsertId()
 	server := NewServer(db, config.Config{})
 	user := currentUser{ID: userID}
+	publishRecommendationTestCatalog(t, server)
 
 	request := httptest.NewRequest(http.MethodGet, "/api/works?page=1&pageSize=10&sort=recommend&recommendationSession=session-a", nil)
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, user))

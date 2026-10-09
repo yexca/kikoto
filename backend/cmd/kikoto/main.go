@@ -119,6 +119,7 @@ func run() error {
 	server.Go(server.RunStatisticsMaintenance)
 	server.Go(server.RunSearchIndexWorker)
 	if !cfg.IsDemo() {
+		server.Go(server.RunRecommendationWorker)
 		server.Go(server.ResumeLibraryMigration)
 		server.Go(func(ctx context.Context) {
 			if err := server.RunStartupWorkflows(ctx); err != nil && ctx.Err() == nil {

@@ -8,6 +8,7 @@ const libraryHant = {
   workNotFound: "找不到作品",
   markedAs: "已將 {{code}} 標記為{{status}}。",
   couldNotLoad: "媒體庫載入失敗。",
+  recommendationBadgesUnavailable: "推薦徽章暫時無法使用。",
   workUnavailableInLibrary: "{{code}} 在目前媒體庫或已設定來源中無法使用。",
   refreshingRemoteWorks: "正在重新整理遠端作品",
   refreshingLibraryWorks: "正在重新整理媒體庫作品",

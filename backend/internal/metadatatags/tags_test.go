@@ -153,6 +153,7 @@ func TestSharedTagsLanguagesOverridesSearchAndRecommendation(t *testing.T) {
 		t.Fatalf("shared concept = %+v", got)
 	}
 	store := library.NewStore(db)
+	publishTagRecommendationCatalog(t, db, store)
 	first, err := store.PrepareRecommendationSession(ctx, user, "shared-tags-first")
 	if err != nil {
 		t.Fatal(err)
@@ -190,6 +191,7 @@ func TestSharedTagsLanguagesOverridesSearchAndRecommendation(t *testing.T) {
 	requireWorkTags(t, db, works[1])
 	assertSearch("tag:示例标签", 1)
 	assertSearch("tag:\"Synthetic alternate tag\"", 1)
+	publishTagRecommendationCatalog(t, db, store)
 	second, err := store.PrepareRecommendationSession(ctx, user, "shared-tags-second")
 	if err != nil {
 		t.Fatal(err)
@@ -242,6 +244,28 @@ func TestSharedTagsLanguagesOverridesSearchAndRecommendation(t *testing.T) {
 	}
 	if before != after {
 		t.Fatalf("unchanged projection revision %d -> %d", before, after)
+	}
+}
+
+func publishTagRecommendationCatalog(t *testing.T, db *sql.DB, store *library.Store) {
+	t.Helper()
+	for {
+		processed, err := metasync.ProcessMetadataTagQueue(context.Background(), db, 64, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if processed == 0 {
+			break
+		}
+	}
+	for {
+		processed, err := store.ProcessRecommendationCatalog(context.Background(), 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if processed == 0 {
+			break
+		}
 	}
 }
 

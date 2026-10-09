@@ -76,6 +76,10 @@ func defaultErrorClassification(status int) (string, bool) {
 }
 
 func writeError(w http.ResponseWriter, err error) {
+	if errors.Is(err, library.ErrRecommendationNotReady) {
+		writeAPIError(w, http.StatusServiceUnavailable, "recommendation_preparing", "recommendations are preparing; please retry", true)
+		return
+	}
 	if errors.Is(err, library.ErrRecommendationBusy) {
 		writeAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "recommendations are busy; please retry", true)
 		return

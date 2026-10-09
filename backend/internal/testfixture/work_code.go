@@ -32,6 +32,17 @@ func WorkCodeAt(index int) string {
 	return WorkCode(workCodePrefixes[index/workCodesPerPrefix], index%workCodesPerPrefix)
 }
 
+// HighCardinalityWorkCodeAt is reserved for isolated scale experiments which
+// require more than the 400 identities supported by WorkCodeAt. Its four
+// zero-prefixed ranges are deliberately bounded and never provider fixtures.
+func HighCardinalityWorkCodeAt(index int) string {
+	const perPrefix = 100000
+	if index < 0 || index >= len(workCodePrefixes)*perPrefix {
+		panic(fmt.Sprintf("synthetic scale work-code index %d is outside 0..399999", index))
+	}
+	return fmt.Sprintf("%s%08d", workCodePrefixes[index/perPrefix], index%perPrefix)
+}
+
 func validWorkCodePrefix(prefix WorkCodePrefix) bool {
 	for _, candidate := range workCodePrefixes {
 		if prefix == candidate {

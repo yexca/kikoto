@@ -7,6 +7,7 @@ export const libraryHans = {
   workNotFound: "找不到作品",
   markedAs: "已将 {{code}} 标记为{{status}}。",
   couldNotLoad: "媒体库加载失败。",
+  recommendationBadgesUnavailable: "推荐徽章暂时不可用。",
   workUnavailableInLibrary: "{{code}} 在当前媒体库或已配置来源中不可用。",
   refreshingRemoteWorks: "正在刷新远程作品",
   refreshingLibraryWorks: "正在刷新媒体库作品",

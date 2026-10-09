@@ -7,6 +7,7 @@ const libraryKorean = {
   workNotFound: "작품을 찾을 수 없습니다",
   markedAs: "{{code}}을(를) {{status}}으로 표시했습니다.",
   couldNotLoad: "라이브러리를 불러오지 못했습니다.",
+  recommendationBadgesUnavailable: "추천 배지를 일시적으로 사용할 수 없습니다.",
   workUnavailableInLibrary: "{{code}}을(를) 현재 라이브러리 또는 구성된 소스에서 사용할 수 없습니다.",
   refreshingRemoteWorks: "원격 작품 새로 고침 중",
   refreshingLibraryWorks: "라이브러리 작품 새로 고침 중",

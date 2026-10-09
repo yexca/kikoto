@@ -44,11 +44,20 @@
   displayed page in one batch and appear progressively. Toggling badges does
   not reload the remote source; a scoring failure keeps the cards available and
   offers a retry.
-- Recommendation heuristic v5 strengthens repeated positive evidence, reduces
-  common-tag weight, favors weaker evidence in exploration, and mildly spreads
-  creators within each listening lane. Affinity badges stay separate from
-  ranking adjustments. Migration 060 preserves frozen affinity, diversity,
-  and remote name matching per session.
+- Recommendation heuristic v6 retains the affinity rules while using a shared
+  versioned feature catalog, frozen sparse user profiles, bounded recall and
+  candidate ranking. Each listening lane shows candidates first, followed by
+  every remaining matching work in stable exploration order; totals and exact
+  search priority remain complete. Ordinary-page badges and detail explanations
+  compute real affinity without per-user full-library score snapshots.
+- Migration 063 queues shared catalog backfill without rebuilding the database
+  or deleting user feedback and listening history. Until the first complete
+  epoch publishes, ordinary browsing and playback work and recommendation
+  preparation offers Retry. Later updates serve the last published epoch.
+  Algorithm-version binding renews old recommendation sessions, and bounded
+  background cleanup removes obsolete derived score caches and unreferenced
+  versions while protecting active generations. Back up the database before
+  upgrading as described in [Database](../operations/database.md).
 
 - Narrow work cards, such as two mobile columns or six or more desktop
   columns, use tighter type and spacing. Personal tags lead a single tag row

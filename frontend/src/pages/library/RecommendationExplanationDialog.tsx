@@ -3,7 +3,7 @@ import { RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogBody, DialogHeader } from "@/components/ui/dialog";
 import i18n from "@/i18n";
-import type { RecommendationBreakdown, Work } from "@/lib/api";
+import type { RecommendationAffinityBreakdown, RecommendationBreakdown, Work } from "@/lib/api";
 
 export function RecommendationExplanationDialog({
   state,
@@ -12,8 +12,9 @@ export function RecommendationExplanationDialog({
   state: { work: Work; breakdown: RecommendationBreakdown | null; loading: boolean; error: string };
   onClose: () => void;
 }) {
+  const affinity = state.breakdown?.scoreKind !== "demo_random" ? state.breakdown : null;
   const components =
-    state.breakdown?.components.filter((component) => component.matchCount > 0 || component.contribution !== 0) ?? [];
+    affinity?.components.filter((component) => component.matchCount > 0 || component.contribution !== 0) ?? [];
   return (
     <Dialog onClose={onClose} layer="overlay-top" size="md">
       <DialogHeader
@@ -33,46 +34,52 @@ export function RecommendationExplanationDialog({
           <>
             <div className="flex items-end justify-between gap-4 border-b pb-3">
               <div>
-                <div className="text-xs text-muted-foreground">{i18n.t("libraryDetail.affinityScore")}</div>
+                <div className="text-xs text-muted-foreground">
+                  {i18n.t(affinity ? "libraryDetail.affinityScore" : "libraryDetail.demoRandomScore")}
+                </div>
                 <div className="text-3xl font-semibold">{state.breakdown.score}</div>
               </div>
-              <div className="flex flex-col items-end gap-1">
-                <Badge variant="secondary">{recommendationLaneLabel(state.breakdown.lane)}</Badge>
-                <Badge variant="outline">{state.breakdown.algorithmVersion}</Badge>
-              </div>
+              {affinity && (
+                <div className="flex flex-col items-end gap-1">
+                  <Badge variant="secondary">{recommendationLaneLabel(affinity.lane)}</Badge>
+                  <Badge variant="outline">{affinity.algorithmVersion}</Badge>
+                </div>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">{i18n.t("libraryDetail.recommendationExplanation")}</p>
-            {state.breakdown.ordering && (
+            {affinity && (
+              <p className="text-xs text-muted-foreground">{i18n.t("libraryDetail.recommendationExplanation")}</p>
+            )}
+            {affinity?.ordering && (
               <div className="space-y-2 border-t pt-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">{i18n.t("libraryDetail.shuffleAdjustment")}</span>
                   <span className="font-semibold tabular-nums">
-                    {formatRecommendationAdjustment(state.breakdown.ordering.totalAdjustment)}
+                    {formatRecommendationAdjustment(affinity.ordering.totalAdjustment)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">{i18n.t("libraryDetail.discoveryBoost")}</span>
                   <span className="font-medium tabular-nums">
-                    {formatRecommendationAdjustment(state.breakdown.ordering.explorationBoost)}
+                    {formatRecommendationAdjustment(affinity.ordering.explorationBoost)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">{i18n.t("libraryDetail.resultVariation")}</span>
                   <span className="font-medium tabular-nums">
-                    {formatRecommendationAdjustment(state.breakdown.ordering.jitter)}
+                    {formatRecommendationAdjustment(affinity.ordering.jitter)}
                   </span>
                 </div>
-                {Boolean(state.breakdown.ordering.diversityPenalty) && (
+                {Boolean(affinity.ordering.diversityPenalty) && (
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-muted-foreground">{i18n.t("libraryDetail.diversityAdjustment")}</span>
                     <span className="font-medium tabular-nums">
-                      {formatRecommendationAdjustment(-(state.breakdown.ordering.diversityPenalty ?? 0))}
+                      {formatRecommendationAdjustment(-(affinity.ordering.diversityPenalty ?? 0))}
                     </span>
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-3 border-t pt-2">
                   <span className="font-medium">{i18n.t("libraryDetail.rankingScore")}</span>
-                  <span className="font-semibold tabular-nums">{state.breakdown.ordering.rankingScore.toFixed(1)}</span>
+                  <span className="font-semibold tabular-nums">{affinity.ordering.rankingScore.toFixed(1)}</span>
                 </div>
               </div>
             )}
@@ -98,11 +105,11 @@ export function RecommendationExplanationDialog({
                 </div>
               ))}
             </div>
-            {state.breakdown.rawScore !== state.breakdown.score && (
+            {affinity && affinity.rawScore !== affinity.score && (
               <div className="border-t pt-3 text-xs text-muted-foreground">
                 {i18n.t("libraryDetail.rawScoreBounded", {
-                  raw: state.breakdown.rawScore,
-                  score: state.breakdown.score,
+                  raw: affinity.rawScore,
+                  score: affinity.score,
                 })}
               </div>
             )}
@@ -118,7 +125,7 @@ function formatRecommendationAdjustment(value: number) {
   return `${rounded >= 0 ? "+" : ""}${rounded.toFixed(1)}`;
 }
 
-function recommendationLaneLabel(lane: RecommendationBreakdown["lane"]) {
+function recommendationLaneLabel(lane: RecommendationAffinityBreakdown["lane"]) {
   switch (lane) {
     case "listening":
       return i18n.t("libraryDetail.listeningPriority");

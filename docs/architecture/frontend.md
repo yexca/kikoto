@@ -484,6 +484,17 @@ volatile queue with a diagnostic and a normal network loss window of up to
   storage. Navigation and reloads in one browser tab reuse it; a newly opened
   tab or native-app cold launch creates a new id and stable recommendation seed.
   Manual reshuffle changes the browse seed without replacing the session id.
+- Pass the list's opaque `recommendationContext` with its session when opening
+  an explanation. Query ordering adjustments appear only for an applicable
+  context; ordinary badges and candidate-tail explanations still show actual
+  frozen affinity. `recommendation_context_expired` (HTTP 410) retries the
+  explanation with the original session and without the context, then omits
+  ordering adjustments. Identity, generation, and other failures remain visible.
+  Demo explanations label their score as randomly generated and omit preference
+  contributions and ranking adjustments. Optional badge failure has an inline
+  retry and preserves the cards. A failed recommendation-sort preparation keeps
+  the last loaded cards alongside its retry state. The global player remains
+  mounted throughout.
 - A Library page, page-size, sort, filter, or search change returns to the start
   of the new results once they render. Compact layouts jump to the page top
   after any scroll still running from the user's gesture settles, because

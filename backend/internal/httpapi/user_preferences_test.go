@@ -26,6 +26,7 @@ func TestUserPreferencesIsolationAndRecommendationSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{})
+	publishRecommendationTestCatalog(t, server)
 	if _, err := db.Exec("INSERT INTO app_setting (key, value_json) VALUES ('recommendation_threshold', '64')"); err != nil {
 		t.Fatal(err)
 	}

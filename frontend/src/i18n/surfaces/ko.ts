@@ -1355,6 +1355,7 @@ export const surfaceKorean = {
     useOtherWorkMetadata: "다른 작품의 메타데이터 사용",
     metadataUnavailable: "메타데이터를 사용할 수 없음",
     affinityScore: "친화도 점수",
+    demoRandomScore: "데모 점수, 무작위 생성",
     shuffleAdjustment: "현재 셔플 조정",
     discoveryBoost: "탐색 부스트",
     resultVariation: "결과 변동",

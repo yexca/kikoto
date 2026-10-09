@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const RecommendationAlgorithmVersion = "heuristic-v5"
+const RecommendationAlgorithmVersion = "heuristic-v6"
 
 const recommendationScoreUserArgumentCount = 9
 
@@ -353,27 +353,12 @@ func (s *Store) RecommendationBreakdownWithConfig(ctx context.Context, userID, w
 	if workID <= 0 {
 		return buildRecommendationBreakdown(config, RecommendationSignals{ListeningStatus: "none"}), nil
 	}
-	query := fmt.Sprintf(`SELECT COALESCE(user_work_state.listening_status, 'none'), COALESCE(user_work_state.favorite, 0),
-		%s, %s, %s, %s, %s, %s, %s, %s, %s
-		FROM work
-		LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
-		WHERE work.id = ?`, positiveTagMatchCountExpression, positiveVoiceMatchCountExpression, positiveCircleMatchCountExpression,
-		negativeTagMatchCountExpression(config.NegativeMinEvidence), negativeVoiceMatchCountExpression(config.NegativeMinEvidence), negativeCircleMatchCountExpression(config.NegativeMinEvidence), positiveAffinityExpression("tag"), positiveAffinityExpression("voice"), positiveAffinityExpression("circle"))
-	args := append(recommendationUserArgs(userID), userID, userID, userID, userID, workID)
-	var signals RecommendationSignals
-	signals.Affinity = &RecommendationAffinity{}
-	var favorite int
-	err := s.db.QueryRowContext(ctx, query, args...).Scan(
-		&signals.ListeningStatus, &favorite,
-		&signals.PositiveTagMatches, &signals.PositiveVoiceMatches, &signals.PositiveCircleMatches,
-		&signals.NegativeTagMatches, &signals.NegativeVoiceMatches, &signals.NegativeCircleMatches,
-		&signals.Affinity.Tags, &signals.Affinity.Voices, &signals.Affinity.Circles,
-	)
+	snapshot, err := s.snapshotForRecommendation(ctx, userID, "")
 	if err != nil {
 		return RecommendationBreakdown{}, err
 	}
-	signals.Favorite = favorite != 0
-	return buildRecommendationBreakdown(config, signals), nil
+	snapshot.Config = config
+	return s.RecommendationSnapshotBreakdown(ctx, snapshot, workID)
 }
 
 func (s *Store) RecommendationScore(ctx context.Context, userID, workID int64) (int, error) {

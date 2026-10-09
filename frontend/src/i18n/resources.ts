@@ -6,6 +6,7 @@ export const libraryEnglish = {
   workNotFound: "Work not found",
   markedAs: "Marked {{code}} as {{status}}.",
   couldNotLoad: "Library could not be loaded.",
+  recommendationBadgesUnavailable: "Recommendation badges are temporarily unavailable.",
   workUnavailableInLibrary: "{{code}} is not available in the current library or configured sources.",
   refreshingRemoteWorks: "Refreshing remote works",
   refreshingLibraryWorks: "Refreshing library works",

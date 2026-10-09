@@ -144,6 +144,13 @@ func (s *Server) RunSearchIndexWorker(ctx context.Context) {
 	s.libraryStore.RunSearchIndexWorker(ctx)
 }
 
+func (s *Server) RunRecommendationWorker(ctx context.Context) {
+	if s.cfg.IsDemo() {
+		return
+	}
+	s.libraryStore.RunRecommendationWorker(ctx)
+}
+
 func (s *Server) RunStatisticsMaintenance(ctx context.Context) {
 	s.statistics.Run(ctx, storage.StatisticsMaintenancePeriod)
 }

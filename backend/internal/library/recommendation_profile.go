@@ -11,11 +11,12 @@ import (
 	"github.com/yexca/kikoto/backend/internal/searchtext"
 )
 
+// This SQL is an experimental v5 baseline, never a request-time projection.
 const recommendationEntitiesSQL = `SELECT 'tag' AS kind, work_tag.work_id, work_tag.tag_id AS entity_id
-	FROM work_tag JOIN tag ON tag.id = work_tag.tag_id WHERE tag.namespace IN ('dlsite', 'metadata')
-	GROUP BY work_tag.work_id, work_tag.tag_id
-	UNION ALL SELECT 'voice', work_id, person_id FROM work_credit WHERE role = 'voice_actor' GROUP BY work_id, person_id
-	UNION ALL SELECT 'circle', work_id, party_id FROM work_party WHERE role = 'circle' GROUP BY work_id, party_id`
+ FROM work_tag JOIN tag ON tag.id = work_tag.tag_id WHERE tag.namespace IN ('dlsite', 'metadata')
+ GROUP BY work_tag.work_id, work_tag.tag_id
+ UNION ALL SELECT 'voice', work_id, person_id FROM work_credit WHERE role = 'voice_actor' GROUP BY work_id, person_id
+ UNION ALL SELECT 'circle', work_id, party_id FROM work_party WHERE role = 'circle' GROUP BY work_id, party_id`
 
 type recommendationProfileEntity struct {
 	Positive    int     `json:"positive"`
@@ -23,9 +24,19 @@ type recommendationProfileEntity struct {
 	Specificity float64 `json:"specificity"`
 }
 
+type recommendationFrozenState struct {
+	PrimaryCode     string `json:"primaryCode"`
+	ListeningStatus string `json:"listeningStatus"`
+	Favorite        bool   `json:"favorite"`
+}
+
 type RecommendationProfile struct {
 	Entities map[string]recommendationProfileEntity `json:"entities"`
 	Names    map[string][]string                    `json:"names"`
+	States   map[int64]recommendationFrozenState    `json:"states,omitempty"`
+	// The private cache key authenticates context ownership after eviction.
+	// It is persisted with the generation and never included in public scores.
+	ContextSigningKey string `json:"contextSigningKey,omitempty"`
 }
 
 type recommendationProfileQueryer interface {
@@ -33,99 +44,154 @@ type recommendationProfileQueryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-func loadRecommendationProfile(ctx context.Context, queryer recommendationProfileQueryer, userID int64) (RecommendationProfile, error) {
-	profile := RecommendationProfile{Entities: map[string]recommendationProfileEntity{}, Names: map[string][]string{}}
-	if userID <= 0 {
-		return profile, nil
-	}
-	rows, err := queryer.QueryContext(ctx, `WITH entities AS MATERIALIZED (`+recommendationEntitiesSQL+`)
-		SELECT kind, entity_id,
-		 SUM(CASE WHEN state.listening_status = 'relisten' OR state.favorite = 1 THEN 1 ELSE 0 END),
-		 SUM(CASE WHEN state.listening_status = 'paused' AND state.favorite = 0 THEN 1 ELSE 0 END),
-		 COUNT(*), (SELECT COUNT(*) FROM work)
-		FROM entities LEFT JOIN user_work_state AS state ON state.work_id = entities.work_id AND state.user_id = ?
-		GROUP BY kind, entity_id
-		HAVING SUM(CASE WHEN state.listening_status IN ('relisten', 'paused') OR state.favorite = 1 THEN 1 ELSE 0 END) > 0`, userID)
-	if err != nil {
-		return profile, err
-	}
-	for rows.Next() {
-		var kind string
-		var id int64
-		var entity recommendationProfileEntity
-		var frequency, total int
-		if err := rows.Scan(&kind, &id, &entity.Positive, &entity.Paused, &frequency, &total); err != nil {
-			_ = rows.Close()
+// Feedback is the root of a profile read. No catalog relation scan discovers
+// evidence, and no valid feedback is truncated to meet recall budgets.
+func (s *Store) prepareRecommendationProfile(ctx context.Context, userID, epoch int64) (RecommendationProfile, error) {
+	profile := emptyRecommendationProfile()
+	profile.States = map[int64]recommendationFrozenState{}
+	var after int64
+	for {
+		rows, err := s.db.QueryContext(ctx, `SELECT u.work_id,w.primary_code,u.listening_status,u.favorite FROM user_work_state u JOIN work w ON w.id = u.work_id
+   WHERE u.user_id = ? AND u.work_id > ? AND (u.listening_status <> 'none' OR u.favorite = 1)
+   ORDER BY u.work_id LIMIT 256`, userID, after)
+		if err != nil {
 			return profile, err
 		}
-		entity.Specificity = 1
-		if kind == "tag" {
-			entity.Specificity = recommendationTagSpecificity(frequency, total)
+		ids := []int64{}
+		for rows.Next() {
+			var id int64
+			var state recommendationFrozenState
+			if err := rows.Scan(&id, &state.PrimaryCode, &state.ListeningStatus, &state.Favorite); err != nil {
+				_ = rows.Close()
+				return profile, err
+			}
+			profile.States[id] = state
+			s.recommendationDiagnostics.stateRows.Add(1)
+			ids = append(ids, id)
+			after = id
 		}
-		profile.Entities[kind+":"+strconv.FormatInt(id, 10)] = entity
-	}
-	if err := rows.Err(); err != nil {
+		err = rows.Err()
 		_ = rows.Close()
-		return profile, err
-	}
-	if err := rows.Close(); err != nil {
-		return profile, err
-	}
-	if len(profile.Entities) == 0 {
-		return profile, nil
-	}
-	// Aliases resolve to the same entity. Ambiguous names are kept ambiguous and
-	// never become several independent matches for one source-supplied name.
-	rows, err = queryer.QueryContext(ctx, `
-		SELECT 'tag', COALESCE(resolved.resolved_tag_id, tag.id), tag.display_name FROM tag
-		LEFT JOIN metadata_tag_resolution AS resolved ON resolved.source_tag_id = tag.id
-		WHERE tag.namespace IN ('dlsite', 'metadata')
-		UNION ALL SELECT 'tag', resolved.resolved_tag_id, name.name FROM metadata_tag_name AS name
-		JOIN metadata_tag_resolution AS resolved ON resolved.source_tag_id = name.tag_id
-		UNION ALL SELECT 'tag', resolved.resolved_tag_id, name.name FROM metadata_tag_provider_name AS name
-		JOIN metadata_tag_resolution AS resolved ON resolved.source_tag_id = name.tag_id
-		UNION ALL SELECT 'tag', resolved.resolved_tag_id, name.name FROM dlsite_genre_name AS name
-		JOIN metadata_tag AS concept ON concept.dlsite_genre_id = name.genre_id
-		JOIN metadata_tag_resolution AS resolved ON resolved.source_tag_id = concept.tag_id
-		UNION ALL SELECT 'voice', id, display_name FROM person
-		UNION ALL SELECT 'voice', person_id, alias FROM person_alias
-		UNION ALL SELECT 'circle', id, display_name FROM party
-		UNION ALL SELECT 'circle', id, manual_name FROM party
-		UNION ALL SELECT 'circle', id, provider_name FROM party
-		UNION ALL SELECT 'circle', party_id, alias FROM party_alias`)
-	if err != nil {
-		return profile, err
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var kind, name string
-		var id int64
-		if err := rows.Scan(&kind, &id, &name); err != nil {
+		if err != nil {
 			return profile, err
 		}
-		name = searchtext.Fold(name)
-		if name == "" {
-			continue
+		if len(ids) == 0 {
+			break
 		}
-		key := kind + ":" + strconv.FormatInt(id, 10)
-		nameKey := kind + ":" + name
-		if !containsProfileKey(profile.Names[nameKey], key) {
-			profile.Names[nameKey] = append(profile.Names[nameKey], key)
-		}
-	}
-	for name, keys := range profile.Names {
-		relevant := false
-		for _, key := range keys {
-			if _, exists := profile.Entities[key]; exists {
-				relevant = true
-				break
+		feedback := []int64{}
+		for _, id := range ids {
+			state := profile.States[id]
+			if state.Favorite || state.ListeningStatus == "relisten" || state.ListeningStatus == "paused" {
+				feedback = append(feedback, id)
 			}
 		}
-		if !relevant {
-			delete(profile.Names, name)
+		features, err := s.loadRecommendationFeatures(ctx, epoch, feedback)
+		if err != nil {
+			return profile, err
+		}
+		for _, id := range feedback {
+			state := profile.States[id]
+			for _, f := range features[id] {
+				evidence := profile.Entities[f.key()]
+				if state.Favorite || state.ListeningStatus == "relisten" {
+					evidence.Positive++
+				} else if state.ListeningStatus == "paused" {
+					evidence.Paused++
+				}
+				profile.Entities[f.key()] = evidence
+			}
 		}
 	}
-	return profile, rows.Err()
+	var total int
+	if err := s.db.QueryRowContext(ctx, "SELECT work_count FROM recommendation_catalog_epoch WHERE id = ? AND published = 1", epoch).Scan(&total); err != nil {
+		return profile, err
+	}
+	for key, evidence := range profile.Entities {
+		f, err := parseRecommendationFeatureKey(key)
+		if err != nil {
+			return profile, err
+		}
+		evidence.Specificity = 1
+		if f.Kind == "tag" {
+			var count int
+			if err := s.db.QueryRowContext(ctx, `SELECT work_count FROM recommendation_catalog_frequency WHERE kind = ? AND entity_id = ? AND valid_from <= ? AND (valid_to IS NULL OR valid_to > ?) ORDER BY valid_from DESC LIMIT 1`, f.Kind, f.ID, epoch, epoch).Scan(&count); err != nil {
+				return profile, err
+			}
+			evidence.Specificity = recommendationTagSpecificity(count, total)
+			s.recommendationDiagnostics.frequencyRows.Add(1)
+		}
+		profile.Entities[key] = evidence
+		rows, err := s.db.QueryContext(ctx, "SELECT DISTINCT name FROM recommendation_catalog_name WHERE kind = ? AND entity_id = ? AND valid_from <= ? AND (valid_to IS NULL OR valid_to > ?)", f.Kind, f.ID, epoch, epoch)
+		if err != nil {
+			return profile, err
+		}
+		names := []string{}
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				_ = rows.Close()
+				return profile, err
+			}
+			names = append(names, name)
+			s.recommendationDiagnostics.nameRows.Add(1)
+		}
+		err = rows.Err()
+		_ = rows.Close()
+		if err != nil {
+			return profile, err
+		}
+		for _, name := range names {
+			nameKey := f.Kind + ":" + name
+			if _, loaded := profile.Names[nameKey]; loaded {
+				continue
+			}
+			// All entities sharing a relevant name participate in ambiguity, including
+			// entities absent from this user's feedback.
+			matches, err := s.db.QueryContext(ctx, `SELECT DISTINCT entity_id FROM recommendation_catalog_name WHERE kind = ? AND name = ? AND valid_from <= ? AND (valid_to IS NULL OR valid_to > ?) ORDER BY entity_id LIMIT 2`, f.Kind, name, epoch, epoch)
+			if err != nil {
+				return profile, err
+			}
+			keys := []string{}
+			for matches.Next() {
+				var id int64
+				if err := matches.Scan(&id); err != nil {
+					_ = matches.Close()
+					return profile, err
+				}
+				keys = append(keys, f.Kind+":"+strconv.FormatInt(id, 10))
+				s.recommendationDiagnostics.nameRows.Add(1)
+			}
+			err = matches.Err()
+			_ = matches.Close()
+			if err != nil {
+				return profile, err
+			}
+			profile.Names[nameKey] = keys
+		}
+	}
+	return profile, nil
+}
+
+func parseRecommendationFeatureKey(key string) (recommendationFeature, error) {
+	kind, raw, ok := strings.Cut(key, ":")
+	if !ok {
+		return recommendationFeature{}, errors.New("invalid recommendation feature")
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	return recommendationFeature{Kind: kind, ID: id}, err
+}
+
+func (s *Store) loadFrozenRecommendationProfile(ctx context.Context, snapshot RecommendationSessionSnapshot) (RecommendationProfile, error) {
+	if snapshot.GenerationID <= 0 {
+		return emptyRecommendationProfile(), nil
+	}
+	var raw string
+	if err := s.db.QueryRowContext(ctx, "SELECT profile_json FROM recommendation_generation_profile WHERE generation_id = ?", snapshot.GenerationID).Scan(&raw); err != nil {
+		return RecommendationProfile{}, err
+	}
+	var profile RecommendationProfile
+	err := json.Unmarshal([]byte(raw), &profile)
+	return profile, err
 }
 
 func containsProfileKey(keys []string, key string) bool {
@@ -137,8 +203,57 @@ func containsProfileKey(keys []string, key string) bool {
 	return false
 }
 
+// workSignals is the shared pure v5 affinity policy. Removing the candidate's
+// own evidence precedes positive-over-negative precedence and thresholding.
+func (profile RecommendationProfile) workSignals(features []recommendationFeature, state recommendationFrozenState, config RecommendationConfig) RecommendationSignals {
+	signals := RecommendationSignals{ListeningStatus: state.ListeningStatus, Favorite: state.Favorite, Affinity: &RecommendationAffinity{}}
+	if signals.ListeningStatus == "" {
+		signals.ListeningStatus = "none"
+	}
+	positiveSelf := 0
+	pausedSelf := 0
+	if state.Favorite || state.ListeningStatus == "relisten" {
+		positiveSelf = 1
+	} else if state.ListeningStatus == "paused" {
+		pausedSelf = 1
+	}
+	for _, f := range features {
+		evidence := profile.Entities[f.key()]
+		positive := max(0, evidence.Positive-positiveSelf)
+		paused := max(0, evidence.Paused-pausedSelf)
+		strength := recommendationEvidenceStrength(positive)
+		if f.Kind == "tag" {
+			strength *= evidence.Specificity
+		}
+		switch f.Kind {
+		case "tag":
+			if positive > 0 {
+				signals.PositiveTagMatches++
+				signals.Affinity.Tags += strength
+			} else if paused >= config.NegativeMinEvidence {
+				signals.NegativeTagMatches++
+			}
+		case "voice":
+			if positive > 0 {
+				signals.PositiveVoiceMatches++
+				signals.Affinity.Voices += strength
+			} else if paused >= config.NegativeMinEvidence {
+				signals.NegativeVoiceMatches++
+			}
+		case "circle":
+			if positive > 0 {
+				signals.PositiveCircleMatches++
+				signals.Affinity.Circles += strength
+			} else if paused >= config.NegativeMinEvidence {
+				signals.NegativeCircleMatches++
+			}
+		}
+	}
+	return signals
+}
+
 // RecommendationCandidate describes a transient remote result, never a work
-// identity or a request to import metadata. Known candidates use stored signals.
+// identity or a request to import metadata.
 type RecommendationCandidate struct {
 	PrimaryCode string   `json:"primaryCode"`
 	WorkID      *int64   `json:"workId"`
@@ -150,132 +265,120 @@ type RecommendationCandidate struct {
 var ErrInvalidRecommendationCandidate = errors.New("invalid recommendation candidate")
 
 func (profile RecommendationProfile) candidateSignals(candidate RecommendationCandidate, config RecommendationConfig) RecommendationSignals {
-	signals := RecommendationSignals{ListeningStatus: "none", Affinity: &RecommendationAffinity{}}
+	features := []recommendationFeature{}
+	seen := map[string]bool{}
 	for _, group := range []struct {
-		kind     string
-		names    []string
-		matches  *int
-		negative *int
-		strength *float64
-	}{
-		{"tag", candidate.Tags, &signals.PositiveTagMatches, &signals.NegativeTagMatches, &signals.Affinity.Tags},
-		{"voice", candidate.VoiceActors, &signals.PositiveVoiceMatches, &signals.NegativeVoiceMatches, &signals.Affinity.Voices},
-		{"circle", []string{candidate.Circle}, &signals.PositiveCircleMatches, &signals.NegativeCircleMatches, &signals.Affinity.Circles},
-	} {
-		seen := map[string]bool{}
+		kind  string
+		names []string
+	}{{"tag", candidate.Tags}, {"voice", candidate.VoiceActors}, {"circle", []string{candidate.Circle}}} {
 		for _, name := range group.names {
 			keys := profile.Names[group.kind+":"+searchtext.Fold(name)]
 			if len(keys) != 1 || seen[keys[0]] {
 				continue
 			}
 			seen[keys[0]] = true
-			entity := profile.Entities[keys[0]]
-			if entity.Positive > 0 {
-				*group.matches++
-				*group.strength += recommendationEvidenceStrength(entity.Positive) * entity.Specificity
-			} else if entity.Paused >= config.NegativeMinEvidence {
-				*group.negative++
+			f, err := parseRecommendationFeatureKey(keys[0])
+			if err == nil {
+				features = append(features, f)
 			}
 		}
 	}
-	return signals
+	return profile.workSignals(features, recommendationFrozenState{ListeningStatus: "none"}, config)
 }
 
-// ScoreRecommendationCandidates reads a profile once and scores the bounded
-// current page without upstream requests or catalog materialization.
+// ScoreRecommendationCandidates prepares one profile and batch-scores at most
+// one remote page. Known id/code pairs use the same frozen features as details.
 func (s *Store) ScoreRecommendationCandidates(ctx context.Context, userID int64, sessionID string, candidates []RecommendationCandidate) ([]RecommendationBreakdown, error) {
-	config := s.LoadUserRecommendationConfig(ctx, userID)
-	var profile RecommendationProfile
-	var snapshot RecommendationSessionSnapshot
-	var err error
-	if userID > 0 && sessionID != "" {
-		snapshot, err = s.PrepareRecommendationSession(ctx, userID, sessionID)
-		if err != nil {
-			return nil, err
-		}
-		config = snapshot.Config
-		var raw string
-		if err := s.db.QueryRowContext(ctx, "SELECT profile_json FROM recommendation_generation_profile WHERE generation_id = ?", snapshot.GenerationID).Scan(&raw); err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal([]byte(raw), &profile); err != nil {
-			return nil, err
-		}
-	} else {
-		profile, err = loadRecommendationProfile(ctx, s.db, userID)
-		if err != nil {
-			return nil, err
-		}
+	if len(candidates) > 100 {
+		return nil, ErrInvalidRecommendationCandidate
 	}
-	known := map[int64]RecommendationBreakdown{}
-	ids := []any{}
+	snapshot, err := s.snapshotForRecommendation(ctx, userID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	profile, err := s.loadFrozenRecommendationProfile(ctx, snapshot)
+	if err != nil {
+		return nil, err
+	}
+	ids := []int64{}
+	seen := map[int64]bool{}
 	for _, candidate := range candidates {
-		if candidate.WorkID != nil {
+		if candidate.WorkID != nil && !seen[*candidate.WorkID] {
 			ids = append(ids, *candidate.WorkID)
+			seen[*candidate.WorkID] = true
 		}
 	}
+	codes := map[int64]string{}
 	if len(ids) > 0 {
-		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
-		query := `SELECT work.id, work.primary_code, COALESCE(snapshot.listening_status, 'none'), COALESCE(snapshot.favorite, 0),
-			COALESCE(snapshot.positive_tag_matches, 0), COALESCE(snapshot.positive_voice_matches, 0), COALESCE(snapshot.positive_circle_matches, 0),
-			COALESCE(snapshot.negative_tag_matches, 0), COALESCE(snapshot.negative_voice_matches, 0), COALESCE(snapshot.negative_circle_matches, 0),
-			COALESCE(snapshot.affinity_json, '{}'), COALESCE(snapshot.diversity_penalty, 0) FROM work LEFT JOIN recommendation_snapshot AS snapshot
-			ON snapshot.work_id = work.id AND snapshot.generation_id = ? WHERE work.id IN (` + placeholders + `)`
-		args := append([]any{snapshot.GenerationID}, ids...)
-		rows, err := s.db.QueryContext(ctx, query, args...)
+		args := []any{}
+		for _, id := range ids {
+			args = append(args, id)
+		}
+		rows, err := s.db.QueryContext(ctx, "SELECT id,primary_code FROM work WHERE id IN ("+strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")+")", args...)
 		if err != nil {
 			return nil, err
 		}
-		codes := map[int64]string{}
 		for rows.Next() {
 			var id int64
 			var code string
-			var signals RecommendationSignals
-			var favorite int
-			var affinityJSON string
-			if err := rows.Scan(&id, &code, &signals.ListeningStatus, &favorite,
-				&signals.PositiveTagMatches, &signals.PositiveVoiceMatches, &signals.PositiveCircleMatches,
-				&signals.NegativeTagMatches, &signals.NegativeVoiceMatches, &signals.NegativeCircleMatches, &affinityJSON, &signals.DiversityPenalty); err != nil {
+			if err := rows.Scan(&id, &code); err != nil {
 				_ = rows.Close()
 				return nil, err
 			}
 			codes[id] = code
-			signals.Favorite = favorite != 0
-			signals.Affinity = &RecommendationAffinity{}
-			if err := json.Unmarshal([]byte(affinityJSON), signals.Affinity); err != nil {
-				_ = rows.Close()
-				return nil, err
-			}
-			known[id] = buildRecommendationBreakdown(config, signals)
 		}
-		if err := rows.Err(); err != nil {
-			_ = rows.Close()
+		err = rows.Err()
+		_ = rows.Close()
+		if err != nil {
 			return nil, err
 		}
-		_ = rows.Close()
-		for _, candidate := range candidates {
-			if candidate.WorkID == nil {
-				continue
-			}
-			id := *candidate.WorkID
-			if !strings.EqualFold(codes[id], candidate.PrimaryCode) {
-				return nil, ErrInvalidRecommendationCandidate
-			}
-			if snapshot.GenerationID <= 0 {
-				known[id], err = s.RecommendationBreakdownWithConfig(ctx, userID, id, config)
-			}
-			if err != nil {
-				return nil, err
-			}
+	}
+	for _, candidate := range candidates {
+		if candidate.WorkID != nil && !strings.EqualFold(codes[*candidate.WorkID], candidate.PrimaryCode) {
+			return nil, ErrInvalidRecommendationCandidate
 		}
 	}
+	known, err := s.scoreRecommendationWorksWithProfile(ctx, snapshot, profile, ids)
+	if err != nil {
+		return nil, err
+	}
 	result := make([]RecommendationBreakdown, len(candidates))
-	for index, candidate := range candidates {
+	for i, candidate := range candidates {
 		if candidate.WorkID != nil {
-			result[index] = known[*candidate.WorkID]
+			result[i] = known[*candidate.WorkID]
 		} else {
-			result[index] = buildRecommendationBreakdown(config, profile.candidateSignals(candidate, config))
+			result[i] = buildRecommendationBreakdown(snapshot.Config, profile.candidateSignals(candidate, snapshot.Config))
 		}
+	}
+	return result, nil
+}
+
+func (s *Store) scoreRecommendationWorks(ctx context.Context, snapshot RecommendationSessionSnapshot, ids []int64) (map[int64]RecommendationBreakdown, error) {
+	profile, err := s.loadFrozenRecommendationProfile(ctx, snapshot)
+	if err != nil {
+		return nil, err
+	}
+	return s.scoreRecommendationWorksWithProfile(ctx, snapshot, profile, ids)
+}
+
+func (s *Store) scoreRecommendationWorksWithProfile(ctx context.Context, snapshot RecommendationSessionSnapshot, profile RecommendationProfile, ids []int64) (map[int64]RecommendationBreakdown, error) {
+	if len(ids) > 2000 {
+		return nil, errors.New("recommendation scoring budget exceeded")
+	}
+	result := map[int64]RecommendationBreakdown{}
+	s.recommendationDiagnostics.scoredWorks.Add(int64(len(ids)))
+	features, err := s.loadRecommendationFeatures(ctx, snapshot.CatalogEpoch, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		state := profile.States[id]
+		// A work absent from the bound epoch is a valid neutral newcomer, including
+		// any feedback recorded before its first shared projection is published.
+		if _, exists := features[id]; !exists {
+			state = recommendationFrozenState{ListeningStatus: "none"}
+		}
+		result[id] = buildRecommendationBreakdown(snapshot.Config, profile.workSignals(features[id], state, snapshot.Config))
 	}
 	return result, nil
 }

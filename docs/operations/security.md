@@ -36,7 +36,7 @@ firewall or an authentication mechanism for non-browser clients.
 - `development` authenticates every request as the configured root user. Use it
   only on a trusted local development machine.
 - `demo` is an isolated read-only showcase. It exposes sanitized read surfaces,
-  rejects non-read HTTP methods, and filters local content to verified all-ages,
+  rejects HTTP mutations, and filters local content to verified all-ages,
   permanently free works. Never reuse production config, cache, or data
   directories for a public Demo.
 

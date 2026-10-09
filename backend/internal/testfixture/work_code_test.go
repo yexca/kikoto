@@ -50,3 +50,29 @@ func TestWorkCodeRejectsValuesOutsideReservedRanges(t *testing.T) {
 		}()
 	}
 }
+
+func TestHighCardinalityWorkCodesAreBoundedAndDistinct(t *testing.T) {
+	seen := make(map[string]struct{}, 1000)
+	for index := range 1000 {
+		code := HighCardinalityWorkCodeAt(index)
+		if _, exists := seen[code]; exists {
+			t.Fatalf("duplicate scale identity at %d: %s", index, code)
+		}
+		seen[code] = struct{}{}
+	}
+	for index, want := range map[int]string{99999: "RJ00099999", 100000: "BJ00000000", 200000: "VJ00000000", 399999: "CC00099999"} {
+		if got := HighCardinalityWorkCodeAt(index); got != want {
+			t.Fatalf("scale boundary %d = %s, want %s", index, got, want)
+		}
+	}
+	for _, index := range []int{-1, 400000} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("scale constructor accepted an out-of-range identity")
+				}
+			}()
+			HighCardinalityWorkCodeAt(index)
+		}()
+	}
+}

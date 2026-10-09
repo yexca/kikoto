@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/demopresentation"
 	"github.com/yexca/kikoto/backend/internal/library"
 )
 
@@ -51,7 +52,8 @@ func (s *Server) scoreRemoteRecommendations(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	request.SessionID = strings.TrimSpace(request.SessionID)
-	if !recommendationSessionIDPattern.MatchString(request.SessionID) || len(request.Works) == 0 || len(request.Works) > 100 {
+	validSession := recommendationSessionIDPattern.MatchString(request.SessionID) || s.cfg.IsDemo() && request.SessionID == ""
+	if !validSession || len(request.Works) == 0 || len(request.Works) > 100 {
 		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid recommendation request", false)
 		return
 	}
@@ -68,6 +70,26 @@ func (s *Server) scoreRemoteRecommendations(w http.ResponseWriter, r *http.Reque
 				}
 			}
 		}
+	}
+	if s.cfg.IsDemo() {
+		result := make([]remoteRecommendationScore, len(request.Works))
+		for index, candidate := range request.Works {
+			ref, err := s.demoRecommendationWorkRef(r.Context(), candidate.PrimaryCode)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			if !ref.Known || (candidate.WorkID != nil && *candidate.WorkID != ref.WorkID) {
+				writeAPIError(w, http.StatusNotFound, "not_found", "work not found", false)
+				return
+			}
+			if !s.requireDemoWork(w, r, ref.WorkID) {
+				return
+			}
+			result[index] = remoteRecommendationScore{PrimaryCode: candidate.PrimaryCode, Score: demopresentation.RecommendationScore(request.SessionID, ref.Code)}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"scores": result})
+		return
 	}
 	breakdowns, err := s.libraryStore.ScoreRecommendationCandidates(r.Context(), user.ID, request.SessionID, request.Works)
 	if err != nil {
@@ -86,6 +108,13 @@ func (s *Server) scoreRemoteRecommendations(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) scoreRemoteWorkSummaries(r *http.Request, userID int64, works []remoteWorkSummary) error {
+	if s.cfg.IsDemo() {
+		sessionID := strings.TrimSpace(r.URL.Query().Get("recommendationSession"))
+		for index := range works {
+			works[index].RecommendScore = demopresentation.RecommendationScore(sessionID, works[index].PrimaryCode)
+		}
+		return nil
+	}
 	candidates := make([]library.RecommendationCandidate, len(works))
 	for index, work := range works {
 		candidates[index] = library.RecommendationCandidate{PrimaryCode: work.PrimaryCode, WorkID: work.WorkID, Tags: work.Tags, VoiceActors: work.VoiceActors, Circle: work.Circle}
