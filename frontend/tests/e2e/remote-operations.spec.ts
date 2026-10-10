@@ -9,7 +9,7 @@ import type {
   Work,
   WorkFolderLocation,
 } from "../../src/lib/api";
-import { remoteWorkDetailFixture, type ApiErrorBody } from "./fixtures/api";
+import { remoteWorkDetailFixture, rolePermissions, type ApiErrorBody } from "./fixtures/api";
 import { work, type RemoteTrackControl, mockApplication, mockRemoteSource } from "./fixtures/player-library";
 
 test("remote source reuses the library grid, source sorting, localized tags, and bottom pagination", async ({
@@ -179,6 +179,39 @@ test("remote card Fork queues in place and reports a terminal failure without na
   trackControl.status = "failed";
   await expect(page.getByText("Track workflow #91 failed for RJ00000051.", { exact: true })).toBeVisible();
   expect(page.url()).toBe(sourceURL);
+});
+
+test("a User keeps remote actions visible and learns about the missing permission before any request", async ({
+  page,
+}) => {
+  const writes: string[] = [];
+  await mockRemoteSource(page, () => undefined, { role: "user" });
+  await page.route(
+    /\/api\/(remote-sources\/1\/works\/[^/]+\/(track|sync|cache|fetch-plan)|workflow-runs\/remote-bulk)$/,
+    async (route) => {
+      writes.push(new URL(route.request().url()).pathname);
+      await route.fulfill({
+        status: 403,
+        json: { code: "permission_denied", error: "permission denied", retryable: false },
+      });
+    },
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
+  const denied = page.getByText("Your account does not have permission to use this feature.");
+
+  await page.getByTitle("Fork").first().click();
+  await expect(denied.first()).toBeVisible();
+
+  // Marking a remote work that is not in the Library would add it there, so
+  // the mark menu stays closed.
+  await page.getByTitle("Mark: Unmarked").first().click();
+  await expect(page.getByRole("button", { name: "Listening", exact: true })).toHaveCount(0);
+
+  await page.getByTitle("Fetch").first().click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(writes).toEqual([]);
 });
 
 test("mobile Fetch prepares language editions and switches between local, remote, and result steps", async ({
@@ -638,6 +671,9 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
     ],
   };
   await mockApplication(page, undefined, false, 1, 0, mediaItems, (body) => cleanupBodies.push(body), {
+    // Untrack and Check sources need a signed-in account with remote:track.
+    authenticated: true,
+    permissions: rolePermissions.contributor,
     work: trackedWork,
     librarySources: [
       {
@@ -752,6 +788,9 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
 test("tracked library cards confirm Untrack in an anchored popover", async ({ page }) => {
   const untrackRequests: Array<{ workId: number; sourceId: number }> = [];
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    // Untrack and Check sources need a signed-in account with remote:track.
+    authenticated: true,
+    permissions: rolePermissions.contributor,
     work: {
       ...work,
       availability: ["tracked", "remote"],

@@ -35,6 +35,7 @@ export function WorkIdentityActionBar({
   onListSaved,
   onResume,
   onMark,
+  canMark,
   onEditMetadata,
 }: {
   busy: boolean;
@@ -45,6 +46,8 @@ export function WorkIdentityActionBar({
   onListSaved?: (favorite: boolean, workID: number) => void;
   onResume?: () => void;
   onMark: (status: ListeningStatus) => void;
+  /** Checked before the mark menu opens. */
+  canMark?: () => boolean;
   onEditMetadata?: () => void;
 }) {
   const { t } = useTranslation();
@@ -62,7 +65,14 @@ export function WorkIdentityActionBar({
         <Clock3 className="h-4 w-4" />
         {t("detailActions.resume")}
       </Button>
-      <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} showLabel responsiveLabel onChange={onMark} />
+      <WorkCardQuickMarkButton
+        value={listeningStatus}
+        disabled={busy}
+        showLabel
+        responsiveLabel
+        canOpen={canMark}
+        onChange={onMark}
+      />
       <WorkCardListButton
         workId={listWorkId}
         active={favorite}
@@ -99,6 +109,7 @@ export function MediaContextActionBar({
   trackDisabled,
   trackDisabledReason,
   onUntrack,
+  canUntrack,
   untrackDisabled = false,
   forkSources = [],
   currentForkSource,
@@ -122,6 +133,8 @@ export function MediaContextActionBar({
   trackDisabled?: boolean;
   trackDisabledReason?: string;
   onUntrack?: () => void;
+  /** Checked at the first untrack click, before asking for confirmation. */
+  canUntrack?: () => boolean;
   untrackDisabled?: boolean;
   forkSources?: RemoteSourceAvailability[];
   currentForkSource?: RemoteSourceAvailability | null;
@@ -271,6 +284,10 @@ export function MediaContextActionBar({
             disabled={busy || untrackDisabled}
             onClick={() => {
               if (!untrackConfirming) {
+                if (canUntrack && !canUntrack()) {
+                  closeOptions();
+                  return;
+                }
                 setUntrackConfirming(true);
                 return;
               }

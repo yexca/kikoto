@@ -22,7 +22,7 @@ func availabilityWatchAPIRequest(method, target, body string, actor *account.Use
 
 func TestAvailabilityWatchHandlersPersistConfigurationTargetsAndRunState(t *testing.T) {
 	db := openMigratedTestDB(t)
-	if _, err := db.Exec("INSERT INTO user_account (id, username, role) VALUES (1, 'watch-api-user', 'admin')"); err != nil {
+	if _, err := db.Exec("INSERT INTO user_account (id, username, role) VALUES (1, 'watch-api-user', 'contributor')"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`
@@ -38,7 +38,8 @@ func TestAvailabilityWatchHandlersPersistConfigurationTargetsAndRunState(t *test
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{})
-	actor := account.User{ID: 1, Role: "admin", Permissions: []string{"workflows:run"}}
+	actor := account.User{ID: 1, Role: "contributor", Permissions: account.PermissionsForRole("contributor")}
+	listener := account.User{ID: 2, Role: "user", Permissions: account.PermissionsForRole("user")}
 
 	unauthorized := httptest.NewRecorder()
 	server.getAvailabilityWatch(unauthorized, availabilityWatchAPIRequest(http.MethodGet, "/api/availability-watch", "", nil))
@@ -67,7 +68,7 @@ func TestAvailabilityWatchHandlersPersistConfigurationTargetsAndRunState(t *test
 		http.MethodPut,
 		"/api/availability-watch",
 		`{"action":"fetch"}`,
-		&actor,
+		&listener,
 	))
 	if unauthorizedFetch.Code != http.StatusForbidden {
 		t.Fatalf("fetch without downloads status = %d, body = %s", unauthorizedFetch.Code, unauthorizedFetch.Body.String())

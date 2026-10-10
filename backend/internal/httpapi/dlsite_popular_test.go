@@ -64,7 +64,7 @@ func TestDLsitePopularWorkflowQueuesSyncsAndTagsCurrentUser(t *testing.T) {
 	userID, _ := userResult.LastInsertId()
 	server := NewServer(db, config.Config{})
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/dlsite-popular", strings.NewReader(`{"period":"day","releaseWindow":"30d","tagNameTemplate":"{date}_DL_{period}_{release_window}_popular"}`))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Permissions: []string{"workflows:run", "metadata:sync", "tags:write"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
 	response := httptest.NewRecorder()
 	server.createDLsitePopularCollectionRun(response, request)
 	if response.Code != http.StatusAccepted {
@@ -78,7 +78,7 @@ func TestDLsitePopularWorkflowQueuesSyncsAndTagsCurrentUser(t *testing.T) {
 		t.Fatalf("queued = %+v", queued)
 	}
 	duplicateRequest := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/dlsite-popular", strings.NewReader(`{"period":"day","releaseWindow":"30d","tagName":"260714-DL-24h-r30d-popular"}`))
-	duplicateRequest = duplicateRequest.WithContext(context.WithValue(duplicateRequest.Context(), currentUserKey, account.User{ID: userID, Permissions: []string{"workflows:run", "metadata:sync", "tags:write"}}))
+	duplicateRequest = duplicateRequest.WithContext(context.WithValue(duplicateRequest.Context(), currentUserKey, account.User{ID: userID, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
 	duplicateResponse := httptest.NewRecorder()
 	server.createDLsitePopularCollectionRun(duplicateResponse, duplicateRequest)
 	if duplicateResponse.Code != http.StatusConflict {
@@ -117,7 +117,7 @@ func TestDLsitePopularWorkflowSkipTagSyncsWithoutTagging(t *testing.T) {
 	userID, _ := userResult.LastInsertId()
 	server := NewServer(db, config.Config{})
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/dlsite-popular", strings.NewReader(`{"period":"week","skipTag":true,"tagNameTemplate":"{date}_ignored"}`))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Permissions: []string{"workflows:run", "metadata:sync", "tags:write"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
 	response := httptest.NewRecorder()
 	server.createDLsitePopularCollectionRun(response, request)
 	if response.Code != http.StatusAccepted {

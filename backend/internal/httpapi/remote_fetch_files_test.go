@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"github.com/yexca/kikoto/backend/internal/account"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -89,7 +90,7 @@ func TestListWorkflowRunFetchFilesReturnsRelativePaths(t *testing.T) {
 	request := func(runID string) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(http.MethodGet, "/api/workflow-runs/"+runID+"/fetch-files", nil)
 		request.SetPathValue("id", runID)
-		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"workflows:run"}}))
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Role: "contributor", Permissions: account.PermissionsForRole("contributor")}))
 		response := httptest.NewRecorder()
 		server.listWorkflowRunFetchFiles(response, request)
 		return response
@@ -129,7 +130,7 @@ func TestListWorkflowRunFetchFilesIsEmptyForAFetchWithoutAPlan(t *testing.T) {
 	}
 	request := httptest.NewRequest(http.MethodGet, "/api/workflow-runs/1/fetch-files", nil)
 	request.SetPathValue("id", "1")
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"workflows:run"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Role: "contributor", Permissions: account.PermissionsForRole("contributor")}))
 	response := httptest.NewRecorder()
 	server.listWorkflowRunFetchFiles(response, request)
 

@@ -322,7 +322,7 @@ func TestRunWorkflowPresetQueuesSystemRunWithRenderedTag(t *testing.T) {
 	body := `{"inputs":{"circleId":"rg12345","maxWorks":5,"tagNameTemplate":"{date}_{target}"}}`
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-presets/circle_follow/runs", strings.NewReader(body))
 	request.SetPathValue("code", "circle_follow")
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Permissions: []string{"workflows:run", "metadata:sync", "tags:write"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
 	response := httptest.NewRecorder()
 	server.runWorkflowPreset(response, request)
 	if response.Code != http.StatusAccepted {
@@ -389,10 +389,10 @@ func TestRunWorkflowPresetRequiresCapabilityPermissions(t *testing.T) {
 	if response := run(`{"inputs":{"circleId":"RG12345"}}`, []string{"workflows:run", "metadata:sync"}); response.Code != http.StatusForbidden {
 		t.Fatalf("tag without tags permission = %d, %s", response.Code, response.Body.String())
 	}
-	if response := run(`{"inputs":{"circleId":"RG12345","checkSourceIds":[404]}}`, []string{"workflows:run", "metadata:sync", "tags:write"}); response.Code != http.StatusBadRequest {
+	if response := run(`{"inputs":{"circleId":"RG12345","checkSourceIds":[404]}}`, account.PermissionsForRole("admin")); response.Code != http.StatusBadRequest {
 		t.Fatalf("unknown source = %d, %s", response.Code, response.Body.String())
 	}
-	if response := run(`{"inputs":{"circleId":"bad"}}`, []string{"workflows:run", "metadata:sync", "tags:write"}); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "circleId") {
+	if response := run(`{"inputs":{"circleId":"bad"}}`, account.PermissionsForRole("admin")); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "circleId") {
 		t.Fatalf("invalid circle = %d, %s", response.Code, response.Body.String())
 	}
 	if _, err := db.Exec("SELECT 1"); err != nil {
@@ -422,7 +422,7 @@ func TestPresetWorkflowScheduleStoresOwnerAndDispatchesWithCurrentPermissions(t 
 		"configJson":   mustJSON(map[string]any{"inputs": map[string]any{"personId": 7, "sourceIds": []int64{91}}}),
 	})
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run", "library:read", "metadata:sync", "tags:write"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
 	response := httptest.NewRecorder()
 	server.createWorkflowTrigger(response, request)
 	if response.Code != http.StatusCreated {
@@ -497,7 +497,7 @@ func TestPresetWorkflowAutomationRejectsFullCatalogRefresh(t *testing.T) {
 		"configJson":   mustJSON(map[string]any{"inputs": map[string]any{"circleId": "RG12345", "catalogRefresh": "full"}}),
 	})
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run", "metadata:sync", "tags:write"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
 	response := httptest.NewRecorder()
 	server.createWorkflowTrigger(response, request)
 	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "catalog refresh") {

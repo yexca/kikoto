@@ -265,7 +265,7 @@ type remoteWorkFetchJobPayload struct {
 var remoteFetchRequestIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{8,128}$`)
 
 func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
+	if _, ok := s.requirePermission(w, r, "remote:fetch"); !ok {
 		return
 	}
 	sourceID, code, payload, ok := parseRemoteWorkSaveRequest(w, r)
@@ -294,11 +294,16 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 		return
 	}
 	attachRemoteFetchPreparation(&plan, preparation)
+	if s.remoteAddressesHidden(r.Context()) {
+		for index := range plan.Items {
+			plan.Items[index].SourcePath = ""
+		}
+	}
 	writeJSON(w, http.StatusOK, plan)
 }
 
 func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
-	actor, ok := s.requirePermission(w, r, "downloads:manage")
+	actor, ok := s.requirePermission(w, r, "remote:fetch")
 	if !ok {
 		return
 	}

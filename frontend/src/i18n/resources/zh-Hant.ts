@@ -688,6 +688,7 @@ export const zhHantResource = {
         roles: {
           super_admin: "超級管理員",
           admin: "管理員",
+          contributor: "貢獻者",
           user: "使用者",
         },
       },

@@ -271,11 +271,7 @@ func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
 	page, start, end := creatorPageBounds(queryInt(r, "page", 1), pageSize, len(summaries))
 	pageItems := summaries[start:end]
 	for index := range pageItems {
-		if pageItems[index].LatestWork != nil {
-			if coverURL := s.coverURL(pageItems[index].LatestWork.PrimaryCode); coverURL != "" {
-				pageItems[index].LatestWork.CoverURL = coverURL
-			}
-		}
+		s.presentVoiceLatestWorkCover(r.Context(), pageItems[index].LatestWork)
 	}
 	writeJSON(w, http.StatusOK, voiceSummaryPage{
 		Voices: pageItems, Page: page, PageSize: minInt(pageSize, 100), Total: len(summaries), TagOptions: tagOptions,
@@ -755,12 +751,21 @@ func (s *Server) loadVoiceSummary(ctx context.Context, userID int64, personID in
 		return voiceSummary{}, err
 	}
 	item.LatestWork = latestByPerson[personID]
-	if item.LatestWork != nil {
-		if coverURL := s.coverURL(item.LatestWork.PrimaryCode); coverURL != "" {
-			item.LatestWork.CoverURL = coverURL
-		}
-	}
+	s.presentVoiceLatestWorkCover(ctx, item.LatestWork)
 	return item, nil
+}
+
+// presentVoiceLatestWorkCover prefers the Library cover and otherwise shows
+// the catalog's remote cover through the address visibility rule.
+func (s *Server) presentVoiceLatestWorkCover(ctx context.Context, latest *creatorLatestWork) {
+	if latest == nil {
+		return
+	}
+	if coverURL := s.coverURL(latest.PrimaryCode); coverURL != "" {
+		latest.CoverURL = coverURL
+		return
+	}
+	latest.CoverURL = s.visibleRemoteImageURL(ctx, latest.CoverSourceID, latest.CoverURL)
 }
 
 type voiceCatalogSyncProjection struct {
@@ -1102,7 +1107,16 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 				UPPER(catalog.primary_code) AS primary_code,
 				COALESCE(NULLIF(work.title, ''), NULLIF(catalog.title, ''), UPPER(catalog.primary_code)) AS title,
 				COALESCE(work.release_date, catalog.release_date) AS release_date,
-				catalog.cover_url
+				catalog.cover_url,
+				COALESCE((
+					SELECT file_source.id
+					FROM voice_catalog_source AS catalog_source
+					INNER JOIN metadata_provider AS provider ON provider.id = catalog_source.provider_id
+					INNER JOIN file_source ON provider.code = 'kikoeru_source_' || file_source.code
+					WHERE catalog_source.catalog_item_id = catalog.id
+					ORDER BY file_source.id
+					LIMIT 1
+				), 0) AS cover_source_id
 			FROM voice_catalog_item AS catalog
 			INNER JOIN selected_people ON selected_people.id = catalog.person_id
 			LEFT JOIN work ON work.id = catalog.work_id
@@ -1114,7 +1128,8 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 				UPPER(COALESCE(logical.canonical_code, work.primary_code)) AS primary_code,
 				work.title,
 				work.release_date,
-				'' AS cover_url
+				'' AS cover_url,
+				0 AS cover_source_id
 			FROM work_credit AS credit
 			INNER JOIN selected_people ON selected_people.id = credit.person_id
 			INNER JOIN work ON work.id = credit.work_id
@@ -1136,14 +1151,14 @@ func (s *Server) loadVoiceLatestWorks(ctx context.Context, personIDs []int64) (m
 				) AS position
 			FROM candidates AS work
 		)
-		SELECT person_id, primary_code, title, release_date, cover_url
+		SELECT person_id, primary_code, title, release_date, cover_url, cover_source_id
 		FROM ranked
 		WHERE position = 1
 	`, personIDs, nil, func(rows *sql.Rows) error {
 		var personID int64
 		var item creatorLatestWork
 		var releaseDate sql.NullString
-		if err := rows.Scan(&personID, &item.PrimaryCode, &item.Title, &releaseDate, &item.CoverURL); err != nil {
+		if err := rows.Scan(&personID, &item.PrimaryCode, &item.Title, &releaseDate, &item.CoverURL, &item.CoverSourceID); err != nil {
 			return err
 		}
 		item.ReleaseDate = sqlutil.String(releaseDate)

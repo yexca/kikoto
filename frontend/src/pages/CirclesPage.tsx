@@ -73,7 +73,12 @@ import { DLSITE_ENDPOINTS } from "@/lib/official-links";
 import { hasPlaybackHistory } from "@/lib/playbackHistory";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoContentNotice } from "@/components/DemoReadOnlyNotice";
-import { usePermissionGate } from "@/auth/usePermissionGate";
+import {
+  REMOTE_BULK_FETCH_PERMISSIONS,
+  REMOTE_BULK_TRACK_PERMISSIONS,
+  REMOTE_TRACK_PERMISSIONS,
+  usePermissionGate,
+} from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { usePageHeaderBack } from "@/app/pageHeader";
 import { openWorkDetail, type WorkDetailIntent } from "@/app/workDetailNavigation";
@@ -270,7 +275,11 @@ function CircleDetailPage({
   const { t } = useTranslation();
   const auth = useAuth();
   const toast = useToast();
-  const requireDownloadsManage = usePermissionGate("downloads:manage");
+  const requireBulkFetch = usePermissionGate(REMOTE_BULK_FETCH_PERMISSIONS);
+  const requireBulkTrack = usePermissionGate(REMOTE_BULK_TRACK_PERMISSIONS, { deferDemo: true });
+  const requireTrack = usePermissionGate(REMOTE_TRACK_PERMISSIONS, { deferDemo: true });
+  /** A mark or list on a catalog work not in the Library adds it there first, which is tracking. */
+  const canStateCatalogWork = (work: CircleCatalogWork) => work.workId !== null || requireTrack();
   const canRefreshCatalog = auth.hasPermission("metadata:sync") && !auth.demoMode;
   const [detail, setDetail] = useState<CircleDetail | null>(null);
   // "missing" means the maker id is not in this site's database, which a
@@ -583,6 +592,7 @@ function CircleDetailPage({
   };
 
   const updateCatalogWorkStatus = async (work: CircleCatalogWork, status: ListeningStatus) => {
+    if (!canStateCatalogWork(work)) return;
     if (work.workId === null) {
       await syncAndMarkCatalogWork(work, status);
       return;
@@ -635,6 +645,7 @@ function CircleDetailPage({
 
   const ensureCatalogWorkForList = async (work: CircleCatalogWork) => {
     if (work.workId) return work.workId;
+    if (!canStateCatalogWork(work)) return null;
     try {
       const workId = await trackCatalogWorkForState(work, "circle_list");
       if (!workId) return null;
@@ -665,12 +676,12 @@ function CircleDetailPage({
 
   const bulkSaveSelected = async () => {
     if (selectedWorks.length === 0) return;
-    if (!requireDownloadsManage()) return;
+    if (!requireBulkFetch()) return;
     setSaveConfirm({ count: selectedWorks.length, run: runBulkSaveSelected });
   };
 
   const runBulkSaveSelected = async () => {
-    if (!requireDownloadsManage()) return;
+    if (!requireBulkFetch()) return;
     setIsBulkSaving(true);
     try {
       await remoteWorkActions.recordBulkRuns(
@@ -686,7 +697,7 @@ function CircleDetailPage({
   };
 
   const bulkForkSelected = async () => {
-    if (selectedForkableWorks.length === 0) return;
+    if (selectedForkableWorks.length === 0 || !requireBulkTrack()) return;
     setIsBulkSaving(true);
     try {
       await remoteWorkActions.recordBulkRuns(
@@ -713,7 +724,7 @@ function CircleDetailPage({
 
   const forkSingleWork = async (work: CircleCatalogWork) => {
     const target = circleWorkRemoteTarget(work);
-    if (!target) return;
+    if (!target || !requireTrack()) return;
     setIsBulkSaving(true);
     try {
       await remoteWorkActions.queueFork(target, "circle_card_fork");
@@ -1030,6 +1041,7 @@ function CircleDetailPage({
                           onSave={() => void saveSingleWork(work)}
                           onDeleteMissing={() => setDeleteTarget(work)}
                           onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
+                          canMark={() => canStateCatalogWork(work)}
                           onFavoriteSaved={(favorite) => {
                             setDetail((current) =>
                               current
@@ -1128,6 +1140,7 @@ function CircleDetailPage({
                       onSave={() => void saveSingleWork(work)}
                       onDeleteMissing={() => setDeleteTarget(work)}
                       onStatusChange={(status) => void updateCatalogWorkStatus(work, status)}
+                      canMark={() => canStateCatalogWork(work)}
                       onFavoriteSaved={(favorite) => {
                         setDetail((current) =>
                           current
@@ -1203,6 +1216,7 @@ function CatalogWorkCard({
   onSave,
   onDeleteMissing,
   onStatusChange,
+  canMark,
   onFavoriteSaved,
   onEnsureWork,
   onSeriesOpen,
@@ -1217,6 +1231,8 @@ function CatalogWorkCard({
   onSave: () => void;
   onDeleteMissing: () => void;
   onStatusChange: (status: ListeningStatus) => void;
+  /** Checked before the mark menu opens. */
+  canMark: () => boolean;
   onFavoriteSaved: (favorite: boolean) => void;
   onEnsureWork: () => Promise<number | null>;
   onSeriesOpen?: () => void;
@@ -1278,6 +1294,7 @@ function CatalogWorkCard({
               <WorkCardQuickMarkButton
                 value={normalizeListeningStatus(work.listeningMark)}
                 disabled={isUnavailable && !circleWorkRemoteTarget(work)}
+                canOpen={canMark}
                 onChange={onStatusChange}
               />
               {!work.dlsiteAvailable && (

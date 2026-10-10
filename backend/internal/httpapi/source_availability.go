@@ -58,11 +58,27 @@ func (s *Server) getWorkSourceAvailability(w http.ResponseWriter, r *http.Reques
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, s.presentSourceAvailability(r.Context(), response))
 }
 
+// presentSourceAvailability shows each source's cover through the address
+// visibility rule.
+func (s *Server) presentSourceAvailability(ctx context.Context, response sourceAvailabilityResponse) sourceAvailabilityResponse {
+	if !s.remoteAddressesHidden(ctx) {
+		return response
+	}
+	sources := append([]sourceAvailabilitySummary(nil), response.Sources...)
+	for index := range sources {
+		sources[index].CoverURL = s.remoteImageProxyURL(sources[index].SourceID, sources[index].CoverURL)
+	}
+	response.Sources = sources
+	return response
+}
+
+// checkWorkSourceAvailabilityNow asks remote sources on demand. Reading the
+// recorded result stays open to every reader.
 func (s *Server) checkWorkSourceAvailabilityNow(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+	if _, ok := s.requirePermission(w, r, "remote:track"); !ok {
 		return
 	}
 	code := strings.ToUpper(strings.TrimSpace(r.PathValue("code")))
@@ -80,7 +96,7 @@ func (s *Server) checkWorkSourceAvailabilityNow(w http.ResponseWriter, r *http.R
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, s.presentSourceAvailability(r.Context(), response))
 }
 
 func (s *Server) checkWorkSourceAvailabilityForSources(ctx context.Context, code string, onlySourceID int64, triggerType string, triggerReason string) (sourceAvailabilityResponse, error) {

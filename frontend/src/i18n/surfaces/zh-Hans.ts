@@ -664,6 +664,12 @@ export const surfaceHans = {
         "开启后，任何已登录账户都能让本服务器连接所在局域网中的设备（例如路由器或 NAS），并得知它们是否响应。只有在信任所有账户时才开启。",
       kikoeruPrivateEnable: "允许",
       saveKikoeruImport: "保存导入设置",
+      remoteAddresses: "远程源地址",
+      remoteAddressesDescription: "各远程源在网络上的位置。",
+      hideRemoteAddresses: "对不管理来源的账号隐藏地址",
+      hideRemoteAddressesDescription:
+        "开启后，没有来源管理权限的账号和未登录的访客不会收到来源的 API、站点或备用地址、作品在源站上的链接，以及曲目和活动记录中的上游地址。浏览、播放、封面和文本预览改由本服务器转发。",
+      saveRemoteAddresses: "保存地址设置",
       creatorCatalogs: "创作者目录",
       catalogFreshnessDays: "目录新鲜度天数",
       catalogFreshnessDescription: "社团和声优目录距上次刷新超过这个天数后会变为注意状态。",
@@ -1166,7 +1172,7 @@ export const surfaceHans = {
     noCompatibleSource: "没有兼容来源",
     action: "操作",
     remotePopularAction: "远程热门操作",
-    fetchPermissionRequired: "获取需要下载管理权限。",
+    fetchPermissionRequired: "获取需要抓取远程文件的权限。",
     workLimit: "作品上限",
     worksCount: "{{count}} 个作品",
     rankingPeriod: "排名周期",
@@ -2081,7 +2087,7 @@ export const surfaceHans = {
     environmentManagedNotice:
       "该初始管理员由 .env 文件中的 KIKOTO_ROOT_USERNAME 和 KIKOTO_ROOT_PASSWORD 配置。无法在此修改其密码、角色和启用状态，也无法删除。",
     environmentCredential: "由 .env 中的 KIKOTO_ROOT_PASSWORD 管理",
-    roles: { user: "用户", admin: "管理员", super_admin: "超级管理员" },
+    roles: { user: "用户", contributor: "贡献者", admin: "管理员", super_admin: "超级管理员" },
   },
   sources: {
     title: "文件来源",

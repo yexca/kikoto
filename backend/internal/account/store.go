@@ -263,13 +263,19 @@ func (s *Store) DeleteSessions(ctx context.Context, sessionIDs ...string) error 
 	return tx.Commit()
 }
 
+// PermissionsForRole returns a role's fixed permission set. A contributor adds
+// tracking remote works into the shared Library, fetching or caching remote
+// files on the server, and following those runs in Workflows to the personal
+// permissions every account has.
 func PermissionsForRole(role string) []string {
 	base := []string{"library:read", "playback:use", "favorites:write", "tags:write"}
 	switch role {
 	case "super_admin":
-		return append(base, "library:write", "sources:write", "workflows:run", "metadata:sync", "downloads:manage", "users:manage", "system:admin")
+		return append(base, "library:write", "sources:write", "workflows:run", "metadata:sync", "downloads:manage", "remote:track", "remote:fetch", "users:manage", "system:admin")
 	case "admin":
-		return append(base, "library:write", "sources:write", "workflows:run", "metadata:sync", "downloads:manage", "users:manage")
+		return append(base, "library:write", "sources:write", "workflows:run", "metadata:sync", "downloads:manage", "remote:track", "remote:fetch", "users:manage")
+	case "contributor":
+		return append(base, "workflows:run", "remote:track", "remote:fetch")
 	default:
 		return base
 	}

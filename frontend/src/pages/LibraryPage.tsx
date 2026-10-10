@@ -157,7 +157,12 @@ import {
 import { IconButton } from "@/components/ui/icon-button";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import type { TFunction } from "i18next";
-import { usePermissionGate } from "@/auth/usePermissionGate";
+import {
+  REMOTE_BULK_FETCH_PERMISSIONS,
+  REMOTE_BULK_TRACK_PERMISSIONS,
+  REMOTE_TRACK_PERMISSIONS,
+  usePermissionGate,
+} from "@/auth/usePermissionGate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { SourceVisibilityPicker } from "@/components/source-visibility/SourceVisibilityPicker";
@@ -465,6 +470,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const [workTotal, setWorkTotal] = useState<number | null>(null);
   const [isLibraryLoading, setIsLibraryLoading] = useState(false);
   const [isUntracking, setIsUntracking] = useState(false);
+  const requireUntrack = usePermissionGate(REMOTE_TRACK_PERMISSIONS, { deferDemo: true });
   const libraryRequestSeq = useRef(0);
   const remoteRequestSeq = useRef(0);
   const loadedLibraryRequestKey = useRef("");
@@ -1346,7 +1352,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const untrackWorkSource = async (work: Work, source: SourcePresenceItem) => {
     const sourceID = source.fileSourceId;
     const ownerWorkID = source.workId || work.id;
-    if (!sourceID || !ownerWorkID) return;
+    if (!sourceID || !ownerWorkID || !requireUntrack()) return;
     setIsUntracking(true);
     try {
       await api.untrackWorkSource(ownerWorkID, sourceID);
@@ -2088,6 +2094,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
                   coverSourceScope={localScope}
                   coverSourceMode={coverSourceMode}
                   onUntrack={localScope === "tracked" ? untrackCardSource : undefined}
+                  canUntrack={requireUntrack}
                   isUntracking={isUntracking}
                   onFetch={localScope === "tracked" ? fetchCardSource : undefined}
                   isFetchBusy={trackedFetchWorkspace.isBusy}
@@ -2338,7 +2345,9 @@ function useRemoteSourceActions({
   ) => void;
   onSynced: (workID: number, options?: { openTracked?: boolean }) => Promise<void>;
 }) {
-  const requireDownloadsManage = usePermissionGate("downloads:manage");
+  const requireBulkFetch = usePermissionGate(REMOTE_BULK_FETCH_PERMISSIONS);
+  const requireBulkTrack = usePermissionGate(REMOTE_BULK_TRACK_PERMISSIONS, { deferDemo: true });
+  const requireTrack = usePermissionGate(REMOTE_TRACK_PERMISSIONS, { deferDemo: true });
   const [isSyncingCode, setIsSyncingCode] = useState<string | null>(null);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [saveConfirm, setSaveConfirm] = useState<{ codes: string[]; run: () => Promise<void> } | null>(null);
@@ -2352,6 +2361,7 @@ function useRemoteSourceActions({
       toast.warning(t("library.remoteWorkNoCode"));
       return;
     }
+    if (!requireTrack()) return;
     setIsSyncingCode(work.primaryCode);
     try {
       await remoteWorkActions.queueFork({ sourceId: source.id, code: remoteWorkActionCode(work) }, reason);
@@ -2361,7 +2371,7 @@ function useRemoteSourceActions({
   };
 
   const runBulkSaveSelected = async () => {
-    if (!requireDownloadsManage()) return;
+    if (!requireBulkFetch()) return;
     setIsBulkBusy(true);
     try {
       await remoteWorkActions.recordBulkRuns("fetch", remoteTargets(selectedSaveable), libraryBulkCopy, () =>
@@ -2374,7 +2384,7 @@ function useRemoteSourceActions({
   };
 
   const bulkForkSelected = async () => {
-    if (selectedSyncable.length === 0) return;
+    if (selectedSyncable.length === 0 || !requireBulkTrack()) return;
     setIsBulkBusy(true);
     try {
       await remoteWorkActions.recordBulkRuns("track", remoteTargets(selectedSyncable), libraryBulkCopy, () =>
@@ -2386,7 +2396,7 @@ function useRemoteSourceActions({
   };
 
   const bulkSaveSelected = async () => {
-    if (selectedSaveable.length === 0 || !requireDownloadsManage()) return;
+    if (selectedSaveable.length === 0 || !requireBulkFetch()) return;
     setSaveConfirm({ codes: selectedSaveable.map((work) => work.primaryCode), run: runBulkSaveSelected });
   };
 
@@ -2397,8 +2407,11 @@ function useRemoteSourceActions({
     return result.workId;
   };
 
+  /** A mark or list on a work not yet in the Library adds it there first, which is tracking. */
+  const canStateRemoteWork = (work: RemoteWork) => Boolean(work.workId) || requireTrack();
+
   const markRemoteWork = async (work: RemoteWork, status: ListeningStatus) => {
-    if (!work.primaryCode) return;
+    if (!work.primaryCode || !canStateRemoteWork(work)) return;
     setIsSyncingCode(work.primaryCode);
     try {
       const workId = work.workId ?? (await ensureRemoteWorkForState(work, "mark_interest"));
@@ -2416,7 +2429,7 @@ function useRemoteSourceActions({
 
   const ensureRemoteWorkForList = async (work: RemoteWork) => {
     if (work.workId) return work.workId;
-    if (!work.primaryCode) return null;
+    if (!work.primaryCode || !canStateRemoteWork(work)) return null;
     setIsSyncingCode(work.primaryCode);
     try {
       const result = await api.syncRemoteSourceWork(source.id, remoteWorkActionCode(work), "list_remote");
@@ -2441,6 +2454,7 @@ function useRemoteSourceActions({
     bulkSaveSelected,
     runBulkSaveSelected,
     markRemoteWork,
+    canStateRemoteWork,
     ensureRemoteWorkForList,
   };
 }
@@ -2591,6 +2605,7 @@ function RemoteSourceResults({
               onFork={() => void actions.forkWork(work, "manual_fork")}
               onTagOpen={onTagOpen}
               onMark={(status) => void actions.markRemoteWork(work, status)}
+              canMark={() => actions.canStateRemoteWork(work)}
               onSave={() =>
                 void actions.fetchWorkspace.open({
                   sourceId: source.id,
@@ -2846,6 +2861,7 @@ const WorkCard = memo(function WorkCard({
   coverSourceScope,
   coverSourceMode,
   onUntrack,
+  canUntrack,
   isUntracking = false,
   onFetch,
   isFetchBusy,
@@ -2861,6 +2877,8 @@ const WorkCard = memo(function WorkCard({
   coverSourceScope: LocalLibraryScope;
   coverSourceMode: SourceVisibilityMode;
   onUntrack?: (work: Work, source: SourcePresenceItem) => Promise<void>;
+  /** Checked before the untrack choices open. */
+  canUntrack?: () => boolean;
   isUntracking?: boolean;
   onFetch?: (work: Work, source: SourcePresenceItem) => void;
   isFetchBusy?: boolean;
@@ -2901,6 +2919,7 @@ const WorkCard = memo(function WorkCard({
                     disabled={isUntracking}
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (!untrackOpen && canUntrack && !canUntrack()) return;
                       setUntrackOpen((current) => !current);
                     }}
                   >
@@ -2987,6 +3006,7 @@ function RemoteWorkCard({
   onFork,
   onTagOpen,
   onMark,
+  canMark,
   onSave,
   onEnsureWork,
   onListSaved,
@@ -3005,6 +3025,8 @@ function RemoteWorkCard({
   onFork: () => void;
   onTagOpen: (tag: string) => void;
   onMark: (status: ListeningStatus) => void;
+  /** Checked before the mark menu opens. */
+  canMark: () => boolean;
   onSave: () => void;
   onEnsureWork: () => Promise<number | null>;
   onListSaved: (workId: number, favorite: boolean) => void;
@@ -3063,6 +3085,7 @@ function RemoteWorkCard({
               <WorkCardQuickMarkButton
                 value={work.listeningStatus}
                 disabled={isBusy || !work.primaryCode}
+                canOpen={canMark}
                 onChange={onMark}
               />
             </>

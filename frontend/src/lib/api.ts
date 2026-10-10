@@ -821,6 +821,8 @@ export type AppSettings = {
   proxy: ProxySettings;
   /** Lets every account enter a private or LAN address for a Kikoeru account import. */
   kikoeruImportPrivateAddresses: boolean;
+  /** Keeps remote source addresses from accounts without sources:write and from signed-out readers. */
+  hideRemoteSourceAddresses: boolean;
   directoryRoutingRules: DirectoryRoutingRule[];
   recommendationThreshold: number;
   recommendationConfig: RecommendationConfig;
@@ -1282,6 +1284,8 @@ export type WorkflowRunGraph = {
 
 export type WorkflowRunDetail = WorkflowRun & {
   metadataIssues?: { encountered: number; pending: number };
+  /** False when the viewer may see the run but not cancel, retry, or review it. */
+  canManage?: boolean;
   nodeRuns: WorkflowNodeRun[];
   graphJson: string;
 };
@@ -1508,12 +1512,15 @@ export type WorkflowTrigger = {
   updatedAt: string;
 };
 
+/** Account roles; behavior follows each role's permissions, never its name. */
+export type AccountRole = "super_admin" | "admin" | "contributor" | "user";
+
 export type CurrentUser = {
   id: number;
   username: string;
   displayName: string;
   uiLocale: "auto" | "en" | "zh-Hans" | "zh-Hant" | "ja" | "ko";
-  role: "super_admin" | "admin" | "user";
+  role: AccountRole;
   permissions: string[];
   devMode: boolean;
   demoMode: boolean;
@@ -1564,7 +1571,7 @@ export type ManagedUser = {
   id: number;
   username: string;
   displayName: string;
-  role: "super_admin" | "admin" | "user";
+  role: AccountRole;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -3048,6 +3055,7 @@ export const api = {
     purchaseBonusAutoLink?: boolean;
     proxy?: ProxySettingsPayload;
     kikoeruImportPrivateAddresses?: boolean;
+    hideRemoteSourceAddresses?: boolean;
     directoryRoutingRules?: DirectoryRoutingRule[];
     recommendationThreshold?: number;
     recommendationConfig?: RecommendationConfig;

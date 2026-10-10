@@ -124,7 +124,7 @@ func (s *Server) enqueueRemotePopularWorkflow(ctx context.Context, userID int64,
 	if err != nil {
 		return remoteCollectionRunResult{}, err
 	}
-	input := map[string]any{"source_id": source.ID, "collection_kind": "popular", "action": action, "limit": payload.Limit, "tag_name": payload.TagName, "user_id": userID}
+	input := map[string]any{"source_id": source.ID, "collection_kind": "popular", "action": action, "limit": payload.Limit, "tag_name": payload.TagName, "user_id": userID, workflowRunRequesterKey: userID}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_popular_collection", "Collect popular remote works", "queued", trigger.Type, trigger.Reason, input, map[string]any{"source_id": source.ID, "action": action, "limit": payload.Limit, "tag_name": payload.TagName})
 	if err != nil {
 		return remoteCollectionRunResult{}, err
@@ -423,6 +423,15 @@ func (s *Server) remoteCollectionSource(ctx context.Context, sourceID int64) (re
 	return source, err
 }
 
+// remoteCollectionActionPermission is what collecting with an action does to
+// the server: track adds the works to the shared Library, fetch downloads them.
+func remoteCollectionActionPermission(action string) string {
+	if normalizeRemoteCollectionAction(action) == "fetch" {
+		return "remote:fetch"
+	}
+	return "remote:track"
+}
+
 func normalizeRemoteCollectionAction(action string) string {
 	switch strings.TrimSpace(action) {
 	case "track", "tracked":
@@ -502,13 +511,8 @@ func (s *Server) createRemotePopularCollectionRun(w http.ResponseWriter, r *http
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be track or fetch"})
 		return
 	}
-	if _, ok := s.requirePermission(w, r, "tags:write"); !ok {
+	if _, ok := s.requirePermissions(w, r, "tags:write", remoteCollectionActionPermission(payload.Action)); !ok {
 		return
-	}
-	if payload.Action == "fetch" {
-		if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
-			return
-		}
 	}
 	result, err := s.runRemotePopularWorkflow(r.Context(), actor.ID, payload)
 	if err != nil {

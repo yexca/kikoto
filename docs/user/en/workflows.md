@@ -20,6 +20,33 @@ Workflows make backend actions inspectable.
   list. Activity has no page of its own: `/activity` and `/runs` links open
   Workflows with the Activity panel and select the linked run.
 
+## Who Can Use Workflows
+
+Workflows opens for accounts with `workflows:run`: contributors and
+administrators (see [Users](settings.md#users)). Every such account sees the
+same definitions, presets, triggers, and runs, including runs other accounts
+started, and can follow their status, events, and file progress.
+
+- Starting, configuring, or scheduling a workflow needs every permission its
+  steps use: Track and the popular collection's Track need `remote:track`,
+  Fetch needs `remote:fetch`, scans and metadata workflows need
+  `metadata:sync`, and the source check needs `sources:write`. A contributor
+  therefore runs Fetch, the remote popular collection, bulk Track and Fetch,
+  and Availability Watch, and sees the other workflows without their run and
+  automation controls.
+- Editing, switching off, or deleting a trigger needs the same permissions as
+  creating it.
+- Availability Watch's configuration, schedule, and watch pool need the
+  permissions of its action: `remote:track` for Track, `remote:fetch` for
+  Fetch, both for Track and Fetch.
+- A run can be cancelled or retried, and its items reviewed, by the account
+  that started it, directly or as the owner of the trigger that fired it.
+  Administrators can do so for every run. A retry needs the permissions that
+  starting the same work requires.
+- Items whose resolution removes, archives, or marks unavailable local files,
+  such as a Fetch archive review, need `downloads:manage`. Recovering stale
+  runs needs `sources:write`.
+
 ## Current Behavior
 
 - **Fetch** has Run options for one work code and an enabled compatible remote

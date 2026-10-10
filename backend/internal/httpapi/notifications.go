@@ -72,6 +72,7 @@ func (s *Server) getRemoteTrackRunStatus(w http.ResponseWriter, r *http.Request)
 		writeError(w, err)
 		return
 	}
+	result.SummaryJSON = s.remoteAddressRedactorFor(r.Context()).json(result.SummaryJSON)
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -139,6 +140,11 @@ func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	if err := rows.Err(); err != nil {
 		writeError(w, err)
 		return
+	}
+	if redactor := s.remoteAddressRedactorFor(r.Context()); redactor != nil {
+		for index := range notifications {
+			notifications[index].Message = redactor.text(notifications[index].Message)
+		}
 	}
 	writeJSON(w, http.StatusOK, workflowNotificationsPage{
 		Notifications:  notifications,

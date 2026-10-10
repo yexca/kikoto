@@ -30,6 +30,9 @@ func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be track, fetch, or track_fetch"})
 		return
 	}
+	if _, ok := s.requirePermissions(w, r, remoteBulkActionPermissions(payload.Action)...); !ok {
+		return
+	}
 	codes := []string{}
 	seen := map[string]bool{}
 	for _, raw := range payload.Codes {
@@ -86,6 +89,20 @@ func normalizeRemoteBulkAction(action string) string {
 	}
 }
 
+// remoteBulkActionPermissions names the capability each part of a bulk
+// action needs: tracking adds works to the shared Library and fetching
+// downloads remote files to the server.
+func remoteBulkActionPermissions(action string) []string {
+	switch normalizeRemoteBulkAction(action) {
+	case "track":
+		return []string{"remote:track"}
+	case "fetch":
+		return []string{"remote:fetch"}
+	default:
+		return []string{"remote:track", "remote:fetch"}
+	}
+}
+
 func (s *Server) enqueueRemoteBulkWorkflow(ctx context.Context, userID int64, sourceID int64, action string, codes []string) (remoteBulkWorkflowResult, error) {
 	action = normalizeRemoteBulkAction(action)
 	if action == "" {
@@ -131,7 +148,7 @@ func (s *Server) startRemoteBulkWorkflow(ctx context.Context, payload remoteBulk
 	if err != nil {
 		return 0, 0, err
 	}
-	input := map[string]any{"source_id": payload.SourceID, "action": payload.Action, "codes": payload.Codes}
+	input := map[string]any{"source_id": payload.SourceID, "action": payload.Action, "codes": payload.Codes, workflowRunRequesterKey: payload.UserID}
 	summary := map[string]any{"source_id": payload.SourceID, "action": payload.Action, "works": len(payload.Codes)}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_bulk_action", "Run remote bulk action", "queued", "manual", payload.Action, input, summary)
 	if err != nil {

@@ -375,6 +375,7 @@ export const englishResource = {
         roles: {
           super_admin: "super administrator",
           admin: "administrator",
+          contributor: "contributor",
           user: "user",
         },
       },

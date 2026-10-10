@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -111,6 +112,13 @@ func (s *Server) getRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if s.remoteAddressesHidden(r.Context()) {
+		// The source's site link and the upstream work link both name the
+		// source, so neither is shown; the cover goes through the proxy.
+		detail.CoverURL = s.remoteImageProxyURL(source.ID, detail.CoverURL)
+		detail.SourceURL, detail.PublicWorkURL = "", ""
+		detail.Tracks = hideRemoteTrackAddresses(source.ID, detail.RemoteCode, detail.Tracks, "", s.remoteImageProxyURL)
+	}
 	writeJSON(w, http.StatusOK, detail)
 }
 
@@ -138,6 +146,9 @@ func (s *Server) getRemoteSourceWorkTracks(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		writeError(w, err)
 		return
+	}
+	if s.remoteAddressesHidden(r.Context()) {
+		detail.Tracks = hideRemoteTrackAddresses(source.ID, code, detail.Tracks, "", s.remoteImageProxyURL)
 	}
 	writeJSON(w, http.StatusOK, detail)
 }
@@ -398,6 +409,39 @@ func remoteTrackDetails(sourceCode string, workCode string, tracks []kikoeru.Tra
 			}
 		}
 		result = append(result, detail)
+	}
+	return result
+}
+
+// hideRemoteTrackAddresses replaces each file's upstream URLs with the
+// server route that serves it: the playback proxy for audio and video, the
+// text route for text, and the image proxy for images. Other files keep a
+// server path so the tree still shows them as remote. requestCode is the
+// code the routes were addressed with.
+func hideRemoteTrackAddresses(sourceID int64, requestCode string, tracks []remoteTrackDetail, basePath string, imageURL func(int64, string) string) []remoteTrackDetail {
+	result := make([]remoteTrackDetail, len(tracks))
+	workPath := "/api/remote-sources/" + strconv.FormatInt(sourceID, 10) + "/works/" + url.PathEscape(requestCode)
+	for index, track := range tracks {
+		path := remoteTrackPath(basePath, track.Title)
+		if len(track.Children) > 0 || track.Type == "folder" {
+			track.Children = hideRemoteTrackAddresses(sourceID, requestCode, track.Children, path, imageURL)
+			track.StreamURL, track.DownloadURL = "", ""
+			result[index] = track
+			continue
+		}
+		if track.StreamURL != "" || track.DownloadURL != "" {
+			query := "?path=" + url.QueryEscape(path)
+			switch {
+			case track.Type == "image":
+				track.StreamURL = imageURL(sourceID, firstNonEmpty(track.DownloadURL, track.StreamURL))
+			case isTextPreviewFile(track.Type, path):
+				track.StreamURL = workPath + "/text" + query
+			default:
+				track.StreamURL = workPath + "/media" + query
+			}
+			track.DownloadURL = ""
+		}
+		result[index] = track
 	}
 	return result
 }

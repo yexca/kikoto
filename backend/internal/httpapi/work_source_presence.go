@@ -154,7 +154,20 @@ func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourc
 		return nil
 	}
 	s.enrichTrackedPresenceForkState(ctx, code, items)
+	if s.remoteAddressesHidden(ctx) {
+		hideSourcePresenceAddresses(items)
+	}
 	return items
+}
+
+// hideSourcePresenceAddresses clears the upstream work link of every remote
+// presence. A local presence's location is not a source address.
+func hideSourcePresenceAddresses(items []sourcePresenceItem) {
+	for index := range items {
+		if items[index].Type != "local" {
+			items[index].SourceURL = ""
+		}
+	}
 }
 
 func parseSourcePresenceSummary(raw string) []sourcePresenceItem {

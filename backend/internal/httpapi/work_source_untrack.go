@@ -23,7 +23,7 @@ type workSourceUntrackResult struct {
 }
 
 func (s *Server) untrackWorkSource(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:write"); !ok {
+	if _, ok := s.requirePermission(w, r, "remote:track"); !ok {
 		return
 	}
 	workID, err := parseInt64PathValue(r, "id")

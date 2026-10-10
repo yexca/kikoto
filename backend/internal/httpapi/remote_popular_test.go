@@ -46,7 +46,7 @@ func TestRemotePopularWorkflowQueuesThenTracksAndTags(t *testing.T) {
 	}
 	server := NewServer(db, config.Config{})
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/remote-popular", strings.NewReader(`{"sourceId":1,"action":"track","limit":25,"tagNameTemplate":"{date}_{remote_name}_{action}_popular"}`))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Permissions: []string{"workflows:run", "tags:write"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Role: "contributor", Permissions: account.PermissionsForRole("contributor")}))
 	response := httptest.NewRecorder()
 	server.createRemotePopularCollectionRun(response, request)
 	if response.Code != http.StatusAccepted {
@@ -89,10 +89,10 @@ func TestRemotePopularWorkflowQueuesThenTracksAndTags(t *testing.T) {
 	}
 }
 
-func TestRemotePopularFetchRequiresDownloadsManage(t *testing.T) {
+func TestRemotePopularFetchRequiresRemoteFetch(t *testing.T) {
 	server := NewServer(nil, config.Config{})
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/remote-popular", strings.NewReader(`{"sourceId":1,"action":"fetch","limit":25,"tagName":"remote-popular-test"}`))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: 1, Permissions: []string{"workflows:run", "tags:write"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: 1, Role: "user", Permissions: account.PermissionsForRole("user")}))
 	response := httptest.NewRecorder()
 	server.createRemotePopularCollectionRun(response, request)
 	if response.Code != http.StatusForbidden {

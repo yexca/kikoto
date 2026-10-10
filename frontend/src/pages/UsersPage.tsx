@@ -13,7 +13,7 @@ import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type ManagedUser } from "@/lib/api";
 
-const roles: ManagedUser["role"][] = ["user", "admin", "super_admin"];
+const roles: ManagedUser["role"][] = ["user", "contributor", "admin", "super_admin"];
 const USER_PAGE_SIZE = 10;
 
 type UserFormPayload = {
@@ -666,7 +666,7 @@ function RoleBadge({ role }: { role: ManagedUser["role"] }) {
   const { t } = useTranslation();
   if (role === "super_admin") return <Badge>{t("admin.roles.super_admin")}</Badge>;
   if (role === "admin") return <Badge variant="secondary">{t("admin.roles.admin")}</Badge>;
-  return <Badge variant="outline">{t("admin.roles.user")}</Badge>;
+  return <Badge variant="outline">{t(`admin.roles.${role}`)}</Badge>;
 }
 
 function SwitchField({

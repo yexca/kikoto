@@ -116,9 +116,8 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 		if err != nil {
 			return preparedWorkflowTrigger{}, nil, err
 		}
-		if availabilityWatchActionRequiresDownloads(action) {
-			requiredPermissions = append(requiredPermissions, "downloads:manage")
-		}
+		actionPermissions, _ := availabilityWatchActionPermissions(action)
+		requiredPermissions = append(requiredPermissions, actionPermissions...)
 		prepared.ConfigJSON = mustJSON(config)
 	case "local_library_scan":
 		config, err := normalizeLocalScanTriggerConfig(payload.ConfigJSON)
@@ -167,7 +166,7 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 		if err != nil {
 			return preparedWorkflowTrigger{}, nil, err
 		}
-		requiredPermissions = append(requiredPermissions, "tags:write")
+		requiredPermissions = append(requiredPermissions, "tags:write", remoteCollectionActionPermission(config.Action))
 		prepared.ConfigJSON = mustJSON(config)
 	case "dlsite_popular_collection":
 		config, err := normalizeDLsitePopularTriggerConfig(actor, payload.ConfigJSON, existing, now)
@@ -189,6 +188,45 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 		prepared.ConfigJSON = mustJSON(config)
 	}
 	return prepared, requiredPermissions, nil
+}
+
+// storedWorkflowTriggerPermissions is what creating an existing trigger as
+// configured requires. Editing, pausing, and deleting it require the same, so
+// an account cannot switch off or remove automation it could not set up. It
+// reads the stored options without validating them, because a trigger whose
+// source was disabled or removed must still be manageable; an unreadable
+// preset falls back to the permissions every preset plan can include.
+func (s *Server) storedWorkflowTriggerPermissions(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord) []string {
+	permissions := []string{"workflows:run"}
+	switch definition.Code {
+	case "availability_watch":
+		action, err := s.availabilityWatchConfiguredAction(ctx)
+		actionPermissions, known := availabilityWatchActionPermissions(action)
+		if err != nil || !known {
+			actionPermissions = []string{"remote:track", "remote:fetch"}
+		}
+		return append(permissions, actionPermissions...)
+	case "local_library_scan", localMediaIndexWorkflowCode, "metadata_sync":
+		return append(permissions, "metadata:sync")
+	case sourcePresenceCheckWorkflowCode:
+		return append(permissions, "sources:write")
+	case "remote_popular_collection":
+		var config systemWorkflowTriggerConfig
+		_ = json.Unmarshal([]byte(trigger.ConfigJSON), &config)
+		return append(permissions, "tags:write", remoteCollectionActionPermission(config.Action))
+	case "dlsite_popular_collection":
+		return append(permissions, "metadata:sync", "tags:write")
+	}
+	if spec, found := presetWorkflowSpecByCode(definition.Code); found {
+		var config presetWorkflowTriggerConfig
+		if err := json.Unmarshal([]byte(trigger.ConfigJSON), &config); err == nil {
+			if plan, err := s.planPresetWorkflow(ctx, spec, config.Inputs, time.Now(), true); err == nil {
+				return plan.Permissions
+			}
+		}
+		return append(permissions, "metadata:sync", "tags:write")
+	}
+	return permissions
 }
 
 func normalizeLocalScanTriggerConfig(raw string) (localScanTriggerConfig, error) {
@@ -645,10 +683,8 @@ func (s *Server) loadAvailabilityWatchTriggerExecution(ctx context.Context, trig
 	if err != nil {
 		return config, currentUser{}, err
 	}
-	permissions := []string{"workflows:run"}
-	if availabilityWatchActionRequiresDownloads(action) {
-		permissions = append(permissions, "downloads:manage")
-	}
+	actionPermissions, _ := availabilityWatchActionPermissions(action)
+	permissions := append([]string{"workflows:run"}, actionPermissions...)
 	owner, err := s.loadSystemWorkflowTriggerOwner(ctx, config.UserID, permissions)
 	return config, owner, err
 }
@@ -658,7 +694,7 @@ func (s *Server) loadRemotePopularTriggerExecution(ctx context.Context, trigger 
 	if err := decodeStrictJSON(trigger.ConfigJSON, &config); err != nil {
 		return config, currentUser{}, fmt.Errorf("remote popular trigger config is invalid")
 	}
-	owner, err := s.loadSystemWorkflowTriggerOwner(ctx, config.UserID, []string{"workflows:run", "tags:write"})
+	owner, err := s.loadSystemWorkflowTriggerOwner(ctx, config.UserID, []string{"workflows:run", "tags:write", "remote:track"})
 	if err != nil {
 		return config, currentUser{}, err
 	}

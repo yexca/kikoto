@@ -196,7 +196,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     nextTrack,
     nextTrackCompatibility: supportsCompatibilityPlayback(nextTrack) && queueWideCompatibilityEnabled,
   });
-  useRemoteStreamCaching(currentTrack, auth.demoMode);
+  useRemoteStreamCaching(currentTrack, auth.demoMode, {
+    cacheLocation: auth.hasPermission("remote:fetch"),
+    cacheRemoteWork: auth.hasPermission("remote:fetch") && auth.hasPermission("remote:track"),
+  });
   const { handlePlaybackError, resetLocationFailures } = usePlaybackRecovery(engine, {
     setQueue,
     flushProgress,

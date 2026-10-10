@@ -678,6 +678,12 @@ export const surfaceKorean = {
         "로그인한 모든 계정이 이 서버를 라우터나 NAS 같은 로컬 네트워크 기기에 연결하게 하고 응답 여부를 알 수 있게 됩니다. 모든 계정을 신뢰할 때만 켜세요.",
       kikoeruPrivateEnable: "허용",
       saveKikoeruImport: "가져오기 설정 저장",
+      remoteAddresses: "원격 소스 주소",
+      remoteAddressesDescription: "각 원격 소스가 네트워크에서 있는 위치입니다.",
+      hideRemoteAddresses: "소스를 관리하지 않는 계정에서 주소 숨기기",
+      hideRemoteAddressesDescription:
+        "켜면 소스 관리 권한이 없는 계정과 로그인하지 않은 열람자는 소스의 API·사이트·대체 주소, 소스 사이트의 작품 링크, 트랙과 활동에 포함된 업스트림 URL을 받지 않습니다. 탐색, 재생, 커버, 텍스트 미리보기는 이 서버를 거칩니다.",
+      saveRemoteAddresses: "주소 설정 저장",
       creatorCatalogs: "크리에이터 카탈로그",
       catalogFreshnessDays: "카탈로그 최신 유지 일수",
       catalogFreshnessDescription: "서클 및 성우 카탈로그는 마지막 새로 고침 후 이 일수가 지나면 주의 상태가 됩니다.",
@@ -1232,7 +1238,7 @@ export const surfaceKorean = {
     loadingSources: "소스 로드 중",
     noCompatibleSource: "호환되는 소스가 없습니다",
     action: "작업",
-    fetchPermissionRequired: "가져오기를 사용하려면 다운로드 관리 권한이 필요합니다.",
+    fetchPermissionRequired: "가져오기를 사용하려면 원격 파일을 가져오는 권한이 필요합니다.",
     workLimit: "작품 한도",
     worksCount: "작품 {{count}}개",
     rankingPeriod: "순위 기간",
@@ -2168,7 +2174,7 @@ export const surfaceKorean = {
     environmentManagedNotice:
       "이 초기 관리자는 .env 파일의 KIKOTO_ROOT_USERNAME과 KIKOTO_ROOT_PASSWORD로 설정됩니다. 여기서 비밀번호, 역할, 활성 상태를 변경하거나 삭제할 수 없습니다.",
     environmentCredential: ".env의 KIKOTO_ROOT_PASSWORD로 관리",
-    roles: { user: "사용자", admin: "관리자", super_admin: "슈퍼 관리자" },
+    roles: { user: "사용자", contributor: "기여자", admin: "관리자", super_admin: "슈퍼 관리자" },
   },
   sources: {
     title: "파일 소스",

@@ -1,6 +1,7 @@
 import { Loader2, RotateCcw, Settings2 } from "lucide-react";
 import { useState } from "react";
 
+import { useAuth } from "@/auth/AuthProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -22,6 +23,7 @@ export function CandidateReviewCard({
   readOnly: boolean;
 }) {
   const toast = useToast();
+  const { hasPermission } = useAuth();
   const [confirmDeleteOldFiles, setConfirmDeleteOldFiles] = useState(false);
   const [archiveDeleteStep, setArchiveDeleteStep] = useState<0 | 1 | 2>(0);
   const { pending, run: runAction } = usePendingAction<CandidateAction>();
@@ -176,7 +178,7 @@ export function CandidateReviewCard({
       {hasNonEmptyJSON(candidate.decisionJson) && (
         <JsonPreview value={candidate.decisionJson} empty={workflowCopy("noDecisionPayload")} compact />
       )}
-      {needsReview && !readOnly && (
+      {needsReview && !readOnly && (!changesLocalFiles(candidate.type) || hasPermission("downloads:manage")) && (
         <div className="flex flex-wrap gap-2">
           {originBlocked && (
             <>
@@ -469,4 +471,9 @@ function summarizeJSON(value: string) {
   } catch {
     return trimmed;
   }
+}
+
+/** Resolving these candidates removes, archives, or marks unavailable local files, which needs downloads:manage. */
+function changesLocalFiles(type: string) {
+  return ["local_fetch_merge_cleanup", "local_duplicate_work_folder", "local_symlink_media_location"].includes(type);
 }

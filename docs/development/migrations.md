@@ -53,7 +53,13 @@ its application version is recorded as `legacy`.
 2. Add `NNN_<description>.sql` with the next number. The manager runs the file
    inside its own transaction, so the file contains no transaction control
    statements. Keep the SQL deterministic and make data backfills idempotent
-   where a retry can reach them.
+   where a retry can reach them. A file that rebuilds a table other tables
+   reference starts with the line `-- kikoto:foreign_keys=off`: the manager and
+   the baseline generator then run it with foreign key enforcement off, as
+   SQLite's table-rebuild procedure requires, so dropping the old table does
+   not cascade into referencing rows. The foreign-key check still runs before
+   the transaction commits, and enforcement is restored on the connection
+   afterwards.
 3. Keep the change aligned with the unified work model and the source and
    metadata boundaries, and update [Data model](../architecture/data-model.md)
    when schema meaning changes.
@@ -252,6 +258,6 @@ matches the backup.
 | v0.7.0 | `044` | `044_v0.7.0.sql` |
 | v0.7.1 | `047` | `047_v0.7.1.sql` |
 | v0.8.0 | `059` | `059_v0.8.0.sql` |
-| Unreleased (`main`) | `064` | `059_v0.8.0.sql`; `compat/064_dev.sql` in development mode |
+| Unreleased (`main`) | `066` | `059_v0.8.0.sql`; `compat/066_dev.sql` in development mode |
 
 Per-release upgrade steps are in the [release notes](../history/index.md).
