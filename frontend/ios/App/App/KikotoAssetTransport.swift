@@ -16,6 +16,12 @@ struct KikotoAssetRequestPolicy {
     private static let hlsSegmentPath = try! NSRegularExpression(
         pattern: "^/api/media/[1-9][0-9]*/hls/segment-[0-9]{6}\\.ts$"
     )
+    private static let remoteWorkPath = try! NSRegularExpression(
+        pattern: "^/api/remote-sources/[1-9][0-9]*/works/[^/]+/(?:media|text)$"
+    )
+    private static let remoteImagePath = try! NSRegularExpression(
+        pattern: "^/api/remote-sources/[1-9][0-9]*/images/[^/]+$"
+    )
 
     private let server: URLComponents
     private let scheme: String
@@ -106,7 +112,10 @@ struct KikotoAssetRequestPolicy {
         if route.hasPrefix(manualPrefix), route.count > manualPrefix.count {
             return !route.dropFirst(manualPrefix.count).contains("/")
         }
-        return matches(mediaPath, route) || matches(hlsPath, route)
+        return matches(mediaPath, route) ||
+            matches(hlsPath, route) ||
+            matches(remoteWorkPath, route) ||
+            matches(remoteImagePath, route)
     }
 
     private static func matches(_ expression: NSRegularExpression, _ value: String) -> Bool {
@@ -133,11 +142,12 @@ struct KikotoAssetRequestPolicy {
     }
 }
 
-/// Serves `kikoto-asset://asset/...` for media and image elements, which cannot
-/// send the session credential themselves. WKWebView cannot intercept its own
-/// http(s) requests, so the frontend rewrites allowed asset URLs to this scheme
-/// and this handler streams them from the configured server with the bearer
-/// credential. Responses stream to WebKit; nothing is buffered in memory.
+/// Serves `kikoto-asset://asset/...` for media and image elements and remote
+/// text fetches, which cannot send the session credential themselves. WKWebView
+/// cannot intercept its own http(s) requests, so the frontend rewrites allowed
+/// asset URLs to this scheme and this handler streams them from the configured
+/// server with the bearer credential. Responses stream to WebKit; nothing is
+/// buffered in memory.
 final class KikotoAssetSchemeHandler: NSObject, WKURLSchemeHandler, URLSessionDataDelegate {
     static let scheme = "kikoto-asset"
     static let assetHost = "asset"
