@@ -63,11 +63,7 @@ func (reader *pausedReader) Read(target []byte) (int, error) {
 // The database upload has its own window: a body that arrives more slowly than
 // the server's read timeout for ordinary requests is still received in full.
 func TestKikoeruDatabaseUploadOutlivesTheServerReadTimeout(t *testing.T) {
-	temp := t.TempDir()
-	t.Setenv("TMPDIR", temp)
-	t.Setenv("TMP", temp)
-	t.Setenv("TEMP", temp)
-	server := NewServer(nil, config.Config{})
+	server := NewServer(nil, config.Config{TempDir: t.TempDir()})
 	upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		server.importKikoeruDatabase(w, r.WithContext(context.WithValue(r.Context(), currentUserKey, kikoeruImportUser)))
 	}))
