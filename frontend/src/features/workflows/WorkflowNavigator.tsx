@@ -225,8 +225,9 @@ function NavigatorItem({
       >
         <Icon className="h-[18px] w-[18px]" aria-hidden />
         {/* Without the status line, the latest run still shows on the icon; the description names it. */}
+        {/* The badge reaches the rail's edge, so it clips a spinning status that would otherwise scroll the rail. */}
         {collapsed && run && (
-          <span className="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-background">
+          <span className="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center overflow-hidden rounded-full bg-background">
             <RunStatusDot status={run.status} decorative />
           </span>
         )}

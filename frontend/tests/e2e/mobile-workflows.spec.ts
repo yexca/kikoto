@@ -2564,6 +2564,37 @@ test("@desktop the workflow list collapses to an icon rail and remembers the cho
   await expect.poll(nameWidth).toBeGreaterThan(1);
 });
 
+test("@desktop a running workflow does not scroll the collapsed icon rail sideways", async ({ page }) => {
+  await mockWorkflows(page);
+  const running: WorkflowRun = { ...sampleRun, id: 66, status: "running", finishedAt: "" };
+  await page.route("**/api/workflow-runs?*", async (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const code = params.get("workflowCode");
+    await route.fulfill({
+      json: workflowRunsPageFixture(code ? [{ ...running, workflowCode: code }] : [], {
+        pageSize: Number(params.get("pageSize")),
+      }),
+    });
+  });
+  await page.goto("/workflows");
+  await page.getByRole("button", { name: "Hide tab names", exact: true }).click();
+  const list = workflowList(page);
+  await expect(page.getByRole("button", { name: "Show tab names", exact: true })).toBeVisible();
+
+  // The spinning status on each icon reaches furthest at an eighth of a turn.
+  const overflow = () =>
+    list.evaluate((rail) => {
+      const spinners = rail.getAnimations({ subtree: true });
+      for (const spinner of spinners) {
+        spinner.pause();
+        spinner.currentTime = 125;
+      }
+      return { spinners: spinners.length, sideways: rail.scrollWidth - rail.clientWidth };
+    });
+  await expect.poll(async () => (await overflow()).spinners).toBeGreaterThan(0);
+  expect((await overflow()).sideways).toBe(0);
+});
+
 for (const viewport of ["mobile", "@desktop"]) {
   test(`${viewport} workflow Activity separates running, attention, and history`, async ({ page }, testInfo) => {
     await mockWorkflows(page);
