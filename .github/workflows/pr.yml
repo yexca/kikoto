@@ -1,0 +1,21 @@
+name: PR
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+# A new push to a pull request supersedes its running validation.
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # The job name prefixes every check of this run; "PR / Gate" is the check
+  # required to merge.
+  pr:
+    name: PR
+    uses: ./.github/workflows/validate.yml
+    with:
+      tier: pr

@@ -2,7 +2,7 @@ name: CI Performance
 
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: [PR, Full]
     types: [completed]
 
 permissions:
@@ -27,7 +27,7 @@ jobs:
         uses: ./.github/actions/setup-node
         with:
           cache: "false"
-      - name: Collect completed CI timings
+      - name: Collect completed validation timings
         env:
           GH_TOKEN: ${{ github.token }}
         run: make ci-metrics

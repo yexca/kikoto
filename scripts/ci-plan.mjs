@@ -2,35 +2,30 @@ import { appendFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
-// Every planned CI job: the plan key that selects it and whether the Core
-// gate, the check required to merge, waits for it. The Complete gate, which a
-// release depends on through the run conclusion, evaluates all of them.
+// Validation runs in one of two tiers. `pr` selects jobs from the changed
+// paths and is what a pull request must pass to merge. `full` runs every job
+// and is what a release must pass to publish.
+export const tiers = ["pr", "full"];
+
+// Every planned validation job and the plan key that selects it. The Gate
+// evaluates all of them in both tiers.
 export const jobs = {
-  backend: { key: "backend", core: true },
-  frontend: { key: "frontend", core: true },
-  "full-e2e": { key: "e2e", core: false },
-  android: { key: "android", core: false },
-  ios: { key: "ios", core: false },
-  smoke: { key: "production", core: false },
-  "dev-smoke": { key: "dev_smoke", core: false },
+  backend: "backend",
+  frontend: "frontend",
+  e2e: "e2e",
+  android: "android",
+  ios: "ios",
+  smoke: "production",
+  "dev-smoke": "dev_smoke",
 };
 
-export const gates = ["core", "complete"];
+export const planKeys = Object.values(jobs);
 
-export const planKeys = Object.values(jobs).map((job) => job.key);
-
-export function createPlan({
-  eventName,
-  ref,
-  runBuilds = false,
-  paths = null,
-}) {
+export function createPlan({ tier, paths = null }) {
+  if (!tiers.includes(tier)) throw new Error(`Unknown CI tier: ${tier}`);
   const full = Object.fromEntries(planKeys.map((key) => [key, true]));
-  if (ref === "refs/heads/main" || runBuilds) return full;
-  if (eventName !== "pull_request")
-    return { ...full, android: false, ios: false, production: false };
   // A missing/empty diff is not evidence that it is safe to skip validation.
-  if (!paths?.length) return full;
+  if (tier === "full" || !paths?.length) return full;
   const plan = Object.fromEntries(planKeys.map((key) => [key, false]));
   for (const path of paths) {
     if (
@@ -61,14 +56,11 @@ export function createPlan({
     } else if (path.startsWith("frontend/tests/e2e/")) {
       plan.e2e = true;
     } else if (path.startsWith("frontend/")) {
-      // Outside its own project, only Capacitor configuration changes the native iOS build.
-      if (path === "frontend/capacitor.config.ts") plan.ios = true;
-      Object.assign(plan, {
-        frontend: true,
-        e2e: true,
-        android: true,
-        production: true,
-      });
+      // Outside their own projects, only Capacitor configuration changes the
+      // native builds; the web bundle they embed is validated by the web jobs.
+      if (path === "frontend/capacitor.config.ts")
+        Object.assign(plan, { android: true, ios: true });
+      Object.assign(plan, { frontend: true, e2e: true, production: true });
     } else if (path.startsWith("backend/")) {
       Object.assign(plan, { backend: true, e2e: true, production: true });
     } else {
@@ -78,14 +70,12 @@ export function createPlan({
   return plan;
 }
 
-export function validateResults(plan, results, gate = "complete") {
-  if (!gates.includes(gate)) throw new Error(`Unknown CI gate: ${gate}`);
+export function validateResults(plan, results) {
   if (!plan || planKeys.some((key) => typeof plan[key] !== "boolean"))
     throw new Error("Missing or invalid CI plan");
   if (results.style?.result !== "success")
     throw new Error("Style and CI planning must succeed");
-  for (const [job, { key, core }] of Object.entries(jobs)) {
-    if (gate === "core" && !core) continue;
+  for (const [job, key] of Object.entries(jobs)) {
     const result = results[job]?.result;
     if (
       result !== "success" &&
@@ -103,19 +93,15 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   if (process.argv[2] === "check") {
-    const gate = process.argv[3] || "complete";
     validateResults(
       JSON.parse(process.env.CI_PLAN || "null"),
       JSON.parse(process.env.CI_RESULTS || "{}"),
-      gate,
     );
-    console.log(`Every planned job of the ${gate} gate succeeded.`);
+    console.log("Every planned job succeeded.");
   } else if (process.argv[2] === "plan") {
+    const tier = process.env.CI_TIER;
     let paths = null;
-    if (
-      process.env.GITHUB_EVENT_NAME === "pull_request" &&
-      /^[a-f0-9]{40}$/.test(process.env.CI_BASE_SHA || "")
-    ) {
+    if (tier === "pr" && /^[a-f0-9]{40}$/.test(process.env.CI_BASE_SHA || "")) {
       const diff = spawnSync(
         "git",
         [
@@ -130,12 +116,7 @@ if (
       );
       if (diff.status === 0) paths = diff.stdout.split("\0").filter(Boolean);
     }
-    const plan = createPlan({
-      eventName: process.env.GITHUB_EVENT_NAME,
-      ref: process.env.GITHUB_REF,
-      runBuilds: process.env.CI_RUN_BUILDS === "true",
-      paths,
-    });
+    const plan = createPlan({ tier, paths });
     const outputs =
       [
         `plan=${JSON.stringify(plan)}`,
@@ -145,8 +126,6 @@ if (
       appendFileSync(process.env.GITHUB_OUTPUT, outputs);
     console.log(outputs.trim());
   } else {
-    throw new Error(
-      "usage: node scripts/ci-plan.mjs <plan|check [core|complete]>",
-    );
+    throw new Error("usage: node scripts/ci-plan.mjs <plan|check>");
   }
 }

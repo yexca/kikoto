@@ -15,17 +15,17 @@ jobs:
   verify_release:
     name: Verify release source
     runs-on: ubuntu-24.04
-    permissions:
-      actions: read
-      contents: read
+    timeout-minutes: 10
     outputs:
       version_name: ${{ steps.version.outputs.version_name }}
 
     steps:
+      # Full history, so the tag can be compared with main.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Verify tag and version
         id: version
@@ -47,57 +47,23 @@ jobs:
             exit 1
           fi
 
-      - name: Wait for successful main CI for this commit
-        timeout-minutes: 35
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify the tagged commit is on main
         shell: bash
         run: |
-          set -euo pipefail
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Tag $GITHUB_REF_NAME points to $GITHUB_SHA, which is not on main." >&2
+            exit 1
+          fi
 
-          runs_api="repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&event=push&per_page=100"
-          deadline=$((SECONDS + 1800))
-
-          while true; do
-            # The single-quoted program contains jq variables, not shell variables.
-            # shellcheck disable=SC2016
-            state="$(gh api "$runs_api" --jq '
-              [.workflow_runs[] | select(.head_branch == "main")] as $runs
-              | if any($runs[]; .status == "completed" and .conclusion == "success") then "success"
-                elif any($runs[]; .status != "completed") then "waiting"
-                elif ($runs | length) > 0 then "failed"
-                else "missing"
-                end
-            ')"
-
-            case "$state" in
-              success)
-                echo "Successful main CI found for commit $GITHUB_SHA."
-                break
-                ;;
-              failed)
-                echo "Main CI failed for commit $GITHUB_SHA:" >&2
-                gh api "$runs_api" --jq '
-                  .workflow_runs[]
-                  | select(.head_branch == "main")
-                  | "\(.html_url) status=\(.status) conclusion=\(.conclusion)"
-                ' >&2
-                exit 1
-                ;;
-              waiting)
-                echo "Main CI for commit $GITHUB_SHA is still running; checking again in 60 seconds."
-                ;;
-              missing)
-                echo "Main CI for commit $GITHUB_SHA is not visible yet; checking again in 60 seconds."
-                ;;
-            esac
-
-            if (( SECONDS >= deadline )); then
-              echo "Timed out waiting for successful main CI for commit $GITHUB_SHA." >&2
-              exit 1
-            fi
-            sleep 60
-          done
+  # Complete validation of the tagged commit itself. Every build below needs
+  # it, so nothing is built for publication from a commit that did not pass.
+  validate:
+    name: Validate
+    needs:
+      - verify_release
+    uses: ./.github/workflows/validate.yml
+    with:
+      tier: full
 
   build_image:
     name: Build image
@@ -106,6 +72,7 @@ jobs:
       contents: read
     needs:
       - verify_release
+      - validate
 
     steps:
       - name: Checkout
@@ -130,6 +97,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs:
       - verify_release
+      - validate
 
     steps:
       - name: Checkout
@@ -196,6 +164,7 @@ jobs:
     runs-on: macos-26
     needs:
       - verify_release
+      - validate
 
     steps:
       - name: Checkout

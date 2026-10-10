@@ -1,5 +1,6 @@
 .PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-sync android-test android-build ios-sync ios-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
 .PHONY: ci-plan ci-plan-test ci-results ci-backend-static ci-backend-coverage ci-backend-race ci-production production-smoke production-e2e
+.PHONY: backend-race-shard go-test-shard-test
 .PHONY: pr-description-check pr-description-test
 .PHONY: actionlint ci-metrics ci-metrics-test
 .PHONY: browse-performance browse-production-performance playback-performance recommendation-performance
@@ -8,7 +9,7 @@ GO ?= go
 DOCKER_BUILD ?= $(DOCKER) build
 DOCKER_BUILD_ARGS ?=
 E2E_ARGS ?=
-CI_GATE ?= complete
+RACE_SHARD ?= 1/1
 RECOMMENDATION_PERF_ARGS ?=
 GOLANGCI_LINT_VERSION ?= v2.13.1
 GOLANGCI_LINT_TIMEOUT ?= 5m
@@ -114,7 +115,7 @@ backend-vet:
 	cd backend && $(GO) vet ./...
 
 backend-race:
-	cd backend && $(GO) test -race ./...
+	cd backend && $(GO) test -race -timeout=20m ./...
 
 backend-build:
 	cd backend && $(GO) build -ldflags "-X github.com/yexca/kikoto/backend/internal/buildinfo.Version=$(APP_VERSION)" -o bin/kikoto ./cmd/kikoto
@@ -246,15 +247,18 @@ sensitive-check-test:
 
 privacy-check: sensitive-check
 
+# CI_TIER=pr plans from the changed paths; CI_TIER=full plans every job.
 ci-plan:
 	$(NODE) scripts/ci-plan.mjs plan
 
-# CI_GATE=core checks only the jobs required to merge.
 ci-results:
-	$(NODE) scripts/ci-plan.mjs check $(CI_GATE)
+	$(NODE) scripts/ci-plan.mjs check
 
 ci-plan-test:
 	$(NODE) --test scripts/ci-plan.test.mjs
+
+go-test-shard-test:
+	$(NODE) --test scripts/go-test-shard.test.mjs
 
 pr-description-check:
 	$(NODE) scripts/check-pr-description.mjs
@@ -272,7 +276,7 @@ ci-metrics:
 ci-metrics-test:
 	$(NODE) --test scripts/ci-metrics.test.mjs
 
-ci-style: frontend-format frontend-lint frontend-docs frontend-i18n sensitive-check-test ci-plan-test pr-description-test ci-metrics-test actionlint
+ci-style: frontend-format frontend-lint frontend-docs frontend-i18n sensitive-check-test ci-plan-test go-test-shard-test pr-description-test ci-metrics-test actionlint
 
 # Coverage executes the full suite; retain the separate race-instrumented run.
 ci-backend-static: backend-format backend-lint backend-verify backend-vuln backend-vet
@@ -280,6 +284,11 @@ ci-backend-static: backend-format backend-lint backend-verify backend-vuln backe
 ci-backend-coverage: backend-coverage
 
 ci-backend-race: backend-race
+
+# One slice of the race suite, as CI runs it on parallel runners; the slices
+# of a total together run every test once: make RACE_SHARD=1/4 backend-race-shard
+backend-race-shard:
+	cd backend && $(NODE) ../scripts/go-test-shard.mjs $(RACE_SHARD) -race -timeout=20m
 
 ci-backend: ci-backend-static ci-backend-coverage ci-backend-race
 

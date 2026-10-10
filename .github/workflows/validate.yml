@@ -1,32 +1,25 @@
-name: CI
+name: Validate
 
+# The job definitions shared by both validation tiers. The PR, Full, and
+# Release workflows call this file and choose the tier; it has no trigger of
+# its own, so a tier is always an explicit decision of the caller.
 on:
-  pull_request:
-  push:
-    branches:
-      - main
   workflow_call:
     inputs:
-      run_builds:
-        description: Require Android, iOS, and Docker build validation for reusable calls.
-        required: false
-        default: false
-        type: boolean
+      tier:
+        description: >-
+          pr selects jobs from the changed paths; full runs every job.
+        required: true
+        type: string
 
 permissions:
   contents: read
-
-# Only a pull request's superseded run is cancelled. Every other commit gets
-# its own group: a shared group would also drop a queued run when a newer one
-# arrives, and the commit a release tags must keep a concluded result.
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   style:
     name: Style
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     outputs:
       plan: ${{ steps.plan.outputs.plan }}
       backend: ${{ steps.plan.outputs.backend }}
@@ -60,8 +53,8 @@ jobs:
       - name: Select required validation
         id: plan
         env:
+          CI_TIER: ${{ inputs.tier }}
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          CI_RUN_BUILDS: ${{ inputs.run_builds || false }}
         run: make ci-plan
 
   backend:
@@ -69,10 +62,35 @@ jobs:
     needs: style
     if: needs.style.outputs.backend == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        check: [static, coverage, race]
+        # The race suite is serial inside each package, so it runs as slices on
+        # separate runners. Slices share one compilation cache, saved by the
+        # first; every other check owns its cache.
+        include:
+          - check: static
+            target: ci-backend-static
+            cache: static
+            save-cache: true
+          - check: coverage
+            target: ci-backend-coverage
+            cache: coverage
+            save-cache: true
+          - check: race 1/4
+            target: RACE_SHARD=1/4 backend-race-shard
+            cache: race
+            save-cache: true
+          - check: race 2/4
+            target: RACE_SHARD=2/4 backend-race-shard
+            cache: race
+          - check: race 3/4
+            target: RACE_SHARD=3/4 backend-race-shard
+            cache: race
+          - check: race 4/4
+            target: RACE_SHARD=4/4 backend-race-shard
+            cache: race
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -82,6 +100,11 @@ jobs:
       - name: Set up Go
         id: go
         uses: ./.github/actions/setup-go
+      - name: Set up Node for the test sharding script
+        if: matrix.cache == 'race'
+        uses: ./.github/actions/setup-node
+        with:
+          cache: "false"
       - name: Restore Go modules and tool dependencies
         id: modules
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -89,22 +112,31 @@ jobs:
           path: ~/go/pkg/mod
           key: go-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('backend/go.mod', 'backend/go.sum', 'Makefile') }}
           restore-keys: go-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
-      - name: Cache Go compilation and lint results
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Restore Go compilation and lint results
+        id: build
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cache/go-build
             ~/.cache/golangci-lint
-          key: go-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ matrix.check }}-${{ hashFiles('backend/**/*.go', 'backend/**/*.sql', 'backend/go.mod', 'backend/go.sum', 'scripts/*.go', 'scripts/golangci-lint.yml', 'Makefile') }}
-          restore-keys: go-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ matrix.check }}-
+          key: go-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ matrix.cache }}-${{ hashFiles('backend/**/*.go', 'backend/**/*.sql', 'backend/go.mod', 'backend/go.sum', 'scripts/*.go', 'scripts/golangci-lint.yml', 'Makefile') }}
+          restore-keys: go-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ matrix.cache }}-
       - name: Run backend checks
-        run: make ci-backend-${{ matrix.check }}
+        run: make ${{ matrix.target }}
       - name: Save Go modules from one matrix job
         if: matrix.check == 'static' && steps.modules.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/go/pkg/mod
           key: ${{ steps.modules.outputs.cache-primary-key }}
+      - name: Save Go compilation and lint results from one job per cache
+        if: matrix.save-cache && steps.build.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: ${{ steps.build.outputs.cache-primary-key }}
       - name: Upload backend coverage
         if: always() && matrix.check == 'coverage'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -118,6 +150,7 @@ jobs:
     needs: style
     if: needs.style.outputs.frontend == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -135,37 +168,16 @@ jobs:
           path: frontend/coverage
           if-no-files-found: ignore
 
-  dev-smoke:
-    name: Development Compose
-    needs: style
-    if: needs.style.outputs.dev_smoke == 'true'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - name: Set up Node
-        uses: ./.github/actions/setup-node
-      - name: Run development Compose smoke
-        run: make smoke
-      - name: Upload smoke artifacts
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: playwright-smoke-artifacts
-          path: frontend/test-results
-          if-no-files-found: ignore
-
-  full-e2e:
-    name: Full E2E (${{ matrix.shard }}/2)
+  e2e:
+    name: E2E (${{ matrix.shard }}/4)
     needs: style
     if: needs.style.outputs.e2e == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -174,7 +186,7 @@ jobs:
       - name: Set up Node
         uses: ./.github/actions/setup-node
       - name: Run browser regression shard
-        run: make E2E_ARGS="--shard=${{ matrix.shard }}/2" frontend-e2e
+        run: make E2E_ARGS="--shard=${{ matrix.shard }}/4" frontend-e2e
       - name: Upload E2E artifacts
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -185,45 +197,12 @@ jobs:
             frontend/playwright-report
           if-no-files-found: ignore
 
-  android:
-    name: Android build
-    needs: style
-    if: needs.style.outputs.android == 'true'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - name: Set up Node
-        uses: ./.github/actions/setup-node
-      - name: Set up Android toolchain
-        uses: ./.github/actions/setup-android
-      - name: Run Android JVM tests and build debug APK
-        run: make android-test android-build
-
-  ios:
-    name: iOS build
-    needs: style
-    if: needs.style.outputs.ios == 'true'
-    runs-on: macos-26
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - name: Set up Node
-        uses: ./.github/actions/setup-node
-      - name: Show Xcode version
-        run: xcodebuild -version
-      - name: Build unsigned IPA
-        run: make ios-build
-
   smoke:
     name: Smoke
     needs: style
     if: needs.style.outputs.production == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -251,13 +230,12 @@ jobs:
       - name: Exercise the production image
         run: make DOCKER_IMAGE=kikoto:ci production-e2e
 
-  # The check required to merge: it waits only for the jobs ci-plan.mjs marks
-  # as core, so a slower platform or browser job never holds a merge.
-  core:
-    name: Core
-    if: always()
-    needs: [style, backend, frontend]
+  dev-smoke:
+    name: Development Compose
+    needs: style
+    if: needs.style.outputs.dev_smoke == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -265,21 +243,60 @@ jobs:
           persist-credentials: false
       - name: Set up Node
         uses: ./.github/actions/setup-node
+      - name: Run development Compose smoke
+        run: make smoke
+      - name: Upload smoke artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          cache: "false"
-      - name: Verify the validation required to merge
-        env:
-          CI_PLAN: ${{ needs.style.outputs.plan }}
-          CI_RESULTS: ${{ toJSON(needs) }}
-        run: make CI_GATE=core ci-results
+          name: playwright-smoke-artifacts
+          path: frontend/test-results
+          if-no-files-found: ignore
 
-  # Fails the run, and so blocks a release, unless every planned job succeeded;
-  # only the plan may authorize a skipped job.
-  complete:
-    name: Complete
-    if: always()
-    needs: [style, backend, frontend, smoke, full-e2e, android, ios, dev-smoke]
+  android:
+    name: Android build
+    needs: style
+    if: needs.style.outputs.android == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: ./.github/actions/setup-node
+      - name: Set up Android toolchain
+        uses: ./.github/actions/setup-android
+      - name: Run Android JVM tests and build debug APK
+        run: make android-test android-build
+
+  ios:
+    name: iOS build
+    needs: style
+    if: needs.style.outputs.ios == 'true'
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: ./.github/actions/setup-node
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Build unsigned IPA
+        run: make ios-build
+
+  # The only result a caller or a ruleset needs: it fails unless every planned
+  # job succeeded, and only the plan may authorize a skipped job.
+  gate:
+    name: Gate
+    if: always()
+    needs: [style, backend, frontend, e2e, smoke, dev-smoke, android, ios]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -293,4 +310,4 @@ jobs:
         env:
           CI_PLAN: ${{ needs.style.outputs.plan }}
           CI_RESULTS: ${{ toJSON(needs) }}
-        run: make CI_GATE=complete ci-results
+        run: make ci-results

@@ -64,13 +64,18 @@ iOS build passes it without the `v` prefix as both bundle versions.
 Android derives its default monotonic `versionCode` as
 `major * 1,000,000 + minor * 1,000 + patch`.
 
-The release tag must exactly match `VERSION` and point to a commit pushed to
-`main`. Before publishing images or app packages, the release workflow looks up
-the ordinary `CI` workflow run for that exact commit on `main`. If that run is
-still in progress, release waits for it; a successful conclusion permits the
-release builds, while a failed, cancelled, or timed-out run stops the release
-before publication work begins. This reuses the commit's existing CI result
-instead of running the full validation suite a second time.
+The release tag must exactly match `VERSION` and point to a commit on `main`.
+Before building images or app packages, the release workflow runs the `full`
+validation tier described in
+[Continuous Integration](testing.md#continuous-integration) on the tagged
+commit itself. Every build job depends on its `Gate`, so a failed or cancelled
+validation stops the release before publication work begins, and a release
+never depends on the result of another run. Rerunning the failed jobs of the
+release resumes it.
+
+`Full` already validates every commit pushed to `main`. Tag a commit whose
+`Full` run succeeded, so the validation inside the release confirms a known
+result instead of discovering a failure.
 
 ## Publication Order
 

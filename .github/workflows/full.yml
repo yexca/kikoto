@@ -1,0 +1,21 @@
+name: Full
+
+# Complete validation of one commit: every push to main, and any branch or tag
+# on request from the Actions page.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# No concurrency group: every commit runs to completion beside any other run,
+# so main keeps a concluded result for each of them.
+jobs:
+  full:
+    name: Full
+    uses: ./.github/workflows/validate.yml
+    with:
+      tier: full

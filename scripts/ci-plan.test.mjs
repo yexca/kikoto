@@ -1,20 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createPlan, planKeys, validateResults } from "./ci-plan.mjs";
+import { createPlan, jobs, planKeys, validateResults } from "./ci-plan.mjs";
 
-const pr = (paths) =>
-  createPlan({ eventName: "pull_request", ref: "refs/pull/1/merge", paths });
-const jobs = {
-  backend: "backend",
-  frontend: "frontend",
-  "full-e2e": "e2e",
-  android: "android",
-  ios: "ios",
-  smoke: "production",
-  "dev-smoke": "dev_smoke",
-};
-// The jobs a pull request must pass to merge; the rest only gate a release.
-const coreJobs = ["backend", "frontend"];
+const pr = (paths) => createPlan({ tier: "pr", paths });
 const resultsFor = (plan) => ({
   style: { result: "success" },
   ...Object.fromEntries(
@@ -41,7 +29,7 @@ test("documentation-only PRs skip expensive jobs while unknown paths require ful
     ["new-runtime/settings.json"],
     ["VERSION"],
     ["Makefile"],
-    [".github/workflows/ci.yml"],
+    [".github/workflows/validate.yml"],
     ["scripts/ci-plan.mjs"],
     ["frontend/package-lock.json"],
     ["backend/go.sum"],
@@ -55,7 +43,7 @@ test("PR plans include cross-platform consumers and the union of renamed/deleted
     backend: false,
     frontend: true,
     e2e: true,
-    android: true,
+    android: false,
     ios: false,
     production: true,
     dev_smoke: false,
@@ -87,9 +75,15 @@ test("PR plans include cross-platform consumers and the union of renamed/deleted
     production: false,
     dev_smoke: false,
   });
-  const capacitor = pr(["frontend/capacitor.config.ts"]);
-  assert.equal(capacitor.android, true);
-  assert.equal(capacitor.ios, true);
+  assert.deepEqual(pr(["frontend/capacitor.config.ts"]), {
+    backend: false,
+    frontend: true,
+    e2e: true,
+    android: true,
+    ios: true,
+    production: true,
+    dev_smoke: false,
+  });
   assert.equal(pr(["docker-compose.dev.yml"]).dev_smoke, true);
   assert.deepEqual(pr(["deploy/compose/dev.yml"]), {
     backend: false,
@@ -107,59 +101,38 @@ test("PR plans include cross-platform consumers and the union of renamed/deleted
   assert.equal(renamed.production, true);
 });
 
-test("main always runs every job and reusable calls preserve the build opt-in", () => {
-  for (const eventName of ["push", "workflow_dispatch", "workflow_call"]) {
+test("the full tier runs every job whatever changed, and an unknown tier is rejected", () => {
+  for (const paths of [null, [], ["README.md"], ["docs/overview.md"]]) {
     assert.ok(
-      Object.values(
-        createPlan({ eventName, ref: "refs/heads/main", paths: ["README.md"] }),
-      ).every(Boolean),
+      Object.values(createPlan({ tier: "full", paths })).every(Boolean),
+      String(paths),
     );
   }
-  assert.ok(
-    Object.values(
-      createPlan({
-        eventName: "workflow_call",
-        ref: "refs/tags/example",
-        runBuilds: true,
-      }),
-    ).every(Boolean),
-  );
-  const called = createPlan({
-    eventName: "workflow_call",
-    ref: "refs/tags/example",
-  });
-  assert.equal(called.backend, true);
-  assert.equal(called.dev_smoke, true);
-  assert.equal(called.production, false);
-  assert.equal(called.android, false);
-  assert.equal(called.ios, false);
+  for (const tier of [undefined, "", "complete", "PR"]) {
+    assert.throws(() => createPlan({ tier, paths: ["README.md"] }));
+  }
 });
 
-test("each gate accepts only planned skips and rejects failures, cancellations and missing results of its own jobs", () => {
+test("the gate accepts only planned skips and rejects failures, cancellations and missing results", () => {
   for (const plan of [
     pr(["README.md"]),
     pr(["VERSION"]),
     pr(["frontend/src/app.tsx"]),
+    createPlan({ tier: "full" }),
   ]) {
-    for (const gate of ["core", "complete"]) {
-      assert.doesNotThrow(() => validateResults(plan, resultsFor(plan), gate));
-      for (const job of ["style", ...Object.keys(jobs)]) {
-        const gated =
-          job === "style" || gate === "complete" || coreJobs.includes(job);
-        const verdict = gated ? assert.throws : assert.doesNotThrow;
-        for (const result of ["failure", "cancelled", undefined]) {
-          const results = resultsFor(plan);
-          results[job] = { result };
-          verdict(() => validateResults(plan, results, gate), `${gate} ${job}`);
-        }
-        if (job === "style" || plan[jobs[job]]) {
-          const results = resultsFor(plan);
-          results[job] = { result: "skipped" };
-          verdict(() => validateResults(plan, results, gate), `${gate} ${job}`);
-        }
+    assert.doesNotThrow(() => validateResults(plan, resultsFor(plan)));
+    for (const job of ["style", ...Object.keys(jobs)]) {
+      for (const result of ["failure", "cancelled", undefined]) {
+        const results = resultsFor(plan);
+        results[job] = { result };
+        assert.throws(() => validateResults(plan, results), job);
+      }
+      if (job === "style" || plan[jobs[job]]) {
+        const results = resultsFor(plan);
+        results[job] = { result: "skipped" };
+        assert.throws(() => validateResults(plan, results), job);
       }
     }
-    assert.throws(() => validateResults(plan, resultsFor(plan), "optional"));
   }
   for (const plan of [
     null,
