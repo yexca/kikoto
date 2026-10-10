@@ -167,9 +167,6 @@ func postKikoeruDatabase(t *testing.T, s *Server, fields map[string]string, file
 
 func TestKikoeruDatabaseImportReadsOneAccountAndRemovesTheUpload(t *testing.T) {
 	temp := t.TempDir()
-	t.Setenv("TMPDIR", temp)
-	t.Setenv("TMP", temp)
-	t.Setenv("TEMP", temp)
 	path := filepath.Join(t.TempDir(), "kikoeru.sqlite3")
 	source, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -190,7 +187,7 @@ func TestKikoeruDatabaseImportReadsOneAccountAndRemovesTheUpload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := NewServer(nil, config.Config{})
+	s := NewServer(nil, config.Config{TempDir: temp})
 
 	if response := postKikoeruDatabase(t, s, map[string]string{"userName": "synthetic-user"}, database); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "kikoeru_risk_not_acknowledged") {
 		t.Fatalf("unacknowledged upload = %d %s", response.Code, response.Body.String())

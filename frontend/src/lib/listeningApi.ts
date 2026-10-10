@@ -1,4 +1,4 @@
-import { apiTransport } from "@/lib/api";
+import { apiTransport } from "@/lib/apiTransport";
 
 /** One track play activation's cumulative wall-clock listening time. */
 export type ListeningSessionReport = {

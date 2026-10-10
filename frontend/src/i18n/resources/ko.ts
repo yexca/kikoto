@@ -61,6 +61,16 @@ const libraryKorean = {
   remoteSourceUnavailableDescription: "소스 서비스에 연결할 수 없어 작품을 불러오지 않았습니다.",
   retryRemoteSource: "다시 시도",
   recentlyPlayed: "최근 재생",
+
+  continueListening: "이어 듣기",
+
+  mobileSearchPlaceholder: "제목, 서클, 태그 검색",
+
+  resultCount: "작품 {{value}}개",
+
+  resultPage: "{{page}}/{{totalPages}} 페이지",
+
+  allStatuses: "전체",
   recentlyPlayedFailed: "최근 재생한 작품을 불러오지 못했습니다.",
   openWorkTitle: "{{title}} 열기",
   noPlaybackYet: "아직 재생하지 않음",
@@ -160,6 +170,10 @@ const collectionKorean = {
   perPageLabel: "페이지당 {{itemLabel}}",
   pageSize: "페이지당 항목 수: {{value}}",
   itemsPerPage: "페이지당 항목 수",
+
+  compactCards: "컴팩트 카드",
+
+  compactCardsHint: "휴대폰에서 작은 작품 카드 사용",
   coverSources: "커버 소스 표시",
   coverSourceModes: {
     auto: "자동: 현재 소스와 다르거나 문제가 있는 표시만",
@@ -757,12 +771,18 @@ export const koreanResource = {
           "라이브러리 탐색, 즐겨찾기, 서클, 성우, 워크플로 가시성, 원격 가져오기와 브라우저 오디오 플레이어를 제공합니다.",
         referenceProjects: "참조 프로젝트",
         referenceAreas: {
+          recommendation: "추천 설계",
           remoteSources: "원격 소스",
           playbackReporting: "재생 보고",
           workflows: "워크플로",
           engineering: "엔지니어링 및 CI",
         },
         references: {
+          gorse: "후보 검색, 순위화와 결과 캐시의 분리. Kikoto는 자체 휴리스틱 평가기를 구현합니다.",
+          audiomuse: "버전이 지정된 공유 특징과 제한된 백그라운드 빌드. Kikoto는 ANN 인덱스를 사용하지 않습니다.",
+          implicit: "희소 피드백 프로필과 제한된 후보 점수 계산. ALS, BPR, ItemKNN은 가져오지 않습니다.",
+          troi: "미디어 라이브러리의 엔티티 매핑과 후보 파이프라인 아이디어. 소스 코드는 포함하지 않습니다.",
+          recbole: "평가와 전체 순위 비교 자료. 런타임 의존성이 아닙니다.",
           kikoeru: "Kikoeru 호환 원격 소스가 따르는 공개 백엔드 인터페이스.",
           audiobookshelf: "재생 위치와 실제 감상 시간을 함께 보고하는 방식.",
           navidrome: "이벤트 병합, 영구 저장 보고 큐, 재시도 대기 시간을 늘리는 방식.",

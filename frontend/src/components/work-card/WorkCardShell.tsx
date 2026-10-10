@@ -88,22 +88,18 @@ export type WorkCardViewModel = {
   recommendationHighlighted?: boolean;
   recommendationScore?: number;
   recommendationRevealDelay?: number;
+  /** Last listening position, shown by the compact phone layouts. */
+  progress?: WorkCardProgress | null;
+};
+
+export type WorkCardProgress = {
+  percent: number;
+  label: string;
 };
 
 export type CoverSourceBadgeStyle = "label" | "icon";
 
-export function WorkCardShell({
-  work,
-  selection,
-  footer,
-  canOpen = true,
-  onOpen,
-  onCircleOpen,
-  onVoiceOpen,
-  onSeriesOpen,
-  onTagOpen,
-  onRecommendationOpen,
-}: {
+export type WorkCardShellProps = {
   work: WorkCardViewModel;
   selection?: ReactNode;
   footer?: ReactNode;
@@ -114,7 +110,20 @@ export function WorkCardShell({
   onSeriesOpen?: () => void;
   onTagOpen?: (tag: string) => void;
   onRecommendationOpen?: () => void;
-}) {
+};
+
+/**
+ * Circle, series, and voice links on a card open the entity page when the card
+ * already knows its id, and otherwise resolve the name through the server.
+ */
+export function useWorkCardEntityActions(
+  work: WorkCardViewModel,
+  {
+    onCircleOpen,
+    onVoiceOpen,
+    onSeriesOpen,
+  }: Pick<WorkCardShellProps, "onCircleOpen" | "onVoiceOpen" | "onSeriesOpen">,
+) {
   const toast = useToast();
   const { t } = useTranslation();
   const { demoMode } = useAuth();
@@ -157,6 +166,26 @@ export function WorkCardShell({
     }
     void resolveEntity("voice", name);
   };
+  return { circleOpen, seriesOpen, voiceOpen };
+}
+
+export function WorkCardShell({
+  work,
+  selection,
+  footer,
+  canOpen = true,
+  onOpen,
+  onCircleOpen,
+  onVoiceOpen,
+  onSeriesOpen,
+  onTagOpen,
+  onRecommendationOpen,
+}: WorkCardShellProps) {
+  const { circleOpen, seriesOpen, voiceOpen } = useWorkCardEntityActions(work, {
+    onCircleOpen,
+    onVoiceOpen,
+    onSeriesOpen,
+  });
   const content = (
     <>
       <WorkCardMedia
@@ -354,7 +383,7 @@ export function WorkCardMedia({
   );
 }
 
-const coverChipClassName =
+export const coverChipClassName =
   "inline-flex h-6 items-center gap-1 rounded-[var(--badge-radius)] bg-background/85 px-2 text-xs font-semibold text-foreground shadow-sm ring-1 ring-foreground/10 backdrop-blur-sm";
 
 // File availability rides on the cover so it reads at a glance without a
@@ -465,7 +494,7 @@ function CoverAvailabilityIcons({ badges }: { badges: WorkCardBadge[] }) {
   );
 }
 
-function coverSourceIcon(badge: WorkCardBadge) {
+export function coverSourceIcon(badge: WorkCardBadge) {
   const key = badge.key ?? "";
   if (key.startsWith("source:local")) return HardDrive;
   if (key.startsWith("source:tracked")) return GitBranchPlus;
@@ -475,7 +504,7 @@ function coverSourceIcon(badge: WorkCardBadge) {
   return badge.variant === "warning" ? CloudOff : Cloud;
 }
 
-function availabilityDotClassName(badge: WorkCardBadge) {
+export function availabilityDotClassName(badge: WorkCardBadge) {
   if (badge.variant === "warning") return "bg-warning";
   if (badge.key?.startsWith("source:")) return "bg-success";
   return "bg-muted-foreground";
@@ -495,7 +524,6 @@ function WorkCardBody({
   onTagOpen?: (tag: string) => void;
 }) {
   const { t } = useTranslation();
-  const ageRating = ageRatingPresentation(work.ageRating ?? "");
   const circleLabel = !work.circle || work.circle === "Unknown circle" ? t("workCard.unknownCircle") : work.circle;
   const codeText = work.code || t("workCard.source");
   return (
@@ -515,22 +543,7 @@ function WorkCardBody({
             hasLyrics={work.hasLyrics === true}
             hasPlaybackHistory={work.hasPlaybackHistory === true}
           />
-          {ageRating.known && (
-            <button
-              type="button"
-              aria-label={t("library.searchClauseLabels.age", { value: ageRating.label })}
-              onClick={(event) => {
-                event.stopPropagation();
-                openLibraryAgeRatingSearch(work.ageRating ?? "");
-              }}
-              className={cn(
-                "touch-target relative shrink-0 rounded-full border px-1.5 py-0.5 text-3xs font-semibold leading-none hover:brightness-90 active:brightness-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                ageRating.badgeClassName,
-              )}
-            >
-              {ageRating.label}
-            </button>
-          )}
+          <WorkCardAgeRating ageRating={work.ageRating} />
         </div>
         <h3
           className="line-clamp-2 min-h-10 text-[0.9375rem] font-semibold leading-5 @max-[12.5rem]/work-card:min-h-9 @max-[12.5rem]/work-card:text-sm @max-[12.5rem]/work-card:leading-[1.125rem]"
@@ -617,6 +630,28 @@ function WorkCardBody({
   );
 }
 
+export function WorkCardAgeRating({ ageRating: value }: { ageRating?: string }) {
+  const { t } = useTranslation();
+  const ageRating = ageRatingPresentation(value ?? "");
+  if (!ageRating.known) return null;
+  return (
+    <button
+      type="button"
+      aria-label={t("library.searchClauseLabels.age", { value: ageRating.label })}
+      onClick={(event) => {
+        event.stopPropagation();
+        openLibraryAgeRatingSearch(value ?? "");
+      }}
+      className={cn(
+        "touch-target relative shrink-0 rounded-full border px-1.5 py-0.5 text-3xs font-semibold leading-none hover:brightness-90 active:brightness-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        ageRating.badgeClassName,
+      )}
+    >
+      {ageRating.label}
+    </button>
+  );
+}
+
 // Chips stay tappable at their regular size in the overflow popover, which
 // renders outside the card; only chips inside a narrow card shrink.
 const tagChipClassName =
@@ -640,17 +675,20 @@ function tagItemKey({ badge, personal }: WorkCardTagItem) {
  * card gives them two rows and lists every personal tag in its own row below.
  * A narrow card folds both into one row, personal tags first, so the user's own
  * tags stay visible without adding height. The row count comes from the card's
- * container query (`--work-card-tag-rows`), so CSS owns the breakpoint.
+ * container query (`--work-card-tag-rows`), so CSS owns the breakpoint. A
+ * layout that always wants the folded row passes `singleRow`.
  */
-function WorkCardTags({
+export function WorkCardTags({
   dlsiteTags,
   userTags,
   emptyLabel,
+  singleRow = false,
   onTagOpen,
 }: {
   dlsiteTags: WorkCardBadge[];
   userTags: WorkCardBadge[];
   emptyLabel: string;
+  singleRow?: boolean;
   onTagOpen?: (label: string) => void;
 }) {
   const { t } = useTranslation();
@@ -730,7 +768,12 @@ function WorkCardTags({
     <>
       <div
         ref={containerRef}
-        className="relative min-h-6 min-w-0 [--work-card-tag-rows:2] @max-[12.5rem]/work-card:min-h-5 @max-[12.5rem]/work-card:[--work-card-tag-rows:1]"
+        className={cn(
+          "relative min-h-6 min-w-0 @max-[12.5rem]/work-card:min-h-5",
+          singleRow
+            ? "[--work-card-tag-rows:1]"
+            : "[--work-card-tag-rows:2] @max-[12.5rem]/work-card:[--work-card-tag-rows:1]",
+        )}
         data-testid="work-card-tags"
       >
         {listItems.length === 0 ? (
@@ -844,7 +887,13 @@ function CardBadge({
   );
 }
 
-function WorkCardIndicators({ hasLyrics, hasPlaybackHistory }: { hasLyrics: boolean; hasPlaybackHistory: boolean }) {
+export function WorkCardIndicators({
+  hasLyrics,
+  hasPlaybackHistory,
+}: {
+  hasLyrics: boolean;
+  hasPlaybackHistory: boolean;
+}) {
   const { t } = useTranslation();
   if (!hasLyrics && !hasPlaybackHistory) return null;
   return (
@@ -927,7 +976,7 @@ function WorkCardMetrics({
   );
 }
 
-function formatPrice(value: number, currency: string | undefined, locale: ResolvedUiLocale) {
+export function formatPrice(value: number, currency: string | undefined, locale: ResolvedUiLocale) {
   try {
     return numberFormat(locale, {
       style: "currency",
@@ -939,7 +988,7 @@ function formatPrice(value: number, currency: string | undefined, locale: Resolv
   }
 }
 
-function formatRating(value: number, locale: ResolvedUiLocale) {
+export function formatRating(value: number, locale: ResolvedUiLocale) {
   return numberFormat(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -950,7 +999,7 @@ function formatStandardCount(value: number, locale: ResolvedUiLocale) {
   return numberFormat(locale).format(value);
 }
 
-function formatCompactCount(value: number | null, locale: ResolvedUiLocale) {
+export function formatCompactCount(value: number | null, locale: ResolvedUiLocale) {
   if (value === null || !Number.isFinite(value) || value < 0) return "--";
   return numberFormat(locale, {
     notation: value >= 10_000 ? "compact" : "standard",
@@ -958,13 +1007,26 @@ function formatCompactCount(value: number | null, locale: ResolvedUiLocale) {
   }).format(Math.floor(value));
 }
 
-function formatDiscount(price: number, regularPrice: number, locale: ResolvedUiLocale) {
+export function formatDiscount(price: number, regularPrice: number, locale: ResolvedUiLocale) {
   return numberFormat(locale, { style: "percent", maximumFractionDigits: 0 }).format(price / regularPrice - 1);
 }
 
-export function WorkCardFooter({ left, right }: { left?: ReactNode; right?: ReactNode }) {
+export function WorkCardFooter({
+  left,
+  right,
+  className,
+}: {
+  left?: ReactNode;
+  right?: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="mt-auto flex h-11 shrink-0 items-center justify-between gap-1 border-t border-border/70 px-1.5">
+    <div
+      className={cn(
+        "mt-auto flex h-11 shrink-0 items-center justify-between gap-1 border-t border-border/70 px-1.5",
+        className,
+      )}
+    >
       <div className="flex min-w-0 items-center gap-1">{left}</div>
       <div className="flex min-w-0 items-center gap-1">{right}</div>
     </div>

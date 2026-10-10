@@ -62,6 +62,16 @@ const libraryHant = {
   remoteSourceUnavailableDescription: "無法連線到來源服務，因此沒有載入作品。",
   retryRemoteSource: "重試",
   recentlyPlayed: "最近播放",
+
+  continueListening: "繼續收聽",
+
+  mobileSearchPlaceholder: "搜尋標題、社團、標籤",
+
+  resultCount: "{{value}} 個作品",
+
+  resultPage: "第 {{page}}/{{totalPages}} 頁",
+
+  allStatuses: "全部",
   recentlyPlayedFailed: "無法載入最近播放的作品。",
   openWorkTitle: "開啟 {{title}}",
   noPlaybackYet: "尚未播放",
@@ -161,6 +171,10 @@ const collectionHant = {
   perPageLabel: "每頁 {{itemLabel}} 數量",
   pageSize: "每頁數量：{{value}}",
   itemsPerPage: "每頁數量",
+
+  compactCards: "緊湊卡片",
+
+  compactCardsHint: "手機上使用更小的作品卡片",
   coverSources: "封面來源標記",
   coverSourceModes: {
     auto: "自動：只顯示與目前來源不同或異常的標記",
@@ -739,12 +753,18 @@ export const zhHantResource = {
         overviewTwo: "它包含媒體庫瀏覽、收藏、社團、聲優、工作流程可見性、遠端取得流程和瀏覽器音訊播放器。",
         referenceProjects: "參考專案",
         referenceAreas: {
+          recommendation: "推薦設計",
           remoteSources: "遠端來源",
           playbackReporting: "播放回報",
           workflows: "工作流程",
           engineering: "工程與 CI",
         },
         references: {
+          gorse: "候選召回、排序與結果快取的分層思路；Kikoto 使用自己的啟發式評分器。",
+          audiomuse: "版本化共享特徵和有界背景建置；Kikoto 沒有採用其 ANN 索引。",
+          implicit: "稀疏回饋設定檔和有界候選評分；Kikoto 沒有引入 ALS、BPR 或 ItemKNN。",
+          troi: "媒體庫中的實體對應和候選管線思路；專案不包含其原始碼。",
+          recbole: "評測和全量排序對照資料；它不是執行階段依賴。",
           kikoeru: "Kikoeru 相容遠端來源所遵循的公開後端介面。",
           audiobookshelf: "將播放位置與實際聆聽時長合併回報的方式。",
           navidrome: "事件合併、持久化回報佇列和退避重試機制。",

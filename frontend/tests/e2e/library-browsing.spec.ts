@@ -168,8 +168,8 @@ test("tag clicks send a structured Unicode tag search and retain the matching wo
   await page.getByRole("button", { name: "ロリ", exact: true }).click();
   await expect.poll(() => requests.some((query) => query === "$tag:ロリ$")).toBe(true);
   await expect(page.getByText("Tagged mobile work", { exact: true })).toBeVisible();
-  // The tag opens the mobile search without raising the keyboard.
-  const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
+  // The tag fills the phone search field without raising the keyboard.
+  const search = page.getByRole("searchbox", { name: "Search library" });
   await expect(search).toBeVisible();
   await expect(search).not.toBeFocused();
 
@@ -200,9 +200,9 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
   expect(popoverBox!.x + popoverBox!.width).toBeLessThanOrEqual(viewport.width);
   expect(popoverBox!.y + popoverBox!.height).toBeLessThanOrEqual(viewport.height);
 
-  const selectedSort = page.getByRole("button", { name: "Recommended", exact: true });
-  await expect(selectedSort).toHaveClass(/bg-primary\/10/);
-  await expect(selectedSort.locator("xpath=parent::div").getByRole("button")).toHaveText([
+  const selectedSort = popover.getByRole("button", { name: "Recommended", exact: true });
+  await expect(selectedSort).toHaveAttribute("aria-pressed", "true");
+  await expect(popover.getByRole("list").getByRole("button")).toHaveText([
     "Recommended",
     "Recently added",
     "Release date",
@@ -212,8 +212,14 @@ test("toolbar popovers stay anchored below their trigger and inside the mobile v
     "Sales",
     "Title",
   ]);
-  await expect(selectedSort.locator("svg")).toHaveCount(0);
-  expect((await selectedSort.locator("xpath=parent::div").boundingBox())!.width).toBeLessThanOrEqual(200);
+  // The direction sits in the same popover instead of a second toolbar button.
+  await expect(popover.getByRole("button", { name: "Descending", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await popover.getByRole("button", { name: "Ascending", exact: true }).click();
+  await expect(popover.getByRole("button", { name: "Ascending", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(popover).toBeVisible();
 });
 
 test("recommended sorting refreshes its stable seed", async ({ page }) => {
@@ -371,7 +377,8 @@ test("narrow cards fold personal and metadata tags into one row while wide cards
   await expect(page.getByRole("button", { name: "Long metadata tag 14", exact: true })).toBeVisible();
 });
 
-test("recently played opens from a toolbar popover and returns to the work", async ({ page }) => {
+test("@desktop recently played opens from a toolbar popover and returns to the work", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
   const recentWorks = [
     {
       ...work,
@@ -428,6 +435,77 @@ test("recently played opens from a toolbar popover and returns to the work", asy
   await expect(page).toHaveURL(/\/RJ00000060(?:\?|$)/);
 });
 
+test("continue listening opens from a collapsed phone strip and returns to the work", async ({ page }) => {
+  const recentWorks = [
+    {
+      ...work,
+      id: 21,
+      primaryCode: "RJ00000060",
+      title: "Short title",
+      progress: {
+        ...work.progress,
+        title: "Disc 1/Track one",
+        positionSeconds: 42,
+        durationSeconds: 120,
+        lastPlayedAt: "2026-01-02T00:00:00Z",
+      },
+    },
+  ];
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, { recentWorks });
+
+  await page.goto("/library");
+  const toggle = page.getByRole("button", { name: /^Continue listening/ });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  const tile = page.getByRole("button", { name: "Open Short title" });
+  await expect(tile).toBeHidden();
+
+  await toggle.click();
+  await expect(tile).toBeVisible();
+  await expect(tile.getByText("Track one", { exact: true })).toBeVisible();
+
+  // The open state is a per-device preference.
+  await page.reload();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await tile.click();
+  await expect(page).toHaveURL(/\/RJ00000060(?:\?|$)/);
+});
+
+test("phone mark filter chips filter the library and clear when tapped again", async ({ page }) => {
+  const statuses: string[] = [];
+  await mockApplication(page, (url) => {
+    if (url.searchParams.get("scope") === "local") statuses.push(url.searchParams.get("status") ?? "");
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("work-card").first()).toBeVisible();
+
+  const chips = page.getByRole("group", { name: "Mark" });
+  const listening = chips.getByRole("button", { name: "Listening", exact: true });
+  await listening.click();
+  await expect(listening).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => statuses.at(-1)).toBe("listening");
+
+  await listening.click();
+  await expect(chips.getByRole("button", { name: "All", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => statuses.at(-1)).toBe("all");
+});
+
+test("compact cards switch turns phone cards into rows or tiles and is remembered", async ({ page }) => {
+  await mockApplication(page);
+  await page.goto("/");
+  const card = page.getByTestId("work-card").first();
+  await expect(card).toBeVisible();
+  await expect(card).not.toHaveAttribute("data-card-layout");
+
+  await page.getByRole("button", { name: /^Display options/ }).click();
+  await page.getByRole("switch", { name: "Compact cards" }).click();
+  await expect(card).toHaveAttribute("data-card-layout", "row");
+  await page.getByRole("radio", { name: "2 columns" }).click();
+  await expect(card).toHaveAttribute("data-card-layout", "tile");
+
+  await page.reload();
+  await expect(page.getByTestId("work-card").first()).toHaveAttribute("data-card-layout", "tile");
+});
+
 test("favorite list popovers use measured mobile placement and stay inside the usable viewport", async ({ page }) => {
   await mockApplication(page);
   await page.goto("/");
@@ -454,17 +532,11 @@ test("library search follows the user across scopes and survives navigation", as
   await mockApplication(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Search library" }).click();
-  const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
+  const search = page.getByRole("searchbox", { name: "Search library" });
   await expect(search).toBeVisible();
   await expect(search).not.toBeFocused();
   await search.fill("local term");
   await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("local term");
-  await page.getByRole("button", { name: "Hide library search" }).click();
-  await expect(search).toBeHidden();
-  await page.getByRole("button", { name: "Search library" }).click();
-  await expect(search).toBeVisible();
-  await expect(search).toHaveValue("local term");
   await page.getByRole("button", { name: "Tracked", exact: true }).click();
   await expect(search).toHaveValue("local term");
   await search.fill("tracked term");
@@ -479,8 +551,7 @@ test("library search follows the user across scopes and survives navigation", as
 test("touch text controls use 16px text so focusing them does not zoom the page", async ({ page }) => {
   await mockApplication(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Search library" }).click();
-  const search = page.getByPlaceholder("Search title, code, circle, tag, or creator");
+  const search = page.getByRole("searchbox", { name: "Search library" });
   await expect(search).toBeVisible();
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Sign in", exact: true }).click();
@@ -499,8 +570,7 @@ test("library search conditions use accessible select menus", async ({ page }) =
   await mockApplication(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Search library" }).click();
-  const searchBox = page.getByPlaceholder("Search title, code, circle, tag, or creator");
+  const searchBox = page.getByRole("searchbox", { name: "Search library" });
   const searchBoundsBeforeEditor = await searchBox.boundingBox();
   await page.getByRole("button", { name: "Add search condition" }).click();
 
@@ -509,20 +579,22 @@ test("library search conditions use accessible select menus", async ({ page }) =
   const clauseType = clauseDialog.getByRole("combobox", { name: "Search clause type" });
   await expect(clauseType).toHaveText("Text");
   await expect(clauseDialog.getByPlaceholder("Value")).toBeFocused();
-  const toolbar = page.locator("section[data-toast-avoid]").filter({ has: searchBox });
+  const toolbar = page.locator("[data-toast-avoid]").filter({ has: searchBox });
   await expect(toolbar.getByRole("button", { name: /^Display options/ })).toBeVisible();
   await expect(toolbar.getByRole("button", { name: "Sort: Recommended" })).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "Filters" })).toBeVisible();
+  await expect(toolbar.getByRole("group", { name: "Mark" })).toBeVisible();
   const actionButtons = [
     toolbar.getByRole("button", { name: /^Display options/ }),
     toolbar.getByRole("button", { name: /^Sort:/ }),
-    toolbar.getByRole("button", { name: "Filters" }),
   ];
   const actionBoxes = await Promise.all(actionButtons.map((button) => button.boundingBox()));
   const searchBoxBounds = await searchBox.boundingBox();
   expect(actionBoxes.every((box) => box !== null)).toBe(true);
   expect(searchBoxBounds).not.toBeNull();
-  expect(searchBoxBounds!.y).toBeGreaterThanOrEqual(Math.max(...actionBoxes.map((box) => box!.y + box!.height)));
+  // Search leads the phone toolbar; sort and display options sit below it.
+  expect(searchBoxBounds!.y + searchBoxBounds!.height).toBeLessThanOrEqual(
+    Math.min(...actionBoxes.map((box) => box!.y)),
+  );
   // The editor floats below the search field instead of inserting a page row.
   expect(searchBoxBounds).toEqual(searchBoundsBeforeEditor);
   const dialogBox = await clauseDialog.boundingBox();
@@ -531,11 +603,9 @@ test("library search conditions use accessible select menus", async ({ page }) =
   expect(dialogBox!.x).toBeGreaterThanOrEqual(0);
   expect(dialogBox!.x + dialogBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 
-  await toolbar.getByRole("button", { name: "Hide library search" }).click();
+  await page.keyboard.press("Escape");
   await expect(clauseDialog).toHaveCount(0);
-  await expect(searchBox).toBeHidden();
-  await expect(toolbar.getByRole("button", { name: /^Display options/ })).toBeVisible();
-  await toolbar.getByRole("button", { name: "Search library" }).click();
+  await expect(searchBox).toBeVisible();
   await page.getByRole("button", { name: "Add search condition" }).click();
   await expect(clauseType).toHaveText("Text");
 
@@ -579,8 +649,10 @@ test("anonymous quick marks open the sign-in flow from mobile controls", async (
   await page.goto("/");
 
   await page.getByRole("button", { name: "Mark: Unmarked" }).click();
-  await expect(page.getByRole("button", { name: "Unmarked", exact: true })).toHaveClass(/bg-primary\/10/);
-  await page.getByRole("button", { name: "Want", exact: true }).click();
+  // The toolbar's mark filter chips share these names; the menu is the floating layer.
+  const markMenu = page.locator(".fixed.z-50").filter({ hasText: "Relisten" });
+  await expect(markMenu.getByRole("button", { name: "Unmarked", exact: true })).toHaveClass(/bg-primary\/10/);
+  await markMenu.getByRole("button", { name: "Want", exact: true }).click();
   await expect(page.getByText("Sign in is required.", { exact: true })).toBeVisible();
   await page.locator('[aria-live="polite"]').getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sign in to Kikoto" })).toBeVisible();

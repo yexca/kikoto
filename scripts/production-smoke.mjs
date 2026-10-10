@@ -116,6 +116,7 @@ try {
     container,
     "--read-only",
     "--cap-drop=ALL",
+    "--cap-add=DAC_OVERRIDE",
     "--security-opt=no-new-privileges:true",
     "--tmpfs",
     "/tmp:rw,noexec,nosuid,size=64m",
@@ -142,6 +143,11 @@ try {
   );
   assert.equal(hostConfig.ReadonlyRootfs, true);
   assert.ok(hostConfig.CapDrop.includes("ALL"));
+  // Docker reports an added capability with or without its CAP_ prefix.
+  assert.deepEqual(
+    hostConfig.CapAdd.map((capability) => capability.replace(/^CAP_/, "")),
+    ["DAC_OVERRIDE"],
+  );
   assert.ok(hostConfig.SecurityOpt.includes("no-new-privileges:true"));
   // Create the work folder as the runtime user. Copying a host directory can
   // preserve an unrelated UID/GID that is not writable without DAC override.

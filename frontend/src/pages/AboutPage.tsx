@@ -12,6 +12,20 @@ import { NowPlayingBars } from "@/player/dock/playerControls";
 // entries under about.referenceAreas and about.references.
 const referenceGroups = [
   {
+    area: "recommendation",
+    projects: [
+      { name: "gorse-io/gorse", url: "https://github.com/gorse-io/gorse", note: "gorse" },
+      { name: "NeptuneHub/AudioMuse-AI", url: "https://github.com/NeptuneHub/AudioMuse-AI", note: "audiomuse" },
+      { name: "benfred/implicit", url: "https://github.com/benfred/implicit", note: "implicit" },
+      {
+        name: "metabrainz/troi-recommendation-playground",
+        url: "https://github.com/metabrainz/troi-recommendation-playground",
+        note: "troi",
+      },
+      { name: "RUCAIBox/RecBole", url: "https://github.com/RUCAIBox/RecBole", note: "recbole" },
+    ],
+  },
+  {
     area: "remoteSources",
     projects: [
       { name: "Number178/kikoeru-express", url: "https://github.com/Number178/kikoeru-express", note: "kikoeru" },

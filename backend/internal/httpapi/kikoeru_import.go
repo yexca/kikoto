@@ -315,7 +315,7 @@ func (s *Server) importKikoeruDatabase(w http.ResponseWriter, r *http.Request) {
 	if err := http.NewResponseController(w).SetReadDeadline(time.Now().Add(kikoeruDatabaseUploadTimeout)); err != nil {
 		slog.Warn("kikoeru database upload keeps the server read timeout", "error", err)
 	}
-	file, err := os.CreateTemp("", "kikoto-kikoeru-*.sqlite3")
+	file, err := os.CreateTemp(s.cfg.TempDir, "kikoto-kikoeru-*.sqlite3")
 	if err != nil {
 		writeError(w, err)
 		return

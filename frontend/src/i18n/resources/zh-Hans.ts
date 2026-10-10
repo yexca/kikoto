@@ -61,6 +61,16 @@ export const libraryHans = {
   remoteSourceUnavailableDescription: "无法连接来源服务，因此没有加载作品。",
   retryRemoteSource: "重试",
   recentlyPlayed: "最近播放",
+
+  continueListening: "继续收听",
+
+  mobileSearchPlaceholder: "搜索标题、社团、标签",
+
+  resultCount: "{{value}} 个作品",
+
+  resultPage: "第 {{page}}/{{totalPages}} 页",
+
+  allStatuses: "全部",
   recentlyPlayedFailed: "无法加载最近播放的作品。",
   openWorkTitle: "打开 {{title}}",
   noPlaybackYet: "尚未播放",
@@ -160,6 +170,10 @@ export const collectionHans = {
   perPageLabel: "每页 {{itemLabel}} 数量",
   pageSize: "每页数量：{{value}}",
   itemsPerPage: "每页数量",
+
+  compactCards: "紧凑卡片",
+
+  compactCardsHint: "手机上使用更小的作品卡片",
   coverSources: "封面来源标记",
   coverSourceModes: {
     auto: "自动：只显示与当前来源不同或异常的标记",
@@ -734,12 +748,18 @@ export const zhHansResource = {
         overviewTwo: "它包含媒体库浏览、收藏、社团、声优、工作流可见性、远程获取流程和基于浏览器的音频播放器。",
         referenceProjects: "参考项目",
         referenceAreas: {
+          recommendation: "推荐设计",
           remoteSources: "远程来源",
           playbackReporting: "播放上报",
           workflows: "工作流",
           engineering: "工程与 CI",
         },
         references: {
+          gorse: "候选召回、排序与结果缓存的分层思路；Kikoto 使用自己的启发式评分器。",
+          audiomuse: "版本化共享特征和有界后台构建；Kikoto 没有采用其 ANN 索引。",
+          implicit: "稀疏反馈画像和有界候选评分；Kikoto 没有引入 ALS、BPR 或 ItemKNN。",
+          troi: "媒体库中的实体映射和候选流水线思路；项目不包含其源代码。",
+          recbole: "评测和全量排序对照资料；它不是运行时依赖。",
           kikoeru: "Kikoeru 兼容远程来源所遵循的公开后端接口。",
           audiobookshelf: "将播放位置与实际收听时长合并上报的方式。",
           navidrome: "事件合并、持久化上报队列和退避重试机制。",
