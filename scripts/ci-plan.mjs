@@ -2,14 +2,22 @@ import { appendFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
-export const planKeys = [
-  "backend",
-  "frontend",
-  "e2e",
-  "android",
-  "production",
-  "dev_smoke",
-];
+// Every planned CI job: the plan key that selects it and whether the Core
+// gate, the check required to merge, waits for it. The Complete gate, which a
+// release depends on through the run conclusion, evaluates all of them.
+export const jobs = {
+  backend: { key: "backend", core: true },
+  frontend: { key: "frontend", core: true },
+  "full-e2e": { key: "e2e", core: false },
+  android: { key: "android", core: false },
+  ios: { key: "ios", core: false },
+  smoke: { key: "production", core: false },
+  "dev-smoke": { key: "dev_smoke", core: false },
+};
+
+export const gates = ["core", "complete"];
+
+export const planKeys = Object.values(jobs).map((job) => job.key);
 
 export function createPlan({
   eventName,
@@ -20,7 +28,7 @@ export function createPlan({
   const full = Object.fromEntries(planKeys.map((key) => [key, true]));
   if (ref === "refs/heads/main" || runBuilds) return full;
   if (eventName !== "pull_request")
-    return { ...full, android: false, production: false };
+    return { ...full, android: false, ios: false, production: false };
   // A missing/empty diff is not evidence that it is safe to skip validation.
   if (!paths?.length) return full;
   const plan = Object.fromEntries(planKeys.map((key) => [key, false]));
@@ -40,6 +48,8 @@ export function createPlan({
       return full;
     if (path.startsWith("frontend/android/")) {
       plan.android = true;
+    } else if (path.startsWith("frontend/ios/")) {
+      plan.ios = true;
     } else if (
       path === "frontend/Dockerfile" ||
       path === "backend/Dockerfile" ||
@@ -51,6 +61,8 @@ export function createPlan({
     } else if (path.startsWith("frontend/tests/e2e/")) {
       plan.e2e = true;
     } else if (path.startsWith("frontend/")) {
+      // Outside its own project, only Capacitor configuration changes the native iOS build.
+      if (path === "frontend/capacitor.config.ts") plan.ios = true;
       Object.assign(plan, {
         frontend: true,
         e2e: true,
@@ -66,19 +78,14 @@ export function createPlan({
   return plan;
 }
 
-export function validateResults(plan, results) {
+export function validateResults(plan, results, gate = "complete") {
+  if (!gates.includes(gate)) throw new Error(`Unknown CI gate: ${gate}`);
   if (!plan || planKeys.some((key) => typeof plan[key] !== "boolean"))
     throw new Error("Missing or invalid CI plan");
   if (results.style?.result !== "success")
     throw new Error("Style and CI planning must succeed");
-  for (const [job, key] of Object.entries({
-    backend: "backend",
-    frontend: "frontend",
-    "full-e2e": "e2e",
-    android: "android",
-    smoke: "production",
-    "dev-smoke": "dev_smoke",
-  })) {
+  for (const [job, { key, core }] of Object.entries(jobs)) {
+    if (gate === "core" && !core) continue;
     const result = results[job]?.result;
     if (
       result !== "success" &&
@@ -96,11 +103,13 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   if (process.argv[2] === "check") {
+    const gate = process.argv[3] || "complete";
     validateResults(
       JSON.parse(process.env.CI_PLAN || "null"),
       JSON.parse(process.env.CI_RESULTS || "{}"),
+      gate,
     );
-    console.log("All planned CI jobs succeeded.");
+    console.log(`Every planned job of the ${gate} gate succeeded.`);
   } else if (process.argv[2] === "plan") {
     let paths = null;
     if (
@@ -136,6 +145,8 @@ if (
       appendFileSync(process.env.GITHUB_OUTPUT, outputs);
     console.log(outputs.trim());
   } else {
-    throw new Error("usage: node scripts/ci-plan.mjs <plan|check>");
+    throw new Error(
+      "usage: node scripts/ci-plan.mjs <plan|check [core|complete]>",
+    );
   }
 }

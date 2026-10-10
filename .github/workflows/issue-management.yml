@@ -1,0 +1,56 @@
+name: Issue Management
+
+on:
+  schedule:
+    - cron: "23 1 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: issue-management
+  cancel-in-progress: false
+
+env:
+  DAYS_BEFORE_INACTIVE: 30
+  DAYS_BEFORE_CLOSE: 10
+
+jobs:
+  inactive:
+    name: Close inactive issues
+    if: github.repository == 'yexca/kikoto'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write # actions/stale keeps its progress in the Actions cache.
+      issues: write
+    steps:
+      - name: Close issues that never received the requested information
+        uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          only-labels: needs-more-info
+          days-before-stale: ${{ env.DAYS_BEFORE_INACTIVE }}
+          days-before-close: 0
+          stale-issue-label: inactive
+          close-issue-reason: not_planned
+          stale-issue-message: |
+            This issue was waiting for more information and has had no activity for ${{ env.DAYS_BEFORE_INACTIVE }} days, so it is being closed. Open a new issue with the requested details if the problem still occurs.
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+
+      - name: Close issues without activity
+        uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          days-before-stale: ${{ env.DAYS_BEFORE_INACTIVE }}
+          days-before-close: ${{ env.DAYS_BEFORE_CLOSE }}
+          stale-issue-label: inactive
+          close-issue-reason: not_planned
+          exempt-issue-labels: enhancement,help wanted
+          exempt-all-assignees: true
+          exempt-all-milestones: true
+          stale-issue-message: |
+            This issue has had no activity for ${{ env.DAYS_BEFORE_INACTIVE }} days and will be closed in ${{ env.DAYS_BEFORE_CLOSE }} days. Comment here if it still applies.
+          close-issue-message: |
+            This issue was closed after ${{ env.DAYS_BEFORE_CLOSE }} more days without activity. If it still applies, open a new issue with reproduction details for the current version.
+          days-before-pr-stale: -1
+          days-before-pr-close: -1

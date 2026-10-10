@@ -9,9 +9,12 @@ const jobs = {
   frontend: "frontend",
   "full-e2e": "e2e",
   android: "android",
+  ios: "ios",
   smoke: "production",
   "dev-smoke": "dev_smoke",
 };
+// The jobs a pull request must pass to merge; the rest only gate a release.
+const coreJobs = ["backend", "frontend"];
 const resultsFor = (plan) => ({
   style: { result: "success" },
   ...Object.fromEntries(
@@ -53,6 +56,7 @@ test("PR plans include cross-platform consumers and the union of renamed/deleted
     frontend: true,
     e2e: true,
     android: true,
+    ios: false,
     production: true,
     dev_smoke: false,
   });
@@ -61,6 +65,7 @@ test("PR plans include cross-platform consumers and the union of renamed/deleted
     frontend: false,
     e2e: true,
     android: false,
+    ios: false,
     production: true,
     dev_smoke: false,
   });
@@ -69,15 +74,29 @@ test("PR plans include cross-platform consumers and the union of renamed/deleted
     frontend: false,
     e2e: false,
     android: true,
+    ios: false,
     production: false,
     dev_smoke: false,
   });
+  assert.deepEqual(pr(["frontend/ios/App/App/Info.plist"]), {
+    backend: false,
+    frontend: false,
+    e2e: false,
+    android: false,
+    ios: true,
+    production: false,
+    dev_smoke: false,
+  });
+  const capacitor = pr(["frontend/capacitor.config.ts"]);
+  assert.equal(capacitor.android, true);
+  assert.equal(capacitor.ios, true);
   assert.equal(pr(["docker-compose.dev.yml"]).dev_smoke, true);
   assert.deepEqual(pr(["deploy/compose/dev.yml"]), {
     backend: false,
     frontend: false,
     e2e: false,
     android: false,
+    ios: false,
     production: false,
     dev_smoke: true,
   });
@@ -113,27 +132,34 @@ test("main always runs every job and reusable calls preserve the build opt-in", 
   assert.equal(called.dev_smoke, true);
   assert.equal(called.production, false);
   assert.equal(called.android, false);
+  assert.equal(called.ios, false);
 });
 
-test("the gate accepts only planned skips and rejects failures, cancellations and missing results", () => {
+test("each gate accepts only planned skips and rejects failures, cancellations and missing results of its own jobs", () => {
   for (const plan of [
     pr(["README.md"]),
     pr(["VERSION"]),
     pr(["frontend/src/app.tsx"]),
   ]) {
-    assert.doesNotThrow(() => validateResults(plan, resultsFor(plan)));
-    for (const job of ["style", ...Object.keys(jobs)]) {
-      for (const result of ["failure", "cancelled", undefined]) {
-        const results = resultsFor(plan);
-        results[job] = { result };
-        assert.throws(() => validateResults(plan, results), job);
-      }
-      if (job === "style" || plan[jobs[job]]) {
-        const results = resultsFor(plan);
-        results[job] = { result: "skipped" };
-        assert.throws(() => validateResults(plan, results), job);
+    for (const gate of ["core", "complete"]) {
+      assert.doesNotThrow(() => validateResults(plan, resultsFor(plan), gate));
+      for (const job of ["style", ...Object.keys(jobs)]) {
+        const gated =
+          job === "style" || gate === "complete" || coreJobs.includes(job);
+        const verdict = gated ? assert.throws : assert.doesNotThrow;
+        for (const result of ["failure", "cancelled", undefined]) {
+          const results = resultsFor(plan);
+          results[job] = { result };
+          verdict(() => validateResults(plan, results, gate), `${gate} ${job}`);
+        }
+        if (job === "style" || plan[jobs[job]]) {
+          const results = resultsFor(plan);
+          results[job] = { result: "skipped" };
+          verdict(() => validateResults(plan, results, gate), `${gate} ${job}`);
+        }
       }
     }
+    assert.throws(() => validateResults(plan, resultsFor(plan), "optional"));
   }
   for (const plan of [
     null,

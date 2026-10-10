@@ -1,0 +1,39 @@
+name: CI Performance
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  report:
+    name: CI Performance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Observation only: a metrics failure must not read as a failed check.
+    continue-on-error: true
+    steps:
+      # Run only trusted default-branch code; the measured run is read as API data.
+      - name: Checkout default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Set up Node
+        uses: ./.github/actions/setup-node
+        with:
+          cache: "false"
+      - name: Collect completed CI timings
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make ci-metrics
+      - name: Upload CI metrics
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ci-metrics-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: ${{ runner.temp }}/ci-metrics
+          retention-days: 30

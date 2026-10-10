@@ -1,12 +1,14 @@
 .PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures frontend-playwright-install frontend-e2e-smoke frontend-e2e android-sync android-test android-build ios-sync ios-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
 .PHONY: ci-plan ci-plan-test ci-results ci-backend-static ci-backend-coverage ci-backend-race ci-production production-smoke production-e2e
 .PHONY: pr-description-check pr-description-test
+.PHONY: actionlint ci-metrics ci-metrics-test
 .PHONY: browse-performance browse-production-performance playback-performance recommendation-performance
 
 GO ?= go
 DOCKER_BUILD ?= $(DOCKER) build
 DOCKER_BUILD_ARGS ?=
 E2E_ARGS ?=
+CI_GATE ?= complete
 RECOMMENDATION_PERF_ARGS ?=
 GOLANGCI_LINT_VERSION ?= v2.13.1
 GOLANGCI_LINT_TIMEOUT ?= 5m
@@ -247,8 +249,9 @@ privacy-check: sensitive-check
 ci-plan:
 	$(NODE) scripts/ci-plan.mjs plan
 
+# CI_GATE=core checks only the jobs required to merge.
 ci-results:
-	$(NODE) scripts/ci-plan.mjs check
+	$(NODE) scripts/ci-plan.mjs check $(CI_GATE)
 
 ci-plan-test:
 	$(NODE) --test scripts/ci-plan.test.mjs
@@ -259,7 +262,17 @@ pr-description-check:
 pr-description-test:
 	$(NODE) --test scripts/check-pr-description.test.mjs
 
-ci-style: frontend-format frontend-lint frontend-docs frontend-i18n sensitive-check-test ci-plan-test pr-description-test
+# Shell snippets are additionally checked wherever shellcheck is installed.
+actionlint:
+	$(GO) run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+ci-metrics:
+	$(NODE) scripts/ci-metrics.mjs
+
+ci-metrics-test:
+	$(NODE) --test scripts/ci-metrics.test.mjs
+
+ci-style: frontend-format frontend-lint frontend-docs frontend-i18n sensitive-check-test ci-plan-test pr-description-test ci-metrics-test actionlint
 
 # Coverage executes the full suite; retain the separate race-instrumented run.
 ci-backend-static: backend-format backend-lint backend-verify backend-vuln backend-vet

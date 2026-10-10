@@ -1,0 +1,16 @@
+name: Set up Go
+description: Install the Go toolchain pinned in backend/go.mod.
+outputs:
+  go-version:
+    description: The installed Go version, for cache keys.
+    value: ${{ steps.go.outputs.go-version }}
+runs:
+  using: composite
+  steps:
+    # Callers own their caches: the module and build caches differ per job.
+    - name: Set up Go
+      id: go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      with:
+        go-version-file: backend/go.mod
+        cache: false

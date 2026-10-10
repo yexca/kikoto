@@ -255,7 +255,9 @@ anonymous user.
   component and checksum before accepting the generated diff.
 - Pin third-party GitHub Actions to full commit SHAs and retain the release tag
   as a comment for readability. Checkout steps must not persist credentials
-  unless a specific job requires a later authenticated Git operation.
+  unless a specific job requires a later authenticated Git operation. Set up
+  Node, Go, and the Android toolchain through the composite actions under
+  `.github/actions` so each third-party setup action is pinned in one file.
 - Pin Docker build stages by tag and digest. Public-distribution Compose files
   may default to `latest` only when the release workflow updates that tag;
   document a reviewed version or digest for reproducible deployments. Treat a
@@ -267,8 +269,8 @@ anonymous user.
   digest-pinned base image fixes the release; the release workflow's SBOM
   records the exact package versions in each published image.
 - Dependabot (`.github/dependabot.yml`) proposes weekly updates for GitHub
-  Actions, the runtime base image digest, Go modules, and frontend npm
-  packages. Action, Go module, and npm version updates wait seven days after
+  Actions in workflows and composite actions, the runtime base image digest,
+  Go modules, and frontend npm packages. Action, Go module, and npm version updates wait seven days after
   a release; security updates are not delayed. Review its pull requests like
   any other dependency change, including the install-script and audit steps
   above. It deliberately skips the Go and Node toolchain versions, which must

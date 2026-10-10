@@ -1,0 +1,20 @@
+name: Set up Android toolchain
+description: Install the JDK, Android SDK packages, and Gradle that build the Android shell.
+runs:
+  using: composite
+  steps:
+    - name: Set up Java
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      with:
+        distribution: temurin
+        java-version: "21.0.12+8.0.LTS"
+        verify-signature: true
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+      with:
+        packages: platform-tools
+    - name: Install Android SDK packages
+      shell: bash
+      run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0

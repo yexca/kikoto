@@ -53,6 +53,12 @@ reports should include the server/client version, relevant deployment and device
 details, reproduction steps, and expected and actual behavior. Redact diagnostics;
 never attach a real database, private configuration, or personal media.
 
+An issue without activity for 30 days receives the `inactive` label and a
+notice, and closes 10 days later unless someone comments. An issue labeled
+`needs-more-info` closes once it has had no activity for 30 days. Issues that
+are labeled `enhancement` or `help wanted`, assigned, or in a milestone stay
+open. Pull requests are never closed automatically.
+
 The [PR template](.github/pull_request_template.md) asks for:
 
 - The change and its motivation, including before/after behavior for a fix.
@@ -77,7 +83,7 @@ that covers the files you changed:
 
 ```sh
 make frontend-docs       # public documentation and link checks
-make ci-style            # frontend format/lint/docs and privacy-test checks
+make ci-style            # frontend format/lint/docs, workflow lint, and policy tests
 make ci-backend          # backend format/lint/tests/vet/race/vulnerability checks
 make ci-frontend         # frontend audits, unit coverage, and build
 make smoke               # Docker/runtime changes

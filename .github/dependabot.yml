@@ -1,14 +1,18 @@
 # Dependency update policy: docs/development/security.md#dependency-and-build-integrity
 #
 # The Go and Node toolchain versions are repeated across go.mod, package.json
-# engines, workflows, the Makefile, Dockerfiles, and user docs. Upgrade them by
-# hand in one change; Dependabot only tracks the runtime base image digest.
+# engines, the Makefile, Dockerfiles, and user docs. Upgrade them by hand in
+# one change; Dependabot only tracks the runtime base image digest. Workflows
+# read both versions from go.mod and package.json through .github/actions.
 # Gradle is not listed: Android dependency changes require a reviewed
 # gradle/verification-metadata.xml update that Dependabot cannot produce.
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    # The root covers .github/workflows; composite actions are listed apart.
+    directories:
+      - /
+      - /.github/actions/*
     schedule:
       interval: weekly
       day: monday

@@ -232,22 +232,31 @@ make ios-build
 The target synchronizes Capacitor through `ios-sync` and writes an unsigned
 `kikoto-<version>-unsigned.ipa` under `frontend/ios/App/build`. The IPA is not
 installable as built; a sideloading tool re-signs it with the installing
-user's identity. The iOS shell has no unit-test suite or pull-request CI job;
-the release workflow runs the same target on a macOS runner and attaches the
-IPA to the GitHub Release.
+user's identity. The iOS shell has no unit-test suite. CI runs the same target
+on a macOS runner, and the release workflow attaches the IPA to the GitHub
+Release.
 
 CI runs the following dependency graph:
 
 ```text
-Style + plan -> Backend (static / coverage / race), Frontend,
-                E2E (1/2 / 2/2), Android,
-                Smoke (production build + runtime), Development Compose -> Core
+Style + plan -> Backend (static / coverage / race), Frontend -> Core
+             -> E2E (1/2 / 2/2), Android, iOS,
+                Smoke (production build + runtime), Development Compose
+All planned jobs -> Complete
 ```
 
-`Style` always checks formatting, lint, documentation, and the CI selection and
-gate policy. It compares the PR base with the checked-out merge result, including
-both sides of renames and deleted paths. `scripts/ci-plan.mjs` owns the job plan;
-its tests guard against accidental validation skips.
+`Style` always checks formatting, lint, documentation, workflow definitions,
+and the CI selection and gate policy. It compares the PR base with the
+checked-out merge result, including both sides of renames and deleted paths.
+`scripts/ci-plan.mjs` owns the job plan; its tests guard against accidental
+validation skips.
+
+`make actionlint` lints every workflow, including its expressions, job
+dependencies, and the inputs passed to the composite actions under
+`.github/actions`. Where `shellcheck` is installed, as on the CI runner, it
+also checks each `run` script. Workflows set up Node, Go, and the Android
+toolchain only through those composite actions, which read the Node and Go
+versions from `frontend/package.json` and `backend/go.mod`.
 
 The separate `PR Description` workflow checks the contribution template's
 change, validation, and upgrade-impact sections for PRs targeting `main` on
@@ -260,26 +269,39 @@ run in Style through `make pr-description-test`. To check a saved synthetic even
 locally, set `GITHUB_EVENT_PATH` to its JSON file and run
 `make pr-description-check`.
 
-| PR changes | Additional required jobs |
+| PR changes | Additional planned jobs |
 | --- | --- |
-| Only public documentation | None beyond Style and Core |
+| Only public documentation | None beyond Style and the gates |
 | Backend source or tests | All backend checks, E2E, production Smoke |
 | Frontend application or configuration | Frontend, E2E, Android, production Smoke |
 | Browser tests and their fixtures | E2E |
 | Android project only | Android |
+| iOS project only | iOS |
+| Capacitor configuration | Frontend, E2E, Android, iOS, production Smoke |
 | Development Dockerfiles, Nginx, or Compose | Development Compose |
 | Shared dependencies, Makefile, scripts, workflows, VERSION, or unclassified paths | All jobs |
 
-Mixed changes use the union of required jobs. Missing or empty PR diffs select
+Mixed changes use the union of planned jobs. Missing or empty PR diffs select
 all jobs. Pushes to `main` always run the complete plan regardless of changed
-paths. Reusable calls outside `main` run the complete plan except Android and
-production Smoke unless `run_builds` is true; development Compose still runs.
+paths. Reusable calls outside `main` run the complete plan except Android,
+iOS, and production Smoke unless `run_builds` is true; development Compose
+still runs.
 
-`Core` retains its required check name and evaluates the plan against every job
-result, even after failures. It rejects failed, cancelled, missing, or
-unexpectedly skipped results and missing/invalid plans. Only a job explicitly
-disabled by the plan may be skipped. Existing protection requiring Style, Core,
-and Smoke can retain those names; an intentional Smoke skip is evaluated by Core.
+Two gate jobs evaluate the plan against job results, even after failures. Each
+rejects failed, cancelled, missing, or unexpectedly skipped results and
+missing/invalid plans; only a job explicitly disabled by the plan may be
+skipped. The `jobs` table in `scripts/ci-plan.mjs` assigns every job to its
+gate.
+
+- `Core` is the check required to merge. It waits for Style, Backend, and
+  Frontend only, so it reports as soon as those finish, and a failing or
+  still-running E2E, Android, iOS, Smoke, or Development Compose job does not
+  hold a pull request.
+- `Complete` waits for every planned job. It is not required to merge; its
+  failure fails the `CI` run, which is what a release waits for on `main`.
+
+Branch protection requires `Style`, `Core`, and `Smoke`. A `Smoke` job the
+plan disables is skipped, which protection accepts.
 Backend and E2E matrices use `fail-fast: false` to preserve diagnostics from all
 variants. Coverage and failure artifacts have one owner or unique shard names.
 
@@ -289,8 +311,20 @@ JVM tests and assembly. Production Smoke builds the image once through
 same local image through `make production-e2e`. Development Compose and the
 API-intercepted browser suite remain separate checks. Release still waits for
 successful full main CI for the exact tagged commit before publishing artifacts.
+A new push to a pull request cancels that pull request's running CI. Every
+commit pushed to `main` runs to completion alongside any other run, so a
+tagged commit keeps a concluded result.
 Parallel validation reduces elapsed time but can spend more runner minutes when
 an independent job fails; source-based cache updates also consume cache storage.
+
+The separate `CI Performance` workflow runs after every completed `CI` run.
+It checks out only the default branch, reads the finished run's job and step
+timings through the API, and writes a summary plus a `ci-metrics-<run>-<attempt>`
+artifact that is kept for 30 days. The baseline is the median of earlier
+successful runs of the same event that executed the same jobs, so runs with
+different plans are never compared. It is an observation: no threshold fails
+a check. `scripts/ci-metrics.mjs` owns the calculation and its tests run in
+Style through `make ci-metrics-test`.
 
 Current Vitest coverage is primarily pure state and model logic. User-visible
 React interaction belongs in Playwright until a real component-test environment
