@@ -381,6 +381,13 @@ the backend.
   permissions its stored configuration requires to create, read from that
   configuration without validating its source, so a trigger whose source was
   removed can still be switched off by an account that could create it.
+- When an administrator disables or deletes a remote source, every enabled
+  trigger whose stored configuration depends on that source is paused in the
+  same transaction. The trigger keeps its schedule and options, clears its
+  next dispatch time, and records whether the source was disabled or removed.
+  The scheduler repeats this dependency check to cover a concurrent or
+  out-of-band source change. Re-enabling a source does not resume its paused
+  triggers automatically; an administrator must review and enable them.
 - Availability Watch: its configuration, targets, schedule, and runs require
   the permissions of the configured action, and Track on a ready target
   requires `remote:track`.
