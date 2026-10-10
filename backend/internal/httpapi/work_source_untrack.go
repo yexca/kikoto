@@ -11,15 +11,14 @@ import (
 )
 
 type workSourceUntrackResult struct {
-	WorkID         int64    `json:"workId"`
-	SourceID       int64    `json:"sourceId"`
-	Status         string   `json:"status"`
-	ClearedCaches  int      `json:"clearedCaches"`
-	DeletedFiles   int      `json:"deletedFiles"`
-	CachePaths     []string `json:"cachePaths"`
-	TrackedCleared bool     `json:"trackedCleared"`
-	WorkPreserved  bool     `json:"workPreserved"`
-	LocalPreserved bool     `json:"localPreserved"`
+	WorkID         int64  `json:"workId"`
+	SourceID       int64  `json:"sourceId"`
+	Status         string `json:"status"`
+	ClearedCaches  int    `json:"clearedCaches"`
+	DeletedFiles   int    `json:"deletedFiles"`
+	TrackedCleared bool   `json:"trackedCleared"`
+	WorkPreserved  bool   `json:"workPreserved"`
+	LocalPreserved bool   `json:"localPreserved"`
 }
 
 func (s *Server) untrackWorkSource(w http.ResponseWriter, r *http.Request) {
@@ -66,11 +65,9 @@ func (s *Server) runWorkSourceUntrack(ctx context.Context, workID int64, sourceI
 		return workSourceUntrackResult{}, err
 	}
 	deletedFiles := 0
-	cachePaths := make([]string, 0, len(cacheLocations))
 	lockPaths := make([]string, 0, len(cacheLocations))
 	seenLockPaths := make(map[string]struct{}, len(cacheLocations))
 	for _, location := range cacheLocations {
-		cachePaths = append(cachePaths, location.Path)
 		lockPath := filepath.ToSlash(strings.TrimSpace(location.Path))
 		if _, ok := seenLockPaths[lockPath]; !ok {
 			seenLockPaths[lockPath] = struct{}{}
@@ -138,7 +135,6 @@ func (s *Server) runWorkSourceUntrack(ctx context.Context, workID int64, sourceI
 		Status:         "succeeded",
 		ClearedCaches:  len(cacheLocations),
 		DeletedFiles:   deletedFiles,
-		CachePaths:     cachePaths,
 		TrackedCleared: true,
 		WorkPreserved:  true,
 		LocalPreserved: true,
