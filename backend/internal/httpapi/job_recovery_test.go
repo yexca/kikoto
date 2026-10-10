@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"github.com/yexca/kikoto/backend/internal/account"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -254,7 +255,7 @@ func TestRemoteOriginBlockPausesFetchForReviewAndManualRetryResolvesCandidate(t 
 	}
 	request := httptest.NewRequest(http.MethodPatch, "/api/workflow-candidates/1", strings.NewReader(`{"status":"resolved"}`))
 	request.SetPathValue("id", "1")
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"workflows:run"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
 	response := httptest.NewRecorder()
 	server.updateWorkflowCandidate(response, request)
 	if response.Code != http.StatusConflict {

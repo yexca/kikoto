@@ -61,11 +61,13 @@ func (s *Server) streamWorkflowRunEvents(w http.ResponseWriter, r *http.Request)
 
 	lastEventID := afterID
 	lastTickAt := time.Time{}
+	redactor := s.remoteAddressRedactorFor(r.Context())
 	writeUpdate := func(forceTick bool) (string, error) {
 		events, err := s.workflowStore.ListEventsAfter(r.Context(), id, lastEventID)
 		if err != nil {
 			return "", err
 		}
+		redactor.events(events)
 		for _, event := range events {
 			payload, marshalErr := json.Marshal(event)
 			if marshalErr != nil {

@@ -23,6 +23,7 @@ func (s *Server) listWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	s.remoteAddressRedactorFor(r.Context()).runs(page.Runs)
 	writeJSON(w, http.StatusOK, page)
 }
 
@@ -73,5 +74,6 @@ func (s *Server) listWorkflowTriggers(w http.ResponseWriter, r *http.Request) {
 			visible = append(visible, trigger)
 		}
 	}
+	s.remoteAddressRedactorFor(r.Context()).triggers(visible)
 	writeJSON(w, http.StatusOK, visible)
 }

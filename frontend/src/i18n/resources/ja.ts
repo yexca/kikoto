@@ -713,6 +713,7 @@ export const japaneseResource = {
         roles: {
           super_admin: "スーパー管理者",
           admin: "管理者",
+          contributor: "コントリビューター",
           user: "ユーザー",
         },
       },

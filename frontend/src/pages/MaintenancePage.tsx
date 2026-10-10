@@ -50,6 +50,7 @@ type RuntimeDraft = {
   remoteBackoffSeconds: number;
   remoteMaxBackoffSeconds: number;
   kikoeruImportPrivateAddresses: boolean;
+  hideRemoteSourceAddresses: boolean;
 };
 
 function runtimeDraftFromSettings(settings: AppSettings): RuntimeDraft {
@@ -66,6 +67,7 @@ function runtimeDraftFromSettings(settings: AppSettings): RuntimeDraft {
     remoteBackoffSeconds: settings.remoteBackoffSeconds,
     remoteMaxBackoffSeconds: settings.remoteMaxBackoffSeconds,
     kikoeruImportPrivateAddresses: settings.kikoeruImportPrivateAddresses ?? false,
+    hideRemoteSourceAddresses: settings.hideRemoteSourceAddresses ?? true,
   };
 }
 
@@ -358,6 +360,24 @@ export function MaintenancePage({
             />
 
             <SettingsGroupDivider label={t("maintenance.library.settingsGroup")} />
+
+            <SettingsSection
+              title={t("maintenance.library.remoteAddresses")}
+              description={t("maintenance.library.remoteAddressesDescription")}
+              footer={saveButton(["hideRemoteSourceAddresses"], t("maintenance.library.saveRemoteAddresses"))}
+            >
+              <SettingsRow
+                title={t("maintenance.library.hideRemoteAddresses")}
+                description={t("maintenance.library.hideRemoteAddressesDescription")}
+              >
+                <Switch
+                  checked={draft.hideRemoteSourceAddresses}
+                  disabled={readOnly}
+                  aria-label={t("maintenance.library.hideRemoteAddresses")}
+                  onCheckedChange={(hideRemoteSourceAddresses) => patchDraft({ hideRemoteSourceAddresses })}
+                />
+              </SettingsRow>
+            </SettingsSection>
 
             <LibraryLayoutSection
               id="library-storage"

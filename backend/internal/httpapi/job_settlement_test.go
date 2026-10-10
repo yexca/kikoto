@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/yexca/kikoto/backend/internal/account"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -176,7 +177,7 @@ func TestManualRecoveryLeavesExecutingAndQueuedJobsAlone(t *testing.T) {
 	}
 
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/recover-stale", nil)
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"workflows:run"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
 	response := httptest.NewRecorder()
 	server.recoverStaleWorkflowRuns(response, request)
 

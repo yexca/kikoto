@@ -304,6 +304,14 @@ destination address boundary even when using a proxy. Proxy passwords
 are stored in the SQLite settings table, are write-only through the settings
 API, and are never returned or included in validation errors.
 
+Only accounts with `sources:write` see source addresses while **Hide addresses
+from accounts that do not manage sources** in `Settings -> Library` is on, which
+is the default; other accounts and anonymous readers get covers, image
+previews, playback, and text through Kikoto itself. Accounts that can make the
+server reach remote sources on demand are limited to roles holding
+`remote:track` or `remote:fetch`; see
+[Users](../user/en/settings.md#users) for the roles.
+
 Container or host egress rules remain useful defense in depth, especially on a
 host that can reach cloud metadata endpoints or unrelated private services. Do
 not treat source configuration as safe input from an untrusted tenant.

@@ -705,6 +705,7 @@ export const koreanResource = {
         roles: {
           super_admin: "최고 관리자",
           admin: "관리자",
+          contributor: "기여자",
           user: "사용자",
         },
       },

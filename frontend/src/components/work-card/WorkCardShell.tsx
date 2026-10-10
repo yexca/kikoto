@@ -1015,12 +1015,15 @@ export function WorkCardQuickMarkButton({
   disabled,
   showLabel = false,
   responsiveLabel = false,
+  canOpen,
   onChange,
 }: {
   value: ListeningStatus;
   disabled?: boolean;
   showLabel?: boolean;
   responsiveLabel?: boolean;
+  /** Runs before the menu opens; false keeps it closed, for example when a mark is not permitted. */
+  canOpen?: () => boolean;
   onChange: (status: ListeningStatus) => void;
 }) {
   const { t } = useTranslation();
@@ -1040,6 +1043,7 @@ export function WorkCardQuickMarkButton({
         label={t("workCard.mark", { status: currentLabel })}
         onClick={(event) => {
           event.stopPropagation();
+          if (!open && canOpen && !canOpen()) return;
           setOpen((value) => !value);
         }}
       >

@@ -45,6 +45,12 @@ Kikoto has several intentional trust boundaries:
   not a boundary bypass. URLs, redirects, and content returned by the endpoint
   remain untrusted; a request or credential that escapes the configured origin
   or an explicit operator-approved boundary remains security-relevant.
+- Remote source addresses are hidden by default from accounts without source
+  management and from anonymous readers. A response that reveals a configured
+  source address to them while that setting is on is in scope. Tracking,
+  caching, and fetching remote works require the `remote:track` or
+  `remote:fetch` permission; reaching those actions without it is a privilege
+  escalation.
 - The configured `/config`, `/data`, and `/cache` mounts are trusted local
   inputs. Path traversal or unintended filesystem access caused through the
   API, metadata, remote sources, or workflows is in scope.

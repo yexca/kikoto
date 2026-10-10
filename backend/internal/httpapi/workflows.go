@@ -398,6 +398,9 @@ func (s *Server) loadWorkflowTriggerUpdateContext(ctx context.Context, actor cur
 	if !canUseWorkflowDefinition(actor, currentDefinition) {
 		return workflowTriggerRecord{}, workflowDefinitionRecord{}, workflowTriggerUpdateHTTPErrorf(http.StatusForbidden, "workflow trigger belongs to another user")
 	}
+	if missing := missingWorkflowGraphPermission(actor.Permissions, s.storedWorkflowTriggerPermissions(ctx, currentDefinition, current)); missing != "" {
+		return workflowTriggerRecord{}, workflowDefinitionRecord{}, workflowTriggerUpdateHTTPErrorf(http.StatusForbidden, "permission denied")
+	}
 	return current, currentDefinition, nil
 }
 
@@ -536,6 +539,10 @@ func (s *Server) deleteWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow trigger belongs to another user"})
 		return
 	}
+	if missing := missingWorkflowGraphPermission(actor.Permissions, s.storedWorkflowTriggerPermissions(r.Context(), definition, current)); missing != "" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+		return
+	}
 	if current.TriggerType == "filesystem_event" && definition.Code == "local_library_scan" {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "the local library filesystem trigger cannot be deleted"})
 		return
@@ -585,6 +592,7 @@ func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	detail.GraphJSON = graphJSON
+	s.remoteAddressRedactorFor(r.Context()).runDetail(&detail)
 	var metadataIssues metasync.RunIssueSummary
 	if userHasPermission(actor, "metadata:sync") {
 		metadataIssues, err = metasync.NewIssueStore(s.db).ForRun(r.Context(), id)
@@ -593,10 +601,18 @@ func (s *Server) getWorkflowRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	canManage, err := canManageWorkflowRun(r.Context(), s.db, actor, id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, struct {
 		workflowRunDetailRecord
 		MetadataIssues metasync.RunIssueSummary `json:"metadataIssues"`
-	}{detail, metadataIssues})
+		// CanManage reports whether this viewer may cancel, retry, or
+		// review the run's items: it started the run or administers runs.
+		CanManage bool `json:"canManage"`
+	}{detail, metadataIssues, canManage})
 }
 
 func (s *Server) listWorkflowRunEvents(w http.ResponseWriter, r *http.Request) {
@@ -625,6 +641,7 @@ func (s *Server) listWorkflowRunEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	s.remoteAddressRedactorFor(r.Context()).events(events)
 	writeJSON(w, http.StatusOK, events)
 }
 
@@ -646,6 +663,7 @@ func (s *Server) listWorkflowRunCandidates(w http.ResponseWriter, r *http.Reques
 		writeError(w, err)
 		return
 	}
+	s.remoteAddressRedactorFor(r.Context()).candidates(candidates)
 	writeJSON(w, http.StatusOK, candidates)
 }
 
@@ -675,6 +693,9 @@ func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request)
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if !requireWorkflowCandidateManagement(w, r, tx, actor, id) {
+		return
+	}
 	var runID int64
 	var nodeRunID sql.NullInt64
 	var candidateType string
@@ -689,9 +710,6 @@ func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		writeError(w, err)
-		return
-	}
-	if !requireWorkflowRunAccessFrom(w, r, tx, actor, runID) {
 		return
 	}
 	if candidateType == remoteOriginBlockedCandidateType {
@@ -711,6 +729,7 @@ func (s *Server) updateWorkflowCandidate(w http.ResponseWriter, r *http.Request)
 		writeError(w, err)
 		return
 	}
+	s.remoteAddressRedactorFor(r.Context()).candidates(candidates)
 	for _, candidate := range candidates {
 		if candidate.ID == id {
 			writeJSON(w, http.StatusOK, candidate)
@@ -777,7 +796,7 @@ func (s *Server) cleanupLocalWorkflowCandidate(w http.ResponseWriter, r *http.Re
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be mark_unavailable or delete_files"})
 		return
 	}
-	if !s.requireWorkflowCandidateAccess(w, r, actor, id) {
+	if !requireWorkflowCandidateManagement(w, r, s.db, actor, id) {
 		return
 	}
 	result, err := s.runLocalCandidateCleanup(r.Context(), id, payload.Action, payload.LocationIDs)
@@ -814,7 +833,7 @@ func (s *Server) reviewArchivedFetchRoots(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if !s.requireWorkflowCandidateAccess(w, r, actor, id) {
+	if !requireWorkflowCandidateManagement(w, r, s.db, actor, id) {
 		return
 	}
 	candidate, err := s.loadWorkflowCandidateForCleanup(r.Context(), id)
@@ -1518,7 +1537,7 @@ func (s *Server) retryWorkflowGraph(ctx context.Context, actor currentUser, runI
 	if !allowed {
 		return workflowRetryDispatchResult{}, errWorkflowRetryPermission
 	}
-	if err := s.retryFailedWorkflowJob(ctx, runID); err != nil {
+	if err := s.retryFailedWorkflowJobFor(ctx, &actor, runID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return workflowRetryDispatchResult{}, errWorkflowRetryNoRecoverableJob
 		}
@@ -1533,6 +1552,17 @@ type workflowRunOwnershipQuerier interface {
 
 func canViewAllWorkflowRuns(actor currentUser) bool {
 	return missingWorkflowGraphPermission(actor.Permissions, []string{"system:admin"}) == ""
+}
+
+// workflowRunRequesterKey is the run input field that records the account
+// that started a run, directly or as the owner of the trigger that fired it.
+const workflowRunRequesterKey = "requested_by_user_id"
+
+// canAdministerWorkflowRuns reports whether an account may act on runs other
+// accounts started and on maintenance such as stale-run recovery. It is the
+// same capability as the other instance maintenance surfaces.
+func canAdministerWorkflowRuns(actor currentUser) bool {
+	return userHasPermission(actor, "sources:write")
 }
 
 func (s *Server) requireWorkflowRunAccess(w http.ResponseWriter, r *http.Request, actor currentUser, runID int64) bool {
@@ -1552,7 +1582,7 @@ func (s *Server) requireWorkflowRunAccess(w http.ResponseWriter, r *http.Request
 }
 
 func requireWorkflowRunAccessFrom(w http.ResponseWriter, r *http.Request, db workflowRunOwnershipQuerier, actor currentUser, runID int64) bool {
-	allowed, err := canManageWorkflowRun(r.Context(), db, actor, runID)
+	allowed, err := canViewWorkflowRun(r.Context(), db, actor, runID)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
 		return false
@@ -1568,9 +1598,32 @@ func requireWorkflowRunAccessFrom(w http.ResponseWriter, r *http.Request, db wor
 	return true
 }
 
-func (s *Server) requireWorkflowCandidateAccess(w http.ResponseWriter, r *http.Request, actor currentUser, candidateID int64) bool {
+// requireWorkflowRunManagement allows changing a run (cancel, retry, and
+// candidate decisions) to the account that started it and to workflow
+// administrators. It answers 404 for a run the actor cannot see.
+func requireWorkflowRunManagement(w http.ResponseWriter, r *http.Request, db workflowRunOwnershipQuerier, actor currentUser, runID int64) bool {
+	if !requireWorkflowRunAccessFrom(w, r, db, actor, runID) {
+		return false
+	}
+	allowed, err := canManageWorkflowRun(r.Context(), db, actor, runID)
+	if err != nil {
+		writeError(w, err)
+		return false
+	}
+	if !allowed {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+		return false
+	}
+	return true
+}
+
+// requireWorkflowCandidateManagement resolves a candidate's run, requires
+// management of that run, and requires downloads:manage for a candidate
+// whose resolution removes, archives, or marks unavailable local files.
+func requireWorkflowCandidateManagement(w http.ResponseWriter, r *http.Request, db workflowRunOwnershipQuerier, actor currentUser, candidateID int64) bool {
 	var runID int64
-	if err := s.db.QueryRowContext(r.Context(), "SELECT workflow_run_id FROM workflow_candidate WHERE id = ?", candidateID).Scan(&runID); err != nil {
+	var candidateType string
+	if err := db.QueryRowContext(r.Context(), "SELECT workflow_run_id, candidate_type FROM workflow_candidate WHERE id = ?", candidateID).Scan(&runID, &candidateType); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow candidate not found"})
 			return false
@@ -1578,30 +1631,82 @@ func (s *Server) requireWorkflowCandidateAccess(w http.ResponseWriter, r *http.R
 		writeError(w, err)
 		return false
 	}
-	return s.requireWorkflowRunAccess(w, r, actor, runID)
+	if !requireWorkflowRunManagement(w, r, db, actor, runID) {
+		return false
+	}
+	if workflowCandidateChangesLocalFiles(candidateType) && !userHasPermission(actor, "downloads:manage") {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+		return false
+	}
+	return true
 }
 
-func canManageWorkflowRun(ctx context.Context, db workflowRunOwnershipQuerier, actor currentUser, runID int64) (bool, error) {
-	var scope, triggerReason string
-	var ownerUserID, requestedByUserID int64
-	if err := db.QueryRowContext(ctx, `
+func workflowCandidateChangesLocalFiles(candidateType string) bool {
+	switch candidateType {
+	case "local_fetch_merge_cleanup", "local_duplicate_work_folder", "local_symlink_media_location":
+		return true
+	default:
+		return false
+	}
+}
+
+type workflowRunOwnership struct {
+	scope             string
+	triggerReason     string
+	ownerUserID       int64
+	requestedByUserID int64
+}
+
+func loadWorkflowRunOwnership(ctx context.Context, db workflowRunOwnershipQuerier, runID int64) (workflowRunOwnership, error) {
+	var ownership workflowRunOwnership
+	err := db.QueryRowContext(ctx, `
 		SELECT COALESCE(definition.scope, ''),
 			COALESCE(definition.owner_user_id, 0),
-			COALESCE(CAST(json_extract(run.input_json, '$.requested_by_user_id') AS INTEGER), 0),
+			COALESCE(CAST(json_extract(run.input_json, '$.`+workflowRunRequesterKey+`') AS INTEGER), 0),
 			run.trigger_reason
 		FROM workflow_run AS run
 		LEFT JOIN workflow_definition AS definition ON definition.id = run.workflow_definition_id
 		WHERE run.id = ?
-	`, runID).Scan(&scope, &ownerUserID, &requestedByUserID, &triggerReason); err != nil {
+	`, runID).Scan(&ownership.scope, &ownership.ownerUserID, &ownership.requestedByUserID, &ownership.triggerReason)
+	return ownership, err
+}
+
+func (ownership workflowRunOwnership) startedBy(actor currentUser) bool {
+	return actor.ID > 0 && (ownership.ownerUserID == actor.ID || ownership.requestedByUserID == actor.ID)
+}
+
+// canViewWorkflowRun is the run visibility rule shared with the run list:
+// system-scoped runs are visible to every workflow account, and a run of a
+// user-scoped definition only to its owner or requester.
+func canViewWorkflowRun(ctx context.Context, db workflowRunOwnershipQuerier, actor currentUser, runID int64) (bool, error) {
+	ownership, err := loadWorkflowRunOwnership(ctx, db, runID)
+	if err != nil {
 		return false, err
 	}
 	if canViewAllWorkflowRuns(actor) {
 		return true, nil
 	}
-	if scope != "user" && !(scope == "" && triggerReason == "custom_definition") {
+	if ownership.scope != "user" && (ownership.scope != "" || ownership.triggerReason != "custom_definition") {
 		return true, nil
 	}
-	return ownerUserID == actor.ID || requestedByUserID == actor.ID, nil
+	return ownership.startedBy(actor), nil
+}
+
+// canManageWorkflowRun narrows visibility for changes: an account that does
+// not administer workflows may change only the runs it started.
+func canManageWorkflowRun(ctx context.Context, db workflowRunOwnershipQuerier, actor currentUser, runID int64) (bool, error) {
+	visible, err := canViewWorkflowRun(ctx, db, actor, runID)
+	if err != nil || !visible {
+		return false, err
+	}
+	if canViewAllWorkflowRuns(actor) || canAdministerWorkflowRuns(actor) {
+		return true, nil
+	}
+	ownership, err := loadWorkflowRunOwnership(ctx, db, runID)
+	if err != nil {
+		return false, err
+	}
+	return ownership.startedBy(actor), nil
 }
 
 func (s *Server) canRetryWorkflowGraphRun(ctx context.Context, actor currentUser, runID int64) (bool, error) {
@@ -1637,6 +1742,12 @@ func (s *Server) canRetryWorkflowGraphRun(ctx context.Context, actor currentUser
 }
 
 func (s *Server) retryFailedWorkflowJob(ctx context.Context, runID int64) error {
+	return s.retryFailedWorkflowJobFor(ctx, nil, runID)
+}
+
+// retryFailedWorkflowJobFor requeues the newest recoverable failed job. With
+// an actor, the job's work must be something that actor could start.
+func (s *Server) retryFailedWorkflowJobFor(ctx context.Context, actor *currentUser, runID int64) error {
 	var job workflowJobRecord
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, workflow_run_id, COALESCE(workflow_node_run_id, 0), worker_type,
@@ -1656,7 +1767,30 @@ func (s *Server) retryFailedWorkflowJob(ctx context.Context, runID int64) error 
 	if err != nil {
 		return err
 	}
+	if actor != nil && missingWorkflowGraphPermission(actor.Permissions, workflowJobRetryPermissions(job)) != "" {
+		return errWorkflowRetryPermission
+	}
 	return s.requeueFailedWorkflowJob(ctx, job, 0, "Manual retry requested")
+}
+
+// workflowJobRetryPermissions is what starting the failed job's work again
+// requires, so a retry never does more than the actor could start directly.
+// Graph jobs are checked against their graph by canRetryWorkflowGraphRun.
+func workflowJobRetryPermissions(job workflowJobRecord) []string {
+	switch job.WorkerType {
+	case "remote_work_fetch", "remote_media_cache":
+		return []string{"remote:fetch"}
+	case "remote_popular_collection":
+		var payload remoteCollectionJobPayload
+		_ = decodeWorkflowJobPayload(job.PayloadJSON, &payload)
+		return []string{"tags:write", remoteCollectionActionPermission(payload.Action)}
+	case "media_cache_limit_cleanup", "media_cache_cleanup", "local_media_delete", "local_location_cleanup", "media_location_cleanup":
+		return []string{"downloads:manage"}
+	case "metadata_family_sync", "metadata_genre_names":
+		return []string{"metadata:sync"}
+	default:
+		return nil
+	}
 }
 
 func (s *Server) reviewWorkflowRun(w http.ResponseWriter, r *http.Request) {
@@ -1725,6 +1859,10 @@ func (s *Server) reviewWorkflowRun(w http.ResponseWriter, r *http.Request) {
 func (s *Server) recoverStaleWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 	actor, ok := s.requirePermission(w, r, "workflows:run")
 	if !ok {
+		return
+	}
+	if !canAdministerWorkflowRuns(actor) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
 		return
 	}
 	var result workflow.OrphanSweepResult

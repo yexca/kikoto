@@ -2,6 +2,7 @@ import { type Page } from "@playwright/test";
 import type { PlaybackReport } from "../../../src/lib/playbackReportApi";
 import { playbackReportResultFixture } from "./playback-reports";
 import type {
+  CurrentUser,
   FavoriteList,
   LibrarySource,
   LocalMediaRefreshResult,
@@ -31,6 +32,7 @@ import { syntheticWorkCode } from "../../../src/test-support/workCode";
 import {
   anonymousAuthState,
   authenticatedStateFixture,
+  rolePermissions,
   favoriteListFixture,
   fixtureTimestamp,
   librarySourceFixture,
@@ -249,7 +251,7 @@ export async function mockApplication(
       await route.fulfill({
         json: fixture.authenticated
           ? authenticatedStateFixture({
-              permissions: fixture.permissions ?? ["library:read", "playback:use", "favorites:write"],
+              permissions: fixture.permissions ?? rolePermissions.user,
               devMode: true,
             })
           : anonymousAuthState,
@@ -744,6 +746,8 @@ export async function mockRemoteSource(
     fetchRootConflict?: boolean;
     persisted?: boolean;
     authenticated?: boolean;
+    /** The signed-in account's role; its permissions follow unless `permissions` is given. */
+    role?: CurrentUser["role"];
     permissions?: string[];
     remoteStatus?: "ok" | "disabled" | "unavailable";
     remoteErrorURL?: string;
@@ -760,7 +764,8 @@ export async function mockRemoteSource(
           options.authenticated === false
             ? anonymousAuthState
             : authenticatedStateFixture({
-                permissions: options.permissions ?? ["library:read", "playback:use", "downloads:manage"],
+                role: options.role ?? "admin",
+                permissions: options.permissions ?? rolePermissions[options.role ?? "admin"],
                 devMode: true,
               }),
       });

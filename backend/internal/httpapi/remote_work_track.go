@@ -44,7 +44,7 @@ type remoteWorkTrackJobPayload struct {
 }
 
 func (s *Server) trackRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
-	actor, ok := s.requirePermission(w, r, "library:read")
+	actor, ok := s.requirePermission(w, r, "remote:track")
 	if !ok {
 		return
 	}
@@ -76,8 +76,11 @@ func (s *Server) trackRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, result)
 }
 
+// syncRemoteSourceWork adds a remote work to the shared Library without a
+// tracked presence, so a mark or list can reference it. It creates a work
+// every account sees, which is tracking in effect.
 func (s *Server) syncRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "library:read"); !ok {
+	if _, ok := s.requirePermission(w, r, "remote:track"); !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")

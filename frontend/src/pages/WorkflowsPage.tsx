@@ -65,14 +65,18 @@ export function WorkflowsPage({
   canRun,
   canSyncMetadata,
   canTagWorks,
-  canManageDownloads,
+  canTrackRemote,
+  canFetchRemote,
   canManageSources = false,
   readOnly = false,
 }: {
   canRun: boolean;
   canSyncMetadata: boolean;
   canTagWorks: boolean;
-  canManageDownloads: boolean;
+  /** `remote:track`: add remote works to the shared Library. */
+  canTrackRemote: boolean;
+  /** `remote:fetch`: download remote files to the server. */
+  canFetchRemote: boolean;
   /** Instance settings such as the remote metadata fallback need `sources:write`. */
   canManageSources?: boolean;
   readOnly?: boolean;
@@ -381,7 +385,7 @@ export function WorkflowsPage({
   };
 
   const runRemoteFetch = async (options: RemoteFetchRunOptions) => {
-    if (readOnly || !canRun || !canManageDownloads) return false;
+    if (readOnly || !canRun || !canFetchRemote) return false;
     return fetchWorkspace.open({
       sourceId: options.sourceId,
       remoteCode: options.workCode,
@@ -434,18 +438,25 @@ export function WorkflowsPage({
     return runningSystemAction === kind;
   };
 
-  const systemActionAllowed = (kind: SystemRunKind) => {
+  /** What starting, configuring, or scheduling a kind of run requires; source health is checked separately. */
+  const systemActionPermitted = (kind: SystemRunKind) => {
     if (readOnly) return false;
     if (kind === "local_scan" || kind === "local_media_index" || kind === "metadata_sync")
       return canRun && canSyncMetadata;
     if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
-    if (kind === "remote_popular") return canRun && canTagWorks && remoteSourceAvailability !== "unavailable";
-    if (kind === "remote_fetch") return canRun && canManageDownloads;
-    if (kind === "source_presence_check")
-      return canRun && canManageSources && remoteSourceAvailability !== "unavailable";
+    if (kind === "remote_popular") return canRun && canTagWorks && canTrackRemote;
+    if (kind === "remote_fetch") return canRun && canFetchRemote;
+    if (kind === "source_presence_check") return canRun && canManageSources;
     // Follow runs refresh catalogs and sync metadata; the optional tag checks tags:write itself.
     if (kind === "preset") return canRun && canSyncMetadata;
     return canRun;
+  };
+
+  const systemActionAllowed = (kind: SystemRunKind) => {
+    if (!systemActionPermitted(kind)) return false;
+    if (kind === "remote_popular" || kind === "source_presence_check")
+      return remoteSourceAvailability !== "unavailable";
+    return true;
   };
 
   const createAutomationTrigger = (triggerType: CreatableAutomationTriggerType, anchor?: HTMLElement | null) => {
@@ -606,7 +617,8 @@ export function WorkflowsPage({
                     triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
                     recentRuns={recentDefinitionRuns}
                     readOnly={readOnly}
-                    canManageDownloads={canManageDownloads}
+                    canTrackRemote={canTrackRemote}
+                    canFetchRemote={canFetchRemote}
                     onCreateTrigger={createAutomationTrigger}
                     onEditTrigger={editAutomationTrigger}
                     onToggleTrigger={toggleAutomationTrigger}
@@ -622,7 +634,11 @@ export function WorkflowsPage({
                     definitionTriggers={triggers.filter(
                       (trigger) => trigger.workflowDefinitionId === selectedDefinition?.id,
                     )}
-                    canManageTriggers={!readOnly && (selectedDefinition?.id ?? 0) > 0}
+                    canManageTriggers={
+                      !readOnly &&
+                      (selectedDefinition?.id ?? 0) > 0 &&
+                      (selectedSystemRunKinds ?? []).every(systemActionPermitted)
+                    }
                     readOnly={readOnly}
                     systemRunKinds={selectedSystemRunKinds}
                     isSystemActionRunning={systemActionBusy}
@@ -630,7 +646,7 @@ export function WorkflowsPage({
                     onRunSystemAction={runSystemAction}
                     onRunRemotePopular={runPopularCollection}
                     onRunRemoteFetch={runRemoteFetch}
-                    canFetchRemotePopular={canManageDownloads}
+                    canFetchRemotePopular={canFetchRemote}
                     canTag={canTagWorks}
                     remoteSourceUnavailable={remoteSourceAvailability === "unavailable"}
                     onOpenRemoteSourceSettings={openRemoteSourcesSettings}

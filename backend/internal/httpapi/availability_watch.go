@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yexca/kikoto/backend/internal/account"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -118,7 +119,7 @@ func (s *Server) getAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
 	actor, ok := s.requirePermission(w, r, "workflows:run")
-	if !ok {
+	if !ok || !s.requireAvailabilityWatchActionPermissions(w, r, actor) {
 		return
 	}
 	var payload availabilityWatchConfigUpdate
@@ -128,7 +129,7 @@ func (s *Server) updateAvailabilityWatch(w http.ResponseWriter, r *http.Request)
 	}
 	if err := validateAvailabilityWatchAction(actor, payload.Action); err != nil {
 		status := http.StatusBadRequest
-		if availabilityWatchActionRequiresDownloads(payload.Action) {
+		if _, known := availabilityWatchActionPermissions(payload.Action); known {
 			status = http.StatusForbidden
 		}
 		writeJSON(w, status, map[string]string{"error": err.Error()})
@@ -166,7 +167,7 @@ func (s *Server) addAvailabilityWatchTargets(w http.ResponseWriter, r *http.Requ
 
 func (s *Server) writeAvailabilityWatchTargets(w http.ResponseWriter, r *http.Request, replace bool) {
 	actor, ok := s.requirePermission(w, r, "workflows:run")
-	if !ok {
+	if !ok || !s.requireAvailabilityWatchActionPermissions(w, r, actor) {
 		return
 	}
 	var payload availabilityWatchTargetsUpdate
@@ -210,7 +211,8 @@ func (s *Server) writeAvailabilityWatchTargets(w http.ResponseWriter, r *http.Re
 }
 
 func (s *Server) deleteAvailabilityWatchTarget(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "workflows:run"); !ok {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok || !s.requireAvailabilityWatchActionPermissions(w, r, actor) {
 		return
 	}
 	targetID, err := parseInt64PathValue(r, "id")
@@ -237,7 +239,7 @@ func (s *Server) deleteAvailabilityWatchTarget(w http.ResponseWriter, r *http.Re
 }
 
 func (s *Server) trackAvailabilityWatchTarget(w http.ResponseWriter, r *http.Request) {
-	actor, ok := s.requirePermission(w, r, "workflows:run")
+	actor, ok := s.requirePermissions(w, r, "workflows:run", "remote:track")
 	if !ok {
 		return
 	}
@@ -313,21 +315,49 @@ func (s *Server) runAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func validateAvailabilityWatchAction(actor currentUser, action string) error {
-	switch action {
-	case "monitor", "track":
-		return nil
-	case "fetch", "track_fetch":
-		if !userHasPermission(actor, "downloads:manage") {
-			return fmt.Errorf("downloads:manage permission is required")
-		}
-		return nil
-	default:
+	permissions, known := availabilityWatchActionPermissions(action)
+	if !known {
 		return fmt.Errorf("invalid Availability Watch action")
+	}
+	if missing := missingWorkflowGraphPermission(actor.Permissions, permissions); missing != "" {
+		return fmt.Errorf("%s permission is required", missing)
+	}
+	return nil
+}
+
+// availabilityWatchActionPermissions names what the watch does for a ready
+// target on top of monitoring: tracking needs remote:track and fetching
+// needs remote:fetch. Configuring, running, scheduling, and editing the
+// targets of a watch all require the configured action's permissions,
+// because each one decides what the watch tracks or fetches.
+func availabilityWatchActionPermissions(action string) ([]string, bool) {
+	switch action {
+	case "monitor":
+		return nil, true
+	case "track":
+		return []string{"remote:track"}, true
+	case "fetch":
+		return []string{"remote:fetch"}, true
+	case "track_fetch":
+		return []string{"remote:track", "remote:fetch"}, true
+	default:
+		return nil, false
 	}
 }
 
-func availabilityWatchActionRequiresDownloads(action string) bool {
-	return action == "fetch" || action == "track_fetch"
+// requireAvailabilityWatchActionPermissions checks the actor against the
+// action the watch is configured with.
+func (s *Server) requireAvailabilityWatchActionPermissions(w http.ResponseWriter, r *http.Request, actor currentUser) bool {
+	action, err := s.availabilityWatchConfiguredAction(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return false
+	}
+	if err := validateAvailabilityWatchAction(actor, action); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+		return false
+	}
+	return true
 }
 
 func (s *Server) validateAvailabilityWatchSource(ctx context.Context, sourceID *int64) error {
@@ -586,7 +616,7 @@ func (s *Server) enqueueAvailabilityWatch(ctx context.Context, userID int64, tri
 	}
 	result := availabilityWatchRunResult{Status: "queued", TargetCount: len(targets), NewlyAvailableCodes: []string{}, ReadyCodes: []string{}, Failures: []string{}}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "availability_watch", availabilityWatchDisplayName, "queued", trigger.Type, trigger.Reason, map[string]any{
-		"source_id": payload.SourceID, "action": payload.Action, "target_count": len(targets),
+		"source_id": payload.SourceID, "action": payload.Action, "target_count": len(targets), workflowRunRequesterKey: userID,
 	}, result)
 	if err != nil {
 		return availabilityWatchRunResult{}, err
@@ -982,24 +1012,47 @@ func (s *Server) finishAvailabilityWatchJob(ctx context.Context, job workflowJob
 	return tx.Commit()
 }
 
+// createAvailabilityWatchNotifications notifies every enabled account that
+// can open Workflows, where the watch and its ready targets are shown.
 func createAvailabilityWatchNotifications(ctx context.Context, tx *sql.Tx, runID int64, codes []string) error {
 	message := fmt.Sprintf("%d watched works are now available.", len(codes))
 	if len(codes) == 1 {
 		message = codes[0] + " is now available."
 	}
-	_, err := tx.ExecContext(ctx, `
-		INSERT INTO workflow_notification (
-			user_id, workflow_run_id, notification_type, status, work_code, message
-		)
-		SELECT id, ?, 'availability_watch_ready', 'succeeded', ?, ?
-		FROM user_account
-		WHERE enabled = 1 AND role IN ('super_admin', 'admin')
-		ON CONFLICT(user_id, workflow_run_id, notification_type) DO UPDATE SET
-			status = excluded.status,
-			work_code = excluded.work_code,
-			message = excluded.message
-	`, runID, codes[0], message)
-	return err
+	rows, err := tx.QueryContext(ctx, `SELECT id, role FROM user_account WHERE enabled = 1 ORDER BY id`)
+	if err != nil {
+		return err
+	}
+	recipients := []int64{}
+	for rows.Next() {
+		var id int64
+		var role string
+		if err := rows.Scan(&id, &role); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if userHasPermission(currentUser{Permissions: account.PermissionsForRole(role)}, "workflows:run") {
+			recipients = append(recipients, id)
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, userID := range recipients {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO workflow_notification (
+				user_id, workflow_run_id, notification_type, status, work_code, message
+			)
+			VALUES (?, ?, 'availability_watch_ready', 'succeeded', ?, ?)
+			ON CONFLICT(user_id, workflow_run_id, notification_type) DO UPDATE SET
+				status = excluded.status,
+				work_code = excluded.work_code,
+				message = excluded.message
+		`, userID, runID, codes[0], message); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) availabilityWatchFetchPaths(ctx context.Context, sourceID int64, code string, excludedValues []string) ([]string, error) {

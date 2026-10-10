@@ -32,7 +32,7 @@ func TestWorkflowEventStreamSendsEventsFromCursorAndTerminalTick(t *testing.T) {
 	}
 
 	server := NewServer(db, config.Config{})
-	actor := account.User{ID: 7, Permissions: []string{"workflows:run", "system:admin"}}
+	actor := account.User{ID: 7, Role: "super_admin", Permissions: account.PermissionsForRole("super_admin")}
 	request := httptest.NewRequest(http.MethodGet, "/api/workflow-runs/41/events/stream?afterId=411", nil)
 	request.SetPathValue("id", strconv.FormatInt(41, 10))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, actor))

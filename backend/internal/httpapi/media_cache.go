@@ -15,7 +15,10 @@ import (
 )
 
 func (s *Server) cacheRemoteSourceWorkMedia(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "playback:use"); !ok {
+	// Caching a file of a work that is not in the Library first tracks it, so
+	// the request needs both remote capabilities.
+	actor, ok := s.requirePermissions(w, r, "remote:fetch", "remote:track")
+	if !ok {
 		return
 	}
 	sourceID, err := parseInt64PathValue(r, "id")
@@ -40,6 +43,11 @@ func (s *Server) cacheRemoteSourceWorkMedia(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "remote path is required"})
 		return
 	}
+	if !s.settingBoolContext(r.Context(), "remote_cache_enabled", false) {
+		// Refuse before tracking: a disabled cache must not add the work.
+		writeError(w, conflictError("remote cache is not enabled"))
+		return
+	}
 	syncResult, err := s.runRemoteWorkSync(r.Context(), sourceID, code, "auto_cache_on_preview_play")
 	if err != nil {
 		writeUpstreamError(w, err)
@@ -50,7 +58,7 @@ func (s *Server) cacheRemoteSourceWorkMedia(w http.ResponseWriter, r *http.Reque
 		writeError(w, err)
 		return
 	}
-	cacheResult, err := s.enqueueRemoteMediaCache(r.Context(), locationID)
+	cacheResult, err := s.enqueueRemoteMediaCache(r.Context(), actor.ID, locationID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -109,7 +117,8 @@ type mediaCacheTarget struct {
 }
 
 func (s *Server) cacheMediaLocation(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "playback:use"); !ok {
+	actor, ok := s.requirePermission(w, r, "remote:fetch")
+	if !ok {
 		return
 	}
 	id, err := parseInt64PathValue(r, "id")
@@ -117,7 +126,7 @@ func (s *Server) cacheMediaLocation(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
 		return
 	}
-	result, err := s.enqueueRemoteMediaCache(r.Context(), id)
+	result, err := s.enqueueRemoteMediaCache(r.Context(), actor.ID, id)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -181,7 +190,7 @@ func (s *Server) loadMediaCacheTarget(ctx context.Context, remoteLocationID int6
 	return target, nil
 }
 
-func (s *Server) enqueueRemoteMediaCache(ctx context.Context, remoteLocationID int64) (mediaCacheResult, error) {
+func (s *Server) enqueueRemoteMediaCache(ctx context.Context, requestedByUserID int64, remoteLocationID int64) (mediaCacheResult, error) {
 	target, err := s.loadMediaCacheTarget(ctx, remoteLocationID)
 	if err != nil {
 		return mediaCacheResult{}, err
@@ -203,7 +212,7 @@ func (s *Server) enqueueRemoteMediaCache(ctx context.Context, remoteLocationID i
 		return mediaCacheResult{}, err
 	}
 	runInput := mediaCacheJobPayload{MediaLocationID: remoteLocationID}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "media_cache", "Cache media", "queued", "playback", "auto_cache_on_play", map[string]any{"media_location_id": remoteLocationID, "media_item_id": target.MediaItemID, "source_id": target.SourceID, "source_code": target.SourceCode, "work_code": target.WorkCode}, map[string]any{"cache_path": target.CachePath})
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "media_cache", "Cache media", "queued", "playback", "auto_cache_on_play", map[string]any{"media_location_id": remoteLocationID, "media_item_id": target.MediaItemID, "source_id": target.SourceID, "source_code": target.SourceCode, "work_code": target.WorkCode, workflowRunRequesterKey: requestedByUserID}, map[string]any{"cache_path": target.CachePath})
 	if err != nil {
 		return mediaCacheResult{}, err
 	}

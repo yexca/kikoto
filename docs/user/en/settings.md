@@ -93,9 +93,21 @@ enabled.
 
 Library opens with **Libraries**, every library the server reads: the local
 library with its storage mode and whether its storage is online, then each
-configured remote source. The settings follow below it: library storage, local
-scan settings, creator catalogs, Kikoeru account import, and read-only storage
-paths. Selecting the local library jumps to **Library storage**.
+configured remote source. The settings follow below it: remote source
+addresses, library storage, local scan settings, creator catalogs, Kikoeru
+account import, and read-only storage paths. Selecting the local library jumps
+to **Library storage**.
+
+- **Remote source addresses** holds **Hide addresses from accounts that do not
+  manage sources**, on by default and saved with its own button. While it is
+  on, accounts without `sources:write` and signed-out readers never receive a
+  source's API, public site, or fallback address, a work's page on the source
+  site, the upstream file URLs of a track tree or a remote location, a Fetch
+  plan's source URLs, or an address inside a workflow run's summary, steps,
+  events, candidates, trigger errors, or notifications. Source names, codes,
+  and types stay visible. Covers, image previews, playback, and text previews
+  go through this server, and **Open origin** is not offered. Turning it off
+  restores the addresses for every account.
 
 - **Library storage** shows the library mode (Standard or Storage pools), each
   pool with an Online or Offline badge, and the Fetch pool. Pools can be added
@@ -200,8 +212,34 @@ sections and `sources:write` for database sections.
 
 ### Users
 
-Users manages accounts. Super administrators in production and development
-also see **Instance access** here. Anonymous Library browsing and playback
+Users manages accounts. Administrators and super administrators can create
+and edit User, Contributor, and Admin accounts; only a super administrator can
+grant Super admin or change a super administrator. Super administrators in
+production and development also see **Instance access** here.
+
+Each role has a fixed set of permissions:
+
+| Role | Permissions | What it adds |
+| --- | --- | --- |
+| User | `library:read`, `playback:use`, `favorites:write`, `tags:write` | Browse and play the Library and remote sources, and manage personal data: marks, lists, personal tags, progress, and history. |
+| Contributor | User's, plus `remote:track`, `remote:fetch`, `workflows:run` | Track, Fork, and untrack remote works; check a work's sources now; cache and Fetch remote files; follow those runs in Workflows. |
+| Admin | Contributor's, plus `library:write`, `sources:write`, `metadata:sync`, `downloads:manage`, `users:manage` | Metadata editing and sync, source and instance settings, local scans, local file deletion and cleanup, lyrics download, and accounts. |
+| Super admin | Admin's, plus `system:admin` | Every permission, every workflow run, and instance access. |
+
+- `remote:track` puts a remote work into the shared Library, where every
+  account sees it: Track, Fork, a mark or list on a remote work that is not
+  in the Library yet, removing a tracked source, and an on-demand source
+  check. Reading a work's recorded source availability needs no permission.
+- `remote:fetch` makes the server download remote files: Fetch into the
+  library, caching one file or a work's file, and caching while playing a
+  remote stream.
+- Without these permissions the same actions stay visible and explain that
+  the account lacks permission when chosen, before any dialog opens. A mark or
+  list on a work that is already in the Library, including one another account
+  tracked, works for every account. Playing a remote work that is not in the
+  Library creates no work, so its progress and listening history are not
+  saved. Caching while playing is skipped without a message.
+ Anonymous Library browsing and playback
 default to disabled; changing the switch applies to the production access
 boundary and creates an audit entry. Development authenticates every request
 as root, so the setting is visible and editable there without creating an
@@ -211,7 +249,7 @@ anonymous development session.
 
 Metadata uses `/metadata`; `/work-management` links redirect there with their filters or settings context.
 
-The **Metadata** icon rail groups **Works** (All, Needs attention, Metadata issues, No available source) and **Entries** (Tags, Circles, Voice actors). Wide screens name the groups and views by default, and **Hide tab names** below the rail keeps only icons; phones show a scrollable icon row. Work tables provide search, pagination, selection and manual refresh, and the pencil opens the same editor as work detail. Admin and super_admin receive `library:write` for metadata, covers, metadata links, source untracking, shared tag edits, and circle identity edits.
+The **Metadata** icon rail groups **Works** (All, Needs attention, Metadata issues, No available source) and **Entries** (Tags, Circles, Voice actors). Wide screens name the groups and views by default, and **Hide tab names** below the rail keeps only icons; phones show a scrollable icon row. Work tables provide search, pagination, selection and manual refresh, and the pencil opens the same editor as work detail. Admin and super_admin receive `library:write` for metadata, covers, metadata links, shared tag edits, and circle identity edits.
 
 **Tags** (`/metadata?view=tags`) lists shared concepts by their shared tag **ID**, ordered by ID so the list never depends on a language setting. The ID cell shows the DLsite genre id below the tag ID when there is one, and **Hidden** or **Merged** below that only for a hidden or merged tag; an active tag shows no status. The columns are ID, Japanese, Simplified Chinese, Traditional Chinese, English, Korean, **Other names**, Works, and Manage. Each language column shows the name that language displays: its own manual name, then the all-language manual name (shown muted), then the DLsite dictionary name, then a remote source's name, or "—" when there is none. **Other names** lists every other known name once: names a manual name replaced, with their language, names without a language, and a stored name without name records. Search matches names, including remote-source names, and a numeric query also matches the tag ID or DLsite genre id. On narrow screens the table scrolls sideways inside its own box while the Manage button stays pinned to its right edge. Manage opens manual names for all languages or a locale, global hiding, merge-target selection, and undo of the merge mapping. **Circles** (`?view=circles`) lists circles by their DLsite maker id (RG code), ordered by code; maker ids a merge brought along appear below the primary one, and circles known only from a remote source follow, shown by their Kikoto id. The columns are Code, Name (beside the latest known work's cover), Known names, Works, and Manage, and search also matches maker ids. Manage supports a manual name that survives provider refresh, confirmed aliases, and reviewed merges that move works, maker ids, catalogs, snapshots, series, and personal circle data. Undo processes the latest merge first and refuses to replace later edits to affected records. **Voice actors** (`/metadata?view=aliases`, with `&voice=<id>` to open one person) lists people by Kikoto id, ordered by id, with the columns ID, Name (beside the latest work's cover), Aliases, Works, Status (catalog sync), and Manage; alias and duplicate management requires `metadata:sync`. Demo allows inspection while changes remain disabled.
 

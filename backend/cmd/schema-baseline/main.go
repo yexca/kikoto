@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/storage"
 	_ "modernc.org/sqlite"
 )
 
@@ -148,8 +149,19 @@ func writeBaseline(migrationsDir string, files []string, header string, outputPa
 		if err != nil {
 			return err
 		}
+		foreignKeysOff := storage.MigrationDisablesForeignKeys(contents)
+		if foreignKeysOff {
+			if _, err := db.Exec("PRAGMA foreign_keys = OFF"); err != nil {
+				return err
+			}
+		}
 		if _, err := db.Exec(string(contents)); err != nil {
 			return fmt.Errorf("apply %s: %w", file, err)
+		}
+		if foreignKeysOff {
+			if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+				return err
+			}
 		}
 	}
 	if err := verifyForeignKeys(db); err != nil {

@@ -683,6 +683,7 @@ export const zhHansResource = {
         roles: {
           super_admin: "超级管理员",
           admin: "管理员",
+          contributor: "贡献者",
           user: "用户",
         },
       },

@@ -1,5 +1,40 @@
 # Unreleased
 
+- Remote sources have their own permissions, and a Contributor role sits
+  between User and Admin:
+  - `remote:track` covers Track, Fork, untracking, an on-demand source check,
+    and a mark or list on a remote work that is not in the Library yet, which
+    adds it there. `remote:fetch` covers Fetch and caching remote files,
+    including caching while playing. Admins and super admins have both.
+  - Users keep browsing and playing remote sources and managing their own
+    marks, lists, tags, progress, and history, but can no longer track, fork,
+    sync, untrack, cache, or check sources now. These actions stay visible and
+    explain the missing permission before any dialog opens; playback no longer
+    asks the server to cache for them.
+  - Contributors have the User permissions plus `remote:track`,
+    `remote:fetch`, and `workflows:run`. They can follow every run in
+    Workflows and start, configure, and schedule only the workflows whose
+    steps they are allowed to run: Fetch, the remote popular collection, bulk
+    Track and Fetch, and Availability Watch.
+  - In Workflows, editing, switching off, or deleting a trigger needs the
+    permissions that creating it needs; only the account that started a run,
+    or an administrator, can cancel or retry it or review its items; items
+    that change local files need `downloads:manage`; and recovering stale
+    runs needs `sources:write`.
+  - **Hide addresses from accounts that do not manage sources** in Settings →
+    Library is on by default. Accounts without `sources:write` and signed-out
+    readers no longer receive source addresses, work links on the source site,
+    upstream file URLs, or addresses in workflow runs; covers and image
+    previews come through Kikoto.
+  - Migration 066 rebuilds the account table to accept the Contributor role.
+    Every account keeps its role, sessions, and personal data.
+
+  Upgrade: back up the database as described in
+  [Database](../operations/database.md). Existing User accounts lose the
+  remote actions listed above; give accounts that should keep them the
+  Contributor role in Settings → Users. Turn off the address setting if every
+  account may see source addresses.
+
 - Fixes across browsing, Fetch, and settings:
   - A work with a `CC` code opens from its address, a refresh, or a bookmark,
     and a work that cannot be loaded shows a not-found or retry state instead

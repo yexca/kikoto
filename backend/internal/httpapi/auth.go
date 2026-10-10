@@ -163,6 +163,19 @@ func (s *Server) requirePermission(w http.ResponseWriter, r *http.Request, permi
 	return currentUser{}, false
 }
 
+// requirePermissions checks every permission in order and writes the first
+// refusal, so an action that does several things needs each capability.
+func (s *Server) requirePermissions(w http.ResponseWriter, r *http.Request, permissions ...string) (currentUser, bool) {
+	var user currentUser
+	for _, permission := range permissions {
+		var ok bool
+		if user, ok = s.requirePermission(w, r, permission); !ok {
+			return currentUser{}, false
+		}
+	}
+	return user, true
+}
+
 func hashPassword(password string) (string, error) {
 	return account.HashPassword(password)
 }

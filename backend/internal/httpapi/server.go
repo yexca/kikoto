@@ -56,6 +56,7 @@ type Server struct {
 	remoteWorkTracksCache          map[string]remoteWorkTracksSnapshot
 	remoteWorkTracksCacheCalls     map[string]*remoteWorkTracksCall
 	remoteTrackMu                  sync.Mutex
+	remoteImageTokens              remoteImageTokenSealer
 	cachePathLocks                 cachePathLocker
 	audioTranscodeLocks            cachePathLocker
 	metadataSyncMu                 sync.Mutex
@@ -337,6 +338,7 @@ func (s *Server) Routes() http.Handler {
 	handleSlowFirstResponse("GET /api/remote-sources/{id}/works/{code}/tracks", s.getRemoteSourceWorkTracks)
 	handleSlowFirstResponse("GET /api/remote-sources/{id}/works/{code}/media", s.streamRemoteSourceMedia)
 	handleSlowFirstResponse("GET /api/remote-sources/{id}/works/{code}/text", s.getRemoteSourceWorkText)
+	handleSlowFirstResponse("GET /api/remote-sources/{id}/images/{token}", s.serveRemoteSourceImage)
 	handleSlowFirstResponse("POST /api/remote-sources/{id}/works/{code}/save-plan", s.planRemoteSourceWorkSave)
 	handleSlowFirstResponse("POST /api/remote-sources/{id}/works/{code}/save", s.saveRemoteSourceWork)
 	handleSlowFirstResponse("POST /api/remote-sources/{id}/works/{code}/fetch-plan", s.planRemoteSourceWorkSave)

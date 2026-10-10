@@ -34,7 +34,36 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 		return nil, err
 	}
 	inferMediaItemKinds(mediaItems)
+	s.presentRemoteMediaLocations(ctx, mediaItems)
 	return mediaItems, nil
+}
+
+// presentRemoteMediaLocations replaces the stored upstream URLs of remote
+// locations with server paths when the viewer may not see source addresses:
+// playback and text go through the location's own routes and images through
+// the image proxy.
+func (s *Server) presentRemoteMediaLocations(ctx context.Context, mediaItems []mediaItemDetail) {
+	if !s.remoteAddressesHidden(ctx) {
+		return
+	}
+	for itemIndex := range mediaItems {
+		for locationIndex := range mediaItems[itemIndex].Locations {
+			location := &mediaItems[itemIndex].Locations[locationIndex]
+			if location.LocationType != "remote_stream" {
+				continue
+			}
+			if location.StreamURL == "" && location.DownloadURL == "" {
+				continue
+			}
+			if mediaItems[itemIndex].Kind == "image" {
+				imageURL := s.remoteImageProxyURL(location.FileSourceID, firstNonEmpty(location.DownloadURL, location.StreamURL))
+				location.StreamURL, location.DownloadURL = imageURL, imageURL
+				continue
+			}
+			location.StreamURL = fmt.Sprintf("/api/media/%d/stream", location.ID)
+			location.DownloadURL = ""
+		}
+	}
 }
 
 func (s *Server) loadMediaItemRows(ctx context.Context, userID int64, mediaWorkID int64) ([]mediaItemDetail, map[int64]int, error) {

@@ -119,7 +119,7 @@ func TestLocalLibraryScanAcceptsStartupAndScheduleTriggers(t *testing.T) {
 	}
 	body := fmt.Sprintf(`{"workflowDefinitionId":%d,"displayName":"Daily startup refresh","triggerType":"schedule","enabled":true,"scheduleJson":"{\"intervalMinutes\":1440}","configJson":"{\"followUpRun\":true}"}`, definitionID)
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run", "metadata:sync"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
 	response := httptest.NewRecorder()
 	server.createWorkflowTrigger(response, request)
 	if response.Code != http.StatusCreated {
@@ -222,7 +222,7 @@ func TestRemotePopularSchedulePersistsTemplateAndResolvesItPerRun(t *testing.T) 
 		"scheduleJson": `{"intervalMinutes":1440}`, "configJson": configJSON,
 	})
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Permissions: []string{"workflows:run", "tags:write"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Role: "contributor", Permissions: account.PermissionsForRole("contributor")}))
 	response := httptest.NewRecorder()
 	server.createWorkflowTrigger(response, request)
 	if response.Code != http.StatusCreated {
@@ -415,7 +415,7 @@ func TestWorkflowGraphRetryRequiresCurrentPermissions(t *testing.T) {
 		DefinitionJSON: workflowGraphAPIDefinitionJSON,
 		Inputs:         map[string]any{},
 		UserID:         ownerID,
-		Permissions:    []string{"workflows:run", "downloads:manage"},
+		Permissions:    account.PermissionsForRole("contributor"),
 	}
 	if _, err := db.Exec(`
 		INSERT INTO workflow_job (workflow_run_id, workflow_node_run_id, worker_type, status, recoverable, payload_json)
@@ -424,8 +424,10 @@ func TestWorkflowGraphRetryRequiresCurrentPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{})
-	fullPermissions := []string{"workflows:run", "downloads:manage"}
-	deniedPermission := requestWorkflowRunAction(t, server.retryWorkflowRun, runID, account.User{ID: ownerID, Permissions: []string{"workflows:run"}})
+	// The owner started the run as a contributor and has since been changed
+	// to a user, who may no longer start it.
+	fullPermissions := account.PermissionsForRole("contributor")
+	deniedPermission := requestWorkflowRunAction(t, server.retryWorkflowRun, runID, account.User{ID: ownerID, Role: "user", Permissions: account.PermissionsForRole("user")})
 	if deniedPermission.Code != http.StatusForbidden {
 		t.Fatalf("retry without current capability = %d, body = %s", deniedPermission.Code, deniedPermission.Body.String())
 	}

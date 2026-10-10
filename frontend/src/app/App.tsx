@@ -631,7 +631,8 @@ function AuthenticatedApp() {
                     canRun={auth.demoMode || auth.hasPermission("workflows:run")}
                     canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
                     canTagWorks={auth.demoMode || auth.hasPermission("tags:write")}
-                    canManageDownloads={auth.demoMode || auth.hasPermission("downloads:manage")}
+                    canTrackRemote={auth.demoMode || auth.hasPermission("remote:track")}
+                    canFetchRemote={auth.demoMode || auth.hasPermission("remote:fetch")}
                     canManageSources={auth.demoMode || auth.hasPermission("sources:write")}
                     readOnly={auth.demoMode}
                   />

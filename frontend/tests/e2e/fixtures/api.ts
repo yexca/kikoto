@@ -253,6 +253,25 @@ export function mediaItemFixture(overrides: Partial<MediaItem> = {}): MediaItem 
   };
 }
 
+const userPermissions = ["library:read", "playback:use", "favorites:write", "tags:write"];
+const contributorPermissions = [...userPermissions, "workflows:run", "remote:track", "remote:fetch"];
+const adminPermissions = [
+  ...contributorPermissions,
+  "library:write",
+  "sources:write",
+  "metadata:sync",
+  "downloads:manage",
+  "users:manage",
+];
+
+/** The permissions the backend grants each role. */
+export const rolePermissions: Record<CurrentUser["role"], string[]> = {
+  user: userPermissions,
+  contributor: contributorPermissions,
+  admin: adminPermissions,
+  super_admin: [...adminPermissions, "system:admin"],
+};
+
 export function currentUserFixture(overrides: Partial<CurrentUser> = {}): CurrentUser {
   return {
     id: 1,
@@ -343,6 +362,7 @@ export function appSettingsFixture(overrides: Partial<AppSettings> = {}): AppSet
       directFallback: false,
     },
     kikoeruImportPrivateAddresses: false,
+    hideRemoteSourceAddresses: true,
     directoryRoutingRules: [],
     recommendationThreshold: 50,
     recommendationConfig: recommendationConfigFixture(),

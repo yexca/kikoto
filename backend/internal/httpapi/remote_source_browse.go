@@ -171,6 +171,7 @@ func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Reque
 			request.RecommendationUnavailable = true
 		}
 	}
+	works = s.presentRemoteWorkSummaries(ctx, source.ID, works)
 	writeJSON(w, http.StatusOK, remoteWorksResponse{SourceID: source.ID, Works: works, Page: request.Page, PageSize: request.PageSize, Total: remotePageTotal(remotePage), Status: "ok", Sort: request.Sort, Direction: request.Direction, SortApplied: remotePage.SortApplied, RecommendationUnavailable: request.RecommendationUnavailable})
 	return nil
 }
@@ -182,8 +183,23 @@ func (s *Server) writeRemoteSourceWorksResult(w http.ResponseWriter, ctx context
 		return nil
 	}
 	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+	works = s.presentRemoteWorkSummaries(ctx, source.ID, works)
 	writeJSON(w, http.StatusOK, remoteWorksResponse{SourceID: source.ID, Works: works, Page: request.Page, PageSize: request.PageSize, Total: total, Status: "ok", Sort: request.Sort, Direction: request.Direction, SortApplied: sortApplied, RecommendationUnavailable: request.RecommendationUnavailable})
 	return nil
+}
+
+// presentRemoteWorkSummaries applies the address visibility rule to a page
+// of remote works. It copies the page, because summaries can be shared with
+// the browse cache that serves every viewer.
+func (s *Server) presentRemoteWorkSummaries(ctx context.Context, sourceID int64, works []remoteWorkSummary) []remoteWorkSummary {
+	if !s.remoteAddressesHidden(ctx) {
+		return works
+	}
+	presented := append([]remoteWorkSummary(nil), works...)
+	for index := range presented {
+		presented[index].CoverURL = s.remoteImageProxyURL(sourceID, presented[index].CoverURL)
+	}
+	return presented
 }
 
 func remotePageTotal(page kikoeru.WorksPage) int {

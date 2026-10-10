@@ -290,7 +290,7 @@ func TestLocalLibraryScanFollowUpCoalescesIntoQueuedMetadataRun(t *testing.T) {
 func TestCreateLocalScanRunAcceptsOptionalFollowUp(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 2})
-	actor := account.User{ID: 1, Permissions: []string{"workflows:run", "metadata:sync"}}
+	actor := account.User{ID: 1, Role: "admin", Permissions: account.PermissionsForRole("admin")}
 
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/local-scan", strings.NewReader(`{"followUpRun":true}`))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, actor))
@@ -344,7 +344,7 @@ func TestRetryLocalScanPreservesFollowUpChoice(t *testing.T) {
 		t.Fatal(err)
 	}
 	response := requestWorkflowRunAction(t, server.retryWorkflowRun, original.RunID, account.User{
-		ID: 1, Permissions: []string{"workflows:run", "metadata:sync"},
+		ID: 1, Role: "admin", Permissions: account.PermissionsForRole("admin"),
 	})
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("retry local scan response = %d, %s", response.Code, response.Body.String())

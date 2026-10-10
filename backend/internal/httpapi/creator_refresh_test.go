@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"github.com/yexca/kikoto/backend/internal/account"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,7 +38,7 @@ func TestUnknownCircleIsNotCreatedByDetailRequests(t *testing.T) {
 	}
 
 	member := currentUser{ID: 1, Permissions: []string{"library:read", "favorites:write", "tags:write"}}
-	admin := currentUser{ID: 2, Permissions: []string{"library:read", "metadata:sync", "workflows:run"}}
+	admin := currentUser{ID: 2, Role: "admin", Permissions: account.PermissionsForRole("admin")}
 	for _, item := range []struct {
 		user    currentUser
 		request *http.Request

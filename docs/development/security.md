@@ -161,6 +161,27 @@ current tree the same way.
 - Errors expose fixed messages only. Upstream URLs and local paths stay in
   protected logs.
 
+### Remote image proxy
+
+`GET /api/remote-sources/{id}/images/{token}` serves a cover or image file a
+remote source returned, for viewers who may not see source addresses (see
+[Remote source addresses](#remote-source-addresses)):
+
+- The token is the source-returned URL sealed with AES-GCM under a key that
+  exists only in the running process and is bound to the source id. The server
+  issues tokens only for URLs it already returned in the same response shape;
+  a modified token, a token for another source, or a token from before a
+  restart is answered with 404 and makes no request.
+- The decrypted URL must be HTTP(S) without credentials and pass the source's
+  outbound policy before any request. The shared source transport validates
+  every redirect hop, pins the validated address, and keeps the private-address
+  exception for the source's configured origins only.
+- Each request is bounded to 30 seconds and to the 20 MiB cover limit; a
+  declared larger body is refused before reading, and streaming stops at the
+  limit. Only JPEG, PNG, and WebP identified from the first bytes are served,
+  with `nosniff`, a sandbox CSP, and a private cache lifetime.
+- Errors are fixed codes and messages. Upstream errors stay in protected logs.
+
 ### Purchase bonus detection
 
 Metadata sync may look up a purchase bonus's parent product (see
@@ -199,6 +220,34 @@ and row count are bounded. The user table's password hashes are never read.
   or workflow actions.
 - Demo mode must reject state-changing methods before a handler can perform a
   write. Add an explicit Demo regression test for every new mutation surface.
+- Check capabilities, never role names. `remote:track` guards every path that
+  adds a remote work to the shared Library or removes a tracked source,
+  including a sync for a mark or list and a work-level cache request;
+  `remote:fetch` guards every path that makes the server download remote files.
+  A new handler or background path that tracks, caches, or fetches on behalf of
+  a user must check the same capability.
+
+## Remote Source Addresses
+
+An administrator-configured endpoint can be a private address that other
+accounts should not learn. While `hide_remote_source_addresses` is on (the
+default), a request from an account without `sources:write`, or from an
+anonymous reader, must not receive anything from which a source's address can
+be inferred:
+
+- Configured API, site, and fallback URLs, and work pages built from them.
+- Source-returned cover, stream, and download URLs; serve them through the
+  [remote image proxy](#remote-image-proxy), the playback and text routes, or
+  `/api/media/{id}/stream` instead of omitting the feature.
+- Fetch plan source URLs and upstream `source_url` values on presence records.
+- Stored workflow run summaries, node input, output, and errors, events,
+  candidates, trigger errors, and notifications. These are redacted at read
+  time: URLs with a scheme, IPv4 and bracketed IPv6 addresses, and every
+  configured source host name are replaced.
+
+Source display names, codes, and types are not addresses. Demo serves only
+synthetic sources and keeps its responses unchanged. A new response field that
+carries a remote URL must apply the same rule.
 
 ## Filesystem Operations
 

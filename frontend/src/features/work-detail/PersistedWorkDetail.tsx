@@ -9,6 +9,7 @@ import {
   type SourceTabInfo,
   type TrackedPresenceOption,
 } from "@/features/work-detail/source/sourceContextModel";
+import { REMOTE_TRACK_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
 import {
   api,
   type DirectoryRoutingRule,
@@ -364,6 +365,8 @@ type PersistedDetailActionsProps = {
   onEditMetadata: () => void;
   onTrack: () => void;
   onUntrack: () => void;
+  /** Checked at the first untrack click. */
+  canUntrack: () => boolean;
   onFork: (remote: RemoteSourceAvailability) => void;
   onFetch: () => void;
   onManage: () => void;
@@ -396,6 +399,7 @@ function persistedMediaActionBindings(props: PersistedDetailActionsProps) {
     onTrack: props.selectedRemoteSource ? props.onTrack : undefined,
     trackDisabled: props.selectedRemoteSource ? !props.canTrackRemote : undefined,
     onUntrack: props.hasTrackedSourceForAction ? props.onUntrack : undefined,
+    canUntrack: props.canUntrack,
     onFetch: canFetch ? props.onFetch : undefined,
     onManageCache: props.selectedTrackedPresence ? props.onManage : undefined,
     manageCacheDisabled: Boolean(props.selectedTrackedPresence) && !props.trackedCacheAvailable,
@@ -984,6 +988,10 @@ export function PersistedWorkDetailController({
 }) {
   const auth = useAuth();
   const canViewMetadataActivity = auth.hasPermission("workflows:run");
+  // Track, Fork, untrack, and an on-demand source check change shared
+  // Library state or ask every remote source, so they need remote:track.
+  const requireTrack = usePermissionGate(REMOTE_TRACK_PERMISSIONS, { deferDemo: true });
+  const canCheckSources = !auth.demoMode && auth.hasPermission("remote:track");
   const toast = useToast();
   const { t } = useTranslation();
   const sourceContext = useWorkSourceContext({
@@ -1562,7 +1570,7 @@ export function PersistedWorkDetailController({
   }, [onWorkReload, onWorksChanged, refreshAvailability, remoteSources, t, toast, work]);
 
   const trackSelectedRemoteSource = async () => {
-    if (!selectedRemoteSource?.detail?.primaryCode) return;
+    if (!selectedRemoteSource?.detail?.primaryCode || !requireTrack()) return;
     setIsSyncingDetail(true);
     setMessage("");
     try {
@@ -1622,6 +1630,7 @@ export function PersistedWorkDetailController({
       toast.warning(t("permissions.demoReadOnly"));
       return;
     }
+    if (!requireTrack()) return;
     setMessage("");
     try {
       const result = await refreshAvailability();
@@ -1633,7 +1642,7 @@ export function PersistedWorkDetailController({
   };
 
   const untrackSelectedSource = async () => {
-    if (!work) return;
+    if (!work || !requireTrack()) return;
     disableAutomaticPlaybackRouting();
     setIsSyncingDetail(true);
     setMessage("");
@@ -1688,6 +1697,7 @@ export function PersistedWorkDetailController({
   };
 
   const requestForkSource = (remote: RemoteSourceAvailability) => {
+    if (!requireTrack()) return;
     if (selectedTrackedForked || selectedRemoteSource?.summary.hasRemote) {
       setReforkTarget({ current: currentForkSource, next: remote });
       return;
@@ -1804,6 +1814,7 @@ export function PersistedWorkDetailController({
     onEditMetadata: () => setMetadataEditorSection("title"),
     onTrack: () => void trackSelectedRemoteSource(),
     onUntrack: () => void untrackSelectedSource(),
+    canUntrack: requireTrack,
     onFork: requestForkSource,
     onFetch: openFetchWorkspace,
     onManage: () => setIsManageOpen(true),
@@ -1851,7 +1862,7 @@ export function PersistedWorkDetailController({
       onCheckSources={() => void refreshSourceAvailability()}
       onRetry={() => {
         if (selectedRemoteSource) {
-          if (!auth.demoMode) void refreshAvailability();
+          if (canCheckSources) void refreshAvailability().catch(() => undefined);
           selectSource(remoteSourceTabKey(selectedRemoteSource.source.id));
         } else if (work) {
           const failedEdition = work.translations.find(
