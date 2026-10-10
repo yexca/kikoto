@@ -212,7 +212,7 @@ const workCardHant = {
   salesLabel: "銷量：{{value}}",
   sales: "銷量",
   salesUnavailable: "銷量無法使用",
-  otherLanguageEdition: "有其他語言版本可用",
+  lyricsAvailable: "有歌詞",
   playbackHistory: "有播放記錄",
   unknownCircle: "未知社團",
   dlsiteMissing: "缺少 DLsite",
@@ -688,6 +688,7 @@ export const zhHantResource = {
         roles: {
           super_admin: "超級管理員",
           admin: "管理員",
+          contributor: "貢獻者",
           user: "使用者",
         },
       },

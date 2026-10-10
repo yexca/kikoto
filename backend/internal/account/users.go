@@ -323,7 +323,7 @@ func ValidateUserWrite(actor User, role string, password string, passwordRequire
 		if actor.Role != "super_admin" {
 			return ErrGrantSuperAdmin
 		}
-	case "admin", "user":
+	case "admin", "contributor", "user":
 	default:
 		return ErrInvalidUserRole
 	}

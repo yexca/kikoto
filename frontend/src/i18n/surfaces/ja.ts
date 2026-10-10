@@ -679,6 +679,12 @@ export const surfaceJapanese = {
         "サインインしたどのアカウントでも、このサーバーからルーターや NAS などローカルネットワーク上の機器に接続させ、応答の有無を知ることができるようになります。すべてのアカウントを信頼できる場合のみオンにしてください。",
       kikoeruPrivateEnable: "許可",
       saveKikoeruImport: "取り込み設定を保存",
+      remoteAddresses: "リモートソースのアドレス",
+      remoteAddressesDescription: "各リモートソースのネットワーク上の場所です。",
+      hideRemoteAddresses: "ソースを管理しないアカウントからアドレスを隠す",
+      hideRemoteAddressesDescription:
+        "オンにすると、ソースを管理する権限のないアカウントとサインインしていない閲覧者には、ソースの API・サイト・予備のアドレス、ソースサイト上の作品へのリンク、トラックやアクティビティに含まれる上流 URL が渡されません。閲覧、再生、カバー、テキストプレビューはこのサーバーを経由します。",
+      saveRemoteAddresses: "アドレス設定を保存",
       creatorCatalogs: "クリエイターのカタログ",
       catalogFreshnessDays: "カタログの更新日数",
       catalogFreshnessDescription: "サークルと声優のカタログは、最後の更新からこの日数が過ぎると注意状態になります。",
@@ -1238,7 +1244,7 @@ export const surfaceJapanese = {
     loadingSources: "ソースを読み込み中",
     noCompatibleSource: "互換性のあるソースはありません",
     action: "操作",
-    fetchPermissionRequired: "取得にはダウンロード管理権限が必要です。",
+    fetchPermissionRequired: "取得にはリモートファイルを取得する権限が必要です。",
     workLimit: "作品数上限",
     worksCount: "{{count}} 件",
     rankingPeriod: "ランキング期間",
@@ -2177,7 +2183,7 @@ export const surfaceJapanese = {
     environmentManagedNotice:
       "この初期管理者は .env ファイルの KIKOTO_ROOT_USERNAME と KIKOTO_ROOT_PASSWORD で設定されています。ここではパスワード、ロール、有効状態を変更できず、削除もできません。",
     environmentCredential: ".env の KIKOTO_ROOT_PASSWORD で管理",
-    roles: { user: "ユーザー", admin: "管理者", super_admin: "スーパー管理者" },
+    roles: { user: "ユーザー", contributor: "コントリビューター", admin: "管理者", super_admin: "スーパー管理者" },
   },
   sources: {
     title: "ファイルソース",

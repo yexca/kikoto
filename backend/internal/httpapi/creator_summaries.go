@@ -5,6 +5,8 @@ type creatorLatestWork struct {
 	Title       string  `json:"title"`
 	ReleaseDate *string `json:"releaseDate"`
 	CoverURL    string  `json:"coverUrl"`
+	// CoverSourceID is the remote source a catalog cover URL came from.
+	CoverSourceID int64 `json:"-"`
 }
 
 func creatorPageBounds(page int, pageSize int, total int) (int, int, int) {

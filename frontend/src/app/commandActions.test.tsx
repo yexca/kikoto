@@ -71,8 +71,13 @@ describe("commandActions", () => {
       newWorkCodes: [],
       failures: [],
     });
+    // The administrator role's permissions.
+    const administrator = new Set([
+      ...["library:read", "playback:use", "favorites:write", "tags:write", "library:write", "sources:write"],
+      ...["workflows:run", "metadata:sync", "downloads:manage", "remote:track", "remote:fetch", "users:manage"],
+    ]);
     const actions = commandActions({
-      hasPermission: (permission) => permission === "workflows:run" || permission === "metadata:sync",
+      hasPermission: (permission) => administrator.has(permission),
       visibleNavItems: navigation,
       onOpenPage: vi.fn(),
       onOpenPath,

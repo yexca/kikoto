@@ -21,7 +21,7 @@ func TestWorkflowTriggerCanBePausedAfterItsSourceIsDisabled(t *testing.T) {
 	if err := fixture.server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	actor := account.User{ID: ownerID, Permissions: []string{"workflows:run", "sources:write"}}
+	actor := account.User{ID: ownerID, Role: "admin", Permissions: account.PermissionsForRole("admin")}
 	var definitionID int64
 	if err := fixture.db.QueryRow("SELECT id FROM workflow_definition WHERE code = ?", sourcePresenceCheckWorkflowCode).Scan(&definitionID); err != nil {
 		t.Fatal(err)

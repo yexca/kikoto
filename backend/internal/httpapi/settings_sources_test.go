@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/yexca/kikoto/backend/internal/account"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -801,7 +802,7 @@ func TestRemoteWorkMaterializeSyncKeepsSourceWithoutTracking(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/remote-sources/1/works/RJ00000009/sync", strings.NewReader(`{"triggerReason":"test_materialize"}`))
 	request.SetPathValue("id", "1")
 	request.SetPathValue("code", "RJ00000009")
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"library:read"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Role: "contributor", Permissions: account.PermissionsForRole("contributor")}))
 	response := httptest.NewRecorder()
 	server.syncRemoteSourceWork(response, request)
 	if response.Code != http.StatusAccepted {

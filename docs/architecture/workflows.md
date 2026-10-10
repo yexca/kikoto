@@ -221,8 +221,8 @@ on a timer. Metadata settings open in a popover anchored to the header, with
 the current list kept underneath.
 Shared tags and circles use searchable management tables and review dialogs.
 Tag and circle changes, work metadata edits, cover overrides, metadata links,
-purchase bonus links, and source untracking require `library:write`, granted to
-admin and super_admin. Voice alias management requires `metadata:sync`.
+and purchase bonus links require `library:write`, granted to admin and
+super_admin. Untracking a remote source requires `remote:track`. Voice alias management requires `metadata:sync`.
 
 Tag APIs live under `/api/metadata/tags` (list/create, one tag with its
 names, rename/hide, merge, undo mapping); work additions/removals use `GET/PUT
@@ -356,6 +356,51 @@ unavailable. The bar sticks above the page's fixed bottom controls while a long
 form scrolls. Preset option groups (Input, Filter, Actions) become columns once
 the form is wide enough. A workflow without run options keeps Run in its header.
 The latest run's monitor follows the form, then triggers and recent runs.
+
+## Workflow Permissions
+
+`workflows:run` opens the Workflows page; it is not an administrator
+capability on its own. Contributors and administrators hold it (see
+[Users](../user/en/settings.md#users)). Every capability below is checked by
+the backend.
+
+- Visibility: every holder sees system-scoped definitions, presets, triggers,
+  runs, events, candidates, and Fetch file lists. A run of a user-scoped
+  definition stays visible only to its owner or requester, and `system:admin`
+  sees every run.
+- Starting, configuring, and scheduling: a kind of run requires every
+  permission its steps use. Track steps (`track_works`, a remote popular
+  collection's Track, a bulk Track, a watch's Track) require `remote:track`;
+  Fetch steps (`fetch_works`, Fetch, a popular collection's Fetch, a bulk
+  Fetch, a watch's Fetch) require `remote:fetch`; scans, the local file index,
+  metadata sync, presets, and the DLsite popular collection require
+  `metadata:sync`; the source presence check requires `sources:write`; tags
+  require `tags:write`. Scheduled dispatch re-checks the trigger owner's
+  current permissions.
+- Triggers: editing, switching off, or deleting a trigger requires the
+  permissions its stored configuration requires to create, read from that
+  configuration without validating its source, so a trigger whose source was
+  removed can still be switched off by an account that could create it.
+- Availability Watch: its configuration, targets, schedule, and runs require
+  the permissions of the configured action, and Track on a ready target
+  requires `remote:track`.
+- Ownership: a run records its requester as `requested_by_user_id` in its
+  input, written by the account that started it or by the trigger owner a
+  trigger dispatched for. Cancel, retry, and candidate decisions are limited
+  to that requester unless the actor administers workflow runs, which is the
+  `sources:write` capability shared with the other instance maintenance, or
+  holds `system:admin`. A run without a recorded requester is managed only by
+  workflow administrators.
+- Retry re-checks what the failed work needs: Fetch and media cache jobs
+  require `remote:fetch`, a popular collection requires `tags:write` and its
+  action's permission, cleanup and local deletion jobs require
+  `downloads:manage`, metadata jobs require `metadata:sync`, and graph jobs
+  require their graph's permissions.
+- Local files: candidate decisions, local cleanup, and archived-root review
+  for candidates that remove, archive, or mark unavailable local files
+  (`local_fetch_merge_cleanup`, `local_duplicate_work_folder`,
+  `local_symlink_media_location`) require `downloads:manage`.
+- Maintenance: stale-run recovery requires `sources:write`.
 
 ## Activity Summary
 
@@ -799,8 +844,9 @@ use that edition. Remote results never materialize new `work` rows.
 
 Available targets form the pool's Available side; configured Track and Fetch
 actions are child workflows with their own histories. A successful run that
-finds new available works creates a notification for enabled administrators,
-and the notification opens the pool's Available side.
+finds new available works creates a notification for every enabled account
+that holds `workflows:run`, and the notification opens the pool's Available
+side.
 
 `PUT /api/availability-watch/targets` replaces the pool;
 `POST /api/availability-watch/targets` adds codes without deactivating

@@ -2,8 +2,10 @@ package storage
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -23,6 +25,13 @@ const (
 
 	releasedBaselineDir    = "baseline"
 	developmentBaselineDir = "compat"
+
+	// ForeignKeysOffDirective as the first line of a numbered migration runs
+	// that file with foreign key enforcement off, as SQLite's table-rebuild
+	// procedure requires for a table other tables reference: dropping the old
+	// table would otherwise cascade its deletes into the referencing rows.
+	// PRAGMA foreign_key_check still runs before the transaction commits.
+	ForeignKeysOffDirective = "-- kikoto:foreign_keys=off"
 )
 
 var (
@@ -37,6 +46,13 @@ type migrationAsset struct {
 	checksum string
 	sql      []byte
 	baseline bool
+}
+
+// MigrationDisablesForeignKeys reports whether a migration file starts with
+// ForeignKeysOffDirective.
+func MigrationDisablesForeignKeys(contents []byte) bool {
+	firstLine, _, _ := bytes.Cut(canonicalMigrationBytes(contents), []byte("\n"))
+	return string(bytes.TrimSpace(firstLine)) == ForeignKeysOffDirective
 }
 
 // retiredBaselineLedgerAssets are checksum-only catalog entries for baseline
@@ -823,8 +839,45 @@ func applyMigrationAsset(db *sql.DB, asset migrationAsset, expectedCurrent int, 
 		}
 	}
 
+	alreadyApplied, err := commitMigrationAsset(db, asset, expectedCurrent, appVersion)
+	if err != nil {
+		return false, err
+	}
+	if alreadyApplied {
+		return false, verifyAppliedAsset(db, asset)
+	}
+	return true, nil
+}
+
+// commitMigrationAsset runs one migration, its foreign-key check, its ledger
+// row, and the schema-state advance in one transaction on a dedicated
+// connection. It reports alreadyApplied when another process advanced the
+// schema first; the caller verifies that record after the connection is
+// released, because a single-connection database cannot serve both.
+func commitMigrationAsset(db *sql.DB, asset migrationAsset, expectedCurrent int, appVersion string) (alreadyApplied bool, err error) {
 	started := time.Now()
-	tx, err := db.Begin()
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return false, fmt.Errorf("open connection for migration %s: %w", asset.filename, err)
+	}
+	foreignKeysOff := !asset.baseline && MigrationDisablesForeignKeys(asset.sql)
+	defer func() {
+		if foreignKeysOff {
+			if _, restoreErr := conn.ExecContext(ctx, "PRAGMA foreign_keys = ON"); restoreErr != nil {
+				// Never return a connection without enforcement to the pool.
+				_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+			}
+		}
+		_ = conn.Close()
+	}()
+	if foreignKeysOff {
+		// The pragma is a no-op inside a transaction, so it is set first.
+		if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+			return false, fmt.Errorf("disable foreign keys for migration %s: %w", asset.filename, err)
+		}
+	}
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return false, fmt.Errorf("begin migration %s: %w", asset.filename, err)
 	}
@@ -836,7 +889,7 @@ func applyMigrationAsset(db *sql.DB, asset migrationAsset, expectedCurrent int, 
 	}
 	if current >= asset.version {
 		rollback()
-		return false, verifyAppliedAsset(db, asset)
+		return true, nil
 	}
 	if current != expectedCurrent {
 		rollback()
@@ -881,7 +934,7 @@ func applyMigrationAsset(db *sql.DB, asset migrationAsset, expectedCurrent int, 
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit migration %s: %w", asset.filename, err)
 	}
-	return true, nil
+	return false, nil
 }
 
 type rowQueryer interface {

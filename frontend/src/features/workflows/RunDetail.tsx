@@ -47,6 +47,8 @@ export function RunDetail({
     );
   }
   const nodeRuns = "nodeRuns" in run ? run.nodeRuns : [];
+  // Another account's run stays visible; only its starter or a workflow administrator changes it.
+  const actionsReadOnly = readOnly || ("canManage" in run && run.canManage === false);
   return (
     <div className="min-w-0 space-y-4">
       <header className="flex items-start justify-between gap-3">
@@ -59,7 +61,7 @@ export function RunDetail({
             <span className="tabular-nums">#{run.id}</span>
           </div>
         </div>
-        {!readOnly && <RunActions run={run} onRunAction={onRunAction} />}
+        {!actionsReadOnly && <RunActions run={run} onRunAction={onRunAction} />}
       </header>
       {!loading && <RunTransferProgress run={run} />}
       {!loading && run.workflowCode === "remote_work_fetch" && <RunFetchFiles key={run.id} run={run} />}
@@ -80,7 +82,7 @@ export function RunDetail({
         </div>
       )}
       {!loading && candidates.length > 0 && (
-        <RunItems candidates={candidates} onCandidateUpdate={onCandidateUpdate} readOnly={readOnly} />
+        <RunItems candidates={candidates} onCandidateUpdate={onCandidateUpdate} readOnly={actionsReadOnly} />
       )}
       {!loading && <RunSteps nodeRuns={nodeRuns} demoShowcase={isDemoShowcaseActiveRun(run)} />}
       {!loading && <RunDiagnostics events={events} nodeRuns={nodeRuns} summaryJson={run.summaryJson} />}

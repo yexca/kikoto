@@ -46,7 +46,8 @@ export function AvailabilityWatchPanel({
   triggers,
   recentRuns,
   readOnly,
-  canManageDownloads,
+  canTrackRemote,
+  canFetchRemote,
   onCreateTrigger,
   onEditTrigger,
   onToggleTrigger,
@@ -57,7 +58,10 @@ export function AvailabilityWatchPanel({
   triggers: WorkflowTrigger[];
   recentRuns: WorkflowRun[];
   readOnly: boolean;
-  canManageDownloads: boolean;
+  /** `remote:track`: the watch may track ready works. */
+  canTrackRemote: boolean;
+  /** `remote:fetch`: the watch may fetch ready works. */
+  canFetchRemote: boolean;
   onCreateTrigger: (triggerType: CreatableAutomationTriggerType, anchor?: HTMLElement | null) => void;
   onEditTrigger: (trigger: WorkflowTrigger, anchor?: HTMLElement | null) => void;
   onToggleTrigger: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
@@ -139,6 +143,9 @@ export function AvailabilityWatchPanel({
 
   const nodes = parseNodes(definition.definitionJson);
   const layout = runFormLayout({ optionsTitle: workflowCopy("configuration") });
+  // The targets and schedule decide what the configured action tracks or
+  // fetches, so editing them needs the same permissions as that action.
+  const manageReadOnly = readOnly || !availabilityWatchActionAllowed(watch.action, canTrackRemote, canFetchRemote);
   const sourceName = (sourceId: number | null) =>
     sourceId ? (sources.find((source) => source.id === sourceId)?.displayName ?? `#${sourceId}`) : "";
 
@@ -149,8 +156,9 @@ export function AvailabilityWatchPanel({
           layout={layout}
           watch={watch}
           sources={sources}
-          readOnly={readOnly}
-          canManageDownloads={canManageDownloads}
+          readOnly={manageReadOnly}
+          canTrackRemote={canTrackRemote}
+          canFetchRemote={canFetchRemote}
           onSaved={setWatch}
           onRunQueued={onRunQueued}
         />
@@ -158,7 +166,7 @@ export function AvailabilityWatchPanel({
         <AvailabilityWatchPool
           watch={watch}
           sourceName={sourceName}
-          readOnly={readOnly}
+          readOnly={manageReadOnly}
           onWatchChange={setWatch}
           onRefresh={() =>
             void refreshWatch().catch((error) =>
@@ -173,8 +181,8 @@ export function AvailabilityWatchPanel({
             <WorkflowAutomationPanel
               definition={definition}
               triggers={triggers}
-              canManage={!readOnly}
-              readOnly={readOnly}
+              canManage={!manageReadOnly}
+              readOnly={manageReadOnly}
               onCreate={onCreateTrigger}
               onEdit={onEditTrigger}
               onToggle={onToggleTrigger}
@@ -201,13 +209,21 @@ function availabilityWatchSourceOptions(sources: LibrarySource[], selectedId: nu
   return options;
 }
 
-function availabilityWatchActionOptions(canManageDownloads: boolean) {
-  return [
-    { value: "monitor" as const, label: workflowCopy("monitorOnly") },
-    { value: "track" as const, label: workflowCopy("track") },
-    { value: "fetch" as const, label: workflowCopy("fetch"), disabled: !canManageDownloads },
-    { value: "track_fetch" as const, label: workflowCopy("trackFetch"), disabled: !canManageDownloads },
-  ];
+function availabilityWatchActionAllowed(action: string, canTrackRemote: boolean, canFetchRemote: boolean) {
+  if (action === "track") return canTrackRemote;
+  if (action === "fetch") return canFetchRemote;
+  if (action === "track_fetch") return canTrackRemote && canFetchRemote;
+  return true;
+}
+
+function availabilityWatchActionOptions(canTrackRemote: boolean, canFetchRemote: boolean) {
+  return (["monitor", "track", "fetch", "track_fetch"] as const).map((value) => ({
+    value,
+    label: workflowCopy(
+      ({ monitor: "monitorOnly", track: "track", fetch: "fetch", track_fetch: "trackFetch" } as const)[value],
+    ),
+    disabled: !availabilityWatchActionAllowed(value, canTrackRemote, canFetchRemote),
+  }));
 }
 
 /**
@@ -219,7 +235,8 @@ function AvailabilityWatchRunForm({
   watch,
   sources,
   readOnly,
-  canManageDownloads,
+  canTrackRemote,
+  canFetchRemote,
   onSaved,
   onRunQueued,
 }: {
@@ -227,7 +244,8 @@ function AvailabilityWatchRunForm({
   watch: AvailabilityWatch;
   sources: LibrarySource[];
   readOnly: boolean;
-  canManageDownloads: boolean;
+  canTrackRemote: boolean;
+  canFetchRemote: boolean;
   onSaved: (watch: AvailabilityWatch) => void;
   onRunQueued: () => void;
 }) {
@@ -308,7 +326,7 @@ function AvailabilityWatchRunForm({
             value={config.action}
             onChange={(action) => update({ action })}
             disabled={disabled}
-            options={availabilityWatchActionOptions(canManageDownloads)}
+            options={availabilityWatchActionOptions(canTrackRemote, canFetchRemote)}
           />
         </OptionField>
         <OptionField label={workflowCopy("excludeExtensions")}>

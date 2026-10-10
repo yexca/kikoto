@@ -598,6 +598,12 @@ export const surfaceEnglish = {
         "Any signed-in account could then make this server connect to devices on its local network, such as a router or NAS, and learn whether they answer. Turn this on only when you trust every account.",
       kikoeruPrivateEnable: "Allow",
       saveKikoeruImport: "Save import settings",
+      remoteAddresses: "Remote source addresses",
+      remoteAddressesDescription: "Where each remote source lives on the network.",
+      hideRemoteAddresses: "Hide addresses from accounts that do not manage sources",
+      hideRemoteAddressesDescription:
+        "When on, accounts without source management and signed-out readers never receive a source's API, site, or fallback address, links to works on the source site, or upstream URLs in tracks and Activity. Browsing, playback, covers, and text previews go through this server instead.",
+      saveRemoteAddresses: "Save address settings",
       creatorCatalogs: "Creator catalogs",
       catalogFreshnessDays: "Catalog freshness days",
       catalogFreshnessDescription:
@@ -1109,7 +1115,7 @@ export const surfaceEnglish = {
     noCompatibleSource: "No compatible source",
     action: "Action",
     remotePopularAction: "Remote popular action",
-    fetchPermissionRequired: "Fetch requires download management permission.",
+    fetchPermissionRequired: "Fetch requires the permission to fetch remote files.",
     workLimit: "Work limit",
     worksCount: "{{count}} works",
     rankingPeriod: "Ranking period",
@@ -2180,7 +2186,7 @@ export const surfaceEnglish = {
     environmentManagedNotice:
       "This initial administrator is configured by KIKOTO_ROOT_USERNAME and KIKOTO_ROOT_PASSWORD in the .env file. Its password, role, and enabled state cannot be changed here, and it cannot be deleted.",
     environmentCredential: "Managed by KIKOTO_ROOT_PASSWORD in .env",
-    roles: { user: "User", admin: "Admin", super_admin: "Super admin" },
+    roles: { user: "User", contributor: "Contributor", admin: "Admin", super_admin: "Super admin" },
   },
   sources: {
     title: "File sources",

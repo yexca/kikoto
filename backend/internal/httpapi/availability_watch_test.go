@@ -251,7 +251,7 @@ func TestAvailabilityWatchUsesOneScheduleTriggerAndRecordsScheduledRuns(t *testi
 	if err := db.QueryRow(`SELECT id FROM workflow_definition WHERE code = 'availability_watch'`).Scan(&definitionID); err != nil {
 		t.Fatal(err)
 	}
-	actor := account.User{ID: 1, Permissions: []string{"workflows:run"}}
+	actor := account.User{ID: 1, Role: "contributor", Permissions: account.PermissionsForRole("contributor")}
 	createTrigger := func(body string) *httptest.ResponseRecorder {
 		t.Helper()
 		request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
@@ -437,7 +437,7 @@ func TestAvailabilityWatchAddKeepsExistingTargets(t *testing.T) {
 	}
 	server := NewServer(db, config.Config{})
 	request := httptest.NewRequest(http.MethodPost, "/api/availability-watch/targets", strings.NewReader(`{"targetCodes":["rj00000001"]}`))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: 1, Permissions: []string{"workflows:run"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: 1, Role: "contributor", Permissions: account.PermissionsForRole("contributor")}))
 	response := httptest.NewRecorder()
 	server.addAvailabilityWatchTargets(response, request)
 	if response.Code != http.StatusOK {

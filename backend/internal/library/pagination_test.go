@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"path/filepath"
 	"reflect"
@@ -140,6 +141,32 @@ func seedPaginationLibrary(t testing.TB, count, tracks, snapshotBytes int) (*Sto
 	if err := tx.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
 		t.Fatal(err)
 	}
+	prepare := func(query string) *sql.Stmt {
+		stmt, err := tx.Prepare(query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = stmt.Close() })
+		return stmt
+	}
+	insertWork := prepare(`INSERT INTO work (primary_code, title, rating_average, sales_count, release_date, created_at)
+		VALUES (?, ?, ?, ?, ?, '2026-01-01 00:00:00')`)
+	insertSnapshot := prepare("INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, ?, ?)")
+	insertPresence := prepare("INSERT INTO work_source_presence (work_id, file_source_id, presence_type, availability) VALUES (?, ?, 'local', 'available')")
+	insertState := prepare("INSERT INTO user_work_state (user_id, work_id, listening_status, favorite) VALUES (?, ?, ?, ?)")
+	insertMedia := prepare("INSERT INTO media_item (work_id, kind, title, track_no) VALUES (?, 'audio', 'Example Track', ?)")
+	insertLocation := prepare("INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES (?, ?, 'local', ?, 'available')")
+	execPrepared := func(stmt *sql.Stmt, args ...any) int64 {
+		result, err := stmt.Exec(args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, err := result.LastInsertId()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
 	statuses := []string{"none", "want_to_listen", "listening", "relisten", "finished", "paused"}
 	for index := 0; index < count; index++ {
 		code := testfixture.WorkCode(testfixture.PrefixRJ, index%100)
@@ -152,14 +179,13 @@ func seedPaginationLibrary(t testing.TB, count, tracks, snapshotBytes int) (*Sto
 		if index%3 != 0 {
 			rating, sales, release = float64(index%5), index%11, "2026-01-01"
 		}
-		workID := exec(`INSERT INTO work (primary_code, title, rating_average, sales_count, release_date, created_at)
-			VALUES (?, ?, ?, ?, ?, '2026-01-01 00:00:00')`, code, fmt.Sprintf("Example Work %d", index%20), rating, sales, release)
-		exec("INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json) VALUES (?, ?, ?, ?)", workID, providerID, code, `{"description":"`+strings.Repeat("x", snapshotBytes)+`"}`)
-		exec("INSERT INTO work_source_presence (work_id, file_source_id, presence_type, availability) VALUES (?, ?, 'local', 'available')", workID, sourceID)
-		exec("INSERT INTO user_work_state (user_id, work_id, listening_status, favorite) VALUES (?, ?, ?, ?)", userID, workID, statuses[index%len(statuses)], index%2)
+		workID := execPrepared(insertWork, code, fmt.Sprintf("Example Work %d", index%20), rating, sales, release)
+		execPrepared(insertSnapshot, workID, providerID, code, `{"description":"`+strings.Repeat("x", snapshotBytes)+`"}`)
+		execPrepared(insertPresence, workID, sourceID)
+		execPrepared(insertState, userID, workID, statuses[index%len(statuses)], index%2)
 		for track := 0; track < tracks; track++ {
-			mediaID := exec("INSERT INTO media_item (work_id, kind, title, track_no) VALUES (?, 'audio', 'Example Track', ?)", workID, track)
-			exec("INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, availability) VALUES (?, ?, 'local', ?, 'available')", mediaID, sourceID, fmt.Sprintf("Library/%s/track-%d.mp3", code, track))
+			mediaID := execPrepared(insertMedia, workID, track)
+			execPrepared(insertLocation, mediaID, sourceID, fmt.Sprintf("Library/%s/track-%d.mp3", code, track))
 		}
 	}
 	if err := tx.Commit(); err != nil {

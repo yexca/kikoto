@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"github.com/yexca/kikoto/backend/internal/account"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -33,7 +34,7 @@ func TestWorkflowAcknowledgementRequiresResolvedTerminalRun(t *testing.T) {
  SELECT 2,?,id,'metadata','unavailable' FROM metadata_provider WHERE code='dlsite'`, workID); err != nil {
 		t.Fatal(err)
 	}
-	actor := currentUser{ID: userID, Permissions: []string{"workflows:run"}}
+	actor := currentUser{ID: userID, Role: "contributor", Permissions: account.PermissionsForRole("contributor")}
 	for _, id := range []int64{81, 82, 83} {
 		response := requestWorkflowResource(t, server.reviewWorkflowRun, http.MethodPost, id, actor, "")
 		if response.Code != http.StatusConflict {

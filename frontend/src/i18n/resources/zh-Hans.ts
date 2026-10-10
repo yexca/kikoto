@@ -211,7 +211,7 @@ export const workCardHans = {
   salesLabel: "销量：{{value}}",
   sales: "销量",
   salesUnavailable: "销量不可用",
-  otherLanguageEdition: "有其他语言版本可用",
+  lyricsAvailable: "有歌词",
   playbackHistory: "有播放记录",
   unknownCircle: "未知社团",
   dlsiteMissing: "缺少 DLsite",
@@ -683,6 +683,7 @@ export const zhHansResource = {
         roles: {
           super_admin: "超级管理员",
           admin: "管理员",
+          contributor: "贡献者",
           user: "用户",
         },
       },

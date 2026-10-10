@@ -49,6 +49,16 @@ Sources describe where files come from.
   rejected by new source and configuration-seed inputs. The historical
   `kikoeru_compilable_number178` spelling is migrated automatically.
 
+## Permissions
+
+Browsing a remote source, searching, sorting, recommendations, work detail,
+the file tree, text previews, covers, and playback through this server are open
+to every account that can read the Library. Tracking, forking, untracking,
+checking a work's sources now, caching, and Fetch need `remote:track` or
+`remote:fetch`; [Users](settings.md#users) lists which role holds each. An
+administrator can hide every source address from accounts that do not manage
+sources with **Remote source addresses** in [Library](settings.md#library).
+
 ## Availability Checks
 
 Startup and source-change batch checks first verify relevant source health. The

@@ -211,7 +211,7 @@ const workCardKorean = {
   salesLabel: "판매량: {{value}}",
   sales: "판매량",
   salesUnavailable: "판매량 없음",
-  otherLanguageEdition: "다른 언어 버전 있음",
+  lyricsAvailable: "가사 있음",
   playbackHistory: "재생 기록 있음",
   unknownCircle: "알 수 없는 서클",
   dlsiteMissing: "DLsite 누락",
@@ -705,6 +705,7 @@ export const koreanResource = {
         roles: {
           super_admin: "최고 관리자",
           admin: "관리자",
+          contributor: "기여자",
           user: "사용자",
         },
       },

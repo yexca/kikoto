@@ -3,7 +3,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
-import { usePermissionGate } from "@/auth/usePermissionGate";
+import { REMOTE_FETCH_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { buildRemoteTree, emptyTree, remoteSelectablePaths } from "@/features/work-detail/media/mediaTreeModel";
 import {
@@ -30,7 +30,7 @@ export function useRemoteFetchWorkspace({
   const toast = useToast();
   const { t } = useTranslation();
   const auth = useAuth();
-  const requireDownloadsManage = usePermissionGate("downloads:manage");
+  const requireRemoteFetch = usePermissionGate(REMOTE_FETCH_PERMISSIONS);
   const [draft, setDraft] = useState<RemoteFetchDraft | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const busyRef = useRef(false);
@@ -55,7 +55,7 @@ export function useRemoteFetchWorkspace({
 
   const open = async (intent: FetchIntent) => {
     const remoteCode = intent.remoteCode.trim();
-    if (intent.sourceId <= 0 || !remoteCode || (!auth.demoMode && !requireDownloadsManage())) return false;
+    if (intent.sourceId <= 0 || !remoteCode || (!auth.demoMode && !requireRemoteFetch())) return false;
     if (!beginOperation()) return false;
     toast.info(t("remoteFetch.preparing"));
     try {
@@ -127,7 +127,7 @@ export function useRemoteFetchWorkspace({
 
   const save = async () => {
     if (!draft || (selectedPaths.length === 0 && selectedLocalPaths.length === 0)) return;
-    if (!auth.demoMode && !requireDownloadsManage()) return;
+    if (!auth.demoMode && !requireRemoteFetch()) return;
     if (!beginOperation()) return;
     let publishing = false;
     try {

@@ -11,6 +11,7 @@ import (
 
 func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []library.RawWork, canonicalFiltered bool, includeRecommendation ...bool) ([]libraryWorkSummary, error) {
 	works := make([]libraryWorkSummary, 0, len(rows))
+	hideAddresses := s.remoteAddressesHidden(ctx)
 	for _, row := range rows {
 		item := libraryWorkSummary{
 			ID: row.ID, PrimaryCode: row.PrimaryCode, Title: row.Title, CreatedAt: row.CreatedAt,
@@ -21,6 +22,9 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 			ListeningStatus: row.ListeningStatus, Favorite: row.Favorite, RecommendScore: row.RecommendScore,
 		}
 		item.SourcePresence = parseSourcePresenceSummary(row.SourcePresence)
+		if hideAddresses {
+			hideSourcePresenceAddresses(item.SourcePresence)
+		}
 		metadata := dlsiteCardMetadata(row.CardSummary, row.Snapshot)
 		item.RatingCount = metadata.RatingCount
 		if !canonicalFiltered {
@@ -183,7 +187,7 @@ type libraryWorkSummary struct {
 	Rating                 *float64             `json:"rating"`
 	RatingCount            *int64               `json:"ratingCount"`
 	Sales                  *int64               `json:"sales"`
-	HasNonOrigin           bool                 `json:"hasAvailableNonOriginEdition,omitempty"`
+	HasLyrics              bool                 `json:"hasLyrics,omitempty"`
 	RegularPrice           *int64               `json:"regularPrice"`
 	Price                  *int64               `json:"price"`
 	PriceCurrency          string               `json:"priceCurrency"`

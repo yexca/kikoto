@@ -59,7 +59,7 @@ func TestValidateWorkflowGraphDefinitionBuildsTypedDAG(t *testing.T) {
 		t.Fatalf("topological order = %v, want %v", graph.TopologicalOrder, want)
 	}
 	permissions := workflowGraphRequiredPermissions(graph)
-	if strings.Join(permissions, ",") != "metadata:sync,tags:write,workflows:run" {
+	if strings.Join(permissions, ",") != "remote:track,tags:write,workflows:run" {
 		t.Fatalf("required permissions = %v", permissions)
 	}
 }

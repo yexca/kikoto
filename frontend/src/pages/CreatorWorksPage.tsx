@@ -33,7 +33,12 @@ import { VoiceWorkOptionsSheet, type VoiceWorkFilter } from "@/pages/VoiceWorkOp
 import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoContentNotice } from "@/components/DemoReadOnlyNotice";
-import { usePermissionGate } from "@/auth/usePermissionGate";
+import {
+  REMOTE_BULK_FETCH_PERMISSIONS,
+  REMOTE_BULK_TRACK_PERMISSIONS,
+  REMOTE_TRACK_PERMISSIONS,
+  usePermissionGate,
+} from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { usePageHeaderBack } from "@/app/pageHeader";
 import { openWorkDetail } from "@/app/workDetailNavigation";
@@ -283,7 +288,11 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   const { t } = useTranslation();
   const auth = useAuth();
   const toast = useToast();
-  const requireDownloadsManage = usePermissionGate("downloads:manage");
+  const requireBulkFetch = usePermissionGate(REMOTE_BULK_FETCH_PERMISSIONS);
+  const requireBulkTrack = usePermissionGate(REMOTE_BULK_TRACK_PERMISSIONS, { deferDemo: true });
+  const requireTrack = usePermissionGate(REMOTE_TRACK_PERMISSIONS, { deferDemo: true });
+  /** A mark or list on a remote work not in the Library adds it there first, which is tracking. */
+  const canStateVoiceWork = (work: VoiceWorkView) => Boolean("workId" in work && work.workId) || requireTrack();
   const voiceListStorageScope = currentClientStorageScope(auth.user?.id ?? null);
   const navigateToList = () => navigateToVoicesList(voiceListStorageScope);
   const [detail, setDetail] = useState<VoiceDetail | null>(null);
@@ -621,6 +630,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
 
   const updateWorkMark = async (work: VoiceWorkView, status: ListeningStatus) => {
     const workId = "workId" in work ? work.workId : null;
+    if (!canStateVoiceWork(work)) return;
     if (!workId) {
       await syncAndMarkVoiceWork(work, status);
       return;
@@ -669,6 +679,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   const ensureVoiceWorkForList = async (work: VoiceWorkView) => {
     const workId = "workId" in work ? work.workId : null;
     if (workId) return workId;
+    if (!canStateVoiceWork(work)) return null;
     try {
       const nextWorkId = await trackVoiceWorkForState(work, "voice_list");
       if (!nextWorkId) return null;
@@ -696,7 +707,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
   };
 
   const bulkFork = async () => {
-    if (selectedForkable.length === 0) return;
+    if (selectedForkable.length === 0 || !requireBulkTrack()) return;
     setIsBulkBusy(true);
     setMessage("");
     try {
@@ -713,12 +724,12 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
 
   const bulkSave = async () => {
     if (selectedSaveable.length === 0) return;
-    if (!requireDownloadsManage()) return;
+    if (!requireBulkFetch()) return;
     setSaveConfirm({ count: selectedSaveable.length, run: runBulkSave });
   };
 
   const runBulkSave = async () => {
-    if (!requireDownloadsManage()) return;
+    if (!requireBulkFetch()) return;
     setIsBulkBusy(true);
     setMessage("");
     try {
@@ -747,7 +758,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
 
   const forkSingleWork = async (work: VoiceWorkView) => {
     const target = voiceWorkRemoteTarget(work);
-    if (!target) return;
+    if (!target || !requireTrack()) return;
     setIsBulkBusy(true);
     try {
       await remoteWorkActions.queueFork(target, "voice_card_fork");
@@ -1032,6 +1043,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                   onFork={() => void forkSingleWork(work)}
                   onSave={() => void saveSingleWork(work)}
                   onStatusChange={(status) => void updateWorkMark(work, status)}
+                  canMark={() => canStateVoiceWork(work)}
                   onFavoriteSaved={(favorite) => {
                     setDetail((current) =>
                       current
@@ -1096,6 +1108,7 @@ function VoiceWorkCard({
   onFork,
   onSave,
   onStatusChange,
+  canMark,
   onFavoriteSaved,
   onEnsureWork,
 }: {
@@ -1107,6 +1120,8 @@ function VoiceWorkCard({
   onFork: () => void;
   onSave: () => void;
   onStatusChange: (status: ListeningStatus) => void;
+  /** Checked before the mark menu opens. */
+  canMark: () => boolean;
   onFavoriteSaved: (favorite: boolean) => void;
   onEnsureWork: () => Promise<number | null>;
 }) {
@@ -1171,6 +1186,7 @@ function VoiceWorkCard({
               <WorkCardQuickMarkButton
                 value={normalizeListeningStatus(listeningMark)}
                 disabled={isUnavailable && !voiceWorkRemoteTarget(work)}
+                canOpen={canMark}
                 onChange={onStatusChange}
               />
             </>
@@ -1221,7 +1237,7 @@ function voiceWorkCardView(work: VoiceWorkView, t: TFunction): WorkCardViewModel
     price: work.price,
     priceCurrency: "priceCurrency" in work ? work.priceCurrency : "JPY",
     series: "series" in work ? work.series || null : null,
-    hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
+    hasLyrics: work.hasLyrics,
     hasPlaybackHistory: "progress" in work && hasPlaybackHistory(work.progress),
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: isKnown ? userTagBadges(work.userTags ?? [], (tag) => openLibraryTagSearch("user_tag", tag)) : [],

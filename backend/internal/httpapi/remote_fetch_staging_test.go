@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/yexca/kikoto/backend/internal/account"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -75,7 +76,7 @@ func TestFetchArchivesOldLocalRootAndReviewDeletesArchive(t *testing.T) {
 	candidateID, _ := result.LastInsertId()
 	request := httptest.NewRequest(http.MethodPost, "/api/workflow-candidates/1/archived-root-review", strings.NewReader(`{"action":"delete_archived","confirm":"DELETE"}`))
 	request.SetPathValue("id", fmt.Sprintf("%d", candidateID))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"workflows:run"}}))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
 	response := httptest.NewRecorder()
 	server.reviewArchivedFetchRoots(response, request)
 	if response.Code != http.StatusOK {

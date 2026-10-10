@@ -66,7 +66,9 @@ export function commandActions({
           },
         ]
       : []),
-    ...(hasPermission("workflows:run")
+    // Recovering stale runs is workflow maintenance, kept with the other
+    // instance maintenance under sources:write.
+    ...(hasPermission("workflows:run") && hasPermission("sources:write")
       ? [
           {
             id: "action:recover_stale",

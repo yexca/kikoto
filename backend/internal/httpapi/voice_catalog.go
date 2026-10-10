@@ -1930,7 +1930,7 @@ func (s *Server) buildVoiceCatalogRemoteWork(ctx context.Context, row voiceCatal
 		SourceID: row.SourceID.Int64, SourceCode: row.SourceCode, SourceName: row.SourceName,
 		RemoteID: row.RemoteID, PrimaryCode: code, RemoteCode: strings.TrimSpace(row.RemoteCode),
 		Title: firstNonEmpty(row.Title, code), ReleaseDate: voiceCatalogStringValue(row.ReleaseDate),
-		UpdatedAt: voiceCatalogStringValue(row.ReleaseDate), CoverURL: row.CoverURL,
+		UpdatedAt: voiceCatalogStringValue(row.ReleaseDate), CoverURL: s.visibleRemoteImageURL(ctx, row.SourceID.Int64, row.CoverURL),
 		Circle: row.Circle, AgeRating: row.AgeRating, Rating: nullableFloat64FromNull(row.Rating),
 		RatingCount: nullableInt64FromFloatNull(row.RatingCount), Sales: nullableInt64FromFloatNull(row.Sales),
 		Price: nullableInt64FromFloatNull(row.Price), Tags: tags, VoiceActors: voiceActors,

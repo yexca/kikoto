@@ -74,7 +74,7 @@ export type WorkCardViewModel = {
   price?: number | null;
   priceCurrency?: string;
   series?: string | null;
-  hasAvailableNonOriginEdition?: boolean;
+  hasLyrics?: boolean;
   hasPlaybackHistory?: boolean;
   dlsiteTags: WorkCardBadge[];
   userTags?: WorkCardBadge[];
@@ -512,7 +512,7 @@ function WorkCardBody({
             {codeText}
           </span>
           <WorkCardIndicators
-            hasAvailableNonOriginEdition={work.hasAvailableNonOriginEdition === true}
+            hasLyrics={work.hasLyrics === true}
             hasPlaybackHistory={work.hasPlaybackHistory === true}
           />
           {ageRating.known && (
@@ -844,23 +844,17 @@ function CardBadge({
   );
 }
 
-function WorkCardIndicators({
-  hasAvailableNonOriginEdition,
-  hasPlaybackHistory,
-}: {
-  hasAvailableNonOriginEdition: boolean;
-  hasPlaybackHistory: boolean;
-}) {
+function WorkCardIndicators({ hasLyrics, hasPlaybackHistory }: { hasLyrics: boolean; hasPlaybackHistory: boolean }) {
   const { t } = useTranslation();
-  if (!hasAvailableNonOriginEdition && !hasPlaybackHistory) return null;
+  if (!hasLyrics && !hasPlaybackHistory) return null;
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5">
-      {hasAvailableNonOriginEdition && (
+      {hasLyrics && (
         <span
           className="inline-flex shrink-0 text-primary"
-          title={t("workCard.otherLanguageEdition")}
+          title={t("workCard.lyricsAvailable")}
           role="img"
-          aria-label={t("workCard.otherLanguageEdition")}
+          aria-label={t("workCard.lyricsAvailable")}
         >
           <Languages className="h-3.5 w-3.5" aria-hidden="true" />
         </span>
@@ -1015,12 +1009,15 @@ export function WorkCardQuickMarkButton({
   disabled,
   showLabel = false,
   responsiveLabel = false,
+  canOpen,
   onChange,
 }: {
   value: ListeningStatus;
   disabled?: boolean;
   showLabel?: boolean;
   responsiveLabel?: boolean;
+  /** Runs before the menu opens; false keeps it closed, for example when a mark is not permitted. */
+  canOpen?: () => boolean;
   onChange: (status: ListeningStatus) => void;
 }) {
   const { t } = useTranslation();
@@ -1040,6 +1037,7 @@ export function WorkCardQuickMarkButton({
         label={t("workCard.mark", { status: currentLabel })}
         onClick={(event) => {
           event.stopPropagation();
+          if (!open && canOpen && !canOpen()) return;
           setOpen((value) => !value);
         }}
       >

@@ -63,6 +63,7 @@ import {
 import { resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
 import { DirectoryManagerDialog } from "@/features/work-detail/dialogs/DirectoryManagerDialog";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { REMOTE_TRACK_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { useLibraryPlayer } from "@/player/PlayerProvider";
 import {
@@ -92,8 +93,12 @@ type RemoteOnlyDetailActionsProps = {
   onEnsureListWork: () => Promise<number | null>;
   onListSaved: () => Promise<void>;
   onMark: (status: ListeningStatus) => void;
+  /** Checked before the mark menu opens. */
+  canMark: () => boolean;
   onTrack: () => void;
   onUntrack: () => void;
+  /** Checked at the first untrack click. */
+  canUntrack: () => boolean;
   onFetch: () => void;
 };
 
@@ -103,6 +108,7 @@ function RemoteOnlyIdentityActions({
   onEnsureListWork,
   onListSaved,
   onMark,
+  canMark,
 }: RemoteOnlyDetailActionsProps) {
   if (!detail) return <DetailSkeletonActions />;
   return (
@@ -114,6 +120,7 @@ function RemoteOnlyIdentityActions({
       onEnsureListWork={onEnsureListWork}
       onListSaved={onListSaved}
       onMark={onMark}
+      canMark={canMark}
     />
   );
 }
@@ -128,6 +135,7 @@ function RemoteOnlySourceActions({
   materializedWorkID,
   onTrack,
   onUntrack,
+  canUntrack,
   onFetch,
   layout,
 }: RemoteOnlyDetailActionsProps & { layout: SourceActionLayout }) {
@@ -145,6 +153,7 @@ function RemoteOnlySourceActions({
         availabilityLoading ? t("detailActions.loadingTrackingState") : t("detailActions.alreadyTracked")
       }
       onUntrack={hasTrackedSource && materializedWorkID ? onUntrack : undefined}
+      canUntrack={canUntrack}
       onFetch={onFetch}
       remoteSourceWorkUrl={safeExternalHTTPURL(detail.publicWorkUrl)}
       remoteSourceName={detail.sourceName}
@@ -628,6 +637,7 @@ export function RemoteOnlyWorkDetailController({
   onWorksChanged: () => Promise<void>;
 }) {
   const toast = useToast();
+  const requireTrack = usePermissionGate(REMOTE_TRACK_PERMISSIONS, { deferDemo: true });
   const { t } = useTranslation();
   const [detail, setDetail] = useState<RemoteWorkDetail | null>(null);
   const [identityDetail, setIdentityDetail] = useState<RemoteWorkDetail | null>(null);
@@ -892,7 +902,7 @@ export function RemoteOnlyWorkDetailController({
   }, [source.id, code, remoteRetryToken, toast]);
 
   const fetchWork = async (reason: string) => {
-    if (!detail?.primaryCode) return;
+    if (!detail?.primaryCode || !requireTrack()) return;
     setIsFetching(true);
     setMessage("");
     try {
@@ -912,8 +922,9 @@ export function RemoteOnlyWorkDetailController({
     }
   };
 
+  /** A mark or list adds a work that is not yet in the Library, which is tracking. */
   const syncForUserState = async (reason: string) => {
-    if (!detail?.primaryCode) return null;
+    if (!detail?.primaryCode || !requireTrack()) return null;
     setIsFetching(true);
     setMessage("");
     try {
@@ -959,7 +970,7 @@ export function RemoteOnlyWorkDetailController({
   };
 
   const untrackRemoteSource = async () => {
-    if (!materializedWorkID || !detail) return;
+    if (!materializedWorkID || !detail || !requireTrack()) return;
     setIsFetching(true);
     setMessage("");
     try {
@@ -1107,8 +1118,10 @@ export function RemoteOnlyWorkDetailController({
     onEnsureListWork: () => syncForUserState("detail_list_remote"),
     onListSaved: onWorksChanged,
     onMark: (status) => void updateRemoteMark(status),
+    canMark: () => Boolean(detail?.workId) || requireTrack(),
     onTrack: () => void fetchWork("manual_track"),
     onUntrack: () => void untrackRemoteSource(),
+    canUntrack: requireTrack,
     onFetch: openSaveWorkspace,
   };
   const heroActions = <RemoteOnlyIdentityActions {...detailActionProps} />;

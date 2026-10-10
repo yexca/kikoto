@@ -174,14 +174,14 @@ var workflowGraphCapabilities = map[string]workflowGraphCapability{
 		Description: "Track available source works through the existing remote sync domain operation.",
 		Inputs:      []workflowGraphPort{{ID: "works", DataType: "work_candidates", Required: true}},
 		Outputs:     []workflowGraphPort{{ID: "completed", DataType: "work_refs"}, {ID: "failed", DataType: "work_candidates"}},
-		Permissions: []string{"metadata:sync"}, Composite: true, ConfigKeys: []string{"sourceId", "maxWorks"},
+		Permissions: []string{"remote:track"}, Composite: true, ConfigKeys: []string{"sourceId", "maxWorks"},
 	},
 	"fetch_works": {
 		Type: "fetch_works", Phase: "execute", DisplayName: "Fetch works",
 		Description: "Queue the existing recoverable Fetch transaction for bounded, filtered remote files.",
 		Inputs:      []workflowGraphPort{{ID: "works", DataType: "work_candidates", Required: true}},
 		Outputs:     []workflowGraphPort{{ID: "completed", DataType: "work_refs"}, {ID: "failed", DataType: "work_candidates"}},
-		Permissions: []string{"downloads:manage"}, Composite: true,
+		Permissions: []string{"remote:fetch"}, Composite: true,
 		ConfigKeys: []string{"sourceId", "excludeExtensions", "maxWorks", "maxFiles", "maxBytes", "minFreeBytes", "allowUnknownSizes", "targetRoot"},
 	},
 	"tag_works": {
