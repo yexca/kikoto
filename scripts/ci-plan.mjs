@@ -21,6 +21,66 @@ export const jobs = {
 
 export const planKeys = Object.values(jobs);
 
+// The scripts under scripts/ and the planned jobs that run them. Style always
+// runs, and it formats and tests every script, so one that only Style or no
+// job uses selects nothing. An unlisted script selects every job.
+export const scriptJobs = {
+  "check-go-format.go": ["backend"],
+  "golangci-lint.yml": ["backend"],
+  "go-test-shard.mjs": ["backend"],
+  "production-smoke.mjs": ["production"],
+  "production-browser-smoke.mjs": ["production"],
+  "smoke.mjs": ["dev_smoke"],
+  "check-doc-links.mjs": [],
+  "check-doc-locales.mjs": [],
+  "check-pr-description.mjs": [],
+  "check-sensitive.mjs": [],
+  "check-ui-copy.mjs": [],
+  "ci-metrics.mjs": [],
+  "privacy-allowlist.json": [],
+  "ui-copy-baseline.json": [],
+  "run-browse-performance.mjs": [],
+  "run-recommendation-performance.mjs": [],
+  "test-kikoto-helper.ps1": [],
+};
+
+const documentation =
+  /^(docs\/|(README(?:\.[\w-]+)?\.md|AGENTS\.md|CONTRIBUTING\.md|DESIGN\.md|SECURITY\.md|PRIVACY\.md|LICENSE)$)/;
+// Both development images are built from these.
+const devImage =
+  /^(frontend\/Dockerfile|backend\/Dockerfile|frontend\/nginx(?:-security)?\.conf|docker-compose\.dev\.yml|deploy\/compose\/dev\.yml)$/;
+
+// The plan keys a changed path selects, or null when it selects every job.
+function jobsFor(path) {
+  if (documentation.test(path)) return [];
+  if (/^(Makefile|VERSION)$/.test(path) || path.startsWith(".github/"))
+    return null;
+  if (path.startsWith("scripts/")) {
+    const name = path.slice("scripts/".length);
+    if (/^[^/]+\.test\.mjs$/.test(name)) return [];
+    return Object.hasOwn(scriptJobs, name) ? scriptJobs[name] : null;
+  }
+  // A dependency manifest reaches every job that installs from it and no
+  // other: the browser suite intercepts the API and never starts the backend.
+  if (/^backend\/go\.(mod|sum)$/.test(path))
+    return ["backend", "production", "dev_smoke"];
+  if (/^frontend\/(package(?:-lock)?\.json|\.npmrc)$/.test(path))
+    return ["frontend", "e2e", "production", "android", "ios", "dev_smoke"];
+  if (path === "Dockerfile") return ["production"];
+  if (path === ".dockerignore") return ["production", "dev_smoke"];
+  if (path.startsWith("frontend/android/")) return ["android"];
+  if (path.startsWith("frontend/ios/")) return ["ios"];
+  if (devImage.test(path)) return ["dev_smoke"];
+  if (path.startsWith("frontend/tests/e2e/")) return ["e2e"];
+  // Outside their own projects, only Capacitor configuration changes the
+  // native builds; the web bundle they embed is validated by the web jobs.
+  if (path === "frontend/capacitor.config.ts")
+    return ["frontend", "e2e", "production", "android", "ios"];
+  if (path.startsWith("frontend/")) return ["frontend", "e2e", "production"];
+  if (path.startsWith("backend/")) return ["backend", "production"];
+  return null;
+}
+
 export function createPlan({ tier, paths = null }) {
   if (!tiers.includes(tier)) throw new Error(`Unknown CI tier: ${tier}`);
   const full = Object.fromEntries(planKeys.map((key) => [key, true]));
@@ -28,44 +88,9 @@ export function createPlan({ tier, paths = null }) {
   if (tier === "full" || !paths?.length) return full;
   const plan = Object.fromEntries(planKeys.map((key) => [key, false]));
   for (const path of paths) {
-    if (
-      path.startsWith("docs/") ||
-      /^(README(?:\.[\w-]+)?\.md|AGENTS\.md|CONTRIBUTING\.md|DESIGN\.md|SECURITY\.md|PRIVACY\.md|LICENSE)$/.test(
-        path,
-      )
-    )
-      continue;
-    if (
-      /^(Makefile|VERSION|\.github\/|scripts\/|backend\/go\.(mod|sum)$|frontend\/package(?:-lock)?\.json$)/.test(
-        path,
-      )
-    )
-      return full;
-    if (path.startsWith("frontend/android/")) {
-      plan.android = true;
-    } else if (path.startsWith("frontend/ios/")) {
-      plan.ios = true;
-    } else if (
-      path === "frontend/Dockerfile" ||
-      path === "backend/Dockerfile" ||
-      path === "frontend/nginx.conf" ||
-      path === "docker-compose.dev.yml" ||
-      path === "deploy/compose/dev.yml"
-    ) {
-      plan.dev_smoke = true;
-    } else if (path.startsWith("frontend/tests/e2e/")) {
-      plan.e2e = true;
-    } else if (path.startsWith("frontend/")) {
-      // Outside their own projects, only Capacitor configuration changes the
-      // native builds; the web bundle they embed is validated by the web jobs.
-      if (path === "frontend/capacitor.config.ts")
-        Object.assign(plan, { android: true, ios: true });
-      Object.assign(plan, { frontend: true, e2e: true, production: true });
-    } else if (path.startsWith("backend/")) {
-      Object.assign(plan, { backend: true, e2e: true, production: true });
-    } else {
-      return full;
-    }
+    const selected = jobsFor(path);
+    if (!selected) return full;
+    for (const key of selected) plan[key] = true;
   }
   return plan;
 }

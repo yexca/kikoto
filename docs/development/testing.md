@@ -279,19 +279,37 @@ checked-out merge result, including both sides of renames and deleted paths:
 | PR changes | Additional planned jobs |
 | --- | --- |
 | Only public documentation | None beyond Style and the Gate |
-| Backend source or tests | All backend checks, E2E, production Smoke |
+| Backend source or tests | All backend checks, production Smoke |
+| Go module files | All backend checks, production Smoke, Development Compose |
 | Frontend application or configuration | Frontend, E2E, production Smoke |
+| npm manifest, lockfile, or `.npmrc` | Frontend, E2E, Android, iOS, production Smoke, Development Compose |
 | Browser tests and their fixtures | E2E |
 | Android project only | Android |
 | iOS project only | iOS |
 | Capacitor configuration | Frontend, E2E, Android, iOS, production Smoke |
+| Production `Dockerfile` | Production Smoke |
+| `.dockerignore` | Production Smoke, Development Compose |
 | Development Dockerfiles, Nginx, or Compose | Development Compose |
-| Shared dependencies, Makefile, scripts, workflows, VERSION, or unclassified paths | All jobs |
+| A validation script | The jobs that run it, listed in `scriptJobs` |
+| Makefile, workflows, composite actions, VERSION, the planner itself, or unclassified paths | All jobs |
 
 Mixed changes use the union of planned jobs, and a missing or empty PR diff
-selects all jobs. The native builds embed the web bundle without compiling it,
-so a web-only change leaves them to the `full` tier, which ignores changed
-paths and always plans every job.
+selects all jobs. A change reaches only the jobs that consume it:
+
+- The browser suite intercepts the API and never starts the backend, so
+  backend changes leave it out; production Smoke exercises the real backend
+  behind the built frontend.
+- The native builds embed the web bundle without compiling it, so a web-only
+  change leaves them out. They install npm packages, so a manifest change
+  selects them.
+- `Style` formats and tests every script under `scripts/`, so a script that
+  only `Style` or no job runs selects nothing more. `scriptJobs` in
+  `scripts/ci-plan.mjs` names the jobs behind each other script. A script
+  missing from that table selects all jobs, and the planner's tests fail until
+  it is listed.
+
+The `full` tier ignores changed paths and always plans every job, so whatever
+a pull request leaves out is validated on `main` and before a release.
 
 `Gate` evaluates the plan against the job results, even after failures. It
 rejects failed, cancelled, missing, or unexpectedly skipped results and a
