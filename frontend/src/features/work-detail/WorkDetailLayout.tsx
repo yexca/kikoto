@@ -1508,6 +1508,6 @@ function InlineSourceMetric({ label, value }: { label: string; value: string }) 
 function openResolvedEntityRoute(route: string) {
   if (!route.startsWith("/")) return;
   const returnTo = `${window.location.pathname}${window.location.search}`;
-  window.history.pushState(historyStateWithReturn(returnTo, i18n.t("detailActions.back")), "", route);
+  window.history.pushState(historyStateWithReturn(returnTo, i18n.t("common.back")), "", route);
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }

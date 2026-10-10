@@ -5,7 +5,12 @@ import { useStableCallback } from "@/hooks/useStableCallback";
 import { api } from "@/lib/api";
 
 import type { LyricsChoice } from "./lyricsMatching";
-import { applyLyricsChoiceToTrack, applyLyricsPreferenceOverride, lyricsPreferenceKey } from "./lyricsPreference";
+import {
+  applyLyricsChoiceToTrack,
+  applyLyricsPreferenceOverride,
+  lyricsPreferenceKey,
+  lyricsPreferencePersists,
+} from "./lyricsPreference";
 import { normalizePlaybackStartPosition } from "./playbackStart";
 import { withQueueIdentity } from "./playbackIdentity";
 import type { LyricsPreferenceTarget, PlayerTrack, PlayMode } from "./playerTypes";
@@ -195,8 +200,7 @@ export function usePlayerQueueActions({
         ),
       );
 
-      const persistPreference = target.lyricsPreferencePersistable ?? target.progressRecordable ?? false;
-      if (!persistPreference || target.mediaItemId <= 0) return;
+      if (!lyricsPreferencePersists(target)) return;
       try {
         if (choice && choice.mediaItemId > 0) {
           await api.setMediaLyricsPreference(target.mediaItemId, choice.mediaItemId);

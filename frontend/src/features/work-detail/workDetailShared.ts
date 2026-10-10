@@ -53,7 +53,7 @@ export function openWorkCodeRoute(code: string, sourceIntent?: DetailSourceInten
     },
     {
       returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
-      returnLabel: i18n.t("detailActions.back"),
+      returnLabel: i18n.t("common.back"),
     },
   );
 }

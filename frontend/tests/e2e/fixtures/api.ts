@@ -181,7 +181,6 @@ export function workResolveFixture(work: Work, overrides: Partial<WorkResolveRes
     permanentlyFree: work.permanentlyFree,
     tags: work.tags,
     voiceActors: work.voiceActors,
-    voiceCredits: work.voiceCredits,
     ...overrides,
   };
 }
@@ -596,7 +595,6 @@ export function circleCatalogWorkFixture(overrides: Partial<CircleCatalogWork> =
     tags: [],
     userTags: [],
     voiceActors: [],
-    voiceRefs: [],
     voiceCredits: [],
     rating: null,
     sales: null,

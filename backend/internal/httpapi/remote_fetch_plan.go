@@ -9,6 +9,9 @@ import (
 	"sort"
 	"strings"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
@@ -159,15 +162,27 @@ func applyRemoteFetchRename(item *remoteWorkSavePlanItem, decision remoteFetchFi
 	return nil
 }
 
+// fetchTargetKey identifies a target path the way the least capable filesystem
+// a library can sit on does: letter case and Unicode composition do not make
+// two names distinct. Planning with this identity keeps a Fetch from writing
+// two files that such a filesystem stores as one, where the second would
+// silently replace the first.
+func fetchTargetKey(targetPath string) string {
+	return fetchTargetFold.String(norm.NFC.String(filepath.ToSlash(targetPath)))
+}
+
+var fetchTargetFold = cases.Fold()
+
 func applyRemoteFetchTargetState(item *remoteWorkSavePlanItem, seenTargets map[string]string, duplicateMessage string) {
-	if previous, exists := seenTargets[item.TargetPath]; exists && !item.TargetConflict {
+	key := fetchTargetKey(item.TargetPath)
+	if previous, exists := seenTargets[key]; exists && !item.TargetConflict {
 		item.TargetConflict = true
 		item.TargetConflictReason = duplicateMessage + previous
 		item.Action = "conflict"
 		item.Status = "duplicate_target"
 		return
 	}
-	seenTargets[item.TargetPath] = item.Path
+	seenTargets[key] = item.Path
 }
 
 func applyRemoteFetchRemoteTargetState(root string, item *remoteWorkSavePlanItem, seenTargets map[string]string) error {

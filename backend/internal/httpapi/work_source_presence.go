@@ -40,9 +40,9 @@ func upsertWorkSourcePresence(ctx context.Context, tx *sql.Tx, presence workSour
 	if presence.RawJSON == "" {
 		presence.RawJSON = "{}"
 	}
-	presence.RemoteCode = normalizeDLsiteCode(presence.RemoteCode)
+	presence.RemoteCode = normalizeWorkCode(presence.RemoteCode)
 	if presence.RemoteCode == "" {
-		presence.RemoteCode = normalizeDLsiteCode(remoteCodeFromRawJSON(presence.RawJSON))
+		presence.RemoteCode = normalizeWorkCode(remoteCodeFromRawJSON(presence.RawJSON))
 	}
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO work_source_presence (

@@ -56,6 +56,18 @@ func (s *Server) listWorkflowRunFetchFiles(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) remoteFetchFiles(ctx context.Context, runID int64) ([]remoteFetchFile, error) {
 	manifest, err := s.loadRemoteFetchManifest(ctx, runID)
+	if errors.Is(err, sql.ErrNoRows) {
+		// A Fetch run that planned no files, such as an illustrative Demo run,
+		// has an empty file list. Only a run that is not a Fetch has none.
+		var workflowCode string
+		if codeErr := s.db.QueryRowContext(ctx, `SELECT workflow_code FROM workflow_run WHERE id = ?`, runID).Scan(&workflowCode); codeErr != nil {
+			return nil, codeErr
+		}
+		if workflowCode == "remote_work_fetch" {
+			return []remoteFetchFile{}, nil
+		}
+		return nil, sql.ErrNoRows
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -53,6 +53,16 @@ describe("workflow stages", () => {
     ]);
   });
 
+  it("keeps every status the server records for a step, including a cancelled one", () => {
+    const statuses = ["queued", "running", "succeeded", "partial", "failed", "skipped", "cancelled"];
+    const stages = workflowStages(
+      [],
+      statuses.map((status, index) => nodeRun({ id: index + 1, nodeId: status, position: index + 1, status })),
+    );
+
+    expect(stages.map((stage) => stage.state)).toEqual(statuses);
+  });
+
   it("projects the latest attempt of each node onto its definition stage", () => {
     const stages = workflowStages(definition, [
       nodeRun({ id: 1, nodeId: "select", position: 1, status: "succeeded" }),

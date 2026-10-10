@@ -1,12 +1,11 @@
 // Text viewer model: the player's timed-lyrics parsing plus what a reading view adds.
 
-import { parseTimedLyrics } from "@/lib/timedLyrics";
+import { parseTimedLyrics, startsWithLrcTimestamp } from "@/lib/timedLyrics";
 
 export type LyricsLine = { timeSeconds: number; text: string };
 export type LyricsTag = { key: string; value: string };
 export type ParsedLyrics = { tags: LyricsTag[]; lines: LyricsLine[] };
 
-const lrcStampPattern = /^\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]/;
 const lrcTagPattern = /^\[([A-Za-z]+):(.*)\]$/;
 // Header tags worth showing; offset, length, and tool tags only describe the file.
 const displayedTagKeys = new Set(["ti", "ar", "al", "au", "by"]);
@@ -36,7 +35,7 @@ export function parseLyrics(content: string): ParsedLyrics | null {
       continue;
     }
     textLines += 1;
-    if (lrcStampPattern.test(line)) stampedLines += 1;
+    if (startsWithLrcTimestamp(line)) stampedLines += 1;
   }
   // Cue files carry their timing in structure, so only LRC needs the share check.
   if (stampedLines > 0 && stampedLines < textLines * minimumStampedShare) return null;

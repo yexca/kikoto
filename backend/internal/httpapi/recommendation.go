@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"regexp"
 	"strings"
@@ -14,6 +15,12 @@ import (
 )
 
 var recommendationContextIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{0,64}$`)
+
+// maxRecommendationEventRank bounds a reported list position. A position is as
+// large as the list it is in, and a library has no fixed size, so only values
+// no list reaches are refused.
+const maxRecommendationEventRank = math.MaxInt32
+
 var recommendationSessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
 
 type recommendationEventInput struct {
@@ -155,7 +162,7 @@ func validateRecommendationEvent(event recommendationEventInput) (recommendation
 	if !validRecommendationEventType(event.EventType) {
 		return recommendationEventInput{}, nil, recommendationEventValidationError{"unsupported recommendation event type"}
 	}
-	if !recommendationContextIDPattern.MatchString(event.ContextID) || event.Rank < 0 || event.Rank > 10000 || event.Score < 0 || event.Score > 100 {
+	if !recommendationContextIDPattern.MatchString(event.ContextID) || event.Rank < 0 || event.Rank > maxRecommendationEventRank || event.Score < 0 || event.Score > 100 {
 		return recommendationEventInput{}, nil, recommendationEventValidationError{"invalid recommendation event fields"}
 	}
 	if event.EventType != "reshuffle" && (event.WorkID == nil || *event.WorkID <= 0) {

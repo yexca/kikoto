@@ -1,10 +1,13 @@
 import { useTranslation } from "react-i18next";
 
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { workflowRunSettled } from "@/hooks/useWorkflowRunWatcher";
 import { api } from "@/lib/api";
 import { announceRemoteTrackCreated } from "@/app/remoteTrackWorkflows";
 import {
   groupRemoteTargetsBySource,
+  remoteBulkRunOutcome,
+  summarizeQueuedRemoteBulkRuns,
   summarizeRemoteBulkRuns,
   type RemoteBulkAction,
   type RemoteWorkTarget,
@@ -14,6 +17,7 @@ export type { RemoteWorkTarget } from "@/pages/remoteBulkRunModel";
 
 /** Translation keys a surface uses to report its bulk runs. */
 export type RemoteBulkCopy = {
+  queued: string;
   fetchSummary: string;
   forkSummary: string;
   fetchFailed: string;
@@ -29,8 +33,10 @@ export function useRemoteWorkActions() {
   const toast = useToast();
 
   /**
-   * Records one bulk run per source and reports the combined result. `afterRuns`
-   * refreshes the caller's view; its failure is reported like a run failure.
+   * Queues one bulk run per source and reports which runs were accepted. The
+   * returned promise settles once the runs are queued; what they did is
+   * reported when they finish, followed by `afterRuns`, which refreshes the
+   * caller's view and whose failure is reported like a run failure.
    */
   const recordBulkRuns = async (
     action: RemoteBulkAction,
@@ -38,17 +44,25 @@ export function useRemoteWorkActions() {
     copy: RemoteBulkCopy,
     afterRuns: () => Promise<unknown>,
   ) => {
+    const failedMessage = () => t(action === "fetch" ? copy.fetchFailed : copy.forkFailed);
     try {
-      const results = await Promise.all(
+      const accepted = await Promise.all(
         groupRemoteTargetsBySource(targets).map((group) => api.recordRemoteBulkRun({ action, ...group })),
       );
-      const summary = summarizeRemoteBulkRuns(results);
-      const message = t(action === "fetch" ? copy.fetchSummary : copy.forkSummary, summary);
-      if (summary.failed > 0) toast.warning(message);
-      else toast.success(message);
-      await afterRuns();
+      toast.notify({ kind: "info", message: t(copy.queued, summarizeQueuedRemoteBulkRuns(accepted)) });
+      void Promise.all(
+        accepted.map(async (run) => remoteBulkRunOutcome(await workflowRunSettled(run.runId), run.codes.length)),
+      )
+        .then(async (outcomes) => {
+          const summary = summarizeRemoteBulkRuns(outcomes);
+          const message = t(action === "fetch" ? copy.fetchSummary : copy.forkSummary, summary);
+          if (summary.failed > 0) toast.warning(message);
+          else toast.success(message);
+          await afterRuns();
+        })
+        .catch((error: unknown) => toast.notify(toastFromError(error, failedMessage())));
     } catch (error) {
-      toast.notify(toastFromError(error, t(action === "fetch" ? copy.fetchFailed : copy.forkFailed)));
+      toast.notify(toastFromError(error, failedMessage()));
     }
   };
 
@@ -74,6 +88,7 @@ export function useRemoteWorkActions() {
 }
 
 export const creatorBulkCopy: RemoteBulkCopy = {
+  queued: "creatorBrowse.bulkRunQueued",
   fetchSummary: "creatorBrowse.bulkFetchSummary",
   forkSummary: "creatorBrowse.bulkForkSummary",
   fetchFailed: "creatorBrowse.bulkFetchFailed",
@@ -81,6 +96,7 @@ export const creatorBulkCopy: RemoteBulkCopy = {
 };
 
 export const libraryBulkCopy: RemoteBulkCopy = {
+  queued: "library.bulkRunQueued",
   fetchSummary: "library.bulkFetchSummary",
   forkSummary: "library.bulkForkSummary",
   fetchFailed: "library.bulkFetchFailed",

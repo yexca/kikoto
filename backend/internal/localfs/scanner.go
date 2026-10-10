@@ -8,9 +8,11 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/workcode"
 )
 
-var workCodePattern = regexp.MustCompile(`(?i)(RJ|BJ|VJ|CC)[\s_-]?([0-9]{5,8})`)
+var workCodePattern = regexp.MustCompile(`(?i)(` + workcode.PrefixAlternation + `)[\s_-]?(` + workcode.Digits + `)`)
 
 type WorkFolder struct {
 	Code    string

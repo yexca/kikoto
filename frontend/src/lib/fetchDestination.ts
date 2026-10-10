@@ -22,3 +22,21 @@ export function fetchDestinationCode(error: unknown): FetchDestinationCode | nul
     ? (error.code as FetchDestinationCode)
     : null;
 }
+
+/**
+ * How a Fetch submission ended when the server did not accept it.
+ *
+ * - `sign_in`: the session expired.
+ * - `plan_changed`: the reviewed plan no longer applies and must be planned again.
+ * - `rejected`: the server answered and refused, so no Fetch was started.
+ * - `unconfirmed`: no usable answer arrived, so a Fetch may or may not have started.
+ */
+export type FetchSubmissionFailure = "sign_in" | "plan_changed" | "rejected" | "unconfirmed";
+
+export function fetchSubmissionFailure(error: unknown): FetchSubmissionFailure {
+  if (!(error instanceof ApiError)) return "unconfirmed";
+  if (error.status === 401) return "sign_in";
+  if (error.status === 409 && (error.code === "conflict" || error.code === "")) return "plan_changed";
+  if (error.status >= 400 && error.status < 500) return "rejected";
+  return "unconfirmed";
+}

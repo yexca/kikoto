@@ -220,6 +220,10 @@ export const personalHant = {
           permission: "你的帳戶不能匯入個人資料。",
           read_only: "此執行個體為唯讀。",
           unavailable: "無法連線到 Kikoeru 伺服器，請重試。",
+          upload_invalid: "上傳內容必須包含一個資料庫檔案和一個帳號名稱。",
+          upload_interrupted: "上傳未能在限定時間內完成。請檢查網路連線後再試一次。",
+          upload_failed: "資料庫上傳失敗。請檢查與此伺服器的連線後再試一次。",
+          database_timeout: "讀取資料庫耗時過長，請再試一次。",
         },
         risk: {
           accountTitle: "連線到 Kikoeru 伺服器之前",

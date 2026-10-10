@@ -2,7 +2,8 @@ import type { WorkflowEvent, WorkflowNodeRun } from "@/lib/api";
 
 import { parseWorkflowTimestamp } from "./runPresentation";
 
-export type WorkflowStageState = "idle" | "queued" | "running" | "succeeded" | "partial" | "failed" | "skipped";
+export type WorkflowStageState =
+  "idle" | "queued" | "running" | "succeeded" | "partial" | "failed" | "skipped" | "cancelled";
 
 export type WorkflowStageDefinition = { id: string; type: string; displayName?: string };
 
@@ -16,7 +17,17 @@ export type WorkflowStage = {
   errorMessage: string;
 };
 
-const knownStates = new Set<WorkflowStageState>(["queued", "running", "succeeded", "partial", "failed", "skipped"]);
+// Every status the server records for a run or a step. Anything else is a step
+// that has not run.
+const knownStates = new Set<WorkflowStageState>([
+  "queued",
+  "running",
+  "succeeded",
+  "partial",
+  "failed",
+  "skipped",
+  "cancelled",
+]);
 
 export function workflowStageState(status: string | null | undefined): WorkflowStageState {
   const normalized = String(status ?? "")
@@ -216,7 +227,12 @@ export function workflowRunLog(events: WorkflowEvent[], nodeRuns: WorkflowNodeRu
         },
       });
     }
-    const settled = state === "succeeded" || state === "partial" || state === "failed" || state === "skipped";
+    const settled =
+      state === "succeeded" ||
+      state === "partial" ||
+      state === "failed" ||
+      state === "skipped" ||
+      state === "cancelled";
     if (
       settled &&
       node.finishedAt &&

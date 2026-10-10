@@ -226,6 +226,10 @@ export const personalKorean = {
           permission: "이 계정은 개인 데이터를 가져올 수 없습니다.",
           read_only: "이 인스턴스는 읽기 전용입니다.",
           unavailable: "Kikoeru 서버에 연결할 수 없습니다. 다시 시도하세요.",
+          upload_invalid: "업로드에는 데이터베이스 파일 하나와 계정 이름이 있어야 합니다.",
+          upload_interrupted: "업로드가 시간 안에 끝나지 않았습니다. 연결을 확인한 뒤 다시 시도하세요.",
+          upload_failed: "데이터베이스를 업로드하지 못했습니다. 이 서버와의 연결을 확인한 뒤 다시 시도하세요.",
+          database_timeout: "데이터베이스를 읽는 데 시간이 너무 오래 걸렸습니다. 다시 시도하세요.",
         },
         risk: {
           accountTitle: "Kikoeru 서버에 연결하기 전에",

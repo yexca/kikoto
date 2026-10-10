@@ -754,4 +754,68 @@ describe("mediaTreeModel", () => {
     );
     expect(flattenTreeFiles(tree)).toMatchObject([{ kind: "text", streamUrl: "https://media.invalid/captions.ts" }]);
   });
+
+  it("offers a remote text preview for exactly the files the server reads as text", () => {
+    const remoteFile = (type: string, title: string) =>
+      ({
+        type,
+        title,
+        hash: `${title}-hash`,
+        streamUrl: `https://media.invalid/${title}`,
+        downloadUrl: "",
+        sizeBytes: 128,
+        durationSeconds: null,
+        cacheAvailable: false,
+        cacheLocationId: null,
+        cachePath: "",
+        localAvailable: false,
+        localLocationId: null,
+        localPath: "",
+        children: [],
+      }) as RemoteTrack;
+    const textExtensions = [
+      ".txt",
+      ".md",
+      ".json",
+      ".lrc",
+      ".cue",
+      ".srt",
+      ".vtt",
+      ".ass",
+      ".csv",
+      ".log",
+      ".ini",
+      ".yaml",
+      ".yml",
+    ];
+    const tree = buildRemoteTree(
+      [
+        ...textExtensions.map((extension) => remoteFile("file", `file${extension}`)),
+        remoteFile("text", "listed-as-text.nfo"),
+        remoteFile("file", "archive.zip"),
+        remoteFile("audio", "track.mp3"),
+      ],
+      { sourceId: 7, workCode: "RJ00000001" },
+    );
+    const previewable = flattenTreeFiles(tree)
+      .filter((file) => file.textPreviewUrl !== "")
+      .map((file) => file.title)
+      .sort();
+
+    expect(previewable).toEqual(
+      [...textExtensions.map((extension) => `file${extension}`), "listed-as-text.nfo"].sort(),
+    );
+    expect(flattenTreeFiles(tree).find((file) => file.title === "file.cue")?.textPreviewUrl).toBe(
+      "/api/remote-sources/7/works/RJ00000001/text?path=file.cue",
+    );
+  });
+
+  it("reads cached files through the media asset route, like local ones", () => {
+    const item = localMediaItem(5, "text", "media/example_remote_a/RJ00000000/cover.png");
+    item.locations[0] = { ...item.locations[0], locationType: "cache", fileSourceId: 7 };
+    const [file] = flattenTreeFiles(buildTree([item], 7, "RJ00000000"));
+
+    expect(file.assetUrl).toBe(`/api/media/105/asset?v=${encodeURIComponent("fixture-5:1024")}`);
+    expect(file.textPreviewUrl).toBe("");
+  });
 });

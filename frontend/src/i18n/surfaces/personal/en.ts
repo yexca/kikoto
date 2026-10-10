@@ -227,6 +227,10 @@ export const personalEnglish = {
           permission: "Your account cannot import personal data.",
           read_only: "This instance is read-only.",
           unavailable: "The Kikoeru server could not be reached. Try again.",
+          upload_invalid: "The upload must contain one database file and an account name.",
+          upload_interrupted: "The upload did not finish in time. Check your connection and try again.",
+          upload_failed: "The database could not be uploaded. Check your connection to this server and try again.",
+          database_timeout: "Reading the database took too long. Try again.",
         },
         risk: {
           accountTitle: "Before connecting to a Kikoeru server",

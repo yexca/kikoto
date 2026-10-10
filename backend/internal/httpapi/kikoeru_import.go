@@ -25,16 +25,21 @@ import (
 // uploaded database are used for this request only and are never stored.
 
 const (
-	kikoeruImportPrivateAddressesSetting       = "kikoeru_import_private_addresses"
-	kikoeruDatabaseImportPath                  = "/api/user-data/kikoeru/database"
-	kikoeruAccountImportTimeout                = 3 * time.Minute
-	kikoeruAccountRequestTimeout               = 30 * time.Second
-	kikoeruDatabaseImportTimeout               = time.Minute
-	maxKikoeruDatabaseBytes              int64 = 512 << 20
-	maxKikoeruImportRequestBytes               = 64 << 10
-	maxKikoeruTokenBytes                       = 4096
-	maxKikoeruNameBytes                        = 256
-	maxKikoeruPasswordBytes                    = 1024
+	kikoeruImportPrivateAddressesSetting = "kikoeru_import_private_addresses"
+	kikoeruDatabaseImportPath            = "/api/user-data/kikoeru/database"
+	kikoeruAccountImportTimeout          = 3 * time.Minute
+	kikoeruAccountRequestTimeout         = 30 * time.Second
+	kikoeruDatabaseImportTimeout         = time.Minute
+	// kikoeruDatabaseUploadTimeout is how long the database upload may take to
+	// arrive. It replaces the server-wide read timeout, which suits small JSON
+	// bodies, with a window in which a file up to maxKikoeruDatabaseBytes can
+	// be sent over an ordinary home uplink.
+	kikoeruDatabaseUploadTimeout       = 15 * time.Minute
+	maxKikoeruDatabaseBytes      int64 = 512 << 20
+	maxKikoeruImportRequestBytes       = 64 << 10
+	maxKikoeruTokenBytes               = 4096
+	maxKikoeruNameBytes                = 256
+	maxKikoeruPasswordBytes            = 1024
 )
 
 // Imports hold outbound connections or a large temporary file; a small fixed
@@ -42,6 +47,17 @@ const (
 var kikoeruImportSlots = make(chan struct{}, 2)
 
 var errKikoeruImportRequest = errors.New("invalid kikoeru import request")
+
+var (
+	// errKikoeruUploadInvalid is an upload that is not one database file with
+	// an account name.
+	errKikoeruUploadInvalid = errors.New("invalid kikoeru database upload")
+	// errKikoeruUploadInterrupted is an upload whose bytes stopped arriving,
+	// through a dropped connection or the upload window closing.
+	errKikoeruUploadInterrupted = errors.New("kikoeru database upload was interrupted")
+	// errKikoeruDatabaseTimeout is an uploaded database that took too long to read.
+	errKikoeruDatabaseTimeout = errors.New("kikoeru database read timed out")
+)
 
 type kikoeruImportOptions struct {
 	Sources []kikoeruImportSource `json:"sources"`
@@ -296,6 +312,9 @@ func (s *Server) importKikoeruDatabase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer releaseKikoeruImportSlot()
+	if err := http.NewResponseController(w).SetReadDeadline(time.Now().Add(kikoeruDatabaseUploadTimeout)); err != nil {
+		slog.Warn("kikoeru database upload keeps the server read timeout", "error", err)
+	}
 	file, err := os.CreateTemp("", "kikoto-kikoeru-*.sqlite3")
 	if err != nil {
 		writeError(w, err)
@@ -327,6 +346,9 @@ func (s *Server) importKikoeruDatabase(w http.ResponseWriter, r *http.Request) {
 		if !errors.Is(err, kikoeru.ErrDatabaseUserNotFound) {
 			slog.Warn("kikoeru database import failed", "error", err)
 		}
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			err = errKikoeruDatabaseTimeout
+		}
 		writeKikoeruImportError(w, err)
 		return
 	}
@@ -344,7 +366,7 @@ func (s *Server) importKikoeruDatabase(w http.ResponseWriter, r *http.Request) {
 func receiveKikoeruDatabase(r *http.Request, file *os.File) (string, bool, error) {
 	reader, err := r.MultipartReader()
 	if err != nil {
-		return "", false, errKikoeruImportRequest
+		return "", false, errKikoeruUploadInvalid
 	}
 	var userName string
 	var acknowledged, received bool
@@ -365,7 +387,7 @@ func receiveKikoeruDatabase(r *http.Request, file *os.File) (string, bool, error
 			acknowledged = value == "true"
 		case "file":
 			if received {
-				err = errKikoeruImportRequest
+				err = errKikoeruUploadInvalid
 				break
 			}
 			received = true
@@ -375,7 +397,7 @@ func receiveKikoeruDatabase(r *http.Request, file *os.File) (string, bool, error
 				err = personal.ErrLimit
 			}
 		default:
-			err = errKikoeruImportRequest
+			err = errKikoeruUploadInvalid
 		}
 		_ = part.Close()
 		if err != nil {
@@ -384,7 +406,7 @@ func receiveKikoeruDatabase(r *http.Request, file *os.File) (string, bool, error
 	}
 	userName = strings.TrimSpace(userName)
 	if !received || userName == "" || strings.IndexFunc(userName, unicode.IsControl) >= 0 {
-		return "", false, errKikoeruImportRequest
+		return "", false, errKikoeruUploadInvalid
 	}
 	return userName, acknowledged, nil
 }
@@ -395,7 +417,7 @@ func readMultipartField(part *multipart.Part, limit int) (string, error) {
 		return "", err
 	}
 	if len(data) > limit {
-		return "", errKikoeruImportRequest
+		return "", errKikoeruUploadInvalid
 	}
 	return string(data), nil
 }
@@ -405,10 +427,12 @@ func uploadError(err error) error {
 	if errors.As(err, &maxErr) || errors.Is(err, personal.ErrLimit) {
 		return personal.ErrLimit
 	}
-	if errors.Is(err, errKikoeruImportRequest) {
+	if errors.Is(err, errKikoeruUploadInvalid) {
 		return err
 	}
-	return errors.Join(errKikoeruImportRequest, err)
+	// What is left is the transport: the body ended early, the connection
+	// dropped, or the upload window closed. None of it is about the form.
+	return errors.Join(errKikoeruUploadInterrupted, err)
 }
 
 func acquireKikoeruImportSlot(w http.ResponseWriter) bool {
@@ -431,6 +455,12 @@ func writeKikoeruImportError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, errKikoeruImportRequest):
 		writeAPIError(w, http.StatusBadRequest, "kikoeru_invalid_request", "Check the address and sign-in details.", false)
+	case errors.Is(err, errKikoeruUploadInvalid):
+		writeAPIError(w, http.StatusBadRequest, "kikoeru_upload_invalid", "The upload must contain one database file and an account name.", false)
+	case errors.Is(err, errKikoeruUploadInterrupted):
+		writeAPIError(w, http.StatusRequestTimeout, "kikoeru_upload_interrupted", "The upload did not finish. Check the connection and try again.", true)
+	case errors.Is(err, errKikoeruDatabaseTimeout):
+		writeAPIError(w, http.StatusServiceUnavailable, "kikoeru_database_timeout", "Reading the database took too long. Try again.", true)
 	case errors.Is(err, errKikoeruSourceNotFound):
 		writeAPIError(w, http.StatusNotFound, "kikoeru_source_not_found", "The selected source is not available.", false)
 	case errors.Is(err, personal.ErrLimit), errors.Is(err, kikoeru.ErrAccountLimit):

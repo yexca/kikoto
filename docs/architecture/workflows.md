@@ -877,6 +877,17 @@ After an interruption, only a staged file matching a previously verified
 manifest hash may be reused; other selected files are copied from their chosen
 local or cache source again before verification and publication.
 
+Fetch planning identifies a target path without regard to letter case or
+Unicode composition, because a library can sit on a filesystem that stores such
+names as one file. Two selected files whose targets differ only that way are a
+target conflict for the user to resolve. Verification requires every planned
+file to be its own file in staging and refuses to publish otherwise.
+
+A remote track title is untrusted and is normalized once into the name the file
+is listed, planned, cached, and stored under: path separators and `.` or `..`
+components are dropped, and a title with nothing left is named after its
+position in its folder.
+
 Workflow candidates capture user-reviewable outcomes such as duplicate local
 folders, unavailable DLsite products, and old local locations left after remote
 fetches. A Fetch from a source with restricted outbound hosts also creates a

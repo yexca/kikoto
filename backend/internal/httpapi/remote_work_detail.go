@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -359,11 +358,10 @@ func (s *Server) remoteTrackLocationState(ctx context.Context, remoteSourceID in
 func remoteTrackDetails(sourceCode string, workCode string, tracks []kikoeru.Track, basePath string, locationState remoteTrackLocationStates) []remoteTrackDetail {
 	result := make([]remoteTrackDetail, 0, len(tracks))
 	for index, track := range tracks {
-		title := strings.TrimSpace(track.Title)
-		if title == "" {
-			title = fmt.Sprintf("Track %d", index+1)
-		}
-		path := cleanRemoteRelativePath(joinRemotePath(basePath, title))
+		// The listed title is the normalized name, so a client that joins
+		// titles into a path addresses the same file the server plans and stores.
+		title := remoteTrackName(track.Title, index)
+		path := remoteTrackPath(basePath, title)
 		var duration *int64
 		if track.Duration > 0 {
 			value := int64(track.Duration)

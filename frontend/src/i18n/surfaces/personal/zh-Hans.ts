@@ -220,6 +220,10 @@ export const personalHans = {
           permission: "你的账户不能导入个人数据。",
           read_only: "此实例为只读。",
           unavailable: "无法连接 Kikoeru 服务器，请重试。",
+          upload_invalid: "上传内容必须包含一个数据库文件和一个账号名。",
+          upload_interrupted: "上传未能在限定时间内完成。请检查网络连接后重试。",
+          upload_failed: "数据库上传失败。请检查与此服务器的连接后重试。",
+          database_timeout: "读取数据库耗时过长，请重试。",
         },
         risk: {
           accountTitle: "连接 Kikoeru 服务器之前",

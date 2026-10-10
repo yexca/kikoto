@@ -14,6 +14,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/localfs"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
+	"github.com/yexca/kikoto/backend/internal/workcode"
 )
 
 func (s *Server) createLocalScanRun(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +99,7 @@ func (s *Server) upsertLocalFileSource(ctx context.Context, tx *sql.Tx, scanDept
 	`, mustJSON(map[string]any{
 		"root":             s.cfg.DataRoot,
 		"scan_depth":       scanDepth,
-		"code_patterns":    []string{"RJ", "BJ", "VJ", "CC"},
+		"code_patterns":    workcode.Prefixes(),
 		"audio_extensions": []string{".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".opus", ".aac"},
 	})); err != nil {
 		return 0, err

@@ -654,7 +654,6 @@ export type WorkResolveResponse = {
   permanentlyFree: boolean | null;
   tags: string[];
   voiceActors: string[];
-  voiceCredits: VoiceCredit[];
 };
 
 export type VoiceCredit = {
@@ -1770,7 +1769,6 @@ export type CircleCatalogWork = {
   tags: string[];
   userTags: UserTag[];
   voiceActors: string[];
-  voiceRefs: RemoteEntityRef[];
   voiceCredits: VoiceCredit[];
   rating: number | null;
   ratingCount?: number | null;

@@ -104,7 +104,7 @@ func (s *Server) validateLocalScanDepthSettings(ctx context.Context, payload set
 			template = defaultRemoteSaveRootTemplate
 		}
 		if remoteSaveTemplateDepth(template, "source") > localScanDepthMax {
-			return invalidSettings(fmt.Sprintf("remoteSaveTemplate places works deeper than the maximum scan depth of %d", localScanDepthMax))
+			return invalidSettingsWithCode("save_template_too_deep", fmt.Sprintf("remoteSaveTemplate places works deeper than the maximum scan depth of %d", localScanDepthMax))
 		}
 	}
 	if payload.LocalScanDepth == nil {
@@ -115,7 +115,7 @@ func (s *Server) validateLocalScanDepthSettings(ctx context.Context, payload set
 		return err
 	}
 	if *payload.LocalScanDepth < required {
-		return invalidSettings(fmt.Sprintf("localScanDepth must be at least %d so scans reach the Fetch folders", required))
+		return invalidSettingsWithCode("scan_depth_too_shallow", fmt.Sprintf("localScanDepth must be at least %d so scans reach the Fetch folders", required))
 	}
 	return nil
 }

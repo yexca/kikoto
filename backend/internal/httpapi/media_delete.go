@@ -185,12 +185,12 @@ func (s *Server) loadLocalMediaDeleteTarget(ctx context.Context, localLocationID
 		WHERE location.id = ?
 	`, localLocationID).Scan(&mediaItemID, &workID, &sourceID, &locationType, &relPath, &availability); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return localMediaDeleteTarget{}, fmt.Errorf("local media location not found")
+			return localMediaDeleteTarget{}, notFoundError("media location not found")
 		}
 		return localMediaDeleteTarget{}, err
 	}
 	if locationType != "local" {
-		return localMediaDeleteTarget{}, fmt.Errorf("media location is not a local file")
+		return localMediaDeleteTarget{}, invalidRequestError("media location is not a local file")
 	}
 	targetPath, err := safeDataPath(s.cfg.DataRoot, relPath)
 	if err != nil {

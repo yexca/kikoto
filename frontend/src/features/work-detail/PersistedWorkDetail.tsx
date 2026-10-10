@@ -1743,7 +1743,7 @@ export function PersistedWorkDetailController({
   if (!work && !workPreview) {
     return (
       <div className="space-y-4">
-        <PageHeaderBackAction label={t("detailActions.back")} onBack={onBack} />
+        <PageHeaderBackAction label={t("common.back")} onBack={onBack} />
         <Card>
           <CardContent className="p-6 text-sm text-muted-foreground">
             {t("libraryDetail.remoteDirectoryLoading", { code })}

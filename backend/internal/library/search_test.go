@@ -100,3 +100,27 @@ func TestCodeSearchUsesExactNormalizedAliases(t *testing.T) {
 		t.Fatalf("code args = %#v, want %#v", args, want)
 	}
 }
+
+func TestParseSearchClausesNegatesEveryCircleAndVoiceKey(t *testing.T) {
+	want := []SearchClause{
+		{Kind: "exclude_circle", Value: "Example Circle"},
+		{Kind: "exclude_voice_actor", Value: "Example Voice"},
+		{Kind: "exclude_voice_actor", Value: "Second"},
+		{Kind: "exclude_voice_actor", Value: "Third"},
+		{Kind: "exclude_voice_actor", Value: "Wrapped Voice"},
+		{Kind: "exclude_circle", Value: "Wrapped Circle"},
+	}
+	got := ParseSearchClauses(`$-va:Wrapped Voice$ $-circle:Wrapped Circle$ -circle:"Example Circle" -va:'Example Voice' -voice:Second -creator: Third`)
+	// Wrapped clauses are collected before the remaining free-form parts.
+	want = append(want[4:], want[:4]...)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseSearchClauses() = %#v, want %#v", got, want)
+	}
+}
+
+func TestParseSearchClausesKeepsQuotedPhraseAsOneTextClause(t *testing.T) {
+	want := []SearchClause{{Kind: "text", Value: "calm night"}, {Kind: "text", Value: "rain"}}
+	if got := ParseSearchClauses(`"calm night" rain`); !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseSearchClauses() = %#v, want %#v", got, want)
+	}
+}

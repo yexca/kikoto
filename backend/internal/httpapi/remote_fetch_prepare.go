@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -68,9 +67,12 @@ func (s *Server) prepareRemoteFetch(ctx context.Context, requestedCode string) r
 		}
 	}
 	for index := range editions {
-		editions[index].LocalRoots, err = s.loadRemoteFetchLocalRoots(ctx, editions[index].WorkID, editions[index].PrimaryCode)
-		if err != nil {
+		// A failed read keeps the edition's empty list: the response always
+		// carries an array, never null.
+		if roots, err := s.loadRemoteFetchLocalRoots(ctx, editions[index].WorkID, editions[index].PrimaryCode); err != nil {
 			result.Warnings = append(result.Warnings, editions[index].PrimaryCode+" local roots: "+err.Error())
+		} else {
+			editions[index].LocalRoots = roots
 		}
 		availability, checkErr := s.readWorkSourceAvailability(ctx, editions[index].PrimaryCode)
 		if checkErr != nil {
@@ -335,10 +337,10 @@ func remoteFetchRootFromPath(value string, code string) string {
 func (s *Server) validateRemoteFetchTargetRoot(ctx context.Context, code string, root string) (string, error) {
 	root = filepath.ToSlash(filepath.Clean(filepath.FromSlash(strings.TrimSpace(root))))
 	if root == "" || root == "." {
-		return "", errors.New("fetch target root is required")
+		return "", invalidRequestError("fetch target folder is required")
 	}
 	if _, err := safeDataPath(s.cfg.DataRoot, root); err != nil {
-		return "", err
+		return "", invalidRequestError("fetch target folder must stay inside the library")
 	}
 	var exists bool
 	if err := s.db.QueryRowContext(ctx, `
@@ -354,7 +356,7 @@ func (s *Server) validateRemoteFetchTargetRoot(ctx context.Context, code string,
 		return "", err
 	}
 	if !exists {
-		return "", fmt.Errorf("target root %q does not belong to edition %s", root, strings.ToUpper(strings.TrimSpace(code)))
+		return "", invalidRequestError("the selected folder is not an active folder of this edition")
 	}
 	return root, nil
 }

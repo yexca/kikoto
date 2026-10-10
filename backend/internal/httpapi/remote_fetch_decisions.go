@@ -141,7 +141,7 @@ func applyRemoteFetchSourceDecision(item *remoteWorkSavePlanItem, decision remot
 		}
 	}
 	if selected == nil {
-		return fmt.Errorf("selected remote source %d does not provide %s", selectedID, item.Path)
+		return invalidRequestError("the selected remote source does not provide one of the chosen files")
 	}
 	item.RemoteSourceID = selected.SourceID
 	item.RemoteSourceCode = selected.SourceCode
@@ -159,14 +159,14 @@ func applyRemoteFetchSourceDecision(item *remoteWorkSavePlanItem, decision remot
 func normalizeFetchDecisionTarget(saveRoot string, requested string) (string, error) {
 	requested = filepath.ToSlash(strings.TrimSpace(requested))
 	if requested == "" {
-		return "", fmt.Errorf("renamed target path is required")
+		return "", invalidRequestError("renamed target path is required")
 	}
 	if filepath.IsAbs(requested) || filepath.VolumeName(requested) != "" {
-		return "", fmt.Errorf("renamed target must stay inside the Fetch root")
+		return "", invalidRequestError("renamed target must stay inside the Fetch root")
 	}
 	cleaned := filepath.ToSlash(filepath.Clean(filepath.FromSlash(requested)))
 	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
-		return "", fmt.Errorf("renamed target must stay inside the Fetch root")
+		return "", invalidRequestError("renamed target must stay inside the Fetch root")
 	}
 	root := strings.Trim(filepath.ToSlash(saveRoot), "/")
 	if cleaned != root && !strings.HasPrefix(cleaned, root+"/") {
@@ -213,7 +213,7 @@ func (s *Server) applyRemoteFetchConflictDecision(item *remoteWorkSavePlanItem, 
 		item.Status = "keep_both"
 		item.TargetConflict = false
 		item.TargetConflictReason = ""
-		seenTargets[next] = item.Path
+		seenTargets[fetchTargetKey(next)] = item.Path
 	case "rename":
 		if _, err := fetchPathRelativeToRoot(saveRoot, item.TargetPath); err != nil {
 			return err
@@ -237,7 +237,7 @@ func (s *Server) nextAvailableFetchTarget(targetPath string, sourceCode string, 
 			suffix = fmt.Sprintf(" (%s %d)", label, index)
 		}
 		candidate := base + suffix + ext
-		if _, exists := seenTargets[candidate]; exists {
+		if _, exists := seenTargets[fetchTargetKey(candidate)]; exists {
 			continue
 		}
 		absolute, err := safeDataPath(s.cfg.DataRoot, candidate)

@@ -6,9 +6,11 @@ import {
   createDemoRemoteFetchPlan,
   createRemoteFetchDraft,
   createRemoteFetchRequestId,
+  editionLocalRoots,
   remoteFetchExtensions,
   remoteFetchExtensionSelection,
   selectRemoteFetchEdition,
+  selectableFetchTargetRoots,
   setRemoteFetchExtensionIncluded,
 } from "./remoteFetchWorkspaceModel";
 
@@ -234,3 +236,36 @@ function plan(code: string): RemoteWorkSavePlan {
     },
   };
 }
+
+describe("Fetch target folders", () => {
+  const root = (id: number, rootPath: string, state: "active" | "pending_cleanup" | "ignored") => ({
+    id,
+    fileSourceId: 1,
+    rootPath,
+    role: "external" as const,
+    state,
+    primary: false,
+  });
+
+  it("offers only folders the server accepts as a target", () => {
+    const edition = {
+      localRoots: [
+        root(1, "Library/RJ00000000", "active"),
+        root(2, "Archive/RJ00000000", "pending_cleanup"),
+        root(3, "Ignored/RJ00000000", "ignored"),
+        root(4, "remote/RJ00000000", "active"),
+      ],
+    };
+
+    expect(selectableFetchTargetRoots(edition, "remote/RJ00000000").map((item) => item.rootPath)).toEqual([
+      "Library/RJ00000000",
+    ]);
+    expect(editionLocalRoots(edition)).toHaveLength(4);
+  });
+
+  it("treats a missing folder list as empty", () => {
+    expect(editionLocalRoots({ localRoots: null })).toEqual([]);
+    expect(editionLocalRoots(undefined)).toEqual([]);
+    expect(selectableFetchTargetRoots({ localRoots: null }, "remote/RJ00000000")).toEqual([]);
+  });
+});

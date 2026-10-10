@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/workcode"
 )
 
 type SearchClause struct {
@@ -13,14 +15,19 @@ type SearchClause struct {
 
 var wrappedSearchPattern = regexp.MustCompile(`(?i)\$(-?mytag|-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang|shelf):([^$]+)\$`)
 var splitSearchPattern = regexp.MustCompile(`(\S+):"([^"]+)"|(\S+):'([^']+)'|"([^"]+)"|'([^']+)'|(\S+)`)
-var workCodePattern = regexp.MustCompile(`(?i)^(RJ|BJ|VJ|CC)[0-9]{5,8}$`)
 var numericSearchPattern = regexp.MustCompile(`[^0-9.]`)
 
+// A leading "-" excludes on every key that names a circle, voice actor, or
+// tag. "-duration" is the one exception: it is an upper bound.
 var searchClauseKindByKey = map[string]string{
 	"circle":    "circle",
+	"-circle":   "exclude_circle",
 	"va":        "voice_actor",
 	"voice":     "voice_actor",
 	"creator":   "voice_actor",
+	"-va":       "exclude_voice_actor",
+	"-voice":    "exclude_voice_actor",
+	"-creator":  "exclude_voice_actor",
 	"tag":       "tag",
 	"tagw":      "tag",
 	"-tag":      "exclude_tag",
@@ -71,7 +78,7 @@ func ParseSearchClauses(query string) []SearchClause {
 			}
 		}
 		kind := "text"
-		if workCodePattern.MatchString(part) {
+		if workcode.Valid(part) {
 			kind = "code"
 		}
 		clauses = append(clauses, SearchClause{Kind: kind, Value: part})

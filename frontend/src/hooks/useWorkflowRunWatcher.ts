@@ -265,6 +265,33 @@ function subscribeToRun(runId: number, poll: boolean, listener: (snapshot: Workf
   };
 }
 
+/**
+ * Resolves with the run once it has left the queued and running states. It
+ * rejects when the run cannot be read at all, since nothing would then report
+ * its end.
+ */
+export function workflowRunSettled(runId: number): Promise<WorkflowRunDetail> {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    let unsubscribe: (() => void) | null = null;
+    const finish = (settle: () => void) => {
+      done = true;
+      settle();
+      // The first snapshot arrives while subscribing, before unsubscribe exists.
+      queueMicrotask(() => unsubscribe?.());
+    };
+    unsubscribe = subscribeToRun(runId, true, (snapshot) => {
+      if (done) return;
+      if (snapshot.run && !isActiveWorkflowStatus(snapshot.run.status)) {
+        const run = snapshot.run;
+        finish(() => resolve(run));
+      } else if (!snapshot.run && snapshot.error) {
+        finish(() => reject(new Error(snapshot.error)));
+      }
+    });
+  });
+}
+
 export function useWorkflowRunWatcher(runId: number | null, poll = true) {
   const [snapshot, setSnapshot] = useState<WorkflowRunSnapshot>(emptySnapshot);
 

@@ -30,7 +30,7 @@ func (s *Server) resolveWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	code := normalizeDLsiteCode(r.PathValue("code"))
+	code := normalizeWorkCode(r.PathValue("code"))
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
 		return
@@ -40,9 +40,10 @@ func (s *Server) resolveWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	// Only a metadata:sync user may fetch from the provider; anyone else
-	// resolves from what this site already stores.
-	canFetch := userHasPermission(actor, "metadata:sync")
+	// Only a metadata:sync user may fetch from the provider, and only for a
+	// code the provider publishes; everything else resolves from what this
+	// site already stores.
+	canFetch := userHasPermission(actor, "metadata:sync") && normalizeDLsiteCode(code) != ""
 	resolution, stage, err := s.resolveWorkEntityLinkRoute(r.Context(), code, request, canFetch)
 	if err != nil {
 		if stage == "metadata" {
@@ -72,7 +73,7 @@ func (s *Server) resolveWorkEntityLink(w http.ResponseWriter, r *http.Request) {
 // only. Unlike the POST resolver it never hydrates snapshots or contacts a
 // provider, so it stays inside Demo's read-only boundary.
 func (s *Server) lookupWorkEntityLink(w http.ResponseWriter, r *http.Request) {
-	code := normalizeDLsiteCode(r.PathValue("code"))
+	code := normalizeWorkCode(r.PathValue("code"))
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
 		return

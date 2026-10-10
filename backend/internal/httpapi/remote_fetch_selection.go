@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,11 +71,7 @@ func flattenRemoteSaveFiles(tracks []kikoeru.Track) []remoteSaveFile {
 	var walk func(basePath string, nodes []kikoeru.Track)
 	walk = func(basePath string, nodes []kikoeru.Track) {
 		for index, node := range nodes {
-			title := strings.TrimSpace(node.Title)
-			if title == "" {
-				title = fmt.Sprintf("Track %d", index+1)
-			}
-			path := cleanRemoteRelativePath(joinRemotePath(basePath, title))
+			path := remoteTrackPath(basePath, remoteTrackName(node.Title, index))
 			kind := remoteTrackKindForPath(node.Type, path)
 			if len(node.Children) > 0 || kind == "folder" {
 				walk(path, node.Children)

@@ -1025,12 +1025,8 @@ func (s *Server) streamRemoteSourceMedia(w http.ResponseWriter, r *http.Request)
 }
 
 func remoteMediaTrackURL(nodes []kikoeru.Track, targetPath string, basePath string) (string, string, bool) {
-	for _, node := range nodes {
-		title := strings.TrimSpace(node.Title)
-		if title == "" {
-			continue
-		}
-		path := cleanRemoteRelativePath(joinRemotePath(basePath, title))
+	for index, node := range nodes {
+		path := remoteTrackPath(basePath, remoteTrackName(node.Title, index))
 		kind := remoteTrackKindForPath(node.Type, path)
 		if len(node.Children) > 0 || kind == "folder" {
 			if value, childKind, ok := remoteMediaTrackURL(node.Children, targetPath, path); ok {

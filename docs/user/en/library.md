@@ -15,6 +15,9 @@ The Library is the main browsing surface for works.
   script: `100%` and `a_b` are not wildcards, full-width `ＡＢＣ` finds `abc`, and
   katakana finds the same word written in hiragana. Prefix a term with a
   clause such as `tag: 癒し`, `circle:`, `va:`, or `mytag:` to search one field.
+  Put `-` in front of `tag:`, `mytag:`, `circle:`, or `va:` to leave out the
+  works that match, and quote a phrase, as in `"calm night"` or
+  `circle:"Example Circle"`, to match it as a whole.
 - A DLsite tag also matches its name in every language Kikoto has fetched for
   that tag: when an edition requested in English reports `Healing` for the tag
   shown as `癒し`, `tag: healing` finds both. Results whose tag, title, circle,

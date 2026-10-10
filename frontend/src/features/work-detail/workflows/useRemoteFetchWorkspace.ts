@@ -15,8 +15,8 @@ import {
   type FetchIntent,
   type RemoteFetchDraft,
 } from "@/features/work-detail/workflows/remoteFetchWorkspaceModel";
-import { api, ApiError, type RemoteFetchFileDecision, type RemoteWorkSaveResult } from "@/lib/api";
-import { fetchDestinationCode, librarySettingsPath } from "@/lib/fetchDestination";
+import { api, type RemoteFetchFileDecision, type RemoteWorkSaveResult } from "@/lib/api";
+import { fetchDestinationCode, fetchSubmissionFailure, librarySettingsPath } from "@/lib/fetchDestination";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 import { filterRemoteFetchPaths } from "@/lib/remoteFetchFilters";
 
@@ -206,9 +206,13 @@ export function useRemoteFetchWorkspace({
         // The library setting, not the plan, needs attention.
       } else if (!publishing) {
         toast.notify(toastFromError(error, t("remoteFetch.planFailed")));
-      } else if (error instanceof ApiError && error.status === 401) {
+      } else if (fetchSubmissionFailure(error) === "sign_in") {
         toast.notify(toastFromError(error, t("remoteFetch.submissionFailed")));
-      } else if (error instanceof ApiError && error.status === 409) {
+      } else if (fetchSubmissionFailure(error) === "rejected") {
+        // The server answered and refused: say why, and that nothing was started.
+        const reason = toastFromError(error, t("remoteFetch.submissionFailed"));
+        toast.notify({ ...reason, message: t("remoteFetch.notStarted", { reason: reason.message }) });
+      } else if (fetchSubmissionFailure(error) === "plan_changed") {
         try {
           const plan = await api.planRemoteSourceWorkFetch(
             draft.intent.sourceId,

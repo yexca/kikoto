@@ -91,8 +91,8 @@ export function CircleCatalogOptionsSheet({
               value={query}
               onKeyDown={dismissKeyboardOnEnter}
               onChange={(event) => onQueryChange(event.target.value)}
-              placeholder={t("sheets.searchCircleCatalogWorks", { defaultValue: "Search circle catalog works" })}
-              aria-label={t("sheets.searchCircleCatalogWorks", { defaultValue: "Search circle catalog works" })}
+              placeholder={t("sheets.searchCircleCatalogWorks")}
+              aria-label={t("sheets.searchCircleCatalogWorks")}
             />
             {query.trim() && (
               <Button

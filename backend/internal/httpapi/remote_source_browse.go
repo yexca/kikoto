@@ -412,6 +412,10 @@ func remoteSourcePushdownQuery(clause listSearchClause) string {
 		return "$circle:" + clause.Value + "$"
 	case "voice_actor":
 		return "$va:" + clause.Value + "$"
+	case "exclude_circle":
+		return "$-circle:" + clause.Value + "$"
+	case "exclude_voice_actor":
+		return "$-va:" + clause.Value + "$"
 	case "tag":
 		return "$tag:" + clause.Value + "$"
 	case "exclude_tag":
@@ -468,7 +472,9 @@ func remoteWorkSummaryMatchesClause(work remoteWorkSummary, clause listSearchCla
 		return agerating.Matches(work.AgeRating, needle)
 	case "code", "circle":
 		return remoteWorkSummaryMatchesTextClause(work, clause.Kind, needle)
-	case "tag", "exclude_tag", "voice_actor", "user_tag", "exclude_user_tag":
+	case "exclude_circle":
+		return !remoteWorkSummaryMatchesTextClause(work, "circle", needle)
+	case "tag", "exclude_tag", "voice_actor", "exclude_voice_actor", "user_tag", "exclude_user_tag":
 		return remoteWorkSummaryMatchesTagClause(work, clause.Kind, needle)
 	case "rating_min", "sales_min", "duration_min", "duration_max":
 		return remoteWorkSummaryMatchesNumericClause(work, clause.Kind, needle)
@@ -495,13 +501,13 @@ func remoteWorkSummaryMatchesTagClause(work remoteWorkSummary, kind, needle stri
 	switch kind {
 	case "tag", "exclude_tag":
 		values = work.Tags
-	case "voice_actor":
+	case "voice_actor", "exclude_voice_actor":
 		values = work.VoiceActors
 	default:
 		values = work.SearchUserTags
 	}
 	matched := stringSliceContainsSubstringFold(values, needle)
-	if kind == "exclude_tag" || kind == "exclude_user_tag" {
+	if kind == "exclude_tag" || kind == "exclude_voice_actor" || kind == "exclude_user_tag" {
 		return !matched
 	}
 	return matched

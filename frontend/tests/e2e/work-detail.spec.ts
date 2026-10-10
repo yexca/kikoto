@@ -136,6 +136,37 @@ test("unknown routes and missing work codes render not found states", async ({ p
   await expect(page.getByText("Loading RJ00000054...")).toHaveCount(0);
 });
 
+test("a work address that fails to load ends in a retry or not-found state, never in endless loading", async ({
+  page,
+}) => {
+  await mockApplication(page);
+  let summaryStatus = 500;
+  await page.route("**/api/works/RJ00000000?*", async (route) => {
+    if (summaryStatus === 200) return route.fallback();
+    await route.fulfill({
+      status: summaryStatus,
+      json:
+        summaryStatus === 400
+          ? { error: "invalid work id", code: "invalid_request", retryable: false }
+          : { error: "internal server error", code: "internal_error", retryable: false },
+    });
+  });
+
+  await page.goto("/RJ00000000");
+  await expect(page.getByRole("heading", { name: "Work could not be loaded" })).toBeVisible();
+  await expect(page.getByText("Loading RJ00000000...")).toHaveCount(0);
+
+  summaryStatus = 200;
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Mark: Unmarked" })).toBeVisible();
+
+  // An address the server rejects cannot name a work: it is a miss, not a wait.
+  summaryStatus = 400;
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Work not found" })).toBeVisible();
+  await expect(page.getByText("Loading RJ00000000...")).toHaveCount(0);
+});
+
 test("detail quick marks preserve the cached directory tree", async ({ page }) => {
   let mediaRequests = 0;
   const mediaItems = [mediaFixture(1, "track.mp3", "RJ00000000/track.mp3", "audio")];

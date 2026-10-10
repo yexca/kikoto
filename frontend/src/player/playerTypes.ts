@@ -38,6 +38,8 @@ export type PlayerTrack = {
 
 export type LyricsPreferenceTarget = {
   mediaItemId: number;
+  /** The media kind of the track the lyrics accompany. */
+  kind?: string;
   playbackKey?: string;
   lyricsChoices?: LyricsChoice[];
   autoLyricsLocationId?: number | null;

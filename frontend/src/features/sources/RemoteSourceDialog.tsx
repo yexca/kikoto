@@ -9,6 +9,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { api, type FileSource, type FileSourceDetectResult } from "@/lib/api";
+import { wholeNumberFromInput } from "@/lib/numberInput";
 import { sourceProvidesMetadata, withMetadataCapability } from "@/lib/remoteSourceCapabilities";
 import { cn } from "@/lib/tailwindClassNames";
 
@@ -289,7 +290,9 @@ export function RemoteSourceDialog({
                         min={1}
                         value={source.priority}
                         readOnly={readOnly}
-                        onChange={(event) => patch({ priority: Number(event.target.value) })}
+                        step={1}
+                        inputMode="numeric"
+                        onChange={(event) => patch({ priority: wholeNumberFromInput(event.target.value) })}
                       />
                     </Field>
                   </div>

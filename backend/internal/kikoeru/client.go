@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/outbound"
+	"github.com/yexca/kikoto/backend/internal/workcode"
 )
 
 type Client struct {
@@ -37,6 +37,10 @@ func IsNotFound(err error) bool {
 	var status StatusError
 	return errors.As(err, &status) && status.Code == http.StatusNotFound
 }
+
+// ErrWorkNotFound reports that the source listed its works and none carries
+// the requested code. A listing that could not be read is not this error.
+var ErrWorkNotFound = errors.New("remote source has no matching work")
 
 // ErrResponseTooLarge reports a response body above the client's bound.
 var ErrResponseTooLarge = errors.New("remote source response is too large")
@@ -428,37 +432,43 @@ func (c *Client) FindWorkByCode(ctx context.Context, code string) (Work, json.Ra
 	if code == "" {
 		return Work{}, nil, fmt.Errorf("work code is required")
 	}
-	if work, raw, found := c.findWorkBySearch(ctx, code); found {
+	work, raw, found, searchErr := c.findWorkBySearch(ctx, code)
+	if found {
 		return work, raw, nil
 	}
-	if work, raw, found := c.findWorkByPages(ctx, code); found {
+	work, raw, found, pagesErr := c.findWorkByPages(ctx, code)
+	if found {
 		return work, raw, nil
 	}
-	return Work{}, nil, fmt.Errorf("remote source returned no matching work for %s", code)
+	if searchErr != nil || pagesErr != nil {
+		return Work{}, nil, fmt.Errorf("remote source could not be searched for %s: %w", code, errors.Join(searchErr, pagesErr))
+	}
+	return Work{}, nil, fmt.Errorf("%w for %s", ErrWorkNotFound, code)
 }
 
-func (c *Client) findWorkBySearch(ctx context.Context, code string) (Work, json.RawMessage, bool) {
+func (c *Client) findWorkBySearch(ctx context.Context, code string) (Work, json.RawMessage, bool, error) {
 	page, err := c.ListWorks(ctx, 1, 20, code)
 	if err != nil {
-		return Work{}, nil, false
+		return Work{}, nil, false, err
 	}
-	return findWorkInPage(page.Works, code)
+	work, raw, found := findWorkInPage(page.Works, code)
+	return work, raw, found, nil
 }
 
-func (c *Client) findWorkByPages(ctx context.Context, code string) (Work, json.RawMessage, bool) {
+func (c *Client) findWorkByPages(ctx context.Context, code string) (Work, json.RawMessage, bool, error) {
 	for pageNumber := 1; pageNumber <= 50; pageNumber++ {
 		page, err := c.ListWorks(ctx, pageNumber, 100, "")
 		if err != nil {
-			break
+			return Work{}, nil, false, err
 		}
 		if work, raw, found := findWorkInPage(page.Works, code); found {
-			return work, raw, true
+			return work, raw, true, nil
 		}
 		if workPageComplete(page, pageNumber) {
 			break
 		}
 	}
-	return Work{}, nil, false
+	return Work{}, nil, false, nil
 }
 
 func findWorkInPage(works []Work, code string) (Work, json.RawMessage, bool) {
@@ -584,14 +594,7 @@ func cloneValues(values url.Values) url.Values {
 }
 
 func normalizeWorkCode(value string) string {
-	code := strings.ToUpper(strings.TrimSpace(value))
-	if code == "" {
-		return ""
-	}
-	if matched, _ := regexp.MatchString(`^(RJ|BJ|VJ|CC)[0-9]{5,8}$`, code); matched {
-		return code
-	}
-	return ""
+	return workcode.Normalize(value)
 }
 
 func (c *Client) normalizeTrackURLs(tracks []Track) {

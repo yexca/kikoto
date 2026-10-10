@@ -278,3 +278,38 @@ func TestSearchLeavesLongQueueToBackgroundWorker(t *testing.T) {
 	<-done
 	assertSearchCodes(t, store, 0, "backlog", ordinals...)
 }
+
+// A leading "-" excludes on the circle and voice actor fields exactly as it does
+// on tags, and a quoted phrase is one needle rather than independent words.
+func TestSearchExcludesCirclesAndVoicesAndKeepsQuotedPhrasesWhole(t *testing.T) {
+	db := openSearchTestDB(t, "../../migrations")
+	credited := insertSearchWork(t, db, 6, "Example calm night")
+	other := insertSearchWork(t, db, 7, "Example night calm")
+	personID := execSearchFixture(t, db, `INSERT INTO person (display_name) VALUES ('Example Voice')`)
+	execSearchFixture(t, db, `INSERT INTO work_credit (work_id, person_id, role) VALUES (?, ?, 'voice_actor')`, credited, personID)
+	circleID := execSearchFixture(t, db, `INSERT INTO party (display_name) VALUES ('Example Circle')`)
+	execSearchFixture(t, db, `INSERT INTO work_party (work_id, party_id, role, source) VALUES (?, ?, 'circle', 'test')`, credited, circleID)
+	otherCircleID := execSearchFixture(t, db, `INSERT INTO party (display_name) VALUES ('Other Group')`)
+	execSearchFixture(t, db, `INSERT INTO work_party (work_id, party_id, role, source) VALUES (?, ?, 'circle', 'test')`, other, otherCircleID)
+	store := NewStore(db)
+
+	for _, tc := range []struct {
+		query    string
+		ordinals []int
+	}{
+		{`va:"Example Voice"`, []int{6}},
+		{`-va:"Example Voice"`, []int{7}},
+		{`$-va:Example Voice$`, []int{7}},
+		{`-voice:"Example Voice"`, []int{7}},
+		{`circle:"Example Circle"`, []int{6}},
+		{`-circle:"Example Circle"`, []int{7}},
+		{`$-circle:Example Circle$`, []int{7}},
+		{`-circle:"Example Circle" -va:"Example Voice"`, []int{7}},
+		{`-circle:"Other Group" -va:"Example Voice"`, nil},
+		{`calm night`, []int{6, 7}},
+		{`"calm night"`, []int{6}},
+		{`'night calm'`, []int{7}},
+	} {
+		assertSearchCodes(t, store, 0, tc.query, tc.ordinals...)
+	}
+}

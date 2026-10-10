@@ -140,7 +140,7 @@ func writeLyricsFetchError(w http.ResponseWriter, workID int64, sourceID int64, 
 }
 
 func normalizeLyricsFetchRequest(payload lyricsFetchRequest) ([]string, map[int64]string, error) {
-	if payload.SourceID <= 0 || payload.FolderID <= 0 || normalizeDLsiteCode(payload.RemoteCode) == "" {
+	if payload.SourceID <= 0 || payload.FolderID <= 0 || normalizeWorkCode(payload.RemoteCode) == "" {
 		return nil, nil, errors.New("sourceId, remoteCode, and folderId are required")
 	}
 	if len(payload.Files) == 0 || len(payload.Files) > maxLyricsFetchFiles {
@@ -180,7 +180,7 @@ func (s *Server) runLyricsFetch(ctx context.Context, userID int64, workID int64,
 	if err != nil {
 		return lyricsFetchResult{}, err
 	}
-	remoteCode := normalizeDLsiteCode(payload.RemoteCode)
+	remoteCode := normalizeWorkCode(payload.RemoteCode)
 	language, err := s.lyricsFetchEditionLanguage(ctx, family, remoteCode)
 	if err != nil {
 		return lyricsFetchResult{}, err
@@ -313,11 +313,7 @@ func selectLyricsFetchFiles(tracks []kikoeru.Track, paths []string, source remot
 
 func collectLyricsTrackURLs(nodes []kikoeru.Track, basePath string, result map[string]string) {
 	for index, node := range nodes {
-		title := strings.TrimSpace(node.Title)
-		if title == "" {
-			title = fmt.Sprintf("Track %d", index+1)
-		}
-		nodePath := cleanRemoteRelativePath(joinRemotePath(basePath, title))
+		nodePath := remoteTrackPath(basePath, remoteTrackName(node.Title, index))
 		if len(node.Children) > 0 || remoteTrackKindForPath(node.Type, nodePath) == "folder" {
 			collectLyricsTrackURLs(node.Children, nodePath, result)
 			continue

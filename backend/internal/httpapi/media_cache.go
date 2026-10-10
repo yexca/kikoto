@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -48,7 +47,7 @@ func (s *Server) cacheRemoteSourceWorkMedia(w http.ResponseWriter, r *http.Reque
 	}
 	locationID, err := s.findRemoteMediaLocationByPath(r.Context(), syncResult.WorkID, sourceID, remotePath)
 	if err != nil {
-		writeAPIError(w, http.StatusNotFound, "not_found", "remote media was not found", false)
+		writeError(w, err)
 		return
 	}
 	cacheResult, err := s.enqueueRemoteMediaCache(r.Context(), locationID)
@@ -74,7 +73,7 @@ func (s *Server) findRemoteMediaLocationByPath(ctx context.Context, workID int64
 		LIMIT 1
 	`, workID, sourceID, remotePath).Scan(&id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, fmt.Errorf("remote media location not found")
+			return 0, notFoundError("remote media was not found")
 		}
 		return 0, err
 	}
@@ -164,15 +163,18 @@ func (s *Server) loadMediaCacheTarget(ctx context.Context, remoteLocationID int6
 		&availability,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return mediaCacheTarget{}, fmt.Errorf("media location not found")
+			return mediaCacheTarget{}, notFoundError("media location not found")
 		}
 		return mediaCacheTarget{}, err
 	}
-	if locationType != "remote_stream" || availability != "available" {
-		return mediaCacheTarget{}, fmt.Errorf("media location is not an available remote stream")
+	if locationType != "remote_stream" {
+		return mediaCacheTarget{}, invalidRequestError("media location is not a remote stream")
+	}
+	if availability != "available" {
+		return mediaCacheTarget{}, conflictError("remote stream is no longer available")
 	}
 	if !s.settingBoolContext(ctx, "remote_cache_enabled", false) {
-		return mediaCacheTarget{}, fmt.Errorf("remote cache is not enabled")
+		return mediaCacheTarget{}, conflictError("remote cache is not enabled")
 	}
 	target.RemoteLocationID = remoteLocationID
 	target.CachePath = cacheMediaRelPath(target.SourceCode, target.WorkCode, target.RemotePath)

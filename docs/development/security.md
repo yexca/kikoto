@@ -140,6 +140,27 @@ of an existing local work folder. It requires `downloads:manage`, plus
 - Errors expose fixed messages only. Upstream URLs, local paths, and detailed
   failures stay in protected logs.
 
+### Remote text preview
+
+`GET /api/media/{id}/text` reads a text file from where the location's bytes
+are: a local file from the library, a cached copy from the cache, and a
+`remote_stream` location from the URL its source listed for it.
+`GET /api/remote-sources/{id}/works/{code}/text` reads a file of the source's
+current tree the same way.
+
+- The source must be enabled and compatible. The listed URL is untrusted: it
+  must be HTTP(S) without credentials and pass the source's outbound policy
+  before any request, and the shared source transport validates every redirect
+  hop. A URL outside the source's configured origins is refused without a
+  request.
+- A read has a 20-second bound and a 512 KiB limit; local and cached files
+  share the size limit.
+- Both endpoints accept the same files: one the source lists as text, or one
+  with a `.txt`, `.md`, `.json`, `.lrc`, `.cue`, `.srt`, `.vtt`, `.ass`,
+  `.csv`, `.log`, `.ini`, `.yaml`, or `.yml` extension.
+- Errors expose fixed messages only. Upstream URLs and local paths stay in
+  protected logs.
+
 ### Purchase bonus detection
 
 Metadata sync may look up a purchase bonus's parent product (see
@@ -161,6 +182,8 @@ Metadata sync may look up a purchase bonus's parent product (see
 
 `POST /api/user-data/kikoeru/database` streams an uploaded Kikoeru SQLite file,
 up to 512 MiB, to a temporary file that is deleted when the request ends. The
+upload is read under its own 15-minute deadline in place of the server's
+request read timeout. The
 file is opened read-only and immutable with `trusted_schema` off, only the base
 `t_review` table is queried (a view of that name is rejected), and text length
 and row count are bounded. The user table's password hashes are never read.

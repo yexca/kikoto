@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"regexp"
 	"strings"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/workcode"
 )
 
 const MaxTransferBytes = 10 << 20
@@ -14,8 +15,6 @@ const maxTransferWorks = 20000
 const maxTransferTags = 5000
 const maxTransferLists = 1000
 const maxTransferItems = 50000
-
-var primaryCodePattern = regexp.MustCompile(`^(RJ|BJ|VJ|CC)[0-9]{5,8}$`)
 
 type Backup struct {
 	Format     string           `json:"format"`
@@ -134,8 +133,8 @@ func normalizeTimestamp(value string) (string, error) {
 }
 
 func normalizeCode(value string) (string, error) {
-	value = strings.ToUpper(strings.TrimSpace(value))
-	if !primaryCodePattern.MatchString(value) {
+	value = workcode.Normalize(value)
+	if value == "" {
 		return "", ErrInvalid
 	}
 	return value, nil

@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func TestResolveIsReadOnlyForCanonicalAliasEditionAndLegacySnapshot(t *testing.T) {
@@ -156,5 +158,52 @@ func TestColdRecommendationWaitersLeaveConnectionsForLibraryReads(t *testing.T) 
 		if err := <-errors; err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// A scanned work whose prefix no metadata provider publishes is still a work:
+// every code-addressed read answers for it, and resolving its entity links
+// never turns into a provider request.
+func TestCodeAddressedReadsAcceptEveryScannedWorkPrefix(t *testing.T) {
+	db := openMigratedTestDB(t)
+	code := testfixture.WorkCode(testfixture.PrefixCC, 0)
+	if _, err := db.Exec("INSERT INTO work (id, primary_code, title) VALUES (10, ?, 'Example Work')", code); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	for _, read := range []struct {
+		name    string
+		path    string
+		key     string
+		handler http.HandlerFunc
+	}{
+		{"resolve", "/api/works/" + code + "/resolve", "code", server.resolveWorkCode},
+		{"summary", "/api/works/" + code + "?includeMedia=false", "id", server.getWork},
+		{"media", "/api/works/" + code + "/media", "id", server.getWorkMedia},
+	} {
+		request := httptest.NewRequest(http.MethodGet, read.path, nil)
+		request.SetPathValue(read.key, strings.ToLower(code))
+		response := httptest.NewRecorder()
+		read.handler(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s by code: %d %s", read.name, response.Code, response.Body.String())
+		}
+	}
+
+	lookup := httptest.NewRequest(http.MethodGet, "/api/works/"+code+"/entity-links?kind=circle&name=Example+Circle", nil)
+	lookup.SetPathValue("code", code)
+	lookupResponse := httptest.NewRecorder()
+	server.lookupWorkEntityLink(lookupResponse, lookup)
+	if lookupResponse.Code != http.StatusNotFound {
+		t.Fatalf("entity link lookup by code: %d %s", lookupResponse.Code, lookupResponse.Body.String())
+	}
+
+	resolve := httptest.NewRequest(http.MethodPost, "/api/works/"+code+"/entity-links/resolve", strings.NewReader(`{"kind":"circle","name":"Example Circle"}`))
+	resolve.SetPathValue("code", code)
+	resolve = resolve.WithContext(context.WithValue(resolve.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"library:read", "metadata:sync"}}))
+	resolveResponse := httptest.NewRecorder()
+	server.resolveWorkEntityLink(resolveResponse, resolve)
+	if resolveResponse.Code != http.StatusNotFound {
+		t.Fatalf("entity link resolve by code: %d %s", resolveResponse.Code, resolveResponse.Body.String())
 	}
 }

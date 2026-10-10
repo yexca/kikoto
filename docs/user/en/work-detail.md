@@ -191,7 +191,7 @@ A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), 
   images, which takes a second click to confirm and resets after a few seconds
   or on another image. It fills the screen on phones and opens above the
   floating desktop player.
-- Converts local and remote text previews to UTF-8 on demand, using byte-order
+- Converts local, cached, and remote text previews to UTF-8 on demand, using byte-order
   marks, declared charsets, and automatic legacy-encoding detection without
   rewriting the source file.
 - Reserves bottom scroll space while the desktop Compact player is active so the

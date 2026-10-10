@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 )
 
@@ -19,6 +20,20 @@ func (s *Server) mediaItemIDForRemotePath(ctx context.Context, workID int64, rem
 		ORDER BY item.id ASC
 		LIMIT 1
 	`, workID, remotePath).Scan(&mediaItemID)
+	return mediaItemID, err
+}
+
+// remoteFetchMediaItemID resolves the stored media item a planned remote file
+// is recorded under. A file the stored listing does not contain is reported in
+// terms of the file, not of the lookup that missed.
+func (s *Server) remoteFetchMediaItemID(ctx context.Context, workID int64, item remoteWorkSavePlanItem) (int64, error) {
+	if item.MediaItemID > 0 {
+		return item.MediaItemID, nil
+	}
+	mediaItemID, err := s.mediaItemIDForRemotePath(ctx, workID, item.Path)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("%s is not in the stored file listing of this work; the remote listing changed after the Fetch was planned", item.Path)
+	}
 	return mediaItemID, err
 }
 
@@ -195,7 +210,7 @@ func ensureFetchSourcePresence(ctx context.Context, tx *sql.Tx, workID int64, so
 				last_checked_at = CURRENT_TIMESTAMP,
 				updated_at = CURRENT_TIMESTAMP
 			WHERE work_id = ? AND file_source_id = ? AND presence_type = ?
-		`, normalizeDLsiteCode(workCode), workID, sourceID, sourcePresenceTypeRemoteSource)
+		`, normalizeWorkCode(workCode), workID, sourceID, sourcePresenceTypeRemoteSource)
 		return updateErr
 	}
 	if !errors.Is(err, sql.ErrNoRows) {

@@ -50,7 +50,7 @@ func (s *Server) migrateFlatCoverCache(ctx context.Context) error {
 		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
 			continue
 		}
-		code := normalizeDLsiteCode(strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())))
+		code := normalizeWorkCode(strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())))
 		if code == "" {
 			continue
 		}

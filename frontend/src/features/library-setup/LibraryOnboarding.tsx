@@ -13,6 +13,7 @@ import { currentClientStorageScope } from "@/lib/clientStorageScope";
 
 import { LibraryLayoutEditor } from "./LibraryLayoutEditor";
 import { LegacyWorkflowMigrationReview } from "./LegacyWorkflowMigrationReview";
+import { metadataStartOutcome, metadataStartSettled, type MetadataStartOutcome } from "./metadataStartOutcome";
 
 type Step = "layout" | "scan" | "workflows" | "metadata" | "finish";
 
@@ -47,6 +48,15 @@ function LibraryOnboardingGate() {
   return <LibraryOnboardingDialog initial={layout} onClose={() => setPostponed(true)} />;
 }
 
+const metadataOutcomeCopy: Record<MetadataStartOutcome | "idle", string> = {
+  idle: "librarySetup.onboarding.metadataIdle",
+  queued: "librarySetup.onboarding.metadataQueued",
+  waiting: "librarySetup.onboarding.metadataWaiting",
+  finished: "librarySetup.onboarding.metadataFinished",
+  not_started: "librarySetup.onboarding.metadataNotStarted",
+  attention: "librarySetup.onboarding.metadataAttention",
+};
+
 function LibraryOnboardingDialog({ initial, onClose }: { initial: LibraryLayout; onClose: () => void }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -55,7 +65,7 @@ function LibraryOnboardingDialog({ initial, onClose }: { initial: LibraryLayout;
   const [step, setStep] = useState<Step>("layout");
   const [scanRunId, setScanRunId] = useState<number | null>(initial.migrationScanRunId ?? null);
   const [startingScan, setStartingScan] = useState(false);
-  const [metadataQueued, setMetadataQueued] = useState(false);
+  const [metadataOutcome, setMetadataOutcome] = useState<MetadataStartOutcome | null>(null);
   const [startingMetadata, setStartingMetadata] = useState(false);
   const [triggers, setTriggers] = useState(initial.localScanTriggers);
   const [finishing, setFinishing] = useState(false);
@@ -81,8 +91,7 @@ function LibraryOnboardingDialog({ initial, onClose }: { initial: LibraryLayout;
   const startMetadata = async () => {
     setStartingMetadata(true);
     try {
-      await api.startMetadataOnboarding();
-      setMetadataQueued(true);
+      setMetadataOutcome(metadataStartOutcome((await api.startMetadataOnboarding()).status));
     } catch (error) {
       toast.notify(toastFromError(error, t("librarySetup.onboarding.metadataFailed")));
     } finally {
@@ -162,10 +171,14 @@ function LibraryOnboardingDialog({ initial, onClose }: { initial: LibraryLayout;
           <div className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-3">
             {canSyncMetadata ? (
               <>
-                <Button size="sm" disabled={startingMetadata || metadataQueued} onClick={() => void startMetadata()}>
+                <Button
+                  size="sm"
+                  disabled={startingMetadata || metadataStartSettled(metadataOutcome)}
+                  onClick={() => void startMetadata()}
+                >
                   {startingMetadata ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : metadataQueued ? (
+                  ) : metadataStartSettled(metadataOutcome) ? (
                     <CheckCircle2 className="h-4 w-4" />
                   ) : (
                     <RefreshCw className="h-4 w-4" />
@@ -173,9 +186,7 @@ function LibraryOnboardingDialog({ initial, onClose }: { initial: LibraryLayout;
                   {t("librarySetup.onboarding.syncMetadata")}
                 </Button>
                 <span role="status" className="text-sm text-muted-foreground">
-                  {metadataQueued
-                    ? t("librarySetup.onboarding.metadataQueued")
-                    : t("librarySetup.onboarding.metadataIdle")}
+                  {t(metadataOutcomeCopy[metadataOutcome ?? "idle"])}
                 </span>
               </>
             ) : (
@@ -224,7 +235,9 @@ function LibraryOnboardingDialog({ initial, onClose }: { initial: LibraryLayout;
         )}
         {step === "metadata" && (
           <Button size="sm" onClick={() => setStep("finish")}>
-            {metadataQueued ? t("librarySetup.onboarding.next") : t("librarySetup.onboarding.skip")}
+            {metadataStartSettled(metadataOutcome)
+              ? t("librarySetup.onboarding.next")
+              : t("librarySetup.onboarding.skip")}
           </Button>
         )}
         {step === "finish" && (

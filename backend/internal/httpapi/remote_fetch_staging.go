@@ -220,6 +220,7 @@ func (s *Server) stageRemoteFetchItems(ctx context.Context, manifest remoteFetch
 			return err
 		}
 	}
+	sources := distinctFetchFiles{}
 	for _, item := range plan.Items {
 		if item.Action == "skip" || item.Action == "exclude" {
 			continue
@@ -240,6 +241,16 @@ func (s *Server) stageRemoteFetchItems(ctx context.Context, manifest remoteFetch
 			sourcePath, err := s.remoteFetchSourcePath(item)
 			if err != nil {
 				return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
+			}
+			// Two downloads that the cache stores as one file would publish the
+			// same bytes under both names.
+			if item.Action != "copy_local" {
+				if other, err := sources.claim(sourcePath, relativePath); err != nil {
+					return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
+				} else if other != "" {
+					err := fmt.Errorf("downloads for %s and %s are one file in the cache; fetch them one at a time", other, relativePath)
+					return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
+				}
 			}
 			if err := copyFile(sourcePath, stagedPath); err != nil {
 				return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
@@ -307,6 +318,7 @@ func (s *Server) remoteFetchSourcePath(item remoteWorkSavePlanItem) (string, err
 
 func (s *Server) verifyRemoteFetchItems(ctx context.Context, manifest remoteFetchManifestRecord, plan remoteWorkSavePlan, paths remoteFetchPublishPaths) error {
 	_ = s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, "verify", "running", nil)
+	staged := distinctFetchFiles{}
 	for _, item := range plan.Items {
 		if item.Action == "skip" || item.Action == "exclude" {
 			continue
@@ -315,7 +327,14 @@ func (s *Server) verifyRemoteFetchItems(ctx context.Context, manifest remoteFetc
 		if err != nil {
 			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 		}
-		hash, size, err := hashFile(filepath.Join(paths.stageRoot, filepath.FromSlash(relativePath)))
+		stagedPath := filepath.Join(paths.stageRoot, filepath.FromSlash(relativePath))
+		if other, err := staged.claim(stagedPath, relativePath); err != nil {
+			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
+		} else if other != "" {
+			err := fmt.Errorf("staged files %s and %s are one file on this filesystem; the Fetch would publish fewer files than planned", other, relativePath)
+			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
+		}
+		hash, size, err := hashFile(stagedPath)
 		if err != nil {
 			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 		}
@@ -335,6 +354,33 @@ func (s *Server) verifyRemoteFetchItems(ctx context.Context, manifest remoteFetc
 		return err
 	}
 	return s.updateRemoteFetchManifestState(ctx, manifest.ID, "verified", "")
+}
+
+// distinctFetchFiles checks that every planned file is its own file on disk.
+// Two planned paths that a filesystem stores as one file would otherwise each
+// verify against the same bytes and publish one file short.
+type distinctFetchFiles map[int64][]distinctFetchFile
+
+type distinctFetchFile struct {
+	info         os.FileInfo
+	relativePath string
+}
+
+// claim records the file at path for relativePath. It returns the relative
+// path that already claimed the same file, or "" when the file is new.
+func (files distinctFetchFiles) claim(path string, relativePath string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	// The same file has one size, so only same-sized files need comparing.
+	for _, other := range files[info.Size()] {
+		if os.SameFile(info, other.info) {
+			return other.relativePath, nil
+		}
+	}
+	files[info.Size()] = append(files[info.Size()], distinctFetchFile{info: info, relativePath: relativePath})
+	return "", nil
 }
 
 func (s *Server) publishRemoteFetchRoot(ctx context.Context, manifest remoteFetchManifestRecord, paths remoteFetchPublishPaths) error {

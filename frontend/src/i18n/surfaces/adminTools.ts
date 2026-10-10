@@ -285,6 +285,13 @@ export const adminToolsEnglish = {
       syncMetadata: "Sync metadata",
       metadataIdle: "Not started.",
       metadataQueued: "Metadata sync runs in the background; follow it in Activity.",
+      metadataWaiting:
+        "No sync was started: no scanned work is waiting for metadata yet. Scan the library first, then try again.",
+      metadataFinished: "Metadata is already synced for this library.",
+      metadataNotStarted:
+        "No sync was started here. Run Metadata Sync from Workflows whenever you want to refresh metadata.",
+      metadataAttention:
+        "No sync was started: the earlier metadata sync did not finish cleanly. Review it in Activity.",
       metadataFailed: "Metadata sync could not start.",
       metadataUnavailable: "Your account cannot sync metadata. An administrator can run it later from Workflows.",
       steps: {

@@ -910,7 +910,8 @@
     [data-state="succeeded"],
     [data-state="partial"],
     [data-state="failed"],
-    [data-state="skipped"]
+    [data-state="skipped"],
+    [data-state="cancelled"]
   ) {
     background: hsl(var(--muted-foreground) / 0.45);
   }

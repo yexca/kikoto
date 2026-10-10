@@ -251,8 +251,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/user-data/import/preview", s.importPersonalData)
 	mux.HandleFunc("POST /api/user-data/import", s.importPersonalData)
 	mux.HandleFunc("GET /api/user-data/kikoeru/options", s.getKikoeruImportOptions)
-	mux.HandleFunc("POST /api/user-data/kikoeru/account", s.importKikoeruAccount)
-	mux.HandleFunc("POST "+kikoeruDatabaseImportPath, s.importKikoeruDatabase)
+	// Both imports bound themselves: the account read by its own deadline, the
+	// database upload by its upload window and its read deadline.
+	handleSlowFirstResponse("POST /api/user-data/kikoeru/account", s.importKikoeruAccount)
+	handleSlowFirstResponse("POST "+kikoeruDatabaseImportPath, s.importKikoeruDatabase)
 	mux.HandleFunc("PUT /api/works/{id}/tags", s.setWorkUserTags)
 	mux.HandleFunc("GET /api/favorite-works", s.listFavoriteWorks)
 	mux.HandleFunc("GET /api/favorite-lists", s.listFavoriteLists)
