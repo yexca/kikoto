@@ -53,19 +53,37 @@ const aiModelHistory = [
 const technologyGroups = [
   {
     title: "Frontend",
-    items: ["React", "TypeScript", "Vite", "Tailwind CSS", "i18next", "lucide-react", "Radix UI Slot"],
+    items: ["React", "TypeScript", "Vite", "Tailwind CSS", "i18next", "hls.js", "lucide-react", "Radix UI Slot"],
   },
   {
     title: "Backend",
-    items: ["Go", "SQLite (modernc.org/sqlite)", "fsnotify", "chardet", "golang.org/x/text", "golang.org/x/crypto"],
+    items: [
+      "Go",
+      "SQLite (modernc.org/sqlite)",
+      "fsnotify",
+      "chardet",
+      "golang.org/x/text",
+      "golang.org/x/crypto",
+      "golang.org/x/net",
+      "golang.org/x/sys",
+    ],
   },
   {
     title: "Mobile",
-    items: ["Capacitor", "Android WebView", "AndroidX", "Gradle"],
+    items: [
+      "Capacitor",
+      "Android WebView",
+      "AndroidX",
+      "Gradle",
+      "WKWebView",
+      "AVKit",
+      "Swift Package Manager",
+      "Xcode",
+    ],
   },
   {
     title: "Runtime & Delivery",
-    items: ["FFmpeg", "Docker", "Docker Compose", "GitHub Actions"],
+    items: ["FFmpeg", "Debian", "Docker", "Docker Compose", "GitHub Actions"],
   },
 ] as const;
 
