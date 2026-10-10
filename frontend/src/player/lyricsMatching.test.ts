@@ -62,6 +62,24 @@ describe("findLyricsMatch", () => {
     ).toBe(1);
   });
 
+  // The same pairs as TestLyricsCandidateMatchesTrackLikeThePlayer on the server.
+  it.each([
+    ["work/MP3/01_abc.mp3", "work/MP3/01_abc.mp3.vtt", true],
+    ["work/main/01_abc.wav", "work/main/01_abc.srt", true],
+    ["work/main/01_abc.wav", "work/bonus/01_abc.vtt", true],
+    ["Work\\Main\\Track01.FLAC", "work/main/track01.LRC", true],
+    ["work/01. Opening (v2).mp3", "work/subs/opening.vtt", true],
+    ["work/01　はじまり.mp3", "work/subs/はじまり.txt", true],
+    ["work/main/01_abc.wav", "work/main/字幕.vtt", true],
+    ["work/main/01_abc.wav", "work/lyrics.vtt", false],
+    ["work/01_abc.mp3", "work/readme.txt", false],
+    ["work/01_abc.mp3", "work/台本.txt", false],
+    ["work/01_a.mp3", "work/subs/02_a.txt", false],
+    ["work/01_abc.mp3", "work/02_def.vtt", false],
+  ])("decides whether %s takes %s as lyrics", (audioPath, lyricsPath, matched) => {
+    expect(findLyricsMatch(audioPath, [lyric(lyricsPath, 1)]) !== null).toBe(matched);
+  });
+
   it("uses relative paths to distinguish duplicate lyric file names", () => {
     const choices = [
       {

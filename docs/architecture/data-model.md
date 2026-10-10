@@ -555,6 +555,16 @@ show a sibling edition's local media. `origin` records how the row was made:
 download assigned the file it published. Clients rank a user's
 `user_media_lyrics_preference` first, then this assignment, then name matching.
 
+The lyrics indicator of a work card is the same resolution run on the server
+for every track of the work. The personal preference takes no part, because it
+only picks among lyrics a track already has. A work has lyrics when a track has
+an assignment whose lyrics file is available in the library, or a lyrics file
+matched by name among the work's local files or among the files of the track's
+remote source. A work without tracks of its own takes the status of the other
+editions of its family. The server's name matching in
+`httpapi/lyrics_match.go` and the player's in `player/lyricsMatching.ts` accept
+the same track and lyrics pairs.
+
 ## Workflows
 
 Important tables:

@@ -1,5 +1,8 @@
 import type { MediaItem } from "@/lib/api";
 
+// The server reports a work's lyrics status with a copy of this name matching in
+// backend/internal/httpapi/lyrics_match.go. Both must accept the same track and
+// lyrics pairs, so change them together.
 const lyricExtensions = [".lrc", ".vtt", ".srt", ".ass", ".txt", ".cue"];
 const audioExtensions = [".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".opus", ".aac"];
 const sharedLyricNames = new Set(["lyrics", "lyric", "subtitle", "subtitles", "字幕", "翻译", "翻譯"]);
