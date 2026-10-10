@@ -220,7 +220,6 @@ function untrackResult(workId: number, sourceId: number): WorkSourceUntrackResul
     status: "succeeded",
     clearedCaches: 0,
     deletedFiles: 0,
-    cachePaths: [],
     trackedCleared: true,
     workPreserved: true,
     localPreserved: true,
