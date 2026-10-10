@@ -101,7 +101,22 @@
     {
       "url": "https://github.com/cherryhq/cherry-studio",
       "files": ["frontend/src/pages/AboutPage.tsx"],
-      "reason": "Public AGENTS.md-configuration and application-versioning reference repository linked from the About page."
+      "reason": "Public AGENTS.md-configuration, application-versioning, and GitHub Actions design reference repository linked from the About page."
+    },
+    {
+      "url": "https://github.com/astral-sh/uv",
+      "files": ["frontend/src/pages/AboutPage.tsx"],
+      "reason": "Public reference for a GitHub Actions plan job, reusable workflows, and a single merge gate linked from the About page."
+    },
+    {
+      "url": "https://github.com/tailscale/tailscale",
+      "files": ["frontend/src/pages/AboutPage.tsx"],
+      "reason": "Public reference for sharding a race test suite by individual test linked from the About page."
+    },
+    {
+      "url": "https://github.com/grafana/grafana",
+      "files": ["frontend/src/pages/AboutPage.tsx"],
+      "reason": "Public reference for sharding tests by package linked from the About page."
     },
     {
       "url": "https://github.com/advplyr/audiobookshelf",

@@ -427,18 +427,24 @@ export const englishResource = {
         overviewTwo:
           "It includes library browsing, favorites, circles, voice actors, workflow visibility, remote fetch flows, and a browser-based audio player.",
         referenceProjects: "Reference projects",
-        kikoeruReference:
-          "Kikoto's Kikoeru-compatible remote source integration references this project's public backend interface.",
-        comfyReference:
-          "Kikoto's former workflow canvas drew on this project's interaction design. Kikoto never included or adapted its source code; that canvas was an independent implementation built with @xyflow/react and has since been retired.",
-        cherryReference:
-          "Kikoto's AGENTS.md configuration approach and application version-management design were informed by this project.",
-        audiobookshelfReference:
-          "Kikoto's playback reporting design draws on this project's combined playback position and listening-time reports.",
-        navidromeReference:
-          "Kikoto's playback reporting design draws on this project's event coalescing and durable reporting queue with retry backoff.",
-        jellyfinReference:
-          "Kikoto's playback reporting design draws on this project's use of playback events alongside periodic progress reports.",
+        referenceAreas: {
+          remoteSources: "Remote sources",
+          playbackReporting: "Playback reporting",
+          workflows: "Workflows",
+          engineering: "Engineering & CI",
+        },
+        references: {
+          kikoeru: "The public backend interface that Kikoeru-compatible remote sources follow.",
+          audiobookshelf: "Reports that combine playback position with listening time.",
+          navidrome: "Event coalescing and a durable report queue with retry backoff.",
+          jellyfin: "Playback events alongside periodic progress reports.",
+          comfy:
+            "Interaction design of the former workflow canvas. Kikoto never included or adapted its source code; the canvas was an independent implementation built with @xyflow/react and has since been retired.",
+          cherry: "AGENTS.md configuration, application version management, and GitHub Actions design.",
+          uv: "A GitHub Actions plan job, reusable workflows, and a single merge gate.",
+          tailscale: "Splitting the race test suite into shards by individual test.",
+          grafana: "Sharding tests by package, weighed as the alternative to splitting by test.",
+        },
         technologies: "Core technologies",
         license: "License",
         copyright: "Copyright (C) 2026 yexca.",
