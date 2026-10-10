@@ -32,13 +32,17 @@ open over a running job, and skips hidden documents.
 
 `MobileSheet` is the shared bottom-sheet primitive. It animates in from the
 bottom and out toward the bottom, supports Escape and outside dismissal, and
-accepts a downward drag on its handle to close. Its default layer is
+accepts a downward drag on its handle to close. A sheet's height stops below
+the top safe-area inset with a strip of page left above it, so its handle stays
+reachable and an outside tap can always dismiss it. Its default layer is
 transparent so sheet content does not add a backdrop mask. The shared
 `MobileSheetHeader` and `MobileSheetBody` keep command and catalog-options
 sheets on the same bordered header and compact scrolling body treatment. Mobile
 command and catalog-options sheets rely on sheet dismissal rather than an
 in-content close icon; desktop command surfaces may retain an explicit close
-action.
+action. Centered dialogs pad their backdrop by the safe-area insets and cap
+their height to the space between them, so a tall dialog's header and close
+action never sit under the status bar or notch.
 
 The header owns the desktop page title and description. Mobile browsing
 destinations use the bottom navigation as their location cue and show a compact

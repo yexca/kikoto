@@ -1035,3 +1035,25 @@ test("mobile command palette uses a sheet, stays in the visual viewport, and clo
   await page.mouse.up();
   await expect(dialog).toHaveCount(0);
 });
+
+test("a tall mobile sheet stays below the top safe area and leaves a strip that dismisses it", async ({ page }) => {
+  const safeAreaTop = 59;
+  await page.setViewportSize({ width: 412, height: 480 });
+  await mockCreatorDetails(page);
+  await page.goto("/circles/RG09999");
+  await page.addStyleTag({ content: `:root { --safe-area-top: ${safeAreaTop}px !important; }` });
+
+  await page.getByRole("button", { name: "Quick actions" }).click();
+  const dialog = page.getByRole("dialog", { name: "Command palette" });
+  await expect(dialog).toHaveAttribute("data-state", "open");
+  await page.getByPlaceholder("Search or open a work code").blur();
+
+  // The palette lists more actions than fit, so the settled sheet reaches its height cap.
+  await expect.poll(async () => (await dialog.boundingBox())?.y ?? 0).toBeCloseTo(safeAreaTop + 40, 0);
+  const handleBox = await dialog.locator("[data-mobile-sheet-handle]").boundingBox();
+  expect(handleBox).not.toBeNull();
+  expect(handleBox!.y).toBeGreaterThan(safeAreaTop + 24);
+
+  await page.mouse.click(handleBox!.x + handleBox!.width / 2, safeAreaTop + 20);
+  await expect(dialog).toHaveCount(0);
+});

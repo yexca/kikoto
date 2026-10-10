@@ -196,7 +196,7 @@ export function WorkMetadataEditorModal({
       size="2xl"
       dismissible={false}
       marker="work-metadata-editor"
-      className="h-[calc(100dvh-1.5rem)] sm:h-[min(42rem,calc(100dvh-2rem))]"
+      className="h-[var(--dialog-max-height)] sm:h-[min(42rem,var(--dialog-max-height))]"
     >
       <DialogHeader
         title={t("libraryDetail.editMetadata")}
@@ -221,7 +221,7 @@ export function WorkMetadataEditorModal({
         <div
           role="tablist"
           aria-label={t("metadataEditor.sectionsLabel")}
-          className="app-scrollbar flex shrink-0 gap-1 overflow-x-auto border-b px-3 py-2 sm:w-48 sm:flex-col sm:overflow-x-visible sm:border-b-0 sm:border-r sm:px-2 sm:py-3"
+          className="app-scrollbar flex shrink-0 gap-1 overflow-x-auto overflow-y-hidden border-b px-3 py-2 sm:w-48 sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r sm:px-2 sm:py-3"
         >
           {sections.map(({ id, icon: Icon }) => {
             const selected = section === id;

@@ -515,7 +515,7 @@ function DetailStatStrip({
       data-testid="dlsite-info"
       className={
         compact
-          ? "flex justify-between gap-x-2 overflow-x-auto min-[360px]:gap-x-3 rounded-lg border bg-background/60 px-3 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          ? "flex justify-between gap-x-2 overflow-x-auto overflow-y-hidden min-[360px]:gap-x-3 rounded-lg border bg-background/60 px-3 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           : "flex w-fit max-w-full flex-wrap gap-x-6 gap-y-2 self-start rounded-lg border bg-background/60 px-3.5 py-2 backdrop-blur-sm"
       }
     >

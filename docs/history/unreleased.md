@@ -1,5 +1,11 @@
 # Unreleased
 
+- On phones, bottom sheets such as Quick actions and tall dialogs stay below
+  the status bar and notch, so their handle and close action remain reachable
+  and a sheet always leaves a strip above it that dismisses it. The work
+  detail stats row and other horizontal strips no longer scroll vertically
+  and swallow page swipes.
+
 - Settings → History becomes a listening dashboard: totals with derived
   figures (time per active day and per play, the top work's share, and the
   share of active days), the activity chart, a ranked bar list of the most

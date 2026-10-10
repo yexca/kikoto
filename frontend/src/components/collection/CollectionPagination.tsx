@@ -54,7 +54,7 @@ export function CollectionPagination({
     if (lastPage <= 1) return null;
     return (
       <nav className="flex justify-center" aria-label={ariaLabel}>
-        <div className="inline-flex min-h-10 max-w-full items-center gap-1 overflow-x-auto rounded-lg border bg-card px-2 py-1.5 text-sm">
+        <div className="inline-flex min-h-10 max-w-full items-center gap-1 overflow-x-auto overflow-y-hidden rounded-lg border bg-card px-2 py-1.5 text-sm">
           <Button
             variant="ghost"
             size="icon"

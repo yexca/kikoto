@@ -164,7 +164,7 @@ export function DirectoryManagerDialog({
 
   return (
     <>
-      <Dialog onClose={onClose} size="full" className="max-h-[86vh] max-w-3xl sm:max-h-[86vh]">
+      <Dialog onClose={onClose} size="full" className="max-h-[min(86vh,var(--dialog-max-height))] max-w-3xl">
         <DialogHeader
           title={title}
           description={description}
@@ -261,7 +261,7 @@ export function DirectoryManagerDialog({
 function ShortcutRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div
-      className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden"
+      className="-mx-4 flex items-center gap-2 overflow-x-auto overflow-y-hidden px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden"
       role="group"
       aria-label={label}
     >

@@ -64,7 +64,7 @@ export function VoiceWorkOptionsSheet({
 
   return (
     <div
-      className="visual-viewport-layer z-50 flex items-end bg-background/55 p-2 backdrop-blur-sm lg:hidden sm:p-4"
+      className="visual-viewport-layer z-50 flex items-end bg-background/55 p-2 pt-[var(--sheet-top-inset)] backdrop-blur-sm lg:hidden sm:p-4 sm:pt-[var(--sheet-top-inset)]"
       onMouseDown={onClose}
     >
       <div

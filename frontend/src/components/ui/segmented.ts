@@ -5,7 +5,10 @@ import { cn } from "@/lib/tailwindClassNames";
  * track with the selected segment raised onto the card surface.
  */
 export function segmentedListClassName(className?: string) {
-  return cn("app-scrollbar flex w-fit max-w-full gap-1 overflow-x-auto rounded-lg bg-muted p-1", className);
+  return cn(
+    "app-scrollbar flex w-fit max-w-full gap-1 overflow-x-auto overflow-y-hidden rounded-lg bg-muted p-1",
+    className,
+  );
 }
 
 export function segmentedItemClassName(active: boolean, className?: string) {

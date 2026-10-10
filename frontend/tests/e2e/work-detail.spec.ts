@@ -565,6 +565,8 @@ test("work detail summarizes DLsite stats in the hero and groups active source i
     .locator("dt")
     .evaluateAll((labels) => labels.map((label) => Math.round(label.getBoundingClientRect().top)));
   expect(new Set(statTops).size).toBe(1);
+  // The stat row scrolls sideways only, so a vertical swipe across it scrolls the page.
+  await expect(dlsiteInfo).toHaveCSS("overflow-y", "hidden");
   const sourceInfo = page.getByTestId("active-source-info");
   await expect(sourceInfo.getByText("Source info", { exact: true })).toBeVisible();
   await expect(sourceInfo.getByText("Main local library", { exact: true })).toBeVisible();
