@@ -307,3 +307,10 @@ func localFileKind(path string) string {
 func isTextFile(path string) bool {
 	return localFileKind(path) == "text"
 }
+
+// isTextPreviewFile is the one rule for which files can be read as text, for
+// every kind of location: a file its source classifies as text, or one whose
+// extension is a text format.
+func isTextPreviewFile(kind string, path string) bool {
+	return kind == "text" || isTextFile(path)
+}

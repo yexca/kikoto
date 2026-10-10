@@ -124,9 +124,7 @@ export function detailReturnTarget(fallbackPath: string) {
   const path =
     typeof state?.returnTo === "string" && isInternalReturnPath(state.returnTo) ? state.returnTo : fallbackPath;
   const label =
-    typeof state?.returnLabel === "string" && state.returnLabel.trim()
-      ? state.returnLabel
-      : i18n.t("detailActions.back");
+    typeof state?.returnLabel === "string" && state.returnLabel.trim() ? state.returnLabel : i18n.t("common.back");
   return { path, label };
 }
 

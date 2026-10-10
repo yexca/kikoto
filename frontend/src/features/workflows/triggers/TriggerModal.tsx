@@ -62,6 +62,7 @@ import {
   type WorkflowPreset,
   type WorkflowTrigger,
 } from "@/lib/api";
+import { wholeNumberFromInput } from "@/lib/numberInput";
 
 export function TriggerModal({
   definition,
@@ -258,7 +259,9 @@ export function TriggerModal({
               min={5}
               max={10080}
               value={intervalMinutes}
-              onChange={(event) => setIntervalMinutes(Number(event.target.value))}
+              step={1}
+              inputMode="numeric"
+              onChange={(event) => setIntervalMinutes(wholeNumberFromInput(event.target.value))}
             />
           </Field>
         )}
@@ -576,7 +579,9 @@ function SystemWorkflowTriggerFields({
               min={2000}
               max={new Date().getUTCFullYear()}
               value={value.year}
-              onChange={(event) => onChange({ ...value, year: Number(event.target.value) })}
+              step={1}
+              inputMode="numeric"
+              onChange={(event) => onChange({ ...value, year: wholeNumberFromInput(event.target.value) })}
             />
           </Field>
         ) : (

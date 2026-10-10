@@ -8,15 +8,32 @@ export type ParsedLyrics = {
   lines: TimedLyricLine[];
 };
 
+// An LRC tag is `[mm:ss]` with an optional fraction after `.` or `:`, where the
+// minute count is unbounded so a track longer than 99 minutes stays timed. A tag
+// with an hour field is `[hh:mm:ss.fff]`; its fraction must follow a `.` so that
+// `[mm:ss:ff]` keeps meaning minutes, seconds, and a fraction.
+const lrcTimestampSource = String.raw`\[(?:(\d+):(\d{1,2}):(\d{2})\.(\d{1,3})|(\d+):(\d{2})(?:[.:](\d{1,3}))?)\]`;
+const lrcTimestampPattern = new RegExp(lrcTimestampSource, "g");
+const lrcLineStartPattern = new RegExp(`^${lrcTimestampSource}`);
+
+/** Whether a line begins with an LRC timestamp tag. */
+export function startsWithLrcTimestamp(line: string) {
+  return lrcLineStartPattern.test(line);
+}
+
 export function parseTimedLyrics(text: string): ParsedLyrics {
   const lrcLines: TimedLyricLine[] = [];
   const sourceLines = text.split(/\r?\n/);
   for (const rawLine of sourceLines) {
-    const timestamps = Array.from(rawLine.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g));
+    const timestamps = Array.from(rawLine.matchAll(lrcTimestampPattern));
     if (timestamps.length === 0) continue;
     const lineText = rawLine.replace(/\[[^\]]+\]/g, "").trim();
     for (const match of timestamps) {
-      lrcLines.push({ time: timestampToSeconds(match[1], match[2], match[3]), text: lineText });
+      const time =
+        match[1] !== undefined
+          ? Number(match[1]) * 3600 + timestampToSeconds(match[2], match[3], match[4])
+          : timestampToSeconds(match[5], match[6], match[7]);
+      lrcLines.push({ time, text: lineText });
     }
   }
   if (lrcLines.length > 0) {

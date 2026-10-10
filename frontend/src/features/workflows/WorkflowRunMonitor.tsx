@@ -142,7 +142,7 @@ function runSummaryState(status: string): WorkflowStageState {
   if (tone === "success") return "succeeded";
   if (tone === "warning") return "partial";
   if (tone === "error") return "failed";
-  return status === "skipped" || status === "cancelled" ? "skipped" : "idle";
+  return status === "skipped" || status === "cancelled" ? status : "idle";
 }
 
 const stepIconClass: Record<WorkflowStageState, string> = {
@@ -153,6 +153,7 @@ const stepIconClass: Record<WorkflowStageState, string> = {
   partial: "text-warning",
   failed: "text-error",
   skipped: "text-muted-foreground/70",
+  cancelled: "text-muted-foreground/70",
 };
 
 function StepIcon({ state }: { state: WorkflowStageState }) {
@@ -161,7 +162,7 @@ function StepIcon({ state }: { state: WorkflowStageState }) {
   if (state === "succeeded") return <CheckCircle2 className={className} aria-hidden />;
   if (state === "failed") return <XCircle className={className} aria-hidden />;
   if (state === "partial") return <CircleAlert className={className} aria-hidden />;
-  if (state === "skipped") return <Ban className={className} aria-hidden />;
+  if (state === "skipped" || state === "cancelled") return <Ban className={className} aria-hidden />;
   if (state === "queued") return <CircleDashed className={className} aria-hidden />;
   return <Circle className={className} aria-hidden />;
 }
@@ -207,7 +208,9 @@ function StepRow({
         <span className="min-w-0 flex-1">
           <span
             className={`block truncate text-sm ${stage.state === "running" ? "font-medium" : ""} ${
-              stage.state === "idle" || stage.state === "skipped" ? "text-muted-foreground" : ""
+              stage.state === "idle" || stage.state === "skipped" || stage.state === "cancelled"
+                ? "text-muted-foreground"
+                : ""
             }`}
           >
             {stage.title}

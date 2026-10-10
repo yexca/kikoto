@@ -10,7 +10,7 @@ import { Input, NativeSelect } from "@/components/ui/input";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { userDataApi, type KikoeruAuth, type KikoeruImportOptions, type KikoeruImportResponse } from "./userDataApi";
-import { classifyKikoeruReadError, type KikoeruReadError } from "./userDataImportModel";
+import { classifyKikoeruDatabaseError, classifyKikoeruReadError, type KikoeruReadError } from "./userDataImportModel";
 
 export const KIKOERU_DATABASE_MAX_BYTES = 512 * 1024 * 1024;
 
@@ -281,7 +281,7 @@ export function KikoeruDatabasePanel({ disabled, onLoaded }: PanelProps) {
       setStatus({ kind: "idle" });
       onLoaded(response);
     } catch (error) {
-      setStatus({ kind: "error", error: classifyKikoeruReadError(error) });
+      setStatus({ kind: "error", error: classifyKikoeruDatabaseError(error) });
     }
   };
 

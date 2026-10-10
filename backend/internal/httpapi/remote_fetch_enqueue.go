@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -65,7 +64,7 @@ func (s *Server) prepareRemoteWorkSaveEnqueue(
 	}
 	downloadLimit := s.remoteMediaDownloadLimitBytes(ctx)
 	if err := validateRemoteFetchDownloadPlan(plan.Items, downloadLimit); err != nil {
-		return remoteWorkSavePreparation{}, err
+		return remoteWorkSavePreparation{}, rejectedRequestError("download_limit_exceeded", "a selected file is larger than the remote download limit", err)
 	}
 	if err := s.ensureRemoteWorkSaveDiskReserve(plan, minFreeBytes, ""); err != nil {
 		return remoteWorkSavePreparation{}, err
@@ -273,6 +272,10 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
+	if err := s.requireUsableRemoteSource(r.Context(), sourceID); err != nil {
+		writeError(w, err)
+		return
+	}
 	metadataErr := s.ensureRemoteFetchMetadata(r.Context(), code)
 	preparation := s.prepareRemoteFetch(r.Context(), code)
 	if metadataErr != nil {
@@ -316,6 +319,10 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusAccepted, existing)
 			return
 		}
+	}
+	if err := s.requireUsableRemoteSource(r.Context(), sourceID); err != nil {
+		writeError(w, err)
+		return
 	}
 	operationCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
 	defer cancel()
@@ -470,7 +477,7 @@ func (s *Server) remoteFetchRequestResult(ctx context.Context, requestID string,
 		return remoteWorkSaveResult{}, false, err
 	}
 	if storedSourceID != sourceID || !strings.EqualFold(strings.TrimSpace(storedCode), strings.TrimSpace(code)) {
-		return remoteWorkSaveResult{}, false, fmt.Errorf("fetch request id was already used for another work")
+		return remoteWorkSaveResult{}, false, invalidRequestError("fetch request id was already used for another work")
 	}
 	var result remoteWorkSaveResult
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {

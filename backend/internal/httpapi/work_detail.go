@@ -516,7 +516,7 @@ func (s *Server) loadWorkFolderLocations(ctx context.Context, workID int64) ([]w
 }
 
 func (s *Server) resolveWorkCodeDetail(ctx context.Context, code string) (workResolveResponse, error) {
-	code = normalizeDLsiteCode(code)
+	code = normalizeWorkCode(code)
 	identity, err := s.resolveWorkCodeIdentity(ctx, code)
 	if err != nil {
 		return workResolveResponse{}, err

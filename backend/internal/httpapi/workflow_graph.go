@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/workcode"
 )
 
 // A workflow graph is the typed DAG that preset workflows compose on the server.
@@ -20,7 +22,7 @@ const workflowGraphSchemaVersion = 2
 
 var (
 	workflowGraphIDPattern       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
-	workflowGraphWorkCodePattern = regexp.MustCompile(`(?i)^(RJ|BJ|VJ|CC)[0-9]{5,8}$`)
+	workflowGraphWorkCodePattern = regexp.MustCompile(`(?i)^(?:` + workcode.PrefixAlternation + `)` + workcode.Digits + `$`)
 )
 
 type workflowGraphDefinition struct {

@@ -337,7 +337,7 @@ func cachePathIdentity(relPath string) (string, string) {
 		sourceName = parts[1]
 	}
 	for _, part := range parts {
-		code := normalizeDLsiteCode(part)
+		code := normalizeWorkCode(part)
 		if code != "" && strings.EqualFold(code, part) {
 			return code, sourceName
 		}

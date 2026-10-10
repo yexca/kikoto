@@ -169,6 +169,12 @@ func (s *Server) materializeRemoteWorkFetchItem(
 		return remoteFetchItemOutcome{}, nil
 	}
 	_ = s.updateRemoteFetchCacheProgress(ctx, execution.cacheNodeID, index, len(execution.plan.Items), item, 0)
+	// The stored media item is resolved before anything is written, so a file
+	// the listing does not know never reaches the cache without a record.
+	mediaItemID, err := s.remoteFetchMediaItemID(ctx, execution.workID, item)
+	if err != nil {
+		return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
+	}
 	cacheAbsPath, err := safeCachePath(s.cfg.CacheRoot, item.CachePath)
 	if err != nil {
 		return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
@@ -179,14 +185,6 @@ func (s *Server) materializeRemoteWorkFetchItem(
 	}
 	defer releaseCacheLock()
 	registerExistingCache := func(info os.FileInfo) (remoteFetchItemOutcome, error) {
-		mediaItemID := item.MediaItemID
-		if mediaItemID <= 0 {
-			var lookupErr error
-			mediaItemID, lookupErr = s.mediaItemIDForRemotePath(ctx, execution.workID, item.Path)
-			if lookupErr != nil {
-				return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, lookupErr)
-			}
-		}
 		cacheSourceID := remoteFetchItemSourceID(item, execution.source.ID)
 		if _, upsertErr := s.upsertCacheLocation(ctx, mediaItemID, cacheSourceID, item.CachePath, "", item.SizeBytes, nil, info.Size()); upsertErr != nil {
 			return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, upsertErr)
@@ -258,10 +256,6 @@ func (s *Server) materializeRemoteWorkFetchItem(
 		return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
 	}
 	if err := execution.byteProgress.complete(index+1, item, written); err != nil {
-		return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
-	}
-	mediaItemID, err := s.mediaItemIDForRemotePath(ctx, execution.workID, item.Path)
-	if err != nil {
 		return remoteFetchItemOutcome{}, s.failRemoteFetchMaterialization(ctx, runID, execution.cacheNodeID, jobID, index, totalProgress, execution.plan.Summary, err)
 	}
 	cacheSourceID := remoteFetchItemSourceID(item, execution.source.ID)

@@ -220,6 +220,17 @@ response embeds a credential or CSRF token. The split-deployment
 `frontend/nginx.conf` applies the same `/assets/` caching, `no-cache` app shell,
 and static compression.
 
+Error responses share one shape: `error`, a stable `code`, and `retryable`. A
+request the caller got wrong answers with a 4xx, is not retryable, and is not
+logged as an error. An addressed work, media location, source, alias, or
+tracked source that does not exist is a 404 `not_found`; one of the wrong kind,
+or in a state the operation does not apply to, is a 400 or a 409. A 502
+`upstream_unavailable` means a remote source failed to answer. A source that
+answers that it has no such work is a 404, and that answer leaves the source's
+health unchanged. A Fetch the server refuses carries its own code, such as
+`download_limit_exceeded`, `insufficient_disk_space`, or `source_not_usable`.
+A JSON body with a value of the wrong type names the field in its 400 message.
+
 Every API request must start its response within 60 seconds. When it has not,
 its request context is cancelled, so a request waiting for one of the file
 database's four pooled connections cannot wait forever and hold up
@@ -228,8 +239,9 @@ retryable 503 `service_unavailable` error. The budget stops once the handler
 writes its headers, so event streams and long downloads are unaffected. Routes
 that legitimately work longer before their first byte are registered with
 `handleSlowFirstResponse`: synchronous media transcodes, remote-source
-operations that make several paced upstream requests, and filesystem
-maintenance that should not stop halfway.
+operations that make several paced upstream requests, filesystem maintenance
+that should not stop halfway, and the Kikoeru imports, which run under their
+own deadlines.
 The server also samples the connection pool every 10 seconds. It logs an error
 when the pool stays fully checked out while new requests keep queueing, logs
 the recovery afterwards, and warns when completed connection waits average a

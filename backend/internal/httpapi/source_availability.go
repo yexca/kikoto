@@ -134,6 +134,14 @@ func (s *Server) checkOneWorkSourceAvailability(ctx context.Context, source remo
 	remoteWork, err := s.checkRemoteWorkAvailabilityWithClass(ctx, source, code, requestClass)
 	result.ElapsedMS = time.Since(started).Milliseconds()
 	if err != nil {
+		// The source answering that it has no such work is a result, not a
+		// failure of the source.
+		if errors.Is(err, errRemoteWorkNotFound) {
+			result.Status = "not_found"
+			result.Error = "work was not found"
+			_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+			return result, s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code)
+		}
 		result.Status = "error"
 		result.Error = "remote source request failed"
 		if isNotFoundLikeError(err) {

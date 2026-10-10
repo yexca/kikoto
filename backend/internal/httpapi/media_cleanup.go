@@ -123,7 +123,7 @@ func parseMediaCleanupMode(value string) (mediaCleanupMode, error) {
 	case mediaCleanupForgetWork:
 		return mediaCleanupForgetWork, nil
 	default:
-		return "", fmt.Errorf("invalid media cleanup mode")
+		return "", invalidRequestError("invalid media cleanup mode")
 	}
 }
 
@@ -171,10 +171,10 @@ func (s *Server) prepareMediaCleanupTargets(ctx context.Context, requested []med
 		return mediaCleanupOptions{}, nil, fmt.Errorf("an authenticated actor is required to forget a work")
 	}
 	if len(requested) == 0 {
-		return mediaCleanupOptions{}, nil, fmt.Errorf("at least one media location is required")
+		return mediaCleanupOptions{}, nil, invalidRequestError("at least one media location is required")
 	}
 	if len(requested) > maxMediaCleanupTargets {
-		return mediaCleanupOptions{}, nil, fmt.Errorf("at most %d media locations can be cleaned at once", maxMediaCleanupTargets)
+		return mediaCleanupOptions{}, nil, invalidRequestError(fmt.Sprintf("at most %d media locations can be cleaned at once", maxMediaCleanupTargets))
 	}
 	targets := make([]mediaCleanupTarget, 0, len(requested))
 	seen := map[string]bool{}
@@ -288,7 +288,7 @@ func insertMediaCleanupNodeRuns(ctx context.Context, tx *sql.Tx, runID int64, pa
 
 func validateMediaForgetTargets(targets []mediaCleanupTarget) error {
 	if len(targets) == 0 {
-		return fmt.Errorf("at least one media location is required")
+		return invalidRequestError("at least one media location is required")
 	}
 	workIDs := map[int64]struct{}{}
 	hasRoot := false
@@ -302,10 +302,10 @@ func validateMediaForgetTargets(targets []mediaCleanupTarget) error {
 		}
 	}
 	if !hasRoot {
-		return fmt.Errorf("forget work requires the complete local work root")
+		return invalidRequestError("forget work requires the complete local work root")
 	}
 	if len(workIDs) != 1 {
-		return fmt.Errorf("forget work can target only one work")
+		return invalidRequestError("forget work can target only one work")
 	}
 	return nil
 }
@@ -313,7 +313,7 @@ func validateMediaForgetTargets(targets []mediaCleanupTarget) error {
 func (s *Server) loadMediaCleanupTarget(ctx context.Context, requested mediaCleanupTargetRequest) (mediaCleanupTarget, error) {
 	requested.Kind = strings.TrimSpace(requested.Kind)
 	if requested.LocationID <= 0 || (requested.Kind != "cache" && requested.Kind != "local" && requested.Kind != "local_root") {
-		return mediaCleanupTarget{}, fmt.Errorf("invalid media cleanup target")
+		return mediaCleanupTarget{}, invalidRequestError("invalid media cleanup target")
 	}
 	target, locationType, err := s.loadMediaCleanupLocation(ctx, requested.LocationID)
 	if err != nil {
@@ -340,7 +340,7 @@ func (s *Server) loadMediaCleanupLocation(ctx context.Context, locationID int64)
 		WHERE location.id = ?
 	`, locationID).Scan(&target.LocationID, &target.MediaItemID, &target.WorkID, &target.SourceID, &locationType, &target.Path); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return mediaCleanupTarget{}, "", fmt.Errorf("media location not found")
+			return mediaCleanupTarget{}, "", notFoundError("media location not found")
 		}
 		return mediaCleanupTarget{}, "", err
 	}
@@ -349,7 +349,7 @@ func (s *Server) loadMediaCleanupLocation(ctx context.Context, locationID int64)
 
 func (s *Server) prepareLocalRootCleanupTarget(ctx context.Context, requested mediaCleanupTargetRequest, target mediaCleanupTarget, locationType string) (mediaCleanupTarget, error) {
 	if locationType != "local" {
-		return mediaCleanupTarget{}, fmt.Errorf("media location %d is not local", requested.LocationID)
+		return mediaCleanupTarget{}, invalidRequestError(fmt.Sprintf("media location %d is not local", requested.LocationID))
 	}
 	locationPath := normalizeFolderRootPath(target.Path)
 	folder, err := s.resolveMediaCleanupFolder(ctx, target.WorkID, target.SourceID, requested.FolderID, requested.ExpectedPath)
@@ -371,7 +371,7 @@ func (s *Server) prepareLocalRootCleanupTarget(ctx context.Context, requested me
 
 func prepareCacheCleanupTarget(requested mediaCleanupTargetRequest, target mediaCleanupTarget, locationType, cacheRoot string) (mediaCleanupTarget, error) {
 	if locationType != requested.Kind {
-		return mediaCleanupTarget{}, fmt.Errorf("media location %d is not %s", requested.LocationID, requested.Kind)
+		return mediaCleanupTarget{}, invalidRequestError(fmt.Sprintf("media location %d is not %s", requested.LocationID, requested.Kind))
 	}
 	target.Kind = locationType
 	if _, err := validateDestructivePath(cacheRoot, target.Path, true, false); err != nil {
@@ -382,7 +382,7 @@ func prepareCacheCleanupTarget(requested mediaCleanupTargetRequest, target media
 
 func (s *Server) prepareLocalFileCleanupTarget(ctx context.Context, requested mediaCleanupTargetRequest, target mediaCleanupTarget, locationType string) (mediaCleanupTarget, error) {
 	if locationType != requested.Kind {
-		return mediaCleanupTarget{}, fmt.Errorf("media location %d is not %s", requested.LocationID, requested.Kind)
+		return mediaCleanupTarget{}, invalidRequestError(fmt.Sprintf("media location %d is not %s", requested.LocationID, requested.Kind))
 	}
 	target.Kind = locationType
 	targetPath, err := safeDataPath(s.cfg.DataRoot, target.Path)

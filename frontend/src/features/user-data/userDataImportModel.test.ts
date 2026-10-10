@@ -8,6 +8,7 @@ import { syntheticWorkCode } from "@/test-support/workCode";
 import type { UserDataImportPreview } from "./userDataApi";
 import {
   canImport,
+  classifyKikoeruDatabaseError,
   classifyKikoeruReadError,
   classifyUserDataRequestError,
   importRequest,
@@ -187,6 +188,25 @@ describe("personal data import state", () => {
     expect(classifyKikoeruReadError(new ApiError(detail, 413, "personal_data_limit"))).toBe("too_large");
     expect(classifyKikoeruReadError(new ApiError(detail, 502, "kikoeru_unavailable"))).toBe("unavailable");
     expect(classifyKikoeruReadError(new TypeError(detail))).toBe("unavailable");
+  });
+
+  it("reports a failed database upload as an upload problem, not as an unreachable Kikoeru server", () => {
+    const detail = "upload detail";
+    expect(classifyKikoeruDatabaseError(new ApiError(detail, 408, "kikoeru_upload_interrupted", true))).toBe(
+      "upload_interrupted",
+    );
+    expect(classifyKikoeruDatabaseError(new ApiError(detail, 400, "kikoeru_upload_invalid"))).toBe("upload_invalid");
+    expect(classifyKikoeruDatabaseError(new ApiError(detail, 503, "kikoeru_database_timeout", true))).toBe(
+      "database_timeout",
+    );
+    expect(classifyKikoeruDatabaseError(new TypeError("Failed to fetch"))).toBe("upload_failed");
+    expect(classifyKikoeruDatabaseError(new ApiError(detail, 502))).toBe("upload_failed");
+    // Answers about the file itself keep their own explanation.
+    expect(classifyKikoeruDatabaseError(new ApiError(detail, 400, "kikoeru_database_invalid"))).toBe(
+      "database_invalid",
+    );
+    expect(classifyKikoeruDatabaseError(new ApiError(detail, 404, "kikoeru_user_not_found"))).toBe("user_not_found");
+    expect(classifyKikoeruDatabaseError(new ApiError(detail, 413, "personal_data_limit"))).toBe("too_large");
   });
 
   it("accepts only JSON objects or arrays from the file", () => {

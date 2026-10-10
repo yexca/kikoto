@@ -82,8 +82,11 @@ import {
 import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { defaultLibraryBrowseState, libraryLocation } from "@/lib/libraryBrowseState";
+import { loadAllPages } from "@/lib/pagedList";
 
 const pageSizeOptions = [24, 48] as const;
+// The largest page the creator list endpoints serve.
+const favoriteCreatorPageSize = 100;
 
 function createFavoriteRandomSeed() {
   return (window.crypto.getRandomValues(new Uint32Array(1))[0] % 2147483646) + 1;
@@ -315,15 +318,28 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     let cancelled = false;
     setIsEntitiesLoading(true);
     setEntityLoadError("");
+    // Favorites are shown and counted as a whole, so every page is read.
     Promise.all([
-      api.listCircles({ filter: "favorite", pageSize: 100, signal: controller.signal }),
-      api.listVoices({ filter: "favorite", pageSize: 100, signal: controller.signal }),
+      loadAllPages(
+        (page) =>
+          api
+            .listCircles({ filter: "favorite", page, pageSize: favoriteCreatorPageSize, signal: controller.signal })
+            .then((result) => ({ items: result.circles, total: result.total })),
+        favoriteCreatorPageSize,
+      ),
+      loadAllPages(
+        (page) =>
+          api
+            .listVoices({ filter: "favorite", page, pageSize: favoriteCreatorPageSize, signal: controller.signal })
+            .then((result) => ({ items: result.voices, total: result.total })),
+        favoriteCreatorPageSize,
+      ),
     ])
-      .then(([circlePage, voicePage]) => {
+      .then(([favoriteCircles, favoriteVoices]) => {
         if (cancelled) return;
         entitiesLoadedRequestKey.current = requestKey;
-        setCircles(circlePage.circles);
-        setVoices(voicePage.voices);
+        setCircles(favoriteCircles);
+        setVoices(favoriteVoices);
         setEntitySnapshotUserID(principalID);
       })
       .catch((error) => {

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/library"
@@ -76,6 +77,9 @@ func defaultErrorClassification(status int) (string, bool) {
 }
 
 func writeError(w http.ResponseWriter, err error) {
+	if writeRequestError(w, err) {
+		return
+	}
 	if errors.Is(err, library.ErrRecommendationNotReady) {
 		writeAPIError(w, http.StatusServiceUnavailable, "recommendation_preparing", "recommendations are preparing; please retry", true)
 		return
@@ -104,7 +108,13 @@ func writeError(w http.ResponseWriter, err error) {
 	writeAPIError(w, http.StatusInternalServerError, "internal_error", "internal server error", false)
 }
 
+// writeUpstreamError answers a failed remote-source operation. A request the
+// caller got wrong keeps its own 4xx and a busy database its 503; anything else
+// is reported as the source failing to answer.
 func writeUpstreamError(w http.ResponseWriter, err error) {
+	if writeRequestError(w, err) {
+		return
+	}
 	if isDatabaseBusyError(err) {
 		writeError(w, err)
 		return
@@ -119,6 +129,29 @@ func writeAPIError(w http.ResponseWriter, status int, code string, message strin
 		"code":      code,
 		"retryable": retryable,
 	})
+}
+
+// jsonBodyErrorMessage describes why a JSON request body could not be decoded.
+// A value of the wrong type names the field it was sent for, so the caller can
+// tell which input to correct; anything else is a malformed body.
+func jsonBodyErrorMessage(err error) string {
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &typeErr) && typeErr.Field != "" {
+		switch typeErr.Type.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			return typeErr.Field + " must be a whole number"
+		case reflect.Float32, reflect.Float64:
+			return typeErr.Field + " must be a number"
+		case reflect.Bool:
+			return typeErr.Field + " must be true or false"
+		case reflect.String:
+			return typeErr.Field + " must be text"
+		default:
+			return typeErr.Field + " has the wrong type"
+		}
+	}
+	return "invalid JSON body"
 }
 
 func isDatabaseBusyError(err error) bool {

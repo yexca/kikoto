@@ -65,7 +65,11 @@ export type KikoeruReadError =
   | "timeout"
   | "permission"
   | "read_only"
-  | "unavailable";
+  | "unavailable"
+  | "upload_invalid"
+  | "upload_interrupted"
+  | "upload_failed"
+  | "database_timeout";
 
 export type UserDataImportState = {
   source: UserDataImportSource;
@@ -243,6 +247,9 @@ const kikoeruErrorCodes: Record<string, KikoeruReadError> = {
   kikoeru_database_invalid: "database_invalid",
   kikoeru_import_busy: "busy",
   kikoeru_timeout: "timeout",
+  kikoeru_upload_invalid: "upload_invalid",
+  kikoeru_upload_interrupted: "upload_interrupted",
+  kikoeru_database_timeout: "database_timeout",
   demo_read_only: "read_only",
 };
 
@@ -254,6 +261,16 @@ export function classifyKikoeruReadError(error: unknown): KikoeruReadError {
   if (error.status === 413) return "too_large";
   if (error.status === 400) return "invalid";
   return "unavailable";
+}
+
+/**
+ * Classifies a failed database upload. No Kikoeru server is involved, so a
+ * failure without a specific answer is about the upload itself: a dropped
+ * connection or an unexpected server error.
+ */
+export function classifyKikoeruDatabaseError(error: unknown): KikoeruReadError {
+  const known = classifyKikoeruReadError(error);
+  return known === "unavailable" || known === "invalid" ? "upload_failed" : known;
 }
 
 /** A file name for the downloaded export; the date is local and carries no server detail. */

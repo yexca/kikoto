@@ -198,7 +198,15 @@ func (s *Server) changeMetadataCircle(w http.ResponseWriter, r *http.Request) {
 			circleIdentityError(w, circleidentity.ErrInvalid)
 			return
 		}
-		_, err = tx.ExecContext(r.Context(), "DELETE FROM party_alias WHERE id=? AND party_id=?", aliasID, id)
+		var deleted sql.Result
+		deleted, err = tx.ExecContext(r.Context(), "DELETE FROM party_alias WHERE id=? AND party_id=?", aliasID, id)
+		if err == nil {
+			if count, countErr := deleted.RowsAffected(); countErr != nil {
+				err = countErr
+			} else if count == 0 {
+				err = notFoundError("circle alias not found")
+			}
+		}
 	case strings.HasSuffix(r.URL.Path, "/aliases"):
 		err = circleidentity.AddAliasTx(r.Context(), tx, id, payload.Alias)
 	default:
@@ -214,7 +222,7 @@ func (s *Server) changeMetadataCircle(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := circleidentity.Load(r.Context(), s.db, id)
 	if err != nil {
-		writeError(w, err)
+		circleIdentityError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, result)

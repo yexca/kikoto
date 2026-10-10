@@ -125,7 +125,7 @@ func (s *Store) PrepareSearch(ctx context.Context, queryText string) {
 func searchUsesIndex(queryText string) bool {
 	for _, clause := range ParseSearchClauses(queryText) {
 		switch clause.Kind {
-		case "text", "circle", "voice_actor", "tag", "exclude_tag":
+		case "text", "circle", "voice_actor", "tag", "exclude_circle", "exclude_voice_actor", "exclude_tag":
 			return true
 		}
 	}

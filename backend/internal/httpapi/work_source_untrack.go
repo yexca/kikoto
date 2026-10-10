@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -57,7 +56,7 @@ func (s *Server) runWorkSourceUntrack(ctx context.Context, workID int64, sourceI
 		LIMIT 1
 	`, workID, sourceID).Scan(&found); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return workSourceUntrackResult{}, fmt.Errorf("tracked source not found")
+			return workSourceUntrackResult{}, notFoundError("this work is not tracked from that source")
 		}
 		return workSourceUntrackResult{}, err
 	}

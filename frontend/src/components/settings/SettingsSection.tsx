@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { useId, type ReactNode } from "react";
 
+import { wholeNumberFromInput } from "@/lib/numberInput";
 import { cn } from "@/lib/tailwindClassNames";
 
 /**
@@ -133,6 +134,7 @@ export function SettingsNumberInput({
   min,
   max,
   step = 1,
+  integer = false,
   unit,
   onChange,
   disabled = false,
@@ -146,6 +148,8 @@ export function SettingsNumberInput({
   min?: number;
   max?: number;
   step?: number;
+  /** Accept whole numbers only: a typed fraction is dropped. */
+  integer?: boolean;
   unit?: string;
   onChange: (value: number, text: string) => void;
   disabled?: boolean;
@@ -168,14 +172,16 @@ export function SettingsNumberInput({
           unit ? "pr-1.5" : "pr-3",
         )}
         type="number"
-        inputMode="decimal"
+        inputMode={integer ? "numeric" : "decimal"}
         min={min}
         max={max}
         step={step}
         value={value}
         disabled={disabled}
         aria-describedby={describedBy}
-        onChange={(event) => onChange(Number(event.target.value), event.target.value)}
+        onChange={(event) =>
+          onChange(integer ? wholeNumberFromInput(event.target.value) : Number(event.target.value), event.target.value)
+        }
       />
       {unit && <span className="flex items-center pr-3 text-xs text-muted-foreground">{unit}</span>}
     </div>

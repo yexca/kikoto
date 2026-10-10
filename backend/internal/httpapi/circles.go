@@ -3367,7 +3367,11 @@ func (s *Server) circleWorkAvailableInAnyRemoteSource(ctx context.Context, sourc
 		}
 		remoteWork, err := s.checkRemoteWorkAvailabilityWithClass(ctx, source, code, sourceRequestCrawl)
 		if err != nil {
-			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+			if errors.Is(err, errRemoteWorkNotFound) {
+				_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+			} else {
+				_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+			}
 			continue
 		}
 		_ = s.updateSourceHealth(ctx, source.ID, "healthy")

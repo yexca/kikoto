@@ -77,6 +77,45 @@ describe("Library structured search clauses", () => {
     ).toBe("$circle:Example Circle$ $-tag:noise$ $-duration:3600$");
   });
 
+  it("treats a leading minus as exclusion on every circle and voice key", () => {
+    const clauses = parseSearchClauses(
+      '-circle:"Example Circle" -va:"Example Voice" -voice:Second -creator: Third $-va:Wrapped Voice$ $-circle:Wrapped Circle$',
+    );
+
+    expect(clauses).toEqual([
+      { kind: "exclude_voice_actor", value: "Wrapped Voice" },
+      { kind: "exclude_circle", value: "Wrapped Circle" },
+      { kind: "exclude_circle", value: "Example Circle" },
+      { kind: "exclude_voice_actor", value: "Example Voice" },
+      { kind: "exclude_voice_actor", value: "Second" },
+      { kind: "exclude_voice_actor", value: "Third" },
+    ]);
+    expect(clauses.map((clause) => clause.kind)).not.toContain("voice_actor");
+    expect(clauses.map((clause) => clause.kind)).not.toContain("text");
+  });
+
+  it("sends exclusions to the library and to remote sources in the server's negated syntax", () => {
+    const clauses = parseSearchClauses('-circle:"Example Circle" -va:"Example Voice" -mytag:"Sleep aid"');
+
+    expect(compileLibrarySearchQuery(clauses)).toBe("$-circle:Example Circle$ $-va:Example Voice$ $-mytag:Sleep aid$");
+    expect(formatRemoteSearchQuery(clauses)).toBe('$-circle:Example Circle$ $-va:Example Voice$ -mytag:"Sleep aid"');
+    expect(clauses.map(formatSearchClause).join(" ")).toBe(
+      '-circle:"Example Circle" -va:"Example Voice" -mytag:"Sleep aid"',
+    );
+  });
+
+  it("keeps a quoted phrase as one needle through parsing and every outgoing query", () => {
+    const clauses = parseSearchClauses('"calm night" rain');
+
+    expect(clauses).toEqual([
+      { kind: "text", value: "calm night" },
+      { kind: "text", value: "rain" },
+    ]);
+    expect(compileLibrarySearchQuery(clauses)).toBe('"calm night" rain');
+    expect(formatRemoteSearchQuery(clauses)).toBe('"calm night" rain');
+    expect(parseSearchClauses(compileLibrarySearchQuery(clauses))).toEqual(clauses);
+  });
+
   it("quotes values with spaces when serializing editable filters", () => {
     expect(formatSearchClause({ kind: "circle", value: 'Example "Circle"' })).toBe('circle:"Example Circle"');
     expect(formatSearchClause({ kind: "shelf", value: "unexpected" })).toBe("shelf:true");

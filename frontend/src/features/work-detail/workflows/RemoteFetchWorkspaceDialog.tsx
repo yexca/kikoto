@@ -10,10 +10,12 @@ import { NativeSelect } from "@/components/ui/input";
 import { formatBytes, remoteSelectablePaths, type TreeNode } from "@/features/work-detail/media/mediaTreeModel";
 import {
   canPublishRemoteFetchSelection,
+  editionLocalRoots,
   remoteDetailActionCode,
   remoteFetchExtensions,
   remoteFetchExtensionSelection,
   remoteFetchSelectedBytes,
+  selectableFetchTargetRoots,
   setRemoteFetchExtensionIncluded,
 } from "@/features/work-detail/workflows/remoteFetchWorkspaceModel";
 import {
@@ -479,7 +481,7 @@ function RemoteFetchEditionOption({
   const selectedSourceAvailable =
     !sourceId || edition.sources.some((source) => source.sourceId === sourceId && source.status === "available");
   const available = viewing || selectedSourceAvailable;
-  const localRoots = edition.localRoots.length;
+  const localRoots = editionLocalRoots(edition).length;
   return (
     <label
       title={edition.title}
@@ -907,7 +909,7 @@ function RemoteFetchTargetSelect({
   const { t } = useTranslation();
   const editionCode = (activeEditionCode || plan.primaryCode).toUpperCase();
   const activeEdition = preparation?.editions.find((edition) => edition.primaryCode.toUpperCase() === editionCode);
-  const plannedRoot = activeEdition?.localRoots.find((candidate) => candidate.rootPath === plan.saveRoot);
+  const plannedRoot = editionLocalRoots(activeEdition).find((candidate) => candidate.rootPath === plan.saveRoot);
   return (
     <label className="block space-y-1 text-xs text-muted-foreground">
       <span>{t("remoteFetch.publishTarget")}</span>
@@ -921,14 +923,12 @@ function RemoteFetchTargetSelect({
         <option value={plan.saveRoot}>
           {plannedRoot?.role === "external" ? t("remoteFetch.existing") : t("remoteFetch.managed")} · {plan.saveRoot}
         </option>
-        {(activeEdition?.localRoots ?? [])
-          .filter((candidate) => candidate.rootPath !== plan.saveRoot)
-          .map((candidate) => (
-            <option key={candidate.id} value={candidate.rootPath}>
-              {candidate.role === "managed_fetch" ? t("remoteFetch.managed") : t("remoteFetch.existing")} ·{" "}
-              {candidate.rootPath}
-            </option>
-          ))}
+        {selectableFetchTargetRoots(activeEdition, plan.saveRoot).map((candidate) => (
+          <option key={candidate.id} value={candidate.rootPath}>
+            {candidate.role === "managed_fetch" ? t("remoteFetch.managed") : t("remoteFetch.existing")} ·{" "}
+            {candidate.rootPath}
+          </option>
+        ))}
       </NativeSelect>
     </label>
   );

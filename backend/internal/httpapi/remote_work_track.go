@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -118,7 +117,7 @@ func (s *Server) enqueueRemoteWorkTrack(ctx context.Context, userID int64, sourc
 	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return remoteWorkTrackResult{}, fmt.Errorf("source not found")
+			return remoteWorkTrackResult{}, errRemoteSourceNotFound
 		}
 		return remoteWorkTrackResult{}, err
 	}
@@ -157,7 +156,7 @@ func (s *Server) enqueueRemoteWorkTrack(ctx context.Context, userID int64, sourc
 func normalizeRemoteWorkTrackRequest(code string, triggerReason string) (string, string, error) {
 	requestedCode := strings.ToUpper(strings.TrimSpace(code))
 	if requestedCode == "" {
-		return "", "", fmt.Errorf("work code is required")
+		return "", "", invalidRequestError("work code is required")
 	}
 	triggerReason = strings.TrimSpace(triggerReason)
 	if triggerReason == "" {
@@ -168,10 +167,10 @@ func normalizeRemoteWorkTrackRequest(code string, triggerReason string) (string,
 
 func validateRemoteWorkTrackSource(source remoteSourceForUse) error {
 	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
-		return fmt.Errorf("source is not an enabled kikoeru-compatible source")
+		return errRemoteSourceNotUsable
 	}
 	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
-		return fmt.Errorf("source has no API endpoint")
+		return conflictError("remote source has no API endpoint")
 	}
 	return nil
 }
@@ -302,12 +301,12 @@ func (s *Server) prepareRemoteWorkTrack(ctx context.Context, sourceID int64, cod
 	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return preparedRemoteWorkTrack{}, fmt.Errorf("source not found")
+			return preparedRemoteWorkTrack{}, errRemoteSourceNotFound
 		}
 		return preparedRemoteWorkTrack{}, err
 	}
 	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
-		return preparedRemoteWorkTrack{}, fmt.Errorf("source is not an enabled kikoeru-compatible source")
+		return preparedRemoteWorkTrack{}, errRemoteSourceNotUsable
 	}
 	client := s.kikoeruCrawlClientForSource(ctx, source)
 	remoteWork, rawWork, err := s.resolveKikoeruWork(ctx, client, requestedCode)
@@ -319,7 +318,10 @@ func (s *Server) prepareRemoteWorkTrack(ctx context.Context, sourceID int64, cod
 	}
 	tracks, _, err := client.Tracks(ctx, remoteWork.ID)
 	if err != nil {
-		_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
+		err = remoteWorkLookupError(err)
+		if !errors.Is(err, errRemoteWorkNotFound) {
+			_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
+		}
 		return preparedRemoteWorkTrack{}, err
 	}
 	_ = s.updateSourceHealth(ctx, sourceID, "healthy")

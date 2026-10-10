@@ -1,6 +1,7 @@
 import {
   type RemoteFetchFileDecision,
   type RemoteFetchEdition,
+  type RemoteFetchLocalRoot,
   type RemoteFetchPreparation,
   type RemoteLanguageEdition,
   type RemoteWorkDetail,
@@ -9,6 +10,24 @@ import {
 } from "../../../lib/api";
 import { buildRemoteTree, type TreeNode, type TreeTrack } from "../media/mediaTreeModel";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "../../../lib/remoteFetchPlan";
+
+/** The folders an edition is stored in, also when a response omits the list. */
+export function editionLocalRoots(
+  edition: { localRoots?: RemoteFetchLocalRoot[] | null } | null | undefined,
+): RemoteFetchLocalRoot[] {
+  return edition?.localRoots ?? [];
+}
+
+/**
+ * The folders a Fetch can publish into besides its planned root. The server
+ * accepts only an active folder of the edition as a target.
+ */
+export function selectableFetchTargetRoots(
+  edition: { localRoots?: RemoteFetchLocalRoot[] | null } | null | undefined,
+  plannedRoot: string,
+) {
+  return editionLocalRoots(edition).filter((root) => root.state === "active" && root.rootPath !== plannedRoot);
+}
 
 export type FetchIntent = {
   sourceId: number;

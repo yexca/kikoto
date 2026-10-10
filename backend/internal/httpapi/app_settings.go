@@ -84,7 +84,13 @@ type settingsUpdatePayload struct {
 	RecommendationConfig          json.RawMessage                 `json:"recommendationConfig"`
 }
 
-type settingsValidationError struct{ message string }
+// settingsValidationError rejects a settings update. code is set when the
+// interface explains the reason itself; otherwise the generic invalid-request
+// classification applies.
+type settingsValidationError struct {
+	message string
+	code    string
+}
 
 func (err *settingsValidationError) Error() string { return err.message }
 
@@ -92,9 +98,17 @@ func invalidSettings(message string) error {
 	return &settingsValidationError{message: message}
 }
 
+func invalidSettingsWithCode(code string, message string) error {
+	return &settingsValidationError{message: message, code: code}
+}
+
 func writeSettingsUpdateError(w http.ResponseWriter, err error) {
 	var validationErr *settingsValidationError
 	if errors.As(err, &validationErr) {
+		if validationErr.code != "" {
+			writeAPIError(w, http.StatusBadRequest, validationErr.code, validationErr.Error(), false)
+			return
+		}
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": validationErr.Error()})
 		return
 	}
@@ -142,7 +156,7 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	var payload settingsUpdatePayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": jsonBodyErrorMessage(err)})
 		return
 	}
 	recommendationConfig, err := s.parseRecommendationConfig(r.Context(), payload.RecommendationConfig)

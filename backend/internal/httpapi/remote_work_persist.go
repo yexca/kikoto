@@ -177,11 +177,8 @@ type remoteTrackSyncState struct {
 }
 
 func syncRemoteTrackNode(ctx context.Context, tx *sql.Tx, fileSourceID, workID int64, workCode string, parentID *int64, basePath string, index int, node kikoeru.Track, state *remoteTrackSyncState) error {
-	title := strings.TrimSpace(node.Title)
-	if title == "" {
-		title = fmt.Sprintf("Track %d", index+1)
-	}
-	path := joinRemotePath(basePath, title)
+	title := remoteTrackName(node.Title, index)
+	path := remoteTrackPath(basePath, title)
 	kind := remoteTrackKindForPath(node.Type, path)
 	fingerprint := fmt.Sprintf("remote:%d:%s:%s", fileSourceID, workCode, path)
 	var parent any
@@ -311,6 +308,24 @@ func remoteMediaHasAudio(kind string) any {
 		return true
 	}
 	return nil
+}
+
+// remoteTrackName is the one normalization of an upstream track title into the
+// name a remote file or folder is listed, planned, cached, and stored under.
+// Titles are untrusted: path separators and "." or ".." components never
+// survive, so a name always stays inside its folder. A title with nothing
+// usable left is named after its position.
+func remoteTrackName(title string, index int) string {
+	if name := cleanRemoteRelativePath(title); name != "" {
+		return name
+	}
+	return fmt.Sprintf("Track %d", index+1)
+}
+
+// remoteTrackPath is the work-relative path of the track named name, as
+// returned by remoteTrackName, inside the folder at basePath.
+func remoteTrackPath(basePath string, name string) string {
+	return cleanRemoteRelativePath(joinRemotePath(basePath, name))
 }
 
 func joinRemotePath(basePath string, name string) string {

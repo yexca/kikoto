@@ -86,38 +86,12 @@ func (s *Server) getRemoteSourceWorkText(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "remote text URL is not allowed"})
 		return
 	}
-	s.serveRemoteTextPreview(w, r, source, parsed.String())
-}
-
-func (s *Server) serveRemoteTextPreview(w http.ResponseWriter, r *http.Request, source remoteSourceForUse, remoteURL string) {
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, remoteURL, nil)
+	content, contentType, err := s.readRemoteText(r.Context(), source, parsed.String())
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "remote text request could not be created"})
+		writeRemoteTextError(w, err)
 		return
 	}
-	request.Header.Set("Accept", "text/plain,text/*")
-	request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
-	request.Header.Set("Accept-Language", s.remoteSourceAcceptLanguage(r.Context(), source))
-	response, err := s.sourceHTTPClient(source, 20*time.Second).Do(request)
-	if err != nil {
-		writeUpstreamError(w, err)
-		return
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": fmt.Sprintf("remote text returned HTTP %d", response.StatusCode)})
-		return
-	}
-	content, err := io.ReadAll(io.LimitReader(response.Body, 512*1024+1))
-	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "remote text could not be read"})
-		return
-	}
-	if len(content) > 512*1024 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text file is too large to preview"})
-		return
-	}
-	decoded, err := textdecode.Decode(r.Context(), content, response.Header.Get("Content-Type"))
+	decoded, err := textdecode.Decode(r.Context(), content, contentType)
 	if err != nil {
 		return
 	}
@@ -126,20 +100,65 @@ func (s *Server) serveRemoteTextPreview(w http.ResponseWriter, r *http.Request, 
 	_, _ = w.Write([]byte(decoded))
 }
 
+// maxTextPreviewBytes bounds a text file read for preview, wherever it is stored.
+const maxTextPreviewBytes = 512 * 1024
+
+var errTextPreviewTooLarge = invalidRequestError("text file is too large to preview")
+
+// remoteTextError is a remote text read the source did not complete. Its
+// message names no URL and is safe to return.
+type remoteTextError struct{ message string }
+
+func (err remoteTextError) Error() string { return err.message }
+
+func writeRemoteTextError(w http.ResponseWriter, err error) {
+	var textErr remoteTextError
+	if errors.As(err, &textErr) {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": textErr.message})
+		return
+	}
+	writeUpstreamError(w, err)
+}
+
+// readRemoteText reads a bounded text file from a URL that the caller has
+// already checked against the source's allowed origins. It returns the bytes
+// and the upstream content type for decoding.
+func (s *Server) readRemoteText(ctx context.Context, source remoteSourceForUse, remoteURL string) ([]byte, string, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, remoteURL, nil)
+	if err != nil {
+		return nil, "", remoteTextError{message: "remote text request could not be created"}
+	}
+	request.Header.Set("Accept", "text/plain,text/*")
+	request.Header.Set("User-Agent", buildinfo.UserAgent()+" Kikoeru-compatible client")
+	request.Header.Set("Accept-Language", s.remoteSourceAcceptLanguage(ctx, source))
+	response, err := s.sourceHTTPClient(source, 20*time.Second).Do(request)
+	if err != nil {
+		return nil, "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, "", remoteTextError{message: fmt.Sprintf("remote text returned HTTP %d", response.StatusCode)}
+	}
+	content, err := io.ReadAll(io.LimitReader(response.Body, maxTextPreviewBytes+1))
+	if err != nil {
+		return nil, "", remoteTextError{message: "remote text could not be read"}
+	}
+	if len(content) > maxTextPreviewBytes {
+		return nil, "", errTextPreviewTooLarge
+	}
+	return content, response.Header.Get("Content-Type"), nil
+}
+
 func remoteTextTrackURL(nodes []kikoeru.Track, targetPath string, basePath string) (string, bool) {
-	for _, node := range nodes {
-		title := strings.TrimSpace(node.Title)
-		if title == "" {
-			continue
-		}
-		path := cleanRemoteRelativePath(joinRemotePath(basePath, title))
+	for index, node := range nodes {
+		path := remoteTrackPath(basePath, remoteTrackName(node.Title, index))
 		if len(node.Children) > 0 || remoteTrackKindForPath(node.Type, path) == "folder" {
 			if value, ok := remoteTextTrackURL(node.Children, targetPath, path); ok {
 				return value, true
 			}
 			continue
 		}
-		if path == targetPath && mediaKindFromPath(path) == "text" {
+		if path == targetPath && isTextPreviewFile(remoteTrackKindForPath(node.Type, path), path) {
 			return firstNonEmpty(node.MediaStreamURL, node.MediaDownloadURL, node.StreamLowQualityURL), true
 		}
 	}
@@ -157,7 +176,7 @@ func (s *Server) downloadRemoteCover(ctx context.Context, source remoteSourceFor
 		return nil
 	}
 	workCode = strings.ToUpper(strings.TrimSpace(workCode))
-	if normalizeDLsiteCode(workCode) == "" {
+	if normalizeWorkCode(workCode) == "" {
 		return fmt.Errorf("invalid cover work code")
 	}
 	if exists, err := s.hasCachedWorkCover(workCode); err != nil {

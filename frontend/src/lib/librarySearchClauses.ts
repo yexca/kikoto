@@ -4,7 +4,9 @@ export type SearchClauseKind =
   | "text"
   | "code"
   | "circle"
+  | "exclude_circle"
   | "voice_actor"
+  | "exclude_voice_actor"
   | "tag"
   | "exclude_tag"
   | "user_tag"
@@ -24,7 +26,9 @@ export const editableSearchClauseKinds: { value: SearchClauseKind; label: string
   { value: "text", label: "Text" },
   { value: "code", label: "Code" },
   { value: "circle", label: "Circle" },
+  { value: "exclude_circle", label: "Not circle" },
   { value: "voice_actor", label: "Voice actor" },
+  { value: "exclude_voice_actor", label: "Not voice actor" },
   { value: "tag", label: "Tag" },
   { value: "exclude_tag", label: "Not tag" },
   { value: "user_tag", label: "My tag" },
@@ -37,6 +41,13 @@ export const editableSearchClauseKinds: { value: SearchClauseKind; label: string
   { value: "language", label: "Language" },
   { value: "shelf", label: "On shelf" },
 ];
+
+// Every key the server's clause parser accepts. A leading "-" excludes on the
+// circle, voice actor, and tag keys; "-duration" is an upper bound.
+const searchClauseKeyPattern =
+  "-?mytag|-?tagw?|-?circle|-?va|-?voice|-?creator|duration|-duration|rate|rating|sell|sales|age|lang|language|shelf";
+const pendingClauseKeyPattern = new RegExp(`^(${searchClauseKeyPattern}):$`, "i");
+const prefixedClausePattern = new RegExp(`^(${searchClauseKeyPattern}):(.+)$`, "i");
 
 export function parseSearchClauses(query: string): SearchClause[] {
   const clauses: SearchClause[] = [];
@@ -51,9 +62,7 @@ export function parseSearchClauses(query: string): SearchClause[] {
   for (let index = 0; index < parts.length; index++) {
     const part = parts[index].trim();
     if (!part) continue;
-    const pendingPrefix = part.match(
-      /^(-?mytag|-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language|shelf):$/i,
-    );
+    const pendingPrefix = part.match(pendingClauseKeyPattern);
     if (pendingPrefix && index + 1 < parts.length) {
       const clause = searchClauseFromKeyValue(pendingPrefix[1], parts[index + 1]);
       if (clause) {
@@ -62,9 +71,7 @@ export function parseSearchClauses(query: string): SearchClause[] {
         continue;
       }
     }
-    const prefixed = part.match(
-      /^(-?mytag|-?tagw?|-?circle|-?va|circle|va|voice|creator|tag|duration|-duration|rate|rating|sell|sales|age|lang|language|shelf):(.+)$/i,
-    );
+    const prefixed = part.match(prefixedClausePattern);
     if (prefixed) {
       const clause = searchClauseFromKeyValue(prefixed[1], prefixed[2]);
       if (clause) {
@@ -95,11 +102,15 @@ export function compileLibrarySearchQuery(clauses: SearchClause[]) {
       switch (clause.kind) {
         case "code":
         case "text":
-          return clause.value;
+          return formatSearchValue(clause.value);
         case "circle":
           return `$circle:${clause.value}$`;
+        case "exclude_circle":
+          return `$-circle:${clause.value}$`;
         case "voice_actor":
           return `$va:${clause.value}$`;
+        case "exclude_voice_actor":
+          return `$-va:${clause.value}$`;
         case "tag":
           return `$tag:${clause.value}$`;
         case "exclude_tag":
@@ -133,8 +144,12 @@ export function formatRemoteSearchQuery(clauses: SearchClause[]) {
       switch (clause.kind) {
         case "circle":
           return `$circle:${clause.value}$`;
+        case "exclude_circle":
+          return `$-circle:${clause.value}$`;
         case "voice_actor":
           return `$va:${clause.value}$`;
+        case "exclude_voice_actor":
+          return `$-va:${clause.value}$`;
         case "tag":
           return `$tag:${clause.value}$`;
         case "exclude_tag":
@@ -169,8 +184,12 @@ export function formatSearchClause(clause: SearchClause) {
       return value;
     case "circle":
       return `circle:${value}`;
+    case "exclude_circle":
+      return `-circle:${value}`;
     case "voice_actor":
       return `va:${value}`;
+    case "exclude_voice_actor":
+      return `-va:${value}`;
     case "tag":
       return `tag:${value}`;
     case "exclude_tag":
@@ -216,12 +235,15 @@ function searchClauseFromKeyValue(key: string, rawValue: string): SearchClause |
     case "circle":
       return { kind: "circle", value };
     case "-circle":
-      return { kind: "text", value: `-${value}` };
+      return { kind: "exclude_circle", value };
     case "va":
-    case "-va":
     case "voice":
     case "creator":
       return { kind: "voice_actor", value };
+    case "-va":
+    case "-voice":
+    case "-creator":
+      return { kind: "exclude_voice_actor", value };
     case "tag":
     case "tagw":
       return { kind: "tag", value };

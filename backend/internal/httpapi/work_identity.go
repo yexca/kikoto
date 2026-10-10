@@ -27,7 +27,7 @@ type canonicalWorkRef struct {
 }
 
 func (s *Server) canonicalWorkForCode(ctx context.Context, code string) (canonicalWorkRef, error) {
-	code = normalizeDLsiteCode(code)
+	code = normalizeWorkCode(code)
 	if code == "" {
 		return canonicalWorkRef{}, nil
 	}
@@ -43,7 +43,7 @@ func (s *Server) canonicalWorkForCode(ctx context.Context, code string) (canonic
 		return canonicalWorkRef{}, err
 	}
 	if err == nil {
-		canonicalCode = normalizeDLsiteCode(canonicalCode)
+		canonicalCode = normalizeWorkCode(canonicalCode)
 		if canonicalID.Valid {
 			return canonicalWorkRef{WorkID: canonicalID.Int64, Code: canonicalCode, Known: true}, nil
 		}
@@ -64,7 +64,7 @@ func (s *Server) canonicalWorkForCode(ctx context.Context, code string) (canonic
 		return canonicalWorkRef{}, err
 	}
 	if err == nil {
-		canonicalCode = normalizeDLsiteCode(canonicalCode)
+		canonicalCode = normalizeWorkCode(canonicalCode)
 		if canonicalID.Valid {
 			return canonicalWorkRef{WorkID: canonicalID.Int64, Code: canonicalCode, Known: true}, nil
 		}
@@ -80,7 +80,7 @@ func (s *Server) canonicalWorkForCode(ctx context.Context, code string) (canonic
 }
 
 func (s *Server) familyWorkIDsForCode(ctx context.Context, code string) ([]int64, error) {
-	code = normalizeDLsiteCode(code)
+	code = normalizeWorkCode(code)
 	if code == "" {
 		return []int64{}, nil
 	}
@@ -171,7 +171,7 @@ func (s *Server) workEditionVisibleInLibrary(ctx context.Context, workID int64) 
 }
 
 func (s *Server) resolveWorkCode(w http.ResponseWriter, r *http.Request) {
-	code := normalizeDLsiteCode(r.PathValue("code"))
+	code := normalizeWorkCode(r.PathValue("code"))
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})
 		return

@@ -55,6 +55,16 @@ describe("text preview model", () => {
     ]);
   });
 
+  it("reads LRC lyrics whose stamps pass 99 minutes or carry an hour field", () => {
+    const lyrics = parseLyrics("[99:59.00]before\n[100:00.00]after\n[01:45:00.50]with hours");
+
+    expect(lyrics?.lines).toEqual([
+      { timeSeconds: 5999, text: "before" },
+      { timeSeconds: 6000, text: "after" },
+      { timeSeconds: 6300.5, text: "with hours" },
+    ]);
+  });
+
   it("keeps a script with occasional timestamps as plain text", () => {
     expect(parseLyrics("Scene one\n[00:30]A cue\nScene two\nScene three")).toBeNull();
     expect(parseLyrics("Synthetic notes")).toBeNull();

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/workcode"
 )
 
 type dlsiteSnapshotMetadata struct {
@@ -277,6 +278,16 @@ func parseSeriesLink(value string) (string, string) {
 	return name, titleID
 }
 
+// normalizeWorkCode accepts every code that identifies a work, including codes
+// no metadata provider can look up. Use it wherever a request or stored row
+// addresses a work.
+func normalizeWorkCode(value string) string {
+	return workcode.Normalize(value)
+}
+
+// normalizeDLsiteCode accepts only the codes DLsite publishes metadata for. Use
+// it for provider payloads and before any DLsite lookup; a work code it rejects
+// is still a valid work.
 func normalizeDLsiteCode(value string) string {
 	value = strings.ToUpper(strings.TrimSpace(value))
 	if len(value) >= 7 && len(value) <= 10 && (strings.HasPrefix(value, "RJ") || strings.HasPrefix(value, "BJ") || strings.HasPrefix(value, "VJ")) {

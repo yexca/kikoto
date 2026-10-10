@@ -40,3 +40,13 @@ export function applyLyricsPreferenceOverride(track: PlayerTrack, overrides: Rec
     ? applyLyricsChoiceToTrack(track, track, choice)
     : { ...track, preferredLyricsMediaItemId: preferredMediaItemID };
 }
+
+/**
+ * Whether a lyric choice is stored on the server. The library keeps one choice
+ * per audio media item; for a video track, a remote preview, or anything else
+ * the choice applies to the current session only.
+ */
+export function lyricsPreferencePersists(target: LyricsPreferenceTarget) {
+  if (target.mediaItemId <= 0 || (target.kind !== undefined && target.kind !== "audio")) return false;
+  return target.lyricsPreferencePersistable ?? target.progressRecordable ?? false;
+}

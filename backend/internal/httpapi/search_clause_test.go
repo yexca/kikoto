@@ -139,3 +139,24 @@ func TestLibrarySearchWhereMatchesNormalizedUnicodeTag(t *testing.T) {
 		t.Fatalf("excluded tag search count = %d, want 0", count)
 	}
 }
+
+// Exclusions reach a compatible source in its own negated syntax, and a source
+// that is filtered locally drops the excluded circle or voice rather than
+// requiring it.
+func TestRemoteSourceQueryExcludesCirclesAndVoices(t *testing.T) {
+	plan := planRemoteSourceQuery(`-circle:"Example Circle" -va:"Example Voice"`, sourceTypeKikoeruCompatible)
+	if want := `$-circle:Example Circle$ $-va:Example Voice$`; plan.PushdownQuery != want {
+		t.Fatalf("PushdownQuery = %q, want %q", plan.PushdownQuery, want)
+	}
+
+	clauses := parseListSearchClauses(`-circle:"Example Circle" -va:"Example Voice"`)
+	works := []remoteWorkSummary{
+		{PrimaryCode: "RJ00000000", Circle: "Example Circle", VoiceActors: []string{"Other Voice"}},
+		{PrimaryCode: "RJ00000001", Circle: "Other Group", VoiceActors: []string{"Example Voice"}},
+		{PrimaryCode: "RJ00000002", Circle: "Other Group", VoiceActors: []string{"Other Voice"}},
+	}
+	filtered := filterRemoteWorkSummaries(works, clauses)
+	if len(filtered) != 1 || filtered[0].PrimaryCode != "RJ00000002" {
+		t.Fatalf("filtered = %#v, want only the work with neither excluded value", filtered)
+	}
+}

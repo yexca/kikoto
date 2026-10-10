@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -404,6 +405,12 @@ func (s *Server) prepareWorkflowTriggerUpdate(ctx context.Context, actor current
 	if current.TriggerType == "filesystem_event" && !isFixedFilesystemTriggerUpdate(currentDefinition, current, payload) {
 		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "the local library filesystem trigger only supports pause and scan-mode changes")
 	}
+	// Pausing only stops future runs, so it never depends on whether the
+	// trigger's options could still run: a trigger whose source was disabled
+	// or removed can always be switched off.
+	if isWorkflowTriggerPause(current, payload) {
+		return current, preparedWorkflowTrigger{ConfigJSON: current.ConfigJSON}, false, nil
+	}
 	definition, err := s.loadWorkflowDefinition(ctx, payload.WorkflowDefinitionID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -429,6 +436,35 @@ func (s *Server) prepareWorkflowTriggerUpdate(ctx context.Context, actor current
 	}
 	enabled := payload.Enabled == nil || *payload.Enabled
 	return current, prepared, enabled, nil
+}
+
+// isWorkflowTriggerPause reports whether the update switches the trigger off
+// and changes nothing else about it.
+func isWorkflowTriggerPause(current workflowTriggerRecord, payload workflowTriggerPayload) bool {
+	return payload.Enabled != nil && !*payload.Enabled &&
+		payload.WorkflowDefinitionID == current.WorkflowDefinitionID &&
+		payload.TriggerType == current.TriggerType &&
+		payload.DisplayName == strings.TrimSpace(current.DisplayName) &&
+		sameJSONDocument(payload.ScheduleJSON, current.ScheduleJSON) &&
+		sameJSONDocument(payload.ConfigJSON, current.ConfigJSON)
+}
+
+// sameJSONDocument compares two JSON documents by value, so formatting and key
+// order do not make equal documents differ. An empty document is "{}".
+func sameJSONDocument(left string, right string) bool {
+	decode := func(raw string) (any, bool) {
+		if strings.TrimSpace(raw) == "" {
+			raw = "{}"
+		}
+		var value any
+		if err := json.Unmarshal([]byte(raw), &value); err != nil {
+			return nil, false
+		}
+		return value, true
+	}
+	leftValue, leftOK := decode(left)
+	rightValue, rightOK := decode(right)
+	return leftOK && rightOK && reflect.DeepEqual(leftValue, rightValue)
 }
 
 func isFixedFilesystemTriggerUpdate(definition workflowDefinitionRecord, current workflowTriggerRecord, payload workflowTriggerPayload) bool {

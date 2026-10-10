@@ -573,6 +573,10 @@ func searchWhereClause(clause SearchClause, userID int64) (string, []any) {
 	switch clause.Kind {
 	case "circle", "voice_actor":
 		return familySearchIndexClause(clause.Kind, folded, false)
+	case "exclude_circle":
+		return familySearchIndexClause("circle", folded, true)
+	case "exclude_voice_actor":
+		return familySearchIndexClause("voice_actor", folded, true)
 	case "tag":
 		return familySearchIndexClause("tag", folded, false)
 	case "exclude_tag":

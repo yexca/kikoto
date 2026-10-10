@@ -1,5 +1,34 @@
 # Unreleased
 
+- Fixes across browsing, Fetch, and settings:
+  - A work with a `CC` code opens from its address, a refresh, or a bookmark,
+    and a work that cannot be loaded shows a not-found or retry state instead
+    of loading forever.
+  - Text files of a tracked remote work and of cached files open in the
+    preview, and cached images display.
+  - Library search excludes with `-circle:` and `-va:` as it does with
+    `-tag:`, and a quoted phrase matches as a whole.
+  - LRC lyrics keep their timing past 99 minutes and accept an hour field.
+  - Fetch treats two file names that differ only by letter case as a target
+    conflict and refuses to publish fewer files than planned. A remote track
+    title with path components such as `../` fetches under its normalized
+    name.
+  - Requests for something that does not exist answer with 404 instead of a
+    server or upstream error, and a remote source that reports "no such work"
+    keeps its health status.
+  - Bulk Fetch and Fork report how many works were queued, then the result
+    when the run finishes. The first-run guide reports a metadata sync only
+    when one was queued.
+  - A trigger whose source is disabled can be switched off. Saving a settings
+    section sends only that section, and whole-number settings no longer
+    accept a fraction.
+  - A Kikoeru account import runs for its full three minutes, and a database
+    upload has 15 minutes to arrive. Upload failures say so instead of asking
+    to check the address.
+  - The Favorites page lists every favorite circle and voice actor, a
+    cancelled workflow step reads Cancelled, and several interface labels that
+    showed their internal names are translated.
+
 - On phones, bottom sheets such as Quick actions and tall dialogs stay below
   the status bar and notch, so their handle and close action remain reachable
   and a sheet always leaves a strip above it that dismisses it. The work

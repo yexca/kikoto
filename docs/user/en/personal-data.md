@@ -93,7 +93,8 @@ and marked lists. A server without playlists imports reviews only. The result
 goes through the same preview and import as a file.
 
 **Kikoeru database file** uploads the SQLite database of the open-source
-Kikoeru, up to 512 MiB, and reads only the named account's reviews. Copy the
+Kikoeru, up to 512 MiB, and reads only the named account's reviews. The upload
+may take up to 15 minutes. Copy the
 file while Kikoeru is stopped or idle so recent writes are included. That
 database has no playlists.
 

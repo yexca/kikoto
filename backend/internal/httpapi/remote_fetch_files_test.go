@@ -113,3 +113,27 @@ func TestListWorkflowRunFetchFilesReturnsRelativePaths(t *testing.T) {
 		t.Fatalf("non-Fetch run = %d %s", response.Code, response.Body)
 	}
 }
+
+// A Fetch run that planned no files, as Demo's illustrative runs do, lists no
+// files. It is not a failure to load them.
+func TestListWorkflowRunFetchFilesIsEmptyForAFetchWithoutAPlan(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{})
+	for _, statement := range []string{
+		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch')`,
+		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Example: Fetch', 'succeeded', 'manual')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/workflow-runs/1/fetch-files", nil)
+	request.SetPathValue("id", "1")
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"workflows:run"}}))
+	response := httptest.NewRecorder()
+	server.listWorkflowRunFetchFiles(response, request)
+
+	if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != `{"files":[],"runId":1}` {
+		t.Fatalf("Fetch run without a plan = %d %s, want an empty file list", response.Code, response.Body)
+	}
+}

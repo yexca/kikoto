@@ -1,6 +1,5 @@
 import {
   api,
-  ApiError,
   type LibrarySort,
   type LibrarySource,
   type ListeningStatus,
@@ -166,6 +165,8 @@ import { remoteSourceVisibilityKey, type SourceVisibilityMode } from "@/componen
 import { useLibrarySourceVisibility } from "@/pages/library/useLibrarySourceVisibility";
 import { libraryCoverSourceBadges } from "@/pages/library/libraryCoverSources";
 import { useLibraryCoverSourceMode } from "@/pages/library/useLibraryCoverSourceMode";
+import { WorkLoadFailed } from "@/pages/library/WorkLoadFailed";
+import { workLoadFailure, type WorkLoadFailure } from "@/pages/library/workLoadFailure";
 import {
   dlsiteTagBadges,
   userTagBadges,
@@ -418,7 +419,8 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     workDetailCodeFromLocation(window.location.pathname, window.location.search),
   );
   const [selectedWork, setSelectedWork] = useState<WorkDetail | null>(null);
-  const [selectedWorkNotFound, setSelectedWorkNotFound] = useState(false);
+  const [selectedWorkLoadFailure, setSelectedWorkLoadFailure] = useState<WorkLoadFailure | null>(null);
+  const [selectedWorkLoadAttempt, setSelectedWorkLoadAttempt] = useState(0);
   const [selectedWorkPreview, setSelectedWorkPreview] = useState<WorkPreview | null>(() =>
     workPreviewFromHistory(workDetailCodeFromLocation(window.location.pathname, window.location.search)),
   );
@@ -936,12 +938,12 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     if (!active) return;
     if (selectedCode === null) {
       setSelectedWork(null);
-      setSelectedWorkNotFound(false);
+      setSelectedWorkLoadFailure(null);
       setIsSelectedMediaLoading(false);
       setSelectedMediaError("");
       return;
     }
-    setSelectedWorkNotFound(false);
+    setSelectedWorkLoadFailure(null);
     setSelectedMediaError("");
     const controller = new AbortController();
     const work = worksRef.current.find((item) => item.primaryCode.toUpperCase() === selectedCode.toUpperCase());
@@ -965,7 +967,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             setSelectedWorkPreview,
             setSelectedCode,
             setIsSelectedMediaLoading,
-            setSelectedWorkNotFound,
+            setSelectedWorkLoadFailure,
             setSelectedMediaError,
             controller.signal,
           ),
@@ -973,7 +975,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         .catch((error) => {
           if (!controller.signal.aborted && !(error instanceof DOMException && error.name === "AbortError")) {
             setSelectedWork(null);
-            setSelectedWorkNotFound(error instanceof ApiError && error.status === 404);
+            setSelectedWorkLoadFailure(workLoadFailure(error));
           }
         })
         .finally(() => {
@@ -988,12 +990,12 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       setSelectedWorkPreview,
       setSelectedCode,
       setIsSelectedMediaLoading,
-      setSelectedWorkNotFound,
+      setSelectedWorkLoadFailure,
       setSelectedMediaError,
       controller.signal,
     );
     return () => controller.abort();
-  }, [active, principalID, selectedCode, works.length]);
+  }, [active, principalID, selectedCode, selectedWorkLoadAttempt, works.length]);
 
   useLayoutEffect(() => {
     if (!active) {
@@ -1534,7 +1536,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     window.dispatchEvent(new Event("kikoto:navigation"));
     setSelectedCode(null);
     setSelectedRemoteTarget(null);
-    setSelectedWorkNotFound(false);
+    setSelectedWorkLoadFailure(null);
   };
 
   const updateSearchClauses = (clauses: SearchClause[]) => {
@@ -1656,13 +1658,21 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       </Suspense>
     );
   } else if (selectedCode !== null) {
-    if (selectedWorkNotFound) {
+    if (selectedWorkLoadFailure === "not_found") {
       workDetail = (
         <NotFoundPage
           title={t("library.workNotFound")}
           message={t("library.workUnavailableInLibrary", { code: selectedCode })}
           onBack={backToLibrary}
           onOpenLibrary={openLibraryHome}
+        />
+      );
+    } else if (selectedWorkLoadFailure === "failed" && !selectedWork) {
+      workDetail = (
+        <WorkLoadFailed
+          code={selectedCode}
+          onBack={backToLibrary}
+          onRetry={() => setSelectedWorkLoadAttempt((attempt) => attempt + 1)}
         />
       );
     } else {
@@ -3504,13 +3514,13 @@ async function resolveAndOpenWork(
   setSelectedWorkPreview: (work: WorkPreview | null) => void,
   setSelectedCode: (code: string | null) => void,
   setMediaLoading: (loading: boolean) => void,
-  setNotFound: (notFound: boolean) => void,
+  setLoadFailure: (failure: WorkLoadFailure | null) => void,
   setMediaError: (message: string) => void,
   signal: AbortSignal,
 ) {
   try {
     setMediaLoading(true);
-    setNotFound(false);
+    setLoadFailure(null);
     setMediaError("");
     let resolvedCode = code;
     let resolvedID: number | null = null;
@@ -3540,7 +3550,7 @@ async function resolveAndOpenWork(
   } catch (error) {
     if (signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
     setSelectedWork(null);
-    setNotFound(error instanceof ApiError && error.status === 404);
+    setLoadFailure(workLoadFailure(error));
   } finally {
     if (!signal?.aborted) setMediaLoading(false);
   }
@@ -3725,7 +3735,10 @@ const workClauseMatchers: Record<SearchClauseKind, WorkClauseMatcher> = {
   code: (work, value) => work.primaryCode.toLowerCase().includes(value),
   circle: (work, value) =>
     work.circle.toLowerCase().includes(value) || work.circleExternalId.toLowerCase().includes(value),
+  exclude_circle: (work, value) =>
+    !work.circle.toLowerCase().includes(value) && !work.circleExternalId.toLowerCase().includes(value),
   voice_actor: (work, value) => work.voiceActors.some((actor) => actor.toLowerCase().includes(value)),
+  exclude_voice_actor: (work, value) => !work.voiceActors.some((actor) => actor.toLowerCase().includes(value)),
   tag: (work, value) => work.tags.some((tag) => tag.toLowerCase().includes(value)),
   exclude_tag: (work, value) => !work.tags.some((tag) => tag.toLowerCase().includes(value)),
   user_tag: (work, value) => (work.userTags ?? []).some((tag) => tag.name.toLowerCase().includes(value)),
@@ -3782,8 +3795,12 @@ function searchClauseLabel(clause: SearchClause, t?: TFunction) {
       return translate("library.searchClauseLabels.code", `Code: ${clause.value}`);
     case "circle":
       return translate("library.searchClauseLabels.circle", `Circle: ${clause.value}`);
+    case "exclude_circle":
+      return translate("library.searchClauseLabels.excludeCircle", `Exclude circle: ${clause.value}`);
     case "voice_actor":
       return translate("library.searchClauseLabels.voiceActor", `VA: ${clause.value}`);
+    case "exclude_voice_actor":
+      return translate("library.searchClauseLabels.excludeVoiceActor", `Exclude VA: ${clause.value}`);
     case "tag":
       return translate("library.searchClauseLabels.tag", `Tag: ${clause.value}`);
     case "exclude_tag":

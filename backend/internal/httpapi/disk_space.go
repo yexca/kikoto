@@ -74,7 +74,7 @@ func (s *Server) ensureRemoteWorkSaveDiskReserve(plan remoteWorkSavePlan, minFre
 			return errors.New("fetch disk requirement exceeds supported range")
 		}
 		if availableByFilesystem[identity] < requiredWithReserve {
-			return fmt.Errorf("insufficient free space on fetch %s volume", requirement.Label)
+			return rejectedRequestError("insufficient_disk_space", fmt.Sprintf("insufficient free space on fetch %s volume", requirement.Label), nil)
 		}
 	}
 	return nil
@@ -148,7 +148,7 @@ func remoteWorkSaveRequiredBytes(plan remoteWorkSavePlan) (uint64, uint64, error
 			continue
 		}
 		if item.SizeBytes == nil || *item.SizeBytes < 0 {
-			return 0, 0, errors.New("fetch disk reserve requires known file sizes")
+			return 0, 0, rejectedRequestError("unknown_file_size", "fetch disk reserve requires known file sizes", nil)
 		}
 		size := uint64(*item.SizeBytes)
 		var ok bool

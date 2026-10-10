@@ -227,6 +227,11 @@ export const personalJapanese = {
           permission: "このアカウントは個人データを取り込めません。",
           read_only: "このインスタンスは読み取り専用です。",
           unavailable: "Kikoeru サーバーに接続できませんでした。再試行してください。",
+          upload_invalid: "アップロードには、データベースファイル 1 つとアカウント名が必要です。",
+          upload_interrupted: "アップロードが時間内に完了しませんでした。接続を確認して、もう一度お試しください。",
+          upload_failed:
+            "データベースをアップロードできませんでした。このサーバーへの接続を確認して、もう一度お試しください。",
+          database_timeout: "データベースの読み取りに時間がかかりすぎました。もう一度お試しください。",
         },
         risk: {
           accountTitle: "Kikoeru サーバーに接続する前に",

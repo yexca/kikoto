@@ -32,6 +32,7 @@ import {
 } from "@/features/sources/remoteSourceModel";
 import { api, type AppSettings, type FileSource, type LibraryLayout } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { draftAfterSectionSave, sectionSettings } from "@/pages/settingsDraft";
 import { UsersPage } from "@/pages/UsersPage";
 
 type MaintenanceTab = "library" | "cache" | "proxy" | "users";
@@ -163,11 +164,15 @@ export function MaintenancePage({
   const patchDraft = (next: Partial<RuntimeDraft>) =>
     setDraft((current) => (current ? { ...current, ...next } : current));
 
-  const saveRuntimeSettings = async () => {
-    if (readOnly || !draft) return;
+  // Each Save sends its own section only, so a setting in another section can
+  // neither be written by accident nor make this save fail.
+  const saveRuntimeSettings = async (keys: Array<keyof RuntimeDraft>) => {
+    if (readOnly || !draft || !savedDraft) return;
     setSavingRuntime(true);
     try {
-      applySettings(await api.updateSettings(draft));
+      const next = await api.updateSettings(sectionSettings(draft, keys));
+      applySettings(next);
+      setDraft(draftAfterSectionSave(runtimeDraftFromSettings(next), draft, savedDraft, keys));
       toast.success(t("maintenance.settingsSaved"));
     } catch (error) {
       toast.notify(toastFromError(error, t("maintenance.settingsApiUnavailable")));
@@ -324,7 +329,7 @@ export function MaintenancePage({
     <Button
       size="sm"
       disabled={readOnly || savingRuntime || !runtimeDirty(keys)}
-      onClick={() => void saveRuntimeSettings()}
+      onClick={() => void saveRuntimeSettings(keys)}
     >
       {savingRuntime ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
       {label}
@@ -381,6 +386,7 @@ export function MaintenancePage({
                   value={draft.localScanDepth}
                   min={settings?.localScanDepthMinimum ?? 1}
                   max={8}
+                  integer
                   unit={t("sourceSetup.levels")}
                   onChange={(localScanDepth) => patchDraft({ localScanDepth })}
                 />
@@ -401,6 +407,7 @@ export function MaintenancePage({
                   value={draft.catalogFreshnessDays}
                   min={1}
                   max={365}
+                  integer
                   unit={t("sourceSetup.days")}
                   onChange={(catalogFreshnessDays) => patchDraft({ catalogFreshnessDays })}
                 />
@@ -579,6 +586,7 @@ function CacheFetchSettings({
             label={t("maintenance.cache.limit")}
             value={draft.cacheLimitGb}
             min={0}
+            integer
             unit="GB"
             onChange={(cacheLimitGb) => onChange({ cacheLimitGb })}
           />
@@ -593,6 +601,7 @@ function CacheFetchSettings({
             value={draft.transcodeCacheLimitGb}
             min={1}
             max={4096}
+            integer
             unit="GB"
             onChange={(transcodeCacheLimitGb) => onChange({ transcodeCacheLimitGb })}
           />
@@ -619,6 +628,7 @@ function CacheFetchSettings({
             value={draft.remoteDownloadLimitGb}
             min={1}
             max={2048}
+            integer
             unit="GB"
             onChange={(remoteDownloadLimitGb) => onChange({ remoteDownloadLimitGb })}
           />
@@ -633,6 +643,7 @@ function CacheFetchSettings({
             value={draft.fetchStagingRetentionDays}
             min={1}
             max={365}
+            integer
             unit={t("sourceSetup.days")}
             onChange={(fetchStagingRetentionDays) => onChange({ fetchStagingRetentionDays })}
           />

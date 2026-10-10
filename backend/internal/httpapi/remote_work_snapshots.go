@@ -102,12 +102,12 @@ func (s *Server) loadRemoteWork(ctx context.Context, sourceID int64, code string
 	source, err := s.loadRemoteSourceForUse(ctx, sourceID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return remoteSourceForUse{}, kikoeru.Work{}, fmt.Errorf("source not found")
+			return remoteSourceForUse{}, kikoeru.Work{}, errRemoteSourceNotFound
 		}
 		return remoteSourceForUse{}, kikoeru.Work{}, err
 	}
 	if !isKikoeruSourceType(source.SourceType) || !source.Enabled {
-		return remoteSourceForUse{}, kikoeru.Work{}, fmt.Errorf("source is not an enabled kikoeru-compatible source")
+		return remoteSourceForUse{}, kikoeru.Work{}, errRemoteSourceNotUsable
 	}
 	client := s.kikoeruClientForSourceWithLanguages(source, sourceRequestInteractive, languages)
 	remoteWork, _, err := s.resolveKikoeruWork(ctx, client, code)
@@ -124,7 +124,10 @@ func (s *Server) loadRemoteWork(ctx context.Context, sourceID int64, code string
 func (s *Server) loadRemoteTracks(ctx context.Context, source remoteSourceForUse, work kikoeru.Work, languages []string) ([]kikoeru.Track, error) {
 	tracks, _, err := s.kikoeruClientForSourceWithLanguages(source, sourceRequestInteractive, languages).Tracks(ctx, work.ID)
 	if err != nil {
-		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+		err = remoteWorkLookupError(err)
+		if !errors.Is(err, errRemoteWorkNotFound) {
+			_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
+		}
 		return nil, err
 	}
 	return tracks, nil
@@ -259,6 +262,7 @@ func (s *Server) loadRemoteWorkTracksCachedWithLanguages(ctx context.Context, so
 	s.remoteSourceConfigMu.RUnlock()
 
 	tracks, _, err := s.kikoeruClientForSourceWithLanguages(source, sourceRequestInteractive, languages).Tracks(ctx, work.ID)
+	err = remoteWorkLookupError(err)
 	s.remoteSourceConfigMu.RLock()
 	defer s.remoteSourceConfigMu.RUnlock()
 	current, currentErr := s.currentRemoteCacheSource(ctx, sourceID)
@@ -305,15 +309,27 @@ func (s *Server) recordRemoteCacheHealth(ctx context.Context, sourceID int64, re
 func (s *Server) currentRemoteCacheSource(ctx context.Context, id int64) (remoteSourceForUse, error) {
 	source, err := s.loadRemoteSourceForUse(ctx, id)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return remoteSourceForUse{}, errRemoteSourceNotFound
+		}
 		return remoteSourceForUse{}, err
 	}
 	if !source.Enabled || !isKikoeruSourceType(source.SourceType) {
-		return remoteSourceForUse{}, errors.New("source is not an enabled kikoeru-compatible source")
+		return remoteSourceForUse{}, errRemoteSourceNotUsable
 	}
 	s.remoteWorkCacheMu.Lock()
 	source.cacheGeneration = s.remoteWorkCacheGenerations[id]
 	s.remoteWorkCacheMu.Unlock()
 	return source, nil
+}
+
+// requireUsableRemoteSource rejects a source id that does not exist or cannot
+// serve works, before any provider or source request is made on its behalf.
+func (s *Server) requireUsableRemoteSource(ctx context.Context, id int64) error {
+	s.remoteSourceConfigMu.RLock()
+	defer s.remoteSourceConfigMu.RUnlock()
+	_, err := s.currentRemoteCacheSource(ctx, id)
+	return err
 }
 
 func sameRemoteCacheSource(a, b remoteSourceForUse) bool {
@@ -439,7 +455,21 @@ func (s *Server) resolveKikoeruWork(ctx context.Context, client *kikoeru.Client,
 	if fallbackErr == nil {
 		return fallbackWork, fallbackRaw, nil
 	}
+	// Only a source that answered both lookups can say the work is absent. A
+	// listing it could not serve leaves the question open, which is a failure.
+	if kikoeru.IsNotFound(err) && errors.Is(fallbackErr, kikoeru.ErrWorkNotFound) {
+		return kikoeru.Work{}, nil, errRemoteWorkNotFound
+	}
 	return kikoeru.Work{}, nil, err
+}
+
+// remoteWorkLookupError turns the source's own "no such work" answer for a
+// work it has already resolved into errRemoteWorkNotFound.
+func remoteWorkLookupError(err error) error {
+	if kikoeru.IsNotFound(err) {
+		return errRemoteWorkNotFound
+	}
+	return err
 }
 
 func isNotFoundLikeError(err error) bool {

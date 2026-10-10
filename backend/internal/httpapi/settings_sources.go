@@ -686,7 +686,7 @@ func parseFileSourcePayload(w http.ResponseWriter, r *http.Request, allowLocal b
 func decodeFileSourcePayload(r *http.Request) (fileSourcePayload, error) {
 	var payload fileSourcePayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		return fileSourcePayload{}, errors.New("invalid JSON body")
+		return fileSourcePayload{}, errors.New(jsonBodyErrorMessage(err))
 	}
 	return payload, nil
 }

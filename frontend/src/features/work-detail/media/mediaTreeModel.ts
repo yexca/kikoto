@@ -123,7 +123,7 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
       streamUrl: locationStreamUrl,
       downloadUrl: location.downloadUrl,
       assetUrl:
-        location.locationType === "local"
+        location.locationType === "local" || location.locationType === "cache"
           ? versionedMediaAssetURL(location.id, item.fingerprint, location.sizeBytes)
           : location.downloadUrl,
       textPreviewUrl: "",
@@ -608,7 +608,8 @@ function attachLocalLyricsChoices(
     file.lyricsChoices = choices;
     file.autoLyricsLocationId = choices[0]?.locationId ?? null;
     file.preferredLyricsMediaItemId = item?.preferredLyricsMediaItemId ?? null;
-    file.lyricsPreferencePersistable = true;
+    // The library stores a lyric choice per audio item only.
+    file.lyricsPreferencePersistable = file.kind === "audio";
   }
 }
 

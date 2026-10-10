@@ -125,7 +125,9 @@ Playback is handled by a global browser audio player.
   interaction. Overflowing queue titles scroll without resizing the player.
 - Text lyrics include LRC, SRT, VTT, and plain-text sidecars. A compound
   sidecar such as `track.mp3.vtt` is preferred for `track.mp3`, followed by a
-  same-stem file and then normalized-name matches.
+  same-stem file and then normalized-name matches. LRC timestamps may count
+  minutes past 99 or carry an hour field, as in `[100:00.00]` or
+  `[01:40:00.00]`.
 - If several lyrics files match, the lyrics panel exposes an explicit choice
   instead of depending on database row order. Clearly generic same-directory
   names such as `lyrics` or `subtitle` may be shared by tracks in that folder.
