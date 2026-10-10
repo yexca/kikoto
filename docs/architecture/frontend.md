@@ -151,6 +151,19 @@ and list management live in `features/favorites`. List icons come from a
 shared catalog in `components/favorite-list`, so the work card's list menu and
 Favorites draw the same icon for a stored key.
 
+The Library page is the route controller: it keeps the active source tab and
+scope, the browse controls with their history and storage restoration, and the
+work the route selects. The rest lives in `pages/library`. `libraryRoutes` and
+`libraryBrowseModel` are the pure route and browse-state models.
+`useLocalLibraryWorks` and `useRemoteSourceWorks` load the local and remote
+result pages for the controls they are given, and `useLibraryWorkDetail` loads
+the selected work. `useLibraryRecommendations` owns the recommendation session,
+the score badge preference, list telemetry, and the explanation state. The
+toolbars, source tabs, search clause editor, local and remote result panels,
+work cards, and the detail surface are components there. The local and remote
+loaders share one set of browse controls, so tab, search, sort, and page state
+stay with the page instead of being divided between them.
+
 Work detail metadata editing exposes one entry from
 `features/work-detail/metadata`. Its modal owns interaction and save actions,
 suggestion hooks own asynchronous lookup, and a pure model maps editor state
