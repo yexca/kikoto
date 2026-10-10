@@ -205,7 +205,7 @@ export const workCardEnglish = {
   salesLabel: "Sales: {{value}}",
   sales: "Sales",
   salesUnavailable: "Sales unavailable",
-  otherLanguageEdition: "Another language edition is available",
+  lyricsAvailable: "Lyrics available",
   playbackHistory: "Playback history available",
   unknownCircle: "Unknown circle",
   loadingEntity: "Loading {{kind}} information...",

@@ -105,7 +105,7 @@ type circleCatalogWork struct {
 	Rating           *float64            `json:"rating"`
 	RatingCount      *int64              `json:"ratingCount"`
 	Sales            *int64              `json:"sales"`
-	HasNonOrigin     bool                `json:"hasAvailableNonOriginEdition,omitempty"`
+	HasLyrics        bool                `json:"hasLyrics,omitempty"`
 	RegularPrice     *int64              `json:"regularPrice"`
 	Price            *int64              `json:"price"`
 	PriceCurrency    string              `json:"priceCurrency"`
@@ -2050,7 +2050,7 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 	if err != nil {
 		return nil, err
 	}
-	availableNonOriginEditions, err := s.loadAvailableNonOriginEditions(ctx, workIDs)
+	worksWithLyrics, err := s.loadWorksWithLyrics(ctx, workIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -2064,7 +2064,7 @@ func (s *Server) loadCircleWorks(ctx context.Context, userID int64, partyID int6
 				works[index].Title = title.Title
 			}
 			works[index].UserTags = tagsByWork[*works[index].WorkID]
-			works[index].HasNonOrigin = availableNonOriginEditions[*works[index].WorkID]
+			works[index].HasLyrics = worksWithLyrics[*works[index].WorkID]
 		} else {
 			works[index].UserTags = []workUserTag{}
 		}
@@ -2340,7 +2340,7 @@ func mergeCircleCatalogWorkMetadata(target *circleCatalogWork, item circleCatalo
 	if target.Sales == nil {
 		target.Sales = item.Sales
 	}
-	target.HasNonOrigin = target.HasNonOrigin || item.HasNonOrigin
+	target.HasLyrics = target.HasLyrics || item.HasLyrics
 	if target.RegularPrice == nil {
 		target.RegularPrice = item.RegularPrice
 	}

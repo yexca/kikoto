@@ -187,7 +187,7 @@ type libraryWorkSummary struct {
 	Rating                 *float64             `json:"rating"`
 	RatingCount            *int64               `json:"ratingCount"`
 	Sales                  *int64               `json:"sales"`
-	HasNonOrigin           bool                 `json:"hasAvailableNonOriginEdition,omitempty"`
+	HasLyrics              bool                 `json:"hasLyrics,omitempty"`
 	RegularPrice           *int64               `json:"regularPrice"`
 	Price                  *int64               `json:"price"`
 	PriceCurrency          string               `json:"priceCurrency"`

@@ -7,7 +7,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/config"
 )
 
-func TestAvailableNonOriginEditionRequiresKnownEnabledAvailability(t *testing.T) {
+func TestWorksWithLyricsRequiresKnownEnabledLyricsAvailability(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
 		INSERT INTO work (id, primary_code, title) VALUES
@@ -26,37 +26,55 @@ func TestAvailableNonOriginEditionRequiresKnownEnabledAvailability(t *testing.T)
 	db.SetMaxIdleConns(1)
 	server := NewServer(db, config.Config{})
 
-	available, err := server.loadAvailableNonOriginEditions(context.Background(), []int64{301})
+	available, err := server.loadWorksWithLyrics(context.Background(), []int64{301})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if available[301] {
-		t.Fatal("metadata-only non-Origin edition must not be reported as available")
+		t.Fatal("metadata-only edition must not be reported as having lyrics")
 	}
 
 	if _, err := db.Exec(`
-		INSERT INTO work_source_presence (work_id, file_source_id, presence_type, availability)
-		VALUES (302, 301, 'source', 'available')
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint)
+		VALUES (301, 302, 'audio', 'Track 1', 'audio-301');
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability)
+		VALUES (301, 301, 301, 'remote_stream', 'RJ00000001/track.mp3', 'available')
 	`); err != nil {
 		t.Fatal(err)
 	}
-	available, err = server.loadAvailableNonOriginEditions(context.Background(), []int64{301})
+	available, err = server.loadWorksWithLyrics(context.Background(), []int64{301})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if available[301] {
+		t.Fatal("available audio without lyrics must not be reported as having lyrics")
+	}
+
+	if _, err := db.Exec(`
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint)
+		VALUES (302, 302, 'text', 'Track lyrics', 'lyrics-302');
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability)
+		VALUES (302, 302, 301, 'remote_stream', 'RJ00000001/track.lrc', 'available')
+	`); err != nil {
+		t.Fatal(err)
+	}
+	available, err = server.loadWorksWithLyrics(context.Background(), []int64{301})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !available[301] {
-		t.Fatal("available non-Origin source presence must be reported")
+		t.Fatal("available lyrics in a sibling edition must be reported")
 	}
 
 	if _, err := db.Exec("UPDATE file_source SET enabled = 0 WHERE id = 301"); err != nil {
 		t.Fatal(err)
 	}
-	available, err = server.loadAvailableNonOriginEditions(context.Background(), []int64{301})
+	available, err = server.loadWorksWithLyrics(context.Background(), []int64{301})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if available[301] {
-		t.Fatal("disabled source must not make a non-Origin edition available")
+		t.Fatal("disabled source must not make lyrics available")
 	}
 }
 

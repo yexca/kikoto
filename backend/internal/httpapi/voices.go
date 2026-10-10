@@ -168,7 +168,7 @@ type voiceKnownWork struct {
 	Rating             *float64                 `json:"rating"`
 	RatingCount        *int64                   `json:"ratingCount"`
 	Sales              *int64                   `json:"sales"`
-	HasNonOrigin       bool                     `json:"hasAvailableNonOriginEdition,omitempty"`
+	HasLyrics          bool                     `json:"hasLyrics,omitempty"`
 	RegularPrice       *int64                   `json:"regularPrice"`
 	Price              *int64                   `json:"price"`
 	PriceCurrency      string                   `json:"priceCurrency"`
@@ -225,7 +225,7 @@ type voiceRemoteWork struct {
 	Rating         *float64 `json:"rating"`
 	RatingCount    *int64   `json:"ratingCount"`
 	Sales          *int64   `json:"sales"`
-	HasNonOrigin   bool     `json:"hasAvailableNonOriginEdition,omitempty"`
+	HasLyrics      bool     `json:"hasLyrics,omitempty"`
 	Price          *int64   `json:"price"`
 	Tags           []string `json:"tags"`
 	VoiceActors    []string `json:"voiceActors"`
@@ -1291,7 +1291,7 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 	if err != nil {
 		return nil, err
 	}
-	availableNonOriginEditions, err := s.loadAvailableNonOriginEditions(ctx, workIDs)
+	worksWithLyrics, err := s.loadWorksWithLyrics(ctx, workIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -1304,7 +1304,7 @@ func (s *Server) loadVoiceKnownWorks(ctx context.Context, userID int64, personID
 			works[index].Title = title.Title
 		}
 		works[index].UserTags = tagsByWork[works[index].WorkID]
-		works[index].HasNonOrigin = availableNonOriginEditions[works[index].WorkID]
+		works[index].HasLyrics = worksWithLyrics[works[index].WorkID]
 	}
 	return works, nil
 }
@@ -1441,7 +1441,7 @@ func mergeVoiceKnownWorkMetadata(target *voiceKnownWork, item voiceKnownWork) {
 	if target.Sales == nil {
 		target.Sales = item.Sales
 	}
-	target.HasNonOrigin = target.HasNonOrigin || item.HasNonOrigin
+	target.HasLyrics = target.HasLyrics || item.HasLyrics
 	if target.RegularPrice == nil {
 		target.RegularPrice = item.RegularPrice
 	}
