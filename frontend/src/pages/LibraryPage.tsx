@@ -175,7 +175,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const [localScope, setLocalScope] = useState<LocalLibraryScope>(initialBrowse.scope);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
   const [remoteSelectionMode, setRemoteSelectionMode] = useState(false);
-  const [settings, setSettings] = useState<{ cacheEnabled: boolean; recommendationThreshold: number } | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(() =>
     workDetailCodeFromLocation(window.location.pathname, window.location.search),
   );
@@ -407,18 +406,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     sessionDefaultBrowseState,
     sourceRoutesReady,
   ]);
-
-  useEffect(() => {
-    if (!active || settings) return;
-    const controller = new AbortController();
-    api
-      .getRuntimeSettings(controller.signal)
-      .then((next) => {
-        setSettings(next);
-      })
-      .catch(() => setSettings(null));
-    return () => controller.abort();
-  }, [active, settings]);
 
   const remoteWorks = useRemoteSourceWorks({
     visible: active && showBrowse,

@@ -154,17 +154,34 @@ func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourc
 		return nil
 	}
 	s.enrichTrackedPresenceForkState(ctx, code, items)
+	// Local source URLs are storage paths, not public metadata. Keep the
+	// persisted value for scans and destructive cleanup, but never expose it
+	// through the response projection.
+	hideLocalSourcePresenceAddresses(items)
 	if s.remoteAddressesHidden(ctx) {
 		hideSourcePresenceAddresses(items)
 	}
 	return items
 }
 
-// hideSourcePresenceAddresses clears the upstream work link of every remote
-// presence. A local presence's location is not a source address.
-func hideSourcePresenceAddresses(items []sourcePresenceItem) {
+// hideLocalSourcePresenceAddresses removes local storage paths from a public
+// source-presence projection. The database value remains available to
+// internal scan and cleanup code.
+func hideLocalSourcePresenceAddresses(items []sourcePresenceItem) {
 	for index := range items {
-		if items[index].Type != "local" {
+		if strings.EqualFold(items[index].Type, "local") || strings.EqualFold(items[index].FileSourceType, "local_folder") {
+			items[index].SourceURL = ""
+		}
+	}
+}
+
+// hideSourcePresenceAddresses clears the upstream work link of every remote
+// presence. Local paths are also cleared so callers that apply the complete
+// address redaction do not need a separate pass.
+func hideSourcePresenceAddresses(items []sourcePresenceItem) {
+	hideLocalSourcePresenceAddresses(items)
+	for index := range items {
+		if !strings.EqualFold(items[index].Type, "local") {
 			items[index].SourceURL = ""
 		}
 	}

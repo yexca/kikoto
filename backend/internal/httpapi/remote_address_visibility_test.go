@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -61,9 +63,11 @@ func TestRemoteAddressesAreHiddenFromAccountsWithoutSourceManagement(t *testing.
 		args  []any
 	}{
 		{`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (7, 'example_remote_a', 'Example Remote A', 'kikoeru_compatible', 1)`, nil},
+		{`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (8, 'example_local_a', 'Example Local A', 'local_folder', 1)`, nil},
 		{`INSERT INTO file_source_endpoint (file_source_id, api_url, base_url) VALUES (7, 'https://source.example.invalid/api', 'https://source.example.invalid')`, nil},
 		{`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000000', 'Example Work')`, nil},
 		{`INSERT INTO work_source_presence (work_id, file_source_id, presence_type, remote_code, source_url, availability) VALUES (1, 7, 'tracked', 'RJ00000000', 'https://source.example.invalid/work/RJ00000000', 'available')`, nil},
+		{`INSERT INTO work_source_presence (work_id, file_source_id, presence_type, source_url, availability) VALUES (1, 8, 'local', 'private-library/RJ00000000', 'available')`, nil},
 		{`INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (1, 1, 'audio', 'track.mp3', 'synthetic-track')`, nil},
 		{`INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (2, 1, 'image', 'cover.png', 'synthetic-cover')`, nil},
 		{`INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability, stream_url, download_url) VALUES (1, 1, 7, 'remote_stream', 'track.mp3', 'available', 'https://source.example.invalid/media/stream/track.mp3', 'https://source.example.invalid/media/download/track.mp3')`, nil},
@@ -75,15 +79,36 @@ func TestRemoteAddressesAreHiddenFromAccountsWithoutSourceManagement(t *testing.
 			t.Fatal(err)
 		}
 	}
+	if err := os.MkdirAll(filepath.Join(fixture.server.cfg.DataRoot, "private-library", "RJ00000000"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	for _, target := range []string{"/api/works/1/media", "/api/works/1", "/api/workflow-runs/1"} {
 		hidden := fixture.request("contributor", http.MethodGet, target, ``)
-		if hidden.Code != http.StatusOK || strings.Contains(hidden.Body.String(), "example.invalid") || strings.Contains(hidden.Body.String(), "192.0.2.10") {
+		if hidden.Code != http.StatusOK || strings.Contains(hidden.Body.String(), "example.invalid") || strings.Contains(hidden.Body.String(), "192.0.2.10") || strings.Contains(hidden.Body.String(), `"sourceUrl":"private-library/RJ00000000"`) {
 			t.Fatalf("contributor %s = %d, body leaks a source address: %s", target, hidden.Code, hidden.Body)
 		}
 		visible := fixture.request("admin", http.MethodGet, target, ``)
-		if visible.Code != http.StatusOK || !strings.Contains(visible.Body.String(), "source.example.invalid") {
+		if visible.Code != http.StatusOK || !strings.Contains(visible.Body.String(), "source.example.invalid") || strings.Contains(visible.Body.String(), `"sourceUrl":"private-library/RJ00000000"`) {
 			t.Fatalf("admin %s = %d, body = %s", target, visible.Code, visible.Body)
 		}
+	}
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('anonymous_access_enabled', 'true')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.server.LoadAccessPolicy(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	anonymous := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(anonymous, httptest.NewRequest(http.MethodGet, "/api/works/1", nil))
+	if anonymous.Code != http.StatusOK || strings.Contains(anonymous.Body.String(), `"sourceUrl":"private-library/RJ00000000"`) || strings.Contains(anonymous.Body.String(), "source.example.invalid") {
+		t.Fatalf("anonymous work detail = %d, body leaks a source address: %s", anonymous.Code, anonymous.Body)
+	}
+	var storedLocalPath string
+	if err := db.QueryRow(`SELECT source_url FROM work_source_presence WHERE work_id = 1 AND file_source_id = 8 AND presence_type = 'local'`).Scan(&storedLocalPath); err != nil {
+		t.Fatal(err)
+	}
+	if storedLocalPath != "private-library/RJ00000000" {
+		t.Fatalf("stored local source path = %q, want the value retained for internal cleanup", storedLocalPath)
 	}
 	media := fixture.request("user", http.MethodGet, "/api/works/1/media", ``).Body.String()
 	if !strings.Contains(media, `"streamUrl":"/api/media/1/stream"`) || !strings.Contains(media, `/api/remote-sources/7/images/`) {

@@ -25,13 +25,13 @@ export async function clearNativeAssetTransport() {
 const IOS_ASSET_ORIGIN = "kikoto-asset://asset";
 // The native policy enforces the same routes; this only decides which URLs to rewrite.
 const IOS_ASSET_ROUTE =
-  /^\/api\/(?:assets\/covers\/.+|assets\/manual\/[^/]+|media\/[1-9][0-9]*\/(?:stream|asset|text|download|hls\/(?:index\.m3u8|segment-[0-9]{6}\.ts)))$/;
+  /^\/api\/(?:assets\/covers\/.+|assets\/manual\/[^/]+|media\/[1-9][0-9]*\/(?:stream|asset|text|download|hls\/(?:index\.m3u8|segment-[0-9]{6}\.ts))|remote-sources\/[1-9][0-9]*\/works\/[^/]+\/(?:media|text)|remote-sources\/[1-9][0-9]*\/images\/[^/]+)$/;
 
 /**
- * The Android WebView attaches the session credential to media and image
- * requests by intercepting them. WKWebView cannot intercept its own http(s)
- * requests, so the iOS shell serves configured-server assets through an
- * app-owned scheme instead. Other URLs are returned unchanged.
+ * The Android WebView attaches the session credential to media, image, and
+ * remote text requests by intercepting them. WKWebView cannot intercept its
+ * own http(s) requests, so the iOS shell serves configured-server assets
+ * through an app-owned scheme instead. Other URLs are returned unchanged.
  */
 export function nativeAssetURL(url: string, serverURL: string) {
   if (!url || !serverURL || Capacitor.getPlatform() !== "ios") return url;

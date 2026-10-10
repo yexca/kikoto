@@ -133,6 +133,16 @@ version and the emitted file names. Each build therefore owns one service
 worker cache, and activating a new worker deletes the previous build's cache
 instead of keeping its hashed assets.
 
+The API client lives in `lib`. `lib/apiTransport` owns the authenticated request
+functions: base URL and asset URLs, credentials, session fencing, shared
+in-flight reads, and error mapping. Each domain module declares its response
+types beside its requests: `accountApi`, `libraryApi`, `workApi`, `mediaApi`,
+`metadataApi`, `creatorApi`, `remoteSourceApi`, `workflowApi`, and
+`settingsApi`. A domain module imports the transport and, for types only, a
+domain it builds on; none imports `lib/api`. `lib/api` composes the domain
+modules into the single `api` object and re-exports their types, and is the
+entry pages, features, and tests import.
+
 Navigation and browse state that pages and features share lives in `lib`:
 circle and voice route helpers, Library browse state, and Library search
 clauses. Work detail and the pages depend on those modules instead of on each

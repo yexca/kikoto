@@ -1,0 +1,46 @@
+# Pull request labels are based on changed paths. A PR can receive more than
+# one label when it spans multiple areas.
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.md'
+          - 'docs/**'
+          - '.github/ISSUE_TEMPLATE/**'
+          - '.github/pull_request_template.md'
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/package.json'
+          - '**/package-lock.json'
+          - '**/go.mod'
+          - '**/go.sum'
+          - '**/gradle/**'
+
+docker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'Dockerfile'
+          - 'Dockerfile.*'
+          - 'docker-compose.yml'
+          - '.dockerignore'
+          - 'deploy/**'
+
+go:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'backend/**/*.go'
+          - 'backend/go.mod'
+          - 'backend/go.sum'
+
+github_actions:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - '.github/actions/**'
+
+javascript:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'frontend/**'
+          - 'kikoto-helper/**'
