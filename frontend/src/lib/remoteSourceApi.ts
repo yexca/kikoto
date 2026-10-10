@@ -295,7 +295,6 @@ export type WorkSourceUntrackResult = {
   status: string;
   clearedCaches: number;
   deletedFiles: number;
-  cachePaths: string[];
   trackedCleared: boolean;
   workPreserved: boolean;
   localPreserved: boolean;
