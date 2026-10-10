@@ -37,9 +37,12 @@ type Config struct {
 	DatabasePath string
 	// DatabaseBackupDir holds database backups, or is empty when the database
 	// is not a plain file and cannot be backed up.
-	DatabaseBackupDir   string
-	DataRoot            string
-	CacheRoot           string
+	DatabaseBackupDir string
+	DataRoot          string
+	CacheRoot         string
+	// TempDir holds short-lived working files inside the cache root. Empty
+	// uses the system temporary directory.
+	TempDir             string
 	StaticDir           string
 	LocalScanDepth      int
 	Mode                Mode
@@ -105,12 +108,14 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	databasePath := env("KIKOTO_DB_PATH", "../config/kikoto.db")
+	cacheRoot := env("KIKOTO_CACHE_ROOT", "../cache")
 	return Config{
 		HTTPAddr:            env("KIKOTO_HTTP_ADDR", "127.0.0.1:7659"),
 		DatabasePath:        databasePath,
 		DatabaseBackupDir:   env("KIKOTO_DB_BACKUP_DIR", defaultDatabaseBackupDir(databasePath)),
 		DataRoot:            env("KIKOTO_DATA_ROOT", "../data"),
-		CacheRoot:           env("KIKOTO_CACHE_ROOT", "../cache"),
+		CacheRoot:           cacheRoot,
+		TempDir:             filepath.Join(cacheRoot, tempDirName),
 		StaticDir:           env("KIKOTO_STATIC_DIR", ""),
 		LocalScanDepth:      envInt("KIKOTO_LOCAL_SCAN_DEPTH", 3),
 		Mode:                mode,
@@ -127,6 +132,10 @@ func Load() (Config, error) {
 		HostProxyHost:       hostProxyHost,
 	}, nil
 }
+
+// tempDirName is the temporary directory inside the cache root. Startup
+// empties it, so the name is one only Kikoto uses.
+const tempDirName = ".kikoto-tmp"
 
 // defaultDatabaseBackupDir keeps backups beside the database, on the same
 // durable volume, and never in the disposable cache or the media library.

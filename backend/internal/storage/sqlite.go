@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"net/url"
 	"os"
@@ -42,6 +43,21 @@ func Open(path string) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+// UseTempDirectory makes SQLite create its temporary files in dir, which must
+// exist and be writable, instead of the system temporary directory. VACUUM,
+// index builds, and large sorts spill there once they outgrow the page cache,
+// so dir needs room for about one copy of the database. The setting belongs
+// to the process rather than to db: call it once at startup, before other
+// goroutines use SQLite.
+func UseTempDirectory(ctx context.Context, db *sql.DB, dir string) error {
+	absolute, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, "PRAGMA temp_store_directory = '"+strings.ReplaceAll(absolute, "'", "''")+"'")
+	return err
 }
 
 // Per-connection SQLite tuning. The file-backed pool holds at most four

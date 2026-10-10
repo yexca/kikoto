@@ -329,9 +329,11 @@ or cache roots.
 
 The production image runs as the container root user. Production and Demo
 Compose drop Linux capabilities, enable `no-new-privileges`, and use a read-only
-root filesystem. Limit the container's host access through narrow bind mounts
-and host filesystem permissions. See [container isolation](docker.md#container-isolation)
-for the writable runtime mounts.
+root filesystem. Limit the container's host access through narrow bind mounts:
+production keeps the one capability that lets it write to mounted folders
+regardless of their owner, so host permission bits do not restrict it inside a
+mount. See [container isolation](docker.md#container-isolation) for that
+capability and the writable runtime mounts.
 
 Media assets only render recognized passive raster images inline. Other files,
 including HTML, SVG, or an HTML file named as an image, are served as downloads

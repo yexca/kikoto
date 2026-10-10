@@ -18,7 +18,7 @@ does not update its environment.
 | `KIKOTO_DB_PATH` | `../config/kikoto.db` | SQLite database path. |
 | `KIKOTO_DB_BACKUP_DIR` | `backups` beside the database | Verified database backups; see [Database backups](database.md#backups). Direct backend runs only: the Compose stacks do not pass it, so the container always uses `/config/backups`. |
 | `KIKOTO_DATA_ROOT` | `../data` | Local media library root. |
-| `KIKOTO_CACHE_ROOT` | `../cache` | Runtime cache root. |
+| `KIKOTO_CACHE_ROOT` | `../cache` | Runtime cache root. It also holds [temporary files](#temporary-files). |
 | `KIKOTO_STATIC_DIR` | Empty | Frontend asset directory; empty disables static file serving. |
 | `KIKOTO_LOCAL_SCAN_DEPTH` | `3` | Maximum local scan folder depth. |
 | `KIKOTO_MODE` | `production` | Runtime mode: `development` authenticates as root and creates a fresh database from the development baseline in `backend/migrations/compat/` when one is packaged (see [Migrations](../development/migrations.md)), `production` uses normal authentication, and `demo` uses a restricted passwordless Demo identity with content filtering. |
@@ -33,6 +33,21 @@ does not update its environment.
 | `KIKOTO_ROOT_PASSWORD` | Empty | Required in environment mode, where it is the root password. In setup mode it is used only by `KIKOTO_ROOT_PASSWORD_RESET`. |
 | `KIKOTO_ROOT_PASSWORD_RESET` | `false` | Setup mode only: apply `KIKOTO_ROOT_PASSWORD` to the administrator on startup, once per username and password. Ignored with a warning in environment mode. An unrecognized value stops startup. |
 | `KIKOTO_REMOTE_SOURCES_ENABLED` | `false` | Enable first-run remote source seeding. |
+
+## Temporary Files
+
+Large temporary files live in `.kikoto-tmp` inside the cache root, not in the
+system temporary directory:
+
+- An uploaded Kikoeru database, for the duration of its import request.
+- The working files SQLite writes while it compacts the database, builds an
+  index, or sorts more than its page cache holds. Compaction needs free space
+  on the cache volume of about the database size.
+
+Startup empties `.kikoto-tmp`, so a file left by an interrupted run does not
+outlive the next start. When the cache root cannot hold the directory, startup
+logs a warning and these files use the system temporary directory, which the
+Compose stacks bound to a 64 MiB in-memory `/tmp`.
 
 ## Administrator Settings
 

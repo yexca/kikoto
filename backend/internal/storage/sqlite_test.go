@@ -211,6 +211,39 @@ func TestCanceledStatementDoesNotLeaveWriterLock(t *testing.T) {
 	}
 }
 
+func TestUseTempDirectoryAppliesToEveryConnectionAndRejectsAMissingDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "kikoto's tmp")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	db, err := Open(filepath.Join(t.TempDir(), "temp-directory.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := Open(filepath.Join(t.TempDir(), "other.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		// The setting is process-wide; later tests use the system directory.
+		_, _ = db.Exec("PRAGMA temp_store_directory = ''")
+		_ = db.Close()
+		_ = other.Close()
+	})
+
+	ctx := context.Background()
+	if err := UseTempDirectory(ctx, db, dir); err != nil {
+		t.Fatalf("UseTempDirectory() error = %v", err)
+	}
+	if err := UseTempDirectory(ctx, db, filepath.Join(dir, "missing")); err == nil {
+		t.Fatal("UseTempDirectory() accepted a directory that does not exist")
+	}
+	var got string
+	if err := other.QueryRow("PRAGMA temp_store_directory").Scan(&got); err != nil || got != dir {
+		t.Fatalf("temporary directory on another database = %q, %v, want %q", got, err, dir)
+	}
+}
+
 func TestOpenMemoryDatabase(t *testing.T) {
 	db, err := Open(":memory:")
 	if err != nil {

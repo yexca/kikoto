@@ -44,6 +44,8 @@ func run() error {
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer db.Close()
+	// Before migrations, which can rebuild more than the page cache holds.
+	cfg.TempDir = useCacheTempDir(ctx, db, cfg.TempDir)
 
 	if err := storage.MigrateFSWithOptions(db, migrations.Files, buildinfo.Version, storage.MigrateOptions{
 		BeforeUpgrade: func(fromVersion, toVersion int) error {

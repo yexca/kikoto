@@ -114,7 +114,9 @@ compacted by hand.
 
 `VACUUM` still holds the write lock while it rewrites the file. Other writes
 wait for the busy timeout and may fail during a long compaction, so run it
-when the instance is quiet. The job is not resumed after a restart: an
+when the instance is quiet. It builds the compacted copy among the
+[temporary files](configuration.md#temporary-files) on the cache volume before
+rewriting the database. The job is not resumed after a restart: an
 interrupted optimization fails and can be started again.
 
 ## Backups

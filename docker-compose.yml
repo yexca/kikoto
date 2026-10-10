@@ -8,6 +8,10 @@ services:
     read_only: true
     cap_drop:
       - ALL
+    # Lets the container's root user write to mounted folders that belong to
+    # another host user, such as an existing media library.
+    cap_add:
+      - DAC_OVERRIDE
     security_opt:
       - no-new-privileges:true
     tmpfs:
