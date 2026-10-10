@@ -57,9 +57,17 @@ Default mounts:
 
 The production image runs as the container root user. Production and Demo
 Compose drop all Linux capabilities, enable `no-new-privileges`, and use a
-read-only root filesystem with a bounded writable `/tmp`. `/config`, `/cache`,
-and the production `/data` mount remain writable; durable Fetch transaction
-directories stay on the target storage filesystem, and large
+read-only root filesystem with a bounded writable `/tmp`.
+
+Production Compose adds back `DAC_OVERRIDE` alone. Without it the container's
+root user follows ordinary permission bits, so on a Linux host a mounted folder
+that belongs to another user, such as an existing media library, is read-only
+or unreadable, and deleting, Fetch, and scans of it fail with a permission
+error. Demo adds no capability: give the root user (uid 0) write access to its
+config and cache folders and read access to its data folder.
+
+`/config`, `/cache`, and the production `/data` mount remain writable; durable
+Fetch transaction directories stay on the target storage filesystem, and large
 [temporary files](configuration.md#temporary-files) go to `/cache` rather than
 `/tmp`. Demo keeps its data mount read-only. Limit host access to the
 dedicated runtime mounts described above.

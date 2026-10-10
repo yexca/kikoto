@@ -21,6 +21,15 @@
 - Run a local library scan to refresh local presence.
 - Confirm folders contain supported product codes.
 
+## Deleting Or Fetch Fails With A Permission Error
+
+- On a Linux host, check who owns the mounted folder. A custom Compose file
+  that drops all capabilities without `cap_add: [DAC_OVERRIDE]` cannot write
+  to a folder that belongs to another user; see
+  [container isolation](docker.md#container-isolation).
+- Copy `cap_add` from the bundled `docker-compose.yml`, or give the root user
+  (uid 0) write access to the folder.
+
 ## Remote Sources Fail
 
 - Check the source endpoint in Settings.
