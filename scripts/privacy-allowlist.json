@@ -89,6 +89,31 @@
       "reason": "Public Kikoeru-compatible reference repository linked from the About page."
     },
     {
+      "url": "https://github.com/gorse-io/gorse",
+      "files": ["frontend/src/pages/AboutPage.tsx"],
+      "reason": "Public recommendation design reference repository linked from the About page."
+    },
+    {
+      "url": "https://github.com/NeptuneHub/AudioMuse-AI",
+      "files": ["frontend/src/pages/AboutPage.tsx"],
+      "reason": "Public versioned recommendation-feature and background-build reference repository linked from the About page."
+    },
+    {
+      "url": "https://github.com/benfred/implicit",
+      "files": ["frontend/src/pages/AboutPage.tsx"],
+      "reason": "Public sparse-feedback recommendation reference repository linked from the About page."
+    },
+    {
+      "url": "https://github.com/metabrainz/troi-recommendation-playground",
+      "files": ["frontend/src/pages/AboutPage.tsx"],
+      "reason": "Public media recommendation pipeline reference repository linked from the About page."
+    },
+    {
+      "url": "https://github.com/RUCAIBox/RecBole",
+      "files": ["frontend/src/pages/AboutPage.tsx"],
+      "reason": "Public recommendation evaluation reference repository linked from the About page."
+    },
+    {
       "url": "https://github.com/kikoeru-project/kikoeru-express/blob/unstable/routes/review.js",
       "files": ["docs/user/*/personal-data.md"],
       "reason": "Public upstream review API source documenting the personal listening-state import mapping."

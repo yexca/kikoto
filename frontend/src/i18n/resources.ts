@@ -442,12 +442,19 @@ export const englishResource = {
           "It includes library browsing, favorites, circles, voice actors, workflow visibility, remote fetch flows, and a browser-based audio player.",
         referenceProjects: "Reference projects",
         referenceAreas: {
+          recommendation: "Recommendation design",
           remoteSources: "Remote sources",
           playbackReporting: "Playback reporting",
           workflows: "Workflows",
           engineering: "Engineering & CI",
         },
         references: {
+          gorse: "Candidate recall, ranking, and result-cache separation; Kikoto implements its own heuristic scorer.",
+          audiomuse: "Versioned shared features and bounded background builds; Kikoto does not use its ANN index.",
+          implicit:
+            "Sparse feedback profiles and bounded candidate scoring; Kikoto does not import ALS, BPR, or ItemKNN.",
+          troi: "Entity mapping and candidate-pipeline ideas for a media library; no source code is bundled.",
+          recbole: "Evaluation and full-sort comparison material; it is not a runtime dependency.",
           kikoeru: "The public backend interface that Kikoeru-compatible remote sources follow.",
           audiobookshelf: "Reports that combine playback position with listening time.",
           navidrome: "Event coalescing and a durable report queue with retry backoff.",
