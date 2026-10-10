@@ -1,0 +1,7 @@
+# Issue labels are based on the submitted title and body. Template titles are
+# handled by issue-triage.yml; these rules cover free-form issues and follow-up
+# edits without creating another lifecycle label.
+documentation:
+  - '/\b(documentation|docs?|readme|changelog)\b/i'
+question:
+  - '/\b(question|how (?:do|can)|how to|is it possible)\b/i'

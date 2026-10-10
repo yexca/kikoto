@@ -57,7 +57,10 @@ An issue without activity for 30 days receives the `inactive` label and a
 notice, and closes 10 days later unless someone comments. An issue labeled
 `needs-more-info` closes once it has had no activity for 30 days. Issues that
 are labeled `enhancement` or `help wanted`, assigned, or in a milestone stay
-open. Pull requests are never closed automatically.
+open. Bug and feature issue templates receive their matching labels, and issue
+content can add `documentation` or `question`. Pull requests receive labels
+for changed areas such as `go`, `javascript`, `docker`, `github_actions`, and
+`documentation`. Pull requests are never closed automatically.
 
 The [PR template](.github/pull_request_template.md) asks for:
 
