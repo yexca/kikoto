@@ -141,6 +141,13 @@ with a count of the rest, and keeps the 44px action row. The card's
 container query owns this breakpoint; tag measurement reads the row count from
 it, not from the viewport.
 
+The phone Library also offers compact cards as a display option that is off by
+default. One column uses row cards: a small cover beside the facts, one
+measured tag row with personal tags first, and the last listening position.
+Two columns use short tiles that keep the cover dominant and leave out tags and
+voice credits. Both keep the action row and its 44px touch targets, and their
+loading placeholders match the card footprint.
+
 Work detail pages should show decision-level facts:
 
 - Metadata source.
@@ -197,6 +204,10 @@ Mobile:
   row, with protocol and port below. Controls remain inside a 320px viewport
   without horizontal scrolling and retain at least 44px touch targets.
 - Viewport-bounded popovers or sheets for filters and source picking.
+- The phone Library toolbar keeps search always visible, puts sources and Quick
+  mark filters in horizontally scrollable chip rows, labels the sort control
+  with the current order, and states the result count and page as a caption
+  above the works instead of a top pager.
 - Large touch targets.
 - Text inputs, textareas, and selects use at least 16px text on coarse
   pointers so iOS WebKit never zooms into a focused control. The viewport keeps
