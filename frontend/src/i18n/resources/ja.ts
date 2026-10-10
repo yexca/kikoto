@@ -780,12 +780,21 @@ export const japaneseResource = {
           "ライブラリ、お気に入り、サークル、声優、ワークフロー、リモート取得、ブラウザーオーディオプレイヤーを備えています。",
         referenceProjects: "参考プロジェクト",
         referenceAreas: {
+          recommendation: "推薦設計",
           remoteSources: "リモートソース",
           playbackReporting: "再生レポート",
           workflows: "ワークフロー",
           engineering: "エンジニアリングと CI",
         },
         references: {
+          gorse:
+            "候補召回、ランキング、結果キャッシュの分離。Kikoto は独自のヒューリスティック評価器を実装しています。",
+          audiomuse:
+            "バージョン管理された共有特徴量と有界なバックグラウンド構築。Kikoto は ANN インデックスを使用していません。",
+          implicit:
+            "疎なフィードバックプロフィールと候補数を制限したスコアリング。ALS、BPR、ItemKNN は取り込んでいません。",
+          troi: "メディアライブラリのエンティティ対応付けと候補パイプラインの考え方。ソースコードは含めていません。",
+          recbole: "評価と全件ランキング比較の資料。実行時の依存関係ではありません。",
           kikoeru: "Kikoeru 互換リモートソースが従う公開バックエンドインターフェース。",
           audiobookshelf: "再生位置と実際の聴取時間をまとめて報告する方式。",
           navidrome: "イベント集約、永続化された送信キュー、待機時間を延ばす再試行方式。",
