@@ -424,7 +424,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const [isRemoteLoading, setIsRemoteLoading] = useState(false);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
   const [remoteSelectionMode, setRemoteSelectionMode] = useState(false);
-  const [settings, setSettings] = useState<{ cacheEnabled: boolean; recommendationThreshold: number } | null>(null);
   const [recommendationDialog, setRecommendationDialog] = useState<{
     work: Work;
     breakdown: RecommendationBreakdown | null;
@@ -844,18 +843,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     sessionDefaultBrowseState,
     sourceRoutesReady,
   ]);
-
-  useEffect(() => {
-    if (!active || settings) return;
-    const controller = new AbortController();
-    api
-      .getRuntimeSettings(controller.signal)
-      .then((next) => {
-        setSettings(next);
-      })
-      .catch(() => setSettings(null));
-    return () => controller.abort();
-  }, [active, settings]);
 
   useEffect(() => {
     if (!active || !showBrowse || !browseHydrated || hasPendingBrowseRestore()) return;
