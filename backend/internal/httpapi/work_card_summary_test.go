@@ -78,6 +78,103 @@ func TestWorksWithLyricsRequiresKnownEnabledLyricsAvailability(t *testing.T) {
 	}
 }
 
+func TestWorksWithLyricsFollowsPlaybackLyricsResolution(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES
+			(321, 'RJ00000004', 'Example Work 1'),
+			(322, 'RJ00000005', 'Example Work 2');
+		INSERT INTO file_source (id, code, display_name, source_type, enabled)
+		VALUES (321, 'example_local', 'Example Local', 'local_folder', 1);
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES
+			(3211, 321, 'audio', 'Track 1', 'lyrics-status-3211'),
+			(3212, 321, 'text', 'readme', 'lyrics-status-3212'),
+			(3213, 321, 'text', 'script', 'lyrics-status-3213'),
+			(3221, 322, 'audio', 'Track 1', 'lyrics-status-3221'),
+			(3222, 322, 'text', 'Track 1 lyrics', 'lyrics-status-3222');
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES
+			(3211, 3211, 321, 'local', 'Library/RJ00000004/01_track.mp3', 'available'),
+			(3212, 3212, 321, 'local', 'Library/RJ00000004/readme.txt', 'available'),
+			(3213, 3213, 321, 'local', 'Library/RJ00000004/script.txt', 'available'),
+			(3221, 3221, 321, 'local', 'Library/RJ00000005/01_track.mp3', 'available'),
+			(3222, 3222, 321, 'local', 'Library/RJ00000005/01_track.mp3.vtt', 'available');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	server := NewServer(db, config.Config{})
+	load := func() map[int64]bool {
+		t.Helper()
+		available, err := server.loadWorksWithLyrics(context.Background(), []int64{321, 322})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return available
+	}
+
+	available := load()
+	if available[321] {
+		t.Fatal("text files that match no track must not be reported as lyrics")
+	}
+	if !available[322] {
+		t.Fatal("a lyrics file matched to a track by name must be reported")
+	}
+
+	if _, err := db.Exec("INSERT INTO media_lyrics_assignment (audio_media_item_id, lyrics_media_item_id) VALUES (3211, 3213)"); err != nil {
+		t.Fatal(err)
+	}
+	if !load()[321] {
+		t.Fatal("a library lyrics assignment must be reported")
+	}
+
+	if _, err := db.Exec("UPDATE media_file_location SET availability = 'missing' WHERE id = 3213"); err != nil {
+		t.Fatal(err)
+	}
+	if load()[321] {
+		t.Fatal("an assignment whose lyrics file is gone must not be reported")
+	}
+}
+
+func TestWorksWithLyricsUsesOtherEditionsOnlyWithoutOwnTracks(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES
+			(331, 'RJ00000006', 'Origin'),
+			(332, 'RJ00000007', 'Translation');
+		INSERT INTO logical_work (id, canonical_work_id, canonical_code) VALUES (331, 331, 'RJ00000006');
+		INSERT INTO work_edition (work_id, logical_work_id, primary_code, base_code, is_canonical) VALUES
+			(331, 331, 'RJ00000006', 'RJ00000006', 1),
+			(332, 331, 'RJ00000007', 'RJ00000006', 0);
+		INSERT INTO file_source (id, code, display_name, source_type, enabled)
+		VALUES (331, 'example_local', 'Example Local', 'local_folder', 1);
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES
+			(3311, 331, 'audio', 'Track 1', 'lyrics-status-3311'),
+			(3321, 332, 'audio', 'Track 1', 'lyrics-status-3321'),
+			(3322, 332, 'text', 'Track 1 lyrics', 'lyrics-status-3322');
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES
+			(3311, 3311, 331, 'local', 'Library/RJ00000006/01_track.mp3', 'available'),
+			(3321, 3321, 331, 'local', 'Library/RJ00000007/01_track.mp3', 'available'),
+			(3322, 3322, 331, 'local', 'Library/RJ00000007/01_track.vtt', 'available');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	server := NewServer(db, config.Config{})
+
+	available, err := server.loadWorksWithLyrics(context.Background(), []int64{331, 332})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if available[331] {
+		t.Fatal("an edition with its own tracks must not take the lyrics status of another edition")
+	}
+	if !available[332] {
+		t.Fatal("the edition that holds the matched lyrics must be reported")
+	}
+}
+
 func TestTrackedPresenceForkStateUsesWholeLogicalFamily(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`

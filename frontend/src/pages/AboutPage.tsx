@@ -8,36 +8,35 @@ import { KIKOTO_GITHUB_ENDPOINTS } from "@/lib/official-links";
 import { cn } from "@/lib/tailwindClassNames";
 import { NowPlayingBars } from "@/player/dock/playerControls";
 
-const referenceProjects = [
+// Grouped by the part of Kikoto each project informed. `area` and `note` name
+// entries under about.referenceAreas and about.references.
+const referenceGroups = [
   {
-    name: "Number178/kikoeru-express",
-    url: "https://github.com/Number178/kikoeru-express",
-    description: "about.kikoeruReference",
+    area: "remoteSources",
+    projects: [
+      { name: "Number178/kikoeru-express", url: "https://github.com/Number178/kikoeru-express", note: "kikoeru" },
+    ],
   },
   {
-    name: "comfyanonymous/ComfyUI",
-    url: "https://github.com/comfyanonymous/ComfyUI",
-    description: "about.comfyReference",
+    area: "playbackReporting",
+    projects: [
+      { name: "advplyr/audiobookshelf", url: "https://github.com/advplyr/audiobookshelf", note: "audiobookshelf" },
+      { name: "navidrome/navidrome", url: "https://github.com/navidrome/navidrome", note: "navidrome" },
+      { name: "jellyfin/jellyfin-web", url: "https://github.com/jellyfin/jellyfin-web", note: "jellyfin" },
+    ],
   },
   {
-    name: "cherryhq/cherry-studio",
-    url: "https://github.com/cherryhq/cherry-studio",
-    description: "about.cherryReference",
+    area: "workflows",
+    projects: [{ name: "comfyanonymous/ComfyUI", url: "https://github.com/comfyanonymous/ComfyUI", note: "comfy" }],
   },
   {
-    name: "advplyr/audiobookshelf",
-    url: "https://github.com/advplyr/audiobookshelf",
-    description: "about.audiobookshelfReference",
-  },
-  {
-    name: "navidrome/navidrome",
-    url: "https://github.com/navidrome/navidrome",
-    description: "about.navidromeReference",
-  },
-  {
-    name: "jellyfin/jellyfin-web",
-    url: "https://github.com/jellyfin/jellyfin-web",
-    description: "about.jellyfinReference",
+    area: "engineering",
+    projects: [
+      { name: "cherryhq/cherry-studio", url: "https://github.com/cherryhq/cherry-studio", note: "cherry" },
+      { name: "astral-sh/uv", url: "https://github.com/astral-sh/uv", note: "uv" },
+      { name: "tailscale/tailscale", url: "https://github.com/tailscale/tailscale", note: "tailscale" },
+      { name: "grafana/grafana", url: "https://github.com/grafana/grafana", note: "grafana" },
+    ],
   },
 ] as const;
 
@@ -54,19 +53,37 @@ const aiModelHistory = [
 const technologyGroups = [
   {
     title: "Frontend",
-    items: ["React", "TypeScript", "Vite", "Tailwind CSS", "i18next", "lucide-react", "Radix UI Slot"],
+    items: ["React", "TypeScript", "Vite", "Tailwind CSS", "i18next", "hls.js", "lucide-react", "Radix UI Slot"],
   },
   {
     title: "Backend",
-    items: ["Go", "SQLite (modernc.org/sqlite)", "fsnotify", "chardet", "golang.org/x/text", "golang.org/x/crypto"],
+    items: [
+      "Go",
+      "SQLite (modernc.org/sqlite)",
+      "fsnotify",
+      "chardet",
+      "golang.org/x/text",
+      "golang.org/x/crypto",
+      "golang.org/x/net",
+      "golang.org/x/sys",
+    ],
   },
   {
     title: "Mobile",
-    items: ["Capacitor", "Android WebView", "AndroidX", "Gradle"],
+    items: [
+      "Capacitor",
+      "Android WebView",
+      "AndroidX",
+      "Gradle",
+      "WKWebView",
+      "AVKit",
+      "Swift Package Manager",
+      "Xcode",
+    ],
   },
   {
     title: "Runtime & Delivery",
-    items: ["FFmpeg", "Docker", "Docker Compose", "GitHub Actions"],
+    items: ["FFmpeg", "Debian", "Docker", "Docker Compose", "GitHub Actions"],
   },
 ] as const;
 
@@ -97,11 +114,11 @@ export function AboutPage() {
               <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{t("about.aiCredit")}</p>
               <ModelTimeline />
             </Track>
-            <Track number={3} title={t("about.referenceProjects")}>
-              <ReferenceList />
-            </Track>
-            <Track number={4} title={t("about.technologies")}>
+            <Track number={3} title={t("about.technologies")}>
               <TechnologyCredits />
+            </Track>
+            <Track number={4} title={t("about.referenceProjects")}>
+              <ReferenceCredits />
             </Track>
           </div>
           <FinePrint />
@@ -291,35 +308,49 @@ function ModelTimeline() {
   );
 }
 
-function ReferenceList() {
+/** Reference projects as album credits: the area they informed on the left, the projects on the right. */
+function ReferenceCredits() {
   const { t } = useTranslation();
   return (
-    <ul className="-mx-2 space-y-1">
-      {referenceProjects.map((project) => {
-        const [owner, repository] = project.name.split("/");
-        return (
-          <li
-            key={project.name}
-            className="group relative rounded-[var(--control-radius)] px-2 py-2 transition-colors hover:bg-muted"
-          >
-            <a
-              href={project.url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm font-medium text-foreground after:absolute after:inset-0 after:rounded-[var(--control-radius)] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
-            >
-              <span className="font-normal text-muted-foreground">{owner}/</span>
-              {repository}
-              <ArrowUpRight
-                aria-hidden="true"
-                className="ml-1 inline h-3.5 w-3.5 align-[-0.125em] text-muted-foreground transition-colors group-hover:text-foreground"
-              />
-            </a>
-            <p className="mt-0.5 max-w-2xl text-xs leading-5 text-muted-foreground">{t(project.description)}</p>
-          </li>
-        );
-      })}
-    </ul>
+    <dl className="grid gap-y-5 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)] sm:gap-x-4">
+      {referenceGroups.map((group) => (
+        <div key={group.area} className="min-w-0 sm:contents">
+          <dt className="text-xs font-medium uppercase leading-6 tracking-[0.08em] text-muted-foreground sm:pt-1">
+            {t(`about.referenceAreas.${group.area}`)}
+          </dt>
+          <dd className="min-w-0">
+            <ul className="-mx-2">
+              {group.projects.map((project) => {
+                const [owner, repository] = project.name.split("/");
+                return (
+                  <li
+                    key={project.name}
+                    className="group relative rounded-[var(--control-radius)] px-2 py-1.5 transition-colors hover:bg-muted"
+                  >
+                    <a
+                      href={project.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm font-medium text-foreground after:absolute after:inset-0 after:rounded-[var(--control-radius)] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
+                    >
+                      <span className="font-normal text-muted-foreground">{owner}/</span>
+                      {repository}
+                      <ArrowUpRight
+                        aria-hidden="true"
+                        className="ml-1 inline h-3.5 w-3.5 align-[-0.125em] text-muted-foreground transition-colors group-hover:text-foreground"
+                      />
+                    </a>
+                    <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                      {t(`about.references.${project.note}`)}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

@@ -756,16 +756,24 @@ export const koreanResource = {
         overviewTwo:
           "라이브러리 탐색, 즐겨찾기, 서클, 성우, 워크플로 가시성, 원격 가져오기와 브라우저 오디오 플레이어를 제공합니다.",
         referenceProjects: "참조 프로젝트",
-        kikoeruReference: "Kikoto의 Kikoeru 호환 원격 소스 연동은 이 프로젝트의 공개 백엔드 인터페이스를 참고합니다.",
-        comfyReference:
-          "Kikoto의 이전 워크플로 캔버스는 이 프로젝트의 상호작용 설계를 참고했습니다. 소스 코드를 포함하거나 수정한 적은 없으며, 해당 캔버스는 @xyflow/react로 독립 구현했으나 현재는 더 이상 사용하지 않습니다.",
-        cherryReference: "Kikoto의 AGENTS.md 구성 방식과 프로그램 버전 관리 설계는 이 프로젝트를 참고했습니다.",
-        audiobookshelfReference:
-          "Kikoto의 재생 보고 설계는 이 프로젝트가 재생 위치와 실제 감상 시간을 함께 보고하는 방식을 참고했습니다.",
-        navidromeReference:
-          "Kikoto의 재생 보고 설계는 이 프로젝트의 이벤트 병합, 영구 저장 보고 큐와 재시도 대기 시간을 늘리는 방식을 참고했습니다.",
-        jellyfinReference:
-          "Kikoto의 재생 보고 설계는 이 프로젝트가 재생 이벤트와 주기적인 진행 상황 보고를 함께 사용하는 방식을 참고했습니다.",
+        referenceAreas: {
+          remoteSources: "원격 소스",
+          playbackReporting: "재생 보고",
+          workflows: "워크플로",
+          engineering: "엔지니어링 및 CI",
+        },
+        references: {
+          kikoeru: "Kikoeru 호환 원격 소스가 따르는 공개 백엔드 인터페이스.",
+          audiobookshelf: "재생 위치와 실제 감상 시간을 함께 보고하는 방식.",
+          navidrome: "이벤트 병합, 영구 저장 보고 큐, 재시도 대기 시간을 늘리는 방식.",
+          jellyfin: "재생 이벤트와 주기적인 진행 상황 보고를 함께 사용하는 방식.",
+          comfy:
+            "이전 워크플로 캔버스의 상호작용 설계. Kikoto는 소스 코드를 포함하거나 수정한 적이 없으며, 해당 캔버스는 @xyflow/react로 독립 구현했으나 현재는 더 이상 사용하지 않습니다.",
+          cherry: "AGENTS.md 구성 방식, 프로그램 버전 관리, GitHub Actions 설계.",
+          uv: "GitHub Actions의 plan 작업, 재사용 가능한 워크플로, 단일 병합 게이트.",
+          tailscale: "race 테스트 스위트를 개별 테스트 단위로 샤드에 나누는 방식.",
+          grafana: "패키지 단위로 테스트를 샤드에 나누는 방식. 테스트 단위 분할과 비교할 대안으로 검토했습니다.",
+        },
         technologies: "주요 기술",
         license: "라이선스",
         copyright: "Copyright (C) 2026 yexca.",

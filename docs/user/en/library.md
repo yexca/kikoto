@@ -33,9 +33,10 @@ The Library is the main browsing surface for works.
   tags in a popover; personal tags remain a separate user-owned row.
 - Shows compact DL sales and a five-segment non-numeric rating comparison in one
   metrics row. A playback-history icon appears when a persisted cursor exists.
-- Shows a language icon only when the database knows an available non-Origin
-  edition through an enabled source. Unknown or metadata-only language relations
-  do not imply availability.
+- Shows a lyrics icon when a track of the work has lyrics: a lyrics file
+  assigned in **Manage lyrics**, or one matched to the track by name. Other
+  text files, such as a readme or a script, do not count. A work without
+  tracks of its own takes the status of its other editions.
 - Shows the current price when normalized commercial metadata is available and
   labels zero-price works as Free.
 - Shows the signed-in user's work tags separately from metadata tags on unified
