@@ -55,6 +55,7 @@ export function MobileWorkCardShell({
     <Card
       className="group h-full overflow-hidden transition-[border-color,transform] duration-150 focus-within:border-primary/40 active:scale-[var(--press-scale)] motion-reduce:transition-none motion-reduce:active:scale-100"
       data-testid="work-card"
+      data-card-layout={layout}
     >
       <CardContent className="flex h-full flex-col rounded-[inherit] p-0">
         <div

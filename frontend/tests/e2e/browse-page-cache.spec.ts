@@ -325,7 +325,8 @@ test("opening a library detail preserves its search, rendered cards, and loaded 
   await card.click();
   await expect(page.getByRole("heading", { name: "Example Work", exact: true })).toBeVisible();
   await expect(page.locator('[data-retention-probe="library-detail"]')).toHaveCount(1);
-  await expect(page.getByPlaceholder("Search title, code, circle, tag, or creator")).toHaveValue("Example");
+  // The retained Library is hidden behind the detail, so the role query has to include hidden nodes.
+  await expect(page.getByRole("searchbox", { name: "Search library", includeHidden: true })).toHaveValue("Example");
   await page.goBack();
 
   await expect(page).toHaveURL(/\/\?q=Example$/);

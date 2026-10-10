@@ -67,7 +67,7 @@ export const libraryEnglish = {
 
   resultCount: "{{value}} works",
 
-  resultPage: "Page {{page}}/{{totalPages}}",
+  resultPage: "Page {{page}} of {{totalPages}}",
 
   allStatuses: "All",
   recentlyPlayedFailed: "Recently played works could not be loaded.",
