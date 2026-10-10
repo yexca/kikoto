@@ -1,8 +1,17 @@
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
 import test from "node:test";
-import { createPlan, jobs, planKeys, validateResults } from "./ci-plan.mjs";
+import {
+  createPlan,
+  jobs,
+  planKeys,
+  scriptJobs,
+  validateResults,
+} from "./ci-plan.mjs";
 
 const pr = (paths) => createPlan({ tier: "pr", paths });
+// The plan keys a PR selects, in plan order.
+const selected = (...paths) => planKeys.filter((key) => pr(paths)[key]);
 const resultsFor = (plan) => ({
   style: { result: "success" },
   ...Object.fromEntries(
@@ -30,12 +39,78 @@ test("documentation-only PRs skip expensive jobs while unknown paths require ful
     ["VERSION"],
     ["Makefile"],
     [".github/workflows/validate.yml"],
+    [".github/actions/setup-go/action.yml"],
     ["scripts/ci-plan.mjs"],
-    ["frontend/package-lock.json"],
-    ["backend/go.sum"],
+    ["scripts/future-check.mjs"],
+    ["scripts/nested/smoke.mjs"],
+    ["deploy/compose/docker-compose.yml"],
+    ["docs/overview.md", "new-runtime/settings.json"],
   ]) {
     assert.ok(Object.values(pr(paths)).every(Boolean), String(paths));
   }
+});
+
+test("dependency manifests and image definitions select only the jobs that consume them", () => {
+  for (const path of ["backend/go.mod", "backend/go.sum"])
+    assert.deepEqual(selected(path), ["backend", "production", "dev_smoke"]);
+  for (const path of [
+    "frontend/package.json",
+    "frontend/package-lock.json",
+    "frontend/.npmrc",
+  ])
+    assert.deepEqual(selected(path), [
+      "frontend",
+      "e2e",
+      "android",
+      "ios",
+      "production",
+      "dev_smoke",
+    ]);
+  assert.deepEqual(selected("Dockerfile"), ["production"]);
+  assert.deepEqual(selected(".dockerignore"), ["production", "dev_smoke"]);
+  for (const path of [
+    "backend/Dockerfile",
+    "frontend/Dockerfile",
+    "frontend/nginx.conf",
+    "frontend/nginx-security.conf",
+  ])
+    assert.deepEqual(selected(path), ["dev_smoke"]);
+  assert.deepEqual(selected("Dockerfile", "backend/Dockerfile"), [
+    "production",
+    "dev_smoke",
+  ]);
+});
+
+test("a validation script selects the jobs that run it, and every script has a decision", () => {
+  assert.deepEqual(selected("scripts/go-test-shard.mjs"), ["backend"]);
+  assert.deepEqual(selected("scripts/golangci-lint.yml"), ["backend"]);
+  assert.deepEqual(selected("scripts/production-smoke.mjs"), ["production"]);
+  assert.deepEqual(selected("scripts/smoke.mjs"), ["dev_smoke"]);
+  for (const path of [
+    "scripts/privacy-allowlist.json",
+    "scripts/ui-copy-baseline.json",
+    "scripts/check-sensitive.mjs",
+    "scripts/ci-plan.test.mjs",
+    "scripts/future-check.test.mjs",
+  ])
+    assert.deepEqual(selected(path), [], path);
+  assert.deepEqual(
+    selected(
+      "docs/history/unreleased.md",
+      "frontend/src/pages/AboutPage.tsx",
+      "scripts/privacy-allowlist.json",
+    ),
+    ["frontend", "e2e", "production"],
+  );
+  // The planner decides what every other change may skip, so it alone selects
+  // every job; a new script must be classified rather than left unlisted.
+  const scripts = readdirSync(new URL(".", import.meta.url));
+  for (const name of scripts) {
+    const everything = Object.values(pr([`scripts/${name}`])).every(Boolean);
+    assert.equal(everything, name === "ci-plan.mjs", name);
+  }
+  for (const name of Object.keys(scriptJobs))
+    assert.ok(scripts.includes(name), `${name} is listed but does not exist`);
 });
 
 test("PR plans include cross-platform consumers and the union of renamed/deleted paths", () => {
@@ -51,7 +126,7 @@ test("PR plans include cross-platform consumers and the union of renamed/deleted
   assert.deepEqual(pr(["backend/internal/httpapi/server.go"]), {
     backend: true,
     frontend: false,
-    e2e: true,
+    e2e: false,
     android: false,
     ios: false,
     production: true,
