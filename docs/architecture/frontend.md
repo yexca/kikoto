@@ -133,6 +133,16 @@ version and the emitted file names. Each build therefore owns one service
 worker cache, and activating a new worker deletes the previous build's cache
 instead of keeping its hashed assets.
 
+The API client lives in `lib`. `lib/apiTransport` owns the authenticated request
+functions: base URL and asset URLs, credentials, session fencing, shared
+in-flight reads, and error mapping. Each domain module declares its response
+types beside its requests: `accountApi`, `libraryApi`, `workApi`, `mediaApi`,
+`metadataApi`, `creatorApi`, `remoteSourceApi`, `workflowApi`, and
+`settingsApi`. A domain module imports the transport and, for types only, a
+domain it builds on; none imports `lib/api`. `lib/api` composes the domain
+modules into the single `api` object and re-exports their types, and is the
+entry pages, features, and tests import.
+
 Navigation and browse state that pages and features share lives in `lib`:
 circle and voice route helpers, Library browse state, and Library search
 clauses. Work detail and the pages depend on those modules instead of on each
@@ -150,6 +160,19 @@ The shelf rail, shelf header, controls, card and list views, creator shelves,
 and list management live in `features/favorites`. List icons come from a
 shared catalog in `components/favorite-list`, so the work card's list menu and
 Favorites draw the same icon for a stored key.
+
+The Library page is the route controller: it keeps the active source tab and
+scope, the browse controls with their history and storage restoration, and the
+work the route selects. The rest lives in `pages/library`. `libraryRoutes` and
+`libraryBrowseModel` are the pure route and browse-state models.
+`useLocalLibraryWorks` and `useRemoteSourceWorks` load the local and remote
+result pages for the controls they are given, and `useLibraryWorkDetail` loads
+the selected work. `useLibraryRecommendations` owns the recommendation session,
+the score badge preference, list telemetry, and the explanation state. The
+toolbars, source tabs, search clause editor, local and remote result panels,
+work cards, and the detail surface are components there. The local and remote
+loaders share one set of browse controls, so tab, search, sort, and page state
+stay with the page instead of being divided between them.
 
 Work detail metadata editing exposes one entry from
 `features/work-detail/metadata`. Its modal owns interaction and save actions,

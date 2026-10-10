@@ -26,6 +26,9 @@ public class KikotoAssetRequestPolicyTest {
         assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/download", "GET"));
         assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/hls/index.m3u8?v=revision", "GET"));
         assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/hls/segment-000042.ts?v=revision", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/remote-sources/7/works/RJ00000000/media?path=track.mp3", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/remote-sources/7/works/RJ00000000/text?path=lyrics.lrc", "GET"));
+        assertTrue(policy.allows("https://server.example.invalid:8443/kikoto/api/remote-sources/7/images/AbCd0123_-", "GET"));
 
         assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/works", "GET"));
         assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/stream", "POST"));
@@ -34,6 +37,9 @@ public class KikotoAssetRequestPolicyTest {
         assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/hls/segment-42.ts", "GET"));
         assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/media/7/hls/other.ts", "GET"));
         assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/assets/manual/nested/example.png", "GET"));
+        assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/remote-sources/0/works/RJ00000000/media?path=track.mp3", "GET"));
+        assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/remote-sources/7/works/RJ00000000/media/extra?path=track.mp3", "GET"));
+        assertFalse(policy.allows("https://server.example.invalid:8443/kikoto/api/remote-sources/7/images/", "GET"));
     }
 
     @Test

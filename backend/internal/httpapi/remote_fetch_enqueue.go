@@ -289,6 +289,10 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 		}
 		return
 	}
+	if err := validateRemoteFetchDownloadPlan(plan.Items, s.remoteMediaDownloadLimitBytes(r.Context())); err != nil {
+		writeUpstreamError(w, rejectedRequestError("download_limit_exceeded", "a selected file is larger than the remote download limit", err))
+		return
+	}
 	if err := s.ensureRemoteWorkSaveDiskReserve(plan, payload.MinFreeBytes, ""); err != nil {
 		writeError(w, err)
 		return

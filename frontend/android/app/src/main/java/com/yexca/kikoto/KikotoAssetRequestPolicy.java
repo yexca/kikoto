@@ -17,6 +17,12 @@ final class KikotoAssetRequestPolicy {
     private static final Pattern HLS_SEGMENT_PATH = Pattern.compile(
         "^/api/media/[1-9][0-9]*/hls/segment-[0-9]{6}\\.ts$"
     );
+    private static final Pattern REMOTE_WORK_PATH = Pattern.compile(
+        "^/api/remote-sources/[1-9][0-9]*/works/[^/]+/(?:media|text)$"
+    );
+    private static final Pattern REMOTE_IMAGE_PATH = Pattern.compile(
+        "^/api/remote-sources/[1-9][0-9]*/images/[^/]+$"
+    );
 
     private final String scheme;
     private final String host;
@@ -104,7 +110,10 @@ final class KikotoAssetRequestPolicy {
         if (route.startsWith(MANUAL_PREFIX) && route.length() > MANUAL_PREFIX.length()) {
             return route.indexOf('/', MANUAL_PREFIX.length()) < 0;
         }
-        return MEDIA_PATH.matcher(route).matches() || HLS_PATH.matcher(route).matches();
+        return MEDIA_PATH.matcher(route).matches() ||
+            HLS_PATH.matcher(route).matches() ||
+            REMOTE_WORK_PATH.matcher(route).matches() ||
+            REMOTE_IMAGE_PATH.matcher(route).matches();
     }
 
     boolean isHLSSegment(URI uri) {
