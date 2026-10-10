@@ -61,6 +61,16 @@ export const libraryHans = {
   remoteSourceUnavailableDescription: "无法连接来源服务，因此没有加载作品。",
   retryRemoteSource: "重试",
   recentlyPlayed: "最近播放",
+
+  continueListening: "继续收听",
+
+  mobileSearchPlaceholder: "搜索标题、社团、标签",
+
+  resultCount: "{{value}} 个作品",
+
+  resultPage: "第 {{page}}/{{totalPages}} 页",
+
+  allStatuses: "全部",
   recentlyPlayedFailed: "无法加载最近播放的作品。",
   openWorkTitle: "打开 {{title}}",
   noPlaybackYet: "尚未播放",
@@ -160,6 +170,10 @@ export const collectionHans = {
   perPageLabel: "每页 {{itemLabel}} 数量",
   pageSize: "每页数量：{{value}}",
   itemsPerPage: "每页数量",
+
+  compactCards: "紧凑卡片",
+
+  compactCardsHint: "手机上使用更小的作品卡片",
   coverSources: "封面来源标记",
   coverSourceModes: {
     auto: "自动：只显示与当前来源不同或异常的标记",

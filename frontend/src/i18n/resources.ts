@@ -60,6 +60,16 @@ export const libraryEnglish = {
   remoteSourceUnavailableDescription: "The source service could not be reached, so its works were not loaded.",
   retryRemoteSource: "Try again",
   recentlyPlayed: "Recently played",
+
+  continueListening: "Continue listening",
+
+  mobileSearchPlaceholder: "Search titles, circles, tags",
+
+  resultCount: "{{value}} works",
+
+  resultPage: "Page {{page}}/{{totalPages}}",
+
+  allStatuses: "All",
   recentlyPlayedFailed: "Recently played works could not be loaded.",
   openWorkTitle: "Open {{title}}",
   noPlaybackYet: "No playback yet",
@@ -154,6 +164,10 @@ export const collectionEnglish = {
   perPageLabel: "{{itemLabel}} per page",
   pageSize: "Items per page: {{value}}",
   itemsPerPage: "Items per page",
+
+  compactCards: "Compact cards",
+
+  compactCardsHint: "Smaller cards on phones",
   coverSources: "Cover source marks",
   coverSourceModes: {
     auto: "Auto: only marks that differ from the current source",

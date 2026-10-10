@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import { sourceVisibilityModes, type SourceVisibilityMode } from "@/components/source-visibility/sourceVisibility";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
+import { Switch } from "@/components/ui/switch";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import i18n from "@/i18n";
 import { cn } from "@/lib/tailwindClassNames";
@@ -33,24 +34,38 @@ const layoutChangeEvent = "kikoto:work-collection-layout-change";
 type StoredWorkCollectionLayout = {
   mobileColumns: WorkCollectionColumnSetting;
   desktopColumns: WorkCollectionColumnSetting;
+  /** Phone collections that support it use the compact card layouts. */
+  mobileCompact: boolean;
 };
 
+type WorkCollectionLayoutDefaults = Omit<StoredWorkCollectionLayout, "mobileCompact"> & { mobileCompact?: boolean };
+
 export function useWorkCollectionLayout(
-  initial: StoredWorkCollectionLayout = { mobileColumns: "auto", desktopColumns: "auto" },
+  initial: WorkCollectionLayoutDefaults = { mobileColumns: "auto", desktopColumns: "auto" },
 ) {
   const [layout, setLayout] = useState<StoredWorkCollectionLayout>(() => readStoredLayout(initial));
   // Callers may pass a fresh default object each render; subscribe on its values.
-  const { mobileColumns: initialMobileColumns, desktopColumns: initialDesktopColumns } = initial;
+  const {
+    mobileColumns: initialMobileColumns,
+    desktopColumns: initialDesktopColumns,
+    mobileCompact: initialMobileCompact,
+  } = initial;
   useEffect(() => {
     const sync = () =>
-      setLayout(readStoredLayout({ mobileColumns: initialMobileColumns, desktopColumns: initialDesktopColumns }));
+      setLayout(
+        readStoredLayout({
+          mobileColumns: initialMobileColumns,
+          desktopColumns: initialDesktopColumns,
+          mobileCompact: initialMobileCompact,
+        }),
+      );
     window.addEventListener("storage", sync);
     window.addEventListener(layoutChangeEvent, sync);
     return () => {
       window.removeEventListener("storage", sync);
       window.removeEventListener(layoutChangeEvent, sync);
     };
-  }, [initialDesktopColumns, initialMobileColumns]);
+  }, [initialDesktopColumns, initialMobileColumns, initialMobileCompact]);
   const update = (patch: Partial<StoredWorkCollectionLayout>) => {
     setLayout((current) => {
       const next = { ...current, ...patch };
@@ -63,6 +78,7 @@ export function useWorkCollectionLayout(
     ...layout,
     setMobileColumns: (mobileColumns: WorkCollectionColumnSetting) => update({ mobileColumns }),
     setDesktopColumns: (desktopColumns: WorkCollectionColumnSetting) => update({ desktopColumns }),
+    setMobileCompact: (mobileCompact: boolean) => update({ mobileCompact }),
   };
 }
 
@@ -78,6 +94,8 @@ export function WorkCollectionDisplayPicker({
   onMobileColumnsChange,
   onDesktopColumnsChange,
   showColumns = true,
+  mobileCompact,
+  onMobileCompactChange,
   pageSize,
   pageSizeOptions,
   onPageSizeChange,
@@ -88,6 +106,9 @@ export function WorkCollectionDisplayPicker({
   onMobileColumnsChange: (value: WorkCollectionColumnSetting) => void;
   onDesktopColumnsChange: (value: WorkCollectionColumnSetting) => void;
   showColumns?: boolean;
+  /** Passing the handler adds the compact card switch, shown on narrow screens only. */
+  mobileCompact?: boolean;
+  onMobileCompactChange?: (value: boolean) => void;
   pageSize?: number;
   pageSizeOptions?: readonly number[];
   onPageSizeChange?: (value: number) => void;
@@ -152,6 +173,19 @@ export function WorkCollectionDisplayPicker({
               </DisplayOptionButton>
             ))}
           </DisplayOptionGroup>
+        )}
+        {!isWide && onMobileCompactChange && (
+          <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3 px-0.5">
+            <span className="min-w-0">
+              <span className="block text-xs font-medium text-muted-foreground">{t("collection.compactCards")}</span>
+              <span className="block text-2xs text-muted-foreground/80">{t("collection.compactCardsHint")}</span>
+            </span>
+            <Switch
+              checked={mobileCompact ?? false}
+              onCheckedChange={onMobileCompactChange}
+              aria-label={t("collection.compactCards")}
+            />
+          </label>
         )}
         {paged && (
           <DisplayOptionGroup label={t("collection.itemsPerPage")}>
@@ -248,7 +282,8 @@ function columnOptionLabel(setting: WorkCollectionColumnSetting, t: TFunction<"t
   return t("collection.column", { count: setting });
 }
 
-function readStoredLayout(fallback: StoredWorkCollectionLayout): StoredWorkCollectionLayout {
+function readStoredLayout(defaults: WorkCollectionLayoutDefaults): StoredWorkCollectionLayout {
+  const fallback: StoredWorkCollectionLayout = { ...defaults, mobileCompact: defaults.mobileCompact ?? false };
   try {
     const value = JSON.parse(localStorage.getItem(layoutStorageKey) ?? "{}") as Partial<StoredWorkCollectionLayout>;
     return {
@@ -261,6 +296,7 @@ function readStoredLayout(fallback: StoredWorkCollectionLayout): StoredWorkColle
         : isWorkCollectionDesktopColumnSetting(fallback.desktopColumns)
           ? fallback.desktopColumns
           : "auto",
+      mobileCompact: typeof value.mobileCompact === "boolean" ? value.mobileCompact : fallback.mobileCompact,
     };
   } catch {
     return fallback;
