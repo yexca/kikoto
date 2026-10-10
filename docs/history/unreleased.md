@@ -187,3 +187,7 @@
   unavailable. It runs manually or from Startup and interval triggers. It
   replaces the non-runnable **Check source health** entry; **Check health** in
   source settings is unchanged.
+
+- About lists reference projects under Core technologies, grouped by what they
+  informed: remote sources, playback reporting, workflows, and engineering and
+  CI. The CI group credits the projects behind the GitHub Actions design.
