@@ -94,7 +94,7 @@ export function DirectoryBreadcrumb({ path, onChange }: { path: string[]; onChan
 
       <div
         ref={segmentsRef}
-        className="app-scrollbar hidden min-h-9 min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap lg:flex"
+        className="app-scrollbar hidden min-h-9 min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden whitespace-nowrap lg:flex"
       >
         <button className="shrink-0 rounded px-2 py-1 font-medium hover:bg-background" onClick={() => onChange([])}>
           {i18n.t("libraryDetail.root")}

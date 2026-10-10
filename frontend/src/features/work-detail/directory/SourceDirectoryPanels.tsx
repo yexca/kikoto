@@ -447,7 +447,7 @@ export function SourceDirectoryPanel({
         </div>
 
         {showSourceTabs && (
-          <div className="app-scrollbar mt-1 flex min-w-0 items-center overflow-x-auto border-b px-2">
+          <div className="app-scrollbar mt-1 flex min-w-0 items-center overflow-x-auto overflow-y-hidden border-b px-2">
             {visibleTabs.map((source) =>
               source.kind === "tracked" && trackedPresenceOptions.length > 1 ? (
                 <div key={source.key} ref={trackedMenuRef} className="relative flex shrink-0 items-center">

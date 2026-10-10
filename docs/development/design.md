@@ -203,7 +203,9 @@ Mobile:
   pinch zoom; fine-pointer layouts keep their compact control text.
 - Player page optimized for one-handed listening.
 - Pressed feedback must not depend on hover availability.
-- Dynamic viewport and safe-area insets protect fixed controls in portrait and
-  landscape.
+- Dynamic viewport and safe-area insets protect fixed controls, sheets, and
+  dialogs in portrait and landscape.
+- Horizontal scroll strips clip vertical overflow, so a vertical swipe that
+  starts on one scrolls the page.
 - Desktop side panels become viewport-bounded sheets or stacked task surfaces;
   they must not shrink the listening controls below their touch contract.

@@ -124,7 +124,7 @@ export function MobileSheet({
 
   return createPortal(
     <div
-      className="visual-viewport-layer z-sheet flex items-end bg-transparent p-2 sm:p-4"
+      className="visual-viewport-layer z-sheet flex items-end bg-transparent p-2 pt-[var(--sheet-top-inset)] sm:p-4 sm:pt-[var(--sheet-top-inset)]"
       onPointerDown={(event) => {
         if (open && event.target === event.currentTarget) onOpenChange(false);
       }}
@@ -139,13 +139,12 @@ export function MobileSheet({
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledby}
         className={cn(
-          "theme-floating-surface app-scroll min-h-0 w-full overflow-y-auto rounded-t-xl border bg-card shadow-xl transition-transform duration-200 ease-out will-change-transform motion-reduce:transition-none",
+          "theme-floating-surface app-scroll max-h-full min-h-0 w-full overflow-y-auto rounded-t-xl border bg-card shadow-xl transition-transform duration-200 ease-out will-change-transform motion-reduce:transition-none",
           entered ? "translate-y-0" : "translate-y-full",
           dragging && "transition-none",
           className,
         )}
         style={{
-          maxHeight: "calc(var(--visual-viewport-height) - 1rem)",
           paddingBottom: "max(0.5rem, var(--safe-area-bottom))",
           transform: dragOffset > 0 ? `translate3d(0, ${dragOffset}px, 0)` : undefined,
         }}

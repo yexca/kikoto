@@ -69,7 +69,6 @@ export function WorkIdentityActionBar({
         disabled={busy}
         showLabel
         responsiveLabel
-        allowCreate
         ensureWorkId={onEnsureListWork}
         onSaved={onListSaved}
       />

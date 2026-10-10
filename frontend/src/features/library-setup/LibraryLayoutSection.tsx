@@ -1,38 +1,32 @@
-import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { SettingsSection } from "@/components/settings/SettingsSection";
-import { api, type LibraryLayout } from "@/lib/api";
+import type { LibraryLayout } from "@/lib/api";
 
 import { LibraryLayoutEditor } from "./LibraryLayoutEditor";
 import { LegacyWorkflowMigrationReview } from "./LegacyWorkflowMigrationReview";
 
 /** Settings -> Library: the library mode, storage pools, and Fetch pool. */
-export function LibraryLayoutSection({ readOnly }: { readOnly: boolean }) {
+export function LibraryLayoutSection({
+  id,
+  layout,
+  failed,
+  readOnly,
+  onSaved,
+}: {
+  id?: string;
+  layout: LibraryLayout | null;
+  failed: boolean;
+  readOnly: boolean;
+  onSaved: (layout: LibraryLayout) => void;
+}) {
   const { t } = useTranslation();
-  const [layout, setLayout] = useState<LibraryLayout | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    api
-      .getLibraryLayout(controller.signal)
-      .then((next) => {
-        setLayout(next);
-        setFailed(false);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true);
-      });
-    return () => controller.abort();
-  }, []);
-
   return (
-    <SettingsSection title={t("librarySetup.title")} description={t("librarySetup.description")}>
+    <SettingsSection id={id} title={t("librarySetup.title")} description={t("librarySetup.description")}>
       <div className="px-4 py-3">
         {layout ? (
           <div className="space-y-7">
-            <LibraryLayoutEditor key={layoutKey(layout)} layout={layout} readOnly={readOnly} onSaved={setLayout} />
+            <LibraryLayoutEditor key={layoutKey(layout)} layout={layout} readOnly={readOnly} onSaved={onSaved} />
             {!readOnly && layout.hasLegacyWorkflows && (
               <section className="space-y-3 border-t pt-5">
                 <h3 className="text-sm font-semibold">{t("librarySetup.workflowMigration.title")}</h3>

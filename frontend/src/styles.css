@@ -170,6 +170,13 @@
     --visual-viewport-height: 100dvh;
     --visual-viewport-offset-top: 0px;
     --visual-viewport-offset-left: 0px;
+    /* Centered dialogs keep their edge gap clear of the notch, status bar, and home indicator. */
+    --dialog-edge: 0.75rem;
+    --dialog-inset: calc(var(--dialog-edge) + var(--safe-area-top)) calc(var(--dialog-edge) + var(--safe-area-right))
+      calc(var(--dialog-edge) + var(--safe-area-bottom)) calc(var(--dialog-edge) + var(--safe-area-left));
+    --dialog-max-height: calc(100dvh - 2 * var(--dialog-edge) - var(--safe-area-top) - var(--safe-area-bottom));
+    /* Bottom sheets stop below the status bar and leave a strip that dismisses them. */
+    --sheet-top-inset: calc(var(--safe-area-top) + 2.5rem);
     --mobile-navigation-height: 4rem;
     --compact-player-height: 4.5rem;
     --mini-player-size: 5.75rem;
@@ -568,6 +575,12 @@
   html[data-player-active="true"] {
     --app-content-bottom-clearance: calc(var(--compact-player-mobile-offset) + var(--player-reserved-height) + 1.25rem);
     --app-update-banner-bottom: calc(var(--compact-player-mobile-offset) + var(--player-reserved-height) + 0.75rem);
+  }
+
+  @media (min-width: 640px) {
+    :root {
+      --dialog-edge: 1rem;
+    }
   }
 
   @media (min-width: 1024px) {

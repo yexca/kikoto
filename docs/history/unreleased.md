@@ -1,5 +1,27 @@
 # Unreleased
 
+- On phones, bottom sheets such as Quick actions and tall dialogs stay below
+  the status bar and notch, so their handle and close action remain reachable
+  and a sheet always leaves a strip above it that dismisses it. The work
+  detail stats row and other horizontal strips no longer scroll vertically
+  and swallow page swipes.
+
+- Settings → History becomes a listening dashboard: totals with derived
+  figures (time per active day and per play, the top work's share, and the
+  share of active days), the activity chart, a ranked bar list of the most
+  listened works with their share of the time, and a Rhythm panel with the
+  current and longest listening streaks and the average per weekday. The full
+  history lists works as compact rows with plays and the last listening date.
+  The page no longer scrolls far past its content.
+
+- Settings → Library opens with a Libraries list of the local library (storage
+  mode and online state) and the remote sources, followed by the library
+  settings.
+
+- The add-to-list menu on every work card can create a list in place, as on
+  work detail. Work detail can hide the folder column beside the directory
+  and remembers the choice on the device.
+
 - Availability Watch treats a watched code as a work family. Before checking
   a code, a run refreshes its DLsite family metadata (at most once a day), and
   the work becomes available when a remote source offers any of its language
