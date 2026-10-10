@@ -1,6 +1,7 @@
 import {
   AudioLines,
   BookmarkPlus,
+  Captions,
   Check,
   CheckCircle2,
   Circle,
@@ -12,7 +13,6 @@ import {
   HardDrive,
   Headphones,
   History,
-  Languages,
   ListMusic,
   MicVocal,
   PauseCircle,
@@ -856,7 +856,7 @@ function WorkCardIndicators({ hasLyrics, hasPlaybackHistory }: { hasLyrics: bool
           role="img"
           aria-label={t("workCard.lyricsAvailable")}
         >
-          <Languages className="h-3.5 w-3.5" aria-hidden="true" />
+          <Captions className="h-3.5 w-3.5" aria-hidden="true" />
         </span>
       )}
       {hasPlaybackHistory && (

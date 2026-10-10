@@ -191,3 +191,10 @@
 - About lists reference projects under Core technologies, grouped by what they
   informed: remote sources, playback reporting, workflows, and engineering and
   CI. The CI group credits the projects behind the GitHub Actions design.
+
+- The lyrics icon on work cards is the captions icon used by the lyrics
+  manager, and it appears only when a track of the work has lyrics: a file
+  assigned in **Manage lyrics**, or one that playback matches to the track by
+  name. A readme, a script, or another text file that matches no track no
+  longer shows it, and an edition with its own tracks no longer shows it for
+  lyrics that belong to another edition.
