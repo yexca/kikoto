@@ -43,7 +43,7 @@ export function LyricsPreview({
       cancelled = true;
     };
     // The key identifies the file; a new load function for the same file is not a new request.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [loadKey]);
   const current = state?.key === loadKey ? state : null;
   const text = current && "text" in current ? current.text : null;

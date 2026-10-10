@@ -53,9 +53,10 @@ export function useSpeakerPlaybackGuard({ refs, play }: { refs: PlaybackRefs; pl
   }, [guard]);
 
   useEffect(() => {
-    refs.playbackStartGuardRef.current = guard.allowStart;
+    const startGuardRef = refs.playbackStartGuardRef;
+    startGuardRef.current = guard.allowStart;
     return () => {
-      refs.playbackStartGuardRef.current = allowPlaybackStart;
+      startGuardRef.current = allowPlaybackStart;
     };
   }, [guard, refs]);
 
