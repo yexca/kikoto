@@ -314,6 +314,15 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
+	var wasEnabled bool
+	if err := tx.QueryRowContext(r.Context(), "SELECT enabled FROM file_source WHERE id = ?", id).Scan(&wasEnabled); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
 	updated, err := updateFileSourceTx(r.Context(), tx, id, payload)
 	if err != nil {
 		writeError(w, err)
@@ -327,6 +336,12 @@ func (s *Server) updateFileSource(w http.ResponseWriter, r *http.Request) {
 	if err := tx.QueryRowContext(r.Context(), "SELECT code FROM file_source WHERE id = ?", id).Scan(&code); err != nil {
 		writeError(w, err)
 		return
+	}
+	if wasEnabled && !payload.Enabled {
+		if err := pauseWorkflowTriggersForSourceTx(r.Context(), tx, id, workflowTriggerSourceDisabledMessage); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	if err := remoteSourceChangedTx(r.Context(), tx, code); err != nil {
 		writeError(w, err)
@@ -431,6 +446,10 @@ func (s *Server) deleteFileSource(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source not found or cannot be deleted"})
 			return
 		}
+		writeError(w, err)
+		return
+	}
+	if err := pauseWorkflowTriggersForSourceTx(r.Context(), tx, id, workflowTriggerSourceRemovedMessage); err != nil {
 		writeError(w, err)
 		return
 	}

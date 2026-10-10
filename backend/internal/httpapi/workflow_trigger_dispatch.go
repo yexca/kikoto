@@ -503,6 +503,13 @@ func (s *Server) dispatchDueScheduledWorkflowTrigger(ctx context.Context) error 
 }
 
 func (s *Server) dispatchDueSystemWorkflowTrigger(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord) error {
+	paused, err := s.pauseWorkflowTriggerIfSourceUnavailable(ctx, trigger, definition)
+	if err != nil {
+		return err
+	}
+	if paused {
+		return nil
+	}
 	if !systemWorkflowSupportsConfigurableTriggers(definition.Code) {
 		return s.disableInvalidWorkflowTrigger(ctx, trigger.ID, "system workflow schedule is not supported")
 	}
@@ -538,6 +545,13 @@ func (s *Server) dispatchDueSystemWorkflowTrigger(ctx context.Context, definitio
 }
 
 func (s *Server) executeSystemWorkflowTrigger(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord, triggerType, triggerReason string) error {
+	paused, err := s.pauseWorkflowTriggerIfSourceUnavailable(ctx, trigger, definition)
+	if err != nil {
+		return err
+	}
+	if paused {
+		return nil
+	}
 	status, failures, runErr := s.dispatchSystemWorkflowTrigger(ctx, definition, trigger, triggerType, triggerReason)
 	if runErr != nil {
 		s.execBestEffort(ctx, "record workflow trigger failure", "UPDATE workflow_trigger SET last_error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", runErr.Error(), trigger.ID)
@@ -788,6 +802,13 @@ func (s *Server) dispatchStartupSystemWorkflowTrigger(ctx context.Context, trigg
 	definition, err := s.loadWorkflowDefinition(ctx, trigger.WorkflowDefinitionID)
 	if err != nil {
 		return err
+	}
+	paused, err := s.pauseWorkflowTriggerIfSourceUnavailable(ctx, trigger, definition)
+	if err != nil {
+		return err
+	}
+	if paused {
+		return nil
 	}
 	var active int
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM workflow_run WHERE trigger_id = ? AND status IN ('queued', 'running')", trigger.ID).Scan(&active); err != nil {
