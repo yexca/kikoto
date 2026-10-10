@@ -765,18 +765,24 @@ export const japaneseResource = {
         overviewTwo:
           "ライブラリ、お気に入り、サークル、声優、ワークフロー、リモート取得、ブラウザーオーディオプレイヤーを備えています。",
         referenceProjects: "参考プロジェクト",
-        kikoeruReference:
-          "Kikoto の Kikoeru 互換リモートソース連携は、このプロジェクトの公開バックエンドインターフェースを参考にしています。",
-        comfyReference:
-          "Kikoto のかつてのワークフローキャンバスは、このプロジェクトの操作設計を参考にしていました。ソースコードを含めたり改変したりしたことはなく、キャンバスは @xyflow/react で独自に実装していましたが、現在は廃止されています。",
-        cherryReference:
-          "Kikoto の AGENTS.md 設定方法とアプリケーションのバージョン管理設計は、このプロジェクトを参考にしています。",
-        audiobookshelfReference:
-          "Kikoto の再生レポート設計は、このプロジェクトが再生位置と実際の聴取時間をまとめて報告する方式を参考にしています。",
-        navidromeReference:
-          "Kikoto の再生レポート設計は、このプロジェクトのイベント集約、永続化された送信キュー、待機時間を延ばす再試行方式を参考にしています。",
-        jellyfinReference:
-          "Kikoto の再生レポート設計は、このプロジェクトが再生イベントと定期的な進捗報告を組み合わせる方式を参考にしています。",
+        referenceAreas: {
+          remoteSources: "リモートソース",
+          playbackReporting: "再生レポート",
+          workflows: "ワークフロー",
+          engineering: "エンジニアリングと CI",
+        },
+        references: {
+          kikoeru: "Kikoeru 互換リモートソースが従う公開バックエンドインターフェース。",
+          audiobookshelf: "再生位置と実際の聴取時間をまとめて報告する方式。",
+          navidrome: "イベント集約、永続化された送信キュー、待機時間を延ばす再試行方式。",
+          jellyfin: "再生イベントと定期的な進捗報告を組み合わせる方式。",
+          comfy:
+            "かつてのワークフローキャンバスの操作設計。Kikoto がソースコードを含めたり改変したりしたことはなく、キャンバスは @xyflow/react で独自に実装していましたが、現在は廃止されています。",
+          cherry: "AGENTS.md の設定方法、アプリケーションのバージョン管理、GitHub Actions の設計。",
+          uv: "GitHub Actions の plan ジョブ、再利用可能なワークフロー、単一のマージゲート。",
+          tailscale: "race テストスイートを個々のテスト単位でシャードに分ける方式。",
+          grafana: "パッケージ単位でテストをシャードに分ける方式。テスト単位の分割と比較する対象として検討しました。",
+        },
         technologies: "主要技術",
         license: "ライセンス",
         copyright: "Copyright (C) 2026 yexca。",
