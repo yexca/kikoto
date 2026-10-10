@@ -312,3 +312,29 @@ func TestRemoteFetchEnqueueRejectionsAreClientErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteFetchPlanRejectsFilesAboveDownloadLimit(t *testing.T) {
+	oversized := remoteTreeFile("huge.mp3", "/media/huge")
+	oversized.Size = 200 << 30
+	server, _, code := newRemoteTreeFetchServer(t, []kikoeru.Track{oversized})
+	request := httptest.NewRequest(http.MethodPost, "/api/remote-sources/7/works/"+code+"/fetch-plan", strings.NewReader(`{}`))
+	request.SetPathValue("id", "7")
+	request.SetPathValue("code", code)
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{
+		ID: 1, Permissions: []string{"remote:fetch"},
+	}))
+	response := httptest.NewRecorder()
+
+	server.planRemoteSourceWorkSave(response, request)
+
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusUnprocessableEntity, response.Body)
+	}
+	var body errorResponseBody
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Code != "download_limit_exceeded" || body.Retryable {
+		t.Fatalf("response = %+v, want non-retryable download_limit_exceeded", body)
+	}
+}
