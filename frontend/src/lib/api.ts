@@ -28,7 +28,7 @@ export type Work = {
   rating: number | null;
   ratingCount?: number | null;
   sales: number | null;
-  hasAvailableNonOriginEdition?: boolean;
+  hasLyrics?: boolean;
   regularPrice: number | null;
   price: number | null;
   priceCurrency: string;
@@ -924,7 +924,7 @@ export type RemoteWork = {
   rating: number | null;
   ratingCount?: number | null;
   sales: number | null;
-  hasAvailableNonOriginEdition?: boolean;
+  hasLyrics?: boolean;
   price: number | null;
   tags: string[];
   voiceActors: string[];
@@ -1780,7 +1780,7 @@ export type CircleCatalogWork = {
   rating: number | null;
   ratingCount?: number | null;
   sales: number | null;
-  hasAvailableNonOriginEdition?: boolean;
+  hasLyrics?: boolean;
   regularPrice: number | null;
   price: number | null;
   priceCurrency: string;
@@ -1915,7 +1915,7 @@ export type VoiceKnownWork = {
   rating: number | null;
   ratingCount?: number | null;
   sales: number | null;
-  hasAvailableNonOriginEdition?: boolean;
+  hasLyrics?: boolean;
   regularPrice: number | null;
   price: number | null;
   priceCurrency: string;
@@ -1952,7 +1952,7 @@ export type VoiceRemoteWork = {
   rating: number | null;
   ratingCount?: number | null;
   sales: number | null;
-  hasAvailableNonOriginEdition?: boolean;
+  hasLyrics?: boolean;
   price: number | null;
   tags: string[];
   voiceActors: string[];

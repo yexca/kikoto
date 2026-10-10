@@ -53,7 +53,7 @@ type remoteWorkSummary struct {
 	Rating          *float64          `json:"rating"`
 	RatingCount     *int64            `json:"ratingCount"`
 	Sales           *int64            `json:"sales"`
-	HasNonOrigin    bool              `json:"hasAvailableNonOriginEdition,omitempty"`
+	HasLyrics       bool              `json:"hasLyrics,omitempty"`
 	Price           *int64            `json:"price"`
 	Tags            []string          `json:"tags"`
 	VoiceActors     []string          `json:"voiceActors"`
@@ -645,7 +645,7 @@ func (s *Server) enrichRemoteWorkSummaries(ctx context.Context, userID int64, re
 	if err != nil {
 		return nil, err
 	}
-	availableNonOriginEditions, err := s.loadAvailableNonOriginEditions(ctx, workIDs)
+	worksWithLyrics, err := s.loadWorksWithLyrics(ctx, workIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -657,7 +657,7 @@ func (s *Server) enrichRemoteWorkSummaries(ctx context.Context, userID int64, re
 		for _, tag := range userTagsByWork[*result[index].WorkID] {
 			result[index].SearchUserTags = append(result[index].SearchUserTags, tag.Name)
 		}
-		result[index].HasNonOrigin = availableNonOriginEditions[*result[index].WorkID]
+		result[index].HasLyrics = worksWithLyrics[*result[index].WorkID]
 	}
 	return result, nil
 }

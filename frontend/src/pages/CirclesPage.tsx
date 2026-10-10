@@ -1371,7 +1371,7 @@ function catalogWorkCardView(work: CircleCatalogWork, t: TFunction): WorkCardVie
     price: work.price,
     priceCurrency: work.priceCurrency,
     series: work.series || null,
-    hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
+    hasLyrics: work.hasLyrics,
     hasPlaybackHistory: hasPlaybackHistory(work.progress),
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: userTagBadges(work.userTags ?? [], (tag) => openLibraryTagSearch("user_tag", tag)),

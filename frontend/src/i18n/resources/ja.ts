@@ -211,7 +211,7 @@ const workCardJapanese = {
   salesLabel: "売上：{{value}}",
   sales: "売上",
   salesUnavailable: "売上情報なし",
-  otherLanguageEdition: "別言語版あり",
+  lyricsAvailable: "歌詞あり",
   playbackHistory: "再生履歴あり",
   unknownCircle: "不明なサークル",
   dlsiteMissing: "DLsite 情報なし",

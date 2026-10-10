@@ -78,7 +78,7 @@ type librarySummaryEnrichmentData struct {
 	series       map[string]string
 	overrides    map[int64][]library.ManualOverrideRow
 	progress     map[int64]library.Progress
-	nonOrigin    map[int64]bool
+	lyrics       map[int64]bool
 	voiceCredits map[int64][]library.VoiceCredit
 }
 
@@ -99,7 +99,7 @@ func (s *Server) loadLibrarySummaryEnrichment(ctx context.Context, userID int64,
 	if err != nil {
 		return librarySummaryEnrichmentData{}, err
 	}
-	nonOrigin, err := s.loadAvailableNonOriginEditions(ctx, workIDs)
+	lyrics, err := s.loadWorksWithLyrics(ctx, workIDs)
 	if err != nil {
 		return librarySummaryEnrichmentData{}, err
 	}
@@ -109,13 +109,13 @@ func (s *Server) loadLibrarySummaryEnrichment(ctx context.Context, userID int64,
 	}
 	return librarySummaryEnrichmentData{
 		availability: availability, series: series, overrides: overrides,
-		progress: progress, nonOrigin: nonOrigin, voiceCredits: voiceCredits,
+		progress: progress, lyrics: lyrics, voiceCredits: voiceCredits,
 	}, nil
 }
 
 func (s *Server) applyLibrarySummaryEnrichment(works []libraryWorkSummary, data librarySummaryEnrichmentData) {
 	for index := range works {
-		works[index].HasNonOrigin = data.nonOrigin[works[index].ID]
+		works[index].HasLyrics = data.lyrics[works[index].ID]
 		credits := make([]voiceCredit, 0, len(data.voiceCredits[works[index].ID]))
 		for _, credit := range data.voiceCredits[works[index].ID] {
 			credits = append(credits, voiceCredit{PersonID: credit.PersonID, DisplayName: credit.DisplayName})

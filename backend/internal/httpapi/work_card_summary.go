@@ -6,39 +6,54 @@ import (
 	"strings"
 )
 
-func (s *Server) loadAvailableNonOriginEditions(ctx context.Context, workIDs []int64) (map[int64]bool, error) {
+func (s *Server) loadWorksWithLyrics(ctx context.Context, workIDs []int64) (map[int64]bool, error) {
 	result := map[int64]bool{}
 	workIDs = uniquePositiveInt64s(workIDs)
 	if len(workIDs) == 0 {
 		return result, nil
 	}
 	err := s.queryInt64Batches(ctx, `
-		SELECT current.work_id
-		FROM work_edition AS current
-		INNER JOIN work_edition AS sibling
-			ON sibling.logical_work_id = current.logical_work_id
-			AND sibling.is_canonical = 0
-		WHERE current.work_id IN (%s)
-			AND (
-				EXISTS (
-					SELECT 1
-					FROM media_item AS item
-					INNER JOIN media_file_location AS location ON location.media_item_id = item.id
-					INNER JOIN file_source AS source ON source.id = location.file_source_id
-					WHERE item.work_id = sibling.work_id
-						AND location.availability = 'available'
-						AND source.enabled = 1
+		SELECT requested.id
+		FROM work AS requested
+		WHERE requested.id IN (%s)
+			AND EXISTS (
+				SELECT 1
+				FROM media_item AS item
+				INNER JOIN media_file_location AS location ON location.media_item_id = item.id
+				INNER JOIN file_source AS source ON source.id = location.file_source_id
+				WHERE (
+					item.work_id = requested.id
+					OR item.work_id IN (
+						SELECT sibling.work_id
+						FROM work_edition AS current
+						INNER JOIN work_edition AS sibling ON sibling.logical_work_id = current.logical_work_id
+						WHERE current.work_id = requested.id
+					)
 				)
-				OR EXISTS (
-					SELECT 1
-					FROM work_source_presence AS presence
-					INNER JOIN file_source AS source ON source.id = presence.file_source_id
-					WHERE presence.work_id = sibling.work_id
-						AND presence.availability = 'available'
-						AND source.enabled = 1
+				AND location.availability IN ('available', 'remote')
+				AND source.enabled = 1
+				AND (
+					item.kind = 'text'
+					OR (
+						item.kind = 'file'
+						AND (
+							LOWER(location.path) LIKE '%.txt'
+							OR LOWER(location.path) LIKE '%.md'
+							OR LOWER(location.path) LIKE '%.json'
+							OR LOWER(location.path) LIKE '%.lrc'
+							OR LOWER(location.path) LIKE '%.cue'
+							OR LOWER(location.path) LIKE '%.srt'
+							OR LOWER(location.path) LIKE '%.vtt'
+							OR LOWER(location.path) LIKE '%.ass'
+							OR LOWER(location.path) LIKE '%.csv'
+							OR LOWER(location.path) LIKE '%.log'
+							OR LOWER(location.path) LIKE '%.ini'
+							OR LOWER(location.path) LIKE '%.yaml'
+							OR LOWER(location.path) LIKE '%.yml'
+						)
+					)
 				)
 			)
-		GROUP BY current.work_id
 	`, workIDs, nil, func(rows *sql.Rows) error {
 		var workID int64
 		if err := rows.Scan(&workID); err != nil {

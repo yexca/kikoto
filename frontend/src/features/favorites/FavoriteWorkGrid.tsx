@@ -139,7 +139,7 @@ function favoriteWorkCardView(work: Work, onUserTagOpen: (tag: string) => void, 
     price: work.price,
     priceCurrency: work.priceCurrency,
     series: work.series || null,
-    hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
+    hasLyrics: work.hasLyrics,
     hasPlaybackHistory: hasPlaybackHistory(work.progress),
     dlsiteTags: [
       {

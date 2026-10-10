@@ -1237,7 +1237,7 @@ function voiceWorkCardView(work: VoiceWorkView, t: TFunction): WorkCardViewModel
     price: work.price,
     priceCurrency: "priceCurrency" in work ? work.priceCurrency : "JPY",
     series: "series" in work ? work.series || null : null,
-    hasAvailableNonOriginEdition: work.hasAvailableNonOriginEdition,
+    hasLyrics: work.hasLyrics,
     hasPlaybackHistory: "progress" in work && hasPlaybackHistory(work.progress),
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: isKnown ? userTagBadges(work.userTags ?? [], (tag) => openLibraryTagSearch("user_tag", tag)) : [],
