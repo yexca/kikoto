@@ -56,10 +56,10 @@ export function ListeningActivityChart({
         </span>
       </figcaption>
       <div className="space-y-1 pt-4">
-        <div className="relative h-36">
+        <div className="relative h-40">
           {maxSeconds > 0 && (
             <div aria-hidden="true">
-              <div className="absolute inset-x-0 top-0 border-t border-dashed border-border/70" />
+              <div className="absolute inset-x-0 top-0 border-t border-border/70" />
               <span className="absolute left-0 top-0 -translate-y-full pb-0.5 text-2xs tabular-nums text-muted-foreground">
                 {formatDuration(maxSeconds)}
               </span>
@@ -91,12 +91,12 @@ export function ListeningActivityChart({
             {series.map((entry, index) => (
               <div
                 key={entry.period}
-                className="flex h-full min-w-0 flex-1 items-end rounded-t hover:bg-muted/40"
+                className="flex h-full min-w-0 flex-1 items-end justify-center rounded-t hover:bg-muted/40"
                 onPointerEnter={() => setActiveIndex(index)}
               >
                 <div
                   className={cn(
-                    "w-full rounded-t bg-primary/70 transition-colors",
+                    "w-full max-w-6 rounded-t bg-primary/70 transition-colors",
                     activeIndex === index && "bg-primary",
                   )}
                   style={{ height: `${barPercent(entry.listenedSeconds, maxSeconds)}%` }}
@@ -129,28 +129,31 @@ export function ListeningActivityChart({
           }
         />
       </dl>
-      <table className="sr-only">
-        <caption>{t(`personal.history.chartTitle.${granularity}`)}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{t("personal.history.period")}</th>
-            <th scope="col">{t("personal.history.totalTime")}</th>
-            <th scope="col">{t("personal.history.plays")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {series
-            .slice()
-            .reverse()
-            .map((entry) => (
-              <tr key={entry.period}>
-                <td>{periodLabel(entry.period)}</td>
-                <td>{formatDuration(entry.listenedSeconds)}</td>
-                <td>{entry.listenCount}</td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
+      {/* A table ignores the clipped height, so the wrapper keeps it from adding scroll space. */}
+      <div className="sr-only">
+        <table>
+          <caption>{t(`personal.history.chartTitle.${granularity}`)}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{t("personal.history.period")}</th>
+              <th scope="col">{t("personal.history.totalTime")}</th>
+              <th scope="col">{t("personal.history.plays")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {series
+              .slice()
+              .reverse()
+              .map((entry) => (
+                <tr key={entry.period}>
+                  <td>{periodLabel(entry.period)}</td>
+                  <td>{formatDuration(entry.listenedSeconds)}</td>
+                  <td>{entry.listenCount}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }

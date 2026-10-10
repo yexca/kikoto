@@ -1,4 +1,4 @@
-import { CalendarDays, Clock, Disc3, History, Loader2, PlayCircle, Search, Trash2, X } from "lucide-react";
+import { CalendarDays, ChevronDown, Clock, Disc3, History, Loader2, PlayCircle, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -19,17 +19,26 @@ import {
   type ListeningStatisticsRange,
 } from "@/lib/listeningApi";
 import { parseServerTimestamp } from "@/lib/serverTimestamp";
+import { cn } from "@/lib/tailwindClassNames";
 
 import { ListeningActivityChart } from "./ListeningActivityChart";
-import { LISTENING_HISTORY_PAGE_SIZE, LISTENING_REPORT_RANGES, listeningDurationParts } from "./listeningHistoryModel";
-import { ListeningWorkCard, type ListeningHistoryWorkLinkFactory } from "./ListeningWorkCard";
+import {
+  LISTENING_HISTORY_PAGE_SIZE,
+  LISTENING_REPORT_RANGES,
+  listeningDurationParts,
+  reportDayCount,
+  sharePercent,
+} from "./listeningHistoryModel";
+import { ListeningRhythm } from "./ListeningRhythm";
+import { ListeningWorkRow, type ListeningHistoryWorkLinkFactory } from "./ListeningWorkRow";
 
-export type { ListeningHistoryWorkLink, ListeningHistoryWorkLinkFactory } from "./ListeningWorkCard";
+export type { ListeningHistoryWorkLink, ListeningHistoryWorkLinkFactory } from "./ListeningWorkRow";
 
 type LoadState<T> =
   { status: "loading"; data: T | null } | { status: "ready"; data: T } | { status: "error"; data: T | null };
 
-const TOP_WORK_COUNT = 6;
+// The ranking opens with this many works; the rest of the server's ranking shows on request.
+const TOP_WORK_COUNT = 5;
 
 function useDurationFormatter() {
   const { t } = useTranslation();
@@ -43,9 +52,10 @@ function useDurationFormatter() {
 }
 
 /**
- * The listening report for a chosen range (totals, activity, and most
- * listened works) with the full per-work history collapsed below it. The
- * history is a record rather than a summary, so it loads only once opened.
+ * The listening report for a chosen range as a dashboard: totals, activity
+ * over time, the most listened works, and listening rhythm, with the full
+ * per-work history collapsed below it. The history is a record rather than a
+ * summary, so it loads only once opened.
  */
 export function ListeningHistoryPage({
   canClear,
@@ -65,6 +75,7 @@ export function ListeningHistoryPage({
   const [statistics, setStatistics] = useState<LoadState<ListeningStatistics>>({ status: "loading", data: null });
   const [history, setHistory] = useState<LoadState<ListeningHistoryResult>>({ status: "loading", data: null });
   const [recordsOpen, setRecordsOpen] = useState(false);
+  const [allTopWorks, setAllTopWorks] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -133,48 +144,55 @@ export function ListeningHistoryPage({
   const historyData = history.data;
   const total = historyData?.total ?? 0;
   const hasHistory = (stats?.listenCount ?? 0) > 0 || (stats?.workCount ?? 0) > 0 || total > 0;
-  const topWorks = stats?.topWorks.slice(0, TOP_WORK_COUNT) ?? [];
-  const historyCardDetail = (listenedSeconds: number, lastPlayedAt: string) => {
-    const duration = formatDuration(listenedSeconds);
+  const rankedWorks = stats?.topWorks ?? [];
+  const topWorks = allTopWorks ? rankedWorks : rankedWorks.slice(0, TOP_WORK_COUNT);
+  const hiddenTopWorks = rankedWorks.length > TOP_WORK_COUNT;
+  const leaderSeconds = rankedWorks[0]?.listenedSeconds ?? 0;
+  const rangeDays = stats ? reportDayCount(stats.series) : 0;
+  const activeDayPercent = stats && rangeDays > 0 ? sharePercent(stats.activeDays, rangeDays) : null;
+  const perActiveDay = stats && stats.activeDays > 0 ? stats.listenedSeconds / stats.activeDays : 0;
+  const perPlay = stats && stats.listenCount > 0 ? stats.listenedSeconds / stats.listenCount : 0;
+  const recordDetail = (listenCount: number, lastPlayedAt: string) => {
+    const plays = t("personal.history.playCount", { count: listenCount });
     const lastPlayed = parseServerTimestamp(lastPlayedAt);
-    if (!lastPlayed) return duration;
+    if (!lastPlayed) return plays;
     const date = dateTimeFormat(resolvedLocale, { month: "short", day: "numeric" }).format(lastPlayed);
-    return t("personal.history.cardDetail", { duration, date });
+    return t("personal.history.recordDetail", { plays, date });
   };
 
   return (
-    <div className="w-full max-w-4xl space-y-6">
-      <section aria-labelledby="listening-summary-heading" className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-3 px-1">
-          <div className="min-w-0">
-            <h2 id="listening-summary-heading" className="text-sm font-semibold">
+    <div className="w-full max-w-4xl space-y-5">
+      <section aria-labelledby="listening-summary-heading" className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0 px-1">
+            <h2 id="listening-summary-heading" className="text-base font-semibold">
               {t("personal.history.summary")}
             </h2>
             <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{t("personal.history.recordingNote")}</p>
           </div>
-          {canClear && hasHistory && (
-            <Button variant="outline" size="sm" className="shrink-0" onClick={() => setConfirmClear(true)}>
-              <Trash2 className="h-4 w-4" aria-hidden="true" />
-              {t("personal.history.clear")}
-            </Button>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className={segmentedListClassName()} role="group" aria-label={t("personal.history.rangeLabel")}>
-            {LISTENING_REPORT_RANGES.map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={segmentedItemClassName(range === option)}
-                aria-pressed={range === option}
-                onClick={() => setRange(option)}
-              >
-                {t(`personal.history.ranges.${option}`)}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className={segmentedListClassName()} role="group" aria-label={t("personal.history.rangeLabel")}>
+              {LISTENING_REPORT_RANGES.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  className={segmentedItemClassName(range === option)}
+                  aria-pressed={range === option}
+                  onClick={() => setRange(option)}
+                >
+                  {t(`personal.history.ranges.${option}`)}
+                </button>
+              ))}
+            </div>
+            {canClear && hasHistory && (
+              <Button variant="ghost" size="sm" className="shrink-0" onClick={() => setConfirmClear(true)}>
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                {t("personal.history.clear")}
+              </Button>
+            )}
           </div>
-          {range !== "all" && <p className="px-1 text-2xs text-muted-foreground">{t("personal.history.rangeNote")}</p>}
         </div>
+        {range !== "all" && <p className="px-1 text-2xs text-muted-foreground">{t("personal.history.rangeNote")}</p>}
         {statistics.status === "error" && (
           <InlineRetry
             message={t("personal.history.statisticsFailed")}
@@ -183,28 +201,43 @@ export function ListeningHistoryPage({
         )}
         <div
           aria-busy={statistics.status === "loading"}
-          className={refreshing ? "space-y-3 opacity-60 transition-opacity" : "space-y-3 transition-opacity"}
+          className={cn("space-y-4 transition-opacity", refreshing && "opacity-60")}
         >
           <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Statistic
               icon={<Clock />}
               label={t("personal.history.totalTime")}
               value={stats ? formatDuration(stats.listenedSeconds) : null}
+              detail={
+                perActiveDay > 0 ? t("personal.history.perActiveDay", { duration: formatDuration(perActiveDay) }) : null
+              }
             />
             <Statistic
               icon={<PlayCircle />}
               label={t("personal.history.plays")}
               value={stats ? formatNumber(stats.listenCount, resolvedLocale) : null}
+              detail={perPlay > 0 ? t("personal.history.perPlay", { duration: formatDuration(perPlay) }) : null}
             />
             <Statistic
               icon={<Disc3 />}
               label={t("personal.history.works")}
               value={stats ? formatNumber(stats.workCount, resolvedLocale) : null}
+              detail={
+                stats && leaderSeconds > 0
+                  ? t("personal.history.leaderShare", { percent: sharePercent(leaderSeconds, stats.listenedSeconds) })
+                  : null
+              }
             />
             <Statistic
               icon={<CalendarDays />}
               label={t("personal.history.activeDays")}
               value={stats ? formatNumber(stats.activeDays, resolvedLocale) : null}
+              detail={
+                activeDayPercent === null
+                  ? null
+                  : t("personal.history.activeDayShare", { percent: activeDayPercent, count: rangeDays })
+              }
+              meter={activeDayPercent ?? undefined}
             />
           </dl>
           {stats && (
@@ -217,35 +250,74 @@ export function ListeningHistoryPage({
               />
             </div>
           )}
-          {topWorks.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-baseline justify-between gap-3 px-1">
-                <h3 className="text-sm font-semibold">{t("personal.history.topWorks")}</h3>
-                <span className="text-xs text-muted-foreground">{t("personal.history.topWorksBasis")}</span>
-              </div>
-              <ol
-                aria-label={t("personal.history.topWorks")}
-                className="app-scrollbar -mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-1"
+          {stats && (
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+              <section
+                aria-labelledby="listening-top-works-heading"
+                className="theme-card-surface min-w-0 rounded-xl border bg-card p-4"
               >
-                {topWorks.map((item, index) => (
-                  <li key={item.workId} className="w-32 shrink-0 snap-start sm:w-auto sm:min-w-0 sm:flex-1 sm:basis-0">
-                    <ListeningWorkCard
-                      className="h-full"
-                      rank={index + 1}
-                      item={item}
-                      link={workLink(item.primaryCode)}
-                      detail={formatDuration(item.listenedSeconds)}
-                    />
-                  </li>
-                ))}
-                {Array.from({ length: TOP_WORK_COUNT - topWorks.length }, (_, index) => (
-                  <li
-                    key={`placeholder-${index}`}
-                    aria-hidden="true"
-                    className="hidden sm:block sm:flex-1 sm:basis-0"
-                  />
-                ))}
-              </ol>
+                <div className="mb-2 flex items-baseline justify-between gap-3">
+                  <h3 id="listening-top-works-heading" className="text-sm font-semibold">
+                    {t("personal.history.topWorks")}
+                  </h3>
+                  <span className="text-xs text-muted-foreground">{t("personal.history.topWorksBasis")}</span>
+                </div>
+                {topWorks.length > 0 ? (
+                  <>
+                    <ol aria-label={t("personal.history.topWorks")} className="-mx-2 space-y-0.5">
+                      {topWorks.map((item, index) => (
+                        <li key={item.workId}>
+                          <ListeningWorkRow
+                            rank={index + 1}
+                            item={item}
+                            link={workLink(item.primaryCode)}
+                            value={formatDuration(item.listenedSeconds)}
+                            detail={t("personal.history.shareOfTime", {
+                              percent: sharePercent(item.listenedSeconds, stats.listenedSeconds),
+                            })}
+                            barPercent={sharePercent(item.listenedSeconds, leaderSeconds)}
+                          />
+                        </li>
+                      ))}
+                    </ol>
+                    {hiddenTopWorks && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mt-1 w-full text-muted-foreground"
+                        aria-expanded={allTopWorks}
+                        onClick={() => setAllTopWorks((value) => !value)}
+                      >
+                        <ChevronDown
+                          className={cn("h-4 w-4 transition-transform", allTopWorks && "rotate-180")}
+                          aria-hidden="true"
+                        />
+                        {allTopWorks
+                          ? t("personal.history.showFewerTopWorks")
+                          : t("personal.history.showAllTopWorks", { count: rankedWorks.length })}
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <p className="py-6 text-center text-xs text-muted-foreground">
+                    {t("personal.history.noListeningInPeriod")}
+                  </p>
+                )}
+              </section>
+              <section
+                aria-labelledby="listening-rhythm-heading"
+                className="theme-card-surface min-w-0 rounded-xl border bg-card p-4"
+              >
+                <h3 id="listening-rhythm-heading" className="mb-3 text-sm font-semibold">
+                  {t("personal.history.rhythm")}
+                </h3>
+                <ListeningRhythm
+                  key={stats.range}
+                  series={stats.series}
+                  granularity={stats.granularity}
+                  formatDuration={formatDuration}
+                />
+              </section>
             </div>
           )}
         </div>
@@ -322,15 +394,15 @@ export function ListeningHistoryPage({
                   <ul
                     aria-label={t("personal.history.recent")}
                     aria-busy={history.status === "loading"}
-                    className="grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-6"
+                    className="-mx-2 grid gap-x-4 gap-y-0.5 md:grid-cols-2"
                   >
                     {historyData.items.map((item) => (
                       <li key={item.workId} className="min-w-0">
-                        <ListeningWorkCard
-                          className="h-full"
+                        <ListeningWorkRow
                           item={item}
                           link={workLink(item.primaryCode)}
-                          detail={historyCardDetail(item.listenedSeconds, item.lastPlayedAt)}
+                          value={formatDuration(item.listenedSeconds)}
+                          detail={recordDetail(item.listenCount, item.lastPlayedAt)}
                         />
                       </li>
                     ))}
@@ -375,21 +447,38 @@ export function ListeningHistoryPage({
   );
 }
 
-function Statistic({ icon, label, value }: { icon: ReactNode; label: string; value: string | null }) {
+/** A report total with an optional derived figure and a meter for a share. */
+function Statistic({
+  icon,
+  label,
+  value,
+  detail,
+  meter,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string | null;
+  detail?: string | null;
+  /** A percentage shown as a thin meter under the value. */
+  meter?: number;
+}) {
   return (
-    <div className="theme-card-surface flex min-w-0 items-center gap-3 rounded-xl border bg-card px-4 py-3">
-      <span
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary [&>svg]:h-4 [&>svg]:w-4"
-        aria-hidden="true"
-      >
-        {icon}
-      </span>
-      <div className="min-w-0">
+    <div className="theme-card-surface flex min-w-0 flex-col gap-1 rounded-xl border bg-card px-4 py-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="shrink-0 text-primary [&>svg]:h-4 [&>svg]:w-4" aria-hidden="true">
+          {icon}
+        </span>
         <dt className="truncate text-xs text-muted-foreground">{label}</dt>
-        <dd className="mt-0.5 truncate text-lg font-semibold tabular-nums">
-          {value ?? <span className="inline-block h-5 w-16 animate-pulse rounded bg-muted align-middle" />}
-        </dd>
       </div>
+      <dd className="truncate text-xl font-semibold">
+        {value ?? <span className="inline-block h-6 w-20 animate-pulse rounded bg-muted align-middle" />}
+      </dd>
+      {meter !== undefined && (
+        <dd className="h-1 overflow-hidden rounded-full bg-primary/15" aria-hidden="true">
+          <span className="block h-full rounded-full bg-primary" style={{ width: `${meter}%` }} />
+        </dd>
+      )}
+      <dd className="min-h-4 truncate text-2xs text-muted-foreground">{detail}</dd>
     </div>
   );
 }

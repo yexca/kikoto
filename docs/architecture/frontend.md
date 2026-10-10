@@ -193,9 +193,9 @@ viewer read LRC, WebVTT, and SRT files the same way.
   only the selected tab) and wraps instead of scrolling; the
   orientation is stored locally as well. Section headings are plain text,
   and a switch or number field stays beside its label even on a phone.
-  Listening history shows a 30-day, 12-month, or all-time report of totals,
-  activity, and most listened works as cover cards, with the full per-work
-  history collapsed until opened;
+  Listening history shows a 30-day, 12-month, or all-time dashboard of totals,
+  activity, ranked most listened works, and listening rhythm derived from the
+  report's period series, with the full per-work history collapsed until opened;
   personal tags manage account-owned work, circle, and voice tags; data
   transfer offers personal JSON export and previewed import from a Kikoto or
   Kikoeru file, a Kikoeru account, or an open-source Kikoeru database.
