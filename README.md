@@ -25,9 +25,10 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> ·
   <a href="#highlights">Highlights</a> ·
+  <a href="#where-it-runs">Where It Runs</a> ·
   <a href="#how-it-works">How It Works</a> ·
+  <a href="#quick-start">Quick Start</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="#disclaimer">Disclaimer</a>
 </p>
@@ -35,11 +36,12 @@
 Kikoto brings DLsite-style metadata, local folders, a rebuildable cache, and
 Kikoeru-compatible remote file sources together under **one unified work
 model**. A work stays a single entry in your library no matter where its files
-live. Kikoto runs as a self-hosted web application with a responsive player,
-and it has a native Android client.
+live. Kikoto runs as a self-hosted web application with a persistent player,
+and the same library opens in a desktop browser, on a tablet, and in the
+Android and iOS apps.
 
 <p align="center">
-  <img src="docs/assets/kikoto-readme-showcase.webp" width="1200" alt="Kikoto library on a desktop browser beside the mobile player on a phone">
+  <img src="docs/assets/kikoto-readme-showcase.webp" width="1200" alt="Kikoto on a wide desktop browser, a tablet, an Android phone, and an iPhone">
 </p>
 
 > [!NOTE]
@@ -63,6 +65,20 @@ and it has a native Android client.
       or mount each disk and cloud drive as its own <b>storage pool</b>.
     </td>
     <td width="50%" valign="top">
+      <h3>🌐 Remote sources</h3>
+      Browse compatible sources, <b>Track</b> their directory trees,
+      <b>Cache</b> selected media, or <b>Fetch</b> reviewed files into
+      your local library. Remote actions have their own permissions.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>🏷️ Metadata in your language</h3>
+      Titles, shared tags, circles, and voice actors carry names per
+      language, and every user picks a preferred metadata language.
+      Editors correct titles, covers, tags, and credits per work.
+    </td>
+    <td width="50%" valign="top">
       <h3>🔎 Local discovery</h3>
       Scan supported work-code folders and keep local presence current
       through startup and filesystem-triggered workflows. Metadata sync
@@ -71,40 +87,61 @@ and it has a native Android client.
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <h3>🌐 Remote sources</h3>
-      Browse compatible sources, <b>Track</b> their directory trees,
-      <b>Cache</b> selected media, or <b>Fetch</b> reviewed files into
-      your local library.
+      <h3>🎧 Listening continuity</h3>
+      A persistent player with queue, playback speed, sleep timer, source
+      fallback, and Media Session. Progress follows your account across
+      devices, and a listening dashboard shows totals, streaks, and your
+      most played works.
     </td>
     <td width="50%" valign="top">
-      <h3>🎧 Listening continuity</h3>
-      A persistent player with queue, lyrics, playback speed, sleep timer,
-      source fallback, Media Session, and PWA support. Playback keeps going
-      while you navigate.
+      <h3>💬 Lyrics</h3>
+      LRC, WebVTT, and SRT lyrics follow playback in the player and in
+      on-screen lyrics windows. <b>Manage lyrics</b> assigns a lyrics file
+      to each track and can download lyrics from a remote source.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <h3>📱 Responsive and Android-ready</h3>
-      The same library on desktop and phone, plus a signed Android client
-      with native media controls and audio-focus integration.
+      <h3>✨ Recommendations you can read</h3>
+      Scores are computed on your own instance from your favorites and
+      listening, shown on local and remote works, and explained score by
+      score.
     </td>
     <td width="50%" valign="top">
       <h3>🧭 Inspectable background work</h3>
-      Follow scans, metadata sync, Fetch, cleanup, retries, and review
-      candidates in Workflows and Activity. Resolve metadata and
-      missing-source issues in Metadata.
+      Follow scans, metadata sync, Fetch, Availability Watch, cleanup,
+      retries, and review candidates in Workflows and Activity. Resolve
+      metadata and missing-source issues in Metadata.
     </td>
   </tr>
   <tr>
     <td colspan="2" valign="top">
-      <h3>🗂️ Personal and administrative state</h3>
-      Favorites, tags, listening state, playback progress, folder and
-      recommendation preferences, roles, source configuration, and cache
-      policy all live in one SQLite database.
+      <h3>🗂️ Accounts, roles, and one database</h3>
+      User, Contributor, Admin, and super admin roles decide who can
+      browse, fetch, edit, and administer. Favorites, tags, listening
+      state, playback progress, preferences, source configuration, and
+      cache policy all live in one SQLite database.
     </td>
   </tr>
 </table>
+
+## Where It Runs
+
+One server serves every screen, and the player keeps playing while you move
+between pages.
+
+| Where | What you get |
+| --- | --- |
+| **Wide web** (desktop browser) | The full layout: sidebar navigation, a multi-column library, and a work detail with a folder explorer beside the track list. |
+| **Narrow web** (tablet or small window) | The same pages in a compact layout with touch-sized controls. The web app can be installed as a PWA. |
+| **Android** | A signed APK with a media notification, floating lyrics, audio-focus handling, and device privacy controls including an app lock. |
+| **iOS** | An unsigned IPA to sideload, with Picture-in-Picture lyrics, edge-swipe back, a Keychain-stored session, and device privacy controls. |
+
+The APK and IPA are attached to each
+[GitHub Release](https://github.com/yexca/kikoto/releases). A sideloading tool
+re-signs the IPA with your own Apple account before iOS will install it. Both
+apps connect to your own Kikoto server; see
+[Getting Started](docs/user/en/getting-started.md#android-client).
 
 ## How It Works
 
@@ -128,7 +165,7 @@ flowchart LR
   LF -- Local --> W
   CA -- Cached --> W
   RS -- "Tracked / Remote" --> W
-  W --> UI["Library · Player · Android client"]
+  W --> UI["Web · Android · iOS<br/>library and player"]
 ```
 
 From a remote source, **Cache** keeps rebuildable copies in `/cache`, and
@@ -193,10 +230,6 @@ host port, `7655`. Port `7659` is exposed separately only by the development
 stack. Production instances require sign-in by default; a super administrator
 can optionally enable read-only anonymous Library browsing and playback under
 `Settings -> Users -> Instance access`.
-
-Signed Android APKs and unsigned iOS IPAs are attached to each
-[GitHub Release](https://github.com/yexca/kikoto/releases). The IPA must be
-re-signed by a sideloading tool before iOS will install it.
 
 ### Optional settings
 
@@ -271,15 +304,6 @@ current container image. For a reproducible deployment, set `KIKOTO_IMAGE` in
 during an upgrade. Existing databases are migrated on startup and are never
 rebuilt from the fresh-install baseline. See [Upgrade](docs/operations/docker.md#upgrade)
 and the [release history](docs/history/index.md).
-
-> [!NOTE]
-> **Custom workflow editing has been removed.** Workflows are now built-in
-> presets (Follow a circle, Follow a series, Follow a voice actor). When an
-> older database upgrades through migration 035, Kikoto saves user-authored
-> definitions and triggers for review. Exact preset matches can be converted
-> to disabled triggers; other definitions can be exported. Run history remains
-> readable in Activity. Instances that already passed migration 035 need an
-> older database backup to recover definitions deleted before this change.
 
 ## Documentation
 
