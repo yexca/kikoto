@@ -22,6 +22,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 			ListeningStatus: row.ListeningStatus, Favorite: row.Favorite, RecommendScore: row.RecommendScore,
 		}
 		item.SourcePresence = parseSourcePresenceSummary(row.SourcePresence)
+		hideLocalSourcePresenceAddresses(item.SourcePresence)
 		if hideAddresses {
 			hideSourcePresenceAddresses(item.SourcePresence)
 		}
