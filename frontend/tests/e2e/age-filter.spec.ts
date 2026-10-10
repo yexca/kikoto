@@ -18,7 +18,6 @@ test("age rating search offers categories and applies the selected value", async
   const requests: string[] = [];
   await mockApplication(page, (url) => requests.push(url.searchParams.get("q") ?? ""));
   await page.goto("/");
-  await page.getByRole("button", { name: "Search library", exact: true }).click();
   await page.getByRole("button", { name: "Add search condition", exact: true }).click();
   await page.getByRole("combobox", { name: "Search clause type", exact: true }).click();
   await page.getByRole("option", { name: "Age", exact: true }).click();

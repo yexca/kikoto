@@ -499,7 +499,7 @@ test("mobile folder sheet switches folders and returns to the recommended folder
 
   const currentFolder = page.getByTestId("directory-breadcrumb-current");
   await expect(currentFolder).toHaveText("With SE");
-  await expect(page.getByText("Recommended", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("directory-panel").getByText("Recommended", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Show folders" }).click();
   const sheet = page.getByRole("dialog", { name: "Folders" });

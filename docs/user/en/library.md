@@ -94,18 +94,33 @@ The Library is the main browsing surface for works.
   lower scores appear muted. A score failure leaves the works available
   and offers Retry. Remote scores use the same frozen session preference profile
   and do not import any works.
-- Shows a compact, horizontally scrollable recently-played strip above the
-  Library controls. It is ordered per user from the one cursor owned by each
-  logical work family and includes the latest track position without replacing
-  the full work-card grid. The
-  strip can be collapsed, and that preference is kept in the browser.
+- Offers recently played works, ordered per user from the one cursor owned by
+  each logical work family, with the latest track position. On wide screens a
+  history button in the toolbar opens the list. On phones a Continue listening
+  strip sits below the source chips on the first page of Local or Tracked when
+  no search or mark filter is set. The strip scrolls horizontally, starts
+  collapsed, and keeps its open state in the browser.
+- On phones the Library leads with an always-visible search field, a
+  scrollable row of source chips, a sort button that names the current order
+  and opens the orders and direction in a popover, and a row of Quick mark
+  filter chips. Selecting the active chip clears the filter.
+- Display options on phones include **Compact cards**, off by default and
+  stored with the column settings. With it on, one column shows each work as a
+  row: the cover beside the code, title, circle and voice names, rating,
+  sales, and price, then one row of tags with personal tags first and the last
+  listening position when there is one. Two columns show short tiles with the
+  price on the cover and no tag row. Compact cards apply to Local, Tracked,
+  and remote sources in the Library, including the remote loading
+  placeholders.
 - Uses one shared query across Local, Tracked, and configured remote sources.
   Each source retains its own pagination, sort, and scroll state, while grid
   column settings remain shared. A source cannot restore stale query text after
   the user clears it elsewhere.
-- Keeps the active Local, Tracked, or remote-source page size in the first-row
-  action toolbar and leaves the compact top pagination focused on result context
-  and page navigation.
+- Keeps the active Local, Tracked, or remote-source page size in the toolbar's
+  display options. Wide screens show a compact top pagination with result
+  context and page navigation. Phones show the result count and the current
+  page as a caption above the works and change pages from the bottom
+  pagination.
 - Keeps database cleanup out of Library. Metadata -> No available source
   provides paged search, source checks, and confirmed local-information
   deletion for logical families with no available source or media location.
