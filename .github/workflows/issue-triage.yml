@@ -1,0 +1,37 @@
+name: Issue Triage
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  label-template-issues:
+    name: Label issue template
+    if: github.repository == 'yexca/kikoto'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Apply the matching template label
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+          TITLE: ${{ github.event.issue.title }}
+        run: |
+          case "$TITLE" in
+            '[Bug]:'*)
+              gh issue edit "$NUMBER" --add-label bug
+              ;;
+            '[Feature]:'*)
+              gh issue edit "$NUMBER" --add-label enhancement
+              ;;
+          esac
