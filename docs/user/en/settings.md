@@ -43,8 +43,8 @@ password is reset from the server host; see
   immediately.
 - **Folder preference** holds ordered folder matching and exclusion rules.
   Saving updates subsequent directory selection without stopping the player.
-- **History** shows the listening report (30 days, 12 months, or all time) and
-  a collapsed full listening history.
+- **History** shows the listening report (30 days, 12 months, or all time) as
+  a dashboard above a collapsed full listening history.
 - **Recommendations** starts with the **Your recommendation activity** report
   of the signed-in user's own last 30 days (how impressions turned into opens
   and plays, the marks and reshuffles given, and the affinity score
@@ -91,8 +91,11 @@ enabled.
 
 ### Library
 
-Library combines library storage, local scan settings, creator catalogs,
-configured remote sources, and read-only storage paths.
+Library opens with **Libraries**, every library the server reads: the local
+library with its storage mode and whether its storage is online, then each
+configured remote source. The settings follow below it: library storage, local
+scan settings, creator catalogs, Kikoeru account import, and read-only storage
+paths. Selecting the local library jumps to **Library storage**.
 
 - **Library storage** shows the library mode (Standard or Storage pools), each
   pool with an Online or Offline badge, and the Fetch pool. Pools can be added
@@ -105,8 +108,8 @@ configured remote sources, and read-only storage paths.
 - **Creator catalogs** holds **Catalog freshness days** (1 to 365, default 30),
   saved with its own **Save catalog settings** button. A circle or voice actor
   catalog is marked Attention once its last refresh is older than that.
-- Remote sources are a compact list: health, host, a health-check action, and an
-  enable switch that saves immediately. Health-check results are persisted
+- Each remote source in **Libraries** shows its health, host, a health-check
+  action, and an enable switch that saves immediately. Health-check results are persisted
   through the same source health state used by automatic probes.
 - **Add source** starts from one address. Kikoto probes the address as entered,
   its origin, and the conventional `api.` sibling for a Kikoeru-compatible works

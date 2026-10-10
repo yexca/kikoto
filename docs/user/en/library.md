@@ -128,7 +128,9 @@ restored from the current history entry with user-scoped session fallback.
 `All Favorites` aggregates works with a Quick mark and works in any user list.
 `Marked` is the fixed system list containing only works whose Quick mark is not
 Unmarked; its membership is derived and cannot be edited as a list. Other
-lists are user-created and keep explicit membership. Switching lists keeps the
+lists are user-created and keep explicit membership; the add-to-list menu on a
+work card or on work detail can create a list in place and select it. Switching
+lists keeps the
 full favorite-list row stable while results load, and Shelved is the final
 listening-state option. Playback cursors alone never add a work to Favorites.
 The source picker can refine favorite works to any of several selected

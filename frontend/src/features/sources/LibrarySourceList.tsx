@@ -1,4 +1,5 @@
-import { Globe, Plus, RefreshCw, Settings2, Trash2 } from "lucide-react";
+import { Globe, HardDrive, Plus, RefreshCw, Settings2, Trash2 } from "lucide-react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { SettingsSection } from "@/components/settings/SettingsSection";
@@ -16,7 +17,26 @@ const healthDotClassNames = {
   disabled: "bg-muted-foreground/20",
 } as const;
 
-export function RemoteSourceList({
+const localDotClassNames = {
+  online: "bg-success",
+  offline: "bg-warning",
+  unknown: "bg-muted-foreground/40",
+} as const;
+
+/** The local library as the overview lists it; the caller derives it from the library layout. */
+export type LocalLibraryEntry = {
+  name: string;
+  detail: string;
+  status: keyof typeof localDotClassNames;
+  onConfigure: () => void;
+};
+
+/**
+ * Every library the server reads, local first and then each remote source,
+ * with each source's state and actions. Configuration sections follow it.
+ */
+export function LibrarySourceList({
+  local,
   sources,
   checkingSourceId,
   togglingSourceId,
@@ -27,6 +47,7 @@ export function RemoteSourceList({
   onCheck,
   onToggleEnabled,
 }: {
+  local: LocalLibraryEntry;
   sources: FileSource[];
   checkingSourceId: number | null;
   togglingSourceId: number | null;
@@ -41,12 +62,11 @@ export function RemoteSourceList({
   const enabledCount = sources.filter((source) => source.enabled).length;
   return (
     <SettingsSection
-      id="remote-sources"
-      title={t("maintenance.library.remoteSources")}
+      title={t("maintenance.library.libraries")}
       description={
         sources.length > 0
-          ? t("sourceSetup.summary", { enabled: enabledCount, total: sources.length })
-          : t("maintenance.library.remoteSourcesDescription")
+          ? t("maintenance.library.librariesSummary", { enabled: enabledCount, total: sources.length })
+          : t("maintenance.library.librariesDescription")
       }
       action={
         <Button variant="outline" size="sm" onClick={onCreate} disabled={readOnly}>
@@ -55,6 +75,38 @@ export function RemoteSourceList({
         </Button>
       }
     >
+      <GroupLabel>{t("maintenance.library.localGroup")}</GroupLabel>
+      <div className="flex min-w-0 items-center gap-3 px-4 py-3">
+        <span
+          className={cn("h-2.5 w-2.5 shrink-0 rounded-full", localDotClassNames[local.status])}
+          aria-hidden="true"
+        />
+        <button type="button" className="min-w-0 flex-1 text-left" onClick={local.onConfigure}>
+          <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+            <HardDrive className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="truncate">{local.name}</span>
+          </span>
+          <span
+            className={cn(
+              "mt-0.5 block truncate text-xs text-muted-foreground",
+              local.status === "offline" && "text-warning-foreground",
+            )}
+          >
+            {local.detail}
+          </span>
+        </button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          aria-label={t("maintenance.library.storageSettings")}
+          title={t("maintenance.library.storageSettings")}
+          onClick={local.onConfigure}
+        >
+          <Settings2 className="h-4 w-4" />
+        </Button>
+      </div>
+      <GroupLabel id="remote-sources">{t("maintenance.library.remoteGroup")}</GroupLabel>
       {sources.map((source) => {
         const health = remoteSourceHealth(source);
         const host = remoteSourceHost(source) || t("maintenance.noEndpointConfigured");
@@ -67,8 +119,14 @@ export function RemoteSourceList({
               className="min-w-0 flex-1 text-left disabled:cursor-default"
               onClick={() => onEdit(source)}
             >
-              <span className={cn("block truncate text-sm font-medium", !source.enabled && "text-muted-foreground")}>
-                {source.displayName}
+              <span
+                className={cn(
+                  "flex min-w-0 items-center gap-1.5 text-sm font-medium",
+                  !source.enabled && "text-muted-foreground",
+                )}
+              >
+                <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="truncate">{source.displayName}</span>
               </span>
               <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
                 <span className={cn(health === "unavailable" && "text-error-foreground")}>
@@ -136,5 +194,16 @@ export function RemoteSourceList({
         </div>
       )}
     </SettingsSection>
+  );
+}
+
+function GroupLabel({ id, children }: { id?: string; children: ReactNode }) {
+  return (
+    <h3
+      id={id}
+      className="scroll-mt-24 bg-muted/30 px-4 py-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground"
+    >
+      {children}
+    </h3>
   );
 }

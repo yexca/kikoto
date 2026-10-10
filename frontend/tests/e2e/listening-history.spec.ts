@@ -92,7 +92,10 @@ async function mockListeningServer(page: Page, options: { failFirstReport?: bool
 /** A listening report with one listened period, shaped like the server's for the requested range. */
 function statisticsFixture(range: string) {
   const granularity = range === "30d" ? "day" : "month";
-  const periods = range === "30d" ? ["2026-01-01", "2026-01-02"] : ["2025-12", "2026-01"];
+  const periods =
+    range === "30d"
+      ? Array.from({ length: 30 }, (_, index) => `2026-01-${String(index + 1).padStart(2, "0")}`)
+      : ["2025-12", "2026-01"];
   return {
     range,
     listenedSeconds: 16,
@@ -313,4 +316,20 @@ test("@desktop the listening report switches between its ranges", async ({ page 
   await expect(ranges.getByRole("button", { name: "12 months" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("table", { name: "Monthly listening time (UTC)" })).toBeAttached();
   expect(requestedRanges.at(-1)).toBe("12m");
+});
+
+test("@desktop the listening report's screen reader table adds no scroll space below the page", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true });
+  await mockListeningServer(page);
+  await page.goto("/settings?tab=history");
+
+  // Thirty daily rows are far taller than the page when the table is not clipped.
+  await expect(page.getByRole("table", { name: "Daily listening time (UTC)" }).getByRole("row")).toHaveCount(31);
+  const overflow = await page.evaluate(() => {
+    const records = document.querySelector("[aria-labelledby='listening-history-heading']")!;
+    const contentBottom = records.getBoundingClientRect().bottom + window.scrollY;
+    return document.documentElement.scrollHeight - contentBottom;
+  });
+  expect(overflow).toBeLessThan(200);
 });

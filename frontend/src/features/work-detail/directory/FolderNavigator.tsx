@@ -8,6 +8,8 @@ import {
   FolderTree,
   ImageIcon,
   Music,
+  PanelLeftClose,
+  PanelLeftOpen,
   Sparkles,
 } from "lucide-react";
 
@@ -136,8 +138,12 @@ export function FolderNavigatorList({
   );
 }
 
-/** Sticky folder column beside the folder contents on wide directories. */
-export function FolderRail({ className, ...props }: FolderNavigatorProps & { className?: string }) {
+/** Sticky folder column beside the folder contents on wide directories; it can be hidden to widen the contents. */
+export function FolderRail({
+  className,
+  onCollapse,
+  ...props
+}: FolderNavigatorProps & { className?: string; onCollapse: () => void }) {
   return (
     <aside
       className={cn(
@@ -145,11 +151,36 @@ export function FolderRail({ className, ...props }: FolderNavigatorProps & { cla
         className,
       )}
     >
-      <div className="px-2 pb-1.5 pt-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {i18n.t("libraryDetail.folders")}
+      <div className="flex items-center justify-between gap-2 pb-1 pl-2">
+        <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {i18n.t("libraryDetail.folders")}
+        </span>
+        <FolderRailToggle expanded onToggle={onCollapse} />
       </div>
       <FolderNavigatorList {...props} />
     </aside>
+  );
+}
+
+/** Hides the folder column, or brings a hidden one back beside the contents. */
+export function FolderRailToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+  const label = i18n.t(expanded ? "libraryDetail.hideFolderRail" : "libraryDetail.showFolderRail");
+  const Icon = expanded ? PanelLeftClose : PanelLeftOpen;
+  return (
+    <button
+      type="button"
+      className={cn(
+        "grid shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        // Collapsed, it sits beside the folder picker button and matches it.
+        expanded ? "h-8 w-8" : "h-9 w-9 bg-muted/50",
+      )}
+      aria-label={label}
+      aria-expanded={expanded}
+      title={label}
+      onClick={onToggle}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
   );
 }
 

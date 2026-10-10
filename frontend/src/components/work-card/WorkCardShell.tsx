@@ -1085,7 +1085,6 @@ export function WorkCardListButton({
   disabled,
   showLabel = false,
   responsiveLabel = false,
-  allowCreate = false,
   ensureWorkId,
   onSaved,
 }: {
@@ -1094,7 +1093,6 @@ export function WorkCardListButton({
   disabled?: boolean;
   showLabel?: boolean;
   responsiveLabel?: boolean;
-  allowCreate?: boolean;
   ensureWorkId?: () => Promise<number | null>;
   onSaved?: (favorite: boolean, workId: number) => void;
 }) {
@@ -1114,7 +1112,7 @@ export function WorkCardListButton({
   const ref = useRef<HTMLDivElement | null>(null);
   const effectiveWorkId = workId ?? resolvedWorkId;
   const bottomCollisionPadding = isMobileViewport() ? 168 : 12;
-  const canCreate = allowCreate && !demoMode && hasPermission("favorites:write");
+  const canCreate = !demoMode && hasPermission("favorites:write");
 
   useEffect(() => {
     if (!open || !effectiveWorkId) return;

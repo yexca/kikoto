@@ -11,6 +11,7 @@ import type {
   FileSource,
   FileSourceDetectResult,
   FileSourceHealthCheckResult,
+  LibraryLayout,
   MaintenanceWorkPage,
   ManagedUser,
   RecommendationConfig,
@@ -389,6 +390,22 @@ async function mockCacheSettings(
     if (url.pathname === "/api/maintenance/database/cleanup" && route.request().method() === "POST") {
       databaseCleanupRequests.push(route.request().postDataJSON());
       await route.fulfill({ json: { removed: 17, results: [] } satisfies DatabaseCleanupResult });
+      return;
+    }
+    if (url.pathname === "/api/library/layout") {
+      await route.fulfill({
+        json: {
+          mode: "standard",
+          configured: true,
+          locked: true,
+          onboardingCompleted: true,
+          hasLegacyWorkflows: false,
+          pools: [{ path: "", online: true, canReconnect: false }],
+          candidates: [],
+          fetchPool: "",
+          localScanTriggers: { startupScan: true, watchFolders: false },
+        } satisfies LibraryLayout,
+      });
       return;
     }
     if (url.pathname === "/api/maintenance/works") {
@@ -894,8 +911,13 @@ test("maintenance combines library sources and exposes read-only paths with heal
   );
   await page.goto("/settings?tab=library");
 
+  // The library overview lists the local library and every remote source above the settings.
+  const libraries = page.getByRole("region", { name: "Libraries", exact: true });
+  await expect(libraries.getByRole("heading", { name: "Local", exact: true })).toBeVisible();
+  await expect(libraries.getByText("Standard · Online", { exact: true })).toBeVisible();
+  await expect(libraries.getByRole("heading", { name: "Remote", exact: true })).toBeVisible();
+  await expect(libraries.getByText("Example Remote", { exact: true })).toBeVisible();
   await expect(page.getByText("Local library", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Remote sources", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sources", exact: true })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Cache & Fetch", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Check health", exact: true }).click();

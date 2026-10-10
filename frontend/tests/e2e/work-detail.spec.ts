@@ -511,6 +511,24 @@ test("@desktop folder rail navigates the work and marks the resume track", async
     .toEqual([4]);
 });
 
+test("@desktop the folder rail hides behind the folder picker and the choice persists", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockApplication(page, undefined, false, 1, 0, folderNavigatorMedia(), undefined, { authenticated: true });
+  await page.goto("/RJ00000000");
+
+  const rail = page.getByRole("navigation", { name: "Folders" });
+  await expect(rail).toBeVisible();
+  await page.getByRole("button", { name: "Hide folder panel" }).click();
+  await expect(rail).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Show folders" })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Show folder panel" })).toBeVisible();
+  await expect(rail).toHaveCount(0);
+  await page.getByRole("button", { name: "Show folder panel" }).click();
+  await expect(rail.getByRole("button", { name: /^With SE/ })).toHaveAttribute("aria-current", "location");
+});
+
 test("work detail summarizes DLsite stats in the hero and groups active source information", async ({ page }) => {
   const mediaItems = [
     mediaItemFixture({
