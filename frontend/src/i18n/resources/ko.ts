@@ -61,6 +61,16 @@ const libraryKorean = {
   remoteSourceUnavailableDescription: "소스 서비스에 연결할 수 없어 작품을 불러오지 않았습니다.",
   retryRemoteSource: "다시 시도",
   recentlyPlayed: "최근 재생",
+
+  continueListening: "이어 듣기",
+
+  mobileSearchPlaceholder: "제목, 서클, 태그 검색",
+
+  resultCount: "작품 {{value}}개",
+
+  resultPage: "{{page}}/{{totalPages}} 페이지",
+
+  allStatuses: "전체",
   recentlyPlayedFailed: "최근 재생한 작품을 불러오지 못했습니다.",
   openWorkTitle: "{{title}} 열기",
   noPlaybackYet: "아직 재생하지 않음",
@@ -160,6 +170,10 @@ const collectionKorean = {
   perPageLabel: "페이지당 {{itemLabel}}",
   pageSize: "페이지당 항목 수: {{value}}",
   itemsPerPage: "페이지당 항목 수",
+
+  compactCards: "컴팩트 카드",
+
+  compactCardsHint: "휴대폰에서 작은 작품 카드 사용",
   coverSources: "커버 소스 표시",
   coverSourceModes: {
     auto: "자동: 현재 소스와 다르거나 문제가 있는 표시만",

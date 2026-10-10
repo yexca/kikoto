@@ -61,6 +61,16 @@ const libraryJapanese = {
   remoteSourceUnavailableDescription: "ソースサービスに接続できないため、作品を読み込みませんでした。",
   retryRemoteSource: "再試行",
   recentlyPlayed: "最近再生した作品",
+
+  continueListening: "続きから聴く",
+
+  mobileSearchPlaceholder: "タイトル・サークル・タグで検索",
+
+  resultCount: "{{value}} 作品",
+
+  resultPage: "{{page}}/{{totalPages}} ページ",
+
+  allStatuses: "すべて",
   recentlyPlayedFailed: "最近再生した作品を読み込めませんでした。",
   openWorkTitle: "{{title}}を開く",
   noPlaybackYet: "まだ再生していません",
@@ -160,6 +170,10 @@ const collectionJapanese = {
   perPageLabel: "1ページあたりの{{itemLabel}}",
   pageSize: "1ページあたりの項目数：{{value}}",
   itemsPerPage: "1ページあたりの項目数",
+
+  compactCards: "コンパクトカード",
+
+  compactCardsHint: "スマートフォンで小さめの作品カードを使う",
   coverSources: "カバーのソース表示",
   coverSourceModes: {
     auto: "自動：現在のソースと異なる、または問題のある表示のみ",

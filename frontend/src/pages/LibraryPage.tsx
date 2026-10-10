@@ -130,6 +130,14 @@ import {
 } from "lucide-react";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { RecentlyPlayedPicker } from "@/pages/library/RecentlyPlayedPicker";
+import { ContinueListeningRail } from "@/pages/library/ContinueListeningRail";
+import { MobileLibraryToolbar } from "@/pages/library/MobileLibraryToolbar";
+import { progressPercent, recentProgressLabel } from "@/pages/library/recentPlayback";
+import {
+  MobileWorkCardShell,
+  MobileWorkCardSkeleton,
+  type MobileWorkCardLayout,
+} from "@/components/work-card/MobileWorkCard";
 import { Badge } from "@/components/ui/badge";
 import { useRemoteRecommendations, recommendationRevealDelay } from "@/pages/library/useRemoteRecommendations";
 import { RecommendationExplanationDialog } from "@/pages/library/RecommendationExplanationDialog";
@@ -192,6 +200,7 @@ import { useDismissiblePopover } from "@/hooks/useDismissiblePopover";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { Input } from "@/components/ui/input";
 import { WORK_CODE_PATH_PATTERN } from "@/lib/workCode";
+import { cn } from "@/lib/tailwindClassNames";
 
 // The app shell starts the detail chunk for a direct work link; this covers a
 // detail location reached before the Library chunk finished loading. Both share
@@ -214,6 +223,8 @@ const librarySortOptions: { value: LibrarySort; label: string }[] = [
   { value: "sales", label: "Sales" },
   { value: "title", label: "Title" },
 ];
+
+const remoteSortValues: LibrarySort[] = ["recent", "release", "code", "rating", "sales", "random"];
 
 function remoteLibrarySort(value: LibrarySort): LibrarySort {
   return value === "code" || value === "release" || value === "rating" || value === "sales" || value === "random"
@@ -452,10 +463,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   // The clause editor floats next to whichever control opened it: the add
   // button in the search field or the edited clause badge.
   const clauseEditorAnchorRef = useRef<HTMLElement | null>(null);
-  const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout({
-    mobileColumns: initialBrowseState.mobileColumns,
-    desktopColumns: initialBrowseState.desktopColumns,
-  });
+  const { mobileColumns, desktopColumns, mobileCompact, setMobileColumns, setDesktopColumns, setMobileCompact } =
+    useWorkCollectionLayout({
+      mobileColumns: initialBrowseState.mobileColumns,
+      desktopColumns: initialBrowseState.desktopColumns,
+    });
   const [librarySort, setLibrarySort] = useState<LibrarySort>(initialBrowseState.sort);
   const [recommendBadgesEnabled, setRecommendBadgesEnabled] = useState(
     () => window.localStorage.getItem("kikoto:recommend-badges") === "true",
@@ -1807,6 +1819,32 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const browseRefreshing = activeTab.kind === "source" ? isRemoteLoading && remoteResult !== null : isLibraryLoading;
   const browseLoadingLabel =
     activeTab.kind === "source" ? t("library.refreshingRemoteWorks") : t("library.refreshingLibraryWorks");
+  const displayPicker = (
+    <WorkCollectionDisplayPicker
+      mobileColumns={mobileColumns}
+      desktopColumns={desktopColumns}
+      onMobileColumnsChange={setMobileColumns}
+      onDesktopColumnsChange={setDesktopColumns}
+      mobileCompact={mobileCompact}
+      onMobileCompactChange={setMobileCompact}
+      pageSize={activePageSize}
+      pageSizeOptions={activePageSizeOptions}
+      onPageSizeChange={(value) => {
+        queueResultsScroll();
+        if (activeTab.kind === "source") {
+          updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });
+          return;
+        }
+        changeWorkPageSize(value as LocalWorkPageSize);
+      }}
+      coverSources={{ mode: coverSourceMode, onChange: setCoverSourceMode }}
+    />
+  );
+  const showContinueListening =
+    activeTab.kind !== "source" && searchClauses.length === 0 && statusFilter === "all" && currentWorkPage === 1;
+  // Phones with compact cards on: one column reads as rows, two as short tiles.
+  const mobileCardLayout: MobileWorkCardLayout | null =
+    mobileNavigationLayout && mobileCompact ? (mobileColumns === 2 ? "tile" : "row") : null;
   const browseContent = (
     <div className="relative space-y-5" hidden={!showBrowse}>
       {auth.demoMode &&
@@ -1816,124 +1854,190 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
           <DemoContentNotice surface="library" />
         ))}
       <MetadataOnboardingNotice active={active && showBrowse} />
-      <section className="flex flex-wrap items-center gap-2" data-toast-avoid>
-        <div className="order-1 min-w-0 max-w-full">
-          <LibraryPrimaryTabs
-            active={activePrimaryTab}
-            activeSourceId={activeTab.kind === "source" ? activeTab.source.id : null}
-            sources={sources}
-            sourceVisibility={sourceVisibility}
-            onChange={changePrimaryTab}
-            onSourceChange={(source) => changeTab({ kind: "source", source })}
-          />
-        </div>
-        <div
-          className={`search-field order-3 min-h-10 w-full items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:order-2 lg:flex lg:w-auto lg:min-w-[14rem] lg:max-w-2xl lg:flex-1 ${
-            mobileSearchOpen ? "flex" : "hidden"
-          }`}
-        >
-          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <input
-            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
-            value={searchQuery}
-            onKeyDown={dismissKeyboardOnEnter}
-            onChange={(event) => {
-              setOptimisticLibrarySearchClauses(null);
-              setSearchQuery(event.target.value);
-            }}
-            placeholder={t("library.searchPlaceholder")}
-          />
-          {searchQuery.trim() && (
-            <button
-              className="text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                setOptimisticLibrarySearchClauses(null);
-                setSearchQuery("");
-              }}
-              aria-label={t("library.clearSearch")}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-          <button
-            className="rounded-sm text-muted-foreground hover:text-foreground"
-            onClick={(event) => openAddClauseEditor(event.currentTarget)}
-            aria-label={t("library.addSearchCondition")}
-            aria-haspopup="dialog"
-            aria-expanded={clauseEditor?.mode === "add"}
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="order-2 ml-auto flex flex-wrap justify-end gap-2 lg:order-3">
-          {mobileNavigationLayout && (
-            <IconButton
-              title={mobileSearchOpen ? t("library.hideSearch") : t("library.searchLibrary")}
-              onClick={() => {
-                if (mobileSearchOpen) {
-                  closeMobileSearch();
-                  return;
+      {mobileNavigationLayout ? (
+        <MobileLibraryToolbar
+          sourceTabs={
+            <LibraryPrimaryTabs
+              variant="chips"
+              active={activePrimaryTab}
+              activeSourceId={activeTab.kind === "source" ? activeTab.source.id : null}
+              sources={sources}
+              sourceVisibility={sourceVisibility}
+              onChange={changePrimaryTab}
+              onSourceChange={(source) => changeTab({ kind: "source", source })}
+            />
+          }
+          searchQuery={searchQuery}
+          onSearchChange={(value) => {
+            setOptimisticLibrarySearchClauses(null);
+            setSearchQuery(value);
+          }}
+          onAddClause={openAddClauseEditor}
+          addClauseOpen={clauseEditor?.mode === "add"}
+          resultCount={activeTab.kind === "source" ? (remoteResult?.total ?? null) : workTotal}
+          resultPage={
+            activeTab.kind === "source"
+              ? {
+                  page: activeRemoteSourceState.page,
+                  totalPages: Math.max(1, Math.ceil((remoteResult?.total ?? 0) / activeRemoteSourceState.pageSize)),
                 }
-                setMobileSearchOpen(true);
+              : { page: currentWorkPage, totalPages: totalWorkPages }
+          }
+          sort={{
+            options:
+              activeTab.kind === "source"
+                ? librarySortOptions.filter((option) => remoteSortValues.includes(option.value))
+                : librarySortOptions,
+            value: librarySort,
+            direction: sortDirection,
+            onChange: changeLibrarySort,
+            onDirectionChange: changeSortDirection,
+            onReshuffle: reshuffle,
+          }}
+          actions={
+            <>
+              {librarySort === "recommend" ? (
+                <IconButton title={t("library.refreshRecommendations")} disabled={isLibraryLoading} onClick={reshuffle}>
+                  <RefreshCw className={`h-4 w-4 ${isLibraryLoading ? "animate-spin" : ""}`} />
+                </IconButton>
+              ) : (
+                <IconButton
+                  title={
+                    recommendBadgesEnabled
+                      ? t("library.hideRecommendationBadges")
+                      : t("library.showRecommendationBadges")
+                  }
+                  onClick={toggleRecommendBadges}
+                >
+                  <Sparkles className={`h-4 w-4 ${recommendBadgesEnabled ? "fill-current text-primary" : ""}`} />
+                </IconButton>
+              )}
+              {displayPicker}
+              {activeTab.kind === "source" && (
+                <IconButton
+                  title={remoteSelectionMode ? t("library.cancelSelection") : t("library.select")}
+                  aria-pressed={remoteSelectionMode}
+                  onClick={() => setRemoteSelectionMode((current) => !current)}
+                >
+                  <ListChecks className={`h-4 w-4 ${remoteSelectionMode ? "text-primary" : ""}`} />
+                </IconButton>
+              )}
+            </>
+          }
+          statusFilter={activeTab.kind === "source" ? null : statusFilter}
+          onStatusFilterChange={changeStatusFilter}
+        >
+          {showContinueListening && (
+            <ContinueListeningRail
+              active={active && showBrowse}
+              onOpen={(work) => openWork(work, recentWorkSourceIntent(work))}
+            />
+          )}
+        </MobileLibraryToolbar>
+      ) : (
+        <section className="flex flex-wrap items-center gap-2" data-toast-avoid>
+          <div className="order-1 min-w-0 max-w-full">
+            <LibraryPrimaryTabs
+              active={activePrimaryTab}
+              activeSourceId={activeTab.kind === "source" ? activeTab.source.id : null}
+              sources={sources}
+              sourceVisibility={sourceVisibility}
+              onChange={changePrimaryTab}
+              onSourceChange={(source) => changeTab({ kind: "source", source })}
+            />
+          </div>
+          <div
+            className={`search-field order-3 min-h-10 w-full items-center gap-2 rounded-lg border bg-card px-3 text-sm lg:order-2 lg:flex lg:w-auto lg:min-w-[14rem] lg:max-w-2xl lg:flex-1 ${
+              mobileSearchOpen ? "flex" : "hidden"
+            }`}
+          >
+            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <input
+              className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+              value={searchQuery}
+              onKeyDown={dismissKeyboardOnEnter}
+              onChange={(event) => {
+                setOptimisticLibrarySearchClauses(null);
+                setSearchQuery(event.target.value);
               }}
+              placeholder={t("library.searchPlaceholder")}
+            />
+            {searchQuery.trim() && (
+              <button
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setOptimisticLibrarySearchClauses(null);
+                  setSearchQuery("");
+                }}
+                aria-label={t("library.clearSearch")}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              className="rounded-sm text-muted-foreground hover:text-foreground"
+              onClick={(event) => openAddClauseEditor(event.currentTarget)}
+              aria-label={t("library.addSearchCondition")}
+              aria-haspopup="dialog"
+              aria-expanded={clauseEditor?.mode === "add"}
             >
-              <Search className="h-4 w-4" />
-            </IconButton>
-          )}
-          <RecentlyPlayedPicker onOpen={(work) => openWork(work, recentWorkSourceIntent(work))} />
-          <WorkCollectionDisplayPicker
-            mobileColumns={mobileColumns}
-            desktopColumns={desktopColumns}
-            onMobileColumnsChange={setMobileColumns}
-            onDesktopColumnsChange={setDesktopColumns}
-            pageSize={activePageSize}
-            pageSizeOptions={activePageSizeOptions}
-            onPageSizeChange={(value) => {
-              queueResultsScroll();
-              if (activeTab.kind === "source") {
-                updateRemoteSourceState(activeTab.source.id, { pageSize: value, page: 1 });
-                return;
-              }
-              changeWorkPageSize(value as LocalWorkPageSize);
-            }}
-            coverSources={{ mode: coverSourceMode, onChange: setCoverSourceMode }}
-          />
-          {librarySort === "recommend" ? (
-            <IconButton title={t("library.refreshRecommendations")} disabled={isLibraryLoading} onClick={reshuffle}>
-              <RefreshCw className={`h-4 w-4 ${isLibraryLoading ? "animate-spin" : ""}`} />
-            </IconButton>
-          ) : (
-            <IconButton
-              title={
-                recommendBadgesEnabled ? t("library.hideRecommendationBadges") : t("library.showRecommendationBadges")
-              }
-              onClick={toggleRecommendBadges}
-            >
-              <Sparkles className={`h-4 w-4 ${recommendBadgesEnabled ? "fill-current text-primary" : ""}`} />
-            </IconButton>
-          )}
-          <SortPicker
-            activeTab={activeTab}
-            value={librarySort}
-            direction={sortDirection}
-            onChange={changeLibrarySort}
-            onDirectionChange={changeSortDirection}
-            onReshuffle={reshuffle}
-          />
-          {activeTab.kind === "source" ? (
-            <IconButton
-              title={remoteSelectionMode ? t("library.cancelSelection") : t("library.select")}
-              aria-pressed={remoteSelectionMode}
-              onClick={() => setRemoteSelectionMode((current) => !current)}
-            >
-              <ListChecks className={`h-4 w-4 ${remoteSelectionMode ? "text-primary" : ""}`} />
-            </IconButton>
-          ) : (
-            <FilterPicker value={statusFilter} activeCount={activeFilterCount} onChange={changeStatusFilter} />
-          )}
-        </div>
-      </section>
-      {activeFilterCount > 0 && (
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="order-2 ml-auto flex flex-wrap justify-end gap-2 lg:order-3">
+            {mobileNavigationLayout && (
+              <IconButton
+                title={mobileSearchOpen ? t("library.hideSearch") : t("library.searchLibrary")}
+                onClick={() => {
+                  if (mobileSearchOpen) {
+                    closeMobileSearch();
+                    return;
+                  }
+                  setMobileSearchOpen(true);
+                }}
+              >
+                <Search className="h-4 w-4" />
+              </IconButton>
+            )}
+            <RecentlyPlayedPicker onOpen={(work) => openWork(work, recentWorkSourceIntent(work))} />
+            {displayPicker}
+            {librarySort === "recommend" ? (
+              <IconButton title={t("library.refreshRecommendations")} disabled={isLibraryLoading} onClick={reshuffle}>
+                <RefreshCw className={`h-4 w-4 ${isLibraryLoading ? "animate-spin" : ""}`} />
+              </IconButton>
+            ) : (
+              <IconButton
+                title={
+                  recommendBadgesEnabled ? t("library.hideRecommendationBadges") : t("library.showRecommendationBadges")
+                }
+                onClick={toggleRecommendBadges}
+              >
+                <Sparkles className={`h-4 w-4 ${recommendBadgesEnabled ? "fill-current text-primary" : ""}`} />
+              </IconButton>
+            )}
+            <SortPicker
+              activeTab={activeTab}
+              value={librarySort}
+              direction={sortDirection}
+              onChange={changeLibrarySort}
+              onDirectionChange={changeSortDirection}
+              onReshuffle={reshuffle}
+            />
+            {activeTab.kind === "source" ? (
+              <IconButton
+                title={remoteSelectionMode ? t("library.cancelSelection") : t("library.select")}
+                aria-pressed={remoteSelectionMode}
+                onClick={() => setRemoteSelectionMode((current) => !current)}
+              >
+                <ListChecks className={`h-4 w-4 ${remoteSelectionMode ? "text-primary" : ""}`} />
+              </IconButton>
+            ) : (
+              <FilterPicker value={statusFilter} activeCount={activeFilterCount} onChange={changeStatusFilter} />
+            )}
+          </div>
+        </section>
+      )}
+      {activeFilterCount > 0 && !mobileNavigationLayout && (
         <div className="flex flex-wrap gap-1.5">
           <Badge variant="outline" className="gap-1.5">
             <Filter className="h-4 w-4" />
@@ -2009,6 +2113,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             searchClauses={searchClauses}
             mobileColumns={mobileColumns}
             desktopColumns={desktopColumns}
+            mobileCardLayout={mobileCardLayout}
             coverSourceMode={coverSourceMode}
             onClearSearch={() => setSearchQuery("")}
             onPageChange={(page) => {
@@ -2045,7 +2150,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {!libraryLoadError && localTopPagination}
+          {!libraryLoadError && !mobileNavigationLayout && localTopPagination}
           {recommendationUnavailable && recommendBadgesEnabled && librarySort !== "recommend" && (
             <div role="status" className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
               <span>{t("library.recommendationBadgesUnavailable")}</span>
@@ -2098,6 +2203,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
                   isUntracking={isUntracking}
                   onFetch={localScope === "tracked" ? fetchCardSource : undefined}
                   isFetchBusy={trackedFetchWorkspace.isBusy}
+                  mobileLayout={mobileCardLayout}
                 />
               ))}
             </section>
@@ -2127,6 +2233,7 @@ type LibraryTab = { kind: "all" } | { kind: "source"; source: LibrarySource };
 type LocalLibraryScope = "local" | "tracked";
 
 function LibraryPrimaryTabs({
+  variant = "segmented",
   active,
   activeSourceId,
   sources,
@@ -2134,6 +2241,7 @@ function LibraryPrimaryTabs({
   onChange,
   onSourceChange,
 }: {
+  variant?: "segmented" | "chips";
   active: "local" | "tracked" | null;
   activeSourceId: number | null;
   sources: LibrarySource[];
@@ -2145,16 +2253,21 @@ function LibraryPrimaryTabs({
   const { rows, visibleKeys, changeMode } = sourceVisibility;
   // The selected entry stays visible so the bar never hides where the viewer is.
   const shown = (key: Parameters<typeof visibleKeys.has>[0], selected: boolean) => selected || visibleKeys.has(key);
+  const chips = variant === "chips";
+  const visibilityPicker = (
+    <SourceVisibilityPicker
+      title={t("library.sourceVisibility.title")}
+      rows={rows}
+      triggerClassName={(open) => segmentedItemClassName(open, "px-2")}
+      onChange={changeMode}
+    />
+  );
   return (
-    <div className={segmentedListClassName()}>
-      <SourceVisibilityPicker
-        title={t("library.sourceVisibility.title")}
-        rows={rows}
-        triggerClassName={(open) => segmentedItemClassName(open, "px-2")}
-        onChange={changeMode}
-      />
+    <div className={chips ? "flex w-max items-center gap-1.5" : segmentedListClassName()}>
+      {!chips && visibilityPicker}
       {shown("local", active === "local") && (
         <TabButton
+          chips={chips}
           active={active === "local"}
           onClick={() => onChange("local")}
           icon={<HardDrive className="h-4 w-4" />}
@@ -2164,6 +2277,7 @@ function LibraryPrimaryTabs({
       )}
       {shown("tracked", active === "tracked") && (
         <TabButton
+          chips={chips}
           active={active === "tracked"}
           onClick={() => onChange("tracked")}
           icon={<GitBranchPlus className="h-4 w-4" />}
@@ -2176,6 +2290,7 @@ function LibraryPrimaryTabs({
         .map((source) => (
           <TabButton
             key={source.id}
+            chips={chips}
             active={activeSourceId === source.id}
             onClick={() => onSourceChange(source)}
             icon={<Cloud className="h-4 w-4" />}
@@ -2183,17 +2298,20 @@ function LibraryPrimaryTabs({
             {source.displayName}
           </TabButton>
         ))}
+      {chips && <div className="rounded-full bg-muted p-0.5">{visibilityPicker}</div>}
     </div>
   );
 }
 
 function TabButton({
+  chips = false,
   active,
   disabled,
   icon,
   children,
   onClick,
 }: {
+  chips?: boolean;
   active: boolean;
   disabled?: boolean;
   icon: ReactNode;
@@ -2201,7 +2319,21 @@ function TabButton({
   onClick: () => void;
 }) {
   return (
-    <button className={segmentedItemClassName(active)} aria-pressed={active} disabled={disabled} onClick={onClick}>
+    <button
+      className={
+        chips
+          ? cn(
+              "inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&>svg]:h-3.5 [&>svg]:w-3.5",
+              active
+                ? "border-foreground bg-foreground text-background"
+                : "border-border bg-card text-muted-foreground hover:text-foreground",
+            )
+          : segmentedItemClassName(active)
+      }
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+    >
       {icon}
       <span className="max-w-40 truncate">{children}</span>
     </button>
@@ -2521,6 +2653,7 @@ function RemoteSourceResults({
   searchClauses,
   mobileColumns,
   desktopColumns,
+  mobileCardLayout,
   coverSourceMode,
   selectionMode,
   bulkCodes,
@@ -2544,6 +2677,7 @@ function RemoteSourceResults({
   searchClauses: SearchClause[];
   mobileColumns: LibraryColumnSetting;
   desktopColumns: LibraryColumnSetting;
+  mobileCardLayout: MobileWorkCardLayout | null;
   coverSourceMode: SourceVisibilityMode;
   selectionMode: boolean;
   bulkCodes: Set<string>;
@@ -2566,7 +2700,12 @@ function RemoteSourceResults({
     // A fast first page replaces the previous view directly; placeholders
     // appear only when the wait is noticeable.
     return showSkeleton ? (
-      <RemoteWorkGridSkeleton count={skeletonCount} mobileColumns={mobileColumns} desktopColumns={desktopColumns} />
+      <RemoteWorkGridSkeleton
+        count={skeletonCount}
+        mobileColumns={mobileColumns}
+        desktopColumns={desktopColumns}
+        mobileCardLayout={mobileCardLayout}
+      />
     ) : null;
   }
   if (remoteError) return <RemoteSourceErrorCard error={remoteError} onRetry={onRetry} />;
@@ -2596,6 +2735,7 @@ function RemoteSourceResults({
               revealDelay={recommendationRevealDelay(index)}
               source={source}
               coverSourceMode={coverSourceMode}
+              mobileLayout={mobileCardLayout}
               selected={bulkCodes.has(work.primaryCode)}
               selectable={Boolean(work.primaryCode)}
               selectionActive={selectionMode}
@@ -2639,6 +2779,7 @@ function RemoteSourcePanel({
   searchClauses,
   mobileColumns,
   desktopColumns,
+  mobileCardLayout,
   coverSourceMode,
   onClearSearch,
   onPageChange,
@@ -2659,6 +2800,7 @@ function RemoteSourcePanel({
   searchClauses: SearchClause[];
   mobileColumns: LibraryColumnSetting;
   desktopColumns: LibraryColumnSetting;
+  mobileCardLayout: MobileWorkCardLayout | null;
   coverSourceMode: SourceVisibilityMode;
   onClearSearch: () => void;
   onPageChange: (page: number) => void;
@@ -2712,13 +2854,15 @@ function RemoteSourcePanel({
   });
   const { isSyncingCode, isBulkBusy, saveConfirm, clearSaveConfirm, bulkForkSelected, bulkSaveSelected } = actions;
   const remotePaginationProps = model.remotePaginationProps;
+  // Phones show the page beside the result count in the toolbar instead.
+  const mobileNavigationLayout = useMobileNavigationLayout();
   const remoteTopPagination = (
     <WorkCollectionPagination {...remotePaginationProps} placement="top" compactMobile compactTop />
   );
 
   return (
     <section className="space-y-3 pb-4 lg:pb-8">
-      {!model.remoteError && !isInitialLoading && remoteTopPagination}
+      {!model.remoteError && !isInitialLoading && !mobileNavigationLayout && remoteTopPagination}
       {selectionMode && (
         <RemoteSourceSelectionBar
           t={t}
@@ -2761,6 +2905,7 @@ function RemoteSourcePanel({
         searchClauses={searchClauses}
         mobileColumns={mobileColumns}
         desktopColumns={desktopColumns}
+        mobileCardLayout={mobileCardLayout}
         coverSourceMode={coverSourceMode}
         selectionMode={selectionMode}
         bulkCodes={selection.bulkCodes}
@@ -2865,6 +3010,7 @@ const WorkCard = memo(function WorkCard({
   isUntracking = false,
   onFetch,
   isFetchBusy,
+  mobileLayout = null,
 }: {
   work: Work;
   showRecommendationScore: boolean;
@@ -2882,8 +3028,10 @@ const WorkCard = memo(function WorkCard({
   isUntracking?: boolean;
   onFetch?: (work: Work, source: SourcePresenceItem) => void;
   isFetchBusy?: boolean;
+  mobileLayout?: MobileWorkCardLayout | null;
 }) {
   const { t } = useTranslation();
+  const Shell = mobileLayout ? MobileWorkCardShell : WorkCardShell;
   const baseView = libraryWorkCardView(work, onUserTagOpen, showRecommendationScore, useAuth().recommendationThreshold);
   const view: WorkCardViewModel = {
     ...baseView,
@@ -2896,7 +3044,8 @@ const WorkCard = memo(function WorkCard({
   const [untrackOpen, setUntrackOpen] = useState(false);
 
   return (
-    <WorkCardShell
+    <Shell
+      layout={mobileLayout ?? "row"}
       work={view}
       onOpen={() => onOpen(work)}
       onRecommendationOpen={() => onRecommendationOpen(work)}
@@ -2909,6 +3058,7 @@ const WorkCard = memo(function WorkCard({
       onTagOpen={onTagOpen}
       footer={
         <WorkCardFooter
+          className={mobileLayout === "row" ? "h-10 border-border/40" : undefined}
           left={<WorkCardDLsiteAction href={work.dlsiteUrl} />}
           right={
             <>
@@ -3010,6 +3160,7 @@ function RemoteWorkCard({
   onSave,
   onEnsureWork,
   onListSaved,
+  mobileLayout,
 }: {
   work: RemoteWork;
   recommendationScored: boolean;
@@ -3030,7 +3181,9 @@ function RemoteWorkCard({
   onSave: () => void;
   onEnsureWork: () => Promise<number | null>;
   onListSaved: (workId: number, favorite: boolean) => void;
+  mobileLayout: MobileWorkCardLayout | null;
 }) {
+  const Shell = mobileLayout ? MobileWorkCardShell : WorkCardShell;
   const baseView = remoteWorkCardView(work, source, recommendationScored, useAuth().recommendationThreshold);
   const view: WorkCardViewModel = {
     ...baseView,
@@ -3040,7 +3193,8 @@ function RemoteWorkCard({
   };
 
   return (
-    <WorkCardShell
+    <Shell
+      layout={mobileLayout ?? "row"}
       work={view}
       selection={
         selectionActive ? (
@@ -3052,6 +3206,7 @@ function RemoteWorkCard({
       canOpen={Boolean(work.primaryCode)}
       footer={
         <WorkCardFooter
+          className={mobileLayout === "row" ? "h-10 border-border/40" : undefined}
           left={<WorkCardDLsiteAction href={dlsiteWorkURL(work.primaryCode)} />}
           right={
             <>
@@ -3105,29 +3260,35 @@ function RemoteWorkGridSkeleton({
   count,
   mobileColumns,
   desktopColumns,
+  mobileCardLayout,
 }: {
   count: number;
   mobileColumns: LibraryColumnSetting;
   desktopColumns: LibraryColumnSetting;
+  mobileCardLayout: MobileWorkCardLayout | null;
 }) {
   return (
     <section className={workCollectionClassName()} style={workCollectionStyle(mobileColumns, desktopColumns)}>
-      {Array.from({ length: count }, (_, index) => (
-        <div key={index} className="overflow-hidden rounded-lg border bg-card">
-          <div className="p-1.5 pb-0">
-            <div className="aspect-[4/3] animate-pulse rounded-[calc(var(--radius)-4px)] bg-muted" />
-          </div>
-          <div className="space-y-2 px-3 pb-3 pt-2.5">
-            <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
-            <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
-            <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
-            <div className="flex gap-1.5 pt-2">
-              <div className="h-6 w-16 animate-pulse rounded bg-muted" />
-              <div className="h-6 w-20 animate-pulse rounded bg-muted" />
+      {Array.from({ length: count }, (_, index) =>
+        mobileCardLayout ? (
+          <MobileWorkCardSkeleton key={index} layout={mobileCardLayout} />
+        ) : (
+          <div key={index} className="overflow-hidden rounded-lg border bg-card">
+            <div className="p-1.5 pb-0">
+              <div className="aspect-[4/3] animate-pulse rounded-[calc(var(--radius)-4px)] bg-muted" />
+            </div>
+            <div className="space-y-2 px-3 pb-3 pt-2.5">
+              <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
+              <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
+              <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+              <div className="flex gap-1.5 pt-2">
+                <div className="h-6 w-16 animate-pulse rounded bg-muted" />
+                <div className="h-6 w-20 animate-pulse rounded bg-muted" />
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        ),
+      )}
     </section>
   );
 }
@@ -3156,6 +3317,9 @@ function libraryWorkCardView(
     series: work.series || null,
     hasLyrics: work.hasLyrics,
     hasPlaybackHistory: hasPlaybackHistory(work.progress),
+    progress: hasPlaybackHistory(work.progress)
+      ? { percent: progressPercent(work.progress), label: recentProgressLabel(work.progress, i18n.t) }
+      : null,
     dlsiteTags: dlsiteTagBadges(work.tags),
     userTags: userTagBadges(work.userTags ?? [], onUserTagOpen),
     sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),

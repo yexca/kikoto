@@ -62,6 +62,16 @@ const libraryHant = {
   remoteSourceUnavailableDescription: "無法連線到來源服務，因此沒有載入作品。",
   retryRemoteSource: "重試",
   recentlyPlayed: "最近播放",
+
+  continueListening: "繼續收聽",
+
+  mobileSearchPlaceholder: "搜尋標題、社團、標籤",
+
+  resultCount: "{{value}} 個作品",
+
+  resultPage: "第 {{page}}/{{totalPages}} 頁",
+
+  allStatuses: "全部",
   recentlyPlayedFailed: "無法載入最近播放的作品。",
   openWorkTitle: "開啟 {{title}}",
   noPlaybackYet: "尚未播放",
@@ -161,6 +171,10 @@ const collectionHant = {
   perPageLabel: "每頁 {{itemLabel}} 數量",
   pageSize: "每頁數量：{{value}}",
   itemsPerPage: "每頁數量",
+
+  compactCards: "緊湊卡片",
+
+  compactCardsHint: "手機上使用更小的作品卡片",
   coverSources: "封面來源標記",
   coverSourceModes: {
     auto: "自動：只顯示與目前來源不同或異常的標記",
