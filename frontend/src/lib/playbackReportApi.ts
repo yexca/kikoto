@@ -1,6 +1,7 @@
-import { apiTransport, type MediaProgressUpdate } from "./api";
+import { apiTransport } from "./apiTransport";
 import { combineAbortSignals } from "./inflightRequests";
 import { LISTENING_REPORT_TIMEOUT_MS, type ListeningSessionReport } from "./listeningApi";
+import type { MediaProgressUpdate } from "./mediaApi";
 
 export type DatedListeningReport = ListeningSessionReport & {
   startedAt: string;
