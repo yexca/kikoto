@@ -136,7 +136,7 @@ func (s *Server) executeASRTranscriptionJob(ctx context.Context, job workflowJob
 			}
 			return s.failASRTask(ctx, job, task, code)
 		}
-		source, err := s.loadASRSource(ctx, task.AudioID)
+		source, err := s.loadLocalTrack(ctx, task.AudioID)
 		if err != nil || source.LocationID != task.LocationID || source.Version != task.SourceVersion {
 			if ctx.Err() != nil {
 				return ctx.Err()

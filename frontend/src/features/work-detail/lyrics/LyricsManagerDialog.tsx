@@ -35,6 +35,7 @@ import {
 import { folderLyrics } from "@/features/work-detail/lyrics/lyricsEditModel";
 import { LyricsFilesWorkspace } from "@/features/work-detail/lyrics/LyricsFilesWorkspace";
 import { LyricsPreview, loadLocalLyricsText } from "@/features/work-detail/lyrics/LyricsPreview";
+import { LyricsTranslationPanel } from "@/features/work-detail/lyrics/LyricsTranslationPanel";
 import { TranscriptionPanel } from "@/features/work-detail/lyrics/TranscriptionPanel";
 import { formatTrackDuration } from "@/features/work-detail/media/mediaTreeModel";
 import { api, type WorkDetail } from "@/lib/api";
@@ -43,7 +44,7 @@ import { cn } from "@/lib/tailwindClassNames";
 
 const automaticValue = "auto";
 
-export type LyricsManagerTab = "assign" | "files" | "transcribe";
+export type LyricsManagerTab = "assign" | "files" | "transcribe" | "translate";
 
 /** What the lyrics manager opens on. */
 export type LyricsManagerRequest = {
@@ -66,6 +67,7 @@ export function LyricsManagerDialog({
   readOnly,
   canDownload = false,
   canTranscribe = false,
+  canTranslate = false,
   request,
   onClose,
   onSaved,
@@ -76,6 +78,8 @@ export function LyricsManagerDialog({
   canDownload?: boolean;
   /** Whether the viewer may start speech transcriptions and review their results. */
   canTranscribe?: boolean;
+  /** Whether the viewer may start LLM lyrics translations and review their results. */
+  canTranslate?: boolean;
   request: LyricsManagerRequest;
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -93,6 +97,7 @@ export function LyricsManagerDialog({
   );
   const filesAvailable = localFolders.length > 0;
   const transcribeAvailable = canTranscribe && entries.audio.length > 0;
+  const translateAvailable = canTranslate && entries.audio.length > 0;
   const [tab, setTab] = useState<LyricsManagerTab>(request.tab === "files" && filesAvailable ? "files" : "assign");
   const [folderId, setFolderId] = useState(request.folderId ?? 0);
   const folder = localFolders.find((candidate) => candidate.id === folderId) ?? localFolders[0];
@@ -187,7 +192,7 @@ export function LyricsManagerDialog({
         onClose={busy ? undefined : onClose}
         closeLabel={t("content.close")}
       >
-        {(filesAvailable || transcribeAvailable) && (
+        {(filesAvailable || transcribeAvailable || translateAvailable) && (
           <div className={segmentedListClassName("mt-3")} role="tablist" aria-label={t("lyricsManager.title")}>
             <button
               type="button"
@@ -227,6 +232,19 @@ export function LyricsManagerDialog({
                 {t("lyricsManager.tabTranscribe")}
               </button>
             )}
+            {translateAvailable && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "translate"}
+                className={segmentedItemClassName(tab === "translate")}
+                disabled={busy}
+                onClick={() => setTab("translate")}
+              >
+                <Languages className="h-4 w-4" />
+                {t("lyricsManager.tabTranslate")}
+              </button>
+            )}
           </div>
         )}
       </DialogHeader>
@@ -234,6 +252,17 @@ export function LyricsManagerDialog({
         <>
           <DialogBody>
             <TranscriptionPanel work={work} audio={entries.audio} onPublished={onSaved} />
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="ghost" onClick={onClose} disabled={busy}>
+              {t("content.close")}
+            </Button>
+          </DialogFooter>
+        </>
+      ) : tab === "translate" && translateAvailable ? (
+        <>
+          <DialogBody>
+            <LyricsTranslationPanel work={work} audio={entries.audio} lyrics={entries.lyrics} onPublished={onSaved} />
           </DialogBody>
           <DialogFooter>
             <Button variant="ghost" onClick={onClose} disabled={busy}>

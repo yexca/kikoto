@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { api, type LLMTranslation, type WorkDetail, type MediaItem } from "@/lib/api";
+import { api, type LLMTranslation, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { metadataTagNameLanguages } from "@/lib/metadataTagModel";
 import { LLMTranslationReviews } from "./LLMTranslationReviews";
@@ -31,11 +31,7 @@ export function LLMTranslationDialog({
   const [assessment, setAssessment] = useState<LLMAssessment | null>(null);
   const [providerID, setProviderID] = useState("");
   const [targetLanguage, setTargetLanguage] = useState("zh-cn");
-  const [fields, setFields] = useState({ title: true, description: true, tags: false, lyrics: false });
-  const [media, setMedia] = useState<MediaItem[]>([]);
-  const [lyricsLocationId, setLyricsLocationId] = useState(0);
-  const [audioMediaItemId, setAudioMediaItemId] = useState(0);
-  const [folderId, setFolderId] = useState(work.localFolders?.find((folder) => folder.state === "active")?.id ?? 0);
+  const [fields, setFields] = useState({ title: true, description: true, tags: false });
   const [workCodes, setWorkCodes] = useState(work.primaryCode);
   const [runs, setRuns] = useState<{ runId: number; state: string }[]>([]);
   const [preview, setPreview] = useState<LLMTranslation | null>(null);
@@ -54,17 +50,6 @@ export function LLMTranslationDialog({
       .finally(() => setLoadingProviders(false));
   }, [toast, t]);
 
-  useEffect(() => {
-    if (!fields.lyrics) return;
-    const controller = new AbortController();
-    void api
-      .getWorkMedia(work.id, controller.signal)
-      .then((result) => setMedia(result.mediaItems))
-      .catch((error) => {
-        if (!controller.signal.aborted) toast.notify(toastFromError(error, t("llmTranslation.failed")));
-      });
-    return () => controller.abort();
-  }, [fields.lyrics, work.id, t, toast]);
   const selectedFields = Object.entries(fields)
     .filter(([, selected]) => selected)
     .map(([field]) => field);
@@ -72,7 +57,6 @@ export function LLMTranslationDialog({
     providerId: providerID,
     targetLanguage: targetLanguage.trim(),
     fields: selectedFields,
-    ...(fields.lyrics ? { lyricsLocationId, audioMediaItemId, folderId } : {}),
   };
   const queue = async () => {
     setLoading(true);
@@ -134,14 +118,6 @@ export function LLMTranslationDialog({
                 result={name}
               />
             ))}
-            {preview.translation.lyrics && (
-              <PreviewField
-                label={t("llmTranslation.lyrics")}
-                source={preview.source.lyrics?.join("\n")}
-                result={preview.translation.lyrics.join("\n")}
-                multiline
-              />
-            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -210,79 +186,6 @@ export function LLMTranslationDialog({
               />
               {t("llmTranslation.sharedTags")}
             </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={fields.lyrics}
-                disabled={loading}
-                onChange={(event) => setFields((current) => ({ ...current, lyrics: event.target.checked }))}
-              />
-              {t("llmTranslation.lyrics")}
-            </label>
-            {fields.lyrics && (
-              <fieldset className="space-y-2 rounded border p-3">
-                <legend className="px-1 text-sm">{t("llmTranslation.lyricsSelection")}</legend>
-                <label className="block text-sm">
-                  {t("llmTranslation.lyricsFile")}
-                  <select
-                    className="mt-1 w-full rounded border bg-background p-2"
-                    aria-label={t("llmTranslation.lyricsFile")}
-                    value={lyricsLocationId}
-                    onChange={(event) => setLyricsLocationId(Number(event.target.value))}
-                  >
-                    <option value={0}>{t("llmTranslation.chooseFile")}</option>
-                    {media
-                      .filter((item) => item.kind === "text")
-                      .flatMap((item) =>
-                        item.locations
-                          .filter(
-                            (location) => location.availability === "available" || location.availability === "remote",
-                          )
-                          .map((location) => (
-                            <option key={location.id} value={location.id}>
-                              {item.title} · {location.fileSourceName}
-                            </option>
-                          )),
-                      )}
-                  </select>
-                </label>
-                <label className="block text-sm">
-                  {t("llmTranslation.audioTrack")}
-                  <select
-                    className="mt-1 w-full rounded border bg-background p-2"
-                    aria-label={t("llmTranslation.audioTrack")}
-                    value={audioMediaItemId}
-                    onChange={(event) => setAudioMediaItemId(Number(event.target.value))}
-                  >
-                    <option value={0}>{t("llmTranslation.chooseTrack")}</option>
-                    {media
-                      .filter((item) => item.kind === "audio")
-                      .map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.title}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-                <label className="block text-sm">
-                  {t("llmTranslation.destination")}
-                  <select
-                    className="mt-1 w-full rounded border bg-background p-2"
-                    aria-label={t("llmTranslation.destination")}
-                    value={folderId}
-                    onChange={(event) => setFolderId(Number(event.target.value))}
-                  >
-                    {work.localFolders
-                      ?.filter((folder) => folder.state === "active")
-                      .map((folder) => (
-                        <option key={folder.id} value={folder.id}>
-                          {folder.rootPath}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              </fieldset>
-            )}
             <LLMTranslationReviews
               workId={work.id}
               onSelect={(review) => {
@@ -295,7 +198,7 @@ export function LLMTranslationDialog({
               <Input
                 aria-label={t("llmTranslation.batchCodes")}
                 value={workCodes}
-                disabled={loading || fields.lyrics}
+                disabled={loading}
                 onChange={(event) => setWorkCodes(event.target.value)}
               />
             </label>
