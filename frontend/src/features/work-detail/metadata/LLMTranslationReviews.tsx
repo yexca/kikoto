@@ -2,24 +2,20 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { api, assetURL, type LLMReview, type LLMTranslationHistory, type LLMLyricsAsset } from "@/lib/api";
+import { api, type LLMReview, type LLMTranslationHistory } from "@/lib/api";
 
+/** Metadata translation reviews; lyrics translations are reviewed in Manage lyrics. */
 export function LLMTranslationReviews({ workId, onSelect }: { workId: number; onSelect: (review: LLMReview) => void }) {
   const { t } = useTranslation();
   const toast = useToast();
   const [reviews, setReviews] = useState<LLMReview[]>([]);
   const [history, setHistory] = useState<LLMTranslationHistory>({ current: [], history: [] });
-  const [assets, setAssets] = useState<LLMLyricsAsset[]>([]);
   const [busy, setBusy] = useState(false);
   const refresh = useCallback(async () => {
-    const results = await Promise.allSettled([
-      api.listTranslationReviews(workId),
-      api.listTranslations(workId),
-      api.listTranslatedLyrics(workId),
-    ]);
-    if (results[0].status === "fulfilled") setReviews(results[0].value);
+    const results = await Promise.allSettled([api.listTranslationReviews(workId), api.listTranslations(workId)]);
+    if (results[0].status === "fulfilled")
+      setReviews(results[0].value.filter((review) => !review.fields.includes("lyrics")));
     if (results[1].status === "fulfilled") setHistory(results[1].value);
-    if (results[2].status === "fulfilled") setAssets(results[2].value);
     if (results.some((result) => result.status === "rejected"))
       toast.notify(toastFromError(new Error(t("llmTranslation.reviewsFailed")), t("llmTranslation.reviewsFailed")));
   }, [workId, t, toast]);
@@ -96,27 +92,6 @@ export function LLMTranslationReviews({ workId, onSelect }: { workId: number; on
           ))}
         </ul>
       </details>
-      {assets.map((asset) => (
-        <div key={asset.id} className="flex items-center justify-between gap-2 text-sm">
-          <span>
-            {asset.language} · {t("llmTranslation.lyrics")} · {t(`llmTranslation.states.${asset.status}`)}
-          </span>
-          {asset.status === "accepted" ? (
-            <a href={assetURL(asset.downloadUrl)} download>
-              {t("llmTranslation.download")}
-            </a>
-          ) : asset.status === "publishing" ? (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() => void mutate(() => api.publishTranslatedLyrics(asset.id))}
-            >
-              {t("llmTranslation.publish")}
-            </Button>
-          ) : null}
-        </div>
-      ))}
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { assetURL, deleteJSON, getJSON, postJSONBody, putJSONBody } from "@/lib/apiTransport";
+import { deleteJSON, getJSON, getText, postJSONBody, putJSONBody } from "@/lib/apiTransport";
 
 export type ASRModel = { id: string; name?: string };
 
@@ -81,12 +81,6 @@ export type ASRTranscriptionRequest = {
   /** A lyrics language token, or empty to let the service detect it. */
   language: string;
 };
-
-async function getText(path: string) {
-  const response = await fetch(assetURL(path), { headers: { Accept: "text/plain,text/*" } });
-  if (!response.ok) throw new Error(`Transcription text returned HTTP ${response.status}.`);
-  return response.text();
-}
 
 export const asrApi = {
   listASRProviders: () => getJSON<ASRProviderList>("/api/asr/providers"),

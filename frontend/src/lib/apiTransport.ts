@@ -26,6 +26,13 @@ export function assetURL(path: string) {
   return nativeAssetURL(apiURL(path), API_BASE());
 }
 
+/** Reads a plain-text resource, such as a lyrics file the server generated. */
+export async function getText(path: string) {
+  const response = await fetch(assetURL(path), { headers: { Accept: "text/plain,text/*" } });
+  if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}.`);
+  return response.text();
+}
+
 export class ApiError extends Error {
   status: number;
   code: string;

@@ -29,6 +29,11 @@
   moments, and gives the queue to other waiting work between parts. The result
   waits for review; **Add to lyrics** saves it as a WebVTT file in the
   language's lyrics folder and assigns it to the track.
+- **Translate** in **Manage lyrics** translates a lyrics file of the work with
+  a configured LLM provider for a chosen track and language. The translation
+  runs as an Activity workflow, keeps the file's timing, and waits for review;
+  **Add to lyrics** saves it in the target language's lyrics folder under the
+  track's path and assigns it to the track.
 - **Manage files** keeps the folder choice, **Quick select**, and **Edit
   files** in one toolbar above the list. **Quick select** holds the selections
   by location and format. The head of the list selects the whole folder, a
@@ -69,7 +74,7 @@
   restores that work folder.
 - Protected LLM translation includes explicit endpoint content boundaries,
   structured tag and keyword rules, preview invalidation, shared tag candidates,
-  durable lyrics assets and background jobs for selected existing works.
+  and background jobs for selected existing works.
 - Accepted translations carry LLM provenance in language choices and cards,
   participate in search and sorting, and preserve manual/provider priority and
   field-specific fallback.

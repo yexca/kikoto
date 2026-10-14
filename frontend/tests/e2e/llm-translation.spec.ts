@@ -1,11 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { LLMPolicy, LLMProvider, LLMTranslation, WorkDetail } from "../../src/lib/api";
+import type { LLMLyricsTranslation, LLMPolicy, LLMProvider, LLMTranslation, WorkDetail } from "../../src/lib/api";
 import {
   appSettingsFixture,
   authenticatedStateFixture,
   metadataTagFixture,
   mediaItemFixture,
   mediaLocationFixture,
+  rolePermissions,
   workDetailFixture,
   type ApiResponse,
 } from "./fixtures/api";
@@ -81,9 +82,6 @@ async function openTranslation(page: Page, detailOverrides: Partial<WorkDetail> 
   );
   await page.route("**/api/works/1/llm-translations", (route) =>
     route.fulfill({ json: { current: [], history: [] } satisfies ApiResponse<"listTranslations"> }),
-  );
-  await page.route("**/api/works/1/llm-lyrics-assets", (route) =>
-    route.fulfill({ json: [] satisfies ApiResponse<"listTranslatedLyrics"> }),
   );
   await page.goto("/RJ00000000");
   await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
@@ -340,70 +338,128 @@ test("LLM background review recovers a durable preview and rejects it explicitly
   await expect.poll(() => rejected).toBe(1);
 });
 
-test("LLM lyrics reads inventory only after explicit selection and previews ordered text @desktop", async ({
-  page,
-}) => {
-  let inventoryReads = 0;
-  const dialog = await openTranslation(page, {
-    localFolders: [
-      {
-        id: 1,
-        workId: 1,
-        fileSourceId: 1,
-        rootPath: "Library/RJ00000000",
-        role: "primary",
-        state: "active",
-        primary: true,
-      },
-    ],
-  });
-  await page.route("**/api/works/1/media", (route) => {
-    inventoryReads++;
-    return route.fulfill({
-      json: {
-        workId: 1,
-        mediaWorkId: 1,
-        mediaItems: [
-          mediaItemFixture({ id: 1, kind: "audio", title: "Example audio", locations: [] }),
-          mediaItemFixture({
-            id: 2,
-            kind: "text",
-            title: "Example lyrics",
-            locations: [
-              mediaLocationFixture({
-                id: 2,
-                locationType: "local",
-                path: "Library/RJ00000000/example.lrc",
-                availability: "available",
-              }),
-            ],
-          }),
+test("Manage lyrics translates a lyrics file for its track and adds the reviewed result @desktop", async ({ page }) => {
+  const localFile = (id: number, kind: string, name: string) =>
+    mediaItemFixture({
+      id,
+      kind,
+      title: name,
+      locations: [mediaLocationFixture({ id, path: `${work.primaryCode}/${name}`, availability: "available" })],
+    });
+  await mockApplication(
+    page,
+    undefined,
+    false,
+    1,
+    0,
+    [localFile(1, "audio", "track.mp3"), localFile(2, "text", "track.mp3.vtt")],
+    undefined,
+    {
+      work: {
+        ...work,
+        ageRating: "general",
+        sourcePresence: [
+          {
+            type: "local",
+            availability: "available",
+            fileSourceId: 1,
+            fileSourceCode: "local",
+            fileSourceName: "Local",
+            sourceUrl: work.primaryCode,
+          },
         ],
-      } satisfies ApiResponse<"getWorkMedia">,
-    });
-  });
-  expect(inventoryReads).toBe(0);
-  await dialog.getByRole("checkbox", { name: "Title", exact: true }).uncheck();
-  await dialog.getByRole("checkbox", { name: "Description", exact: true }).uncheck();
-  await dialog.getByRole("checkbox", { name: "Lyrics", exact: true }).check();
-  await expect.poll(() => inventoryReads).toBe(1);
-  await dialog.getByLabel("Lyrics file", { exact: true }).selectOption("2");
-  await dialog.getByLabel("Audio track", { exact: true }).selectOption("1");
-  await page.route("**/api/works/1/llm-translate", (route) => {
-    expect(route.request().postDataJSON()).toMatchObject({
-      fields: ["lyrics"],
-      lyricsLocationId: 2,
-      audioMediaItemId: 1,
-      folderId: 1,
-    });
+      },
+      detailLocalFolders: [
+        {
+          id: 104,
+          workId: work.id,
+          fileSourceId: 1,
+          rootPath: work.primaryCode,
+          role: "external",
+          state: "active",
+          primary: true,
+        },
+      ],
+      authenticated: true,
+      permissions: rolePermissions.admin,
+    },
+  );
+  await page.route("**/api/llm/translation-models", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: provider.id,
+          name: provider.name,
+          defaultModel: provider.defaultModel,
+          boundary: provider.boundary,
+          allowSensitive: false,
+        },
+      ] satisfies ApiResponse<"listTranslationModels">,
+    }),
+  );
+  let translations: LLMLyricsTranslation[] = [];
+  await page.route(`**/api/works/${work.id}/llm-lyrics-translations`, (route) =>
+    route.fulfill({ json: translations satisfies ApiResponse<"listLyricsTranslations"> }),
+  );
+  const queued: Record<string, unknown>[] = [];
+  await page.route("**/api/llm/translation-runs", (route) => {
+    queued.push(route.request().postDataJSON() as Record<string, unknown>);
+    translations = [
+      {
+        taskId: 7,
+        runId: 41,
+        audioMediaItemId: 1,
+        lyricsLocationId: 2,
+        targetLanguage: "en-us",
+        providerName: provider.name,
+        model: "example-model",
+        state: "ready",
+        previewId: "synthetic-preview",
+        updatedAt: "2026-01-01 00:00:00",
+      },
+    ];
     return route.fulfill({
-      json: {
-        ...translation,
-        source: { lyrics: ["First original line", "Second original line"] },
-        translation: { lyrics: ["First translated line", "Second translated line"] },
-      } satisfies LLMTranslation,
+      status: 202,
+      json: { runs: [{ workId: work.id, runId: 41, state: "pending", deduplicated: false }] },
     });
   });
-  await dialog.getByRole("button", { name: "Translate", exact: true }).click();
-  await expect(dialog.getByText("First translated line Second translated line", { exact: true })).toBeVisible();
+  await page.route(`**/api/works/${work.id}/llm-previews/synthetic-preview/lyrics`, (route) =>
+    route.fulfill({ body: "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nFirst translated line\n" }),
+  );
+  const applied: unknown[] = [];
+  await page.route(`**/api/works/${work.id}/llm-translation`, (route) => {
+    applied.push(route.request().postDataJSON());
+    translations = [{ ...translations[0], state: "accepted", previewId: undefined }];
+    return route.fulfill({ json: { ok: true } });
+  });
+
+  await page.goto("/");
+  await page.getByText(work.title, { exact: true }).click();
+  await page
+    .getByRole("complementary", { name: "Source info", exact: true })
+    .getByRole("button", { name: "Manage lyrics", exact: true })
+    .click();
+  const lyrics = page.getByRole("dialog", { name: "Manage lyrics" });
+  await lyrics.getByRole("tab", { name: "Translate" }).click();
+
+  // The file's own track is the destination until another is chosen.
+  await expect(lyrics.getByRole("combobox", { name: "Lyrics file" })).toContainText("track.mp3.vtt");
+  await expect(lyrics.getByRole("combobox", { name: "Track", exact: true })).toContainText("track.mp3");
+  await lyrics.getByRole("button", { name: "Translate", exact: true }).click();
+  await expect.poll(() => queued).toHaveLength(1);
+  expect(queued[0]).toEqual({
+    workCodes: [work.primaryCode],
+    providerId: provider.id,
+    targetLanguage: "en-us",
+    fields: ["lyrics"],
+    lyricsLocationId: 2,
+    audioMediaItemId: 1,
+  });
+
+  await expect(lyrics.getByText("Awaiting review", { exact: true })).toBeVisible();
+  await lyrics.getByRole("button", { name: "Preview the translation for track.mp3" }).click();
+  await expect(lyrics.getByText("First translated line")).toBeVisible();
+  await lyrics.getByRole("button", { name: "Add to lyrics" }).click();
+  await expect.poll(() => applied).toEqual([{ previewId: "synthetic-preview" }]);
+  await expect(lyrics.getByText("Added to lyrics", { exact: true })).toBeVisible();
 });

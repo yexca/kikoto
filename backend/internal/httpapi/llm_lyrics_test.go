@@ -6,12 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
-	"strings"
 	"testing"
+	"time"
 )
 
-func TestLLMLyricsPreviewAndPublicationPreserveOriginalAndTimeline(t *testing.T) {
+func TestLLMLyricsTranslationJoinsTheTrackLyricsAndKeepsTheOriginal(t *testing.T) {
 	f := newLyricsFetchFixture(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("Example")) }, func(origin string) string { return origin + "/example.vtt" })
 	if _, err := f.db.Exec("INSERT INTO user_account(username,role) VALUES('synthetic-admin','admin')"); err != nil {
 		t.Fatal(err)
@@ -42,9 +43,19 @@ func TestLLMLyricsPreviewAndPublicationPreserveOriginalAndTimeline(t *testing.T)
 	defer upstream.Close()
 	fixture := manualOverrideFixture{db: f.db, server: f.server, userID: userID, workID: f.workID}
 	p := llmTestProvider(t, fixture, upstream.URL, "external", false)
-	payload := llmTranslatePayload{ProviderID: p.ID, Target: "zh-cn", Fields: []string{"lyrics"}, LyricsLocationID: locationID, AudioMediaItemID: f.audioID, FolderID: f.folderID}
-	body, _ := json.Marshal(payload)
+
+	// The track decides the work folder; another folder is refused.
+	elsewhere := llmTranslatePayload{ProviderID: p.ID, Target: "zh-cn", Fields: []string{"lyrics"}, LyricsLocationID: locationID, AudioMediaItemID: f.audioID, FolderID: f.folderID + 1}
+	body, _ := json.Marshal(elsewhere)
 	w := httptest.NewRecorder()
+	f.server.translateWorkWithLLM(w, llmTestRequest(fixture, "POST", string(body)))
+	if w.Code != 422 {
+		t.Fatalf("translate into another folder %d %s", w.Code, w.Body.String())
+	}
+
+	payload := llmTranslatePayload{ProviderID: p.ID, Target: "zh-cn", Fields: []string{"lyrics"}, LyricsLocationID: locationID, AudioMediaItemID: f.audioID}
+	body, _ = json.Marshal(payload)
+	w = httptest.NewRecorder()
 	f.server.translateWorkWithLLM(w, llmTestRequest(fixture, "POST", string(body)))
 	if w.Code != 200 {
 		t.Fatalf("translate %d %s", w.Code, w.Body.String())
@@ -65,41 +76,69 @@ func TestLLMLyricsPreviewAndPublicationPreserveOriginalAndTimeline(t *testing.T)
 		t.Fatalf("original was replaced: %q %v", source, err)
 	}
 	var assetPath, status string
-	var linkedAudio int64
-	if err := f.db.QueryRow("SELECT relative_path,status,audio_media_item_id FROM llm_lyrics_asset WHERE id=?", preview.ID).Scan(&assetPath, &status, &linkedAudio); err != nil {
+	var lyricsID int64
+	if err := f.db.QueryRow("SELECT relative_path,status,COALESCE(media_item_id,0) FROM llm_lyrics_asset WHERE id=?", preview.ID).Scan(&assetPath, &status, &lyricsID); err != nil {
 		t.Fatal(err)
+	}
+	if want := path.Join(f.root, "lyrics_zh_hans", "mp3", "Track1.Original name.lrc"); assetPath != want || status != "accepted" {
+		t.Fatalf("asset path=%q status=%q, want %q accepted", assetPath, status, want)
 	}
 	translated, err := os.ReadFile(filepath.Join(f.dataRoot, filepath.FromSlash(assetPath)))
-	if err != nil {
+	if err != nil || string(translated) != "[00:01.00]Example translation\n[00:02.00]Translated line\n" {
+		t.Fatalf("translated file %q %v", translated, err)
+	}
+	var assigned int64
+	var origin string
+	if err := f.db.QueryRow("SELECT lyrics_media_item_id,origin FROM media_lyrics_assignment WHERE audio_media_item_id=? AND language='zh-cn'", f.audioID).Scan(&assigned, &origin); err != nil {
 		t.Fatal(err)
 	}
-	if string(translated) != "[00:01.00]Example translation\n[00:02.00]Translated line\n" || linkedAudio != f.audioID || status != "accepted" {
-		t.Fatalf("asset=%q status=%q audio=%d", translated, status, linkedAudio)
+	if assigned != lyricsID || origin != "translation" {
+		t.Fatalf("assignment lyrics=%d origin=%q, want %d translation", assigned, origin, lyricsID)
 	}
+
+	// Publication recovery uses the durable result, never the external
+	// endpoint, and keeps a different file that took the track's name.
+	if err := os.WriteFile(filepath.Join(f.dataRoot, filepath.FromSlash(assetPath)), []byte("different"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.db.Exec("UPDATE llm_lyrics_asset SET status='publishing' WHERE id=?", preview.ID)
 	if err := f.server.publishLLMLyricsAsset(context.Background(), preview.ID); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.db.QueryRow("SELECT relative_path FROM llm_lyrics_asset WHERE id=?", preview.ID).Scan(&assetPath)
+	if want := path.Join(f.root, "lyrics_zh_hans", "mp3", "Track1.Original name (2).lrc"); assetPath != want {
+		t.Fatalf("republished at %q, want %q", assetPath, want)
+	}
+	if kept, _ := os.ReadFile(filepath.Join(f.dataRoot, f.root, "lyrics_zh_hans", "mp3", "Track1.Original name.lrc")); string(kept) != "different" {
+		t.Fatalf("publication replaced another file: %q", kept)
+	}
+	if err := f.server.indexLocalMediaForWork(context.Background(), f.workID, sourceID, f.root); err != nil {
 		t.Fatal(err)
 	}
 	var count int
 	_ = f.db.QueryRow("SELECT COUNT(*) FROM media_file_location WHERE path=?", assetPath).Scan(&count)
 	if count != 1 {
-		t.Fatalf("republication duplicated media: %d", count)
+		t.Fatalf("indexing duplicated the translated lyrics: %d", count)
 	}
-	if err := f.server.indexLocalMediaForWork(context.Background(), f.workID, sourceID, f.root); err != nil {
-		t.Fatal(err)
-	}
-	_ = f.db.QueryRow("SELECT COUNT(*) FROM media_file_location WHERE path=?", assetPath).Scan(&count)
-	if count != 1 {
-		t.Fatal("indexing duplicated the translated asset")
-	}
-	// Publication recovery uses the durable result, never the external endpoint.
-	_, _ = f.db.Exec("UPDATE llm_lyrics_asset SET status='publishing' WHERE id=?", preview.ID)
-	if err := os.WriteFile(filepath.Join(f.dataRoot, filepath.FromSlash(assetPath)), []byte("different"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.server.publishLLMLyricsAsset(context.Background(), preview.ID); err == nil {
-		t.Fatal("publication accepted an unrelated existing file")
-	}
-	if strings.HasPrefix(assetPath, ".kikoto-staging") {
-		t.Fatal("published asset left in staging")
+}
+
+func TestLLMLyricsTranslationStateFollowsReviewAndPublication(t *testing.T) {
+	now := time.Unix(1_000, 0)
+	for _, test := range []struct {
+		task, preview string
+		expires       int64
+		asset, want   string
+	}{
+		{task: "requesting", want: "requesting"},
+		{task: "uncertain", want: "uncertain"},
+		{task: "ready", preview: "proposed", expires: 2_000, want: "ready"},
+		{task: "ready", preview: "proposed", expires: 500, want: "expired"},
+		{task: "ready", preview: "rejected", expires: 2_000, want: "rejected"},
+		{task: "ready", preview: "accepted", expires: 2_000, asset: "publishing", want: "publishing"},
+		{task: "ready", preview: "accepted", expires: 500, asset: "accepted", want: "accepted"},
+	} {
+		if got := llmLyricsTranslationState(test.task, test.preview, test.expires, test.asset, now); got != test.want {
+			t.Errorf("state(%q,%q,%d,%q) = %q, want %q", test.task, test.preview, test.expires, test.asset, got, test.want)
+		}
 	}
 }

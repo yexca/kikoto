@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -386,7 +387,8 @@ func (s *Server) applyLLMTranslation(w http.ResponseWriter, r *http.Request) {
 	}
 	if preview.Lyrics != nil {
 		if err := s.publishLLMLyricsAsset(r.Context(), payload.PreviewID); err != nil {
-			writeAPIError(w, 409, "llm_asset_pending", "Translation is saved; publication is pending. Restore publication from the translation review.", false)
+			slog.Warn("lyrics translation publication failed", "asset", payload.PreviewID, "work_id", workID, "error", err)
+			writeAPIError(w, 409, "llm_asset_pending", "The translation is kept; adding it to the lyrics did not finish. Add it again from Manage lyrics.", true)
 			return
 		}
 	}

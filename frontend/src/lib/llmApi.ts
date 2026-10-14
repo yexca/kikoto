@@ -1,4 +1,4 @@
-import { deleteJSON, getJSON, postJSONBody, putJSONBody } from "@/lib/apiTransport";
+import { deleteJSON, getJSON, getText, postJSONBody, putJSONBody } from "@/lib/apiTransport";
 
 export type LLMModel = {
   id: string;
@@ -88,12 +88,32 @@ export type LLMTranslationHistory = {
   current: { language: string; field: string; value: string; status: string }[];
   history: { id: number; language: string; field: string; action: string; createdAt: string }[];
 };
-export type LLMLyricsAsset = {
-  id: string;
+export type LLMLyricsTranslationState =
+  | "pending"
+  | "requesting"
+  | "failed"
+  | "uncertain"
+  | "invalid"
+  | "cancelled"
+  | "ready"
+  | "expired"
+  | "rejected"
+  | "publishing"
+  | "accepted";
+/** A background translation of one lyrics file, with its review and publication. */
+export type LLMLyricsTranslation = {
+  taskId: number;
+  runId: number;
   audioMediaItemId: number;
-  language: string;
-  status: string;
-  downloadUrl: string;
+  lyricsLocationId: number;
+  targetLanguage: string;
+  providerName: string;
+  model: string;
+  state: LLMLyricsTranslationState;
+  failureCode?: string;
+  /** The preview to review while the translation awaits review or publication. */
+  previewId?: string;
+  updatedAt: string;
 };
 
 export const llmApi = {
@@ -107,7 +127,9 @@ export const llmApi = {
   listTranslations: (id: number) => getJSON<LLMTranslationHistory>(`/api/works/${id}/llm-translations`),
   restoreTranslation: (id: number, reviewId: number) =>
     postJSONBody<{ ok: boolean }>(`/api/works/${id}/llm-reviews/${reviewId}/restore`, {}),
-  listTranslatedLyrics: (id: number) => getJSON<LLMLyricsAsset[]>(`/api/works/${id}/llm-lyrics-assets`),
+  listLyricsTranslations: (id: number) => getJSON<LLMLyricsTranslation[]>(`/api/works/${id}/llm-lyrics-translations`),
+  lyricsTranslationText: (id: number, preview: string) =>
+    getText(`/api/works/${id}/llm-previews/${encodeURIComponent(preview)}/lyrics`),
   publishTranslatedLyrics: (asset: string) =>
     postJSONBody<{ ok: boolean }>(`/api/llm/lyrics-assets/${encodeURIComponent(asset)}/publish`, {}),
   queueTranslations: (workCodes: string[], payload: LLMTranslationRequest) =>

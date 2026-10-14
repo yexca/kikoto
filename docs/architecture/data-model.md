@@ -151,7 +151,7 @@ Manual, dictionary and provider names precede LLM names. Risk evidence retains
 base IDs, hidden tags and every concept in a merge component independently of
 displayed names.
 
-`llm_lyrics_asset` keeps the confirmed result, original lyrics location, audio item, language and source hash before publication. An independent text asset is published on the online destination pool using rooted pool handles and same-filesystem staging/rename. Failed publication retains the result for recovery without another model request. Only an explicitly selected file is read; remote reads require opt-in and remote-fetch permission. Templates preserve timing and order for LRC, WebVTT, SRT, standard ASS Dialogue and plain text. Input and output are each bounded to 128 KiB, 4,000 source lines and 4,096 bytes per text line. Chunked requests check complete sending text first.
+`llm_lyrics_asset` keeps the confirmed result, original lyrics location, audio item, target language and source hash before publication. The audio item must have an available local file; the deepest active work folder holding that file is the destination, and a request naming another folder is refused. Publication follows [speech transcription](#speech-transcription): the file is staged on the work folder's storage pool and added to the target language's lyrics folder under the track's path with the source file's extension (`<language folder>/<track path><extension>`, then numbered names when a different file holds that name), the work folder is indexed, and the file is assigned to the track in the target language with origin `translation`. The original lyrics file is never changed. Failed publication stays `publishing` and completes from the retained result without another model request; a file already published with the same content counts as published. Only an explicitly selected file is read; remote reads require opt-in and remote-fetch permission. Templates preserve timing and order for LRC, WebVTT, SRT, standard ASS Dialogue and plain text. Input and output are each bounded to 128 KiB, 4,000 source lines and 4,096 bytes per text line. Chunked requests check complete sending text first.
 
 `llm_translation_task` connects explicitly selected existing works to durable workflow jobs. Deduplication includes user, work, input hash, language, fields and configuration/policy revisions. Each outgoing chunk records requesting state before network access and retains its result before advancing. Restart resumes completed chunks and unsent work. Uncertain requests cannot retry automatically. Explicit acknowledgement can resubmit only to the original unchanged endpoint/model with unchanged policy, source and permissions; another charge may occur. Activity exposes fixed states and sanitized diagnostics, never credentials, origins, paths or full source text. Demo disables LLM configuration and translation.
 
@@ -616,8 +616,9 @@ work detail can show a sibling edition's local media. `origin` records how the
 row was made: `manual` from the lyrics manager or for a lyrics file moved within
 the work folder, `remote_fetch` for a file a lyrics edit downloaded,
 `library_import` for a file it copied from another local folder of the family,
-or `transcription` when an accepted [speech transcription](#speech-transcription)
-published it.
+`transcription` when an accepted [speech transcription](#speech-transcription)
+published it, or `translation` when an accepted
+[lyrics translation](#llm-translation) published it.
 
 The lyrics Kikoto manages are the lyrics files inside a language's lyrics
 folder at the top of a work folder: `lyrics_ja`, `lyrics_en`,
