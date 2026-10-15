@@ -1056,19 +1056,24 @@ export const surfaceKorean = {
     },
     fetchRunTitle: "{{code}} 가져오기",
     builtInDefinitions: {
-      circle_follow: {
-        name: "서클 팔로우",
+      circle_catalog_sync: {
+        name: "서클 카탈로그 동기화",
         description:
           "서클 카탈로그를 새로 고친 뒤 메타데이터가 없는 카탈로그 작품을 동기화하고 사용자 태그를 추가합니다. 원격 소스도 확인할 수 있습니다.",
       },
-      series_follow: {
-        name: "시리즈 팔로우",
+      series_catalog_sync: {
+        name: "시리즈 카탈로그 동기화",
         description: "저장된 시리즈 작품을 읽고 메타데이터가 없는 작품을 동기화한 뒤 사용자 태그를 추가합니다.",
       },
-      voice_follow: {
-        name: "성우 팔로우",
+      voice_catalog_sync: {
+        name: "성우 카탈로그 동기화",
         description:
           "선택한 원격 소스에서 성우 카탈로그를 새로 고친 뒤 메타데이터가 없는 카탈로그 작품을 동기화하고 사용자 태그를 추가합니다.",
+      },
+      creator_subscription_refresh: {
+        name: "구독 새로 고침",
+        description:
+          "구독 중인 서클과 성우 카탈로그를 새로 고치고 신작 메타데이터를 동기화해 구독자의 신작 목록에 추가한 뒤 가용성 모니터링을 확인합니다.",
       },
       availability_watch: {
         name: "가용성 감시",
@@ -1274,10 +1279,17 @@ export const surfaceKorean = {
     activity: "활동",
     loadingWorkflowData: "워크플로 데이터 로드 중",
     workflowTabs: "워크플로",
+    availabilityWatchManagedOnSubscriptions:
+      "가용성 모니터링은 구독 페이지에서 설정하며, 구독 새로 고침이 일정에 따라 실행합니다. 실행 기록은 여기에 남습니다.",
+    subscriptionRefreshManagedOnSubscriptions:
+      "구독 새로 고침 일정은 구독 페이지에서 설정합니다. 실행 기록은 여기에 남습니다.",
+    openSubscriptions: "구독 열기",
+    presetScheduledBySubscriptions:
+      "이 워크플로는 수동으로 실행합니다. 신작을 정기적으로 확인하려면 서클, 시리즈, 성우를 구독하세요. 구독은 구독 페이지에서 정한 일정에 따라 새로 고쳐집니다.",
     categories: {
       basic: "기본",
       collect: "수집",
-      follow: "팔로우",
+      catalog: "카탈로그 동기화",
       remote: "원격",
     },
     presetQueueFailed: "프리셋 워크플로를 대기열에 추가할 수 없습니다.",
@@ -1338,9 +1350,10 @@ export const surfaceKorean = {
       availability_watch: "가용성 모니터링",
       remote_work_fetch: "가져오기",
       source_presence_check: "소스의 작품",
-      circle_follow: "서클 팔로우",
-      series_follow: "시리즈 팔로우",
-      voice_follow: "성우 팔로우",
+      circle_catalog_sync: "서클 카탈로그",
+      series_catalog_sync: "시리즈 카탈로그",
+      voice_catalog_sync: "성우 카탈로그",
+      creator_subscription_refresh: "구독",
     },
     console: {
       statusStrip: "워크플로 상태",
@@ -2280,14 +2293,15 @@ export const surfaceKorean = {
       "최신 전체 스캔에서 DLsite가 {{code}}을(를) 반환하지 않았습니다. 이 서클 카탈로그에서 제거할까요?",
     retryMetadataCount: "작품 {{count}}개의 메타데이터 다시 시도",
     refreshVoice: "새로 고침",
+    refreshShort: "새로 고침",
     refreshRunning: "새로 고치는 중",
     viewRefreshRun: "활동에서 이 새로 고침 보기",
     more: "더 보기",
     moreCircleActions: "서클 추가 작업",
     moreVoiceActions: "성우 추가 작업",
     changeCover: "커버 변경…",
-    followCircle: "이 서클 팔로우…",
-    followVoice: "이 성우 팔로우…",
+    syncCircleCatalog: "이 서클 카탈로그 동기화…",
+    syncVoiceCatalog: "이 성우 카탈로그 동기화…",
     manageAliases: "별칭 관리",
     sourcesFailedShort: "소스 {{count}}개 실패",
   },

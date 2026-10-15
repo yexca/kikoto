@@ -1022,17 +1022,21 @@ export const surfaceHant = {
     },
     fetchRunTitle: "取得 {{code}}",
     builtInDefinitions: {
-      circle_follow: {
-        name: "關注社團",
+      circle_catalog_sync: {
+        name: "同步社團目錄",
         description: "重新整理社團目錄，為缺少中繼資料的目錄作品同步中繼資料並加入使用者標籤，也可檢查遠端來源。",
       },
-      series_follow: {
-        name: "關注系列",
+      series_catalog_sync: {
+        name: "同步系列目錄",
         description: "讀取已儲存的系列作品，為缺少中繼資料的作品同步中繼資料並加入使用者標籤。",
       },
-      voice_follow: {
-        name: "關注聲優",
+      voice_catalog_sync: {
+        name: "同步聲優目錄",
         description: "在所選遠端來源中重新整理聲優目錄，為缺少中繼資料的目錄作品同步中繼資料並加入使用者標籤。",
+      },
+      creator_subscription_refresh: {
+        name: "重新整理訂閱",
+        description: "重新整理已訂閱的社團和聲優目錄，同步新作中繼資料並加入訂閱者的新作清單，然後檢查可用性監視。",
       },
       availability_watch: { name: "可用性監視", description: "監視作品代碼，並在遠端來源可用時執行設定的操作。" },
       asr_transcription: {
@@ -1192,10 +1196,16 @@ export const surfaceHant = {
     activity: "活動",
     loadingWorkflowData: "正在載入工作流程資料",
     workflowTabs: "工作流程",
+    availabilityWatchManagedOnSubscriptions:
+      "可用性監視在訂閱頁面設定，並由訂閱重新整理依排程執行。執行歷史保留在這裡。",
+    subscriptionRefreshManagedOnSubscriptions: "訂閱重新整理排程在訂閱頁面設定。執行歷史保留在這裡。",
+    openSubscriptions: "開啟訂閱",
+    presetScheduledBySubscriptions:
+      "此工作流程依需求執行。要定期追蹤新作，請訂閱社團、系列或聲優；訂閱會依訂閱頁面設定的排程重新整理。",
     categories: {
       basic: "基礎",
       collect: "收集",
-      follow: "關注",
+      catalog: "目錄同步",
       remote: "遠端",
     },
     presetQueueFailed: "預製工作流程無法排入佇列。",
@@ -1256,9 +1266,10 @@ export const surfaceHant = {
       availability_watch: "可用性監視",
       remote_work_fetch: "取得",
       source_presence_check: "來源作品",
-      circle_follow: "關注社團",
-      series_follow: "關注系列",
-      voice_follow: "關注聲優",
+      circle_catalog_sync: "社團目錄",
+      series_catalog_sync: "系列目錄",
+      voice_catalog_sync: "聲優目錄",
+      creator_subscription_refresh: "訂閱",
     },
     console: {
       statusStrip: "工作流程狀態",
@@ -2177,14 +2188,15 @@ export const surfaceHant = {
     removeCatalogWorkDescription: "DLsite 在最近一次完整掃描中沒有回傳 {{code}}。要從此社團目錄中移除它嗎？",
     retryMetadataCount: "重試 {{count}} 個作品的中繼資料",
     refreshVoice: "重新整理",
+    refreshShort: "重新整理",
     refreshRunning: "正在重新整理",
     viewRefreshRun: "在活動中檢視本次重新整理",
     more: "更多",
     moreCircleActions: "更多社團操作",
     moreVoiceActions: "更多聲優操作",
     changeCover: "更換封面…",
-    followCircle: "關注此社團…",
-    followVoice: "關注此聲優…",
+    syncCircleCatalog: "同步此社團的目錄…",
+    syncVoiceCatalog: "同步此聲優的目錄…",
     manageAliases: "管理別名",
     sourcesFailedShort: "{{count}} 個來源失敗",
   },

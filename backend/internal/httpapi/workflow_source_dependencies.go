@@ -174,36 +174,6 @@ func workflowTriggerSourceIDs(ctx context.Context, q workflowTriggerQueryer, wor
 			return nil, fmt.Errorf("remote popular trigger config is invalid: %w", err)
 		}
 		ids = appendID(ids, config.SourceID)
-	default:
-		if _, found := presetWorkflowSpecByCode(workflowCode); found {
-			var config presetWorkflowTriggerConfig
-			if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
-				return nil, fmt.Errorf("preset trigger config is invalid: %w", err)
-			}
-			for _, key := range []string{"sourceIds", "checkSourceIds"} {
-				if raw, ok := config.Inputs[key]; ok {
-					values, ok := graphIntegerArray(raw)
-					if !ok {
-						return nil, fmt.Errorf("preset trigger config %s is invalid", key)
-					}
-					ids = appendIDs(ids, values)
-				}
-			}
-		}
-	}
-
-	if workflowCode == "availability_watch" {
-		var sourceID sql.NullInt64
-		err := q.QueryRowContext(ctx, "SELECT source_id FROM availability_watch WHERE id = ?", availabilityWatchID).Scan(&sourceID)
-		if errors.Is(err, sql.ErrNoRows) {
-			return ids, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		if sourceID.Valid {
-			ids = appendID(ids, sourceID.Int64)
-		}
 	}
 	return ids, nil
 }

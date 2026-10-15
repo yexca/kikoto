@@ -57,7 +57,7 @@ export function AvailabilityWatchPool({
   useEffect(() => {
     const sync = () => {
       const search = new URLSearchParams(window.location.search);
-      if (search.get("workflow") !== "availability_watch") return;
+      if (window.location.pathname !== "/subscriptions" || search.get("panel") !== "watch") return;
       const targetId = Number(search.get("target"));
       if (search.get("dialog") === "ready") {
         setExpandAvailable(true);
@@ -70,7 +70,7 @@ export function AvailabilityWatchPool({
       search.delete("dialog");
       search.delete("target");
       search.delete("run");
-      window.history.replaceState(window.history.state, "", `/workflows?${search}`);
+      window.history.replaceState(window.history.state, "", `${window.location.pathname}?${search}`);
     };
     sync();
     window.addEventListener("popstate", sync);

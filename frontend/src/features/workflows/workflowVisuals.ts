@@ -7,6 +7,7 @@ import {
   FileAudio,
   Flame,
   FolderSearch,
+  FolderSync,
   Languages,
   Library,
   ListChecks,
@@ -23,7 +24,7 @@ import type { WorkflowCategory } from "./workflowCategories";
 export const workflowCategoryIcons: Record<WorkflowCategory, LucideIcon> = {
   basic: Library,
   collect: TrendingUp,
-  follow: BellRing,
+  catalog: FolderSync,
   remote: Cloud,
 };
 
@@ -37,9 +38,10 @@ const workflowIcons: Record<string, LucideIcon> = {
   availability_watch: Radar,
   remote_work_fetch: Download,
   source_presence_check: ListChecks,
-  circle_follow: Users,
-  series_follow: BookCopy,
-  voice_follow: Mic,
+  circle_catalog_sync: Users,
+  series_catalog_sync: BookCopy,
+  voice_catalog_sync: Mic,
+  creator_subscription_refresh: BellRing,
 };
 
 /** A neutral glyph that tells workflows apart; status color stays on the run state, never on the icon. */

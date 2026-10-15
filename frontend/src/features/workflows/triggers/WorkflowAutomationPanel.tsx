@@ -2,9 +2,8 @@ import { CalendarClock, Edit3, Eye, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { presetInputsNeedReconfiguration } from "@/features/workflows/presetWorkflowModel";
 import { RelativeTime, WorkflowSection } from "@/features/workflows/WorkflowDetailLayout";
-import { parseJSONRecord, workflowCopy } from "@/features/workflows/workflowPageModel";
+import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import {
   supportedAutomationTriggerTypes,
   workflowTriggerCondition,
@@ -16,7 +15,6 @@ import type { WorkflowDefinition, WorkflowTrigger } from "@/lib/api";
 
 export function WorkflowAutomationPanel({
   definition,
-  isPreset = false,
   triggers,
   canManage,
   readOnly = false,
@@ -25,7 +23,6 @@ export function WorkflowAutomationPanel({
   onToggle,
 }: {
   definition: WorkflowDefinition;
-  isPreset?: boolean;
   triggers: WorkflowTrigger[];
   canManage: boolean;
   /** Demo keeps trigger controls visible and opens existing triggers read-only. */
@@ -34,9 +31,8 @@ export function WorkflowAutomationPanel({
   onEdit: (trigger: WorkflowTrigger, anchor?: HTMLElement | null) => void;
   onToggle: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
 }) {
-  const supportedTypes = supportedAutomationTriggerTypes(definition, isPreset);
+  const supportedTypes = supportedAutomationTriggerTypes(definition);
   const hasStartup = triggers.some((trigger) => trigger.triggerType === "startup");
-  const hasSchedule = triggers.some((trigger) => trigger.triggerType === "schedule");
   const orderedTriggers = [...triggers].sort((left, right) => {
     const leftOrder =
       left.triggerType === "startup"
@@ -57,8 +53,7 @@ export function WorkflowAutomationPanel({
     return leftOrder - rightOrder || left.id - right.id;
   });
   const canAddStartup = supportedTypes.includes("startup") && !hasStartup;
-  const canAddSchedule =
-    supportedTypes.includes("schedule") && (definition.code !== "availability_watch" || !hasSchedule);
+  const canAddSchedule = supportedTypes.includes("schedule");
   return (
     <WorkflowSection
       title={workflowCopy("triggers")}
@@ -138,16 +133,10 @@ export function WorkflowAutomationPanel({
                       </>
                     )}
                   </div>
-                  {isPreset && presetInputsNeedReconfiguration(parseJSONRecord(trigger.configJson).inputs) ? (
-                    <div className="mt-0.5 text-xs text-warning-foreground">
-                      {workflowCopy("presetTriggerNeedsReconfiguration")}
+                  {trigger.lastErrorMessage && (
+                    <div className="mt-0.5 break-words text-xs text-error-foreground [overflow-wrap:anywhere]">
+                      {workflowCopy("lastError")}: {trigger.lastErrorMessage}
                     </div>
-                  ) : (
-                    trigger.lastErrorMessage && (
-                      <div className="mt-0.5 break-words text-xs text-error-foreground [overflow-wrap:anywhere]">
-                        {workflowCopy("lastError")}: {trigger.lastErrorMessage}
-                      </div>
-                    )
                   )}
                 </div>
                 {inspectable && (

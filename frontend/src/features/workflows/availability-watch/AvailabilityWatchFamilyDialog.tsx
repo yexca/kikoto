@@ -75,7 +75,7 @@ export function AvailabilityWatchFamilyDialog({
     openWorkDetail(
       { kind: "remote-only", sourceId: target.availableSourceId, remoteCode: availableCode },
       {
-        returnTo: `/workflows?workflow=availability_watch&target=${target.id}`,
+        returnTo: `/subscriptions?panel=watch&target=${target.id}`,
         returnLabel: workflowCopy("backToAvailabilityWatch"),
       },
     );

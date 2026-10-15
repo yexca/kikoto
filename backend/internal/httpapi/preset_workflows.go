@@ -19,7 +19,7 @@ import (
 // Fetch bounds are shared with that runtime while users never author a graph.
 
 // presetWorkflowMaxTargets bounds how many circles, series, or voice actors one
-// preset run may follow; their catalogs are combined before filtering.
+// preset run may sync; their catalogs are combined before filtering.
 const presetWorkflowMaxTargets = 20
 
 // presetWorkflowMaxTargetText bounds the raw target list before it is split.
@@ -55,8 +55,9 @@ const (
 
 var presetWorkflowTagTokens = []string{"date", "target"}
 
-// presetWorkflowLegacyInputs are inputs outside the follow presets' input,
-// filter, and action set. A stored trigger that still carries one must be reconfigured rather than silently reinterpreted.
+// presetWorkflowLegacyInputs are inputs outside the catalog sync presets'
+// input, filter, and action set. A request that still carries one must be
+// reconfigured rather than silently reinterpreted.
 var presetWorkflowLegacyInputs = map[string]bool{
 	"newWorks": true, "existing": true, "action": true, "sourceId": true, "metadataRefresh": true,
 	"excludeExtensions": true, "maxFiles": true, "maxGiB": true, "minFreeGiB": true,
@@ -93,7 +94,7 @@ type presetWorkflowRecord struct {
 	Parameters         []presetWorkflowParameter `json:"parameters"`
 }
 
-// presetWorkflowInputs is one normalized follow run: the input selects and
+// presetWorkflowInputs is one normalized catalog sync run: the input selects and
 // refreshes a catalog, the filter narrows the catalog works that lack metadata,
 // and the actions sync their metadata, tag them, or check remote sources.
 type presetWorkflowInputs struct {
@@ -130,11 +131,6 @@ type presetWorkflowRunResponse struct {
 	WorkflowCode string         `json:"workflowCode"`
 	TagName      string         `json:"tagName"`
 	Inputs       map[string]any `json:"inputs"`
-}
-
-type presetWorkflowTriggerConfig struct {
-	UserID int64          `json:"userId"`
-	Inputs map[string]any `json:"inputs"`
 }
 
 type presetWorkflowPlan struct {
@@ -179,8 +175,8 @@ func presetParameters(groups ...[]presetWorkflowParameter) []presetWorkflowParam
 
 var presetWorkflowSpecs = []presetWorkflowSpec{
 	{
-		Code:               "circle_follow",
-		DisplayName:        "Follow a circle",
+		Code:               "circle_catalog_sync",
+		DisplayName:        "Sync a circle catalog",
 		Description:        "Refresh a circle catalog, then sync metadata for the catalog works that lack it, tag them, and optionally check remote sources.",
 		Target:             "circle",
 		DefaultTagTemplate: "circle_{target}",
@@ -198,8 +194,8 @@ var presetWorkflowSpecs = []presetWorkflowSpec{
 		},
 	},
 	{
-		Code:               "series_follow",
-		DisplayName:        "Follow a series",
+		Code:               "series_catalog_sync",
+		DisplayName:        "Sync a series catalog",
 		Description:        "Read the stored works of a provider series, then sync metadata for the works that lack it and tag them.",
 		Target:             "series",
 		DefaultTagTemplate: "series_{target}",
@@ -216,8 +212,8 @@ var presetWorkflowSpecs = []presetWorkflowSpec{
 		},
 	},
 	{
-		Code:               "voice_follow",
-		DisplayName:        "Follow a voice actor",
+		Code:               "voice_catalog_sync",
+		DisplayName:        "Sync a voice actor catalog",
 		Description:        "Refresh a voice actor catalog on the selected remote sources, then sync metadata for the catalog works that lack it and tag them.",
 		Target:             "voice",
 		DefaultTagTemplate: "voice_{target}",
@@ -422,7 +418,7 @@ func normalizePresetWorkflowInputs(spec presetWorkflowSpec, raw map[string]any) 
 	}
 	for key := range raw {
 		if presetWorkflowLegacyInputs[key] {
-			return presetWorkflowInputs{}, fmt.Errorf("follow options changed; reconfigure this run (%s is no longer an input)", key)
+			return presetWorkflowInputs{}, fmt.Errorf("catalog sync options changed; reconfigure this run (%s is no longer an input)", key)
 		}
 		if !allowed[key] {
 			return presetWorkflowInputs{}, fmt.Errorf("unknown preset input %s", key)
@@ -720,48 +716,6 @@ func buildPresetWorkflowDefinition(spec presetWorkflowSpec, inputs presetWorkflo
 		addEdge("action", "completed", "tag", "works")
 	}
 	return definition
-}
-
-// Trigger integration: presets are system definitions whose startup and
-// interval triggers store the configuring user and the validated inputs.
-
-func (s *Server) normalizePresetWorkflowTriggerConfig(ctx context.Context, actor currentUser, spec presetWorkflowSpec, raw string, existing *workflowTriggerRecord, now time.Time) (presetWorkflowTriggerConfig, []string, error) {
-	config := presetWorkflowTriggerConfig{Inputs: map[string]any{}}
-	if strings.TrimSpace(raw) != "" {
-		if err := decodeStrictJSON(raw, &config); err != nil {
-			return presetWorkflowTriggerConfig{}, nil, fmt.Errorf("config JSON must contain the preset inputs")
-		}
-	}
-	plan, err := s.planPresetWorkflow(ctx, spec, config.Inputs, now, true)
-	if err != nil {
-		return presetWorkflowTriggerConfig{}, nil, err
-	}
-	config.UserID = workflowTriggerOwnerID(actor, existing)
-	config.Inputs = plan.Inputs.public()
-	return config, plan.Permissions, nil
-}
-
-func (s *Server) executePresetSystemTrigger(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord, triggerType, triggerReason string) (string, []string, error) {
-	spec, found := presetWorkflowSpecByCode(definition.Code)
-	if !found {
-		return "", nil, fmt.Errorf("workflow preset not found")
-	}
-	var config presetWorkflowTriggerConfig
-	if err := decodeStrictJSON(trigger.ConfigJSON, &config); err != nil {
-		return "", nil, fmt.Errorf("preset trigger config is invalid")
-	}
-	plan, err := s.planPresetWorkflow(ctx, spec, config.Inputs, time.Now(), true)
-	if err != nil {
-		return "", nil, err
-	}
-	owner, err := s.loadSystemWorkflowTriggerOwner(ctx, config.UserID, plan.Permissions)
-	if err != nil {
-		return "", nil, err
-	}
-	_, err = s.enqueueWorkflowGraph(ctx, definition, plan.Graph, owner.ID, owner.Permissions, plan.Inputs.public(), workflowGraphEnqueueOptions{
-		TriggerID: trigger.ID, TriggerType: triggerType, TriggerReason: triggerReason, DefinitionJSON: plan.DefinitionJSON,
-	})
-	return "succeeded", nil, err
 }
 
 func uniqueStrings(values []string) []string {

@@ -70,6 +70,12 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		},
 	},
 	{
+		Code:        creatorSubscriptionWorkflowCode,
+		Name:        creatorSubscriptionDisplayName,
+		Description: creatorSubscriptionDescription,
+		Nodes:       creatorSubscriptionNodes(),
+	},
+	{
 		Code:        "local_library_scan",
 		Name:        "Scan local library",
 		Description: "Discover local works and synchronize local source presence.",
@@ -247,10 +253,6 @@ func (s *Server) createWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "workflow definition belongs to another user"})
 		return
 	}
-	if err := s.ensureAvailabilityWatchSchedule(r.Context(), definition, 0, payload.TriggerType); err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-		return
-	}
 	if err := s.ensureUniqueWorkflowStartupTrigger(r.Context(), payload.WorkflowDefinitionID, 0, payload.TriggerType); err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
@@ -370,6 +372,9 @@ func (s *Server) loadWorkflowTriggerUpdateContext(ctx context.Context, actor cur
 }
 
 func (s *Server) prepareWorkflowTriggerUpdate(ctx context.Context, actor currentUser, id int64, current workflowTriggerRecord, currentDefinition workflowDefinitionRecord, payload workflowTriggerPayload) (workflowTriggerRecord, preparedWorkflowTrigger, bool, error) {
+	if currentDefinition.Code == creatorSubscriptionWorkflowCode {
+		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "the subscription refresh schedule is configured on the Subscriptions page")
+	}
 	if current.TriggerType == "filesystem_event" && !isFixedFilesystemTriggerUpdate(currentDefinition, current, payload) {
 		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "the local library filesystem trigger only supports pause and scan-mode changes")
 	}
@@ -388,9 +393,6 @@ func (s *Server) prepareWorkflowTriggerUpdate(ctx context.Context, actor current
 	}
 	if !canUseWorkflowDefinition(actor, definition) {
 		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusForbidden, "workflow definition belongs to another user")
-	}
-	if err := s.ensureAvailabilityWatchSchedule(ctx, definition, id, payload.TriggerType); err != nil {
-		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "%s", err)
 	}
 	if payload.TriggerType == "filesystem_event" && current.TriggerType != "filesystem_event" {
 		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "filesystem watching is a fixed trigger for the local library scan")
@@ -510,6 +512,10 @@ func (s *Server) deleteWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 	}
 	if current.TriggerType == "filesystem_event" && definition.Code == "local_library_scan" {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "the local library filesystem trigger cannot be deleted"})
+		return
+	}
+	if definition.Code == creatorSubscriptionWorkflowCode {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "the subscription refresh schedule cannot be deleted"})
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), "DELETE FROM workflow_trigger WHERE id = ?", id)

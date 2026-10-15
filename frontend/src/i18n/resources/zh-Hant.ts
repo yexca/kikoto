@@ -2,6 +2,7 @@
 import { collectionHans, libraryHans, workCardHans } from "./zh-Hans";
 import { surfaceHant } from "../surfaces/zh-Hant";
 import { personalHant } from "../surfaces/personal/zh-Hant";
+import { subscriptionsHant } from "../surfaces/subscriptions/zh-Hant";
 
 const libraryHant = {
   ...libraryHans,
@@ -647,6 +648,8 @@ export const zhHantResource = {
         maintenance: "維護",
         insights: "資料面板",
         insightsDescription: "查看收聽日曆、統計和歷史",
+        subscriptions: "訂閱",
+        subscriptionsDescription: "已訂閱的社團、系列和聲優的新作",
         about: "關於",
         libraryDescription: "瀏覽、篩選並播放所有已設定來源中的作品",
         favoritesDescription: "瀏覽收藏的作品、社團、聲優和清單",
@@ -666,6 +669,7 @@ export const zhHantResource = {
       ...surfaceHant,
       ...adminToolsHant,
       ...personalHant,
+      ...subscriptionsHant,
       appearance: {
         title: "外觀",
         subtitle: "模式、樣式和色彩",
@@ -967,6 +971,7 @@ export const zhHantResource = {
         empty: "目前沒有通知。",
         workflowStatus: "工作流程 #{{id}} · {{status}}",
         availabilityReady: "{{workCode}} 的可用性檢查已準備就緒。",
+        subscriptionRelease: "訂閱有新作，包括 {{workCode}}。",
         remoteTrackFailed: "{{workCode}} 的遠端音軌失敗。",
         remoteTrackSucceeded: "{{workCode}} 的遠端音軌已就緒。",
         generic: "{{workCode}} 的工作流程更新。",

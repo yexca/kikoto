@@ -82,6 +82,12 @@ type personMergeSnapshot struct {
 	CatalogCaptured bool                        `json:"catalogCaptured,omitempty"`
 	SourceCatalog   voiceCatalogPersonSnapshot  `json:"sourceCatalog,omitempty"`
 	TargetCatalog   voiceCatalogPersonSnapshot  `json:"targetCatalog,omitempty"`
+	// Subscriptions and the source's seen set are captured since
+	// subscriptions exist; older reviews restore without them.
+	SubscriptionsCaptured bool                         `json:"subscriptionsCaptured,omitempty"`
+	SourceSubscriptions   []personSubscriptionSnapshot `json:"sourceSubscriptions,omitempty"`
+	TargetSubscriptions   []personSubscriptionSnapshot `json:"targetSubscriptions,omitempty"`
+	SourceReleaseSeen     []string                     `json:"sourceReleaseSeen,omitempty"`
 }
 
 type personSnapshot struct {

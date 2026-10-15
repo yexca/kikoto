@@ -68,7 +68,7 @@ func TestPresetWorkflowBuildsValidGraphForEveryPreset(t *testing.T) {
 }
 
 func TestPresetWorkflowFilterIsOffUnlessConfigured(t *testing.T) {
-	spec := mustPresetSpec(t, "circle_follow")
+	spec := mustPresetSpec(t, "circle_catalog_sync")
 	inputs, err := normalizePresetWorkflowInputs(spec, map[string]any{"circleId": "RG12345"})
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestPresetWorkflowFilterIsOffUnlessConfigured(t *testing.T) {
 }
 
 func TestPresetWorkflowOmitsTagNodeWithoutTemplate(t *testing.T) {
-	spec, _ := presetWorkflowSpecByCode("circle_follow")
+	spec, _ := presetWorkflowSpecByCode("circle_catalog_sync")
 	inputs, err := normalizePresetWorkflowInputs(spec, map[string]any{"circleId": "RG12345", "tagNameTemplate": ""})
 	if err != nil {
 		t.Fatal(err)
@@ -102,9 +102,9 @@ func TestPresetWorkflowOmitsTagNodeWithoutTemplate(t *testing.T) {
 }
 
 func TestNormalizePresetWorkflowInputsRejectsInvalidValues(t *testing.T) {
-	circle, _ := presetWorkflowSpecByCode("circle_follow")
-	series, _ := presetWorkflowSpecByCode("series_follow")
-	voice, _ := presetWorkflowSpecByCode("voice_follow")
+	circle, _ := presetWorkflowSpecByCode("circle_catalog_sync")
+	series, _ := presetWorkflowSpecByCode("series_catalog_sync")
+	voice, _ := presetWorkflowSpecByCode("voice_catalog_sync")
 	cases := []struct {
 		name string
 		spec presetWorkflowSpec
@@ -113,8 +113,8 @@ func TestNormalizePresetWorkflowInputsRejectsInvalidValues(t *testing.T) {
 	}{
 		{"invalid circle", circle, map[string]any{"circleId": testfixture.WorkCode(testfixture.PrefixRJ, 0)}, "circleId must list"},
 		{"unknown key", circle, map[string]any{"circleId": "RG12345", "definitionId": 3}, "unknown preset input"},
-		{"legacy action", circle, map[string]any{"circleId": "RG12345", "action": "track", "sourceId": 91}, "follow options changed"},
-		{"legacy new works switch", voice, map[string]any{"personId": 7, "sourceIds": []any{91}, "newWorks": false}, "follow options changed"},
+		{"legacy action", circle, map[string]any{"circleId": "RG12345", "action": "track", "sourceId": 91}, "catalog sync options changed"},
+		{"legacy new works switch", voice, map[string]any{"personId": 7, "sourceIds": []any{91}, "newWorks": false}, "catalog sync options changed"},
 		{"stored catalog", circle, map[string]any{"circleId": "RG12345", "catalogRefresh": "stored"}, "catalogRefresh must be one of"},
 		{"works over limit", circle, map[string]any{"circleId": "RG12345", "maxWorks": presetWorkflowMaxWorksLimit + 1}, "maxWorks must be between"},
 		{"bad date", circle, map[string]any{"circleId": "RG12345", "releaseFrom": "2025/01/01"}, "YYYY-MM-DD"},
@@ -132,8 +132,8 @@ func TestNormalizePresetWorkflowInputsRejectsInvalidValues(t *testing.T) {
 }
 
 func TestNormalizePresetWorkflowInputsSplitsTargetLists(t *testing.T) {
-	circle, _ := presetWorkflowSpecByCode("circle_follow")
-	series, _ := presetWorkflowSpecByCode("series_follow")
+	circle, _ := presetWorkflowSpecByCode("circle_catalog_sync")
+	series, _ := presetWorkflowSpecByCode("series_catalog_sync")
 	cases := []struct {
 		spec presetWorkflowSpec
 		raw  map[string]any
@@ -172,8 +172,8 @@ func TestNormalizePresetWorkflowInputsSplitsTargetLists(t *testing.T) {
 }
 
 func TestPresetWorkflowComposesCatalogOnlyAndSourceSteps(t *testing.T) {
-	circle, _ := presetWorkflowSpecByCode("circle_follow")
-	voice, _ := presetWorkflowSpecByCode("voice_follow")
+	circle, _ := presetWorkflowSpecByCode("circle_catalog_sync")
+	voice, _ := presetWorkflowSpecByCode("voice_catalog_sync")
 	normalize := func(raw map[string]any) presetWorkflowInputs {
 		inputs, err := normalizePresetWorkflowInputs(circle, raw)
 		if err != nil {
@@ -205,7 +205,7 @@ func TestPresetWorkflowComposesCatalogOnlyAndSourceSteps(t *testing.T) {
 }
 
 func TestPresetWorkflowPassesInclusiveReleaseRangeToFilter(t *testing.T) {
-	spec, _ := presetWorkflowSpecByCode("circle_follow")
+	spec, _ := presetWorkflowSpecByCode("circle_catalog_sync")
 	for _, raw := range []map[string]any{
 		{"circleId": "RG12345", "releaseFrom": "2025-01-01", "releaseTo": "2025-01-01"},
 		{"circleId": "RG12345", "releaseTo": "2025-06-30"},
@@ -320,8 +320,8 @@ func TestRunWorkflowPresetQueuesSystemRunWithRenderedTag(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := `{"inputs":{"circleId":"rg12345","maxWorks":5,"tagNameTemplate":"{date}_{target}"}}`
-	request := httptest.NewRequest(http.MethodPost, "/api/workflow-presets/circle_follow/runs", strings.NewReader(body))
-	request.SetPathValue("code", "circle_follow")
+	request := httptest.NewRequest(http.MethodPost, "/api/workflow-presets/circle_catalog_sync/runs", strings.NewReader(body))
+	request.SetPathValue("code", "circle_catalog_sync")
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
 	response := httptest.NewRecorder()
 	server.runWorkflowPreset(response, request)
@@ -332,7 +332,7 @@ func TestRunWorkflowPresetQueuesSystemRunWithRenderedTag(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(result.TagName, "_RG12345") || result.WorkflowCode != "circle_follow" {
+	if !strings.HasSuffix(result.TagName, "_RG12345") || result.WorkflowCode != "circle_catalog_sync" {
 		t.Fatalf("preset run result = %+v", result)
 	}
 	var workflowCode, status, triggerType, triggerReason string
@@ -343,7 +343,7 @@ func TestRunWorkflowPresetQueuesSystemRunWithRenderedTag(t *testing.T) {
 		WHERE run.id = ?`, result.RunID).Scan(&workflowCode, &status, &triggerType, &triggerReason, &definitionScope); err != nil {
 		t.Fatal(err)
 	}
-	if workflowCode != "circle_follow" || status != "queued" || triggerType != "manual" || triggerReason != "workflow_preset" || definitionScope != "system" {
+	if workflowCode != "circle_catalog_sync" || status != "queued" || triggerType != "manual" || triggerReason != "workflow_preset" || definitionScope != "system" {
 		t.Fatalf("preset run row = %s %s %s %s %s", workflowCode, status, triggerType, triggerReason, definitionScope)
 	}
 	var payloadJSON, workerType string
@@ -379,8 +379,8 @@ func TestRunWorkflowPresetRequiresCapabilityPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	run := func(body string, permissions []string) *httptest.ResponseRecorder {
-		request := httptest.NewRequest(http.MethodPost, "/api/workflow-presets/circle_follow/runs", strings.NewReader(body))
-		request.SetPathValue("code", "circle_follow")
+		request := httptest.NewRequest(http.MethodPost, "/api/workflow-presets/circle_catalog_sync/runs", strings.NewReader(body))
+		request.SetPathValue("code", "circle_catalog_sync")
 		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: userID, Permissions: permissions}))
 		response := httptest.NewRecorder()
 		server.runWorkflowPreset(response, request)
@@ -401,110 +401,45 @@ func TestRunWorkflowPresetRequiresCapabilityPermissions(t *testing.T) {
 	assertWorkflowGraphAPICount(t, db, "workflow_run", 0)
 }
 
-func TestPresetWorkflowScheduleStoresOwnerAndDispatchesWithCurrentPermissions(t *testing.T) {
+// Scheduled catalog sync is a subscription, so the presets accept manual runs
+// only.
+func TestPresetWorkflowsRejectAutomationTriggers(t *testing.T) {
 	db := openMigratedTestDB(t)
-	ownerID := insertWorkflowGraphAPIUser(t, db, "preset-schedule-owner")
-	insertPresetWorkflowSource(t, db)
-	if _, err := db.Exec("INSERT INTO person (id, display_name) VALUES (7, 'Example Voice')"); err != nil {
-		t.Fatal(err)
-	}
+	ownerID := insertWorkflowGraphAPIUser(t, db, "preset-trigger-owner")
 	server := NewServer(db, config.Config{})
 	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	var definitionID int64
-	if err := db.QueryRow("SELECT id FROM workflow_definition WHERE code = 'voice_follow'").Scan(&definitionID); err != nil {
+	for _, code := range []string{"circle_catalog_sync", "series_catalog_sync", "voice_catalog_sync"} {
+		var definitionID int64
+		if err := db.QueryRow("SELECT id FROM workflow_definition WHERE code = ?", code).Scan(&definitionID); err != nil {
+			t.Fatal(err)
+		}
+		body := mustJSON(map[string]any{
+			"workflowDefinitionId": definitionID, "displayName": "Scheduled sync", "triggerType": "schedule", "enabled": true,
+			"scheduleJson": `{"intervalMinutes":1440}`,
+			"configJson":   mustJSON(map[string]any{"inputs": map[string]any{"circleId": "RG12345"}}),
+		})
+		request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
+		response := httptest.NewRecorder()
+		server.createWorkflowTrigger(response, request)
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "does not support configurable triggers") {
+			t.Fatalf("%s trigger = %d, %s", code, response.Code, response.Body.String())
+		}
+	}
+	var catalogSyncTriggers int
+	if err := db.QueryRow(`
+		SELECT COUNT(*) FROM workflow_trigger AS trigger
+		INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
+		WHERE definition.code LIKE '%_catalog_sync'
+	`).Scan(&catalogSyncTriggers); err != nil {
 		t.Fatal(err)
 	}
-	body := mustJSON(map[string]any{
-		"workflowDefinitionId": definitionID, "displayName": "Weekly voice follow", "triggerType": "schedule", "enabled": true,
-		"scheduleJson": `{"intervalMinutes":10080}`,
-		"configJson":   mustJSON(map[string]any{"inputs": map[string]any{"personId": 7, "sourceIds": []int64{91}}}),
-	})
-	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
-	response := httptest.NewRecorder()
-	server.createWorkflowTrigger(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("preset schedule response = %d, %s", response.Code, response.Body.String())
+	if catalogSyncTriggers != 0 {
+		t.Fatalf("catalog sync triggers = %d", catalogSyncTriggers)
 	}
-	var trigger workflowTriggerRecord
-	if err := json.Unmarshal(response.Body.Bytes(), &trigger); err != nil {
-		t.Fatal(err)
-	}
-	var storedConfig presetWorkflowTriggerConfig
-	if err := json.Unmarshal([]byte(trigger.ConfigJSON), &storedConfig); err != nil {
-		t.Fatal(err)
-	}
-	if storedConfig.UserID != ownerID || storedConfig.Inputs["personId"] != float64(7) || storedConfig.Inputs["tagNameTemplate"] != "voice_{target}" {
-		t.Fatalf("stored preset config = %+v", storedConfig)
-	}
-	definition, err := server.loadWorkflowDefinition(context.Background(), definitionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := server.executeSystemWorkflowTrigger(context.Background(), definition, trigger, "schedule", "scheduled_interval"); err != nil {
-		t.Fatal(err)
-	}
-	var runTriggerID sql.NullInt64
-	var triggerType, inputJSON string
-	if err := db.QueryRow(`SELECT trigger_id, trigger_type, input_json FROM workflow_run WHERE workflow_definition_id = ? ORDER BY id DESC LIMIT 1`, definitionID).Scan(&runTriggerID, &triggerType, &inputJSON); err != nil {
-		t.Fatal(err)
-	}
-	if !runTriggerID.Valid || runTriggerID.Int64 != trigger.ID || triggerType != "schedule" {
-		t.Fatalf("scheduled preset run = trigger %#v type %s", runTriggerID, triggerType)
-	}
-	var runInput struct {
-		Inputs      map[string]any `json:"inputs"`
-		RequestedBy int64          `json:"requested_by_user_id"`
-	}
-	if err := json.Unmarshal([]byte(inputJSON), &runInput); err != nil {
-		t.Fatal(err)
-	}
-	if runInput.RequestedBy != ownerID || runInput.Inputs["personId"] != float64(7) {
-		t.Fatalf("scheduled preset run input = %+v", runInput)
-	}
-
-	if _, err := db.Exec("UPDATE user_account SET role = 'user' WHERE id = ?", ownerID); err != nil {
-		t.Fatal(err)
-	}
-	if err := server.executeSystemWorkflowTrigger(context.Background(), definition, trigger, "schedule", "scheduled_interval"); err == nil {
-		t.Fatal("expected revoked owner to block the scheduled preset run")
-	}
-	var lastError string
-	if err := db.QueryRow("SELECT last_error_message FROM workflow_trigger WHERE id = ?", trigger.ID).Scan(&lastError); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(lastError, "permission") {
-		t.Fatalf("revoked owner trigger error = %q", lastError)
-	}
-}
-
-func TestPresetWorkflowAutomationRejectsFullCatalogRefresh(t *testing.T) {
-	db := openMigratedTestDB(t)
-	ownerID := insertWorkflowGraphAPIUser(t, db, "preset-startup-owner")
-	server := NewServer(db, config.Config{})
-	if err := server.ensureSystemWorkflowDefinitions(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	var definitionID int64
-	if err := db.QueryRow("SELECT id FROM workflow_definition WHERE code = 'circle_follow'").Scan(&definitionID); err != nil {
-		t.Fatal(err)
-	}
-	body := mustJSON(map[string]any{
-		"workflowDefinitionId": definitionID, "displayName": "Startup circle follow", "triggerType": "startup", "enabled": true,
-		"scheduleJson": `{"type":"startup"}`,
-		"configJson":   mustJSON(map[string]any{"inputs": map[string]any{"circleId": "RG12345", "catalogRefresh": "full"}}),
-	})
-	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, account.User{ID: ownerID, Role: "admin", Permissions: account.PermissionsForRole("admin")}))
-	response := httptest.NewRecorder()
-	server.createWorkflowTrigger(response, request)
-	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "catalog refresh") {
-		t.Fatalf("full refresh automation = %d, %s", response.Code, response.Body.String())
-	}
-	now := time.Now()
-	plan, err := server.planPresetWorkflow(context.Background(), mustPresetSpec(t, "circle_follow"), map[string]any{"circleId": "RG12345", "catalogRefresh": "full"}, now, false)
+	plan, err := server.planPresetWorkflow(context.Background(), mustPresetSpec(t, "circle_catalog_sync"), map[string]any{"circleId": "RG12345", "catalogRefresh": "full"}, time.Now(), false)
 	if err != nil {
 		t.Fatalf("manual full refresh should plan: %v", err)
 	}

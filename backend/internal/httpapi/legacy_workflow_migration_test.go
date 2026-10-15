@@ -6,7 +6,7 @@ import (
 )
 
 func TestLegacyWorkflowConversionRequiresExactPresetBehavior(t *testing.T) {
-	spec, ok := presetWorkflowSpecByCode("circle_follow")
+	spec, ok := presetWorkflowSpecByCode("circle_catalog_sync")
 	if !ok {
 		t.Fatal("circle preset missing")
 	}
@@ -22,7 +22,7 @@ func TestLegacyWorkflowConversionRequiresExactPresetBehavior(t *testing.T) {
 	item := legacyWorkflowSnapshot{ID: 1, Name: "Example workflow", DefinitionJSON: string(encoded),
 		Triggers: []legacyWorkflowTrigger{{ID: 1, Type: "startup", Name: "On startup", Enabled: 1, Schedule: json.RawMessage(`{}`), Config: json.RawMessage(`{}`)}}}
 	analysis := analyzeLegacyWorkflow(item)
-	if !analysis.CanConvert || analysis.Preset != "circle_follow" {
+	if !analysis.CanConvert || analysis.Preset != "circle_catalog_sync" {
 		t.Fatalf("exact preset was not recognized: %+v", analysis)
 	}
 	graph.Policy.RequirePreview = nil

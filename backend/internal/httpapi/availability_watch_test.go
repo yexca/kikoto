@@ -238,12 +238,17 @@ func TestAvailabilityWatchTargetUpdatePreservesUnchangedReadyState(t *testing.T)
 	}
 }
 
-func TestAvailabilityWatchUsesOneScheduleTriggerAndRecordsScheduledRuns(t *testing.T) {
+// Availability Watch has no trigger of its own: the subscription refresh
+// queues it with the account that configured the watch.
+func TestSubscriptionRefreshQueuesAvailabilityWatchWithItsConfiguringAccount(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`INSERT INTO user_account (id, username, role) VALUES (1, 'watch-scheduler', 'admin')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO availability_watch (id, configured_by_user_id, action) VALUES (1, 1, 'monitor')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO availability_watch_target (watch_id, work_code, state) VALUES (1, 'RJ00000000', 'monitoring')`); err != nil {
 		t.Fatal(err)
 	}
 	server := NewServer(db, config.Config{})
@@ -252,70 +257,47 @@ func TestAvailabilityWatchUsesOneScheduleTriggerAndRecordsScheduledRuns(t *testi
 		t.Fatal(err)
 	}
 	actor := account.User{ID: 1, Role: "admin", Permissions: account.PermissionsForRole("admin")}
-	createTrigger := func(body string) *httptest.ResponseRecorder {
-		t.Helper()
-		request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(body))
-		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, actor))
-		response := httptest.NewRecorder()
-		server.createWorkflowTrigger(response, request)
-		return response
+	request := httptest.NewRequest(http.MethodPost, "/api/workflow-triggers", strings.NewReader(mustJSON(map[string]any{
+		"workflowDefinitionId": definitionID, "displayName": "Availability interval", "triggerType": "schedule",
+		"enabled": true, "scheduleJson": `{"intervalMinutes":60}`, "configJson": `{}`,
+	})))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, actor))
+	response := httptest.NewRecorder()
+	server.createWorkflowTrigger(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("Availability Watch trigger = %d, body = %s", response.Code, response.Body.String())
 	}
-	scheduleBody := mustJSON(map[string]any{
-		"workflowDefinitionId": definitionID,
-		"displayName":          "Availability interval",
-		"triggerType":          "schedule",
-		"enabled":              true,
-		"scheduleJson":         `{"intervalMinutes":60}`,
-		"configJson":           `{}`,
-	})
-	response := createTrigger(scheduleBody)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("create Availability Watch schedule = %d, body = %s", response.Code, response.Body.String())
+
+	execution := &creatorSubscriptionExecution{result: creatorSubscriptionRunResult{Failures: []string{}}}
+	server.dispatchSubscriptionAvailabilityWatch(context.Background(), 42, execution)
+	if execution.watch != "queued" || execution.result.WatchRunID == 0 {
+		t.Fatalf("watch dispatch = %q run %d failures %v", execution.watch, execution.result.WatchRunID, execution.result.Failures)
 	}
-	var trigger workflowTriggerRecord
-	if err := json.Unmarshal(response.Body.Bytes(), &trigger); err != nil {
-		t.Fatal(err)
-	}
-	var triggerConfig systemWorkflowTriggerConfig
-	if err := json.Unmarshal([]byte(trigger.ConfigJSON), &triggerConfig); err != nil {
-		t.Fatal(err)
-	}
-	if triggerConfig.UserID != actor.ID {
-		t.Fatalf("schedule owner = %d, want %d", triggerConfig.UserID, actor.ID)
-	}
-	if duplicate := createTrigger(scheduleBody); duplicate.Code != http.StatusConflict {
-		t.Fatalf("duplicate Availability Watch schedule = %d, body = %s", duplicate.Code, duplicate.Body.String())
-	}
-	startupBody := mustJSON(map[string]any{
-		"workflowDefinitionId": definitionID,
-		"displayName":          "Availability startup",
-		"triggerType":          "startup",
-		"enabled":              true,
-		"scheduleJson":         `{}`,
-		"configJson":           `{}`,
-	})
-	if startup := createTrigger(startupBody); startup.Code != http.StatusConflict {
-		t.Fatalf("Availability Watch startup trigger = %d, body = %s", startup.Code, startup.Body.String())
-	}
-	definition, err := server.loadWorkflowDefinition(context.Background(), definitionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := server.executeSystemWorkflowTrigger(context.Background(), definition, trigger, "schedule", "scheduled_interval"); err != nil {
-		t.Fatal(err)
-	}
-	var runTriggerID int64
 	var runType, runReason string
+	var requester int64
 	if err := db.QueryRow(`
-		SELECT trigger_id, trigger_type, trigger_reason
-		FROM workflow_run WHERE workflow_code = 'availability_watch'
-		ORDER BY id DESC LIMIT 1
-	`).Scan(&runTriggerID, &runType, &runReason); err != nil {
+		SELECT trigger_type, trigger_reason, CAST(json_extract(input_json, '$.requested_by_user_id') AS INTEGER)
+		FROM workflow_run WHERE id = ?
+	`, execution.result.WatchRunID).Scan(&runType, &runReason, &requester); err != nil {
 		t.Fatal(err)
 	}
-	if runTriggerID != trigger.ID || runType != "schedule" || runReason != "scheduled_interval" {
-		t.Fatalf("scheduled Availability Watch run = trigger %d type %q reason %q", runTriggerID, runType, runReason)
+	if runType != "follow_up" || runReason != "subscription_refresh:42" || requester != 1 {
+		t.Fatalf("queued watch run = type %q reason %q requester %d", runType, runReason, requester)
 	}
+
+	// A configuring account that lost the watch permissions stops the check.
+	if _, err := db.Exec(`UPDATE workflow_run SET status = 'succeeded' WHERE id = ?`, execution.result.WatchRunID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE user_account SET role = 'user' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	revoked := &creatorSubscriptionExecution{result: creatorSubscriptionRunResult{Failures: []string{}}}
+	server.dispatchSubscriptionAvailabilityWatch(context.Background(), 43, revoked)
+	if revoked.watch != "failed" || len(revoked.failures["watch"]) != 1 {
+		t.Fatalf("watch dispatch with revoked owner = %q %v", revoked.watch, revoked.failures)
+	}
+
 }
 
 func TestAvailabilityWatchExcludesNoExtensionsUntilConfigured(t *testing.T) {

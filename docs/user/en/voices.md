@@ -54,12 +54,14 @@ Voice pages present persisted person and credit data.
   Remote source searches use bounded concurrency, while voice counts and user
   tags are aggregated in batches.
 - Keeps Favorite, the common refresh actions, and a **More** menu in the
-  detail summary. **First pull** or **Refresh** queues a Follow a voice actor
+  detail summary. **First pull** or **Refresh** queues a Sync a voice actor catalog
   run with only known works' metadata across every compatible remote source, and
   **Retry metadata** appears only while known works still lack metadata. The
   button shows **Refreshing** until the run settles. A warning beside the sync
   state counts remote sources that failed their last pass and opens that run
-  in Activity. **More** holds **Change cover…**, **Follow this voice actor…**,
+  in Activity. The bell beside **Favorite** subscribes to the voice actor's
+  new works; see [Subscriptions](subscriptions.md). **More** holds **Change
+  cover…**, **Sync this voice actor's catalog…**,
   which opens the preset with this voice actor selected for source, filter,
   metadata, and tag choices, and **Manage aliases**. The works toolbar mirrors the Library: a bounded search on the
   left, then the sort button that names the current order, display options,

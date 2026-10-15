@@ -54,6 +54,9 @@ func circleMergeDB(t *testing.T) *sql.DB {
 	run("INSERT INTO user_party_tag(id,user_id,name) VALUES (1,1,'Synthetic first'),(2,1,'Synthetic second')")
 	run("INSERT INTO user_party_tag_assignment(user_id,party_id,user_party_tag_id) VALUES (1,1,1),(1,2,2)")
 	run("INSERT INTO party_catalog_refresh_state(party_id,provider_code,last_status) VALUES (1,'dlsite','succeeded'),(2,'dlsite','succeeded')")
+	run("INSERT INTO creator_subscription(user_id,subject_kind,party_id,series_title_id,activated_at) VALUES (1,'circle',1,'','2026-01-01 00:00:00'),(1,'series',2,'SRI0000000001','2026-01-02 00:00:00')")
+	run("INSERT INTO party_release_seen(party_id,primary_code) VALUES (1,?),(2,?)", testfixture.WorkCode(testfixture.PrefixRJ, 0), testfixture.WorkCode(testfixture.PrefixRJ, 1))
+	run("INSERT INTO user_release_feed_item(user_id,primary_code,event_type,subject_kind,party_id,series_title_id) VALUES (1,?,'released','series',2,'SRI0000000001')", testfixture.WorkCode(testfixture.PrefixRJ, 1))
 	return db
 }
 func circleRecords(t *testing.T, db *sql.DB) map[string][]string {
@@ -106,6 +109,11 @@ func TestCircleMergeMovesRelationsAndUndoRestoresEachOwner(t *testing.T) {
 		{"SELECT COUNT(*) FROM user_party_tag_assignment WHERE party_id=1", 2},
 		{"SELECT favorite FROM user_party_state WHERE party_id=1", 1},
 		{"SELECT rating FROM user_party_state WHERE party_id=1", 5},
+		// The target circle subscription covers the moved series subscription.
+		{"SELECT COUNT(*) FROM creator_subscription WHERE party_id=1 AND subject_kind='circle'", 1},
+		{"SELECT COUNT(*) FROM creator_subscription WHERE subject_kind='series'", 0},
+		{"SELECT COUNT(*) FROM party_release_seen WHERE party_id=1", 2},
+		{"SELECT COUNT(*) FROM user_release_feed_item WHERE party_id=1", 1},
 	} {
 		var value int
 		if err := db.QueryRow(check.query).Scan(&value); err != nil {

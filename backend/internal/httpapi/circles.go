@@ -66,7 +66,7 @@ type circleDetail struct {
 	Works          []circleCatalogWork `json:"works"`
 	WorksMeta      circleWorksMeta     `json:"worksMeta"`
 	Series         []circleSeries      `json:"series"`
-	// Refresh is the newest follow run for this circle, so the page can follow
+	// Refresh is the newest catalog sync run for this circle, so the page can follow
 	// a queued refresh across reloads and link it in Activity.
 	Refresh *creatorRefreshRun `json:"refresh"`
 }
@@ -514,7 +514,7 @@ func (s *Server) setCircleUserTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"externalId": externalID, "userTags": tags})
 }
 
-// refreshCircle queues the circle follow workflow without a tag, so a detail
+// refreshCircle queues the circle catalog sync workflow without a tag, so a detail
 // refresh and a Workflows run share one pipeline.
 func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 	actor, ok := s.requirePermission(w, r, "metadata:sync")
@@ -527,7 +527,7 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A detail refresh targets a known circle; an unknown maker id is added by
-	// the circle follow workflow from the Workflows page.
+	// the circle catalog sync workflow from the Workflows page.
 	partyID, err := s.findCircle(r.Context(), externalID)
 	if err != nil {
 		writeCircleLookupError(w, err)
@@ -556,8 +556,8 @@ func (s *Server) refreshCircle(w http.ResponseWriter, r *http.Request) {
 		}
 		inputs.CheckSourceIDs = sourceIDs
 	}
-	run, err := s.queueCreatorRefresh(r.Context(), actor, "circle_follow", inputs, func(ctx context.Context) (creatorRefreshRun, bool, error) {
-		return s.latestCircleFollowRun(ctx, externalID, true)
+	run, err := s.queueCreatorRefresh(r.Context(), actor, "circle_catalog_sync", inputs, func(ctx context.Context) (creatorRefreshRun, bool, error) {
+		return s.latestCircleCatalogSyncRun(ctx, externalID, true)
 	})
 	if !s.writeCreatorRefreshError(w, err) {
 		return

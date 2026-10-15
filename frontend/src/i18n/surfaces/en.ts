@@ -1192,10 +1192,17 @@ export const surfaceEnglish = {
     activity: "Activity",
     loadingWorkflowData: "Loading workflow data",
     workflowTabs: "Workflows",
+    availabilityWatchManagedOnSubscriptions:
+      "Availability Watch is configured on the Subscriptions page, and the subscription refresh runs it on its schedule. Its run history stays here.",
+    subscriptionRefreshManagedOnSubscriptions:
+      "The subscription refresh is scheduled on the Subscriptions page. Its run history stays here.",
+    openSubscriptions: "Open Subscriptions",
+    presetScheduledBySubscriptions:
+      "This workflow runs on demand. To follow new works on a schedule, subscribe to the circle, series, or voice actor; subscriptions refresh on the schedule set on the Subscriptions page.",
     categories: {
       basic: "Basic",
       collect: "Collect",
-      follow: "Follow",
+      catalog: "Catalog sync",
       remote: "Remote",
     },
     presetQueueFailed: "Preset workflow could not be queued.",
@@ -1256,9 +1263,10 @@ export const surfaceEnglish = {
       availability_watch: "Availability Watch",
       remote_work_fetch: "Fetch",
       source_presence_check: "Works on source",
-      circle_follow: "Circle follow",
-      series_follow: "Series follow",
-      voice_follow: "VAs follow",
+      circle_catalog_sync: "Circle catalog",
+      series_catalog_sync: "Series catalog",
+      voice_catalog_sync: "VA catalog",
+      creator_subscription_refresh: "Subscriptions",
     },
     console: {
       statusStrip: "Workflow status",
@@ -1482,20 +1490,25 @@ export const surfaceEnglish = {
     },
     fetchRunTitle: "Fetch {{code}}",
     builtInDefinitions: {
-      circle_follow: {
-        name: "Follow a circle",
+      circle_catalog_sync: {
+        name: "Sync a circle catalog",
         description:
           "Refresh a circle catalog, then sync metadata for catalog works that lack it, add a user tag, and optionally check remote sources.",
       },
-      series_follow: {
-        name: "Follow a series",
+      series_catalog_sync: {
+        name: "Sync a series catalog",
         description:
           "Read the stored works of a provider series, then sync metadata for the works that lack it and add a user tag.",
       },
-      voice_follow: {
-        name: "Follow a voice actor",
+      voice_catalog_sync: {
+        name: "Sync a voice actor catalog",
         description:
           "Refresh a voice actor's catalog on the selected remote sources, then sync metadata for catalog works that lack it and add a user tag.",
+      },
+      creator_subscription_refresh: {
+        name: "Refresh subscriptions",
+        description:
+          "Refresh subscribed circle and voice actor catalogs, sync the metadata of new works, add them to subscribers' feeds, and check Availability Watch.",
       },
       availability_watch: {
         name: "Availability Watch",
@@ -2284,14 +2297,15 @@ export const surfaceEnglish = {
       "DLsite did not return {{code}} in the latest full scan. Remove it from this circle catalog?",
     retryMetadataCount: "Retry metadata for {{count}} works",
     refreshVoice: "Refresh",
+    refreshShort: "Refresh",
     refreshRunning: "Refreshing",
     viewRefreshRun: "View this refresh in Activity",
     more: "More",
     moreCircleActions: "More circle actions",
     moreVoiceActions: "More voice actor actions",
     changeCover: "Change cover…",
-    followCircle: "Follow this circle…",
-    followVoice: "Follow this voice actor…",
+    syncCircleCatalog: "Sync this circle's catalog…",
+    syncVoiceCatalog: "Sync this voice actor's catalog…",
     manageAliases: "Manage aliases",
     sourcesFailedShort: "{{count}} sources failed",
   },

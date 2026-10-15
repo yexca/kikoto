@@ -12,7 +12,8 @@
     { "id": "work-detail", "source": "en/work-detail.md" },
     { "id": "workflows", "source": "en/workflows.md" },
     { "id": "circles", "source": "en/circles.md" },
-    { "id": "voices", "source": "en/voices.md" }
+    { "id": "voices", "source": "en/voices.md" },
+    { "id": "subscriptions", "source": "en/subscriptions.md" }
   ],
   "locales": ["en", "zh-Hans", "zh-Hant", "ja", "ko"]
 }

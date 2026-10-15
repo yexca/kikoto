@@ -1,6 +1,7 @@
 import { libraryEnglish, collectionEnglish, workCardEnglish } from "../resources";
 import { surfaceHans } from "../surfaces/zh-Hans";
 import { personalHans } from "../surfaces/personal/zh-Hans";
+import { subscriptionsHans } from "../surfaces/subscriptions/zh-Hans";
 
 export const libraryHans = {
   ...libraryEnglish,
@@ -642,6 +643,8 @@ export const zhHansResource = {
         maintenance: "维护",
         insights: "数据面板",
         insightsDescription: "查看收听日历、统计和历史",
+        subscriptions: "订阅",
+        subscriptionsDescription: "已订阅的社团、系列和声优的新作",
         about: "关于",
         libraryDescription: "浏览、筛选并播放所有已配置来源中的作品",
         favoritesDescription: "浏览收藏的作品、社团、声优和列表",
@@ -661,6 +664,7 @@ export const zhHansResource = {
       ...surfaceHans,
       ...adminToolsHans,
       ...personalHans,
+      ...subscriptionsHans,
       appearance: {
         title: "外观",
         subtitle: "模式、样式和颜色",
@@ -962,6 +966,7 @@ export const zhHansResource = {
         empty: "目前没有通知。",
         workflowStatus: "工作流 #{{id}} · {{status}}",
         availabilityReady: "{{workCode}} 的可用性检查已准备就绪。",
+        subscriptionRelease: "订阅有新作，包括 {{workCode}}。",
         remoteTrackFailed: "{{workCode}} 的远程音轨失败。",
         remoteTrackSucceeded: "{{workCode}} 的远程音轨已就绪。",
         generic: "{{workCode}} 的工作流更新。",

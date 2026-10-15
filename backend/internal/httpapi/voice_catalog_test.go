@@ -252,8 +252,8 @@ func queueVoiceFollowForTest(t *testing.T, server *Server, inputs presetWorkflow
 	t.Helper()
 	personID := inputs.PersonID
 	actor := currentUser{ID: 1, Permissions: []string{"metadata:sync"}}
-	run, err := server.queueCreatorRefresh(context.Background(), actor, "voice_follow", inputs, func(ctx context.Context) (creatorRefreshRun, bool, error) {
-		return server.latestVoiceFollowRun(ctx, personID, true)
+	run, err := server.queueCreatorRefresh(context.Background(), actor, "voice_catalog_sync", inputs, func(ctx context.Context) (creatorRefreshRun, bool, error) {
+		return server.latestVoiceCatalogSyncRun(ctx, personID, true)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +295,7 @@ func TestVoiceCatalogReadIsSideEffectFreeAndRefreshQueuesOneFollowRun(t *testing
 	}
 	runCount := func() int {
 		var count int
-		if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'voice_follow'").Scan(&count); err != nil {
+		if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'voice_catalog_sync'").Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		return count
@@ -648,7 +648,7 @@ func TestVoiceCatalogMetadataRefreshStaysInOneWorkflowRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	var voiceRuns, metadataRuns int
-	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'voice_follow'").Scan(&voiceRuns); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'voice_catalog_sync'").Scan(&voiceRuns); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'metadata_family_sync'").Scan(&metadataRuns); err != nil {

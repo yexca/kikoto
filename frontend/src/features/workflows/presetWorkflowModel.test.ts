@@ -18,7 +18,7 @@ import {
 import type { WorkflowPreset } from "@/lib/api";
 
 const circleFollow: WorkflowPreset = {
-  code: "circle_follow",
+  code: "circle_catalog_sync",
   displayName: "Follow a circle",
   description: "",
   target: "circle",
@@ -44,7 +44,7 @@ const circleFollow: WorkflowPreset = {
 
 const seriesFollow: WorkflowPreset = {
   ...circleFollow,
-  code: "series_follow",
+  code: "series_catalog_sync",
   target: "series",
   parameters: [
     { key: "seriesId", kind: "series_id", group: "input", required: true },

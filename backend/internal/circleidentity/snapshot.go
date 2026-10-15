@@ -26,6 +26,9 @@ var tables = []tableSpec{
 	{"user_party_tag_assignment", "user_id,party_id,user_party_tag_id,created_at", "user_id,party_id,user_party_tag_id", "party_id"},
 	{"party_merge_review", "id,target_party_id,source_party_id,target_name,source_name,snapshot_json,status,undone_at,created_at", "id", "target_party_id"},
 	{"party_catalog_refresh_state", "party_id,provider_code,last_success_at,last_attempt_at,last_mode,last_status,last_run_id,last_error,updated_at", "party_id,provider_code", "party_id"},
+	{"creator_subscription", "id,user_id,subject_kind,party_id,series_title_id,person_id,watch_availability,activated_at,created_at", "id", "party_id"},
+	{"party_release_seen", "party_id,primary_code,seen_at", "party_id,primary_code", "party_id"},
+	{"user_release_feed_item", "id,user_id,primary_code,event_type,subject_kind,party_id,series_title_id,person_id,workflow_run_id,created_at", "id", "party_id"},
 }
 
 type snapshot map[string][][]any

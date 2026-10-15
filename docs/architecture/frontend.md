@@ -163,8 +163,17 @@ and the Library remote source panel record remote Fetch and Fork runs through
 `pages/useRemoteWorkActions`.
 
 The Workflows page keeps routing, selection, and run handlers. Definition
-detail, run forms, the trigger editor, availability watches, run detail, and
-candidate review live in `features/workflows`.
+detail, run forms, the trigger editor, the Availability Watch configuration
+and pool, run detail, and candidate review live in `features/workflows`.
+
+The Subscriptions page composes the release feed, which draws each day's
+families in the shared work collection grid and card modes, and a settings
+drawer over its right edge (a sheet on phones) holding the subscription list with the
+refresh schedule and the Availability Watch manager, which it takes from the
+workflows feature. `?panel=subscriptions` or `?panel=watch` opens the drawer,
+and `?page=` names the feed page. The feed, subscription list, schedule panel, and the
+subscribe button that circle, series, and voice actor pages render live in
+`features/subscriptions`.
 
 The Favorites page keeps data loading, browse state, and history restoration.
 The shelf rail, shelf header, controls, card and list views, creator shelves,

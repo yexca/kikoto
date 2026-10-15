@@ -1020,17 +1020,21 @@ export const surfaceHans = {
     },
     fetchRunTitle: "获取 {{code}}",
     builtInDefinitions: {
-      circle_follow: {
-        name: "关注社团",
+      circle_catalog_sync: {
+        name: "同步社团目录",
         description: "刷新社团目录，为缺少元数据的目录作品同步元数据并添加用户标签，也可检测远程来源。",
       },
-      series_follow: {
-        name: "关注系列",
+      series_catalog_sync: {
+        name: "同步系列目录",
         description: "读取已存储的系列作品，为缺少元数据的作品同步元数据并添加用户标签。",
       },
-      voice_follow: {
-        name: "关注声优",
+      voice_catalog_sync: {
+        name: "同步声优目录",
         description: "在所选远程来源中刷新声优目录，为缺少元数据的目录作品同步元数据并添加用户标签。",
+      },
+      creator_subscription_refresh: {
+        name: "刷新订阅",
+        description: "刷新已订阅的社团和声优目录，同步新作元数据并加入订阅者的新作列表，然后检查可用性监视。",
       },
       availability_watch: { name: "可用性监视", description: "监视作品代码，并在远程来源可用时执行配置的操作。" },
       asr_transcription: {
@@ -1190,10 +1194,15 @@ export const surfaceHans = {
     activity: "活动",
     loadingWorkflowData: "正在加载工作流数据",
     workflowTabs: "工作流",
+    availabilityWatchManagedOnSubscriptions: "可用性监视在订阅页面配置，并由订阅刷新按计划运行。运行历史保留在这里。",
+    subscriptionRefreshManagedOnSubscriptions: "订阅刷新计划在订阅页面设置。运行历史保留在这里。",
+    openSubscriptions: "打开订阅",
+    presetScheduledBySubscriptions:
+      "此工作流按需运行。要定期追踪新作，请订阅社团、系列或声优；订阅会按订阅页面设置的计划刷新。",
     categories: {
       basic: "基础",
       collect: "收集",
-      follow: "关注",
+      catalog: "目录同步",
       remote: "远程",
     },
     presetQueueFailed: "预制工作流无法排队。",
@@ -1254,9 +1263,10 @@ export const surfaceHans = {
       availability_watch: "可用性监视",
       remote_work_fetch: "获取",
       source_presence_check: "来源作品",
-      circle_follow: "关注社团",
-      series_follow: "关注系列",
-      voice_follow: "关注声优",
+      circle_catalog_sync: "社团目录",
+      series_catalog_sync: "系列目录",
+      voice_catalog_sync: "声优目录",
+      creator_subscription_refresh: "订阅",
     },
     console: {
       statusStrip: "工作流状态",
@@ -2175,14 +2185,15 @@ export const surfaceHans = {
     removeCatalogWorkDescription: "DLsite 在最近一次完整扫描中没有返回 {{code}}。要从此社团目录中移除它吗？",
     retryMetadataCount: "重试 {{count}} 个作品的元数据",
     refreshVoice: "刷新",
+    refreshShort: "刷新",
     refreshRunning: "正在刷新",
     viewRefreshRun: "在活动中查看本次刷新",
     more: "更多",
     moreCircleActions: "更多社团操作",
     moreVoiceActions: "更多声优操作",
     changeCover: "更换封面…",
-    followCircle: "关注此社团…",
-    followVoice: "关注此声优…",
+    syncCircleCatalog: "同步此社团的目录…",
+    syncVoiceCatalog: "同步此声优的目录…",
     manageAliases: "管理别名",
     sourcesFailedShort: "{{count}} 个来源失败",
   },
