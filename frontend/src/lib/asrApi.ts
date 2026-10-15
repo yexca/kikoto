@@ -1,4 +1,5 @@
 import { deleteJSON, getJSON, getText, postJSONBody, putJSONBody } from "@/lib/apiTransport";
+import type { LLMAssessment } from "@/lib/llmApi";
 
 export type ASRModel = { id: string; name?: string };
 
@@ -91,6 +92,9 @@ export const asrApi = {
   fetchASRModels: (id: string) =>
     postJSONBody<ASRProvider>(`/api/asr/providers/${encodeURIComponent(id)}/fetch-models`, {}),
   listASRServices: () => getJSON<ASRService[]>("/api/asr/services"),
+  /** The content policy class of a track's work, checked without contacting a service. */
+  precheckASRTranscription: (workId: number, audioMediaItemId: number) =>
+    postJSONBody<{ class: LLMAssessment["class"] }>(`/api/works/${workId}/asr-precheck`, { audioMediaItemId }),
   listASRTranscriptions: (workId: number) => getJSON<ASRTranscriptionList>(`/api/works/${workId}/asr-transcriptions`),
   createASRTranscription: (workId: number, payload: ASRTranscriptionRequest) =>
     postJSONBody<{ id: string; runId: number; state: ASRTranscriptionState; deduplicated: boolean }>(

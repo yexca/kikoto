@@ -2989,6 +2989,27 @@ export const surfaceEnglish = {
     discarded: "Translation discarded.",
     discardFailed: "The translation could not be discarded.",
   },
+  contentRating: {
+    title: "Content rating",
+    check: "Check rating",
+    recheck: "Check again",
+    hint: "Checks the content against the content safety policy on the server. Nothing is sent to a service.",
+    failed: "The content rating could not be checked.",
+    safe: "Any enabled service can receive this content.",
+    sensitive: "Sensitive content goes only to a private service allowed to receive it.",
+    unknown: "The work's age rating is missing or unknown, so no service receives this content.",
+    blocked: "A blocking content rule matched, so no service receives this content.",
+    receives: "{{service}} can receive this content.",
+    notReceives:
+      "{{service}} cannot receive this content. Sensitive content goes only to a private service allowed to receive it.",
+    notForContent: "Not for this content",
+    classes: {
+      safe: "Safe",
+      sensitive: "Sensitive",
+      unknown: "Unknown rating",
+      blocked: "Blocked",
+    },
+  },
   lyricsManager: {
     title: "Manage lyrics",
     description:
@@ -3021,6 +3042,7 @@ export const surfaceEnglish = {
       "The last line starts at {{time}}, after this track ends ({{duration}}). It may belong to another track.",
     pending: "Unsaved changes: {{count}}",
     noChanges: "No changes",
+    groupCoverage: "Tracks with lyrics: {{count}} of {{total}}",
     save: "Save",
     saving: "Saving…",
     saved: "Lyrics assignments saved.",

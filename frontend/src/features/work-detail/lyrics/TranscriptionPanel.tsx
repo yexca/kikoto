@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { FloatingSelect, type FloatingSelectOption } from "@/components/ui/floating-select";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import type { LyricsManagerAudio } from "@/features/work-detail/lyrics/lyricsManagerModel";
+import {
+  ContentRatingCheck,
+  ServiceChoiceLabel,
+  useContentRating,
+} from "@/features/work-detail/lyrics/ContentRatingCheck";
+import { serviceReceives } from "@/features/work-detail/lyrics/contentRatingModel";
+import { LyricsNote } from "@/features/work-detail/lyrics/LyricsNote";
 import { LyricsPreview } from "@/features/work-detail/lyrics/LyricsPreview";
 import {
   ApiError,
@@ -123,6 +130,19 @@ export function TranscriptionPanel({
     return () => window.clearInterval(timer);
   }, [active, load]);
 
+  const rating = useContentRating(String(audioID), async () => {
+    try {
+      return (await api.precheckASRTranscription(work.id, audioID)).class;
+    } catch (error) {
+      toast.notify(
+        error instanceof ApiError && startRefusals.has(error.code)
+          ? { kind: "error", message: t(`asrTranscription.errors.${error.code}`) }
+          : toastFromError(error, t("contentRating.failed")),
+      );
+      throw error;
+    }
+  });
+
   const start = async () => {
     if (!audioID || !serviceID || language === null) return;
     setSubmitting(true);
@@ -190,8 +210,14 @@ export function TranscriptionPanel({
   }));
   const serviceOptions: FloatingSelectOption[] = (services ?? []).map((service) => ({
     value: service.id,
-    label: `${service.name} · ${service.defaultModel}`,
+    label: (
+      <ServiceChoiceLabel
+        name={`${service.name} · ${service.defaultModel}`}
+        excluded={rating.contentClass !== null && !serviceReceives(rating.contentClass, service)}
+      />
+    ),
   }));
+  const service = services?.find((candidate) => candidate.id === serviceID) ?? null;
   const languageOptions: FloatingSelectOption[] = [
     { value: allLyricsLanguages, label: t("asrTranscription.detect") },
     ...lyricsLanguages
@@ -201,10 +227,10 @@ export function TranscriptionPanel({
   const noService = services !== null && services.length === 0;
 
   return (
-    <div className="space-y-5">
-      <p className="text-sm text-muted-foreground">{t("asrTranscription.intro")}</p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="min-w-0 sm:col-span-2">
+    <div className="grid gap-5 @3xl:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] @3xl:items-start">
+      <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+        <p className="text-sm text-muted-foreground">{t("asrTranscription.intro")}</p>
+        <div className="min-w-0">
           <div className="mb-1 text-xs font-medium text-muted-foreground">{t("asrTranscription.track")}</div>
           <FloatingSelect
             value={String(audioID)}
@@ -242,21 +268,29 @@ export function TranscriptionPanel({
             disabled={submitting || language === null}
           />
         </div>
-        <p className="text-xs text-muted-foreground sm:col-span-2">
+        <p className="text-xs text-muted-foreground">
           {noService ? t("asrTranscription.noService") : t("asrTranscription.languageHint")}
         </p>
-        <div className="sm:col-span-2">
-          <Button onClick={() => void start()} disabled={submitting || !audioID || !serviceID || language === null}>
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AudioLines className="h-4 w-4" />}
-            {submitting ? t("asrTranscription.starting") : t("asrTranscription.start")}
-          </Button>
-        </div>
+        <ContentRatingCheck rating={rating} service={service} disabled={submitting || !audioID} />
+        <Button
+          className="w-full"
+          onClick={() => void start()}
+          disabled={submitting || !audioID || !serviceID || language === null}
+        >
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AudioLines className="h-4 w-4" />}
+          {submitting ? t("asrTranscription.starting") : t("asrTranscription.start")}
+        </Button>
       </div>
 
-      <section aria-labelledby="asr-transcription-list" className="space-y-2">
+      <section aria-labelledby="asr-transcription-list" className="min-w-0 space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <h4 id="asr-transcription-list" className="text-sm font-medium">
+          <h4 id="asr-transcription-list" className="flex items-center gap-2 text-sm font-medium">
             {t("asrTranscription.listTitle")}
+            {transcriptions.length > 0 && (
+              <span className="rounded-full bg-muted px-1.5 py-px text-2xs tabular-nums text-muted-foreground">
+                {transcriptions.length}
+              </span>
+            )}
           </h4>
           <Button
             variant="ghost"
@@ -269,22 +303,31 @@ export function TranscriptionPanel({
           </Button>
         </div>
         {listState === "loading" ? (
-          <p className="text-sm text-muted-foreground">{t("asrTranscription.loading")}</p>
+          <LyricsNote icon={<Loader2 className="animate-spin" aria-hidden="true" />}>
+            {t("asrTranscription.loading")}
+          </LyricsNote>
         ) : listState === "failed" ? (
-          <p role="alert" className="text-sm text-error-foreground">
+          <p
+            role="alert"
+            className="rounded-lg border border-error-border bg-error-surface px-3 py-2.5 text-sm text-error-foreground"
+          >
             {t("asrTranscription.loadFailed")}
           </p>
         ) : transcriptions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("asrTranscription.empty")}</p>
+          <LyricsNote icon={<AudioLines aria-hidden="true" />}>{t("asrTranscription.empty")}</LyricsNote>
         ) : (
-          <ul className="divide-y rounded-lg border">
+          <ul className="divide-y overflow-hidden rounded-lg border bg-card">
             {transcriptions.map((item) => {
               const reviewable = item.state === "ready" || item.state === "publishing";
               const busy = busyID === item.id;
               // The lyrics manager names a track by its file; a track no longer listed keeps the stored title.
               const title = audioByID.get(item.audioMediaItemId)?.title ?? item.audioTitle;
+              const progress =
+                activeStates.has(item.state) && item.durationMs > 0
+                  ? Math.min(100, Math.floor((item.progressMs / item.durationMs) * 100))
+                  : null;
               return (
-                <li key={item.id} className="px-3 py-2.5">
+                <li key={item.id} className="px-3 py-2.5 sm:px-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="min-w-0 flex-1 basis-56">
                       <div className="truncate text-sm font-medium">{title}</div>
@@ -297,12 +340,16 @@ export function TranscriptionPanel({
                             language: languageLabel(item.language),
                           })}
                         </span>
-                        {activeStates.has(item.state) && item.durationMs > 0 && (
-                          <span className="tabular-nums">
-                            {Math.min(100, Math.floor((item.progressMs / item.durationMs) * 100))}%
-                          </span>
-                        )}
+                        {progress !== null && <span className="tabular-nums">{progress}%</span>}
                       </div>
+                      {progress !== null && (
+                        <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                          <div
+                            className="h-full rounded-full bg-info transition-[width] duration-500"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
                     {reviewable && (
                       <div className="flex shrink-0 flex-wrap items-center gap-1">

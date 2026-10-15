@@ -22,20 +22,91 @@ import (
 // service explicitly allowed to receive them, and unknown or blocked works go
 // nowhere.
 func (s *Server) asrAllowed(ctx context.Context, workID int64, p asr.Provider) (bool, error) {
-	input, err := loadLLMWorkInput(ctx, s.db, workID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
+	class, err := s.asrContentClass(ctx, workID)
 	if err != nil {
 		return false, err
+	}
+	return class == "safe" || class == "sensitive" && p.Boundary == "private" && p.AllowSensitive, nil
+}
+
+// asrContentClass is the content policy class of a work's audio: its metadata
+// decides, since the audio itself is not inspected. A work that no longer
+// exists is unknown.
+func (s *Server) asrContentClass(ctx context.Context, workID int64) (string, error) {
+	input, err := loadLLMWorkInput(ctx, s.db, workID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "unknown", nil
+	}
+	if err != nil {
+		return "", err
 	}
 	policy, err := s.llmStore.Policy(ctx)
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	_, scan := llmFields(input, nil)
-	class := policy.Assess(input.Age, scan, input.Tags).Class
-	return class == "safe" || class == "sensitive" && p.Boundary == "private" && p.AllowSensitive, nil
+	return policy.Assess(input.Age, scan, input.Tags).Class, nil
+}
+
+// asrWorkTrack resolves an audio track of a work's lyrics family that has an
+// available local file, writing the refusal when there is none.
+func (s *Server) asrWorkTrack(w http.ResponseWriter, r *http.Request, workID, audioID int64) (localTrack, bool) {
+	family, err := s.lyricsAssignmentFamily(r.Context(), workID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeAPIError(w, 404, "work_not_found", "Work not found.", false)
+		return localTrack{}, false
+	}
+	if err != nil {
+		writeError(w, err)
+		return localTrack{}, false
+	}
+	source, err := s.loadLocalTrack(r.Context(), audioID)
+	if errors.Is(err, errLocalTrackUnavailable) || err == nil && !family[source.WorkID] {
+		writeAPIError(w, 400, "asr_audio_unavailable", "Choose an available local audio track of this work.", false)
+		return localTrack{}, false
+	}
+	if err != nil {
+		writeError(w, err)
+		return localTrack{}, false
+	}
+	return source, true
+}
+
+// precheckASRTranscription reports the content policy class of a track's work
+// without contacting a service, so a requester can see which services may
+// receive the audio before starting a transcription.
+func (s *Server) precheckASRTranscription(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.IsDemo() {
+		writeASRDisabled(w)
+		return
+	}
+	if _, ok := s.requirePermissions(w, r, "library:write", "workflows:run"); !ok {
+		return
+	}
+	workID, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeAPIError(w, 400, "invalid_work_id", "Invalid work id.", false)
+		return
+	}
+	var body struct {
+		AudioMediaItemID int64 `json:"audioMediaItemId"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&body) != nil || body.AudioMediaItemID <= 0 {
+		writeAPIError(w, 400, "invalid_asr_request", "Choose an audio track.", false)
+		return
+	}
+	source, ok := s.asrWorkTrack(w, r, workID, body.AudioMediaItemID)
+	if !ok {
+		return
+	}
+	class, err := s.asrContentClass(r.Context(), source.WorkID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]string{"class": class})
 }
 
 type asrTranscriptionRequest struct {
@@ -75,22 +146,8 @@ func (s *Server) createASRTranscription(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, 400, "asr_not_ready", "Choose an enabled speech recognition service with a model.", false)
 		return
 	}
-	family, err := s.lyricsAssignmentFamily(r.Context(), workID)
-	if errors.Is(err, sql.ErrNoRows) {
-		writeAPIError(w, 404, "work_not_found", "Work not found.", false)
-		return
-	}
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	source, err := s.loadLocalTrack(r.Context(), body.AudioMediaItemID)
-	if errors.Is(err, errLocalTrackUnavailable) || err == nil && !family[source.WorkID] {
-		writeAPIError(w, 400, "asr_audio_unavailable", "Choose an available local audio track of this work.", false)
-		return
-	}
-	if err != nil {
-		writeError(w, err)
+	source, ok := s.asrWorkTrack(w, r, workID, body.AudioMediaItemID)
+	if !ok {
 		return
 	}
 	if source.DurationSeconds > asrMaxAudioSeconds {

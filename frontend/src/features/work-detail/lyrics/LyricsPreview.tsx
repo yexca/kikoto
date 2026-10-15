@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, FileText, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { lyricsTimingCheck } from "@/features/work-detail/lyrics/lyricsManagerModel";
@@ -52,41 +52,53 @@ export function LyricsPreview({
     [text, durationSeconds],
   );
   const lines = useMemo(() => (text === null ? [] : previewLines(text)), [text]);
+  const timing =
+    check && !check.exceedsAudio
+      ? check.timed
+        ? t("lyricsManager.timingOk", { count: check.lineCount, time: formatLyricsTime(check.lastLineSeconds) })
+        : t("lyricsManager.untimed")
+      : null;
   return (
-    <div className="mt-2 rounded-md border bg-muted/40 px-3 py-2 text-xs">
-      <div className="mb-1 truncate font-medium" title={label}>
-        {label}
+    <div className="mt-2 overflow-hidden rounded-md border bg-muted/30 text-xs">
+      <div className="flex min-w-0 items-center gap-2 border-b bg-muted/50 px-3 py-1.5">
+        <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate font-medium" title={label}>
+          {label}
+        </span>
+        {timing && <span className="hidden shrink-0 text-muted-foreground sm:inline">{timing}</span>}
       </div>
-      {!current ? (
-        <p className="text-muted-foreground">{t("lyricsManager.previewLoading")}</p>
-      ) : !check ? (
-        <p className="text-muted-foreground">{t("lyricsManager.previewFailed")}</p>
-      ) : (
-        <>
-          {check.exceedsAudio ? (
-            <p className="mb-1 flex items-start gap-1.5 rounded border border-warning-border bg-warning-surface px-2 py-1 text-warning-foreground">
-              <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
-              {t("lyricsManager.timingExceeds", {
-                time: formatLyricsTime(check.lastLineSeconds),
-                duration: formatLyricsTime(durationSeconds),
-              })}
-            </p>
-          ) : (
-            <p className="mb-1 text-muted-foreground">
-              {check.timed
-                ? t("lyricsManager.timingOk", { count: check.lineCount, time: formatLyricsTime(check.lastLineSeconds) })
-                : t("lyricsManager.untimed")}
-            </p>
-          )}
-          <ul className="space-y-0.5">
-            {lines.map((line, index) => (
-              <li key={index} className="truncate">
-                {line}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      <div className="space-y-2 px-3 py-2">
+        {!current ? (
+          <p className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            {t("lyricsManager.previewLoading")}
+          </p>
+        ) : !check ? (
+          <p className="text-muted-foreground">{t("lyricsManager.previewFailed")}</p>
+        ) : (
+          <>
+            {check.exceedsAudio ? (
+              <p className="flex items-start gap-1.5 rounded border border-warning-border bg-warning-surface px-2 py-1 text-warning-foreground">
+                <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+                {t("lyricsManager.timingExceeds", {
+                  time: formatLyricsTime(check.lastLineSeconds),
+                  duration: formatLyricsTime(durationSeconds),
+                })}
+              </p>
+            ) : (
+              <p className="text-muted-foreground sm:hidden">{timing}</p>
+            )}
+            <ol className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+              {lines.map((line, index) => (
+                <li key={index} className="col-span-2 grid grid-cols-subgrid">
+                  <span className="font-mono tabular-nums text-muted-foreground">{line.time}</span>
+                  <span className="truncate">{line.text}</span>
+                </li>
+              ))}
+            </ol>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -110,16 +122,19 @@ export async function loadRemoteLyricsText(sourceId: number, workCode: string, p
 }
 
 /** The first lines as playback shows them: timed lines with their start, else the raw text. */
-function previewLines(text: string) {
+function previewLines(text: string): { time: string; text: string }[] {
   const parsed = parseTimedLyrics(text);
   if (parsed.timed) {
-    return parsed.lines.slice(0, previewLineCount).map((line) => `${formatLyricsTime(line.time)}  ${line.text}`);
+    return parsed.lines
+      .slice(0, previewLineCount)
+      .map((line) => ({ time: formatLyricsTime(line.time), text: line.text }));
   }
   return text
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .slice(0, previewLineCount);
+    .slice(0, previewLineCount)
+    .map((line) => ({ time: "", text: line }));
 }
 
 function formatLyricsTime(seconds: number | null) {

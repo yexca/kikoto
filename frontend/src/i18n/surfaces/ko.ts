@@ -2927,6 +2927,27 @@ export const surfaceKorean = {
     discarded: "번역문을 버렸습니다.",
     discardFailed: "번역문을 버리지 못했습니다.",
   },
+  contentRating: {
+    title: "콘텐츠 등급",
+    check: "등급 확인",
+    recheck: "다시 확인",
+    hint: "서버에서 콘텐츠 안전 정책과 대조합니다. 서비스로는 아무것도 전송하지 않습니다.",
+    failed: "콘텐츠 등급을 확인하지 못했습니다.",
+    safe: "활성화된 모든 서비스가 이 콘텐츠를 받을 수 있습니다.",
+    sensitive: "민감한 콘텐츠는 수신이 허용된 비공개 서비스로만 전송됩니다.",
+    unknown: "작품의 연령 등급이 없거나 알 수 없어 어떤 서비스로도 전송되지 않습니다.",
+    blocked: "차단 규칙과 일치하여 어떤 서비스로도 전송되지 않습니다.",
+    receives: "{{service}}은(는) 이 콘텐츠를 받을 수 있습니다.",
+    notReceives:
+      "{{service}}은(는) 이 콘텐츠를 받을 수 없습니다. 민감한 콘텐츠는 수신이 허용된 비공개 서비스로만 전송됩니다.",
+    notForContent: "이 콘텐츠에는 사용 불가",
+    classes: {
+      safe: "안전",
+      sensitive: "민감",
+      unknown: "등급 불명",
+      blocked: "차단",
+    },
+  },
   lyricsManager: {
     title: "가사 관리",
     description:
@@ -2958,6 +2979,7 @@ export const surfaceKorean = {
     timingExceeds: "마지막 줄이 {{time}}에 시작해 트랙 종료({{duration}}) 이후입니다. 다른 트랙의 가사일 수 있습니다.",
     pending: "저장하지 않은 변경: {{count}}",
     noChanges: "변경 없음",
+    groupCoverage: "가사가 있는 트랙: {{count}} / {{total}}",
     save: "저장",
     saving: "저장 중…",
     saved: "가사 설정을 저장했습니다.",

@@ -307,6 +307,40 @@ func TestASRTranscriptionRefusesWhatThePolicyOrLibraryDoesNotAllow(t *testing.T)
 	}
 }
 
+func TestASRPrecheckReportsTheContentClassWithoutStartingWork(t *testing.T) {
+	fixture := newASRFixture(t, 2)
+	precheck := func(audioID int64) *httptest.ResponseRecorder {
+		t.Helper()
+		workID := jsonNumber(fixture.workID)
+		body, _ := json.Marshal(map[string]int64{"audioMediaItemId": audioID})
+		response := httptest.NewRecorder()
+		fixture.server.precheckASRTranscription(response, fixture.request(t, http.MethodPost, "/api/works/"+workID+"/asr-precheck", string(body), map[string]string{"id": workID}))
+		return response
+	}
+	for _, rating := range []struct{ age, class string }{{"general", "safe"}, {"adult", "sensitive"}, {"", "unknown"}} {
+		if _, err := fixture.db.Exec("UPDATE work SET age_rating = ? WHERE id = ?", rating.age, fixture.workID); err != nil {
+			t.Fatal(err)
+		}
+		response := precheck(fixture.audioID)
+		var result struct {
+			Class string `json:"class"`
+		}
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Class != rating.class {
+			t.Fatalf("age %q = %d %s, want class %q", rating.age, response.Code, response.Body.String(), rating.class)
+		}
+	}
+	if response := precheck(fixture.audioID + 1000); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "asr_audio_unavailable") {
+		t.Fatalf("a track outside the work = %d %s", response.Code, response.Body.String())
+	}
+	var runs int
+	if err := fixture.db.QueryRow("SELECT COUNT(*) FROM asr_transcription").Scan(&runs); err != nil || runs != 0 {
+		t.Fatalf("a precheck created transcriptions: %d %v", runs, err)
+	}
+	if fixture.requests.Load() != 0 {
+		t.Fatal("a precheck reached the service")
+	}
+}
+
 func TestASRTranscriptionInterruptionsNeverResendSilently(t *testing.T) {
 	for _, scenario := range []string{"restart_during_request", "service_changed", "cancelled"} {
 		t.Run(scenario, func(t *testing.T) {
