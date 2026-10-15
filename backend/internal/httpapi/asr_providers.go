@@ -15,22 +15,23 @@ import (
 )
 
 type asrProviderResponse struct {
-	ID             string      `json:"id"`
-	PresetID       string      `json:"presetId"`
-	Name           string      `json:"name"`
-	BaseURL        string      `json:"baseUrl"`
-	Boundary       string      `json:"boundary"`
-	AllowSensitive bool        `json:"allowSensitive"`
-	Scope          string      `json:"scope,omitempty"`
-	Port           int         `json:"port,omitempty"`
-	Enabled        bool        `json:"enabled"`
-	HasAPIKey      bool        `json:"hasApiKey"`
-	DefaultModel   string      `json:"defaultModel"`
-	Models         []asr.Model `json:"models"`
+	ID              string      `json:"id"`
+	PresetID        string      `json:"presetId"`
+	Name            string      `json:"name"`
+	BaseURL         string      `json:"baseUrl"`
+	Boundary        string      `json:"boundary"`
+	AllowSensitive  bool        `json:"allowSensitive"`
+	MaxContentClass string      `json:"maxContentClass"`
+	Scope           string      `json:"scope,omitempty"`
+	Port            int         `json:"port,omitempty"`
+	Enabled         bool        `json:"enabled"`
+	HasAPIKey       bool        `json:"hasApiKey"`
+	DefaultModel    string      `json:"defaultModel"`
+	Models          []asr.Model `json:"models"`
 }
 
 func (s *Server) asrResponse(p asr.Provider) asrProviderResponse {
-	return asrProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, AllowSensitive: p.AllowSensitive, Scope: p.Scope, Port: p.Port, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", DefaultModel: p.DefaultModel, Models: p.Models}
+	return asrProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, AllowSensitive: p.AllowSensitive, MaxContentClass: p.MaxContentClass, Scope: p.Scope, Port: p.Port, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", DefaultModel: p.DefaultModel, Models: p.Models}
 }
 
 func writeASRDisabled(w http.ResponseWriter) {
@@ -58,16 +59,17 @@ func (s *Server) listASRProviders(w http.ResponseWriter, r *http.Request) {
 }
 
 type asrProviderPayload struct {
-	PresetID       string  `json:"presetId"`
-	Name           string  `json:"name"`
-	BaseURL        *string `json:"baseUrl"`
-	APIKey         *string `json:"apiKey"`
-	Boundary       string  `json:"boundary"`
-	AllowSensitive *bool   `json:"allowSensitive"`
-	Scope          string  `json:"scope"`
-	Port           *int    `json:"port"`
-	Enabled        *bool   `json:"enabled"`
-	DefaultModel   *string `json:"defaultModel"`
+	PresetID        string  `json:"presetId"`
+	Name            string  `json:"name"`
+	BaseURL         *string `json:"baseUrl"`
+	APIKey          *string `json:"apiKey"`
+	Boundary        string  `json:"boundary"`
+	AllowSensitive  *bool   `json:"allowSensitive"`
+	MaxContentClass *string `json:"maxContentClass"`
+	Scope           string  `json:"scope"`
+	Port            *int    `json:"port"`
+	Enabled         *bool   `json:"enabled"`
+	DefaultModel    *string `json:"defaultModel"`
 }
 
 func (s *Server) saveASRProvider(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +120,14 @@ func (s *Server) saveASRProvider(w http.ResponseWriter, r *http.Request) {
 	if body.Boundary != "" {
 		p.Boundary = body.Boundary
 	}
-	if body.AllowSensitive != nil {
+	if body.MaxContentClass != nil {
+		if body.AllowSensitive != nil || *body.MaxContentClass == "" {
+			writeAPIError(w, 400, "invalid_asr_config", "Choose one explicit content receive maximum.", false)
+			return
+		}
+		p.MaxContentClass = *body.MaxContentClass
+	} else if body.AllowSensitive != nil {
+		p.MaxContentClass = ""
 		p.AllowSensitive = *body.AllowSensitive
 	}
 	if body.Scope != "" {
@@ -213,7 +222,7 @@ func (s *Server) listASRServices(w http.ResponseWriter, r *http.Request) {
 	result := []map[string]any{}
 	for _, p := range providers {
 		if p.Enabled && p.DefaultModel != "" {
-			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "boundary": p.Boundary, "allowSensitive": p.AllowSensitive})
+			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "boundary": p.Boundary, "allowSensitive": p.AllowSensitive, "maxContentClass": p.MaxContentClass})
 		}
 	}
 	writeJSON(w, 200, result)

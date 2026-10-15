@@ -88,11 +88,19 @@ func TestLLMPreviewBindsActorAndRevalidatesSnapshots(t *testing.T) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"title\":\"Example translation\"}"}}]}`))
 	}))
 	defer upstream.Close()
-	for _, change := range []string{"source", "policy", "connection", "model", "replay", "restart", "actor", "work"} {
+	for _, change := range []string{"source", "policy", "connection", "model", "maximum", "replay", "restart", "actor", "work"} {
 		t.Run(change, func(t *testing.T) {
 			f := newManualOverrideFixture(t, config.Config{})
 			_, _ = f.db.Exec("UPDATE work SET age_rating='general',description='Original description' WHERE id=?", f.workID)
 			p := llmTestProvider(t, f, upstream.URL, "external", false)
+			if change == "maximum" {
+				p.MaxContentClass = "sensitive"
+				var err error
+				p, err = f.server.llmStore.Mutate(context.Background(), p.ID, p, nil, false)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 			w := llmTestTranslate(t, f, p)
 			if w.Code != 200 {
 				t.Fatal(w.Body.String())
@@ -110,9 +118,11 @@ func TestLLMPreviewBindsActorAndRevalidatesSnapshots(t *testing.T) {
 				if err := f.server.llmStore.SavePolicy(context.Background(), llm.DefaultPolicy()); err != nil {
 					t.Fatal(err)
 				}
-			case "connection", "model":
+			case "connection", "model", "maximum":
 				if change == "connection" {
 					p.BaseURL = "https://new.example.invalid"
+				} else if change == "maximum" {
+					p.MaxContentClass = "safe"
 				} else {
 					p.DefaultModel = "another-model"
 				}

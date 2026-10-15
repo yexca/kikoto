@@ -195,8 +195,9 @@ an administrator accepts it, so the notice does not depend on the client.
   location with a 2-minute bound and a byte limit on its output. Tracks longer
   than 12 hours are refused.
 - Audio is sent only for a work the LLM content policy allows for that
-  service: sensitive works require a private service with `allowSensitive`,
-  and unknown or blocked works are refused. The policy, the service
+  service, using the shared `contentpolicy` assessment and receive maximum
+  independently of the declared data boundary. Unknown and blocked works are
+  refused; audio classification uses metadata without inspecting audio bytes. The policy, the service
   configuration, the requester's permissions and the audio file version are
   rechecked before every chunk.
 - Publication stages the file in `.kikoto-staging` on the work folder's

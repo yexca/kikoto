@@ -33,7 +33,7 @@ const sameMachine: ASRProvider = {
   name: "Example service",
   baseUrl: "http://gateway.example.invalid:8000",
   boundary: "private",
-  allowSensitive: true,
+  maxContentClass: "sensitive",
   scope: "local_machine",
   port: 8000,
   enabled: true,
@@ -75,8 +75,8 @@ describe("speech recognition service drafts", () => {
     expect(replacesConnection({ ...draft, scope: "other_machine" })).toBe(true);
   });
 
-  it("only lets a private service receive sensitive content", () => {
+  it("keeps the receive maximum when the data boundary changes", () => {
     const draft = { ...draftFromProvider(sameMachine), boundary: "external" as const };
-    expect(updatePayload(draft).allowSensitive).toBe(false);
+    expect(updatePayload(draft).maxContentClass).toBe("sensitive");
   });
 });

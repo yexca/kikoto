@@ -472,10 +472,8 @@ export const surfaceJapanese = {
       boundaryExternal: "外部",
       boundaryPrivate: "プライベート",
       boundaryHint:
-        "どの作品の音声を送信できるかは LLM のコンテンツ安全ポリシーで決まります。センシティブな作品は受信を明示的に許可したプライベートサービスにのみ送られ、不明・ブロック対象の作品は拒否されます。",
-      allowSensitive: "センシティブな内容を許可",
-      allowSensitiveDescription:
-        "ポリシーがセンシティブとする作品の音声を、このプライベートサービスが受け取れるようにします。",
+        "データ境界は送信先の区分です。送信できる内容はコンテンツポリシーとサービスの受信上限で決まります。",
+
       enabled: "有効",
       enabledDescription: "モデルを設定すると文字起こしに使えるようになります。",
       privateBoundary: "プライベートサービス",
@@ -515,15 +513,17 @@ export const surfaceJapanese = {
       remoteLyrics: "リモート歌詞の翻訳を有効化",
       remoteLyricsDescription: "明示的に選択したリモートファイルだけを読み込みます。取得権限が必要です。",
       boundary: "データ境界",
-      allowSensitive: "機微な内容の受信を許可",
+
       boundaryHint:
-        "機微な内容には、受信を明示的に許可したプライベート接続先が必要です。不明・禁止の内容は拒否します。",
+        "データ境界は送信先の区分です。送信できる内容はコンテンツポリシーとサービスの受信上限で決まります。",
       clearKey: "保存済み API キーを消去",
       addRule: "キーワードルールを追加",
       ruleNumber: "ルール {{number}}",
       ruleTerm: "ルール {{number}} のキーワード",
       ruleAction: "ルール {{number}} の動作",
       sensitive: "機微",
+      restricted: "高機微",
+      tagAction: "タグ「{{tag}}」の動作",
       blocked: "禁止",
       ruleFields: { title: "タイトル", description: "説明", tags: "タグ", lyrics: "歌詞", all: "すべてのテキスト" },
       title: "LLM プロバイダー",
@@ -567,16 +567,17 @@ export const surfaceJapanese = {
       modelsFetched: "{{count}} 個のモデルを取得しました。",
       policyTitle: "コンテンツ安全ポリシー",
       policyDescription:
-        "LLM プロバイダーと音声認識サービスに適用します。タグまたはキーワードに一致した場合、外部エンドポイントを停止し、センシティブな翻訳と文字起こしをローカルに限定します。",
+        "LLM と音声認識に適用します。タグとキーワードで区分を引き上げ、サービスごとに受信上限を指定します。不明・禁止の内容は拒否します。",
       policySaved: "コンテンツ安全ポリシーを保存しました。",
       policySaveFailed: "コンテンツ安全ポリシーを保存できませんでした。",
       alwaysScanAllAges: "全年齢作品もスキャン",
-      alwaysScanAllAgesDescription: "全年齢と報告された作品にもキーワード規則を適用します。",
-      sensitiveTags: "機微なメタデータタグ",
-      sensitiveTagsDescription: "共有タグを選択します。非表示名と統合済み ID のリスク情報も保持します。",
-      keywords: "センシティブなキーワード",
-      keywordsDescription:
-        "ルールごとにキーワード、確認するフィールド、動作を選択します。禁止ルールはすべての年齢区分に適用されます。",
+      alwaysScanAllAgesDescription:
+        "全年齢作品にも追加の機微キーワード検査を行います。高機微・禁止ルールは常に検査します。",
+      sensitiveTags: "メタデータタグのルール",
+      sensitiveTagsDescription:
+        "共有タグを選び、機微・高機微・禁止を指定します。非表示名と統合済み ID のリスク情報も保持します。",
+      keywords: "キーワードルール",
+      keywordsDescription: "キーワード、検査項目と動作を選びます。高機微・禁止ルールはすべての年齢区分に適用します。",
       addTitle: "LLM プロバイダーを追加",
       editTitle: "LLM プロバイダーを編集",
       endpointDefaultHint: "空欄のままにすると、サービスの既定のアドレスを使います。",
@@ -586,8 +587,7 @@ export const surfaceJapanese = {
       modelsAvailable: "検出した {{count}} 個のモデルを入力候補として使えます。検出前に接続設定を保存します。",
       boundaryExternal: "外部",
       boundaryPrivate: "プライベート",
-      allowSensitiveDescription:
-        "ポリシーが機微と判定した内容を、このプライベートエンドポイントで受信できるようにします。",
+
       enabledDescription: "既定のモデルを設定すると翻訳に使用できます。",
       enableNamed: "{{name}} を有効化",
       editNamed: "{{name}} を編集",
@@ -596,7 +596,7 @@ export const surfaceJapanese = {
       deleteDescription: "接続設定、保存済みのキー、検出したモデルが削除されます。",
       policyUnsaved: "未保存の変更があります",
       policyDiscard: "変更を破棄",
-      sensitiveTagsEmpty: "機微なタグは選択されていません。",
+      sensitiveTagsEmpty: "タグルールはありません。",
       sensitiveTagsSearch: "追加するタグを検索",
       keywordsEmpty: "キーワードルールはありません。",
       ruleTermPlaceholder: "キーワードまたは語句",
@@ -2856,8 +2856,7 @@ export const surfaceJapanese = {
       unknown: "文字起こしが停止しました。",
     },
     errors: {
-      asr_policy_blocked:
-        "コンテンツ安全ポリシーにより、この作品の音声をこのサービスへ送信できません。センシティブな作品には受信を許可したプライベートサービスが必要で、年齢区分が不明な作品は拒否されます。",
+      asr_policy_blocked: "内容がサービスの受信上限を超えているか、不明・禁止に分類されています。",
       asr_audio_unavailable: "このトラックには、作品フォルダー内で利用できるローカルファイルがありません。",
       asr_not_ready: "サービスが無効か、モデルが設定されていません。管理者に確認を依頼してください。",
       asr_audio_too_long: "トラックが長すぎるため文字起こしできません。",
@@ -2936,8 +2935,7 @@ export const surfaceJapanese = {
       unknown: "翻訳が停止しました。もう一度翻訳するか、Activity で確認してください。",
     },
     errors: {
-      llm_policy_blocked:
-        "コンテンツ安全ポリシーにより、この歌詞をこのプロバイダーへ送信できません。センシティブな内容には受信を許可されたプライベートなプロバイダーが必要です。年齢区分が不明な作品は拒否されます。",
+      llm_policy_blocked: "内容がサービスの受信上限を超えているか、不明・禁止に分類されています。",
       llm_not_ready: "プロバイダーがオフになっているか、モデルがありません。管理者に確認を依頼してください。",
       llm_lyrics_scope: "この作品の歌詞ファイルと、作品フォルダーにローカルファイルがあるトラックを選んでください。",
       llm_lyrics_format: "歌詞ファイルが空か、大きすぎるか、対応していない形式です。",
@@ -2967,15 +2965,21 @@ export const surfaceJapanese = {
     hint: "サーバー上でコンテンツ安全ポリシーと照合します。サービスには何も送信されません。",
     failed: "コンテンツ区分を確認できませんでした。",
     safe: "有効なすべてのサービスがこのコンテンツを受け取れます。",
-    sensitive: "センシティブなコンテンツは、受け取りを許可されたプライベートサービスにのみ送信されます。",
+    sensitive: "機微な内容には、受信上限が機微以上のサービスが必要です。",
     unknown: "作品の年齢区分がないか不明なため、どのサービスにも送信されません。",
     blocked: "ブロックルールに一致したため、どのサービスにも送信されません。",
     receives: "{{service}} はこのコンテンツを受け取れます。",
-    notReceives:
-      "{{service}} はこのコンテンツを受け取れません。センシティブなコンテンツは、受け取りを許可されたプライベートサービスにのみ送信されます。",
+    notReceives: "{{service}} はこの内容を受信できません。サービスの受信上限を超えています。",
     notForContent: "このコンテンツには使用不可",
+    restricted: "高機微に指定された内容には、高機微の受信を明示的に許可したサービスが必要です。",
+    maximumLabel: "受信できる内容の上限",
+    maximumHint: "データ境界とは別に、このサービスが受信できる内容の区分を選びます。不明・禁止の内容は常に拒否します。",
+    maximum: "サービスの受信上限：{{maximum}}",
+    metadataOnly: "音声の区分は作品のメタデータで判断します。音声自体は検査しません。",
+    maximumOptions: { safe: "一般のみ", sensitive: "機微以下", restricted: "高機微以下" },
     classes: {
-      safe: "安全",
+      restricted: "高機微",
+      safe: "一般",
       sensitive: "センシティブ",
       unknown: "区分不明",
       blocked: "ブロック",

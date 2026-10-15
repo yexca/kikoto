@@ -1,3 +1,4 @@
+import { ContentMaximumField } from "@/components/settings/ContentMaximumField";
 import { Globe, Laptop, Loader2, Plus, RefreshCw, Save } from "lucide-react";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -296,9 +297,7 @@ export function LLMProviderDialog({
                       role="radio"
                       aria-checked={draft.boundary === boundary}
                       className={segmentedItemClassName(draft.boundary === boundary)}
-                      onClick={() =>
-                        patch({ boundary, allowSensitive: boundary === "private" && draft.allowSensitive })
-                      }
+                      onClick={() => patch({ boundary })}
                     >
                       {label}
                     </button>
@@ -308,12 +307,9 @@ export function LLMProviderDialog({
                   {t("maintenance.llm.boundaryHint")}
                 </p>
               </div>
-              <SwitchRow
-                title={t("maintenance.llm.allowSensitive")}
-                description={t("maintenance.llm.allowSensitiveDescription")}
-                checked={draft.boundary === "private" && draft.allowSensitive}
-                disabled={draft.boundary !== "private"}
-                onCheckedChange={(allowSensitive) => patch({ allowSensitive })}
+              <ContentMaximumField
+                value={draft.maxContentClass}
+                onChange={(maxContentClass) => patch({ maxContentClass })}
               />
               <SwitchRow
                 title={t("maintenance.llm.enabled")}

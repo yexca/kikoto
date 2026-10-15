@@ -520,9 +520,8 @@ export const surfaceEnglish = {
       boundaryExternal: "External",
       boundaryPrivate: "Private",
       boundaryHint:
-        "The content safety policy under LLM decides whose audio may be sent. Sensitive works require a private service explicitly allowed to receive them; unknown and blocked works are refused.",
-      allowSensitive: "Allow sensitive content",
-      allowSensitiveDescription: "Lets this private service receive the audio of works the policy marks sensitive.",
+        "The data boundary describes where content is sent. The content policy and this service's receive maximum decide what may be sent.",
+
       enabled: "Enabled",
       enabledDescription: "Offered for transcription once a model is set.",
       privateBoundary: "private service",
@@ -564,15 +563,17 @@ export const surfaceEnglish = {
       remoteLyricsDescription:
         "Remote files are read only when explicitly selected. Remote fetch permission is required.",
       boundary: "Data boundary",
-      allowSensitive: "Allow sensitive content",
+
       boundaryHint:
-        "Sensitive content requires a private endpoint explicitly allowed to receive it. Unknown and blocked content are refused.",
+        "The data boundary describes where content is sent. The content policy and this service's receive maximum decide what may be sent.",
       clearKey: "Clear stored API key",
       addRule: "Add keyword rule",
       ruleNumber: "Rule {{number}}",
       ruleTerm: "Keyword for rule {{number}}",
       ruleAction: "Action for rule {{number}}",
       sensitive: "Sensitive",
+      restricted: "High sensitivity",
+      tagAction: "Action for tag {{tag}}",
       blocked: "Blocked",
       ruleFields: { title: "Title", description: "Description", tags: "Tags", lyrics: "Lyrics", all: "All text" },
       title: "LLM providers",
@@ -615,16 +616,18 @@ export const surfaceEnglish = {
       modelsFetched: "Fetched {{count}} models.",
       policyTitle: "Content safety policy",
       policyDescription:
-        "Applies to LLM providers and ASR services. A matching tag or keyword blocks external endpoints and keeps sensitive translation and transcription local.",
+        "Applies to LLM providers and ASR services. Tags and keywords raise the content level; each service has its own receive maximum. Unknown and blocked content are refused.",
       policySaved: "Content safety policy saved.",
       policySaveFailed: "Content safety policy could not be saved.",
       alwaysScanAllAges: "Scan all-ages works too",
-      alwaysScanAllAgesDescription: "Run keyword rules even when the provider reports an all-ages rating.",
-      sensitiveTags: "Sensitive metadata tags",
-      sensitiveTagsDescription: "Select shared tags. Hidden names and merged identities retain risk evidence.",
-      keywords: "Sensitive keywords",
+      alwaysScanAllAgesDescription:
+        "Run additional sensitive keyword checks on all-ages works too. High-sensitivity and blocking rules always apply.",
+      sensitiveTags: "Metadata tag rules",
+      sensitiveTagsDescription:
+        "Choose shared tags and a Sensitive, High sensitivity or Blocked action. Hidden names and merged identities retain risk evidence.",
+      keywords: "Keyword rules",
       keywordsDescription:
-        "Choose a keyword, checked fields and action for each rule. Blocking rules apply to every age rating.",
+        "Choose a keyword, fields and action. High-sensitivity and blocking rules apply to every age rating.",
       addTitle: "Add LLM provider",
       editTitle: "Edit LLM provider",
       endpointDefaultHint: "Leave blank to use the service's default address.",
@@ -635,7 +638,7 @@ export const surfaceEnglish = {
         "{{count}} discovered models are offered as suggestions. Fetch models saves the connection first.",
       boundaryExternal: "External",
       boundaryPrivate: "Private",
-      allowSensitiveDescription: "Lets this private endpoint receive content the policy marks sensitive.",
+
       enabledDescription: "Offered for translation once a default model is set.",
       enableNamed: "Enable {{name}}",
       editNamed: "Edit {{name}}",
@@ -644,7 +647,7 @@ export const surfaceEnglish = {
       deleteDescription: "Its connection settings, stored key and discovered models are removed.",
       policyUnsaved: "Unsaved changes",
       policyDiscard: "Discard",
-      sensitiveTagsEmpty: "No sensitive tags selected.",
+      sensitiveTagsEmpty: "No tag rules selected.",
       sensitiveTagsSearch: "Search tags to add",
       keywordsEmpty: "No keyword rules.",
       ruleTermPlaceholder: "Keyword or phrase",
@@ -2899,8 +2902,7 @@ export const surfaceEnglish = {
       unknown: "The transcription stopped.",
     },
     errors: {
-      asr_policy_blocked:
-        "The content safety policy does not allow sending this work's audio to this service. A sensitive work needs a private service allowed to receive it; a work with an unknown age rating is refused.",
+      asr_policy_blocked: "The content exceeds this service's receive maximum, or its class is unknown or blocked.",
       asr_audio_unavailable: "This track has no available local file in a work folder.",
       asr_not_ready: "The service is turned off or has no model. Ask an administrator to check it.",
       asr_audio_too_long: "The track is too long to transcribe.",
@@ -2978,8 +2980,7 @@ export const surfaceEnglish = {
       unknown: "The translation stopped. Translate again, or check it in Activity.",
     },
     errors: {
-      llm_policy_blocked:
-        "The content safety policy does not allow sending these lyrics to this provider. Sensitive content needs a private provider allowed to receive it; a work with an unknown age rating is refused.",
+      llm_policy_blocked: "The content exceeds this service's receive maximum, or its class is unknown or blocked.",
       llm_not_ready: "The provider is turned off or has no model. Ask an administrator to check it.",
       llm_lyrics_scope: "Choose a lyrics file of this work and a track with a local file in a work folder.",
       llm_lyrics_format: "The lyrics file is empty, too large or in an unsupported format.",
@@ -3009,15 +3010,26 @@ export const surfaceEnglish = {
     hint: "Checks the content against the content safety policy on the server. Nothing is sent to a service.",
     failed: "The content rating could not be checked.",
     safe: "Any enabled service can receive this content.",
-    sensitive: "Sensitive content goes only to a private service allowed to receive it.",
+    sensitive: "Sensitive content requires a service whose receive maximum is Sensitive or higher.",
     unknown: "The work's age rating is missing or unknown, so no service receives this content.",
     blocked: "A blocking content rule matched, so no service receives this content.",
     receives: "{{service}} can receive this content.",
-    notReceives:
-      "{{service}} cannot receive this content. Sensitive content goes only to a private service allowed to receive it.",
+    notReceives: "{{service}} cannot receive this content because it exceeds the service receive maximum.",
     notForContent: "Not for this content",
+    restricted: "High-sensitivity content requires an explicit High sensitivity receive maximum.",
+    maximumLabel: "Maximum content level",
+    maximumHint:
+      "Choose what this service may receive, independently of its data boundary. Unknown and blocked content are refused.",
+    maximum: "Service receive maximum: {{maximum}}",
+    metadataOnly: "Audio is rated from the work's metadata; the audio itself is not inspected.",
+    maximumOptions: {
+      safe: "General only",
+      sensitive: "Sensitive and below",
+      restricted: "High sensitivity and below",
+    },
     classes: {
-      safe: "Safe",
+      restricted: "High sensitivity",
+      safe: "General",
       sensitive: "Sensitive",
       unknown: "Unknown rating",
       blocked: "Blocked",

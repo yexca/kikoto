@@ -2,22 +2,19 @@ import { useState } from "react";
 import { Loader2, RotateCw, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { ContentAssessment } from "@/components/content/ContentAssessment";
+import type { LLMAssessment } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import {
-  serviceReceives,
-  type ContentBoundary,
-  type ContentClass,
-} from "@/features/work-detail/lyrics/contentRatingModel";
-import { cn } from "@/lib/tailwindClassNames";
+import { type ContentBoundary, type ContentClass } from "@/features/work-detail/lyrics/contentRatingModel";
 
 type ContentRatingState =
-  { key: string; status: "checking" | "failed" } | { key: string; status: "done"; contentClass: ContentClass };
+  { key: string; status: "checking" | "failed" } | { key: string; status: "done"; assessment: LLMAssessment };
 
 export type ContentRating = {
   status: "idle" | "checking" | "failed" | "done";
   /** The checked class, until the checked input changes. */
   contentClass: ContentClass | null;
+  assessment: LLMAssessment | null;
   run: () => void;
 };
 
@@ -26,20 +23,19 @@ export type ContentRating = {
  * reads the work and possibly a whole lyrics file. A result belongs to the
  * input it was checked for: a new `key` drops it.
  */
-export function useContentRating(key: string, check: () => Promise<ContentClass>): ContentRating {
+export function useContentRating(key: string, check: () => Promise<LLMAssessment>): ContentRating {
   const [state, setState] = useState<ContentRatingState | null>(null);
   const current = state?.key === key ? state : null;
   const run = () => {
     setState({ key, status: "checking" });
     check()
-      .then((contentClass) =>
-        setState((latest) => (latest?.key === key ? { key, status: "done", contentClass } : latest)),
-      )
+      .then((assessment) => setState((latest) => (latest?.key === key ? { key, status: "done", assessment } : latest)))
       .catch(() => setState((latest) => (latest?.key === key ? { key, status: "failed" } : latest)));
   };
   return {
     status: current?.status ?? "idle",
-    contentClass: current?.status === "done" ? current.contentClass : null,
+    contentClass: current?.status === "done" ? current.assessment.class : null,
+    assessment: current?.status === "done" ? current.assessment : null,
     run,
   };
 }
@@ -55,13 +51,6 @@ export function ServiceChoiceLabel({ name, excluded }: { name: string; excluded:
   );
 }
 
-const classBadges: Record<ContentClass, BadgeProps["variant"]> = {
-  safe: "success",
-  sensitive: "warning",
-  unknown: "error",
-  blocked: "error",
-};
-
 /** The content rating of a request form: a check button, then the class and what it means for the chosen service. */
 export function ContentRatingCheck({
   rating,
@@ -76,24 +65,6 @@ export function ContentRatingCheck({
   const { t } = useTranslation();
   const { status, contentClass } = rating;
   const checking = status === "checking";
-  const verdict =
-    contentClass === null
-      ? null
-      : contentClass === "unknown" || contentClass === "blocked"
-        ? t(`contentRating.${contentClass}`)
-        : service === null
-          ? contentClass === "safe"
-            ? t("contentRating.safe")
-            : t("contentRating.sensitive")
-          : serviceReceives(contentClass, service)
-            ? t("contentRating.receives", { service: service.name })
-            : t("contentRating.notReceives", { service: service.name });
-  const verdictClassName =
-    contentClass === "unknown" || contentClass === "blocked"
-      ? "text-error-foreground"
-      : contentClass !== null && (service ? serviceReceives(contentClass, service) : contentClass === "safe")
-        ? "text-muted-foreground"
-        : "text-warning-foreground";
   return (
     <div className="space-y-1.5 rounded-md border bg-background/60 px-3 py-2.5" aria-live="polite">
       <div className="flex min-h-8 items-center justify-between gap-2">
@@ -112,13 +83,8 @@ export function ContentRatingCheck({
           {contentClass ? t("contentRating.recheck") : t("contentRating.check")}
         </Button>
       </div>
-      {verdict && contentClass ? (
-        <div className="flex items-start gap-2">
-          <Badge variant={classBadges[contentClass]} className="mt-px shrink-0 px-1.5 py-0 text-2xs">
-            {t(`contentRating.classes.${contentClass}`)}
-          </Badge>
-          <p className={cn("min-w-0 text-xs", verdictClassName)}>{verdict}</p>
-        </div>
+      {rating.assessment ? (
+        <ContentAssessment assessment={rating.assessment} service={service} />
       ) : status === "failed" ? (
         <p className="text-xs text-error-foreground">{t("contentRating.failed")}</p>
       ) : (

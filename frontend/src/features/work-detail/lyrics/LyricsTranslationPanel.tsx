@@ -163,7 +163,7 @@ export function LyricsTranslationPanel({
         lyricsLocationId: locationID,
         audioMediaItemId: audioID,
       });
-      return result.assessment.class;
+      return result.assessment;
     } catch (error) {
       toast.notify(
         error instanceof ApiError && startRefusals.has(error.code)

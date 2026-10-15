@@ -29,7 +29,7 @@ export function LLMPolicyEditor({
   const suggestions = useMetadataEntrySuggestions("tags", query);
   useEffect(() => {
     let active = true;
-    void Promise.allSettled(policy.tagIds.map((id) => api.getMetadataTag(id))).then((results) => {
+    void Promise.allSettled(policy.tagRules.map((rule) => api.getMetadataTag(rule.tagId))).then((results) => {
       if (!active) return;
       setNames((current) => ({
         ...current,
@@ -43,7 +43,7 @@ export function LLMPolicyEditor({
     return () => {
       active = false;
     };
-  }, [policy.tagIds]);
+  }, [policy.tagRules]);
   const updateRule = (index: number, change: Partial<LLMKeywordRule>) =>
     onChange({ ...policy, keywords: policy.keywords.map((rule, i) => (i === index ? { ...rule, ...change } : rule)) });
   const tagName = (id: number) => names[id] ?? `#${id}`;
@@ -75,21 +75,44 @@ export function LLMPolicyEditor({
         stack
       >
         <div className="grid w-full min-w-0 gap-2.5">
-          {policy.tagIds.length > 0 ? (
+          {policy.tagRules.length > 0 ? (
             <ul className="flex min-w-0 flex-wrap gap-1.5">
-              {policy.tagIds.map((id) => (
+              {policy.tagRules.map(({ tagId: id, action }) => (
                 <li
                   key={id}
-                  className="inline-flex h-7 min-w-0 max-w-full items-center gap-0.5 rounded-[var(--badge-radius)] bg-secondary pl-2.5 pr-1 text-xs font-medium text-secondary-foreground"
+                  className="inline-flex min-h-9 min-w-0 max-w-full items-center gap-0.5 rounded-[var(--badge-radius)] bg-secondary pl-2.5 pr-1 text-xs font-medium text-secondary-foreground"
                 >
                   <span className="min-w-0 truncate">{tagName(id)}</span>
+                  <NativeSelect
+                    aria-label={t("maintenance.llm.tagAction", { tag: tagName(id) })}
+                    fieldSize="sm"
+                    className="w-28 shrink-0"
+                    disabled={disabled}
+                    value={action}
+                    onChange={(event) =>
+                      onChange({
+                        ...policy,
+                        tagRules: policy.tagRules.map((rule) =>
+                          rule.tagId === id
+                            ? { ...rule, action: event.target.value as LLMKeywordRule["action"] }
+                            : rule,
+                        ),
+                      })
+                    }
+                  >
+                    <option value="sensitive">{t("maintenance.llm.sensitive")}</option>
+                    <option value="restricted">{t("maintenance.llm.restricted")}</option>
+                    <option value="blocked">{t("maintenance.llm.blocked")}</option>
+                  </NativeSelect>
                   <button
                     type="button"
                     className="touch-target relative grid h-5 w-5 shrink-0 place-items-center rounded-[calc(var(--badge-radius)-2px)] opacity-70 transition-opacity hover:bg-foreground/10 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
                     aria-label={t("common.removeItem", { value: tagName(id) })}
                     title={t("common.removeItem", { value: tagName(id) })}
                     disabled={disabled}
-                    onClick={() => onChange({ ...policy, tagIds: policy.tagIds.filter((value) => value !== id) })}
+                    onClick={() =>
+                      onChange({ ...policy, tagRules: policy.tagRules.filter((rule) => rule.tagId !== id) })
+                    }
                   >
                     <X className="h-3 w-3" aria-hidden="true" />
                   </button>
@@ -99,7 +122,7 @@ export function LLMPolicyEditor({
           ) : (
             <p className="text-xs text-muted-foreground">{t("maintenance.llm.sensitiveTagsEmpty")}</p>
           )}
-          {!disabled && (
+          {!disabled && policy.tagRules.length < KEYWORD_RULE_LIMIT && (
             <div className="w-full sm:max-w-sm">
               <SuggestionCombobox
                 ariaLabel={t("maintenance.llm.sensitiveTags")}
@@ -107,7 +130,7 @@ export function LLMPolicyEditor({
                 value={query}
                 onChange={setQuery}
                 options={suggestions.entries
-                  .filter((tag) => !policy.tagIds.includes(tag.id))
+                  .filter((tag) => !policy.tagRules.some((rule) => rule.tagId === tag.id))
                   .map((entry) => {
                     const tag = entry as MetadataTag;
                     return {
@@ -115,7 +138,7 @@ export function LLMPolicyEditor({
                       label: tag.displayName,
                       onSelect: () => {
                         setNames((current) => ({ ...current, [tag.id]: tag.displayName }));
-                        onChange({ ...policy, tagIds: [...policy.tagIds, tag.id] });
+                        onChange({ ...policy, tagRules: [...policy.tagRules, { tagId: tag.id, action: "sensitive" }] });
                         setQuery("");
                       },
                     };
@@ -160,6 +183,7 @@ export function LLMPolicyEditor({
                   onChange={(event) => updateRule(index, { action: event.target.value as LLMKeywordRule["action"] })}
                 >
                   <option value="sensitive">{t("maintenance.llm.sensitive")}</option>
+                  <option value="restricted">{t("maintenance.llm.restricted")}</option>
                   <option value="blocked">{t("maintenance.llm.blocked")}</option>
                 </NativeSelect>
                 <Button
