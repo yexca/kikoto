@@ -469,14 +469,14 @@ export const surfaceEnglish = {
     accessPolicySaved: "Access policy saved.",
     accessPolicySaveFailed: "Access policy could not be saved.",
     asr: {
-      title: "Speech recognition services",
+      title: "ASR services",
       description:
         "Transcribe local tracks into timed lyrics through an OpenAI-compatible transcription endpoint. Audio is sent only when someone starts a transcription.",
-      demoDisabled: "Speech recognition is unavailable in Demo.",
+      demoDisabled: "ASR is unavailable in Demo.",
       refresh: "Refresh",
       add: "Add service",
-      addTitle: "Add speech recognition service",
-      editTitle: "Edit speech recognition service",
+      addTitle: "Add ASR service",
+      editTitle: "Edit ASR service",
       service: "Service",
       serviceDescription: "Choose a hosted service, a local deployment, or another OpenAI-compatible service.",
       presets: {
@@ -545,6 +545,20 @@ export const surfaceEnglish = {
         "Its connection settings, stored key and discovered models are removed. Transcriptions already made are kept.",
     },
     llm: {
+      notice: {
+        title: "Before you connect external services",
+        terms:
+          "Sending metadata, lyrics or audio to an external LLM or ASR service can violate that service's terms of use, especially for adult content.",
+        advisory:
+          "Kikoto's content safety policy and sensitive-content checks are advisory. They can misclassify content and do not guarantee that a request complies with a provider's terms.",
+        liability:
+          "You use external services at your own risk. Kikoto accepts no responsibility for suspended or banned accounts, lost credit or any other consequence.",
+        scope:
+          "Accepting applies to every administrator of this server. Until then, LLM and ASR services cannot be configured.",
+        agree: "I have read and accept this notice",
+        accept: "Accept and continue",
+        acceptFailed: "The notice could not be accepted.",
+      },
       demoDisabled: "LLM configuration and translation are unavailable in Demo.",
       remoteLyrics: "Enable remote lyrics translation",
       remoteLyricsDescription:
@@ -600,7 +614,8 @@ export const surfaceEnglish = {
       fetchFailed: "Models could not be fetched.",
       modelsFetched: "Fetched {{count}} models.",
       policyTitle: "Content safety policy",
-      policyDescription: "A matching tag or keyword blocks external endpoints and keeps sensitive translation local.",
+      policyDescription:
+        "Applies to LLM providers and ASR services. A matching tag or keyword blocks external endpoints and keeps sensitive translation and transcription local.",
       policySaved: "Content safety policy saved.",
       policySaveFailed: "Content safety policy could not be saved.",
       alwaysScanAllAges: "Scan all-ages works too",
@@ -656,8 +671,7 @@ export const surfaceEnglish = {
       unlinked: "Work maintenance",
       cache: "Cache & Fetch",
       proxy: "Proxy",
-      llm: "LLM",
-      asr: "Speech recognition",
+      llm: "LLM & ASR",
       users: "Users",
       access: "Access",
       paths: "Paths",
@@ -2841,8 +2855,7 @@ export const surfaceEnglish = {
     detect: "Detect automatically",
     languageHint:
       "The lyrics are saved and assigned in this language. Detected speech is saved as lyrics for every language.",
-    noService:
-      "No speech recognition service is ready. An administrator can add one under Settings → Speech recognition.",
+    noService: "No speech recognition service is ready. An administrator can add one under Settings → LLM & ASR.",
     noServiceShort: "No service available",
     loading: "Loading…",
     servicesFailed: "Speech recognition services could not be loaded.",

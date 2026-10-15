@@ -56,7 +56,44 @@ func (s *Server) listLLMProviders(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"providers": result, "presets": llm.Presets, "policy": policy})
+	noticeAccepted, err := s.llmStore.NoticeAccepted(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"providers": result, "presets": llm.Presets, "policy": policy, "noticeAccepted": noticeAccepted})
+}
+
+// requireServiceNotice refuses LLM and ASR configuration until an
+// administrator has accepted the external service notice. Removing a service
+// and using an already configured one stay available.
+func (s *Server) requireServiceNotice(w http.ResponseWriter, r *http.Request) bool {
+	accepted, err := s.llmStore.NoticeAccepted(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return false
+	}
+	if !accepted {
+		writeAPIError(w, http.StatusConflict, "service_notice_required", "Accept the external service notice before configuring LLM or ASR services.", false)
+		return false
+	}
+	return true
+}
+
+func (s *Server) acceptServiceNotice(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.IsDemo() {
+		writeAPIError(w, 403, "llm_disabled", "LLM translation is unavailable in Demo.", false)
+		return
+	}
+	user, ok := s.requirePermission(w, r, "sources:write")
+	if !ok {
+		return
+	}
+	if err := s.llmStore.AcceptNotice(r.Context(), user.ID, time.Now()); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"noticeAccepted": true})
 }
 
 func (s *Server) getLLMPolicy(w http.ResponseWriter, r *http.Request) {
@@ -81,6 +118,9 @@ func (s *Server) updateLLMPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
+		return
+	}
+	if !s.requireServiceNotice(w, r) {
 		return
 	}
 	var policy llm.Policy
@@ -146,6 +186,9 @@ func (s *Server) saveLLMProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
+		return
+	}
+	if !s.requireServiceNotice(w, r) {
 		return
 	}
 	var body llmProviderPayload
@@ -259,6 +302,9 @@ func (s *Server) fetchLLMModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
+		return
+	}
+	if !s.requireServiceNotice(w, r) {
 		return
 	}
 	p, err := s.llmProvider(r.Context(), r.PathValue("id"))

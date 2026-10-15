@@ -105,15 +105,22 @@
 
 - About lists its reference projects as compact credits, one line of project
   names per area. **Show details** adds what each project informed.
-- Settings -> LLM lists the configured providers and adds or edits each one in
-  a dialog. A provider's switch turns it on or off from the list, and deleting
-  one asks for confirmation. The content safety policy edits sensitive tags as
-  removable chips and keyword rules as compact rows.
-- Settings -> Speech recognition configures OpenAI-compatible transcription
-  services: OpenAI, a local deployment, or a custom service. A local
-  deployment on the server's own machine is reached through the host gateway,
-  so only its port is entered. The LLM content safety policy also decides
-  which works' audio may be sent.
+- Settings -> LLM & ASR lists the configured LLM providers and ASR services
+  above the content safety policy that governs both. Each service is added or
+  edited in a dialog; adding one lists the presets on the left and the chosen
+  preset's form on the right. A service's switch turns it on or off from the
+  list, and deleting one asks for confirmation. The content safety policy edits
+  sensitive tags as removable chips and keyword rules as compact rows, and
+  decides which works' text and audio may be sent.
+- The LLM & ASR tab stays behind an external service notice until an
+  administrator accepts it: external services may forbid the content sent to
+  them, the content safety checks are advisory, and Kikoto is not responsible
+  for suspended accounts. The server refuses LLM and ASR configuration until
+  then; services that are already configured keep working.
+- ASR services are OpenAI-compatible speech recognition services: OpenAI, a
+  local deployment, or a custom service. A local deployment on the server's
+  own machine is reached through the host gateway, so only its port is
+  entered.
 - The ellipsis between the page numbers below a list opens a field that goes
   to a typed page number.
 

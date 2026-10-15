@@ -50,6 +50,8 @@ export type LLMProviderList = {
   providers: LLMProvider[];
   presets: LLMProviderPreset[];
   policy: LLMPolicy;
+  /** Whether an administrator accepted the external service notice that LLM and ASR configuration requires. */
+  noticeAccepted: boolean;
 };
 
 export type LLMKeywordRule = { id?: string; term: string; fields: string[]; action: "sensitive" | "blocked" };
@@ -154,6 +156,7 @@ export const llmApi = {
   deleteProvider: (id: string) => deleteJSON<{ ok: boolean }>(`/api/llm/providers/${encodeURIComponent(id)}`),
   fetchModels: (id: string) =>
     postJSONBody<LLMProvider>(`/api/llm/providers/${encodeURIComponent(id)}/fetch-models`, {}),
+  acceptServiceNotice: () => postJSONBody<{ noticeAccepted: boolean }>("/api/llm/notice-acceptance", {}),
   updatePolicy: (policy: LLMPolicy) => putJSONBody<LLMPolicy>("/api/llm/policy", policy),
   translateWork: (id: number, payload: LLMTranslationRequest, signal?: AbortSignal) =>
     postJSONBody<LLMTranslation>(`/api/works/${id}/llm-translate`, payload, signal),

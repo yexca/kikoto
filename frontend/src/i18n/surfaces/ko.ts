@@ -495,6 +495,20 @@ export const surfaceKorean = {
       deleteDescription: "연결 설정, 저장된 키, 찾은 모델이 삭제됩니다. 이미 만든 전사는 유지됩니다.",
     },
     llm: {
+      notice: {
+        title: "외부 서비스에 연결하기 전에",
+        terms:
+          "메타데이터, 가사, 오디오를 외부 LLM 또는 음성 인식 서비스로 보내면 특히 성인 콘텐츠의 경우 해당 서비스의 이용 약관을 위반할 수 있습니다.",
+        advisory:
+          "Kikoto의 콘텐츠 안전 정책과 민감 콘텐츠 판정은 참고용입니다. 잘못 분류할 수 있으며 요청이 제공자의 약관을 준수한다고 보장하지 않습니다.",
+        liability:
+          "외부 서비스는 본인 책임으로 사용합니다. 계정 정지나 차단, 크레딧 손실 및 그 밖의 결과에 대해 Kikoto는 책임지지 않습니다.",
+        scope:
+          "동의는 이 서버의 모든 관리자에게 적용됩니다. 동의하기 전에는 LLM과 음성 인식 서비스를 설정할 수 없습니다.",
+        agree: "내용을 읽었으며 동의합니다",
+        accept: "동의하고 계속",
+        acceptFailed: "동의를 저장할 수 없습니다.",
+      },
       demoDisabled: "Demo에서는 LLM 설정과 번역을 사용할 수 없습니다.",
       remoteLyrics: "원격 가사 번역 활성화",
       remoteLyricsDescription: "명시적으로 선택한 원격 파일만 읽습니다. 원격 가져오기 권한이 필요합니다.",
@@ -550,7 +564,8 @@ export const surfaceKorean = {
       fetchFailed: "모델을 가져올 수 없습니다.",
       modelsFetched: "모델 {{count}}개를 가져왔습니다.",
       policyTitle: "콘텐츠 안전 정책",
-      policyDescription: "태그 또는 키워드가 일치하면 외부 엔드포인트를 차단하고 민감한 번역을 로컬로 제한합니다.",
+      policyDescription:
+        "LLM 제공자와 음성 인식 서비스에 적용됩니다. 태그 또는 키워드가 일치하면 외부 엔드포인트를 차단하고 민감한 번역과 전사를 로컬로 제한합니다.",
       policySaved: "콘텐츠 안전 정책을 저장했습니다.",
       policySaveFailed: "콘텐츠 안전 정책을 저장할 수 없습니다.",
       alwaysScanAllAges: "전체 연령 작품도 스캔",
@@ -715,8 +730,7 @@ export const surfaceKorean = {
       unlinked: "작품 유지 관리",
       cache: "캐시 및 가져오기",
       proxy: "프록시",
-      llm: "LLM 제공자",
-      asr: "음성 인식",
+      llm: "LLM 및 음성 인식",
       users: "사용자",
       access: "접근",
       paths: "경로",
@@ -2782,7 +2796,7 @@ export const surfaceKorean = {
     language: "음성 언어",
     detect: "자동 감지",
     languageHint: "가사는 이 언어로 저장되고 지정됩니다. 자동 감지하면 모든 언어용 가사로 저장됩니다.",
-    noService: "사용할 수 있는 음성 인식 서비스가 없습니다. 관리자가 설정 → 음성 인식에서 추가할 수 있습니다.",
+    noService: "사용할 수 있는 음성 인식 서비스가 없습니다. 관리자가 설정 → LLM 및 음성 인식에서 추가할 수 있습니다.",
     noServiceShort: "사용 가능한 서비스 없음",
     loading: "불러오는 중…",
     servicesFailed: "음성 인식 서비스를 불러올 수 없습니다.",

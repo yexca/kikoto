@@ -12,14 +12,22 @@ import { cn } from "@/lib/tailwindClassNames";
 
 import { LLMPolicyEditor } from "./LLMPolicyEditor";
 import { LLMProviderDialog } from "./LLMProviderDialog";
+import { ServiceNotice } from "./ServiceNotice";
 import { createPayload, emptyPolicy, policiesEqual, updatePayload, type ProviderDraft } from "./llmSettingsModel";
 
 /**
  * Administrator LLM settings: the providers offered for translation, each
  * added and edited in a dialog, and the content safety policy that decides
- * what may be sent to them.
+ * what may be sent to them. `otherServices` sits between the providers and the
+ * policy, for services that the same policy governs.
  */
-export function LLMSettingsSection({ readOnly = false }: { readOnly?: boolean }) {
+export function LLMSettingsSection({
+  readOnly = false,
+  otherServices,
+}: {
+  readOnly?: boolean;
+  otherServices?: ReactNode;
+}) {
   const { t } = useTranslation();
   const toast = useToast();
   const [providers, setProviders] = useState<LLMProvider[]>([]);
@@ -33,6 +41,7 @@ export function LLMSettingsSection({ readOnly = false }: { readOnly?: boolean })
   const [deleting, setDeleting] = useState(false);
   const [togglingID, setTogglingID] = useState<string | null>(null);
   const [savingPolicy, setSavingPolicy] = useState(false);
+  const [noticeAccepted, setNoticeAccepted] = useState(false);
 
   const policyDirty = !policiesEqual(policy, savedPolicy);
   const policyDirtyRef = useRef(policyDirty);
@@ -50,6 +59,7 @@ export function LLMSettingsSection({ readOnly = false }: { readOnly?: boolean })
         setProviders(result.providers);
         setPresets(result.presets);
         setSavedPolicy(result.policy);
+        setNoticeAccepted(result.noticeAccepted);
         // A refresh leaves unsaved policy edits as they are.
         if (!refresh || !policyDirtyRef.current) setPolicy(result.policy);
         setLoadState("ready");
@@ -153,148 +163,162 @@ export function LLMSettingsSection({ readOnly = false }: { readOnly?: boolean })
 
   if (readOnly) {
     return (
-      <SettingsSection title={t("maintenance.llm.title")} description={t("maintenance.llm.description")}>
-        <EmptyState icon={<Bot className="h-5 w-5" />}>{t("maintenance.llm.demoDisabled")}</EmptyState>
-      </SettingsSection>
+      <div className="space-y-6">
+        <SettingsSection title={t("maintenance.llm.title")} description={t("maintenance.llm.description")}>
+          <EmptyState icon={<Bot className="h-5 w-5" />}>{t("maintenance.llm.demoDisabled")}</EmptyState>
+        </SettingsSection>
+        {otherServices}
+      </div>
     );
   }
 
   const ready = loadState === "ready";
+  // Until the external service notice is accepted, the tab stays visible but cannot be used.
+  const locked = ready && !noticeAccepted;
   const presetName = (provider: LLMProvider) =>
     presets.find((preset) => preset.id === provider.presetId)?.name ?? provider.presetId;
 
   return (
-    <div className="space-y-6">
-      <SettingsSection
-        title={t("maintenance.llm.title")}
-        description={t("maintenance.llm.description")}
-        action={
-          <>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t("maintenance.llm.refresh")}
-              title={t("maintenance.llm.refresh")}
-              disabled={!ready || refreshing}
-              onClick={() => void load(true)}
-            >
-              <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!ready || presets.length === 0}
-              onClick={() => setEditing({ provider: null })}
-            >
-              <Plus className="h-4 w-4" />
-              {t("maintenance.llm.add")}
-            </Button>
-          </>
-        }
-      >
-        {loadState === "loading" ? (
-          <EmptyState icon={<Loader2 className="h-5 w-5 animate-spin" />}>{t("maintenance.llm.loading")}</EmptyState>
-        ) : loadState === "failed" ? (
-          <div role="alert" className="flex flex-col items-center gap-3 px-4 py-8 text-center">
-            <p className="max-w-sm text-sm text-error-foreground">{t("maintenance.llm.loadFailed")}</p>
-            <Button variant="outline" size="sm" onClick={() => void load()}>
-              <RefreshCw className="h-4 w-4" />
-              {t("common.retry")}
-            </Button>
-          </div>
-        ) : providers.length === 0 ? (
-          <EmptyState icon={<Bot className="h-5 w-5" />}>{t("maintenance.llm.empty")}</EmptyState>
-        ) : (
-          providers.map((provider) => (
-            <div key={provider.id} className="flex min-w-0 items-center gap-3 px-4 py-3">
-              <span
-                className={cn(
-                  "hidden h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground sm:grid",
-                  !provider.enabled && "opacity-60",
-                )}
-                aria-hidden="true"
-              >
-                {provider.boundary === "private" ? <Server className="h-4 w-4" /> : <Cloud className="h-4 w-4" />}
-              </span>
-              <button
-                type="button"
-                className={cn("min-w-0 flex-1 text-left", !provider.enabled && "opacity-60")}
-                onClick={() => setEditing({ provider })}
-              >
-                <span className="block truncate text-sm font-medium">{provider.name}</span>
-                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                  {presetName(provider)}
-                  {" · "}
-                  {provider.boundary === "private"
-                    ? t("maintenance.llm.privateBoundary")
-                    : t("maintenance.llm.externalBoundary")}
-                  {" · "}
-                  {provider.defaultModel ? (
-                    provider.defaultModel
-                  ) : (
-                    <span className="text-warning-foreground">{t("maintenance.llm.modelNone")}</span>
-                  )}
-                </span>
-              </button>
-              <div className="flex shrink-0 items-center gap-0.5">
-                <Switch
-                  className="mr-2"
-                  checked={provider.enabled}
-                  disabled={togglingID === provider.id}
-                  aria-label={t("maintenance.llm.enableNamed", { name: provider.name })}
-                  onCheckedChange={(enabled) => void setEnabled(provider, enabled)}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t("maintenance.llm.editNamed", { name: provider.name })}
-                  title={t("maintenance.llm.editNamed", { name: provider.name })}
-                  onClick={() => setEditing({ provider })}
-                >
-                  <Settings2 className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  aria-label={t("maintenance.llm.deleteNamed", { name: provider.name })}
-                  title={t("maintenance.llm.deleteNamed", { name: provider.name })}
-                  onClick={() => setPendingDelete(provider)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          ))
-        )}
-      </SettingsSection>
-
-      {ready && (
+    <div className="relative">
+      <div className="space-y-6" inert={locked} aria-hidden={locked || undefined}>
         <SettingsSection
-          title={t("maintenance.llm.policyTitle")}
-          description={t("maintenance.llm.policyDescription")}
-          footer={
+          title={t("maintenance.llm.title")}
+          description={t("maintenance.llm.description")}
+          action={
             <>
-              {policyDirty && (
-                <span className="mr-auto text-xs text-muted-foreground">{t("maintenance.llm.policyUnsaved")}</span>
-              )}
               <Button
                 variant="ghost"
-                size="sm"
-                disabled={savingPolicy || !policyDirty}
-                onClick={() => setPolicy(savedPolicy)}
+                size="icon-sm"
+                aria-label={t("maintenance.llm.refresh")}
+                title={t("maintenance.llm.refresh")}
+                disabled={!ready || refreshing}
+                onClick={() => void load(true)}
               >
-                {t("maintenance.llm.policyDiscard")}
+                <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
               </Button>
-              <Button size="sm" disabled={savingPolicy || !policyDirty} onClick={() => void savePolicy()}>
-                {savingPolicy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {t("maintenance.llm.save")}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!ready || presets.length === 0}
+                onClick={() => setEditing({ provider: null })}
+              >
+                <Plus className="h-4 w-4" />
+                {t("maintenance.llm.add")}
               </Button>
             </>
           }
         >
-          <LLMPolicyEditor policy={policy} onChange={setPolicy} disabled={savingPolicy} />
+          {loadState === "loading" ? (
+            <EmptyState icon={<Loader2 className="h-5 w-5 animate-spin" />}>{t("maintenance.llm.loading")}</EmptyState>
+          ) : loadState === "failed" ? (
+            <div role="alert" className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+              <p className="max-w-sm text-sm text-error-foreground">{t("maintenance.llm.loadFailed")}</p>
+              <Button variant="outline" size="sm" onClick={() => void load()}>
+                <RefreshCw className="h-4 w-4" />
+                {t("common.retry")}
+              </Button>
+            </div>
+          ) : providers.length === 0 ? (
+            <EmptyState icon={<Bot className="h-5 w-5" />}>{t("maintenance.llm.empty")}</EmptyState>
+          ) : (
+            providers.map((provider) => (
+              <div key={provider.id} className="flex min-w-0 items-center gap-3 px-4 py-3">
+                <span
+                  className={cn(
+                    "hidden h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground sm:grid",
+                    !provider.enabled && "opacity-60",
+                  )}
+                  aria-hidden="true"
+                >
+                  {provider.boundary === "private" ? <Server className="h-4 w-4" /> : <Cloud className="h-4 w-4" />}
+                </span>
+                <button
+                  type="button"
+                  className={cn("min-w-0 flex-1 text-left", !provider.enabled && "opacity-60")}
+                  onClick={() => setEditing({ provider })}
+                >
+                  <span className="block truncate text-sm font-medium">{provider.name}</span>
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                    {presetName(provider)}
+                    {" · "}
+                    {provider.boundary === "private"
+                      ? t("maintenance.llm.privateBoundary")
+                      : t("maintenance.llm.externalBoundary")}
+                    {" · "}
+                    {provider.defaultModel ? (
+                      provider.defaultModel
+                    ) : (
+                      <span className="text-warning-foreground">{t("maintenance.llm.modelNone")}</span>
+                    )}
+                  </span>
+                </button>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <Switch
+                    className="mr-2"
+                    checked={provider.enabled}
+                    disabled={togglingID === provider.id}
+                    aria-label={t("maintenance.llm.enableNamed", { name: provider.name })}
+                    onCheckedChange={(enabled) => void setEnabled(provider, enabled)}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("maintenance.llm.editNamed", { name: provider.name })}
+                    title={t("maintenance.llm.editNamed", { name: provider.name })}
+                    onClick={() => setEditing({ provider })}
+                  >
+                    <Settings2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    aria-label={t("maintenance.llm.deleteNamed", { name: provider.name })}
+                    title={t("maintenance.llm.deleteNamed", { name: provider.name })}
+                    onClick={() => setPendingDelete(provider)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
         </SettingsSection>
+
+        {otherServices}
+
+        {ready && (
+          <SettingsSection
+            title={t("maintenance.llm.policyTitle")}
+            description={t("maintenance.llm.policyDescription")}
+            footer={
+              <>
+                {policyDirty && (
+                  <span className="mr-auto text-xs text-muted-foreground">{t("maintenance.llm.policyUnsaved")}</span>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={savingPolicy || !policyDirty}
+                  onClick={() => setPolicy(savedPolicy)}
+                >
+                  {t("maintenance.llm.policyDiscard")}
+                </Button>
+                <Button size="sm" disabled={savingPolicy || !policyDirty} onClick={() => void savePolicy()}>
+                  {savingPolicy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {t("maintenance.llm.save")}
+                </Button>
+              </>
+            }
+          >
+            <LLMPolicyEditor policy={policy} onChange={setPolicy} disabled={savingPolicy} />
+          </SettingsSection>
+        )}
+      </div>
+      {locked && (
+        <div className="absolute inset-0 z-10 bg-background/70 px-4 pt-6 backdrop-blur-[2px]">
+          <ServiceNotice onAccepted={() => setNoticeAccepted(true)} />
+        </div>
       )}
 
       {editing && (
