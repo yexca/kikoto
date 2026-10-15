@@ -1,5 +1,16 @@
 # Unreleased
 
+> [!IMPORTANT]
+> Migration 078 turns each enabled Follow a circle, series, or voice actor
+> trigger into subscriptions of the account that configured it and deletes the
+> follow triggers; their tag templates, release ranges, and work limits are not
+> kept. A catalog that was already pulled becomes the subscription's baseline,
+> so its existing works are not reported as new. Availability Watch loses its
+> own schedule: the new subscription refresh takes over its interval (24 hours
+> when it had none) and checks the watch after each refresh unless the watch
+> was configured with its schedule off. Review **Refresh schedule** on the
+> Subscriptions page after upgrading.
+
 <details>
 <summary><strong>Library and work detail</strong></summary>
 
@@ -170,6 +181,37 @@
 - Insights in Demo shows a simulated listening history over the admitted
   works, with a notice that it is simulated. Demo records no listening, so the
   dashboard was empty there.
+- Subscriptions in Demo shows a fixed sample feed and subscription list with
+  fictional names, read-only.
+</details>
+
+<details>
+<summary><strong>Subscriptions</strong></summary>
+
+- A new **Subscriptions** page collects new works from the circles, series,
+  and voice actors you subscribe to with the bell beside **Favorite** on their
+  pages. Subscribing is separate from Favorite. A subscription starts from the
+  catalog as it is, so existing works never flood the feed; a catalog that was
+  not pulled recently is pulled first, now or at the next refresh.
+- **New releases** lists one entry per work family, newest first, as a new
+  release, a new language edition, or a work that Availability Watch found
+  available. The navigation counts entries added since you last opened it, and
+  a refresh that adds any sends one notification instead of one per work.
+- A circle subscription includes its series: a series of a subscribed circle
+  cannot be subscribed separately, and subscribing to the circle replaces its
+  series subscriptions after a confirmation.
+- One shared **Refresh schedule** (every 24 hours by default) pulls each
+  subscribed catalog once, syncs the metadata of new works, and then checks
+  Availability Watch. A subscription can also add its new works to
+  Availability Watch.
+- Availability Watch's configuration and pool move to the Subscriptions page;
+  Workflows keeps its run history and links there.
+- The Follow presets are renamed **Sync a circle catalog**, **Sync a series
+  catalog**, and **Sync a voice actor catalog**, under a **Catalog sync**
+  category, and run on demand only. Their triggers section links to
+  Subscriptions, and the circle and voice actor **More** menus read **Sync this
+  circle's catalog…** and **Sync this voice actor's catalog…**.
+
 </details>
 
 <details>

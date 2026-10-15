@@ -1,6 +1,7 @@
 import { libraryEnglish, collectionEnglish, workCardEnglish } from "../resources";
 import { surfaceJapanese } from "../surfaces/ja";
 import { personalJapanese } from "../surfaces/personal/ja";
+import { subscriptionsJapanese } from "../surfaces/subscriptions/ja";
 
 const libraryJapanese = {
   ...libraryEnglish,
@@ -672,6 +673,8 @@ export const japaneseResource = {
         maintenance: "メンテナンス",
         insights: "インサイト",
         insightsDescription: "聴取カレンダー、統計、履歴を確認",
+        subscriptions: "購読",
+        subscriptionsDescription: "購読しているサークル、シリーズ、声優の新作",
         about: "情報",
         libraryDescription: "すべての設定済みソースから作品を閲覧、絞り込み、再生",
         favoritesDescription: "お気に入りの作品、サークル、声優、リストを閲覧",
@@ -691,6 +694,7 @@ export const japaneseResource = {
       ...surfaceJapanese,
       ...adminToolsJapanese,
       ...personalJapanese,
+      ...subscriptionsJapanese,
       appearance: {
         title: "外観",
         subtitle: "モード、スタイル、カラー",
@@ -1008,6 +1012,7 @@ export const japaneseResource = {
         empty: "現在、通知はありません。",
         workflowStatus: "ワークフロー #{{id}} · {{status}}",
         availabilityReady: "{{workCode}} の利用可能性チェックの準備ができました。",
+        subscriptionRelease: "購読から新作が届きました（{{workCode}} など）。",
         remoteTrackFailed: "{{workCode}} のリモートトラックに失敗しました。",
         remoteTrackSucceeded: "{{workCode}} のリモートトラックを利用できます。",
         generic: "{{workCode}} のワークフロー更新です。",

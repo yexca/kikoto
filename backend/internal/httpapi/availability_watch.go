@@ -389,15 +389,6 @@ func (s *Server) persistAvailabilityWatchConfig(ctx context.Context, userID int6
 	`, availabilityWatchID, userID, payload.Action, payload.SourceID, mustJSON(excluded)); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE workflow_trigger
-		SET config_json = json_object('userId', ?), updated_at = CURRENT_TIMESTAMP
-		WHERE workflow_definition_id = (
-			SELECT id FROM workflow_definition WHERE code = 'availability_watch'
-		) AND trigger_type = 'schedule'
-	`, userID); err != nil {
-		return err
-	}
 	return tx.Commit()
 }
 
@@ -1032,16 +1023,12 @@ func (s *Server) finishAvailabilityWatchJob(ctx context.Context, job workflowJob
 	return tx.Commit()
 }
 
-// createAvailabilityWatchNotifications notifies every enabled account that
-// can open Workflows, where the watch and its ready targets are shown.
-func createAvailabilityWatchNotifications(ctx context.Context, tx *sql.Tx, runID int64, codes []string) error {
-	message := fmt.Sprintf("%d watched works are now available.", len(codes))
-	if len(codes) == 1 {
-		message = codes[0] + " is now available."
-	}
+// availabilityWatchRecipients are the enabled accounts that can open the
+// watch pool.
+func availabilityWatchRecipients(ctx context.Context, tx *sql.Tx) ([]int64, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT id, role FROM user_account WHERE enabled = 1 ORDER BY id`)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	recipients := []int64{}
 	for rows.Next() {
@@ -1049,14 +1036,38 @@ func createAvailabilityWatchNotifications(ctx context.Context, tx *sql.Tx, runID
 		var role string
 		if err := rows.Scan(&id, &role); err != nil {
 			_ = rows.Close()
-			return err
+			return nil, err
 		}
 		if userHasPermission(currentUser{Permissions: account.PermissionsForRole(role)}, "workflows:run") {
 			recipients = append(recipients, id)
 		}
 	}
-	if err := rows.Close(); err != nil {
+	return recipients, rows.Close()
+}
+
+// createAvailabilityWatchNotifications notifies every account that can open
+// the watch pool and adds each newly available work to its release feed.
+func createAvailabilityWatchNotifications(ctx context.Context, tx *sql.Tx, runID int64, codes []string) error {
+	message := fmt.Sprintf("%d watched works are now available.", len(codes))
+	if len(codes) == 1 {
+		message = codes[0] + " is now available."
+	}
+	recipients, err := availabilityWatchRecipients(ctx, tx)
+	if err != nil {
 		return err
+	}
+	for _, userID := range recipients {
+		for _, code := range codes {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO user_release_feed_item (user_id, primary_code, event_type, subject_kind, workflow_run_id)
+				VALUES (?, ?, 'available', 'watch', ?)
+				ON CONFLICT(user_id, primary_code, event_type) DO UPDATE SET
+					created_at = CURRENT_TIMESTAMP,
+					workflow_run_id = excluded.workflow_run_id
+			`, userID, strings.ToUpper(code), runID); err != nil {
+				return err
+			}
+		}
 	}
 	for _, userID := range recipients {
 		if _, err := tx.ExecContext(ctx, `

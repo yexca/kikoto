@@ -84,8 +84,8 @@ Like the Android client, it compares its version with the connected server.
    - Scan the library. The scan discovers local works without waiting for
      provider metadata.
    - If an upgrade preserved earlier custom workflows, review them. Kikoto can
-     convert exact preset matches into disabled triggers; unmatched definitions
-     can be exported. Fresh installs and upgrades without custom workflows skip
+     convert exact preset matches into subscriptions to their circles, series,
+     or voice actor; unmatched definitions can be exported. Fresh installs and upgrades without custom workflows skip
      this step.
    - Optionally start metadata sync, which runs in the background.
    - Decide whether scans run on startup and when folders change. Both start

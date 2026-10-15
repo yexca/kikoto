@@ -68,6 +68,7 @@ import { PERSONAL_TAB_PERMISSION } from "@/pages/personalTabs";
 import { preloadWorkDetail } from "@/features/work-detail/lazyWorkDetail";
 import { LibraryOnboarding } from "@/features/library-setup/LibraryOnboarding";
 import { LibraryMigrationGate } from "@/features/library-setup/LibraryMigrationGate";
+import { useReleaseFeedUnread } from "@/features/subscriptions/useReleaseFeedUnread";
 import { useLocale } from "@/i18n/LocaleProvider";
 import type { UiLocale } from "@/i18n";
 import {
@@ -136,6 +137,9 @@ const WorkManagementPage = lazy(() =>
 const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
 const AboutPage = lazy(() => import("@/pages/AboutPage").then((module) => ({ default: module.AboutPage })));
 const InsightsPage = lazy(() => import("@/pages/InsightsPage").then((module) => ({ default: module.InsightsPage })));
+const SubscriptionsPage = lazy(() =>
+  import("@/pages/SubscriptionsPage").then((module) => ({ default: module.SubscriptionsPage })),
+);
 // Preloaded with the browse workspaces so the first Quick actions tap opens at once.
 const commandPalette = preloadableComponent(() =>
   import("@/app/CommandPalette").then((module) => module.CommandPalette),
@@ -251,6 +255,7 @@ function AuthenticatedApp() {
     (permission: string) => auth.demoMode || hasPermission(permission),
     [auth.demoMode, hasPermission],
   );
+  const releaseFeedUnread = useReleaseFeedUnread(Boolean(auth.user) && !auth.demoMode);
   const listeningHistoryWorkLink = useCallback<ListeningHistoryWorkLinkFactory>(
     (primaryCode) => {
       const intent = { kind: "known" as const, canonicalCode: primaryCode };
@@ -537,6 +542,17 @@ function AuthenticatedApp() {
                     )}
                     <item.icon className={cx("h-4 w-4", active && "text-primary")} />
                     {!sidebarCollapsed && navigationLabel(item, t)}
+                    {item.id === "subscriptions" && releaseFeedUnread > 0 && (
+                      <span
+                        className={cx(
+                          "rounded-full bg-primary text-2xs font-medium leading-none text-primary-foreground",
+                          sidebarCollapsed ? "absolute right-1.5 top-1.5 h-2 w-2" : "ml-auto px-1.5 py-1",
+                        )}
+                        aria-label={t("subscriptions.unreadBadge", { count: releaseFeedUnread })}
+                      >
+                        {!sidebarCollapsed && (releaseFeedUnread > 99 ? "99+" : releaseFeedUnread)}
+                      </span>
+                    )}
                   </Button>
                 </Fragment>
               );
@@ -686,12 +702,23 @@ function AuthenticatedApp() {
                     onOpenPath={openPath}
                   />
                 )}
+                {showRoutePage && page === "subscriptions" && auth.user && (
+                  <SubscriptionsPage
+                    readOnly={auth.demoMode}
+                    canSubscribe={effectiveHasPermission("favorites:write")}
+                    canManageSchedule={effectiveHasPermission("metadata:sync")}
+                    canRunWorkflows={navigationHasPermission("workflows:run")}
+                    canTrackRemote={effectiveHasPermission("remote:track")}
+                    canFetchRemote={effectiveHasPermission("remote:fetch") && effectiveHasPermission("metadata:sync")}
+                  />
+                )}
                 {showRoutePage && page === "about" && <AboutPage />}
                 {![
                   "library",
                   "favorites",
                   "circles",
                   "voice-actors",
+                  "subscriptions",
                   "settings",
                   "metadata",
                   "workflows",

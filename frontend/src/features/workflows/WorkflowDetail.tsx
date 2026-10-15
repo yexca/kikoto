@@ -1,4 +1,4 @@
-import { AlertCircle, Settings2 } from "lucide-react";
+import { AlertCircle, BellRing, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import type { RunFormLayout } from "@/features/workflows/RunOptionControls";
 import { isActiveRunStatus, isDemoShowcaseActiveRun } from "@/features/workflows/runPresentation";
 import { WorkflowAutomationPanel } from "@/features/workflows/triggers/WorkflowAutomationPanel";
 import { WorkflowDetailFrame } from "@/features/workflows/WorkflowDetailFrame";
+import { openWorkflowPath } from "@/features/workflows/workflowLinks";
 import { RecentRunList, WorkflowSection } from "@/features/workflows/WorkflowDetailLayout";
 import {
   parseNodes,
@@ -198,19 +199,36 @@ export function WorkflowDetail({
           {runForm}
           <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} />
           <div className="workflow-detail-pair">
-            {showAutomation && (
+            {preset ? (
               <WorkflowPanel>
-                <WorkflowAutomationPanel
-                  definition={definition}
-                  isPreset={Boolean(preset)}
-                  triggers={definitionTriggers}
-                  canManage={canManageTriggers}
-                  readOnly={readOnly}
-                  onCreate={onCreateTrigger}
-                  onEdit={onEditTrigger}
-                  onToggle={onToggleTrigger}
-                />
+                <WorkflowSection title={workflowCopy("triggers")} label={workflowCopy("workflowAutomations")}>
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">{workflowCopy("presetScheduledBySubscriptions")}</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openWorkflowPath("/subscriptions?panel=subscriptions")}
+                    >
+                      <BellRing className="h-4 w-4" />
+                      {workflowCopy("openSubscriptions")}
+                    </Button>
+                  </div>
+                </WorkflowSection>
               </WorkflowPanel>
+            ) : (
+              showAutomation && (
+                <WorkflowPanel>
+                  <WorkflowAutomationPanel
+                    definition={definition}
+                    triggers={definitionTriggers}
+                    canManage={canManageTriggers}
+                    readOnly={readOnly}
+                    onCreate={onCreateTrigger}
+                    onEdit={onEditTrigger}
+                    onToggle={onToggleTrigger}
+                  />
+                </WorkflowPanel>
+              )
             )}
             {onOpenRun && (
               <WorkflowPanel>

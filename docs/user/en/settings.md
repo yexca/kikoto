@@ -15,9 +15,9 @@ Settings uses Account, Playback, Recommendations, and Tags tabs, shown as icons:
 - Change an account-managed user's password after verifying the current
   password and confirming the replacement.
 - Username and role are visible but read-only.
-- **Time zone** decides where a day starts in your listening report.
-  **Automatic** follows the device you are using; choosing a zone uses it on
-  every device. See [Insights](personal-data.md#insights).
+- **Time zone** decides where a day starts in your listening report and the
+  Subscriptions feed. **Automatic** follows the device you are using; choosing
+  a zone uses it on every device. See [Insights](personal-data.md#insights).
 - **Your data** at the end of Account exports and imports personal data; see
   [Personal data](personal-data.md).
 

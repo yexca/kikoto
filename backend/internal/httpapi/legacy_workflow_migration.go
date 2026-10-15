@@ -121,7 +121,7 @@ func analyzeLegacyWorkflow(item legacyWorkflowSnapshot) legacyWorkflowMigrationI
 	if discover == nil {
 		return result
 	}
-	code := map[string]string{"circle_catalog": "circle_follow", "series_catalog": "series_follow", "voice_catalog": "voice_follow"}[discover.Type]
+	code := map[string]string{"circle_catalog": "circle_catalog_sync", "series_catalog": "series_catalog_sync", "voice_catalog": "voice_catalog_sync"}[discover.Type]
 	spec, ok := presetWorkflowSpecByCode(code)
 	if !ok {
 		return result
@@ -303,88 +303,86 @@ func (s *Server) convertLegacyWorkflow(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusConflict, "workflow_config_changed", "The preset inputs need manual review.", false)
 		return
 	}
-	var definitionID int64
-	if err := s.db.QueryRowContext(r.Context(), `SELECT id FROM workflow_definition WHERE code = ? AND scope = 'system'`, analysis.Preset).Scan(&definitionID); err != nil {
-		writeError(w, err)
-		return
-	}
-	definition, err := s.loadWorkflowDefinition(r.Context(), definitionID)
+	// Scheduled catalog sync is now a subscription: the reviewing account
+	// subscribes to the workflow's targets, and each subscription takes its
+	// baseline from the next successful catalog pull.
+	created, err := s.subscribeLegacyWorkflowTargets(r.Context(), actor.ID, analysis.Preset, analysis.Inputs)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	configJSON := mustJSON(presetWorkflowTriggerConfig{UserID: actor.ID, Inputs: analysis.Inputs})
-	type preparedTrigger struct {
-		oldID                        int64
-		name, kind, schedule, config string
-	}
-	prepared := []preparedTrigger{}
-	startupCount := 0
-	for _, trigger := range item.Triggers {
-		if trigger.Type == "startup" {
-			startupCount++
-		}
-		if startupCount > 1 {
-			writeAPIError(w, http.StatusConflict, "workflow_trigger_conflict", "Only one startup trigger can be converted for this preset.", false)
-			return
-		}
-		payload := workflowTriggerPayload{WorkflowDefinitionID: definitionID, DisplayName: trigger.Name,
-			TriggerType: trigger.Type, ScheduleJSON: string(trigger.Schedule), ConfigJSON: configJSON}
-		if err := validateWorkflowTriggerPayload(payload); err != nil {
-			writeAPIError(w, http.StatusConflict, "workflow_trigger_changed", "A legacy trigger needs manual reconfiguration.", false)
-			return
-		}
-		if err := s.ensureUniqueWorkflowStartupTrigger(r.Context(), definitionID, 0, trigger.Type); err != nil {
-			writeAPIError(w, http.StatusConflict, "workflow_trigger_conflict", "A preset startup trigger already exists.", false)
-			return
-		}
-		converted, err := s.prepareWorkflowTrigger(r.Context(), actor, definition, payload, time.Now().UTC(), nil)
-		if err != nil {
-			writeAPIError(w, http.StatusConflict, "workflow_trigger_changed", "A legacy trigger needs manual reconfiguration.", false)
-			return
-		}
-		prepared = append(prepared, preparedTrigger{oldID: trigger.ID, name: trigger.Name, kind: trigger.Type,
-			schedule: string(trigger.Schedule), config: converted.ConfigJSON})
-	}
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	defer func() { _ = tx.Rollback() }()
-	for _, trigger := range prepared {
-		result, err := tx.ExecContext(r.Context(), `INSERT INTO workflow_trigger
-			(workflow_definition_id, trigger_type, display_name, enabled, schedule_json, config_json)
-			VALUES (?, ?, ?, 0, ?, ?)`, definitionID, trigger.kind, trigger.name, trigger.schedule, trigger.config)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		newID, err := result.LastInsertId()
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if _, err := tx.ExecContext(r.Context(), `INSERT INTO legacy_workflow_trigger_migration
-			(original_trigger_id, original_definition_id, new_trigger_id) VALUES (?, ?, ?)`, trigger.oldID, id, newID); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	result, err := tx.ExecContext(r.Context(), `UPDATE legacy_workflow_snapshot
+	result, err := s.db.ExecContext(r.Context(), `UPDATE legacy_workflow_snapshot
 		SET review_status = 'converted', converted_preset_code = ? WHERE original_id = ? AND review_status IN ('pending', 'skipped')`, analysis.Preset, id)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	changed, _ := result.RowsAffected()
-	if changed != 1 {
+	if changed, _ := result.RowsAffected(); changed != 1 {
 		writeAPIError(w, http.StatusConflict, "workflow_already_reviewed", "This saved workflow was already reviewed.", false)
 		return
 	}
-	if err := tx.Commit(); err != nil {
-		writeError(w, err)
-		return
+	writeJSON(w, http.StatusOK, map[string]any{"preset": analysis.Preset, "subscriptionsCreated": created})
+}
+
+// subscribeLegacyWorkflowTargets subscribes an account to the circles,
+// series, or voice actor a converted workflow followed. Targets this site
+// does not know, and series its circle subscription covers, are skipped.
+func (s *Server) subscribeLegacyWorkflowTargets(ctx context.Context, userID int64, preset string, inputs map[string]any) (int, error) {
+	subjects := []creatorSubscriptionSubject{}
+	switch preset {
+	case "circle_catalog_sync":
+		text, _ := inputs["circleId"].(string)
+		for _, circleID := range splitPresetWorkflowTargets(text, normalizeMakerID) {
+			subject, err := s.resolveCreatorSubscriptionSubject(ctx, creatorSubscriptionRequest{Kind: "circle", CircleID: circleID})
+			if err == nil {
+				subjects = append(subjects, subject)
+			}
+		}
+	case "series_catalog_sync":
+		text, _ := inputs["seriesId"].(string)
+		for _, seriesID := range splitPresetWorkflowTargets(text, normalizeSeriesID) {
+			rows, err := s.db.QueryContext(ctx, `
+				SELECT DISTINCT series.party_id, COALESCE((
+					SELECT external.external_id FROM party_external_id AS external
+					WHERE external.party_id = series.party_id AND external.id_type = 'maker_id'
+					ORDER BY external.is_primary DESC, external.id
+					LIMIT 1
+				), '')
+				FROM party_series AS series WHERE UPPER(series.title_id) = ?
+			`, seriesID)
+			if err != nil {
+				return 0, err
+			}
+			for rows.Next() {
+				subject := creatorSubscriptionSubject{Kind: "series", SeriesID: seriesID}
+				if err := rows.Scan(&subject.PartyID, &subject.CircleID); err != nil {
+					_ = rows.Close()
+					return 0, err
+				}
+				subject.CircleID = normalizeMakerID(subject.CircleID)
+				subjects = append(subjects, subject)
+			}
+			if err := rows.Close(); err != nil {
+				return 0, err
+			}
+		}
+	case "voice_catalog_sync":
+		if personID, ok := graphConfigInteger(inputs["personId"]); ok {
+			subject, err := s.resolveCreatorSubscriptionSubject(ctx, creatorSubscriptionRequest{Kind: "voice", PersonID: personID})
+			if err == nil {
+				subjects = append(subjects, subject)
+			}
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"preset": analysis.Preset, "triggersCreated": len(prepared), "enabled": false})
+	created := 0
+	for _, subject := range subjects {
+		_, conflict, err := s.subscribeCreator(ctx, userID, subject, false, true)
+		if err != nil {
+			return created, err
+		}
+		if conflict == nil {
+			created++
+		}
+	}
+	return created, nil
 }

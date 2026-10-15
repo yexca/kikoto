@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Circle and voice actor detail refreshes queue their follow preset without a
+// Circle and voice actor detail refreshes queue their catalog sync preset without a
 // tag. A detail refresh and a Workflows run therefore share one pipeline, one
 // run history, and one set of node executors. A circle refresh syncs metadata
 // for catalog works that lack it; a voice refresh keeps to known works.
@@ -37,7 +37,7 @@ func (request creatorRefreshRequest) normalized() creatorRefreshRequest {
 	return request
 }
 
-// creatorRefreshRun is the public view of the newest follow run for a circle
+// creatorRefreshRun is the public view of the newest catalog sync run for a circle
 // or voice actor.
 type creatorRefreshRun struct {
 	RunID        int64  `json:"runId"`
@@ -55,7 +55,7 @@ func (e creatorRefreshError) Error() string { return e.message }
 
 var errCreatorRefreshInProgress = creatorRefreshError{status: http.StatusConflict, message: "a different refresh is already running"}
 
-// queueCreatorRefresh plans a follow preset for one detail refresh. An active
+// queueCreatorRefresh plans a catalog sync preset for one detail refresh. An active
 // run with the same inputs is reused; a different active run is a conflict.
 func (s *Server) queueCreatorRefresh(ctx context.Context, actor currentUser, code string, inputs presetWorkflowInputs, active func(context.Context) (creatorRefreshRun, bool, error)) (creatorRefreshRun, error) {
 	spec, found := presetWorkflowSpecByCode(code)
@@ -142,21 +142,21 @@ func (s *Server) compatibleRemoteSourceIDs(ctx context.Context) ([]int64, error)
 	return ids, nil
 }
 
-func (s *Server) latestCircleFollowRun(ctx context.Context, circleID string, activeOnly bool) (creatorRefreshRun, bool, error) {
-	return s.latestCreatorFollowRun(ctx, `
-		workflow_code = 'circle_follow'
+func (s *Server) latestCircleCatalogSyncRun(ctx context.Context, circleID string, activeOnly bool) (creatorRefreshRun, bool, error) {
+	return s.latestCreatorCatalogSyncRun(ctx, `
+		workflow_code = 'circle_catalog_sync'
 		AND (',' || REPLACE(UPPER(COALESCE(json_extract(input_json, '$.inputs.circleId'), '')), ' ', '') || ',') LIKE '%,' || ? || ',%'
 	`, normalizeMakerID(circleID), activeOnly)
 }
 
-func (s *Server) latestVoiceFollowRun(ctx context.Context, personID int64, activeOnly bool) (creatorRefreshRun, bool, error) {
-	return s.latestCreatorFollowRun(ctx, `
-		workflow_code = 'voice_follow'
+func (s *Server) latestVoiceCatalogSyncRun(ctx context.Context, personID int64, activeOnly bool) (creatorRefreshRun, bool, error) {
+	return s.latestCreatorCatalogSyncRun(ctx, `
+		workflow_code = 'voice_catalog_sync'
 		AND CAST(json_extract(input_json, '$.inputs.personId') AS INTEGER) = ?
 	`, personID, activeOnly)
 }
 
-func (s *Server) latestCreatorFollowRun(ctx context.Context, condition string, target any, activeOnly bool) (creatorRefreshRun, bool, error) {
+func (s *Server) latestCreatorCatalogSyncRun(ctx context.Context, condition string, target any, activeOnly bool) (creatorRefreshRun, bool, error) {
 	if activeOnly {
 		condition += " AND status IN ('queued', 'running')"
 	}

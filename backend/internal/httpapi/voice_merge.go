@@ -127,6 +127,9 @@ func mergeVoiceRelations(ctx context.Context, tx *sql.Tx, targetID, sourceID int
 	`, targetID, sourceID); err != nil {
 		return err
 	}
+	if err := mergePersonSubscriptions(ctx, tx, targetID, sourceID); err != nil {
+		return err
+	}
 	if err := mergeVoiceCatalogPeople(ctx, tx, targetID, sourceID); err != nil {
 		return err
 	}
@@ -217,6 +220,9 @@ func restoreVoiceMergeSnapshot(ctx context.Context, tx *sql.Tx, targetID int64, 
 		return err
 	}
 	if err := restoreVoiceMergeTags(ctx, tx, targetID, snapshot); err != nil {
+		return err
+	}
+	if err := restorePersonSubscriptions(ctx, tx, targetID, snapshot); err != nil {
 		return err
 	}
 	for _, alias := range snapshot.AddedAliases {
@@ -424,7 +430,7 @@ func loadPersonMergeSnapshot(ctx context.Context, tx *sql.Tx, targetID int64, pe
 	if err != nil {
 		return personMergeSnapshot{}, err
 	}
-	return personMergeSnapshot{
+	snapshot := personMergeSnapshot{
 		SourcePerson:    sourcePerson,
 		Aliases:         aliases,
 		Credits:         credits,
@@ -437,7 +443,11 @@ func loadPersonMergeSnapshot(ctx context.Context, tx *sql.Tx, targetID int64, pe
 		CatalogCaptured: true,
 		SourceCatalog:   sourceCatalog,
 		TargetCatalog:   targetCatalog,
-	}, nil
+	}
+	if err := capturePersonSubscriptions(ctx, tx, &snapshot, targetID, personID); err != nil {
+		return personMergeSnapshot{}, err
+	}
+	return snapshot, nil
 }
 
 func loadPersonSnapshot(ctx context.Context, tx *sql.Tx, personID int64) (personSnapshot, error) {

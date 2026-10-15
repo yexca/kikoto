@@ -25,9 +25,12 @@ export function supportedAutomationTriggerTypes(
   definition: WorkflowDefinition,
   isPreset = false,
 ): AutomationTriggerType[] {
-  if (definition.scope === "system" && isPreset) return automationTriggerTypes;
+  // Scheduled catalog sync is a subscription, and the subscription refresh
+  // runs Availability Watch; both are configured on the Subscriptions page.
+  if (definition.scope === "system" && isPreset) return [];
   if (definition.scope === "system" && definition.code === "remote_work_fetch") return [];
-  if (definition.scope === "system" && definition.code === "availability_watch") return ["schedule"];
+  if (definition.scope === "system" && definition.code === "availability_watch") return [];
+  if (definition.scope === "system" && definition.code === "creator_subscription_refresh") return [];
   if (definition.scope === "system" && definition.code === "local_library_scan")
     return ["startup", "filesystem_event", "schedule"];
   if (definition.scope === "system" && definition.code === "metadata_sync") return ["schedule"];

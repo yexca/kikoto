@@ -66,6 +66,7 @@ describe("translation resources", () => {
       "./surfaces/en.ts",
       "./surfaces/adminTools.ts",
       "./surfaces/personal/en.ts",
+      "./surfaces/subscriptions/en.ts",
     ]) {
       const source = readFileSync(new URL(module, import.meta.url), "utf8").replace(nativeLabels, "");
       expect(

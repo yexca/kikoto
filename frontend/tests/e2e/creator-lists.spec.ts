@@ -18,6 +18,7 @@ import {
   circleSummaryFixture,
   circleSummaryPageFixture,
   sourceStatFixture,
+  subscriptionLookupFixture,
   voiceCatalogRefreshFixture,
   voiceDetailFixture,
   voiceKnownWorkFixture,
@@ -267,6 +268,10 @@ async function mockCreatorDetails(
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") {
       await route.fulfill({ json: authenticatedStateFixture({ permissions: adminPermissions, devMode: true }) });
+      return;
+    }
+    if (url.pathname === "/api/subscriptions/lookup") {
+      await route.fulfill({ json: subscriptionLookupFixture() });
       return;
     }
     if (url.pathname === "/api/voices/7") {
@@ -541,7 +546,7 @@ async function expectReactCommitsToSettle(page: Page) {
 }
 
 for (const role of ["admin", "member"] as const) {
-  test(`an unknown circle ${role === "admin" ? "offers the follow workflow" : "asks a member to contact an administrator"}`, async ({
+  test(`an unknown circle ${role === "admin" ? "offers the catalog sync workflow" : "asks a member to contact an administrator"}`, async ({
     page,
   }) => {
     await page.route("**/api/**", async (route) => {
@@ -572,7 +577,7 @@ for (const role of ["admin", "member"] as const) {
     }
     await expect(page.getByText(/Try fetching it from DLsite\?/)).toBeVisible();
     await fetchButton.click();
-    await expect(page).toHaveURL(/\/workflows\?workflow=circle_follow&circleId=RG09999$/);
+    await expect(page).toHaveURL(/\/workflows\?workflow=circle_catalog_sync&circleId=RG09999$/);
   });
 }
 
@@ -705,6 +710,7 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   );
   expect(actionMetrics.map((metric) => metric.label)).toEqual([
     "Add favorite",
+    "Subscribe",
     "Retry metadata",
     "Refresh",
     "More voice actor actions",
@@ -719,7 +725,7 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
   const moreMenu = page.getByRole("menu", { name: "More voice actor actions" });
   await expect(moreMenu.getByRole("menuitem")).toHaveText([
     "Change cover…",
-    "Follow this voice actor…",
+    "Sync this voice actor's catalog…",
     "Manage aliases",
   ]);
   await page.keyboard.press("Escape");
@@ -933,6 +939,7 @@ test("circle detail keeps availability and primary actions compact on mobile", a
   );
   expect(actionMetrics.map((metric) => metric.label)).toEqual([
     "Remove favorite",
+    "Subscribe",
     "Retry metadata",
     "Refresh circle",
     "More circle actions",
@@ -943,12 +950,12 @@ test("circle detail keeps availability and primary actions compact on mobile", a
   ).toBeLessThanOrEqual(1);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-  // The Follow shortcut opens the circle follow workflow with this circle prefilled.
+  // The catalog sync shortcut opens the circle catalog sync workflow with this circle prefilled.
   await actions.getByRole("button", { name: "More circle actions" }).click();
   const moreMenu = page.getByRole("menu", { name: "More circle actions" });
-  await expect(moreMenu.getByRole("menuitem")).toHaveText(["Change cover…", "Follow this circle…"]);
-  await moreMenu.getByRole("menuitem", { name: "Follow this circle…" }).click();
-  await expect(page).toHaveURL(/\/workflows\?workflow=circle_follow&circleId=RG09999$/);
+  await expect(moreMenu.getByRole("menuitem")).toHaveText(["Change cover…", "Sync this circle's catalog…"]);
+  await moreMenu.getByRole("menuitem", { name: "Sync this circle's catalog…" }).click();
+  await expect(page).toHaveURL(/\/workflows\?workflow=circle_catalog_sync&circleId=RG09999$/);
 });
 
 test("circle detail shows a chosen work's cover until the latest work is restored", async ({ page }) => {
@@ -1129,7 +1136,13 @@ test("@desktop circle detail keeps a full-width compact summary and source-aware
   const actionOrder = await actions
     .locator(":scope button[aria-label], :scope > a")
     .evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label")));
-  expect(actionOrder).toEqual(["Remove favorite", "Retry metadata", "Refresh circle", "More circle actions"]);
+  expect(actionOrder).toEqual([
+    "Remove favorite",
+    "Subscribe",
+    "Retry metadata",
+    "Refresh circle",
+    "More circle actions",
+  ]);
 
   await page.getByRole("button", { name: "Catalog availability filter" }).click();
   await page.getByRole("menuitemradio", { name: "Unavailable", exact: true }).click();

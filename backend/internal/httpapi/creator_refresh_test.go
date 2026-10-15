@@ -161,8 +161,8 @@ func TestCircleRefreshQueuesARefreshOnlyFollowRun(t *testing.T) {
 	if err := db.QueryRow("SELECT workflow_code FROM workflow_run WHERE id = ?", queued.RunID).Scan(&code); err != nil {
 		t.Fatal(err)
 	}
-	if code != "circle_follow" {
-		t.Fatalf("detail refresh workflow = %q, want circle_follow", code)
+	if code != "circle_catalog_sync" {
+		t.Fatalf("detail refresh workflow = %q, want circle_catalog_sync", code)
 	}
 
 	// Repeating the same refresh joins the active run; a different one conflicts.

@@ -11,8 +11,14 @@ import type {
   CircleSourceStat,
   CircleSummary,
   CircleSummaryPage,
+  CreatorSubscription,
+  CreatorSubscriptionLookup,
+  CreatorSubscriptionSchedule,
+  CreatorSubscriptionView,
   CurrentUser,
   FavoriteList,
+  ReleaseFeedFamily,
+  ReleaseFeedPage,
   FileSource,
   LibrarySource,
   MediaFileLocation,
@@ -690,6 +696,104 @@ export function voiceDetailFixture(
   overrides: Partial<VoiceDetail> = {},
 ): VoiceDetail {
   return { ...voice, aliasRecords: [], works: [], remoteMatches: [], ...overrides };
+}
+
+/** A circle, series, or voice actor this account does not subscribe to, with a fresh catalog. */
+export function subscriptionLookupFixture(
+  overrides: Partial<CreatorSubscriptionLookup> = {},
+): CreatorSubscriptionLookup {
+  return {
+    subscription: null,
+    coveredBy: null,
+    series: [],
+    catalog: { syncState: "synced", lastSyncedAt: "2026-10-14T00:00:00Z" },
+    available: true,
+    ...overrides,
+  };
+}
+
+export function creatorSubscriptionFixture(overrides: Partial<CreatorSubscription> = {}): CreatorSubscription {
+  return {
+    id: 1,
+    kind: "circle",
+    circleId: "RG00001",
+    circleName: "Example Circle 1",
+    watchAvailability: false,
+    status: "active",
+    activatedAt: "2026-10-01 00:00:00",
+    createdAt: "2026-10-01 00:00:00",
+    catalogSyncedAt: "2026-10-14T00:00:00Z",
+    ...overrides,
+  };
+}
+
+export function subscriptionScheduleFixture(
+  overrides: Partial<CreatorSubscriptionSchedule> = {},
+): CreatorSubscriptionSchedule {
+  return {
+    enabled: true,
+    intervalHours: 24,
+    availabilityWatch: true,
+    nextRunAt: "2026-10-16 00:00:00",
+    lastRunAt: null,
+    lastSuccessAt: null,
+    lastError: "",
+    latestRun: null,
+    ...overrides,
+  };
+}
+
+export function subscriptionViewFixture(overrides: Partial<CreatorSubscriptionView> = {}): CreatorSubscriptionView {
+  return { subscriptions: [], schedule: subscriptionScheduleFixture(), demo: false, ...overrides };
+}
+
+/** One feed family shown through its catalog details. */
+export function releaseFeedFamilyFixture(overrides: Partial<ReleaseFeedFamily> = {}): ReleaseFeedFamily {
+  const code = overrides.fallback?.code ?? syntheticWorkCode("RJ", 1);
+  return {
+    key: `code:${code}`,
+    latestAt: "2026-10-14 09:00:00",
+    day: "2026-10-14",
+    unread: false,
+    events: [
+      {
+        type: "released",
+        code,
+        language: "",
+        at: "2026-10-14 09:00:00",
+        subject: { kind: "circle", circleId: "RG00001", circleName: "Example Circle 1" },
+      },
+    ],
+    work: null,
+    fallback: {
+      code,
+      title: "Example Work 1",
+      coverUrl: "",
+      releaseDate: "2026-10-14",
+      circle: "Example Circle 1",
+      voiceActors: ["Example Voice 1"],
+      tags: [],
+      dlsiteUrl: "https://source.example.invalid/work",
+    },
+    ...overrides,
+  };
+}
+
+export function releaseFeedPageFixture(
+  families: ReleaseFeedFamily[] = [],
+  overrides: Partial<ReleaseFeedPage> = {},
+): ReleaseFeedPage {
+  return {
+    families,
+    page: 1,
+    days: 10,
+    totalDays: new Set(families.map((family) => family.day)).size,
+    total: families.length,
+    unreadCount: families.filter((family) => family.unread).length,
+    today: "2026-10-15",
+    demo: false,
+    ...overrides,
+  };
 }
 
 /** One server page of a voice actor's works; `total` defaults to the works given. */

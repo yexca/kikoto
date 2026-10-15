@@ -1,4 +1,4 @@
-import { Loader2, RotateCcw, Save } from "lucide-react";
+import { ExternalLink, Loader2, RotateCcw, Save } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,6 @@ import {
   WorkflowRunButton,
   type RunFormLayout,
 } from "@/features/workflows/RunOptionControls";
-import { WorkflowAutomationPanel } from "@/features/workflows/triggers/WorkflowAutomationPanel";
 import {
   DefinitionRunMonitor,
   RecentWorkflowRuns,
@@ -29,7 +28,6 @@ import {
 import { WorkflowDetailFrame } from "@/features/workflows/WorkflowDetailFrame";
 import { parseNodes, workflowCopy } from "@/features/workflows/workflowPageModel";
 import { ErrorPanel, SkeletonLine, WorkflowMetadataErrorState } from "@/features/workflows/WorkflowPanelParts";
-import type { CreatableAutomationTriggerType } from "@/features/workflows/workflowTriggerModel";
 import {
   api,
   type AvailabilityWatch,
@@ -41,23 +39,56 @@ import {
 import { normalizeFetchExtension } from "@/lib/remoteFetchFilters";
 import { WORD_TOKEN_SEPARATORS } from "@/lib/tokenDraft";
 
-export function AvailabilityWatchPanel({
+/**
+ * A workflow configured on the Subscriptions page, such as Availability Watch
+ * and the subscription refresh, keeps its run history on Workflows and links
+ * to where it is managed.
+ */
+export function SubscriptionsManagedWorkflowPanel({
   definition,
   triggers,
   recentRuns,
-  readOnly,
-  canSyncMetadata,
-  canTrackRemote,
-  canFetchRemote,
-  onCreateTrigger,
-  onEditTrigger,
-  onToggleTrigger,
+  message,
   onOpenRun,
-  onRunQueued,
+  onOpenSubscriptions,
 }: {
   definition: WorkflowDefinition;
   triggers: WorkflowTrigger[];
   recentRuns: WorkflowRun[];
+  message: string;
+  onOpenRun: (run: WorkflowRun) => void;
+  onOpenSubscriptions: () => void;
+}) {
+  const nodes = parseNodes(definition.definitionJson);
+  return (
+    <WorkflowDetailFrame definition={definition} recentRuns={recentRuns} triggers={triggers} onOpenRun={onOpenRun}>
+      <div className="workflow-detail grid min-w-0 gap-5">
+        <WorkflowPanel>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="min-w-0 text-sm text-muted-foreground">{message}</p>
+            <Button size="sm" variant="outline" onClick={onOpenSubscriptions}>
+              <ExternalLink className="h-4 w-4" />
+              {workflowCopy("openSubscriptions")}
+            </Button>
+          </div>
+        </WorkflowPanel>
+        <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} />
+        <WorkflowPanel>
+          <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />
+        </WorkflowPanel>
+      </div>
+    </WorkflowDetailFrame>
+  );
+}
+
+/** The watch's configuration and shared pool, managed from the Subscriptions page. */
+export function AvailabilityWatchManager({
+  readOnly,
+  canSyncMetadata,
+  canTrackRemote,
+  canFetchRemote,
+  onRunQueued,
+}: {
   readOnly: boolean;
   /** Availability Watch refreshes DLsite family metadata on every run. */
   canSyncMetadata: boolean;
@@ -65,10 +96,6 @@ export function AvailabilityWatchPanel({
   canTrackRemote: boolean;
   /** `remote:fetch`: the watch may fetch ready works. */
   canFetchRemote: boolean;
-  onCreateTrigger: (triggerType: CreatableAutomationTriggerType, anchor?: HTMLElement | null) => void;
-  onEditTrigger: (trigger: WorkflowTrigger, anchor?: HTMLElement | null) => void;
-  onToggleTrigger: (trigger: WorkflowTrigger, enabled: boolean) => Promise<void>;
-  onOpenRun: (run: WorkflowRun) => void;
   onRunQueued: () => void;
 }) {
   const toast = useToast();
@@ -144,61 +171,40 @@ export function AvailabilityWatchPanel({
     );
   }
 
-  const nodes = parseNodes(definition.definitionJson);
   const layout = runFormLayout({ optionsTitle: workflowCopy("configuration") });
-  // The targets and schedule decide what the configured action tracks or
-  // fetches, so editing them needs the same permissions as that action.
+  // The targets decide what the configured action tracks or fetches, so
+  // editing them needs the same permissions as that action.
   const manageReadOnly =
     readOnly || !availabilityWatchActionAllowed(watch.action, canSyncMetadata, canTrackRemote, canFetchRemote);
   const sourceName = (sourceId: number | null) =>
     sourceId ? (sources.find((source) => source.id === sourceId)?.displayName ?? `#${sourceId}`) : "";
 
   return (
-    <WorkflowDetailFrame definition={definition} recentRuns={recentRuns} triggers={triggers} onOpenRun={onOpenRun}>
-      <div className="workflow-detail grid min-w-0 gap-5">
-        <AvailabilityWatchRunForm
-          layout={layout}
-          watch={watch}
-          sources={sources}
-          readOnly={manageReadOnly}
-          canSyncMetadata={canSyncMetadata}
-          canTrackRemote={canTrackRemote}
-          canFetchRemote={canFetchRemote}
-          onSaved={setWatch}
-          onRunQueued={onRunQueued}
-        />
+    <div className="workflow-detail grid min-w-0 gap-5">
+      <AvailabilityWatchRunForm
+        layout={layout}
+        watch={watch}
+        sources={sources}
+        readOnly={manageReadOnly}
+        canSyncMetadata={canSyncMetadata}
+        canTrackRemote={canTrackRemote}
+        canFetchRemote={canFetchRemote}
+        onSaved={setWatch}
+        onRunQueued={onRunQueued}
+      />
 
-        <AvailabilityWatchPool
-          watch={watch}
-          sourceName={sourceName}
-          readOnly={manageReadOnly}
-          onWatchChange={setWatch}
-          onRefresh={() =>
-            void refreshWatch().catch((error) =>
-              toast.notify(toastFromError(error, workflowCopy("readyPoolRefreshFailed"))),
-            )
-          }
-        />
-
-        <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} />
-        <div className="workflow-detail-pair">
-          <WorkflowPanel>
-            <WorkflowAutomationPanel
-              definition={definition}
-              triggers={triggers}
-              canManage={!manageReadOnly}
-              readOnly={manageReadOnly}
-              onCreate={onCreateTrigger}
-              onEdit={onEditTrigger}
-              onToggle={onToggleTrigger}
-            />
-          </WorkflowPanel>
-          <WorkflowPanel>
-            <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />
-          </WorkflowPanel>
-        </div>
-      </div>
-    </WorkflowDetailFrame>
+      <AvailabilityWatchPool
+        watch={watch}
+        sourceName={sourceName}
+        readOnly={manageReadOnly}
+        onWatchChange={setWatch}
+        onRefresh={() =>
+          void refreshWatch().catch((error) =>
+            toast.notify(toastFromError(error, workflowCopy("readyPoolRefreshFailed"))),
+          )
+        }
+      />
+    </div>
   );
 }
 

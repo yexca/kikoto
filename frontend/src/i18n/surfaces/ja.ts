@@ -1057,19 +1057,24 @@ export const surfaceJapanese = {
     },
     fetchRunTitle: "{{code}} を取得",
     builtInDefinitions: {
-      circle_follow: {
-        name: "サークルをフォロー",
+      circle_catalog_sync: {
+        name: "サークルのカタログを同期",
         description:
           "サークルのカタログを更新し、メタデータのないカタログ作品を同期してユーザータグを追加します。リモートソースの確認もできます。",
       },
-      series_follow: {
-        name: "シリーズをフォロー",
+      series_catalog_sync: {
+        name: "シリーズのカタログを同期",
         description: "保存済みのシリーズ作品を読み込み、メタデータのない作品を同期してユーザータグを追加します。",
       },
-      voice_follow: {
-        name: "声優をフォロー",
+      voice_catalog_sync: {
+        name: "声優のカタログを同期",
         description:
           "選択したリモートソースで声優のカタログを更新し、メタデータのないカタログ作品を同期してユーザータグを追加します。",
+      },
+      creator_subscription_refresh: {
+        name: "購読を更新",
+        description:
+          "購読中のサークルと声優のカタログを更新し、新作のメタデータを同期して購読者の新着に追加し、配信状況の監視をチェックします。",
       },
       availability_watch: {
         name: "可用性ウォッチ",
@@ -1278,10 +1283,17 @@ export const surfaceJapanese = {
     activity: "アクティビティ",
     loadingWorkflowData: "ワークフローデータを読み込み中",
     workflowTabs: "ワークフロー",
+    availabilityWatchManagedOnSubscriptions:
+      "配信状況の監視は購読ページで設定し、購読の更新がそのスケジュールで実行します。実行履歴はここに残ります。",
+    subscriptionRefreshManagedOnSubscriptions:
+      "購読の更新スケジュールは購読ページで設定します。実行履歴はここに残ります。",
+    openSubscriptions: "購読を開く",
+    presetScheduledBySubscriptions:
+      "このワークフローは手動で実行します。新作を定期的に追うには、サークル、シリーズ、声優を購読してください。購読は購読ページで設定したスケジュールで更新されます。",
     categories: {
       basic: "基本",
       collect: "収集",
-      follow: "フォロー",
+      catalog: "カタログ同期",
       remote: "リモート",
     },
     presetQueueFailed: "プリセットワークフローをキューに追加できませんでした。",
@@ -1342,9 +1354,10 @@ export const surfaceJapanese = {
       availability_watch: "配信状況の監視",
       remote_work_fetch: "取得",
       source_presence_check: "ソース上の作品",
-      circle_follow: "サークルフォロー",
-      series_follow: "シリーズフォロー",
-      voice_follow: "声優フォロー",
+      circle_catalog_sync: "サークルカタログ",
+      series_catalog_sync: "シリーズカタログ",
+      voice_catalog_sync: "声優カタログ",
+      creator_subscription_refresh: "購読",
     },
     console: {
       statusStrip: "ワークフローの状態",
@@ -2287,14 +2300,15 @@ export const surfaceJapanese = {
       "最新の全件スキャンで DLsite から {{code}} が返されませんでした。サークルのカタログから削除しますか？",
     retryMetadataCount: "{{count}} 件の作品のメタデータを再試行",
     refreshVoice: "更新",
+    refreshShort: "更新",
     refreshRunning: "更新中",
     viewRefreshRun: "この更新をアクティビティで表示",
     more: "その他",
     moreCircleActions: "サークルのその他の操作",
     moreVoiceActions: "声優のその他の操作",
     changeCover: "カバーを変更…",
-    followCircle: "このサークルをフォロー…",
-    followVoice: "この声優をフォロー…",
+    syncCircleCatalog: "このサークルのカタログを同期…",
+    syncVoiceCatalog: "この声優のカタログを同期…",
     manageAliases: "別名を管理",
     sourcesFailedShort: "{{count}} 件のソースが失敗",
   },

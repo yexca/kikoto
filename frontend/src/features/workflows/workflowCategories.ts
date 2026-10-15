@@ -1,6 +1,6 @@
 import type { WorkflowDefinition } from "@/lib/api";
 
-export const workflowCategories = ["basic", "collect", "follow", "remote"] as const;
+export const workflowCategories = ["basic", "collect", "catalog", "remote"] as const;
 
 export type WorkflowCategory = (typeof workflowCategories)[number];
 
@@ -15,9 +15,10 @@ export const builtInWorkflowOrder = [
   "availability_watch",
   "remote_work_fetch",
   "source_presence_check",
-  "circle_follow",
-  "series_follow",
-  "voice_follow",
+  "creator_subscription_refresh",
+  "circle_catalog_sync",
+  "series_catalog_sync",
+  "voice_catalog_sync",
 ];
 
 const workflowCategoryByCode: Record<string, WorkflowCategory> = {
@@ -27,9 +28,10 @@ const workflowCategoryByCode: Record<string, WorkflowCategory> = {
   metadata_genre_names: "basic",
   remote_popular_collection: "collect",
   dlsite_popular_collection: "collect",
-  circle_follow: "follow",
-  series_follow: "follow",
-  voice_follow: "follow",
+  circle_catalog_sync: "catalog",
+  series_catalog_sync: "catalog",
+  voice_catalog_sync: "catalog",
+  creator_subscription_refresh: "catalog",
   availability_watch: "remote",
   remote_work_fetch: "remote",
   source_presence_check: "remote",

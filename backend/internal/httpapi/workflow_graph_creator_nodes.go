@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// Creator nodes let the circle and voice actor follow presets refresh what a
+// Creator nodes let the circle and voice actor catalog sync presets refresh what a
 // detail page shows: the persisted catalog, known-work metadata, and remote
 // source matches. Catalog rows stay catalog rows; only the circle metadata
 // refresh a user explicitly requests synchronizes catalog works.

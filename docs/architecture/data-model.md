@@ -671,6 +671,11 @@ Important tables:
 - `remote_fetch_request`
 - `availability_watch`
 - `availability_watch_target`
+- `creator_subscription`
+- `party_release_seen`
+- `person_release_seen`
+- `user_release_feed_item`
+- `user_release_feed_state`
 
 Workflow records make scans, metadata sync, source checks, remote fetches, and
 review actions inspectable. `workflow_job.priority` is durable queue-ordering
@@ -678,7 +683,8 @@ metadata; higher values claim first, with creation time and id as FIFO
 tie-breakers. `workflow_event` is a run's event log (level, type, message and
 detail), optionally tied to a node run or job. `workflow_notification` holds at
 most one notification per user, run and type, such as ready Availability Watch
-works or the first metadata prompt; database cleanup can remove dismissed ones.
+works, new subscription releases, or the first metadata prompt; database
+cleanup can remove dismissed ones.
 
 `workflow_job.progress_bytes_current`, `progress_bytes_total`, and
 `progress_bytes_unknown_items` preserve Fetch transfer progress without
@@ -699,6 +705,19 @@ the normalized work codes in its pool with per-target check state, the source
 that became available and the family edition it offered (`available_code`),
 the last family metadata refresh, and child Track and Fetch run ids. A target
 is a code, not a work.
+
+`creator_subscription` holds one account's
+[creator subscription](workflows.md#creator-subscriptions) to a circle
+(`party_id`), a series (`party_id` with the provider `series_title_id`, which
+survives full catalog refreshes that recreate `party_series` rows), or a voice
+actor (`person_id`), with its Availability Watch option and `activated_at`,
+which stays empty until the catalog has a baseline. `party_release_seen` and
+`person_release_seen` hold the catalog codes already accounted for per circle
+and voice actor. `user_release_feed_item` holds one feed entry per account,
+code, and event with the subscription it came through, and
+`user_release_feed_state` the time each account last opened the feed. Feed
+entries are catalog codes, not works; a merge moves subscriptions, seen codes,
+and feed references to the target.
 
 `filesystem_trigger_state` stores the fixed local-scan trigger's watched
 directory count and most recent event time. It is compact orchestration state,

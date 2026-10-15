@@ -200,7 +200,7 @@ func (s *Server) loadCircleDetailWithWorksQuery(ctx context.Context, userID int6
 		return circleDetail{}, err
 	}
 	var refresh *creatorRefreshRun
-	if latest, ok, err := s.latestCircleFollowRun(ctx, externalID, false); err != nil {
+	if latest, ok, err := s.latestCircleCatalogSyncRun(ctx, externalID, false); err != nil {
 		return circleDetail{}, err
 	} else if ok {
 		refresh = &latest

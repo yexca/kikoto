@@ -1383,7 +1383,7 @@ test("Metadata sync limits source tabs by creator scope in runs and triggers", a
   await expect.poll(() => submissions).toEqual([{ scope: "voice", mode: "missing", personId: 7, sourceId: 9 }]);
 });
 
-test("a follow shortcut fills the circle id and says it did", async ({ page }) => {
+test("a catalog sync shortcut fills the circle id and says it did", async ({ page }) => {
   await mockWorkflows(page);
   await page.route("**/api/workflow-*", async (route) => {
     const url = new URL(route.request().url());
@@ -1391,7 +1391,13 @@ test("a follow shortcut fills the circle id and says it did", async ({ page }) =
       await route.fulfill({
         json: [
           ...systemDefinitions,
-          { ...systemDefinitions[0], id: 8, code: "circle_follow", displayName: "Follow a circle", description: "" },
+          {
+            ...systemDefinitions[0],
+            id: 8,
+            code: "circle_catalog_sync",
+            displayName: "Sync a circle catalog",
+            description: "",
+          },
         ] satisfies WorkflowDefinition[],
       });
       return;
@@ -1400,8 +1406,8 @@ test("a follow shortcut fills the circle id and says it did", async ({ page }) =
       await route.fulfill({
         json: [
           {
-            code: "circle_follow",
-            displayName: "Follow a circle",
+            code: "circle_catalog_sync",
+            displayName: "Sync a circle catalog",
             description: "",
             target: "circle",
             defaultTagTemplate: "circle_{target}",
@@ -1417,14 +1423,14 @@ test("a follow shortcut fills the circle id and says it did", async ({ page }) =
     await route.fallback();
   });
 
-  await page.goto("/workflows?workflow=circle_follow&circleId=RG09999");
+  await page.goto("/workflows?workflow=circle_catalog_sync&circleId=RG09999");
 
   await expect(page.getByRole("note")).toHaveText(
     "Auto-filled Circle ID RG09999 from the page you came from. Check it before running.",
   );
   await expect(page.getByLabel("Circle ID")).toHaveValue("RG09999");
   // The consumed prefill leaves the URL, but the note stays for this form.
-  await expect(page).toHaveURL(/\/workflows\?workflow=circle_follow$/);
+  await expect(page).toHaveURL(/\/workflows\?workflow=circle_catalog_sync$/);
   await expect(page.getByRole("note")).toBeVisible();
 });
 
@@ -1556,23 +1562,19 @@ test("local work file refresh sends the chosen mode for manual and startup runs"
 test("availability watch edits its configuration in place and manages the watch pool on mobile", async ({ page }) => {
   const updates: unknown[] = [];
   await mockWorkflows(page, undefined, undefined, undefined, (payload) => updates.push(payload));
-  await page.goto("/workflows");
+  await page.goto("/workflows?workflow=availability_watch");
 
-  await openWorkflow(page, "Availability Watch");
+  // Workflows keeps the run history and links to the Subscriptions page,
+  // where the watch is configured and its pool managed.
+  await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Open Subscriptions", exact: true }).click();
+  await expect(page).toHaveURL(/\/subscriptions\?panel=watch$/);
+  await expect(page.getByRole("tab", { name: "Availability Watch", selected: true })).toBeVisible();
   const pool = page.getByRole("region", { name: "Watch pool", exact: true });
   const unavailable = pool.getByRole("region", { name: /^Not available/ });
   const available = pool.getByRole("region", { name: /^Available/ });
   await expect(unavailable.getByRole("button", { name: /^RJ00000000/ })).toBeVisible();
   await expect(available.getByRole("button", { name: /^RJ00000001/ })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Workflow run" })).toBeVisible();
-  await expect(page.getByText("Recent runs", { exact: true })).toBeVisible();
-
-  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
-  const scheduleDialog = page.getByRole("dialog", { name: "New schedule" });
-  await scheduleDialog.getByLabel("Name", { exact: true }).fill("Availability interval");
-  await scheduleDialog.getByLabel("Interval (minutes)", { exact: true }).fill("120");
-  await scheduleDialog.getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Edit Availability interval", exact: true })).toBeVisible();
 
   // The configuration is edited in place; Run waits until Save stores it.
   const configuration = page.getByRole("region", { name: "Configuration", exact: true });
@@ -1600,12 +1602,7 @@ test("availability watch edits its configuration in place and manages the watch 
   await expect.poll(() => updates).toHaveLength(1);
   await expect(save).toBeDisabled();
   await run.click();
-  const queuedActivity = page.getByRole("dialog", { name: "Activity", exact: true });
-  await expect(queuedActivity).toBeVisible();
-  await expect(page).toHaveURL(/activity=1/);
-  await expect(page).not.toHaveURL(/run=/);
-  await queuedActivity.getByRole("button", { name: "Close Activity", exact: true }).click();
-  await expect(queuedActivity).toHaveCount(0);
+  await expect(page.getByText("Availability Watch check queued.", { exact: true })).toBeVisible();
   await expect.poll(() => updates).toHaveLength(2);
   expect(updates).toContainEqual({ action: "track", sourceId: 8, excludeExtensions: ["wav", "flac"] });
   expect(updates).toContainEqual({ run: true });
@@ -1673,12 +1670,12 @@ test("availability notifications open the watch pool's available works", async (
       exact: true,
     })
     .click();
-  await expect(page.getByRole("heading", { name: "Availability Watch", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Availability Watch", selected: true })).toBeVisible();
   const available = page.getByRole("region", { name: "Watch pool", exact: true }).getByRole("region", {
     name: /^Available/,
   });
   await expect(available.getByRole("button", { name: /^RJ00000001/ })).toBeInViewport();
-  await expect(page).toHaveURL(/\/workflows\?workflow=availability_watch$/);
+  await expect(page).toHaveURL(/\/subscriptions\?panel=watch$/);
 });
 
 test("activity links metadata failures to a run-filtered Maintenance list", async ({ page }) => {

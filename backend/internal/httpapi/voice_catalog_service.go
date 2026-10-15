@@ -173,7 +173,7 @@ type voiceCatalogRefreshStateSnapshot struct {
 	UpdatedAt        string  `json:"updatedAt"`
 }
 
-// refreshVoiceCatalog queues the voice actor follow workflow with the metadata
+// refreshVoiceCatalog queues the voice actor catalog sync workflow with the metadata
 // action off, so a detail refresh and a Workflows run share one pipeline. Its
 // metadata refresh keeps to the voice actor's known works.
 func (s *Server) refreshVoiceCatalog(w http.ResponseWriter, r *http.Request) {
@@ -215,8 +215,8 @@ func (s *Server) refreshVoiceCatalog(w http.ResponseWriter, r *http.Request) {
 		}
 		inputs.SourceIDs = sourceIDs
 	}
-	run, err := s.queueCreatorRefresh(r.Context(), actor, "voice_follow", inputs, func(ctx context.Context) (creatorRefreshRun, bool, error) {
-		return s.latestVoiceFollowRun(ctx, personID, true)
+	run, err := s.queueCreatorRefresh(r.Context(), actor, "voice_catalog_sync", inputs, func(ctx context.Context) (creatorRefreshRun, bool, error) {
+		return s.latestVoiceCatalogSyncRun(ctx, personID, true)
 	})
 	if !s.writeCreatorRefreshError(w, err) {
 		return
@@ -429,7 +429,7 @@ func voiceCatalogStringValue(value sql.NullString) string {
 }
 
 func (s *Server) activeVoiceCatalogRefresh(ctx context.Context, personID int64) (voiceCatalogRefreshState, bool, error) {
-	run, ok, err := s.latestVoiceFollowRun(ctx, personID, true)
+	run, ok, err := s.latestVoiceCatalogSyncRun(ctx, personID, true)
 	if err != nil || !ok {
 		return voiceCatalogRefreshState{}, false, err
 	}

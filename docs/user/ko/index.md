@@ -9,6 +9,7 @@
 - [소스](sources.md)
 - [서클](circles.md)
 - [성우](voices.md)
+- [구독](subscriptions.md)
 - [재생](playback.md)
 - [설정](settings.md)
 - [워크플로](workflows.md)

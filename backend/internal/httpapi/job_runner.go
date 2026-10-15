@@ -220,6 +220,7 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		"unlinked_work_source_check":  s.executeUnlinkedWorkSourceCheckJob,
 		"custom_workflow":             s.executeWorkflowGraphJob,
 		"availability_watch":          s.executeAvailabilityWatchJob,
+		creatorSubscriptionWorkerType: s.executeCreatorSubscriptionRefreshJob,
 		databaseOptimizeWorkerType:    s.executeDatabaseOptimizeJob,
 		databaseBackupWorkerType:      s.executeDatabaseBackupJob,
 	}

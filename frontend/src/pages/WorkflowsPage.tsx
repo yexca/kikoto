@@ -7,7 +7,8 @@ import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
 import { LazyRemoteFetchWorkspaceDialog, useRemoteFetchWorkspace } from "@/features/work-detail/workflows";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { AvailabilityWatchPanel } from "@/features/workflows/availability-watch/AvailabilityWatchPanel";
+import { SubscriptionsManagedWorkflowPanel } from "@/features/workflows/availability-watch/AvailabilityWatchPanel";
+import { openWorkflowPath } from "@/features/workflows/workflowLinks";
 import { RunDetail } from "@/features/workflows/RunDetail";
 import { isDemoShowcaseActiveRun } from "@/features/workflows/runPresentation";
 import { TriggerModal } from "@/features/workflows/triggers/TriggerModal";
@@ -60,6 +61,9 @@ type TriggerEditorState =
   | null;
 
 const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v3";
+
+// Workflows configured and run from the Subscriptions page.
+const subscriptionsManagedWorkflows = new Set(["availability_watch", "creator_subscription_refresh"]);
 
 export function WorkflowsPage({
   canRun,
@@ -611,23 +615,24 @@ export function WorkflowsPage({
                 aria-label={selectedDefinition ? workflowName(selectedDefinition, t) : undefined}
                 className="min-w-0 flex-1"
               >
-                {selectedDefinition?.code === "availability_watch" ? (
-                  <AvailabilityWatchPanel
+                {selectedDefinition && subscriptionsManagedWorkflows.has(selectedDefinition.code) ? (
+                  <SubscriptionsManagedWorkflowPanel
                     definition={selectedDefinition}
                     triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
                     recentRuns={recentDefinitionRuns}
-                    readOnly={readOnly}
-                    canSyncMetadata={canSyncMetadata}
-                    canTrackRemote={canTrackRemote}
-                    canFetchRemote={canFetchRemote}
-                    onCreateTrigger={createAutomationTrigger}
-                    onEditTrigger={editAutomationTrigger}
-                    onToggleTrigger={toggleAutomationTrigger}
+                    message={workflowCopy(
+                      selectedDefinition.code === "availability_watch"
+                        ? "availabilityWatchManagedOnSubscriptions"
+                        : "subscriptionRefreshManagedOnSubscriptions",
+                    )}
                     onOpenRun={openActivityRun}
-                    onRunQueued={() => {
-                      void refreshRecentRuns("availability_watch");
-                      showQueuedRun();
-                    }}
+                    onOpenSubscriptions={() =>
+                      openWorkflowPath(
+                        selectedDefinition.code === "availability_watch"
+                          ? "/subscriptions?panel=watch"
+                          : "/subscriptions?panel=subscriptions",
+                      )
+                    }
                   />
                 ) : (
                   <WorkflowDetail

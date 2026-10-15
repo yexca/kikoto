@@ -14,9 +14,10 @@ import { getStoredServerURL } from "@/lib/serverConfig";
 import { cn } from "@/lib/tailwindClassNames";
 import { PERSONAL_TAB_PERMISSION, personalTabPath, personalTabs } from "@/pages/personalTabs";
 
-// Insights and the personal Settings tabs are one tap away on a phone, which has no sidebar.
+// Subscriptions, Insights, and the personal Settings tabs are one tap away on a
+// phone, which has no sidebar.
 const personalDestinations = [
-  ...navItems.filter((item) => item.path === INSIGHTS_PATH),
+  ...navItems.filter((item) => item.id === "subscriptions" || item.path === INSIGHTS_PATH),
   ...personalTabs.map((tab) => ({ ...tab, path: personalTabPath(tab.id) })),
 ];
 

@@ -55,11 +55,15 @@ Circles represent makers, circles, and related party catalog state.
 - Keeps the common refresh actions in the detail summary: **First pull** for a
   circle that was never pulled, then **Refresh circle**, which also checks the
   remote sources. **Retry metadata** appears only while catalog works still
-  lack metadata and fills just those. Each action queues a Follow a circle run
+  lack metadata and fills just those. Each action queues a Sync a circle catalog run
   without a filter or tag and returns at once; the button shows
   **Refreshing** until the run settles, and the run is visible in Activity.
-- The **More** menu holds **Change cover…** and **Follow this circle…**, the
-  Follow a circle preset with this circle filled in, for every other
+- The bell beside **Favorite** subscribes to the circle's new works, and the
+  bell beside a series' DLsite link to that series; see
+  [Subscriptions](subscriptions.md). A series of a subscribed circle is already
+  included.
+- The **More** menu holds **Change cover…** and **Sync this circle's catalog…**,
+  the Sync a circle catalog preset with this circle filled in, for every other
   combination of catalog refresh, filter, metadata, tag, and source check. To
   refresh metadata the circle's works already have, run Metadata sync with the
   circle scope.

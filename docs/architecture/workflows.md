@@ -64,8 +64,11 @@ Remote sources:
   selected remote works.
 - `remote_popular_collection` and `dlsite_popular_collection`: see
   [Popular Collections](#popular-collections).
-- Preset follow workflows `circle_follow`, `series_follow`, and
-  `voice_follow`. Circle and voice actor detail refreshes run as follow runs.
+- Preset catalog sync workflows `circle_catalog_sync`, `series_catalog_sync`,
+  and `voice_catalog_sync`. Circle and voice actor detail refreshes run as
+  catalog sync runs.
+- `creator_subscription_refresh`: see
+  [Creator Subscriptions](#creator-subscriptions).
 
 Media, cleanup, and database:
 
@@ -351,8 +354,8 @@ distributed request lock between separate application processes.
 The Workflows page lists the manually runnable built-in workflows and the
 preset workflows in one workflow list, grouped by a frontend-owned category
 keyed by workflow code: Basic (local scan, local files, metadata sync), Collect
-(popular collections), Follow (preset follow workflows), and Remote
-(Availability Watch, Fetch, and works on a source). A linked run of any other workflow adds a
+(popular collections), Catalog sync (the subscription refresh and the catalog
+sync presets), and Remote (Availability Watch, Fetch, and works on a source). A linked run of any other workflow adds a
 read-only entry for it, which stays with Basic. Each entry shows
 its latest run's status and time and the enabled automation that starts it
 (Startup, schedule, or folder watch). The page reads each listed workflow's
@@ -494,8 +497,9 @@ store both their trigger reference and the final resolved input.
 Preset workflows are system definitions whose graph is composed by the server
 from a small validated parameter set. The typed workflow graph runtime
 (`workflow_graph*.go`; persisted as `custom_workflow` jobs with checkpoints and
-retry) executes the node kinds the presets compose. `circle_follow`,
-`series_follow`, and `voice_follow` share one input, filter, and actions shape:
+retry) executes the node kinds the presets compose. `circle_catalog_sync`,
+`series_catalog_sync`, and `voice_catalog_sync` share one input, filter, and
+actions shape:
 
 | Section | Circle | Series | Voice actor |
 | --- | --- | --- | --- |
@@ -516,27 +520,29 @@ and works without a DLsite snapshot, skipping works the provider reported as
 not found. A candidate without a work takes its release date from the circle
 or voice actor catalog. Every filter is off by default; without a work limit a
 run syncs every catalog work that lacks metadata, up to the internal catalog
-bound of 5000. Following a circle or voice actor is therefore an explicit
-request for its catalog. The Workflows page warns before saving an automated
-trigger without a release range or work limit, and recommends turning one on.
+bound of 5000. Syncing a circle or voice actor catalog is therefore an explicit
+request for its catalog.
 With `metadata` off the run only refreshes the catalog (and checks sources), so
 the filter and tag are dropped; a series has no catalog refresh and requires
 the metadata action. Refreshing the metadata of works that already have it is
 Metadata sync with a circle or voice actor [scope](#metadata-sync-scope).
-Follow presets never track or fetch remote works; those actions belong to
-Availability Watch, remote collections, and Fetch.
+Catalog sync presets never track or fetch remote works; those actions belong
+to Availability Watch, remote collections, and Fetch. The presets run on
+demand and accept no trigger: following a catalog on a schedule is a
+[creator subscription](#creator-subscriptions).
 
 An administrator with `sources:write` reviews the user definitions saved in
 `legacy_workflow_snapshot` during library onboarding. An upgrade from a
 database below schema version 35 fills that table, with each definition's
 triggers, before the numbered migrations run. The review offers conversion only
-for a graph equivalent to a current preset with Startup or schedule triggers,
-and creates its triggers disabled; any other definition can be skipped or
-exported.
+for a graph equivalent to a current preset with Startup or schedule triggers.
+Conversion subscribes the reviewing account to the circles, series, or voice
+actor the graph read; their baselines come from the next successful catalog
+pull. Any other definition can be skipped or exported.
 
 `GET /api/workflow-presets` publishes each preset's parameter schema; the
-Workflows page renders it as the selected workflow's run form and as the
-startup or interval trigger form. `POST /api/workflow-presets/{code}/runs`
+Workflows page renders it as the selected workflow's run form.
+`POST /api/workflow-presets/{code}/runs`
 validates the inputs, checks that a selected source is an enabled compatible
 remote source, renders the tag template for this dispatch (`{date}`,
 `{target}`), builds the graph, validates it with the typed workflow graph
@@ -559,16 +565,11 @@ after the end is rejected. `maxWorks` is optional (1 to 500); an omitted limit
 runs at the 5000-work catalog bound, which is still explicit in the composed
 graph.
 
-Preset triggers store the configuring user and the normalized inputs in
-`config_json`; dispatch revalidates that user's current permissions,
-re-renders the tag template, and rebuilds the graph. Automated runs accept
-incremental catalog refresh only; a full refresh is a manual action. The
-follow presets reject the retired inputs `newWorks`, `existing`, `action`,
-`sourceId`, `metadataRefresh`, and the Fetch limits with a reconfiguration
-message rather than reinterpret them. The Workflows page marks a stored trigger
-that carries one as needing reconfiguration; saving the trigger with current
-inputs clears its recorded error. Preset runs are system-scope runs and share
-the visibility, cancel, retry, and Activity behavior of built-in runs.
+The catalog sync presets reject the retired inputs `newWorks`, `existing`,
+`action`, `sourceId`, `metadataRefresh`, and the Fetch limits with a
+reconfiguration message rather than reinterpret them. Preset runs are
+system-scope runs and share the visibility, cancel, retry, and Activity
+behavior of built-in runs.
 
 ## Local Folder Trigger
 
@@ -872,8 +873,12 @@ an explicit configuration excludes no extensions. A change to that
 configuration records the user whose permissions govern its scheduled
 execution.
 
-It supports at most one interval schedule trigger and may also be run directly
-from its configuration surface. Each execution snapshots the active pool and
+It has no trigger of its own. The [subscription refresh](#creator-subscriptions)
+queues it after each refresh while its Availability Watch option is on, using
+the account that last configured the watch, and it may also be run directly
+from the Subscriptions page, where its configuration and pool are managed.
+Workflows lists its runs and links to that page. Each execution snapshots the
+active pool and
 records a normal workflow run, node runs, and durable job. Before checking a
 target, the run synchronizes the code's DLsite family metadata when it has not
 been refreshed within a day; a watched code is an explicitly requested metadata
@@ -886,16 +891,16 @@ records which edition was found, and Track, Fetch, and opening the remote work
 use that edition. Remote results never materialize new `work` rows.
 
 Because every run refreshes DLsite metadata, Availability Watch configuration,
-target edits, schedules, and manual runs require `metadata:sync`; Track also
-requires `remote:track`, Fetch also requires `remote:fetch`, and Track plus
-Fetch require both remote permissions. Scheduled dispatch re-checks the
-trigger owner's complete permission set.
+target edits, and manual runs require `metadata:sync`; Track also requires
+`remote:track`, Fetch also requires `remote:fetch`, and Track plus Fetch
+require both remote permissions. A run the subscription refresh queues
+re-checks the configuring account's complete permission set.
 
 Available targets form the pool's Available side; configured Track and Fetch
 actions are child workflows with their own histories. A successful run that
 finds new available works creates a notification for every enabled account
-that holds `workflows:run`, and the notification opens the pool's Available
-side.
+that holds `workflows:run`, which opens the pool's Available side, and adds
+each newly available work to those accounts' release feeds.
 
 `PUT /api/availability-watch/targets` replaces the pool;
 `POST /api/availability-watch/targets` adds codes without deactivating
@@ -908,10 +913,10 @@ with their titles and languages.
 Opening a voice actor detail reads the persisted local works and voice catalog
 only; entering either a voice or circle detail never queues a workflow.
 
-Circle and voice actor detail refreshes are follow preset runs without a tag
-or filter. `POST /api/circles/{externalId}/refresh` and `POST
-/api/voices/{personId}/catalog/refresh` only queue a `circle_follow` or
-`voice_follow` run and return its id. A circle refresh runs the catalog node,
+Circle and voice actor detail refreshes are catalog sync preset runs without a
+tag or filter. `POST /api/circles/{externalId}/refresh` and `POST
+/api/voices/{personId}/catalog/refresh` only queue a `circle_catalog_sync` or
+`voice_catalog_sync` run and return its id. A circle refresh runs the catalog node,
 the optional source-check node, and the metadata action for catalog works that
 lack metadata. A voice actor refresh runs the catalog node and a
 `voice_metadata` node limited to the voice actor's known works; it never
@@ -921,17 +926,18 @@ request identical to an active run for the same creator joins it, and a
 different request is rejected until that run settles. A detail refresh is
 authorized by `metadata:sync`; because its graph holds only refresh steps, the
 run carries `workflows:run` on the requester's behalf. Circle detail returns
-the newest follow run for the circle so the page can follow it across reloads.
+the newest catalog sync run for the circle so the page can follow it across
+reloads.
 The only inline circle refresh is the bounded incremental catalog lookup
 that resolves a series link. Creator
 catalogs expose Never, Attention, or Synced from their last successful pull and
 the configured freshness window. An authorized user can start an explicit First
-pull or manual refresh through the same follow workflow.
+pull or manual refresh through the same catalog sync workflow.
 
 Reading a circle, changing its per-user state, and a detail refresh never
 create one. An unknown maker id returns `404` with `circle_not_in_database`;
 the page offers a user with `metadata:sync` and `workflows:run` the
-`circle_follow` run form with that id filled in, and asks anyone else to
+`circle_catalog_sync` run form with that id filled in, and asks anyone else to
 contact an administrator. Only a `circle_catalog` fetch adds the circle: it
 starts as an unfetched placeholder, and a failed first fetch removes that
 placeholder unless it has since gained a name, catalog, relation, or user
@@ -956,12 +962,88 @@ A failed source keeps its earlier catalog observations, while a complete
 source marks observations absent from the new generation `not_found`. Remote
 discoveries remain catalog rows and never materialize works recursively. In a
 detail refresh, only catalog items that already resolve to canonical works enter the refresh run's
-metadata node; it synchronizes them within the same `voice_follow` run
+metadata node; it synchronizes them within the same `voice_catalog_sync` run
 rather than creating one metadata workflow per work. Metadata incremental
 refreshes select only those known canonical work families without a DLsite
 snapshot; full refreshes retry every known canonical family. Neither mode
 materializes a catalog-only row as a work. Metadata failures can make the
 workflow partial without making an otherwise complete catalog generation stale.
+
+## Creator Subscriptions
+
+A creator subscription asks for new releases of one circle, one series of a
+circle, or one voice actor. It is personal state (`favorites:write`) and is
+separate from Favorite. Subscribing never creates a circle, series, or voice
+actor; an unknown circle is added by its catalog sync first. A voice actor
+subscription needs an enabled compatible remote source, because the voice
+actor catalog comes from remote sources.
+
+A circle subscription includes the circle's series. An account cannot
+subscribe to a series of a circle it subscribes to, and subscribing to a circle
+removes that account's subscriptions to its series once the account confirms
+it. A circle merge keeps each account's subscriptions on the target with this
+rule applied, and a voice actor merge keeps them on the target; Undo restores
+both sides.
+
+Subscribed works come from catalogs: a circle and its series from the DLsite
+circle catalog, a voice actor from the voice actor catalog. Each circle and
+voice actor keeps a seen set of the catalog codes already accounted for. A
+subscription takes effect when its catalog has a baseline: right away when the
+catalog was pulled within the catalog freshness window, otherwise after the
+next successful pull that finishes after it was created. Taking effect records
+the whole catalog in the seen set, unless another active subscription already
+keeps that set current, so works already in the catalog never count as new. A
+user with `metadata:sync` may queue that pull while subscribing: a full pull
+for a catalog never pulled, an incremental one otherwise; anyone else waits for
+the next refresh.
+
+One system workflow, `creator_subscription_refresh`, serves every account:
+
+```text
+catalogs (each subscribed circle and voice actor once)
+  -> metadata (DLsite family sync of codes outside the seen sets)
+  -> feed (one entry per subscriber whose subscription covers the code)
+  -> watch (queue Availability Watch)
+```
+
+A catalog pulled within the last six hours, for example by a detail refresh,
+is not pulled again. A failed pull keeps the earlier catalog and makes the run
+partial. Codes outside the seen sets are synchronized newest code first, at
+most 60 per run; the rest wait for the next run. A code DLsite does not list
+enters the seen set without a feed entry, and a code whose metadata fails stays
+unseen for a retry. Synchronizing creates the code's edition works, because a
+subscription is an explicit request for its new works; catalog codes in the
+baseline are never materialized. A work released more than 30 days before a
+subscription took effect counts as seen for that subscriber, so a full catalog
+refresh that surfaces old works adds no entries. A non-original edition whose
+original was released more than 30 days earlier is a new edition rather than a
+new release. A series subscription receives the codes its series lists.
+
+The feed (`user_release_feed_item`) records one entry per account, code, and
+event (`released`, `edition`, or `available`). Availability Watch adds
+`available` entries for every account it notifies, and a target that becomes
+available again moves its entry to the top. The Subscriptions page groups
+entries by work family, newest event first, and shows each family through its
+canonical work, or through catalog details when no work exists yet. Each family
+belongs to the day of its newest event in the account's time zone, and a feed
+page holds 5, 10, or 15 days that have entries. Opening the
+feed records it as read for the navigation badge. A run that adds entries for
+an account creates one notification for that account. A subscription whose
+Availability Watch option is on also adds its new works to the shared watch
+pool, on behalf of a subscriber who may edit the pool.
+
+The workflow has one fixed interval trigger, configured only on the
+Subscriptions page by a user with `metadata:sync`: on or off, an interval from
+1 to 168 hours (24 by default), and whether each refresh checks Availability
+Watch. Startup plans its first run. The trigger needs no owner: the run holds
+only refresh steps, and the Availability Watch run it queues uses the watch's
+configuring account. Workflows lists its runs and links to the Subscriptions
+page; the trigger cannot be edited or deleted there. `POST
+/api/subscriptions/refresh` queues a run now; a run that is already queued or
+running is kept.
+
+Demo shows a fixed sample feed and subscription list built from obviously
+synthetic names and reserved codes. It stores, refreshes, and links nothing.
 
 ## Review Candidates
 

@@ -1,4 +1,15 @@
-import { ChartColumn, Database, Heart, Info, Library, MicVocal, Settings, Users, Workflow } from "lucide-react";
+import {
+  BellRing,
+  ChartColumn,
+  Database,
+  Heart,
+  Info,
+  Library,
+  MicVocal,
+  Settings,
+  Users,
+  Workflow,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 type NavItem = {
@@ -64,6 +75,18 @@ export const navItems = [
     icon: MicVocal,
     audience: "public",
     permission: undefined,
+    group: "browse",
+  },
+  {
+    id: "subscriptions",
+    label: "Subscriptions",
+    labelKey: "nav.subscriptions",
+    description: "New works from the circles, series, and voice actors you subscribe to",
+    descriptionKey: "nav.subscriptionsDescription",
+    path: "/subscriptions",
+    icon: BellRing,
+    audience: "authenticated",
+    permission: "library:read",
     group: "browse",
   },
   {

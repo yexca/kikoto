@@ -17,7 +17,7 @@ const demoShowcaseRunReason = workflow.DemoShowcaseTriggerReason
 var demoShowcaseWorkflowCodes = []string{
 	"local_library_scan", "local_media_index", "metadata_sync",
 	"remote_popular_collection", "dlsite_popular_collection", "availability_watch",
-	"remote_work_fetch", sourcePresenceCheckWorkflowCode, "circle_follow", "series_follow", "voice_follow",
+	"remote_work_fetch", sourcePresenceCheckWorkflowCode, "circle_catalog_sync", "series_catalog_sync", "voice_catalog_sync",
 }
 
 // These extra examples populate Activity's active and attention views without

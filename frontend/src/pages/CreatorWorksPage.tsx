@@ -38,6 +38,7 @@ import { LibrarySortButton } from "@/pages/library/LibrarySortButton";
 import { creatorWorkPageSizeOptions } from "@/lib/creatorWorksBrowse";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
+import { SubscribeButton } from "@/features/subscriptions/SubscribeButton";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoContentNotice } from "@/components/DemoReadOnlyNotice";
 import {
@@ -598,7 +599,7 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
     }
   };
 
-  // Detail refreshes search every compatible source; Follow picks sources per run.
+  // Detail refreshes search every compatible source; catalog sync picks sources per run.
   const retryVoiceMetadata = () =>
     void refreshVoiceCatalog(
       { catalogRefresh: "stored", metadataRefresh: "missing" },
@@ -918,6 +919,14 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
               <Heart className={`h-4 w-4 ${detail.favorite ? "fill-current" : ""}`} />
               <span className="hidden lg:inline">{t("detailActions.favorite")}</span>
             </Button>
+            <SubscribeButton
+              target={{ kind: "voice", personId: detail.personId }}
+              subjectName={detail.displayName}
+              canSubscribe={!auth.demoMode && auth.hasPermission("favorites:write")}
+              canPullNow={!auth.demoMode && auth.hasPermission("metadata:sync")}
+              onOpenSubscriptions={() => openWorkflowPath("/subscriptions?panel=subscriptions")}
+              className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
+            />
             {!firstPull && !catalogRefreshActive && (detail.metadataMissingWorks ?? 0) > 0 && (
               <Button
                 variant="outline"
@@ -976,11 +985,13 @@ function VoiceDetailPage({ personId, active }: { personId: number; active: boole
                 ...(canOpenWorkflows
                   ? [
                       {
-                        key: "follow",
-                        label: t("detailActions.followVoice"),
+                        key: "catalogSync",
+                        label: t("detailActions.syncVoiceCatalog"),
                         icon: <Rss className="h-4 w-4" />,
                         onSelect: () =>
-                          openWorkflowPath(workflowRunFormPath("voice_follow", { personId: String(detail.personId) })),
+                          openWorkflowPath(
+                            workflowRunFormPath("voice_catalog_sync", { personId: String(detail.personId) }),
+                          ),
                       },
                     ]
                   : []),

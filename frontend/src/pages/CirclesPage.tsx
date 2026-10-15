@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -61,6 +61,7 @@ import { retainVisibleSelection, withSelection } from "@/components/work-collect
 import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { useRemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { openWorkflowPath, workflowActivityRunPath, workflowRunFormPath } from "@/features/workflows/workflowLinks";
+import { SubscribeButton } from "@/features/subscriptions/SubscribeButton";
 import {
   api,
   ApiError,
@@ -487,6 +488,8 @@ function CircleDetailPage({
 
   const canOpenWorkflows = auth.hasPermission("workflows:run") && !auth.demoMode;
   const canChangeCover = auth.hasPermission("favorites:write");
+  const canSubscribe = auth.hasPermission("favorites:write") && !auth.demoMode;
+  const openSubscriptions = () => openWorkflowPath("/subscriptions?panel=subscriptions");
   const openRefreshRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
   const refreshRun = useCircleRefreshRun({
     run: detail?.refresh,
@@ -533,12 +536,12 @@ function CircleDetailPage({
     }
   };
 
-  // An unknown circle is fetched by the circle follow workflow, which adds it
+  // An unknown circle is fetched by the circle catalog sync workflow, which adds it
   // on success; the run form opens with this maker id filled in.
   const canFetchMissingCircle = canRefreshCatalog && canOpenWorkflows;
-  const openFollowCircle = () =>
+  const openCatalogSyncCircle = () =>
     openWorkflowPath(
-      workflowRunFormPath("circle_follow", { circleId: detail?.externalId ?? externalId.toUpperCase() }),
+      workflowRunFormPath("circle_catalog_sync", { circleId: detail?.externalId ?? externalId.toUpperCase() }),
     );
 
   const firstPull = circle.syncState === "never";
@@ -570,10 +573,10 @@ function CircleDetailPage({
     ...(canOpenWorkflows
       ? [
           {
-            key: "follow",
-            label: t("detailActions.followCircle"),
+            key: "catalogSync",
+            label: t("detailActions.syncCircleCatalog"),
             icon: <Rss className="h-4 w-4" />,
-            onSelect: openFollowCircle,
+            onSelect: openCatalogSyncCircle,
           },
         ]
       : []),
@@ -789,7 +792,7 @@ function CircleDetailPage({
         }
         primaryAction={
           missing && canFetchMissingCircle ? (
-            <Button onClick={openFollowCircle}>
+            <Button onClick={openCatalogSyncCircle}>
               <Rss className="h-4 w-4" />
               {t("creatorBrowse.circleFetch")}
             </Button>
@@ -846,6 +849,13 @@ function CircleDetailPage({
               <Heart className={`h-4 w-4 ${circle.favorite ? "fill-current" : ""}`} />
               <span className="hidden lg:inline">{t("detailActions.favorite")}</span>
             </Button>
+            <SubscribeButton
+              target={{ kind: "circle", circleId: circle.externalId }}
+              subjectName={circle.displayName}
+              canSubscribe={canSubscribe}
+              canPullNow={canRefreshCatalog}
+              onOpenSubscriptions={openSubscriptions}
+            />
             {!firstPull && !refreshRun.active && catalogOnlyCount > 0 && (
               <Button
                 variant="outline"
@@ -884,7 +894,14 @@ function CircleDetailPage({
                 onClick={runPrimaryRefresh}
               >
                 {queueingRefresh ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                <span>{firstPull ? t("detailActions.firstPull") : t("detailActions.refreshCircle")}</span>
+                {firstPull ? (
+                  <span>{t("detailActions.firstPull")}</span>
+                ) : (
+                  <>
+                    <span className="lg:hidden">{t("detailActions.refreshShort")}</span>
+                    <span className="hidden lg:inline">{t("detailActions.refreshCircle")}</span>
+                  </>
+                )}
               </Button>
             )}
             <CreatorActionMenu
@@ -1067,6 +1084,18 @@ function CircleDetailPage({
                 selectedSeries={selectedSeries}
                 selectedSeriesCode={selectedSeries?.titleId ?? null}
                 allCount={activeSeriesCount}
+                subscribe={
+                  selectedSeries && (
+                    <SubscribeButton
+                      target={{ kind: "series", circleId: circle.externalId, seriesId: selectedSeries.titleId }}
+                      subjectName={selectedSeries.name}
+                      canSubscribe={canSubscribe}
+                      canPullNow={canRefreshCatalog}
+                      onOpenSubscriptions={openSubscriptions}
+                      className="shrink-0"
+                    />
+                  )
+                }
               />
               <div className="hidden flex-col gap-2 px-1 py-1 lg:flex lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0">
@@ -1085,13 +1114,24 @@ function CircleDetailPage({
                         })}
                   </p>
                 </div>
-                {selectedSeries?.url && (
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={selectedSeries.url} target="_blank" rel="noreferrer">
-                      <ExternalLink className="h-4 w-4" />
-                      {t("creatorBrowse.dlsiteSeries")}
-                    </a>
-                  </Button>
+                {selectedSeries && (
+                  <div className="flex shrink-0 gap-2">
+                    <SubscribeButton
+                      target={{ kind: "series", circleId: circle.externalId, seriesId: selectedSeries.titleId }}
+                      subjectName={selectedSeries.name}
+                      canSubscribe={canSubscribe}
+                      canPullNow={canRefreshCatalog}
+                      onOpenSubscriptions={openSubscriptions}
+                    />
+                    {selectedSeries.url && (
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={selectedSeries.url} target="_blank" rel="noreferrer">
+                          <ExternalLink className="h-4 w-4" />
+                          {t("creatorBrowse.dlsiteSeries")}
+                        </a>
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
               {selectedSeries ? (
@@ -1543,12 +1583,15 @@ function MobileCircleSeriesHeader({
   selectedSeries,
   selectedSeriesCode,
   allCount,
+  subscribe,
 }: {
   externalId: string;
   series: CircleSeries[];
   selectedSeries: CircleSeries | null;
   selectedSeriesCode: string | null;
   allCount: number;
+  /** The selected series' subscribe control. */
+  subscribe?: ReactNode;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -1570,6 +1613,7 @@ function MobileCircleSeriesHeader({
         <span className="min-w-0 truncate font-semibold">{selectedName}</span>
         <span className="shrink-0 text-muted-foreground">{selectedCount}</span>
       </button>
+      {subscribe}
       {selectedSeries?.url && (
         <Button variant="ghost" size="icon" className="shrink-0" asChild>
           <a

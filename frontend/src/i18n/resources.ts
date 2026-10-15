@@ -1,6 +1,7 @@
 import { surfaceEnglish } from "./surfaces/en";
 import { adminToolsEnglish } from "./surfaces/adminTools";
 import { personalEnglish } from "./surfaces/personal/en";
+import { subscriptionsEnglish } from "./surfaces/subscriptions/en";
 
 export const libraryEnglish = {
   workNotFound: "Work not found",
@@ -329,6 +330,8 @@ export const englishResource = {
         maintenance: "Maintenance",
         insights: "Insights",
         insightsDescription: "Your listening calendar, statistics, and history",
+        subscriptions: "Subscriptions",
+        subscriptionsDescription: "New works from the circles, series, and voice actors you subscribe to",
         about: "About",
         libraryDescription: "Browse, filter, and play works from every configured source",
         favoritesDescription: "Browse your favorite works, circles, voices, and lists",
@@ -348,6 +351,7 @@ export const englishResource = {
       ...surfaceEnglish,
       ...adminToolsEnglish,
       ...personalEnglish,
+      ...subscriptionsEnglish,
       appearance: {
         title: "Appearance",
         subtitle: "Mode, style, and color",
@@ -668,6 +672,7 @@ export const englishResource = {
         empty: "No notifications right now.",
         workflowStatus: "Workflow #{{id}} · {{status}}",
         availabilityReady: "Availability watch is ready for {{workCode}}.",
+        subscriptionRelease: "New works from your subscriptions, including {{workCode}}.",
         remoteTrackFailed: "Remote track failed for {{workCode}}.",
         remoteTrackSucceeded: "Remote track is ready for {{workCode}}.",
         generic: "Workflow update for {{workCode}}.",

@@ -198,8 +198,9 @@ export function NotificationCenter({
       return canViewWorkflows ? `/workflows?activity=1&run=${notification.workflowRunId}` : "/";
     }
     if (notification.type === "availability_watch_ready") {
-      return `/workflows?workflow=availability_watch&dialog=ready&run=${notification.workflowRunId}`;
+      return `/subscriptions?panel=watch&dialog=ready&run=${notification.workflowRunId}`;
     }
+    if (notification.type === "subscription_release") return "/subscriptions";
     if (notification.type === "remote_track" && notification.status === "failed") {
       return canViewWorkflows ? `/workflows?activity=1&run=${notification.workflowRunId}` : null;
     }
@@ -500,7 +501,7 @@ function NotificationRow({
           ? "info"
           : "neutral";
   const Icon =
-    notification.type === "availability_watch_ready"
+    notification.type === "availability_watch_ready" || notification.type === "subscription_release"
       ? Bell
       : notification.type === "remote_track"
         ? GitBranchPlus
@@ -567,6 +568,9 @@ function notificationTitle(notification: WorkflowNotification, t: TFunction) {
   }
   if (notification.type === "availability_watch_ready") {
     return t("notifications.availabilityReady", { workCode: notification.workCode });
+  }
+  if (notification.type === "subscription_release") {
+    return t("notifications.subscriptionRelease", { workCode: notification.workCode });
   }
   if (notification.type === "remote_track") {
     return notification.status === "failed"

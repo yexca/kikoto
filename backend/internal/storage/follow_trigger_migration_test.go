@@ -25,7 +25,7 @@ func TestMigrationDisablesFollowTriggersForReconfiguration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := Migrate(db, sourceDir); err != nil {
+	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 39)); err != nil {
 		t.Fatal(err)
 	}
 	var enabled int

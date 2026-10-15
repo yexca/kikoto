@@ -79,6 +79,19 @@ func mergeRelations(ctx context.Context, tx *sql.Tx, target, source int64, sourc
 		{"UPDATE party_metadata_snapshot SET party_id=? WHERE party_id=?", []any{target, source}},
 		{"DELETE FROM party_catalog_refresh_state WHERE party_id IN (?,?)", []any{target, source}},
 		{"UPDATE party_merge_review SET target_party_id=? WHERE target_party_id=?", []any{target, source}},
+		// Subscriptions follow the merged circle; a series of a circle the
+		// account now subscribes to is covered by that subscription.
+		{`INSERT INTO creator_subscription(user_id,subject_kind,party_id,series_title_id,watch_availability,activated_at,created_at)
+   SELECT user_id,subject_kind,?,series_title_id,watch_availability,activated_at,created_at FROM creator_subscription WHERE party_id=?
+   ON CONFLICT(user_id,party_id,series_title_id) WHERE party_id IS NOT NULL DO UPDATE SET
+    watch_availability=MAX(creator_subscription.watch_availability,excluded.watch_availability),
+    activated_at=COALESCE(creator_subscription.activated_at,excluded.activated_at)`, []any{target, source}},
+		{"DELETE FROM creator_subscription WHERE party_id=?", []any{source}},
+		{`DELETE FROM creator_subscription WHERE party_id=? AND subject_kind='series' AND user_id IN (
+   SELECT user_id FROM creator_subscription WHERE party_id=? AND subject_kind='circle')`, []any{target, target}},
+		{"INSERT OR IGNORE INTO party_release_seen(party_id,primary_code,seen_at) SELECT ?,primary_code,seen_at FROM party_release_seen WHERE party_id=?", []any{target, source}},
+		{"DELETE FROM party_release_seen WHERE party_id=?", []any{source}},
+		{"UPDATE user_release_feed_item SET party_id=? WHERE party_id=?", []any{target, source}},
 	}
 	for _, q := range queries {
 		if _, err := tx.ExecContext(ctx, q.sql, q.args...); err != nil {

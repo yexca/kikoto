@@ -88,6 +88,7 @@ export function WorkCollectionDisplayPicker({
   pageSize,
   pageSizeOptions,
   onPageSizeChange,
+  pageSizeLabels,
   coverSources,
 }: {
   mobileColumns: WorkCollectionColumnSetting;
@@ -107,6 +108,8 @@ export function WorkCollectionDisplayPicker({
   pageSize?: number;
   pageSizeOptions?: readonly number[];
   onPageSizeChange?: (value: number) => void;
+  /** Wording for a page measured in something other than works, such as days. */
+  pageSizeLabels?: { heading: string; value: (value: number) => string };
   /** Whether cover source marks show automatically (exceptions only), always, or never. */
   coverSources?: { mode: SourceVisibilityMode; onChange: (mode: SourceVisibilityMode) => void };
 }) {
@@ -136,7 +139,7 @@ export function WorkCollectionDisplayPicker({
   const summary = [
     view ? viewOptions.find((option) => option.value === view.mode)?.label : null,
     showColumns ? t("collection.columns", { label: columnSettingLabel(currentColumns, t) }) : null,
-    paged ? t("collection.pageSize", { value: pageSize }) : null,
+    paged ? (pageSizeLabels?.value(pageSize) ?? t("collection.pageSize", { value: pageSize })) : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -210,12 +213,12 @@ export function WorkCollectionDisplayPicker({
           </DisplayOptionGroup>
         )}
         {paged && (
-          <DisplayOptionGroup label={t("collection.itemsPerPage")}>
+          <DisplayOptionGroup label={pageSizeLabels?.heading ?? t("collection.itemsPerPage")}>
             {pageSizeOptions.map((option) => (
               <DisplayOptionButton
                 key={option}
                 checked={pageSize === option}
-                label={t("collection.perPageOption", { value: option })}
+                label={pageSizeLabels?.value(option) ?? t("collection.perPageOption", { value: option })}
                 onSelect={() => onPageSizeChange(option)}
               >
                 {option}

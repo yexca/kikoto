@@ -9,6 +9,7 @@
 - [来源](sources.md)
 - [社团](circles.md)
 - [声优](voices.md)
+- [订阅](subscriptions.md)
 - [播放](playback.md)
 - [设置](settings.md)
 - [工作流](workflows.md)

@@ -439,6 +439,16 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/availability-watch/targets/{id}", s.deleteAvailabilityWatchTarget)
 	mux.HandleFunc("POST /api/availability-watch/targets/{id}/track", s.trackAvailabilityWatchTarget)
 	mux.HandleFunc("POST /api/availability-watch/run", s.runAvailabilityWatch)
+	mux.HandleFunc("GET /api/subscriptions", s.listCreatorSubscriptions)
+	mux.HandleFunc("POST /api/subscriptions", s.createCreatorSubscription)
+	mux.HandleFunc("GET /api/subscriptions/lookup", s.lookupCreatorSubscription)
+	mux.HandleFunc("PATCH /api/subscriptions/{id}", s.updateCreatorSubscription)
+	mux.HandleFunc("DELETE /api/subscriptions/{id}", s.deleteCreatorSubscription)
+	mux.HandleFunc("PUT /api/subscriptions/schedule", s.updateCreatorSubscriptionSchedule)
+	mux.HandleFunc("POST /api/subscriptions/refresh", s.runCreatorSubscriptionRefresh)
+	mux.HandleFunc("GET /api/subscriptions/feed", s.listReleaseFeed)
+	mux.HandleFunc("GET /api/subscriptions/feed/unread", s.releaseFeedUnread)
+	mux.HandleFunc("POST /api/subscriptions/feed/seen", s.markReleaseFeedSeen)
 	apiHandler := s.withCORS(withFirstResponseDeadline(
 		limitRequestBody(s.authMiddleware(s.anonymousAccessMiddleware(s.demoReadOnlyMiddleware(s.demoContentMiddleware(s.libraryMigrationMiddleware(mux))))), maxJSONRequestBytes),
 		mux, apiFirstResponseBudget, slowFirstResponsePatterns,
@@ -535,6 +545,9 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 	}
 	defer s.startStartupMetadataRepairs()
 	if err := s.ensureSystemWorkflowDefinitions(ctx); err != nil {
+		return err
+	}
+	if err := s.ensureCreatorSubscriptionSchedule(ctx); err != nil {
 		return err
 	}
 	if err := s.dispatchStartupSystemWorkflowTriggers(ctx); err != nil {
