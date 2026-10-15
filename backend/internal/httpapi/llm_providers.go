@@ -28,10 +28,14 @@ type llmProviderResponse struct {
 	HasAPIKey      bool        `json:"hasApiKey"`
 	DefaultModel   string      `json:"defaultModel"`
 	Models         []llm.Model `json:"models"`
+	// RequestTimeoutSeconds is the effective bound, including the default.
+	RequestTimeoutSeconds int  `json:"requestTimeoutSeconds"`
+	OllamaContextLength   int  `json:"ollamaContextLength,omitempty"`
+	OllamaDisableThinking bool `json:"ollamaDisableThinking,omitempty"`
 }
 
 func (s *Server) llmResponse(p llm.Provider) llmProviderResponse {
-	return llmProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, Kind: p.Preset().Kind, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, AllowSensitive: p.AllowSensitive, OllamaScope: p.OllamaScope, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", DefaultModel: p.DefaultModel, Models: p.Models}
+	return llmProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, Kind: p.Preset().Kind, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, AllowSensitive: p.AllowSensitive, OllamaScope: p.OllamaScope, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", DefaultModel: p.DefaultModel, Models: p.Models, RequestTimeoutSeconds: int(p.RequestTimeout() / time.Second), OllamaContextLength: p.OllamaContextLength, OllamaDisableThinking: p.OllamaDisableThinking}
 }
 
 func (s *Server) listLLMProviders(w http.ResponseWriter, r *http.Request) {
@@ -178,6 +182,22 @@ type llmProviderPayload struct {
 	OllamaScope    string  `json:"ollamaScope"`
 	Enabled        *bool   `json:"enabled"`
 	DefaultModel   *string `json:"defaultModel"`
+	// Request tuning; an omitted field keeps the saved value.
+	RequestTimeoutSeconds *int  `json:"requestTimeoutSeconds"`
+	OllamaContextLength   *int  `json:"ollamaContextLength"`
+	OllamaDisableThinking *bool `json:"ollamaDisableThinking"`
+}
+
+func (body llmProviderPayload) applyTuning(p *llm.Provider) {
+	if body.RequestTimeoutSeconds != nil {
+		p.RequestTimeoutSeconds = *body.RequestTimeoutSeconds
+	}
+	if body.OllamaContextLength != nil {
+		p.OllamaContextLength = *body.OllamaContextLength
+	}
+	if body.OllamaDisableThinking != nil {
+		p.OllamaDisableThinking = *body.OllamaDisableThinking
+	}
 }
 
 func (s *Server) saveLLMProvider(w http.ResponseWriter, r *http.Request) {
@@ -248,6 +268,7 @@ func (s *Server) saveLLMProvider(w http.ResponseWriter, r *http.Request) {
 	if body.AllowSensitive != nil {
 		p.AllowSensitive = *body.AllowSensitive
 	}
+	body.applyTuning(&p)
 	if body.Kind != "" && body.Kind != p.Preset().Kind {
 		writeAPIError(w, 400, "invalid_llm_config", "The preset selects the provider protocol.", false)
 		return
@@ -261,7 +282,7 @@ func (s *Server) saveLLMProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeAPIError(w, 400, "invalid_llm_config", "Check the provider, endpoint, location and model settings.", false)
+		writeAPIError(w, 400, "invalid_llm_config", "Check the provider, endpoint, location, model and request settings.", false)
 		return
 	}
 	writeJSON(w, http.StatusOK, s.llmResponse(saved))
@@ -346,7 +367,9 @@ func (s *Server) acquireLLMSlot(w http.ResponseWriter, r *http.Request) bool {
 }
 
 // Only the administrator-configured origin is allowed, including its private
-// address exception. Discovery and translation refuse every redirect.
+// address exception. Discovery and translation refuse every redirect. A
+// translation answers once generation finishes, so the header wait is the
+// request bound rather than the default.
 func (s *Server) llmClient(ctx context.Context, p llm.Provider, timeout time.Duration) (llm.Client, func(), error) {
 	base := p.Endpoint(s.cfg.HostProxyAddress())
 	route, err := s.resolveProxyRoute(ctx, proxyconfig.ScopeOther, 0)
@@ -354,7 +377,7 @@ func (s *Server) llmClient(ctx context.Context, p llm.Provider, timeout time.Dur
 		return llm.Client{}, nil, err
 	}
 	transport, err := proxiedTransport(route, func(proxy *url.URL) (*outbound.Policy, error) {
-		return outbound.NewPolicy([]outbound.Destination{{URL: base, AllowPrivate: true}}, outbound.Options{Proxy: proxy})
+		return outbound.NewPolicy([]outbound.Destination{{URL: base, AllowPrivate: true}}, outbound.Options{Proxy: proxy, ResponseHeaderTimeout: timeout})
 	})
 	if err != nil {
 		return llm.Client{}, nil, err

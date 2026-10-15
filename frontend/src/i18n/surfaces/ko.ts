@@ -585,6 +585,15 @@ export const surfaceKorean = {
       boundaryPrivate: "비공개",
       allowSensitiveDescription: "정책이 민감하다고 판단한 콘텐츠를 이 비공개 엔드포인트가 수신하도록 허용합니다.",
       enabledDescription: "기본 모델을 설정하면 번역에 사용할 수 있습니다.",
+      requestTimeout: "요청 제한 시간(분)",
+      requestTimeoutDescription:
+        "번역 요청 한 번에 허용하는 시간입니다({{min}}~{{max}}분). 로컬 모델은 몇 분이 걸릴 수 있습니다.",
+      ollamaContextLength: "컨텍스트 길이",
+      ollamaContextLengthDescription:
+        "컨텍스트 창의 토큰 수입니다({{min}}~{{max}}). 비워 두면 모델 기본값을 사용합니다.",
+      ollamaContextLengthDefault: "모델 기본값",
+      ollamaDisableThinking: "사고 끄기",
+      ollamaDisableThinkingDescription: "추론 모델이 바로 답하게 하여 번역을 더 빠르게 합니다.",
       enableNamed: "{{name}} 사용",
       editNamed: "{{name}} 편집",
       deleteNamed: "{{name}} 삭제",

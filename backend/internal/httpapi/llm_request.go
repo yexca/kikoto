@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/yexca/kikoto/backend/internal/llm"
 )
@@ -122,12 +121,11 @@ func (s *Server) prepareLLMTranslation(ctx context.Context, workID int64, payloa
 }
 
 func (s *Server) requestLLMTranslation(ctx context.Context, plan llmTranslationPlan, target string, beforeRequest func(context.Context) error) (llm.Text, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
 	if len(llmPlanRequests(plan)) == 0 {
 		return completeLLMTags(plan, llm.Text{}), nil
 	}
-	client, closeClient, err := s.llmClient(ctx, plan.Provider, 60*time.Second)
+	// Each request is bounded by the provider's request timeout.
+	client, closeClient, err := s.llmClient(ctx, plan.Provider, plan.Provider.RequestTimeout())
 	if err != nil {
 		return llm.Text{}, llmInvalid("llm_unavailable", "The LLM endpoint is unavailable.")
 	}

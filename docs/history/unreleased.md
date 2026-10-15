@@ -121,6 +121,11 @@
   local deployment, or a custom service. A local deployment on the server's
   own machine is reached through the host gateway, so only its port is
   entered.
+- An LLM provider sets its request timeout, 10 minutes by default, so a local
+  model has time to finish a translation. An Ollama provider can also set its
+  context length and turn off thinking, which is on for a new Ollama provider.
+  Kikoto constrains Ollama's output to the sent fields with one entry per tag
+  or lyrics line, so a small local model cannot drop or merge lines.
 - The ellipsis between the page numbers below a list opens a field that goes
   to a typed page number.
 

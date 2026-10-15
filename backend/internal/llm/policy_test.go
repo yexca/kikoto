@@ -15,6 +15,28 @@ func TestNormalizeLocalOllamaEndpoint(t *testing.T) {
 	}
 }
 
+func TestNormalizeBoundsRequestTuning(t *testing.T) {
+	provider, err := Normalize(Provider{PresetID: "ollama"})
+	if err != nil || provider.RequestTimeout() != DefaultRequestTimeout {
+		t.Fatalf("default timeout = %v, %v", provider.RequestTimeout(), err)
+	}
+	for _, invalid := range []Provider{
+		{PresetID: "ollama", RequestTimeoutSeconds: MinRequestTimeoutSeconds - 1},
+		{PresetID: "openai", RequestTimeoutSeconds: MaxRequestTimeoutSeconds + 1},
+		{PresetID: "ollama", OllamaContextLength: MinOllamaContextLength - 1},
+		{PresetID: "ollama", OllamaContextLength: MaxOllamaContextLength + 1},
+	} {
+		if _, err := Normalize(invalid); err == nil {
+			t.Fatalf("accepted %+v", invalid)
+		}
+	}
+	// Ollama options do not apply to another protocol.
+	provider, err = Normalize(Provider{PresetID: "openai", OllamaContextLength: 8192, OllamaDisableThinking: true})
+	if err != nil || provider.OllamaContextLength != 0 || provider.OllamaDisableThinking {
+		t.Fatalf("provider = %+v, %v", provider, err)
+	}
+}
+
 func TestNormalizeRejectsEndpointPath(t *testing.T) {
 	if _, err := Normalize(Provider{PresetID: "openai", BaseURL: "https://example.invalid/v1"}); err == nil {
 		t.Fatal("endpoint path was accepted")

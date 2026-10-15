@@ -20,7 +20,33 @@ export type ProviderDraft = {
   enabled: boolean;
   defaultModel: string;
   models: LLMModel[];
+  /** Whole minutes as typed; blank uses the server default. */
+  requestTimeoutMinutes: string;
+  /** Tokens as typed; blank keeps the model default. */
+  ollamaContextLength: string;
+  ollamaDisableThinking: boolean;
 };
+
+/** Mirrors the server bounds of the request settings. */
+export const REQUEST_TIMEOUT_MINUTES = { min: 1, max: 60, default: 10 } as const;
+export const OLLAMA_CONTEXT_LENGTH = { min: 512, max: 1 << 20 } as const;
+
+function inRange(value: string, bounds: { min: number; max: number }) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= bounds.min && number <= bounds.max;
+}
+
+export function requestTimeoutInvalid(draft: Pick<ProviderDraft, "requestTimeoutMinutes">) {
+  return draft.requestTimeoutMinutes !== "" && !inRange(draft.requestTimeoutMinutes, REQUEST_TIMEOUT_MINUTES);
+}
+
+export function contextLengthInvalid(draft: Pick<ProviderDraft, "kind" | "ollamaContextLength">) {
+  return (
+    draft.kind === "ollama" &&
+    draft.ollamaContextLength !== "" &&
+    !inRange(draft.ollamaContextLength, OLLAMA_CONTEXT_LENGTH)
+  );
+}
 
 export function draftFromPreset(preset: LLMProviderPreset): ProviderDraft {
   return {
@@ -38,6 +64,10 @@ export function draftFromPreset(preset: LLMProviderPreset): ProviderDraft {
     enabled: true,
     defaultModel: "",
     models: [],
+    requestTimeoutMinutes: String(REQUEST_TIMEOUT_MINUTES.default),
+    ollamaContextLength: "",
+    // Translation gains nothing from a reasoning pass, so a new Ollama skips it.
+    ollamaDisableThinking: preset.kind === "ollama",
   };
 }
 
@@ -59,6 +89,9 @@ export function draftFromProvider(provider: LLMProvider): ProviderDraft {
     enabled: provider.enabled,
     defaultModel: provider.defaultModel ?? "",
     models: [...provider.models],
+    requestTimeoutMinutes: String(Math.max(1, Math.round(provider.requestTimeoutSeconds / 60))),
+    ollamaContextLength: provider.ollamaContextLength ? String(provider.ollamaContextLength) : "",
+    ollamaDisableThinking: provider.ollamaDisableThinking ?? false,
   };
 }
 
@@ -98,6 +131,10 @@ export function updatePayload(draft: ProviderDraft): Partial<LLMProviderPayload>
     boundary: draft.boundary,
     allowSensitive: draft.boundary === "private" && draft.allowSensitive,
     ollamaScope: draft.ollamaScope,
+    requestTimeoutSeconds: Number(draft.requestTimeoutMinutes) * 60,
+    ...(draft.kind === "ollama"
+      ? { ollamaContextLength: Number(draft.ollamaContextLength), ollamaDisableThinking: draft.ollamaDisableThinking }
+      : {}),
     ...(usesDerivedEndpoint(draft) ? {} : { baseUrl: draft.baseUrl.trim() }),
     ...(draft.clearKey ? { apiKey: "" } : draft.apiKey ? { apiKey: draft.apiKey } : {}),
   };

@@ -30,6 +30,11 @@ export type LLMProvider = {
   hasApiKey: boolean;
   defaultModel?: string;
   models: LLMModel[];
+  /** The effective bound of one translation request, including the default. */
+  requestTimeoutSeconds: number;
+  /** Ollama's num_ctx; absent keeps the model default. */
+  ollamaContextLength?: number;
+  ollamaDisableThinking?: boolean;
 };
 
 export type LLMProviderPayload = {
@@ -44,6 +49,11 @@ export type LLMProviderPayload = {
   ollamaScope?: LLMProvider["ollamaScope"];
   enabled?: boolean;
   defaultModel?: string;
+  /** Zero uses the server default. */
+  requestTimeoutSeconds?: number;
+  /** Zero keeps the model default. */
+  ollamaContextLength?: number;
+  ollamaDisableThinking?: boolean;
 };
 
 export type LLMProviderList = {

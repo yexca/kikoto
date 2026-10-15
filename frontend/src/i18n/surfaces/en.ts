@@ -637,6 +637,15 @@ export const surfaceEnglish = {
       boundaryPrivate: "Private",
       allowSensitiveDescription: "Lets this private endpoint receive content the policy marks sensitive.",
       enabledDescription: "Offered for translation once a default model is set.",
+      requestTimeout: "Request timeout (minutes)",
+      requestTimeoutDescription:
+        "How long one translation request may take, {{min}} to {{max}} minutes. A local model may need several minutes.",
+      ollamaContextLength: "Context length",
+      ollamaContextLengthDescription:
+        "Context window in tokens, {{min}} to {{max}}. Leave blank to use the model's default.",
+      ollamaContextLengthDefault: "Model default",
+      ollamaDisableThinking: "Turn off thinking",
+      ollamaDisableThinkingDescription: "Asks a reasoning model to answer directly, which makes translation faster.",
       enableNamed: "Enable {{name}}",
       editNamed: "Edit {{name}}",
       deleteNamed: "Delete {{name}}",
