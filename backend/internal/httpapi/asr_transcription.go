@@ -117,7 +117,9 @@ func (s *Server) precheckASRTranscription(w http.ResponseWriter, r *http.Request
 type asrTranscriptionRequest struct {
 	AudioMediaItemID int64  `json:"audioMediaItemId"`
 	ProviderID       string `json:"providerId"`
-	Language         string `json:"language"`
+	// Model is one of the service's enabled models; empty requests the default.
+	Model    string `json:"model,omitempty"`
+	Language string `json:"language"`
 }
 
 func (s *Server) createASRTranscription(w http.ResponseWriter, r *http.Request) {
@@ -147,7 +149,8 @@ func (s *Server) createASRTranscription(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	provider, err := s.asrStore.Get(r.Context(), body.ProviderID)
-	if err != nil || !provider.Enabled || provider.DefaultModel == "" {
+	model, enabled := provider.ResolveModel(body.Model)
+	if err != nil || !provider.Enabled || !enabled {
 		writeAPIError(w, 400, "asr_not_ready", "Choose an enabled speech recognition service with a model.", false)
 		return
 	}
@@ -183,7 +186,7 @@ func (s *Server) createASRTranscription(w http.ResponseWriter, r *http.Request) 
 		writeError(w, err)
 		return
 	}
-	id, runID, err := s.enqueueASRTranscription(r.Context(), actor.ID, source, provider, language)
+	id, runID, err := s.enqueueASRTranscription(r.Context(), actor.ID, source, provider, model, language)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -191,7 +194,7 @@ func (s *Server) createASRTranscription(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, 202, map[string]any{"id": id, "runId": runID, "state": "pending", "deduplicated": false})
 }
 
-func (s *Server) enqueueASRTranscription(ctx context.Context, userID int64, source localTrack, provider asr.Provider, language string) (string, int64, error) {
+func (s *Server) enqueueASRTranscription(ctx context.Context, userID int64, source localTrack, provider asr.Provider, model, language string) (string, int64, error) {
 	var token [16]byte
 	if _, err := rand.Read(token[:]); err != nil {
 		return "", 0, err
@@ -216,7 +219,7 @@ func (s *Server) enqueueASRTranscription(ctx context.Context, userID int64, sour
 		return "", 0, err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO asr_transcription(id,workflow_run_id,user_id,work_id,audio_media_item_id,audio_location_id,folder_id,provider_id,provider_name,model,language,config_hash,source_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		id, runID, userID, source.WorkID, source.AudioID, source.LocationID, source.FolderID, provider.ID, provider.Name, provider.DefaultModel, language, s.asrConfigHash(provider), source.Version); err != nil {
+		id, runID, userID, source.WorkID, source.AudioID, source.LocationID, source.FolderID, provider.ID, provider.Name, model, language, s.asrConfigHash(provider, model), source.Version); err != nil {
 		return "", 0, err
 	}
 	nodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{NodeID: "transcribe", NodeType: asrWorkerType, DisplayName: "Transcribe for review", Position: 1, Status: "queued", Input: input})

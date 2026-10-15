@@ -11,6 +11,7 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { api, type LLMTranslation, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { metadataTagNameLanguages } from "@/lib/metadataTagModel";
+import { serviceModelChoices } from "@/lib/serviceModels";
 import { LLMTranslationReviews } from "./LLMTranslationReviews";
 import type { LLMTranslationModel, LLMAssessment } from "@/lib/llmApi";
 
@@ -31,7 +32,8 @@ export function LLMTranslationDialog({
   useEffect(() => () => translationController.current?.abort(), []);
   const [providers, setProviders] = useState<LLMTranslationModel[]>([]);
   const [assessment, setAssessment] = useState<LLMAssessment | null>(null);
-  const [providerID, setProviderID] = useState("");
+  // A provider and one of its enabled models, as a serviceModelKey.
+  const [choiceKey, setChoiceKey] = useState("");
   const [targetLanguage, setTargetLanguage] = useState("zh-cn");
   const [fields, setFields] = useState({ title: true, description: true, tags: false });
   const [workCodes, setWorkCodes] = useState(work.primaryCode);
@@ -44,9 +46,8 @@ export function LLMTranslationDialog({
     void api
       .listTranslationModels()
       .then((result) => {
-        const enabled = result;
-        setProviders(enabled);
-        setProviderID(enabled[0]?.id ?? "");
+        setProviders(result);
+        setChoiceKey(serviceModelChoices(result)[0]?.key ?? "");
       })
       .catch((error) => toast.notify(toastFromError(error, t("llmTranslation.providersFailed"))))
       .finally(() => setLoadingProviders(false));
@@ -55,8 +56,11 @@ export function LLMTranslationDialog({
   const selectedFields = Object.entries(fields)
     .filter(([, selected]) => selected)
     .map(([field]) => field);
+  const choices = serviceModelChoices(providers);
+  const choice = choices.find((candidate) => candidate.key === choiceKey) ?? null;
   const request = {
-    providerId: providerID,
+    providerId: choice?.service.id ?? "",
+    model: choice?.model,
     targetLanguage: targetLanguage.trim(),
     fields: selectedFields,
   };
@@ -72,7 +76,7 @@ export function LLMTranslationDialog({
     }
   };
   const translate = async () => {
-    if (!providerID || !targetLanguage.trim() || selectedFields.length === 0) return;
+    if (!choice || !targetLanguage.trim() || selectedFields.length === 0) return;
     setLoading(true);
     try {
       translationController.current = new AbortController();
@@ -127,18 +131,18 @@ export function LLMTranslationDialog({
               {t("llmTranslation.provider")}
               <select
                 aria-label={t("llmTranslation.provider")}
-                value={providerID}
+                value={choiceKey}
                 disabled={loadingProviders || loading}
-                onChange={(event) => setProviderID(event.target.value)}
+                onChange={(event) => setChoiceKey(event.target.value)}
                 className="mt-1 h-[var(--control-height)] w-full rounded-[var(--control-radius)] border border-input bg-background px-3 text-sm"
               >
                 <option value="">
                   {loadingProviders ? t("llmTranslation.loading") : t("llmTranslation.noProvider")}
                 </option>
-                {providers.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.name} · {provider.defaultModel}
-                    {assessment && !serviceReceives(assessment.class, provider)
+                {choices.map(({ key, service, model }) => (
+                  <option key={key} value={key}>
+                    {service.name} · {model}
+                    {assessment && !serviceReceives(assessment.class, service)
                       ? ` · ${t("contentRating.notForContent")}`
                       : ""}
                   </option>
@@ -210,7 +214,7 @@ export function LLMTranslationDialog({
             <Button
               size="sm"
               variant="outline"
-              disabled={loading || !providerID || selectedFields.length === 0}
+              disabled={loading || !choice || selectedFields.length === 0}
               onClick={() => void queue()}
             >
               {t("llmTranslation.queue")}
@@ -277,12 +281,7 @@ export function LLMTranslationDialog({
             >
               {t("llmTranslation.precheck")}
             </Button>
-            {assessment && (
-              <ContentAssessment
-                assessment={assessment}
-                service={providers.find((provider) => provider.id === providerID) ?? null}
-              />
-            )}
+            {assessment && <ContentAssessment assessment={assessment} service={choice?.service ?? null} />}
           </div>
         )}
       </DialogBody>
@@ -317,7 +316,7 @@ export function LLMTranslationDialog({
         ) : (
           <Button
             size="sm"
-            disabled={loading || loadingProviders || !providerID || selectedFields.length === 0}
+            disabled={loading || loadingProviders || !choice || selectedFields.length === 0}
             onClick={() => void translate()}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}

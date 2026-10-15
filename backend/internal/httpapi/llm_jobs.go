@@ -104,6 +104,9 @@ func (s *Server) enqueueLLMTranslations(ctx context.Context, userID int64, ids [
 		}
 		plans[i] = plan
 	}
+	// The task keeps the model resolved now, so a later default applies only
+	// to later requests.
+	payload.Model = plans[0].Model
 	// The stable field order makes equivalent selections share a task.
 	sort.Strings(payload.Fields)
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -118,7 +121,7 @@ func (s *Server) enqueueLLMTranslations(ctx context.Context, userID int64, ids [
 	result := []llmRunResponse{}
 	for i, workID := range ids {
 		plan := plans[i]
-		inputHash, policyHash, configHash := llmPlanHash(plan), llmValueHash(plan.Policy), s.llmConfigHash(plan.Provider)
+		inputHash, policyHash, configHash := llmPlanHash(plan), llmValueHash(plan.Policy), s.llmConfigHash(plan.Provider, plan.Model)
 		key := llmValueHash(struct {
 			User, Work            int64
 			Input, Policy, Config string
@@ -242,9 +245,12 @@ func (s *Server) executeLLMTranslationJob(ctx context.Context, job workflowJobRe
 		if errors.As(err, &invalid) && (invalid.Code == "llm_lyrics_unavailable" || invalid.Code == "llm_lyrics_scope") {
 			return s.failLLMTask(ctx, job, task, "failed", "source_temporarily_unavailable")
 		}
+		if errors.As(err, &invalid) && invalid.Code == "llm_not_ready" {
+			return s.failLLMTask(ctx, job, task, "invalid", "provider_changed")
+		}
 		return s.failLLMTask(ctx, job, task, "invalid", "content_or_endpoint_unavailable")
 	}
-	if llmPlanHash(plan) != task.InputHash || llmValueHash(plan.Policy) != task.PolicyHash || s.llmConfigHash(plan.Provider) != task.ConfigHash {
+	if llmPlanHash(plan) != task.InputHash || llmValueHash(plan.Policy) != task.PolicyHash || s.llmConfigHash(plan.Provider, plan.Model) != task.ConfigHash {
 		return s.failLLMTask(ctx, job, task, "invalid", "translation_input_changed")
 	}
 	if task.Execution.Started {
@@ -287,7 +293,7 @@ func (s *Server) executeLLMTranslationJob(ctx context.Context, job workflowJobRe
 			return s.failLLMTask(ctx, job, task, "invalid", "permission_changed")
 		}
 		currentProvider, err := s.llmProvider(ctx, task.Payload.ProviderID)
-		if err != nil || s.llmConfigHash(currentProvider) != task.ConfigHash {
+		if err != nil || s.llmConfigHash(currentProvider, plan.Model) != task.ConfigHash {
 			return s.failLLMTask(ctx, job, task, "invalid", "provider_changed")
 		}
 		currentPolicy, err := s.llmStore.Policy(ctx)
@@ -306,7 +312,7 @@ func (s *Server) executeLLMTranslationJob(ctx context.Context, job workflowJobRe
 		if count != 1 {
 			return errors.New("translation task cannot send a request")
 		}
-		translated, requestErr := client.Translate(ctx, plan.Provider.DefaultModel, task.Payload.Target, requests[i])
+		translated, requestErr := client.Translate(ctx, plan.Model, task.Payload.Target, requests[i])
 		if requestErr != nil {
 			state, code := "uncertain", "upstream_result_unknown"
 			var rejected llm.UpstreamError
@@ -395,7 +401,7 @@ func (s *Server) resubmitUncertainLLMRun(w http.ResponseWriter, r *http.Request)
 		writeLLMRequestError(w, err)
 		return
 	}
-	if llmPlanHash(plan) != task.InputHash || s.llmConfigHash(plan.Provider) != task.ConfigHash || llmValueHash(plan.Policy) != task.PolicyHash {
+	if llmPlanHash(plan) != task.InputHash || s.llmConfigHash(plan.Provider, plan.Model) != task.ConfigHash || llmValueHash(plan.Policy) != task.PolicyHash {
 		writeAPIError(w, 409, "llm_config_changed", "The original endpoint, policy or content changed. Resubmission is unavailable.", false)
 		return
 	}

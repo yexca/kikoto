@@ -17,6 +17,7 @@ func llmInvalid(code, message string) error { return llmRequestError{code, messa
 
 type llmTranslationPlan struct {
 	Provider      llm.Provider
+	Model         string
 	Policy        llm.Policy
 	Input         llmWorkInput
 	Text          llm.Text
@@ -53,10 +54,11 @@ func (s *Server) prepareLLMTranslation(ctx context.Context, workID int64, payloa
 		return plan, llmInvalid("invalid_translation_request", "Choose at least one field.")
 	}
 	provider, err := s.llmProvider(ctx, payload.ProviderID)
-	if err != nil || !provider.Enabled || provider.DefaultModel == "" {
+	model, enabled := provider.ResolveModel(payload.Model)
+	if err != nil || !provider.Enabled || !enabled {
 		return plan, llmInvalid("llm_not_ready", "Choose an enabled provider and model.")
 	}
-	plan.Provider = provider
+	plan.Provider, plan.Model = provider, model
 	plan.Input, err = loadLLMWorkInput(ctx, s.db, workID)
 	if err != nil {
 		return plan, err
@@ -101,7 +103,7 @@ func (s *Server) prepareLLMTranslation(ctx context.Context, workID int64, payloa
 			sending := []string{}
 			for i, id := range plan.TagIDs {
 				var name string
-				err := s.db.QueryRowContext(ctx, "SELECT name FROM metadata_tag_llm_candidate WHERE tag_id=? AND language=? AND source_text=? AND config_hash=? AND policy_hash=? AND user_id=?", id, payload.Target, text.Tags[i], s.llmConfigHash(provider), llmValueHash(plan.Policy), actor.ID).Scan(&name)
+				err := s.db.QueryRowContext(ctx, "SELECT name FROM metadata_tag_llm_candidate WHERE tag_id=? AND language=? AND source_text=? AND config_hash=? AND policy_hash=? AND user_id=?", id, payload.Target, text.Tags[i], s.llmConfigHash(provider, model), llmValueHash(plan.Policy), actor.ID).Scan(&name)
 				if err == nil {
 					plan.CachedTags[id] = name
 				} else {
@@ -149,7 +151,7 @@ func (s *Server) requestLLMTranslation(ctx context.Context, plan llmTranslationP
 				return result, err
 			}
 		}
-		translated, err := client.Translate(ctx, plan.Provider.DefaultModel, target, input)
+		translated, err := client.Translate(ctx, plan.Model, target, input)
 		if err != nil {
 			return result, err
 		}

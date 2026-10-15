@@ -507,7 +507,6 @@ export const surfaceEnglish = {
       clearKey: "Clear stored API key",
       connectionChangeHint:
         "A changed location, port or endpoint clears the stored key and discovered models. Enter the key again.",
-      model: "Model",
       modelDescription:
         "The model must return segment timestamps, such as whisper-1 on OpenAI. Fetch models saves the connection first.",
       modelsAvailable:
@@ -597,7 +596,6 @@ export const surfaceEnglish = {
       save: "Save",
       delete: "Delete",
       enabled: "Enabled",
-      model: "Default model",
       modelDescription: "Enter a model ID or choose a discovered model. Fetch models saves the connection first.",
       modelNone: "No model selected",
       fetchModels: "Fetch models",
@@ -3011,6 +3009,18 @@ export const surfaceEnglish = {
     discard: "Discard",
     discarded: "Translation discarded.",
     discardFailed: "The translation could not be discarded.",
+  },
+  serviceModels: {
+    label: "Models",
+    default: "Default",
+    makeDefault: "Use {{model}} by default",
+    remove: "Remove {{model}}",
+    addLabel: "Model ID",
+    addPlaceholder: "Model ID",
+    add: "Add",
+    empty: "No models added.",
+    limit: "At most {{count}} models can be added.",
+    summary: "{{model}} +{{count}}",
   },
   contentRating: {
     title: "Content rating",

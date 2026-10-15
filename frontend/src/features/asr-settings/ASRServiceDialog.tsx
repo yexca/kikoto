@@ -3,6 +3,7 @@ import { Globe, Laptop, Loader2, Plus, RefreshCw, Save } from "lucide-react";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { EnabledModelsField } from "@/components/settings/EnabledModelsField";
 import { PresetDialogBody, presetDialogClassName } from "@/components/settings/PresetDialogBody";
 import { SettingsField, SettingsSwitchRow } from "@/components/settings/SettingsFormControls";
 import { Button } from "@/components/ui/button";
@@ -52,11 +53,9 @@ export function ASRServiceDialog({
   );
   const [pending, setPending] = useState<"save" | "fetch" | null>(null);
   const [showErrors, setShowErrors] = useState(false);
-  const modelListId = useId();
   const endpointHintId = useId();
   const portHintId = useId();
   const keyHintId = useId();
-  const modelHintId = useId();
   const boundaryHintId = useId();
   const patch = (next: Partial<ASRServiceDraft>) => setDraft((current) => ({ ...current, ...next }));
 
@@ -258,28 +257,16 @@ export function ASRServiceDialog({
               )}
             </div>
 
-            <div className="grid min-w-0 gap-1.5 border-t pt-5">
-              <span className="text-sm font-medium">{t("maintenance.asr.model")}</span>
-              <div className="flex min-w-0 gap-2">
-                <Input
-                  aria-label={t("maintenance.asr.model")}
-                  aria-describedby={modelHintId}
-                  className="min-w-0 flex-1"
-                  value={draft.defaultModel}
-                  maxLength={256}
-                  autoComplete="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  list={modelListId}
-                  onChange={(event) => patch({ defaultModel: event.target.value })}
-                />
-                <datalist id={modelListId}>
-                  {draft.models.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}
-                    </option>
-                  ))}
-                </datalist>
+            <EnabledModelsField
+              models={draft.enabledModels}
+              defaultModel={draft.defaultModel}
+              suggestions={draft.models}
+              hint={
+                draft.models.length > 0
+                  ? t("maintenance.asr.modelsAvailable", { count: draft.models.length })
+                  : t("maintenance.asr.modelDescription")
+              }
+              action={
                 <Button type="button" variant="outline" className="shrink-0" onClick={() => void fetchModels()}>
                   {pending === "fetch" ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -288,13 +275,9 @@ export function ASRServiceDialog({
                   )}
                   {t("maintenance.asr.fetchModels")}
                 </Button>
-              </div>
-              <p id={modelHintId} className="text-xs leading-5 text-muted-foreground">
-                {draft.models.length > 0
-                  ? t("maintenance.asr.modelsAvailable", { count: draft.models.length })
-                  : t("maintenance.asr.modelDescription")}
-              </p>
-            </div>
+              }
+              onChange={(enabledModels, defaultModel) => patch({ enabledModels, defaultModel })}
+            />
 
             <div className="space-y-3 border-t pt-5">
               <div className="space-y-2">

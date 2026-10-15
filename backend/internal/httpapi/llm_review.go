@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,15 +19,27 @@ func llmValueHash(value any) string {
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }
-func (s *Server) llmConfigHash(p llm.Provider) string {
-	p.Name = ""
-	p.Models = nil
+
+// llmConfigHash identifies the connection, data boundary and request settings
+// a translation with model uses. The name, the default and the other enabled
+// models are left out, so editing them leaves queued work valid. A model that
+// is no longer enabled has no digest, so every comparison with a stored one
+// fails.
+func (s *Server) llmConfigHash(p llm.Provider, model string) string {
+	if model == "" || !slices.Contains(p.EnabledModels, model) {
+		return ""
+	}
+	p.Name, p.Revision, p.DefaultModel = "", 0, ""
+	p.Models, p.EnabledModels = nil, nil
 	p.BaseURL = p.Endpoint(s.cfg.HostProxyAddress())
-	return llmValueHash(p)
+	return llmValueHash(struct {
+		Provider llm.Provider
+		Model    string
+	}{p, model})
 }
 func (s *Server) saveLLMPreview(ctx context.Context, id string, p llmPreview) error {
 	// Store provenance and a configuration digest, never a duplicate credential.
-	p.Provider = llm.Provider{ID: p.Provider.ID, Name: p.Provider.Name, DefaultModel: p.Provider.DefaultModel}
+	p.Provider = llm.Provider{ID: p.Provider.ID, Name: p.Provider.Name}
 	data, err := json.Marshal(p)
 	if err != nil {
 		return err
@@ -202,7 +215,7 @@ func (s *Server) listLLMReviews(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		source := p.Source
-		result = append(result, map[string]any{"previewId": token, "status": status, "targetLanguage": p.Target, "fields": p.Fields, "translation": p.Result, "source": source, "assessment": p.Assessment, "providerId": p.Provider.ID, "providerName": p.Provider.Name, "model": p.Provider.DefaultModel, "expiresAt": expires})
+		result = append(result, map[string]any{"previewId": token, "status": status, "targetLanguage": p.Target, "fields": p.Fields, "translation": p.Result, "source": source, "assessment": p.Assessment, "providerId": p.Provider.ID, "providerName": p.Provider.Name, "model": p.Payload.Model, "expiresAt": expires})
 	}
 	if err := rows.Err(); err != nil {
 		writeError(w, err)

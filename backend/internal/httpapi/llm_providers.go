@@ -27,6 +27,7 @@ type llmProviderResponse struct {
 	OllamaScope     string      `json:"ollamaScope,omitempty"`
 	Enabled         bool        `json:"enabled"`
 	HasAPIKey       bool        `json:"hasApiKey"`
+	EnabledModels   []string    `json:"enabledModels"`
 	DefaultModel    string      `json:"defaultModel"`
 	Models          []llm.Model `json:"models"`
 	// RequestTimeoutSeconds is the effective bound, including the default.
@@ -36,7 +37,7 @@ type llmProviderResponse struct {
 }
 
 func (s *Server) llmResponse(p llm.Provider) llmProviderResponse {
-	return llmProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, Kind: p.Preset().Kind, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, AllowSensitive: p.AllowSensitive, MaxContentClass: p.MaxContentClass, OllamaScope: p.OllamaScope, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", DefaultModel: p.DefaultModel, Models: p.Models, RequestTimeoutSeconds: int(p.RequestTimeout() / time.Second), OllamaContextLength: p.OllamaContextLength, OllamaDisableThinking: p.OllamaDisableThinking}
+	return llmProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, Kind: p.Preset().Kind, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, AllowSensitive: p.AllowSensitive, MaxContentClass: p.MaxContentClass, OllamaScope: p.OllamaScope, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", EnabledModels: p.EnabledModels, DefaultModel: p.DefaultModel, Models: p.Models, RequestTimeoutSeconds: int(p.RequestTimeout() / time.Second), OllamaContextLength: p.OllamaContextLength, OllamaDisableThinking: p.OllamaDisableThinking}
 }
 
 func (s *Server) listLLMProviders(w http.ResponseWriter, r *http.Request) {
@@ -173,17 +174,18 @@ func (s *Server) updateLLMPolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 type llmProviderPayload struct {
-	Kind            string  `json:"kind"`
-	PresetID        string  `json:"presetId"`
-	Name            string  `json:"name"`
-	BaseURL         *string `json:"baseUrl"`
-	APIKey          *string `json:"apiKey"`
-	Boundary        string  `json:"boundary"`
-	AllowSensitive  *bool   `json:"allowSensitive"`
-	MaxContentClass *string `json:"maxContentClass"`
-	OllamaScope     string  `json:"ollamaScope"`
-	Enabled         *bool   `json:"enabled"`
-	DefaultModel    *string `json:"defaultModel"`
+	Kind            string    `json:"kind"`
+	PresetID        string    `json:"presetId"`
+	Name            string    `json:"name"`
+	BaseURL         *string   `json:"baseUrl"`
+	APIKey          *string   `json:"apiKey"`
+	Boundary        string    `json:"boundary"`
+	AllowSensitive  *bool     `json:"allowSensitive"`
+	MaxContentClass *string   `json:"maxContentClass"`
+	OllamaScope     string    `json:"ollamaScope"`
+	Enabled         *bool     `json:"enabled"`
+	EnabledModels   *[]string `json:"enabledModels"`
+	DefaultModel    *string   `json:"defaultModel"`
 	// Request tuning; an omitted field keeps the saved value.
 	RequestTimeoutSeconds *int  `json:"requestTimeoutSeconds"`
 	OllamaContextLength   *int  `json:"ollamaContextLength"`
@@ -228,9 +230,6 @@ func (s *Server) saveLLMProvider(w http.ResponseWriter, r *http.Request) {
 	if body.BaseURL != nil {
 		p.BaseURL = *body.BaseURL
 	}
-	if body.DefaultModel != nil {
-		p.DefaultModel = *body.DefaultModel
-	}
 	if id := r.PathValue("id"); id != "" {
 		current, loadErr := s.llmProvider(r.Context(), id)
 		if errors.Is(loadErr, llm.ErrNotFound) {
@@ -260,9 +259,12 @@ func (s *Server) saveLLMProvider(w http.ResponseWriter, r *http.Request) {
 		if body.Enabled != nil {
 			p.Enabled = *body.Enabled
 		}
-		if body.DefaultModel != nil {
-			p.DefaultModel = *body.DefaultModel
-		}
+	}
+	if body.EnabledModels != nil {
+		p.EnabledModels = *body.EnabledModels
+	}
+	if body.DefaultModel != nil {
+		p.DefaultModel = *body.DefaultModel
 	}
 	if body.MaxContentClass != nil {
 		if body.AllowSensitive != nil || *body.MaxContentClass == "" {

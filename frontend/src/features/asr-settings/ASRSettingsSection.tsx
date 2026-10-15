@@ -210,7 +210,14 @@ export function ASRSettingsSection({ readOnly = false }: { readOnly?: boolean })
                   {location(provider)}
                   {" · "}
                   {provider.defaultModel ? (
-                    provider.defaultModel
+                    provider.enabledModels.length > 1 ? (
+                      t("serviceModels.summary", {
+                        model: provider.defaultModel,
+                        count: provider.enabledModels.length - 1,
+                      })
+                    ) : (
+                      provider.defaultModel
+                    )
                   ) : (
                     <span className="text-warning-foreground">{t("maintenance.asr.modelNone")}</span>
                   )}

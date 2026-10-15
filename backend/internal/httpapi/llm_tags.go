@@ -80,7 +80,7 @@ func (s *Server) saveLLMTagCandidates(ctx context.Context, userID int64, languag
 	defer func() { _ = tx.Rollback() }()
 	for i, id := range plan.TagIDs {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO metadata_tag_llm_candidate(tag_id,language,source_text,config_hash,policy_hash,user_id,name) VALUES(?,?,?,?,?,?,?)
- ON CONFLICT(tag_id,language,config_hash,policy_hash,user_id) DO UPDATE SET name=CASE WHEN source_text=excluded.source_text THEN name ELSE excluded.name END,source_text=excluded.source_text,updated_at=CURRENT_TIMESTAMP`, id, language, plan.Source.Tags[i], s.llmConfigHash(plan.Provider), llmValueHash(plan.Policy), userID, result.Tags[i]); err != nil {
+ ON CONFLICT(tag_id,language,config_hash,policy_hash,user_id) DO UPDATE SET name=CASE WHEN source_text=excluded.source_text THEN name ELSE excluded.name END,source_text=excluded.source_text,updated_at=CURRENT_TIMESTAMP`, id, language, plan.Source.Tags[i], s.llmConfigHash(plan.Provider, plan.Model), llmValueHash(plan.Policy), userID, result.Tags[i]); err != nil {
 			return err
 		}
 	}
@@ -100,7 +100,7 @@ func applyLLMTagNames(ctx context.Context, tx *sql.Tx, p llmPreview, userID int6
 			return errors.New("tag names changed; translate again")
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO metadata_tag_llm_name(tag_id,language,name,source_text,provider_id,model,created_by_user_id) VALUES(?,?,?,?,?,?,?)
- ON CONFLICT(tag_id,language) DO UPDATE SET name=excluded.name,source_text=excluded.source_text,provider_id=excluded.provider_id,model=excluded.model,created_by_user_id=excluded.created_by_user_id,updated_at=CURRENT_TIMESTAMP`, id, p.Target, p.Result.Tags[i], names[i], p.Provider.ID, p.Provider.DefaultModel, userID); err != nil {
+ ON CONFLICT(tag_id,language) DO UPDATE SET name=excluded.name,source_text=excluded.source_text,provider_id=excluded.provider_id,model=excluded.model,created_by_user_id=excluded.created_by_user_id,updated_at=CURRENT_TIMESTAMP`, id, p.Target, p.Result.Tags[i], names[i], p.Provider.ID, p.Payload.Model, userID); err != nil {
 			return err
 		}
 	}

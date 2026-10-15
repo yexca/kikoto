@@ -38,6 +38,7 @@ const sameMachine: ASRProvider = {
   port: 8000,
   enabled: true,
   hasApiKey: true,
+  enabledModels: ["example-model"],
   defaultModel: "example-model",
   models: [],
 };

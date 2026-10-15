@@ -1,7 +1,10 @@
 package asr
 
 import (
+	"context"
 	"encoding/binary"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -107,6 +110,20 @@ func TestRequestLanguageMapsLyricsLanguages(t *testing.T) {
 	for token, want := range map[string]string{"": "", "ja-jp": "ja", "zh-tw": "zh", "zh-cn": "zh", "en-us": "en", "ko-kr": "ko", "fr-fr": ""} {
 		if got := RequestLanguage(token); got != want {
 			t.Fatalf("%q -> %q, want %q", token, got, want)
+		}
+	}
+}
+
+func TestOpenAIDiscoverySuggestsOnlyWhisperModels(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[{"id":"example-chat"},{"id":"whisper-1"},{"id":"example-transcribe"}]}`))
+	}))
+	defer upstream.Close()
+	for preset, want := range map[string]int{"openai": 1, "custom-openai": 3} {
+		client := Client{HTTP: upstream.Client(), Provider: Provider{PresetID: preset, BaseURL: upstream.URL}}
+		models, err := client.Models(context.Background())
+		if err != nil || len(models) != want {
+			t.Fatalf("%s models = %+v, %v", preset, models, err)
 		}
 	}
 }

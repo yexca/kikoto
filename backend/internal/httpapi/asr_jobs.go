@@ -249,7 +249,7 @@ func (s *Server) checkASRSend(ctx context.Context, task asrTask) (asr.Provider, 
 		return asr.Provider{}, "permission_changed"
 	}
 	provider, err := s.asrStore.Get(ctx, task.ProviderID)
-	if err != nil || !provider.Enabled || s.asrConfigHash(provider) != task.ConfigHash {
+	if err != nil || !provider.Enabled || s.asrConfigHash(provider, task.Model) != task.ConfigHash {
 		return asr.Provider{}, "provider_changed"
 	}
 	allowed, err := s.asrAllowed(ctx, task.WorkID, provider)

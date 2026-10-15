@@ -98,9 +98,15 @@ func (c Client) Models(ctx context.Context) ([]Model, error) {
 	}
 	result := []Model{}
 	seen := map[string]bool{}
+	// OpenAI lists every model it offers, but only its Whisper models return
+	// the timed segments transcription needs.
+	whisperOnly := c.Provider.PresetID == "openai"
 	for _, item := range body.Data {
 		id := strings.TrimSpace(item.ID)
 		if id == "" || len(id) > 256 || seen[id] || len(result) >= 512 {
+			continue
+		}
+		if whisperOnly && !strings.Contains(strings.ToLower(id), "whisper") {
 			continue
 		}
 		seen[id] = true

@@ -22,6 +22,7 @@ const provider: LLMProvider = {
   maxContentClass: "safe",
   enabled: true,
   hasApiKey: true,
+  enabledModels: ["example-model"],
   defaultModel: "example-model",
   models: [],
   requestTimeoutSeconds: 600,
@@ -78,6 +79,7 @@ async function openTranslation(page: Page, detailOverrides: Partial<WorkDetail> 
           id: provider.id,
           name: provider.name,
           defaultModel: provider.defaultModel,
+          models: ["example-model", "second-model"],
           boundary: provider.boundary,
           maxContentClass: "safe",
         },
@@ -154,16 +156,19 @@ test("LLM settings save connection drafts before discovery and edit structured c
   await page.getByRole("button", { name: "Edit Example LLM", exact: true }).click();
   const connection = page.getByRole("dialog", { name: "Edit LLM provider", exact: true });
   await connection.getByLabel("Endpoint", { exact: true }).fill("https://second.example.invalid");
-  await connection.getByLabel("Default model", { exact: true }).fill("manual-model");
+  await connection.getByLabel("Model ID", { exact: true }).fill("manual-model");
+  await connection.getByRole("button", { name: "Add", exact: true }).click();
+  await connection.getByRole("radio", { name: "Use manual-model by default", exact: true }).check();
   await connection.getByLabel("Clear stored API key", { exact: true }).check();
   await connection.getByRole("button", { name: "Fetch models", exact: true }).click();
   await expect.poll(() => calls).toEqual(["save", "fetch"]);
   expect(writes[0]).toMatchObject({
     baseUrl: "https://second.example.invalid",
+    enabledModels: ["example-model", "manual-model"],
     defaultModel: "manual-model",
     apiKey: "",
   });
-  await expect(connection.getByLabel("Default model", { exact: true })).toHaveValue("manual-model");
+  await expect(connection.getByRole("radio", { name: "Use manual-model by default", exact: true })).toBeChecked();
   await connection.getByRole("combobox", { name: "Maximum content level", exact: true }).selectOption("sensitive");
   await connection.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(() => writes.length).toBe(2);
@@ -200,6 +205,7 @@ test("LLM settings add a provider in a dialog and confirm before deleting it", a
         name: "Custom OpenAI-compatible",
         baseUrl: String(body.baseUrl),
         hasApiKey: Boolean(body.apiKey),
+        enabledModels: [],
         defaultModel: "",
       };
       providers = [next];
@@ -361,13 +367,20 @@ test("LLM dialog prechecks without translation, uses minimal models and confirms
   );
   await page.route("**/api/works/1/llm-translate", (route) => {
     requests++;
-    expect(route.request().postDataJSON()).toMatchObject({ targetLanguage: "zh-cn", fields: ["title", "description"] });
+    expect(route.request().postDataJSON()).toMatchObject({
+      providerId: provider.id,
+      model: "second-model",
+      targetLanguage: "zh-cn",
+      fields: ["title", "description"],
+    });
     return route.fulfill({ json: translation });
   });
   await page.route("**/api/works/1/llm-translation", (route) => {
     applied = route.request().postDataJSON();
     return route.fulfill({ json: { ok: true } });
   });
+  // Each enabled model is its own choice; the default comes first.
+  await dialog.getByLabel("LLM provider", { exact: true }).selectOption({ label: "Example LLM · second-model" });
   await dialog.getByRole("button", { name: "Check content without sending", exact: true }).click();
   await expect(dialog.getByRole("status")).toContainText("General");
   expect(requests).toBe(0);
@@ -465,6 +478,7 @@ test("Manage lyrics translates a lyrics file for its track and adds the reviewed
           id: provider.id,
           name: provider.name,
           defaultModel: provider.defaultModel,
+          models: ["example-model"],
           boundary: provider.boundary,
           maxContentClass: "sensitive",
         },
@@ -552,6 +566,7 @@ test("Manage lyrics translates a lyrics file for its track and adds the reviewed
   expect(queued[0]).toEqual({
     workCodes: [work.primaryCode],
     providerId: provider.id,
+    model: "example-model",
     targetLanguage: "en-us",
     fields: ["lyrics"],
     lyricsLocationId: 2,

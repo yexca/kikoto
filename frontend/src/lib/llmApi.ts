@@ -29,7 +29,11 @@ export type LLMProvider = {
   maxContentClass: ContentMaximum;
   enabled: boolean;
   hasApiKey: boolean;
+  /** The models offered for translation, in display order. */
+  enabledModels: string[];
+  /** One of the enabled models, or empty when none is enabled. */
   defaultModel?: string;
+  /** Discovered models, offered as suggestions. */
   models: LLMModel[];
   /** The effective bound of one translation request, including the default. */
   requestTimeoutSeconds: number;
@@ -49,6 +53,7 @@ export type LLMProviderPayload = {
   maxContentClass?: ContentMaximum;
   ollamaScope?: LLMProvider["ollamaScope"];
   enabled?: boolean;
+  enabledModels?: string[];
   defaultModel?: string;
   /** Zero uses the server default. */
   requestTimeoutSeconds?: number;
@@ -72,7 +77,10 @@ export type LLMPolicy = {
   tagRules: Array<{ tagId: number; action: ContentAction }>;
   keywords: LLMKeywordRule[];
 };
-export type LLMTranslationModel = Pick<LLMProvider, "id" | "name" | "defaultModel" | "boundary" | "maxContentClass">;
+export type LLMTranslationModel = Pick<LLMProvider, "id" | "name" | "defaultModel" | "boundary" | "maxContentClass"> & {
+  /** The enabled models, any of which a translation may use. */
+  models: string[];
+};
 export type LLMAssessment = {
   class: ContentClass;
   reason: string;
@@ -90,6 +98,8 @@ export type LLMTranslation = {
 };
 export type LLMTranslationRequest = {
   providerId: string;
+  /** One of the provider's enabled models; omitted uses its default. */
+  model?: string;
   targetLanguage: string;
   fields: string[];
   lyricsLocationId?: number;

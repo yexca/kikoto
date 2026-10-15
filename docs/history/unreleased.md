@@ -133,6 +133,11 @@
   context length and turn off thinking, which is on for a new Ollama provider.
   Kikoto constrains Ollama's output to the sent fields with one entry per tag
   or lyrics line, so a small local model cannot drop or merge lines.
+- An LLM provider or ASR service offers several models from one connection,
+  one of them the default. Translating and transcribing choose a provider and
+  model, and the task keeps the model it started with, so changing the default
+  or adding a model leaves queued work untouched. Model discovery for OpenAI
+  speech recognition suggests only Whisper models.
 - The ellipsis between the page numbers below a list opens a field that goes
   to a typed page number.
 
