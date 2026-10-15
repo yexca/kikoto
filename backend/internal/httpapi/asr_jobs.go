@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/asr"
+	"github.com/yexca/kikoto/backend/internal/kikotohelper"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -186,6 +187,8 @@ func (s *Server) executeASRTranscriptionJob(ctx context.Context, job workflowJob
 			code := "upstream_failed"
 			var rejected asr.UpstreamError
 			switch {
+			case errors.As(requestErr, &rejected) && kikotohelper.NotReady(rejected.Code):
+				code = "service_not_ready"
 			case errors.As(requestErr, &rejected):
 				code = "upstream_rejected"
 			case errors.Is(requestErr, asr.ErrNoTimestamps):

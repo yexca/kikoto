@@ -8,24 +8,39 @@ export type LLMModel = {
   contextSize?: number;
 };
 
+export type LLMProviderKind = "openai" | "anthropic" | "ollama" | "kikoto-helper";
+
+export type LLMScope = "local_machine" | "other_machine";
+
 export type LLMProviderPreset = {
   id: string;
   name: string;
-  kind: "openai" | "anthropic" | "ollama";
+  kind: LLMProviderKind;
   defaultUrl: string;
   modelPath: string;
   boundary: "external" | "private";
   ollamaScope?: "local_machine";
+  /** A local preset chooses between this server's machine, reached on a port, and another machine. */
+  local?: boolean;
+  /** The port a local preset suggests. */
+  defaultPort?: number;
+  /** The provider refuses every request without a key. */
+  keyRequired?: boolean;
 };
 
 export type LLMProvider = {
   id: string;
   presetId: string;
   name: string;
-  kind: "openai" | "anthropic" | "ollama";
+  kind: LLMProviderKind;
+  /** The origin requests go to; derived by the server for a same-machine provider. */
   baseUrl: string;
   boundary: "external" | "private";
-  ollamaScope?: "local_machine" | "other_machine";
+  ollamaScope?: LLMScope;
+  /** The location of a local preset. */
+  scope?: LLMScope;
+  /** The port of a local preset on this server's machine. */
+  port?: number;
   maxContentClass: ContentMaximum;
   enabled: boolean;
   hasApiKey: boolean;
@@ -52,6 +67,8 @@ export type LLMProviderPayload = {
   boundary?: LLMProvider["boundary"];
   maxContentClass?: ContentMaximum;
   ollamaScope?: LLMProvider["ollamaScope"];
+  scope?: LLMScope;
+  port?: number;
   enabled?: boolean;
   enabledModels?: string[];
   defaultModel?: string;
@@ -68,6 +85,8 @@ export type LLMProviderList = {
   policy: LLMPolicy;
   /** Whether an administrator accepted the external service notice that LLM and ASR configuration requires. */
   noticeAccepted: boolean;
+  /** The host a same-machine provider is reached at. */
+  hostAddress: string;
 };
 
 export type LLMKeywordRule = { id?: string; term: string; fields: string[]; action: ContentAction };

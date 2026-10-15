@@ -455,6 +455,8 @@ export const surfaceJapanese = {
       endpointRequired: "このサービスのエンドポイントを入力してください。",
       apiKey: "API キー",
       credentialOptional: "不要なサービスでは空欄のままにします。",
+      credentialRequired: "このサービスでは必須です。",
+      credentialMissing: "このサービスのキーを入力してください。",
       apiKeyDescription: "キーはサーバーに保存され、ブラウザーには返されません。",
       keyConfigured: "キーが設定済みです。空欄のままにすると保持されます。",
       clearKey: "保存済みの API キーを消去",
@@ -543,6 +545,13 @@ export const surfaceJapanese = {
       ollamaOther: "別のマシン",
       ollamaLocalEndpoint: "サーバーのホストゲートウェイから決定されます。",
       ollamaDerivedEndpoint: "サーバーのホストゲートウェイ · ポート 11434",
+      location: "導入場所",
+      locationDescription:
+        "このサーバーと同じマシンでは、設定済みのホストゲートウェイ経由で接続するため、ポートだけを入力します。別のマシンを選ぶとアドレスを入力できます。",
+      host: "ホスト",
+      port: "ポート",
+      portDescription: "プロバイダーが待ち受けるポートです。",
+      portRequired: "1〜65535 のポートを入力してください。",
       add: "プロバイダーを追加",
       save: "保存",
       delete: "削除",
@@ -580,6 +589,8 @@ export const surfaceJapanese = {
       editTitle: "LLM プロバイダーを編集",
       endpointDefaultHint: "空欄のままにすると、サービスの既定のアドレスを使います。",
       endpointRequired: "このプロバイダーのエンドポイントを入力してください。",
+      credentialRequired: "このプロバイダーでは必須です。",
+      credentialMissing: "このプロバイダーのキーを入力してください。",
       connectionChangeHint:
         "エンドポイントまたは場所を変更すると、保存済みのキーと検出したモデルが消去されます。キーを入力し直してください。",
       modelsAvailable: "検出した {{count}} 個のモデルを入力候補として使えます。検出前に接続設定を保存します。",
@@ -2521,6 +2532,8 @@ export const surfaceJapanese = {
 
   errorFeedback: {
     databaseBusy: "データベースがビジー状態です。しばらくしてから再試行してください。",
+    serviceModelNotInstalled:
+      "サービスにモデルがインストールされていません。サービス側でインストールしてから、もう一度モデルを取得してください。",
     invalidRequest: "入力内容を確認して再試行してください。",
     conflict: "この項目が変更されたか、既存データと競合しています。更新して再試行してください。",
     sourceNotUsable: "このリモートソースは無効になっているか、この操作に対応していません。",
@@ -2857,6 +2870,8 @@ export const surfaceJapanese = {
       audio_decode_failed: "音声ファイルをデコードできませんでした。",
       audio_too_long: "トラックが長すぎるため文字起こしできません。",
       transcript_too_large: "文字起こしの結果が大きすぎます。",
+      service_not_ready:
+        "サービスに使用できるモデルがありません。サービス側でモデルをインストールまたは起動してから、もう一度文字起こししてください。",
       ffmpeg_unavailable: "このサーバーでは音声を準備できません。",
       endpoint_unavailable: "サービスへの接続を準備できませんでした。",
       cancelled: "文字起こしはキャンセルされました。",
@@ -2939,6 +2954,10 @@ export const surfaceJapanese = {
       policy_changed: "翻訳の開始後にコンテンツ安全ポリシーが変わりました。もう一度翻訳してください。",
       invalid_lyrics_output: "プロバイダーの回答が歌詞の行を保っていませんでした。もう一度翻訳してください。",
       translation_output_too_large: "訳文が大きすぎます。",
+      unsupported_language_pair:
+        "プロバイダーのモデルはこの言語の組み合わせを翻訳できません。別の言語かプロバイダーを選んでください。",
+      service_not_ready:
+        "プロバイダーに使用できるモデルがありません。プロバイダー側でモデルをインストールまたは起動してから、Activity で再試行してください。",
       unknown: "翻訳が停止しました。もう一度翻訳するか、Activity で確認してください。",
     },
     errors: {

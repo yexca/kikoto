@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/kikotohelper"
 	"github.com/yexca/kikoto/backend/internal/llm"
 )
 
@@ -16,18 +17,21 @@ func (e llmRequestError) Error() string     { return e.Message }
 func llmInvalid(code, message string) error { return llmRequestError{code, message} }
 
 type llmTranslationPlan struct {
-	Provider      llm.Provider
-	Model         string
-	Policy        llm.Policy
-	Input         llmWorkInput
-	Text          llm.Text
-	Source        llm.Text
-	CachedTags    map[int64]string
-	SendingTagIDs []int64
-	Fields        []string
-	TagIDs        []int64
-	Assessment    llm.Assessment
-	Lyrics        *llmLyricsInput
+	Provider llm.Provider
+	Model    string
+	// SourceLanguage is the language token of the work's original edition, or
+	// empty when unknown.
+	SourceLanguage string
+	Policy         llm.Policy
+	Input          llmWorkInput
+	Text           llm.Text
+	Source         llm.Text
+	CachedTags     map[int64]string
+	SendingTagIDs  []int64
+	Fields         []string
+	TagIDs         []int64
+	Assessment     llm.Assessment
+	Lyrics         *llmLyricsInput
 }
 
 // The assessment covers the whole work's origin title, description and risk
@@ -63,6 +67,7 @@ func (s *Server) prepareLLMTranslation(ctx context.Context, workID int64, payloa
 	if err != nil {
 		return plan, err
 	}
+	plan.SourceLanguage = s.workOriginLyricsLanguage(ctx, workID)
 	if len(plan.Input.Text.Title) > 4096 || len(plan.Input.Text.Description) > 64<<10 || len(plan.Input.TagNames) > 64<<10 || len(plan.Input.ManualTitle) > 64<<10 || len(plan.Input.ManualDescription) > 128<<10 {
 		return plan, llmInvalid("llm_input_too_large", "Translation input exceeds the text limit.")
 	}
@@ -151,7 +156,13 @@ func (s *Server) requestLLMTranslation(ctx context.Context, plan llmTranslationP
 				return result, err
 			}
 		}
-		translated, err := client.Translate(ctx, plan.Model, target, input)
+		translated, err := client.Translate(ctx, plan.Model, plan.SourceLanguage, target, input)
+		switch llmHelperRejection(err) {
+		case "unsupported_language_pair":
+			return result, llmInvalid("llm_unsupported_language_pair", "The provider's model cannot translate between these languages.")
+		case "service_not_ready":
+			return result, llmInvalid("llm_service_not_ready", "The provider has no ready model. Install or start one in the provider.")
+		}
 		if err != nil {
 			return result, err
 		}
@@ -175,6 +186,25 @@ func (s *Server) requestLLMTranslation(ctx context.Context, plan llmTranslationP
 	}
 	return result, nil
 }
+
+// llmHelperRejection names a Kikoto Helper rejection that retrying cannot
+// fix: "unsupported_language_pair" when its model does not translate between
+// the languages, or "service_not_ready" when it has no model installed or
+// started. Both reject the request before any model receives it.
+func llmHelperRejection(err error) string {
+	var rejected llm.UpstreamError
+	if !errors.As(err, &rejected) {
+		return ""
+	}
+	switch {
+	case rejected.Code == kikotohelper.CodeUnsupportedLanguagePair:
+		return "unsupported_language_pair"
+	case kikotohelper.NotReady(rejected.Code):
+		return "service_not_ready"
+	}
+	return ""
+}
+
 func writeLLMRequestError(w http.ResponseWriter, err error) {
 	var invalid llmRequestError
 	if errors.As(err, &invalid) {

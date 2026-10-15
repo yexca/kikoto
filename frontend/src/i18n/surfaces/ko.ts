@@ -454,6 +454,8 @@ export const surfaceKorean = {
       endpointRequired: "이 서비스의 엔드포인트를 입력하세요.",
       apiKey: "API 키",
       credentialOptional: "필요 없는 서비스라면 비워 두세요.",
+      credentialRequired: "이 서비스에는 필수입니다.",
+      credentialMissing: "이 서비스의 키를 입력하세요.",
       apiKeyDescription: "키는 서버에 저장되며 브라우저로 반환되지 않습니다.",
       keyConfigured: "키가 설정되어 있습니다. 비워 두면 유지됩니다.",
       clearKey: "저장된 API 키 지우기",
@@ -542,6 +544,13 @@ export const surfaceKorean = {
       ollamaOther: "다른 컴퓨터",
       ollamaLocalEndpoint: "서버 호스트 게이트웨이에서 결정됩니다.",
       ollamaDerivedEndpoint: "서버 호스트 게이트웨이 · 포트 11434",
+      location: "배포 위치",
+      locationDescription:
+        "이 서버와 같은 머신에서는 구성된 호스트 게이트웨이를 통해 연결하므로 포트만 입력합니다. 다른 머신을 선택하면 주소를 입력할 수 있습니다.",
+      host: "호스트",
+      port: "포트",
+      portDescription: "제공자가 수신 대기하는 포트입니다.",
+      portRequired: "1~65535 사이의 포트를 입력하세요.",
       add: "제공자 추가",
       save: "저장",
       delete: "삭제",
@@ -579,6 +588,8 @@ export const surfaceKorean = {
       editTitle: "LLM 제공자 편집",
       endpointDefaultHint: "비워 두면 서비스의 기본 주소를 사용합니다.",
       endpointRequired: "이 제공자의 엔드포인트를 입력하세요.",
+      credentialRequired: "이 제공자에는 필수입니다.",
+      credentialMissing: "이 제공자의 키를 입력하세요.",
       connectionChangeHint: "엔드포인트나 위치를 변경하면 저장된 키와 검색된 모델이 지워집니다. 키를 다시 입력하세요.",
       modelsAvailable:
         "검색된 모델 {{count}}개를 입력 제안으로 사용할 수 있습니다. 모델 검색 전에 연결 설정을 저장합니다.",
@@ -2512,6 +2523,7 @@ export const surfaceKorean = {
 
   errorFeedback: {
     databaseBusy: "데이터베이스가 사용 중입니다. 잠시 후 다시 시도하세요.",
+    serviceModelNotInstalled: "서비스에 설치된 모델이 없습니다. 서비스에서 모델을 설치한 뒤 모델을 다시 가져오세요.",
     invalidRequest: "입력한 값을 확인한 후 다시 시도하세요.",
     conflict: "이 항목이 변경되었거나 기존 데이터와 충돌합니다. 새로 고친 후 다시 시도하세요.",
     sourceNotUsable: "이 원격 소스는 비활성화되어 있거나 이 작업을 지원하지 않습니다.",
@@ -2844,6 +2856,8 @@ export const surfaceKorean = {
       audio_decode_failed: "오디오 파일을 디코딩할 수 없습니다.",
       audio_too_long: "트랙이 너무 길어 전사할 수 없습니다.",
       transcript_too_large: "전사 결과가 너무 큽니다.",
+      service_not_ready:
+        "서비스에 사용할 수 있는 모델이 없습니다. 서비스에서 모델을 설치하거나 시작한 뒤 다시 전사하세요.",
       ffmpeg_unavailable: "이 서버에서 오디오를 준비할 수 없습니다.",
       endpoint_unavailable: "서비스 연결을 준비할 수 없습니다.",
       cancelled: "전사가 취소되었습니다.",
@@ -2923,6 +2937,9 @@ export const surfaceKorean = {
       policy_changed: "번역이 시작된 뒤 콘텐츠 안전 정책이 바뀌었습니다. 다시 번역하세요.",
       invalid_lyrics_output: "제공자의 응답이 가사의 줄을 유지하지 않았습니다. 다시 번역하세요.",
       translation_output_too_large: "번역문이 너무 큽니다.",
+      unsupported_language_pair: "제공자의 모델은 이 언어 조합을 번역할 수 없습니다. 다른 언어나 제공자를 선택하세요.",
+      service_not_ready:
+        "제공자에 사용할 수 있는 모델이 없습니다. 제공자에서 모델을 설치하거나 시작한 뒤 Activity에서 다시 시도하세요.",
       unknown: "번역이 중지되었습니다. 다시 번역하거나 Activity에서 확인하세요.",
     },
     errors: {

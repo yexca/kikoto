@@ -138,6 +138,14 @@
   model, and the task keeps the model it started with, so changing the default
   or adding a model leaves queued work untouched. Model discovery for OpenAI
   speech recognition suggests only Whisper models.
+- Kikoto Helper is an ASR service and an LLM provider preset. It reaches a
+  Kikoto Helper on the server's machine through the host gateway, on ports
+  17656 and 17657 by default, or on another machine by origin, with the API
+  token the helper shows. Translation sends whole fields to the helper, which
+  formats prompts and keeps line counts for its model. Fetching models from a
+  helper without an installed model, a model that cannot translate between
+  the chosen languages, and a model that is not installed or started each
+  name their cause.
 - The ellipsis between the page numbers below a list opens a field that goes
   to a typed page number.
 

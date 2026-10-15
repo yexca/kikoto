@@ -43,6 +43,9 @@ The backend is a Go HTTP API with SQLite persistence.
 - `backend/internal/asr`: speech recognition service configuration, the
   OpenAI-compatible transcription protocol, WebVTT rendering of timed
   segments, and quiet cut points between transcription chunks.
+- `backend/internal/kikotohelper`: the Kikoto Helper task endpoints shared by
+  `asr` and `llm`: the info probe, the translation task path and the helper's
+  error codes.
 - `backend/internal/metadatatitles`: display-title selection from edition,
   declared remote, and manual titles without changing provider data.
 - `backend/internal/outbound`: the shared outbound transport policy, forward

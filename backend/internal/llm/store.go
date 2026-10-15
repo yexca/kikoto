@@ -85,7 +85,7 @@ func (s *Store) Mutate(ctx context.Context, id string, input Provider, key *stri
 		input.Models = []Model{}
 		if key != nil {
 			input.APIKey = *key
-		} else if index >= 0 && providers[index].BaseURL == input.BaseURL && providers[index].PresetID == input.PresetID && providers[index].OllamaScope == input.OllamaScope {
+		} else if index >= 0 && providers[index].SameConnection(input) {
 			input.APIKey = providers[index].APIKey
 		}
 		input, err = Normalize(input)
@@ -94,7 +94,7 @@ func (s *Store) Mutate(ctx context.Context, id string, input Provider, key *stri
 		}
 		if index >= 0 {
 			input.Revision = providers[index].Revision + 1
-			if providers[index].BaseURL == input.BaseURL && providers[index].PresetID == input.PresetID && providers[index].OllamaScope == input.OllamaScope && providers[index].APIKey == input.APIKey {
+			if providers[index].SameConnection(input) && providers[index].APIKey == input.APIKey {
 				input.Models = providers[index].Models
 			}
 			providers[index] = input
@@ -118,7 +118,7 @@ func (s *Store) Models(ctx context.Context, expected Provider, models []Model) (
 		if p.ID != expected.ID {
 			continue
 		}
-		if p.BaseURL != expected.BaseURL || p.PresetID != expected.PresetID || p.APIKey != expected.APIKey || p.OllamaScope != expected.OllamaScope {
+		if !p.SameConnection(expected) || p.APIKey != expected.APIKey {
 			return Provider{}, errors.New("LLM configuration changed; fetch models again")
 		}
 		p.Models = models

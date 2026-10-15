@@ -32,7 +32,7 @@ export function draftFromPreset(preset: ASRPreset): ASRServiceDraft {
     baseUrl: "",
     savedBaseUrl: "",
     scope: preset.local ? "local_machine" : undefined,
-    port: "",
+    port: preset.defaultPort ? String(preset.defaultPort) : "",
     apiKey: "",
     clearKey: false,
     hasApiKey: false,
@@ -103,6 +103,12 @@ export function replacesConnection(draft: ASRServiceDraft) {
   if (draft.scope !== draft.savedScope) return true;
   if (usesDerivedHost(draft)) return parsedPort(draft) !== (draft.savedPort ?? null);
   return draft.baseUrl.trim() !== draft.savedBaseUrl;
+}
+
+/** A service that refuses requests without a key needs one that survives the save. */
+export function keyMissing(draft: ASRServiceDraft, preset: ASRPreset | undefined) {
+  if (!preset?.keyRequired || draft.apiKey.trim()) return false;
+  return !draft.hasApiKey || draft.clearKey || replacesConnection(draft);
 }
 
 export function updatePayload(draft: ASRServiceDraft): ASRProviderPayload {

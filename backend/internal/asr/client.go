@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/textproto"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/kikotohelper"
 )
 
 // ResponseLimit bounds one buffered transcription or model-list response.
@@ -20,7 +22,12 @@ const ResponseLimit = 4 << 20
 // timestamps lyrics need, such as a model without verbose JSON output.
 var ErrNoTimestamps = errors.New("speech recognition response has no segment timestamps")
 
-type UpstreamError struct{ Status int }
+// UpstreamError is a rejected request. Code is the error code a Kikoto Helper
+// reports, and empty for every other service.
+type UpstreamError struct {
+	Status int
+	Code   string
+}
 
 func (e UpstreamError) Error() string { return "speech recognition service rejected the request" }
 
@@ -62,7 +69,12 @@ func (c Client) do(req *http.Request) ([]byte, error) {
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, UpstreamError{Status: response.StatusCode}
+		rejected := UpstreamError{Status: response.StatusCode}
+		if c.Provider.Preset().Kind == kikotohelper.Kind {
+			data, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+			rejected.Code = kikotohelper.ErrorCode(data)
+		}
+		return nil, rejected
 	}
 	if response.ContentLength > ResponseLimit {
 		return nil, errors.New("speech recognition response is too large")
@@ -78,8 +90,12 @@ func (c Client) do(req *http.Request) ([]byte, error) {
 }
 
 // Models lists the models the service offers. Self-hosted services list the
-// models they have installed.
+// models they have installed; a Kikoto Helper without one is
+// kikotohelper.ErrNotInstalled.
 func (c Client) Models(ctx context.Context) ([]Model, error) {
+	if c.Provider.Preset().Kind == kikotohelper.Kind {
+		return c.helperModels(ctx)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url("/models"), nil)
 	if err != nil {
 		return nil, err
@@ -111,6 +127,34 @@ func (c Client) Models(ctx context.Context) ([]Model, error) {
 		}
 		seen[id] = true
 		result = append(result, Model{ID: id})
+	}
+	return result, nil
+}
+
+// helperModels reads the installed models and their names from the helper's
+// info probe, which answers without loading a model.
+func (c Client) helperModels(ctx context.Context) ([]Model, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Provider.Endpoint(c.Host)+kikotohelper.InfoPath, nil)
+	if err != nil {
+		return nil, err
+	}
+	data, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	info, err := kikotohelper.DecodeInfo(data, kikotohelper.ServiceASR)
+	if err != nil {
+		return nil, err
+	}
+	result := []Model{}
+	seen := map[string]bool{}
+	for _, item := range info.Models {
+		id := strings.TrimSpace(item.ID)
+		if id == "" || len(id) > 256 || seen[id] || len(result) >= 512 {
+			continue
+		}
+		seen[id] = true
+		result = append(result, Model{ID: id, Name: strings.TrimSpace(item.Name)})
 	}
 	return result, nil
 }

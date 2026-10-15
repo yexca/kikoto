@@ -186,6 +186,9 @@ an administrator accepts it, so the notice does not depend on the client.
   query.
 - Every redirect is refused, and the key is sent only as a bearer token to the
   configured origin.
+- A Kikoto Helper rejection is read up to 64 KiB only for its error code,
+  which maps to a fixed failure code; the helper's message is never shown.
+  LLM translation requests to a helper follow the same rule.
 - Model discovery has a 20-second bound. A chunk request has a 30-minute
   bound, which also bounds the wait for response headers, because a service
   answers only once the chunk is transcribed. Responses are buffered to at
