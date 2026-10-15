@@ -37,7 +37,7 @@ import { UsersPage } from "@/pages/UsersPage";
 import { ASRSettingsSection } from "@/features/asr-settings/ASRSettingsSection";
 import { LLMSettingsSection } from "@/features/llm-settings/LLMSettingsSection";
 
-type MaintenanceTab = "library" | "cache" | "proxy" | "llm" | "asr" | "users";
+type MaintenanceTab = "library" | "cache" | "proxy" | "llm" | "users";
 
 type RuntimeDraft = {
   localScanDepth: number;
@@ -476,9 +476,8 @@ export function MaintenancePage({
             />
           </div>
         ) : activeTab === "llm" ? (
-          <LLMSettingsSection readOnly={readOnly} />
-        ) : activeTab === "asr" ? (
-          <ASRSettingsSection readOnly={readOnly} />
+          // ASR services follow the LLM providers because the same content safety policy governs both.
+          <LLMSettingsSection readOnly={readOnly} otherServices={<ASRSettingsSection readOnly={readOnly} />} />
         ) : activeTab === "users" ? (
           <div className="space-y-6">
             {canManageUsers && (

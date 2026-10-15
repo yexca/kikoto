@@ -182,6 +182,7 @@ func TestLLMPreviewBindsActorAndRevalidatesSnapshots(t *testing.T) {
 }
 func TestLLMEndpointChangeDropsCredentialsAndModels(t *testing.T) {
 	f := newManualOverrideFixture(t, config.Config{})
+	acceptServiceNoticeForTest(t, f)
 	p := llmTestProvider(t, f, "https://first.example.invalid", "external", false)
 	key := "synthetic-token"
 	var err error
@@ -211,6 +212,7 @@ func TestLLMEndpointChangeDropsCredentialsAndModels(t *testing.T) {
 }
 func TestLLMOllamaLocalURLCannotBeOverridden(t *testing.T) {
 	f := newManualOverrideFixture(t, config.Config{})
+	acceptServiceNoticeForTest(t, f)
 	r := llmTestRequest(f, "POST", `{"presetId":"ollama","ollamaScope":"local_machine","baseUrl":"https://attacker.example.invalid","enabled":true}`)
 	r.SetPathValue("id", "")
 	w := httptest.NewRecorder()

@@ -176,6 +176,10 @@ Speech recognition requests go only to the administrator-configured service
 origin, with its private-address exception, through the shared outbound
 transport and the `other` proxy route.
 
+LLM and ASR configuration requires an accepted external service notice. The
+server refuses provider, service and policy saves and model discovery until
+an administrator accepts it, so the notice does not depend on the client.
+
 - A same-machine local deployment derives its host from the server's host
   gateway and stores only a port; an address in the request body is
   discarded. Other origins must be HTTP(S) without credentials, a path, or a

@@ -2,14 +2,14 @@ import { Globe, Laptop, Loader2, Plus, RefreshCw, Save } from "lucide-react";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PresetDialogBody, presetDialogClassName } from "@/components/settings/PresetDialogBody";
 import { SettingsField, SettingsSwitchRow } from "@/components/settings/SettingsFormControls";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { Dialog, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input, otherCredentialFieldProps } from "@/components/ui/input";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import type { ASRPreset, ASRProvider, ASRScope } from "@/lib/api";
-import { cn } from "@/lib/tailwindClassNames";
 
 import {
   draftFromPreset,
@@ -61,6 +61,8 @@ export function ASRServiceDialog({
 
   const preset = presets.find((item) => item.id === draft.presetId);
   const editing = Boolean(draft.id);
+  // A service being added keeps its preset list after fetching models saves it, so the layout stays put.
+  const adding = provider === null;
   const busy = pending !== null;
   const derivedHost = usesDerivedHost(draft);
   const missingEndpoint = endpointMissing(draft, preset);
@@ -73,6 +75,11 @@ export function ASRServiceDialog({
       scope,
       baseUrl: scope === "other_machine" && draft.savedScope === "other_machine" ? draft.savedBaseUrl : "",
     });
+
+  const selectPreset = (id: string) => {
+    const next = presets.find((item) => item.id === id);
+    if (next) setDraft((current) => withPreset(current, next));
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -109,7 +116,7 @@ export function ASRServiceDialog({
   ];
 
   return (
-    <Dialog onClose={onClose} size="lg" dismissible={!busy}>
+    <Dialog onClose={onClose} size={adding ? "xl" : "lg"} className={presetDialogClassName} dismissible={!busy}>
       <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => void submit(event)} noValidate>
         <DialogHeader
           title={editing ? t("maintenance.asr.editTitle") : t("maintenance.asr.addTitle")}
@@ -117,39 +124,24 @@ export function ASRServiceDialog({
           onClose={onClose}
           closeLabel={t("maintenance.close")}
         />
-        <DialogBody>
+        <PresetDialogBody
+          disabled={busy}
+          picker={
+            adding
+              ? {
+                  label: t("maintenance.asr.service"),
+                  items: presets.map((item) => ({
+                    id: item.id,
+                    label: t(`maintenance.asr.presets.${item.id}`, { defaultValue: item.name }),
+                  })),
+                  selectedId: draft.presetId,
+                  locked: editing,
+                  onSelect: selectPreset,
+                }
+              : null
+          }
+        >
           <fieldset disabled={busy} className="min-w-0 space-y-5 border-0 p-0">
-            {!editing && (
-              <div
-                role="radiogroup"
-                aria-label={t("maintenance.asr.service")}
-                className="flex min-w-0 flex-wrap gap-1.5"
-              >
-                {presets.map((item) => {
-                  const selected = item.id === draft.presetId;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      className={cn(
-                        "touch-target relative inline-flex h-8 max-w-full items-center rounded-[var(--control-radius)] border px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-                        selected
-                          ? "border-primary bg-primary/10 font-medium text-primary"
-                          : "border-input bg-card text-foreground hover:bg-muted",
-                      )}
-                      onClick={() => setDraft((current) => withPreset(current, item))}
-                    >
-                      <span className="truncate">
-                        {t(`maintenance.asr.presets.${item.id}`, { defaultValue: item.name })}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
             <SettingsField label={t("maintenance.asr.name")} hint={t("maintenance.asr.nameDescription")}>
               <Input
                 value={draft.name}
@@ -352,7 +344,7 @@ export function ASRServiceDialog({
               </p>
             )}
           </fieldset>
-        </DialogBody>
+        </PresetDialogBody>
         <DialogFooter>
           <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onClose}>
             {t("maintenance.cancel")}

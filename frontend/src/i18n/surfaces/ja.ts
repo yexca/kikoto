@@ -497,6 +497,20 @@ export const surfaceJapanese = {
       deleteDescription: "接続設定、保存済みのキー、取得済みのモデルが削除されます。作成済みの文字起こしは残ります。",
     },
     llm: {
+      notice: {
+        title: "外部サービスに接続する前に",
+        terms:
+          "メタデータ、歌詞、音声を外部の LLM や音声認識サービスに送信すると、特に成人向けコンテンツでは、そのサービスの利用規約に違反する場合があります。",
+        advisory:
+          "Kikoto のコンテンツ安全ポリシーとセンシティブ判定は参考情報です。誤判定することがあり、リクエストが提供元の規約に適合することを保証しません。",
+        liability:
+          "外部サービスはご自身の責任で利用してください。アカウントの停止・凍結、クレジットの喪失、その他の結果について Kikoto は一切責任を負いません。",
+        scope:
+          "同意はこのサーバーのすべての管理者に適用されます。同意するまで LLM と音声認識サービスは設定できません。",
+        agree: "内容を読み、同意します",
+        accept: "同意して続行",
+        acceptFailed: "同意を保存できませんでした。",
+      },
       demoDisabled: "Demo では LLM の設定と翻訳を使用できません。",
       remoteLyrics: "リモート歌詞の翻訳を有効化",
       remoteLyricsDescription: "明示的に選択したリモートファイルだけを読み込みます。取得権限が必要です。",
@@ -553,7 +567,7 @@ export const surfaceJapanese = {
       modelsFetched: "{{count}} 個のモデルを取得しました。",
       policyTitle: "コンテンツ安全ポリシー",
       policyDescription:
-        "タグまたはキーワードに一致した場合、外部エンドポイントを停止し、センシティブな翻訳をローカルに限定します。",
+        "LLM プロバイダーと音声認識サービスに適用します。タグまたはキーワードに一致した場合、外部エンドポイントを停止し、センシティブな翻訳と文字起こしをローカルに限定します。",
       policySaved: "コンテンツ安全ポリシーを保存しました。",
       policySaveFailed: "コンテンツ安全ポリシーを保存できませんでした。",
       alwaysScanAllAges: "全年齢作品もスキャン",
@@ -719,8 +733,7 @@ export const surfaceJapanese = {
       unlinked: "作品メンテナンス",
       cache: "キャッシュと取得",
       proxy: "プロキシ",
-      llm: "LLM 設定",
-      asr: "音声認識",
+      llm: "LLM・音声認識",
       users: "ユーザー",
       access: "アクセス",
       paths: "パス",
@@ -2798,7 +2811,7 @@ export const surfaceJapanese = {
     detect: "自動検出",
     languageHint:
       "歌詞はこの言語で保存・割り当てされます。自動検出の場合は、すべての言語向けの歌詞として保存されます。",
-    noService: "利用できる音声認識サービスがありません。管理者が「設定 → 音声認識」で追加できます。",
+    noService: "利用できる音声認識サービスがありません。管理者が「設定 → LLM・音声認識」で追加できます。",
     noServiceShort: "利用できるサービスなし",
     loading: "読み込み中…",
     servicesFailed: "音声認識サービスを読み込めませんでした。",

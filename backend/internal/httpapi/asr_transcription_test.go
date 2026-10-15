@@ -479,6 +479,7 @@ func TestASRSameMachineServiceIgnoresAnAddressInTheRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	acceptServiceNoticeForTest(t, fixture)
 	request := httptest.NewRequest(http.MethodPost, "/api/asr/providers", strings.NewReader(`{"presetId":"local","scope":"local_machine","port":8000,"baseUrl":"http://203.0.113.9:1"}`))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, actor))
 	response := httptest.NewRecorder()

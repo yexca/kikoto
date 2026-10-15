@@ -369,6 +369,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/llm/translation-models", s.listLLMTranslationModels)
 	mux.HandleFunc("GET /api/llm/policy", s.getLLMPolicy)
 	mux.HandleFunc("PUT /api/llm/policy", s.updateLLMPolicy)
+	mux.HandleFunc("POST /api/llm/notice-acceptance", s.acceptServiceNotice)
 	mux.HandleFunc("POST /api/llm/providers", s.saveLLMProvider)
 	mux.HandleFunc("PUT /api/llm/providers/{id}", s.saveLLMProvider)
 	mux.HandleFunc("DELETE /api/llm/providers/{id}", s.deleteLLMProvider)

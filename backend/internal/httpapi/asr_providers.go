@@ -78,6 +78,9 @@ func (s *Server) saveASRProvider(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
 		return
 	}
+	if !s.requireServiceNotice(w, r) {
+		return
+	}
 	var body asrProviderPayload
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
 	decoder.DisallowUnknownFields()
@@ -163,6 +166,9 @@ func (s *Server) fetchASRModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
+		return
+	}
+	if !s.requireServiceNotice(w, r) {
 		return
 	}
 	p, err := s.asrStore.Get(r.Context(), r.PathValue("id"))

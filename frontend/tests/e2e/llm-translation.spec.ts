@@ -45,6 +45,12 @@ async function application(page: Page) {
     route.fulfill({ json: authenticatedStateFixture({ role: "admin", permissions: ["system:admin"] }) }),
   );
   await page.route("**/api/settings", (route) => route.fulfill({ json: appSettingsFixture() }));
+  // ASR services share the LLM settings tab.
+  await page.route("**/api/asr/providers", (route) =>
+    route.fulfill({
+      json: { providers: [], presets: [], hostAddress: "" } satisfies ApiResponse<"listASRProviders">,
+    }),
+  );
 }
 async function openTranslation(page: Page, detailOverrides: Partial<WorkDetail> = {}) {
   await application(page);
@@ -113,6 +119,7 @@ test("LLM settings save connection drafts before discovery and edit structured c
           },
         ],
         policy,
+        noticeAccepted: true,
       } satisfies ApiResponse<"listProviders">,
     }),
   );
@@ -220,6 +227,7 @@ test("LLM settings add a provider in a dialog and confirm before deleting it", a
           },
         ],
         policy: { alwaysScanAllAges: false, tagIds: [], keywords: [] },
+        noticeAccepted: true,
       } satisfies ApiResponse<"listProviders">,
     });
   });
@@ -265,6 +273,72 @@ test("LLM settings add a provider in a dialog and confirm before deleting it", a
   await expect(list.getByRole("button", { name: "Edit Custom OpenAI-compatible", exact: true })).toBeVisible();
   await confirm.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(list.getByText("No LLM providers configured.", { exact: true })).toBeVisible();
+});
+
+test("LLM & ASR settings list both services above their shared content safety policy", async ({ page }) => {
+  await application(page);
+  await page.route("**/api/llm/providers", (route) =>
+    route.fulfill({
+      json: {
+        providers: [provider],
+        presets: [],
+        policy: { alwaysScanAllAges: false, tagIds: [], keywords: [] },
+        noticeAccepted: true,
+      } satisfies ApiResponse<"listProviders">,
+    }),
+  );
+
+  // The former ASR tab id opens the shared tab.
+  await page.goto("/settings?tab=asr");
+  await expect(page.getByRole("tab", { name: "LLM & ASR", exact: true })).toHaveAttribute("aria-selected", "true");
+  const sections = ["LLM providers", "ASR services", "Content safety policy"].map((name) =>
+    page.getByRole("region", { name, exact: true }),
+  );
+  for (const section of sections) await expect(section).toBeVisible();
+  const tops = await Promise.all(sections.map(async (section) => (await section.boundingBox())?.y ?? 0));
+  expect(tops).toEqual([...tops].sort((a, b) => a - b));
+});
+
+test("LLM & ASR settings stay locked until the external service notice is accepted", async ({ page }) => {
+  await application(page);
+  let accepted = 0;
+  await page.route("**/api/llm/providers", (route) =>
+    route.fulfill({
+      json: {
+        providers: [],
+        presets: [
+          {
+            id: "custom-openai",
+            name: "Custom OpenAI-compatible",
+            kind: "openai",
+            defaultUrl: "",
+            modelPath: "/v1/models",
+            boundary: "external",
+          },
+        ],
+        policy: { alwaysScanAllAges: false, tagIds: [], keywords: [] },
+        noticeAccepted: false,
+      } satisfies ApiResponse<"listProviders">,
+    }),
+  );
+  await page.route("**/api/llm/notice-acceptance", (route) => {
+    accepted += 1;
+    return route.fulfill({ json: { noticeAccepted: true } });
+  });
+
+  await page.goto("/settings?tab=llm");
+  const notice = page.getByRole("region", { name: "Before you connect external services", exact: true });
+  await expect(notice).toBeVisible();
+  // The settings behind the notice are out of reach until it is accepted.
+  await expect(page.getByRole("button", { name: "Add provider", exact: true })).toHaveCount(0);
+  const accept = notice.getByRole("button", { name: "Accept and continue", exact: true });
+  await expect(accept).toBeDisabled();
+  await notice.getByRole("checkbox", { name: "I have read and accept this notice", exact: true }).click();
+  await accept.click();
+
+  await expect(notice).toBeHidden();
+  expect(accepted).toBe(1);
+  await expect(page.getByRole("button", { name: "Add provider", exact: true })).toBeEnabled();
 });
 
 test("LLM dialog prechecks without translation, uses minimal models and confirms the preview", async ({ page }) => {
