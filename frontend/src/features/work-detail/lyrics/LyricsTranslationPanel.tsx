@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { FloatingSelect, type FloatingSelectOption } from "@/components/ui/floating-select";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import type { LyricsManagerAudio, LyricsManagerFile } from "@/features/work-detail/lyrics/lyricsManagerModel";
+import { LyricsNote } from "@/features/work-detail/lyrics/LyricsNote";
 import { LyricsPreview } from "@/features/work-detail/lyrics/LyricsPreview";
 import {
   ApiError,
@@ -232,78 +233,85 @@ export function LyricsTranslationPanel({
   const ready = Boolean(locationID && audioID && providerID && language);
 
   return (
-    <div className="space-y-5">
-      <p className="text-sm text-muted-foreground">{t("lyricsTranslation.intro")}</p>
-      {sources.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("lyricsTranslation.noLyrics")}</p>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="min-w-0">
-            <div className="mb-1 text-xs font-medium text-muted-foreground">{t("lyricsTranslation.source")}</div>
-            <FloatingSelect
-              value={String(locationID)}
-              options={sourceOptions}
-              onValueChange={selectSource}
-              ariaLabel={t("lyricsTranslation.source")}
-              disabled={submitting}
-              contentClassName="max-w-[min(32rem,calc(100vw-1.5rem))]"
-            />
-          </div>
-          <div className="min-w-0">
-            <div className="mb-1 text-xs font-medium text-muted-foreground">{t("lyricsTranslation.track")}</div>
-            <FloatingSelect
-              value={String(audioID)}
-              options={trackOptions}
-              onValueChange={(value) => setAudioID(Number(value))}
-              ariaLabel={t("lyricsTranslation.track")}
-              triggerLabel={audioID ? undefined : t("lyricsTranslation.chooseTrack")}
-              disabled={submitting}
-              contentClassName="max-w-[min(32rem,calc(100vw-1.5rem))]"
-            />
-          </div>
-          <div className="min-w-0">
-            <div className="mb-1 text-xs font-medium text-muted-foreground">{t("lyricsTranslation.provider")}</div>
-            <FloatingSelect
-              value={providerID}
-              options={providerOptions}
-              onValueChange={setProviderID}
-              ariaLabel={t("lyricsTranslation.provider")}
-              triggerLabel={
-                providers === null
-                  ? t("lyricsTranslation.loading")
-                  : noProvider
-                    ? t("lyricsTranslation.noProviderShort")
-                    : undefined
-              }
-              disabled={submitting || !providers?.length}
-            />
-          </div>
-          <div className="min-w-0">
-            <div className="mb-1 text-xs font-medium text-muted-foreground">{t("lyricsTranslation.language")}</div>
-            <FloatingSelect
-              value={language}
-              options={languageOptions}
-              onValueChange={setLanguage}
-              ariaLabel={t("lyricsTranslation.language")}
-              disabled={submitting}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground sm:col-span-2">
-            {noProvider ? t("lyricsTranslation.noProvider") : t("lyricsTranslation.hint")}
+    <div className="grid gap-5 @3xl:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] @3xl:items-start">
+      <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+        <p className="text-sm text-muted-foreground">{t("lyricsTranslation.intro")}</p>
+        {sources.length === 0 ? (
+          <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground">
+            {t("lyricsTranslation.noLyrics")}
           </p>
-          <div className="sm:col-span-2">
-            <Button onClick={() => void start()} disabled={submitting || !ready}>
+        ) : (
+          <>
+            <div className="min-w-0">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">{t("lyricsTranslation.source")}</div>
+              <FloatingSelect
+                value={String(locationID)}
+                options={sourceOptions}
+                onValueChange={selectSource}
+                ariaLabel={t("lyricsTranslation.source")}
+                disabled={submitting}
+                contentClassName="max-w-[min(32rem,calc(100vw-1.5rem))]"
+              />
+            </div>
+            <div className="min-w-0">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">{t("lyricsTranslation.track")}</div>
+              <FloatingSelect
+                value={String(audioID)}
+                options={trackOptions}
+                onValueChange={(value) => setAudioID(Number(value))}
+                ariaLabel={t("lyricsTranslation.track")}
+                triggerLabel={audioID ? undefined : t("lyricsTranslation.chooseTrack")}
+                disabled={submitting}
+                contentClassName="max-w-[min(32rem,calc(100vw-1.5rem))]"
+              />
+            </div>
+            <div className="min-w-0">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">{t("lyricsTranslation.provider")}</div>
+              <FloatingSelect
+                value={providerID}
+                options={providerOptions}
+                onValueChange={setProviderID}
+                ariaLabel={t("lyricsTranslation.provider")}
+                triggerLabel={
+                  providers === null
+                    ? t("lyricsTranslation.loading")
+                    : noProvider
+                      ? t("lyricsTranslation.noProviderShort")
+                      : undefined
+                }
+                disabled={submitting || !providers?.length}
+              />
+            </div>
+            <div className="min-w-0">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">{t("lyricsTranslation.language")}</div>
+              <FloatingSelect
+                value={language}
+                options={languageOptions}
+                onValueChange={setLanguage}
+                ariaLabel={t("lyricsTranslation.language")}
+                disabled={submitting}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {noProvider ? t("lyricsTranslation.noProvider") : t("lyricsTranslation.hint")}
+            </p>
+            <Button className="w-full" onClick={() => void start()} disabled={submitting || !ready}>
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Languages className="h-4 w-4" />}
               {submitting ? t("lyricsTranslation.starting") : t("lyricsTranslation.start")}
             </Button>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </div>
 
-      <section aria-labelledby="lyrics-translation-list" className="space-y-2">
+      <section aria-labelledby="lyrics-translation-list" className="min-w-0 space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <h4 id="lyrics-translation-list" className="text-sm font-medium">
+          <h4 id="lyrics-translation-list" className="flex items-center gap-2 text-sm font-medium">
             {t("lyricsTranslation.listTitle")}
+            {translations.length > 0 && (
+              <span className="rounded-full bg-muted px-1.5 py-px text-2xs tabular-nums text-muted-foreground">
+                {translations.length}
+              </span>
+            )}
           </h4>
           <Button
             variant="ghost"
@@ -316,22 +324,27 @@ export function LyricsTranslationPanel({
           </Button>
         </div>
         {listState === "loading" ? (
-          <p className="text-sm text-muted-foreground">{t("lyricsTranslation.loading")}</p>
+          <LyricsNote icon={<Loader2 className="animate-spin" aria-hidden="true" />}>
+            {t("lyricsTranslation.loading")}
+          </LyricsNote>
         ) : listState === "failed" ? (
-          <p role="alert" className="text-sm text-error-foreground">
+          <p
+            role="alert"
+            className="rounded-lg border border-error-border bg-error-surface px-3 py-2.5 text-sm text-error-foreground"
+          >
             {t("lyricsTranslation.loadFailed")}
           </p>
         ) : translations.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("lyricsTranslation.empty")}</p>
+          <LyricsNote icon={<Languages aria-hidden="true" />}>{t("lyricsTranslation.empty")}</LyricsNote>
         ) : (
-          <ul className="divide-y rounded-lg border">
+          <ul className="divide-y overflow-hidden rounded-lg border bg-card">
             {translations.map((item) => {
               const busy = busyID === item.taskId;
               const track = audioByID.get(item.audioMediaItemId);
               const title = track?.title ?? t("lyricsTranslation.unknownTrack");
               const source = sourceByLocation.get(item.lyricsLocationId);
               return (
-                <li key={item.taskId} className="px-3 py-2.5">
+                <li key={item.taskId} className="px-3 py-2.5 sm:px-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="min-w-0 flex-1 basis-56">
                       <div className="truncate text-sm font-medium">{title}</div>

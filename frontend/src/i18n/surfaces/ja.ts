@@ -2979,6 +2979,7 @@ export const surfaceJapanese = {
       "最終行は {{time}} に始まり、このトラックの終了（{{duration}}）より後です。別のトラックの歌詞かもしれません。",
     pending: "未保存の変更：{{count}}",
     noChanges: "変更なし",
+    groupCoverage: "歌詞のあるトラック: {{count}} / {{total}}",
     save: "保存",
     saving: "保存中…",
     saved: "歌詞の設定を保存しました。",

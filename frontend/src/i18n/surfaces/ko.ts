@@ -2958,6 +2958,7 @@ export const surfaceKorean = {
     timingExceeds: "마지막 줄이 {{time}}에 시작해 트랙 종료({{duration}}) 이후입니다. 다른 트랙의 가사일 수 있습니다.",
     pending: "저장하지 않은 변경: {{count}}",
     noChanges: "변경 없음",
+    groupCoverage: "가사가 있는 트랙: {{count}} / {{total}}",
     save: "저장",
     saving: "저장 중…",
     saved: "가사 설정을 저장했습니다.",

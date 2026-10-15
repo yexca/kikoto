@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AudioLines,
   Captions,
+  CheckCircle2,
+  CircleDashed,
+  Eye,
   FileText,
   Files,
   Folder,
@@ -9,6 +12,8 @@ import {
   ListChecks,
   ListOrdered,
   RotateCcw,
+  Wand2,
+  type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -34,6 +39,7 @@ import {
 } from "@/features/work-detail/lyrics/lyricsManagerModel";
 import { folderLyrics } from "@/features/work-detail/lyrics/lyricsEditModel";
 import { LyricsFilesWorkspace } from "@/features/work-detail/lyrics/LyricsFilesWorkspace";
+import { LyricsNote } from "@/features/work-detail/lyrics/LyricsNote";
 import { LyricsPreview, loadLocalLyricsText } from "@/features/work-detail/lyrics/LyricsPreview";
 import { LyricsTranslationPanel } from "@/features/work-detail/lyrics/LyricsTranslationPanel";
 import { TranscriptionPanel } from "@/features/work-detail/lyrics/TranscriptionPanel";
@@ -123,6 +129,7 @@ export function LyricsManagerDialog({
   const groups = useMemo(() => groupByFolder(entries.audio), [entries.audio]);
   const editable = !readOnly && !saving && entries.lyrics.length > 0;
   const busy = saving || filesBusy;
+  const pendingChanges = changes.length > 0;
 
   /** Replaces the selected language's assignments for the given tracks. */
   const assignMany = (assignments: Iterable<[number, number | null]>) =>
@@ -170,8 +177,25 @@ export function LyricsManagerDialog({
 
   const folderOptions: FloatingSelectOption[] = folders.map(({ folder, count }) => ({
     value: folder,
-    label: `${folder || t("lyricsManager.rootFolder")} (${count})`,
+    label: (
+      <span className="flex min-w-0 items-center justify-between gap-3">
+        <span className="truncate">{folder || t("lyricsManager.rootFolder")}</span>
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{count}</span>
+      </span>
+    ),
   }));
+  const tabs: LyricsManagerTabItem[] = [
+    { value: "assign", icon: ListChecks, label: t("lyricsManager.tabAssign") },
+    ...(filesAvailable
+      ? [{ value: "files" as const, icon: Files, label: t("lyricsManager.tabFiles"), count: managedCount }]
+      : []),
+    ...(transcribeAvailable
+      ? [{ value: "transcribe" as const, icon: AudioLines, label: t("lyricsManager.tabTranscribe") }]
+      : []),
+    ...(translateAvailable
+      ? [{ value: "translate" as const, icon: Languages, label: t("lyricsManager.tabTranslate") }]
+      : []),
+  ];
 
   return (
     <Dialog
@@ -191,66 +215,14 @@ export function LyricsManagerDialog({
         icon={<Captions className="h-4 w-4" />}
         onClose={busy ? undefined : onClose}
         closeLabel={t("content.close")}
-      >
-        {(filesAvailable || transcribeAvailable || translateAvailable) && (
-          <div className={segmentedListClassName("mt-3")} role="tablist" aria-label={t("lyricsManager.title")}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "assign"}
-              className={segmentedItemClassName(tab === "assign")}
-              disabled={busy}
-              onClick={() => setTab("assign")}
-            >
-              <ListChecks className="h-4 w-4" />
-              {t("lyricsManager.tabAssign")}
-            </button>
-            {filesAvailable && (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === "files"}
-                className={segmentedItemClassName(tab === "files")}
-                disabled={busy}
-                onClick={() => setTab("files")}
-              >
-                <Files className="h-4 w-4" />
-                {t("lyricsManager.tabFiles")}
-                {managedCount > 0 && <span className="tabular-nums text-muted-foreground">{managedCount}</span>}
-              </button>
-            )}
-            {transcribeAvailable && (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === "transcribe"}
-                className={segmentedItemClassName(tab === "transcribe")}
-                disabled={busy}
-                onClick={() => setTab("transcribe")}
-              >
-                <AudioLines className="h-4 w-4" />
-                {t("lyricsManager.tabTranscribe")}
-              </button>
-            )}
-            {translateAvailable && (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === "translate"}
-                className={segmentedItemClassName(tab === "translate")}
-                disabled={busy}
-                onClick={() => setTab("translate")}
-              >
-                <Languages className="h-4 w-4" />
-                {t("lyricsManager.tabTranslate")}
-              </button>
-            )}
-          </div>
-        )}
-      </DialogHeader>
+        className={tabs.length > 1 ? "border-b-0 pb-1" : undefined}
+      />
+      {tabs.length > 1 && (
+        <LyricsManagerTabs tabs={tabs} value={tab} label={t("lyricsManager.title")} disabled={busy} onChange={setTab} />
+      )}
       {tab === "transcribe" && transcribeAvailable ? (
         <>
-          <DialogBody>
+          <DialogBody className="@container">
             <TranscriptionPanel work={work} audio={entries.audio} onPublished={onSaved} />
           </DialogBody>
           <DialogFooter>
@@ -261,7 +233,7 @@ export function LyricsManagerDialog({
         </>
       ) : tab === "translate" && translateAvailable ? (
         <>
-          <DialogBody>
+          <DialogBody className="@container">
             <LyricsTranslationPanel work={work} audio={entries.audio} lyrics={entries.lyrics} onPublished={onSaved} />
           </DialogBody>
           <DialogFooter>
@@ -288,84 +260,148 @@ export function LyricsManagerDialog({
       ) : (
         <>
           {entries.audio.length > 0 && entries.lyrics.length > 0 && (
-            <LyricsLanguageTabs selected={language} counts={languageCounts} onSelect={selectLanguage} />
-          )}
-          {editable && folders.length > 0 && (
-            <div className="flex shrink-0 flex-wrap items-end gap-2 border-b px-5 py-3">
-              <div className="min-w-0 flex-1 basis-56">
-                <div className="mb-1 text-xs font-medium text-muted-foreground">{t("lyricsManager.alignFrom")}</div>
-                <FloatingSelect
-                  value={alignFolder}
-                  options={folderOptions}
-                  onValueChange={(value) => {
-                    setAlignFolder(value);
-                    setAlignMessage("");
-                  }}
-                  ariaLabel={t("lyricsManager.alignFrom")}
-                />
+            <div className="shrink-0 space-y-2 border-b px-4 py-3 sm:px-5">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <LyricsLanguageTabs selected={language} counts={languageCounts} onSelect={selectLanguage} />
+                {editable && folders.length > 0 && (
+                  <div className="flex min-w-0 flex-1 items-center justify-end gap-2 basis-72">
+                    <div className="min-w-0 flex-1 sm:max-w-56">
+                      <FloatingSelect
+                        value={alignFolder}
+                        options={folderOptions}
+                        onValueChange={(value) => {
+                          setAlignFolder(value);
+                          setAlignMessage("");
+                        }}
+                        ariaLabel={t("lyricsManager.alignFrom")}
+                        triggerLabel={
+                          <span className="flex min-w-0 items-center gap-2">
+                            <Folder className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                            <span className="truncate">{alignFolder || t("lyricsManager.rootFolder")}</span>
+                          </span>
+                        }
+                        contentClassName="min-w-56 max-w-[min(24rem,calc(100vw-1.5rem))]"
+                      />
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="shrink-0 max-sm:w-[var(--control-height)] max-sm:px-0"
+                      aria-label={t("lyricsManager.alignByOrder")}
+                      title={t("lyricsManager.alignByOrder")}
+                      onClick={alignByOrder}
+                    >
+                      <ListOrdered className="h-4 w-4" />
+                      <span className="hidden sm:inline">{t("lyricsManager.alignByOrder")}</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0 text-muted-foreground"
+                      aria-label={
+                        language === allLyricsLanguages
+                          ? t("lyricsManager.restoreAutomatic")
+                          : t("lyricsManager.clearLanguage")
+                      }
+                      title={
+                        language === allLyricsLanguages
+                          ? t("lyricsManager.restoreAutomatic")
+                          : t("lyricsManager.clearLanguage")
+                      }
+                      onClick={clearLanguage}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
-              <Button variant="outline" onClick={alignByOrder}>
-                <ListOrdered className="h-4 w-4" />
-                {t("lyricsManager.alignByOrder")}
-              </Button>
-              <Button variant="ghost" onClick={clearLanguage}>
-                <RotateCcw className="h-4 w-4" />
+              <p className="text-xs text-muted-foreground">
                 {language === allLyricsLanguages
-                  ? t("lyricsManager.restoreAutomatic")
-                  : t("lyricsManager.clearLanguage")}
-              </Button>
+                  ? t("lyricsManager.allLanguagesHint")
+                  : t("lyricsManager.languageHint")}
+              </p>
               {alignMessage && (
-                <p role="status" className="w-full text-xs text-muted-foreground">
+                <p
+                  role="status"
+                  className="flex items-center gap-1.5 rounded-md bg-info-surface px-2.5 py-1.5 text-xs text-info-foreground"
+                >
+                  <ListOrdered className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   {alignMessage}
                 </p>
               )}
             </div>
           )}
-          <DialogBody className="space-y-4">
+          <DialogBody className="space-y-5">
             {readOnly && <p className="text-sm text-muted-foreground">{t("lyricsManager.readOnly")}</p>}
             {entries.audio.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("lyricsManager.noAudio")}</p>
+              <LyricsNote icon={<AudioLines aria-hidden="true" />}>{t("lyricsManager.noAudio")}</LyricsNote>
             ) : entries.lyrics.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
+              <LyricsNote icon={<Captions aria-hidden="true" />}>
                 {filesAvailable ? t("lyricsManager.noLyricsTryFiles") : t("lyricsManager.noLyrics")}
-              </p>
+              </LyricsNote>
             ) : (
-              groups.map(([folder, audio]) => (
-                <section key={folder} aria-label={folder || t("lyricsManager.rootFolder")}>
-                  <h4 className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                    <Folder className="h-3.5 w-3.5" />
-                    <span className="truncate">{folder || t("lyricsManager.rootFolder")}</span>
-                  </h4>
-                  <ul className="divide-y rounded-lg border">
-                    {audio.map((entry) => (
-                      <LyricsAssignmentRow
-                        key={entry.mediaItemId}
-                        entry={entry}
-                        language={language}
-                        draftValue={draftLyricsMediaItemId(entry, drafts, language)}
-                        effectiveLyrics={
-                          lyricsByID.get(effectiveLyricsMediaItemId(entry, drafts, language) ?? 0) ?? null
-                        }
-                        lyrics={entries.lyrics}
-                        lyricsByID={lyricsByID}
-                        disabled={!editable}
-                        previewOpen={previewAudioID === entry.mediaItemId}
-                        onAssign={(lyricsID) => assign(entry.mediaItemId, lyricsID)}
-                        onTogglePreview={() =>
-                          setPreviewAudioID((current) => (current === entry.mediaItemId ? null : entry.mediaItemId))
-                        }
-                      />
-                    ))}
-                  </ul>
-                </section>
-              ))
+              groups.map(([folder, audio]) => {
+                const covered = audio.filter(
+                  (entry) => effectiveLyricsMediaItemId(entry, drafts, language) !== null,
+                ).length;
+                return (
+                  <section
+                    key={folder}
+                    aria-label={folder || t("lyricsManager.rootFolder")}
+                    className="overflow-hidden rounded-lg border bg-card"
+                  >
+                    <h4 className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground sm:px-4">
+                      <Folder className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span className="min-w-0 truncate text-foreground">
+                        {folder || t("lyricsManager.rootFolder")}
+                      </span>
+                      <span
+                        className="ml-auto shrink-0 tabular-nums"
+                        title={t("lyricsManager.groupCoverage", { count: covered, total: audio.length })}
+                      >
+                        <span aria-hidden="true">
+                          {covered}/{audio.length}
+                        </span>
+                        <span className="sr-only">
+                          {t("lyricsManager.groupCoverage", { count: covered, total: audio.length })}
+                        </span>
+                      </span>
+                    </h4>
+                    <ul className="divide-y">
+                      {audio.map((entry) => (
+                        <LyricsAssignmentRow
+                          key={entry.mediaItemId}
+                          entry={entry}
+                          language={language}
+                          draftValue={draftLyricsMediaItemId(entry, drafts, language)}
+                          effectiveLyrics={
+                            lyricsByID.get(effectiveLyricsMediaItemId(entry, drafts, language) ?? 0) ?? null
+                          }
+                          lyrics={entries.lyrics}
+                          lyricsByID={lyricsByID}
+                          disabled={!editable}
+                          previewOpen={previewAudioID === entry.mediaItemId}
+                          onAssign={(lyricsID) => assign(entry.mediaItemId, lyricsID)}
+                          onTogglePreview={() =>
+                            setPreviewAudioID((current) => (current === entry.mediaItemId ? null : entry.mediaItemId))
+                          }
+                        />
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })
             )}
           </DialogBody>
           <DialogFooter>
-            <span className="mr-auto text-xs text-muted-foreground" role="status">
-              {changes.length > 0
-                ? t("lyricsManager.pending", { count: changes.length })
-                : t("lyricsManager.noChanges")}
+            <span
+              className={cn(
+                "mr-auto flex items-center gap-2 text-xs",
+                pendingChanges ? "font-medium text-foreground" : "text-muted-foreground",
+              )}
+              role="status"
+            >
+              {pendingChanges && <span className="h-2 w-2 shrink-0 rounded-full bg-info" aria-hidden="true" />}
+              {pendingChanges ? t("lyricsManager.pending", { count: changes.length }) : t("lyricsManager.noChanges")}
             </span>
             <Button variant="ghost" onClick={onClose} disabled={saving}>
               {t("lyricsManager.cancel")}
@@ -382,6 +418,59 @@ export function LyricsManagerDialog({
   );
 }
 
+type LyricsManagerTabItem = { value: LyricsManagerTab; icon: LucideIcon; label: string; count?: number };
+
+/** The manager's sections, as an underlined strip below its header. */
+function LyricsManagerTabs({
+  tabs,
+  value,
+  label,
+  disabled,
+  onChange,
+}: {
+  tabs: readonly LyricsManagerTabItem[];
+  value: LyricsManagerTab;
+  label: string;
+  disabled: boolean;
+  onChange: (tab: LyricsManagerTab) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label={label}
+      className="flex shrink-0 gap-1 overflow-x-auto overflow-y-hidden border-b px-2 ![scrollbar-width:none] sm:px-3 [&::-webkit-scrollbar]:hidden"
+    >
+      {tabs.map(({ value: tabValue, icon: Icon, label: tabLabel, count = 0 }) => {
+        const active = tabValue === value;
+        return (
+          <button
+            key={tabValue}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            disabled={disabled}
+            onClick={() => onChange(tabValue)}
+            className={cn(
+              "relative inline-flex h-11 shrink-0 items-center gap-2 rounded-t-md px-3 text-sm font-medium transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+              active
+                ? "text-foreground after:bg-primary"
+                : "text-muted-foreground after:bg-transparent hover:text-foreground",
+            )}
+          >
+            <Icon className={cn("h-4 w-4 shrink-0", active && "text-primary")} aria-hidden="true" />
+            {tabLabel}
+            {count > 0 && (
+              <span className="rounded-full bg-muted px-1.5 py-px text-2xs tabular-nums text-muted-foreground">
+                {count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** The language strip: every language, then each language lyrics can declare, with its track count. */
 function LyricsLanguageTabs({
   selected,
@@ -394,11 +483,8 @@ function LyricsLanguageTabs({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="shrink-0 space-y-2 border-b px-5 py-3">
-      <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-        <Languages className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        {t("lyricsManager.language")}
-      </p>
+    <div className="flex min-w-0 max-w-full items-center gap-2">
+      <Languages className="hidden h-4 w-4 shrink-0 text-muted-foreground sm:block" aria-hidden="true" />
       <div
         role="tablist"
         aria-label={t("lyricsManager.language")}
@@ -417,14 +503,20 @@ function LyricsLanguageTabs({
               onClick={() => onSelect(language)}
             >
               {t(labelKey)}
-              {count > 0 && <span className="tabular-nums text-muted-foreground">{count}</span>}
+              {count > 0 && (
+                <span
+                  className={cn(
+                    "min-w-[1.125rem] rounded-full px-1 text-center text-2xs tabular-nums",
+                    active ? "bg-primary/10 text-primary" : "bg-background/70 text-muted-foreground",
+                  )}
+                >
+                  {count}
+                </span>
+              )}
             </button>
           );
         })}
       </div>
-      <p className="text-xs text-muted-foreground">
-        {selected === allLyricsLanguages ? t("lyricsManager.allLanguagesHint") : t("lyricsManager.languageHint")}
-      </p>
     </div>
   );
 }
@@ -456,75 +548,123 @@ function LyricsAssignmentRow({
   const automatic = entry.autoLyricsMediaItemId ? lyricsByID.get(entry.autoLyricsMediaItemId) : undefined;
   // Only the every-language row falls back to a name match; a language without
   // lyrics leaves the choice to the other languages.
-  const unassignedLabel =
-    language !== allLyricsLanguages
-      ? t("lyricsManager.languageUnset")
-      : automatic
-        ? t("lyricsManager.automaticMatch", { title: automatic.title })
-        : t("lyricsManager.automaticNone");
+  const automaticApplies = language === allLyricsLanguages;
+  const unassignedLabel = !automaticApplies
+    ? t("lyricsManager.languageUnset")
+    : automatic
+      ? t("lyricsManager.automaticMatch", { title: automatic.title })
+      : t("lyricsManager.automaticNone");
   const options: FloatingSelectOption[] = [
-    { value: automaticValue, label: unassignedLabel },
+    {
+      value: automaticValue,
+      label: <UnassignedLabel automatic={automaticApplies}>{unassignedLabel}</UnassignedLabel>,
+    },
     ...lyrics.map((file) => ({
       value: String(file.mediaItemId),
       label: <LyricsFileLabel file={file} />,
     })),
   ];
+  const selectedFile = draftValue === null ? undefined : lyricsByID.get(draftValue);
   const changed = draftValue !== storedLyricsMediaItemId(entry, language);
   const duration = formatTrackDuration(entry.durationSeconds);
+  const previewLabel = t("lyricsManager.previewOf", { title: entry.title });
   return (
-    <li className="px-3 py-2.5">
-      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,20rem)_auto] sm:items-center">
+    <li className={cn("relative px-3 py-2.5 sm:px-4", changed && "bg-info-surface/40")}>
+      {changed && <span className="absolute inset-y-0 left-0 w-0.5 bg-info" aria-hidden="true" />}
+      <div className="grid grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 sm:grid-cols-[1rem_minmax(0,1fr)_minmax(0,22rem)_auto]">
+        {effectiveLyrics ? (
+          <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" />
+        ) : (
+          <CircleDashed className="h-4 w-4 text-muted-foreground/60" aria-hidden="true" />
+        )}
         <div className="min-w-0">
           <div className="truncate text-sm font-medium" title={entry.path}>
             {entry.title}
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="mt-0.5 flex min-h-4 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
             {duration && <span className="tabular-nums">{duration}</span>}
             {changed ? (
-              <Badge variant="info">{t("lyricsManager.changed")}</Badge>
+              <Badge variant="info" className="px-1.5 py-0 text-2xs">
+                {t("lyricsManager.changed")}
+              </Badge>
             ) : draftValue !== null ? (
-              <Badge variant="secondary">{t("lyricsManager.assigned")}</Badge>
+              <Badge variant="outline" className="px-1.5 py-0 text-2xs text-muted-foreground">
+                {t("lyricsManager.assigned")}
+              </Badge>
             ) : null}
           </div>
         </div>
-        <FloatingSelect
-          value={draftValue === null ? automaticValue : String(draftValue)}
-          options={options}
-          onValueChange={(value) => onAssign(value === automaticValue ? null : Number(value))}
-          ariaLabel={t("lyricsManager.lyricsFor", { title: entry.title })}
-          disabled={disabled}
-          contentClassName="max-w-[min(32rem,calc(100vw-1.5rem))]"
-        />
+        <div className="col-span-2 col-start-2 row-start-2 min-w-0 sm:col-span-1 sm:col-start-auto sm:row-start-auto">
+          <FloatingSelect
+            value={draftValue === null ? automaticValue : String(draftValue)}
+            options={options}
+            onValueChange={(value) => onAssign(value === automaticValue ? null : Number(value))}
+            ariaLabel={t("lyricsManager.lyricsFor", { title: entry.title })}
+            triggerLabel={
+              selectedFile ? (
+                <LyricsFileLabel file={selectedFile} inline />
+              ) : (
+                <UnassignedLabel automatic={automaticApplies}>{unassignedLabel}</UnassignedLabel>
+              )
+            }
+            disabled={disabled}
+            contentClassName="max-w-[min(32rem,calc(100vw-1.5rem))]"
+          />
+        </div>
         <Button
           variant="ghost"
-          size="sm"
-          className="justify-self-start sm:justify-self-auto"
+          size="icon-sm"
+          className="col-start-3 row-start-1 text-muted-foreground aria-expanded:bg-muted aria-expanded:text-foreground sm:col-start-auto sm:row-start-auto"
           aria-expanded={previewOpen}
-          aria-label={t("lyricsManager.previewOf", { title: entry.title })}
+          aria-label={previewLabel}
+          title={previewLabel}
           disabled={!effectiveLyrics}
           onClick={onTogglePreview}
         >
-          <FileText className="h-4 w-4" />
-          {t("lyricsManager.preview")}
+          <Eye className="h-4 w-4" />
         </Button>
       </div>
       {previewOpen && effectiveLyrics && (
-        <LyricsPreview
-          label={effectiveLyrics.path}
-          loadKey={`local:${effectiveLyrics.locationId}`}
-          load={() => loadLocalLyricsText(effectiveLyrics.locationId)}
-          durationSeconds={entry.durationSeconds}
-        />
+        <div className="sm:pl-7">
+          <LyricsPreview
+            label={effectiveLyrics.path}
+            loadKey={`local:${effectiveLyrics.locationId}`}
+            load={() => loadLocalLyricsText(effectiveLyrics.locationId)}
+            durationSeconds={entry.durationSeconds}
+          />
+        </div>
       )}
     </li>
   );
 }
 
-function LyricsFileLabel({ file }: { file: LyricsManagerFile }) {
+/** A lyrics file as a choice: its name, then the folder it is in. */
+function LyricsFileLabel({ file, inline = false }: { file: LyricsManagerFile; inline?: boolean }) {
+  if (inline) {
+    return (
+      <span className="flex min-w-0 items-center gap-2" title={file.path}>
+        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="truncate">{file.title}</span>
+        {file.folder && (
+          <span className="max-w-[40%] shrink-0 truncate text-xs text-muted-foreground">{file.folder}</span>
+        )}
+      </span>
+    );
+  }
   return (
     <span className="flex min-w-0 flex-col" title={file.path}>
       <span className="truncate">{file.title}</span>
       {file.folder && <span className="truncate text-xs text-muted-foreground">{file.folder}</span>}
+    </span>
+  );
+}
+
+/** The choice that leaves a track unassigned: a name match for every language, otherwise nothing. */
+function UnassignedLabel({ automatic, children }: { automatic: boolean; children: ReactNode }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+      {automatic && <Wand2 className="h-4 w-4 shrink-0" aria-hidden="true" />}
+      <span className="truncate">{children}</span>
     </span>
   );
 }

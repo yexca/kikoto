@@ -3021,6 +3021,7 @@ export const surfaceEnglish = {
       "The last line starts at {{time}}, after this track ends ({{duration}}). It may belong to another track.",
     pending: "Unsaved changes: {{count}}",
     noChanges: "No changes",
+    groupCoverage: "Tracks with lyrics: {{count}} of {{total}}",
     save: "Save",
     saving: "Saving…",
     saved: "Lyrics assignments saved.",

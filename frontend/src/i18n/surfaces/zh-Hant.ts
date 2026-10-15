@@ -2852,6 +2852,7 @@ export const surfaceHant = {
     timingExceeds: "最後一行從 {{time}} 開始，晚於音軌結束時間（{{duration}}），可能屬於其他音軌。",
     pending: "未儲存的變更：{{count}}",
     noChanges: "沒有變更",
+    groupCoverage: "有歌詞的音軌：{{count}} / {{total}}",
     save: "儲存",
     saving: "正在儲存…",
     saved: "歌詞設定已儲存。",

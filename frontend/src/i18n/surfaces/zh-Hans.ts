@@ -2851,6 +2851,7 @@ export const surfaceHans = {
     timingExceeds: "最后一行从 {{time}} 开始，晚于音轨结束时间（{{duration}}），可能属于其他音轨。",
     pending: "未保存的更改：{{count}}",
     noChanges: "没有更改",
+    groupCoverage: "有歌词的音轨：{{count}} / {{total}}",
     save: "保存",
     saving: "正在保存…",
     saved: "歌词设置已保存。",
