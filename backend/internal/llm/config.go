@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/yexca/kikoto/backend/internal/outbound"
@@ -13,6 +14,16 @@ import (
 
 const SettingKey = "llm_providers"
 const PolicyKey = "llm_content_policy"
+
+// A translation request answers only once generation finishes, so the bound
+// must fit a slow private model. Zero in a stored provider means the default.
+const (
+	DefaultRequestTimeout    = 10 * time.Minute
+	MinRequestTimeoutSeconds = 30
+	MaxRequestTimeoutSeconds = 3600
+	MinOllamaContextLength   = 512
+	MaxOllamaContextLength   = 1 << 20
+)
 
 type Preset struct {
 	ID         string `json:"id"`
@@ -55,6 +66,21 @@ type Provider struct {
 	Enabled        bool    `json:"enabled"`
 	DefaultModel   string  `json:"defaultModel"`
 	Models         []Model `json:"models"`
+	// RequestTimeoutSeconds bounds one translation request; zero uses
+	// DefaultRequestTimeout.
+	RequestTimeoutSeconds int `json:"requestTimeoutSeconds,omitempty"`
+	// OllamaContextLength sets Ollama's num_ctx; zero keeps the model default.
+	OllamaContextLength int `json:"ollamaContextLength,omitempty"`
+	// OllamaDisableThinking sends think:false; otherwise the model decides.
+	OllamaDisableThinking bool `json:"ollamaDisableThinking,omitempty"`
+}
+
+// RequestTimeout is the bound of one translation request to this provider.
+func (p Provider) RequestTimeout() time.Duration {
+	if p.RequestTimeoutSeconds <= 0 {
+		return DefaultRequestTimeout
+	}
+	return time.Duration(p.RequestTimeoutSeconds) * time.Second
 }
 
 func (p Provider) Preset() Preset {
@@ -101,8 +127,16 @@ func Normalize(p Provider) (Provider, error) {
 		if p.OllamaScope == "local_machine" {
 			p.BaseURL = ""
 		}
+		if p.OllamaContextLength != 0 && (p.OllamaContextLength < MinOllamaContextLength || p.OllamaContextLength > MaxOllamaContextLength) {
+			return p, errors.New("invalid Ollama context length")
+		}
 	} else {
 		p.OllamaScope = ""
+		p.OllamaContextLength = 0
+		p.OllamaDisableThinking = false
+	}
+	if p.RequestTimeoutSeconds != 0 && (p.RequestTimeoutSeconds < MinRequestTimeoutSeconds || p.RequestTimeoutSeconds > MaxRequestTimeoutSeconds) {
+		return p, errors.New("invalid LLM request timeout")
 	}
 	p.APIKey = strings.TrimSpace(p.APIKey)
 	if len(p.APIKey) > 4096 || strings.ContainsFunc(p.APIKey, unicode.IsControl) {

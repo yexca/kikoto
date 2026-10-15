@@ -57,7 +57,8 @@ func TestLLMNativeProtocolsThroughConfiguredPrivateOrigin(t *testing.T) {
 					}
 					_, _ = io.WriteString(w, `{"content":[{"type":"text","text":"{\"title\":\"Example translation\"}"}],"stop_reason":"end_turn"}`)
 				case "ollama":
-					if r.URL.Path != "/api/chat" || body["format"] != "json" {
+					format, _ := body["format"].(map[string]any)
+					if r.URL.Path != "/api/chat" || format["type"] != "object" || body["options"] != nil || body["think"] != nil {
 						t.Error("wrong Ollama protocol")
 					}
 					_, _ = io.WriteString(w, `{"message":{"content":"{\"title\":\"Example translation\"}"},"done":true}`)
@@ -94,6 +95,51 @@ func TestLLMNativeProtocolsThroughConfiguredPrivateOrigin(t *testing.T) {
 		})
 	}
 }
+func TestLLMOllamaConstrainsEntryCountsAndSendsTuning(t *testing.T) {
+	var body struct {
+		Format struct {
+			Required   []string `json:"required"`
+			Properties map[string]struct {
+				MinItems int `json:"minItems"`
+				MaxItems int `json:"maxItems"`
+			} `json:"properties"`
+			AdditionalProperties *bool `json:"additionalProperties"`
+		} `json:"format"`
+		Options map[string]any `json:"options"`
+		Think   *bool          `json:"think"`
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		_, _ = io.WriteString(w, `{"message":{"content":"{\"tags\":[\"one\",\"two\"],\"lyrics\":[\"a\",\"b\",\"c\"]}"},"done":true}`)
+	}))
+	defer upstream.Close()
+	f := newManualOverrideFixture(t, config.Config{})
+	p, err := llm.Normalize(llm.Provider{PresetID: "ollama", OllamaScope: "other_machine", BaseURL: upstream.URL, OllamaContextLength: 8192, OllamaDisableThinking: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, closeClient, err := f.server.llmClient(context.Background(), p, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeClient()
+	if _, err := client.Translate(context.Background(), "example-model", "zh-cn", llm.Text{Tags: []string{"x", "y"}, Lyrics: []string{"l1", "l2", "l3"}}); err != nil {
+		t.Fatal(err)
+	}
+	tags, lyrics := body.Format.Properties["tags"], body.Format.Properties["lyrics"]
+	if tags.MinItems != 2 || tags.MaxItems != 2 || lyrics.MinItems != 3 || lyrics.MaxItems != 3 {
+		t.Fatalf("entry counts not fixed: tags=%+v lyrics=%+v", tags, lyrics)
+	}
+	if len(body.Format.Properties) != 2 || len(body.Format.Required) != 2 || body.Format.AdditionalProperties == nil || *body.Format.AdditionalProperties {
+		t.Fatalf("schema keys not fixed: %+v", body.Format)
+	}
+	if body.Options["num_ctx"] != float64(8192) || body.Think == nil || *body.Think {
+		t.Fatalf("tuning not sent: options=%v think=%v", body.Options, body.Think)
+	}
+}
+
 func TestLLMTransportRefusesRedirectsAndBoundsResponses(t *testing.T) {
 	for _, scenario := range []string{"redirect_same_origin", "redirect_other_origin", "declared_limit", "streamed_limit", "timeout", "cancel"} {
 		t.Run(scenario, func(t *testing.T) {

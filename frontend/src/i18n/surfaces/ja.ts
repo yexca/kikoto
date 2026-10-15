@@ -589,6 +589,15 @@ export const surfaceJapanese = {
       allowSensitiveDescription:
         "ポリシーが機微と判定した内容を、このプライベートエンドポイントで受信できるようにします。",
       enabledDescription: "既定のモデルを設定すると翻訳に使用できます。",
+      requestTimeout: "リクエストのタイムアウト（分）",
+      requestTimeoutDescription:
+        "1 回の翻訳リクエストに許す時間です（{{min}}〜{{max}} 分）。ローカルモデルでは数分かかることがあります。",
+      ollamaContextLength: "コンテキスト長",
+      ollamaContextLengthDescription:
+        "コンテキストウィンドウのトークン数です（{{min}}〜{{max}}）。空欄ならモデルの既定値を使います。",
+      ollamaContextLengthDefault: "モデルの既定値",
+      ollamaDisableThinking: "思考をオフにする",
+      ollamaDisableThinkingDescription: "推論モデルに直接回答させ、翻訳を速くします。",
       enableNamed: "{{name}} を有効化",
       editNamed: "{{name}} を編集",
       deleteNamed: "{{name}} を削除",

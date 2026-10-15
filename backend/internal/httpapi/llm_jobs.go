@@ -262,9 +262,8 @@ func (s *Server) executeLLMTranslationJob(ctx context.Context, job workflowJobRe
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	client, closeClient, err := s.llmClient(ctx, plan.Provider, 60*time.Second)
+	// Each request is bounded by the provider's request timeout.
+	client, closeClient, err := s.llmClient(ctx, plan.Provider, plan.Provider.RequestTimeout())
 	if err != nil {
 		return s.failLLMTask(ctx, job, task, "failed", "endpoint_unavailable")
 	}

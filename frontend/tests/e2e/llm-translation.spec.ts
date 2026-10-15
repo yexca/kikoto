@@ -24,6 +24,7 @@ const provider: LLMProvider = {
   hasApiKey: true,
   defaultModel: "example-model",
   models: [],
+  requestTimeoutSeconds: 600,
 };
 const translation: LLMTranslation = {
   previewId: "synthetic-preview",

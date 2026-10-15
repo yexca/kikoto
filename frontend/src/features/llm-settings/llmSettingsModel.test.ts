@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import type { LLMPolicy, LLMProvider, LLMProviderPreset } from "@/lib/api";
 
 import {
+  contextLengthInvalid,
   createPayload,
   draftFromPreset,
   draftFromProvider,
   endpointMissing,
   policiesEqual,
   replacesConnection,
+  requestTimeoutInvalid,
   updatePayload,
   withPreset,
 } from "./llmSettingsModel";
@@ -43,6 +45,7 @@ const saved: LLMProvider = {
   hasApiKey: true,
   defaultModel: "example-model",
   models: [],
+  requestTimeoutSeconds: 600,
 };
 
 describe("provider drafts", () => {
@@ -58,9 +61,35 @@ describe("provider drafts", () => {
       boundary: "external",
       allowSensitive: false,
       ollamaScope: undefined,
+      requestTimeoutSeconds: 600,
       baseUrl: "",
       apiKey: "synthetic-key",
     });
+  });
+
+  it("sends the request timeout in seconds and Ollama options only to Ollama", () => {
+    const sameMachine = draftFromPreset(ollama);
+    expect(sameMachine.ollamaDisableThinking).toBe(true);
+    expect(createPayload({ ...sameMachine, requestTimeoutMinutes: "", ollamaContextLength: "8192" })).toMatchObject({
+      requestTimeoutSeconds: 0,
+      ollamaContextLength: 8192,
+      ollamaDisableThinking: true,
+    });
+    expect(createPayload({ ...sameMachine, ollamaContextLength: "" })).toMatchObject({ ollamaContextLength: 0 });
+    expect(updatePayload(draftFromProvider({ ...saved, requestTimeoutSeconds: 1200 }))).toMatchObject({
+      requestTimeoutSeconds: 1200,
+    });
+    expect(updatePayload(draftFromProvider(saved))).not.toHaveProperty("ollamaContextLength");
+  });
+
+  it("rejects request settings outside the server bounds", () => {
+    const draft = draftFromPreset(ollama);
+    expect(requestTimeoutInvalid({ ...draft, requestTimeoutMinutes: "0" })).toBe(true);
+    expect(requestTimeoutInvalid({ ...draft, requestTimeoutMinutes: "61" })).toBe(true);
+    expect(requestTimeoutInvalid({ ...draft, requestTimeoutMinutes: "" })).toBe(false);
+    expect(contextLengthInvalid({ ...draft, ollamaContextLength: "256" })).toBe(true);
+    expect(contextLengthInvalid({ ...draft, ollamaContextLength: "4096" })).toBe(false);
+    expect(contextLengthInvalid({ ...draftFromPreset(hosted), ollamaContextLength: "256" })).toBe(false);
   });
 
   it("requires an endpoint only where the server has no address to fall back to", () => {

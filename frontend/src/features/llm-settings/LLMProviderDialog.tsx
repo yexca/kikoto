@@ -12,10 +12,14 @@ import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/
 import type { LLMProvider, LLMProviderPreset } from "@/lib/api";
 
 import {
+  contextLengthInvalid,
   draftFromPreset,
   draftFromProvider,
   endpointMissing,
+  OLLAMA_CONTEXT_LENGTH,
   replacesConnection,
+  REQUEST_TIMEOUT_MINUTES,
+  requestTimeoutInvalid,
   usesDerivedEndpoint,
   withPreset,
   type ProviderDraft,
@@ -53,6 +57,8 @@ export function LLMProviderDialog({
   const keyHintId = useId();
   const modelHintId = useId();
   const boundaryHintId = useId();
+  const timeoutHintId = useId();
+  const contextHintId = useId();
   const patch = (next: Partial<ProviderDraft>) => setDraft((current) => ({ ...current, ...next }));
 
   const preset = presets.find((item) => item.id === draft.presetId);
@@ -63,6 +69,9 @@ export function LLMProviderDialog({
   const derivedEndpoint = usesDerivedEndpoint(draft);
   const missingEndpoint = endpointMissing(draft, preset);
   const keyWillBeDropped = replacesConnection(draft) && draft.hasApiKey && !draft.apiKey && !draft.clearKey;
+  const timeoutInvalid = requestTimeoutInvalid(draft);
+  const contextInvalid = contextLengthInvalid(draft);
+  const invalid = missingEndpoint || timeoutInvalid || contextInvalid;
 
   const setOllamaScope = (ollamaScope: NonNullable<ProviderDraft["ollamaScope"]>) =>
     patch({
@@ -79,7 +88,7 @@ export function LLMProviderDialog({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (busy) return;
-    if (missingEndpoint) {
+    if (invalid) {
       setShowErrors(true);
       return;
     }
@@ -91,7 +100,7 @@ export function LLMProviderDialog({
 
   const fetchModels = async () => {
     if (busy) return;
-    if (missingEndpoint) {
+    if (invalid) {
       setShowErrors(true);
       return;
     }
@@ -278,6 +287,57 @@ export function LLMProviderDialog({
                   ? t("maintenance.llm.modelsAvailable", { count: draft.models.length })
                   : t("maintenance.llm.modelDescription")}
               </p>
+            </div>
+
+            <div className="space-y-4 border-t pt-5">
+              <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+                <Field
+                  label={t("maintenance.llm.requestTimeout")}
+                  hintId={timeoutHintId}
+                  hintClassName={showErrors && timeoutInvalid ? "text-error-foreground" : undefined}
+                  hint={t("maintenance.llm.requestTimeoutDescription", REQUEST_TIMEOUT_MINUTES)}
+                >
+                  <Input
+                    className="min-w-0"
+                    value={draft.requestTimeoutMinutes}
+                    inputMode="numeric"
+                    autoComplete="off"
+                    maxLength={2}
+                    placeholder={String(REQUEST_TIMEOUT_MINUTES.default)}
+                    aria-describedby={timeoutHintId}
+                    aria-invalid={showErrors && timeoutInvalid}
+                    onChange={(event) => patch({ requestTimeoutMinutes: event.target.value.replace(/\D/g, "") })}
+                  />
+                </Field>
+                {draft.kind === "ollama" && (
+                  <Field
+                    label={t("maintenance.llm.ollamaContextLength")}
+                    hintId={contextHintId}
+                    hintClassName={showErrors && contextInvalid ? "text-error-foreground" : undefined}
+                    hint={t("maintenance.llm.ollamaContextLengthDescription", OLLAMA_CONTEXT_LENGTH)}
+                  >
+                    <Input
+                      className="min-w-0"
+                      value={draft.ollamaContextLength}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={7}
+                      placeholder={t("maintenance.llm.ollamaContextLengthDefault")}
+                      aria-describedby={contextHintId}
+                      aria-invalid={showErrors && contextInvalid}
+                      onChange={(event) => patch({ ollamaContextLength: event.target.value.replace(/\D/g, "") })}
+                    />
+                  </Field>
+                )}
+              </div>
+              {draft.kind === "ollama" && (
+                <SwitchRow
+                  title={t("maintenance.llm.ollamaDisableThinking")}
+                  description={t("maintenance.llm.ollamaDisableThinkingDescription")}
+                  checked={draft.ollamaDisableThinking}
+                  onCheckedChange={(ollamaDisableThinking) => patch({ ollamaDisableThinking })}
+                />
+              )}
             </div>
 
             <div className="space-y-3 border-t pt-5">
