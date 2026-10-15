@@ -123,6 +123,7 @@ test("LLM settings save connection drafts before discovery and edit structured c
         ],
         policy,
         noticeAccepted: true,
+        hostAddress: "",
       } satisfies ApiResponse<"listProviders">,
     }),
   );
@@ -234,6 +235,7 @@ test("LLM settings add a provider in a dialog and confirm before deleting it", a
         ],
         policy: { alwaysScanAllAges: false, tagRules: [], keywords: [] },
         noticeAccepted: true,
+        hostAddress: "",
       } satisfies ApiResponse<"listProviders">,
     });
   });
@@ -290,6 +292,7 @@ test("LLM & ASR settings list both services above their shared content safety po
         presets: [],
         policy: { alwaysScanAllAges: false, tagRules: [], keywords: [] },
         noticeAccepted: true,
+        hostAddress: "",
       } satisfies ApiResponse<"listProviders">,
     }),
   );
@@ -324,6 +327,7 @@ test("LLM & ASR settings stay locked until the external service notice is accept
         ],
         policy: { alwaysScanAllAges: false, tagRules: [], keywords: [] },
         noticeAccepted: false,
+        hostAddress: "",
       } satisfies ApiResponse<"listProviders">,
     }),
   );

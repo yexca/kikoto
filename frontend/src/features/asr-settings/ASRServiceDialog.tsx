@@ -17,6 +17,7 @@ import {
   draftFromPreset,
   draftFromProvider,
   endpointMissing,
+  keyMissing,
   portMissing,
   replacesConnection,
   usesDerivedHost,
@@ -67,7 +68,8 @@ export function ASRServiceDialog({
   const derivedHost = usesDerivedHost(draft);
   const missingEndpoint = endpointMissing(draft, preset);
   const missingPort = portMissing(draft);
-  const invalid = missingEndpoint || missingPort;
+  const missingKey = keyMissing(draft, preset);
+  const invalid = missingEndpoint || missingPort || missingKey;
   const keyWillBeDropped = replacesConnection(draft) && draft.hasApiKey && !draft.apiKey && !draft.clearKey;
 
   const setScope = (scope: ASRScope) =>
@@ -191,7 +193,7 @@ export function ASRServiceDialog({
                     inputMode="numeric"
                     autoComplete="off"
                     maxLength={5}
-                    placeholder="8000"
+                    placeholder={String(preset?.defaultPort ?? 8000)}
                     aria-describedby={portHintId}
                     aria-invalid={showErrors && missingPort}
                     onChange={(event) => patch({ port: event.target.value.replace(/\D/g, "") })}
@@ -232,7 +234,7 @@ export function ASRServiceDialog({
                     ? t("maintenance.asr.connectionChangeHint")
                     : draft.hasApiKey
                       ? t("maintenance.asr.keyConfigured")
-                      : `${t("maintenance.asr.credentialOptional")} ${t("maintenance.asr.apiKeyDescription")}`
+                      : `${preset?.keyRequired ? t("maintenance.asr.credentialRequired") : t("maintenance.asr.credentialOptional")} ${t("maintenance.asr.apiKeyDescription")}`
                 }
               >
                 <Input
@@ -242,6 +244,7 @@ export function ASRServiceDialog({
                   value={draft.clearKey ? "" : draft.apiKey}
                   disabled={draft.clearKey}
                   aria-describedby={keyHintId}
+                  aria-invalid={showErrors && missingKey}
                   onChange={(event) => patch({ apiKey: event.target.value })}
                 />
               </SettingsField>
@@ -319,7 +322,11 @@ export function ASRServiceDialog({
 
             {showErrors && invalid && (
               <p role="alert" className="text-xs text-error-foreground">
-                {missingPort ? t("maintenance.asr.portRequired") : t("maintenance.asr.endpointRequired")}
+                {missingPort
+                  ? t("maintenance.asr.portRequired")
+                  : missingEndpoint
+                    ? t("maintenance.asr.endpointRequired")
+                    : t("maintenance.asr.credentialMissing")}
               </p>
             )}
           </fieldset>

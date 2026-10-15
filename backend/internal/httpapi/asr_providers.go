@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/asr"
+	"github.com/yexca/kikoto/backend/internal/kikotohelper"
 	"github.com/yexca/kikoto/backend/internal/outbound"
 	"github.com/yexca/kikoto/backend/internal/proxyconfig"
 )
@@ -198,6 +199,10 @@ func (s *Server) fetchASRModels(w http.ResponseWriter, r *http.Request) {
 	}
 	defer closeClient()
 	models, err := client.Models(r.Context())
+	if errors.Is(err, kikotohelper.ErrNotInstalled) {
+		writeAPIError(w, 502, "service_model_not_installed", "The service has no installed model. Install one in the service first.", false)
+		return
+	}
 	if err != nil {
 		writeAPIError(w, 502, "asr_models_failed", "Models could not be fetched. Check the endpoint and key.", false)
 		return

@@ -502,6 +502,8 @@ export const surfaceEnglish = {
       endpointRequired: "Enter the endpoint for this service.",
       apiKey: "API key",
       credentialOptional: "Leave blank when the service needs none.",
+      credentialRequired: "Required by this service.",
+      credentialMissing: "Enter the key for this service.",
       apiKeyDescription: "Keys are stored by the server and are never returned to the browser.",
       keyConfigured: "A key is configured. Leave blank to keep it.",
       clearKey: "Clear stored API key",
@@ -592,6 +594,13 @@ export const surfaceEnglish = {
       ollamaOther: "Another machine",
       ollamaLocalEndpoint: "Derived from this server's host gateway.",
       ollamaDerivedEndpoint: "Server host gateway · port 11434",
+      location: "Deployment location",
+      locationDescription:
+        "On this server's machine, Kikoto reaches the provider through the configured host gateway, so only the port is entered. Choose another machine to enter its address.",
+      host: "Host",
+      port: "Port",
+      portDescription: "The port the provider listens on.",
+      portRequired: "Enter a port from 1 to 65535.",
       add: "Add provider",
       save: "Save",
       delete: "Delete",
@@ -630,6 +639,8 @@ export const surfaceEnglish = {
       editTitle: "Edit LLM provider",
       endpointDefaultHint: "Leave blank to use the service's default address.",
       endpointRequired: "Enter the endpoint for this provider.",
+      credentialRequired: "Required by this provider.",
+      credentialMissing: "Enter the key for this provider.",
       connectionChangeHint:
         "A changed endpoint or location clears the stored key and discovered models. Enter the key again.",
       modelsAvailable:
@@ -2570,6 +2581,8 @@ export const surfaceEnglish = {
 
   errorFeedback: {
     databaseBusy: "The database is busy. Please retry in a moment.",
+    serviceModelNotInstalled:
+      "The service has no installed model. Install one in the service, then fetch models again.",
     invalidRequest: "Check the supplied values and try again.",
     conflict: "This item changed or conflicts with existing data. Refresh and try again.",
     sourceNotUsable: "This remote source is disabled or does not support this action.",
@@ -2903,6 +2916,7 @@ export const surfaceEnglish = {
       audio_decode_failed: "The audio file could not be decoded.",
       audio_too_long: "The track is too long to transcribe.",
       transcript_too_large: "The transcript is too large.",
+      service_not_ready: "The service has no ready model. Install or start one in the service, then transcribe again.",
       ffmpeg_unavailable: "Audio preparation is unavailable on this server.",
       endpoint_unavailable: "The service connection could not be prepared.",
       cancelled: "The transcription was cancelled.",
@@ -2984,6 +2998,10 @@ export const surfaceEnglish = {
       policy_changed: "The content safety policy changed after the translation started. Translate again.",
       invalid_lyrics_output: "The provider's answer did not keep the lines of the lyrics. Translate again.",
       translation_output_too_large: "The translation is too large.",
+      unsupported_language_pair:
+        "The provider's model cannot translate between these languages. Choose another language or provider.",
+      service_not_ready:
+        "The provider has no ready model. Install or start one in the provider, then retry it from Activity.",
       unknown: "The translation stopped. Translate again, or check it in Activity.",
     },
     errors: {

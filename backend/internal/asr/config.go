@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
+	"github.com/yexca/kikoto/backend/internal/kikotohelper"
 	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
@@ -29,18 +30,26 @@ const (
 )
 
 type Preset struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Kind is the protocol: "openai", or "kikoto-helper", which transcribes
+	// through the same endpoint and lists its models through an info probe.
+	Kind       string `json:"kind"`
 	DefaultURL string `json:"defaultUrl"`
 	Boundary   string `json:"boundary"`
 	// Local presets choose between this server's machine and another one.
 	Local bool `json:"local"`
+	// DefaultPort is the port a local preset suggests, or zero.
+	DefaultPort int `json:"defaultPort,omitempty"`
+	// KeyRequired presets refuse every request without a key.
+	KeyRequired bool `json:"keyRequired,omitempty"`
 }
 
 var Presets = []Preset{
-	{ID: "openai", Name: "OpenAI", DefaultURL: "https://api.openai.com", Boundary: "external"},
-	{ID: "local", Name: "Local deployment", Boundary: "private", Local: true},
-	{ID: "custom-openai", Name: "Custom OpenAI-compatible", Boundary: "external"},
+	{ID: "openai", Name: "OpenAI", Kind: "openai", DefaultURL: "https://api.openai.com", Boundary: "external"},
+	{ID: "local", Name: "Local deployment", Kind: "openai", Boundary: "private", Local: true},
+	{ID: kikotohelper.Kind, Name: "Kikoto Helper", Kind: kikotohelper.Kind, Boundary: "private", Local: true, DefaultPort: kikotohelper.ASRPort, KeyRequired: true},
+	{ID: "custom-openai", Name: "Custom OpenAI-compatible", Kind: "openai", Boundary: "external"},
 }
 
 // apiPrefix is the protocol path every preset shares.

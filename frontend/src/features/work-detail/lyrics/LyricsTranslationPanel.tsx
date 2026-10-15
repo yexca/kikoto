@@ -58,6 +58,8 @@ const knownFailures = new Set([
   "policy_changed",
   "invalid_lyrics_output",
   "translation_output_too_large",
+  "unsupported_language_pair",
+  "service_not_ready",
 ]);
 
 /** Refusals that say what to change, rather than that starting failed. */

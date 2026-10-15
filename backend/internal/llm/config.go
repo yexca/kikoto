@@ -6,11 +6,13 @@ import (
 	"net"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
+	"github.com/yexca/kikoto/backend/internal/kikotohelper"
 	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
@@ -35,7 +37,20 @@ type Preset struct {
 	ModelPath  string `json:"modelPath"`
 	Prefix     string `json:"-"`
 	Boundary   string `json:"boundary"`
+	// Local presets choose between this server's machine, reached on a port,
+	// and another machine. Ollama keeps its own fixed-port location.
+	Local bool `json:"local,omitempty"`
+	// DefaultPort is the port a local preset suggests, or zero.
+	DefaultPort int `json:"defaultPort,omitempty"`
+	// KeyRequired presets refuse every request without a key.
+	KeyRequired bool `json:"keyRequired,omitempty"`
 }
+
+// Scope values of a local preset.
+const (
+	ScopeLocalMachine = "local_machine"
+	ScopeOtherMachine = "other_machine"
+)
 
 var Presets = []Preset{
 	{ID: "openai", Name: "OpenAI", Kind: "openai", DefaultURL: "https://api.openai.com", Prefix: "/v1", ModelPath: "/v1/models", Boundary: "external"},
@@ -46,6 +61,7 @@ var Presets = []Preset{
 	{ID: "mistral", Name: "Mistral", Kind: "openai", DefaultURL: "https://api.mistral.ai", Prefix: "/v1", ModelPath: "/v1/models", Boundary: "external"},
 	{ID: "groq", Name: "Groq", Kind: "openai", DefaultURL: "https://api.groq.com", Prefix: "/openai/v1", ModelPath: "/openai/v1/models", Boundary: "external"},
 	{ID: "ollama", Name: "Ollama", Kind: "ollama", Prefix: "/api", ModelPath: "/api/tags", Boundary: "private"},
+	{ID: kikotohelper.Kind, Name: "Kikoto Helper", Kind: kikotohelper.Kind, ModelPath: kikotohelper.InfoPath, Boundary: "private", Local: true, DefaultPort: kikotohelper.LLMPort, KeyRequired: true},
 	{ID: "custom-openai", Name: "Custom OpenAI-compatible", Kind: "openai", Prefix: "/v1", ModelPath: "/v1/models", Boundary: "external"},
 	{ID: "custom-anthropic", Name: "Custom Anthropic-compatible", Kind: "anthropic", Prefix: "/v1", ModelPath: "/v1/models", Boundary: "external"},
 }
@@ -66,7 +82,11 @@ type Provider struct {
 	AllowSensitive  bool   `json:"allowSensitive,omitempty"` // Legacy receive scope.
 	MaxContentClass string `json:"maxContentClass"`
 	OllamaScope     string `json:"ollamaScope,omitempty"`
-	Enabled         bool   `json:"enabled"`
+	// Scope and Port place a local preset; Port is set only on this server's
+	// machine, whose host the server derives.
+	Scope   string `json:"scope,omitempty"`
+	Port    int    `json:"port,omitempty"`
+	Enabled bool   `json:"enabled"`
 	// EnabledModels are the model IDs offered for translation, in display
 	// order. DefaultModel is one of them, or empty when none is enabled.
 	EnabledModels []string `json:"enabledModels"`
@@ -138,11 +158,31 @@ func (p Provider) Preset() Preset {
 	return Preset{}
 }
 
+// DerivesHost reports whether the server, not the administrator, chooses the
+// provider host: a same-machine Ollama or local preset.
+func (p Provider) DerivesHost() bool {
+	preset := p.Preset()
+	return preset.Kind == "ollama" && p.OllamaScope == ScopeLocalMachine || preset.Local && p.Scope == ScopeLocalMachine
+}
+
+// Endpoint is the provider origin. A same-machine provider is reached through
+// the server's host gateway, so a container never mistakes its own loopback
+// address for the host.
 func (p Provider) Endpoint(host string) string {
-	if p.Preset().Kind == "ollama" && p.OllamaScope == "local_machine" {
-		return (&url.URL{Scheme: "http", Host: net.JoinHostPort(host, "11434")}).String()
+	if !p.DerivesHost() {
+		return p.BaseURL
 	}
-	return p.BaseURL
+	port := p.Port
+	if p.Preset().Kind == "ollama" {
+		port = 11434
+	}
+	return (&url.URL{Scheme: "http", Host: net.JoinHostPort(host, strconv.Itoa(port))}).String()
+}
+
+// SameConnection reports whether two configurations reach the same provider.
+// A key and discovered models belong to one connection only.
+func (p Provider) SameConnection(other Provider) bool {
+	return p.PresetID == other.PresetID && p.BaseURL == other.BaseURL && p.OllamaScope == other.OllamaScope && p.Scope == other.Scope && p.Port == other.Port
 }
 
 func Normalize(p Provider) (Provider, error) {
@@ -188,6 +228,25 @@ func Normalize(p Provider) (Provider, error) {
 		p.OllamaContextLength = 0
 		p.OllamaDisableThinking = false
 	}
+	if preset.Local {
+		if p.Scope == "" {
+			p.Scope = ScopeLocalMachine
+		}
+		if p.Scope != ScopeLocalMachine && p.Scope != ScopeOtherMachine {
+			return p, errors.New("invalid local deployment location")
+		}
+	} else {
+		p.Scope = ""
+	}
+	if preset.Local && p.Scope == ScopeLocalMachine {
+		if p.Port < 1 || p.Port > 65535 {
+			return p, errors.New("enter the port of the local deployment")
+		}
+		// The host is derived; an address in the request body is never kept.
+		p.BaseURL = ""
+	} else {
+		p.Port = 0
+	}
 	if p.RequestTimeoutSeconds != 0 && (p.RequestTimeoutSeconds < MinRequestTimeoutSeconds || p.RequestTimeoutSeconds > MaxRequestTimeoutSeconds) {
 		return p, errors.New("invalid LLM request timeout")
 	}
@@ -202,12 +261,15 @@ func Normalize(p Provider) (Provider, error) {
 	if p.Models == nil {
 		p.Models = []Model{}
 	}
-	if preset.Kind == "ollama" && p.OllamaScope == "local_machine" {
+	if p.DerivesHost() {
 		return p, nil
 	}
 	base := strings.TrimSpace(p.BaseURL)
 	if base == "" {
 		base = preset.DefaultURL
+	}
+	if base == "" {
+		return p, errors.New("enter the provider origin")
 	}
 	if !strings.Contains(base, "://") {
 		base = "https://" + base

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/kikotohelper"
 	"github.com/yexca/kikoto/backend/internal/llm"
 	"github.com/yexca/kikoto/backend/internal/outbound"
 	"github.com/yexca/kikoto/backend/internal/proxyconfig"
@@ -25,6 +26,8 @@ type llmProviderResponse struct {
 	AllowSensitive  bool        `json:"allowSensitive"`
 	MaxContentClass string      `json:"maxContentClass"`
 	OllamaScope     string      `json:"ollamaScope,omitempty"`
+	Scope           string      `json:"scope,omitempty"`
+	Port            int         `json:"port,omitempty"`
 	Enabled         bool        `json:"enabled"`
 	HasAPIKey       bool        `json:"hasApiKey"`
 	EnabledModels   []string    `json:"enabledModels"`
@@ -37,7 +40,7 @@ type llmProviderResponse struct {
 }
 
 func (s *Server) llmResponse(p llm.Provider) llmProviderResponse {
-	return llmProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, Kind: p.Preset().Kind, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, AllowSensitive: p.AllowSensitive, MaxContentClass: p.MaxContentClass, OllamaScope: p.OllamaScope, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", EnabledModels: p.EnabledModels, DefaultModel: p.DefaultModel, Models: p.Models, RequestTimeoutSeconds: int(p.RequestTimeout() / time.Second), OllamaContextLength: p.OllamaContextLength, OllamaDisableThinking: p.OllamaDisableThinking}
+	return llmProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, Kind: p.Preset().Kind, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, AllowSensitive: p.AllowSensitive, MaxContentClass: p.MaxContentClass, OllamaScope: p.OllamaScope, Scope: p.Scope, Port: p.Port, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", EnabledModels: p.EnabledModels, DefaultModel: p.DefaultModel, Models: p.Models, RequestTimeoutSeconds: int(p.RequestTimeout() / time.Second), OllamaContextLength: p.OllamaContextLength, OllamaDisableThinking: p.OllamaDisableThinking}
 }
 
 func (s *Server) listLLMProviders(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +70,7 @@ func (s *Server) listLLMProviders(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"providers": result, "presets": llm.Presets, "policy": policy, "noticeAccepted": noticeAccepted})
+	writeJSON(w, http.StatusOK, map[string]any{"providers": result, "presets": llm.Presets, "policy": policy, "noticeAccepted": noticeAccepted, "hostAddress": s.cfg.HostProxyAddress()})
 }
 
 // requireServiceNotice refuses LLM and ASR configuration until an
@@ -183,6 +186,8 @@ type llmProviderPayload struct {
 	AllowSensitive  *bool     `json:"allowSensitive"`
 	MaxContentClass *string   `json:"maxContentClass"`
 	OllamaScope     string    `json:"ollamaScope"`
+	Scope           string    `json:"scope"`
+	Port            *int      `json:"port"`
 	Enabled         *bool     `json:"enabled"`
 	EnabledModels   *[]string `json:"enabledModels"`
 	DefaultModel    *string   `json:"defaultModel"`
@@ -226,9 +231,12 @@ func (s *Server) saveLLMProvider(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, 400, "invalid_llm_config", "Send exactly one provider configuration.", false)
 		return
 	}
-	p := llm.Provider{PresetID: body.PresetID, Name: body.Name, Boundary: body.Boundary, OllamaScope: body.OllamaScope}
+	p := llm.Provider{PresetID: body.PresetID, Name: body.Name, Boundary: body.Boundary, OllamaScope: body.OllamaScope, Scope: body.Scope}
 	if body.BaseURL != nil {
 		p.BaseURL = *body.BaseURL
+	}
+	if body.Port != nil {
+		p.Port = *body.Port
 	}
 	if id := r.PathValue("id"); id != "" {
 		current, loadErr := s.llmProvider(r.Context(), id)
@@ -255,6 +263,12 @@ func (s *Server) saveLLMProvider(w http.ResponseWriter, r *http.Request) {
 		}
 		if body.OllamaScope != "" {
 			p.OllamaScope = body.OllamaScope
+		}
+		if body.Scope != "" {
+			p.Scope = body.Scope
+		}
+		if body.Port != nil {
+			p.Port = *body.Port
 		}
 		if body.Enabled != nil {
 			p.Enabled = *body.Enabled
@@ -352,6 +366,10 @@ func (s *Server) fetchLLMModels(w http.ResponseWriter, r *http.Request) {
 	}
 	defer closeClient()
 	models, err := client.Models(r.Context())
+	if errors.Is(err, kikotohelper.ErrNotInstalled) {
+		writeAPIError(w, 502, "service_model_not_installed", "The service has no installed model. Install one in the service first.", false)
+		return
+	}
 	if err != nil {
 		writeAPIError(w, 502, "llm_models_failed", "Models could not be fetched. Check the endpoint and key.", false)
 		return

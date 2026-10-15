@@ -18,11 +18,14 @@ import {
   draftFromPreset,
   draftFromProvider,
   endpointMissing,
+  keyMissing,
   OLLAMA_CONTEXT_LENGTH,
+  portMissing,
   replacesConnection,
   REQUEST_TIMEOUT_MINUTES,
   requestTimeoutInvalid,
   usesDerivedEndpoint,
+  usesDerivedHost,
   withPreset,
   type ProviderDraft,
 } from "./llmSettingsModel";
@@ -30,11 +33,13 @@ import {
 /**
  * Adds or edits one LLM provider. Fetching models saves the connection first,
  * so a provider being added exists from that point and the dialog continues as
- * an edit of it.
+ * an edit of it. A local preset on this server's machine is reached through
+ * the server's host gateway, so only its port is entered.
  */
 export function LLMProviderDialog({
   presets,
   provider,
+  hostAddress,
   onSave,
   onFetchModels,
   onClose,
@@ -42,6 +47,7 @@ export function LLMProviderDialog({
   presets: LLMProviderPreset[];
   /** The provider to edit, or null to add one. */
   provider: LLMProvider | null;
+  hostAddress: string;
   /** Resolves to the saved provider, or null when the save failed. */
   onSave: (draft: ProviderDraft) => Promise<LLMProvider | null>;
   /** Resolves to the provider as last saved, or null when it could not be saved. */
@@ -55,6 +61,7 @@ export function LLMProviderDialog({
   const [pending, setPending] = useState<"save" | "fetch" | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const endpointHintId = useId();
+  const portHintId = useId();
   const keyHintId = useId();
   const boundaryHintId = useId();
   const timeoutHintId = useId();
@@ -67,18 +74,25 @@ export function LLMProviderDialog({
   const adding = provider === null;
   const busy = pending !== null;
   const derivedEndpoint = usesDerivedEndpoint(draft);
+  const derivedHost = usesDerivedHost(draft);
   const missingEndpoint = endpointMissing(draft, preset);
+  const missingPort = portMissing(draft);
+  const missingKey = keyMissing(draft, preset);
   const keyWillBeDropped = replacesConnection(draft) && draft.hasApiKey && !draft.apiKey && !draft.clearKey;
   const timeoutInvalid = requestTimeoutInvalid(draft);
   const contextInvalid = contextLengthInvalid(draft);
-  const invalid = missingEndpoint || timeoutInvalid || contextInvalid;
+  const connectionInvalid = missingEndpoint || missingPort || missingKey;
+  const invalid = connectionInvalid || timeoutInvalid || contextInvalid;
+  const ollama = draft.kind === "ollama";
+  // Ollama keeps its own fixed-port location; a local preset is placed by scope and port.
+  const location = ollama ? draft.ollamaScope : draft.scope;
 
-  const setOllamaScope = (ollamaScope: NonNullable<ProviderDraft["ollamaScope"]>) =>
-    patch({
-      ollamaScope,
-      // The address shown for a same-machine Ollama is derived by the server, not an origin to keep.
-      baseUrl: ollamaScope === "other_machine" && draft.savedOllamaScope === "other_machine" ? draft.savedBaseUrl : "",
-    });
+  const setLocation = (scope: NonNullable<ProviderDraft["scope"]>) => {
+    const savedScope = ollama ? draft.savedOllamaScope : draft.savedScope;
+    // The address of a same-machine provider is derived by the server, not an origin to keep.
+    const baseUrl = scope === "other_machine" && savedScope === "other_machine" ? draft.savedBaseUrl : "";
+    patch(ollama ? { ollamaScope: scope, baseUrl } : { scope, baseUrl });
+  };
 
   const selectPreset = (id: string) => {
     const next = presets.find((item) => item.id === id);
@@ -110,7 +124,7 @@ export function LLMProviderDialog({
     if (saved) setDraft(draftFromProvider(saved));
   };
 
-  const ollamaScopes: Array<{ scope: NonNullable<ProviderDraft["ollamaScope"]>; icon: ReactNode; label: string }> = [
+  const locations: Array<{ scope: NonNullable<ProviderDraft["scope"]>; icon: ReactNode; label: string }> = [
     { scope: "local_machine", icon: <Laptop className="h-4 w-4" />, label: t("maintenance.llm.ollamaLocal") },
     { scope: "other_machine", icon: <Globe className="h-4 w-4" />, label: t("maintenance.llm.ollamaOther") },
   ];
@@ -153,21 +167,21 @@ export function LLMProviderDialog({
               />
             </Field>
 
-            {draft.kind === "ollama" && (
+            {location && (
               <div className="space-y-2">
                 <div
                   role="radiogroup"
-                  aria-label={t("maintenance.llm.ollamaLocation")}
+                  aria-label={ollama ? t("maintenance.llm.ollamaLocation") : t("maintenance.llm.location")}
                   className={segmentedListClassName()}
                 >
-                  {ollamaScopes.map(({ scope, icon, label }) => (
+                  {locations.map(({ scope, icon, label }) => (
                     <button
                       key={scope}
                       type="button"
                       role="radio"
-                      aria-checked={draft.ollamaScope === scope}
-                      className={segmentedItemClassName(draft.ollamaScope === scope)}
-                      onClick={() => setOllamaScope(scope)}
+                      aria-checked={location === scope}
+                      className={segmentedItemClassName(location === scope)}
+                      onClick={() => setLocation(scope)}
                     >
                       {icon}
                       {label}
@@ -175,12 +189,35 @@ export function LLMProviderDialog({
                   ))}
                 </div>
                 <p className="text-xs leading-5 text-muted-foreground">
-                  {t("maintenance.llm.ollamaLocationDescription")}
+                  {ollama ? t("maintenance.llm.ollamaLocationDescription") : t("maintenance.llm.locationDescription")}
                 </p>
               </div>
             )}
 
-            {derivedEndpoint ? (
+            {derivedHost ? (
+              <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
+                <Field label={t("maintenance.llm.host")} hint={t("maintenance.llm.ollamaLocalEndpoint")}>
+                  <Input value={hostAddress} readOnly className="min-w-0 bg-muted/40" />
+                </Field>
+                <Field
+                  label={t("maintenance.llm.port")}
+                  hintId={portHintId}
+                  hint={t("maintenance.llm.portDescription")}
+                >
+                  <Input
+                    className="min-w-0"
+                    value={draft.port}
+                    inputMode="numeric"
+                    autoComplete="off"
+                    maxLength={5}
+                    placeholder={preset?.defaultPort ? String(preset.defaultPort) : undefined}
+                    aria-describedby={portHintId}
+                    aria-invalid={showErrors && missingPort}
+                    onChange={(event) => patch({ port: event.target.value.replace(/\D/g, "") })}
+                  />
+                </Field>
+              </div>
+            ) : derivedEndpoint ? (
               <Field label={t("maintenance.llm.endpoint")} hint={t("maintenance.llm.ollamaLocalEndpoint")}>
                 <Input
                   value={
@@ -226,7 +263,9 @@ export function LLMProviderDialog({
                     ? t("maintenance.llm.connectionChangeHint")
                     : draft.hasApiKey
                       ? t("maintenance.llm.keyConfigured")
-                      : t("maintenance.llm.apiKeyDescription")
+                      : preset?.keyRequired
+                        ? `${t("maintenance.llm.credentialRequired")} ${t("maintenance.llm.apiKeyDescription")}`
+                        : t("maintenance.llm.apiKeyDescription")
                 }
               >
                 <Input
@@ -236,6 +275,7 @@ export function LLMProviderDialog({
                   value={draft.clearKey ? "" : draft.apiKey}
                   disabled={draft.clearKey}
                   aria-describedby={keyHintId}
+                  aria-invalid={showErrors && missingKey}
                   onChange={(event) => patch({ apiKey: event.target.value })}
                 />
               </Field>
@@ -362,9 +402,13 @@ export function LLMProviderDialog({
               />
             </div>
 
-            {showErrors && missingEndpoint && (
+            {showErrors && connectionInvalid && (
               <p role="alert" className="text-xs text-error-foreground">
-                {t("maintenance.llm.endpointRequired")}
+                {missingPort
+                  ? t("maintenance.llm.portRequired")
+                  : missingEndpoint
+                    ? t("maintenance.llm.endpointRequired")
+                    : t("maintenance.llm.credentialMissing")}
               </p>
             )}
           </fieldset>

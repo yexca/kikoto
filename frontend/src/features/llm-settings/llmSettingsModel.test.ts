@@ -8,7 +8,9 @@ import {
   draftFromPreset,
   draftFromProvider,
   endpointMissing,
+  keyMissing,
   policiesEqual,
+  portMissing,
   replacesConnection,
   requestTimeoutInvalid,
   updatePayload,
@@ -169,5 +171,61 @@ describe("policiesEqual", () => {
     expect(policiesEqual(policy, { ...policy, keywords: [{ ...policy.keywords[0], fields: ["all", "lyrics"] }] })).toBe(
       false,
     );
+  });
+});
+
+const helper: LLMProviderPreset = {
+  id: "kikoto-helper",
+  name: "Kikoto Helper",
+  kind: "kikoto-helper",
+  defaultUrl: "",
+  modelPath: "/kikoto/v1/info",
+  boundary: "private",
+  local: true,
+  defaultPort: 17657,
+  keyRequired: true,
+};
+
+describe("local preset drafts", () => {
+  it("starts on this server's machine at the suggested port and sends no address", () => {
+    const draft = draftFromPreset(helper);
+    expect(draft).toMatchObject({ scope: "local_machine", port: "17657", boundary: "private" });
+    expect(endpointMissing(draft, helper)).toBe(false);
+    expect(portMissing({ ...draft, port: "" })).toBe(true);
+    const payload = createPayload({ ...draft, apiKey: "synthetic-key", baseUrl: "http://127.0.0.1:17657" });
+    expect(payload).toMatchObject({ presetId: "kikoto-helper", scope: "local_machine", port: 17657 });
+    expect(payload).not.toHaveProperty("baseUrl");
+    expect(payload).not.toHaveProperty("ollamaContextLength");
+  });
+
+  it("asks another machine for its origin", () => {
+    const draft = { ...draftFromPreset(helper), scope: "other_machine" as const };
+    expect(endpointMissing(draft, helper)).toBe(true);
+    expect(updatePayload({ ...draft, baseUrl: "http://192.0.2.10:17657" })).toMatchObject({
+      scope: "other_machine",
+      baseUrl: "http://192.0.2.10:17657",
+    });
+  });
+
+  it("requires a key that survives the save", () => {
+    const draft = draftFromPreset(helper);
+    expect(keyMissing(draft, helper)).toBe(true);
+    expect(keyMissing({ ...draft, apiKey: "synthetic-key" }, helper)).toBe(false);
+    expect(keyMissing(draft, hosted)).toBe(false);
+    const stored = draftFromProvider({
+      ...saved,
+      presetId: "kikoto-helper",
+      kind: "kikoto-helper",
+      baseUrl: "http://gateway.example.invalid:17657",
+      boundary: "private",
+      scope: "local_machine",
+      port: 17657,
+    });
+    expect(stored.baseUrl).toBe("");
+    expect(keyMissing(stored, helper)).toBe(false);
+    expect(keyMissing({ ...stored, clearKey: true }, helper)).toBe(true);
+    // A changed port is a new connection, so the stored key is dropped.
+    expect(replacesConnection({ ...stored, port: "17000" })).toBe(true);
+    expect(keyMissing({ ...stored, port: "17000" }, helper)).toBe(true);
   });
 });

@@ -312,11 +312,13 @@ func (s *Server) executeLLMTranslationJob(ctx context.Context, job workflowJobRe
 		if count != 1 {
 			return errors.New("translation task cannot send a request")
 		}
-		translated, requestErr := client.Translate(ctx, plan.Model, task.Payload.Target, requests[i])
+		translated, requestErr := client.Translate(ctx, plan.Model, plan.SourceLanguage, task.Payload.Target, requests[i])
 		if requestErr != nil {
 			state, code := "uncertain", "upstream_result_unknown"
 			var rejected llm.UpstreamError
-			if errors.As(requestErr, &rejected) && (rejected.Status == 400 || rejected.Status == 401 || rejected.Status == 403 || rejected.Status == 404 || rejected.Status == 422 || rejected.Status == 429) {
+			if helperCode := llmHelperRejection(requestErr); helperCode != "" {
+				state, code = "failed", helperCode
+			} else if errors.As(requestErr, &rejected) && (rejected.Status == 400 || rejected.Status == 401 || rejected.Status == 403 || rejected.Status == 404 || rejected.Status == 422 || rejected.Status == 429) {
 				state, code = "failed", "upstream_rejected"
 			}
 			return s.failLLMTask(ctx, job, task, state, code)

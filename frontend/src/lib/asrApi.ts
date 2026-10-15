@@ -9,10 +9,16 @@ export type ASRScope = "local_machine" | "other_machine";
 export type ASRPreset = {
   id: string;
   name: string;
+  /** The protocol: OpenAI-compatible, or Kikoto Helper, which adds an info probe for its models. */
+  kind: "openai" | "kikoto-helper";
   defaultUrl: string;
   boundary: "external" | "private";
   /** A local deployment chooses between this server's machine and another one. */
   local: boolean;
+  /** The port a local preset suggests. */
+  defaultPort?: number;
+  /** The service refuses every request without a key. */
+  keyRequired?: boolean;
 };
 
 export type ASRProvider = {

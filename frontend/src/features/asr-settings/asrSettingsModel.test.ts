@@ -7,6 +7,7 @@ import {
   draftFromPreset,
   draftFromProvider,
   endpointMissing,
+  keyMissing,
   portMissing,
   replacesConnection,
   updatePayload,
@@ -16,12 +17,14 @@ const localPreset: ASRPreset = {
   id: "local",
   name: "Local deployment",
   defaultUrl: "",
+  kind: "openai",
   boundary: "private",
   local: true,
 };
 const hostedPreset: ASRPreset = {
   id: "openai",
   name: "OpenAI",
+  kind: "openai",
   defaultUrl: "https://api.example.invalid",
   boundary: "external",
   local: false,
@@ -74,6 +77,25 @@ describe("speech recognition service drafts", () => {
     expect(replacesConnection(draft)).toBe(false);
     expect(replacesConnection({ ...draft, port: "8001" })).toBe(true);
     expect(replacesConnection({ ...draft, scope: "other_machine" })).toBe(true);
+  });
+
+  it("starts a helper at its suggested port and requires its key", () => {
+    const helper: ASRPreset = {
+      ...localPreset,
+      id: "kikoto-helper",
+      kind: "kikoto-helper",
+      defaultPort: 17656,
+      keyRequired: true,
+    };
+    const draft = draftFromPreset(helper);
+    expect(draft).toMatchObject({ scope: "local_machine", port: "17656" });
+    expect(portMissing(draft)).toBe(false);
+    expect(keyMissing(draft, helper)).toBe(true);
+    expect(keyMissing({ ...draft, apiKey: "synthetic-key" }, helper)).toBe(false);
+    expect(keyMissing(draft, localPreset)).toBe(false);
+    const stored = draftFromProvider({ ...sameMachine, presetId: "kikoto-helper", port: 17656 });
+    expect(keyMissing(stored, helper)).toBe(false);
+    expect(keyMissing({ ...stored, port: "17000" }, helper)).toBe(true);
   });
 
   it("keeps the receive maximum when the data boundary changes", () => {

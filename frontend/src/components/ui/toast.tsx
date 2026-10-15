@@ -111,6 +111,7 @@ export function toastFromError(error: unknown, fallback: string): ToastInput {
 const apiErrorMessageKeys: Record<string, string> = {
   metadata_tag_hidden: "metadataEntries.hiddenNameConflict",
   database_busy: "errorFeedback.databaseBusy",
+  service_model_not_installed: "errorFeedback.serviceModelNotInstalled",
   invalid_request: "errorFeedback.invalidRequest",
   invalid_ui_locale: "errors.invalidLanguage",
   authentication_required: "errors.authenticationRequired",

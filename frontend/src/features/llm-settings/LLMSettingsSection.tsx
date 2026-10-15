@@ -32,6 +32,7 @@ export function LLMSettingsSection({
   const toast = useToast();
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   const [presets, setPresets] = useState<LLMProviderPreset[]>([]);
+  const [hostAddress, setHostAddress] = useState("");
   const [savedPolicy, setSavedPolicy] = useState<LLMPolicy>(emptyPolicy);
   const [policy, setPolicy] = useState<LLMPolicy>(emptyPolicy);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "failed">("loading");
@@ -58,6 +59,7 @@ export function LLMSettingsSection({
         const result = await api.listProviders();
         setProviders(result.providers);
         setPresets(result.presets);
+        setHostAddress(result.hostAddress);
         setSavedPolicy(result.policy);
         setNoticeAccepted(result.noticeAccepted);
         // A refresh leaves unsaved policy edits as they are.
@@ -332,6 +334,7 @@ export function LLMSettingsSection({
         <LLMProviderDialog
           presets={presets}
           provider={editing.provider}
+          hostAddress={hostAddress}
           onSave={saveProvider}
           onFetchModels={fetchModels}
           onClose={() => setEditing(null)}

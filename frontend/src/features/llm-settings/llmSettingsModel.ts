@@ -1,4 +1,4 @@
-import type { LLMModel, LLMPolicy, LLMProvider, LLMProviderPayload, LLMProviderPreset } from "@/lib/api";
+import type { LLMModel, LLMPolicy, LLMProvider, LLMProviderPayload, LLMProviderPreset, LLMScope } from "@/lib/api";
 
 /** One provider as edited in the dialog. `id` is absent until the first save. */
 export type ProviderDraft = {
@@ -10,6 +10,8 @@ export type ProviderDraft = {
   /** The saved origin, so the dialog can tell when an edit replaces the connection. */
   savedBaseUrl: string;
   savedOllamaScope?: LLMProvider["ollamaScope"];
+  savedScope?: LLMScope;
+  savedPort?: number;
   /** A newly typed key; the stored key never reaches the browser. */
   apiKey: string;
   clearKey: boolean;
@@ -17,6 +19,10 @@ export type ProviderDraft = {
   boundary: LLMProvider["boundary"];
   maxContentClass: LLMProvider["maxContentClass"];
   ollamaScope?: LLMProvider["ollamaScope"];
+  /** The location of a local preset; absent for every other provider. */
+  scope?: LLMScope;
+  /** The port as typed; a local preset on this server's machine needs one. */
+  port: string;
   enabled: boolean;
   enabledModels: string[];
   defaultModel: string;
@@ -62,6 +68,8 @@ export function draftFromPreset(preset: LLMProviderPreset): ProviderDraft {
     boundary: preset.boundary,
     maxContentClass: "safe",
     ollamaScope: preset.kind === "ollama" ? "local_machine" : undefined,
+    scope: preset.local ? "local_machine" : undefined,
+    port: preset.defaultPort ? String(preset.defaultPort) : "",
     enabled: true,
     enabledModels: [],
     defaultModel: "",
@@ -74,20 +82,26 @@ export function draftFromPreset(preset: LLMProviderPreset): ProviderDraft {
 }
 
 export function draftFromProvider(provider: LLMProvider): ProviderDraft {
+  // A same-machine local preset address is derived by the server, not an origin to keep.
+  const derived = provider.scope === "local_machine";
   return {
     id: provider.id,
     presetId: provider.presetId,
     kind: provider.kind,
     name: provider.name,
-    baseUrl: provider.baseUrl,
-    savedBaseUrl: provider.baseUrl,
+    baseUrl: derived ? "" : provider.baseUrl,
+    savedBaseUrl: derived ? "" : provider.baseUrl,
     savedOllamaScope: provider.ollamaScope,
+    savedScope: provider.scope,
+    savedPort: provider.port,
     apiKey: "",
     clearKey: false,
     hasApiKey: provider.hasApiKey,
     boundary: provider.boundary,
     maxContentClass: provider.maxContentClass,
     ollamaScope: provider.ollamaScope,
+    scope: provider.scope,
+    port: provider.port ? String(provider.port) : "",
     enabled: provider.enabled,
     enabledModels: [...provider.enabledModels],
     defaultModel: provider.defaultModel ?? "",
@@ -113,17 +127,40 @@ export function usesDerivedEndpoint(draft: Pick<ProviderDraft, "kind" | "ollamaS
   return draft.kind === "ollama" && draft.ollamaScope === "local_machine";
 }
 
-/** A preset without a built-in address, or an Ollama on another machine, needs an endpoint. */
+/** A local preset on this server's machine is reached at a host the server derives; only its port is entered. */
+export function usesDerivedHost(draft: Pick<ProviderDraft, "scope">) {
+  return draft.scope === "local_machine";
+}
+
+export function parsedPort(draft: Pick<ProviderDraft, "port">): number | null {
+  const value = draft.port.trim();
+  if (!/^\d{1,5}$/.test(value)) return null;
+  const port = Number(value);
+  return port >= 1 && port <= 65535 ? port : null;
+}
+
+export function portMissing(draft: ProviderDraft) {
+  return usesDerivedHost(draft) && parsedPort(draft) === null;
+}
+
+/** A preset without a built-in address, or a provider on another machine, needs an endpoint. */
 export function endpointMissing(draft: ProviderDraft, preset: LLMProviderPreset | undefined) {
-  if (usesDerivedEndpoint(draft) || draft.baseUrl.trim()) return false;
+  if (usesDerivedEndpoint(draft) || usesDerivedHost(draft) || draft.baseUrl.trim()) return false;
   return !preset?.defaultUrl;
 }
 
 /** The server drops the stored key and discovered models when the connection target changes. */
 export function replacesConnection(draft: ProviderDraft) {
   if (!draft.id) return false;
-  if (draft.ollamaScope !== draft.savedOllamaScope) return true;
+  if (draft.ollamaScope !== draft.savedOllamaScope || draft.scope !== draft.savedScope) return true;
+  if (usesDerivedHost(draft)) return parsedPort(draft) !== (draft.savedPort ?? null);
   return !usesDerivedEndpoint(draft) && draft.baseUrl.trim() !== draft.savedBaseUrl;
+}
+
+/** A provider that refuses requests without a key needs one that survives the save. */
+export function keyMissing(draft: ProviderDraft, preset: LLMProviderPreset | undefined) {
+  if (!preset?.keyRequired || draft.apiKey.trim()) return false;
+  return !draft.hasApiKey || draft.clearKey || replacesConnection(draft);
 }
 
 export function updatePayload(draft: ProviderDraft): Partial<LLMProviderPayload> {
@@ -139,7 +176,12 @@ export function updatePayload(draft: ProviderDraft): Partial<LLMProviderPayload>
     ...(draft.kind === "ollama"
       ? { ollamaContextLength: Number(draft.ollamaContextLength), ollamaDisableThinking: draft.ollamaDisableThinking }
       : {}),
-    ...(usesDerivedEndpoint(draft) ? {} : { baseUrl: draft.baseUrl.trim() }),
+    ...(draft.scope ? { scope: draft.scope } : {}),
+    ...(usesDerivedHost(draft)
+      ? { port: parsedPort(draft) ?? 0 }
+      : usesDerivedEndpoint(draft)
+        ? {}
+        : { baseUrl: draft.baseUrl.trim() }),
     ...(draft.clearKey ? { apiKey: "" } : draft.apiKey ? { apiKey: draft.apiKey } : {}),
   };
 }

@@ -63,14 +63,18 @@ Administrators manage the instance from the administration tabs in Settings:
 - **LLM & ASR**: LLM providers, ASR services, and the content safety policy
   that governs both.
   - LLM providers are built-in or custom OpenAI-compatible,
-    Anthropic-compatible, and Ollama endpoints with discovered models. Service
-    origins are entered without protocol paths. The same-machine Ollama option
-    uses the server's host gateway and keeps its address read-only; a remote
-    Ollama instance accepts an administrator-entered origin.
+    Anthropic-compatible, Ollama and Kikoto Helper endpoints with discovered
+    models. Service origins are entered without protocol paths. The
+    same-machine Ollama option uses the server's host gateway and keeps its
+    address read-only; a remote Ollama instance accepts an
+    administrator-entered origin. A Kikoto Helper on the server's machine is
+    reached through the host gateway on its translation port, 17657 by
+    default.
   - ASR services are OpenAI-compatible speech recognition services. A local
-    deployment on the server's machine is reached through the server's host
-    gateway on its configured port; another machine or a custom service takes
-    an origin.
+    deployment or Kikoto Helper on the server's machine is reached through the
+    server's host gateway on its configured port, 17656 by default for the
+    helper; another machine or a custom service takes an origin. A Kikoto
+    Helper requires the API token its web interface shows, for both services.
 
   [Settings → LLM & ASR](../user/en/settings.md#llm--asr) defines credential
   clearing, model discovery, declared content boundaries and structured safety

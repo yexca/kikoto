@@ -88,7 +88,7 @@ func TestLLMNativeProtocolsThroughConfiguredPrivateOrigin(t *testing.T) {
 			if err != nil || len(models) != 1 {
 				t.Fatalf("models=%v err=%v", models, err)
 			}
-			result, err := client.Translate(context.Background(), "example-model", "zh-cn", llm.Text{Title: "Example original"})
+			result, err := client.Translate(context.Background(), "example-model", "", "zh-cn", llm.Text{Title: "Example original"})
 			if err != nil || result.Title != "Example translation" || requests.Load() != 2 {
 				t.Fatalf("translation=%+v err=%v requests=%d", result, err, requests.Load())
 			}
@@ -125,7 +125,7 @@ func TestLLMOllamaConstrainsEntryCountsAndSendsTuning(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer closeClient()
-	if _, err := client.Translate(context.Background(), "example-model", "zh-cn", llm.Text{Tags: []string{"x", "y"}, Lyrics: []string{"l1", "l2", "l3"}}); err != nil {
+	if _, err := client.Translate(context.Background(), "example-model", "", "zh-cn", llm.Text{Tags: []string{"x", "y"}, Lyrics: []string{"l1", "l2", "l3"}}); err != nil {
 		t.Fatal(err)
 	}
 	tags, lyrics := body.Format.Properties["tags"], body.Format.Properties["lyrics"]
@@ -178,7 +178,7 @@ func TestLLMTransportRefusesRedirectsAndBoundsResponses(t *testing.T) {
 			if scenario == "cancel" {
 				cancel()
 			}
-			if _, err := client.Translate(ctx, "example-model", "zh-cn", llm.Text{Title: "Example"}); err == nil {
+			if _, err := client.Translate(ctx, "example-model", "", "zh-cn", llm.Text{Title: "Example"}); err == nil {
 				t.Fatal("unsafe or unbounded response accepted")
 			}
 			if targets.Load() != 0 {
