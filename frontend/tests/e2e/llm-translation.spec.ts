@@ -150,7 +150,6 @@ test("LLM settings save connection drafts before discovery and edit structured c
   await page.route("**/api/metadata/tags/1", (route) => route.fulfill({ json: tag }));
   await page.route("**/api/llm/policy", (route) => {
     policy = route.request().postDataJSON() as LLMPolicy;
-    policy.keywords = policy.keywords.map((rule, index) => ({ ...rule, id: rule.id ?? "synthetic-rule-" + index }));
     return route.fulfill({ json: policy });
   });
   await page.goto("/settings?tab=llm");
@@ -188,7 +187,8 @@ test("LLM settings save connection drafts before discovery and edit structured c
   await rules.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(() => policy.tagRules).toEqual([{ tagId: 1, action: "restricted" }]);
   expect(policy.keywords[0]).toMatchObject({ term: "restricted phrase", fields: ["all", "lyrics"], action: "blocked" });
-  expect(policy.keywords[0].id).toBeTruthy();
+  expect(policy.keywords[0].id).toMatch(/^rule-[0-9a-f]{32}$/);
+  await expect(rules.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
 });
 
 test("LLM settings add a provider in a dialog and confirm before deleting it", async ({ page }) => {

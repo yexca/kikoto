@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
+	"strings"
 	"sync"
 )
 
@@ -138,7 +140,9 @@ func (s *Store) Policy(ctx context.Context) (Policy, error) {
 		return Policy{}, err
 	}
 	var policy Policy
-	if json.Unmarshal([]byte(raw), &policy) != nil {
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&policy) != nil || decoder.Decode(new(any)) != io.EOF {
 		return Policy{}, ErrInvalid
 	}
 	return policy.Validate()

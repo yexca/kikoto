@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -55,11 +56,20 @@ func (s *Server) runLyricsEdit(ctx context.Context, userID int64, workID int64, 
 	if err != nil {
 		return lyricsEditResult{}, err
 	}
-	defer func() { _ = os.RemoveAll(stagingRoot) }()
+	keepStaging := false
+	defer func() {
+		if !keepStaging {
+			_ = os.RemoveAll(stagingRoot)
+		}
+	}()
 	if err := s.stageLyricsEdit(ctx, plan, stagingRoot); err != nil {
 		return lyricsEditResult{}, err
 	}
-	changed, commitErr := s.commitLyricsEdit(ctx, plan, removals, stagingRoot)
+	changed, recoveryNeeded, commitErr := s.commitLyricsEdit(ctx, plan, removals, stagingRoot)
+	keepStaging = recoveryNeeded
+	if recoveryNeeded {
+		slog.Error("lyrics edit rollback needs recovery", "work_id", workID, "staging_root", stagingRoot, "error", commitErr)
+	}
 	if changed {
 		// The index follows the folder even when the edit stopped halfway.
 		if err := s.indexLocalMediaForWork(ctx, plan.target.WorkID, plan.target.FileSourceID, plan.target.RootPath); err != nil && commitErr == nil {
@@ -195,54 +205,55 @@ func (s *Server) stageLyricsEdit(ctx context.Context, plan lyricsEditPlan, stagi
 
 // commitLyricsEdit changes the folder: the moved files leave their places, the
 // removed files are deleted, and every added file takes its target. It reports
-// whether the folder may have changed. A failure puts the moved files that did
-// not reach their target back where they were.
-func (s *Server) commitLyricsEdit(ctx context.Context, plan lyricsEditPlan, removals []mediaCleanupTarget, stagingRoot string) (bool, error) {
+// whether the folder may have changed and whether staging must be retained for
+// recovery. A failure retracts publications before restoring moved sources.
+func (s *Server) commitLyricsEdit(ctx context.Context, plan lyricsEditPlan, removals []mediaCleanupTarget, stagingRoot string) (bool, bool, error) {
 	for _, item := range plan.Items {
 		if item.Action != "move_local" {
 			continue
 		}
 		if _, ok := regularFileBelow(item.sourceRoot, item.Path); !ok {
-			return false, errLyricsFileGone
+			return false, false, errLyricsFileGone
 		}
 	}
 	lifted := []int{}
-	published := map[int]bool{}
-	restore := func() {
-		for position := len(lifted) - 1; position >= 0; position-- {
-			index := lifted[position]
-			source := plan.Items[index].sourceAbsolute
-			if _, err := os.Lstat(source); published[index] || !errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			_ = os.Rename(lyricsEditStagedPath(stagingRoot, index), source)
-		}
+	published := map[int]os.FileInfo{}
+	if err := writeLyricsEditRecovery(plan, stagingRoot); err != nil {
+		return false, false, err
+	}
+	restore := func(cause error) (bool, bool, error) {
+		err := restoreLyricsEdit(plan, stagingRoot, lifted, published)
+		return len(lifted) > 0 || len(published) > 0, err != nil, errors.Join(cause, err)
 	}
 	for index, item := range plan.Items {
 		if item.Action != "move_local" {
 			continue
 		}
 		if err := os.Rename(item.sourceAbsolute, lyricsEditStagedPath(stagingRoot, index)); err != nil {
-			restore()
-			return len(lifted) > 0, err
+			return restore(err)
 		}
 		lifted = append(lifted, index)
 	}
 	for _, removal := range removals {
 		if _, err := s.clearLocalMediaLocation(ctx, removal.LocationID, removal.Path); err != nil {
-			restore()
-			return true, err
+			_, recovery, restoreErr := restore(err)
+			return true, recovery, restoreErr
 		}
 	}
 	for index, item := range plan.Items {
 		if !lyricsEditItemAdds(item) {
 			continue
 		}
-		if err := s.publishLyricsEditItem(plan, lyricsEditStagedPath(stagingRoot, index), item); err != nil {
-			restore()
-			return true, err
+		stagedPath := lyricsEditStagedPath(stagingRoot, index)
+		info, err := lyricsEditFileIdentity(stagedPath)
+		if err != nil {
+			return restore(err)
 		}
-		published[index] = true
+		if err := s.publishLyricsEditItem(plan, stagedPath, item); err != nil {
+			_, recovery, restoreErr := restore(err)
+			return true, recovery, restoreErr
+		}
+		published[index] = info
 	}
 	for _, index := range lifted {
 		removeEmptyDirectoriesBelow(plan.rootAbsolute, path.Dir(plan.Items[index].Path))
@@ -252,7 +263,7 @@ func (s *Server) commitLyricsEdit(ctx context.Context, plan lyricsEditPlan, remo
 			removeEmptyDirectoriesBelow(plan.rootAbsolute, path.Dir(relative))
 		}
 	}
-	return true, nil
+	return true, false, nil
 }
 
 // publishLyricsEditItem moves one collected file to its target. The move is a

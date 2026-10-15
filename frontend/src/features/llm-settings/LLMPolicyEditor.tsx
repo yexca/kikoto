@@ -160,7 +160,7 @@ export function LLMPolicyEditor({
           )}
           {policy.keywords.map((rule, index) => (
             <fieldset
-              key={rule.id ?? index}
+              key={rule.id}
               disabled={disabled}
               className="min-w-0 space-y-2.5 rounded-lg border bg-muted/20 p-3"
             >
@@ -237,7 +237,19 @@ export function LLMPolicyEditor({
             onClick={() =>
               onChange({
                 ...policy,
-                keywords: [...policy.keywords, { term: "", fields: ["all"], action: "sensitive" }],
+                keywords: [
+                  ...policy.keywords,
+                  {
+                    id:
+                      "rule-" +
+                      Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+                        byte.toString(16).padStart(2, "0"),
+                      ).join(""),
+                    term: "",
+                    fields: ["all"],
+                    action: "sensitive",
+                  },
+                ],
               })
             }
           >

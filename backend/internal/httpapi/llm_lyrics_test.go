@@ -42,7 +42,7 @@ func TestLLMLyricsTranslationJoinsTheTrackLyricsAndKeepsTheOriginal(t *testing.T
 	}))
 	defer upstream.Close()
 	fixture := manualOverrideFixture{db: f.db, server: f.server, userID: userID, workID: f.workID}
-	p := llmTestProvider(t, fixture, upstream.URL, "external", false)
+	p := llmTestProvider(t, fixture, upstream.URL, "external", "safe")
 
 	// The track decides the work folder; another folder is refused.
 	elsewhere := llmTranslatePayload{ProviderID: p.ID, Target: "zh-cn", Fields: []string{"lyrics"}, LyricsLocationID: locationID, AudioMediaItemID: f.audioID, FolderID: f.folderID + 1}

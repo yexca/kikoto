@@ -20,12 +20,12 @@ func llmTestRequest(f manualOverrideFixture, method, body string) *http.Request 
 	r.SetPathValue("id", strconv.FormatInt(f.workID, 10))
 	return r.WithContext(context.WithValue(r.Context(), currentUserKey, account.User{ID: f.userID, Permissions: []string{"metadata:sync", "library:write", "sources:write"}}))
 }
-func llmTestProvider(t *testing.T, f manualOverrideFixture, url, boundary string, allow bool) llm.Provider {
+func llmTestProvider(t *testing.T, f manualOverrideFixture, url, boundary, maximum string) llm.Provider {
 	t.Helper()
 	if _, err := f.db.Exec("UPDATE user_account SET role='admin' WHERE id=?", f.userID); err != nil {
 		t.Fatal(err)
 	}
-	p, err := f.server.llmStore.Mutate(context.Background(), "", llm.Provider{PresetID: "custom-openai", BaseURL: url, Boundary: boundary, AllowSensitive: allow, Enabled: true, EnabledModels: []string{"example-model"}}, nil, false)
+	p, err := f.server.llmStore.Mutate(context.Background(), "", llm.Provider{PresetID: "custom-openai", BaseURL: url, Boundary: boundary, MaxContentClass: maximum, Enabled: true, EnabledModels: []string{"example-model"}}, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,18 +46,18 @@ func TestLLMPolicyDenialMakesNoUpstreamRequest(t *testing.T) {
 	}))
 	defer upstream.Close()
 	for _, tc := range []struct {
-		name, age, boundary string
-		allow               bool
-		policy              llm.Policy
-		want                int
+		name, age, boundary, maximum string
+		policy                       llm.Policy
+		want                         int
 	}{
-		{"unknown", "", "private", true, llm.DefaultPolicy(), 422},
-		{"unknown substring", "not-adult-known", "private", true, llm.DefaultPolicy(), 422},
-		{"sensitive external", "adult", "external", true, llm.DefaultPolicy(), 422},
-		{"sensitive private not authorized", "adult", "private", false, llm.DefaultPolicy(), 422},
-		{"sensitive private authorized", "adult", "private", true, llm.DefaultPolicy(), 200},
-		{"blocked private", "general", "private", true, llm.Policy{Keywords: []llm.KeywordRule{{ID: "block", Term: "Example", Fields: []string{"title"}, Action: "blocked"}}}, 422},
-		{"unselected description blocked", "general", "private", true, llm.Policy{Keywords: []llm.KeywordRule{{ID: "block", Term: "restricted phrase", Fields: []string{"description"}, Action: "blocked"}}}, 422},
+		{"unknown", "", "private", "sensitive", llm.DefaultPolicy(), 422},
+		{"unknown substring", "not-adult-known", "private", "sensitive", llm.DefaultPolicy(), 422},
+		{"sensitive external not authorized", "adult", "external", "safe", llm.DefaultPolicy(), 422},
+		{"sensitive external authorized", "adult", "external", "sensitive", llm.DefaultPolicy(), 200},
+		{"sensitive private not authorized", "adult", "private", "safe", llm.DefaultPolicy(), 422},
+		{"sensitive private authorized", "adult", "private", "sensitive", llm.DefaultPolicy(), 200},
+		{"blocked private", "general", "private", "sensitive", llm.Policy{Keywords: []llm.KeywordRule{{ID: "block", Term: "Example", Fields: []string{"title"}, Action: "blocked"}}}, 422},
+		{"unselected description blocked", "general", "private", "sensitive", llm.Policy{Keywords: []llm.KeywordRule{{ID: "block", Term: "restricted phrase", Fields: []string{"description"}, Action: "blocked"}}}, 422},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newManualOverrideFixture(t, config.Config{})
@@ -67,7 +67,7 @@ func TestLLMPolicyDenialMakesNoUpstreamRequest(t *testing.T) {
 			if err := f.server.llmStore.SavePolicy(context.Background(), tc.policy); err != nil {
 				t.Fatal(err)
 			}
-			p := llmTestProvider(t, f, upstream.URL, tc.boundary, tc.allow)
+			p := llmTestProvider(t, f, upstream.URL, tc.boundary, tc.maximum)
 			before := requests.Load()
 			w := llmTestTranslate(t, f, p)
 			if w.Code != tc.want {
@@ -92,7 +92,7 @@ func TestLLMPreviewBindsActorAndRevalidatesSnapshots(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			f := newManualOverrideFixture(t, config.Config{})
 			_, _ = f.db.Exec("UPDATE work SET age_rating='general',description='Original description' WHERE id=?", f.workID)
-			p := llmTestProvider(t, f, upstream.URL, "external", false)
+			p := llmTestProvider(t, f, upstream.URL, "external", "safe")
 			if change == "maximum" {
 				p.MaxContentClass = "sensitive"
 				var err error
@@ -198,7 +198,7 @@ func TestLLMPreviewBindsActorAndRevalidatesSnapshots(t *testing.T) {
 func TestLLMEndpointChangeDropsCredentialsAndModels(t *testing.T) {
 	f := newManualOverrideFixture(t, config.Config{})
 	acceptServiceNoticeForTest(t, f)
-	p := llmTestProvider(t, f, "https://first.example.invalid", "external", false)
+	p := llmTestProvider(t, f, "https://first.example.invalid", "external", "safe")
 	key := "synthetic-token"
 	var err error
 	p, err = f.server.llmStore.Mutate(context.Background(), p.ID, p, &key, false)

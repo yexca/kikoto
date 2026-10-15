@@ -22,7 +22,6 @@ type asrProviderResponse struct {
 	Name            string      `json:"name"`
 	BaseURL         string      `json:"baseUrl"`
 	Boundary        string      `json:"boundary"`
-	AllowSensitive  bool        `json:"allowSensitive"`
 	MaxContentClass string      `json:"maxContentClass"`
 	Scope           string      `json:"scope,omitempty"`
 	Port            int         `json:"port,omitempty"`
@@ -34,7 +33,7 @@ type asrProviderResponse struct {
 }
 
 func (s *Server) asrResponse(p asr.Provider) asrProviderResponse {
-	return asrProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, AllowSensitive: p.AllowSensitive, MaxContentClass: p.MaxContentClass, Scope: p.Scope, Port: p.Port, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", EnabledModels: p.EnabledModels, DefaultModel: p.DefaultModel, Models: p.Models}
+	return asrProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, MaxContentClass: p.MaxContentClass, Scope: p.Scope, Port: p.Port, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", EnabledModels: p.EnabledModels, DefaultModel: p.DefaultModel, Models: p.Models}
 }
 
 func writeASRDisabled(w http.ResponseWriter) {
@@ -67,7 +66,6 @@ type asrProviderPayload struct {
 	BaseURL         *string   `json:"baseUrl"`
 	APIKey          *string   `json:"apiKey"`
 	Boundary        string    `json:"boundary"`
-	AllowSensitive  *bool     `json:"allowSensitive"`
 	MaxContentClass *string   `json:"maxContentClass"`
 	Scope           string    `json:"scope"`
 	Port            *int      `json:"port"`
@@ -125,14 +123,11 @@ func (s *Server) saveASRProvider(w http.ResponseWriter, r *http.Request) {
 		p.Boundary = body.Boundary
 	}
 	if body.MaxContentClass != nil {
-		if body.AllowSensitive != nil || *body.MaxContentClass == "" {
+		if *body.MaxContentClass == "" {
 			writeAPIError(w, 400, "invalid_asr_config", "Choose one explicit content receive maximum.", false)
 			return
 		}
 		p.MaxContentClass = *body.MaxContentClass
-	} else if body.AllowSensitive != nil {
-		p.MaxContentClass = ""
-		p.AllowSensitive = *body.AllowSensitive
 	}
 	if body.Scope != "" {
 		p.Scope = body.Scope
@@ -233,7 +228,7 @@ func (s *Server) listASRServices(w http.ResponseWriter, r *http.Request) {
 	result := []map[string]any{}
 	for _, p := range providers {
 		if p.Enabled && p.DefaultModel != "" {
-			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "boundary": p.Boundary, "allowSensitive": p.AllowSensitive, "maxContentClass": p.MaxContentClass})
+			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "boundary": p.Boundary, "maxContentClass": p.MaxContentClass})
 		}
 	}
 	writeJSON(w, 200, result)

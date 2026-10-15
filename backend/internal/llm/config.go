@@ -79,7 +79,6 @@ type Provider struct {
 	BaseURL         string `json:"baseUrl"`
 	APIKey          string `json:"apiKey,omitempty"`
 	Boundary        string `json:"boundary"`
-	AllowSensitive  bool   `json:"allowSensitive,omitempty"` // Legacy receive scope.
 	MaxContentClass string `json:"maxContentClass"`
 	OllamaScope     string `json:"ollamaScope,omitempty"`
 	// Scope and Port place a local preset; Port is set only on this server's
@@ -203,12 +202,11 @@ func Normalize(p Provider) (Provider, error) {
 	if p.Boundary != "external" && p.Boundary != "private" {
 		return p, errors.New("invalid LLM data boundary")
 	}
-	maximum, err := contentpolicy.NormalizeMaxClass(p.MaxContentClass, p.Boundary, p.AllowSensitive)
+	maximum, err := contentpolicy.NormalizeMaxClass(p.MaxContentClass)
 	if err != nil {
 		return p, err
 	}
 	p.MaxContentClass = maximum
-	p.AllowSensitive = p.Boundary == "private" && maximum != "safe"
 
 	if preset.Kind == "ollama" {
 		if p.OllamaScope == "" {

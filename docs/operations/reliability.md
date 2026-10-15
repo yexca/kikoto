@@ -59,6 +59,11 @@
 - A single cache/local deletion and a mixed batch deletion use the same queued
   workflow. Deleting a local location preserves work progress and listening
   marks.
+- A failed lyrics edit retracts its published additions before restoring moved
+  source files. If a path is occupied or restoration fails, its
+  `.kikoto-staging/lyrics-*` directory remains on the target pool with a
+  `recovery.json` mapping of staged files to original paths. Protected logs
+  identify that directory; stop conflicting edits and review it before cleanup.
 - Database contention is reported as a retryable service error and is not
   mistaken for an expired mobile login.
 - Workflow runs preserve structured status and error context.

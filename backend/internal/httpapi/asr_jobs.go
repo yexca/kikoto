@@ -92,6 +92,10 @@ func (s *Server) failASRTask(ctx context.Context, job workflowJobRecord, task as
 // continues after the last finished chunk. Between chunks the job yields the
 // single workflow executor to other queued work.
 func (s *Server) executeASRTranscriptionJob(ctx context.Context, job workflowJobRecord) error {
+	return s.executeASRTranscriptionWithDecoder(ctx, job, extractASRChunk)
+}
+
+func (s *Server) executeASRTranscriptionWithDecoder(ctx context.Context, job workflowJobRecord, decode func(context.Context, string, string, int64, int) ([]byte, error)) error {
 	var payload asrJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
 		return errors.New("invalid transcription job")
@@ -154,7 +158,7 @@ func (s *Server) executeASRTranscriptionJob(ctx context.Context, job workflowJob
 		if info, err := os.Stat(input); err != nil || !info.Mode().IsRegular() {
 			return s.failASRTask(ctx, job, task, "source_unavailable")
 		}
-		pcm, err := extractASRChunk(ctx, ffmpeg, input, task.OffsetMS, asrChunkSeconds)
+		pcm, err := decode(ctx, ffmpeg, input, task.OffsetMS, asrChunkSeconds)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -171,6 +175,14 @@ func (s *Server) executeASRTranscriptionJob(ctx context.Context, job workflowJob
 			send = pcm[:asr.QuietCut(pcm, asrCutSearchSeconds)]
 		}
 		durationMS := int64(len(send)) * 1000 / asr.BytesPerSecond
+		// Decoding can take minutes. Recheck the send boundary after it, while
+		// no audio has left the server and the request is still safe to refuse.
+		if _, code := s.checkASRSend(ctx, task); code != "" {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return s.failASRTask(ctx, job, task, code)
+		}
 		// The cancellation check and the in-flight marker commit together.
 		result, err := s.db.ExecContext(ctx, `UPDATE asr_transcription SET state='requesting',updated_at=CURRENT_TIMESTAMP WHERE id=? AND state IN ('pending','failed') AND NOT EXISTS(SELECT 1 FROM workflow_run WHERE id=? AND status='cancelled')`, task.ID, job.RunID)
 		if err != nil {

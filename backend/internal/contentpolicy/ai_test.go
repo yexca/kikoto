@@ -1,7 +1,6 @@
 package contentpolicy
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -18,7 +17,7 @@ func TestAIContentRulesUseTheHighestRestriction(t *testing.T) {
 		{"block beats high", "adult", "blocked", Policy{TagRules: []TagRule{{TagID: 1, Action: "restricted"}}, Keywords: []KeywordRule{{ID: "deny", Term: "synthetic marker", Fields: []string{"description"}, Action: "blocked"}}}},
 		{"unknown is not promoted", "", "unknown", Policy{TagRules: []TagRule{{TagID: 1, Action: "restricted"}}}},
 		{"unknown blocked", "", "blocked", Policy{TagRules: []TagRule{{TagID: 1, Action: "blocked"}}}},
-		{"ordinary all ages shortcut", "general", "safe", Policy{Keywords: []KeywordRule{{Term: "synthetic marker", Fields: []string{"description"}, Action: "sensitive"}}}},
+		{"ordinary all ages shortcut", "general", "safe", Policy{Keywords: []KeywordRule{{ID: "sensitive", Term: "synthetic marker", Fields: []string{"description"}, Action: "sensitive"}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result := tc.policy.Assess(tc.age, map[string]string{"description": "Synthetic marker"}, []int64{1})
@@ -32,24 +31,19 @@ func TestAIContentRulesUseTheHighestRestriction(t *testing.T) {
 	}
 }
 
-func TestAIContentMaximumPreservesLegacyReceiveScope(t *testing.T) {
+func TestAIContentMaximumDefaultsToSafe(t *testing.T) {
 	for _, tc := range []struct {
-		maximum, boundary string
-		legacy            bool
-		want              string
+		maximum, want string
 	}{
-		{"", "external", false, "safe"}, {"", "external", true, "safe"},
-		{"", "private", false, "safe"}, {"", "private", true, "sensitive"},
-		{"sensitive", "external", false, "sensitive"}, {"restricted", "external", false, "restricted"},
-		{"safe", "private", true, "safe"},
+		{"", "safe"}, {"safe", "safe"}, {"sensitive", "sensitive"}, {"restricted", "restricted"},
 	} {
-		got, err := NormalizeMaxClass(tc.maximum, tc.boundary, tc.legacy)
+		got, err := NormalizeMaxClass(tc.maximum)
 		if err != nil || got != tc.want {
 			t.Fatalf("%+v: %q %v", tc, got, err)
 		}
 	}
 	for _, maximum := range []string{"blocked", "unknown", "invalid", " Sensitive "} {
-		if _, err := NormalizeMaxClass(maximum, "private", true); err == nil {
+		if _, err := NormalizeMaxClass(maximum); err == nil {
 			t.Fatalf("invalid maximum %q accepted", maximum)
 		}
 	}
@@ -65,19 +59,14 @@ func TestAIContentMaximumPreservesLegacyReceiveScope(t *testing.T) {
 }
 
 func TestAIContentTagRulesNormalizeAndRejectAmbiguity(t *testing.T) {
-	var old Policy
-	if err := json.Unmarshal([]byte(`{"tagIds":[1,1],"keywords":[]}`), &old); err != nil {
-		t.Fatal(err)
-	}
-	normalized, err := old.Validate()
-	if err != nil || len(normalized.TagIDs) != 0 || len(normalized.TagRules) != 1 || normalized.TagRules[0] != (TagRule{TagID: 1, Action: "sensitive"}) {
+	normalized, err := (Policy{TagRules: []TagRule{{TagID: 1, Action: "sensitive"}, {TagID: 1, Action: "sensitive"}}}).Validate()
+	if err != nil || len(normalized.TagRules) != 1 || normalized.TagRules[0] != (TagRule{TagID: 1, Action: "sensitive"}) {
 		t.Fatalf("normalized=%+v err=%v", normalized, err)
 	}
 	for _, p := range []Policy{
 		{TagRules: []TagRule{{TagID: 0, Action: "restricted"}}},
 		{TagRules: []TagRule{{TagID: 1, Action: "safe"}}},
 		{TagRules: []TagRule{{TagID: 1, Action: "restricted"}, {TagID: 1, Action: "sensitive"}}},
-		{TagIDs: []int64{1}, TagRules: []TagRule{{TagID: 1, Action: "blocked"}}},
 		{TagRules: make([]TagRule, 513)},
 	} {
 		if _, err := p.Validate(); err == nil {

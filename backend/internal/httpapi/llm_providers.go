@@ -23,7 +23,6 @@ type llmProviderResponse struct {
 	Kind            string      `json:"kind"`
 	BaseURL         string      `json:"baseUrl"`
 	Boundary        string      `json:"boundary"`
-	AllowSensitive  bool        `json:"allowSensitive"`
 	MaxContentClass string      `json:"maxContentClass"`
 	OllamaScope     string      `json:"ollamaScope,omitempty"`
 	Scope           string      `json:"scope,omitempty"`
@@ -40,7 +39,7 @@ type llmProviderResponse struct {
 }
 
 func (s *Server) llmResponse(p llm.Provider) llmProviderResponse {
-	return llmProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, Kind: p.Preset().Kind, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, AllowSensitive: p.AllowSensitive, MaxContentClass: p.MaxContentClass, OllamaScope: p.OllamaScope, Scope: p.Scope, Port: p.Port, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", EnabledModels: p.EnabledModels, DefaultModel: p.DefaultModel, Models: p.Models, RequestTimeoutSeconds: int(p.RequestTimeout() / time.Second), OllamaContextLength: p.OllamaContextLength, OllamaDisableThinking: p.OllamaDisableThinking}
+	return llmProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, Kind: p.Preset().Kind, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, MaxContentClass: p.MaxContentClass, OllamaScope: p.OllamaScope, Scope: p.Scope, Port: p.Port, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", EnabledModels: p.EnabledModels, DefaultModel: p.DefaultModel, Models: p.Models, RequestTimeoutSeconds: int(p.RequestTimeout() / time.Second), OllamaContextLength: p.OllamaContextLength, OllamaDisableThinking: p.OllamaDisableThinking}
 }
 
 func (s *Server) listLLMProviders(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +182,6 @@ type llmProviderPayload struct {
 	BaseURL         *string   `json:"baseUrl"`
 	APIKey          *string   `json:"apiKey"`
 	Boundary        string    `json:"boundary"`
-	AllowSensitive  *bool     `json:"allowSensitive"`
 	MaxContentClass *string   `json:"maxContentClass"`
 	OllamaScope     string    `json:"ollamaScope"`
 	Scope           string    `json:"scope"`
@@ -281,14 +279,11 @@ func (s *Server) saveLLMProvider(w http.ResponseWriter, r *http.Request) {
 		p.DefaultModel = *body.DefaultModel
 	}
 	if body.MaxContentClass != nil {
-		if body.AllowSensitive != nil || *body.MaxContentClass == "" {
+		if *body.MaxContentClass == "" {
 			writeAPIError(w, 400, "invalid_llm_config", "Choose one explicit content receive maximum.", false)
 			return
 		}
 		p.MaxContentClass = *body.MaxContentClass
-	} else if body.AllowSensitive != nil {
-		p.MaxContentClass = ""
-		p.AllowSensitive = *body.AllowSensitive
 	}
 	body.applyTuning(&p)
 	if body.Kind != "" && body.Kind != p.Preset().Kind {

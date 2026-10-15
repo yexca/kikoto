@@ -26,14 +26,6 @@ CREATE TABLE work_llm_translation_review (
 
 ALTER TABLE work_llm_translation ADD COLUMN source_text TEXT NOT NULL DEFAULT '';
 ALTER TABLE work_llm_translation ADD COLUMN source_work_id INTEGER REFERENCES work(id) ON DELETE SET NULL;
-UPDATE work_llm_translation SET source_work_id=COALESCE(
- (SELECT origin.work_id FROM work_edition current JOIN work_edition origin
- ON origin.logical_work_id=current.logical_work_id AND origin.is_canonical=1
- WHERE current.work_id=work_llm_translation.work_id),work_id);
-UPDATE work_llm_translation SET source_text=CASE field_name
- WHEN 'title' THEN COALESCE((SELECT title FROM dlsite_metadata_variant WHERE work_id=source_work_id ORDER BY fetched_at DESC,id DESC LIMIT 1),
- (SELECT title FROM work WHERE id=source_work_id))
- ELSE COALESCE((SELECT description FROM work WHERE id=source_work_id),'') END;
 
 CREATE TRIGGER llm_source_title_expired AFTER UPDATE OF title ON work WHEN OLD.title<>NEW.title
 BEGIN

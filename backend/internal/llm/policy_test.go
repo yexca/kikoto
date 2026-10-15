@@ -74,7 +74,7 @@ func TestNormalizeRejectsEndpointPath(t *testing.T) {
 }
 
 func TestPolicyUsesAgeAndConfiguredRules(t *testing.T) {
-	policy := Policy{Keywords: []KeywordRule{{Term: "secret phrase", Fields: []string{"description"}, Action: "sensitive"}}}
+	policy := Policy{Keywords: []KeywordRule{{ID: "description-sensitive", Term: "secret phrase", Fields: []string{"description"}, Action: "sensitive"}}}
 	if got := policy.Assess("general", map[string]string{"description": "secret phrase"}, nil); got.Class != "safe" {
 		t.Fatalf("all-ages default class = %q", got.Class)
 	}
