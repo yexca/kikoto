@@ -40,7 +40,7 @@ const saved: LLMProvider = {
   kind: "openai",
   baseUrl: "https://first.example.invalid",
   boundary: "external",
-  allowSensitive: false,
+  maxContentClass: "safe",
   enabled: true,
   hasApiKey: true,
   defaultModel: "example-model",
@@ -59,7 +59,7 @@ describe("provider drafts", () => {
       enabled: true,
       defaultModel: "",
       boundary: "external",
-      allowSensitive: false,
+      maxContentClass: "safe",
       ollamaScope: undefined,
       requestTimeoutSeconds: 600,
       baseUrl: "",
@@ -119,10 +119,10 @@ describe("provider drafts", () => {
     expect(updatePayload({ ...draft, apiKey: "synthetic-key", clearKey: true })).toMatchObject({ apiKey: "" });
   });
 
-  it("allows sensitive content only on a private boundary", () => {
-    const draft = { ...draftFromProvider(saved), allowSensitive: true };
-    expect(updatePayload(draft)).toMatchObject({ boundary: "external", allowSensitive: false });
-    expect(updatePayload({ ...draft, boundary: "private" })).toMatchObject({ allowSensitive: true });
+  it("keeps the receive maximum independent of the data boundary", () => {
+    const draft = { ...draftFromProvider(saved), maxContentClass: "sensitive" as const };
+    expect(updatePayload(draft)).toMatchObject({ boundary: "external", maxContentClass: "sensitive" });
+    expect(updatePayload({ ...draft, boundary: "private" })).toMatchObject({ maxContentClass: "sensitive" });
   });
 
   it("reports when an edit replaces the connection the stored key belongs to", () => {
@@ -146,7 +146,7 @@ describe("provider drafts", () => {
 describe("policiesEqual", () => {
   const policy: LLMPolicy = {
     alwaysScanAllAges: false,
-    tagIds: [1],
+    tagRules: [{ tagId: 1, action: "sensitive" }],
     keywords: [{ term: "restricted phrase", fields: ["all"], action: "blocked" }],
   };
 
@@ -161,8 +161,9 @@ describe("policiesEqual", () => {
   });
 
   it("detects an edited rule, tag or option", () => {
-    expect(policiesEqual(policy, { ...policy, tagIds: [] })).toBe(false);
+    expect(policiesEqual(policy, { ...policy, tagRules: [] })).toBe(false);
     expect(policiesEqual(policy, { ...policy, remoteLyrics: true })).toBe(false);
+    expect(policiesEqual(policy, { ...policy, tagRules: [{ tagId: 1, action: "restricted" }] })).toBe(false);
     expect(policiesEqual(policy, { ...policy, keywords: [{ ...policy.keywords[0], fields: ["all", "lyrics"] }] })).toBe(
       false,
     );

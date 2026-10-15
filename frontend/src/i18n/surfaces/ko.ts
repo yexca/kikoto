@@ -471,9 +471,8 @@ export const surfaceKorean = {
       boundaryExternal: "외부",
       boundaryPrivate: "비공개",
       boundaryHint:
-        "어떤 작품의 오디오를 보낼 수 있는지는 LLM의 콘텐츠 안전 정책이 정합니다. 민감한 작품은 수신이 명시적으로 허용된 비공개 서비스로만 보내며, 알 수 없거나 차단된 작품은 거부됩니다.",
-      allowSensitive: "민감한 콘텐츠 허용",
-      allowSensitiveDescription: "정책이 민감하다고 표시한 작품의 오디오를 이 비공개 서비스가 받을 수 있게 합니다.",
+        "데이터 경계는 콘텐츠의 전송 위치를 나타냅니다. 콘텐츠 정책과 서비스 수신 상한이 전송 가능한 내용을 결정합니다.",
+
       enabled: "사용",
       enabledDescription: "모델을 설정하면 전사에 사용할 수 있습니다.",
       privateBoundary: "비공개 서비스",
@@ -513,15 +512,17 @@ export const surfaceKorean = {
       remoteLyrics: "원격 가사 번역 활성화",
       remoteLyricsDescription: "명시적으로 선택한 원격 파일만 읽습니다. 원격 가져오기 권한이 필요합니다.",
       boundary: "데이터 경계",
-      allowSensitive: "민감한 콘텐츠 수신 허용",
+
       boundaryHint:
-        "민감한 콘텐츠에는 수신을 명시적으로 허용한 비공개 엔드포인트가 필요합니다. 알 수 없거나 차단된 콘텐츠는 거부합니다.",
+        "데이터 경계는 콘텐츠의 전송 위치를 나타냅니다. 콘텐츠 정책과 서비스 수신 상한이 전송 가능한 내용을 결정합니다.",
       clearKey: "저장된 API 키 삭제",
       addRule: "키워드 규칙 추가",
       ruleNumber: "규칙 {{number}}",
       ruleTerm: "규칙 {{number}}의 키워드",
       ruleAction: "규칙 {{number}}의 동작",
       sensitive: "민감",
+      restricted: "고민감",
+      tagAction: "태그 {{tag}}의 동작",
       blocked: "차단",
       ruleFields: { title: "제목", description: "설명", tags: "태그", lyrics: "가사", all: "전체 텍스트" },
       title: "LLM 제공자",
@@ -565,15 +566,17 @@ export const surfaceKorean = {
       modelsFetched: "모델 {{count}}개를 가져왔습니다.",
       policyTitle: "콘텐츠 안전 정책",
       policyDescription:
-        "LLM 제공자와 음성 인식 서비스에 적용됩니다. 태그 또는 키워드가 일치하면 외부 엔드포인트를 차단하고 민감한 번역과 전사를 로컬로 제한합니다.",
+        "LLM과 음성 인식에 적용됩니다. 태그와 키워드로 등급을 높이고 서비스마다 수신 상한을 지정합니다. 알 수 없거나 차단된 콘텐츠는 거부합니다.",
       policySaved: "콘텐츠 안전 정책을 저장했습니다.",
       policySaveFailed: "콘텐츠 안전 정책을 저장할 수 없습니다.",
       alwaysScanAllAges: "전체 연령 작품도 스캔",
-      alwaysScanAllAgesDescription: "제공자가 전체 연령으로 보고한 작품에도 키워드 규칙을 적용합니다.",
-      sensitiveTags: "민감한 메타데이터 태그",
-      sensitiveTagsDescription: "공유 태그를 선택합니다. 숨겨진 이름과 병합된 ID의 위험 정보도 유지됩니다.",
-      keywords: "민감한 키워드",
-      keywordsDescription: "키워드, 검사 필드 및 동작을 선택합니다. 차단 규칙은 모든 연령 등급에 적용됩니다.",
+      alwaysScanAllAgesDescription:
+        "전체 연령 작품에도 추가 민감 키워드 검사를 실행합니다. 고민감 및 차단 규칙은 항상 검사합니다.",
+      sensitiveTags: "메타데이터 태그 규칙",
+      sensitiveTagsDescription:
+        "공유 태그를 선택하고 민감, 고민감 또는 차단 동작을 지정합니다. 숨겨진 이름과 병합된 ID의 위험 정보도 유지됩니다.",
+      keywords: "키워드 규칙",
+      keywordsDescription: "키워드, 검사 필드와 동작을 선택합니다. 고민감 및 차단 규칙은 모든 연령 등급에 적용됩니다.",
       addTitle: "LLM 제공자 추가",
       editTitle: "LLM 제공자 편집",
       endpointDefaultHint: "비워 두면 서비스의 기본 주소를 사용합니다.",
@@ -583,7 +586,7 @@ export const surfaceKorean = {
         "검색된 모델 {{count}}개를 입력 제안으로 사용할 수 있습니다. 모델 검색 전에 연결 설정을 저장합니다.",
       boundaryExternal: "외부",
       boundaryPrivate: "비공개",
-      allowSensitiveDescription: "정책이 민감하다고 판단한 콘텐츠를 이 비공개 엔드포인트가 수신하도록 허용합니다.",
+
       enabledDescription: "기본 모델을 설정하면 번역에 사용할 수 있습니다.",
       requestTimeout: "요청 제한 시간(분)",
       requestTimeoutDescription:
@@ -601,7 +604,7 @@ export const surfaceKorean = {
       deleteDescription: "연결 설정, 저장된 키, 검색된 모델이 삭제됩니다.",
       policyUnsaved: "저장하지 않은 변경 사항이 있습니다",
       policyDiscard: "변경 취소",
-      sensitiveTagsEmpty: "선택한 민감 태그가 없습니다.",
+      sensitiveTagsEmpty: "태그 규칙이 없습니다.",
       sensitiveTagsSearch: "추가할 태그 검색",
       keywordsEmpty: "키워드 규칙이 없습니다.",
       ruleTermPlaceholder: "키워드 또는 문구",
@@ -2849,8 +2852,7 @@ export const surfaceKorean = {
       unknown: "전사가 중지되었습니다.",
     },
     errors: {
-      asr_policy_blocked:
-        "콘텐츠 안전 정책에 따라 이 작품의 오디오를 이 서비스로 보낼 수 없습니다. 민감한 작품은 수신이 허용된 비공개 서비스가 필요하며, 연령 등급을 알 수 없는 작품은 거부됩니다.",
+      asr_policy_blocked: "서비스 수신 상한을 초과하거나 콘텐츠 등급이 알 수 없음 또는 차단입니다.",
       asr_audio_unavailable: "이 트랙에는 작품 폴더에서 사용할 수 있는 로컬 파일이 없습니다.",
       asr_not_ready: "서비스가 꺼져 있거나 모델이 설정되지 않았습니다. 관리자에게 확인을 요청하세요.",
       asr_audio_too_long: "트랙이 너무 길어 전사할 수 없습니다.",
@@ -2926,8 +2928,7 @@ export const surfaceKorean = {
       unknown: "번역이 중지되었습니다. 다시 번역하거나 Activity에서 확인하세요.",
     },
     errors: {
-      llm_policy_blocked:
-        "콘텐츠 안전 정책상 이 가사를 이 제공자에게 보낼 수 없습니다. 민감한 콘텐츠에는 수신이 허용된 비공개 제공자가 필요하며, 연령 등급을 알 수 없는 작품은 거부됩니다.",
+      llm_policy_blocked: "서비스 수신 상한을 초과하거나 콘텐츠 등급이 알 수 없음 또는 차단입니다.",
       llm_not_ready: "제공자가 꺼져 있거나 모델이 없습니다. 관리자에게 확인을 요청하세요.",
       llm_lyrics_scope: "이 작품의 가사 파일과 작품 폴더에 로컬 파일이 있는 트랙을 선택하세요.",
       llm_lyrics_format: "가사 파일이 비어 있거나, 너무 크거나, 지원하지 않는 형식입니다.",
@@ -2957,15 +2958,22 @@ export const surfaceKorean = {
     hint: "서버에서 콘텐츠 안전 정책과 대조합니다. 서비스로는 아무것도 전송하지 않습니다.",
     failed: "콘텐츠 등급을 확인하지 못했습니다.",
     safe: "활성화된 모든 서비스가 이 콘텐츠를 받을 수 있습니다.",
-    sensitive: "민감한 콘텐츠는 수신이 허용된 비공개 서비스로만 전송됩니다.",
+    sensitive: "민감한 콘텐츠에는 수신 상한이 민감 이상인 서비스가 필요합니다.",
     unknown: "작품의 연령 등급이 없거나 알 수 없어 어떤 서비스로도 전송되지 않습니다.",
     blocked: "차단 규칙과 일치하여 어떤 서비스로도 전송되지 않습니다.",
     receives: "{{service}}은(는) 이 콘텐츠를 받을 수 있습니다.",
-    notReceives:
-      "{{service}}은(는) 이 콘텐츠를 받을 수 없습니다. 민감한 콘텐츠는 수신이 허용된 비공개 서비스로만 전송됩니다.",
+    notReceives: "{{service}}의 수신 상한을 초과하므로 이 콘텐츠를 받을 수 없습니다.",
     notForContent: "이 콘텐츠에는 사용 불가",
+    restricted: "고민감으로 지정된 콘텐츠에는 고민감 수신을 명시적으로 허용한 서비스가 필요합니다.",
+    maximumLabel: "수신 가능한 콘텐츠 상한",
+    maximumHint:
+      "데이터 경계와 별개로 이 서비스가 받을 수 있는 콘텐츠 등급을 선택합니다. 알 수 없거나 차단된 콘텐츠는 항상 거부합니다.",
+    maximum: "서비스 수신 상한: {{maximum}}",
+    metadataOnly: "오디오는 작품의 메타데이터로 분류하며 오디오 자체는 검사하지 않습니다.",
+    maximumOptions: { safe: "일반만", sensitive: "민감 이하", restricted: "고민감 이하" },
     classes: {
-      safe: "안전",
+      restricted: "고민감",
+      safe: "일반",
       sensitive: "민감",
       unknown: "등급 불명",
       blocked: "차단",

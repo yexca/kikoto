@@ -1,3 +1,5 @@
+import { ContentAssessment } from "@/components/content/ContentAssessment";
+import { serviceReceives } from "@/lib/contentPolicy";
 import { Loader2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -136,6 +138,9 @@ export function LLMTranslationDialog({
                 {providers.map((provider) => (
                   <option key={provider.id} value={provider.id}>
                     {provider.name} · {provider.defaultModel}
+                    {assessment && !serviceReceives(assessment.class, provider)
+                      ? ` · ${t("contentRating.notForContent")}`
+                      : ""}
                   </option>
                 ))}
               </select>
@@ -273,16 +278,10 @@ export function LLMTranslationDialog({
               {t("llmTranslation.precheck")}
             </Button>
             {assessment && (
-              <div role="status" className="space-y-1 text-sm">
-                <p>
-                  {assessment.class} · {assessment.reason}
-                </p>
-                {assessment.matches.map((match, index) => (
-                  <p key={index}>
-                    {match.rule} · {match.field}
-                  </p>
-                ))}
-              </div>
+              <ContentAssessment
+                assessment={assessment}
+                service={providers.find((provider) => provider.id === providerID) ?? null}
+              />
             )}
           </div>
         )}

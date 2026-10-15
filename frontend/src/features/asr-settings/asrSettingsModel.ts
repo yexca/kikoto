@@ -18,7 +18,7 @@ export type ASRServiceDraft = {
   clearKey: boolean;
   hasApiKey: boolean;
   boundary: ASRProvider["boundary"];
-  allowSensitive: boolean;
+  maxContentClass: ASRProvider["maxContentClass"];
   enabled: boolean;
   defaultModel: string;
   models: ASRModel[];
@@ -36,7 +36,7 @@ export function draftFromPreset(preset: ASRPreset): ASRServiceDraft {
     clearKey: false,
     hasApiKey: false,
     boundary: preset.boundary,
-    allowSensitive: false,
+    maxContentClass: "safe",
     enabled: true,
     defaultModel: "",
     models: [],
@@ -60,7 +60,7 @@ export function draftFromProvider(provider: ASRProvider): ASRServiceDraft {
     clearKey: false,
     hasApiKey: provider.hasApiKey,
     boundary: provider.boundary,
-    allowSensitive: provider.allowSensitive,
+    maxContentClass: provider.maxContentClass,
     enabled: provider.enabled,
     defaultModel: provider.defaultModel,
     models: [...provider.models],
@@ -109,7 +109,7 @@ export function updatePayload(draft: ASRServiceDraft): ASRProviderPayload {
     enabled: draft.enabled,
     defaultModel: draft.defaultModel.trim(),
     boundary: draft.boundary,
-    allowSensitive: draft.boundary === "private" && draft.allowSensitive,
+    maxContentClass: draft.maxContentClass,
     ...(draft.scope ? { scope: draft.scope } : {}),
     ...(derived ? { port: parsedPort(draft) ?? 0 } : { baseUrl: draft.baseUrl.trim() }),
     ...(draft.clearKey ? { apiKey: "" } : draft.apiKey ? { apiKey: draft.apiKey } : {}),

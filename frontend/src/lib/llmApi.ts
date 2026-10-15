@@ -1,3 +1,4 @@
+import type { ContentMaximum, ContentClass, ContentAction } from "@/lib/contentPolicy";
 import { deleteJSON, getJSON, getText, postJSONBody, putJSONBody } from "@/lib/apiTransport";
 
 export type LLMModel = {
@@ -25,7 +26,7 @@ export type LLMProvider = {
   baseUrl: string;
   boundary: "external" | "private";
   ollamaScope?: "local_machine" | "other_machine";
-  allowSensitive: boolean;
+  maxContentClass: ContentMaximum;
   enabled: boolean;
   hasApiKey: boolean;
   defaultModel?: string;
@@ -45,7 +46,7 @@ export type LLMProviderPayload = {
   baseUrl?: string;
   apiKey?: string;
   boundary?: LLMProvider["boundary"];
-  allowSensitive?: boolean;
+  maxContentClass?: ContentMaximum;
   ollamaScope?: LLMProvider["ollamaScope"];
   enabled?: boolean;
   defaultModel?: string;
@@ -64,18 +65,18 @@ export type LLMProviderList = {
   noticeAccepted: boolean;
 };
 
-export type LLMKeywordRule = { id?: string; term: string; fields: string[]; action: "sensitive" | "blocked" };
+export type LLMKeywordRule = { id?: string; term: string; fields: string[]; action: ContentAction };
 export type LLMPolicy = {
   alwaysScanAllAges: boolean;
   remoteLyrics?: boolean;
-  tagIds: number[];
+  tagRules: Array<{ tagId: number; action: ContentAction }>;
   keywords: LLMKeywordRule[];
 };
-export type LLMTranslationModel = Pick<LLMProvider, "id" | "name" | "defaultModel" | "boundary" | "allowSensitive">;
+export type LLMTranslationModel = Pick<LLMProvider, "id" | "name" | "defaultModel" | "boundary" | "maxContentClass">;
 export type LLMAssessment = {
-  class: "safe" | "sensitive" | "unknown" | "blocked";
+  class: ContentClass;
   reason: string;
-  matches: Array<{ kind: string; rule: string; field?: string }>;
+  matches: Array<{ kind: string; rule: string; field?: string; action?: ContentAction }>;
 };
 export type LLMTranslation = {
   previewId: string;

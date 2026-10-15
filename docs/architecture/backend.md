@@ -35,8 +35,10 @@ The backend is a Go HTTP API with SQLite persistence.
   bounded snapshot decoding, and reconciliation for the opt-in fallback.
 - `backend/internal/metadatatags`: shared metadata tag concepts, projection,
   and selection, independent of provider snapshots and personal tags.
-- `backend/internal/llm`: bounded translation protocols, deterministic content
-  assessments, endpoint configuration and lyrics templates. HTTP composition
+- `backend/internal/contentpolicy`: shared deterministic ASR/LLM content
+  assessment and service receive maxima, plus the separate Demo admission policy.
+- `backend/internal/llm`: bounded translation protocols, endpoint configuration
+  and lyrics templates. HTTP composition
   binds these to work identity, review persistence, file scope and workflow jobs.
 - `backend/internal/asr`: speech recognition service configuration, the
   OpenAI-compatible transcription protocol, WebVTT rendering of timed

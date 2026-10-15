@@ -19,7 +19,7 @@ const provider: LLMProvider = {
   kind: "openai",
   baseUrl: "https://first.example.invalid",
   boundary: "external",
-  allowSensitive: false,
+  maxContentClass: "safe",
   enabled: true,
   hasApiKey: true,
   defaultModel: "example-model",
@@ -79,7 +79,7 @@ async function openTranslation(page: Page, detailOverrides: Partial<WorkDetail> 
           name: provider.name,
           defaultModel: provider.defaultModel,
           boundary: provider.boundary,
-          allowSensitive: false,
+          maxContentClass: "safe",
         },
       ] satisfies ApiResponse<"listTranslationModels">,
     }),
@@ -102,7 +102,7 @@ async function openTranslation(page: Page, detailOverrides: Partial<WorkDetail> 
 test("LLM settings save connection drafts before discovery and edit structured content rules", async ({ page }) => {
   await application(page);
   let current = { ...provider };
-  let policy: LLMPolicy = { alwaysScanAllAges: false, tagIds: [], keywords: [] };
+  let policy: LLMPolicy = { alwaysScanAllAges: false, tagRules: [], keywords: [] };
   const writes: Record<string, unknown>[] = [];
   const calls: string[] = [];
   await page.route("**/api/llm/providers", (route) =>
@@ -164,24 +164,23 @@ test("LLM settings save connection drafts before discovery and edit structured c
     apiKey: "",
   });
   await expect(connection.getByLabel("Default model", { exact: true })).toHaveValue("manual-model");
-  await connection
-    .getByRole("radiogroup", { name: "Data boundary", exact: true })
-    .getByRole("radio", { name: "Private", exact: true })
-    .click();
-  await connection.getByRole("switch", { name: "Allow sensitive content", exact: true }).check();
+  await connection.getByRole("combobox", { name: "Maximum content level", exact: true }).selectOption("sensitive");
   await connection.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(() => writes.length).toBe(2);
-  expect(writes[1]).toMatchObject({ boundary: "private", allowSensitive: true });
+  expect(writes[1]).toMatchObject({ boundary: "external", maxContentClass: "sensitive" });
   await expect(connection).toBeHidden();
   const rules = page.getByRole("region", { name: "Content safety policy", exact: true });
-  await rules.getByRole("combobox", { name: "Sensitive metadata tags", exact: true }).fill("Example");
+  await rules.getByRole("combobox", { name: "Metadata tag rules", exact: true }).fill("Example");
   await rules.getByRole("option", { name: "Example risk tag", exact: true }).click();
+  await rules
+    .getByRole("combobox", { name: "Action for tag Example risk tag", exact: true })
+    .selectOption("restricted");
   await rules.getByRole("button", { name: "Add keyword rule", exact: true }).click();
   await rules.getByLabel("Keyword for rule 1", { exact: true }).fill("restricted phrase");
   await rules.getByLabel("Action for rule 1", { exact: true }).selectOption("blocked");
   await rules.getByRole("checkbox", { name: "Lyrics", exact: true }).check();
   await rules.getByRole("button", { name: "Save", exact: true }).click();
-  await expect.poll(() => policy.tagIds).toEqual([1]);
+  await expect.poll(() => policy.tagRules).toEqual([{ tagId: 1, action: "restricted" }]);
   expect(policy.keywords[0]).toMatchObject({ term: "restricted phrase", fields: ["all", "lyrics"], action: "blocked" });
   expect(policy.keywords[0].id).toBeTruthy();
 });
@@ -227,7 +226,7 @@ test("LLM settings add a provider in a dialog and confirm before deleting it", a
             boundary: "external",
           },
         ],
-        policy: { alwaysScanAllAges: false, tagIds: [], keywords: [] },
+        policy: { alwaysScanAllAges: false, tagRules: [], keywords: [] },
         noticeAccepted: true,
       } satisfies ApiResponse<"listProviders">,
     });
@@ -283,7 +282,7 @@ test("LLM & ASR settings list both services above their shared content safety po
       json: {
         providers: [provider],
         presets: [],
-        policy: { alwaysScanAllAges: false, tagIds: [], keywords: [] },
+        policy: { alwaysScanAllAges: false, tagRules: [], keywords: [] },
         noticeAccepted: true,
       } satisfies ApiResponse<"listProviders">,
     }),
@@ -317,7 +316,7 @@ test("LLM & ASR settings stay locked until the external service notice is accept
             boundary: "external",
           },
         ],
-        policy: { alwaysScanAllAges: false, tagIds: [], keywords: [] },
+        policy: { alwaysScanAllAges: false, tagRules: [], keywords: [] },
         noticeAccepted: false,
       } satisfies ApiResponse<"listProviders">,
     }),
@@ -370,7 +369,7 @@ test("LLM dialog prechecks without translation, uses minimal models and confirms
     return route.fulfill({ json: { ok: true } });
   });
   await dialog.getByRole("button", { name: "Check content without sending", exact: true }).click();
-  await expect(dialog.getByRole("status")).toContainText("safe");
+  await expect(dialog.getByRole("status")).toContainText("General");
   expect(requests).toBe(0);
   await dialog.getByRole("button", { name: "Translate", exact: true }).click();
   await expect(dialog.getByText("Example translation", { exact: true })).toBeVisible();
@@ -467,7 +466,7 @@ test("Manage lyrics translates a lyrics file for its track and adds the reviewed
           name: provider.name,
           defaultModel: provider.defaultModel,
           boundary: provider.boundary,
-          allowSensitive: false,
+          maxContentClass: "sensitive",
         },
       ] satisfies ApiResponse<"listTranslationModels">,
     }),
@@ -506,7 +505,11 @@ test("Manage lyrics translates a lyrics file for its track and adds the reviewed
     prechecks.push(route.request().postDataJSON());
     return route.fulfill({
       json: {
-        assessment: { class: "sensitive", reason: "restricted age rating", matches: [] },
+        assessment: {
+          class: "restricted",
+          reason: "a configured high-sensitivity rule matched",
+          matches: [{ kind: "keyword", rule: "synthetic-high-rule", field: "lyrics", action: "restricted" }],
+        },
         checkedFields: ["title", "description", "tags", "lyrics"],
         sentFields: [],
       } satisfies ApiResponse<"precheckWork">,
@@ -535,7 +538,9 @@ test("Manage lyrics translates a lyrics file for its track and adds the reviewed
   // The content rating is checked only when asked, for the chosen lyrics file and track.
   expect(prechecks).toHaveLength(0);
   await lyrics.getByRole("button", { name: "Check rating" }).click();
-  await expect(lyrics.getByText("Example LLM cannot receive this content.", { exact: false })).toBeVisible();
+  await expect(lyrics.getByText("Example LLM cannot receive this content", { exact: false })).toBeVisible();
+  await expect(lyrics.getByText("High sensitivity", { exact: true })).toBeVisible();
+  await expect(lyrics.getByText("synthetic-high-rule", { exact: false })).toBeVisible();
   expect(prechecks).toEqual([{ fields: ["lyrics"], lyricsLocationId: 2, audioMediaItemId: 1 }]);
   await lyrics.getByRole("combobox", { name: "LLM provider" }).click();
   const option = page.getByRole("option", { name: /Example LLM/ });

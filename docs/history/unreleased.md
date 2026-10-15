@@ -110,8 +110,15 @@
   edited in a dialog; adding one lists the presets on the left and the chosen
   preset's form on the right. A service's switch turns it on or off from the
   list, and deleting one asks for confirmation. The content safety policy edits
-  sensitive tags as removable chips and keyword rules as compact rows, and
+  tag rules as removable chips with per-tag actions and keyword rules as compact rows, and
   decides which works' text and audio may be sent.
+- ASR and LLM share General, Sensitive and High sensitivity content levels.
+  Each service declares its receive maximum separately from its data boundary.
+  Tag and keyword rules can mark high-sensitivity content, while
+  blocking rules refuse every service. High-sensitivity and blocking rules
+  apply to all-ages works too; prechecks show matched rules and the chosen
+  service's receive maximum. Existing settings retain their receive scope,
+  and no service gains high-sensitivity permission automatically.
 - The LLM & ASR tab stays behind an external service notice until an
   administrator accepts it: external services may forbid the content sent to
   them, the content safety checks are advisory, and Kikoto is not responsible

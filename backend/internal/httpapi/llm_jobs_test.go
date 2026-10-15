@@ -18,7 +18,7 @@ func TestLLMJobsDeduplicateResumeAndRefuseUncertainRetry(t *testing.T) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"title\":\"Example translation\"}"}}]}`))
 	}))
 	defer upstream.Close()
-	for _, scenario := range []string{"success", "restart_before_send", "restart_after_send", "source_changed", "permission_changed", "cancelled", "safe_retry"} {
+	for _, scenario := range []string{"success", "restart_before_send", "restart_after_send", "source_changed", "maximum_changed", "permission_changed", "cancelled", "safe_retry"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newManualOverrideFixture(t, config.Config{})
 			_, _ = f.db.Exec("UPDATE user_account SET role='admin' WHERE id=?", f.userID)
@@ -45,6 +45,11 @@ func TestLLMJobsDeduplicateResumeAndRefuseUncertainRetry(t *testing.T) {
 				}
 				f.server = NewServer(f.db, config.Config{})
 				if err := f.server.RecoverInterruptedWorkflows(ctx); err != nil {
+					t.Fatal(err)
+				}
+			case "maximum_changed":
+				p.MaxContentClass = "restricted"
+				if _, err := f.server.llmStore.Mutate(ctx, p.ID, p, nil, false); err != nil {
 					t.Fatal(err)
 				}
 			case "source_changed":

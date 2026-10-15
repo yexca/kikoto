@@ -19,6 +19,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/asr"
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/llm"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -329,6 +330,17 @@ func TestASRPrecheckReportsTheContentClassWithoutStartingWork(t *testing.T) {
 			t.Fatalf("age %q = %d %s, want class %q", rating.age, response.Code, response.Body.String(), rating.class)
 		}
 	}
+	if _, err := fixture.db.Exec("UPDATE work SET age_rating='general',description='synthetic marker' WHERE id=?", fixture.workID); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.server.llmStore.SavePolicy(context.Background(), llm.Policy{Keywords: []llm.KeywordRule{{ID: "synthetic-high-rule", Term: "synthetic marker", Fields: []string{"description"}, Action: "restricted"}}}); err != nil {
+		t.Fatal(err)
+	}
+	var assessment llm.Assessment
+	response := precheck(fixture.audioID)
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &assessment) != nil || assessment.Class != "restricted" || len(assessment.Matches) != 1 || assessment.Matches[0].Action != "restricted" {
+		t.Fatalf("restricted precheck: %d %s", response.Code, response.Body.String())
+	}
 	if response := precheck(fixture.audioID + 1000); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "asr_audio_unavailable") {
 		t.Fatalf("a track outside the work = %d %s", response.Code, response.Body.String())
 	}
@@ -342,7 +354,7 @@ func TestASRPrecheckReportsTheContentClassWithoutStartingWork(t *testing.T) {
 }
 
 func TestASRTranscriptionInterruptionsNeverResendSilently(t *testing.T) {
-	for _, scenario := range []string{"restart_during_request", "service_changed", "cancelled"} {
+	for _, scenario := range []string{"restart_during_request", "service_changed", "maximum_changed", "cancelled"} {
 		t.Run(scenario, func(t *testing.T) {
 			fixture := newASRFixture(t, 2)
 			ctx := context.Background()
@@ -362,6 +374,12 @@ func TestASRTranscriptionInterruptionsNeverResendSilently(t *testing.T) {
 				if err := fixture.server.RecoverInterruptedWorkflows(ctx); err != nil {
 					t.Fatal(err)
 				}
+			case "maximum_changed":
+				provider := fixture.provider
+				provider.MaxContentClass = "restricted"
+				if _, err := fixture.server.asrStore.Mutate(ctx, provider.ID, provider, nil, false); err != nil {
+					t.Fatal(err)
+				}
 			case "service_changed":
 				if _, err := fixture.server.asrStore.Mutate(ctx, fixture.provider.ID, asr.Provider{PresetID: "local", Scope: asr.ScopeOtherMachine, BaseURL: fixture.provider.BaseURL, Enabled: true, DefaultModel: "other-model"}, nil, false); err != nil {
 					t.Fatal(err)
@@ -378,7 +396,7 @@ func TestASRTranscriptionInterruptionsNeverResendSilently(t *testing.T) {
 				t.Fatalf("requests = %d", fixture.requests.Load())
 			}
 			state, failure, _ := fixture.state(t, id)
-			want := map[string]string{"restart_during_request": "failed/upstream_result_unknown", "service_changed": "failed/provider_changed", "cancelled": "cancelled/cancelled"}[scenario]
+			want := map[string]string{"restart_during_request": "failed/upstream_result_unknown", "service_changed": "failed/provider_changed", "maximum_changed": "failed/provider_changed", "cancelled": "cancelled/cancelled"}[scenario]
 			if state+"/"+failure != want {
 				t.Fatalf("state = %s/%s, want %s", state, failure, want)
 			}

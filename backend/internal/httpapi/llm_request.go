@@ -87,7 +87,7 @@ func (s *Server) prepareLLMTranslation(ctx context.Context, workID int64, payloa
 	}
 	plan.Assessment = plan.Policy.Assess(plan.Input.Age, scan, plan.Input.Tags)
 	if !llmAllowed(plan.Assessment.Class, provider) {
-		return plan, llmInvalid("llm_policy_blocked", "Content policy blocks this translation. Sensitive content requires an explicitly allowed private endpoint; unknown and blocked content are refused.")
+		return plan, llmInvalid("llm_policy_blocked", "Content policy blocks this translation. The content exceeds the provider receive maximum, or its class is unknown or blocked.")
 	}
 	if text.Title == "" && text.Description == "" && len(text.Tags) == 0 && len(text.Lyrics) == 0 {
 		return plan, llmInvalid("llm_empty_input", "Selected fields have no text, or shared names are already available.")

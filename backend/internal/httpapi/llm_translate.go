@@ -15,6 +15,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/agerating"
+	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/llm"
 	"github.com/yexca/kikoto/backend/internal/metadatatitles"
 )
@@ -162,7 +163,8 @@ func llmFields(input llmWorkInput, fields []string) (llm.Text, map[string]string
 	return text, scan
 }
 func llmAllowed(class string, provider llm.Provider) bool {
-	return class == "safe" || class == "sensitive" && provider.Boundary == "private" && provider.AllowSensitive
+	maximum, err := contentpolicy.NormalizeMaxClass(provider.MaxContentClass, provider.Boundary, provider.AllowSensitive)
+	return err == nil && contentpolicy.Allows(class, maximum)
 }
 
 func (s *Server) translateWorkWithLLM(w http.ResponseWriter, r *http.Request) {
@@ -411,7 +413,7 @@ func (s *Server) listLLMTranslationModels(w http.ResponseWriter, r *http.Request
 	result := []map[string]any{}
 	for _, p := range providers {
 		if p.Enabled && p.DefaultModel != "" {
-			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "boundary": p.Boundary, "allowSensitive": p.AllowSensitive})
+			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "boundary": p.Boundary, "allowSensitive": p.AllowSensitive, "maxContentClass": p.MaxContentClass})
 		}
 	}
 	writeJSON(w, 200, result)

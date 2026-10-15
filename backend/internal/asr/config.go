@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
@@ -50,19 +51,20 @@ type Model struct {
 }
 
 type Provider struct {
-	ID             string  `json:"id"`
-	Revision       int64   `json:"revision"`
-	PresetID       string  `json:"presetId"`
-	Name           string  `json:"name"`
-	BaseURL        string  `json:"baseUrl"`
-	APIKey         string  `json:"apiKey,omitempty"`
-	Boundary       string  `json:"boundary"`
-	AllowSensitive bool    `json:"allowSensitive"`
-	Scope          string  `json:"scope,omitempty"`
-	Port           int     `json:"port,omitempty"`
-	Enabled        bool    `json:"enabled"`
-	DefaultModel   string  `json:"defaultModel"`
-	Models         []Model `json:"models"`
+	ID              string  `json:"id"`
+	Revision        int64   `json:"revision"`
+	PresetID        string  `json:"presetId"`
+	Name            string  `json:"name"`
+	BaseURL         string  `json:"baseUrl"`
+	APIKey          string  `json:"apiKey,omitempty"`
+	Boundary        string  `json:"boundary"`
+	AllowSensitive  bool    `json:"allowSensitive,omitempty"` // Legacy receive scope.
+	MaxContentClass string  `json:"maxContentClass"`
+	Scope           string  `json:"scope,omitempty"`
+	Port            int     `json:"port,omitempty"`
+	Enabled         bool    `json:"enabled"`
+	DefaultModel    string  `json:"defaultModel"`
+	Models          []Model `json:"models"`
 }
 
 func (p Provider) Preset() Preset {
@@ -114,9 +116,13 @@ func Normalize(p Provider) (Provider, error) {
 	if p.Boundary != "external" && p.Boundary != "private" {
 		return p, errors.New("invalid speech recognition data boundary")
 	}
-	if p.Boundary != "private" {
-		p.AllowSensitive = false
+	maximum, err := contentpolicy.NormalizeMaxClass(p.MaxContentClass, p.Boundary, p.AllowSensitive)
+	if err != nil {
+		return p, err
 	}
+	p.MaxContentClass = maximum
+	p.AllowSensitive = p.Boundary == "private" && maximum != "safe"
+
 	if preset.Local {
 		if p.Scope == "" {
 			p.Scope = ScopeLocalMachine

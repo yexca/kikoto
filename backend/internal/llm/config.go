@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/outbound"
 )
 
@@ -54,18 +55,19 @@ type Model struct {
 }
 
 type Provider struct {
-	ID             string  `json:"id"`
-	Revision       int64   `json:"revision"`
-	PresetID       string  `json:"presetId"`
-	Name           string  `json:"name"`
-	BaseURL        string  `json:"baseUrl"`
-	APIKey         string  `json:"apiKey,omitempty"`
-	Boundary       string  `json:"boundary"`
-	AllowSensitive bool    `json:"allowSensitive"`
-	OllamaScope    string  `json:"ollamaScope,omitempty"`
-	Enabled        bool    `json:"enabled"`
-	DefaultModel   string  `json:"defaultModel"`
-	Models         []Model `json:"models"`
+	ID              string  `json:"id"`
+	Revision        int64   `json:"revision"`
+	PresetID        string  `json:"presetId"`
+	Name            string  `json:"name"`
+	BaseURL         string  `json:"baseUrl"`
+	APIKey          string  `json:"apiKey,omitempty"`
+	Boundary        string  `json:"boundary"`
+	AllowSensitive  bool    `json:"allowSensitive,omitempty"` // Legacy receive scope.
+	MaxContentClass string  `json:"maxContentClass"`
+	OllamaScope     string  `json:"ollamaScope,omitempty"`
+	Enabled         bool    `json:"enabled"`
+	DefaultModel    string  `json:"defaultModel"`
+	Models          []Model `json:"models"`
 	// RequestTimeoutSeconds bounds one translation request; zero uses
 	// DefaultRequestTimeout.
 	RequestTimeoutSeconds int `json:"requestTimeoutSeconds,omitempty"`
@@ -117,6 +119,13 @@ func Normalize(p Provider) (Provider, error) {
 	if p.Boundary != "external" && p.Boundary != "private" {
 		return p, errors.New("invalid LLM data boundary")
 	}
+	maximum, err := contentpolicy.NormalizeMaxClass(p.MaxContentClass, p.Boundary, p.AllowSensitive)
+	if err != nil {
+		return p, err
+	}
+	p.MaxContentClass = maximum
+	p.AllowSensitive = p.Boundary == "private" && maximum != "safe"
+
 	if preset.Kind == "ollama" {
 		if p.OllamaScope == "" {
 			p.OllamaScope = "local_machine"

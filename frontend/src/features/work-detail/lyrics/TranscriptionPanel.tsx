@@ -132,7 +132,7 @@ export function TranscriptionPanel({
 
   const rating = useContentRating(String(audioID), async () => {
     try {
-      return (await api.precheckASRTranscription(work.id, audioID)).class;
+      return await api.precheckASRTranscription(work.id, audioID);
     } catch (error) {
       toast.notify(
         error instanceof ApiError && startRefusals.has(error.code)
@@ -271,6 +271,7 @@ export function TranscriptionPanel({
         <p className="text-xs text-muted-foreground">
           {noService ? t("asrTranscription.noService") : t("asrTranscription.languageHint")}
         </p>
+        <p className="text-xs text-muted-foreground">{t("contentRating.metadataOnly")}</p>
         <ContentRatingCheck rating={rating} service={service} disabled={submitting || !audioID} />
         <Button
           className="w-full"

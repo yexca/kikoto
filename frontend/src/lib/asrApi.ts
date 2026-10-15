@@ -1,3 +1,4 @@
+import type { ContentMaximum } from "@/lib/contentPolicy";
 import { deleteJSON, getJSON, getText, postJSONBody, putJSONBody } from "@/lib/apiTransport";
 import type { LLMAssessment } from "@/lib/llmApi";
 
@@ -21,7 +22,7 @@ export type ASRProvider = {
   /** The origin requests go to; derived by the server for a same-machine deployment. */
   baseUrl: string;
   boundary: "external" | "private";
-  allowSensitive: boolean;
+  maxContentClass: ContentMaximum;
   scope?: ASRScope;
   port?: number;
   enabled: boolean;
@@ -36,7 +37,7 @@ export type ASRProviderPayload = {
   baseUrl?: string;
   apiKey?: string;
   boundary?: ASRProvider["boundary"];
-  allowSensitive?: boolean;
+  maxContentClass?: ContentMaximum;
   scope?: ASRScope;
   port?: number;
   enabled?: boolean;
@@ -50,7 +51,7 @@ export type ASRProviderList = {
   hostAddress: string;
 };
 
-export type ASRService = Pick<ASRProvider, "id" | "name" | "defaultModel" | "boundary" | "allowSensitive">;
+export type ASRService = Pick<ASRProvider, "id" | "name" | "defaultModel" | "boundary" | "maxContentClass">;
 
 export type ASRTranscriptionState =
   "pending" | "requesting" | "failed" | "ready" | "publishing" | "accepted" | "rejected" | "cancelled";
@@ -94,7 +95,7 @@ export const asrApi = {
   listASRServices: () => getJSON<ASRService[]>("/api/asr/services"),
   /** The content policy class of a track's work, checked without contacting a service. */
   precheckASRTranscription: (workId: number, audioMediaItemId: number) =>
-    postJSONBody<{ class: LLMAssessment["class"] }>(`/api/works/${workId}/asr-precheck`, { audioMediaItemId }),
+    postJSONBody<LLMAssessment>(`/api/works/${workId}/asr-precheck`, { audioMediaItemId }),
   listASRTranscriptions: (workId: number) => getJSON<ASRTranscriptionList>(`/api/works/${workId}/asr-transcriptions`),
   createASRTranscription: (workId: number, payload: ASRTranscriptionRequest) =>
     postJSONBody<{ id: string; runId: number; state: ASRTranscriptionState; deduplicated: boolean }>(

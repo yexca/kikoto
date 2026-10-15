@@ -14,38 +14,43 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/asr"
+	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 // asrAllowed applies the content safety policy shared with LLM translation to
-// the work an audio track belongs to: sensitive works go only to a private
-// service explicitly allowed to receive them, and unknown or blocked works go
-// nowhere.
+// the work an audio track belongs to against the service receive maximum.
+// Unknown and blocked works go nowhere.
 func (s *Server) asrAllowed(ctx context.Context, workID int64, p asr.Provider) (bool, error) {
 	class, err := s.asrContentClass(ctx, workID)
 	if err != nil {
 		return false, err
 	}
-	return class == "safe" || class == "sensitive" && p.Boundary == "private" && p.AllowSensitive, nil
+	return contentpolicy.Allows(class, p.MaxContentClass), nil
 }
 
 // asrContentClass is the content policy class of a work's audio: its metadata
 // decides, since the audio itself is not inspected. A work that no longer
 // exists is unknown.
 func (s *Server) asrContentClass(ctx context.Context, workID int64) (string, error) {
+	assessment, err := s.asrAssessment(ctx, workID)
+	return assessment.Class, err
+}
+
+func (s *Server) asrAssessment(ctx context.Context, workID int64) (contentpolicy.Assessment, error) {
 	input, err := loadLLMWorkInput(ctx, s.db, workID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "unknown", nil
+		return contentpolicy.Assessment{Class: "unknown", Reason: "age rating is missing or unknown", Matches: []contentpolicy.Match{}}, nil
 	}
 	if err != nil {
-		return "", err
+		return contentpolicy.Assessment{}, err
 	}
 	policy, err := s.llmStore.Policy(ctx)
 	if err != nil {
-		return "", err
+		return contentpolicy.Assessment{}, err
 	}
 	_, scan := llmFields(input, nil)
-	return policy.Assess(input.Age, scan, input.Tags).Class, nil
+	return policy.Assess(input.Age, scan, input.Tags), nil
 }
 
 // asrWorkTrack resolves an audio track of a work's lyrics family that has an
@@ -101,12 +106,12 @@ func (s *Server) precheckASRTranscription(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	class, err := s.asrContentClass(r.Context(), source.WorkID)
+	assessment, err := s.asrAssessment(r.Context(), source.WorkID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]string{"class": class})
+	writeJSON(w, 200, assessment)
 }
 
 type asrTranscriptionRequest struct {
@@ -160,7 +165,7 @@ func (s *Server) createASRTranscription(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if !allowed {
-		writeAPIError(w, 400, "asr_policy_blocked", "Content policy blocks this transcription. Sensitive content requires an explicitly allowed private service; unknown and blocked content are refused.", false)
+		writeAPIError(w, 400, "asr_policy_blocked", "Content policy blocks this transcription. The content exceeds the service receive maximum, or its class is unknown or blocked.", false)
 		return
 	}
 	if _, err := exec.LookPath("ffmpeg"); err != nil {

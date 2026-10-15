@@ -1,0 +1,61 @@
+import { useTranslation } from "react-i18next";
+
+import { Badge, type BadgeProps } from "@/components/ui/badge";
+import type { LLMAssessment } from "@/lib/llmApi";
+import { serviceReceives, type ContentBoundary, type ContentClass } from "@/lib/contentPolicy";
+
+const classBadges: Record<ContentClass, BadgeProps["variant"]> = {
+  safe: "success",
+  sensitive: "warning",
+  restricted: "warning",
+  unknown: "error",
+  blocked: "error",
+};
+
+export function ContentAssessment({
+  assessment,
+  service,
+}: {
+  assessment: LLMAssessment;
+  service: (ContentBoundary & { name: string }) | null;
+}) {
+  const { t } = useTranslation();
+  const refused = assessment.class === "unknown" || assessment.class === "blocked";
+  const allowed = service !== null && serviceReceives(assessment.class, service);
+  return (
+    <div role="status" className="space-y-1.5 text-xs">
+      <div className="flex items-start gap-2">
+        <Badge variant={classBadges[assessment.class]} className="mt-px shrink-0 px-1.5 py-0 text-2xs">
+          {t(`contentRating.classes.${assessment.class}`)}
+        </Badge>
+        <p
+          className={
+            refused
+              ? "text-error-foreground"
+              : service && !allowed
+                ? "text-warning-foreground"
+                : "text-muted-foreground"
+          }
+        >
+          {refused
+            ? t(`contentRating.${assessment.class}`)
+            : service
+              ? t(allowed ? "contentRating.receives" : "contentRating.notReceives", { service: service.name })
+              : t(`contentRating.${assessment.class}`)}
+        </p>
+      </div>
+      {service && (
+        <p className="text-muted-foreground">
+          {t("contentRating.maximum", { maximum: t(`contentRating.classes.${service.maxContentClass}`) })}
+        </p>
+      )}
+      {assessment.matches.map((match, index) => (
+        <p key={index} className="break-words text-muted-foreground">
+          {match.rule}
+          {match.field ? ` · ${t(`maintenance.llm.ruleFields.${match.field}`)}` : ""}
+          {match.action ? ` · ${t(`contentRating.classes.${match.action}`)}` : ""}
+        </p>
+      ))}
+    </div>
+  );
+}

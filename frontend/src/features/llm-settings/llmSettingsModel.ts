@@ -15,7 +15,7 @@ export type ProviderDraft = {
   clearKey: boolean;
   hasApiKey: boolean;
   boundary: LLMProvider["boundary"];
-  allowSensitive: boolean;
+  maxContentClass: LLMProvider["maxContentClass"];
   ollamaScope?: LLMProvider["ollamaScope"];
   enabled: boolean;
   defaultModel: string;
@@ -59,7 +59,7 @@ export function draftFromPreset(preset: LLMProviderPreset): ProviderDraft {
     clearKey: false,
     hasApiKey: false,
     boundary: preset.boundary,
-    allowSensitive: false,
+    maxContentClass: "safe",
     ollamaScope: preset.kind === "ollama" ? "local_machine" : undefined,
     enabled: true,
     defaultModel: "",
@@ -84,7 +84,7 @@ export function draftFromProvider(provider: LLMProvider): ProviderDraft {
     clearKey: false,
     hasApiKey: provider.hasApiKey,
     boundary: provider.boundary,
-    allowSensitive: provider.allowSensitive,
+    maxContentClass: provider.maxContentClass,
     ollamaScope: provider.ollamaScope,
     enabled: provider.enabled,
     defaultModel: provider.defaultModel ?? "",
@@ -129,7 +129,7 @@ export function updatePayload(draft: ProviderDraft): Partial<LLMProviderPayload>
     enabled: draft.enabled,
     defaultModel: draft.defaultModel.trim(),
     boundary: draft.boundary,
-    allowSensitive: draft.boundary === "private" && draft.allowSensitive,
+    maxContentClass: draft.maxContentClass,
     ollamaScope: draft.ollamaScope,
     requestTimeoutSeconds: Number(draft.requestTimeoutMinutes) * 60,
     ...(draft.kind === "ollama"
@@ -148,7 +148,7 @@ export const KEYWORD_RULE_LIMIT = 512;
 export const KEYWORD_RULE_FIELDS = ["all", "title", "description", "tags", "lyrics"] as const;
 
 export function emptyPolicy(): LLMPolicy {
-  return { alwaysScanAllAges: false, tagIds: [], keywords: [] };
+  return { alwaysScanAllAges: false, tagRules: [], keywords: [] };
 }
 
 export function policiesEqual(left: LLMPolicy, right: LLMPolicy) {
@@ -156,7 +156,7 @@ export function policiesEqual(left: LLMPolicy, right: LLMPolicy) {
     JSON.stringify({
       alwaysScanAllAges: policy.alwaysScanAllAges,
       remoteLyrics: policy.remoteLyrics ?? false,
-      tagIds: policy.tagIds,
+      tagRules: policy.tagRules,
       keywords: policy.keywords.map((rule) => ({ term: rule.term, fields: rule.fields, action: rule.action })),
     });
   return comparable(left) === comparable(right);
