@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/asr"
@@ -26,12 +27,13 @@ type asrProviderResponse struct {
 	Port            int         `json:"port,omitempty"`
 	Enabled         bool        `json:"enabled"`
 	HasAPIKey       bool        `json:"hasApiKey"`
+	EnabledModels   []string    `json:"enabledModels"`
 	DefaultModel    string      `json:"defaultModel"`
 	Models          []asr.Model `json:"models"`
 }
 
 func (s *Server) asrResponse(p asr.Provider) asrProviderResponse {
-	return asrProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, AllowSensitive: p.AllowSensitive, MaxContentClass: p.MaxContentClass, Scope: p.Scope, Port: p.Port, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", DefaultModel: p.DefaultModel, Models: p.Models}
+	return asrProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, AllowSensitive: p.AllowSensitive, MaxContentClass: p.MaxContentClass, Scope: p.Scope, Port: p.Port, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", EnabledModels: p.EnabledModels, DefaultModel: p.DefaultModel, Models: p.Models}
 }
 
 func writeASRDisabled(w http.ResponseWriter) {
@@ -59,17 +61,18 @@ func (s *Server) listASRProviders(w http.ResponseWriter, r *http.Request) {
 }
 
 type asrProviderPayload struct {
-	PresetID        string  `json:"presetId"`
-	Name            string  `json:"name"`
-	BaseURL         *string `json:"baseUrl"`
-	APIKey          *string `json:"apiKey"`
-	Boundary        string  `json:"boundary"`
-	AllowSensitive  *bool   `json:"allowSensitive"`
-	MaxContentClass *string `json:"maxContentClass"`
-	Scope           string  `json:"scope"`
-	Port            *int    `json:"port"`
-	Enabled         *bool   `json:"enabled"`
-	DefaultModel    *string `json:"defaultModel"`
+	PresetID        string    `json:"presetId"`
+	Name            string    `json:"name"`
+	BaseURL         *string   `json:"baseUrl"`
+	APIKey          *string   `json:"apiKey"`
+	Boundary        string    `json:"boundary"`
+	AllowSensitive  *bool     `json:"allowSensitive"`
+	MaxContentClass *string   `json:"maxContentClass"`
+	Scope           string    `json:"scope"`
+	Port            *int      `json:"port"`
+	Enabled         *bool     `json:"enabled"`
+	EnabledModels   *[]string `json:"enabledModels"`
+	DefaultModel    *string   `json:"defaultModel"`
 }
 
 func (s *Server) saveASRProvider(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +141,9 @@ func (s *Server) saveASRProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Enabled != nil {
 		p.Enabled = *body.Enabled
+	}
+	if body.EnabledModels != nil {
+		p.EnabledModels = *body.EnabledModels
 	}
 	if body.DefaultModel != nil {
 		p.DefaultModel = *body.DefaultModel
@@ -222,20 +228,28 @@ func (s *Server) listASRServices(w http.ResponseWriter, r *http.Request) {
 	result := []map[string]any{}
 	for _, p := range providers {
 		if p.Enabled && p.DefaultModel != "" {
-			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "boundary": p.Boundary, "allowSensitive": p.AllowSensitive, "maxContentClass": p.MaxContentClass})
+			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "boundary": p.Boundary, "allowSensitive": p.AllowSensitive, "maxContentClass": p.MaxContentClass})
 		}
 	}
 	writeJSON(w, 200, result)
 }
 
 // asrConfigHash identifies everything that decides where audio goes and how
-// it is transcribed, so a task notices a changed service before sending more.
-func (s *Server) asrConfigHash(p asr.Provider) string {
-	p.Name = ""
-	p.Models = nil
-	p.Revision = 0
+// model transcribes it, so a task notices a changed service before sending
+// more. The name, the default and the other enabled models are left out. A
+// model that is no longer enabled has no digest, so every comparison with a
+// stored one fails.
+func (s *Server) asrConfigHash(p asr.Provider, model string) string {
+	if model == "" || !slices.Contains(p.EnabledModels, model) {
+		return ""
+	}
+	p.Name, p.Revision, p.DefaultModel = "", 0, ""
+	p.Models, p.EnabledModels = nil, nil
 	p.BaseURL = p.Endpoint(s.cfg.HostProxyAddress())
-	return llmValueHash(p)
+	return llmValueHash(struct {
+		Provider asr.Provider
+		Model    string
+	}{p, model})
 }
 
 // asrClient reaches only the administrator-configured origin, including its

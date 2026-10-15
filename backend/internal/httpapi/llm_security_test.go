@@ -25,7 +25,7 @@ func llmTestProvider(t *testing.T, f manualOverrideFixture, url, boundary string
 	if _, err := f.db.Exec("UPDATE user_account SET role='admin' WHERE id=?", f.userID); err != nil {
 		t.Fatal(err)
 	}
-	p, err := f.server.llmStore.Mutate(context.Background(), "", llm.Provider{PresetID: "custom-openai", BaseURL: url, Boundary: boundary, AllowSensitive: allow, Enabled: true, DefaultModel: "example-model"}, nil, false)
+	p, err := f.server.llmStore.Mutate(context.Background(), "", llm.Provider{PresetID: "custom-openai", BaseURL: url, Boundary: boundary, AllowSensitive: allow, Enabled: true, EnabledModels: []string{"example-model"}}, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestLLMPreviewBindsActorAndRevalidatesSnapshots(t *testing.T) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"title\":\"Example translation\"}"}}]}`))
 	}))
 	defer upstream.Close()
-	for _, change := range []string{"source", "policy", "connection", "model", "maximum", "replay", "restart", "actor", "work"} {
+	for _, change := range []string{"source", "policy", "connection", "model", "other_model", "maximum", "replay", "restart", "actor", "work"} {
 		t.Run(change, func(t *testing.T) {
 			f := newManualOverrideFixture(t, config.Config{})
 			_, _ = f.db.Exec("UPDATE work SET age_rating='general',description='Original description' WHERE id=?", f.workID)
@@ -118,13 +118,18 @@ func TestLLMPreviewBindsActorAndRevalidatesSnapshots(t *testing.T) {
 				if err := f.server.llmStore.SavePolicy(context.Background(), llm.DefaultPolicy()); err != nil {
 					t.Fatal(err)
 				}
-			case "connection", "model", "maximum":
-				if change == "connection" {
+			case "connection", "model", "other_model", "maximum":
+				switch change {
+				case "connection":
 					p.BaseURL = "https://new.example.invalid"
-				} else if change == "maximum" {
+				case "maximum":
 					p.MaxContentClass = "safe"
-				} else {
-					p.DefaultModel = "another-model"
+				case "model":
+					// The model the preview used is no longer offered.
+					p.EnabledModels = []string{"another-model"}
+				default:
+					// Offering another model and making it the default leaves the preview valid.
+					p.EnabledModels, p.DefaultModel = []string{"example-model", "another-model"}, "another-model"
 				}
 				if _, err := f.server.llmStore.Mutate(context.Background(), p.ID, p, nil, false); err != nil {
 					t.Fatal(err)
@@ -146,7 +151,7 @@ func TestLLMPreviewBindsActorAndRevalidatesSnapshots(t *testing.T) {
 			}
 			w = apply()
 			want := 409
-			if change == "restart" || change == "replay" {
+			if change == "restart" || change == "replay" || change == "other_model" {
 				want = 200
 			}
 			if change == "actor" || change == "work" {
@@ -205,7 +210,7 @@ func TestLLMEndpointChangeDropsCredentialsAndModels(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The handler starts with the current provider, including its server-side key.
-	r := llmTestRequest(f, "PUT", `{"baseUrl":"https://second.example.invalid","defaultModel":"example-model"}`)
+	r := llmTestRequest(f, "PUT", `{"baseUrl":"https://second.example.invalid","enabledModels":["example-model"]}`)
 	r.SetPathValue("id", p.ID)
 	w := httptest.NewRecorder()
 	f.server.saveLLMProvider(w, r)

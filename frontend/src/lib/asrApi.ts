@@ -27,7 +27,11 @@ export type ASRProvider = {
   port?: number;
   enabled: boolean;
   hasApiKey: boolean;
+  /** The models offered for transcription, in display order. */
+  enabledModels: string[];
+  /** One of the enabled models, or empty when none is enabled. */
   defaultModel: string;
+  /** Discovered models, offered as suggestions. */
   models: ASRModel[];
 };
 
@@ -41,6 +45,7 @@ export type ASRProviderPayload = {
   scope?: ASRScope;
   port?: number;
   enabled?: boolean;
+  enabledModels?: string[];
   defaultModel?: string;
 };
 
@@ -51,7 +56,10 @@ export type ASRProviderList = {
   hostAddress: string;
 };
 
-export type ASRService = Pick<ASRProvider, "id" | "name" | "defaultModel" | "boundary" | "maxContentClass">;
+export type ASRService = Pick<ASRProvider, "id" | "name" | "defaultModel" | "boundary" | "maxContentClass"> & {
+  /** The enabled models, any of which a transcription may use. */
+  models: string[];
+};
 
 export type ASRTranscriptionState =
   "pending" | "requesting" | "failed" | "ready" | "publishing" | "accepted" | "rejected" | "cancelled";
@@ -80,6 +88,8 @@ export type ASRTranscriptionList = {
 export type ASRTranscriptionRequest = {
   audioMediaItemId: number;
   providerId: string;
+  /** One of the service's enabled models; omitted uses its default. */
+  model?: string;
   /** A lyrics language token, or empty to let the service detect it. */
   language: string;
 };

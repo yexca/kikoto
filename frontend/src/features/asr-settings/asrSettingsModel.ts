@@ -20,6 +20,7 @@ export type ASRServiceDraft = {
   boundary: ASRProvider["boundary"];
   maxContentClass: ASRProvider["maxContentClass"];
   enabled: boolean;
+  enabledModels: string[];
   defaultModel: string;
   models: ASRModel[];
 };
@@ -38,6 +39,7 @@ export function draftFromPreset(preset: ASRPreset): ASRServiceDraft {
     boundary: preset.boundary,
     maxContentClass: "safe",
     enabled: true,
+    enabledModels: [],
     defaultModel: "",
     models: [],
   };
@@ -62,6 +64,7 @@ export function draftFromProvider(provider: ASRProvider): ASRServiceDraft {
     boundary: provider.boundary,
     maxContentClass: provider.maxContentClass,
     enabled: provider.enabled,
+    enabledModels: [...provider.enabledModels],
     defaultModel: provider.defaultModel,
     models: [...provider.models],
   };
@@ -107,7 +110,8 @@ export function updatePayload(draft: ASRServiceDraft): ASRProviderPayload {
   return {
     name: draft.name.trim(),
     enabled: draft.enabled,
-    defaultModel: draft.defaultModel.trim(),
+    enabledModels: draft.enabledModels,
+    defaultModel: draft.defaultModel,
     boundary: draft.boundary,
     maxContentClass: draft.maxContentClass,
     ...(draft.scope ? { scope: draft.scope } : {}),

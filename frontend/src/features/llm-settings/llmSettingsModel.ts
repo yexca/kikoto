@@ -18,6 +18,7 @@ export type ProviderDraft = {
   maxContentClass: LLMProvider["maxContentClass"];
   ollamaScope?: LLMProvider["ollamaScope"];
   enabled: boolean;
+  enabledModels: string[];
   defaultModel: string;
   models: LLMModel[];
   /** Whole minutes as typed; blank uses the server default. */
@@ -62,6 +63,7 @@ export function draftFromPreset(preset: LLMProviderPreset): ProviderDraft {
     maxContentClass: "safe",
     ollamaScope: preset.kind === "ollama" ? "local_machine" : undefined,
     enabled: true,
+    enabledModels: [],
     defaultModel: "",
     models: [],
     requestTimeoutMinutes: String(REQUEST_TIMEOUT_MINUTES.default),
@@ -87,6 +89,7 @@ export function draftFromProvider(provider: LLMProvider): ProviderDraft {
     maxContentClass: provider.maxContentClass,
     ollamaScope: provider.ollamaScope,
     enabled: provider.enabled,
+    enabledModels: [...provider.enabledModels],
     defaultModel: provider.defaultModel ?? "",
     models: [...provider.models],
     requestTimeoutMinutes: String(Math.max(1, Math.round(provider.requestTimeoutSeconds / 60))),
@@ -127,7 +130,8 @@ export function updatePayload(draft: ProviderDraft): Partial<LLMProviderPayload>
   return {
     name: draft.name.trim(),
     enabled: draft.enabled,
-    defaultModel: draft.defaultModel.trim(),
+    enabledModels: draft.enabledModels,
+    defaultModel: draft.defaultModel,
     boundary: draft.boundary,
     maxContentClass: draft.maxContentClass,
     ollamaScope: draft.ollamaScope,

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -51,20 +52,63 @@ type Model struct {
 }
 
 type Provider struct {
-	ID              string  `json:"id"`
-	Revision        int64   `json:"revision"`
-	PresetID        string  `json:"presetId"`
-	Name            string  `json:"name"`
-	BaseURL         string  `json:"baseUrl"`
-	APIKey          string  `json:"apiKey,omitempty"`
-	Boundary        string  `json:"boundary"`
-	AllowSensitive  bool    `json:"allowSensitive,omitempty"` // Legacy receive scope.
-	MaxContentClass string  `json:"maxContentClass"`
-	Scope           string  `json:"scope,omitempty"`
-	Port            int     `json:"port,omitempty"`
-	Enabled         bool    `json:"enabled"`
-	DefaultModel    string  `json:"defaultModel"`
-	Models          []Model `json:"models"`
+	ID              string `json:"id"`
+	Revision        int64  `json:"revision"`
+	PresetID        string `json:"presetId"`
+	Name            string `json:"name"`
+	BaseURL         string `json:"baseUrl"`
+	APIKey          string `json:"apiKey,omitempty"`
+	Boundary        string `json:"boundary"`
+	AllowSensitive  bool   `json:"allowSensitive,omitempty"` // Legacy receive scope.
+	MaxContentClass string `json:"maxContentClass"`
+	Scope           string `json:"scope,omitempty"`
+	Port            int    `json:"port,omitempty"`
+	Enabled         bool   `json:"enabled"`
+	// EnabledModels are the model IDs offered for transcription, in display
+	// order. DefaultModel is one of them, or empty when none is enabled.
+	EnabledModels []string `json:"enabledModels"`
+	DefaultModel  string   `json:"defaultModel"`
+	// Models are the discovered model IDs, offered as suggestions.
+	Models []Model `json:"models"`
+}
+
+// MaxEnabledModels bounds the models one service offers.
+const MaxEnabledModels = 32
+
+// ResolveModel returns the requested model when it is enabled, or the
+// default model when none is requested.
+func (p Provider) ResolveModel(requested string) (string, bool) {
+	if requested == "" {
+		return p.DefaultModel, p.DefaultModel != ""
+	}
+	return requested, slices.Contains(p.EnabledModels, requested)
+}
+
+// normalizeModels trims and deduplicates the enabled models and keeps the
+// default among them, falling back to the first.
+func normalizeModels(enabled []string, defaultModel string) ([]string, string, error) {
+	result := []string{}
+	for _, id := range enabled {
+		id = strings.TrimSpace(id)
+		if id == "" || slices.Contains(result, id) {
+			continue
+		}
+		if len(id) > 256 || strings.ContainsFunc(id, unicode.IsControl) {
+			return nil, "", errors.New("invalid model id")
+		}
+		result = append(result, id)
+	}
+	if len(result) > MaxEnabledModels {
+		return nil, "", errors.New("too many enabled models")
+	}
+	defaultModel = strings.TrimSpace(defaultModel)
+	if !slices.Contains(result, defaultModel) {
+		defaultModel = ""
+		if len(result) > 0 {
+			defaultModel = result[0]
+		}
+	}
+	return result, defaultModel, nil
 }
 
 func (p Provider) Preset() Preset {
@@ -137,9 +181,9 @@ func Normalize(p Provider) (Provider, error) {
 	if len(p.APIKey) > 4096 || strings.ContainsFunc(p.APIKey, unicode.IsControl) {
 		return p, errors.New("invalid API key")
 	}
-	p.DefaultModel = strings.TrimSpace(p.DefaultModel)
-	if len(p.DefaultModel) > 256 || strings.ContainsFunc(p.DefaultModel, unicode.IsControl) {
-		return p, errors.New("invalid model id")
+	p.EnabledModels, p.DefaultModel, err = normalizeModels(p.EnabledModels, p.DefaultModel)
+	if err != nil {
+		return p, err
 	}
 	if p.Models == nil {
 		p.Models = []Model{}

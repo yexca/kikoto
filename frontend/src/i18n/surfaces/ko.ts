@@ -459,7 +459,6 @@ export const surfaceKorean = {
       clearKey: "저장된 API 키 지우기",
       connectionChangeHint:
         "위치, 포트 또는 엔드포인트를 바꾸면 저장된 키와 찾은 모델이 지워집니다. 키를 다시 입력하세요.",
-      model: "모델",
       modelDescription:
         "구간 타임스탬프를 반환하는 모델이어야 합니다(OpenAI의 whisper-1 등). 모델 가져오기는 먼저 연결을 저장합니다.",
       modelsAvailable: "찾은 모델 {{count}}개를 제안으로 표시합니다. 모델 가져오기는 먼저 연결을 저장합니다.",
@@ -547,7 +546,6 @@ export const surfaceKorean = {
       save: "저장",
       delete: "삭제",
       enabled: "사용",
-      model: "기본 모델",
       modelDescription: "모델 ID를 입력하거나 검색된 모델을 선택합니다. 모델 검색 전에 연결 설정을 저장합니다.",
       modelNone: "모델을 선택하지 않음",
       fetchModels: "모델 가져오기",
@@ -2950,6 +2948,18 @@ export const surfaceKorean = {
     discard: "버리기",
     discarded: "번역문을 버렸습니다.",
     discardFailed: "번역문을 버리지 못했습니다.",
+  },
+  serviceModels: {
+    label: "모델",
+    default: "기본",
+    makeDefault: "{{model}}을(를) 기본으로 사용",
+    remove: "{{model}} 삭제",
+    addLabel: "모델 ID",
+    addPlaceholder: "모델 ID",
+    add: "추가",
+    empty: "추가된 모델이 없습니다.",
+    limit: "모델은 최대 {{count}}개까지 추가할 수 있습니다.",
+    summary: "{{model}} +{{count}}",
   },
   contentRating: {
     title: "콘텐츠 등급",

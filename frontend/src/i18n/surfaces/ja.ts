@@ -460,7 +460,6 @@ export const surfaceJapanese = {
       clearKey: "保存済みの API キーを消去",
       connectionChangeHint:
         "場所・ポート・エンドポイントを変更すると、保存済みのキーと取得済みのモデルが消去されます。キーを再入力してください。",
-      model: "モデル",
       modelDescription:
         "セグメントのタイムスタンプを返すモデルが必要です（OpenAI では whisper-1 など）。モデルの取得では先に接続を保存します。",
       modelsAvailable: "取得した {{count}} 件のモデルを候補として表示します。モデルの取得では先に接続を保存します。",
@@ -548,7 +547,6 @@ export const surfaceJapanese = {
       save: "保存",
       delete: "削除",
       enabled: "有効",
-      model: "既定のモデル",
       modelDescription: "モデル ID を入力するか検出したモデルを選択します。検出前に接続設定を保存します。",
       modelNone: "モデル未選択",
       fetchModels: "モデルを取得",
@@ -2966,6 +2964,18 @@ export const surfaceJapanese = {
     discard: "破棄",
     discarded: "訳文を破棄しました。",
     discardFailed: "訳文を破棄できませんでした。",
+  },
+  serviceModels: {
+    label: "モデル",
+    default: "既定",
+    makeDefault: "{{model}} を既定にする",
+    remove: "{{model}} を削除",
+    addLabel: "モデル ID",
+    addPlaceholder: "モデル ID",
+    add: "追加",
+    empty: "モデルが追加されていません。",
+    limit: "追加できるモデルは {{count}} 個までです。",
+    summary: "{{model}} +{{count}}",
   },
   contentRating: {
     title: "コンテンツ区分",

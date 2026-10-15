@@ -25,6 +25,7 @@ import {
 } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { allLyricsLanguages, lyricsLanguages } from "@/lib/lyricsLanguage";
+import { serviceModelChoices } from "@/lib/serviceModels";
 
 const activeStates: ReadonlySet<ASRTranscriptionState> = new Set(["pending", "requesting"]);
 const pollMs = 4000;
@@ -89,7 +90,8 @@ export function TranscriptionPanel({
   const [transcriptions, setTranscriptions] = useState<ASRTranscription[]>([]);
   const [listState, setListState] = useState<"loading" | "ready" | "failed">("loading");
   const [audioID, setAudioID] = useState(() => audio[0]?.mediaItemId ?? 0);
-  const [serviceID, setServiceID] = useState("");
+  // A service and one of its enabled models, as a serviceModelKey.
+  const [choiceKey, setChoiceKey] = useState("");
   const [language, setLanguage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [busyID, setBusyID] = useState<string | null>(null);
@@ -115,7 +117,7 @@ export function TranscriptionPanel({
       .listASRServices()
       .then((result) => {
         setServices(result);
-        setServiceID((current) => current || result[0]?.id || "");
+        setChoiceKey((current) => current || serviceModelChoices(result)[0]?.key || "");
       })
       .catch((error) => {
         setServices([]);
@@ -130,6 +132,8 @@ export function TranscriptionPanel({
     return () => window.clearInterval(timer);
   }, [active, load]);
 
+  const choices = serviceModelChoices(services ?? []);
+  const choice = choices.find((candidate) => candidate.key === choiceKey) ?? null;
   const rating = useContentRating(String(audioID), async () => {
     try {
       return await api.precheckASRTranscription(work.id, audioID);
@@ -144,12 +148,13 @@ export function TranscriptionPanel({
   });
 
   const start = async () => {
-    if (!audioID || !serviceID || language === null) return;
+    if (!audioID || !choice || language === null) return;
     setSubmitting(true);
     try {
       const queued = await api.createASRTranscription(work.id, {
         audioMediaItemId: audioID,
-        providerId: serviceID,
+        providerId: choice.service.id,
+        model: choice.model,
         language,
       });
       toast.notify({
@@ -208,16 +213,16 @@ export function TranscriptionPanel({
       </span>
     ),
   }));
-  const serviceOptions: FloatingSelectOption[] = (services ?? []).map((service) => ({
-    value: service.id,
+  const serviceOptions: FloatingSelectOption[] = choices.map(({ key, service, model }) => ({
+    value: key,
     label: (
       <ServiceChoiceLabel
-        name={`${service.name} · ${service.defaultModel}`}
+        name={`${service.name} · ${model}`}
         excluded={rating.contentClass !== null && !serviceReceives(rating.contentClass, service)}
       />
     ),
   }));
-  const service = services?.find((candidate) => candidate.id === serviceID) ?? null;
+  const service = choice?.service ?? null;
   const languageOptions: FloatingSelectOption[] = [
     { value: allLyricsLanguages, label: t("asrTranscription.detect") },
     ...lyricsLanguages
@@ -244,9 +249,9 @@ export function TranscriptionPanel({
         <div className="min-w-0">
           <div className="mb-1 text-xs font-medium text-muted-foreground">{t("asrTranscription.service")}</div>
           <FloatingSelect
-            value={serviceID}
+            value={choiceKey}
             options={serviceOptions}
-            onValueChange={setServiceID}
+            onValueChange={setChoiceKey}
             ariaLabel={t("asrTranscription.service")}
             triggerLabel={
               services === null
@@ -276,7 +281,7 @@ export function TranscriptionPanel({
         <Button
           className="w-full"
           onClick={() => void start()}
-          disabled={submitting || !audioID || !serviceID || language === null}
+          disabled={submitting || !audioID || !choice || language === null}
         >
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AudioLines className="h-4 w-4" />}
           {submitting ? t("asrTranscription.starting") : t("asrTranscription.start")}

@@ -246,7 +246,14 @@ export function LLMSettingsSection({
                       : t("maintenance.llm.externalBoundary")}
                     {" · "}
                     {provider.defaultModel ? (
-                      provider.defaultModel
+                      provider.enabledModels.length > 1 ? (
+                        t("serviceModels.summary", {
+                          model: provider.defaultModel,
+                          count: provider.enabledModels.length - 1,
+                        })
+                      ) : (
+                        provider.defaultModel
+                      )
                     ) : (
                       <span className="text-warning-foreground">{t("maintenance.llm.modelNone")}</span>
                     )}

@@ -126,7 +126,7 @@ func newASRFixture(t *testing.T, audioSeconds int) asrFixture {
 		t.Fatal(err)
 	}
 	key := "synthetic-token"
-	fixture.provider, err = fixture.server.asrStore.Mutate(ctx, "", asr.Provider{PresetID: "local", Scope: asr.ScopeOtherMachine, BaseURL: upstream.URL, Enabled: true, DefaultModel: "example-model"}, &key, false)
+	fixture.provider, err = fixture.server.asrStore.Mutate(ctx, "", asr.Provider{PresetID: "local", Scope: asr.ScopeOtherMachine, BaseURL: upstream.URL, Enabled: true, EnabledModels: []string{"example-model"}}, &key, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestASRTranscriptionRefusesWhatThePolicyOrLibraryDoesNotAllow(t *testing.T)
 		t.Fatalf("sensitive work to a service not allowed to receive it = %d", response.Code)
 	}
 	allow := true
-	if _, err := fixture.server.asrStore.Mutate(context.Background(), fixture.provider.ID, asr.Provider{PresetID: "local", Scope: asr.ScopeOtherMachine, BaseURL: fixture.provider.BaseURL, Boundary: "private", AllowSensitive: allow, Enabled: true, DefaultModel: "example-model"}, nil, false); err != nil {
+	if _, err := fixture.server.asrStore.Mutate(context.Background(), fixture.provider.ID, asr.Provider{PresetID: "local", Scope: asr.ScopeOtherMachine, BaseURL: fixture.provider.BaseURL, Boundary: "private", AllowSensitive: allow, Enabled: true, EnabledModels: []string{"example-model"}}, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if response, _, _ := fixture.create(t, "ja-jp"); response.Code != http.StatusAccepted {
@@ -381,7 +381,7 @@ func TestASRTranscriptionInterruptionsNeverResendSilently(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "service_changed":
-				if _, err := fixture.server.asrStore.Mutate(ctx, fixture.provider.ID, asr.Provider{PresetID: "local", Scope: asr.ScopeOtherMachine, BaseURL: fixture.provider.BaseURL, Enabled: true, DefaultModel: "other-model"}, nil, false); err != nil {
+				if _, err := fixture.server.asrStore.Mutate(ctx, fixture.provider.ID, asr.Provider{PresetID: "local", Scope: asr.ScopeOtherMachine, BaseURL: fixture.provider.BaseURL, Enabled: true, EnabledModels: []string{"other-model"}}, nil, false); err != nil {
 					t.Fatal(err)
 				}
 			case "cancelled":
@@ -553,5 +553,36 @@ func TestASRClientRefusesRedirectsAndUnboundedResponses(t *testing.T) {
 				t.Fatal("a redirect was followed")
 			}
 		})
+	}
+}
+
+func TestASRTranscriptionRecordsTheChosenEnabledModel(t *testing.T) {
+	fixture := newASRFixture(t, 3)
+	provider := fixture.provider
+	provider.EnabledModels = []string{"example-model", "second-model"}
+	if _, err := fixture.server.asrStore.Mutate(context.Background(), provider.ID, provider, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	create := func(model string) (*httptest.ResponseRecorder, string) {
+		body, _ := json.Marshal(asrTranscriptionRequest{AudioMediaItemID: fixture.audioID, ProviderID: provider.ID, Model: model, Language: "ja-jp"})
+		workID := jsonNumber(fixture.workID)
+		response := httptest.NewRecorder()
+		fixture.server.createASRTranscription(response, fixture.request(t, http.MethodPost, "/api/works/"+workID+"/asr-transcriptions", string(body), map[string]string{"id": workID}))
+		var result struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(response.Body.Bytes(), &result)
+		return response, result.ID
+	}
+	if response, _ := create("unlisted-model"); response.Code != http.StatusBadRequest {
+		t.Fatalf("unlisted model = %d %s", response.Code, response.Body.String())
+	}
+	response, id := create("second-model")
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("create = %d %s", response.Code, response.Body.String())
+	}
+	var model string
+	if err := fixture.db.QueryRow("SELECT model FROM asr_transcription WHERE id = ?", id).Scan(&model); err != nil || model != "second-model" {
+		t.Fatalf("model = %q, %v", model, err)
 	}
 }

@@ -14,7 +14,7 @@ func (s *Server) validateLLMSend(ctx context.Context, userID, workID int64, payl
 		return llmInvalid("llm_permission_changed", "Translation permission changed.")
 	}
 	provider, err := s.llmProvider(ctx, payload.ProviderID)
-	if err != nil || !provider.Enabled || s.llmConfigHash(provider) != s.llmConfigHash(plan.Provider) {
+	if err != nil || !provider.Enabled || s.llmConfigHash(provider, plan.Model) != s.llmConfigHash(plan.Provider, plan.Model) {
 		return llmInvalid("llm_config_changed", "Provider configuration changed. Translate again.")
 	}
 	policy, err := s.llmStore.Policy(ctx)

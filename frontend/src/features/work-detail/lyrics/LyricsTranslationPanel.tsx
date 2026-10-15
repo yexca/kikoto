@@ -25,6 +25,7 @@ import {
 } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { allLyricsLanguages, lyricsLanguages } from "@/lib/lyricsLanguage";
+import { serviceModelChoices } from "@/lib/serviceModels";
 import { isLyricsPath } from "@/player/lyricsMatching";
 
 const activeStates: ReadonlySet<LLMLyricsTranslationState> = new Set(["pending", "requesting"]);
@@ -106,7 +107,8 @@ export function LyricsTranslationPanel({
   const [listState, setListState] = useState<"loading" | "ready" | "failed">("loading");
   const [locationID, setLocationID] = useState(() => sources[0]?.locationId ?? 0);
   const [audioID, setAudioID] = useState(() => trackForLyrics(audio, sources[0]?.mediaItemId) ?? 0);
-  const [providerID, setProviderID] = useState("");
+  // A provider and one of its enabled models, as a serviceModelKey.
+  const [choiceKey, setChoiceKey] = useState("");
   const [language, setLanguage] = useState(
     () => interfaceLyricsLanguages[i18n.resolvedLanguage ?? ""] ?? interfaceLyricsLanguages.en,
   );
@@ -132,7 +134,7 @@ export function LyricsTranslationPanel({
       .listTranslationModels()
       .then((result) => {
         setProviders(result);
-        setProviderID((current) => current || result[0]?.id || "");
+        setChoiceKey((current) => current || serviceModelChoices(result)[0]?.key || "");
       })
       .catch((error) => {
         setProviders([]);
@@ -156,6 +158,8 @@ export function LyricsTranslationPanel({
   };
 
   // The rating covers the work and the whole chosen lyrics file, whatever the provider or target.
+  const choices = serviceModelChoices(providers ?? []);
+  const choice = choices.find((candidate) => candidate.key === choiceKey) ?? null;
   const rating = useContentRating(`${locationID}:${audioID}`, async () => {
     try {
       const result = await api.precheckWork(work.id, {
@@ -175,11 +179,12 @@ export function LyricsTranslationPanel({
   });
 
   const start = async () => {
-    if (!locationID || !audioID || !providerID || !language) return;
+    if (!locationID || !audioID || !choice || !language) return;
     setSubmitting(true);
     try {
       const { runs } = await api.queueTranslations([work.primaryCode], {
-        providerId: providerID,
+        providerId: choice.service.id,
+        model: choice.model,
         targetLanguage: language,
         fields: ["lyrics"],
         lyricsLocationId: locationID,
@@ -247,21 +252,21 @@ export function LyricsTranslationPanel({
       </span>
     ),
   }));
-  const providerOptions: FloatingSelectOption[] = (providers ?? []).map((provider) => ({
-    value: provider.id,
+  const providerOptions: FloatingSelectOption[] = choices.map(({ key, service, model }) => ({
+    value: key,
     label: (
       <ServiceChoiceLabel
-        name={`${provider.name} · ${provider.defaultModel}`}
-        excluded={rating.contentClass !== null && !serviceReceives(rating.contentClass, provider)}
+        name={`${service.name} · ${model}`}
+        excluded={rating.contentClass !== null && !serviceReceives(rating.contentClass, service)}
       />
     ),
   }));
-  const provider = providers?.find((candidate) => candidate.id === providerID) ?? null;
+  const provider = choice?.service ?? null;
   const languageOptions: FloatingSelectOption[] = lyricsLanguages
     .filter(([value]) => value !== allLyricsLanguages)
     .map(([value, labelKey]) => ({ value, label: t(labelKey) }));
   const noProvider = providers !== null && providers.length === 0;
-  const ready = Boolean(locationID && audioID && providerID && language);
+  const ready = Boolean(locationID && audioID && choice && language);
 
   return (
     <div className="grid gap-5 @3xl:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] @3xl:items-start">
@@ -299,9 +304,9 @@ export function LyricsTranslationPanel({
             <div className="min-w-0">
               <div className="mb-1 text-xs font-medium text-muted-foreground">{t("lyricsTranslation.provider")}</div>
               <FloatingSelect
-                value={providerID}
+                value={choiceKey}
                 options={providerOptions}
-                onValueChange={setProviderID}
+                onValueChange={setChoiceKey}
                 ariaLabel={t("lyricsTranslation.provider")}
                 triggerLabel={
                   providers === null

@@ -96,10 +96,10 @@ func (s *Server) listLLMLyricsTranslations(w http.ResponseWriter, r *http.Reques
 		if json.Unmarshal([]byte(request), &payload) != nil || !slices.Contains(payload.Fields, "lyrics") {
 			continue
 		}
-		item.AudioMediaItemID, item.LyricsLocationID, item.TargetLanguage = payload.AudioMediaItemID, payload.LyricsLocationID, payload.Target
+		item.AudioMediaItemID, item.LyricsLocationID, item.TargetLanguage, item.Model = payload.AudioMediaItemID, payload.LyricsLocationID, payload.Target, payload.Model
 		for _, provider := range providers {
 			if provider.ID == payload.ProviderID {
-				item.ProviderName, item.Model = provider.Name, provider.DefaultModel
+				item.ProviderName = provider.Name
 			}
 		}
 		item.State = llmLyricsTranslationState(taskState, previewStatus, expires, assetStatus, now)

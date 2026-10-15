@@ -37,6 +37,36 @@ func TestNormalizeBoundsRequestTuning(t *testing.T) {
 	}
 }
 
+func TestNormalizeKeepsTheDefaultAmongEnabledModels(t *testing.T) {
+	provider, err := Normalize(Provider{PresetID: "openai", EnabledModels: []string{" first ", "second", "first", ""}, DefaultModel: "second"})
+	if err != nil || len(provider.EnabledModels) != 2 || provider.EnabledModels[0] != "first" || provider.DefaultModel != "second" {
+		t.Fatalf("provider = %+v, %v", provider, err)
+	}
+	provider, err = Normalize(Provider{PresetID: "openai", EnabledModels: []string{"first"}, DefaultModel: "removed"})
+	if err != nil || provider.DefaultModel != "first" {
+		t.Fatalf("default = %q, %v", provider.DefaultModel, err)
+	}
+	if model, ok := provider.ResolveModel(""); !ok || model != "first" {
+		t.Fatalf("resolved default = %q, %v", model, ok)
+	}
+	if _, ok := provider.ResolveModel("removed"); ok {
+		t.Fatal("resolved a model that is not enabled")
+	}
+	provider, err = Normalize(Provider{PresetID: "openai", DefaultModel: "unlisted"})
+	if err != nil || provider.DefaultModel != "" {
+		t.Fatalf("default without enabled models = %q, %v", provider.DefaultModel, err)
+	}
+	tooMany := make([]string, MaxEnabledModels+1)
+	for i := range tooMany {
+		tooMany[i] = "model-" + string(rune('a'+i%26)) + string(rune('a'+i/26))
+	}
+	for _, invalid := range [][]string{tooMany, {"bad\nmodel"}} {
+		if _, err := Normalize(Provider{PresetID: "openai", EnabledModels: invalid}); err == nil {
+			t.Fatalf("accepted %q", invalid)
+		}
+	}
+}
+
 func TestNormalizeRejectsEndpointPath(t *testing.T) {
 	if _, err := Normalize(Provider{PresetID: "openai", BaseURL: "https://example.invalid/v1"}); err == nil {
 		t.Fatal("endpoint path was accepted")

@@ -21,12 +21,15 @@ import (
 )
 
 type llmTranslatePayload struct {
-	LyricsLocationID int64    `json:"lyricsLocationId"`
-	AudioMediaItemID int64    `json:"audioMediaItemId"`
-	FolderID         int64    `json:"folderId"`
-	ProviderID       string   `json:"providerId"`
-	Target           string   `json:"targetLanguage"`
-	Fields           []string `json:"fields"`
+	LyricsLocationID int64  `json:"lyricsLocationId"`
+	AudioMediaItemID int64  `json:"audioMediaItemId"`
+	FolderID         int64  `json:"folderId"`
+	ProviderID       string `json:"providerId"`
+	// Model is one of the provider's enabled models; empty requests the
+	// default. Stored payloads always hold the resolved model.
+	Model  string   `json:"model,omitempty"`
+	Target string   `json:"targetLanguage"`
+	Fields []string `json:"fields"`
 }
 
 type llmWorkInput struct {
@@ -202,6 +205,7 @@ func (s *Server) translateWorkWithLLM(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	payload.Model = plan.Model
 	provider, policy, input, fields, tagIDs, text, assessment := plan.Provider, plan.Policy, plan.Input, plan.Fields, plan.TagIDs, plan.Source, plan.Assessment
 	var count int
 	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM llm_translation_preview WHERE user_id=? AND status='proposed' AND expires_at>?", actor.ID, time.Now().Unix()).Scan(&count); err != nil {
@@ -228,7 +232,7 @@ func (s *Server) translateWorkWithLLM(w http.ResponseWriter, r *http.Request) {
 	}
 	id := hex.EncodeToString(token[:])
 
-	preview := llmPreview{WorkID: workID, UserID: actor.ID, Expires: time.Now().Add(15 * time.Minute), Hash: llmInputHash(input), Input: input, Fields: fields, Result: result, Provider: provider, Target: payload.Target, PolicyHash: llmValueHash(policy), ConfigHash: s.llmConfigHash(provider)}
+	preview := llmPreview{WorkID: workID, UserID: actor.ID, Expires: time.Now().Add(15 * time.Minute), Hash: llmInputHash(input), Input: input, Fields: fields, Result: result, Provider: provider, Target: payload.Target, PolicyHash: llmValueHash(policy), ConfigHash: s.llmConfigHash(provider, plan.Model)}
 	preview.TagIDs = tagIDs
 	preview.Lyrics = plan.Lyrics
 	preview.Payload = payload
@@ -238,7 +242,7 @@ func (s *Server) translateWorkWithLLM(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"previewId": id, "providerId": provider.ID, "providerName": provider.Name, "model": provider.DefaultModel, "targetLanguage": payload.Target, "assessment": assessment, "source": text, "translation": result})
+	writeJSON(w, 200, map[string]any{"previewId": id, "providerId": provider.ID, "providerName": provider.Name, "model": plan.Model, "targetLanguage": payload.Target, "assessment": assessment, "source": text, "translation": result})
 }
 
 func (s *Server) applyLLMTranslation(w http.ResponseWriter, r *http.Request) {
@@ -277,7 +281,7 @@ func (s *Server) applyLLMTranslation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	provider, policy, err := loadLLMCurrent(r.Context(), tx, preview.Provider.ID)
-	if err != nil || !provider.Enabled || s.llmConfigHash(provider) != preview.ConfigHash || llmValueHash(policy) != preview.PolicyHash {
+	if err != nil || !provider.Enabled || s.llmConfigHash(provider, preview.Payload.Model) != preview.ConfigHash || llmValueHash(policy) != preview.PolicyHash {
 		s.expireLLMPreview(w, r, tx, payload.PreviewID, "llm_config_changed", "Provider or content policy changed. Translate again.")
 		return
 	}
@@ -309,7 +313,7 @@ func (s *Server) applyLLMTranslation(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		provider, policy, err = loadLLMCurrent(r.Context(), tx, preview.Provider.ID)
-		if err != nil || s.llmConfigHash(provider) != preview.ConfigHash || llmValueHash(policy) != preview.PolicyHash {
+		if err != nil || s.llmConfigHash(provider, preview.Payload.Model) != preview.ConfigHash || llmValueHash(policy) != preview.PolicyHash {
 			writeAPIError(w, 409, "llm_config_changed", "Provider or policy changed. Translate again.", false)
 			return
 		}
@@ -370,7 +374,7 @@ func (s *Server) applyLLMTranslation(w http.ResponseWriter, r *http.Request) {
 		metadataInput := current
 		metadataInput.LyricsHash = ""
 		if _, err := tx.ExecContext(r.Context(), `INSERT INTO work_llm_translation(work_id,language,field_name,value_text,source_hash,provider_id,model,created_by_user_id,source_text,source_work_id)
- VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(work_id,language,field_name) DO UPDATE SET value_text=excluded.value_text,source_hash=excluded.source_hash,provider_id=excluded.provider_id,model=excluded.model,status='accepted',created_by_user_id=excluded.created_by_user_id,source_text=excluded.source_text,source_work_id=excluded.source_work_id,updated_at=CURRENT_TIMESTAMP`, workID, preview.Target, field, value, llmInputHash(metadataInput), preview.Provider.ID, preview.Provider.DefaultModel, actor.ID, source, current.SourceID); err != nil {
+ VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(work_id,language,field_name) DO UPDATE SET value_text=excluded.value_text,source_hash=excluded.source_hash,provider_id=excluded.provider_id,model=excluded.model,status='accepted',created_by_user_id=excluded.created_by_user_id,source_text=excluded.source_text,source_work_id=excluded.source_work_id,updated_at=CURRENT_TIMESTAMP`, workID, preview.Target, field, value, llmInputHash(metadataInput), preview.Provider.ID, preview.Payload.Model, actor.ID, source, current.SourceID); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -413,7 +417,7 @@ func (s *Server) listLLMTranslationModels(w http.ResponseWriter, r *http.Request
 	result := []map[string]any{}
 	for _, p := range providers {
 		if p.Enabled && p.DefaultModel != "" {
-			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "boundary": p.Boundary, "allowSensitive": p.AllowSensitive, "maxContentClass": p.MaxContentClass})
+			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "boundary": p.Boundary, "allowSensitive": p.AllowSensitive, "maxContentClass": p.MaxContentClass})
 		}
 	}
 	writeJSON(w, 200, result)
