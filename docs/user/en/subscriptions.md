@@ -39,9 +39,9 @@ subscribe to, and works that Availability Watch finds on a remote source.
   - **Now available**: Availability Watch found the work on a remote source.
     Every account that can open Workflows receives these.
   A family with several events keeps one card, on the day of its newest event.
-- The cards follow the Library. **Display options** hold the cards per row and
-  the **Cards** choice of **Full**, **Compact**, or **Mini**, which the Library
-  and the other work collections share, and how many days a page holds: 5, 10
+- The cards follow the Library. **Display options** hold the **Cards** choice
+  of **Full**, **Compact**, or **Mini**, which the Library and the other work
+  collections share, the cards per row, and how many days a page holds: 5, 10
   (the default), or 15. Days without new works are skipped, so a page holds
   that many days that have works. A day starts at midnight in the time zone
   chosen in **Settings → Account → Time zone**, or the device's when that is

@@ -1195,13 +1195,18 @@ test("@desktop circle detail orders its works and switches card modes like the L
     "48",
     "96",
   ]);
+  // A card mode starts from automatic columns and its own page size.
+  const miniPageRequest = circleRequest({ pageSize: "48" });
+  await display.getByRole("radio", { name: "Mini cards with the cover and title only" }).click();
+  await miniPageRequest;
+  await expect(page.getByTestId("work-card").first()).toHaveAttribute("data-card-layout", "cover");
+  await expect(display.getByRole("radio", { name: "Automatic columns" })).toHaveAttribute("aria-checked", "true");
+  await display.getByRole("radio", { name: "Compact cards with fewer details" }).click();
+  await expect(page.getByTestId("work-card").first()).toHaveAttribute("data-card-layout", "tile");
+  await expect(display.getByRole("radio", { name: "24 per page" })).toHaveAttribute("aria-checked", "true");
   const largePageRequest = circleRequest({ pageSize: "96" });
   await display.getByRole("radio", { name: "96 per page" }).click();
   await largePageRequest;
-  await display.getByRole("radio", { name: "Mini cards with the cover and title only" }).click();
-  await expect(page.getByTestId("work-card").first()).toHaveAttribute("data-card-layout", "cover");
-  await display.getByRole("radio", { name: "Compact cards with fewer details" }).click();
-  await expect(page.getByTestId("work-card").first()).toHaveAttribute("data-card-layout", "tile");
 
   // The order and page size stay chosen for the next visit.
   const restoredRequest = circleRequest({ sort: "sales", direction: "asc", pageSize: "96" });

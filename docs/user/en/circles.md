@@ -72,12 +72,14 @@ Circles represent makers, circles, and related party catalog state.
 - Uses the Library-style works toolbar on wide layouts: the Works/Series switch
   and a bounded search on the left, then the sort button that names the
   current order, display options, the availability filter, and selection on
-  the right. Display options hold the columns, the **Cards** choice of
-  **Full**, **Compact**, and **Mini** shared with the Library, and the page
-  size. The shared collection pagination sits above and below the grid.
+  the right. Display options hold the **Cards** choice of **Full**,
+  **Compact**, and **Mini** shared with the Library, the columns, and the page
+  size; a newly chosen card mode starts from its
+  [preset](library.md#current-behavior). The shared collection pagination sits
+  above and below the grid.
 - Keeps mobile work controls to the Works/Series switch with the sort button
-  beside it, search, and one Catalog options action. Availability, mobile
-  columns, the card mode, page size, and selection mode live in that sheet;
+  beside it, search, and one Catalog options action. Availability, the card
+  mode, mobile columns, page size, and selection mode live in that sheet;
   wide layouts retain inline controls. The series overview lists series and
   offers no order.
 - Treats the mobile detail back control as Up to the last server-and-user-scoped

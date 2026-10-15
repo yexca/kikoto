@@ -575,11 +575,26 @@ test("@desktop mini card mode leaves the cover and title and is remembered", asy
   await expect(card.getByRole("button", { name: work.circle, exact: true })).toBeVisible();
   await expect(card.getByRole("button", { name: "Add to list" })).toBeVisible();
 
+  // Automatic columns count the grid tracks, empty ones included.
+  const autoTracks = () =>
+    card.evaluate(
+      (element) =>
+        getComputedStyle(element.closest("[style*='--desktop-grid-template']")!).gridTemplateColumns.split(" ").length,
+    );
+  const fullTracks = await autoTracks();
+
   await page.getByRole("button", { name: /^Display options/ }).click();
   await page.getByRole("radio", { name: /^Compact cards/ }).click();
   await expect(card).toHaveAttribute("data-card-layout", "tile");
   await page.getByRole("radio", { name: /^Mini cards/ }).click();
   await expect(card).toHaveAttribute("data-card-layout", "cover");
+  // Mini keeps automatic columns, which fit more covers, and starts from more
+  // works per page without cover source marks.
+  await expect(page.getByRole("radio", { name: "Automatic columns" })).toHaveAttribute("aria-checked", "true");
+  await expect.poll(autoTracks).toBeGreaterThan(fullTracks);
+  expect(await autoTracks()).toBeLessThanOrEqual(7);
+  await expect(page.getByRole("radio", { name: "48 per page" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: "Never show source marks" })).toHaveAttribute("aria-checked", "true");
   await expect(card.getByRole("heading", { name: work.title })).toBeVisible();
   await expect(card.getByRole("button", { name: work.circle, exact: true })).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Add to list" })).toHaveCount(0);

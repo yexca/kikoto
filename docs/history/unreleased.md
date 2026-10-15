@@ -84,6 +84,12 @@
 - The Library and Favorites offer 24, 48, or 96 works per page on every tab.
   Remote sources drop the 12-per-page choice, and a device that had chosen it
   shows 24. Favorites gains 96.
+- **Cards** leads the display options of the Library, circles, voice actors,
+  and Subscriptions. Automatic wide-screen columns fit up to 5 full, 6
+  compact, or 7 mini cards in a row and fewer in a narrower window. Choosing a
+  card mode returns wide-screen columns to automatic and sets works per page
+  and Library cover source marks to that mode's starting point: 24 works for
+  **Full** and **Compact**, and 48 works with no source marks for **Mini**.
 
 </details>
 

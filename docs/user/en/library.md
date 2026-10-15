@@ -107,9 +107,16 @@ The Library is the main browsing surface for works.
 - On wide screens the toolbar's sort button also names the current order and
   opens the orders and direction in a popover. The Recommended and Random
   orders add a refresh button beside it.
-- Display options include **Cards**, a choice of **Full**, **Compact**, and
+- Display options start with **Cards**, a choice of **Full**, **Compact**, and
   **Mini** that is stored with the column settings, separately for phones and
-  wide screens. **Full** is the default. **Compact** shows each work as a row
+  wide screens. **Full** is the default. Automatic wide-screen columns fit up
+  to 5 full cards, 6 compact cards, or 7 mini cards in a row, and fewer when
+  the window is narrower. Choosing a different mode resets the other display
+  options to that mode's starting point, which can then be adjusted: automatic
+  wide-screen columns in every mode, 24 works per page with automatic cover
+  source marks for **Full** and **Compact**, and 48 works per page with no
+  cover source marks for **Mini**. Phone columns keep their own setting.
+  **Compact** shows each work as a row
   in one phone column: the cover beside the code, title, circle and voice
   names, rating, sales, and price, then one row of tags with personal tags
   first and the last listening position when there is one. Two phone columns

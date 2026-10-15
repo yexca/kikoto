@@ -10,6 +10,7 @@ import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/
 import i18n from "@/i18n";
 import { cn } from "@/lib/tailwindClassNames";
 import {
+  chooseWorkCardMode,
   storedWorkCollectionLayout,
   workCardModes,
   workCollectionDesktopColumnOptions,
@@ -71,10 +72,11 @@ export function useWorkCollectionLayout(
 }
 
 /**
- * One toolbar control for how a work collection is displayed: the grid or list
- * view, grid columns, card mode, and items per page share a popover so the
+ * One toolbar control for how a work collection is displayed: the card mode,
+ * grid or list view, grid columns, and items per page share a popover so the
  * toolbar spends a single icon on them. Any group may be omitted (a list view
- * has no columns; some collections have one view or are not paged). The
+ * has no columns; some collections have one view or are not paged). The card
+ * mode leads because choosing one resets the other groups to its preset. The
  * popover stays open after a choice so several can be adjusted.
  */
 export function WorkCollectionDisplayPicker({
@@ -98,7 +100,10 @@ export function WorkCollectionDisplayPicker({
   showColumns?: boolean;
   /** Passing it adds the grid or list choice for collections that draw both. */
   view?: { mode: WorkCollectionViewMode; onChange: (mode: WorkCollectionViewMode) => void };
-  /** Adds the card mode choice; like columns, it is kept apart for narrow and wide screens. */
+  /**
+   * Adds the card mode choice; like columns, it is kept apart for narrow and
+   * wide screens. A new mode applies its preset to the other offered groups.
+   */
   cardModes?: {
     mobile: WorkCardMode;
     desktop: WorkCardMode;
@@ -126,12 +131,19 @@ export function WorkCollectionDisplayPicker({
     if (isWide) onDesktopColumnsChange(value);
     else onMobileColumnsChange(value);
   };
+  const paged = pageSize !== undefined && pageSizeOptions !== undefined && onPageSizeChange !== undefined;
   const currentCardMode = isWide ? cardModes?.desktop : cardModes?.mobile;
   const setCardMode = (value: WorkCardMode) => {
-    if (isWide) cardModes?.onDesktopChange(value);
-    else cardModes?.onMobileChange(value);
+    if (!cardModes) return;
+    chooseWorkCardMode(currentCardMode, value, {
+      setMode: isWide ? cardModes.onDesktopChange : cardModes.onMobileChange,
+      setDesktopColumns: isWide && showColumns ? onDesktopColumnsChange : undefined,
+      // A page measured in something other than works, such as days, keeps its size.
+      pageSizeOptions: paged && !pageSizeLabels ? pageSizeOptions : undefined,
+      setPageSize: onPageSizeChange,
+      setCoverSources: coverSources?.onChange,
+    });
   };
-  const paged = pageSize !== undefined && pageSizeOptions !== undefined && onPageSizeChange !== undefined;
   const viewOptions = [
     { value: "grid" as const, label: t("collection.gridView"), icon: LayoutGrid },
     { value: "list" as const, label: t("collection.listView"), icon: ListIcon },
@@ -167,6 +179,20 @@ export function WorkCollectionDisplayPicker({
         ariaLabel={t("collection.displayOptions")}
         className="flex w-[min(18rem,calc(100vw-1.5rem))] flex-col gap-3 p-3 text-sm"
       >
+        {cardModes && (
+          <DisplayOptionGroup label={t("collection.cardMode")}>
+            {workCardModes.map((mode) => (
+              <DisplayOptionButton
+                key={mode}
+                checked={currentCardMode === mode}
+                label={t(`collection.cardModeOptions.${mode}`)}
+                onSelect={() => setCardMode(mode)}
+              >
+                {t(`collection.cardModes.${mode}`)}
+              </DisplayOptionButton>
+            ))}
+          </DisplayOptionGroup>
+        )}
         {view && (
           <DisplayOptionGroup label={t("collection.viewMode")}>
             {viewOptions.map((option) => (
@@ -194,20 +220,6 @@ export function WorkCollectionDisplayPicker({
                 onSelect={() => setColumns(option)}
               >
                 {columnSettingLabel(option, t)}
-              </DisplayOptionButton>
-            ))}
-          </DisplayOptionGroup>
-        )}
-        {cardModes && (
-          <DisplayOptionGroup label={t("collection.cardMode")}>
-            {workCardModes.map((mode) => (
-              <DisplayOptionButton
-                key={mode}
-                checked={currentCardMode === mode}
-                label={t(`collection.cardModeOptions.${mode}`)}
-                onSelect={() => setCardMode(mode)}
-              >
-                {t(`collection.cardModes.${mode}`)}
               </DisplayOptionButton>
             ))}
           </DisplayOptionGroup>

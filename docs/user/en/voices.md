@@ -67,9 +67,11 @@ Voice pages present persisted person and credit data.
   left, then the sort button that names the current order, display options,
   the availability filter, and selection on the right, with the shared
   collection pagination above and below the grid. Display options hold the
-  columns, the **Cards** choice of **Full**, **Compact**, and **Mini** shared
-  with the Library, and the page size. A phone keeps the sort button above the
-  works and opens search, the filter, columns, the card mode, page size, and
+  **Cards** choice of **Full**, **Compact**, and **Mini** shared with the
+  Library, the columns, and the page size; a newly chosen card mode starts from
+  its [preset](library.md#current-behavior). A phone keeps the sort button
+  above the works and opens search, the filter, the card mode, columns, page
+  size, and
   selection from a separate options sheet.
 - Treats the mobile detail back control as Up to the last
   server-and-user-scoped Voice Actors list location, including when the detail

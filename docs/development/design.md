@@ -143,7 +143,12 @@ it, not from the viewport.
 
 The Library and the circle and voice actor detail pages also offer a card mode
 as a display option, one choice shared by all of them and kept separately for
-phones and wide screens: full (the default), compact, and mini. Compact uses
+phones and wide screens: full (the default), compact, and mini. The card mode
+leads the display options because choosing a new one resets wide-screen
+columns to automatic and works per page and cover source marks to that mode's
+preset. Automatic wide-screen columns allow at most 5 full, 6 compact, or 7
+mini tracks, with minimum track widths sized so every mode reaches its maximum
+at about the same container width and steps down together below it. Compact uses
 row cards in one phone column: a small cover beside the facts, one measured tag
 row with personal tags first, and the last listening position. Two phone
 columns and wide screens use short tiles that keep the cover dominant and leave

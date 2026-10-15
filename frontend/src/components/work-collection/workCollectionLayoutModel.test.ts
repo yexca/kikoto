@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { storedWorkCollectionLayout, workCardLayout, workCollectionStyle } from "./workCollectionLayoutModel";
+import {
+  chooseWorkCardMode,
+  storedWorkCollectionLayout,
+  workCardLayout,
+  workCollectionStyle,
+} from "./workCollectionLayoutModel";
 
 const defaults = { mobileColumns: "auto", desktopColumns: "auto" } as const;
 
@@ -54,13 +59,63 @@ describe("work card layout", () => {
   });
 });
 
+describe("choosing a card mode", () => {
+  const targets = () => ({
+    setMode: vi.fn(),
+    setDesktopColumns: vi.fn(),
+    pageSizeOptions: [24, 48, 96],
+    setPageSize: vi.fn(),
+    setCoverSources: vi.fn(),
+  });
+
+  it("returns columns to automatic and applies each mode's page size and cover source marks", () => {
+    const expected = {
+      full: [24, "auto"],
+      compact: [24, "auto"],
+      mini: [48, "never"],
+    } as const;
+    for (const [mode, [pageSize, coverSources]] of Object.entries(expected)) {
+      const current = mode === "full" ? "mini" : "full";
+      const applied = targets();
+      chooseWorkCardMode(current, mode as keyof typeof expected, applied);
+      expect(applied.setMode).toHaveBeenCalledWith(mode);
+      expect(applied.setDesktopColumns).toHaveBeenCalledWith("auto");
+      expect(applied.setPageSize).toHaveBeenCalledWith(pageSize);
+      expect(applied.setCoverSources).toHaveBeenCalledWith(coverSources);
+    }
+  });
+
+  it("keeps the other settings when the current mode is chosen again", () => {
+    const applied = targets();
+    chooseWorkCardMode("mini", "mini", applied);
+    expect(applied.setMode).toHaveBeenCalledWith("mini");
+    expect(applied.setDesktopColumns).not.toHaveBeenCalled();
+    expect(applied.setPageSize).not.toHaveBeenCalled();
+    expect(applied.setCoverSources).not.toHaveBeenCalled();
+  });
+
+  it("keeps a page size the page does not offer", () => {
+    const applied = { ...targets(), pageSizeOptions: [5, 10, 15] };
+    chooseWorkCardMode("full", "mini", applied);
+    expect(applied.setPageSize).not.toHaveBeenCalled();
+    expect(applied.setDesktopColumns).toHaveBeenCalledWith("auto");
+  });
+});
+
 describe("work collection grid", () => {
   it("pairs cover cards in automatic phone columns and keeps every other choice", () => {
     const regular = workCollectionStyle("auto", "auto") as Record<string, string>;
     const covers = workCollectionStyle("auto", "auto", "cover") as Record<string, string>;
     expect(regular["--mobile-grid-template"]).toContain("16rem");
     expect(covers["--mobile-grid-template"]).toBe("repeat(2, minmax(0, 1fr))");
-    expect(covers["--desktop-grid-template"]).toBe(regular["--desktop-grid-template"]);
     expect(workCollectionStyle(1, 6, "cover")).toEqual(workCollectionStyle(1, 6));
+  });
+
+  it("fits up to five full, six compact, and seven mini cards in automatic wide-screen columns", () => {
+    const desktop = (layout: "tile" | "cover" | null) =>
+      (workCollectionStyle("auto", "auto", layout) as Record<string, string>)["--desktop-grid-template"];
+    expect(desktop(null)).toBe("repeat(auto-fill, minmax(min(100%, max(16rem, calc((100% - 4rem) / 5))), 1fr))");
+    expect(desktop("tile")).toBe("repeat(auto-fill, minmax(min(100%, max(13rem, calc((100% - 5rem) / 6))), 1fr))");
+    expect(desktop("cover")).toBe("repeat(auto-fill, minmax(min(100%, max(11rem, calc((100% - 6rem) / 7))), 1fr))");
   });
 });

@@ -3,7 +3,7 @@ import { useEffect, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { WorkCardMode, WorkCollectionColumnSetting } from "@/components/work-collection/WorkCollectionLayout";
-import { workCardModes } from "@/components/work-collection/workCollectionLayoutModel";
+import { chooseWorkCardMode, workCardModes } from "@/components/work-collection/workCollectionLayoutModel";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { useTranslation } from "react-i18next";
 
@@ -137,6 +137,28 @@ export function CircleCatalogOptionsSheet({
         </fieldset>
 
         <fieldset className="mt-4 space-y-2">
+          <legend className="text-sm font-medium">{t("collection.cardMode")}</legend>
+          <div className="grid grid-cols-3 gap-2" role="group" aria-label={t("collection.cardMode")}>
+            {workCardModes.map((mode) => (
+              <CatalogOptionButton
+                key={mode}
+                active={cardMode === mode}
+                label={t(`collection.cardModes.${mode}`)}
+                ariaLabel={t(`collection.cardModeOptions.${mode}`)}
+                icon={<LayoutGrid className="h-4 w-4" />}
+                onClick={() =>
+                  chooseWorkCardMode(cardMode, mode, {
+                    setMode: onCardModeChange,
+                    pageSizeOptions: isSeriesView ? undefined : pageSizeOptions,
+                    setPageSize: onPageSizeChange,
+                  })
+                }
+              />
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset className="mt-4 space-y-2">
           <legend className="text-sm font-medium">{t("sheets.columns")}</legend>
           <div className="grid grid-cols-3 gap-2" role="group" aria-label={t("sheets.mobileCatalogColumns")}>
             {columnOptions.map((option) => (
@@ -147,22 +169,6 @@ export function CircleCatalogOptionsSheet({
                 ariaLabel={option.ariaLabel}
                 icon={<Columns3 className="h-4 w-4" />}
                 onClick={() => onMobileColumnsChange(option.value)}
-              />
-            ))}
-          </div>
-        </fieldset>
-
-        <fieldset className="mt-4 space-y-2">
-          <legend className="text-sm font-medium">{t("collection.cardMode")}</legend>
-          <div className="grid grid-cols-3 gap-2" role="group" aria-label={t("collection.cardMode")}>
-            {workCardModes.map((mode) => (
-              <CatalogOptionButton
-                key={mode}
-                active={cardMode === mode}
-                label={t(`collection.cardModes.${mode}`)}
-                ariaLabel={t(`collection.cardModeOptions.${mode}`)}
-                icon={<LayoutGrid className="h-4 w-4" />}
-                onClick={() => onCardModeChange(mode)}
               />
             ))}
           </div>
