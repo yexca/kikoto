@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -129,7 +130,22 @@ func (s *Server) enqueueLLMTranslations(ctx context.Context, userID int64, ids [
 		}{userID, workID, inputHash, policyHash, configHash, payload})
 		var runID int64
 		var state string
-		err := tx.QueryRowContext(ctx, "SELECT workflow_run_id,state FROM llm_translation_task WHERE dedup_key=?", key).Scan(&runID, &state)
+		var taskID int64
+		var reviewable bool
+		err := tx.QueryRowContext(ctx, `
+			SELECT task.id,task.workflow_run_id,task.state,
+				EXISTS(SELECT 1 FROM llm_translation_preview AS preview
+					WHERE preview.id=task.preview_id AND preview.status='proposed' AND preview.expires_at>?)
+			FROM llm_translation_task AS task WHERE task.dedup_key=?
+		`, time.Now().Unix(), key).Scan(&taskID, &runID, &state, &reviewable)
+		if err == nil && state == "ready" && !reviewable {
+			// Keep the completed task's history while releasing its unique key
+			// for this explicit request. Uncertain requests still deduplicate.
+			if _, err := tx.ExecContext(ctx, "UPDATE llm_translation_task SET dedup_key=? WHERE id=?", fmt.Sprintf("%s:completed:%d", key, taskID), taskID); err != nil {
+				return nil, err
+			}
+			err = sql.ErrNoRows
+		}
 		if err == nil {
 			if state == "cancelled" {
 				var job workflowJobRecord
@@ -163,7 +179,7 @@ func (s *Server) enqueueLLMTranslations(ctx context.Context, userID int64, ids [
 		if err != nil {
 			return nil, err
 		}
-		taskID, err := task.LastInsertId()
+		taskID, err = task.LastInsertId()
 		if err != nil {
 			return nil, err
 		}

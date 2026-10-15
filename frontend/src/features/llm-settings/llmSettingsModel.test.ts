@@ -151,10 +151,10 @@ describe("policiesEqual", () => {
   const policy: LLMPolicy = {
     alwaysScanAllAges: false,
     tagRules: [{ tagId: 1, action: "sensitive" }],
-    keywords: [{ term: "restricted phrase", fields: ["all"], action: "blocked" }],
+    keywords: [{ id: "synthetic-rule-0", term: "restricted phrase", fields: ["all"], action: "blocked" }],
   };
 
-  it("ignores rule ids the server assigns and an unset remote lyrics option", () => {
+  it("ignores an unset remote lyrics option", () => {
     expect(
       policiesEqual(policy, {
         ...policy,

@@ -68,7 +68,6 @@ type Provider struct {
 	BaseURL         string `json:"baseUrl"`
 	APIKey          string `json:"apiKey,omitempty"`
 	Boundary        string `json:"boundary"`
-	AllowSensitive  bool   `json:"allowSensitive,omitempty"` // Legacy receive scope.
 	MaxContentClass string `json:"maxContentClass"`
 	Scope           string `json:"scope,omitempty"`
 	Port            int    `json:"port,omitempty"`
@@ -169,12 +168,11 @@ func Normalize(p Provider) (Provider, error) {
 	if p.Boundary != "external" && p.Boundary != "private" {
 		return p, errors.New("invalid speech recognition data boundary")
 	}
-	maximum, err := contentpolicy.NormalizeMaxClass(p.MaxContentClass, p.Boundary, p.AllowSensitive)
+	maximum, err := contentpolicy.NormalizeMaxClass(p.MaxContentClass)
 	if err != nil {
 		return p, err
 	}
 	p.MaxContentClass = maximum
-	p.AllowSensitive = p.Boundary == "private" && maximum != "safe"
 
 	if preset.Local {
 		if p.Scope == "" {

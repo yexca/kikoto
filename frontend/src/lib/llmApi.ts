@@ -89,7 +89,7 @@ export type LLMProviderList = {
   hostAddress: string;
 };
 
-export type LLMKeywordRule = { id?: string; term: string; fields: string[]; action: ContentAction };
+export type LLMKeywordRule = { id: string; term: string; fields: string[]; action: ContentAction };
 export type LLMPolicy = {
   alwaysScanAllAges: boolean;
   remoteLyrics?: boolean;

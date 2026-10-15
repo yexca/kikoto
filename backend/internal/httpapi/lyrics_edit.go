@@ -182,7 +182,7 @@ func (s *Server) applyWorkLyricsEdit(w http.ResponseWriter, r *http.Request) {
 func writeLyricsEditError(w http.ResponseWriter, workID int64, err error) {
 	var conflict lyricsEditConflictError
 	if errors.As(err, &conflict) {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "lyrics_edit_conflict", "summary": conflict.Summary})
+		writeJSON(w, http.StatusConflict, map[string]any{"error": conflict.Error(), "code": "lyrics_edit_conflict", "summary": conflict.Summary})
 		return
 	}
 	var requestErr lyricsFetchRequestError

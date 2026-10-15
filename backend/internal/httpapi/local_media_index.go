@@ -78,6 +78,13 @@ func (s *Server) indexAdditionalLocalFolders(ctx context.Context, workID int64, 
 		return err
 	}
 	for _, folder := range folders {
+		scope, err := s.localScanScope(ctx, s.cfg.DataRoot, s.effectiveLocalScanDepth(ctx))
+		if err != nil {
+			return err
+		}
+		if !scope.contains(folder.root) {
+			continue
+		}
 		if !refresh {
 			var indexed bool
 			if err := s.db.QueryRowContext(ctx, `

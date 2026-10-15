@@ -6,7 +6,7 @@ import (
 )
 
 func TestBlockingRuleHasIdentityAndWinsOverTag(t *testing.T) {
-	p := Policy{TagIDs: []int64{1}, Keywords: []KeywordRule{
+	p := Policy{TagRules: []TagRule{{TagID: 1, Action: "sensitive"}}, Keywords: []KeywordRule{
 		{ID: "title-sensitive", Term: "example", Fields: []string{"title"}, Action: "sensitive"},
 		{ID: "description-blocked", Term: "example", Fields: []string{"description"}, Action: "blocked"},
 	}}
@@ -21,10 +21,11 @@ func TestBlockingRuleHasIdentityAndWinsOverTag(t *testing.T) {
 }
 func TestPolicyInvalidConfigurationIsRejected(t *testing.T) {
 	for _, rule := range []KeywordRule{
-		{Term: strings.Repeat("x", 257), Fields: []string{"all"}, Action: "sensitive"},
-		{Term: "example", Fields: []string{"unknown"}, Action: "sensitive"},
-		{Term: "example", Fields: []string{"all"}, Action: "invalid"},
-		{Term: "example", Fields: nil, Action: "sensitive"},
+		{ID: "long", Term: strings.Repeat("x", 257), Fields: []string{"all"}, Action: "sensitive"},
+		{ID: "field", Term: "example", Fields: []string{"unknown"}, Action: "sensitive"},
+		{ID: "action", Term: "example", Fields: []string{"all"}, Action: "invalid"},
+		{ID: "empty-fields", Term: "example", Fields: nil, Action: "sensitive"},
+		{Term: "example", Fields: []string{"all"}, Action: "sensitive"},
 	} {
 		if _, err := (Policy{Keywords: []KeywordRule{rule}}).Validate(); err == nil {
 			t.Fatalf("invalid rule accepted: %+v", rule)

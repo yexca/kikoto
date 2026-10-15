@@ -287,8 +287,7 @@ func TestASRTranscriptionRefusesWhatThePolicyOrLibraryDoesNotAllow(t *testing.T)
 	if response, _, _ := fixture.create(t, "ja-jp"); response.Code != http.StatusBadRequest {
 		t.Fatalf("sensitive work to a service not allowed to receive it = %d", response.Code)
 	}
-	allow := true
-	if _, err := fixture.server.asrStore.Mutate(context.Background(), fixture.provider.ID, asr.Provider{PresetID: "local", Scope: asr.ScopeOtherMachine, BaseURL: fixture.provider.BaseURL, Boundary: "private", AllowSensitive: allow, Enabled: true, EnabledModels: []string{"example-model"}}, nil, false); err != nil {
+	if _, err := fixture.server.asrStore.Mutate(context.Background(), fixture.provider.ID, asr.Provider{PresetID: "local", Scope: asr.ScopeOtherMachine, BaseURL: fixture.provider.BaseURL, Boundary: "private", MaxContentClass: "sensitive", Enabled: true, EnabledModels: []string{"example-model"}}, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if response, _, _ := fixture.create(t, "ja-jp"); response.Code != http.StatusAccepted {

@@ -344,10 +344,6 @@ func (s *Server) rejectASRTranscription(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
-// asrLyricsNameAttempts bounds the names tried when the language's lyrics
-// folder already holds a different file under the track's name.
-const asrLyricsNameAttempts = 5
-
 // acceptASRTranscription publishes a reviewed transcription as a WebVTT file
 // in the language's lyrics folder of the track's work folder and assigns it to
 // the track. The text is durable before publication, so a failed publication

@@ -28,9 +28,11 @@ func TestAIProviderReceiveMaximumAPI(t *testing.T) {
 				status  int
 				maximum string
 			}{
-				{`"boundary":"external","allowSensitive":true`, 200, "safe"},
-				{`"boundary":"private","allowSensitive":true`, 200, "sensitive"},
-				{`"boundary":"private","allowSensitive":false`, 200, "safe"},
+				{`"boundary":"external"`, 200, "safe"},
+				{`"boundary":"private"`, 200, "safe"},
+				{`"boundary":"private","maxContentClass":"sensitive"`, 200, "sensitive"},
+				{`"allowSensitive":true`, 400, ""},
+				{`"allowSensitive":false`, 400, ""},
 				{`"boundary":"external","maxContentClass":"sensitive"`, 200, "sensitive"},
 				{`"boundary":"external","maxContentClass":"restricted"`, 200, "restricted"},
 				{`"maxContentClass":"blocked"`, 400, ""},
@@ -52,6 +54,9 @@ func TestAIProviderReceiveMaximumAPI(t *testing.T) {
 				if tc.status != 200 {
 					continue
 				}
+				if _, exists := response["allowSensitive"]; exists {
+					t.Fatal("response contains removed receive setting")
+				}
 				r = llmTestRequest(f, http.MethodPut, `{"name":"Renamed service"}`)
 				r.SetPathValue("id", response["id"].(string))
 				w = httptest.NewRecorder()
@@ -59,12 +64,12 @@ func TestAIProviderReceiveMaximumAPI(t *testing.T) {
 				if w.Code != 200 || !strings.Contains(w.Body.String(), `"maxContentClass":"`+tc.maximum+`"`) {
 					t.Fatalf("partial edit: %d %s", w.Code, w.Body.String())
 				}
-				r = llmTestRequest(f, http.MethodPut, `{"allowSensitive":false}`)
+				r = llmTestRequest(f, http.MethodPut, `{"maxContentClass":"safe"}`)
 				r.SetPathValue("id", response["id"].(string))
 				w = httptest.NewRecorder()
 				save(w, r)
 				if w.Code != 200 || !strings.Contains(w.Body.String(), `"maxContentClass":"safe"`) {
-					t.Fatalf("legacy opt-out: %d %s", w.Code, w.Body.String())
+					t.Fatalf("lowered maximum: %d %s", w.Code, w.Body.String())
 				}
 			}
 		})
@@ -97,7 +102,7 @@ func TestLLMExplicitReceiveMaximumGuardsOutboundRequests(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			p := llmTestProvider(t, f, upstream.URL, "external", false)
+			p := llmTestProvider(t, f, upstream.URL, "external", "safe")
 			p.MaxContentClass = tc.maximum
 			var err error
 			p, err = f.server.llmStore.Mutate(context.Background(), p.ID, p, nil, false)
@@ -135,7 +140,7 @@ func TestLLMChunkSendRechecksLoweredReceiveMaximum(t *testing.T) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"title\":\"Example translation\"}"}}]}`))
 	}))
 	defer upstream.Close()
-	provider = llmTestProvider(t, f, upstream.URL, "private", true)
+	provider = llmTestProvider(t, f, upstream.URL, "private", "sensitive")
 	payload := llmTranslatePayload{ProviderID: provider.ID, Target: "zh-cn", Fields: []string{"title"}}
 	plan, err := f.server.prepareLLMTranslation(context.Background(), f.workID, payload)
 	if err != nil {

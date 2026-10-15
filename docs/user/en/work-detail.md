@@ -26,7 +26,7 @@ A synchronous preview lasts 15 minutes; a background preview lasts 24 hours. Rev
 
 Lyrics are translated from [Manage lyrics → Translate](#translate).
 
-**Queue background translation** accepts 1–100 explicitly named existing works. Equivalent submissions reuse a durable task. Activity exposes progress, cancellation, restart recovery and failures. Execution rechecks permissions, source input, policy and the selected endpoint. Completed chunks are retained. Definitive rejections and failures before sending support an explicit retry to the same configured endpoint. A request with an uncertain result stops without automatic resending; **Resend uncertain request** requires explicit acknowledgement that another charge may occur. A changed endpoint, model, policy or input prevents that resubmission. Results always wait for user review.
+**Queue background translation** accepts 1–100 explicitly named existing works. Equivalent submissions reuse a durable task. If a completed task's preview has expired or has been reviewed, submitting again starts a new task and keeps the earlier Activity record. Activity exposes progress, cancellation, restart recovery and failures. Execution rechecks permissions, source input, policy and the selected endpoint. Completed chunks are retained. Definitive rejections and failures before sending support an explicit retry to the same configured endpoint. A request with an uncertain result stops without automatic resending; **Resend uncertain request** requires explicit acknowledgement that another charge may occur. A changed endpoint, model, policy or input prevents that resubmission. Results always wait for user review.
 
 ## Transcribe
 

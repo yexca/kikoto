@@ -41,7 +41,7 @@ func TestLLMTagCandidatesReuseWithoutChangingIdentityBeforeConfirmation(t *testi
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"tags\":[\"Example translated tag\" ]}"}}]}`))
 	}))
 	defer upstream.Close()
-	p := llmTestProvider(t, f, upstream.URL, "external", false)
+	p := llmTestProvider(t, f, upstream.URL, "external", "safe")
 	payload, _ := json.Marshal(llmTranslatePayload{ProviderID: p.ID, Target: "en-us", Fields: []string{"tags"}})
 	translate := func(workID int64) string {
 		clone := f

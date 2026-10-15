@@ -38,11 +38,11 @@ func TestNormalizeDerivesTheSameMachineHostAndKeepsOtherOrigins(t *testing.T) {
 		t.Fatal("another machine without an origin was accepted")
 	}
 
-	hosted, err := Normalize(Provider{PresetID: "openai", AllowSensitive: true})
+	hosted, err := Normalize(Provider{PresetID: "openai"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hosted.BaseURL != hosted.Preset().DefaultURL || hosted.BaseURL == "" || hosted.Scope != "" || hosted.AllowSensitive {
+	if hosted.BaseURL != hosted.Preset().DefaultURL || hosted.BaseURL == "" || hosted.Scope != "" || hosted.MaxContentClass != "safe" {
 		t.Fatalf("hosted = %+v", hosted)
 	}
 	for _, rejected := range []string{(&url.URL{Scheme: "https", Host: "example.invalid", User: url.User("synthetic")}).String(), "https://example.invalid/v1", "https://example.invalid?x=1", "ftp://example.invalid"} {

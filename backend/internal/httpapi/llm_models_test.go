@@ -38,7 +38,7 @@ func TestLLMTranslationSendsTheChosenEnabledModel(t *testing.T) {
 	upstream, sent := llmModelRecorder(t)
 	f := newManualOverrideFixture(t, config.Config{})
 	_, _ = f.db.Exec("UPDATE work SET age_rating='general' WHERE id=?", f.workID)
-	p := llmTestProvider(t, f, upstream.URL, "external", false)
+	p := llmTestProvider(t, f, upstream.URL, "external", "safe")
 	p.EnabledModels = []string{"example-model", "second-model"}
 	p, err := f.server.llmStore.Mutate(context.Background(), p.ID, p, nil, false)
 	if err != nil {
@@ -85,7 +85,7 @@ func TestLLMQueuedTranslationKeepsItsModel(t *testing.T) {
 			f := newManualOverrideFixture(t, config.Config{})
 			_, _ = f.db.Exec("UPDATE user_account SET role='admin' WHERE id=?", f.userID)
 			_, _ = f.db.Exec("UPDATE work SET age_rating='general' WHERE id=?", f.workID)
-			p := llmTestProvider(t, f, upstream.URL, "external", false)
+			p := llmTestProvider(t, f, upstream.URL, "external", "safe")
 			ctx := context.Background()
 			runs, err := f.server.enqueueLLMTranslations(ctx, f.userID, []int64{f.workID}, llmTranslatePayload{ProviderID: p.ID, Target: "zh-cn", Fields: []string{"title"}})
 			if err != nil {

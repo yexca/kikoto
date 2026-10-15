@@ -30,6 +30,9 @@
   same name is resolved in the preview by keeping, replacing, keeping both, or
   renaming, without deleting it first. Added lyrics can be assigned to the
   tracks they match.
+- A failed lyrics edit restores moved source files even when an earlier
+  publication occupies their original path. If restoration is obstructed,
+  staged files and their recovery mapping remain on the target storage pool.
 - **Manage files** has **Manage as lyrics**, which opens **Lyrics files** with
   the selected lyrics files. It hides the lyrics in those folders unless **Show
   in the list** is on.
@@ -39,6 +42,9 @@
   moments, and gives the queue to other waiting work between parts. The result
   waits for review; **Add to lyrics** saves it as a WebVTT file in the
   language's lyrics folder and assigns it to the track.
+- Transcription rechecks service configuration, permissions and content policy
+  after decoding, immediately before sending audio. Disabling a service while
+  decoding stops the upload.
 - **Translate** in **Manage lyrics** translates a lyrics file of the work with
   a configured LLM provider for a chosen track and language. The translation
   runs as an Activity workflow, keeps the file's timing, and waits for review;
@@ -76,6 +82,8 @@
 - A local scan keeps every folder in which it finds a work's code as a folder
   of that work and indexes all of them. It no longer raises duplicate folders
   for review in Activity.
+- Refreshing a work's local files preserves indexed files in additional
+  folders outside the scan depth or in offline storage pools.
 - A local scan no longer takes a lyrics folder that **From remote** created
   inside a work folder, such as
   `Lyrics - CHI_HANS - RJ00000001 - 20261008-153012`, for a separate work.
@@ -85,6 +93,9 @@
 - Protected LLM translation includes explicit endpoint content boundaries,
   structured tag and keyword rules, preview invalidation, shared tag candidates,
   and background jobs for selected existing works.
+- Submitting a translation again after its completed preview expires or is
+  reviewed creates a new task while retaining the earlier Activity record.
+  Uncertain requests still require explicit acknowledgement before resending.
 - Accepted translations carry LLM provenance in language choices and cards,
   participate in search and sorting, and preserve manual/provider priority and
   field-specific fallback.
@@ -117,8 +128,10 @@
   Tag and keyword rules can mark high-sensitivity content, while
   blocking rules refuse every service. High-sensitivity and blocking rules
   apply to all-ages works too; prechecks show matched rules and the chosen
-  service's receive maximum. Existing settings retain their receive scope,
-  and no service gains high-sensitivity permission automatically.
+  service's receive maximum. New services receive only General content.
+  Configuration uses explicit receive maxima and tag actions; keyword rules
+  have an ID when created. Unreleased boolean receive settings, tag ID lists,
+  and rules without IDs are not supported.
 - The LLM & ASR tab stays behind an external service notice until an
   administrator accepts it: external services may forbid the content sent to
   them, the content safety checks are advisory, and Kikoto is not responsible
@@ -177,6 +190,10 @@
 <details>
 <summary><strong>Development and docs</strong></summary>
 
+- Development databases that applied the earlier `072_llm_review.sql`
+  checksum need a fresh development database or a restore from a released
+  version's backup. The prerelease translation backfill is removed; do not
+  bypass ledger validation. Released databases keep the numbered upgrade path.
 - Translation regression coverage includes protocol, policy, credential,
   preview, persistence, file publication and browser workflows; sensitive scans
   distinguish state references and exact credential-control copy from literals.

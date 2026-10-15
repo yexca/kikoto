@@ -1,9 +1,6 @@
 package contentpolicy
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -27,7 +24,6 @@ type Policy struct {
 	Revision          int64         `json:"revision"`
 	AlwaysScanAllAges bool          `json:"alwaysScanAllAges"`
 	RemoteLyrics      bool          `json:"remoteLyrics"`
-	TagIDs            []int64       `json:"tagIds,omitempty"` // Legacy sensitive tags, normalized into TagRules.
 	TagRules          []TagRule     `json:"tagRules"`
 	Keywords          []KeywordRule `json:"keywords"`
 }
@@ -50,20 +46,15 @@ func NormalizeText(value string) string {
 }
 
 // Validate rejects the whole configuration rather than silently dropping rules.
-// Legacy rules receive a deterministic identity based on their complete scope.
 func (p Policy) Validate() (Policy, error) {
-	if len(p.TagIDs)+len(p.TagRules) > 512 || len(p.Keywords) > 512 {
+	if len(p.TagRules) > 512 || len(p.Keywords) > 512 {
 		return p, fmt.Errorf("at most 512 tags and 512 keyword rules are allowed")
 	}
 	result := DefaultPolicy()
 	result.Revision = p.Revision
 	result.AlwaysScanAllAges, result.RemoteLyrics = p.AlwaysScanAllAges, p.RemoteLyrics
 	seenTags := map[int64]string{}
-	rules := append([]TagRule{}, p.TagRules...)
-	for _, id := range p.TagIDs {
-		rules = append(rules, TagRule{TagID: id, Action: "sensitive"})
-	}
-	for _, rule := range rules {
+	for _, rule := range p.TagRules {
 		if rule.TagID <= 0 || !validAction(rule.Action) {
 			return p, fmt.Errorf("tag rules require positive tag IDs and a sensitive, restricted or blocked action")
 		}
@@ -100,12 +91,7 @@ func (p Policy) Validate() (Policy, error) {
 			}
 		}
 		rule.Fields = fields
-		if rule.ID == "" {
-			data, _ := json.Marshal(rule)
-			h := sha256.Sum256(data)
-			rule.ID = "rule-" + hex.EncodeToString(h[:16]) + "-" + strconv.Itoa(i)
-		}
-		if len(rule.ID) > 80 || strings.ContainsFunc(rule.ID, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_' }) || seenIDs[rule.ID] {
+		if rule.ID == "" || len(rule.ID) > 80 || strings.ContainsFunc(rule.ID, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_' }) || seenIDs[rule.ID] {
 			return p, fmt.Errorf("rule %d: rule identity is invalid or duplicated", i+1)
 		}
 		seenIDs[rule.ID] = true
@@ -184,13 +170,9 @@ func ruleApplies(fields []string, field string) bool {
 	return false
 }
 
-// NormalizeMaxClass preserves the receive scope of settings with no explicit
-// maximum. A legacy sensitive opt-in applies only to a private service.
-func NormalizeMaxClass(maximum, boundary string, allowSensitive bool) (string, error) {
+// NormalizeMaxClass defaults a new service to safe content only.
+func NormalizeMaxClass(maximum string) (string, error) {
 	if maximum == "" {
-		if boundary == "private" && allowSensitive {
-			return "sensitive", nil
-		}
 		return "safe", nil
 	}
 	if maximum != "safe" && maximum != "sensitive" && maximum != "restricted" {

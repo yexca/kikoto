@@ -203,7 +203,7 @@ export function policiesEqual(left: LLMPolicy, right: LLMPolicy) {
       alwaysScanAllAges: policy.alwaysScanAllAges,
       remoteLyrics: policy.remoteLyrics ?? false,
       tagRules: policy.tagRules,
-      keywords: policy.keywords.map((rule) => ({ term: rule.term, fields: rule.fields, action: rule.action })),
+      keywords: policy.keywords,
     });
   return comparable(left) === comparable(right);
 }

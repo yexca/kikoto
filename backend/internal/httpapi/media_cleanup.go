@@ -131,7 +131,7 @@ func writeMediaCleanupError(w http.ResponseWriter, err error) {
 	var symlinkErr symlinkMediaLocationError
 	if errors.As(err, &symlinkErr) {
 		writeJSON(w, http.StatusConflict, map[string]any{
-			"error": err.Error(), "runId": symlinkErr.RunID, "candidateId": symlinkErr.CandidateID,
+			"error": symlinkErr.Error(), "runId": symlinkErr.RunID, "candidateId": symlinkErr.CandidateID,
 		})
 		return
 	}

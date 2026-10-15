@@ -45,7 +45,7 @@ func TestServiceConfigurationWaitsForTheExternalServiceNotice(t *testing.T) {
 	refused := map[string]*httptest.ResponseRecorder{
 		"LLM provider": call(fixture.server.saveLLMProvider, http.MethodPost, "/api/llm/providers", `{"presetId":"custom-openai","baseUrl":"https://llm.example.invalid"}`),
 		"ASR service":  call(fixture.server.saveASRProvider, http.MethodPost, "/api/asr/providers", `{"presetId":"local","scope":"local_machine","port":8000}`),
-		"policy":       call(fixture.server.updateLLMPolicy, http.MethodPut, "/api/llm/policy", `{"alwaysScanAllAges":true,"tagIds":[],"keywords":[]}`),
+		"policy":       call(fixture.server.updateLLMPolicy, http.MethodPut, "/api/llm/policy", `{"alwaysScanAllAges":true,"tagRules":[],"keywords":[]}`),
 	}
 	for name, response := range refused {
 		if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "service_notice_required") {

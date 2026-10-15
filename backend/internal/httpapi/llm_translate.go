@@ -166,8 +166,7 @@ func llmFields(input llmWorkInput, fields []string) (llm.Text, map[string]string
 	return text, scan
 }
 func llmAllowed(class string, provider llm.Provider) bool {
-	maximum, err := contentpolicy.NormalizeMaxClass(provider.MaxContentClass, provider.Boundary, provider.AllowSensitive)
-	return err == nil && contentpolicy.Allows(class, maximum)
+	return contentpolicy.Allows(class, provider.MaxContentClass)
 }
 
 func (s *Server) translateWorkWithLLM(w http.ResponseWriter, r *http.Request) {
@@ -417,7 +416,7 @@ func (s *Server) listLLMTranslationModels(w http.ResponseWriter, r *http.Request
 	result := []map[string]any{}
 	for _, p := range providers {
 		if p.Enabled && p.DefaultModel != "" {
-			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "boundary": p.Boundary, "allowSensitive": p.AllowSensitive, "maxContentClass": p.MaxContentClass})
+			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "boundary": p.Boundary, "maxContentClass": p.MaxContentClass})
 		}
 	}
 	writeJSON(w, 200, result)
