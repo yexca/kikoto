@@ -252,6 +252,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/works/{id}/llm-translations/{language}/{field}", s.revokeLLMTranslation)
 	mux.HandleFunc("GET /api/works/{id}/asr-transcriptions", s.listASRTranscriptions)
 	mux.HandleFunc("POST /api/works/{id}/asr-transcriptions", s.createASRTranscription)
+	mux.HandleFunc("POST /api/works/{id}/asr-precheck", s.precheckASRTranscription)
 	mux.HandleFunc("GET /api/asr/transcriptions/{transcription}/text", s.asrTranscriptionText)
 	mux.HandleFunc("POST /api/asr/transcriptions/{transcription}/accept", s.acceptASRTranscription)
 	mux.HandleFunc("DELETE /api/asr/transcriptions/{transcription}", s.rejectASRTranscription)

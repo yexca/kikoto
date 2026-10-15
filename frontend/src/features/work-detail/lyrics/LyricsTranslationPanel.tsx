@@ -7,6 +7,12 @@ import { Button } from "@/components/ui/button";
 import { FloatingSelect, type FloatingSelectOption } from "@/components/ui/floating-select";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import type { LyricsManagerAudio, LyricsManagerFile } from "@/features/work-detail/lyrics/lyricsManagerModel";
+import {
+  ContentRatingCheck,
+  ServiceChoiceLabel,
+  useContentRating,
+} from "@/features/work-detail/lyrics/ContentRatingCheck";
+import { serviceReceives } from "@/features/work-detail/lyrics/contentRatingModel";
 import { LyricsNote } from "@/features/work-detail/lyrics/LyricsNote";
 import { LyricsPreview } from "@/features/work-detail/lyrics/LyricsPreview";
 import {
@@ -149,6 +155,25 @@ export function LyricsTranslationPanel({
     setAudioID(trackForLyrics(audio, source?.mediaItemId) ?? 0);
   };
 
+  // The rating covers the work and the whole chosen lyrics file, whatever the provider or target.
+  const rating = useContentRating(`${locationID}:${audioID}`, async () => {
+    try {
+      const result = await api.precheckWork(work.id, {
+        fields: ["lyrics"],
+        lyricsLocationId: locationID,
+        audioMediaItemId: audioID,
+      });
+      return result.assessment.class;
+    } catch (error) {
+      toast.notify(
+        error instanceof ApiError && startRefusals.has(error.code)
+          ? { kind: "error", message: t(`lyricsTranslation.errors.${error.code}`) }
+          : toastFromError(error, t("contentRating.failed")),
+      );
+      throw error;
+    }
+  });
+
   const start = async () => {
     if (!locationID || !audioID || !providerID || !language) return;
     setSubmitting(true);
@@ -224,8 +249,14 @@ export function LyricsTranslationPanel({
   }));
   const providerOptions: FloatingSelectOption[] = (providers ?? []).map((provider) => ({
     value: provider.id,
-    label: `${provider.name} · ${provider.defaultModel}`,
+    label: (
+      <ServiceChoiceLabel
+        name={`${provider.name} · ${provider.defaultModel}`}
+        excluded={rating.contentClass !== null && !serviceReceives(rating.contentClass, provider)}
+      />
+    ),
   }));
+  const provider = providers?.find((candidate) => candidate.id === providerID) ?? null;
   const languageOptions: FloatingSelectOption[] = lyricsLanguages
     .filter(([value]) => value !== allLyricsLanguages)
     .map(([value, labelKey]) => ({ value, label: t(labelKey) }));
@@ -295,6 +326,7 @@ export function LyricsTranslationPanel({
             <p className="text-xs text-muted-foreground">
               {noProvider ? t("lyricsTranslation.noProvider") : t("lyricsTranslation.hint")}
             </p>
+            <ContentRatingCheck rating={rating} service={provider} disabled={submitting || !locationID || !audioID} />
             <Button className="w-full" onClick={() => void start()} disabled={submitting || !ready}>
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Languages className="h-4 w-4" />}
               {submitting ? t("lyricsTranslation.starting") : t("lyricsTranslation.start")}

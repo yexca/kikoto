@@ -7,6 +7,12 @@ import { Button } from "@/components/ui/button";
 import { FloatingSelect, type FloatingSelectOption } from "@/components/ui/floating-select";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import type { LyricsManagerAudio } from "@/features/work-detail/lyrics/lyricsManagerModel";
+import {
+  ContentRatingCheck,
+  ServiceChoiceLabel,
+  useContentRating,
+} from "@/features/work-detail/lyrics/ContentRatingCheck";
+import { serviceReceives } from "@/features/work-detail/lyrics/contentRatingModel";
 import { LyricsNote } from "@/features/work-detail/lyrics/LyricsNote";
 import { LyricsPreview } from "@/features/work-detail/lyrics/LyricsPreview";
 import {
@@ -124,6 +130,19 @@ export function TranscriptionPanel({
     return () => window.clearInterval(timer);
   }, [active, load]);
 
+  const rating = useContentRating(String(audioID), async () => {
+    try {
+      return (await api.precheckASRTranscription(work.id, audioID)).class;
+    } catch (error) {
+      toast.notify(
+        error instanceof ApiError && startRefusals.has(error.code)
+          ? { kind: "error", message: t(`asrTranscription.errors.${error.code}`) }
+          : toastFromError(error, t("contentRating.failed")),
+      );
+      throw error;
+    }
+  });
+
   const start = async () => {
     if (!audioID || !serviceID || language === null) return;
     setSubmitting(true);
@@ -191,8 +210,14 @@ export function TranscriptionPanel({
   }));
   const serviceOptions: FloatingSelectOption[] = (services ?? []).map((service) => ({
     value: service.id,
-    label: `${service.name} · ${service.defaultModel}`,
+    label: (
+      <ServiceChoiceLabel
+        name={`${service.name} · ${service.defaultModel}`}
+        excluded={rating.contentClass !== null && !serviceReceives(rating.contentClass, service)}
+      />
+    ),
   }));
+  const service = services?.find((candidate) => candidate.id === serviceID) ?? null;
   const languageOptions: FloatingSelectOption[] = [
     { value: allLyricsLanguages, label: t("asrTranscription.detect") },
     ...lyricsLanguages
@@ -246,6 +271,7 @@ export function TranscriptionPanel({
         <p className="text-xs text-muted-foreground">
           {noService ? t("asrTranscription.noService") : t("asrTranscription.languageHint")}
         </p>
+        <ContentRatingCheck rating={rating} service={service} disabled={submitting || !audioID} />
         <Button
           className="w-full"
           onClick={() => void start()}

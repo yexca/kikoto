@@ -16,6 +16,10 @@
   the track has lyrics, and the lyrics preview lists line times in their own
   column. **Transcribe** and **Translate** keep the request form beside the
   results on wide screens.
+- **Check rating** in **Transcribe** and **Translate** shows the content
+  safety class of the chosen track or lyrics file without sending anything,
+  and marks the services that may not receive it. The check runs only when
+  pressed.
 - **Lyrics files** in **Manage lyrics** replaces **From remote**. Like **Edit
   files**, it edits in three columns the lyrics Kikoto manages in a folder
   named after their language, such as `lyrics_zh_hans`, inside the work

@@ -426,6 +426,17 @@ test("Manage lyrics translates a lyrics file for its track and adds the reviewed
   await page.route(`**/api/works/${work.id}/llm-previews/synthetic-preview/lyrics`, (route) =>
     route.fulfill({ body: "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nFirst translated line\n" }),
   );
+  const prechecks: unknown[] = [];
+  await page.route(`**/api/works/${work.id}/llm-precheck`, (route) => {
+    prechecks.push(route.request().postDataJSON());
+    return route.fulfill({
+      json: {
+        assessment: { class: "sensitive", reason: "restricted age rating", matches: [] },
+        checkedFields: ["title", "description", "tags", "lyrics"],
+        sentFields: [],
+      } satisfies ApiResponse<"precheckWork">,
+    });
+  });
   const applied: unknown[] = [];
   await page.route(`**/api/works/${work.id}/llm-translation`, (route) => {
     applied.push(route.request().postDataJSON());
@@ -445,6 +456,17 @@ test("Manage lyrics translates a lyrics file for its track and adds the reviewed
   // The file's own track is the destination until another is chosen.
   await expect(lyrics.getByRole("combobox", { name: "Lyrics file" })).toContainText("track.mp3.vtt");
   await expect(lyrics.getByRole("combobox", { name: "Track", exact: true })).toContainText("track.mp3");
+
+  // The content rating is checked only when asked, for the chosen lyrics file and track.
+  expect(prechecks).toHaveLength(0);
+  await lyrics.getByRole("button", { name: "Check rating" }).click();
+  await expect(lyrics.getByText("Example LLM cannot receive this content.", { exact: false })).toBeVisible();
+  expect(prechecks).toEqual([{ fields: ["lyrics"], lyricsLocationId: 2, audioMediaItemId: 1 }]);
+  await lyrics.getByRole("combobox", { name: "LLM provider" }).click();
+  const option = page.getByRole("option", { name: /Example LLM/ });
+  await expect(option).toContainText("Not for this content");
+  await option.click();
+
   await lyrics.getByRole("button", { name: "Translate", exact: true }).click();
   await expect.poll(() => queued).toHaveLength(1);
   expect(queued[0]).toEqual({
