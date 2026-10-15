@@ -72,7 +72,7 @@ async function openTranslation(page: Page, detailOverrides: Partial<WorkDetail> 
       json: { tags: [], inheritedTags: [], overrides: [] } satisfies ApiResponse<"getWorkMetadataTags">,
     }),
   );
-  await page.route("**/api/llm/translation-models", (route) =>
+  await page.route("**/api/llm/translation-models?*", (route) =>
     route.fulfill({
       json: [
         {
@@ -80,6 +80,8 @@ async function openTranslation(page: Page, detailOverrides: Partial<WorkDetail> 
           name: provider.name,
           defaultModel: provider.defaultModel,
           models: ["example-model", "second-model"],
+          // The second model translates only into Simplified Chinese.
+          modelTargets: { "second-model": ["zh-cn"] },
           boundary: provider.boundary,
           maxContentClass: "safe",
         },
@@ -384,7 +386,15 @@ test("LLM dialog prechecks without translation, uses minimal models and confirms
     return route.fulfill({ json: { ok: true } });
   });
   // Each enabled model is its own choice; the default comes first.
+  const target = dialog.getByLabel("Target language", { exact: true });
+  await expect(target).toHaveValue("en-us");
   await dialog.getByLabel("LLM provider", { exact: true }).selectOption({ label: "Example LLM · second-model" });
+  // A model limited to declared directions defaults to its supported target.
+  await expect(target).toHaveValue("zh-cn");
+  await expect(target.getByRole("option", { name: "English · Not supported by this model" })).toHaveJSProperty(
+    "disabled",
+    true,
+  );
   await dialog.getByRole("button", { name: "Check content without sending", exact: true }).click();
   await expect(dialog.getByRole("status")).toContainText("General");
   expect(requests).toBe(0);
@@ -475,7 +485,7 @@ test("Manage lyrics translates a lyrics file for its track and adds the reviewed
       permissions: rolePermissions.admin,
     },
   );
-  await page.route("**/api/llm/translation-models", (route) =>
+  await page.route("**/api/llm/translation-models?*", (route) =>
     route.fulfill({
       json: [
         {

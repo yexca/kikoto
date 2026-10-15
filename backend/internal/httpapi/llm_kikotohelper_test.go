@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -28,6 +29,9 @@ func TestKikotoHelperRejectionsNameTheirCause(t *testing.T) {
 		case "not_installed":
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"error":{"message":"not installed","type":"not_installed","code":"not_installed"}}`))
+		case "out_of_memory":
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"message":"could not start","type":"start_failed","code":"start_failed","reason":"out_of_memory"}}`))
 		default:
 			_, _ = w.Write([]byte(`{"text":{"title":"Example translation"},"model":"example-helper-model"}`))
 		}
@@ -55,16 +59,92 @@ func TestKikotoHelperRejectionsNameTheirCause(t *testing.T) {
 		t.Fatalf("unsupported pair: %d %s", w.Code, w.Body.String())
 	}
 
-	answer.Store("not_installed")
+	// A model that ran out of memory while loading is not a missing model.
+	answer.Store("out_of_memory")
+	if w := llmTestTranslate(t, f, p); w.Code != http.StatusUnprocessableEntity || json.Unmarshal(w.Body.Bytes(), &failure) != nil || failure.Code != "llm_service_out_of_memory" {
+		t.Fatalf("out of memory: %d %s", w.Code, w.Body.String())
+	}
+
+	// A queued translation names the cause, and a start failure stays
+	// retryable once memory is freed.
 	ctx := context.Background()
+	answer.Store("not_installed")
 	runs, err := f.server.enqueueLLMTranslations(ctx, f.userID, []int64{f.workID}, llmTranslatePayload{ProviderID: p.ID, Target: "zh-cn", Fields: []string{"title"}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	actor, _ := f.server.accountStore.LoadByID(ctx, f.userID)
+	for i, want := range []struct{ answer, code string }{{"not_installed", "service_not_ready"}, {"out_of_memory", "service_out_of_memory"}} {
+		answer.Store(want.answer)
+		if i > 0 {
+			if _, err := f.server.retryLLMTranslationRun(ctx, actor, runs[0].RunID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		_ = f.server.runNextQueuedWorkflowJob(ctx)
+		var state, code string
+		_ = f.db.QueryRow("SELECT state,COALESCE(failure_code,'') FROM llm_translation_task WHERE workflow_run_id=?", runs[0].RunID).Scan(&state, &code)
+		if state != "failed" || code != want.code {
+			t.Fatalf("%s: queued translation state=%s code=%s", want.answer, state, code)
+		}
+	}
+}
+
+// A direction the helper's model does not declare is refused before a task is
+// queued or the helper receives a request, and the translation choices name
+// the model's targets.
+func TestKikotoHelperDeclaredPairsLimitTranslationTargets(t *testing.T) {
+	var requests atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		_, _ = w.Write([]byte(`{"text":{"title":"Example translation"},"model":"example-helper-model"}`))
+	}))
+	defer upstream.Close()
+	f := newManualOverrideFixture(t, config.Config{})
+	_, _ = f.db.Exec("UPDATE user_account SET role='admin' WHERE id=?", f.userID)
+	_, _ = f.db.Exec("UPDATE work SET age_rating='general' WHERE id=?", f.workID)
+	ctx := context.Background()
+	key := "synthetic-token"
+	p, err := f.server.llmStore.Mutate(ctx, "", llm.Provider{PresetID: kikotohelper.Kind, Scope: llm.ScopeOtherMachine, BaseURL: upstream.URL, Enabled: true, EnabledModels: []string{"example-helper-model"}}, &key, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p, err = f.server.llmStore.Models(ctx, p, []llm.Model{{ID: "example-helper-model", Pairs: []llm.LanguagePair{{Source: "ja-jp", Target: "zh-cn"}}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	r := llmTestRequest(f, "GET", "")
+	r.URL.RawQuery = "workId=" + jsonNumber(f.workID)
+	w := httptest.NewRecorder()
+	f.server.listLLMTranslationModels(w, r)
+	var choices []struct {
+		ModelTargets map[string][]string `json:"modelTargets"`
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &choices) != nil || len(choices) != 1 || len(choices[0].ModelTargets["example-helper-model"]) != 1 || choices[0].ModelTargets["example-helper-model"][0] != "zh-cn" {
+		t.Fatalf("translation models: %d %s", w.Code, w.Body.String())
+	}
+
+	_, err = f.server.enqueueLLMTranslations(ctx, f.userID, []int64{f.workID}, llmTranslatePayload{ProviderID: p.ID, Target: "en-us", Fields: []string{"title"}})
+	var refused llmRequestError
+	var runs int
+	_ = f.db.QueryRow("SELECT COUNT(*) FROM workflow_run").Scan(&runs)
+	if !errors.As(err, &refused) || refused.Code != "llm_unsupported_language_pair" || runs != 0 || requests.Load() != 0 {
+		t.Fatalf("unsupported direction: err=%v runs=%d requests=%d", err, runs, requests.Load())
+	}
+
+	// A model that changes its pairs while a translation waits stops the task
+	// without a request.
+	queued, err := f.server.enqueueLLMTranslations(ctx, f.userID, []int64{f.workID}, llmTranslatePayload{ProviderID: p.ID, Target: "zh-cn", Fields: []string{"title"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.server.llmStore.Models(ctx, p, []llm.Model{{ID: "example-helper-model", Pairs: []llm.LanguagePair{{Source: "ja-jp", Target: "ko-kr"}}}}); err != nil {
+		t.Fatal(err)
+	}
 	_ = f.server.runNextQueuedWorkflowJob(ctx)
 	var state, code string
-	_ = f.db.QueryRow("SELECT state,COALESCE(failure_code,'') FROM llm_translation_task WHERE workflow_run_id=?", runs[0].RunID).Scan(&state, &code)
-	if state != "failed" || code != "service_not_ready" {
-		t.Fatalf("queued translation state=%s code=%s", state, code)
+	_ = f.db.QueryRow("SELECT state,COALESCE(failure_code,'') FROM llm_translation_task WHERE workflow_run_id=?", queued[0].RunID).Scan(&state, &code)
+	if state != "invalid" || code != "unsupported_language_pair" || requests.Load() != 0 {
+		t.Fatalf("queued translation state=%s code=%s requests=%d", state, code, requests.Load())
 	}
 }

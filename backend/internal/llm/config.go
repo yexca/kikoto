@@ -69,6 +69,45 @@ var Presets = []Preset{
 type Model struct {
 	ID   string `json:"id"`
 	Name string `json:"name,omitempty"`
+	// Pairs are the only directions the model translates, as reported by its
+	// service. Empty means any direction.
+	Pairs []LanguagePair `json:"pairs,omitempty"`
+}
+
+// LanguagePair is a translation direction between two language tokens.
+type LanguagePair struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+}
+
+// MaxLanguagePairs bounds the directions one model records.
+const MaxLanguagePairs = 64
+
+// TranslationTargets returns the target languages model translates into from
+// source, or nil when the model translates any direction. An empty source,
+// a work whose original language is unknown, matches every declared source.
+// A model that is not among the discovered models has no declared pairs.
+func (p Provider) TranslationTargets(model, source string) []string {
+	for _, discovered := range p.Models {
+		if discovered.ID != model || len(discovered.Pairs) == 0 {
+			continue
+		}
+		targets := []string{}
+		for _, pair := range discovered.Pairs {
+			if (source == "" || pair.Source == source) && !slices.Contains(targets, pair.Target) {
+				targets = append(targets, pair.Target)
+			}
+		}
+		return targets
+	}
+	return nil
+}
+
+// TranslatesDirection reports whether model translates from source into
+// target.
+func (p Provider) TranslatesDirection(model, source, target string) bool {
+	targets := p.TranslationTargets(model, source)
+	return targets == nil || slices.Contains(targets, target)
 }
 
 type Provider struct {

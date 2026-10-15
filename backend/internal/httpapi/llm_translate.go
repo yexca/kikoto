@@ -10,6 +10,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -413,10 +414,28 @@ func (s *Server) listLLMTranslationModels(w http.ResponseWriter, r *http.Request
 		writeError(w, err)
 		return
 	}
+	// With a work, model targets follow the language of its original edition;
+	// without one, they cover every declared source.
+	source := ""
+	if raw := r.URL.Query().Get("workId"); raw != "" {
+		workID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || workID <= 0 {
+			writeAPIError(w, 400, "invalid_work_id", "Invalid work id.", false)
+			return
+		}
+		source = s.workOriginLyricsLanguage(r.Context(), workID)
+	}
 	result := []map[string]any{}
 	for _, p := range providers {
 		if p.Enabled && p.DefaultModel != "" {
-			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "boundary": p.Boundary, "maxContentClass": p.MaxContentClass})
+			// Only models restricted to declared directions have targets.
+			targets := map[string][]string{}
+			for _, model := range p.EnabledModels {
+				if languages := p.TranslationTargets(model, source); languages != nil {
+					targets[model] = languages
+				}
+			}
+			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "modelTargets": targets, "boundary": p.Boundary, "maxContentClass": p.MaxContentClass})
 		}
 	}
 	writeJSON(w, 200, result)

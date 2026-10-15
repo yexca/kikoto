@@ -172,10 +172,16 @@
   Kikoto Helper on the server's machine through the host gateway, on ports
   17656 and 17657 by default, or on another machine by origin, with the API
   token the helper shows. Translation sends whole fields to the helper, which
-  formats prompts and keeps line counts for its model. Fetching models from a
-  helper without an installed model, a model that cannot translate between
-  the chosen languages, and a model that is not installed or started each
-  name their cause.
+  formats prompts and keeps line counts for its model. Fetching models records
+  the translation directions the helper's model supports. Translating lyrics
+  and metadata both default to the interface language when the model
+  translates into it from the work's original language, otherwise to a
+  language the model supports, show other languages as unavailable, and refuse
+  an unsupported direction before queuing. Fetching models from a helper
+  without an installed model, a model that cannot translate between the
+  chosen languages, a model that is not installed, one that cannot start and
+  one that ran out of memory while loading each name their cause, so a start
+  failure never asks to install a model that is already installed.
 - The ellipsis between the page numbers below a list opens a field that goes
   to a typed page number.
 

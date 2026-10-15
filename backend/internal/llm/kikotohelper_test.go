@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/kikotohelper"
@@ -76,7 +77,7 @@ func TestKikotoHelperTranslatesThroughTheTaskEndpoint(t *testing.T) {
 	}
 	client := Client{HTTP: upstream.Client(), Provider: p}
 	models, err := client.Models(context.Background())
-	if err != nil || len(models) != 1 || models[0] != (Model{ID: "example-helper-model", Name: "Example Helper Model"}) {
+	if err != nil || !reflect.DeepEqual(models, []Model{{ID: "example-helper-model", Name: "Example Helper Model", Pairs: []LanguagePair{{Source: "ja-jp", Target: "zh-cn"}}}}) {
 		t.Fatalf("models = %+v, %v", models, err)
 	}
 
@@ -103,5 +104,56 @@ func TestKikotoHelperTranslatesThroughTheTaskEndpoint(t *testing.T) {
 	var rejected UpstreamError
 	if !errors.As(err, &rejected) || rejected.Code != kikotohelper.CodeUnsupportedLanguagePair {
 		t.Fatalf("rejection = %#v", err)
+	}
+}
+
+func TestKikotoHelperRecordsTheModelLanguagePairs(t *testing.T) {
+	pairs := ""
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"service":"llm","api_version":1,"installed":true,"model":"example-helper-model"` + pairs + `}`))
+	}))
+	defer upstream.Close()
+	p, err := Normalize(Provider{PresetID: kikotohelper.Kind, Scope: ScopeOtherMachine, BaseURL: upstream.URL, APIKey: "synthetic-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := Client{HTTP: upstream.Client(), Provider: p}
+	for _, test := range []struct {
+		pairs string
+		want  []LanguagePair
+	}{
+		{"", nil},
+		{`,"pairs":"any"`, nil},
+		// Helper codes become language tokens; an unknown code still restricts.
+		{`,"pairs":[["ja","zh-CN"],["ja-jp","zh-cn"],["ja","x-example"]]`, []LanguagePair{{"ja-jp", "zh-cn"}, {"ja-jp", "x-example"}}},
+	} {
+		pairs = test.pairs
+		models, err := client.Models(context.Background())
+		if err != nil || len(models) != 1 || !reflect.DeepEqual(models[0].Pairs, test.want) {
+			t.Fatalf("pairs %s = %+v, %v", test.pairs, models, err)
+		}
+	}
+	pairs = `,"pairs":"some"`
+	if _, err := client.Models(context.Background()); !errors.Is(err, kikotohelper.ErrIncompatible) {
+		t.Fatalf("invalid pairs = %v", err)
+	}
+}
+
+func TestTranslationTargetsFollowTheDeclaredDirections(t *testing.T) {
+	p := Provider{Models: []Model{{ID: "restricted", Pairs: []LanguagePair{{"ja-jp", "zh-cn"}, {"en-us", "ko-kr"}}}, {ID: "open"}}}
+	if got := p.TranslationTargets("restricted", "ja-jp"); !reflect.DeepEqual(got, []string{"zh-cn"}) {
+		t.Fatalf("targets from ja-jp = %v", got)
+	}
+	if got := p.TranslationTargets("restricted", ""); !reflect.DeepEqual(got, []string{"zh-cn", "ko-kr"}) {
+		t.Fatalf("targets from an unknown source = %v", got)
+	}
+	if got := p.TranslationTargets("restricted", "zh-tw"); got == nil || len(got) != 0 {
+		t.Fatalf("targets from an undeclared source = %#v", got)
+	}
+	if !p.TranslatesDirection("restricted", "ja-jp", "zh-cn") || p.TranslatesDirection("restricted", "ja-jp", "en-us") {
+		t.Fatal("a declared direction decides")
+	}
+	if !p.TranslatesDirection("open", "ja-jp", "en-us") || !p.TranslatesDirection("manually-added", "ja-jp", "en-us") {
+		t.Fatal("a model without declared pairs translates any direction")
 	}
 }

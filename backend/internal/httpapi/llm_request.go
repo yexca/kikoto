@@ -16,6 +16,8 @@ type llmRequestError struct{ Code, Message string }
 func (e llmRequestError) Error() string     { return e.Message }
 func llmInvalid(code, message string) error { return llmRequestError{code, message} }
 
+var errLLMUnsupportedLanguagePair = llmInvalid("llm_unsupported_language_pair", "This model does not support that translation direction.")
+
 type llmTranslationPlan struct {
 	Provider llm.Provider
 	Model    string
@@ -68,6 +70,11 @@ func (s *Server) prepareLLMTranslation(ctx context.Context, workID int64, payloa
 		return plan, err
 	}
 	plan.SourceLanguage = s.workOriginLyricsLanguage(ctx, workID)
+	// A direction the model declares it cannot translate is refused before
+	// any task is queued or request sent.
+	if !provider.TranslatesDirection(model, plan.SourceLanguage, payload.Target) {
+		return plan, errLLMUnsupportedLanguagePair
+	}
 	if len(plan.Input.Text.Title) > 4096 || len(plan.Input.Text.Description) > 64<<10 || len(plan.Input.TagNames) > 64<<10 || len(plan.Input.ManualTitle) > 64<<10 || len(plan.Input.ManualDescription) > 128<<10 {
 		return plan, llmInvalid("llm_input_too_large", "Translation input exceeds the text limit.")
 	}
@@ -158,10 +165,14 @@ func (s *Server) requestLLMTranslation(ctx context.Context, plan llmTranslationP
 		}
 		translated, err := client.Translate(ctx, plan.Model, plan.SourceLanguage, target, input)
 		switch llmHelperRejection(err) {
-		case "unsupported_language_pair":
-			return result, llmInvalid("llm_unsupported_language_pair", "The provider's model cannot translate between these languages.")
-		case "service_not_ready":
-			return result, llmInvalid("llm_service_not_ready", "The provider has no ready model. Install or start one in the provider.")
+		case kikotohelper.FailureUnsupportedLanguagePair:
+			return result, errLLMUnsupportedLanguagePair
+		case kikotohelper.FailureNotReady:
+			return result, llmInvalid("llm_service_not_ready", "The provider has no ready model. Install or choose one in the provider.")
+		case kikotohelper.FailureStartFailed:
+			return result, llmInvalid("llm_service_start_failed", "The provider could not start its model. Check the provider.")
+		case kikotohelper.FailureOutOfMemory:
+			return result, llmInvalid("llm_service_out_of_memory", "The provider could not load its model because memory ran out. Free GPU memory or set the helper's GPU sharing to take turns, then retry.")
 		}
 		if err != nil {
 			return result, err
@@ -187,22 +198,15 @@ func (s *Server) requestLLMTranslation(ctx context.Context, plan llmTranslationP
 	return result, nil
 }
 
-// llmHelperRejection names a Kikoto Helper rejection that retrying cannot
-// fix: "unsupported_language_pair" when its model does not translate between
-// the languages, or "service_not_ready" when it has no model installed or
-// started. Both reject the request before any model receives it.
+// llmHelperRejection names a Kikoto Helper rejection that retrying unchanged
+// cannot fix, as a kikotohelper failure code, or returns empty. The helper
+// rejects these before any model receives the request.
 func llmHelperRejection(err error) string {
 	var rejected llm.UpstreamError
 	if !errors.As(err, &rejected) {
 		return ""
 	}
-	switch {
-	case rejected.Code == kikotohelper.CodeUnsupportedLanguagePair:
-		return "unsupported_language_pair"
-	case kikotohelper.NotReady(rejected.Code):
-		return "service_not_ready"
-	}
-	return ""
+	return kikotohelper.Failure(rejected.Rejection)
 }
 
 func writeLLMRequestError(w http.ResponseWriter, err error) {

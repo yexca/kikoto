@@ -46,6 +46,8 @@ const knownFailures = new Set([
   "upstream_rejected",
   "upstream_failed",
   "service_not_ready",
+  "service_start_failed",
+  "service_out_of_memory",
   "no_timestamps",
   "no_speech",
   "provider_changed",

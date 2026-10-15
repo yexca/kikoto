@@ -2432,6 +2432,11 @@ export const surfaceHant = {
   errorFeedback: {
     databaseBusy: "資料庫忙碌中，請稍後重試。",
     serviceModelNotInstalled: "服務尚未安裝模型。請先在服務中安裝模型，再重新取得模型。",
+    llmUnsupportedLanguagePair: "此模型不支援該翻譯方向。",
+    llmServiceNotReady: "服務商沒有可用的模型。請在服務商中安裝或選擇模型。",
+    llmServiceStartFailed: "服務商無法啟動其模型。請檢查服務商。",
+    llmServiceOutOfMemory:
+      "服務商因記憶體不足無法載入模型。請釋放顯示記憶體，或將助手的顯示記憶體排程設為輪流載入，然後重試。",
     invalidRequest: "請檢查輸入內容後重試。",
     conflict: "此項目已變更或與現有資料衝突，請重新整理後重試。",
     sourceNotUsable: "此遠端來源已停用，或不支援此操作。",
@@ -2760,7 +2765,10 @@ export const surfaceHant = {
       audio_decode_failed: "無法解碼音訊檔案。",
       audio_too_long: "音軌過長，無法轉寫。",
       transcript_too_large: "轉寫結果過大。",
-      service_not_ready: "服務沒有可用的模型。請在服務中安裝或啟動模型後重新轉寫。",
+      service_not_ready: "服務沒有可用的模型。請在服務中安裝或選擇模型後重新轉寫。",
+      service_start_failed: "服務無法啟動其模型。請檢查服務後重新轉寫。",
+      service_out_of_memory:
+        "服務因記憶體不足無法載入模型。請釋放顯示記憶體，或將助手的顯示記憶體排程設為輪流載入，然後重新轉寫。",
       ffmpeg_unavailable: "此伺服器無法準備音訊。",
       endpoint_unavailable: "無法建立服務連線。",
       cancelled: "轉寫已取消。",
@@ -2837,8 +2845,11 @@ export const surfaceHant = {
       policy_changed: "翻譯開始後，內容安全政策有所變更。請重新翻譯。",
       invalid_lyrics_output: "服務商的回答沒有保留歌詞的行。請重新翻譯。",
       translation_output_too_large: "譯文過大。",
-      unsupported_language_pair: "服務商的模型無法在這兩種語言之間翻譯。請選擇其他語言或服務商。",
-      service_not_ready: "服務商沒有可用的模型。請在服務商中安裝或啟動模型後，在 Activity 中重試。",
+      unsupported_language_pair: "此模型不支援該翻譯方向。請選擇其他語言或模型。",
+      service_not_ready: "服務商沒有可用的模型。請在服務商中安裝或選擇模型後，在 Activity 中重試。",
+      service_start_failed: "服務商無法啟動其模型。請檢查服務商後，在 Activity 中重試。",
+      service_out_of_memory:
+        "服務商因記憶體不足無法載入模型。請釋放顯示記憶體，或將助手的顯示記憶體排程設為輪流載入，然後在 Activity 中重試。",
       unknown: "翻譯已停止。請重新翻譯，或在 Activity 中查看。",
     },
     errors: {
@@ -2848,6 +2859,7 @@ export const surfaceHant = {
       llm_lyrics_format: "歌詞檔案為空、過大或格式不受支援。",
       llm_input_too_large: "歌詞檔案過大，無法翻譯。",
       llm_remote_lyrics_disabled: "翻譯遠端歌詞需要管理員在「設定 → LLM」中允許，並需要遠端取得權限。",
+      llm_unsupported_language_pair: "此模型不支援該翻譯方向。",
     },
     uncertainHint: "有請求被中斷，結果未知。重新傳送可能產生額外費用。",
     resend: "重新傳送",
@@ -2863,6 +2875,10 @@ export const surfaceHant = {
     discard: "捨棄",
     discarded: "譯文已捨棄。",
     discardFailed: "無法捨棄譯文。",
+  },
+  translationTargets: {
+    unsupported: "此模型不支援",
+    noTarget: "此模型無法將該作品翻譯為以下任何語言。請選擇其他模型。",
   },
   serviceModels: {
     label: "模型",

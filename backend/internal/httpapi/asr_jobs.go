@@ -199,8 +199,8 @@ func (s *Server) executeASRTranscriptionWithDecoder(ctx context.Context, job wor
 			code := "upstream_failed"
 			var rejected asr.UpstreamError
 			switch {
-			case errors.As(requestErr, &rejected) && kikotohelper.NotReady(rejected.Code):
-				code = "service_not_ready"
+			case errors.As(requestErr, &rejected) && kikotohelper.Failure(rejected.Rejection) != "":
+				code = kikotohelper.Failure(rejected.Rejection)
 			case errors.As(requestErr, &rejected):
 				code = "upstream_rejected"
 			case errors.Is(requestErr, asr.ErrNoTimestamps):

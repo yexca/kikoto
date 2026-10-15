@@ -22,11 +22,11 @@ const ResponseLimit = 4 << 20
 // timestamps lyrics need, such as a model without verbose JSON output.
 var ErrNoTimestamps = errors.New("speech recognition response has no segment timestamps")
 
-// UpstreamError is a rejected request. Code is the error code a Kikoto Helper
+// UpstreamError is a rejected request. Rejection is what a Kikoto Helper
 // reports, and empty for every other service.
 type UpstreamError struct {
 	Status int
-	Code   string
+	kikotohelper.Rejection
 }
 
 func (e UpstreamError) Error() string { return "speech recognition service rejected the request" }
@@ -72,7 +72,7 @@ func (c Client) do(req *http.Request) ([]byte, error) {
 		rejected := UpstreamError{Status: response.StatusCode}
 		if c.Provider.Preset().Kind == kikotohelper.Kind {
 			data, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
-			rejected.Code = kikotohelper.ErrorCode(data)
+			rejected.Rejection = kikotohelper.DecodeRejection(data)
 		}
 		return nil, rejected
 	}

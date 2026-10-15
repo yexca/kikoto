@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 
@@ -15,11 +16,11 @@ import (
 
 const ResponseLimit = 2 << 20
 
-// UpstreamError is a rejected request. Code is the error code a Kikoto Helper
+// UpstreamError is a rejected request. Rejection is what a Kikoto Helper
 // reports, and empty for every other provider.
 type UpstreamError struct {
 	Status int
-	Code   string
+	kikotohelper.Rejection
 }
 
 func (e UpstreamError) Error() string { return "LLM upstream rejected request" }
@@ -67,7 +68,7 @@ func (c Client) request(ctx context.Context, method, suffix string, body any) ([
 		rejected := UpstreamError{Status: response.StatusCode}
 		if c.Provider.Preset().Kind == kikotohelper.Kind {
 			data, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
-			rejected.Code = kikotohelper.ErrorCode(data)
+			rejected.Rejection = kikotohelper.DecodeRejection(data)
 		}
 		return nil, rejected
 	}
@@ -100,7 +101,7 @@ func (c Client) Models(ctx context.Context) ([]Model, error) {
 		if id == "" || len(id) > 256 {
 			return nil, kikotohelper.ErrIncompatible
 		}
-		return []Model{{ID: id, Name: strings.TrimSpace(info.ModelName)}}, nil
+		return []Model{{ID: id, Name: strings.TrimSpace(info.ModelName), Pairs: helperPairs(info.Pairs)}}, nil
 	}
 	suffix := "/models"
 	if c.Provider.Preset().Kind == "ollama" {
@@ -114,6 +115,37 @@ func (c Client) Models(ctx context.Context) ([]Model, error) {
 		return nil, err
 	}
 	return DecodeModels(c.Provider.Preset().Kind, data)
+}
+
+// helperPairs converts a helper's language pairs to language tokens. A code
+// outside the languages the helper names keeps its lowercase spelling, so it
+// still restricts the model without matching any language this server offers.
+func helperPairs(pairs kikotohelper.Pairs) []LanguagePair {
+	if pairs == nil {
+		return nil
+	}
+	token := func(code string) string {
+		if language := kikotohelper.LanguageToken(code); language != "" {
+			return language
+		}
+		code = strings.ToLower(strings.TrimSpace(code))
+		if code == "" || len(code) > 16 || strings.ContainsFunc(code, func(r rune) bool { return (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' }) {
+			return ""
+		}
+		return code
+	}
+	result := []LanguagePair{}
+	for _, pair := range pairs {
+		converted := LanguagePair{Source: token(pair[0]), Target: token(pair[1])}
+		if converted.Source == "" || converted.Target == "" || slices.Contains(result, converted) {
+			continue
+		}
+		if len(result) == MaxLanguagePairs {
+			break
+		}
+		result = append(result, converted)
+	}
+	return result
 }
 
 func DecodeModels(kind string, data []byte) ([]Model, error) {
@@ -142,7 +174,7 @@ func DecodeModels(kind string, data []byte) ([]Model, error) {
 			return
 		}
 		seen[id] = true
-		result = append(result, Model{id, strings.TrimSpace(name)})
+		result = append(result, Model{ID: id, Name: strings.TrimSpace(name)})
 	}
 	if kind == "ollama" {
 		for _, item := range body.Models {

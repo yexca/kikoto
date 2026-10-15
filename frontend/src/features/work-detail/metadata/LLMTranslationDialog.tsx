@@ -12,6 +12,7 @@ import { api, type LLMTranslation, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { metadataTagNameLanguages } from "@/lib/metadataTagModel";
 import { serviceModelChoices } from "@/lib/serviceModels";
+import { interfaceLyricsLanguage, modelTranslationTargets, translationTarget } from "@/lib/translationTargets";
 import { LLMTranslationReviews } from "./LLMTranslationReviews";
 import type { LLMTranslationModel, LLMAssessment } from "@/lib/llmApi";
 
@@ -26,7 +27,7 @@ export function LLMTranslationDialog({
   onApply: (translation: LLMTranslation) => void;
   applying?: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const toast = useToast();
   const translationController = useRef<AbortController | null>(null);
   useEffect(() => () => translationController.current?.abort(), []);
@@ -34,7 +35,8 @@ export function LLMTranslationDialog({
   const [assessment, setAssessment] = useState<LLMAssessment | null>(null);
   // A provider and one of its enabled models, as a serviceModelKey.
   const [choiceKey, setChoiceKey] = useState("");
-  const [targetLanguage, setTargetLanguage] = useState("zh-cn");
+  // The target the user chose; it applies while the chosen model translates into it.
+  const [chosenLanguage, setChosenLanguage] = useState<string | null>(null);
   const [fields, setFields] = useState({ title: true, description: true, tags: false });
   const [workCodes, setWorkCodes] = useState(work.primaryCode);
   const [runs, setRuns] = useState<{ runId: number; state: string }[]>([]);
@@ -44,24 +46,32 @@ export function LLMTranslationDialog({
 
   useEffect(() => {
     void api
-      .listTranslationModels()
+      .listTranslationModels(work.id)
       .then((result) => {
         setProviders(result);
         setChoiceKey(serviceModelChoices(result)[0]?.key ?? "");
       })
       .catch((error) => toast.notify(toastFromError(error, t("llmTranslation.providersFailed"))))
       .finally(() => setLoadingProviders(false));
-  }, [toast, t]);
+  }, [toast, t, work.id]);
 
   const selectedFields = Object.entries(fields)
     .filter(([, selected]) => selected)
     .map(([field]) => field);
   const choices = serviceModelChoices(providers);
   const choice = choices.find((candidate) => candidate.key === choiceKey) ?? null;
+  const targets = modelTranslationTargets(choice?.service, choice?.model);
+  const targetLanguage = translationTarget({
+    chosen: chosenLanguage,
+    preferred: interfaceLyricsLanguage(i18n.resolvedLanguage),
+    targets,
+    offered: metadataTagNameLanguages.map(([language]) => language),
+  });
+  const languageSupported = targets === null || targets.includes(targetLanguage);
   const request = {
     providerId: choice?.service.id ?? "",
     model: choice?.model,
-    targetLanguage: targetLanguage.trim(),
+    targetLanguage,
     fields: selectedFields,
   };
   const queue = async () => {
@@ -76,7 +86,7 @@ export function LLMTranslationDialog({
     }
   };
   const translate = async () => {
-    if (!choice || !targetLanguage.trim() || selectedFields.length === 0) return;
+    if (!choice || !languageSupported || selectedFields.length === 0) return;
     setLoading(true);
     try {
       translationController.current = new AbortController();
@@ -156,15 +166,20 @@ export function LLMTranslationDialog({
                 className="mt-1 w-full rounded border bg-background p-2 text-sm"
                 value={targetLanguage}
                 disabled={loading}
-                onChange={(event) => setTargetLanguage(event.target.value)}
+                onChange={(event) => setChosenLanguage(event.target.value)}
               >
-                {metadataTagNameLanguages.map(([language, label]) => (
-                  <option key={language} value={language}>
-                    {t(label)}
-                  </option>
-                ))}
+                {metadataTagNameLanguages.map(([language, label]) => {
+                  const unsupported = targets !== null && !targets.includes(language);
+                  return (
+                    <option key={language} value={language} disabled={unsupported}>
+                      {t(label)}
+                      {unsupported ? ` · ${t("translationTargets.unsupported")}` : ""}
+                    </option>
+                  );
+                })}
               </select>
             </label>
+            {!languageSupported && <p className="text-xs text-muted-foreground">{t("translationTargets.noTarget")}</p>}
             <fieldset className="space-y-2 rounded-lg border px-3 py-3">
               <legend className="px-1 text-sm font-medium">{t("llmTranslation.fields")}</legend>
               <label className="flex items-center gap-2 text-sm">
@@ -199,7 +214,7 @@ export function LLMTranslationDialog({
               workId={work.id}
               onSelect={(review) => {
                 setPreview(review);
-                setTargetLanguage(review.targetLanguage);
+                setChosenLanguage(review.targetLanguage);
               }}
             />
             <label className="block text-sm">
@@ -214,7 +229,7 @@ export function LLMTranslationDialog({
             <Button
               size="sm"
               variant="outline"
-              disabled={loading || !choice || selectedFields.length === 0}
+              disabled={loading || !choice || !languageSupported || selectedFields.length === 0}
               onClick={() => void queue()}
             >
               {t("llmTranslation.queue")}
@@ -316,7 +331,7 @@ export function LLMTranslationDialog({
         ) : (
           <Button
             size="sm"
-            disabled={loading || loadingProviders || !choice || selectedFields.length === 0}
+            disabled={loading || loadingProviders || !choice || !languageSupported || selectedFields.length === 0}
             onClick={() => void translate()}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}

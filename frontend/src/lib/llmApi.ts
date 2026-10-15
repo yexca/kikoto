@@ -99,6 +99,12 @@ export type LLMPolicy = {
 export type LLMTranslationModel = Pick<LLMProvider, "id" | "name" | "defaultModel" | "boundary" | "maxContentClass"> & {
   /** The enabled models, any of which a translation may use. */
   models: string[];
+  /**
+   * The target languages of each model limited to the directions its service
+   * declares, from the requested work's original language. A model without an
+   * entry translates any direction.
+   */
+  modelTargets?: Record<string, string[]>;
 };
 export type LLMAssessment = {
   class: ContentClass;
@@ -159,7 +165,11 @@ export type LLMLyricsTranslation = {
 };
 
 export const llmApi = {
-  listTranslationModels: () => getJSON<LLMTranslationModel[]>("/api/llm/translation-models"),
+  /** With a work, each model's targets follow the language of the work's original edition. */
+  listTranslationModels: (workId?: number) =>
+    getJSON<LLMTranslationModel[]>(
+      workId === undefined ? "/api/llm/translation-models" : `/api/llm/translation-models?workId=${workId}`,
+    ),
   precheckWork: (id: number, payload: Partial<LLMTranslationRequest> = {}) =>
     postJSONBody<{ assessment: LLMAssessment; checkedFields: string[]; sentFields: string[] }>(
       `/api/works/${id}/llm-precheck`,

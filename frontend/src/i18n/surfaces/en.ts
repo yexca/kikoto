@@ -2597,6 +2597,11 @@ export const surfaceEnglish = {
     databaseBusy: "The database is busy. Please retry in a moment.",
     serviceModelNotInstalled:
       "The service has no installed model. Install one in the service, then fetch models again.",
+    llmUnsupportedLanguagePair: "This model does not support that translation direction.",
+    llmServiceNotReady: "The provider has no ready model. Install or choose one in the provider.",
+    llmServiceStartFailed: "The provider could not start its model. Check the provider.",
+    llmServiceOutOfMemory:
+      "The provider could not load its model because memory ran out. Free GPU memory or set the helper's GPU sharing to take turns, then try again.",
     invalidRequest: "Check the supplied values and try again.",
     conflict: "This item changed or conflicts with existing data. Refresh and try again.",
     sourceNotUsable: "This remote source is disabled or does not support this action.",
@@ -2930,7 +2935,10 @@ export const surfaceEnglish = {
       audio_decode_failed: "The audio file could not be decoded.",
       audio_too_long: "The track is too long to transcribe.",
       transcript_too_large: "The transcript is too large.",
-      service_not_ready: "The service has no ready model. Install or start one in the service, then transcribe again.",
+      service_not_ready: "The service has no ready model. Install or choose one in the service, then transcribe again.",
+      service_start_failed: "The service could not start its model. Check the service, then transcribe again.",
+      service_out_of_memory:
+        "The service could not load its model because memory ran out. Free GPU memory or set the helper's GPU sharing to take turns, then transcribe again.",
       ffmpeg_unavailable: "Audio preparation is unavailable on this server.",
       endpoint_unavailable: "The service connection could not be prepared.",
       cancelled: "The transcription was cancelled.",
@@ -3013,9 +3021,12 @@ export const surfaceEnglish = {
       invalid_lyrics_output: "The provider's answer did not keep the lines of the lyrics. Translate again.",
       translation_output_too_large: "The translation is too large.",
       unsupported_language_pair:
-        "The provider's model cannot translate between these languages. Choose another language or provider.",
+        "This model does not support that translation direction. Choose another language or model.",
       service_not_ready:
-        "The provider has no ready model. Install or start one in the provider, then retry it from Activity.",
+        "The provider has no ready model. Install or choose one in the provider, then retry it from Activity.",
+      service_start_failed: "The provider could not start its model. Check the provider, then retry it from Activity.",
+      service_out_of_memory:
+        "The provider could not load its model because memory ran out. Free GPU memory or set the helper's GPU sharing to take turns, then retry it from Activity.",
       unknown: "The translation stopped. Translate again, or check it in Activity.",
     },
     errors: {
@@ -3026,6 +3037,7 @@ export const surfaceEnglish = {
       llm_input_too_large: "The lyrics file is too large to translate.",
       llm_remote_lyrics_disabled:
         "Translating remote lyrics needs an administrator to allow it under Settings → LLM, and remote fetch permission.",
+      llm_unsupported_language_pair: "This model does not support that translation direction.",
     },
     uncertainHint: "A request was interrupted, so its result is unknown. Resending it may incur another charge.",
     resend: "Resend",
@@ -3041,6 +3053,10 @@ export const surfaceEnglish = {
     discard: "Discard",
     discarded: "Translation discarded.",
     discardFailed: "The translation could not be discarded.",
+  },
+  translationTargets: {
+    unsupported: "Not supported by this model",
+    noTarget: "This model does not translate this work into any of these languages. Choose another model.",
   },
   serviceModels: {
     label: "Models",

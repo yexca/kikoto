@@ -2548,6 +2548,12 @@ export const surfaceJapanese = {
     databaseBusy: "データベースがビジー状態です。しばらくしてから再試行してください。",
     serviceModelNotInstalled:
       "サービスにモデルがインストールされていません。サービス側でインストールしてから、もう一度モデルを取得してください。",
+    llmUnsupportedLanguagePair: "このモデルはこの翻訳方向に対応していません。",
+    llmServiceNotReady:
+      "プロバイダーに使用できるモデルがありません。プロバイダー側でモデルをインストールまたは選択してください。",
+    llmServiceStartFailed: "プロバイダーがモデルを起動できませんでした。プロバイダーを確認してください。",
+    llmServiceOutOfMemory:
+      "メモリ不足のため、プロバイダーがモデルを読み込めませんでした。GPU メモリを空けるか、ヘルパーの GPU 共有を交互に読み込む設定にしてから、もう一度お試しください。",
     invalidRequest: "入力内容を確認して再試行してください。",
     conflict: "この項目が変更されたか、既存データと競合しています。更新して再試行してください。",
     sourceNotUsable: "このリモートソースは無効になっているか、この操作に対応していません。",
@@ -2885,7 +2891,11 @@ export const surfaceJapanese = {
       audio_too_long: "トラックが長すぎるため文字起こしできません。",
       transcript_too_large: "文字起こしの結果が大きすぎます。",
       service_not_ready:
-        "サービスに使用できるモデルがありません。サービス側でモデルをインストールまたは起動してから、もう一度文字起こししてください。",
+        "サービスに使用できるモデルがありません。サービス側でモデルをインストールまたは選択してから、もう一度文字起こししてください。",
+      service_start_failed:
+        "サービスがモデルを起動できませんでした。サービスを確認してから、もう一度文字起こししてください。",
+      service_out_of_memory:
+        "メモリ不足のため、サービスがモデルを読み込めませんでした。GPU メモリを空けるか、ヘルパーの GPU 共有を交互に読み込む設定にしてから、もう一度文字起こししてください。",
       ffmpeg_unavailable: "このサーバーでは音声を準備できません。",
       endpoint_unavailable: "サービスへの接続を準備できませんでした。",
       cancelled: "文字起こしはキャンセルされました。",
@@ -2968,10 +2978,13 @@ export const surfaceJapanese = {
       policy_changed: "翻訳の開始後にコンテンツ安全ポリシーが変わりました。もう一度翻訳してください。",
       invalid_lyrics_output: "プロバイダーの回答が歌詞の行を保っていませんでした。もう一度翻訳してください。",
       translation_output_too_large: "訳文が大きすぎます。",
-      unsupported_language_pair:
-        "プロバイダーのモデルはこの言語の組み合わせを翻訳できません。別の言語かプロバイダーを選んでください。",
+      unsupported_language_pair: "このモデルはこの翻訳方向に対応していません。別の言語かモデルを選んでください。",
       service_not_ready:
-        "プロバイダーに使用できるモデルがありません。プロバイダー側でモデルをインストールまたは起動してから、Activity で再試行してください。",
+        "プロバイダーに使用できるモデルがありません。プロバイダー側でモデルをインストールまたは選択してから、Activity で再試行してください。",
+      service_start_failed:
+        "プロバイダーがモデルを起動できませんでした。プロバイダーを確認してから、Activity で再試行してください。",
+      service_out_of_memory:
+        "メモリ不足のため、プロバイダーがモデルを読み込めませんでした。GPU メモリを空けるか、ヘルパーの GPU 共有を交互に読み込む設定にしてから、Activity で再試行してください。",
       unknown: "翻訳が停止しました。もう一度翻訳するか、Activity で確認してください。",
     },
     errors: {
@@ -2982,6 +2995,7 @@ export const surfaceJapanese = {
       llm_input_too_large: "歌詞ファイルが大きすぎて翻訳できません。",
       llm_remote_lyrics_disabled:
         "リモートの歌詞を翻訳するには、管理者が「設定 → LLM」で許可し、リモート取得の権限が必要です。",
+      llm_unsupported_language_pair: "このモデルはこの翻訳方向に対応していません。",
     },
     uncertainHint: "リクエストが中断されたため、結果は不明です。再送信すると追加の料金が発生する場合があります。",
     resend: "再送信",
@@ -2997,6 +3011,10 @@ export const surfaceJapanese = {
     discard: "破棄",
     discarded: "訳文を破棄しました。",
     discardFailed: "訳文を破棄できませんでした。",
+  },
+  translationTargets: {
+    unsupported: "このモデルは非対応",
+    noTarget: "このモデルは、この作品をこれらのどの言語にも翻訳できません。別のモデルを選んでください。",
   },
   serviceModels: {
     label: "モデル",

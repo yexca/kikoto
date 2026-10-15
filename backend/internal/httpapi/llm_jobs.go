@@ -264,6 +264,9 @@ func (s *Server) executeLLMTranslationJob(ctx context.Context, job workflowJobRe
 		if errors.As(err, &invalid) && invalid.Code == "llm_not_ready" {
 			return s.failLLMTask(ctx, job, task, "invalid", "provider_changed")
 		}
+		if errors.Is(err, errLLMUnsupportedLanguagePair) {
+			return s.failLLMTask(ctx, job, task, "invalid", "unsupported_language_pair")
+		}
 		return s.failLLMTask(ctx, job, task, "invalid", "content_or_endpoint_unavailable")
 	}
 	if llmPlanHash(plan) != task.InputHash || llmValueHash(plan.Policy) != task.PolicyHash || s.llmConfigHash(plan.Provider, plan.Model) != task.ConfigHash {

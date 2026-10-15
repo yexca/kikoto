@@ -45,7 +45,7 @@ func TestKikotoHelperListsInstalledModelsFromItsInfoProbe(t *testing.T) {
 			}
 		case "/v1/audio/transcriptions":
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"error":{"message":"Runtime is not installed","type":"not_installed","code":"not_installed"}}`))
+			_, _ = w.Write([]byte(`{"error":{"message":"Model could not start","type":"start_failed","code":"start_failed","reason":"out_of_memory"}}`))
 		default:
 			t.Errorf("unexpected path %s", r.URL.Path)
 		}
@@ -63,7 +63,7 @@ func TestKikotoHelperListsInstalledModelsFromItsInfoProbe(t *testing.T) {
 
 	_, err = client.Transcribe(context.Background(), "example-asr", "ja", make([]byte, BytesPerSecond))
 	var rejected UpstreamError
-	if !errors.As(err, &rejected) || rejected.Status != http.StatusServiceUnavailable || !kikotohelper.NotReady(rejected.Code) {
+	if !errors.As(err, &rejected) || rejected.Status != http.StatusServiceUnavailable || kikotohelper.Failure(rejected.Rejection) != kikotohelper.FailureOutOfMemory {
 		t.Fatalf("transcription error = %#v", err)
 	}
 

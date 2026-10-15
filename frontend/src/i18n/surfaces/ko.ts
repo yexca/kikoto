@@ -2538,6 +2538,11 @@ export const surfaceKorean = {
   errorFeedback: {
     databaseBusy: "데이터베이스가 사용 중입니다. 잠시 후 다시 시도하세요.",
     serviceModelNotInstalled: "서비스에 설치된 모델이 없습니다. 서비스에서 모델을 설치한 뒤 모델을 다시 가져오세요.",
+    llmUnsupportedLanguagePair: "이 모델은 해당 번역 방향을 지원하지 않습니다.",
+    llmServiceNotReady: "제공자에 사용할 수 있는 모델이 없습니다. 제공자에서 모델을 설치하거나 선택하세요.",
+    llmServiceStartFailed: "제공자가 모델을 시작하지 못했습니다. 제공자를 확인하세요.",
+    llmServiceOutOfMemory:
+      "메모리가 부족해 제공자가 모델을 불러오지 못했습니다. GPU 메모리를 확보하거나 헬퍼의 GPU 공유를 번갈아 불러오기로 설정한 뒤 다시 시도하세요.",
     invalidRequest: "입력한 값을 확인한 후 다시 시도하세요.",
     conflict: "이 항목이 변경되었거나 기존 데이터와 충돌합니다. 새로 고친 후 다시 시도하세요.",
     sourceNotUsable: "이 원격 소스는 비활성화되어 있거나 이 작업을 지원하지 않습니다.",
@@ -2871,7 +2876,10 @@ export const surfaceKorean = {
       audio_too_long: "트랙이 너무 길어 전사할 수 없습니다.",
       transcript_too_large: "전사 결과가 너무 큽니다.",
       service_not_ready:
-        "서비스에 사용할 수 있는 모델이 없습니다. 서비스에서 모델을 설치하거나 시작한 뒤 다시 전사하세요.",
+        "서비스에 사용할 수 있는 모델이 없습니다. 서비스에서 모델을 설치하거나 선택한 뒤 다시 전사하세요.",
+      service_start_failed: "서비스가 모델을 시작하지 못했습니다. 서비스를 확인한 뒤 다시 전사하세요.",
+      service_out_of_memory:
+        "메모리가 부족해 서비스가 모델을 불러오지 못했습니다. GPU 메모리를 확보하거나 헬퍼의 GPU 공유를 번갈아 불러오기로 설정한 뒤 다시 전사하세요.",
       ffmpeg_unavailable: "이 서버에서 오디오를 준비할 수 없습니다.",
       endpoint_unavailable: "서비스 연결을 준비할 수 없습니다.",
       cancelled: "전사가 취소되었습니다.",
@@ -2951,9 +2959,12 @@ export const surfaceKorean = {
       policy_changed: "번역이 시작된 뒤 콘텐츠 안전 정책이 바뀌었습니다. 다시 번역하세요.",
       invalid_lyrics_output: "제공자의 응답이 가사의 줄을 유지하지 않았습니다. 다시 번역하세요.",
       translation_output_too_large: "번역문이 너무 큽니다.",
-      unsupported_language_pair: "제공자의 모델은 이 언어 조합을 번역할 수 없습니다. 다른 언어나 제공자를 선택하세요.",
+      unsupported_language_pair: "이 모델은 해당 번역 방향을 지원하지 않습니다. 다른 언어나 모델을 선택하세요.",
       service_not_ready:
-        "제공자에 사용할 수 있는 모델이 없습니다. 제공자에서 모델을 설치하거나 시작한 뒤 Activity에서 다시 시도하세요.",
+        "제공자에 사용할 수 있는 모델이 없습니다. 제공자에서 모델을 설치하거나 선택한 뒤 Activity에서 다시 시도하세요.",
+      service_start_failed: "제공자가 모델을 시작하지 못했습니다. 제공자를 확인한 뒤 Activity에서 다시 시도하세요.",
+      service_out_of_memory:
+        "메모리가 부족해 제공자가 모델을 불러오지 못했습니다. GPU 메모리를 확보하거나 헬퍼의 GPU 공유를 번갈아 불러오기로 설정한 뒤 Activity에서 다시 시도하세요.",
       unknown: "번역이 중지되었습니다. 다시 번역하거나 Activity에서 확인하세요.",
     },
     errors: {
@@ -2964,6 +2975,7 @@ export const surfaceKorean = {
       llm_input_too_large: "가사 파일이 너무 커서 번역할 수 없습니다.",
       llm_remote_lyrics_disabled:
         "원격 가사를 번역하려면 관리자가 설정 → LLM에서 허용해야 하며 원격 가져오기 권한이 필요합니다.",
+      llm_unsupported_language_pair: "이 모델은 해당 번역 방향을 지원하지 않습니다.",
     },
     uncertainHint: "요청이 중단되어 결과를 알 수 없습니다. 다시 보내면 추가 요금이 발생할 수 있습니다.",
     resend: "다시 보내기",
@@ -2979,6 +2991,10 @@ export const surfaceKorean = {
     discard: "버리기",
     discarded: "번역문을 버렸습니다.",
     discardFailed: "번역문을 버리지 못했습니다.",
+  },
+  translationTargets: {
+    unsupported: "이 모델에서 지원하지 않음",
+    noTarget: "이 모델은 이 작품을 이 언어들 중 어느 것으로도 번역할 수 없습니다. 다른 모델을 선택하세요.",
   },
   serviceModels: {
     label: "모델",

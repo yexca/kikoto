@@ -26,6 +26,7 @@ import {
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { allLyricsLanguages, lyricsLanguages } from "@/lib/lyricsLanguage";
 import { serviceModelChoices } from "@/lib/serviceModels";
+import { interfaceLyricsLanguage, modelTranslationTargets, translationTarget } from "@/lib/translationTargets";
 import { isLyricsPath } from "@/player/lyricsMatching";
 
 const activeStates: ReadonlySet<LLMLyricsTranslationState> = new Set(["pending", "requesting"]);
@@ -60,6 +61,8 @@ const knownFailures = new Set([
   "translation_output_too_large",
   "unsupported_language_pair",
   "service_not_ready",
+  "service_start_failed",
+  "service_out_of_memory",
 ]);
 
 /** Refusals that say what to change, rather than that starting failed. */
@@ -70,16 +73,8 @@ const startRefusals = new Set([
   "llm_lyrics_format",
   "llm_input_too_large",
   "llm_remote_lyrics_disabled",
+  "llm_unsupported_language_pair",
 ]);
-
-/** The lyrics language of each interface language, the first target suggested. */
-const interfaceLyricsLanguages: Record<string, string> = {
-  ja: "ja-jp",
-  en: "en-us",
-  "zh-Hans": "zh-cn",
-  "zh-Hant": "zh-tw",
-  ko: "ko-kr",
-};
 
 /** A lyrics file that can be translated: a local file, or a remote one where an administrator allows it. */
 type LyricsSource = { locationId: number; mediaItemId: number; title: string; detail: string };
@@ -111,9 +106,8 @@ export function LyricsTranslationPanel({
   const [audioID, setAudioID] = useState(() => trackForLyrics(audio, sources[0]?.mediaItemId) ?? 0);
   // A provider and one of its enabled models, as a serviceModelKey.
   const [choiceKey, setChoiceKey] = useState("");
-  const [language, setLanguage] = useState(
-    () => interfaceLyricsLanguages[i18n.resolvedLanguage ?? ""] ?? interfaceLyricsLanguages.en,
-  );
+  // The target the user chose; it applies while the chosen model translates into it.
+  const [chosenLanguage, setChosenLanguage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [busyID, setBusyID] = useState<number | null>(null);
   const [previewID, setPreviewID] = useState<number | null>(null);
@@ -133,7 +127,7 @@ export function LyricsTranslationPanel({
   useEffect(() => {
     void load();
     api
-      .listTranslationModels()
+      .listTranslationModels(work.id)
       .then((result) => {
         setProviders(result);
         setChoiceKey((current) => current || serviceModelChoices(result)[0]?.key || "");
@@ -142,7 +136,7 @@ export function LyricsTranslationPanel({
         setProviders([]);
         toast.notify(toastFromError(error, t("lyricsTranslation.providersFailed")));
       });
-  }, [load, t, toast]);
+  }, [load, t, toast, work.id]);
 
   const active = translations.some((item) => activeStates.has(item.state));
   useEffect(() => {
@@ -162,6 +156,15 @@ export function LyricsTranslationPanel({
   // The rating covers the work and the whole chosen lyrics file, whatever the provider or target.
   const choices = serviceModelChoices(providers ?? []);
   const choice = choices.find((candidate) => candidate.key === choiceKey) ?? null;
+  const targets = modelTranslationTargets(choice?.service, choice?.model);
+  const targetLanguages = lyricsLanguages.map(([value]) => value).filter((value) => value !== allLyricsLanguages);
+  const language = translationTarget({
+    chosen: chosenLanguage,
+    preferred: interfaceLyricsLanguage(i18n.resolvedLanguage),
+    targets,
+    offered: targetLanguages,
+  });
+  const languageSupported = targets === null || targets.includes(language);
   const rating = useContentRating(`${locationID}:${audioID}`, async () => {
     try {
       const result = await api.precheckWork(work.id, {
@@ -181,7 +184,7 @@ export function LyricsTranslationPanel({
   });
 
   const start = async () => {
-    if (!locationID || !audioID || !choice || !language) return;
+    if (!locationID || !audioID || !choice || !language || !languageSupported) return;
     setSubmitting(true);
     try {
       const { runs } = await api.queueTranslations([work.primaryCode], {
@@ -266,9 +269,16 @@ export function LyricsTranslationPanel({
   const provider = choice?.service ?? null;
   const languageOptions: FloatingSelectOption[] = lyricsLanguages
     .filter(([value]) => value !== allLyricsLanguages)
-    .map(([value, labelKey]) => ({ value, label: t(labelKey) }));
+    .map(([value, labelKey]) => {
+      const unsupported = targets !== null && !targets.includes(value);
+      return {
+        value,
+        disabled: unsupported,
+        label: <TargetLanguageLabel name={t(labelKey)} unsupported={unsupported} />,
+      };
+    });
   const noProvider = providers !== null && providers.length === 0;
-  const ready = Boolean(locationID && audioID && choice && language);
+  const ready = Boolean(locationID && audioID && choice && language && languageSupported);
 
   return (
     <div className="grid gap-5 @3xl:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] @3xl:items-start">
@@ -325,13 +335,17 @@ export function LyricsTranslationPanel({
               <FloatingSelect
                 value={language}
                 options={languageOptions}
-                onValueChange={setLanguage}
+                onValueChange={setChosenLanguage}
                 ariaLabel={t("lyricsTranslation.language")}
                 disabled={submitting}
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              {noProvider ? t("lyricsTranslation.noProvider") : t("lyricsTranslation.hint")}
+              {noProvider
+                ? t("lyricsTranslation.noProvider")
+                : languageSupported
+                  ? t("lyricsTranslation.hint")
+                  : t("translationTargets.noTarget")}
             </p>
             <ContentRatingCheck rating={rating} service={provider} disabled={submitting || !locationID || !audioID} />
             <Button className="w-full" onClick={() => void start()} disabled={submitting || !ready}>
@@ -462,6 +476,19 @@ export function LyricsTranslationPanel({
         )}
       </section>
     </div>
+  );
+}
+
+/** A target language, marked when the chosen model cannot translate into it. */
+function TargetLanguageLabel({ name, unsupported }: { name: string; unsupported: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <span className="flex min-w-0 items-center justify-between gap-3">
+      <span className="truncate">{name}</span>
+      {unsupported && (
+        <span className="shrink-0 text-xs text-muted-foreground">{t("translationTargets.unsupported")}</span>
+      )}
+    </span>
   );
 }
 
