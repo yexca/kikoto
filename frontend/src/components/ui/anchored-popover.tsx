@@ -129,6 +129,8 @@ export function AnchoredPopover({
       if (event.key !== "Escape") return;
       if (!floatingLayer && document.querySelector(openFloatingLayerSelector)) return;
       if (preserveOnNestedLayers && isInsideNestedLayer(null, contentRef.current)) return;
+      // The popover consumes this Escape, so a dialog beneath it stays open.
+      event.preventDefault();
       onOpenChange(false);
     };
     document.addEventListener("pointerdown", dismiss, true);

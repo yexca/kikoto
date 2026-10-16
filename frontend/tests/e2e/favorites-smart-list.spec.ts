@@ -124,9 +124,10 @@ test("@desktop a smart list is created from tags and reports its new works until
   await page.goto("/favorites");
 
   await page.getByRole("navigation", { name: "Favorite shelves" }).getByRole("button", { name: "Add list" }).click();
-  const editor = page.getByRole("form", { name: "Add list" });
+  const editor = page.getByRole("form", { name: "New list" });
+  const create = page.getByRole("dialog", { name: "New list" }).getByRole("button", { name: "Create list" });
   await editor.getByRole("radio", { name: "Smart list" }).click();
-  await expect(editor.getByRole("button", { name: "Add list" })).toBeDisabled();
+  await expect(create).toBeDisabled();
   await editor.getByRole("textbox").first().fill("Example smart list");
   // Suggestions open as a dropdown over the editor, so the fields below stay in place.
   const excludeField = editor.getByRole("combobox", { name: "Exclude tags: Search tags" });
@@ -139,13 +140,14 @@ test("@desktop a smart list is created from tags and reports its new works until
   expect((await excludeField.boundingBox())?.y).toBe(excludeTop);
   await suggestion.click();
   await expect(editor.getByRole("status")).toHaveText("3 works match this rule");
-  await editor.getByRole("button", { name: "Add list" }).click();
+  await create.click();
 
+  // A list started from the shelf rail closes its dialog once it exists.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(state.created).toMatchObject({
     kind: "smart",
     rule: { includeMatch: "all", include: [{ kind: "metadata", id: 101 }], exclude: [] },
   });
-  await page.getByRole("button", { name: "Done" }).click();
 
   const rule = page.getByRole("region", { name: "Smart list rule" });
   await expect(rule).toContainText("Example Tag A");

@@ -192,8 +192,20 @@ func TestSmartListShowsRuleMatchesAndHandEditsWithoutFavoritingMatches(t *testin
 		t.Fatal(err)
 	}
 	index := slices.IndexFunc(lists, func(item favoriteListResponse) bool { return item.ID == list.ID })
-	if index < 0 || !lists[index].Selected || lists[index].Rule == nil || lists[index].Rule.Include[0].Name != "Example Tag A" {
+	if index < 0 || !lists[index].Selected || !lists[index].MatchedByRule || lists[index].Rule == nil || lists[index].Rule.Include[0].Name != "Example Tag A" {
 		t.Fatalf("work lists = %#v", lists)
+	}
+	code, body = callSmartListHandler(t, server.getWorkFavoriteLists, http.MethodGet, "/api/works/3/favorite-lists", "", smartListUser)
+	if code != http.StatusOK {
+		t.Fatalf("hand-added work lists status = %d, body = %s", code, body)
+	}
+	lists = nil
+	if err := json.Unmarshal([]byte(body), &lists); err != nil {
+		t.Fatal(err)
+	}
+	index = slices.IndexFunc(lists, func(item favoriteListResponse) bool { return item.ID == list.ID })
+	if index < 0 || !lists[index].Selected || lists[index].MatchedByRule {
+		t.Fatalf("a hand-added work reports a rule match: %#v", lists)
 	}
 
 	code, body = callSmartListHandler(t, server.setWorkFavoriteLists, http.MethodPut, "/api/works/5/favorite-lists", `{"listIds":[]}`, smartListUser)

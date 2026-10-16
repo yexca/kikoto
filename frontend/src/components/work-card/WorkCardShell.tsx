@@ -2,7 +2,6 @@ import {
   AudioLines,
   BookmarkPlus,
   Captions,
-  Check,
   CheckCircle2,
   Circle,
   Cloud,
@@ -16,17 +15,16 @@ import {
   ListMusic,
   MicVocal,
   PauseCircle,
-  Plus,
   Repeat2,
   Star,
-  X,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
-import { FavoriteListIconGlyph } from "@/components/favorite-list/FavoriteListIconGlyph";
-import { FavoriteListQuickCreate } from "@/components/favorite-list/FavoriteListQuickCreate";
+import { FavoriteListPicker, type FavoriteListPickerOption } from "@/components/favorite-list/FavoriteListPicker";
+import { FavoriteListPickerSurface } from "@/components/favorite-list/FavoriteListPickerSurface";
+import { useWorkFavoriteLists } from "@/components/favorite-list/useWorkFavoriteLists";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,6 +33,7 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import i18n, { type ResolvedUiLocale } from "@/i18n";
 import { formatList, numberFormat } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
+import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import {
   api,
   assetURL,
@@ -1187,79 +1186,27 @@ export function WorkCardListButton({
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
   const { demoMode, hasPermission } = useAuth();
+  const mobile = useMobileNavigationLayout();
   const [open, setOpen] = useState(false);
   const [resolvedWorkId, setResolvedWorkId] = useState<number | null>(null);
-  const [lists, setLists] = useState<FavoriteList[]>([]);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [loading, setLoading] = useState(false);
-  const [listsLoaded, setListsLoaded] = useState(false);
   const [resolving, setResolving] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState("");
   const ref = useRef<HTMLDivElement | null>(null);
   const effectiveWorkId = workId ?? resolvedWorkId;
-  const bottomCollisionPadding = isMobileViewport() ? 168 : 12;
   const canCreate = !demoMode && hasPermission("favorites:write");
-
-  useEffect(() => {
-    if (!open || !effectiveWorkId) return;
-    let cancelled = false;
-    setLoading(true);
-    setListsLoaded(false);
-    setCreating(false);
-    setError("");
-    Promise.all([api.listFavoriteLists(), api.getWorkFavoriteLists(effectiveWorkId)])
-      .then(([allLists, workLists]) => {
-        if (cancelled) return;
-        setLists(allLists.filter((list) => list.kind !== "marked"));
-        setSelected(
-          new Set(workLists.filter((list) => list.kind !== "marked" && list.selected).map((list) => list.id)),
-        );
-        setListsLoaded(true);
-      })
-      .catch((nextError) => {
-        if (!cancelled) {
-          const fallback = t("workCard.favoriteListsLoadFailed");
-          const feedback = toastFromError(nextError, fallback);
-          toast.notify(feedback);
-          setError(feedback.message);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [effectiveWorkId, open, t, toast]);
-
-  const toggle = (listID: number, checked: boolean) => {
-    setSelected((items) => {
-      const next = new Set(items);
-      if (checked) next.add(listID);
-      else next.delete(listID);
-      return next;
+  const membership = useWorkFavoriteLists({ workId: effectiveWorkId, open, onSaved });
+  const options = useMemo<FavoriteListPickerOption[] | null>(() => {
+    const { lists, selected } = membership;
+    if (!lists || !selected) return null;
+    return lists.map((list) => {
+      const checked = selected.has(list.id);
+      return {
+        list,
+        state: checked ? "checked" : "unchecked",
+        note: checked && list.kind === "smart" && list.matchedByRule ? t("workCard.listMatchedByRule") : undefined,
+        busy: membership.isPending(list.id),
+      };
     });
-  };
-
-  const save = async () => {
-    if (!effectiveWorkId || !listsLoaded || loading || saving || creating) return;
-    setSaving(true);
-    setError("");
-    try {
-      const result = await api.setWorkFavoriteLists(effectiveWorkId, Array.from(selected));
-      onSaved?.(result.favorite, effectiveWorkId);
-      setOpen(false);
-    } catch (nextError) {
-      const fallback = t("workCard.favoriteListsSaveFailed");
-      const feedback = toastFromError(nextError, fallback);
-      toast.notify(feedback);
-      setError(feedback.message);
-    } finally {
-      setSaving(false);
-    }
-  };
+  }, [membership, t]);
 
   const members = memberLists ?? [];
   const firstMemberList: FavoriteList | undefined = members[0];
@@ -1296,7 +1243,7 @@ export function WorkCardListButton({
           ) : active ? (
             t("workCard.lists")
           ) : (
-            t("workCard.addList")
+            t("workCard.addToList")
           )
         }
         labelClassName={
@@ -1312,116 +1259,36 @@ export function WorkCardListButton({
           }
           if (!ensureWorkId) return;
           setResolving(true);
-          setError("");
           ensureWorkId()
             .then((nextWorkId) => {
               if (!nextWorkId) return;
               setResolvedWorkId(nextWorkId);
               setOpen(true);
             })
-            .catch((nextError) => {
-              const fallback = t("workCard.workTrackFailed");
-              const feedback = toastFromError(nextError, fallback);
-              toast.notify(feedback);
-              setError(feedback.message);
-            })
+            .catch((nextError) => toast.notify(toastFromError(nextError, t("workCard.workTrackFailed"))))
             .finally(() => setResolving(false));
         }}
       >
         <ListMusic className={`h-4 w-4 ${active ? "fill-current text-primary" : "text-muted-foreground"}`} />
       </WorkCardActionButton>
-      <AnchoredPopover
+      <FavoriteListPickerSurface
         open={open}
-        anchorRef={ref}
         onOpenChange={setOpen}
-        bottomCollisionPadding={bottomCollisionPadding}
-        className="w-56 p-2 text-left"
+        anchorRef={ref}
+        title={t("workCard.addToList")}
+        mobile={mobile}
       >
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-sm font-semibold">{t("workCard.lists")}</div>
-          {canCreate && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 gap-1 px-2"
-              disabled={disabled || !listsLoaded || loading || saving || creating}
-              onClick={() => setCreating(true)}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {t("favorites.addList")}
-            </Button>
-          )}
-        </div>
-        <div className="app-scroll mt-2 max-h-56 space-y-1.5 overflow-auto">
-          {loading ? (
-            <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">
-              {t("workCard.loadingLists")}
-            </div>
-          ) : lists.length > 0 ? (
-            lists.map((list) => (
-              <div
-                key={list.id}
-                className={cn(
-                  "flex min-h-9 cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 text-sm hover:bg-muted",
-                  selected.has(list.id) && "border-primary/30 bg-primary/10",
-                )}
-                onClick={() => toggle(list.id, !selected.has(list.id))}
-              >
-                <Checkbox
-                  checked={selected.has(list.id)}
-                  onCheckedChange={(checked) => toggle(list.id, checked)}
-                  onClick={(event) => event.stopPropagation()}
-                  aria-label={t(selected.has(list.id) ? "workCard.removeFromList" : "workCard.addToNamedList", {
-                    name: list.name,
-                  })}
-                />
-                <FavoriteListIconGlyph list={list} />
-                <span className="min-w-0 flex-1 truncate">{list.name}</span>
-              </div>
-            ))
-          ) : (
-            <div className="rounded-md border bg-background px-2.5 py-2 text-sm text-muted-foreground">
-              {t("workCard.noLists")}
-            </div>
-          )}
-          {error && (
-            <div className="rounded-md border bg-background px-2.5 py-2 text-xs text-muted-foreground">{error}</div>
-          )}
-        </div>
-        {canCreate && creating && (
-          <FavoriteListQuickCreate
-            disabled={Boolean(disabled || loading || saving)}
-            onCancel={() => setCreating(false)}
-            onCreated={(list) => {
-              setLists((current) => [...current, list]);
-              toggle(list.id, true);
-              setCreating(false);
-            }}
-          />
-        )}
-        <div className="mt-2 flex justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            title={t("workCard.cancel")}
-            aria-label={t("workCard.cancel")}
-            onClick={() => setOpen(false)}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            className="h-8 w-8"
-            title={saving ? t("workCard.saving") : t("workCard.save")}
-            aria-label={saving ? t("workCard.saving") : t("workCard.save")}
-            disabled={disabled || !listsLoaded || loading || saving || creating}
-            onClick={() => void save()}
-          >
-            <Check className="h-4 w-4" />
-          </Button>
-        </div>
-      </AnchoredPopover>
+        <FavoriteListPicker
+          label={t("workCard.lists")}
+          options={options}
+          loadError={membership.loadError}
+          canCreate={canCreate}
+          autoFocusSearch={!mobile}
+          disabled={disabled}
+          onToggle={membership.toggle}
+          onCreate={membership.create}
+        />
+      </FavoriteListPickerSurface>
     </div>
   );
 }

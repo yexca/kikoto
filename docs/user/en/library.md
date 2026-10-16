@@ -165,8 +165,15 @@ restored from the current history entry with user-scoped session fallback.
 `All Favorites` aggregates works with a Quick mark and works you added to any
 list. `Marked` is the fixed system list containing only works whose Quick mark
 is not Unmarked; its membership is derived and cannot be edited as a list.
-Other lists are user-created and keep explicit membership; the add-to-list menu
-on a work card or on work detail can create a list in place and select it.
+Other lists are user-created and keep explicit membership. **Add to list** on a
+work card or on work detail lists your lists with a search field; each list you
+check or clear is saved at once, and typing a name no list has offers to create
+that list with the work in it. A smart list that holds the work through its
+rule says so, and clearing it keeps the work out of that list. **Change lists**
+on selected Favorites works shows the change each list will make, such as how
+many works it adds, and applies them together; a list that holds only some of
+the works stays untouched unless you change it. Phones open both as a bottom
+sheet.
 
 A smart list fills itself from tags. When you add a list, choose **Smart list**
 and pick tags to include (all of them or any of them) and tags to exclude, from
@@ -193,11 +200,18 @@ On wide screens a shelf rail beside the results lists All Favorites, Marked,
 your lists, and followed circles and voice actors with their counts. Like the
 Workflows and Settings rails, it can hide its names and keep only icons, and the
 choice is remembered on that device. Each user list can show an icon chosen in
-Edit lists, which is what tells the lists apart in the icon rail; the list icon
+its editor, which is what tells the lists apart in the icon rail; the list icon
 also appears in the add-to-list menus. Phones show the same shelves as one
 scrollable row. The open shelf has a header with a cover mosaic, its count, how
 many works are finished, and the works you are listening to. Display options
 switch works between cards and a denser list with each work's resume point.
+
+**Add list** in the shelves and **Edit list** on a list's shelf open one list's
+editor: its name with the icon beside it, an optional description, the rule of a
+smart list, and **Delete list**. A name another list already uses is pointed out
+but allowed. **Edit lists** shows every list; **Move up** and **Move down**
+reorder them at once without leaving the open shelf, and opening a list there
+edits it and returns to all lists with **Back**.
 
 ## Identity
 
