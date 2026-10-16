@@ -11,6 +11,7 @@ import {
 } from "@/components/settings/SettingsSection";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { FloatingSelect } from "@/components/ui/floating-select";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { libraryLayoutSummary } from "@/features/library-setup/libraryLayoutSummary";
@@ -30,7 +31,7 @@ import {
   sourcePayload,
   storagePathPreview,
 } from "@/features/sources/remoteSourceModel";
-import { api, type AppSettings, type FileSource, type LibraryLayout } from "@/lib/api";
+import { api, type AppSettings, type FileSource, type FolderLyricsMode, type LibraryLayout } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { draftAfterSectionSave, sectionSettings } from "@/pages/settingsDraft";
 import { UsersPage } from "@/pages/UsersPage";
@@ -53,6 +54,7 @@ type RuntimeDraft = {
   remoteMaxBackoffSeconds: number;
   kikoeruImportPrivateAddresses: boolean;
   hideRemoteSourceAddresses: boolean;
+  folderLyricsMode: FolderLyricsMode;
 };
 
 function runtimeDraftFromSettings(settings: AppSettings): RuntimeDraft {
@@ -70,6 +72,7 @@ function runtimeDraftFromSettings(settings: AppSettings): RuntimeDraft {
     remoteMaxBackoffSeconds: settings.remoteMaxBackoffSeconds,
     kikoeruImportPrivateAddresses: settings.kikoeruImportPrivateAddresses ?? false,
     hideRemoteSourceAddresses: settings.hideRemoteSourceAddresses ?? true,
+    folderLyricsMode: settings.folderLyricsMode ?? "copy",
   };
 }
 
@@ -411,6 +414,28 @@ export function MaintenancePage({
                   integer
                   unit={t("sourceSetup.levels")}
                   onChange={(localScanDepth) => patchDraft({ localScanDepth })}
+                />
+              </SettingsRow>
+            </SettingsSection>
+
+            <SettingsSection
+              title={t("maintenance.library.lyricsFiles")}
+              description={t("maintenance.library.lyricsFilesDescription")}
+              footer={saveButton(["folderLyricsMode"], t("maintenance.library.saveLyricsFiles"))}
+            >
+              <SettingsRow
+                title={t("maintenance.library.folderLyricsMode")}
+                description={t("maintenance.library.folderLyricsModeDescription")}
+              >
+                <FloatingSelect
+                  value={draft.folderLyricsMode}
+                  options={[
+                    { value: "copy", label: t("lyricsFiles.folderModeCopy") },
+                    { value: "move", label: t("lyricsFiles.folderModeMove") },
+                  ]}
+                  onValueChange={(value) => patchDraft({ folderLyricsMode: value === "move" ? "move" : "copy" })}
+                  ariaLabel={t("maintenance.library.folderLyricsMode")}
+                  disabled={readOnly}
                 />
               </SettingsRow>
             </SettingsSection>

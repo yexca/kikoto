@@ -163,7 +163,7 @@ The `asr_providers` setting stores administrator-configured speech recognition s
 
 `asr_transcription` is the durable task, checkpoint and result of one transcription of one local audio track. It records the requester, the audio item and the local location read, the active work folder holding that file, the service, model and a digest of its configuration, the declared lyrics language (empty for every language), and the file version of the audio. One active task exists per audio item; a repeated request joins it. The job decodes the file with ffmpeg into 16 kHz mono PCM chunks of at most five minutes, cut at the quietest 300 ms of a chunk's last minute, and sends each as WAV with `response_format=verbose_json`. Before each chunk it rechecks the requester's permissions, the service digest, the [LLM content policy](#llm-translation) for the work, and the audio location and file version. After decoding and immediately before upload, the job rechecks permissions, service configuration and content policy. The chunk's state is `requesting` while it is sent; its segments are clamped to the chunk, offset onto the track's timeline, and committed as cues with the next offset before the job continues or yields the executor. A task found `requesting` after a restart fails as `upstream_result_unknown`, so only an explicit retry resends that chunk.
 
-A finished task stores its WebVTT text, at most 2 MiB, as `ready`. Acceptance moves it to `publishing`, stages the file on the work folder's storage pool, adds it to the language's lyrics folder under the track's path inside the work folder (`<language folder>/<track path>.vtt`, then numbered names when a different file holds that name), indexes the work folder, and assigns the file to the track in the task's language with origin `transcription` before recording `accepted`. An interrupted publication stays `publishing` and completes on the next acceptance; a file already published with the same content counts as published. A rejected task drops its text. Demo disables speech recognition configuration and transcription.
+A finished task stores its WebVTT text, at most 2 MiB, as `ready`. Acceptance moves it to `publishing`, stages the file on the work folder's storage pool, adds it to the language's lyrics folder under the track's path inside the work folder (`lyrics_kikoto/<language folder>/<track path>.vtt`, then numbered names when a different file holds that name), indexes the work folder, and assigns the file to the track in the task's language with origin `transcription` before recording `accepted`. An interrupted publication stays `publishing` and completes on the next acceptance; a file already published with the same content counts as published. A rejected task drops its text. Demo disables speech recognition configuration and transcription.
 
 ### DLsite Genres
 
@@ -622,10 +622,18 @@ the work folder, `remote_fetch` for a file a lyrics edit downloaded,
 published it, or `translation` when an accepted
 [lyrics translation](#llm-translation) published it.
 
-The lyrics Kikoto manages are the lyrics files inside a language's lyrics
-folder at the top of a work folder: `lyrics_ja`, `lyrics_en`,
-`lyrics_zh_hans`, `lyrics_zh_hant`, `lyrics_ko`, or `lyrics` for every
-language. The folder is their only marker; no table records it. A lyrics file
+The lyrics Kikoto manages are the lyrics files inside a language's folder of
+the `lyrics_kikoto` folder at the top of a work folder: `ja`, `en`,
+`zh-hans`, `zh-hant`, `ko`, or `fallback` for every language. Kikoto owns a
+`lyrics_kikoto` folder only when it holds the `.kikoto-lyrics` marker Kikoto
+writes when it creates the folder, a small JSON file with `version`,
+`managedBy` and `purpose`; no table records ownership. The scan never indexes
+the marker. Kikoto adds lyrics to, deletes from and reorganizes only an owned
+folder; an unmarked `lyrics_kikoto` folder, a name that differs only in case,
+or a file in its place blocks lyrics publication, and lyrics folders a work
+ships under other names are ordinary work files. A lyrics edit that leaves the
+folder holding only its marker removes both, and deleting the whole work folder
+takes the marker with it. A lyrics file
 a lyrics edit moves into such a folder takes a new media item, because a local
 item is identified by its path. The move points the `media_lyrics_assignment` and
 `user_media_lyrics_preference` rows of the old item at the new one, unless the

@@ -122,6 +122,7 @@ async function mockCacheSettings(
     },
     kikoeruImportPrivateAddresses: false,
     hideRemoteSourceAddresses: true,
+    folderLyricsMode: "copy",
     directoryRoutingRules: [
       { id: "main", label: "Main story", weight: 40, aliases: ["main"], negativeAliases: ["bonus"], enabled: true },
       {

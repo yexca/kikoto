@@ -36,6 +36,33 @@ func TestDiscoverKeepsADownloadedLyricsFolderInsideItsWorkFolder(t *testing.T) {
 	}
 }
 
+// The lyrics folder's ownership marker is bookkeeping, not a file of the work.
+func TestCollectWorkFilesSkipsTheLyricsFolderMarker(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "RJ00000001", "mp3", "01.mp3"))
+	writeFile(t, filepath.Join(root, "RJ00000001", LyricsRootName, LyricsRootMarkerName))
+	writeFile(t, filepath.Join(root, "RJ00000001", LyricsRootName, "ja", "mp3", "01.vtt"))
+	writeFile(t, filepath.Join(root, "RJ00000001", "mp3", LyricsRootMarkerName))
+
+	files, err := CollectWorkFiles(root, filepath.Join(root, "RJ00000001"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := []string{}
+	for _, file := range files {
+		got = append(got, file.WorkRelPath)
+	}
+	want := []string{"lyrics_kikoto/ja/mp3/01.vtt", "mp3/.kikoto-lyrics", "mp3/01.mp3"}
+	if len(got) != len(want) {
+		t.Fatalf("files = %v, want %v", got, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("files = %v, want %v", got, want)
+		}
+	}
+}
+
 func TestExtractWorkCodeReadsNoCodeFromADownloadedLyricsFolder(t *testing.T) {
 	for _, name := range []string{
 		"Lyrics - CHI_HANS - RJ00000002 - 20261008-153012",

@@ -41,30 +41,38 @@ export function editionLyricsLanguage(editionLanguage: string): string {
   return lyricsLanguages.some(([value]) => value === normalized) ? normalized : allLyricsLanguages;
 }
 
+/** The folder inside a work folder that holds the lyrics Kikoto manages. */
+export const lyricsRootFolderName = "lyrics_kikoto";
+
 /**
- * The folder inside a work folder that holds the lyrics Kikoto adds for a
- * language. It mirrors the server's naming and is shown before a download.
+ * The folder inside the lyrics folder that holds the lyrics Kikoto adds for a
+ * language. It mirrors the server's naming.
  */
 export function lyricsLanguageFolderName(language: string): string {
   switch (language) {
     case "ja-jp":
-      return "lyrics_ja";
+      return "ja";
     case "en-us":
-      return "lyrics_en";
+      return "en";
     case "zh-cn":
-      return "lyrics_zh_hans";
+      return "zh-hans";
     case "zh-tw":
-      return "lyrics_zh_hant";
+      return "zh-hant";
     case "ko-kr":
-      return "lyrics_ko";
+      return "ko";
     default:
-      return "lyrics";
+      return "fallback";
   }
 }
 
+/** The folder, relative to a work folder, that holds a language's lyrics; shown before a change. */
+export function lyricsLanguageFolderPath(language: string): string {
+  return `${lyricsRootFolderName}/${lyricsLanguageFolderName(language)}`;
+}
+
 /**
- * The language whose lyrics folder has this name, or null for any other
- * folder. The lyrics in these folders are the ones Kikoto manages.
+ * The language whose folder inside the lyrics folder has this name, or null
+ * for any other folder.
  */
 export function lyricsFolderLanguage(name: string): string | null {
   return lyricsLanguages.find(([language]) => lyricsLanguageFolderName(language) === name)?.[0] ?? null;

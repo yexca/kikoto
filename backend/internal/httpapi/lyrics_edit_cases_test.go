@@ -21,19 +21,28 @@ func TestLyricsEditDownloadsIntoTheLanguageFolderAndAssigns(t *testing.T) {
 	}))
 	// The folder is named after the language and carries no work code, so a
 	// scan cannot take it for another work.
-	if folders := fixture.lyricsFolders(t); len(folders) != 1 || folders[0] != "lyrics_zh_hans" {
+	if folders := fixture.lyricsFolders(t); len(folders) != 1 || folders[0] != "zh-hans" {
 		t.Fatalf("lyrics folders = %v", folders)
+	}
+	// Kikoto marks the lyrics folder it creates, and the marker is not a file
+	// of the work.
+	if !lyricsRootOwned(fixture.absolute("")) {
+		t.Fatal("the lyrics folder Kikoto created is not marked as its own")
+	}
+	var markers int
+	if err := fixture.db.QueryRow("SELECT COUNT(*) FROM media_file_location WHERE path LIKE ?", "%"+localfs.LyricsRootMarkerName).Scan(&markers); err != nil || markers != 0 {
+		t.Fatalf("the marker was indexed: %d, %v", markers, err)
 	}
 	if result.SaveRoot != fixture.root || result.Downloaded != 1 || result.Skipped != 0 || result.Assigned != 1 {
 		t.Fatalf("result = %+v", result)
 	}
-	if content := fixture.content("lyrics_zh_hans/" + lyricsEditRemotePath); content != lyricsFetchVTT {
+	if content := fixture.content("lyrics_kikoto/zh-hans/" + lyricsEditRemotePath); content != lyricsFetchVTT {
 		t.Fatalf("published lyrics = %q", content)
 	}
 	if fixture.requests.Load() != 1 {
 		t.Fatalf("upstream requests = %d, want only the selected lyrics file", fixture.requests.Load())
 	}
-	want := "zh-cn=remote_fetch:" + fixture.root + "/lyrics_zh_hans/" + lyricsEditRemotePath
+	want := "zh-cn=remote_fetch:" + fixture.root + "/lyrics_kikoto/zh-hans/" + lyricsEditRemotePath
 	if assigned := fixture.assignedLanguages(t); len(assigned) != 1 || assigned[0] != want {
 		t.Fatalf("assignments = %v, want [%s]", assigned, want)
 	}
@@ -46,7 +55,7 @@ func TestLyricsEditDownloadsIntoTheLanguageFolderAndAssigns(t *testing.T) {
 	fixture.decode(t, fixture.edit(t, map[string]any{
 		"additions": []any{lyricsEditRemoteAddition("")}, "assignments": assignment,
 	}))
-	if folders := fixture.lyricsFolders(t); len(folders) != 2 || folders[0] != "lyrics" {
+	if folders := fixture.lyricsFolders(t); len(folders) != 2 || folders[0] != "fallback" {
 		t.Fatalf("lyrics folders = %v", folders)
 	}
 	if assigned := fixture.assignedLanguages(t); len(assigned) != 2 || !strings.HasPrefix(assigned[0], "=remote_fetch:") {
@@ -66,10 +75,10 @@ func TestLyricsEditDownloadsIntoTheLanguageFolderAndAssigns(t *testing.T) {
 func TestLyricsEditResolvesAConflictWithoutDeletingFirst(t *testing.T) {
 	fixture := newLyricsFetchFixture(t, serveLyricsFetchVTT, lyricsFetchVTTURL)
 	const sidecar = "mp3/Track1.Original name.mp3.vtt"
-	const managed = "lyrics_ja/" + sidecar
+	const managed = "lyrics_kikoto/ja/" + sidecar
 	fixture.write(t, map[string]string{sidecar: lyricsFetchVTT, managed: "edited by the user"})
 	body := func(decision map[string]any) map[string]any {
-		edit := map[string]any{"additions": []any{lyricsEditFolderAddition(sidecar, "ja-jp")}}
+		edit := map[string]any{"additions": []any{lyricsEditFolderAddition(sidecar, "ja-jp")}, "folderMode": "move"}
 		if decision != nil {
 			decision["itemKey"] = "folder:" + sidecar
 			edit["decisions"] = []any{decision}
@@ -95,7 +104,7 @@ func TestLyricsEditResolvesAConflictWithoutDeletingFirst(t *testing.T) {
 	}
 	for name, target := range map[string]string{
 		"outside the folder":    "../outside.vtt",
-		"not a lyrics file":     "lyrics_ja/renamed.mp3",
+		"not a lyrics file":     "lyrics_kikoto/ja/renamed.mp3",
 		"an absolute path":      "/renamed.vtt",
 		"an empty renamed path": " ",
 	} {
@@ -104,8 +113,8 @@ func TestLyricsEditResolvesAConflictWithoutDeletingFirst(t *testing.T) {
 		}
 	}
 	// A rename stays in the lyrics folder of the declared language.
-	renamed := fixture.plan(t, body(map[string]any{"resolution": "rename", "targetPath": "lyrics_en/renamed.vtt"}))
-	if renamed.Items[0].TargetPath != fixture.root+"/lyrics_ja/renamed.vtt" || renamed.Summary.Move != 1 {
+	renamed := fixture.plan(t, body(map[string]any{"resolution": "rename", "targetPath": "lyrics_kikoto/en/renamed.vtt"}))
+	if renamed.Items[0].TargetPath != fixture.root+"/lyrics_kikoto/ja/renamed.vtt" || renamed.Summary.Move != 1 {
 		t.Fatalf("renamed plan = %+v", renamed.Items)
 	}
 
@@ -135,29 +144,29 @@ func TestLyricsEditMovesFolderFilesAndTheirAssignmentsFollow(t *testing.T) {
 
 	result := fixture.decode(t, fixture.edit(t, map[string]any{"additions": []any{
 		lyricsEditFolderAddition(sidecar, "zh-cn"), lyricsEditFolderAddition(other, "zh-cn"),
-	}}))
-	if result.Moved != 2 || fixture.content("lyrics_zh_hans/"+sidecar) != lyricsFetchVTT || fixture.content(sidecar) != "" {
+	}, "folderMode": "move"}))
+	if result.Moved != 2 || fixture.content("lyrics_kikoto/zh-hans/"+sidecar) != lyricsFetchVTT || fixture.content(sidecar) != "" {
 		t.Fatalf("result = %+v", result)
 	}
 	if _, err := os.Stat(fixture.absolute("subtitles")); !os.IsNotExist(err) {
 		t.Fatalf("the emptied folder was left behind: %v", err)
 	}
 	// The assignments follow the file and take its declared language once.
-	want := "zh-cn=manual:" + fixture.root + "/lyrics_zh_hans/" + sidecar
+	want := "zh-cn=manual:" + fixture.root + "/lyrics_kikoto/zh-hans/" + sidecar
 	if assigned := fixture.assignedLanguages(t); len(assigned) != 1 || assigned[0] != want {
 		t.Fatalf("assignments = %v, want [%s]", assigned, want)
 	}
 
 	// Declaring a managed file again moves it to the other language's folder.
 	fixture.decode(t, fixture.edit(t, map[string]any{"additions": []any{
-		lyricsEditFolderAddition("lyrics_zh_hans/"+sidecar, "en-us"),
+		lyricsEditFolderAddition("lyrics_kikoto/zh-hans/"+sidecar, "en-us"),
 	}}))
-	want = "en-us=manual:" + fixture.root + "/lyrics_en/" + sidecar
+	want = "en-us=manual:" + fixture.root + "/lyrics_kikoto/en/" + sidecar
 	if assigned := fixture.assignedLanguages(t); len(assigned) != 1 || assigned[0] != want {
 		t.Fatalf("assignments after redeclaring = %v, want [%s]", assigned, want)
 	}
 	// A file that is already where its language puts it is left alone.
-	inPlace := map[string]any{"additions": []any{lyricsEditFolderAddition("lyrics_en/"+sidecar, "en-us")}}
+	inPlace := map[string]any{"additions": []any{lyricsEditFolderAddition("lyrics_kikoto/en/"+sidecar, "en-us")}}
 	if plan := fixture.plan(t, inPlace); plan.Summary.Skip != 1 || plan.Summary.Add != 0 {
 		t.Fatalf("in-place plan = %+v", plan.Summary)
 	}
@@ -167,9 +176,65 @@ func TestLyricsEditMovesFolderFilesAndTheirAssignmentsFollow(t *testing.T) {
 	fixture.assertNoStagingLeft(t)
 }
 
+// The work's own lyrics stay where they are unless the edit, or the
+// administrator's default, chooses to move them. Managed lyrics that change
+// language always move.
+func TestLyricsEditCopiesFolderFilesUnlessMoveIsChosen(t *testing.T) {
+	fixture := newLyricsFetchFixture(t, serveLyricsFetchVTT, lyricsFetchVTTURL)
+	const sidecar = "mp3/Track1.Original name.mp3.vtt"
+	const other = "subtitles/Track1.vtt"
+	fixture.write(t, map[string]string{sidecar: lyricsFetchVTT, other: "WEBVTT\n\nother\n"})
+	_, sidecarItem := fixture.location(t, sidecar)
+	if _, err := fixture.db.Exec(
+		"INSERT INTO media_lyrics_assignment (audio_media_item_id, language, lyrics_media_item_id) VALUES (?, '', ?)",
+		fixture.audioID, sidecarItem,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	copyEdit := map[string]any{"additions": []any{lyricsEditFolderAddition(sidecar, "zh-cn")}}
+	if plan := fixture.plan(t, copyEdit); plan.FolderMode != "copy" || plan.Summary.Copy != 1 || plan.Summary.Move != 0 {
+		t.Fatalf("default plan = %s %+v", plan.FolderMode, plan.Summary)
+	}
+	result := fixture.decode(t, fixture.edit(t, copyEdit))
+	if result.Copied != 1 || result.Moved != 0 || fixture.content(sidecar) != lyricsFetchVTT ||
+		fixture.content("lyrics_kikoto/zh-hans/"+sidecar) != lyricsFetchVTT {
+		t.Fatalf("copy result = %+v", result)
+	}
+	// The work's file keeps its assignment; the copy is a file of its own.
+	if assigned := fixture.assignedLanguages(t); len(assigned) != 1 || assigned[0] != "=manual:"+fixture.root+"/"+sidecar {
+		t.Fatalf("assignments after copying = %v", assigned)
+	}
+
+	// Changing the language of the managed copy moves it even while copying.
+	redeclare := map[string]any{"additions": []any{lyricsEditFolderAddition("lyrics_kikoto/zh-hans/"+sidecar, "en-us")}}
+	if result := fixture.decode(t, fixture.edit(t, redeclare)); result.Moved != 1 || result.Copied != 0 ||
+		fixture.content("lyrics_kikoto/zh-hans/"+sidecar) != "" || fixture.content("lyrics_kikoto/en/"+sidecar) != lyricsFetchVTT {
+		t.Fatalf("redeclare result = %+v", result)
+	}
+
+	// The administrator's default applies when the edit does not choose.
+	if response := patchSettingsAsSourceWriter(t, fixture.server, `{"folderLyricsMode":"link"}`); response.Code != http.StatusBadRequest {
+		t.Fatalf("an unknown mode saved: %d %s", response.Code, response.Body.String())
+	}
+	if response := patchSettingsAsSourceWriter(t, fixture.server, `{"folderLyricsMode":"move"}`); response.Code != http.StatusOK {
+		t.Fatalf("saving the move default = %d %s", response.Code, response.Body.String())
+	}
+	moveEdit := map[string]any{"additions": []any{lyricsEditFolderAddition(other, "zh-cn")}}
+	if result := fixture.decode(t, fixture.edit(t, moveEdit)); result.Moved != 1 || fixture.content(other) != "" {
+		t.Fatalf("default move result = %+v", result)
+	}
+	if response := fixture.edit(t, map[string]any{
+		"additions": []any{lyricsEditFolderAddition(sidecar, "ja-jp")}, "folderMode": "link",
+	}); response.Code != http.StatusBadRequest || fixture.content(sidecar) != lyricsFetchVTT {
+		t.Fatalf("an unknown edit mode = %d %s", response.Code, response.Body.String())
+	}
+	fixture.assertNoStagingLeft(t)
+}
+
 func TestLyricsEditCopiesFromAnotherLocalFolderOfTheFamily(t *testing.T) {
 	fixture := newLyricsFetchFixture(t, serveLyricsFetchVTT, lyricsFetchVTTURL)
-	translated := filepath.Join(fixture.dataRoot, "RJ00000002", "lyrics_zh_hans")
+	translated := filepath.Join(fixture.dataRoot, "RJ00000002", "lyrics_kikoto", "zh-hans")
 	if err := os.MkdirAll(translated, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -187,19 +252,19 @@ func TestLyricsEditCopiesFromAnotherLocalFolderOfTheFamily(t *testing.T) {
 		return map[string]any{"kind": "local", "folderId": folderID, "path": file, "language": "zh-cn"}
 	}
 	edit := map[string]any{
-		"additions":   []any{local(sourceFolderID, "lyrics_zh_hans/Track1.vtt")},
-		"assignments": []map[string]any{{"audioMediaItemId": fixture.audioID, "itemKey": "local:" + jsonNumber(sourceFolderID) + ":lyrics_zh_hans/Track1.vtt"}},
+		"additions":   []any{local(sourceFolderID, "lyrics_kikoto/zh-hans/Track1.vtt")},
+		"assignments": []map[string]any{{"audioMediaItemId": fixture.audioID, "itemKey": "local:" + jsonNumber(sourceFolderID) + ":lyrics_kikoto/zh-hans/Track1.vtt"}},
 	}
 
 	result := fixture.decode(t, fixture.edit(t, edit))
 	// A file of a lyrics folder keeps its place inside the target's lyrics folder.
-	if result.Copied != 1 || result.Assigned != 1 || fixture.content("lyrics_zh_hans/Track1.vtt") != lyricsFetchVTT {
+	if result.Copied != 1 || result.Assigned != 1 || fixture.content("lyrics_kikoto/zh-hans/Track1.vtt") != lyricsFetchVTT {
 		t.Fatalf("result = %+v", result)
 	}
 	if fixture.requests.Load() != 0 {
 		t.Fatalf("a local copy made %d upstream requests", fixture.requests.Load())
 	}
-	want := "zh-cn=library_import:" + fixture.root + "/lyrics_zh_hans/Track1.vtt"
+	want := "zh-cn=library_import:" + fixture.root + "/lyrics_kikoto/zh-hans/Track1.vtt"
 	if assigned := fixture.assignedLanguages(t); len(assigned) != 1 || assigned[0] != want {
 		t.Fatalf("assignments = %v, want [%s]", assigned, want)
 	}
@@ -212,9 +277,9 @@ func TestLyricsEditCopiesFromAnotherLocalFolderOfTheFamily(t *testing.T) {
 	}
 
 	for name, addition := range map[string]map[string]any{
-		"the target folder itself": local(fixture.folderID, "lyrics_zh_hans/Track1.vtt"),
-		"an audio file":            local(sourceFolderID, "lyrics_zh_hans/Track1.mp3"),
-		"a file that is not there": local(sourceFolderID, "lyrics_zh_hans/missing.vtt"),
+		"the target folder itself": local(fixture.folderID, "lyrics_kikoto/zh-hans/Track1.vtt"),
+		"an audio file":            local(sourceFolderID, "lyrics_kikoto/zh-hans/Track1.mp3"),
+		"a file that is not there": local(sourceFolderID, "lyrics_kikoto/zh-hans/missing.vtt"),
 		"an unknown kind":          {"kind": "elsewhere", "path": "Track1.vtt", "language": "zh-cn"},
 	} {
 		if response := fixture.edit(t, map[string]any{"additions": []any{addition}}); response.Code < 400 || response.Code >= 500 {
@@ -227,10 +292,10 @@ func TestLyricsEditCopiesFromAnotherLocalFolderOfTheFamily(t *testing.T) {
 func TestLyricsEditRemovesOnlyManagedLyrics(t *testing.T) {
 	fixture := newLyricsFetchFixture(t, serveLyricsFetchVTT, lyricsFetchVTTURL)
 	fixture.write(t, map[string]string{
-		"lyrics_ja/Track1.vtt": "managed", "lyrics_en/Track1.vtt": "other language", "Track1.vtt": lyricsFetchVTT, "mp3/notes.txt": "notes",
+		"lyrics_kikoto/ja/Track1.vtt": "managed", "lyrics_kikoto/en/Track1.vtt": "other language", "Track1.vtt": lyricsFetchVTT, "mp3/notes.txt": "notes",
 	})
-	japanese, _ := fixture.location(t, "lyrics_ja/Track1.vtt")
-	english, _ := fixture.location(t, "lyrics_en/Track1.vtt")
+	japanese, _ := fixture.location(t, "lyrics_kikoto/ja/Track1.vtt")
+	english, _ := fixture.location(t, "lyrics_kikoto/en/Track1.vtt")
 	notes, _ := fixture.location(t, "mp3/notes.txt")
 
 	if response := fixture.edit(t, map[string]any{"removeLocationIds": []int64{notes}}); response.Code != http.StatusBadRequest || fixture.content("mp3/notes.txt") != "notes" {
@@ -240,31 +305,41 @@ func TestLyricsEditRemovesOnlyManagedLyrics(t *testing.T) {
 	edit := map[string]any{
 		"removeLocationIds": []int64{japanese, english},
 		"additions":         []any{lyricsEditFolderAddition("Track1.vtt", "ja-jp")},
+		"folderMode":        "move",
 	}
 	if plan := fixture.plan(t, edit); plan.Summary.Conflict != 0 || plan.Summary.Move != 1 || plan.Summary.Remove != 2 {
 		t.Fatalf("plan = %+v", plan.Summary)
 	}
 	result := fixture.decode(t, fixture.edit(t, edit))
-	if result.Removed != 2 || result.Moved != 1 || fixture.content("lyrics_ja/Track1.vtt") != lyricsFetchVTT {
+	if result.Removed != 2 || result.Moved != 1 || fixture.content("lyrics_kikoto/ja/Track1.vtt") != lyricsFetchVTT {
 		t.Fatalf("result = %+v", result)
 	}
-	if folders := fixture.lyricsFolders(t); len(folders) != 1 || folders[0] != "lyrics_ja" {
+	if folders := fixture.lyricsFolders(t); len(folders) != 1 || folders[0] != "ja" {
 		t.Fatalf("lyrics folders = %v, want the emptied one removed", folders)
+	}
+	// Removing the last managed lyrics leaves no lyrics folder behind.
+	remaining, _ := fixture.location(t, "lyrics_kikoto/ja/Track1.vtt")
+	fixture.decode(t, fixture.edit(t, map[string]any{"removeLocationIds": []int64{remaining}}))
+	if _, err := os.Lstat(fixture.absolute(localfs.LyricsRootName)); !os.IsNotExist(err) {
+		t.Fatalf("the emptied lyrics folder was left behind: %v", err)
 	}
 	fixture.assertNoStagingLeft(t)
 }
 
 func TestLyricsLanguageFolderNamesCarryNoWorkCode(t *testing.T) {
+	if code, _ := localfs.ExtractWorkCode(localfs.LyricsRootName); code != "" {
+		t.Fatalf("the lyrics folder reads as work code %q", code)
+	}
 	for language, want := range map[string]string{
-		"":      "lyrics",
-		"ja-jp": "lyrics_ja",
-		"en-us": "lyrics_en",
-		"zh-cn": "lyrics_zh_hans",
-		"zh-tw": "lyrics_zh_hant",
-		"ko-kr": "lyrics_ko",
+		"":      "fallback",
+		"ja-jp": "ja",
+		"en-us": "en",
+		"zh-cn": "zh-hans",
+		"zh-tw": "zh-hant",
+		"ko-kr": "ko",
 	} {
 		got := lyricsLanguageFolderName(language)
-		if got != want {
+		if got != want || lyricsLanguageFolderPath(language) != "lyrics_kikoto/"+want {
 			t.Fatalf("folder for %q = %q, want %q", language, got, want)
 		}
 		if code, _ := localfs.ExtractWorkCode(got); code != "" {
@@ -276,6 +351,20 @@ func TestLyricsLanguageFolderNamesCarryNoWorkCode(t *testing.T) {
 	}
 	if _, ok := lyricsFolderLanguage("subtitles"); ok {
 		t.Fatal("an ordinary folder reads as a lyrics folder")
+	}
+	for relative, want := range map[string]bool{
+		"lyrics_kikoto/ja/mp3/Track1.vtt":   true,
+		"lyrics_kikoto/fallback/Track1.lrc": true,
+		"lyrics_kikoto/Track1.vtt":          false,
+		"lyrics_kikoto/ja/Track1.mp3":       false,
+		"lyrics_kikoto/subtitles/a.vtt":     false,
+		"lyrics/Track1.vtt":                 false,
+		"lyrics_ja/Track1.vtt":              false,
+		"mp3/lyrics_kikoto/ja/Track1.vtt":   false,
+	} {
+		if managedLyricsPath(relative) != want {
+			t.Fatalf("managed %q = %v, want %v", relative, !want, want)
+		}
 	}
 }
 

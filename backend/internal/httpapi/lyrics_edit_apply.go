@@ -223,7 +223,16 @@ func (s *Server) commitLyricsEdit(ctx context.Context, plan lyricsEditPlan, remo
 	}
 	restore := func(cause error) (bool, bool, error) {
 		err := restoreLyricsEdit(plan, stagingRoot, lifted, published)
+		removeEmptyLyricsRoot(plan.rootAbsolute)
 		return len(lifted) > 0 || len(published) > 0, err != nil, errors.Join(cause, err)
+	}
+	for _, item := range plan.Items {
+		if lyricsEditItemAdds(item) {
+			if err := ensureLyricsRoot(plan.rootAbsolute); err != nil {
+				return restore(err)
+			}
+			break
+		}
 	}
 	for index, item := range plan.Items {
 		if item.Action != "move_local" {
@@ -263,6 +272,7 @@ func (s *Server) commitLyricsEdit(ctx context.Context, plan lyricsEditPlan, remo
 			removeEmptyDirectoriesBelow(plan.rootAbsolute, path.Dir(relative))
 		}
 	}
+	removeEmptyLyricsRoot(plan.rootAbsolute)
 	return true, false, nil
 }
 

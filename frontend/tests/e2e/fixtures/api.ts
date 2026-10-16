@@ -371,6 +371,7 @@ export function appSettingsFixture(overrides: Partial<AppSettings> = {}): AppSet
     },
     kikoeruImportPrivateAddresses: false,
     hideRemoteSourceAddresses: true,
+    folderLyricsMode: "copy",
     directoryRoutingRules: [],
     recommendationThreshold: 50,
     recommendationConfig: recommendationConfigFixture(),

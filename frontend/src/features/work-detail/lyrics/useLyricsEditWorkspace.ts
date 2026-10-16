@@ -25,6 +25,7 @@ import {
 import {
   ApiError,
   api,
+  type FolderLyricsMode,
   type LyricsEditPlan,
   type LyricsEditResult,
   type MediaItem,
@@ -79,6 +80,11 @@ export function useLyricsEditWorkspace({
   }));
   const [languages, setLanguages] = useState<Record<string, string | null>>({});
   const [listManaged, setListManaged] = useState(false);
+  // The folder's own files are copied unless the administrator's default or
+  // the viewer's choice moves them.
+  const [defaultFolderMode, setDefaultFolderMode] = useState<FolderLyricsMode>("copy");
+  const [chosenFolderMode, setChosenFolderMode] = useState<FolderLyricsMode | null>(null);
+  const folderMode = chosenFolderMode ?? defaultFolderMode;
   const [activeId, setActiveId] = useState(initialPaths?.length ? FOLDER_LYRICS_RESOURCE : MANAGED_LYRICS_RESOURCE);
   const [decisions, setDecisions] = useState<Record<string, RemoteFetchFileDecision>>({});
   const [plan, setPlan] = useState<LyricsEditPlan | null>(null);
@@ -151,14 +157,26 @@ export function useLyricsEditWorkspace({
     return () => controller.abort();
   }, [ownResources, sourcesAttempt, target]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    api.getRuntimeSettings(controller.signal).then(
+      (settings) => {
+        if (settings.folderLyricsMode) setDefaultFolderMode(settings.folderLyricsMode);
+      },
+      // Without the default the edit copies, which never changes the work's own files.
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, []);
+
   const readyFiles = useMemo(() => {
     const ready: Record<string, FolderEditFile[]> = {};
     for (const [id, state] of Object.entries(files)) if (state.status === "ready") ready[id] = state.files;
     return ready;
   }, [files]);
   const { request, undeclared } = useMemo(
-    () => lyricsEditRequest({ target, resources, files: readyFiles, selection, languages, decisions }),
-    [decisions, languages, readyFiles, resources, selection, target],
+    () => lyricsEditRequest({ target, resources, files: readyFiles, selection, languages, decisions, folderMode }),
+    [decisions, folderMode, languages, readyFiles, resources, selection, target],
   );
   const revision = useMemo(() => JSON.stringify(request), [request]);
   const needsPlan = request.additions.length > 0;
@@ -264,6 +282,8 @@ export function useLyricsEditWorkspace({
         ),
       }));
     },
+    folderMode,
+    setFolderMode: setChosenFolderMode,
     decisions,
     setDecision: (decision: RemoteFetchFileDecision) =>
       setDecisions((current) => ({ ...current, [decision.itemKey]: decision })),

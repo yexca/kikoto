@@ -47,11 +47,14 @@ type lyricsEditAssignmentIn struct {
 }
 
 type lyricsEditRequest struct {
-	FolderID          int64                       `json:"folderId"`
-	Additions         []lyricsEditAdditionRequest `json:"additions"`
-	RemoveLocationIDs []int64                     `json:"removeLocationIds"`
-	Decisions         []remoteFetchFileDecision   `json:"decisions"`
-	Assignments       []lyricsEditAssignmentIn    `json:"assignments"`
+	FolderID  int64                       `json:"folderId"`
+	Additions []lyricsEditAdditionRequest `json:"additions"`
+	// FolderMode is "copy" or "move" for the added files of the edited folder
+	// outside Kikoto's lyrics folder; empty takes the administrator's default.
+	FolderMode        string                    `json:"folderMode,omitempty"`
+	RemoveLocationIDs []int64                   `json:"removeLocationIds"`
+	Decisions         []remoteFetchFileDecision `json:"decisions"`
+	Assignments       []lyricsEditAssignmentIn  `json:"assignments"`
 }
 
 // lyricsEditItem is one lyrics file to bring into a language's lyrics folder.
@@ -68,6 +71,8 @@ type lyricsEditItem struct {
 	sourceRoot     string
 	sourceAbsolute string
 	remote         remoteSourceForUse
+	// copyFolder copies a file of the edited folder instead of moving it.
+	copyFolder bool
 }
 
 type lyricsEditSummary struct {
@@ -83,6 +88,8 @@ type lyricsEditSummary struct {
 type lyricsEditPlan struct {
 	WorkID   int64 `json:"workId"`
 	FolderID int64 `json:"folderId"`
+	// FolderMode is how the plan brings files of the edited folder in.
+	FolderMode string `json:"folderMode"`
 	// SaveRoot is the edited folder, relative to the data root.
 	SaveRoot string                  `json:"saveRoot"`
 	Items    []lyricsEditItem        `json:"items"`
@@ -187,6 +194,10 @@ func writeLyricsEditError(w http.ResponseWriter, workID int64, err error) {
 	}
 	var requestErr lyricsFetchRequestError
 	if errors.As(err, &requestErr) {
+		if requestErr.code != "" {
+			writeAPIError(w, requestErr.status, requestErr.code, requestErr.message, false)
+			return
+		}
 		writeJSON(w, requestErr.status, map[string]string{"error": requestErr.message})
 		return
 	}
@@ -234,7 +245,12 @@ func (s *Server) buildLyricsEditPlan(ctx context.Context, workID int64, payload 
 	if err != nil {
 		return lyricsEditPlan{}, err
 	}
-	removals, err := s.lyricsEditRemovals(ctx, target, payload.RemoveLocationIDs)
+	if len(payload.Additions) > 0 {
+		if err := checkLyricsRootWritable(rootAbsolute); err != nil {
+			return lyricsEditPlan{}, err
+		}
+	}
+	removals, err := s.lyricsEditRemovals(ctx, target, rootAbsolute, payload.RemoveLocationIDs)
 	if err != nil {
 		return lyricsEditPlan{}, err
 	}
@@ -242,9 +258,23 @@ func (s *Server) buildLyricsEditPlan(ctx context.Context, workID int64, payload 
 	for _, removal := range removals {
 		removing[fetchTargetKey(removal.Path)] = true
 	}
+	folderMode := s.folderLyricsMode(ctx)
+	if strings.TrimSpace(payload.FolderMode) != "" {
+		mode, ok := parseFolderLyricsMode(payload.FolderMode)
+		if !ok {
+			return lyricsEditPlan{}, lyricsFetchBadRequest("folderMode must be copy or move")
+		}
+		folderMode = mode
+	}
 	items, err := s.lyricsEditCandidates(ctx, family, target, rootAbsolute, payload.Additions)
 	if err != nil {
 		return lyricsEditPlan{}, err
+	}
+	for index := range items {
+		// Managed lyrics that change language always move, so the language
+		// folders never hold two copies of one file.
+		items[index].copyFolder = folderMode == folderLyricsCopy && items[index].SourceKind == "folder" &&
+			!managedLyricsPath(items[index].Path)
 	}
 	decisions := normalizeRemoteFetchDecisions(payload.Decisions)
 	seenTargets := map[string]string{}
@@ -260,7 +290,7 @@ func (s *Server) buildLyricsEditPlan(ctx context.Context, workID int64, payload 
 		items[index].remoteWorkSavePlanItem = base[index]
 	}
 	return lyricsEditPlan{
-		WorkID: workID, FolderID: payload.FolderID, SaveRoot: target.RootPath,
+		WorkID: workID, FolderID: payload.FolderID, FolderMode: folderMode, SaveRoot: target.RootPath,
 		Items: items, Removals: removals, Summary: summarizeLyricsEdit(items, removals),
 		target: target, rootAbsolute: rootAbsolute,
 	}, nil
@@ -295,9 +325,11 @@ func summarizeLyricsEdit(items []lyricsEditItem, removals []workFolderEditRemova
 }
 
 // lyricsEditRemovals resolves the files to delete. Each must be a lyrics file
-// in one of the edited folder's language lyrics folders.
-func (s *Server) lyricsEditRemovals(ctx context.Context, target lyricsFetchTarget, locationIDs []int64) ([]workFolderEditRemoval, error) {
+// in one of the edited folder's language lyrics folders, inside a lyrics
+// folder Kikoto created.
+func (s *Server) lyricsEditRemovals(ctx context.Context, target lyricsFetchTarget, rootAbsolute string, locationIDs []int64) ([]workFolderEditRemoval, error) {
 	removals := make([]workFolderEditRemoval, 0, len(locationIDs))
+	owned := len(locationIDs) == 0 || lyricsRootOwned(rootAbsolute)
 	seen := map[int64]bool{}
 	for _, locationID := range locationIDs {
 		if locationID <= 0 || seen[locationID] {
@@ -323,7 +355,7 @@ func (s *Server) lyricsEditRemovals(ctx context.Context, target lyricsFetchTarge
 		removal.Path = normalizeFolderRootPath(removal.Path)
 		relative := strings.TrimPrefix(removal.Path, target.RootPath+"/")
 		if locationType != "local" || workID != target.WorkID || sourceID != target.FileSourceID ||
-			relative == removal.Path || !managedLyricsPath(relative) {
+			relative == removal.Path || !managedLyricsPath(relative) || !owned {
 			return nil, lyricsFetchBadRequest("only lyrics Kikoto manages in this folder can be removed here")
 		}
 		if size.Valid {
@@ -449,7 +481,7 @@ func (s *Server) lyricsEditCandidates(ctx context.Context, family map[int64]bool
 		item.Kind = "text"
 		item.LocalPaths = []string{}
 		item.SourceOptions = []remoteFetchSourceOption{}
-		item.TargetPath = path.Join(target.RootPath, lyricsLanguageFolderName(language), lyricsFolderRelativePath(relative))
+		item.TargetPath = path.Join(target.RootPath, lyricsLanguageFolderPath(language), lyricsFolderRelativePath(relative))
 		item.OriginalTargetPath = item.TargetPath
 		items = append(items, item)
 	}
@@ -512,7 +544,7 @@ func lyricsEditRenameTarget(rootPath string, folderName string, requested string
 func (s *Server) resolveLyricsEditItem(item *lyricsEditItem, decision remoteFetchFileDecision, targetRoot string, removing map[string]bool, seenTargets map[string]string) error {
 	base := &item.remoteWorkSavePlanItem
 	if strings.EqualFold(strings.TrimSpace(decision.Resolution), "rename") {
-		renamed, err := lyricsEditRenameTarget(targetRoot, lyricsLanguageFolderName(item.Language), decision.TargetPath)
+		renamed, err := lyricsEditRenameTarget(targetRoot, lyricsLanguageFolderPath(item.Language), decision.TargetPath)
 		if err != nil {
 			return err
 		}
@@ -575,10 +607,10 @@ func (s *Server) resolveLyricsEditItem(item *lyricsEditItem, decision remoteFetc
 		base.Status = "replace_target"
 	}
 	if base.Action == "" {
-		switch base.SourceKind {
-		case "folder":
+		switch {
+		case base.SourceKind == "folder" && !item.copyFolder:
 			base.Action = "move_local"
-		case "local":
+		case base.SourceKind == "folder", base.SourceKind == "local":
 			base.Action = "copy_local"
 		default:
 			base.Action = "cache_download"

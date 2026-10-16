@@ -926,6 +926,11 @@ func (s *Server) finishMediaCleanupForget(
 }
 
 func (s *Server) clearLocalWorkRoot(ctx context.Context, target mediaCleanupTarget) (bool, error) {
+	// The lyrics folder's marker is never indexed, so no file target removes
+	// it; it goes with the folder that holds it.
+	if err := s.removeLyricsRootMarker(target.Path); err != nil {
+		return false, err
+	}
 	rootPath, err := validateDestructiveDirectoryTree(s.cfg.DataRoot, target.Path)
 	if err != nil {
 		return false, err

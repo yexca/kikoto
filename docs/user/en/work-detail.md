@@ -34,7 +34,7 @@ Lyrics are translated from [Manage lyrics → Translate](#translate).
 
 Transcription is an Activity workflow. Kikoto decodes the track itself and sends it in parts of at most five minutes of 16 kHz mono audio, each cut at the quietest moment of its last minute so a cut falls between words. Each finished part is kept, and the workflow hands the queue to other waiting work between parts, so a long track does not hold up scans or Fetch. Before every part, Kikoto checks again that the service settings, the content policy, your permissions and the audio file are unchanged. A request interrupted by a restart, or a part the service rejects, stops the transcription; **Retry** in Activity continues after the last finished part and sends the interrupted part again. Cancelling the run stops it.
 
-The finished transcription waits in the list below the tracks. **Preview** shows its first lines with the same timing check as other lyrics. **Add to lyrics** saves it as a WebVTT file in the language's lyrics folder inside the track's work folder, under the track's own path, such as `lyrics_ja/mp3/Track 01.vtt`, and assigns it to the track. A different file or a folder already at that name is kept, and the transcription is saved beside it with a numbered name. A file where the lyrics folder, or a folder inside it, belongs stops **Add to lyrics** until you rename or move that file; the transcription is kept. **Discard** drops a transcription that is not wanted. If adding to the lyrics does not finish, the result is kept and **Add to lyrics** tries again.
+The finished transcription waits in the list below the tracks. **Preview** shows its first lines with the same timing check as other lyrics. **Add to lyrics** saves it as a WebVTT file in the language's lyrics folder inside the track's work folder, under the track's own path, such as `lyrics_kikoto/ja/mp3/Track 01.vtt`, and assigns it to the track. A different file or a folder already at that name is kept, and the transcription is saved beside it with a numbered name. A file or folder Kikoto did not create where the lyrics folder, or a folder inside it, belongs stops **Add to lyrics** until you rename or move it; the transcription is kept. **Discard** drops a transcription that is not wanted. If adding to the lyrics does not finish, the result is kept and **Add to lyrics** tries again.
 
 ## Translate
 
@@ -42,7 +42,7 @@ The finished transcription waits in the list below the tracks. **Preview** shows
 
 Translation is an Activity workflow that sends the lyrics in bounded parts and keeps each finished part. LRC, WebVTT, SRT, standard ASS dialogue and plain text keep their timing and cue order; only the text of each line is translated. Input and output are limited to 128 KiB, 4,000 source lines and 4,096 bytes per text line. A part the provider rejects, or a work folder that is briefly unavailable, can be retried from Activity. A request interrupted by a restart has an unknown result; **Resend** sends it again after you acknowledge that another charge may occur. A change to the lyrics, the provider settings, the content policy or your permissions stops the translation, and it must be started again.
 
-The finished translation waits in the list below the table for 24 hours and belongs to whoever started it. **Preview** shows its first lines with the same timing check as other lyrics. **Add to lyrics** checks the lyrics file, the policy and the provider again, then saves the translation in the target language's lyrics folder inside the track's work folder, under the track's own path with the original file's extension, such as `lyrics_zh_hans/mp3/Track 01.lrc`, and assigns it to the track in that language. The original lyrics file is never changed. A different file or a folder already at that name is kept, and the translation is saved beside it with a numbered name. A file where the lyrics folder, or a folder inside it, belongs stops **Add to lyrics** until you rename or move that file; the translation is kept. **Discard** drops a translation that is not wanted. If adding to the lyrics does not finish, the result is kept and **Add to lyrics** tries again without contacting the provider.
+The finished translation waits in the list below the table for 24 hours and belongs to whoever started it. **Preview** shows its first lines with the same timing check as other lyrics. **Add to lyrics** checks the lyrics file, the policy and the provider again, then saves the translation in the target language's lyrics folder inside the track's work folder, under the track's own path with the original file's extension, such as `lyrics_kikoto/zh-hans/mp3/Track 01.lrc`, and assigns it to the track in that language. The original lyrics file is never changed. A different file or a folder already at that name is kept, and the translation is saved beside it with a numbered name. A file or folder Kikoto did not create where the lyrics folder, or a folder inside it, belongs stops **Add to lyrics** until you rename or move it; the translation is kept. **Discard** drops a translation that is not wanted. If adding to the lyrics does not finish, the result is kept and **Add to lyrics** tries again without contacting the provider.
 
 
 ## Editing metadata
@@ -216,15 +216,24 @@ A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), 
   You declare a file's language yourself; Kikoto does not guess it from the
   file.
 - **Manage lyrics** has a **Lyrics files** tab for users who manage local files.
-  Kikoto manages the lyrics in a folder named after their language inside a work
-  folder: `lyrics_ja`, `lyrics_en`, `lyrics_zh_hans`, `lyrics_zh_hant`,
-  `lyrics_ko`, or `lyrics` for fallback lyrics. The tab edits them in three
+  Kikoto manages the lyrics in one `lyrics_kikoto` folder inside a work folder,
+  in a folder named after their language: `ja`, `en`, `zh-hans`, `zh-hant`,
+  `ko`, or `fallback` for fallback lyrics, such as `lyrics_kikoto/ja`. Kikoto
+  marks the `lyrics_kikoto` folder it creates as its own. A lyrics folder the
+  work ships, such as `lyrics`, is one of the work's files: its lyrics are
+  listed under **Other lyrics in this folder**, and Kikoto never adds lyrics to
+  it or deletes from it as managed lyrics. A `lyrics_kikoto` folder that Kikoto
+  did not create, or a file of that name, stops lyrics from being added until
+  you rename or move it. The tab edits them in three
   columns, like **Edit files**: the places lyrics can come from on the left, the
   lyrics files of the chosen place in the middle, and the managed lyrics as they
   will be on the right. When the work has several local folders, the right
   column chooses the one to edit.
 - The places are **Managed lyrics**, where clearing a file deletes it; **Other
-  lyrics in this folder**, whose selected files move into a lyrics folder; the
+  lyrics in this folder**, whose selected files are copied into a lyrics folder
+  and stay in their own place, or move there when **The work's own files** is
+  set to **Move into lyrics_kikoto**; the choice starts on the administrator's
+  [default](settings.md#library), which copies unless changed; the
   work's other local folders, including other editions in the library, whose
   files are copied; and the editions that configured remote sources offer, whose
   files are downloaded. Selected files go to the lyrics folder of the language
@@ -233,7 +242,7 @@ A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), 
   the work's own files, so you choose it before anything is previewed. To change
   the language of managed lyrics, turn on **Also list the managed lyrics, to
   change their language** in **Other lyrics in this folder** and select them
-  there. A file keeps its path below its place, without the lyrics folder it may
+  there; they move to their new language even while copying. A file keeps its path below its place, without the lyrics folder it may
   already be in.
 - The right column previews the result. A file that is already there with the
   same content is left alone. A different file with the same name is a conflict
@@ -244,7 +253,8 @@ A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), 
   **Assign added lyrics to matching tracks** assigns each added file in its
   language to the track it matches by file name, then by track order; a track
   that already has lyrics in that language keeps them. Assignments that already
-  use a moved file follow it to its language. A remote edition you read from is
+  use a moved file follow it to its language; a copied file is a new file, and
+  the work's own file keeps its assignments. A remote edition you read from is
   not added to the library.
 - **Manage files** on a local work has **Manage as lyrics** for lyrics that are
   elsewhere in the work folder. Select `.lrc`, `.vtt`, `.srt`, `.ass`, or `.txt`

@@ -95,8 +95,8 @@ enabled.
 Library opens with **Libraries**, every library the server reads: the local
 library with its storage mode and whether its storage is online, then each
 configured remote source. The settings follow below it: remote source
-addresses, library storage, local scan settings, creator catalogs, Kikoeru
-account import, and read-only storage paths. Selecting the local library jumps
+addresses, library storage, local scan settings, lyrics files, creator
+catalogs, Kikoeru account import, and read-only storage paths. Selecting the local library jumps
 to **Library storage**.
 
 - **Remote source addresses** holds **Hide addresses from accounts that do not
@@ -118,6 +118,13 @@ to **Library storage**.
 - **Scan depth** cannot be set below the level where Fetch saves works;
   scans always reach at least that level, so Fetched works are never reported
   missing because a scan stopped above them.
+- **Lyrics files** holds **Lyrics of the work folder**, saved with its own
+  **Save lyrics settings** button: whether
+  [Lyrics files](work-detail.md#current-behavior) copies
+  the lyrics a work folder already holds into the `lyrics_kikoto` folder, which
+  leaves the work's own files where they are, or moves them there. Copying is
+  the default. It is the starting choice of every lyrics edit, which can still
+  choose the other.
 - **Creator catalogs** holds **Catalog freshness days** (1 to 365, default 30),
   saved with its own **Save catalog settings** button. A circle or voice actor
   catalog is marked Attention once its last refresh is older than that.

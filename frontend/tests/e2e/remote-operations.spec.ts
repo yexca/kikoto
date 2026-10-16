@@ -656,7 +656,7 @@ test("@desktop Manage lyrics resolves a lyrics conflict in place of deleting the
     [
       localFile(1, "audio", "track.mp3"),
       localFile(2, "text", "track.mp3.vtt"),
-      localFile(3, "text", "lyrics_ja/track.mp3.vtt"),
+      localFile(3, "text", "lyrics_kikoto/ja/track.mp3.vtt"),
     ],
     undefined,
     {
@@ -691,7 +691,7 @@ test("@desktop Manage lyrics resolves a lyrics conflict in place of deleting the
     const request = route.request().postDataJSON() as { decisions: { resolution: string }[] };
     plans.push(request);
     const replace = request.decisions.some((decision) => decision.resolution === "replace");
-    const target = `${work.primaryCode}/lyrics_ja/track.mp3.vtt`;
+    const target = `${work.primaryCode}/lyrics_kikoto/ja/track.mp3.vtt`;
     await route.fulfill({
       json: {
         workId: work.id,
@@ -764,7 +764,7 @@ test("@desktop Manage lyrics resolves a lyrics conflict in place of deleting the
 
   // A lyrics file in a language's lyrics folder has no row of its own until it is asked for.
   const files = page.getByRole("dialog", { name: "Manage files" });
-  const managedRow = files.getByRole("checkbox", { name: "Select lyrics_ja", exact: true });
+  const managedRow = files.getByRole("checkbox", { name: "Select lyrics_kikoto", exact: true });
   await expect(managedRow).toHaveCount(0);
   const note = files.getByRole("note");
   await expect(note).toContainText("Lyrics managed by Kikoto");
@@ -784,6 +784,12 @@ test("@desktop Manage lyrics resolves a lyrics conflict in place of deleting the
   );
   await expect(lyrics.getByRole("checkbox", { name: "Select track.mp3.vtt", exact: true })).toBeChecked();
 
+  // The work's own files are copied by default; this edit moves them instead.
+  const folderMode = lyrics.getByRole("combobox", { name: "The work's own files" });
+  await expect(folderMode).toContainText("Copy into lyrics_kikoto");
+  await folderMode.click();
+  await page.getByRole("option", { name: "Move into lyrics_kikoto" }).click();
+
   // The language is the manager's statement, so nothing is previewed before it is chosen.
   const apply = lyrics.getByRole("button", { name: "Apply changes" });
   await expect(lyrics.getByText("Choose the language of the selected lyrics")).toBeVisible();
@@ -800,6 +806,7 @@ test("@desktop Manage lyrics resolves a lyrics conflict in place of deleting the
     removeLocationIds: [],
     decisions: [],
     assignments: [],
+    folderMode: "move",
   });
   await expect(apply).toBeDisabled();
   await lyrics
@@ -815,9 +822,15 @@ test("@desktop Manage lyrics resolves a lyrics conflict in place of deleting the
     additions: [{ kind: "folder", path: "track.mp3.vtt", language: "ja-jp" }],
     removeLocationIds: [],
     decisions: [
-      { itemKey: "folder:track.mp3.vtt", sourceId: 0, resolution: "replace", targetPath: "lyrics_ja/track.mp3.vtt" },
+      {
+        itemKey: "folder:track.mp3.vtt",
+        sourceId: 0,
+        resolution: "replace",
+        targetPath: "lyrics_kikoto/ja/track.mp3.vtt",
+      },
     ],
     assignments: [{ audioMediaItemId: 1, itemKey: "folder:track.mp3.vtt" }],
+    folderMode: "move",
   });
   await expect(
     page.getByText("Lyrics updated: 1 added, 0 deleted. Tracks assigned: 1.", { exact: true }),

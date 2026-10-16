@@ -933,6 +933,13 @@ export const surfaceKorean = {
       hideRemoteAddressesDescription:
         "켜면 소스 관리 권한이 없는 계정과 로그인하지 않은 열람자는 소스의 API·사이트·대체 주소, 소스 사이트의 작품 링크, 트랙과 활동에 포함된 업스트림 URL을 받지 않습니다. 탐색, 재생, 커버, 텍스트 미리보기는 이 서버를 거칩니다.",
       saveRemoteAddresses: "주소 설정 저장",
+      lyricsFiles: "가사 파일",
+      lyricsFilesDescription:
+        "가사 관리가 작품 폴더에 이미 있는 가사를 Kikoto의 lyrics_kikoto 폴더로 가져오는 방식입니다.",
+      folderLyricsMode: "작품 폴더의 가사",
+      folderLyricsModeDescription:
+        "복사하면 작품 자체의 파일은 그대로 남고, 이동하면 원래 자리에서 옮겨집니다. 편집할 때마다 따로 고를 수도 있습니다.",
+      saveLyricsFiles: "가사 설정 저장",
       creatorCatalogs: "크리에이터 카탈로그",
       catalogFreshnessDays: "카탈로그 최신 유지 일수",
       catalogFreshnessDescription: "서클 및 성우 카탈로그는 마지막 새로 고침 후 이 일수가 지나면 주의 상태가 됩니다.",
@@ -2548,7 +2555,7 @@ export const surfaceKorean = {
 
   errorFeedback: {
     lyricsFolderBlocked:
-      "작품 폴더의 파일이 가사 폴더 자리를 차지하고 있습니다. 그 파일의 이름을 바꾸거나 옮긴 다음 다시 가사에 추가하세요.",
+      "Kikoto가 만들지 않은 파일이나 폴더가 lyrics_kikoto 폴더 자리를 차지하고 있습니다. 이름을 바꾸거나 옮긴 다음 다시 시도하세요.",
     databaseBusy: "데이터베이스가 사용 중입니다. 잠시 후 다시 시도하세요.",
     serviceModelNotInstalled: "서비스에 설치된 모델이 없습니다. 서비스에서 모델을 설치한 뒤 모델을 다시 가져오세요.",
     llmUnsupportedLanguagePair: "이 모델은 해당 번역 방향을 지원하지 않습니다.",
@@ -3166,7 +3173,12 @@ export const surfaceKorean = {
     managed: "관리 중인 가사",
     thisFolder: "이 폴더의 다른 가사",
     managedHint: "이 작품 폴더의 언어별 가사 폴더에 있는 가사입니다. 선택을 해제하면 파일이 삭제됩니다.",
-    folderHint: "선택한 파일은 이 작품 폴더 안의 해당 언어 가사 폴더로 이동합니다.",
+    folderCopyHint:
+      "선택한 파일은 이 작품 폴더 안의 해당 언어 가사 폴더로 복사되며, 작품 자체의 파일은 그대로 남습니다. 언어를 바꾼 관리 중인 가사는 이동합니다.",
+    folderMoveHint: "선택한 파일은 이 작품 폴더 안의 해당 언어 가사 폴더로 이동합니다.",
+    folderMode: "작품 자체의 파일",
+    folderModeCopy: "lyrics_kikoto로 복사",
+    folderModeMove: "lyrics_kikoto로 이동",
     localHint: "선택한 파일은 해당 언어의 가사 폴더로 복사됩니다. 원본 폴더는 바뀌지 않습니다.",
     remoteHint: "선택한 파일은 {{source}}에서 해당 언어의 가사 폴더로 다운로드됩니다.",
     listManaged: "관리 중인 가사도 표시해 언어 변경",

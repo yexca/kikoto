@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/localfs"
 )
 
 // A library lyrics assignment declares the language of its lyrics file, from
@@ -36,28 +37,36 @@ func normalizeLyricsLanguage(value string) (string, bool) {
 	return language, true
 }
 
-// lyricsLanguageFolderName is the folder inside a work folder that holds the
-// lyrics Kikoto adds for a language. The name carries no work code, so a scan
-// never mistakes the folder for a work of its own.
+// lyricsLanguageFolderName is the folder inside the lyrics folder that holds
+// the lyrics Kikoto adds for a language. The fallback lyrics have a folder of
+// their own, so a track folder of the work can never sit beside the language
+// folders. The names carry no work code, so a scan never mistakes a folder for
+// a work of its own.
 func lyricsLanguageFolderName(language string) string {
 	switch language {
 	case "ja-jp":
-		return "lyrics_ja"
+		return "ja"
 	case "en-us":
-		return "lyrics_en"
+		return "en"
 	case "zh-cn":
-		return "lyrics_zh_hans"
+		return "zh-hans"
 	case "zh-tw":
-		return "lyrics_zh_hant"
+		return "zh-hant"
 	case "ko-kr":
-		return "lyrics_ko"
+		return "ko"
 	default:
-		return "lyrics"
+		return "fallback"
 	}
 }
 
-// lyricsFolderLanguage returns the language whose lyrics folder has this name,
-// and false for any other folder.
+// lyricsLanguageFolderPath is the folder, relative to a work folder, that
+// holds the lyrics Kikoto adds for a language.
+func lyricsLanguageFolderPath(language string) string {
+	return localfs.LyricsRootName + "/" + lyricsLanguageFolderName(language)
+}
+
+// lyricsFolderLanguage returns the language whose folder inside the lyrics
+// folder has this name, and false for any other folder.
 func lyricsFolderLanguage(name string) (string, bool) {
 	for _, language := range append([]string{""}, dlsite.SupportedMetadataLanguages...) {
 		if lyricsLanguageFolderName(language) == name {

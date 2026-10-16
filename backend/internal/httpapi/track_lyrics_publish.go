@@ -112,8 +112,11 @@ func (s *Server) publishTrackLyrics(ctx context.Context, userID, workID, audioID
 	if err != nil {
 		return "", 0, err
 	}
-	folderName := lyricsLanguageFolderName(language)
-	folderAbsolute := filepath.Join(rootAbsolute, folderName)
+	folderName := lyricsLanguageFolderPath(language)
+	folderAbsolute := filepath.Join(rootAbsolute, filepath.FromSlash(folderName))
+	if err := checkLyricsRootWritable(rootAbsolute); err != nil {
+		return "", 0, err
+	}
 	if _, blocked := blockingPathEntry(rootAbsolute, path.Join(folderName, stem+extension)); blocked {
 		return "", 0, errLyricsFolderBlocked
 	}
@@ -188,6 +191,9 @@ func (s *Server) stageTrackLyrics(ctx context.Context, rootPath, rootAbsolute, d
 	defer func() { _ = os.RemoveAll(stagingRoot) }()
 	staged := filepath.Join(stagingRoot, "lyrics"+extension)
 	if _, err := writeLyricsStagingFile(strings.NewReader(text), staged); err != nil {
+		return err
+	}
+	if err := ensureLyricsRoot(rootAbsolute); err != nil {
 		return err
 	}
 	if err := mkdirPlainDirectories(rootAbsolute, filepath.Dir(destination)); err != nil {
