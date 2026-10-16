@@ -16,7 +16,7 @@ func seedDemoFavorites(ctx context.Context, tx *sql.Tx) error {
 		return fmt.Errorf("find demo account: %w", err)
 	}
 	for _, query := range []string{
-		"DELETE FROM favorite_list WHERE user_id = ? AND kind = 'user'",
+		"DELETE FROM favorite_list WHERE user_id = ? AND kind IN ('user', 'smart')",
 		"DELETE FROM user_work_state WHERE user_id = ?",
 		"DELETE FROM user_person_state WHERE user_id = ?",
 		"DELETE FROM user_party_state WHERE user_id = ?",

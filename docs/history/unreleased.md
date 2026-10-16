@@ -14,6 +14,13 @@
 <details>
 <summary><strong>Library and work detail</strong></summary>
 
+- Favorites has smart lists. A smart list shows the works that carry the tags
+  it includes (all or any of them) and none of the tags it excludes, using
+  shared metadata tags and your own tags. Matching works are not favorites;
+  works you add by hand are, and a matching work you remove stays out. The
+  shelf counts and marks works that started to match since you last chose
+  **Mark all as seen**, and **Convert to regular list** keeps the current works
+  as an ordinary list. Personal data exports leave smart lists out.
 - The List button on a work's detail page names the list that holds the work.
   When several do, it names the first and counts the rest, and its tooltip
   names them all.

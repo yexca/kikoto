@@ -47,7 +47,7 @@ func (s Store) Export(ctx context.Context, user int64) ([]byte, error) {
 	 UNION SELECT work_id FROM user_work_playback_cursor WHERE user_id = ?
 	 UNION SELECT work_id FROM user_listening_session WHERE user_id = ?
 	 UNION SELECT work_id FROM user_listening_import WHERE user_id = ?
-	 UNION SELECT i.work_id FROM favorite_list_item i JOIN favorite_list l ON l.id=i.list_id WHERE l.user_id = ? AND l.kind='user'
+	 UNION SELECT i.work_id FROM favorite_list_item i JOIN favorite_list l ON l.id=i.list_id WHERE l.user_id = ? AND l.kind IN ('user','smart')
 	) SELECT w.id,w.primary_code,COALESCE(s.listening_status,'none'),s.rating,COALESCE(s.note,'')
 	FROM personal_work p JOIN work w ON w.id=p.work_id LEFT JOIN user_work_state s ON s.work_id=w.id AND s.user_id=? ORDER BY w.primary_code LIMIT ?`, []any{user, user, user, user, user, user, user, maxTransferWorks + 1}, func(rows *sql.Rows) error {
 		var w BackupWork

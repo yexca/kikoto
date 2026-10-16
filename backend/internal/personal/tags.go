@@ -107,6 +107,11 @@ func (s Store) ChangeTag(ctx context.Context, user int64, scope string, id int64
 		if err != nil {
 			return Tag{}, err
 		}
+		if scope == "work" {
+			if err = moveSmartRuleUserTagTx(ctx, tx, user, id, target); err != nil {
+				return Tag{}, err
+			}
+		}
 		if _, err = tx.ExecContext(ctx, `DELETE FROM `+t.tags+` WHERE id = ? AND user_id = ?`, id, user); err != nil {
 			return Tag{}, err
 		}
@@ -120,4 +125,26 @@ func (s Store) ChangeTag(ctx context.Context, user int64, scope string, id int64
 		return Tag{}, err
 	}
 	return tag, tx.Commit()
+}
+
+// moveSmartRuleUserTagTx points the user's smart list conditions on a merged
+// personal tag at the merge target. A list that already names the target keeps
+// its own condition, so the target's include or exclude mode wins.
+func moveSmartRuleUserTagTx(ctx context.Context, tx *sql.Tx, user, source, target int64) error {
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM favorite_list_smart_tag
+		WHERE tag_kind = 'user' AND tag_id = ?
+			AND list_id IN (SELECT id FROM favorite_list WHERE user_id = ?)
+			AND EXISTS (
+				SELECT 1 FROM favorite_list_smart_tag AS existing
+				WHERE existing.list_id = favorite_list_smart_tag.list_id AND existing.tag_kind = 'user' AND existing.tag_id = ?
+			)
+	`, source, user, target); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `
+		UPDATE favorite_list_smart_tag SET tag_id = ?
+		WHERE tag_kind = 'user' AND tag_id = ? AND list_id IN (SELECT id FROM favorite_list WHERE user_id = ?)
+	`, target, source, user)
+	return err
 }

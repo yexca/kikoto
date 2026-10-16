@@ -162,12 +162,26 @@ unboundedly.
 Favorites keeps only entity/search intent in the canonical URL. Its selected
 list, favorite filters, ordering, seed, pagination, selection, and work anchor are
 restored from the current history entry with user-scoped session fallback.
-`All Favorites` aggregates works with a Quick mark and works in any user list.
-`Marked` is the fixed system list containing only works whose Quick mark is not
-Unmarked; its membership is derived and cannot be edited as a list. Other
-lists are user-created and keep explicit membership; the add-to-list menu on a
-work card or on work detail can create a list in place and select it. Switching
-lists keeps the
+`All Favorites` aggregates works with a Quick mark and works you added to any
+list. `Marked` is the fixed system list containing only works whose Quick mark
+is not Unmarked; its membership is derived and cannot be edited as a list.
+Other lists are user-created and keep explicit membership; the add-to-list menu
+on a work card or on work detail can create a list in place and select it.
+
+A smart list fills itself from tags. When you add a list, choose **Smart list**
+and pick tags to include (all of them or any of them) and tags to exclude, from
+the shared metadata tags and your own tags; the editor counts the matching
+works as you go. Works that match appear in the list without becoming
+favorites. You can still add other works by hand, which makes them favorites
+like in any list, and remove a matching work, which keeps it out of the list
+until you add it again. The list only gathers works already in your library.
+When works start to match later, the shelf shows how many are new and marks
+them **New** until you choose **Mark all as seen**; **Only new** shows just
+those works. **Convert to regular list** keeps the works the list shows now as
+an ordinary list, makes all of them favorites, and removes the rule. A tag that
+is later hidden or deleted stays in the rule, crossed out, and matches no work.
+
+Switching lists keeps the
 full favorite-list row stable while results load, and Shelved is the final
 listening-state option. Playback cursors alone never add a work to Favorites.
 The resource filter narrows favorite works by the availability their cards

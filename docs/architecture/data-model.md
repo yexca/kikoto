@@ -747,6 +747,10 @@ Important tables:
 - `user_media_lyrics_preference`
 - `favorite_list`
 - `favorite_list_item`
+- `favorite_list_smart_rule`
+- `favorite_list_smart_tag`
+- `favorite_list_smart_exclusion`
+- `favorite_list_smart_seen`
 - `user_tag`
 - `user_work_tag`
 - `user_listening_session`
@@ -827,12 +831,32 @@ its unified `primary_code`, over at most 24 admitted local works and the last
 account's sessions, days, hours, and imported totals, and rate the works the
 history plays most.
 
-`favorite_list` distinguishes a system `marked` list from ordinary user lists.
-The system list has no stored items: it derives membership from a non-`none`
-Quick mark. `favorite_list_item` records only explicit user-list membership.
+`favorite_list` distinguishes a system `marked` list, ordinary `user` lists,
+and `smart` lists. The system list has no stored items: it derives membership
+from a non-`none` Quick mark. `favorite_list_item` records the works a user
+added by hand to a user or smart list; those works are favorites, and
+`user_work_state.favorite` is true exactly when a work has such a row.
 A user list's `icon` is a short presentation key (lowercase letters, digits,
 and hyphens) that clients map to their own icon set; an empty or unknown key
 shows the default list icon, and the system list never reports one.
+
+A smart list shows its hand-added works plus the works that match its rule,
+minus the rule matches its owner removed (`favorite_list_smart_exclusion`).
+Rule matches are computed on read and are not favorites. The rule
+(`favorite_list_smart_rule`, `favorite_list_smart_tag`) includes shared
+metadata tags or the owner's personal tags, all or any of them, and excludes
+others. Conditions keep the tag id without a foreign key: a metadata tag
+matches through its current merge target, a hidden or deleted tag matches no
+work, and merging a personal tag moves the owner's conditions to the merge
+target. A metadata tag matches a work when the work or another edition of its
+logical work carries it; a personal tag matches the work itself. Rules never
+read remote catalogs, so a list only gathers works the library already has.
+`favorite_list_smart_seen` holds the rule matches the owner has seen; saving a
+rule or marking the list seen replaces it with the current matches, and a
+current match outside it is a new work. Converting a smart list to a user list
+stores every work it shows as an item, which makes each one a favorite, and
+drops the rule, exclusions, and seen set. Personal data exports leave smart
+lists out, and an import skips a backup list whose name a smart list holds.
 
 `user_work_playback_cursor` stores at most one Resume position for each user and
 canonical logical work family. It references the active edition's logical media

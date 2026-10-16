@@ -25,9 +25,12 @@ export function FavoriteWorkList({
   isListSaving,
   busy,
   handlers,
+  newWorkIDs,
 }: {
   works: Work[];
   selectedWorkIDs: Set<number>;
+  /** Works that are new in the open smart list. */
+  newWorkIDs: Set<number>;
   selectionActive: boolean;
   isListSaving: boolean;
   busy: boolean;
@@ -41,6 +44,7 @@ export function FavoriteWorkList({
             key={work.id}
             work={work}
             selected={selectedWorkIDs.has(work.id)}
+            isNew={newWorkIDs.has(work.id)}
             selectionActive={selectionActive}
             isListSaving={isListSaving}
             handlers={handlers}
@@ -54,12 +58,14 @@ export function FavoriteWorkList({
 const FavoriteWorkRow = memo(function FavoriteWorkRow({
   work,
   selected,
+  isNew,
   selectionActive,
   isListSaving,
   handlers,
 }: {
   work: Work;
   selected: boolean;
+  isNew: boolean;
   selectionActive: boolean;
   isListSaving: boolean;
   handlers: FavoriteWorkItemHandlers;
@@ -117,6 +123,11 @@ const FavoriteWorkRow = memo(function FavoriteWorkRow({
           {work.title}
         </button>
         <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          {isNew && (
+            <Badge variant="default" className="shrink-0 px-1.5 py-0 text-2xs">
+              {t("favorites.smart.newBadge")}
+            </Badge>
+          )}
           <span className="shrink-0 tabular-nums">{work.primaryCode}</span>
           <span aria-hidden="true">·</span>
           <span className="truncate">
