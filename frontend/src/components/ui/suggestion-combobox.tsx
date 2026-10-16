@@ -1,5 +1,6 @@
-import { useId, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Input } from "@/components/ui/input";
 import { useTokenDraftHandlers } from "@/components/ui/token-input";
 import { cn } from "@/lib/tailwindClassNames";
@@ -16,7 +17,9 @@ export type SuggestionOption = {
  * A text field with an inline suggestion list. Arrow keys move through the
  * options, Enter picks the highlighted one or submits the typed text, and
  * Escape closes the list. The list renders in flow so the dialog body scrolls
- * to it rather than clipping a floating layer.
+ * to it rather than clipping a floating layer; `floating` shows it as a
+ * dropdown over the content instead, for a field whose surroundings should not
+ * move while the user types.
  */
 export function SuggestionCombobox({
   id,
@@ -30,6 +33,7 @@ export function SuggestionCombobox({
   onSubmitText,
   onSubmitTokens,
   onFocus,
+  floating = false,
 }: {
   id?: string;
   value: string;
@@ -45,6 +49,8 @@ export function SuggestionCombobox({
   /** When set, a comma or line break submits each finished name and keeps the rest typed. */
   onSubmitTokens?: (values: string[]) => void;
   onFocus?: () => void;
+  /** Shows the suggestions in a dropdown anchored under the field. */
+  floating?: boolean;
 }) {
   const { t } = useTranslation();
   const generatedId = useId();
@@ -53,6 +59,7 @@ export function SuggestionCombobox({
   const [focused, setFocused] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [active, setActive] = useState(-1);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
   const hasContent = options.length > 0 || truncated || Boolean(footer);
   const open = focused && !dismissed && hasContent && value.trim() !== "";
   const activeOption = open && active >= 0 ? options[active] : undefined;
@@ -103,8 +110,44 @@ export function SuggestionCombobox({
     }
   };
 
+  const listbox = (
+    <div
+      id={listId}
+      role="listbox"
+      aria-label={ariaLabel}
+      hidden={!open}
+      className={floating ? "p-1" : "mt-1 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-sm"}
+      // Keep focus in the field so a pointer pick does not close the list first.
+      onMouseDown={(event) => event.preventDefault()}
+    >
+      {options.map((option, index) => (
+        <div
+          key={option.key}
+          id={`${listId}-${index}`}
+          role="option"
+          aria-selected={index === active}
+          aria-disabled={option.disabled || undefined}
+          className={cn(
+            "flex min-h-9 cursor-pointer items-center justify-between gap-3 rounded px-2 text-sm",
+            index === active ? "bg-accent text-accent-foreground" : "hover:bg-muted",
+            option.disabled && "cursor-not-allowed opacity-60",
+          )}
+          onMouseEnter={() => setActive(index)}
+          onClick={() => select(option)}
+        >
+          <span className="min-w-0 flex-1 truncate">{option.label}</span>
+          {option.detail && (
+            <span className="min-w-0 max-w-[45%] truncate text-xs text-muted-foreground">{option.detail}</span>
+          )}
+        </div>
+      ))}
+      {truncated && <div className="px-2 py-1 text-xs text-muted-foreground">{t("libraryDetail.tooManyMatches")}</div>}
+      {footer}
+    </div>
+  );
+
   return (
-    <div className="min-w-0">
+    <div ref={anchorRef} className="min-w-0">
       <Input
         id={inputId}
         fieldSize="sm"
@@ -132,41 +175,24 @@ export function SuggestionCombobox({
           ? tokenHandlers
           : { onChange: (event: ChangeEvent<HTMLInputElement>) => changeText(event.target.value) })}
       />
-      <div
-        id={listId}
-        role="listbox"
-        aria-label={ariaLabel}
-        hidden={!open}
-        className="mt-1 max-h-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-sm"
-        // Keep focus in the field so a pointer pick does not close the list first.
-        onMouseDown={(event) => event.preventDefault()}
-      >
-        {options.map((option, index) => (
-          <div
-            key={option.key}
-            id={`${listId}-${index}`}
-            role="option"
-            aria-selected={index === active}
-            aria-disabled={option.disabled || undefined}
-            className={cn(
-              "flex min-h-9 cursor-pointer items-center justify-between gap-3 rounded px-2 text-sm",
-              index === active ? "bg-accent text-accent-foreground" : "hover:bg-muted",
-              option.disabled && "cursor-not-allowed opacity-60",
-            )}
-            onMouseEnter={() => setActive(index)}
-            onClick={() => select(option)}
-          >
-            <span className="min-w-0 flex-1 truncate">{option.label}</span>
-            {option.detail && (
-              <span className="min-w-0 max-w-[45%] truncate text-xs text-muted-foreground">{option.detail}</span>
-            )}
-          </div>
-        ))}
-        {truncated && (
-          <div className="px-2 py-1 text-xs text-muted-foreground">{t("libraryDetail.tooManyMatches")}</div>
-        )}
-        {footer}
-      </div>
+      {floating ? (
+        <AnchoredPopover
+          open={open}
+          anchorRef={anchorRef}
+          align="start"
+          gap={4}
+          matchAnchorWidth
+          zIndex={60}
+          className="max-h-64 rounded-md shadow-lg"
+          onOpenChange={(next) => {
+            if (!next) setDismissed(true);
+          }}
+        >
+          {listbox}
+        </AnchoredPopover>
+      ) : (
+        listbox
+      )}
     </div>
   );
 }

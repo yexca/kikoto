@@ -28,6 +28,8 @@ type favoriteListResponse struct {
 	SortOrder   int64  `json:"sortOrder"`
 	Kind        string `json:"kind"`
 	Selected    bool   `json:"selected,omitempty"`
+	// Rule is set on smart lists.
+	Rule *personal.SmartRuleView `json:"rule,omitempty"`
 }
 
 var errInvalidFavoriteListID = errors.New("invalid favorite list id")
@@ -40,6 +42,10 @@ type favoriteWorksResponse struct {
 	ShelfTotal   int                  `json:"shelfTotal"`
 	ListCounts   map[int64]int        `json:"listCounts"`
 	StatusCounts map[string]int       `json:"statusCounts"`
+	// NewCounts holds the smart lists that have new works.
+	NewCounts map[int64]int `json:"newCounts"`
+	// NewWorkIDs names the works of this page that are new in the smart list.
+	NewWorkIDs []int64 `json:"newWorkIds"`
 }
 
 func (s *Server) updateWorkUserState(w http.ResponseWriter, r *http.Request) {
@@ -133,14 +139,24 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 	}
 	queryText := strings.TrimSpace(r.URL.Query().Get("q"))
 	s.libraryStore.PrepareSearch(r.Context(), queryText)
+	scope, err := s.loadFavoriteListScope(r.Context(), s.db, user.ID, query.ListID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	where, args := favoriteWorksWhere(
 		strings.TrimSpace(r.URL.Query().Get("status")),
 		strings.TrimSpace(r.URL.Query().Get("availability")),
 		queryText,
 		user.ID,
-		query.ListID,
+		scope,
 		query.SourceIDs,
 	)
+	if query.NewOnly && scope.Kind == "smart" {
+		newWhere, newArgs := smartListNewWhere(scope.ID, scope.Match)
+		where = "(" + where + ") AND " + newWhere
+		args = append(args, newArgs...)
+	}
 	where = s.demoWorkWhere(where, "work")
 	total, favoriteTotal, err := s.favoriteWorksCounts(r.Context(), user.ID, where, args)
 	if err != nil {
@@ -160,18 +176,28 @@ func (s *Server) listFavoriteWorks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	listCounts, err := s.loadFavoriteListCounts(r.Context(), user.ID)
+	listCounts, newCounts, err := s.loadFavoriteListCounts(r.Context(), user.ID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	statusCounts, err := s.loadFavoriteStatusCounts(r.Context(), user.ID, query.ListID)
+	statusCounts, err := s.loadFavoriteStatusCounts(r.Context(), user.ID, scope)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	pageWorkIDs := make([]int64, len(works))
+	for index, work := range works {
+		pageWorkIDs[index] = work.ID
+	}
+	newWorkIDs, err := s.smartListNewWorkIDs(r.Context(), scope, pageWorkIDs)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, favoriteWorksResponse{
 		Works: works, Page: query.Page, PageSize: query.PageSize, Total: total, ShelfTotal: favoriteTotal, ListCounts: listCounts, StatusCounts: statusCounts,
+		NewCounts: newCounts, NewWorkIDs: newWorkIDs,
 	})
 }
 
@@ -183,6 +209,8 @@ type favoriteWorksQuery struct {
 	Direction  string
 	RandomSeed int64
 	SourceIDs  []int64
+	// NewOnly narrows a smart list to its new works.
+	NewOnly bool
 }
 
 func parseFavoriteWorksQuery(r *http.Request) (favoriteWorksQuery, error) {
@@ -211,6 +239,7 @@ func parseFavoriteWorksQuery(r *http.Request) (favoriteWorksQuery, error) {
 		return favoriteWorksQuery{}, err
 	}
 	query.SourceIDs = sourceIDs
+	query.NewOnly = r.URL.Query().Get("new") == "true"
 	return query, nil
 }
 
@@ -221,7 +250,7 @@ func (s *Server) favoriteWorksCounts(ctx context.Context, userID int64, where st
 	if err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return 0, 0, err
 	}
-	favoriteWhere, favoriteArgs := favoriteWorksWhere("all", "all", "", userID, 0, nil)
+	favoriteWhere, favoriteArgs := favoriteWorksWhere("all", "all", "", userID, favoriteShelfScope(userID), nil)
 	favoriteWhere = s.demoWorkWhere(favoriteWhere, "work")
 	favoriteCountQuery := "SELECT COUNT(*) FROM work LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ? WHERE " + favoriteWhere
 	favoriteCountArgs := append([]any{userID}, favoriteArgs...)
@@ -232,44 +261,9 @@ func (s *Server) favoriteWorksCounts(ctx context.Context, userID int64, where st
 	return total, favoriteTotal, nil
 }
 
-func favoriteWorksWhere(status string, availability string, queryText string, userID int64, listID int64, sourceIDs []int64) (string, []any) {
-	clauses := []string{}
-	args := []any{}
-	if listID > 0 {
-		clauses = append(clauses, `(
-			EXISTS (
-				SELECT 1
-				FROM favorite_list AS marked_list
-				WHERE marked_list.id = ?
-					AND marked_list.user_id = ?
-					AND marked_list.kind = 'marked'
-					AND COALESCE(user_work_state.listening_status, 'none') <> 'none'
-			)
-			OR EXISTS (
-			SELECT 1
-			FROM favorite_list_item AS selected_item
-			INNER JOIN favorite_list AS selected_list ON selected_list.id = selected_item.list_id
-			WHERE selected_item.work_id = work.id
-				AND selected_list.user_id = ?
-				AND selected_list.id = ?
-				AND selected_list.kind = 'user'
-			)
-		)`)
-		args = append(args, listID, userID, userID, listID)
-	} else {
-		clauses = append(clauses, `(
-			COALESCE(user_work_state.listening_status, 'none') <> 'none'
-			OR EXISTS (
-				SELECT 1
-				FROM favorite_list_item AS favorite_item
-				INNER JOIN favorite_list AS favorite_list ON favorite_list.id = favorite_item.list_id
-				WHERE favorite_item.work_id = work.id
-					AND favorite_list.user_id = ?
-					AND favorite_list.kind = 'user'
-			)
-		)`)
-		args = append(args, userID)
-	}
+func favoriteWorksWhere(status string, availability string, queryText string, userID int64, scope favoriteListScope, sourceIDs []int64) (string, []any) {
+	clauses := []string{scope.Where}
+	args := append([]any{}, scope.Args...)
 	if status != "" && status != "all" {
 		clauses = append(clauses, "COALESCE(user_work_state.listening_status, 'none') = ?")
 		args = append(args, status)
@@ -371,7 +365,24 @@ func favoriteSourceWhere(sourceIDs []int64) (string, []any) {
 	)`, args
 }
 
-func (s *Server) loadFavoriteListCounts(ctx context.Context, userID int64) (map[int64]int, error) {
+// loadFavoriteListCounts counts every list of the user, and the new works of
+// each smart list that has some.
+func (s *Server) loadFavoriteListCounts(ctx context.Context, userID int64) (map[int64]int, map[int64]int, error) {
+	counts, err := s.loadManualFavoriteListCounts(ctx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	smartCounts, newCounts, err := s.loadSmartListCounts(ctx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	for id, count := range smartCounts {
+		counts[id] = count
+	}
+	return counts, newCounts, nil
+}
+
+func (s *Server) loadManualFavoriteListCounts(ctx context.Context, userID int64) (map[int64]int, error) {
 	countExpression := "COUNT(CASE WHEN list.kind = 'marked' THEN marked_state.work_id ELSE item.work_id END)"
 	workJoin := ""
 	if s.cfg.IsDemo() {
@@ -406,8 +417,8 @@ func (s *Server) loadFavoriteListCounts(ctx context.Context, userID int64) (map[
 	return counts, rows.Err()
 }
 
-func (s *Server) loadFavoriteStatusCounts(ctx context.Context, userID int64, listID int64) (map[string]int, error) {
-	where, args := favoriteWorksWhere("all", "all", "", userID, listID, nil)
+func (s *Server) loadFavoriteStatusCounts(ctx context.Context, userID int64, scope favoriteListScope) (map[string]int, error) {
+	where, args := favoriteWorksWhere("all", "all", "", userID, scope, nil)
 	where = s.demoWorkWhere(where, "work")
 	query := `
 		SELECT COALESCE(user_work_state.listening_status, 'none'), COUNT(*)
@@ -440,11 +451,13 @@ func (s *Server) createFavoriteList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Icon        string `json:"icon"`
+		Name        string              `json:"name"`
+		Description string              `json:"description"`
+		Icon        string              `json:"icon"`
+		Kind        string              `json:"kind"`
+		Rule        *personal.SmartRule `json:"rule"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
@@ -459,15 +472,57 @@ func (s *Server) createFavoriteList(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list icon"})
 		return
 	}
-	var sortOrder int64
-	if err := s.db.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM favorite_list WHERE user_id = ?", user.ID).Scan(&sortOrder); err != nil {
+	kind := strings.TrimSpace(payload.Kind)
+	if kind == "" {
+		kind = "user"
+	}
+	if kind != "user" && kind != "smart" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid favorite list kind"})
+		return
+	}
+	if (kind == "smart") != (payload.Rule != nil) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "a smart list needs a rule and only a smart list has one", "code": "invalid_smart_rule", "reason": "rule"})
+		return
+	}
+	var rule personal.SmartRule
+	if payload.Rule != nil {
+		var err error
+		if rule, err = personal.NormalizeSmartRule(*payload.Rule); err == nil {
+			err = personal.ValidateSmartRuleTags(r.Context(), s.db, user.ID, rule, nil)
+		}
+		if err != nil {
+			if !writeSmartRuleError(w, err) {
+				writeError(w, err)
+			}
+			return
+		}
+	}
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
 		writeError(w, err)
 		return
 	}
-	result, err := s.db.ExecContext(r.Context(), `
+	defer func() { _ = tx.Rollback() }()
+	if kind == "smart" {
+		var smartCount int
+		if err := tx.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM favorite_list WHERE user_id = ? AND kind = 'smart'", user.ID).Scan(&smartCount); err != nil {
+			writeError(w, err)
+			return
+		}
+		if smartCount >= personal.MaxSmartListsPerUser {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "too many smart lists", "code": "smart_list_limit", "limit": personal.MaxSmartListsPerUser})
+			return
+		}
+	}
+	var sortOrder int64
+	if err := tx.QueryRowContext(r.Context(), "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM favorite_list WHERE user_id = ?", user.ID).Scan(&sortOrder); err != nil {
+		writeError(w, err)
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `
 		INSERT INTO favorite_list (user_id, name, description, icon, sort_order, kind)
-		VALUES (?, ?, ?, ?, ?, 'user')
-	`, user.ID, name, description, icon, sortOrder)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, user.ID, name, description, icon, sortOrder, kind)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "favorite list already exists"})
@@ -478,6 +533,16 @@ func (s *Server) createFavoriteList(w http.ResponseWriter, r *http.Request) {
 	}
 	listID, err := result.LastInsertId()
 	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if kind == "smart" {
+		if err := s.saveSmartRuleTx(r.Context(), tx, user.ID, listID, rule); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -500,12 +565,13 @@ func (s *Server) updateFavoriteList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		Name        *string `json:"name"`
-		Description *string `json:"description"`
-		Icon        *string `json:"icon"`
-		SortOrder   *int64  `json:"sortOrder"`
+		Name        *string             `json:"name"`
+		Description *string             `json:"description"`
+		Icon        *string             `json:"icon"`
+		SortOrder   *int64              `json:"sortOrder"`
+		Rule        *personal.SmartRule `json:"rule"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
@@ -518,9 +584,30 @@ func (s *Server) updateFavoriteList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if current.Kind != "user" {
+	if current.Kind == "marked" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "system marked list cannot be edited"})
 		return
+	}
+	if payload.Rule != nil && current.Kind != "smart" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "only a smart list has a rule", "code": "invalid_smart_rule", "reason": "rule"})
+		return
+	}
+	var rule personal.SmartRule
+	if payload.Rule != nil {
+		allowed, err := existingSmartRuleTags(r.Context(), s.db, user.ID, listID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if rule, err = personal.NormalizeSmartRule(*payload.Rule); err == nil {
+			err = personal.ValidateSmartRuleTags(r.Context(), s.db, user.ID, rule, allowed)
+		}
+		if err != nil {
+			if !writeSmartRuleError(w, err) {
+				writeError(w, err)
+			}
+			return
+		}
 	}
 	name := current.Name
 	if payload.Name != nil {
@@ -546,7 +633,13 @@ func (s *Server) updateFavoriteList(w http.ResponseWriter, r *http.Request) {
 	if payload.SortOrder != nil {
 		sortOrder = *payload.SortOrder
 	}
-	if _, err := s.db.ExecContext(r.Context(), `
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(r.Context(), `
 		UPDATE favorite_list
 		SET name = ?, description = ?, icon = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ? AND user_id = ?
@@ -555,6 +648,16 @@ func (s *Server) updateFavoriteList(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "favorite list already exists"})
 			return
 		}
+		writeError(w, err)
+		return
+	}
+	if payload.Rule != nil {
+		if err := s.saveSmartRuleTx(r.Context(), tx, user.ID, listID, rule); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -585,11 +688,11 @@ func (s *Server) deleteFavoriteList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if kind != "user" {
+	if kind == "marked" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "system marked list cannot be deleted"})
 		return
 	}
-	result, err := s.db.ExecContext(r.Context(), "DELETE FROM favorite_list WHERE id = ? AND user_id = ? AND kind = 'user'", listID, user.ID)
+	result, err := s.db.ExecContext(r.Context(), "DELETE FROM favorite_list WHERE id = ? AND user_id = ? AND kind IN "+library.ManualFavoriteListKindsSQL, listID, user.ID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -627,6 +730,20 @@ func (s *Server) listFavoriteListWorkIDs(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		writeError(w, err)
+		return
+	}
+	if kind == "smart" {
+		scope, err := s.loadFavoriteListScope(r.Context(), s.db, user.ID, listID)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		workIDs, truncated, err := s.listSmartListWorkIDs(r.Context(), user.ID, scope)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"listId": listID, "workIds": workIDs, "truncated": truncated})
 		return
 	}
 	query := `
@@ -758,11 +875,15 @@ func (s *Server) setWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	favorite, err := refreshWorkFavoriteFlagTx(r.Context(), tx, user.ID, workID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, err)
 		return
 	}
-	favorite := len(selected) > 0
 	lists, err := s.loadFavoriteLists(r.Context(), user.ID, &workID)
 	if err != nil {
 		writeError(w, err)
@@ -771,36 +892,37 @@ func (s *Server) setWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"workId": workID, "favorite": favorite, "lists": lists})
 }
 
+// applyWorkFavoriteListSelection makes the work belong to exactly the selected
+// user and smart lists. The caller refreshes the favorite flag.
 func applyWorkFavoriteListSelection(ctx context.Context, tx *sql.Tx, userID, workID int64, selected map[int64]bool) error {
-	valid, err := loadFavoriteListIDSet(ctx, tx, "SELECT id FROM favorite_list WHERE user_id = ? AND kind = 'user'", userID)
+	lists, err := loadEditableFavoriteLists(ctx, tx, userID)
 	if err != nil {
 		return err
 	}
 	for id := range selected {
-		if !valid[id] {
+		if _, ok := lists[id]; !ok {
 			return errInvalidFavoriteListID
 		}
 	}
-	current, err := loadFavoriteListIDSet(ctx, tx, `
-		SELECT item.list_id
-		FROM favorite_list_item AS item
-		INNER JOIN favorite_list AS list ON list.id = item.list_id
-		WHERE item.work_id = ? AND list.user_id = ? AND list.kind = 'user'
-	`, workID, userID)
-	if err != nil {
-		return err
+	for _, list := range lists {
+		contains, err := favoriteListContainsWork(ctx, tx, list, workID)
+		if err != nil {
+			return err
+		}
+		switch {
+		case selected[list.ID] && !contains:
+			err = addWorkToFavoriteListTx(ctx, tx, list, workID)
+		case !selected[list.ID] && contains:
+			err = removeWorkFromFavoriteListTx(ctx, tx, list, workID)
+		}
+		if err != nil {
+			return err
+		}
 	}
-	if err := removeWorkFromUnselectedFavoriteLists(ctx, tx, workID, selected, current); err != nil {
-		return err
-	}
-	if err := addWorkToSelectedFavoriteLists(ctx, tx, workID, selected, current); err != nil {
-		return err
-	}
-	return syncWorkFavoriteFlag(ctx, tx, userID, workID, len(selected) > 0)
+	return nil
 }
 
-// syncWorkFavoriteFlag keeps user_work_state.favorite equal to whether the work
-// belongs to any of the user's own lists.
+// syncWorkFavoriteFlag sets user_work_state.favorite to the given value.
 func syncWorkFavoriteFlag(ctx context.Context, tx *sql.Tx, userID, workID int64, favorite bool) error {
 	var err error
 	if favorite {
@@ -818,54 +940,6 @@ func syncWorkFavoriteFlag(ctx context.Context, tx *sql.Tx, userID, workID int64,
 		`, userID, workID)
 	}
 	return err
-}
-
-func loadFavoriteListIDSet(ctx context.Context, tx *sql.Tx, query string, args ...any) (map[int64]bool, error) {
-	rows, err := tx.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	ids := map[int64]bool{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids[id] = true
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return ids, rows.Close()
-}
-
-func removeWorkFromUnselectedFavoriteLists(ctx context.Context, tx *sql.Tx, workID int64, selected, current map[int64]bool) error {
-	for id := range current {
-		if selected[id] {
-			continue
-		}
-		if _, err := tx.ExecContext(ctx, "DELETE FROM favorite_list_item WHERE list_id = ? AND work_id = ?", id, workID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func addWorkToSelectedFavoriteLists(ctx context.Context, tx *sql.Tx, workID int64, selected, current map[int64]bool) error {
-	for id := range selected {
-		if current[id] {
-			continue
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO favorite_list_item (list_id, work_id)
-			VALUES (?, ?)
-			ON CONFLICT(list_id, work_id) DO NOTHING
-		`, id, workID); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (s *Server) requireWorkExists(ctx context.Context, workID int64) error {
@@ -923,7 +997,37 @@ func (s *Server) loadFavoriteLists(ctx context.Context, userID int64, workID *in
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if workID != nil {
+		if err := s.markSmartListSelection(ctx, userID, *workID, lists); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.attachSmartRuleViews(ctx, userID, lists); err != nil {
+		return nil, err
+	}
 	return lists, nil
+}
+
+// markSmartListSelection reports a smart list as selected when it shows the
+// work, whether by its rule or because the work was added by hand.
+func (s *Server) markSmartListSelection(ctx context.Context, userID, workID int64, lists []favoriteListResponse) error {
+	editable, err := loadEditableFavoriteLists(ctx, s.db, userID)
+	if err != nil {
+		return err
+	}
+	for index := range lists {
+		list, ok := editable[lists[index].ID]
+		if !ok || list.Kind != "smart" {
+			continue
+		}
+		if lists[index].Selected, err = favoriteListContainsWork(ctx, s.db, list, workID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) loadFavoriteList(ctx context.Context, userID int64, listID int64) (favoriteListResponse, error) {
@@ -936,7 +1040,12 @@ func (s *Server) loadFavoriteList(ctx context.Context, userID int64, listID int6
 		WHERE id = ? AND user_id = ?
 	`, listID, userID).Scan(&item.ID, &item.Name, &item.Description, &item.Icon, &item.SortOrder, &item.Kind, &selected)
 	item.Selected = selected != 0
-	return item, err
+	if err != nil || item.Kind != "smart" {
+		return item, err
+	}
+	lists := []favoriteListResponse{item}
+	err = s.attachSmartRuleViews(ctx, userID, lists)
+	return lists[0], err
 }
 
 func (s *Server) reconcileFavoriteSummariesForUser(ctx context.Context, userID int64) error {
@@ -970,7 +1079,7 @@ func (s *Server) reconcileFavoriteSummary(ctx context.Context, userID int64, wor
 		SELECT COUNT(*)
 		FROM favorite_list_item AS item
 		INNER JOIN favorite_list AS list ON list.id = item.list_id
-		WHERE list.user_id = ? AND list.kind = 'user' AND item.work_id = ?
+		WHERE list.user_id = ? AND list.kind IN `+library.ManualFavoriteListKindsSQL+` AND item.work_id = ?
 	`, userID, workID).Scan(&count); err != nil {
 		return err
 	}

@@ -32,6 +32,7 @@ import {
 import { EmptyFavorites, FavoriteLoadError } from "@/features/favorites/FavoriteStates";
 import { FavoriteStatusTabs } from "@/features/favorites/FavoriteStatusTabs";
 import { FavoriteWorkGrid } from "@/features/favorites/FavoriteWorkGrid";
+import { SmartListPanel } from "@/features/favorites/SmartListPanel";
 import {
   FavoriteWorkList,
   FavoriteWorkListSkeleton,
@@ -141,6 +142,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [totalWorks, setTotalWorks] = useState(0);
   const [favoriteTotal, setFavoriteTotal] = useState(0);
   const [listCounts, setListCounts] = useState<Record<string, number>>({});
+  const [newCounts, setNewCounts] = useState<Record<string, number>>({});
+  const [newWorkIDs, setNewWorkIDs] = useState<Set<number>>(() => new Set());
+  // The smart list whose new works alone are shown; switching shelves ends the filter.
+  const [newOnlyList, setNewOnlyList] = useState<number | null>(null);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout();
   const [viewMode, setViewMode] = useFavoriteViewMode();
@@ -176,7 +181,9 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     direction: sortDirection,
     randomSeed,
   };
+  const newOnly = newOnlyList !== null && newOnlyList === activeList;
   const worksRequestKey = JSON.stringify([
+    newOnly,
     principalID,
     page,
     pageSize,
@@ -312,6 +319,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       setTotalWorks(0);
       setFavoriteTotal(0);
       setListCounts({});
+      setNewCounts({});
+      setNewWorkIDs(new Set());
       setStatusCounts({});
       setWorksSnapshotUserID(null);
       setWorksLoadError("");
@@ -344,6 +353,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         sortDirection,
         randomSeed,
         controller.signal,
+        newOnly,
       )
       .then((result) => {
         if (controller.signal.aborted || seq !== requestSeq.current) return;
@@ -352,6 +362,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         setTotalWorks(result.total);
         setFavoriteTotal(result.shelfTotal);
         setListCounts(result.listCounts);
+        setNewCounts(result.newCounts ?? {});
+        setNewWorkIDs(new Set(result.newWorkIds ?? []));
         setStatusCounts(result.statusCounts);
         setWorksSnapshotUserID(principalID);
       })
@@ -370,6 +382,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     auth.user,
     favoriteEntity,
     hasPendingRestoration,
+    newOnly,
     notifyUnavailable,
     page,
     pageSize,
@@ -453,6 +466,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const shelfKind = favoriteShelfKind(activeList, markedList);
   const activeUserList =
     shelfKind === "list" ? (userFavoriteLists.find((list) => list.id === activeList) ?? null) : null;
+  const activeSmartList = activeUserList?.kind === "smart" ? activeUserList : null;
   const shelfTotal = activeList === "all" ? favoriteTotal : (listCounts[String(activeList)] ?? 0);
   // A creator shelf opened first still labels the works shelves, from a one-item request.
   useEffect(() => {
@@ -465,6 +479,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         if (controller.signal.aborted) return;
         setFavoriteTotal(result.shelfTotal);
         setListCounts(result.listCounts);
+        setNewCounts(result.newCounts ?? {});
         setShelfCountsUserID(principalID);
       })
       .catch(() => {
@@ -636,13 +651,38 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       sort,
       sortDirection,
       randomSeed,
+      undefined,
+      newOnly,
     );
     setWorks(result.works);
     setTotalWorks(result.total);
     setFavoriteTotal(result.shelfTotal);
     setListCounts(result.listCounts);
+    setNewCounts(result.newCounts ?? {});
+    setNewWorkIDs(new Set(result.newWorkIds ?? []));
     setStatusCounts(result.statusCounts);
     return lists;
+  };
+
+  const markSmartListSeen = async (listID: number) => {
+    try {
+      await api.markFavoriteListSeen(listID);
+      setNewOnlyList(null);
+      await reloadFavoriteLists();
+    } catch (error) {
+      toast.notify(toastFromError(error, t("favorites.smart.markSeenFailed")));
+    }
+  };
+
+  const convertSmartList = async (listID: number) => {
+    try {
+      await api.convertFavoriteList(listID);
+      setNewOnlyList(null);
+      await reloadFavoriteLists();
+      toast.success(t("favorites.smart.converted"));
+    } catch (error) {
+      toast.notify(toastFromError(error, t("favorites.smart.convertFailed")));
+    }
   };
 
   const saveFavoriteList = async (payload: FavoriteListDraft) => {
@@ -793,6 +833,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     userLists: userFavoriteLists,
     favoriteTotal,
     listCounts,
+    newCounts,
     worksCountsKnown: hasWorksSnapshot || shelfCountsUserID === principalID,
     circleCount: hasEntitySnapshot ? favoriteCircles.length : null,
     voiceCount: hasEntitySnapshot ? favoriteVoices.length : null,
@@ -833,6 +874,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                 <FavoriteShelfHeader
                   kind={shelfKind}
                   listIcon={activeUserList ? favoriteListIcon(activeUserList) : undefined}
+                  eyebrow={activeSmartList ? t("favorites.smart.kind") : undefined}
                   title={
                     shelfKind === "all"
                       ? t("favorites.all")
@@ -957,6 +999,23 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
             </div>
           </div>
 
+          {favoriteEntity === "works" && activeSmartList && (
+            <SmartListPanel
+              list={activeSmartList}
+              newCount={newCounts[String(activeSmartList.id)] ?? 0}
+              newOnly={newOnly}
+              workCount={listCounts[String(activeSmartList.id)] ?? 0}
+              canEdit={!auth.demoMode}
+              onToggleNewOnly={() => {
+                setNewOnlyList(newOnly ? null : activeSmartList.id);
+                setPage(1);
+              }}
+              onMarkSeen={() => markSmartListSeen(activeSmartList.id)}
+              onEditRule={() => openFavoriteListManager(activeSmartList)}
+              onConvert={() => convertSmartList(activeSmartList.id)}
+            />
+          )}
+
           {favoriteEntity === "works" && <FavoriteContinueStrip works={continueWorks} onOpen={openItemWork} />}
 
           {favoriteEntity !== "works" && (
@@ -1045,6 +1104,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                       isListSaving={isBulkUpdating}
                       busy={isLoading}
                       handlers={itemHandlers}
+                      newWorkIDs={newWorkIDs}
                     />
                   ) : (
                     <FavoriteWorkGrid
@@ -1057,6 +1117,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                       desktopColumns={desktopColumns}
                       handlers={itemHandlers}
                       onUserTagOpen={openCardUserTag}
+                      newWorkIDs={newWorkIDs}
                     />
                   )}
                   <WorkCollectionPagination
@@ -1070,9 +1131,21 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                 </>
               ) : (
                 <EmptyFavorites
-                  reason={hasWorkFilters ? "filtered" : shelfKind === "list" ? "list" : "shelf"}
-                  onClearFilters={clearFilters}
+                  reason={
+                    hasWorkFilters || newOnly
+                      ? "filtered"
+                      : activeSmartList
+                        ? "smart"
+                        : shelfKind === "list"
+                          ? "list"
+                          : "shelf"
+                  }
+                  onClearFilters={() => {
+                    clearFilters();
+                    setNewOnlyList(null);
+                  }}
                   onBrowseLibrary={browseLibrary}
+                  onEditRule={activeSmartList ? () => openFavoriteListManager(activeSmartList) : undefined}
                 />
               )}
             </>

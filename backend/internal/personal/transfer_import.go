@@ -179,7 +179,7 @@ func (s Store) Import(ctx context.Context, user int64, b Backup, overwrite bool)
 		}
 	}
 	// Match the existing favorite-list contract: the bit is derived membership.
-	_, err = tx.ExecContext(ctx, `UPDATE user_work_state SET favorite=EXISTS(SELECT 1 FROM favorite_list_item i JOIN favorite_list l ON l.id=i.list_id WHERE l.user_id=? AND l.kind='user' AND i.work_id=user_work_state.work_id) WHERE user_id=?`, user, user)
+	_, err = tx.ExecContext(ctx, `UPDATE user_work_state SET favorite=EXISTS(SELECT 1 FROM favorite_list_item i JOIN favorite_list l ON l.id=i.list_id WHERE l.user_id=? AND l.kind IN ('user','smart') AND i.work_id=user_work_state.work_id) WHERE user_id=?`, user, user)
 	if err != nil {
 		return result, err
 	}
@@ -246,8 +246,10 @@ func importWork(ctx context.Context, tx *sql.Tx, user, id, media int64, w Backup
 
 func importPlaylist(ctx context.Context, tx *sql.Tx, user int64, list BackupPlaylist, works map[string]int64, overwrite bool) (bool, error) {
 	var id int64
-	err := tx.QueryRowContext(ctx, `SELECT id FROM favorite_list WHERE user_id=? AND name=? AND kind='user'`, user, list.Name).Scan(&id)
-	if err == nil && !overwrite {
+	var kind string
+	err := tx.QueryRowContext(ctx, `SELECT id,kind FROM favorite_list WHERE user_id=? AND name=?`, user, list.Name).Scan(&id, &kind)
+	// A smart list of the same name keeps its rule; the backup list is skipped.
+	if err == nil && (kind != "user" || !overwrite) {
 		return false, nil
 	}
 	if errors.Is(err, sql.ErrNoRows) {

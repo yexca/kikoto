@@ -67,7 +67,7 @@ export function PersistedIdentityActions(props: PersistedDetailActionsProps) {
       busy={busy}
       listeningStatus={props.work.listeningStatus}
       favorite={props.favoriteLists.length > 0 ? props.favoriteSelected : props.work.favorite}
-      memberLists={props.favoriteLists.filter((list) => list.kind === "user" && list.selected)}
+      memberLists={props.favoriteLists.filter((list) => list.kind !== "marked" && list.selected)}
       listWorkId={props.work.id}
       onEnsureListWork={props.onEnsureListWork}
       onListSaved={props.onListSaved}

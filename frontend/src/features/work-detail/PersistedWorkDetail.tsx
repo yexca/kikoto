@@ -429,7 +429,11 @@ export function PersistedWorkDetailController({
     selectedRemoteSource,
     workHasNoLinkedSource,
   });
-  const favoriteSelected = favoriteLists.some((list) => list.kind === "user" && list.selected);
+  // A smart list's rule match is in the list without being a favorite; a work
+  // added to a smart list by hand is both, which the work's own flag reports.
+  const favoriteSelected =
+    favoriteLists.some((list) => list.kind === "user" && list.selected) ||
+    (Boolean(work?.favorite) && favoriteLists.some((list) => list.kind === "smart" && list.selected));
   const isDetailLoading = !work;
   const actionMode = persistedDetailActionMode(
     selectedRemoteSource,

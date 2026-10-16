@@ -1,4 +1,4 @@
-import { BookmarkCheck, Heart, Mic2, Pencil, Plus, UsersRound, type LucideIcon } from "lucide-react";
+import { BookmarkCheck, Heart, Mic2, Pencil, Plus, UsersRound, Zap, type LucideIcon } from "lucide-react";
 import { Fragment, useEffect, useId, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -18,6 +18,8 @@ export type FavoriteShelfNavigation = {
   userLists: FavoriteList[];
   favoriteTotal: number;
   listCounts: Record<string, number>;
+  /** New works of each smart list that has some. */
+  newCounts: Record<string, number>;
   /** Counts stay hidden until the works counts arrive for this account. */
   worksCountsKnown: boolean;
   circleCount: number | null;
@@ -35,6 +37,10 @@ type ShelfItem = {
   title: string;
   icon: LucideIcon;
   count: number | null;
+  /** A smart list fills itself from a rule. */
+  smart?: boolean;
+  /** New works of a smart list, shown beside the count. */
+  newCount?: number;
   active: boolean;
   onSelect: () => void;
 };
@@ -66,15 +72,27 @@ function useShelfItems(navigation: FavoriteShelfNavigation) {
       onSelect: () => navigation.onWorksShelf(markedID),
     });
   }
-  const lists: ShelfItem[] = navigation.userLists.map((list) => ({
-    key: `list-${list.id}`,
-    label: list.name,
-    title: list.description || list.name,
-    icon: favoriteListIcon(list),
-    count: worksCount(navigation.listCounts[String(list.id)] ?? 0),
-    active: onWorks && navigation.activeList === list.id,
-    onSelect: () => navigation.onWorksShelf(list.id),
-  }));
+  const lists: ShelfItem[] = navigation.userLists.map((list) => {
+    const newCount = navigation.newCounts[String(list.id)] ?? 0;
+    const smartTitle = list.kind === "smart" ? t("favorites.smart.kind") : "";
+    return {
+      key: `list-${list.id}`,
+      label: list.name,
+      title: [
+        list.description || list.name,
+        smartTitle,
+        newCount > 0 ? t("favorites.smart.newCount", { count: newCount }) : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      icon: favoriteListIcon(list),
+      count: worksCount(navigation.listCounts[String(list.id)] ?? 0),
+      smart: list.kind === "smart",
+      newCount: navigation.worksCountsKnown ? newCount : 0,
+      active: onWorks && navigation.activeList === list.id,
+      onSelect: () => navigation.onWorksShelf(list.id),
+    };
+  });
   const creators: ShelfItem[] = [
     {
       key: "circles",
@@ -304,13 +322,20 @@ function ShelfSidebarItem({ item, collapsed }: { item: ShelfItem; collapsed: boo
       {item.active && <span aria-hidden="true" className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-primary" />}
       <span
         className={cn(
-          "grid h-8 w-8 shrink-0 place-items-center rounded-md transition-colors",
+          "relative grid h-8 w-8 shrink-0 place-items-center rounded-md transition-colors",
           item.active
             ? "bg-primary/15 text-primary"
             : "bg-muted text-muted-foreground group-hover/item:text-foreground",
         )}
       >
         <item.icon className="h-4 w-4" aria-hidden="true" />
+        {item.smart && <SmartListMark />}
+        {collapsed && Boolean(item.newCount) && (
+          <span
+            aria-hidden="true"
+            className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-primary ring-2 ring-background"
+          />
+        )}
       </span>
       <span
         className={cn(
@@ -321,6 +346,7 @@ function ShelfSidebarItem({ item, collapsed }: { item: ShelfItem; collapsed: boo
       >
         {item.label}
       </span>
+      {Boolean(item.newCount) && <SmartListNewCount count={item.newCount ?? 0} collapsed={collapsed} />}
       {item.count !== null && (
         <span
           className={cn(
@@ -333,6 +359,34 @@ function ShelfSidebarItem({ item, collapsed }: { item: ShelfItem; collapsed: boo
         </span>
       )}
     </button>
+  );
+}
+
+/** Marks a list icon as a smart list. */
+function SmartListMark() {
+  return (
+    <span
+      aria-hidden="true"
+      className="absolute -bottom-1 -right-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-background text-primary ring-1 ring-border"
+    >
+      <Zap className="h-2.5 w-2.5" />
+    </span>
+  );
+}
+
+function SmartListNewCount({ count, collapsed }: { count: number; collapsed: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full bg-primary px-1.5 text-2xs font-semibold leading-4 tabular-nums text-primary-foreground",
+        collapsed && "sr-only",
+      )}
+      title={t("favorites.smart.newCount", { count })}
+    >
+      <span aria-hidden="true">{count}</span>
+      <span className="sr-only">{t("favorites.smart.newCount", { count })}</span>
+    </span>
   );
 }
 
@@ -415,6 +469,7 @@ export function FavoriteShelfStrip({ navigation }: { navigation: FavoriteShelfNa
 }
 
 function ShelfChip({ item }: { item: ShelfItem }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
@@ -433,6 +488,18 @@ function ShelfChip({ item }: { item: ShelfItem }) {
       >
         <item.icon className="h-4 w-4 shrink-0" />
         <span className="max-w-40 truncate">{item.label}</span>
+        {item.smart && <Zap className="h-3 w-3 shrink-0 opacity-75" aria-label={t("favorites.smart.kind")} />}
+        {Boolean(item.newCount) && (
+          <span
+            className={cn(
+              "rounded-full px-1.5 text-2xs font-semibold leading-4 tabular-nums",
+              item.active ? "bg-primary-foreground text-primary" : "bg-primary text-primary-foreground",
+            )}
+          >
+            <span aria-hidden="true">{item.newCount}</span>
+            <span className="sr-only">{t("favorites.smart.newCount", { count: item.newCount ?? 0 })}</span>
+          </span>
+        )}
         {item.count !== null && <span className="text-xs tabular-nums opacity-75">{item.count}</span>}
       </span>
     </button>

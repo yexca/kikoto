@@ -34,9 +34,12 @@ export function FavoriteWorkGrid({
   desktopColumns,
   handlers,
   onUserTagOpen,
+  newWorkIDs,
 }: {
   works: Work[];
   selectedWorkIDs: Set<number>;
+  /** Works that are new in the open smart list. */
+  newWorkIDs: Set<number>;
   selectionActive: boolean;
   isListSaving: boolean;
   busy: boolean;
@@ -56,6 +59,7 @@ export function FavoriteWorkGrid({
           <FavoriteWorkCard
             work={work}
             selected={selectedWorkIDs.has(work.id)}
+            isNew={newWorkIDs.has(work.id)}
             selectionActive={selectionActive}
             isListSaving={isListSaving}
             handlers={handlers}
@@ -70,6 +74,7 @@ export function FavoriteWorkGrid({
 const FavoriteWorkCard = memo(function FavoriteWorkCard({
   work,
   selected,
+  isNew,
   selectionActive,
   isListSaving,
   handlers,
@@ -77,13 +82,14 @@ const FavoriteWorkCard = memo(function FavoriteWorkCard({
 }: {
   work: Work;
   selected: boolean;
+  isNew: boolean;
   selectionActive: boolean;
   isListSaving: boolean;
   handlers: FavoriteWorkItemHandlers;
   onUserTagOpen: (tag: string) => void;
 }) {
   const { t } = useTranslation();
-  const view = favoriteWorkCardView(work, onUserTagOpen, t);
+  const view = favoriteWorkCardView(work, isNew, onUserTagOpen, t);
 
   return (
     <WorkCardShell
@@ -122,7 +128,12 @@ const FavoriteWorkCard = memo(function FavoriteWorkCard({
   );
 });
 
-function favoriteWorkCardView(work: Work, onUserTagOpen: (tag: string) => void, t: TFunction): WorkCardViewModel {
+function favoriteWorkCardView(
+  work: Work,
+  isNew: boolean,
+  onUserTagOpen: (tag: string) => void,
+  t: TFunction,
+): WorkCardViewModel {
   return {
     code: work.primaryCode,
     title: work.title,
@@ -151,5 +162,6 @@ function favoriteWorkCardView(work: Work, onUserTagOpen: (tag: string) => void, 
     ],
     userTags: userTagBadges(work.userTags ?? [], onUserTagOpen),
     sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
+    coverMark: isNew ? t("favorites.smart.newBadge") : undefined,
   };
 }
