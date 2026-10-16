@@ -65,7 +65,38 @@ func (s *Server) summarizeFavoriteListMembership(w http.ResponseWriter, r *http.
 		writeError(w, err)
 		return
 	}
+	if err := rows.Close(); err != nil {
+		writeError(w, err)
+		return
+	}
+	smartCounts, err := s.smartListMembershipCounts(r.Context(), user.ID, workIDs)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	summary.Lists = append(summary.Lists, smartCounts...)
 	writeJSON(w, http.StatusOK, summary)
+}
+
+// smartListMembershipCounts counts how many of the works each smart list shows.
+func (s *Server) smartListMembershipCounts(ctx context.Context, userID int64, workIDs []int64) ([]favoriteListMembershipCount, error) {
+	lists, err := loadEditableFavoriteLists(ctx, s.db, userID)
+	if err != nil {
+		return nil, err
+	}
+	result := []favoriteListMembershipCount{}
+	for _, list := range lists {
+		if list.Kind != "smart" {
+			continue
+		}
+		where, args := smartListMemberWhere(list.ID, list.Match)
+		item := favoriteListMembershipCount{ListID: list.ID}
+		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM work WHERE work.id IN ("+sqlPlaceholders(len(workIDs))+") AND "+where, append(int64Args(workIDs), args...)...).Scan(&item.Count); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	return result, nil
 }
 
 func favoriteMembershipCountQuery(userID int64, workIDs []int64) (string, []any) {
@@ -133,13 +164,13 @@ func (s *Server) updateFavoriteListMembership(w http.ResponseWriter, r *http.Req
 }
 
 func applyFavoriteListMembershipChanges(ctx context.Context, tx *sql.Tx, userID int64, workIDs []int64, add, remove map[int64]bool) error {
-	valid, err := loadFavoriteListIDSet(ctx, tx, "SELECT id FROM favorite_list WHERE user_id = ? AND kind = 'user'", userID)
+	lists, err := loadEditableFavoriteLists(ctx, tx, userID)
 	if err != nil {
 		return err
 	}
 	for _, changes := range []map[int64]bool{add, remove} {
 		for id := range changes {
-			if !valid[id] {
+			if _, ok := lists[id]; !ok {
 				return errInvalidFavoriteListID
 			}
 		}
@@ -149,31 +180,28 @@ func applyFavoriteListMembershipChanges(ctx context.Context, tx *sql.Tx, userID 
 		if err := tx.QueryRowContext(ctx, "SELECT 1 FROM work WHERE id = ?", workID).Scan(&exists); err != nil {
 			return err
 		}
-		current, err := loadFavoriteListIDSet(ctx, tx, `
-			SELECT item.list_id
-			FROM favorite_list_item AS item
-			INNER JOIN favorite_list AS list ON list.id = item.list_id
-			WHERE item.work_id = ? AND list.user_id = ? AND list.kind = 'user'
-		`, workID, userID)
-		if err != nil {
-			return err
-		}
-		selected := make(map[int64]bool, len(current)+len(add))
-		for id := range current {
-			if !remove[id] {
-				selected[id] = true
+		for _, changes := range []struct {
+			ids map[int64]bool
+			add bool
+		}{{add, true}, {remove, false}} {
+			for id := range changes.ids {
+				list := lists[id]
+				contains, err := favoriteListContainsWork(ctx, tx, list, workID)
+				if err != nil {
+					return err
+				}
+				switch {
+				case changes.add && !contains:
+					err = addWorkToFavoriteListTx(ctx, tx, list, workID)
+				case !changes.add && contains:
+					err = removeWorkFromFavoriteListTx(ctx, tx, list, workID)
+				}
+				if err != nil {
+					return err
+				}
 			}
 		}
-		for id := range add {
-			selected[id] = true
-		}
-		if err := removeWorkFromUnselectedFavoriteLists(ctx, tx, workID, selected, current); err != nil {
-			return err
-		}
-		if err := addWorkToSelectedFavoriteLists(ctx, tx, workID, selected, current); err != nil {
-			return err
-		}
-		if err := syncWorkFavoriteFlag(ctx, tx, userID, workID, len(selected) > 0); err != nil {
+		if _, err := refreshWorkFavoriteFlagTx(ctx, tx, userID, workID); err != nil {
 			return err
 		}
 	}

@@ -19,6 +19,7 @@ const kindIcons = {
 export function FavoriteShelfHeader({
   kind,
   listIcon,
+  eyebrow: eyebrowOverride,
   title,
   description,
   countLabel,
@@ -29,6 +30,8 @@ export function FavoriteShelfHeader({
   kind: FavoriteHeaderKind;
   /** A user list's chosen icon, in place of the default list icon. */
   listIcon?: LucideIcon;
+  /** Names the shelf kind in place of the default, such as a smart list. */
+  eyebrow?: string;
   title: string;
   description?: string;
   /** Null while the shelf count is still unknown. */
@@ -40,13 +43,14 @@ export function FavoriteShelfHeader({
   const { t } = useTranslation();
   const Icon = listIcon ?? kindIcons[kind];
   const eyebrow =
-    kind === "all"
+    eyebrowOverride ??
+    (kind === "all"
       ? t("favorites.shelfKindCollection")
       : kind === "marked"
         ? t("favorites.shelfKindSystem")
         : kind === "list"
           ? t("favorites.shelfKindList")
-          : t("favorites.creators");
+          : t("favorites.creators"));
   return (
     <header className="flex items-start gap-4 sm:gap-5">
       <ShelfArtwork kind={kind} icon={Icon} covers={covers} />

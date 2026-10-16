@@ -89,6 +89,8 @@ export type WorkCardViewModel = {
   recommendationHighlighted?: boolean;
   recommendationScore?: number;
   recommendationRevealDelay?: number;
+  /** A short label at the cover's top-left, such as a smart list's new work. A recommendation chip takes its place. */
+  coverMark?: string;
   /** Last listening position, shown by the compact layouts. */
   progress?: WorkCardProgress | null;
 };
@@ -204,6 +206,7 @@ export function WorkCardShell({
         recommendationScore={work.recommendationScore}
         recommendationRevealDelay={work.recommendationRevealDelay}
         onRecommendationOpen={onRecommendationOpen}
+        coverMark={work.coverMark}
       />
       <WorkCardBody
         work={work}
@@ -268,6 +271,7 @@ export function WorkCardMedia({
   recommendationScore,
   recommendationRevealDelay,
   onRecommendationOpen,
+  coverMark,
 }: {
   coverUrl?: string;
   code: string;
@@ -283,6 +287,7 @@ export function WorkCardMedia({
   recommendationScore?: number;
   recommendationRevealDelay?: number;
   onRecommendationOpen?: () => void;
+  coverMark?: string;
 }) {
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
@@ -352,6 +357,13 @@ export function WorkCardMedia({
               {recommendationContent}
             </div>
           ))}
+        {coverMark && !recommended && (
+          <span
+            className={cn(coverChipClassName, "absolute left-1.5 top-1.5 bg-primary text-primary-foreground ring-0")}
+          >
+            {coverMark}
+          </span>
+        )}
         {selection}
         <div className="absolute inset-x-1.5 bottom-1.5 flex items-end gap-1.5">
           <CoverAvailability

@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, BookmarkCheck, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, BookmarkCheck, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,10 +7,20 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { favoriteListIcon } from "@/components/favorite-list/favoriteListIcons";
 import { Input } from "@/components/ui/input";
-import type { FavoriteList } from "@/lib/api";
+import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
+import type { FavoriteList, SmartListRule } from "@/lib/api";
 import { FavoriteListIconPicker } from "./FavoriteListIconPicker";
+import { SmartRuleEditor } from "./SmartRuleEditor";
+import { smartRuleCanSave, smartRuleDraftFromView, smartRuleFromDraft, smartRuleMatchKey } from "./smartListModel";
 
-export type FavoriteListDraft = { name: string; description: string; icon: string };
+export type FavoriteListDraft = {
+  name: string;
+  description: string;
+  icon: string;
+  /** Sent only when a list is created. */
+  kind?: "user" | "smart";
+  rule?: SmartListRule;
+};
 
 function FavoriteListEditor({
   list,
@@ -26,9 +36,15 @@ function FavoriteListEditor({
   const [name, setName] = useState(list?.name ?? "");
   const [description, setDescription] = useState(list?.description ?? "");
   const [icon, setIcon] = useState(list?.icon ?? "");
+  const [kind, setKind] = useState<"user" | "smart">(list?.kind === "smart" ? "smart" : "user");
+  const [rule, setRule] = useState(() => smartRuleDraftFromView(list?.rule));
+  // Saving a rule marks every current match as seen, so an unchanged rule is not sent.
+  const [savedRuleKey] = useState(() => smartRuleMatchKey(smartRuleDraftFromView(list?.rule)));
   const PreviewIcon = favoriteListIcon({ icon });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const smart = kind === "smart";
+  const canSave = Boolean(name.trim()) && (!smart || smartRuleCanSave(rule));
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => editorRef.current?.scrollIntoView({ block: "nearest" }));
@@ -39,7 +55,13 @@ function FavoriteListEditor({
     setIsSaving(true);
     setError("");
     try {
-      await onSave({ name, description, icon });
+      await onSave({
+        name,
+        description,
+        icon,
+        ...(list ? {} : { kind }),
+        ...(smart && (!list || smartRuleMatchKey(rule) !== savedRuleKey) ? { rule: smartRuleFromDraft(rule) } : {}),
+      });
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : t("favorites.listSaveFailed"));
     } finally {
@@ -55,7 +77,7 @@ function FavoriteListEditor({
         onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault();
-          if (!isSaving && name.trim()) void save();
+          if (!isSaving && canSave) void save();
         }}
       >
         <div className="flex items-center gap-2.5">
@@ -68,7 +90,37 @@ function FavoriteListEditor({
           <h3 className="min-w-0 truncate text-sm font-semibold">
             {list ? t("favorites.renameList") : t("favorites.addList")}
           </h3>
+          {list?.kind === "smart" && (
+            <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+              <Zap className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+              {t("favorites.smart.kind")}
+            </span>
+          )}
         </div>
+        {!list && (
+          <div className="mt-3 grid gap-1.5">
+            <div
+              role="radiogroup"
+              aria-label={t("favorites.smart.listType")}
+              className={segmentedListClassName("p-0.5")}
+            >
+              {(["user", "smart"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  role="radio"
+                  aria-checked={kind === option}
+                  className={segmentedItemClassName(kind === option, "h-7 px-2.5 text-xs")}
+                  onClick={() => setKind(option)}
+                >
+                  {option === "smart" && <Zap className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {option === "smart" ? t("favorites.smart.kind") : t("favorites.smart.regularKind")}
+                </button>
+              ))}
+            </div>
+            {smart && <p className="text-xs text-muted-foreground">{t("favorites.smart.kindDescription")}</p>}
+          </div>
+        )}
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
             <span className="text-xs font-medium text-muted-foreground">{t("favorites.name")}</span>
@@ -79,6 +131,11 @@ function FavoriteListEditor({
             <Input fieldSize="sm" value={description} onChange={(event) => setDescription(event.target.value)} />
           </label>
         </div>
+        {smart && (
+          <div className="mt-3">
+            <SmartRuleEditor listId={list?.id} value={rule} onChange={setRule} />
+          </div>
+        )}
         <div className="mt-3">
           <FavoriteListIconPicker value={icon} onChange={setIcon} />
         </div>
@@ -91,7 +148,7 @@ function FavoriteListEditor({
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
             {t("content.cancel")}
           </Button>
-          <Button size="sm" type="submit" disabled={isSaving || !name.trim()}>
+          <Button size="sm" type="submit" disabled={isSaving || !canSave}>
             {isSaving ? t("favorites.saving") : list ? t("content.save") : t("favorites.addList")}
           </Button>
         </div>
@@ -260,7 +317,18 @@ function FavoriteListManagerRow({
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{list.name}</div>
-        {list.description && <div className="truncate text-xs text-muted-foreground">{list.description}</div>}
+        {(list.kind === "smart" || list.description) && (
+          <div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+            {list.kind === "smart" && (
+              <span className="inline-flex shrink-0 items-center gap-1">
+                <Zap className="h-3 w-3 text-primary" aria-hidden="true" />
+                {t("favorites.smart.kind")}
+                {list.description && <span aria-hidden="true">·</span>}
+              </span>
+            )}
+            {list.description && <span className="truncate">{list.description}</span>}
+          </div>
+        )}
       </div>
       <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{index + 1}</span>
       <div className="flex shrink-0 items-center">

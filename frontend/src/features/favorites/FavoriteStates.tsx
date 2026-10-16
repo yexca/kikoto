@@ -1,4 +1,4 @@
-import { FilterX, Heart, ListMusic, Search } from "lucide-react";
+import { FilterX, Heart, ListMusic, Pencil, Search, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -26,20 +26,23 @@ export function FavoriteLoadError({
   );
 }
 
-export type FavoriteEmptyReason = "filtered" | "shelf" | "list";
+export type FavoriteEmptyReason = "filtered" | "shelf" | "list" | "smart";
 
 /** Distinguishes an empty collection, an empty list, and filters that match nothing. */
 export function EmptyFavorites({
   reason,
   onClearFilters,
   onBrowseLibrary,
+  onEditRule,
 }: {
   reason: FavoriteEmptyReason;
   onClearFilters: () => void;
   onBrowseLibrary: () => void;
+  /** Opens the rule of an empty smart list. */
+  onEditRule?: () => void;
 }) {
   const { t } = useTranslation();
-  const Icon = reason === "filtered" ? Search : reason === "list" ? ListMusic : Heart;
+  const Icon = reason === "filtered" ? Search : reason === "smart" ? Zap : reason === "list" ? ListMusic : Heart;
   return (
     <div className="grid min-h-72 place-items-center rounded-[var(--radius)] border border-dashed bg-card/50 p-6 text-center">
       <div className="max-w-sm space-y-3">
@@ -49,21 +52,30 @@ export function EmptyFavorites({
         <h3 className="text-base font-semibold">
           {reason === "filtered"
             ? t("favorites.noMatches")
-            : reason === "list"
-              ? t("favorites.emptyListTitle")
-              : t("favorites.noFavoriteWorks")}
+            : reason === "smart"
+              ? t("favorites.smart.emptyTitle")
+              : reason === "list"
+                ? t("favorites.emptyListTitle")
+                : t("favorites.noFavoriteWorks")}
         </h3>
         <p className="text-sm text-muted-foreground">
           {reason === "filtered"
             ? t("favorites.filteredDescription")
-            : reason === "list"
-              ? t("favorites.emptyListDescription")
-              : t("favorites.emptyDescription")}
+            : reason === "smart"
+              ? t("favorites.smart.emptyDescription")
+              : reason === "list"
+                ? t("favorites.emptyListDescription")
+                : t("favorites.emptyDescription")}
         </p>
         {reason === "filtered" ? (
           <Button variant="outline" size="sm" onClick={onClearFilters}>
             <FilterX className="h-4 w-4" />
             {t("favorites.clearFilters")}
+          </Button>
+        ) : reason === "smart" && onEditRule ? (
+          <Button variant="outline" size="sm" onClick={onEditRule}>
+            <Pencil className="h-4 w-4" />
+            {t("favorites.smart.editRule")}
           </Button>
         ) : (
           <Button variant="outline" size="sm" onClick={onBrowseLibrary}>

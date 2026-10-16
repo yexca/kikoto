@@ -194,6 +194,10 @@ export type FavoriteWorksPage = WorksPage & {
   shelfTotal: number;
   listCounts: Record<string, number>;
   statusCounts: Record<string, number>;
+  /** Smart lists that have new works; absent from servers without smart lists. */
+  newCounts?: Record<string, number>;
+  /** Works of this page that are new in the requested smart list. */
+  newWorkIds?: number[];
 };
 
 export type LibrarySort = "recent" | "release" | "code" | "title" | "rating" | "sales" | "random" | "recommend";
@@ -209,9 +213,39 @@ export type FavoriteList = {
   /** Presentation key for a user list's icon; empty or unknown keys use the default. */
   icon?: string;
   sortOrder: number;
-  kind: "marked" | "user";
+  kind: FavoriteListKind;
   selected?: boolean;
+  /** Set on smart lists. */
+  rule?: SmartListRuleView;
 };
+
+export type FavoriteListKind = "marked" | "user" | "smart";
+
+export type SmartRuleTagKind = "metadata" | "user";
+
+export type SmartRuleTag = { kind: SmartRuleTagKind; id: number };
+
+/** A smart list rule as it is saved: included tags (all or any) minus excluded tags. */
+export type SmartListRule = {
+  includeMatch: "all" | "any";
+  include: SmartRuleTag[];
+  exclude: SmartRuleTag[];
+};
+
+/** A hidden or missing tag matches no work; a merged tag matches its target. */
+export type SmartRuleTagState = "active" | "merged" | "hidden" | "missing";
+
+export type SmartRuleTagView = SmartRuleTag & { resolvedId?: number; name: string; state: SmartRuleTagState };
+
+export type SmartListRuleView = {
+  includeMatch: "all" | "any";
+  include: SmartRuleTagView[];
+  exclude: SmartRuleTagView[];
+};
+
+export type SmartRuleTagOption = { id: number; name: string; workCount: number };
+
+export type SmartRulePreview = { total: number; works: Work[] };
 
 export type FavoriteListWorkIDs = {
   listId: number;
@@ -302,6 +336,7 @@ export const libraryApi = {
     direction: SortDirection = "desc",
     seed = 1,
     signal?: AbortSignal,
+    newOnly = false,
   ) => {
     const params = new URLSearchParams({
       page: String(page),
@@ -314,18 +349,36 @@ export const libraryApi = {
       seed: String(seed),
     });
     if (query.trim()) params.set("q", query.trim());
+    if (newOnly) params.set("new", "true");
     return getJSON<FavoriteWorksPage>(`/api/favorite-works?${params.toString()}`, signal);
   },
   listLibrarySources: (signal?: AbortSignal) => getJSON<LibrarySource[]>("/api/library-sources", signal),
   listRecentlyPlayedWorks: (limit = 10, signal?: AbortSignal) =>
     getJSON<RecentlyPlayedWorksResponse>(`/api/recently-played-works?limit=${limit}`, signal),
   listFavoriteLists: (signal?: AbortSignal) => getJSON<FavoriteList[]>("/api/favorite-lists", signal),
-  createFavoriteList: (payload: { name: string; description?: string; icon?: string }) =>
-    postJSONBody<FavoriteList>("/api/favorite-lists", payload),
+  createFavoriteList: (payload: {
+    name: string;
+    description?: string;
+    icon?: string;
+    kind?: "user" | "smart";
+    rule?: SmartListRule;
+  }) => postJSONBody<FavoriteList>("/api/favorite-lists", payload),
   updateFavoriteList: (
     id: number,
-    payload: { name?: string; description?: string; icon?: string; sortOrder?: number },
+    payload: { name?: string; description?: string; icon?: string; sortOrder?: number; rule?: SmartListRule },
   ) => patchJSONBody<FavoriteList>(`/api/favorite-lists/${id}`, payload),
+  /** Acknowledges every new work of a smart list. */
+  markFavoriteListSeen: (id: number) =>
+    postJSONBody<{ listId: number; newCount: number }>(`/api/favorite-lists/${id}/seen`, {}),
+  /** Turns a smart list into a user list holding the works it shows now; they all become favorites. */
+  convertFavoriteList: (id: number) => postJSONBody<FavoriteList>(`/api/favorite-lists/${id}/convert`, {}),
+  previewSmartRule: (rule: SmartListRule, listId?: number, signal?: AbortSignal) =>
+    postJSONBody<SmartRulePreview>("/api/favorite-lists/rule-preview", { rule, listId }, signal),
+  listSmartRuleTags: (query: string, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ pageSize: "20" });
+    if (query.trim()) params.set("q", query.trim());
+    return getJSON<{ tags: SmartRuleTagOption[]; total: number }>(`/api/favorite-lists/rule-tags?${params}`, signal);
+  },
   deleteFavoriteList: (id: number) => deleteJSON<{ ok: boolean; deleted: number }>(`/api/favorite-lists/${id}`),
   listFavoriteListWorkIDs: (id: number) => getJSON<FavoriteListWorkIDs>(`/api/favorite-lists/${id}/work-ids`),
   summarizeFavoriteListMembership: (workIds: number[]) =>

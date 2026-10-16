@@ -62,6 +62,11 @@ type RawPage struct {
 	RecommendationUnavailable bool
 }
 
+// ManualFavoriteListKindsSQL names the favorite list kinds whose
+// favorite_list_item rows a user added by hand. Those works are favorites; a
+// smart list's rule matches are not.
+const ManualFavoriteListKindsSQL = "('user', 'smart')"
+
 type MatchingListOptions struct {
 	UserID     int64
 	Page       int
@@ -222,7 +227,7 @@ func matchingListSelectSQL(where string, options MatchingListOptions) (string, [
 				FROM favorite_list_item AS shelf_list_item
 				INNER JOIN favorite_list AS shelf_list ON shelf_list.id = shelf_list_item.list_id
 				WHERE shelf_list.user_id = ?
-					AND shelf_list.kind = 'user'
+					AND shelf_list.kind IN ` + ManualFavoriteListKindsSQL + `
 					AND shelf_list_item.work_id = work.id
 			), ''),
 			work.created_at
@@ -240,19 +245,24 @@ func matchingListSelectSQL(where string, options MatchingListOptions) (string, [
 				FROM favorite_list_item AS shelf_list_item
 				INNER JOIN favorite_list AS shelf_list ON shelf_list.id = shelf_list_item.list_id
 				WHERE shelf_list.user_id = ?
-					AND shelf_list.kind = 'user'
+					AND shelf_list.kind IN ` + ManualFavoriteListKindsSQL + `
 					AND shelf_list_item.work_id = work.id
 			), '')
 		)`
 		prefixArgs := []any{options.UserID}
 		if options.ListID > 0 {
-			expression = `CASE WHEN EXISTS (
-				SELECT 1
+			// A smart list's rule match was added when its owner first saw it;
+			// one not seen yet sorts as the newest.
+			expression = `CASE (
+				SELECT selected_list.kind
 				FROM favorite_list AS selected_list
-				WHERE selected_list.id = ?
-					AND selected_list.user_id = ?
-					AND selected_list.kind = 'marked'
-			) THEN user_work_state.updated_at ELSE (
+				WHERE selected_list.id = ? AND selected_list.user_id = ?
+			) WHEN 'marked' THEN user_work_state.updated_at
+			WHEN 'smart' THEN COALESCE(
+				(SELECT smart_item.created_at FROM favorite_list_item AS smart_item WHERE smart_item.list_id = ? AND smart_item.work_id = work.id),
+				(SELECT smart_seen.seen_at FROM favorite_list_smart_seen AS smart_seen WHERE smart_seen.list_id = ? AND smart_seen.work_id = work.id),
+				'9999-12-31 23:59:59'
+			) ELSE (
 				SELECT MAX(shelf_list_item.created_at)
 				FROM favorite_list_item AS shelf_list_item
 				INNER JOIN favorite_list AS shelf_list ON shelf_list.id = shelf_list_item.list_id
@@ -261,7 +271,7 @@ func matchingListSelectSQL(where string, options MatchingListOptions) (string, [
 					AND shelf_list.kind = 'user'
 					AND shelf_list_item.work_id = work.id
 			) END`
-			prefixArgs = []any{options.ListID, options.UserID, options.UserID, options.ListID}
+			prefixArgs = []any{options.ListID, options.UserID, options.ListID, options.ListID, options.UserID, options.ListID}
 		}
 		query := outerProjection + listBaseSelectSQLWithExtra(where, false, ", "+expression+" AS matching_sort_value") + `) AS library_rows ORDER BY matching_sort_value IS NULL ASC, matching_sort_value ` + direction + `, id ` + direction
 		return query, prefixArgs
@@ -823,7 +833,7 @@ func userShelfClause(negated bool) string {
 			FROM favorite_list_item AS search_shelf_item
 			INNER JOIN favorite_list AS search_shelf_list ON search_shelf_list.id = search_shelf_item.list_id
 			WHERE search_shelf_list.user_id = ?
-				AND search_shelf_list.kind = 'user'
+				AND search_shelf_list.kind IN ` + ManualFavoriteListKindsSQL + `
 				AND search_shelf_item.work_id = work.id
 		))`
 }
