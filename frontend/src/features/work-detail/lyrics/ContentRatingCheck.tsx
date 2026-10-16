@@ -51,45 +51,71 @@ export function ServiceChoiceLabel({ name, excluded }: { name: string; excluded:
   );
 }
 
-/** The content rating of a request form: a check button, then the class and what it means for the chosen service. */
-export function ContentRatingCheck({
+/** A toolbar button that checks content ratings on demand, with its progress while it runs. */
+export function ContentRatingButton({
+  checking,
+  checked,
+  progress,
+  disabled = false,
+  onCheck,
+}: {
+  checking: boolean;
+  /** Whether a result is shown, so pressing again checks again. */
+  checked: boolean;
+  /** Finished and total checks of a check that covers several inputs. */
+  progress?: { done: number; total: number } | null;
+  disabled?: boolean;
+  onCheck: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="shrink-0"
+      title={t("contentRating.hint")}
+      disabled={disabled || checking}
+      onClick={onCheck}
+    >
+      {checking ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : checked ? (
+        <RotateCw className="h-3.5 w-3.5" />
+      ) : (
+        <ShieldCheck className="h-3.5 w-3.5" />
+      )}
+      {checking && progress
+        ? t("contentRating.checking", { done: progress.done, total: progress.total })
+        : checked
+          ? t("contentRating.recheck")
+          : t("contentRating.check")}
+    </Button>
+  );
+}
+
+/** The result of a single content rating, or why there is none. */
+export function ContentRatingResult({
   rating,
   service,
-  disabled = false,
 }: {
   rating: ContentRating;
   /** The chosen service, when there is one. */
   service: (ContentBoundary & { name: string }) | null;
-  disabled?: boolean;
 }) {
   const { t } = useTranslation();
-  const { status, contentClass } = rating;
-  const checking = status === "checking";
-  return (
-    <div className="space-y-1.5 rounded-md border bg-background/60 px-3 py-2.5" aria-live="polite">
-      <div className="flex min-h-8 items-center justify-between gap-2">
-        <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span className="truncate">{t("contentRating.title")}</span>
-        </span>
-        <Button variant="ghost" size="sm" className="shrink-0" disabled={disabled || checking} onClick={rating.run}>
-          {checking ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : contentClass ? (
-            <RotateCw className="h-3.5 w-3.5" />
-          ) : (
-            <ShieldCheck className="h-3.5 w-3.5" />
-          )}
-          {contentClass ? t("contentRating.recheck") : t("contentRating.check")}
-        </Button>
-      </div>
-      {rating.assessment ? (
+  if (rating.assessment) {
+    return (
+      <div className="rounded-md border bg-background/60 px-3 py-2.5" aria-live="polite">
         <ContentAssessment assessment={rating.assessment} service={service} />
-      ) : status === "failed" ? (
-        <p className="text-xs text-error-foreground">{t("contentRating.failed")}</p>
-      ) : (
-        <p className="text-xs text-muted-foreground">{t("contentRating.hint")}</p>
-      )}
-    </div>
-  );
+      </div>
+    );
+  }
+  if (rating.status === "failed") {
+    return (
+      <p className="text-xs text-error-foreground" aria-live="polite">
+        {t("contentRating.failed")}
+      </p>
+    );
+  }
+  return null;
 }

@@ -2370,6 +2370,12 @@ export const surfaceEnglish = {
   },
 
   folderEdit: {
+    targetBlock: {
+      not_a_file:
+        "A folder or link is already at this path, and it is never replaced. Keep it, keep both, or rename the incoming file.",
+      blocked_path:
+        "{{path}} is a file where a folder of this path belongs. Keep it, or rename the incoming file to another path.",
+    },
     editFiles: "Edit files",
     title: "Edit files",
     description: "Add files from the work's other folders and remote editions, and choose what stays in this folder.",
@@ -2599,6 +2605,8 @@ export const surfaceEnglish = {
   },
 
   errorFeedback: {
+    lyricsFolderBlocked:
+      "A file in the work folder sits where the lyrics folder belongs. Rename or move that file, then add the lyrics again.",
     databaseBusy: "The database is busy. Please retry in a moment.",
     serviceModelNotInstalled:
       "The service has no installed model. Install one in the service, then fetch models again.",
@@ -2894,22 +2902,12 @@ export const surfaceEnglish = {
     },
   },
   asrTranscription: {
-    intro:
-      "Transcribe a local track with a speech recognition service. The result waits here for review; adding it saves a WebVTT file in the language's lyrics folder and assigns it to the track.",
-    track: "Track",
     service: "Service",
-    language: "Spoken language",
     detect: "Detect automatically",
-    languageHint:
-      "The lyrics are saved and assigned in this language. Detected speech is saved as lyrics for every language.",
     noService: "No speech recognition service is ready. An administrator can add one under Settings → LLM & ASR.",
     noServiceShort: "No service available",
     loading: "Loading…",
     servicesFailed: "Speech recognition services could not be loaded.",
-    start: "Transcribe",
-    starting: "Starting…",
-    queued: "Transcription queued. Progress appears below and in Activity.",
-    joined: "This track is already being transcribed.",
     startFailed: "Transcription could not be started.",
     listTitle: "Transcriptions",
     refresh: "Refresh transcriptions",
@@ -2967,25 +2965,44 @@ export const surfaceEnglish = {
     discard: "Discard",
     discarded: "Transcription discarded.",
     discardFailed: "The transcription could not be discarded.",
+    intro:
+      "Select tracks to transcribe them with a speech recognition service. Results wait below for review; adding one saves a WebVTT file in the language's lyrics folder and assigns it to the track.",
+    language: "Audio language",
+    languageHint:
+      "The language spoken in the audio, sent to the service as a hint. The lyrics are saved and assigned in this language; detected speech is saved as fallback lyrics.",
+    filter: "Show tracks",
+    filters: {
+      noLyrics: "No lyrics",
+      noOrigin: "No {{language}} lyrics",
+      all: "All tracks",
+    },
+    filterEmpty: {
+      noLyrics: "Every track has lyrics.",
+      noOrigin: "Every track has {{language}} lyrics.",
+      all: "This work has no local audio files.",
+    },
+    selectAll: "Select all listed tracks",
+    selectTrack: "Select {{title}}",
+    audioFile: "Audio file",
+    noLyrics: "No lyrics",
+    selectHint: "Select tracks to transcribe.",
+    selectedCount_one: "{{count}} track selected",
+    selectedCount_other: "{{count}} tracks selected",
+    startCount: "Transcribe {{count}}",
+    startingCount: "Starting {{done}}/{{total}}…",
+    queuedCount_one: "{{count}} transcription queued.",
+    queuedCount_other: "{{count}} transcriptions queued.",
+    joinedCount_one: "{{count}} track was already being transcribed.",
+    joinedCount_other: "{{count}} tracks were already being transcribed.",
+    awaitingCount: "{{count}} to review",
   },
   lyricsTranslation: {
-    intro:
-      "Translate a lyrics file with an LLM provider. The translation keeps the file's timing and waits here for review; adding it saves the file in the target language's lyrics folder of the track's work folder and assigns it to the track.",
-    source: "Lyrics file",
-    track: "Track",
-    chooseTrack: "Choose a track",
     provider: "LLM provider",
-    language: "Translate to",
-    hint: "Choose the track these lyrics belong to; the translation is assigned to it in the chosen language. The content safety policy applies as for metadata translation.",
     noProvider: "No LLM provider is ready. An administrator can add one under Settings → LLM.",
     noProviderShort: "No provider available",
     noLyrics: "This work has no lyrics files to translate. Add lyrics files or transcribe a track first.",
     loading: "Loading…",
     providersFailed: "LLM providers could not be loaded.",
-    start: "Translate",
-    starting: "Starting…",
-    queued: "Translation queued. Progress appears below and in Activity.",
-    joined: "This translation is already queued.",
     startFailed: "Translation could not be started.",
     listTitle: "Translations",
     refresh: "Refresh translations",
@@ -3058,6 +3075,40 @@ export const surfaceEnglish = {
     discard: "Discard",
     discarded: "Translation discarded.",
     discardFailed: "The translation could not be discarded.",
+    intro:
+      "Each row is a track and each column a lyrics language: green has lyrics, red has none. Click red cells, or a language header, to create those languages. A track translates from its original-language lyrics unless you click another of its green cells. Results wait below for review; adding one saves it in the target language's lyrics folder and assigns it to the track.",
+    audioFile: "Audio file",
+    selectColumn: "Select every track missing {{language}}",
+    cellHas: "{{track}} has {{language}} lyrics",
+    cellUseSource: "Translate {{track}} from {{language}}",
+    cellSource: "{{track}} is translated from {{language}}",
+    cellNoFallback: "{{track}} has no fallback lyrics",
+    cellTarget: "Translate {{track}} into {{language}}",
+    cellMissing: "{{track}} has no {{language}} lyrics",
+    cellRemote: "Read from {{source}}",
+    sourceShort: "From",
+    targetShort: "New",
+    legend: "Colors",
+    legendHas: "Has lyrics",
+    legendMissing: "No lyrics",
+    legendSource: "Translated from",
+    legendTarget: "To create",
+    columns: "Languages {{shown}}/{{total}}",
+    columnsLabel: "Shown languages",
+    ratingFailed_one: "{{count}} lyrics file could not be rated.",
+    ratingFailed_other: "{{count}} lyrics files could not be rated.",
+    selectHint: "Click red cells or a language header to choose translations.",
+    selectedCount_one: "{{count}} translation",
+    selectedCount_other: "{{count}} translations",
+    excludedCount_one: "{{count}} exceeds the receive maximum of {{provider}}",
+    excludedCount_other: "{{count}} exceed the receive maximum of {{provider}}",
+    startCount: "Translate {{count}}",
+    startingCount: "Starting {{done}}/{{total}}…",
+    queuedCount_one: "{{count}} translation queued.",
+    queuedCount_other: "{{count}} translations queued.",
+    joinedCount_one: "{{count}} translation was already queued.",
+    joinedCount_other: "{{count}} translations were already queued.",
+    awaitingCount: "{{count}} to review",
   },
   translationTargets: {
     unsupported: "Not supported by this model",
@@ -3110,6 +3161,7 @@ export const surfaceEnglish = {
       unknown: "Unknown rating",
       blocked: "Blocked",
     },
+    checking: "Checking {{done}}/{{total}}…",
   },
   lyricsManager: {
     title: "Manage lyrics",
@@ -3154,9 +3206,6 @@ export const surfaceEnglish = {
     tabTranslate: "Translate",
     assignNeedsWrite: "Assigning tracks requires library write access, so the files are added without assignments.",
     language: "Lyrics language",
-    allLanguagesHint: "These lyrics are used for every language. A track without any falls back to a file-name match.",
-    languageHint:
-      "Playback uses the first of a listener's metadata languages that has lyrics, then the all-language lyrics, then any other language.",
     languageUnset: "Not set",
     clearLanguage: "Clear this language",
     lyricsLanguage: "Language of these lyrics",
@@ -3172,6 +3221,12 @@ export const surfaceEnglish = {
     managedLyricsListed: "Listed with the other files",
     noLyricsTryFiles:
       "No local lyrics files were found. Open Lyrics files to add lyrics from this folder, another edition, or a remote source.",
+    fallback: "Fallback",
+    original: "Original",
+    fallbackHint:
+      "Fallback lyrics are used when none of a listener's languages has lyrics. A track without fallback lyrics uses a file-name match.",
+    languageHint:
+      "Playback uses the first of a listener's metadata languages that has lyrics, then the fallback lyrics, then any other language.",
   },
   lyricsFiles: {
     managed: "Managed lyrics",

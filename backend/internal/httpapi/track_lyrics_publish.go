@@ -114,6 +114,9 @@ func (s *Server) publishTrackLyrics(ctx context.Context, userID, workID, audioID
 	}
 	folderName := lyricsLanguageFolderName(language)
 	folderAbsolute := filepath.Join(rootAbsolute, folderName)
+	if _, blocked := blockingPathEntry(rootAbsolute, path.Join(folderName, stem+extension)); blocked {
+		return "", 0, errLyricsFolderBlocked
+	}
 	file, published, err := trackLyricsFileName(folderAbsolute, stem, extension, text)
 	if err != nil {
 		return "", 0, err

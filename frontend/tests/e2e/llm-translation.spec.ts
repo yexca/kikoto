@@ -449,7 +449,9 @@ test("LLM background review recovers a durable preview and rejects it explicitly
   await expect.poll(() => rejected).toBe(1);
 });
 
-test("Manage lyrics translates a lyrics file for its track and adds the reviewed result @desktop", async ({ page }) => {
+test("Manage lyrics translates a track into a missing language and adds the reviewed result @desktop", async ({
+  page,
+}) => {
   const localFile = (id: number, kind: string, name: string) =>
     mediaItemFixture({
       id,
@@ -569,23 +571,25 @@ test("Manage lyrics translates a lyrics file for its track and adds the reviewed
   const lyrics = page.getByRole("dialog", { name: "Manage lyrics" });
   await lyrics.getByRole("tab", { name: "Translate" }).click();
 
-  // The file's own track is the destination until another is chosen.
-  await expect(lyrics.getByRole("combobox", { name: "Lyrics file" })).toContainText("track.mp3.vtt");
-  await expect(lyrics.getByRole("combobox", { name: "Track", exact: true })).toContainText("track.mp3");
+  // The name-matched file is the track's fallback lyrics, which a missing language translates from.
+  await expect(lyrics.getByRole("button", { name: "track.mp3 has Fallback lyrics" })).toBeVisible();
+  const english = lyrics.getByRole("button", { name: "Translate track.mp3 into English" });
+  await english.click();
+  await expect(english).toHaveAttribute("aria-pressed", "true");
+  await expect(lyrics.getByRole("button", { name: "track.mp3 is translated from Fallback" })).toBeVisible();
 
-  // The content rating is checked only when asked, for the chosen lyrics file and track.
+  // Ratings are checked only when asked, once per lyrics file and track.
   expect(prechecks).toHaveLength(0);
   await lyrics.getByRole("button", { name: "Check rating" }).click();
-  await expect(lyrics.getByText("Example LLM cannot receive this content", { exact: false })).toBeVisible();
-  await expect(lyrics.getByText("High sensitivity", { exact: true })).toBeVisible();
-  await expect(lyrics.getByText("synthetic-high-rule", { exact: false })).toBeVisible();
+  await expect(lyrics.getByText("High sensitivity 1", { exact: true })).toBeVisible();
   expect(prechecks).toEqual([{ fields: ["lyrics"], lyricsLocationId: 2, audioMediaItemId: 1 }]);
+  await expect(lyrics.getByText("1 exceeds the receive maximum of Example LLM")).toBeVisible();
   await lyrics.getByRole("combobox", { name: "LLM provider" }).click();
   const option = page.getByRole("option", { name: /Example LLM/ });
   await expect(option).toContainText("Not for this content");
   await option.click();
 
-  await lyrics.getByRole("button", { name: "Translate", exact: true }).click();
+  await lyrics.getByRole("button", { name: "Translate 1", exact: true }).click();
   await expect.poll(() => queued).toHaveLength(1);
   expect(queued[0]).toEqual({
     workCodes: [work.primaryCode],
@@ -603,4 +607,84 @@ test("Manage lyrics translates a lyrics file for its track and adds the reviewed
   await lyrics.getByRole("button", { name: "Add to lyrics" }).click();
   await expect.poll(() => applied).toEqual([{ previewId: "synthetic-preview" }]);
   await expect(lyrics.getByText("Added to lyrics", { exact: true })).toBeVisible();
+});
+
+test("Manage lyrics transcribes the selected tracks without lyrics in the original language @desktop", async ({
+  page,
+}) => {
+  const localFile = (id: number, kind: string, name: string) =>
+    mediaItemFixture({
+      id,
+      kind,
+      title: name,
+      locations: [mediaLocationFixture({ id, path: `${work.primaryCode}/${name}`, availability: "available" })],
+    });
+  await mockApplication(
+    page,
+    undefined,
+    false,
+    1,
+    0,
+    [
+      localFile(1, "audio", "01.mp3"),
+      localFile(2, "audio", "02.mp3"),
+      localFile(3, "audio", "03.mp3"),
+      localFile(4, "text", "03.mp3.vtt"),
+    ],
+    undefined,
+    { work: { ...work, ageRating: "general" }, authenticated: true, permissions: rolePermissions.admin },
+  );
+  await page.route("**/api/asr/services", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: "synthetic-asr",
+          name: "Example ASR",
+          defaultModel: "example-asr",
+          models: ["example-asr"],
+          boundary: "external",
+          maxContentClass: "sensitive",
+        },
+      ] satisfies ApiResponse<"listASRServices">,
+    }),
+  );
+  const created: unknown[] = [];
+  await page.route(`**/api/works/${work.id}/asr-transcriptions`, (route) => {
+    if (route.request().method() === "POST") {
+      created.push(route.request().postDataJSON());
+      return route.fulfill({
+        status: 202,
+        json: { id: `synthetic-${created.length}`, runId: 50 + created.length, state: "pending", deduplicated: false },
+      });
+    }
+    return route.fulfill({
+      json: { transcriptions: [], originLanguage: "ja-jp" } satisfies ApiResponse<"listASRTranscriptions">,
+    });
+  });
+
+  await page.goto("/");
+  await page.getByText(work.title, { exact: true }).click();
+  await page
+    .getByRole("complementary", { name: "Source info", exact: true })
+    .getByRole("button", { name: "Manage lyrics", exact: true })
+    .click();
+  const lyrics = page.getByRole("dialog", { name: "Manage lyrics" });
+  await lyrics.getByRole("tab", { name: "Transcribe" }).click();
+
+  // Only the tracks without lyrics are listed until another filter is chosen.
+  await expect(lyrics.getByRole("checkbox", { name: "Select 01.mp3" })).toBeVisible();
+  await expect(lyrics.getByRole("checkbox", { name: "Select 03.mp3" })).toHaveCount(0);
+  await lyrics.getByRole("checkbox", { name: "Select all listed tracks" }).click();
+
+  // The audio language starts as the work's original language.
+  await expect(lyrics.getByRole("combobox", { name: "Audio language" })).toContainText("Japanese");
+  await lyrics.getByRole("button", { name: "Transcribe 2", exact: true }).click();
+  await expect.poll(() => created).toHaveLength(2);
+  expect(created).toEqual([
+    { audioMediaItemId: 1, providerId: "synthetic-asr", model: "example-asr", language: "ja-jp" },
+    { audioMediaItemId: 2, providerId: "synthetic-asr", model: "example-asr", language: "ja-jp" },
+  ]);
+
+  await lyrics.getByRole("tab", { name: /^All tracks/ }).click();
+  await expect(lyrics.getByRole("checkbox", { name: "Select 03.mp3" })).toBeVisible();
 });

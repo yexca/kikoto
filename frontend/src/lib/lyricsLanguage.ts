@@ -1,14 +1,16 @@
 import type { MediaItem, MediaLyricsAssignment } from "@/lib/mediaApi";
 import { metadataTagLanguages } from "@/lib/metadataTagModel";
 
-/**
- * The languages library lyrics can declare, with their label keys: every
- * language first, then the languages titles and tag names are saved in.
- */
-export const lyricsLanguages = metadataTagLanguages;
-
-/** The lyrics that apply to every language. */
+/** The lyrics that apply to every language: the fallback when a listener's languages have none. */
 export const allLyricsLanguages = "";
+
+/**
+ * The languages library lyrics can declare, with their label keys: the
+ * fallback first, then the languages titles and tag names are saved in.
+ */
+export const lyricsLanguages: readonly (readonly [string, string])[] = metadataTagLanguages.map(
+  ([language, labelKey]) => [language, language === allLyricsLanguages ? "lyricsManager.fallback" : labelKey] as const,
+);
 
 const providerSpellings: Record<string, string> = {
   ja: "ja-jp",

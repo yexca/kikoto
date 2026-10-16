@@ -168,10 +168,10 @@ clears the override and restores deterministic matching; an unavailable saved
 choice falls back without deleting the preference.
 
 A lyrics assignment saved in **Manage lyrics** is the library default for an
-audio file in one language, or in every language. Playback uses the listener's
-explicit choice first, then the library assignments, then name matching. Among
-the assignments it takes the first of your metadata languages that has lyrics,
-then the all-language lyrics, then any other language, so changing your
+audio file in one language, or as its fallback lyrics. Playback uses the
+listener's explicit choice first, then the library assignments, then name
+matching. Among the assignments it takes the first of your metadata languages
+that has lyrics, then the fallback lyrics, then any other language, so changing your
 metadata languages in Settings changes which lyrics a track opens with. The
 lyrics list names the language of each assigned file. An assignment whose
 lyrics file is no longer available is skipped without being deleted.

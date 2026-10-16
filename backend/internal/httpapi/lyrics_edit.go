@@ -525,14 +525,23 @@ func (s *Server) resolveLyricsEditItem(item *lyricsEditItem, decision remoteFetc
 	if err != nil {
 		return lyricsFetchBadRequest("a target path is outside the library")
 	}
+	rootAbsolute, err := safeDataPath(s.cfg.DataRoot, targetRoot)
+	if err != nil {
+		return lyricsFetchBadRequest("the local folder is outside the library")
+	}
+	relative, err := fetchPathRelativeToRoot(targetRoot, base.TargetPath)
+	if err != nil {
+		return lyricsFetchBadRequest("a target path is outside the local folder")
+	}
 	replacesRemoved := false
-	if info, err := os.Lstat(absolute); err == nil {
+	info, statErr := os.Lstat(absolute)
+	switch {
+	case markBlockedPath(base, rootAbsolute, relative):
+	case statErr == nil:
 		base.TargetExists = true
 		switch {
 		case info.IsDir() || unsafeFetchStagingEntry(info) || !info.Mode().IsRegular():
-			base.TargetConflict = true
-			base.TargetConflictReason = "target is not a regular file"
-			base.Action, base.Status = "conflict", "target_conflict"
+			markNotFileTarget(base, info)
 		case inPlace():
 		case removing[fetchTargetKey(base.TargetPath)]:
 			replacesRemoved = true
@@ -547,13 +556,13 @@ func (s *Server) resolveLyricsEditItem(item *lyricsEditItem, decision remoteFetc
 				base.Action, base.Status = "conflict", "target_conflict"
 			}
 		}
-	} else if !errors.Is(err, os.ErrNotExist) {
+	case !errors.Is(statErr, os.ErrNotExist):
 		base.TargetConflict = true
 		base.TargetConflictReason = "target could not be checked"
 		base.Action, base.Status = "conflict", "target_conflict"
 	}
 	applyRemoteFetchTargetState(base, seenTargets, "two selected files would take the same place: ")
-	if err := s.applyRemoteFetchConflictDecision(base, decision, targetRoot, seenTargets); err != nil {
+	if err := s.applyRemoteFetchConflictDecision(base, blockedTargetDecision(*base, decision), targetRoot, seenTargets); err != nil {
 		return err
 	}
 	if inPlace() {

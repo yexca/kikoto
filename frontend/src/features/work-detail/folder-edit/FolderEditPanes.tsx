@@ -14,6 +14,7 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  conflictResolutions,
   folderEditTreeFiles,
   type FolderEditFile,
   type FolderEditResultEntry,
@@ -274,6 +275,15 @@ export function SelectionNode({
   );
 }
 
+const resolutionLabels: Record<RemoteFetchResolution, string> = {
+  auto: "remoteFetch.unresolved",
+  keep_local: "folderEdit.keepExisting",
+  replace: "folderEdit.replaceExisting",
+  keep_both: "remoteFetch.keepBoth",
+  rename: "remoteFetch.renameIncoming",
+  exclude: "remoteFetch.exclude",
+};
+
 const resultBadge: Record<
   FolderEditResultState,
   { key: string; variant: "outline" | "success" | "error" | "warning" }
@@ -414,11 +424,11 @@ function ResultRow({
                 onDecisionChange({ ...current, resolution: event.target.value as RemoteFetchResolution })
               }
             >
-              <option value="auto">{t("remoteFetch.unresolved")}</option>
-              <option value="keep_local">{t("folderEdit.keepExisting")}</option>
-              <option value="replace">{t("folderEdit.replaceExisting")}</option>
-              <option value="keep_both">{t("remoteFetch.keepBoth")}</option>
-              <option value="rename">{t("remoteFetch.renameIncoming")}</option>
+              {conflictResolutions(item).map((resolution) => (
+                <option key={resolution} value={resolution}>
+                  {t(resolutionLabels[resolution])}
+                </option>
+              ))}
             </select>
           </label>
           {current.resolution === "rename" && (
@@ -432,7 +442,13 @@ function ResultRow({
               />
             </label>
           )}
-          {item.targetConflictReason && <div className="text-destructive">{item.targetConflictReason}</div>}
+          {item.targetBlock ? (
+            <div className="text-destructive">
+              {t(`folderEdit.targetBlock.${item.targetBlock}`, { path: item.targetBlocker ?? "" })}
+            </div>
+          ) : (
+            item.targetConflictReason && <div className="text-destructive">{item.targetConflictReason}</div>
+          )}
         </div>
       )}
     </div>

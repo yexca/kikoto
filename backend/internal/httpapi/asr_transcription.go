@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -392,7 +393,7 @@ func (s *Server) acceptASRTranscription(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		var requestErr lyricsFetchRequestError
 		if errors.As(err, &requestErr) {
-			writeAPIError(w, requestErr.status, "asr_publish_failed", requestErr.message, false)
+			writeAPIError(w, requestErr.status, cmp.Or(requestErr.code, "asr_publish_failed"), requestErr.message, false)
 			return
 		}
 		if writeFetchDestinationError(w, err) {

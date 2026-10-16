@@ -30,19 +30,19 @@ Lyrics are translated from [Manage lyrics → Translate](#translate).
 
 ## Transcribe
 
-**Manage lyrics → Transcribe** turns a local track's speech into timed lyrics with a configured [speech recognition service](settings.md#asr-services). Choose the track, the service and model, and the spoken language, then **Transcribe**. The language is sent to the service as a hint, and the result is saved and assigned in that language; **Detect automatically** lets the service decide and saves the result as lyrics for every language. The shared [content safety policy](settings.md#content-safety-policy) checks the work's metadata against the service's receive maximum, without inspecting the audio itself. **Check rating** shows the work's class without sending anything and marks the services that may not receive it; the check runs only when you press it. A track already being transcribed is not queued twice.
+**Manage lyrics → Transcribe** turns the speech of local tracks into timed lyrics with a configured [speech recognition service](settings.md#asr-services). The tab lists the work's local audio files with the languages each one has lyrics in, grouped by folder. The filter above the list shows the tracks with **No lyrics**, which it starts on, the tracks without lyrics in the work's original language, or **All tracks**. Select tracks, or every listed track from the head of the list, and the bar at the bottom chooses the **Audio language**, the service and model; **Transcribe** queues one transcription per selected track. The audio language is the language spoken in the audio. It starts as the work's original language, is sent to the service as a hint, and is the language the result is saved and assigned in; **Detect automatically** lets the service decide and saves the result as fallback lyrics. The shared [content safety policy](settings.md#content-safety-policy) checks the work's metadata against the service's receive maximum, without inspecting the audio itself. **Check rating** beside the filter shows the work's class without sending anything and marks the services that may not receive it; the check runs only when you press it. A track already being transcribed is not queued twice, and a track's row shows the state of its open transcription.
 
 Transcription is an Activity workflow. Kikoto decodes the track itself and sends it in parts of at most five minutes of 16 kHz mono audio, each cut at the quietest moment of its last minute so a cut falls between words. Each finished part is kept, and the workflow hands the queue to other waiting work between parts, so a long track does not hold up scans or Fetch. Before every part, Kikoto checks again that the service settings, the content policy, your permissions and the audio file are unchanged. A request interrupted by a restart, or a part the service rejects, stops the transcription; **Retry** in Activity continues after the last finished part and sends the interrupted part again. Cancelling the run stops it.
 
-The finished transcription waits in the tab's list. **Preview** shows its first lines with the same timing check as other lyrics. **Add to lyrics** saves it as a WebVTT file in the language's lyrics folder inside the track's work folder, under the track's own path, such as `lyrics_ja/mp3/Track 01.vtt`, and assigns it to the track. A different file already at that name is kept, and the transcription is saved beside it with a numbered name. **Discard** drops a transcription that is not wanted. If adding to the lyrics does not finish, the result is kept and **Add to lyrics** tries again.
+The finished transcription waits in the list below the tracks. **Preview** shows its first lines with the same timing check as other lyrics. **Add to lyrics** saves it as a WebVTT file in the language's lyrics folder inside the track's work folder, under the track's own path, such as `lyrics_ja/mp3/Track 01.vtt`, and assigns it to the track. A different file or a folder already at that name is kept, and the transcription is saved beside it with a numbered name. A file where the lyrics folder, or a folder inside it, belongs stops **Add to lyrics** until you rename or move that file; the transcription is kept. **Discard** drops a transcription that is not wanted. If adding to the lyrics does not finish, the result is kept and **Add to lyrics** tries again.
 
 ## Translate
 
-**Manage lyrics → Translate** translates a lyrics file of the work with a configured [LLM provider](settings.md#llm-providers). Choose the lyrics file, the track it belongs to, the provider and model, and the target language, then **Translate**. The target language starts and is limited as in [LLM translation](#llm-translation). Choosing a file selects the track it is assigned to or matches by name; a file that belongs to no track needs its track chosen. The track must have a local file in a work folder, and that work folder receives the translation. Remote lyrics files are offered too; translating one requires administrator opt-in and remote fetch permission. The content safety policy is the one [LLM translation](#llm-translation) uses, and it checks the complete lyrics before anything is sent. **Check rating** runs that check on the chosen lyrics file without sending anything and marks the providers that may not receive it; the check runs only when you press it.
+**Manage lyrics → Translate** translates the lyrics of local tracks with a configured [LLM provider](settings.md#llm-providers). The tab is a table of the work's local tracks against the lyrics languages. A green cell has lyrics in that language and a red cell has none; the **Fallback** column shows a dash where a track has no fallback lyrics, since fallback lyrics are not a translation target. **Languages** at the top right chooses the columns shown. Click a red cell to create that language for the track, or a language's header to select every track that lacks it. Each selected track translates from its lyrics in the work's original language, then its fallback lyrics, then its first other language, and that cell is marked as the source; click another green cell in the row to translate from that file instead. A cell whose translation is running or waiting for review shows its state and cannot be selected again. The bar at the bottom chooses the provider and model, and **Translate** queues one translation per selected cell. A column the chosen model cannot translate into is marked, as in [LLM translation](#llm-translation), and its cells cannot be selected. The track must have a local file in a work folder, and that work folder receives the translation. A remote lyrics file that matches a track by name counts as its fallback lyrics and is marked with a cloud; translating it requires administrator opt-in and remote fetch permission. The content safety policy is the one [LLM translation](#llm-translation) uses, and it checks the complete lyrics before anything is sent. **Check rating** runs that check on every lyrics file in the shown columns without sending anything, marks each green cell with its class, counts the classes, and marks the providers that may not receive the selected sources; the check runs only when you press it.
 
 Translation is an Activity workflow that sends the lyrics in bounded parts and keeps each finished part. LRC, WebVTT, SRT, standard ASS dialogue and plain text keep their timing and cue order; only the text of each line is translated. Input and output are limited to 128 KiB, 4,000 source lines and 4,096 bytes per text line. A part the provider rejects, or a work folder that is briefly unavailable, can be retried from Activity. A request interrupted by a restart has an unknown result; **Resend** sends it again after you acknowledge that another charge may occur. A change to the lyrics, the provider settings, the content policy or your permissions stops the translation, and it must be started again.
 
-The finished translation waits in the tab's list for 24 hours and belongs to whoever started it. **Preview** shows its first lines with the same timing check as other lyrics. **Add to lyrics** checks the lyrics file, the policy and the provider again, then saves the translation in the target language's lyrics folder inside the track's work folder, under the track's own path with the original file's extension, such as `lyrics_zh_hans/mp3/Track 01.lrc`, and assigns it to the track in that language. The original lyrics file is never changed. A different file already at that name is kept, and the translation is saved beside it with a numbered name. **Discard** drops a translation that is not wanted. If adding to the lyrics does not finish, the result is kept and **Add to lyrics** tries again without contacting the provider.
+The finished translation waits in the list below the table for 24 hours and belongs to whoever started it. **Preview** shows its first lines with the same timing check as other lyrics. **Add to lyrics** checks the lyrics file, the policy and the provider again, then saves the translation in the target language's lyrics folder inside the track's work folder, under the track's own path with the original file's extension, such as `lyrics_zh_hans/mp3/Track 01.lrc`, and assigns it to the track in that language. The original lyrics file is never changed. A different file or a folder already at that name is kept, and the translation is saved beside it with a numbered name. A file where the lyrics folder, or a folder inside it, belongs stops **Add to lyrics** until you rename or move that file; the translation is kept. **Discard** drops a translation that is not wanted. If adding to the lyrics does not finish, the result is kept and **Add to lyrics** tries again without contacting the provider.
 
 
 ## Editing metadata
@@ -207,17 +207,18 @@ A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), 
   track ends. Assignments are shared by every listener and become the Auto
   choice; a listener's own choice still takes priority.
 - A track keeps one assigned lyrics file per language. The **Lyrics language**
-  strip switches between **All languages** and Japanese, Simplified Chinese,
+  strip switches between **Fallback** and Japanese, Simplified Chinese,
   Traditional Chinese, English, and Korean, and shows how many tracks have
-  lyrics in each. Lyrics under **All languages** are used for every language,
-  and only there does a track without an assignment fall back to a file-name
-  match. Playback uses the first of a listener's metadata languages that has
-  lyrics, then the all-language lyrics, then any other language. You declare a
-  file's language yourself; Kikoto does not guess it from the file.
+  lyrics in each. **Fallback** lyrics are used when none of a listener's
+  languages has lyrics, and only there does a track without an assignment fall
+  back to a file-name match. Playback uses the first of a listener's metadata
+  languages that has lyrics, then the fallback lyrics, then any other language.
+  You declare a file's language yourself; Kikoto does not guess it from the
+  file.
 - **Manage lyrics** has a **Lyrics files** tab for users who manage local files.
   Kikoto manages the lyrics in a folder named after their language inside a work
   folder: `lyrics_ja`, `lyrics_en`, `lyrics_zh_hans`, `lyrics_zh_hant`,
-  `lyrics_ko`, or `lyrics` for all languages. The tab edits them in three
+  `lyrics_ko`, or `lyrics` for fallback lyrics. The tab edits them in three
   columns, like **Edit files**: the places lyrics can come from on the left, the
   lyrics files of the chosen place in the middle, and the managed lyrics as they
   will be on the right. When the work has several local folders, the right
@@ -237,7 +238,8 @@ A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), 
 - The right column previews the result. A file that is already there with the
   same content is left alone. A different file with the same name is a conflict
   you resolve in that column: keep the existing file, replace it, keep both, or
-  rename the incoming file; nothing has to be deleted first. **Apply changes**
+  rename the incoming file; nothing has to be deleted first. Folders and files
+  in the way are handled as in **Edit files**. **Apply changes**
   asks for confirmation before it deletes files. With library write access,
   **Assign added lyrics to matching tracks** assigns each added file in its
   language to the track it matches by file name, then by track order; a track
@@ -282,7 +284,10 @@ A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), 
   needs permission to fetch, and the edition is not added to the library. A
   file that would land on a different file of the same name is a conflict:
   keep the file in the folder, replace it, keep both, or rename the incoming
-  file. **Apply changes** asks for both deletion confirmations when files are
+  file. A folder or link already at that name is never replaced, so only the
+  other choices are offered. A file where a folder of the incoming path belongs
+  leaves only keeping that file or renaming the incoming file to another path.
+  **Apply changes** asks for both deletion confirmations when files are
   removed, then runs as one Activity workflow that collects every added file
   before it removes or adds anything. The directory reloads when it finishes.
 - A work whose code a scan finds in several local folders keeps all of them.

@@ -1,6 +1,7 @@
 import type {
   MediaItem,
   RemoteFetchFileDecision,
+  RemoteFetchResolution,
   RemoteTrack,
   WorkFolderEditAddition,
   WorkFolderEditItem,
@@ -71,11 +72,23 @@ export type FolderEditResultItem = Pick<
   | "resolution"
   | "targetConflict"
   | "targetConflictReason"
+  | "targetBlock"
+  | "targetBlocker"
   | "sourceKind"
   | "remoteSourceName"
   | "localSourcePath"
   | "remoteCode"
 >;
+
+/**
+ * The resolutions a conflict offers. A folder or link at the target is never
+ * replaced, and nothing can be created below a file that blocks the path.
+ */
+export function conflictResolutions(item: Pick<FolderEditResultItem, "targetBlock">): RemoteFetchResolution[] {
+  if (item.targetBlock === "blocked_path") return ["auto", "keep_local", "rename"];
+  if (item.targetBlock === "not_a_file") return ["auto", "keep_local", "keep_both", "rename"];
+  return ["auto", "keep_local", "replace", "keep_both", "rename"];
+}
 
 /** One file of the folder as it will be after the edit, or one that leaves it. */
 export type FolderEditResultEntry = {

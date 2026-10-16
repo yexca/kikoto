@@ -27,6 +27,7 @@ import {
   alignLyricsByOrder,
   draftLyricsMediaItemId,
   effectiveLyricsMediaItemId,
+  groupAudioByFolder,
   initialLyricsAssignmentDrafts,
   lyricsAssignmentChanges,
   lyricsFolders,
@@ -126,7 +127,7 @@ export function LyricsManagerDialog({
   const [saving, setSaving] = useState(false);
   const changes = useMemo(() => lyricsAssignmentChanges(entries.audio, drafts), [entries.audio, drafts]);
   const languageCounts = useMemo(() => lyricsLanguageTrackCounts(entries.audio, drafts), [entries.audio, drafts]);
-  const groups = useMemo(() => groupByFolder(entries.audio), [entries.audio]);
+  const groups = useMemo(() => groupAudioByFolder(entries.audio), [entries.audio]);
   const editable = !readOnly && !saving && entries.lyrics.length > 0;
   const busy = saving || filesBusy;
   const pendingChanges = changes.length > 0;
@@ -221,27 +222,22 @@ export function LyricsManagerDialog({
         <LyricsManagerTabs tabs={tabs} value={tab} label={t("lyricsManager.title")} disabled={busy} onChange={setTab} />
       )}
       {tab === "transcribe" && transcribeAvailable ? (
-        <>
-          <DialogBody className="@container">
-            <TranscriptionPanel work={work} audio={entries.audio} onPublished={onSaved} />
-          </DialogBody>
-          <DialogFooter>
-            <Button variant="ghost" onClick={onClose} disabled={busy}>
-              {t("content.close")}
-            </Button>
-          </DialogFooter>
-        </>
+        <TranscriptionPanel
+          work={work}
+          audio={entries.audio}
+          closeDisabled={busy}
+          onClose={onClose}
+          onPublished={onSaved}
+        />
       ) : tab === "translate" && translateAvailable ? (
-        <>
-          <DialogBody className="@container">
-            <LyricsTranslationPanel work={work} audio={entries.audio} lyrics={entries.lyrics} onPublished={onSaved} />
-          </DialogBody>
-          <DialogFooter>
-            <Button variant="ghost" onClick={onClose} disabled={busy}>
-              {t("content.close")}
-            </Button>
-          </DialogFooter>
-        </>
+        <LyricsTranslationPanel
+          work={work}
+          audio={entries.audio}
+          lyrics={entries.lyrics}
+          closeDisabled={busy}
+          onClose={onClose}
+          onPublished={onSaved}
+        />
       ) : tab === "files" && folder ? (
         <LyricsFilesWorkspace
           // Each folder is its own edit.
@@ -315,9 +311,7 @@ export function LyricsManagerDialog({
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                {language === allLyricsLanguages
-                  ? t("lyricsManager.allLanguagesHint")
-                  : t("lyricsManager.languageHint")}
+                {language === allLyricsLanguages ? t("lyricsManager.fallbackHint") : t("lyricsManager.languageHint")}
               </p>
               {alignMessage && (
                 <p
@@ -667,10 +661,4 @@ function UnassignedLabel({ automatic, children }: { automatic: boolean; children
       <span className="truncate">{children}</span>
     </span>
   );
-}
-
-function groupByFolder(audio: LyricsManagerAudio[]) {
-  const groups = new Map<string, LyricsManagerAudio[]>();
-  for (const entry of audio) groups.set(entry.folder, [...(groups.get(entry.folder) ?? []), entry]);
-  return [...groups.entries()];
 }

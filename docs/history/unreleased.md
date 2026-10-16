@@ -18,17 +18,17 @@
   When several do, it names the first and counts the rest, and its tooltip
   names them all.
 - **Manage lyrics** keeps one lyrics file per track and language. A language
-  strip switches between the lyrics for every language and Japanese,
-  Simplified Chinese, Traditional Chinese, English, and Korean. Assignments
-  saved by earlier versions apply to every language.
+  strip switches between **Fallback**, the lyrics used when none of a
+  listener's languages has lyrics, and Japanese, Simplified Chinese,
+  Traditional Chinese, English, and Korean. Assignments saved by earlier
+  versions become fallback lyrics.
 - **Manage lyrics** puts its sections in a tab bar under the title and the
   language strip, folder alignment, and reset in one toolbar. Each folder of
   tracks counts the tracks that have lyrics, a mark on every row shows whether
   the track has lyrics, and the lyrics preview lists line times in their own
-  column. **Transcribe** and **Translate** keep the request form beside the
-  results on wide screens.
+  column.
 - **Check rating** in **Transcribe** and **Translate** shows the content
-  safety class of the chosen track or lyrics file without sending anything,
+  safety class of the work or of each lyrics file without sending anything,
   and marks the services that may not receive it. The check runs only when
   pressed.
 - **Lyrics files** in **Manage lyrics** replaces **From remote**. Like **Edit
@@ -41,26 +41,37 @@
   same name is resolved in the preview by keeping, replacing, keeping both, or
   renaming, without deleting it first. Added lyrics can be assigned to the
   tracks they match.
+- **Edit files** and **Lyrics files** never offer to replace a folder or link
+  at a target, and name a file that sits where a folder of the target belongs,
+  leaving only keeping it or renaming the incoming file. **Add to lyrics** in
+  **Transcribe** and **Translate** saves beside a folder of the same name, and
+  asks you to rename or move a file that blocks the lyrics folder.
 - A failed lyrics edit restores moved source files even when an earlier
   publication occupies their original path. If restoration is obstructed,
   staged files and their recovery mapping remain on the target storage pool.
 - **Manage files** has **Manage as lyrics**, which opens **Lyrics files** with
   the selected lyrics files. It hides the lyrics in those folders unless **Show
   in the list** is on.
-- **Transcribe** in **Manage lyrics** turns a local track's speech into timed
-  lyrics with a configured speech recognition service. The transcription runs
-  as an Activity workflow in parts of at most five minutes, cut in quiet
-  moments, and gives the queue to other waiting work between parts. The result
-  waits for review; **Add to lyrics** saves it as a WebVTT file in the
-  language's lyrics folder and assigns it to the track.
+- **Transcribe** in **Manage lyrics** lists the local tracks with the
+  languages they have lyrics in, filtered to the tracks without lyrics or
+  without lyrics in the original language, and turns the speech of the
+  selected tracks into timed lyrics with a configured speech recognition
+  service. The audio language starts as the work's original language. Each
+  transcription runs as an Activity workflow in parts of at most five
+  minutes, cut in quiet moments, and gives the queue to other waiting work
+  between parts. The result waits for review; **Add to lyrics** saves it as a
+  WebVTT file in the language's lyrics folder and assigns it to the track.
 - Transcription rechecks service configuration, permissions and content policy
   after decoding, immediately before sending audio. Disabling a service while
   decoding stops the upload.
-- **Translate** in **Manage lyrics** translates a lyrics file of the work with
-  a configured LLM provider for a chosen track and language. The translation
-  runs as an Activity workflow, keeps the file's timing, and waits for review;
-  **Add to lyrics** saves it in the target language's lyrics folder under the
-  track's path and assigns it to the track.
+- **Translate** in **Manage lyrics** shows the local tracks against the lyrics
+  languages, green where a track has lyrics and red where it has none. Choosing
+  red cells, or a whole language column, translates those tracks with a
+  configured LLM provider from their original-language lyrics, or from another
+  language chosen in the row. Each translation runs as an Activity workflow,
+  keeps the file's timing, and waits for review; **Add to lyrics** saves it in
+  the target language's lyrics folder under the track's path and assigns it to
+  the track.
 - **Manage files** keeps the folder choice, **Quick select**, and **Edit
   files** in one toolbar above the list. **Quick select** holds the selections
   by location and format. The head of the list selects the whole folder, a

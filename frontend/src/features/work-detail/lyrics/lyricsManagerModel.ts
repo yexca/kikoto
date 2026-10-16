@@ -290,3 +290,10 @@ function directoryName(path: string) {
   const index = path.lastIndexOf("/");
   return index >= 0 ? path.slice(0, index) : "";
 }
+
+/** The tracks of each folder, in the order the folders first appear. */
+export function groupAudioByFolder(audio: LyricsManagerAudio[]): [string, LyricsManagerAudio[]][] {
+  const groups = new Map<string, LyricsManagerAudio[]>();
+  for (const entry of audio) groups.set(entry.folder, [...(groups.get(entry.folder) ?? []), entry]);
+  return [...groups.entries()];
+}

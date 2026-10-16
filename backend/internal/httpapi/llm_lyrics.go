@@ -185,6 +185,10 @@ func (s *Server) retryLLMLyricsPublication(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := s.publishLLMLyricsAsset(r.Context(), r.PathValue("asset")); err != nil {
+		if errors.Is(err, errLyricsFolderBlocked) {
+			writeAPIError(w, errLyricsFolderBlocked.status, errLyricsFolderBlocked.code, errLyricsFolderBlocked.message, false)
+			return
+		}
 		slog.Warn("lyrics translation publication failed", "asset", r.PathValue("asset"), "error", err)
 		writeAPIError(w, 409, "llm_asset_pending", "The translation is kept; adding it to the lyrics did not finish. Check the work folder's storage pool and try again.", true)
 		return

@@ -566,17 +566,23 @@ func (s *Server) resolveWorkFolderEditItem(item *remoteWorkSavePlanItem, decisio
 	if err != nil {
 		return invalidRequestError("a target path is outside the library")
 	}
-	if _, err := fetchPathRelativeToRoot(targetRoot, item.TargetPath); err != nil {
+	relative, err := fetchPathRelativeToRoot(targetRoot, item.TargetPath)
+	if err != nil {
 		return invalidRequestError("a target path is outside the edited folder")
 	}
+	rootAbsolute, err := safeDataPath(s.cfg.DataRoot, targetRoot)
+	if err != nil {
+		return invalidRequestError("the edited folder is outside the library")
+	}
 	replacesRemoved := false
-	if info, err := os.Lstat(absolute); err == nil {
+	info, statErr := os.Lstat(absolute)
+	switch {
+	case markBlockedPath(item, rootAbsolute, relative):
+	case statErr == nil:
 		item.TargetExists = true
 		switch {
 		case info.IsDir() || unsafeFetchStagingEntry(info) || !info.Mode().IsRegular():
-			item.TargetConflict = true
-			item.TargetConflictReason = "target is not a regular file"
-			item.Action, item.Status = "conflict", "target_conflict"
+			markNotFileTarget(item, info)
 		case removing[fetchTargetKey(item.TargetPath)]:
 			replacesRemoved = true
 		default:
@@ -590,13 +596,13 @@ func (s *Server) resolveWorkFolderEditItem(item *remoteWorkSavePlanItem, decisio
 				item.Action, item.Status = "conflict", "target_conflict"
 			}
 		}
-	} else if !errors.Is(err, os.ErrNotExist) {
+	case !errors.Is(statErr, os.ErrNotExist):
 		item.TargetConflict = true
 		item.TargetConflictReason = "target could not be checked"
 		item.Action, item.Status = "conflict", "target_conflict"
 	}
 	applyRemoteFetchTargetState(item, seenTargets, "multiple selected files resolve to the same target path: ")
-	if err := s.applyRemoteFetchConflictDecision(item, decision, targetRoot, seenTargets); err != nil {
+	if err := s.applyRemoteFetchConflictDecision(item, blockedTargetDecision(*item, decision), targetRoot, seenTargets); err != nil {
 		return err
 	}
 	if replacesRemoved && item.Action == "" && item.Resolution == "auto" {

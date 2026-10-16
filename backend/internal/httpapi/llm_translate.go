@@ -389,6 +389,10 @@ func (s *Server) applyLLMTranslation(w http.ResponseWriter, r *http.Request) {
 	}
 	if preview.Lyrics != nil {
 		if err := s.publishLLMLyricsAsset(r.Context(), payload.PreviewID); err != nil {
+			if errors.Is(err, errLyricsFolderBlocked) {
+				writeAPIError(w, errLyricsFolderBlocked.status, errLyricsFolderBlocked.code, errLyricsFolderBlocked.message, false)
+				return
+			}
 			slog.Warn("lyrics translation publication failed", "asset", payload.PreviewID, "work_id", workID, "error", err)
 			writeAPIError(w, 409, "llm_asset_pending", "The translation is kept; adding it to the lyrics did not finish. Add it again from Manage lyrics.", true)
 			return

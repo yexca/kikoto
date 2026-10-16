@@ -38,11 +38,21 @@ type lyricsFetchTarget struct {
 }
 
 type lyricsFetchRequestError struct {
-	status  int
+	status int
+	// code is the public error code for refusals the interface explains itself.
+	code    string
 	message string
 }
 
 func (err lyricsFetchRequestError) Error() string { return err.message }
+
+// errLyricsFolderBlocked refuses generated lyrics when a file in the work
+// folder sits where the lyrics folder, or a folder inside it, belongs.
+var errLyricsFolderBlocked = lyricsFetchRequestError{
+	status:  http.StatusConflict,
+	code:    "lyrics_folder_blocked",
+	message: "a file in the work folder is where the lyrics folder belongs; rename or move it, then add the lyrics again",
+}
 
 func lyricsFetchBadRequest(message string) error {
 	return lyricsFetchRequestError{status: http.StatusBadRequest, message: message}

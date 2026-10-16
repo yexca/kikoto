@@ -189,6 +189,13 @@ export type RemoteWorkSavePlanItem = {
   targetExists: boolean;
   targetConflict: boolean;
   targetConflictReason: string;
+  /**
+   * Why an existing entry blocks the target: a folder or other entry that is not
+   * a file, which is never replaced, or a file where one of its folders belongs.
+   */
+  targetBlock?: "not_a_file" | "blocked_path";
+  /** The blocking file's path below the edited folder, for a blocked path. */
+  targetBlocker?: string;
   targetSizeBytes: number | null;
   originalTargetPath: string;
   resolution: RemoteFetchResolution;

@@ -10,6 +10,7 @@ import type {
 import {
   CURRENT_FOLDER_RESOURCE,
   buildFolderEditTree,
+  conflictResolutions,
   folderEditReadiness,
   folderEditRemoteResource,
   folderEditRequest,
@@ -315,5 +316,13 @@ describe("folder edit result", () => {
       b: "conflict",
       c: "excluded",
     });
+  });
+});
+
+describe("folder edit conflicts", () => {
+  it("never offers to replace a folder, or to create anything below a blocking file", () => {
+    expect(conflictResolutions({})).toContain("replace");
+    expect(conflictResolutions({ targetBlock: "not_a_file" })).toEqual(["auto", "keep_local", "keep_both", "rename"]);
+    expect(conflictResolutions({ targetBlock: "blocked_path" })).toEqual(["auto", "keep_local", "rename"]);
   });
 });

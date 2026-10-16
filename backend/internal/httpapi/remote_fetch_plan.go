@@ -364,6 +364,8 @@ type remoteWorkSavePlanItem struct {
 	TargetExists         bool                      `json:"targetExists"`
 	TargetConflict       bool                      `json:"targetConflict"`
 	TargetConflictReason string                    `json:"targetConflictReason"`
+	TargetBlock          string                    `json:"targetBlock,omitempty"`
+	TargetBlocker        string                    `json:"targetBlocker,omitempty"`
 	TargetSizeBytes      *int64                    `json:"targetSizeBytes"`
 	OriginalTargetPath   string                    `json:"originalTargetPath"`
 	Resolution           string                    `json:"resolution"`

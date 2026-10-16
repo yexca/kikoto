@@ -116,6 +116,7 @@ const apiErrorMessageKeys: Record<string, string> = {
   llm_service_not_ready: "errorFeedback.llmServiceNotReady",
   llm_service_start_failed: "errorFeedback.llmServiceStartFailed",
   llm_service_out_of_memory: "errorFeedback.llmServiceOutOfMemory",
+  lyrics_folder_blocked: "errorFeedback.lyricsFolderBlocked",
   invalid_request: "errorFeedback.invalidRequest",
   invalid_ui_locale: "errors.invalidLanguage",
   authentication_required: "errors.authenticationRequired",

@@ -4,7 +4,7 @@ import { Badge, type BadgeProps } from "@/components/ui/badge";
 import type { LLMAssessment } from "@/lib/llmApi";
 import { serviceReceives, type ContentBoundary, type ContentClass } from "@/lib/contentPolicy";
 
-const classBadges: Record<ContentClass, BadgeProps["variant"]> = {
+export const contentClassBadges: Record<ContentClass, BadgeProps["variant"]> = {
   safe: "success",
   sensitive: "warning",
   restricted: "warning",
@@ -41,7 +41,7 @@ export function ContentAssessment({
         </>
       )}
       <div className="flex items-start gap-2">
-        <Badge variant={classBadges[assessment.class]} className="mt-px shrink-0 px-1.5 py-0 text-2xs">
+        <Badge variant={contentClassBadges[assessment.class]} className="mt-px shrink-0 px-1.5 py-0 text-2xs">
           {t(`contentRating.classes.${assessment.class}`)}
         </Badge>
         <p

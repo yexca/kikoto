@@ -2319,6 +2319,12 @@ export const surfaceJapanese = {
   },
 
   folderEdit: {
+    targetBlock: {
+      not_a_file:
+        "このパスにはすでにフォルダーかリンクがあり、置き換えることはできません。そのまま残すか、両方残すか、追加するファイルの名前を変えてください。",
+      blocked_path:
+        "{{path}} はファイルですが、このパスではフォルダーが必要です。そのまま残すか、追加するファイルを別のパスに名前変更してください。",
+    },
     editFiles: "ファイルを編集",
     title: "ファイルを編集",
     description: "作品のほかのフォルダーやリモート版からファイルを追加し、このフォルダーに残すファイルを選びます。",
@@ -2550,6 +2556,8 @@ export const surfaceJapanese = {
   },
 
   errorFeedback: {
+    lyricsFolderBlocked:
+      "作品フォルダー内のファイルが、歌詞フォルダーの置き場所をふさいでいます。そのファイルの名前を変えるか移動してから、もう一度歌詞に追加してください。",
     databaseBusy: "データベースがビジー状態です。しばらくしてから再試行してください。",
     serviceModelNotInstalled:
       "サービスにモデルがインストールされていません。サービス側でインストールしてから、もう一度モデルを取得してください。",
@@ -2848,22 +2856,12 @@ export const surfaceJapanese = {
     },
   },
   asrTranscription: {
-    intro:
-      "音声認識サービスでローカルのトラックを文字起こしします。結果はここで確認を待ち、追加すると言語別の歌詞フォルダーに WebVTT ファイルとして保存され、トラックに割り当てられます。",
-    track: "トラック",
     service: "サービス",
-    language: "話されている言語",
     detect: "自動検出",
-    languageHint:
-      "歌詞はこの言語で保存・割り当てされます。自動検出の場合は、すべての言語向けの歌詞として保存されます。",
     noService: "利用できる音声認識サービスがありません。管理者が「設定 → LLM・音声認識」で追加できます。",
     noServiceShort: "利用できるサービスなし",
     loading: "読み込み中…",
     servicesFailed: "音声認識サービスを読み込めませんでした。",
-    start: "文字起こし",
-    starting: "開始中…",
-    queued: "文字起こしをキューに追加しました。進行状況は下と「アクティビティ」に表示されます。",
-    joined: "このトラックはすでに文字起こし中です。",
     startFailed: "文字起こしを開始できませんでした。",
     listTitle: "文字起こし",
     refresh: "文字起こしを再読み込み",
@@ -2924,26 +2922,45 @@ export const surfaceJapanese = {
     discard: "破棄",
     discarded: "文字起こしを破棄しました。",
     discardFailed: "文字起こしを破棄できませんでした。",
+    intro:
+      "トラックを選んで音声認識サービスで文字起こしします。結果は下で確認を待ち、追加すると言語別の歌詞フォルダーに WebVTT ファイルとして保存され、トラックに割り当てられます。",
+    language: "音声の言語",
+    languageHint:
+      "音声で話されている言語で、サービスへのヒントとして送られます。歌詞はこの言語で保存・割り当てされ、自動検出の場合はフォールバックの歌詞として保存されます。",
+    filter: "表示するトラック",
+    filters: {
+      noLyrics: "歌詞なし",
+      noOrigin: "{{language}}の歌詞なし",
+      all: "すべて",
+    },
+    filterEmpty: {
+      noLyrics: "すべてのトラックに歌詞があります。",
+      noOrigin: "すべてのトラックに{{language}}の歌詞があります。",
+      all: "この作品にはローカルの音声ファイルがありません。",
+    },
+    selectAll: "表示中のトラックをすべて選択",
+    selectTrack: "{{title}} を選択",
+    audioFile: "音声ファイル",
+    noLyrics: "歌詞なし",
+    selectHint: "文字起こしするトラックを選んでください。",
+    selectedCount_one: "{{count}} 件のトラックを選択中",
+    selectedCount_other: "{{count}} 件のトラックを選択中",
+    startCount: "{{count}} 件を文字起こし",
+    startingCount: "開始中 {{done}}/{{total}}…",
+    queuedCount_one: "{{count}} 件の文字起こしを登録しました。",
+    queuedCount_other: "{{count}} 件の文字起こしを登録しました。",
+    joinedCount_one: "{{count}} 件はすでに文字起こし中です。",
+    joinedCount_other: "{{count}} 件はすでに文字起こし中です。",
+    awaitingCount: "確認待ち {{count}} 件",
   },
   lyricsTranslation: {
-    intro:
-      "LLM プロバイダーで歌詞ファイルを翻訳します。訳文は元のファイルのタイミングを保ち、ここで確認を待ちます。追加すると、トラックの作品フォルダー内にある翻訳先言語の歌詞フォルダーに保存され、トラックに割り当てられます。",
-    source: "歌詞ファイル",
-    track: "トラック",
-    chooseTrack: "トラックを選択",
     provider: "LLM プロバイダー",
-    language: "翻訳先",
-    hint: "この歌詞が属するトラックを選んでください。訳文は選んだ言語でそのトラックに割り当てられます。コンテンツ安全ポリシーはメタデータの翻訳と同じく適用されます。",
     noProvider: "利用できる LLM プロバイダーがありません。管理者が「設定 → LLM」で追加できます。",
     noProviderShort: "利用できるプロバイダーなし",
     noLyrics:
       "この作品には翻訳できる歌詞ファイルがありません。先に歌詞ファイルを追加するか、トラックを文字起こししてください。",
     loading: "読み込み中…",
     providersFailed: "LLM プロバイダーを読み込めませんでした。",
-    start: "翻訳",
-    starting: "開始中…",
-    queued: "翻訳をキューに追加しました。進捗は下と Activity に表示されます。",
-    joined: "この翻訳はすでにキューにあります。",
     startFailed: "翻訳を開始できませんでした。",
     listTitle: "翻訳",
     refresh: "翻訳を更新",
@@ -3016,6 +3033,40 @@ export const surfaceJapanese = {
     discard: "破棄",
     discarded: "訳文を破棄しました。",
     discardFailed: "訳文を破棄できませんでした。",
+    intro:
+      "行はトラック、列は歌詞の言語です。緑は歌詞あり、赤は歌詞なしです。赤いセルか言語の見出しをクリックすると、その言語を作成対象にします。各トラックは原語の歌詞から翻訳し、同じ行の別の緑のセルをクリックすると翻訳元を変えられます。結果は下で確認を待ち、追加すると翻訳先の言語の歌詞フォルダーに保存され、トラックに割り当てられます。",
+    audioFile: "音声ファイル",
+    selectColumn: "{{language}}がないトラックをすべて選択",
+    cellHas: "{{track}}：{{language}}の歌詞あり",
+    cellUseSource: "{{track}} を{{language}}から翻訳",
+    cellSource: "{{track}} は{{language}}から翻訳",
+    cellNoFallback: "{{track}}：フォールバックの歌詞なし",
+    cellTarget: "{{track}} を{{language}}に翻訳",
+    cellMissing: "{{track}}：{{language}}の歌詞なし",
+    cellRemote: "{{source}} から読み込み",
+    sourceShort: "翻訳元",
+    targetShort: "作成",
+    legend: "凡例",
+    legendHas: "歌詞あり",
+    legendMissing: "歌詞なし",
+    legendSource: "翻訳元",
+    legendTarget: "作成する言語",
+    columns: "言語 {{shown}}/{{total}}",
+    columnsLabel: "表示する言語",
+    ratingFailed_one: "{{count}} 件の歌詞ファイルの区分を確認できませんでした。",
+    ratingFailed_other: "{{count}} 件の歌詞ファイルの区分を確認できませんでした。",
+    selectHint: "赤いセルか言語の見出しをクリックして翻訳を選んでください。",
+    selectedCount_one: "翻訳 {{count}} 件",
+    selectedCount_other: "翻訳 {{count}} 件",
+    excludedCount_one: "{{count}} 件が {{provider}} の受信上限を超えています",
+    excludedCount_other: "{{count}} 件が {{provider}} の受信上限を超えています",
+    startCount: "{{count}} 件を翻訳",
+    startingCount: "開始中 {{done}}/{{total}}…",
+    queuedCount_one: "{{count}} 件の翻訳を登録しました。",
+    queuedCount_other: "{{count}} 件の翻訳を登録しました。",
+    joinedCount_one: "{{count}} 件はすでに登録済みです。",
+    joinedCount_other: "{{count}} 件はすでに登録済みです。",
+    awaitingCount: "確認待ち {{count}} 件",
   },
   translationTargets: {
     unsupported: "このモデルは非対応",
@@ -3063,6 +3114,7 @@ export const surfaceJapanese = {
       unknown: "区分不明",
       blocked: "ブロック",
     },
+    checking: "確認中 {{done}}/{{total}}…",
   },
   lyricsManager: {
     title: "歌詞を管理",
@@ -3107,9 +3159,6 @@ export const surfaceJapanese = {
     tabTranslate: "翻訳",
     assignNeedsWrite: "トラックの指定にはライブラリの書き込み権限が必要なため、ファイルだけを追加します。",
     language: "歌詞の言語",
-    allLanguagesHint: "ここの歌詞はすべての言語で使われます。指定のないトラックはファイル名で自動的に照合されます。",
-    languageHint:
-      "再生時は、リスナーのメタデータ言語のうち歌詞がある最初の言語、次に全言語共通の歌詞、最後にその他の言語を使います。",
     languageUnset: "未設定",
     clearLanguage: "この言語をクリア",
     lyricsLanguage: "この歌詞の言語",
@@ -3125,6 +3174,12 @@ export const surfaceJapanese = {
     managedLyricsListed: "ほかのファイルと一緒に一覧しています",
     noLyricsTryFiles:
       "ローカルの歌詞ファイルが見つかりません。「歌詞ファイル」を開き、このフォルダー、別の版、またはリモートソースから歌詞を追加してください。",
+    fallback: "フォールバック",
+    original: "原語",
+    fallbackHint:
+      "リスナーの言語に歌詞がないときに使われる歌詞です。フォールバックの歌詞がないトラックはファイル名で自動的に照合されます。",
+    languageHint:
+      "再生時は、リスナーのメタデータ言語のうち歌詞がある最初の言語、次にフォールバックの歌詞、最後にその他の言語を使います。",
   },
   lyricsFiles: {
     managed: "管理中の歌詞",
