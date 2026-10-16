@@ -21,6 +21,18 @@
   shelf counts and marks works that started to match since you last chose
   **Mark all as seen**, and **Convert to regular list** keeps the current works
   as an ordinary list. Personal data exports leave smart lists out.
+- **Add to list** on work cards and work detail has a search field, saves each
+  list you check or clear at once, and creates a list from a name no list has.
+  It notes a smart list that holds the work through its rule. **Change lists**
+  on selected Favorites works shows what each list will add or remove before
+  you apply it and can also create a list. On phones both open as a bottom
+  sheet.
+- **Add list** and a shelf's **Edit list** open a focused editor for that one
+  list, with the icon beside the name, a note when another list has the same
+  name, and **Delete list**. **Edit lists** lists every list on its own and
+  returns to it after an edit. Moving a list saves at once without a
+  notification or switching shelves. Japanese, Korean, and Chinese call
+  **Edit lists** "Manage lists" so it differs from a shelf's Edit list.
 - The List button on a work's detail page names the list that holds the work.
   When several do, it names the first and counts the rest, and its tooltip
   names them all.

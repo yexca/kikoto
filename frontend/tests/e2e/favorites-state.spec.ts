@@ -46,6 +46,7 @@ async function mockFavorites(
     interactiveQuickMark?: boolean;
     /** Gives each status filter its own covers, so filtered results look different. */
     statusCovers?: boolean;
+    onMembershipUpdate?: (body: unknown) => void;
   } = {},
 ) {
   let savedTags: UserTag[] = baseWork.userTags;
@@ -89,6 +90,24 @@ async function mockFavorites(
       });
       favoriteLists = [...favoriteLists, list];
       await route.fulfill({ json: list });
+      return;
+    }
+    if (url.pathname === "/api/favorite-lists/membership/summary") {
+      const body = request.postDataJSON() as { workIds: number[] };
+      await route.fulfill({
+        json: {
+          total: body.workIds.length,
+          lists: [{ listId: 2, count: 1 }],
+        } satisfies ApiResponse<"summarizeFavoriteListMembership">,
+      });
+      return;
+    }
+    if (url.pathname === "/api/favorite-lists/membership") {
+      const body = request.postDataJSON() as { workIds: number[] };
+      options.onMembershipUpdate?.(body);
+      await route.fulfill({
+        json: { updated: body.workIds.length } satisfies ApiResponse<"updateFavoriteListMembership">,
+      });
       return;
     }
     const favoriteListMatch = url.pathname.match(/^\/api\/favorite-lists\/(\d+)$/);
@@ -221,6 +240,115 @@ async function mockFavorites(
   });
 }
 
+test("@desktop bulk list changes stay pending until applied and leave untouched lists alone", async ({
+  page,
+}, testInfo) => {
+  const updates: unknown[] = [];
+  await mockFavorites(page, { onMembershipUpdate: (body) => updates.push(body) });
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/favorites");
+
+  await page.getByRole("button", { name: "Select works", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Select all on this page", exact: true }).click();
+  await page.getByRole("button", { name: "Change lists (24)", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "24 selected works" });
+  const search = picker.getByRole("combobox", { name: "Search or create a list" });
+  await expect(search).toBeFocused();
+  const study = picker.getByRole("option", { name: /^Study/ });
+  await expect(study).toHaveAttribute("aria-checked", "mixed");
+  await expect(study).toContainText("1/24");
+  const apply = picker.getByRole("button", { name: "Apply to 24 works", exact: true });
+  await expect(apply).toBeDisabled();
+
+  // A mixed list cycles through all and none back to untouched.
+  await study.click();
+  await expect(study).toHaveAttribute("aria-selected", "true");
+  await expect(study).toContainText("+23");
+  await study.click();
+  await expect(study).toContainText("−1");
+  await study.click();
+  await expect(study).toHaveAttribute("aria-checked", "mixed");
+  await expect(apply).toBeDisabled();
+
+  // Pending changes survive an outside click.
+  await study.click();
+  await page.getByRole("heading", { name: "All Favorites", level: 2 }).click();
+  await expect(picker).toBeVisible();
+
+  await search.fill("Example Sleep");
+  await search.press("Enter");
+  const created = picker.getByRole("option", { name: /^Example Sleep/ });
+  await expect(created).toHaveAttribute("aria-selected", "true");
+  await expect(created).toContainText("+24");
+  await expect(search).toHaveValue("");
+  await page.screenshot({ path: testInfo.outputPath("bulk-list-picker.png") });
+
+  await apply.click();
+  await expect(picker).toHaveCount(0);
+  expect(updates).toEqual([
+    { workIds: Array.from({ length: 24 }, (_, index) => index + 1), addListIds: [2, 3], removeListIds: [] },
+  ]);
+  await expect(
+    page.getByRole("navigation", { name: "Favorite shelves" }).getByRole("button", { name: /^Example Sleep/ }),
+  ).toBeVisible();
+});
+
+test("@desktop shelves edit their own list directly and list moves save without leaving the shelf", async ({
+  page,
+}) => {
+  const listWrites: { id: string; body: unknown }[] = [];
+  page.on("request", (request) => {
+    const match = /\/api\/favorite-lists\/(\d+)$/.exec(new URL(request.url()).pathname);
+    if (match && request.method() === "PATCH") listWrites.push({ id: match[1], body: request.postDataJSON() });
+  });
+  await mockFavorites(page);
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/favorites");
+  const shelves = page.getByRole("navigation", { name: "Favorite shelves" });
+
+  await shelves.getByRole("button", { name: "Add list", exact: true }).click();
+  const newList = page.getByRole("dialog", { name: "New list" });
+  await newList.getByLabel("Name").fill("Example Night");
+  await newList.getByRole("button", { name: "Create list", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Example Night", level: 2 })).toBeVisible();
+
+  await shelves.getByRole("button", { name: "Edit lists", exact: true }).click();
+  const listManager = page.getByRole("dialog", { name: "Edit lists" });
+  await listManager.getByRole("button", { name: "Move up: Example Night" }).click();
+  await expect(listManager.getByRole("listitem").first()).toContainText("Example Night");
+  await expect
+    .poll(() => listWrites)
+    .toEqual([
+      { id: "3", body: { sortOrder: 0 } },
+      { id: "2", body: { sortOrder: 1 } },
+    ]);
+  await listManager.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Example Night", level: 2 })).toBeVisible();
+  await expect(shelves.getByRole("button", { name: /^(Example Night|Study)/ })).toHaveText([
+    /^Example Night/,
+    /^Study/,
+  ]);
+
+  // The shelf's own Edit list opens the editor alone, and deleting there closes it.
+  await page.getByRole("button", { name: "Edit list", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "Edit list" });
+  await expect(editor.getByRole("form", { name: "Edit list: Example Night" })).toBeVisible();
+  // Escape closes the icon picker only, not the editor beneath it.
+  await editor.getByRole("button", { name: "Icon: Default list icon" }).click();
+  await expect(page.getByRole("dialog", { name: "Icon" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Icon" })).toHaveCount(0);
+  await expect(editor.getByRole("form", { name: "Edit list: Example Night" })).toBeVisible();
+  await editor.getByRole("button", { name: "Delete list", exact: true }).click();
+  await page
+    .getByRole("alertdialog", { name: "Delete list?" })
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "All Favorites", level: 2 })).toBeVisible();
+});
+
 test("@desktop favorites puts shelves in a collapsible rail beside search and work controls", async ({ page }) => {
   await mockFavorites(page);
   await page.setViewportSize({ width: 1600, height: 900 });
@@ -280,39 +408,38 @@ test("@desktop favorites puts shelves in a collapsible rail beside search and wo
   await shelves.getByRole("button", { name: "Edit lists", exact: true }).click();
   const listManager = page.getByRole("dialog", { name: "Edit lists" });
   await expect(listManager).toBeVisible();
-  await expect(listManager.getByRole("button", { name: "Rename: Study" })).toBeVisible();
+  await expect(listManager.getByRole("button", { name: "Edit list: Study" })).toBeVisible();
 
-  await listManager.getByRole("button", { name: "Rename: Study" }).click();
-  const renameForm = listManager.getByRole("form", { name: "Rename list: Study" });
-  await expect(renameForm).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(1);
-  await expect(renameForm.getByRole("radio", { name: "Default list icon" })).toHaveAttribute("aria-checked", "true");
-  await renameForm.getByLabel("Name").fill("Focus");
-  await renameForm.getByLabel("Description").fill("Deep listening");
-  await renameForm.getByRole("radio", { name: "Moon" }).click();
+  // Editing from Edit lists replaces the organizer in the same dialog and returns to it.
+  await listManager.getByRole("button", { name: "Edit list: Study" }).click();
+  const listDialog = page.getByRole("dialog");
+  const editForm = listDialog.getByRole("form", { name: "Edit list: Study" });
+  await expect(editForm).toBeVisible();
+  await expect(listDialog).toHaveCount(1);
+  const iconButton = editForm.getByRole("button", { name: "Icon: Default list icon" });
+  await editForm.getByLabel("Name").fill("Focus");
+  await editForm.getByLabel("Description").fill("Deep listening");
+  await iconButton.click();
+  await page.getByRole("dialog", { name: "Icon" }).getByRole("radio", { name: "Moon" }).click();
+  await expect(editForm.getByRole("button", { name: "Icon: Moon" })).toBeFocused();
   const renameRequest = page.waitForRequest(
     (request) => request.method() === "PATCH" && /\/api\/favorite-lists\/2$/.test(request.url()),
   );
-  await renameForm.getByRole("button", { name: "Save", exact: true }).click();
+  await listDialog.getByRole("button", { name: "Save", exact: true }).click();
   expect((await renameRequest).postDataJSON()).toEqual(
     expect.objectContaining({ name: "Focus", description: "Deep listening", icon: "moon" }),
   );
-  await expect(listManager.getByRole("button", { name: "Rename: Focus" })).toBeVisible();
-  await listManager.getByRole("button", { name: "Rename: Focus" }).click();
-  await expect(
-    listManager.getByRole("form", { name: "Rename list: Focus" }).getByRole("radio", { name: "Moon" }),
-  ).toHaveAttribute("aria-checked", "true");
-  await listManager.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(listManager.getByRole("button", { name: "Edit list: Focus" })).toBeVisible();
 
   await listManager.getByRole("button", { name: "Add list", exact: true }).click();
-  const addForm = listManager.getByRole("form", { name: "Add list" });
+  const addForm = listDialog.getByRole("form", { name: "New list" });
   await expect(addForm).toBeVisible();
-  await expect(listManager.getByRole("listitem").last().getByRole("form", { name: "Add list" })).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(1);
+  await addForm.getByLabel("Name").fill("focus ");
+  await expect(addForm.getByText("Another list already has this name.")).toBeVisible();
   await addForm.getByLabel("Name").fill("Example List");
   await addForm.getByLabel("Description").fill("Example description");
-  await addForm.getByRole("button", { name: "Add list", exact: true }).click();
-  await expect(listManager.getByRole("button", { name: "Rename: Example List" })).toBeVisible();
+  await listDialog.getByRole("button", { name: "Create list", exact: true }).click();
+  await expect(listManager.getByRole("button", { name: "Edit list: Example List" })).toBeVisible();
 
   const deleteListButton = listManager.getByRole("button", { name: "Delete: Example List" });
   await deleteListButton.click();
@@ -330,7 +457,7 @@ test("@desktop favorites puts shelves in a collapsible rail beside search and wo
     .getByRole("button", { name: "Delete", exact: true })
     .click();
   await expect(page.getByRole("alertdialog", { name: "Delete list?" })).toHaveCount(0);
-  await expect(listManager.getByRole("button", { name: "Rename: Example List" })).toHaveCount(0);
+  await expect(listManager.getByRole("button", { name: "Edit list: Example List" })).toHaveCount(0);
   await expect(listManager).toBeVisible();
 
   await page.getByRole("button", { name: "Close favorite list editor" }).click();
@@ -421,16 +548,16 @@ test("mobile favorites shows shelves as one row above search and icon controls",
   const mobileListManager = page.getByRole("dialog", { name: "Edit lists" });
   await expect(mobileListManager).toBeVisible();
   await mobileListManager.getByRole("button", { name: "Add list", exact: true }).click();
-  await expect(mobileListManager.getByRole("form", { name: "Add list" })).toBeVisible();
-  await expect(mobileListManager.getByRole("listitem").last().getByRole("form", { name: "Add list" })).toBeVisible();
+  const mobileListDialog = page.getByRole("dialog", { name: "New list" });
+  await expect(mobileListDialog.getByRole("form", { name: "New list" })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(1);
-  const mobileListManagerBox = await mobileListManager.boundingBox();
+  const mobileListDialogBox = await mobileListDialog.boundingBox();
   const mobileViewport = page.viewportSize();
-  expect(mobileListManagerBox).not.toBeNull();
+  expect(mobileListDialogBox).not.toBeNull();
   expect(mobileViewport).not.toBeNull();
-  expect(mobileListManagerBox!.y).toBeGreaterThanOrEqual(0);
-  expect(mobileListManagerBox!.y + mobileListManagerBox!.height).toBeLessThanOrEqual(mobileViewport!.height);
-  await mobileListManager.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(mobileListDialogBox!.y).toBeGreaterThanOrEqual(0);
+  expect(mobileListDialogBox!.y + mobileListDialogBox!.height).toBeLessThanOrEqual(mobileViewport!.height);
+  await mobileListDialog.getByRole("button", { name: "Back", exact: true }).click();
   await mobileListManager.getByRole("button", { name: "Done", exact: true }).click();
 
   const topPreviousPage = page.getByRole("button", { name: "Previous page" }).first();

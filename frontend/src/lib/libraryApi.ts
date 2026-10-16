@@ -215,6 +215,8 @@ export type FavoriteList = {
   sortOrder: number;
   kind: FavoriteListKind;
   selected?: boolean;
+  /** A smart list that shows the work through its rule rather than a hand add. */
+  matchedByRule?: boolean;
   /** Set on smart lists. */
   rule?: SmartListRuleView;
 };

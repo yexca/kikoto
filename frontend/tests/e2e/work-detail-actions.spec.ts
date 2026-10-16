@@ -17,53 +17,72 @@ async function metadataActions(page: Page, sources: LibrarySource[] = [], canEdi
   return control;
 }
 
-test("detail list quick creation keeps existing memberships and lets a failed creation retry", async ({
+test("detail list picker saves each toggle, creates a list from the search, and lets a failed creation retry", async ({
   page,
 }, testInfo) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true });
   const existing = favoriteListFixture({ id: 2, name: "Synthetic existing list", kind: "user" });
   const created = favoriteListFixture({ id: 3, name: "Synthetic new list", kind: "user" });
+  const smart = favoriteListFixture({ id: 4, name: "Synthetic smart list", kind: "smart" });
+  let lists = [existing, smart];
+  let selected = [2, 4];
+  const workLists = () =>
+    lists.map((list) => ({ ...list, selected: selected.includes(list.id), matchedByRule: list.id === 4 }));
   const creations: unknown[] = [];
   const memberships: unknown[] = [];
   await page.route("**/api/favorite-lists", (route) => {
-    if (route.request().method() !== "POST") return route.fulfill({ json: [existing] });
+    if (route.request().method() !== "POST") return route.fulfill({ json: lists });
     creations.push(route.request().postDataJSON());
     if (creations.length === 1) {
       return route.fulfill({ status: 500, json: { error: "Synthetic creation failure" } });
     }
+    lists = [...lists, created];
     return route.fulfill({ status: 201, json: created });
   });
   await page.route("**/api/works/1/favorite-lists", (route) => {
-    if (route.request().method() !== "PUT") {
-      const saved = memberships.length > 0 ? [{ ...created, selected: true }] : [];
-      return route.fulfill({ json: [{ ...existing, selected: true }, ...saved] });
-    }
-    memberships.push(route.request().postDataJSON());
-    return route.fulfill({ json: { workId: 1, favorite: true, lists: [existing, created] } });
+    if (route.request().method() !== "PUT") return route.fulfill({ json: workLists() });
+    const body = route.request().postDataJSON() as { listIds: number[] };
+    memberships.push(body);
+    selected = body.listIds;
+    return route.fulfill({ json: { workId: 1, favorite: selected.length > 0, lists: workLists() } });
   });
   await page.goto("/RJ00000000");
-  await page.getByRole("button", { name: "Lists: Synthetic existing list", exact: true }).click();
-  await page.getByRole("button", { name: "Add list", exact: true }).click();
-  const form = page.getByRole("form", { name: "Add list", exact: true });
-  await form.getByRole("textbox", { name: "Name", exact: true }).fill("Synthetic cancelled list");
-  await form.getByRole("button", { name: "Cancel", exact: true }).click();
-  expect(creations).toEqual([]);
-  await page.getByRole("button", { name: "Add list", exact: true }).click();
-  await form.getByRole("textbox", { name: "Name", exact: true }).fill("  Synthetic new list  ");
-  await page.screenshot({ path: testInfo.outputPath("list-quick-create.png") });
-  await form.getByRole("button", { name: "Add list", exact: true }).click();
-  await expect(form.getByRole("alert")).toBeVisible();
-  await expect(form.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("  Synthetic new list  ");
-  await form.getByRole("button", { name: "Add list", exact: true }).click();
-  await expect(form).toHaveCount(0);
-  await expect(page.getByRole("checkbox", { name: "Remove from Synthetic new list" })).toBeChecked();
-  await expect(page.getByRole("checkbox", { name: "Remove from Synthetic existing list" })).toBeChecked();
-  expect(memberships).toEqual([]);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect.poll(() => memberships).toEqual([{ listIds: [2, 3] }]);
+  await page
+    .getByRole("button", { name: "Lists: Synthetic existing list and Synthetic smart list", exact: true })
+    .click();
+  const picker = page.getByRole("dialog", { name: "Add to list", exact: true });
+  await expect(picker.getByRole("option", { name: /^Synthetic existing list/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(picker.getByRole("option", { name: /^Synthetic smart list/ })).toContainText("Matched by its rule");
+
+  const search = picker.getByRole("combobox", { name: "Search or create a list", exact: true });
+  await search.fill("synthetic EXISTING list");
+  await expect(picker.getByRole("option")).toHaveCount(1);
+  await search.fill("  Synthetic new list  ");
+  await page.screenshot({ path: testInfo.outputPath("list-picker-create.png") });
+  const create = picker.getByRole("option", { name: "Create “Synthetic new list”", exact: true });
+  await create.click();
+  await expect(picker.getByRole("alert")).toBeVisible();
+  await expect(search).toHaveValue("  Synthetic new list  ");
+  await create.click();
+  await expect(search).toHaveValue("");
+  await expect(picker.getByRole("option", { name: /^Synthetic new list/ })).toHaveAttribute("aria-selected", "true");
+  await expect.poll(() => memberships).toEqual([{ listIds: [2, 4, 3] }]);
   expect(creations).toEqual([{ name: "Synthetic new list" }, { name: "Synthetic new list" }]);
+
+  await picker.getByRole("option", { name: /^Synthetic existing list/ }).click();
+  await expect.poll(() => memberships).toEqual([{ listIds: [2, 4, 3] }, { listIds: [4, 3] }]);
+  await expect(picker.getByRole("option", { name: /^Synthetic existing list/ })).toHaveAttribute(
+    "aria-selected",
+    "false",
+  );
+
+  // The work's own list button follows the saved lists once the picker closes.
+  await picker.getByRole("button", { name: "Close", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Lists: Synthetic existing list and Synthetic new list", exact: true }),
+    page.getByRole("button", { name: "Lists: Synthetic smart list and Synthetic new list", exact: true }),
   ).toBeVisible();
 });
 

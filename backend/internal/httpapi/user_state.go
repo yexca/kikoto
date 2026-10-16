@@ -28,6 +28,9 @@ type favoriteListResponse struct {
 	SortOrder   int64  `json:"sortOrder"`
 	Kind        string `json:"kind"`
 	Selected    bool   `json:"selected,omitempty"`
+	// MatchedByRule marks a smart list that shows the work through its rule
+	// rather than because the work was added by hand.
+	MatchedByRule bool `json:"matchedByRule,omitempty"`
 	// Rule is set on smart lists.
 	Rule *personal.SmartRuleView `json:"rule,omitempty"`
 }
@@ -1012,7 +1015,8 @@ func (s *Server) loadFavoriteLists(ctx context.Context, userID int64, workID *in
 }
 
 // markSmartListSelection reports a smart list as selected when it shows the
-// work, whether by its rule or because the work was added by hand.
+// work, whether by its rule or because the work was added by hand. On entry,
+// Selected says whether the work was added by hand.
 func (s *Server) markSmartListSelection(ctx context.Context, userID, workID int64, lists []favoriteListResponse) error {
 	editable, err := loadEditableFavoriteLists(ctx, s.db, userID)
 	if err != nil {
@@ -1023,9 +1027,11 @@ func (s *Server) markSmartListSelection(ctx context.Context, userID, workID int6
 		if !ok || list.Kind != "smart" {
 			continue
 		}
+		handAdded := lists[index].Selected
 		if lists[index].Selected, err = favoriteListContainsWork(ctx, s.db, list, workID); err != nil {
 			return err
 		}
+		lists[index].MatchedByRule = lists[index].Selected && !handAdded
 	}
 	return nil
 }

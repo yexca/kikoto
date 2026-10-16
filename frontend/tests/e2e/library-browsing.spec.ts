@@ -606,26 +606,27 @@ test("@desktop mini card mode leaves the cover and title and is remembered", asy
   await expect(page).toHaveURL(new RegExp(`/${work.primaryCode}(?:\\?|$)`));
 });
 
-test("favorite list popovers use measured mobile placement and stay inside the usable viewport", async ({ page }) => {
+test("the add-to-list picker opens as a bottom sheet inside the viewport on phones", async ({ page }) => {
   await mockApplication(page);
   await page.goto("/");
 
   const trigger = page.getByRole("button", { name: "Add to list" });
   await trigger.scrollIntoViewIfNeeded();
   await trigger.click();
-  const popover = page.locator(".fixed.z-50").filter({ hasText: "Lists" });
-  await expect(popover).toBeVisible();
-  const [triggerBox, popoverBox, viewport] = await Promise.all([
-    trigger.boundingBox(),
-    popover.boundingBox(),
+  const sheet = page.getByRole("dialog", { name: "Add to list" });
+  await expect(sheet).toBeVisible();
+  // Phones keep the keyboard closed until the search is tapped.
+  await expect(sheet.getByRole("combobox")).not.toBeFocused();
+  const [sheetBox, viewport] = await Promise.all([
+    sheet.boundingBox(),
     page.evaluate(() => ({ width: innerWidth, height: innerHeight })),
   ]);
-  expect(triggerBox).not.toBeNull();
-  expect(popoverBox).not.toBeNull();
-  expect(popoverBox!.x).toBeGreaterThanOrEqual(0);
-  expect(popoverBox!.x + popoverBox!.width).toBeLessThanOrEqual(viewport.width);
-  expect(popoverBox!.y).toBeGreaterThanOrEqual(0);
-  expect(popoverBox!.y + popoverBox!.height).toBeLessThanOrEqual(viewport.height - 150);
+  expect(sheetBox).not.toBeNull();
+  expect(sheetBox!.x).toBeGreaterThanOrEqual(0);
+  expect(sheetBox!.x + sheetBox!.width).toBeLessThanOrEqual(viewport.width);
+  await expect
+    .poll(async () => (await sheet.boundingBox())!.y + (await sheet.boundingBox())!.height)
+    .toBeLessThanOrEqual(viewport.height);
 });
 
 test("library search follows the user across scopes and survives navigation", async ({ page }) => {

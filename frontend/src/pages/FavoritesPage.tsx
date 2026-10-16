@@ -19,9 +19,9 @@ import { favoriteListIcon } from "@/components/favorite-list/favoriteListIcons";
 import { FavoriteContinueStrip, useFavoriteContinueListening } from "@/features/favorites/FavoriteContinueStrip";
 import { FavoriteCreatorShelf } from "@/features/favorites/FavoriteCreatorShelf";
 import {
-  FavoriteListMembershipPopover,
+  FavoriteListMembershipPicker,
   type FavoriteListMembershipChanges,
-} from "@/features/favorites/FavoriteListMembershipPopover";
+} from "@/features/favorites/FavoriteListMembershipPicker";
 import { FavoriteListManager, type FavoriteListDraft } from "@/features/favorites/FavoriteListManager";
 import { FavoriteShelfHeader } from "@/features/favorites/FavoriteShelfHeader";
 import {
@@ -154,7 +154,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     () => new Set(initialEntryState.favoritesSelection?.workIDs ?? []),
   );
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
-  const [listDialogTarget, setListDialogTarget] = useState<{ mode: "bulk" } | null>(null);
+  const [listPickerOpen, setListPickerOpen] = useState(false);
+  const listActionRef = useRef<HTMLDivElement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [worksSnapshotUserID, setWorksSnapshotUserID] = useState<number | null>(null);
   const [worksLoadError, setWorksLoadError] = useState("");
@@ -164,6 +165,9 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [deleteListTarget, setDeleteListTarget] = useState<FavoriteList | null>(null);
   const [isDeletingList, setIsDeletingList] = useState(false);
   const [listManagerOpen, setListManagerOpen] = useState(false);
+  // An editor opened from Edit lists returns there; one opened from a shelf closes the dialog.
+  const [listEditorReturnsToList, setListEditorReturnsToList] = useState(false);
+  const listOrderSave = useRef<Promise<void>>(Promise.resolve());
   const requestSeq = useRef(0);
   const favoriteListsLoadedFor = useRef<number | null>(null);
   const entitiesLoadedRequestKey = useRef("");
@@ -459,6 +463,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const markedList = favoriteLists.find((list) => list.kind === "marked") ?? null;
   const userFavoriteLists = favoriteLists.filter((list) => list.kind !== "marked");
   const selectedWorks = works.filter((work) => selectedWorkIDs.has(work.id));
+  // The bulk list picker belongs to the selection bar and closes with it or an emptied selection.
+  const listPickerVisible = listPickerOpen && selectionMode && selectedWorks.length > 0;
   const favoriteCircles = circles.filter((circle) => circle.favorite);
   const favoriteVoices = voices.filter((voice) => voice.favorite);
   const hasEntitySnapshot = entitySnapshotUserID === principalID;
@@ -697,14 +703,21 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       setActiveList(list.id);
     }
     if (favoriteEntity !== "works") setFavoriteEntity("works");
-    setListEditor(null);
+    finishListEdit();
     toast.success(t("favorites.listSaved"));
   };
 
+  /** Opens Edit lists, or the editor of one list straight from a shelf. */
   const openFavoriteListManager = (editor: FavoriteList | "new" | null = null) => {
     setListEditor(editor);
+    setListEditorReturnsToList(false);
     setDeleteListTarget(null);
     setListManagerOpen(true);
+  };
+
+  const editFromListManager = (editor: FavoriteList | "new") => {
+    setListEditor(editor);
+    setListEditorReturnsToList(true);
   };
 
   const closeFavoriteListManager = () => {
@@ -714,47 +727,69 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     setDeleteListTarget(null);
   };
 
-  const deleteFavoriteList = async () => {
-    if (!deleteListTarget || isDeletingList) return;
-    const deletingList = deleteListTarget;
+  /** Leaves the editor: back to Edit lists when it came from there, otherwise closed. */
+  const finishListEdit = () => {
+    if (listEditorReturnsToList) setListEditor(null);
+    else closeFavoriteListManager();
+  };
+
+  /** Deletes a list; failures are reported and rethrown so the caller can stay put. */
+  const removeFavoriteList = async (list: FavoriteList) => {
     setIsDeletingList(true);
     try {
-      await api.deleteFavoriteList(deletingList.id);
-      setDeleteListTarget(null);
-      if (activeList === deletingList.id) setActiveList("all");
+      await api.deleteFavoriteList(list.id);
+      if (activeList === list.id) setActiveList("all");
       await reloadFavoriteLists();
       toast.success(t("favorites.listDeleted"));
     } catch (error) {
       toast.notify(toastFromError(error, t("favorites.listDeleteFailed")));
+      throw error;
     } finally {
       setIsDeletingList(false);
     }
   };
 
-  const moveFavoriteListByID = async (listID: number, direction: -1 | 1) => {
+  const deleteFavoriteList = async () => {
+    if (!deleteListTarget || isDeletingList) return;
+    try {
+      await removeFavoriteList(deleteListTarget);
+      setDeleteListTarget(null);
+    } catch {
+      // Reported by removeFavoriteList; the confirmation stays for a retry.
+    }
+  };
+
+  const deleteEditedFavoriteList = async (list: FavoriteList) => {
+    if (isDeletingList) return;
+    await removeFavoriteList(list);
+    if (listEditorReturnsToList) setListEditor(null);
+    else {
+      setListManagerOpen(false);
+      setListEditor(null);
+    }
+  };
+
+  // Moves apply at once and save in order; only lists whose position changed are written.
+  const moveFavoriteListByID = (listID: number, direction: -1 | 1) => {
     const targetIndex = userFavoriteLists.findIndex((list) => list.id === listID);
-    if (targetIndex < 0) return;
     const nextIndex = targetIndex + direction;
-    if (nextIndex < 0 || nextIndex >= userFavoriteLists.length) return;
+    if (targetIndex < 0 || nextIndex < 0 || nextIndex >= userFavoriteLists.length) return;
     const reordered = [...userFavoriteLists];
     const [moving] = reordered.splice(targetIndex, 1);
     reordered.splice(nextIndex, 0, moving);
-    const previousLists = favoriteLists;
-    setFavoriteLists((lists) =>
-      lists.map((list) => {
-        const nextIndex = reordered.findIndex((item) => item.id === list.id);
-        return nextIndex >= 0 ? { ...list, sortOrder: nextIndex } : list;
-      }),
-    );
-    try {
-      await Promise.all(reordered.map((list, index) => api.updateFavoriteList(list.id, { sortOrder: index })));
-      await reloadFavoriteLists();
-      setActiveList(listID);
-      toast.success(t("favorites.reordered"));
-    } catch (error) {
-      setFavoriteLists(previousLists);
-      toast.notify(toastFromError(error, t("errors.unavailable")));
-    }
+    const changed = reordered.flatMap((list, index) => (list.sortOrder === index ? [] : [{ id: list.id, index }]));
+    setFavoriteLists((lists) => [
+      ...lists.filter((list) => list.kind === "marked"),
+      ...reordered.map((list, index) => ({ ...list, sortOrder: index })),
+    ]);
+    listOrderSave.current = listOrderSave.current
+      .then(async () => {
+        for (const { id, index } of changed) await api.updateFavoriteList(id, { sortOrder: index });
+      })
+      .catch(async (error) => {
+        toast.notify(toastFromError(error, t("favorites.reorderFailed")));
+        await reloadFavoriteLists().catch(() => undefined);
+      });
   };
 
   const toggleWorkSelection = (workID: number, selected: boolean) => {
@@ -786,7 +821,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       await reloadFavoriteLists();
       setSelectedWorkIDs(new Set());
       setSelectionMode(false);
-      setListDialogTarget(null);
+      setListPickerOpen(false);
       toast.success(t("favorites.membershipUpdated", { count: targetWorks.length }));
     } catch (error) {
       toast.notify(toastFromError(error, t("errors.unavailable")));
@@ -1047,27 +1082,27 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                     setSelectionMode(false);
                   }}
                 >
-                  <div className="relative">
+                  <div ref={listActionRef}>
                     <WorkSelectionAction
                       icon={<ListMusic className="h-4 w-4" />}
                       label={t("favorites.changeLists")}
                       count={selectedWorks.length}
                       disabled={isBulkUpdating}
                       className="w-full"
-                      aria-expanded={Boolean(listDialogTarget)}
-                      onClick={() => setListDialogTarget((target) => (target ? null : { mode: "bulk" }))}
+                      aria-expanded={listPickerVisible}
+                      onClick={() => setListPickerOpen(!listPickerVisible)}
                     />
-                    {listDialogTarget && (
-                      <FavoriteListMembershipPopover
-                        title={t("favorites.selectedWorks", { count: selectedWorks.length })}
-                        workIDs={selectedWorks.map((work) => work.id)}
-                        favoriteLists={userFavoriteLists}
-                        disabled={isBulkUpdating}
-                        align="right"
-                        onClose={() => setListDialogTarget(null)}
-                        onSave={applyListMembership}
-                      />
-                    )}
+                    <FavoriteListMembershipPicker
+                      open={listPickerVisible}
+                      onOpenChange={setListPickerOpen}
+                      anchorRef={listActionRef}
+                      mobile={mobileNavigationLayout}
+                      workIDs={selectedWorks.map((work) => work.id)}
+                      favoriteLists={userFavoriteLists}
+                      disabled={isBulkUpdating}
+                      onListCreated={() => void api.listFavoriteLists().then(setFavoriteLists, () => undefined)}
+                      onSave={applyListMembership}
+                    />
                   </div>
                 </WorkSelectionBar>
               )}
@@ -1157,17 +1192,19 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
           markedList={markedList}
           lists={userFavoriteLists}
           editor={listEditor}
+          editorReturnsToList={listEditorReturnsToList}
           deleteTarget={deleteListTarget}
           deleting={isDeletingList}
           onClose={closeFavoriteListManager}
-          onNew={() => setListEditor("new")}
-          onEdit={setListEditor}
-          onCancelEdit={() => setListEditor(null)}
+          onNew={() => editFromListManager("new")}
+          onEdit={editFromListManager}
+          onCancelEdit={finishListEdit}
           onSave={saveFavoriteList}
           onDelete={setDeleteListTarget}
           onCancelDelete={() => setDeleteListTarget(null)}
           onConfirmDelete={() => void deleteFavoriteList()}
-          onMove={(listID, direction) => void moveFavoriteListByID(listID, direction)}
+          onDeleteFromEditor={deleteEditedFavoriteList}
+          onMove={moveFavoriteListByID}
         />
       )}
       <BrowseLoadingIndicator
