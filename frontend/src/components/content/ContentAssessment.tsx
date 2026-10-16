@@ -24,6 +24,22 @@ export function ContentAssessment({
   const allowed = service !== null && serviceReceives(assessment.class, service);
   return (
     <div role="status" className="space-y-1.5 text-xs">
+      {assessment.mode === "translation_text" && (
+        <>
+          <p className="text-muted-foreground">{t("contentRating.translationText")}</p>
+          <p className="text-muted-foreground">
+            {t("contentRating.checkedFields", {
+              fields: (assessment.checkedFields ?? [])
+                .map((field) => t(`maintenance.llm.ruleFields.${field}`))
+                .join(" / "),
+            })}
+          </p>
+          {assessment.class === "safe" && <p className="text-muted-foreground">{t("contentRating.noKeywordMatch")}</p>}
+          {!assessment.keywordRuleCount && (
+            <p className="text-warning-foreground">{t("contentRating.noApplicableKeywords")}</p>
+          )}
+        </>
+      )}
       <div className="flex items-start gap-2">
         <Badge variant={classBadges[assessment.class]} className="mt-px shrink-0 px-1.5 py-0 text-2xs">
           {t(`contentRating.classes.${assessment.class}`)}

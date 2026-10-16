@@ -553,11 +553,17 @@ export const surfaceHans = {
       modelsFetched: "已获取 {{count}} 个模型。",
       policyTitle: "内容安全策略",
       policyDescription:
-        "适用于大语言模型服务商和语音识别服务。标签和关键词可提升内容等级，每个服务独立设置接收上限。未知及禁止内容拒绝发送。",
+        "适用于 LLM 提供方和 ASR 服务。下方可选择 LLM 翻译的判定方式，ASR 使用作品元数据。每个服务分别设置接收上限，未知和禁止的判定结果均拒绝发送。",
       policySaved: "内容安全策略已保存。",
       policySaveFailed: "无法保存内容安全策略。",
       alwaysScanAllAges: "也扫描全年龄作品",
-      alwaysScanAllAgesDescription: "对全年龄作品也执行额外的敏感关键词检查。高敏感和禁止规则始终检查。",
+      alwaysScanAllAgesDescription:
+        "对全年龄作品也执行额外的敏感关键词检查。高敏感和禁止规则始终检查。LLM 仅检查文本模式始终检查所有适用关键词，此选项仍适用于 ASR。",
+      translationTextOnly: "LLM 翻译仅检查待翻译文本",
+      translationTextOnlyDescription:
+        "仅对选中的翻译原文匹配关键词，不使用作品年龄分级及元数据标签规则。ASR 仍根据作品元数据分级。",
+      translationTextOnlyWarning:
+        "此模式仅匹配已配置的关键词，不进行语义识别，也不会自动翻译关键词或识别其他语言的对应表达。请为原文中出现的每种语言配置对应关键词及等级，混合语言文本需要覆盖其中的所有语言。未命中关键词不代表内容一定不敏感。",
       sensitiveTags: "元数据标签规则",
       sensitiveTagsDescription: "选择共享标签，并指定敏感、高敏感或禁止动作。隐藏名称和合并身份仍保留风险证据。",
       keywords: "关键词规则",
@@ -2888,6 +2894,10 @@ export const surfaceHans = {
     summary: "{{model}} +{{count}}",
   },
   contentRating: {
+    translationText: "检查方式：仅待翻译文本",
+    checkedFields: "检查范围：{{fields}}",
+    noKeywordMatch: "未命中配置的关键词，不代表内容一定不敏感。",
+    noApplicableKeywords: "当前没有适用于所选文本的关键词规则。",
     title: "内容分级",
     check: "检测分级",
     recheck: "重新检测",

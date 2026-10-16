@@ -573,12 +573,17 @@ export const surfaceKorean = {
       modelsFetched: "모델 {{count}}개를 가져왔습니다.",
       policyTitle: "콘텐츠 안전 정책",
       policyDescription:
-        "LLM과 음성 인식에 적용됩니다. 태그와 키워드로 등급을 높이고 서비스마다 수신 상한을 지정합니다. 알 수 없거나 차단된 콘텐츠는 거부합니다.",
+        "LLM 제공업체와 ASR 서비스에 적용됩니다. 아래에서 LLM 번역 분류 방식을 선택하며 ASR은 작품 메타데이터를 사용합니다. 각 서비스에는 수신 상한이 있으며 알 수 없음과 차단 분류는 전송하지 않습니다.",
       policySaved: "콘텐츠 안전 정책을 저장했습니다.",
       policySaveFailed: "콘텐츠 안전 정책을 저장할 수 없습니다.",
       alwaysScanAllAges: "전체 연령 작품도 스캔",
       alwaysScanAllAgesDescription:
-        "전체 연령 작품에도 추가 민감 키워드 검사를 실행합니다. 고민감 및 차단 규칙은 항상 검사합니다.",
+        "전체 연령 작품에도 추가 민감 키워드 검사를 합니다. 고민감 및 차단 규칙은 항상 검사합니다. LLM 텍스트 전용 모드에서는 적용 가능한 모든 키워드를 검사하며 이 옵션은 ASR에도 적용됩니다.",
+      translationTextOnly: "LLM 번역은 번역할 텍스트만 검사",
+      translationTextOnlyDescription:
+        "선택한 번역 원문을 키워드 규칙으로만 분류하며 작품 연령 등급과 메타데이터 태그 규칙은 사용하지 않습니다. ASR은 작품 메타데이터로 분류합니다.",
+      translationTextOnlyWarning:
+        "이 모드는 설정한 키워드만 일치시킵니다. 의미를 분석하거나 키워드를 번역하거나 다른 언어의 같은 표현을 감지하지 않습니다. 원문에 포함된 모든 언어에 대해 키워드와 등급을 설정하세요. 여러 언어가 섞인 텍스트도 모든 언어를 포함해야 합니다. 일치하지 않아도 민감한 내용이 없다는 보장은 없습니다.",
       sensitiveTags: "메타데이터 태그 규칙",
       sensitiveTagsDescription:
         "공유 태그를 선택하고 민감, 고민감 또는 차단 동작을 지정합니다. 숨겨진 이름과 병합된 ID의 위험 정보도 유지됩니다.",
@@ -3009,6 +3014,10 @@ export const surfaceKorean = {
     summary: "{{model}} +{{count}}",
   },
   contentRating: {
+    translationText: "검사 방식: 번역할 텍스트만",
+    checkedFields: "검사 범위: {{fields}}",
+    noKeywordMatch: "설정된 키워드와 일치하지 않습니다. 민감한 내용이 없다는 보장은 없습니다.",
+    noApplicableKeywords: "선택한 텍스트에 적용되는 키워드 규칙이 없습니다.",
     title: "콘텐츠 등급",
     check: "등급 확인",
     recheck: "다시 확인",

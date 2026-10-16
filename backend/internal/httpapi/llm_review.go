@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/llm"
@@ -137,7 +136,6 @@ func (s *Server) precheckLLMWork(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	_, scan := llmFields(input, nil)
 	var payload llmTranslatePayload
 	if r.Body != nil {
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
@@ -147,19 +145,43 @@ func (s *Server) precheckLLMWork(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	text, _ := llmFields(input, payload.Fields)
 	checked := []string{"title", "description", "tags"}
+	if policy.LLMTranslationTextOnly && len(payload.Fields) == 0 {
+		writeLLMRequestError(w, llmInvalid("invalid_translation_request", "Choose at least one field."))
+		return
+	}
 	for _, field := range payload.Fields {
+		if field != "title" && field != "description" && field != "tags" && field != "lyrics" {
+			writeLLMRequestError(w, llmInvalid("invalid_translation_request", "Choose supported translation fields."))
+			return
+		}
+		if field == "tags" && policy.LLMTranslationTextOnly {
+			if payload.Target == "" || !validTitleLanguage(payload.Target) {
+				writeLLMRequestError(w, llmInvalid("invalid_translation_request", "Choose a supported target language."))
+				return
+			}
+			_, text.Tags, err = loadLLMTagCandidates(r.Context(), s.db, id, payload.Target)
+			if err != nil {
+				writeLLMRequestError(w, llmInvalid("llm_input_too_large", "Shared tag input exceeds the translation limit."))
+				return
+			}
+		}
 		if field == "lyrics" {
 			lyrics, err := s.loadLLMLyrics(r.Context(), id, payload, policy)
 			if err != nil {
 				writeLLMRequestError(w, err)
 				return
 			}
-			scan["lyrics"] = strings.Join(lyrics.Document.Text(), "\n")
+			text.Lyrics = lyrics.Document.Text()
 			checked = append(checked, "lyrics")
 		}
 	}
-	writeJSON(w, 200, map[string]any{"assessment": policy.Assess(input.Age, scan, input.Tags), "checkedFields": checked, "sentFields": []string{}})
+	assessment := assessLLMTranslation(policy, input, text)
+	if policy.LLMTranslationTextOnly {
+		checked = append([]string{}, assessment.CheckedFields...)
+	}
+	writeJSON(w, 200, map[string]any{"assessment": assessment, "checkedFields": checked, "sentFields": []string{}})
 }
 func (s *Server) rejectLLMPreview(w http.ResponseWriter, r *http.Request) {
 	actor, ok := s.requirePermission(w, r, "library:write")

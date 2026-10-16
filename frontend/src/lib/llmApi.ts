@@ -93,6 +93,7 @@ export type LLMKeywordRule = { id: string; term: string; fields: string[]; actio
 export type LLMPolicy = {
   alwaysScanAllAges: boolean;
   remoteLyrics?: boolean;
+  llmTranslationTextOnly?: boolean;
   tagRules: Array<{ tagId: number; action: ContentAction }>;
   keywords: LLMKeywordRule[];
 };
@@ -110,6 +111,9 @@ export type LLMAssessment = {
   class: ContentClass;
   reason: string;
   matches: Array<{ kind: string; rule: string; field?: string; action?: ContentAction }>;
+  mode?: "translation_text";
+  checkedFields?: string[];
+  keywordRuleCount?: number;
 };
 export type LLMTranslation = {
   previewId: string;

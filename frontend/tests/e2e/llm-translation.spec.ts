@@ -177,6 +177,10 @@ test("LLM settings save connection drafts before discovery and edit structured c
   expect(writes[1]).toMatchObject({ boundary: "external", maxContentClass: "sensitive" });
   await expect(connection).toBeHidden();
   const rules = page.getByRole("region", { name: "Content safety policy", exact: true });
+  const textOnly = rules.getByRole("switch", { name: "LLM translation checks selected text only", exact: true });
+  await expect(textOnly).not.toBeChecked();
+  await textOnly.click();
+  await expect(rules.getByText(/Configure keywords and levels for every language in the source/)).toBeVisible();
   await rules.getByRole("combobox", { name: "Metadata tag rules", exact: true }).fill("Example");
   await rules.getByRole("option", { name: "Example risk tag", exact: true }).click();
   await rules
@@ -188,6 +192,7 @@ test("LLM settings save connection drafts before discovery and edit structured c
   await rules.getByRole("checkbox", { name: "Lyrics", exact: true }).check();
   await rules.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(() => policy.tagRules).toEqual([{ tagId: 1, action: "restricted" }]);
+  expect(policy.llmTranslationTextOnly).toBe(true);
   expect(policy.keywords[0]).toMatchObject({ term: "restricted phrase", fields: ["all", "lyrics"], action: "blocked" });
   expect(policy.keywords[0].id).toMatch(/^rule-[0-9a-f]{32}$/);
   await expect(rules.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
@@ -365,8 +370,8 @@ test("LLM dialog prechecks without translation, uses minimal models and confirms
   await page.route("**/api/works/1/llm-precheck", (route) =>
     route.fulfill({
       json: {
-        assessment: translation.assessment,
-        checkedFields: ["title", "description", "tags"],
+        assessment: { ...translation.assessment, mode: "translation_text", checkedFields: ["title", "description"] },
+        checkedFields: ["title", "description"],
         sentFields: [],
       } satisfies ApiResponse<"precheckWork">,
     }),
@@ -397,6 +402,11 @@ test("LLM dialog prechecks without translation, uses minimal models and confirms
   );
   await dialog.getByRole("button", { name: "Check content without sending", exact: true }).click();
   await expect(dialog.getByRole("status")).toContainText("General");
+  await expect(dialog.getByRole("status")).toContainText("Assessment: selected translation text only");
+  await expect(dialog.getByRole("status")).toContainText("No keyword rules apply to the selected text.");
+  await dialog.getByRole("checkbox", { name: "Description", exact: true }).uncheck();
+  await expect(dialog.getByText("Assessment: selected translation text only", { exact: true })).toHaveCount(0);
+  await dialog.getByRole("checkbox", { name: "Description", exact: true }).check();
   expect(requests).toBe(0);
   await dialog.getByRole("button", { name: "Translate", exact: true }).click();
   await expect(dialog.getByText("Example translation", { exact: true })).toBeVisible();

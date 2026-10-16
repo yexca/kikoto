@@ -59,6 +59,20 @@ export function LLMPolicyEditor({
         />
       </SettingsRow>
       <SettingsRow
+        title={t("maintenance.llm.translationTextOnly")}
+        description={t("maintenance.llm.translationTextOnlyDescription")}
+      >
+        <Switch
+          aria-label={t("maintenance.llm.translationTextOnly")}
+          disabled={disabled}
+          checked={policy.llmTranslationTextOnly ?? false}
+          onCheckedChange={(llmTranslationTextOnly) => onChange({ ...policy, llmTranslationTextOnly })}
+        />
+      </SettingsRow>
+      {policy.llmTranslationTextOnly && (
+        <p className="text-sm leading-6 text-warning-foreground">{t("maintenance.llm.translationTextOnlyWarning")}</p>
+      )}
+      <SettingsRow
         title={t("maintenance.llm.alwaysScanAllAges")}
         description={t("maintenance.llm.alwaysScanAllAgesDescription")}
       >

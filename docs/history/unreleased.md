@@ -107,6 +107,9 @@
   When such a folder lay within the scan depth, the scan attached it to the
   edition it names and lost the work folder that holds it. The next scan
   restores that work folder.
+- Content safety settings offer a default-off option to rate LLM translations
+  using only keywords in the complete selected source text. ASR retains work
+  metadata assessment; checks show text scope and missing keyword coverage.
 - Protected LLM translation includes explicit endpoint content boundaries,
   structured tag and keyword rules, preview invalidation, shared tag candidates,
   and background jobs for selected existing works.

@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"slices"
-	"strings"
 )
 
 // Long previews and chunked requests retain their exact source and endpoint.
@@ -35,11 +34,7 @@ func (s *Server) validateLLMSend(ctx context.Context, userID, workID int64, payl
 			return llmInvalid("work_changed", "Shared tag names changed. Translate again.")
 		}
 	}
-	_, scan := llmFields(input, plan.Fields)
-	if plan.Lyrics != nil {
-		scan["lyrics"] = strings.Join(plan.Text.Lyrics, "\n")
-	}
-	if !llmAllowed(policy.Assess(input.Age, scan, input.Tags).Class, provider) {
+	if !llmAllowed(assessLLMTranslation(policy, input, plan.Source).Class, provider) {
 		return llmInvalid("llm_policy_blocked", "Content policy blocks this translation.")
 	}
 	return nil

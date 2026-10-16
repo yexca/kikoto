@@ -88,7 +88,7 @@ func TestLLMPreviewBindsActorAndRevalidatesSnapshots(t *testing.T) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"title\":\"Example translation\"}"}}]}`))
 	}))
 	defer upstream.Close()
-	for _, change := range []string{"source", "policy", "connection", "model", "other_model", "maximum", "replay", "restart", "actor", "work"} {
+	for _, change := range []string{"source", "policy", "text_mode", "connection", "model", "other_model", "maximum", "replay", "restart", "actor", "work"} {
 		t.Run(change, func(t *testing.T) {
 			f := newManualOverrideFixture(t, config.Config{})
 			_, _ = f.db.Exec("UPDATE work SET age_rating='general',description='Original description' WHERE id=?", f.workID)
@@ -116,6 +116,10 @@ func TestLLMPreviewBindsActorAndRevalidatesSnapshots(t *testing.T) {
 				_, _ = f.db.Exec("UPDATE work SET title='Changed source' WHERE id=?", f.workID)
 			case "policy":
 				if err := f.server.llmStore.SavePolicy(context.Background(), llm.DefaultPolicy()); err != nil {
+					t.Fatal(err)
+				}
+			case "text_mode":
+				if err := f.server.llmStore.SavePolicy(context.Background(), llm.Policy{LLMTranslationTextOnly: true}); err != nil {
 					t.Fatal(err)
 				}
 			case "connection", "model", "other_model", "maximum":

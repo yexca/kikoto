@@ -194,7 +194,7 @@ export const KEYWORD_RULE_LIMIT = 512;
 export const KEYWORD_RULE_FIELDS = ["all", "title", "description", "tags", "lyrics"] as const;
 
 export function emptyPolicy(): LLMPolicy {
-  return { alwaysScanAllAges: false, tagRules: [], keywords: [] };
+  return { alwaysScanAllAges: false, llmTranslationTextOnly: false, tagRules: [], keywords: [] };
 }
 
 export function policiesEqual(left: LLMPolicy, right: LLMPolicy) {
@@ -202,6 +202,7 @@ export function policiesEqual(left: LLMPolicy, right: LLMPolicy) {
     JSON.stringify({
       alwaysScanAllAges: policy.alwaysScanAllAges,
       remoteLyrics: policy.remoteLyrics ?? false,
+      llmTranslationTextOnly: policy.llmTranslationTextOnly ?? false,
       tagRules: policy.tagRules,
       keywords: policy.keywords,
     });

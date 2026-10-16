@@ -574,12 +574,17 @@ export const surfaceJapanese = {
       modelsFetched: "{{count}} 個のモデルを取得しました。",
       policyTitle: "コンテンツ安全ポリシー",
       policyDescription:
-        "LLM と音声認識に適用します。タグとキーワードで区分を引き上げ、サービスごとに受信上限を指定します。不明・禁止の内容は拒否します。",
+        "LLM プロバイダーと ASR サービスに適用します。LLM 翻訳の判定方法は以下で選択し、ASR は作品のメタデータを使用します。各サービスに受信上限があり、不明・禁止の判定結果は送信しません。",
       policySaved: "コンテンツ安全ポリシーを保存しました。",
       policySaveFailed: "コンテンツ安全ポリシーを保存できませんでした。",
       alwaysScanAllAges: "全年齢作品もスキャン",
       alwaysScanAllAgesDescription:
-        "全年齢作品にも追加の機微キーワード検査を行います。高機微・禁止ルールは常に検査します。",
+        "全年齢作品にも追加のセンシティブなキーワードチェックを行います。高センシティブ・禁止ルールは常に確認します。LLM のテキストのみのモードでは適用可能な全キーワードを確認し、この設定は ASR にも適用されます。",
+      translationTextOnly: "LLM 翻訳は翻訳対象のテキストのみを確認",
+      translationTextOnlyDescription:
+        "選択した翻訳原文をキーワードルールだけで判定し、作品の年齢区分やメタデータのタグルールは使用しません。ASR は作品のメタデータで判定します。",
+      translationTextOnlyWarning:
+        "このモードは設定済みのキーワードだけを照合します。意味の解析、キーワードの翻訳、他言語の同等表現の検出は行いません。原文に含まれるすべての言語についてキーワードとレベルを設定してください。複数言語が混在する場合もすべてが対象です。一致がなくても、センシティブな内容ではないとは限りません。",
       sensitiveTags: "メタデータタグのルール",
       sensitiveTagsDescription:
         "共有タグを選び、機微・高機微・禁止を指定します。非表示名と統合済み ID のリスク情報も保持します。",
@@ -3029,6 +3034,10 @@ export const surfaceJapanese = {
     summary: "{{model}} +{{count}}",
   },
   contentRating: {
+    translationText: "判定方法：翻訳対象のテキストのみ",
+    checkedFields: "確認範囲：{{fields}}",
+    noKeywordMatch: "設定済みキーワードとの一致はありません。センシティブな内容ではないとは限りません。",
+    noApplicableKeywords: "選択したテキストに適用されるキーワードルールはありません。",
     title: "コンテンツ区分",
     check: "区分を確認",
     recheck: "再確認",

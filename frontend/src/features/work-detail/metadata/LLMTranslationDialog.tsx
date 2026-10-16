@@ -32,7 +32,7 @@ export function LLMTranslationDialog({
   const translationController = useRef<AbortController | null>(null);
   useEffect(() => () => translationController.current?.abort(), []);
   const [providers, setProviders] = useState<LLMTranslationModel[]>([]);
-  const [assessment, setAssessment] = useState<LLMAssessment | null>(null);
+  const [rating, setRating] = useState<{ key: string; assessment: LLMAssessment } | null>(null);
   // A provider and one of its enabled models, as a serviceModelKey.
   const [choiceKey, setChoiceKey] = useState("");
   // The target the user chose; it applies while the chosen model translates into it.
@@ -68,6 +68,8 @@ export function LLMTranslationDialog({
     offered: metadataTagNameLanguages.map(([language]) => language),
   });
   const languageSupported = targets === null || targets.includes(targetLanguage);
+  const assessmentKey = JSON.stringify([work.id, selectedFields, targetLanguage]);
+  const assessment = rating?.key === assessmentKey ? rating.assessment : null;
   const request = {
     providerId: choice?.service.id ?? "",
     model: choice?.model,
@@ -109,7 +111,7 @@ export function LLMTranslationDialog({
               <div className="font-medium">
                 {t("llmTranslation.previewSummary", { provider: preview.providerName, model: preview.model })}
               </div>
-              <div className="mt-1 text-xs text-muted-foreground">{preview.assessment.reason}</div>
+              <ContentAssessment assessment={preview.assessment} service={null} />
             </div>
             {preview.translation.title && (
               <PreviewField
@@ -284,11 +286,11 @@ export function LLMTranslationDialog({
             <Button
               variant="outline"
               size="sm"
-              disabled={loading}
+              disabled={loading || selectedFields.length === 0}
               onClick={async () => {
                 try {
                   const result = await api.precheckWork(work.id, request);
-                  setAssessment(result.assessment);
+                  setRating({ key: assessmentKey, assessment: result.assessment });
                 } catch (error) {
                   toast.notify(toastFromError(error, t("llmTranslation.failed")));
                 }

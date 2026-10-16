@@ -159,6 +159,7 @@ describe("policiesEqual", () => {
       policiesEqual(policy, {
         ...policy,
         remoteLyrics: false,
+        llmTranslationTextOnly: false,
         keywords: [{ ...policy.keywords[0], id: "synthetic-rule-0" }],
       }),
     ).toBe(true);
@@ -167,6 +168,7 @@ describe("policiesEqual", () => {
   it("detects an edited rule, tag or option", () => {
     expect(policiesEqual(policy, { ...policy, tagRules: [] })).toBe(false);
     expect(policiesEqual(policy, { ...policy, remoteLyrics: true })).toBe(false);
+    expect(policiesEqual(policy, { ...policy, llmTranslationTextOnly: true })).toBe(false);
     expect(policiesEqual(policy, { ...policy, tagRules: [{ tagId: 1, action: "restricted" }] })).toBe(false);
     expect(policiesEqual(policy, { ...policy, keywords: [{ ...policy.keywords[0], fields: ["all", "lyrics"] }] })).toBe(
       false,

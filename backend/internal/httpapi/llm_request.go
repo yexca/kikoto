@@ -36,8 +36,8 @@ type llmTranslationPlan struct {
 	Lyrics         *llmLyricsInput
 }
 
-// The assessment covers the whole work's origin title, description and risk
-// tags, plus all explicitly selected lyrics, independently of the send scope.
+// The policy assesses either the complete selected translation source or the
+// work's metadata plus selected lyrics before any input is split or reused.
 func (s *Server) prepareLLMTranslation(ctx context.Context, workID int64, payload llmTranslatePayload) (llmTranslationPlan, error) {
 	var plan llmTranslationPlan
 	if s.cfg.IsDemo() {
@@ -82,7 +82,7 @@ func (s *Server) prepareLLMTranslation(ctx context.Context, workID int64, payloa
 	if err != nil {
 		return plan, err
 	}
-	text, scan := llmFields(plan.Input, plan.Fields)
+	text, _ := llmFields(plan.Input, plan.Fields)
 	if seen["tags"] {
 		plan.TagIDs, text.Tags, err = loadLLMTagCandidates(ctx, s.db, workID, payload.Target)
 		if err != nil {
@@ -96,10 +96,9 @@ func (s *Server) prepareLLMTranslation(ctx context.Context, workID int64, payloa
 		}
 		plan.Lyrics = &input
 		text.Lyrics = input.Document.Text()
-		scan["lyrics"] = strings.Join(text.Lyrics, "\n")
 		plan.Input.LyricsHash = input.Hash
 	}
-	plan.Assessment = plan.Policy.Assess(plan.Input.Age, scan, plan.Input.Tags)
+	plan.Assessment = assessLLMTranslation(plan.Policy, plan.Input, text)
 	if !llmAllowed(plan.Assessment.Class, provider) {
 		return plan, llmInvalid("llm_policy_blocked", "Content policy blocks this translation. The content exceeds the provider receive maximum, or its class is unknown or blocked.")
 	}

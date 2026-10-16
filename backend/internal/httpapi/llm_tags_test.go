@@ -9,13 +9,14 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/llm"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
 )
 
 func TestLLMTagCandidatesReuseWithoutChangingIdentityBeforeConfirmation(t *testing.T) {
 	f := newManualOverrideFixture(t, config.Config{})
 	ctx := context.Background()
-	_, _ = f.db.Exec("UPDATE work SET age_rating='general' WHERE id=?", f.workID)
+	_, _ = f.db.Exec("UPDATE work SET age_rating='r15' WHERE id=?", f.workID)
 	_, _ = f.db.Exec("INSERT INTO work(primary_code,title,age_rating) VALUES('RJ00000001','Example Work 1','general')")
 	var second int64
 	_ = f.db.QueryRow("SELECT id FROM work WHERE primary_code='RJ00000001'").Scan(&second)
@@ -35,6 +36,11 @@ func TestLLMTagCandidatesReuseWithoutChangingIdentityBeforeConfirmation(t *testi
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
+	// Tag identities do not classify selected tag-name text. Reused candidates
+	// and final acceptance must keep the same complete source assessment.
+	if err := f.server.llmStore.SavePolicy(ctx, llm.Policy{LLMTranslationTextOnly: true, TagRules: []llm.TagRule{{TagID: tagID, Action: "blocked"}}}); err != nil {
+		t.Fatal(err)
+	}
 	var requests atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
@@ -43,6 +49,15 @@ func TestLLMTagCandidatesReuseWithoutChangingIdentityBeforeConfirmation(t *testi
 	defer upstream.Close()
 	p := llmTestProvider(t, f, upstream.URL, "external", "safe")
 	payload, _ := json.Marshal(llmTranslatePayload{ProviderID: p.ID, Target: "en-us", Fields: []string{"tags"}})
+	precheck := httptest.NewRecorder()
+	f.server.precheckLLMWork(precheck, llmTestRequest(f, "POST", string(payload)))
+	var checked struct {
+		Assessment llm.Assessment `json:"assessment"`
+		Fields     []string       `json:"checkedFields"`
+	}
+	if err := json.Unmarshal(precheck.Body.Bytes(), &checked); err != nil || precheck.Code != 200 || checked.Assessment.Class != "safe" || len(checked.Fields) != 1 || checked.Fields[0] != "tags" || requests.Load() != 0 {
+		t.Fatalf("tag text precheck: %d %s %v", precheck.Code, precheck.Body.String(), err)
+	}
 	translate := func(workID int64) string {
 		clone := f
 		clone.workID = workID

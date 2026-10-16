@@ -339,11 +339,7 @@ func (s *Server) applyLLMTranslation(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, 403, "llm_permission_changed", "Translation permission changed.", false)
 		return
 	}
-	_, scan := llmFields(current, preview.Fields)
-	if preview.Lyrics != nil {
-		scan["lyrics"] = strings.Join(preview.Lyrics.Document.Text(), "\n")
-	}
-	if !llmAllowed(policy.Assess(current.Age, scan, current.Tags).Class, provider) {
+	if !llmAllowed(assessLLMTranslation(policy, current, preview.Source).Class, provider) {
 		s.expireLLMPreview(w, r, tx, payload.PreviewID, "llm_policy_blocked", "Content policy blocks this translation.")
 		return
 	}

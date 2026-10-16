@@ -21,11 +21,12 @@ type TagRule struct {
 	Action string `json:"action"`
 }
 type Policy struct {
-	Revision          int64         `json:"revision"`
-	AlwaysScanAllAges bool          `json:"alwaysScanAllAges"`
-	RemoteLyrics      bool          `json:"remoteLyrics"`
-	TagRules          []TagRule     `json:"tagRules"`
-	Keywords          []KeywordRule `json:"keywords"`
+	Revision               int64         `json:"revision"`
+	AlwaysScanAllAges      bool          `json:"alwaysScanAllAges"`
+	RemoteLyrics           bool          `json:"remoteLyrics"`
+	LLMTranslationTextOnly bool          `json:"llmTranslationTextOnly,omitempty"`
+	TagRules               []TagRule     `json:"tagRules"`
+	Keywords               []KeywordRule `json:"keywords"`
 }
 type Match struct {
 	Kind   string `json:"kind"`
@@ -34,9 +35,12 @@ type Match struct {
 	Action string `json:"action"`
 }
 type Assessment struct {
-	Class   string  `json:"class"`
-	Reason  string  `json:"reason"`
-	Matches []Match `json:"matches"`
+	Class            string   `json:"class"`
+	Reason           string   `json:"reason"`
+	Matches          []Match  `json:"matches"`
+	Mode             string   `json:"mode,omitempty"`
+	CheckedFields    []string `json:"checkedFields,omitempty"`
+	KeywordRuleCount int      `json:"keywordRuleCount,omitempty"`
 }
 
 func DefaultPolicy() Policy { return Policy{TagRules: []TagRule{}, Keywords: []KeywordRule{}} }
@@ -53,6 +57,7 @@ func (p Policy) Validate() (Policy, error) {
 	result := DefaultPolicy()
 	result.Revision = p.Revision
 	result.AlwaysScanAllAges, result.RemoteLyrics = p.AlwaysScanAllAges, p.RemoteLyrics
+	result.LLMTranslationTextOnly = p.LLMTranslationTextOnly
 	seenTags := map[int64]string{}
 	for _, rule := range p.TagRules {
 		if rule.TagID <= 0 || !validAction(rule.Action) {
@@ -107,14 +112,32 @@ func (p Policy) Normalized() Policy {
 	return result
 }
 func (p Policy) Assess(age string, fields map[string]string, tagIDs []int64) Assessment {
+	return p.assess(age, fields, tagIDs, false)
+}
+
+// AssessText rates a complete translation input using only keyword rules.
+// It never uses age, tag identities or the all-ages shortcut. Audio callers
+// continue to use Assess regardless of the LLM translation setting.
+func (p Policy) AssessText(fields map[string]string) Assessment {
+	return p.assess("", fields, nil, true)
+}
+
+func (p Policy) assess(age string, fields map[string]string, tagIDs []int64, textOnly bool) Assessment {
 	p, err := p.Validate()
 	if err != nil {
 		return Assessment{Class: "unknown", Reason: "content policy is invalid", Matches: []Match{}}
 	}
-	known := len(agerating.Aliases(age)) > 0
-	general := known && agerating.Matches(age, "general")
+	known := textOnly || len(agerating.Aliases(age)) > 0
+	general := !textOnly && known && agerating.Matches(age, "general")
 	result := Assessment{Class: "safe", Reason: "no configured rule matched", Matches: []Match{}}
-	if !known {
+	if textOnly {
+		result.Mode = "translation_text"
+		for _, field := range []string{"title", "description", "tags", "lyrics"} {
+			if strings.TrimSpace(fields[field]) != "" {
+				result.CheckedFields = append(result.CheckedFields, field)
+			}
+		}
+	} else if !known {
 		result.Class, result.Reason = "unknown", "age rating is missing or unknown"
 	} else if !general {
 		result.Class, result.Reason = "sensitive", "restricted age rating"
@@ -136,10 +159,17 @@ func (p Policy) Assess(age string, fields map[string]string, tagIDs []int64) Ass
 		if general && !p.AlwaysScanAllAges && rule.Action == "sensitive" {
 			continue
 		}
+		applicable := false
 		for _, field := range []string{"title", "description", "tags", "lyrics"} {
+			if textOnly && normalizedFields[field] != "" && ruleApplies(rule.Fields, field) {
+				applicable = true
+			}
 			if ruleApplies(rule.Fields, field) && strings.Contains(normalizedFields[field], rule.Term) {
 				result.Matches = append(result.Matches, Match{Kind: "keyword", Rule: rule.ID, Field: field, Action: rule.Action})
 			}
+		}
+		if applicable {
+			result.KeywordRuleCount++
 		}
 	}
 	for _, match := range result.Matches {

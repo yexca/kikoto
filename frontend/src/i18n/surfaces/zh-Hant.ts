@@ -555,11 +555,17 @@ export const surfaceHant = {
       modelsFetched: "已取得 {{count}} 個模型。",
       policyTitle: "內容安全策略",
       policyDescription:
-        "適用於大型語言模型提供者和語音辨識服務。標籤與關鍵字可提高內容等級，每個服務獨立設定接收上限。未知及禁止內容拒絕傳送。",
+        "適用於 LLM 提供者和 ASR 服務。下方可選擇 LLM 翻譯的判定方式，ASR 使用作品中繼資料。每個服務分別設定接收上限，未知和禁止的判定結果均拒絕傳送。",
       policySaved: "內容安全策略已儲存。",
       policySaveFailed: "無法儲存內容安全策略。",
       alwaysScanAllAges: "也掃描全年齡作品",
-      alwaysScanAllAgesDescription: "對全年齡作品也執行額外的敏感關鍵字檢查。高敏感和禁止規則一律檢查。",
+      alwaysScanAllAgesDescription:
+        "對全年齡作品也執行額外的敏感關鍵字檢查。高敏感和禁止規則一律檢查。LLM 僅檢查文字模式一律檢查所有適用關鍵字，此選項仍適用於 ASR。",
+      translationTextOnly: "LLM 翻譯僅檢查待翻譯文字",
+      translationTextOnlyDescription:
+        "僅對選取的翻譯原文比對關鍵字，不使用作品年齡分級及中繼資料標籤規則。ASR 仍根據作品中繼資料分級。",
+      translationTextOnlyWarning:
+        "此模式僅比對已設定的關鍵字，不進行語意辨識，也不會自動翻譯關鍵字或辨識其他語言的對應表達。請為原文中出現的每種語言設定對應關鍵字及等級，混合語言文字需要涵蓋其中的所有語言。未命中關鍵字不代表內容一定不敏感。",
       sensitiveTags: "中繼資料標籤規則",
       sensitiveTagsDescription: "選擇共享標籤並指定敏感、高敏感或禁止動作。隱藏名稱和合併身分仍保留風險證據。",
       keywords: "關鍵字規則",
@@ -2893,6 +2899,10 @@ export const surfaceHant = {
     summary: "{{model}} +{{count}}",
   },
   contentRating: {
+    translationText: "檢查方式：僅待翻譯文字",
+    checkedFields: "檢查範圍：{{fields}}",
+    noKeywordMatch: "未命中設定的關鍵字，不代表內容一定不敏感。",
+    noApplicableKeywords: "目前沒有適用於所選文字的關鍵字規則。",
     title: "內容分級",
     check: "檢測分級",
     recheck: "重新檢測",

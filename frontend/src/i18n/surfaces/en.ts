@@ -46,7 +46,7 @@ export const surfaceEnglish = {
     fields: "Fields to translate",
     description: "Description",
     safetyHint:
-      "Kikoto checks the original title, description and tag evidence. Only the chosen fields are sent. This check does not guarantee provider compliance.",
+      "Kikoto applies the configured content safety policy to this request. Only the chosen fields are sent. This check does not guarantee provider compliance.",
     translate: "Translate",
     failed: "Translation could not be completed.",
     previewSummary: "{{provider}} · {{model}}",
@@ -623,12 +623,17 @@ export const surfaceEnglish = {
       modelsFetched: "Fetched {{count}} models.",
       policyTitle: "Content safety policy",
       policyDescription:
-        "Applies to LLM providers and ASR services. Tags and keywords raise the content level; each service has its own receive maximum. Unknown and blocked content are refused.",
+        "Applies to LLM providers and ASR services. Choose how LLM translation is assessed below; ASR uses work metadata. Each service has its own receive maximum. Unknown and blocked assessments are refused.",
       policySaved: "Content safety policy saved.",
       policySaveFailed: "Content safety policy could not be saved.",
       alwaysScanAllAges: "Scan all-ages works too",
       alwaysScanAllAgesDescription:
-        "Run additional sensitive keyword checks on all-ages works too. High-sensitivity and blocking rules always apply.",
+        "Run additional sensitive keyword checks on all-ages works too. High-sensitivity and blocking rules always apply. LLM text-only mode always checks every applicable keyword rule; this option still applies to ASR.",
+      translationTextOnly: "LLM translation checks selected text only",
+      translationTextOnlyDescription:
+        "Rate only the selected translation source using keyword rules, without work age ratings or metadata tag rules. ASR continues to assess work metadata.",
+      translationTextOnlyWarning:
+        "This mode only matches configured keywords. It does not interpret meaning, translate keywords or detect equivalent expressions in other languages. Configure keywords and levels for every language in the source, including mixed-language text. No match does not guarantee that the content is not sensitive.",
       sensitiveTags: "Metadata tag rules",
       sensitiveTagsDescription:
         "Choose shared tags and a Sensitive, High sensitivity or Blocked action. Hidden names and merged identities retain risk evidence.",
@@ -3071,6 +3076,10 @@ export const surfaceEnglish = {
     summary: "{{model}} +{{count}}",
   },
   contentRating: {
+    translationText: "Assessment: selected translation text only",
+    checkedFields: "Checked fields: {{fields}}",
+    noKeywordMatch: "No configured keyword matched. This does not guarantee that the content is not sensitive.",
+    noApplicableKeywords: "No keyword rules apply to the selected text.",
     title: "Content rating",
     check: "Check rating",
     recheck: "Check again",
