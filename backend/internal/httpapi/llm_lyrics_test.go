@@ -80,7 +80,7 @@ func TestLLMLyricsTranslationJoinsTheTrackLyricsAndKeepsTheOriginal(t *testing.T
 	if err := f.db.QueryRow("SELECT relative_path,status,COALESCE(media_item_id,0) FROM llm_lyrics_asset WHERE id=?", preview.ID).Scan(&assetPath, &status, &lyricsID); err != nil {
 		t.Fatal(err)
 	}
-	if want := path.Join(f.root, "lyrics_zh_hans", "mp3", "Track1.Original name.lrc"); assetPath != want || status != "accepted" {
+	if want := path.Join(f.root, "lyrics_kikoto", "zh-hans", "mp3", "Track1.Original name.lrc"); assetPath != want || status != "accepted" {
 		t.Fatalf("asset path=%q status=%q, want %q accepted", assetPath, status, want)
 	}
 	translated, err := os.ReadFile(filepath.Join(f.dataRoot, filepath.FromSlash(assetPath)))
@@ -106,10 +106,10 @@ func TestLLMLyricsTranslationJoinsTheTrackLyricsAndKeepsTheOriginal(t *testing.T
 		t.Fatal(err)
 	}
 	_ = f.db.QueryRow("SELECT relative_path FROM llm_lyrics_asset WHERE id=?", preview.ID).Scan(&assetPath)
-	if want := path.Join(f.root, "lyrics_zh_hans", "mp3", "Track1.Original name (2).lrc"); assetPath != want {
+	if want := path.Join(f.root, "lyrics_kikoto", "zh-hans", "mp3", "Track1.Original name (2).lrc"); assetPath != want {
 		t.Fatalf("republished at %q, want %q", assetPath, want)
 	}
-	if kept, _ := os.ReadFile(filepath.Join(f.dataRoot, f.root, "lyrics_zh_hans", "mp3", "Track1.Original name.lrc")); string(kept) != "different" {
+	if kept, _ := os.ReadFile(filepath.Join(f.dataRoot, f.root, "lyrics_kikoto", "zh-hans", "mp3", "Track1.Original name.lrc")); string(kept) != "different" {
 		t.Fatalf("publication replaced another file: %q", kept)
 	}
 	if err := f.server.indexLocalMediaForWork(context.Background(), f.workID, sourceID, f.root); err != nil {

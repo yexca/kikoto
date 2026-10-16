@@ -119,8 +119,10 @@ after DLsite reports it as not found:
 
 `POST /api/works/{id}/lyrics-edit/plan` previews and
 `POST /api/works/{id}/lyrics-edit` applies an edit of the lyrics Kikoto
-manages in one local work folder: lyrics files of that folder move into a
-language's lyrics folder, files of another local folder of the family are
+manages in one local work folder: lyrics files of that folder are copied into a
+language's lyrics folder, or moved there when the request's `folderMode` or,
+without one, the administrator's `lyrics_folder_files_mode` setting says
+`move` (managed lyrics that change language always move), files of another local folder of the family are
 copied there, files a configured compatible source offers for a family
 edition are downloaded there, and managed lyrics are deleted. Both require
 `downloads:manage`; applying also requires `library:write` when the request
@@ -138,14 +140,19 @@ assigns tracks. The preview never changes a file.
 - Each added file must be a `.lrc`, `.vtt`, `.srt`, `.ass`, or `.txt`
   file and declares its language, one of the languages a lyrics assignment
   accepts or the empty language for every language; a language is never
-  inferred. The language selects the folder: `lyrics_ja`, `lyrics_en`,
-  `lyrics_zh_hans`, `lyrics_zh_hant`, `lyrics_ko`, or `lyrics` for every
-  language. The name carries no work code, so a scan never takes the folder for
-  a work of its own. A file keeps its path below its source, without the
-  lyrics folder it may already be in.
+  inferred. The language selects the folder inside `lyrics_kikoto`: `ja`,
+  `en`, `zh-hans`, `zh-hant`, `ko`, or `fallback` for every language. The
+  names carry no work code, so a scan never takes a folder for a work of its
+  own. A file keeps its path below its source, without the language's lyrics
+  folder it may already be in.
+- Kikoto writes only into a `lyrics_kikoto` folder it created and marked with
+  `.kikoto-lyrics`. An unmarked folder of that name, a name that differs only
+  in case, or a file in its place refuses the edit with
+  `lyrics_folder_blocked` and changes nothing, so a folder a work ships is
+  never filled, emptied or reorganized as managed lyrics.
 - A file to delete must be a lyrics file in a language's lyrics folder of the
-  target. Deletion runs the media cleanup checks, including the
-  symbolic-link review, when the edit is applied.
+  target's marked `lyrics_kikoto` folder. Deletion runs the media cleanup
+  checks, including the symbolic-link review, when the edit is applied.
 - A remote file's source-returned URL must be HTTP(S) without credentials and
   pass the source's outbound policy before any request; redirects are validated
   at every hop by the shared source transport, and only configured origins keep
@@ -205,8 +212,10 @@ an administrator accepts it, so the notice does not depend on the client.
   rechecked before every chunk.
 - Publication stages the file in `.kikoto-staging` on the work folder's
   storage pool and renames it into the language's lyrics folder through plain
-  directories. It never replaces a file: a different file under the track's
-  name moves the transcription to a numbered name.
+  directories, inside a `lyrics_kikoto` folder Kikoto created and marked; an
+  unmarked one is refused with `lyrics_folder_blocked`. It never replaces a
+  file: a different file under the track's name moves the transcription to a
+  numbered name.
 - Activity and API errors expose fixed failure codes only; upstream errors,
   endpoints and paths stay in protected logs.
 

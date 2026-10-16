@@ -39,9 +39,14 @@
   and marks the services that may not receive it. The check runs only when
   pressed.
 - **Lyrics files** in **Manage lyrics** replaces **From remote**. Like **Edit
-  files**, it edits in three columns the lyrics Kikoto manages in a folder
-  named after their language, such as `lyrics_zh_hans`, inside the work
-  folder. It moves lyrics of the work folder there, copies them from the
+  files**, it edits in three columns the lyrics Kikoto manages in one
+  `lyrics_kikoto` folder inside the work folder, with a folder per language
+  such as `lyrics_kikoto/zh-hans`. Kikoto marks the `lyrics_kikoto` folder it
+  creates as its own; a lyrics folder the work ships, such as `lyrics`, stays
+  one of the work's files and is never filled or emptied as managed lyrics.
+  It copies lyrics of the work folder there, or moves them when you choose;
+  administrators set the starting choice under **Lyrics files** in Settings →
+  Library, which copies unless changed. It also copies lyrics from the
   work's other local folders and other editions in the library, downloads them
   from remote editions, and deletes them. You choose the language; Kikoto does
   not guess the language of the work's own files. A different file with the
@@ -52,7 +57,8 @@
   at a target, and name a file that sits where a folder of the target belongs,
   leaving only keeping it or renaming the incoming file. **Add to lyrics** in
   **Transcribe** and **Translate** saves beside a folder of the same name, and
-  asks you to rename or move a file that blocks the lyrics folder.
+  asks you to rename or move a file or folder Kikoto did not create that
+  blocks the lyrics folder.
 - A failed lyrics edit restores moved source files even when an earlier
   publication occupies their original path. If restoration is obstructed,
   staged files and their recovery mapping remain on the target storage pool.

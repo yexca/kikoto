@@ -18,6 +18,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/localfs"
 )
 
 // Lyrics are small text files. These bounds keep one request from turning a
@@ -46,12 +47,13 @@ type lyricsFetchRequestError struct {
 
 func (err lyricsFetchRequestError) Error() string { return err.message }
 
-// errLyricsFolderBlocked refuses generated lyrics when a file in the work
-// folder sits where the lyrics folder, or a folder inside it, belongs.
+// errLyricsFolderBlocked refuses lyrics when an entry Kikoto did not create
+// sits where the lyrics folder, or a folder inside it, belongs: a file, a link,
+// or a folder of the lyrics folder's name without Kikoto's ownership marker.
 var errLyricsFolderBlocked = lyricsFetchRequestError{
 	status:  http.StatusConflict,
 	code:    "lyrics_folder_blocked",
-	message: "a file in the work folder is where the lyrics folder belongs; rename or move it, then add the lyrics again",
+	message: "a file or folder Kikoto did not create is where the lyrics folder belongs; rename or move it, then add the lyrics again",
 }
 
 func lyricsFetchBadRequest(message string) error {
@@ -294,22 +296,67 @@ func (s *Server) downloadLyricsFile(ctx context.Context, source remoteSourceForU
 	return writeLyricsStagingFile(response.Body, destination)
 }
 
-// lyricsFolderRelativePath is a file's path inside a lyrics folder: its path
-// in its source, without the lyrics folder that already holds it there.
+// A lyrics edit either copies the lyrics files of the work folder into
+// Kikoto's lyrics folder, leaving the work's own files where they are, or
+// moves them there. The administrator's setting chooses for an edit that does
+// not choose itself; managed lyrics that change language always move.
+const (
+	folderLyricsModeSetting = "lyrics_folder_files_mode"
+	folderLyricsCopy        = "copy"
+	folderLyricsMove        = "move"
+)
+
+// parseFolderLyricsMode returns the mode a value names, and false for any
+// other value.
+func parseFolderLyricsMode(value string) (string, bool) {
+	switch mode := strings.ToLower(strings.TrimSpace(value)); mode {
+	case folderLyricsCopy, folderLyricsMove:
+		return mode, true
+	default:
+		return "", false
+	}
+}
+
+// folderLyricsMode is the administrator's default mode, copying unless set.
+func (s *Server) folderLyricsMode(ctx context.Context) string {
+	if mode, ok := parseFolderLyricsMode(s.settingStringContext(ctx, folderLyricsModeSetting, folderLyricsCopy)); ok {
+		return mode
+	}
+	return folderLyricsCopy
+}
+
+// lyricsFolderRelativePath is a file's path inside a language's lyrics folder:
+// its path in its source, without the language's lyrics folder that already
+// holds it there.
 func lyricsFolderRelativePath(source string) string {
-	first, rest, nested := strings.Cut(source, "/")
-	if _, managed := lyricsFolderLanguage(first); managed && nested {
+	if rest, managed := managedLyricsRest(source); managed {
 		return rest
 	}
 	return source
 }
 
+// managedLyricsRest splits relative, a path below a work folder, at the
+// language folder inside the lyrics folder, and reports whether it lies in
+// one.
+func managedLyricsRest(relative string) (string, bool) {
+	root, below, nested := strings.Cut(relative, "/")
+	if !nested || root != localfs.LyricsRootName {
+		return "", false
+	}
+	language, rest, nested := strings.Cut(below, "/")
+	if _, managed := lyricsFolderLanguage(language); !managed || !nested || rest == "" {
+		return "", false
+	}
+	return rest, true
+}
+
 // managedLyricsPath reports whether relative, a path below a work folder,
 // names a lyrics file inside one of the folder's language lyrics folders.
+// Whether Kikoto owns the lyrics folder is checked on disk with
+// lyricsRootOwned.
 func managedLyricsPath(relative string) bool {
-	first, _, nested := strings.Cut(relative, "/")
-	_, managed := lyricsFolderLanguage(first)
-	return managed && nested && mediaKindFromPath(relative) == "text"
+	_, managed := managedLyricsRest(relative)
+	return managed && mediaKindFromPath(relative) == "text"
 }
 
 // removeEmptyDirectoriesBelow removes directory and its parents below root

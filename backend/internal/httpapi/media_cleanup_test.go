@@ -186,6 +186,37 @@ func TestMediaLocationCleanupQueuesAndExecutesMixedTargets(t *testing.T) {
 	}
 }
 
+// The lyrics folder's marker is never indexed, so no file target deletes it;
+// deleting the work folder takes it along, but no other unindexed file.
+func TestMediaCleanupLocalRootTakesTheLyricsFolderMarker(t *testing.T) {
+	dataRoot := t.TempDir()
+	root := filepath.Join(dataRoot, "library", "RJ00000024")
+	if err := os.MkdirAll(filepath.Join(root, "lyrics_kikoto", "ja"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "lyrics_kikoto", ".kikoto-lyrics"), []byte(`{"version":1,"managedBy":"kikoto","purpose":"lyrics"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(openMigratedTestDB(t), config.Config{DataRoot: dataRoot, CacheRoot: t.TempDir()})
+	target := mediaCleanupTarget{Kind: "local_root", LocationID: 1, WorkID: 1, SourceID: 1, Path: "library/RJ00000024"}
+
+	if err := os.WriteFile(filepath.Join(root, "lyrics_kikoto", "ja", "stray.vtt"), []byte("unindexed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.clearLocalWorkRoot(context.Background(), target); err == nil {
+		t.Fatal("a work folder holding an unindexed lyrics file was deleted")
+	}
+	if err := os.Remove(filepath.Join(root, "lyrics_kikoto", "ja", "stray.vtt")); err != nil {
+		t.Fatal(err)
+	}
+	if deleted, err := server.clearLocalWorkRoot(context.Background(), target); err != nil || !deleted {
+		t.Fatalf("clear root = deleted %t, error %v", deleted, err)
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("the work folder is still there: %v", err)
+	}
+}
+
 func TestMediaCleanupLocalRootUsesConfirmedFolderOnly(t *testing.T) {
 	dataRoot := t.TempDir()
 	rootA := filepath.Join(dataRoot, "library", "RJ00000020")

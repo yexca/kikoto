@@ -934,6 +934,13 @@ export const surfaceJapanese = {
       hideRemoteAddressesDescription:
         "オンにすると、ソースを管理する権限のないアカウントとサインインしていない閲覧者には、ソースの API・サイト・予備のアドレス、ソースサイト上の作品へのリンク、トラックやアクティビティに含まれる上流 URL が渡されません。閲覧、再生、カバー、テキストプレビューはこのサーバーを経由します。",
       saveRemoteAddresses: "アドレス設定を保存",
+      lyricsFiles: "歌詞ファイル",
+      lyricsFilesDescription:
+        "歌詞を管理 が、作品フォルダーにすでにある歌詞を Kikoto の lyrics_kikoto フォルダーに取り込む方法です。",
+      folderLyricsMode: "作品フォルダーの歌詞",
+      folderLyricsModeDescription:
+        "コピーでは作品自身のファイルはそのまま残り、移動では元の場所から移されます。編集ごとに選ぶこともできます。",
+      saveLyricsFiles: "歌詞の設定を保存",
       creatorCatalogs: "クリエイターのカタログ",
       catalogFreshnessDays: "カタログの更新日数",
       catalogFreshnessDescription: "サークルと声優のカタログは、最後の更新からこの日数が過ぎると注意状態になります。",
@@ -2557,7 +2564,7 @@ export const surfaceJapanese = {
 
   errorFeedback: {
     lyricsFolderBlocked:
-      "作品フォルダー内のファイルが、歌詞フォルダーの置き場所をふさいでいます。そのファイルの名前を変えるか移動してから、もう一度歌詞に追加してください。",
+      "Kikoto が作成していないファイルまたはフォルダーが、lyrics_kikoto フォルダーの置き場所をふさいでいます。名前を変えるか移動してから、もう一度お試しください。",
     databaseBusy: "データベースがビジー状態です。しばらくしてから再試行してください。",
     serviceModelNotInstalled:
       "サービスにモデルがインストールされていません。サービス側でインストールしてから、もう一度モデルを取得してください。",
@@ -3230,7 +3237,12 @@ export const surfaceJapanese = {
     managed: "管理中の歌詞",
     thisFolder: "このフォルダーのその他の歌詞",
     managedHint: "この作品フォルダーの言語別歌詞フォルダーにある歌詞です。チェックを外すとそのファイルを削除します。",
-    folderHint: "選択したファイルは、この作品フォルダー内の該当言語の歌詞フォルダーに移動します。",
+    folderCopyHint:
+      "選択したファイルは、この作品フォルダー内の該当言語の歌詞フォルダーにコピーされ、作品自身のファイルはそのまま残ります。言語を変更した管理中の歌詞は移動します。",
+    folderMoveHint: "選択したファイルは、この作品フォルダー内の該当言語の歌詞フォルダーに移動します。",
+    folderMode: "作品自身のファイル",
+    folderModeCopy: "lyrics_kikoto にコピー",
+    folderModeMove: "lyrics_kikoto に移動",
     localHint: "選択したファイルは該当言語の歌詞フォルダーにコピーされます。コピー元のフォルダーは変更されません。",
     remoteHint: "選択したファイルは {{source}} から該当言語の歌詞フォルダーにダウンロードされます。",
     listManaged: "管理中の歌詞も表示して言語を変更する",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/localfs"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
@@ -173,10 +175,14 @@ func (fixture lyricsFetchFixture) plan(t *testing.T, body map[string]any) lyrics
 }
 
 // write puts files, named by their path below the folder, into the fixture's
-// folder and indexes them.
+// folder and indexes them. Files below the lyrics folder go into a lyrics
+// folder Kikoto created.
 func (fixture lyricsFetchFixture) write(t *testing.T, files map[string]string) {
 	t.Helper()
 	for file, content := range files {
+		if strings.HasPrefix(file, localfs.LyricsRootName+"/") {
+			ownLyricsRoot(t, fixture.absolute(""))
+		}
 		absolute := fixture.absolute(file)
 		if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 			t.Fatal(err)
@@ -225,19 +231,36 @@ func jsonNumber(value int64) string {
 	return string(encoded)
 }
 
+// lyricsFolders returns the language folders inside the folder's lyrics
+// folder.
 func (fixture lyricsFetchFixture) lyricsFolders(t *testing.T) []string {
 	t.Helper()
-	entries, err := os.ReadDir(filepath.Join(fixture.dataRoot, filepath.FromSlash(fixture.root)))
+	entries, err := os.ReadDir(fixture.absolute(localfs.LyricsRootName))
+	if errors.Is(err, os.ErrNotExist) {
+		return []string{}
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
 	folders := []string{}
 	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), "lyrics") {
+		if entry.IsDir() {
 			folders = append(folders, entry.Name())
 		}
 	}
 	return folders
+}
+
+// ownLyricsRoot creates the lyrics folder of the work folder at workRoot as
+// Kikoto does.
+func ownLyricsRoot(t *testing.T, workRoot string) {
+	t.Helper()
+	if err := os.MkdirAll(workRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureLyricsRoot(workRoot); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (fixture lyricsFetchFixture) decode(t *testing.T, response *httptest.ResponseRecorder) lyricsEditResult {

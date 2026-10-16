@@ -1,4 +1,14 @@
-import { AlertTriangle, Captions, CheckCircle2, Cloud, FolderOpen, HardDrive, Languages, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRightLeft,
+  Captions,
+  CheckCircle2,
+  Cloud,
+  FolderOpen,
+  HardDrive,
+  Languages,
+  Loader2,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -29,7 +39,7 @@ import { formatBytes } from "@/features/work-detail/media/mediaTreeModel";
 import { languageLabel } from "@/features/work-detail/workflows/RemoteFetchWorkspaceTrees";
 import type { MediaDeleteTarget } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
 import type { MediaItem, WorkFolderLocation } from "@/lib/api";
-import { lyricsLanguageFolderName, lyricsLanguages } from "@/lib/lyricsLanguage";
+import { lyricsLanguageFolderPath, lyricsLanguages } from "@/lib/lyricsLanguage";
 import { cn } from "@/lib/tailwindClassNames";
 
 type LyricsPane = "sources" | "select" | "result";
@@ -300,7 +310,7 @@ function SelectionColumn({
     resource.kind === "current"
       ? t("lyricsFiles.managedHint")
       : resource.kind === "folder"
-        ? t("lyricsFiles.folderHint")
+        ? t(workspace.folderMode === "move" ? "lyricsFiles.folderMoveHint" : "lyricsFiles.folderCopyHint")
         : resource.kind === "local"
           ? t("lyricsFiles.localHint")
           : t("lyricsFiles.remoteHint", { source: resource.sourceName });
@@ -373,9 +383,29 @@ function SelectionColumn({
             </div>
             {language !== null && (
               <span className="truncate font-mono text-xs text-muted-foreground">
-                {t("lyricsFiles.targetFolder", { folder: lyricsLanguageFolderName(language) })}
+                {t("lyricsFiles.targetFolder", { folder: lyricsLanguageFolderPath(language) })}
               </span>
             )}
+          </div>
+        )}
+        {resource.kind === "folder" && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("lyricsFiles.folderMode")}
+            </span>
+            <div className="min-w-0 flex-1 basis-44 sm:max-w-64">
+              <FloatingSelect
+                value={workspace.folderMode}
+                options={[
+                  { value: "copy", label: t("lyricsFiles.folderModeCopy") },
+                  { value: "move", label: t("lyricsFiles.folderModeMove") },
+                ]}
+                onValueChange={(value) => workspace.setFolderMode(value === "move" ? "move" : "copy")}
+                ariaLabel={t("lyricsFiles.folderMode")}
+                disabled={workspace.applying}
+              />
+            </div>
           </div>
         )}
         {resource.kind === "folder" && (

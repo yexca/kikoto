@@ -1,5 +1,6 @@
 import { postJSONBody } from "@/lib/apiTransport";
 import type { RemoteFetchFileDecision, RemoteWorkSavePlanItem } from "@/lib/remoteSourceApi";
+import type { FolderLyricsMode } from "@/lib/settingsApi";
 import type { WorkFolderEditRemoval } from "@/lib/workFolderEditApi";
 
 /**
@@ -21,6 +22,11 @@ export type LyricsEditRequest = {
   decisions: RemoteFetchFileDecision[];
   /** Added files to assign as the library lyrics of local tracks, in the file's language. */
   assignments: { audioMediaItemId: number; itemKey: string }[];
+  /**
+   * Copies or moves the added files of the edited folder that are outside
+   * Kikoto's lyrics folder; managed lyrics that change language always move.
+   */
+  folderMode: FolderLyricsMode;
 };
 
 export type LyricsEditItem = RemoteWorkSavePlanItem & {
@@ -42,6 +48,7 @@ export type LyricsEditSummary = {
 export type LyricsEditPlan = {
   workId: number;
   folderId: number;
+  folderMode: FolderLyricsMode;
   /** The edited folder, relative to the data root. */
   saveRoot: string;
   items: LyricsEditItem[];

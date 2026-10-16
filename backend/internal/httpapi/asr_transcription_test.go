@@ -226,7 +226,7 @@ func TestASRTranscriptionIsReviewedThenPublishedAsAssignedLyrics(t *testing.T) {
 	if accepted := fixture.accept(t, id); accepted.Code != http.StatusOK {
 		t.Fatalf("accept = %d %s", accepted.Code, accepted.Body.String())
 	}
-	published, err := os.ReadFile(filepath.Join(fixture.dataRoot, filepath.FromSlash(fixture.root), "lyrics_ja", "mp3", "Track1.vtt"))
+	published, err := os.ReadFile(filepath.Join(fixture.dataRoot, filepath.FromSlash(fixture.root), "lyrics_kikoto", "ja", "mp3", "Track1.vtt"))
 	if err != nil || string(published) != text.Body.String() {
 		t.Fatalf("published = %q, %v", published, err)
 	}
@@ -239,7 +239,7 @@ func TestASRTranscriptionIsReviewedThenPublishedAsAssignedLyrics(t *testing.T) {
 	`, fixture.audioID).Scan(&origin, &assignedPath); err != nil {
 		t.Fatal(err)
 	}
-	if origin != "transcription" || assignedPath != fixture.root+"/lyrics_ja/mp3/Track1.vtt" {
+	if origin != "transcription" || assignedPath != fixture.root+"/lyrics_kikoto/ja/mp3/Track1.vtt" {
 		t.Fatalf("assignment = %s %s", origin, assignedPath)
 	}
 	if state, _, _ := fixture.state(t, id); state != "accepted" {
@@ -256,7 +256,8 @@ func TestASRTranscriptionKeepsAnExistingLyricsFile(t *testing.T) {
 	if err := fixture.server.runNextQueuedWorkflowJob(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	folder := filepath.Join(fixture.dataRoot, filepath.FromSlash(fixture.root), "lyrics", "mp3")
+	ownLyricsRoot(t, filepath.Join(fixture.dataRoot, filepath.FromSlash(fixture.root)))
+	folder := filepath.Join(fixture.dataRoot, filepath.FromSlash(fixture.root), "lyrics_kikoto", "fallback", "mp3")
 	if err := os.MkdirAll(folder, 0o755); err != nil {
 		t.Fatal(err)
 	}

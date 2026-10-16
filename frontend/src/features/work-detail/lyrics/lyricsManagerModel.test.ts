@@ -112,8 +112,8 @@ describe("lyrics assignment draft", () => {
       }),
       localItem(2, "audio", "02.mp3"),
       localItem(11, "text", "01.mp3.vtt"),
-      localItem(12, "text", "lyrics_zh_hans/a.vtt"),
-      localItem(13, "text", "lyrics_en/a.vtt"),
+      localItem(12, "text", "lyrics_kikoto/zh-hans/a.vtt"),
+      localItem(13, "text", "lyrics_kikoto/en/a.vtt"),
     ]);
     expect(audio[0].assignedLyrics).toEqual({ "zh-cn": 12, "": 11 });
     const drafts = initialLyricsAssignmentDrafts(audio);
@@ -204,8 +204,8 @@ describe("findLocalLyricsChoices", () => {
     const items = [
       localItem(1, "audio", "mp3/01 First.mp3"),
       localItem(11, "text", "mp3/01 First.mp3.vtt"),
-      localItem(12, "text", "lyrics_zh_hans/Track1.vtt"),
-      localItem(13, "text", "lyrics_en/Track1.vtt"),
+      localItem(12, "text", "lyrics_kikoto/zh-hans/Track1.vtt"),
+      localItem(13, "text", "lyrics_kikoto/en/Track1.vtt"),
     ];
     const choices = findLocalLyricsChoices(`${workRoot}/mp3/01 First.mp3`, items, [
       { language: "zh-cn", lyricsMediaItemId: 12 },
@@ -220,8 +220,8 @@ describe("findLocalLyricsChoices", () => {
     ]);
     const languageName = (language: string) => (language === "zh-cn" ? "Simplified Chinese" : "English");
     expect(choices.map((choice) => lyricsChoiceDisplayLabel(choice, choices, languageName))).toEqual([
-      "Simplified Chinese · lyrics_zh_hans/Track1.vtt",
-      "English · lyrics_en/Track1.vtt",
+      "Simplified Chinese · zh-hans/Track1.vtt",
+      "English · en/Track1.vtt",
       "01 First.mp3.vtt",
     ]);
   });

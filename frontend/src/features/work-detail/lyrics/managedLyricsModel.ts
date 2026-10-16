@@ -1,7 +1,7 @@
 import { isLyricsFilePath } from "@/features/work-detail/lyrics/remoteLyricsModel";
 import type { TreeNode, TreeTrack } from "@/features/work-detail/media/mediaTreeModel";
 import type { MediaItem } from "@/lib/api";
-import { lyricsFolderLanguage } from "@/lib/lyricsLanguage";
+import { lyricsFolderLanguage, lyricsRootFolderName } from "@/lib/lyricsLanguage";
 
 /** A lyrics file of a local work folder, addressed by its path below that folder. */
 export type FolderLyricsFile = {
@@ -15,12 +15,13 @@ export type FolderLyricsFile = {
 /**
  * The language whose lyrics folder holds a file, by the file's path below its
  * work folder, or null for a file Kikoto does not manage. The empty language
- * is the folder for every language.
+ * is the folder for every language. The server also checks that Kikoto
+ * created the lyrics folder before it changes one of these files.
  */
 export function managedLyricsLanguage(relativePath: string): string | null {
   const parts = normalizePath(relativePath).split("/");
-  if (parts.length < 2 || !isLyricsFilePath(relativePath)) return null;
-  return lyricsFolderLanguage(parts[0]);
+  if (parts.length < 3 || parts[0] !== lyricsRootFolderName || !isLyricsFilePath(relativePath)) return null;
+  return lyricsFolderLanguage(parts[1]);
 }
 
 /** A library path's part below a folder root, or null when it lies outside the folder. */

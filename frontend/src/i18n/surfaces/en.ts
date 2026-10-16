@@ -900,6 +900,13 @@ export const surfaceEnglish = {
       hideRemoteAddressesDescription:
         "When on, accounts without source management and signed-out readers never receive a source's API, site, or fallback address, links to works on the source site, or upstream URLs in tracks and Activity. Browsing, playback, covers, and text previews go through this server instead.",
       saveRemoteAddresses: "Save address settings",
+      lyricsFiles: "Lyrics files",
+      lyricsFilesDescription:
+        "How Manage lyrics brings lyrics the work folder already holds into Kikoto's lyrics_kikoto folder.",
+      folderLyricsMode: "Lyrics of the work folder",
+      folderLyricsModeDescription:
+        "Copying leaves the work's own files where they are; moving takes them out of their place. Each edit can still choose.",
+      saveLyricsFiles: "Save lyrics settings",
       creatorCatalogs: "Creator catalogs",
       catalogFreshnessDays: "Catalog freshness days",
       catalogFreshnessDescription:
@@ -2606,7 +2613,7 @@ export const surfaceEnglish = {
 
   errorFeedback: {
     lyricsFolderBlocked:
-      "A file in the work folder sits where the lyrics folder belongs. Rename or move that file, then add the lyrics again.",
+      "A file or folder that Kikoto did not create sits where the lyrics_kikoto folder belongs. Rename or move it, then try again.",
     databaseBusy: "The database is busy. Please retry in a moment.",
     serviceModelNotInstalled:
       "The service has no installed model. Install one in the service, then fetch models again.",
@@ -3278,7 +3285,12 @@ export const surfaceEnglish = {
     managed: "Managed lyrics",
     thisFolder: "Other lyrics in this folder",
     managedHint: "The lyrics in a language's lyrics folder of this work folder. Clear a file to delete it.",
-    folderHint: "Selected files move into the lyrics folder of their language inside this work folder.",
+    folderCopyHint:
+      "Selected files are copied into the lyrics folder of their language inside this work folder; the work's own files stay where they are. Managed lyrics whose language you change move.",
+    folderMoveHint: "Selected files move into the lyrics folder of their language inside this work folder.",
+    folderMode: "The work's own files",
+    folderModeCopy: "Copy into lyrics_kikoto",
+    folderModeMove: "Move into lyrics_kikoto",
     localHint:
       "Selected files are copied into the lyrics folder of their language. The folder they come from is not changed.",
     remoteHint: "Selected files are downloaded from {{source}} into the lyrics folder of their language.",

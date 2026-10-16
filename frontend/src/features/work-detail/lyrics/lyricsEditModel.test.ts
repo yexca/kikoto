@@ -55,9 +55,9 @@ const items = [
   item(1, "audio", "mp3/01 Opening.mp3", 4),
   item(2, "audio", "mp3/02 Ending.mp3"),
   item(3, "text", "mp3/01 Opening.mp3.vtt"),
-  item(4, "text", "lyrics_zh_hans/mp3/01 Opening.mp3.vtt"),
-  item(5, "text", "lyrics_ja/02 Ending.vtt"),
-  item(6, "image", "lyrics_ja/cover.jpg"),
+  item(4, "text", "lyrics_kikoto/zh-hans/mp3/01 Opening.mp3.vtt"),
+  item(5, "text", "lyrics_kikoto/ja/02 Ending.vtt"),
+  item(6, "image", "lyrics_kikoto/ja/cover.jpg"),
 ];
 
 const sources = {
@@ -124,6 +124,7 @@ function plan(planItems: LyricsEditItem[], conflict = 0): LyricsEditPlan {
   return {
     workId: 1,
     folderId: 7,
+    folderMode: "copy",
     saveRoot: root,
     items: planItems,
     removals: [],
@@ -159,8 +160,8 @@ describe("lyrics edit resources", () => {
   it("splits a folder's lyrics into the managed ones and the others", () => {
     const { managed, loose } = folderLyrics(items, root);
     expect(managed.map((file) => file.path)).toEqual([
-      "lyrics_zh_hans/mp3/01 Opening.mp3.vtt",
-      "lyrics_ja/02 Ending.vtt",
+      "lyrics_kikoto/zh-hans/mp3/01 Opening.mp3.vtt",
+      "lyrics_kikoto/ja/02 Ending.vtt",
     ]);
     expect(loose.map((file) => file.path)).toEqual(["mp3/01 Opening.mp3.vtt"]);
   });
@@ -184,9 +185,9 @@ describe("lyrics edit request", () => {
       resources,
       files,
       selection: {
-        [MANAGED_LYRICS_RESOURCE]: new Set(["lyrics_zh_hans/mp3/01 Opening.mp3.vtt"]),
+        [MANAGED_LYRICS_RESOURCE]: new Set(["lyrics_kikoto/zh-hans/mp3/01 Opening.mp3.vtt"]),
         // A file that is being deleted cannot move as well.
-        [FOLDER_LYRICS_RESOURCE]: new Set(["mp3/01 Opening.mp3.vtt", "lyrics_ja/02 Ending.vtt"]),
+        [FOLDER_LYRICS_RESOURCE]: new Set(["mp3/01 Opening.mp3.vtt", "lyrics_kikoto/ja/02 Ending.vtt"]),
         "remote:3:RJ00000001": new Set(["sub/01 Opening.vtt"]),
       },
       languages: { [FOLDER_LYRICS_RESOURCE]: "" },
@@ -199,6 +200,7 @@ describe("lyrics edit request", () => {
         },
         "folder:gone.vtt": { itemKey: "folder:gone.vtt", sourceId: 0, resolution: "replace", targetPath: "" },
       },
+      folderMode: "move",
     });
     expect(undeclared).toEqual([]);
     expect(request.removeLocationIds).toEqual([105]);
@@ -207,6 +209,7 @@ describe("lyrics edit request", () => {
       { kind: "remote", sourceId: 3, remoteCode: "RJ00000001", path: "sub/01 Opening.vtt", language: "zh-cn" },
     ]);
     expect(request.decisions.map((decision) => decision.itemKey)).toEqual(["folder:mp3/01 Opening.mp3.vtt"]);
+    expect(request.folderMode).toBe("move");
   });
 
   it("holds back the files whose language is not declared", () => {
@@ -221,6 +224,7 @@ describe("lyrics edit request", () => {
       selection,
       languages: {},
       decisions: {},
+      folderMode: "copy",
     });
     expect(request.additions).toEqual([]);
     expect(undeclared.map((resource) => resource.id)).toEqual([FOLDER_LYRICS_RESOURCE]);
@@ -230,25 +234,25 @@ describe("lyrics edit request", () => {
 
 describe("lyrics edit result", () => {
   const { managed } = folderLyrics(items, root);
-  const kept = new Set(["lyrics_zh_hans/mp3/01 Opening.mp3.vtt", "lyrics_ja/02 Ending.vtt"]);
+  const kept = new Set(["lyrics_kikoto/zh-hans/mp3/01 Opening.mp3.vtt", "lyrics_kikoto/ja/02 Ending.vtt"]);
 
   it("marks what a planned addition does to the managed lyrics", () => {
     const result = lyricsEditResult(
       managed,
-      new Set(["lyrics_ja/02 Ending.vtt"]),
+      new Set(["lyrics_kikoto/ja/02 Ending.vtt"]),
       plan([
         // A managed file declared as another language leaves its place.
-        planItem("folder:lyrics_ja/02 Ending.vtt", "lyrics_en/02 Ending.vtt", {
-          localSourcePath: `${root}/lyrics_ja/02 Ending.vtt`,
+        planItem("folder:lyrics_kikoto/ja/02 Ending.vtt", "lyrics_kikoto/en/02 Ending.vtt", {
+          localSourcePath: `${root}/lyrics_kikoto/ja/02 Ending.vtt`,
         }),
-        planItem("remote:3:RJ00000001:new.vtt", "lyrics_zh_hans/new.vtt", { action: "cache_download" }),
+        planItem("remote:3:RJ00000001:new.vtt", "lyrics_kikoto/zh-hans/new.vtt", { action: "cache_download" }),
       ]),
     );
     expect(result.map((entry) => [entry.path, entry.state])).toEqual([
-      ["lyrics_zh_hans/mp3/01 Opening.mp3.vtt", "remove"],
-      ["lyrics_ja/02 Ending.vtt", "moved"],
-      ["lyrics_en/02 Ending.vtt", "add_move"],
-      ["lyrics_zh_hans/new.vtt", "add_remote"],
+      ["lyrics_kikoto/zh-hans/mp3/01 Opening.mp3.vtt", "remove"],
+      ["lyrics_kikoto/ja/02 Ending.vtt", "moved"],
+      ["lyrics_kikoto/en/02 Ending.vtt", "add_move"],
+      ["lyrics_kikoto/zh-hans/new.vtt", "add_remote"],
     ]);
   });
 
@@ -256,18 +260,20 @@ describe("lyrics edit result", () => {
     const same = lyricsEditResult(
       managed,
       kept,
-      plan([planItem("local:9:a.vtt", "lyrics_ja/02 Ending.vtt", { action: "skip" })]),
+      plan([planItem("local:9:a.vtt", "lyrics_kikoto/ja/02 Ending.vtt", { action: "skip" })]),
     );
     expect(same.map((entry) => entry.state)).toEqual(["keep", "same"]);
     const replaced = lyricsEditResult(
       managed,
       kept,
-      plan([planItem("local:9:a.vtt", "lyrics_ja/02 Ending.vtt", { action: "copy_local", resolution: "replace" })]),
+      plan([
+        planItem("local:9:a.vtt", "lyrics_kikoto/ja/02 Ending.vtt", { action: "copy_local", resolution: "replace" }),
+      ]),
     );
     expect(replaced.map((entry) => [entry.path, entry.state])).toEqual([
-      ["lyrics_zh_hans/mp3/01 Opening.mp3.vtt", "keep"],
-      ["lyrics_ja/02 Ending.vtt", "replaced"],
-      ["lyrics_ja/02 Ending.vtt", "add_local"],
+      ["lyrics_kikoto/zh-hans/mp3/01 Opening.mp3.vtt", "keep"],
+      ["lyrics_kikoto/ja/02 Ending.vtt", "replaced"],
+      ["lyrics_kikoto/ja/02 Ending.vtt", "add_local"],
     ]);
   });
 
@@ -278,10 +284,11 @@ describe("lyrics edit result", () => {
       removeLocationIds: [],
       decisions: [],
       assignments: [],
+      folderMode: "copy" as const,
     };
-    const ready = plan([planItem("folder:a.vtt", "lyrics_ja/a.vtt")]);
+    const ready = plan([planItem("folder:a.vtt", "lyrics_kikoto/ja/a.vtt")]);
     const blocked = plan(
-      [planItem("folder:a.vtt", "lyrics_ja/a.vtt", { action: "conflict", targetConflict: true })],
+      [planItem("folder:a.vtt", "lyrics_kikoto/ja/a.vtt", { action: "conflict", targetConflict: true })],
       1,
     );
     expect(lyricsEditReadiness({ request, undeclared: [], plan: null, planCurrent: false })).toBe("refreshing");
@@ -311,7 +318,9 @@ describe("lyrics edit assignments", () => {
 
   it("does not assign a file the plan leaves out", () => {
     const left = plan([
-      planItem("remote:3:RJ00000001:sub/02 Ending.vtt", "lyrics_zh_hans/sub/02 Ending.vtt", { action: "exclude" }),
+      planItem("remote:3:RJ00000001:sub/02 Ending.vtt", "lyrics_kikoto/zh-hans/sub/02 Ending.vtt", {
+        action: "exclude",
+      }),
     ]);
     expect(lyricsEditAssignments({ audio, additions, plan: left }).map((assignment) => assignment.itemKey)).toEqual([
       "folder:mp3/01 Opening.mp3.vtt",

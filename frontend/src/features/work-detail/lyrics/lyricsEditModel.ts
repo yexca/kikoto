@@ -11,6 +11,7 @@ import type { LyricsManagerAudio } from "@/features/work-detail/lyrics/lyricsMan
 import { managedLyricsLanguage, pathBelowFolder } from "@/features/work-detail/lyrics/managedLyricsModel";
 import { isLyricsFilePath, suggestRemoteLyricsMapping } from "@/features/work-detail/lyrics/remoteLyricsModel";
 import type {
+  FolderLyricsMode,
   LyricsEditAddition,
   LyricsEditItem,
   LyricsEditPlan,
@@ -163,6 +164,7 @@ export function lyricsEditRequest({
   selection,
   languages,
   decisions,
+  folderMode,
 }: {
   target: FolderEditTarget;
   resources: readonly LyricsEditResource[];
@@ -170,6 +172,8 @@ export function lyricsEditRequest({
   selection: FolderEditSelection;
   languages: LyricsEditLanguages;
   decisions: Readonly<Record<string, RemoteFetchFileDecision>>;
+  /** Whether the folder's own files are copied or moved into Kikoto's lyrics folder. */
+  folderMode: FolderLyricsMode;
 }): { request: LyricsEditRequest; undeclared: LyricsEditResource[] } {
   const additions: LyricsEditAddition[] = [];
   const removeLocationIds: number[] = [];
@@ -206,6 +210,7 @@ export function lyricsEditRequest({
         .filter((decision) => itemKeys.has(decision.itemKey))
         .sort((left, right) => left.itemKey.localeCompare(right.itemKey)),
       assignments: [],
+      folderMode,
     },
     undeclared,
   };

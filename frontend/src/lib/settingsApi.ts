@@ -150,6 +150,9 @@ export type FileSource = {
   lastCheckedAt: string | null;
 };
 
+/** Copy the work's own lyrics into Kikoto's lyrics folder, or move them there. */
+export type FolderLyricsMode = "copy" | "move";
+
 export type RuntimeSettings = {
   anonymousAccessEnabled: boolean;
   cacheEnabled: boolean;
@@ -157,6 +160,8 @@ export type RuntimeSettings = {
   demoMode: boolean;
   directoryRoutingRules: DirectoryRoutingRule[];
   recommendationThreshold: number;
+  /** How a lyrics edit brings lyrics of the work folder into Kikoto's lyrics folder by default; signed-in readers only. */
+  folderLyricsMode?: FolderLyricsMode;
 };
 
 export type AppUpdate = {
@@ -191,6 +196,8 @@ export type AppSettings = {
   kikoeruImportPrivateAddresses: boolean;
   /** Keeps remote source addresses from accounts without sources:write and from signed-out readers. */
   hideRemoteSourceAddresses: boolean;
+  /** How a lyrics edit brings lyrics of the work folder into Kikoto's lyrics folder unless it chooses. */
+  folderLyricsMode: FolderLyricsMode;
   directoryRoutingRules: DirectoryRoutingRule[];
   recommendationThreshold: number;
   recommendationConfig: RecommendationConfig;
@@ -290,6 +297,7 @@ export const settingsApi = {
     proxy?: ProxySettingsPayload;
     kikoeruImportPrivateAddresses?: boolean;
     hideRemoteSourceAddresses?: boolean;
+    folderLyricsMode?: FolderLyricsMode;
     directoryRoutingRules?: DirectoryRoutingRule[];
     recommendationThreshold?: number;
     recommendationConfig?: RecommendationConfig;

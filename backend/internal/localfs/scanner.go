@@ -481,6 +481,9 @@ func collectFiles(root string, workPath string) ([]LocalFile, error) {
 		if err != nil {
 			return err
 		}
+		if IsLyricsRootMarker(filepath.ToSlash(workRel)) {
+			return nil
+		}
 
 		extension := strings.ToLower(filepath.Ext(workRel))
 		title := strings.TrimSuffix(filepath.ToSlash(workRel), extension)

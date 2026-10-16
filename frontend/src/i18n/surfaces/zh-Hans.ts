@@ -902,6 +902,11 @@ export const surfaceHans = {
       hideRemoteAddressesDescription:
         "开启后，没有来源管理权限的账号和未登录的访客不会收到来源的 API、站点或备用地址、作品在源站上的链接，以及曲目和活动记录中的上游地址。浏览、播放、封面和文本预览改由本服务器转发。",
       saveRemoteAddresses: "保存地址设置",
+      lyricsFiles: "歌词文件",
+      lyricsFilesDescription: "管理歌词如何把作品文件夹中已有的歌词放入 Kikoto 的 lyrics_kikoto 文件夹。",
+      folderLyricsMode: "作品文件夹中的歌词",
+      folderLyricsModeDescription: "复制会把作品自身的文件留在原处；移动会把它们从原位置移走。每次编辑仍可单独选择。",
+      saveLyricsFiles: "保存歌词设置",
       creatorCatalogs: "创作者目录",
       catalogFreshnessDays: "目录新鲜度天数",
       catalogFreshnessDescription: "社团和声优目录距上次刷新超过这个天数后会变为注意状态。",
@@ -2437,7 +2442,8 @@ export const surfaceHans = {
   },
 
   errorFeedback: {
-    lyricsFolderBlocked: "作品文件夹中有一个文件占用了歌词文件夹的位置。请重命名或移走该文件，然后再添加到歌词。",
+    lyricsFolderBlocked:
+      "有一个不是 Kikoto 创建的文件或文件夹占用了 lyrics_kikoto 文件夹的位置。请重命名或移走它，然后重试。",
     databaseBusy: "数据库繁忙，请稍后重试。",
     serviceModelNotInstalled: "服务尚未安装模型。请先在服务中安装模型，再重新获取模型。",
     llmUnsupportedLanguagePair: "此模型不支持该翻译方向。",
@@ -3081,7 +3087,12 @@ export const surfaceHans = {
     managed: "受管理的歌词",
     thisFolder: "此文件夹中的其他歌词",
     managedHint: "此作品文件夹中各语言歌词文件夹里的歌词。取消勾选即删除该文件。",
-    folderHint: "选中的文件会移到此作品文件夹中对应语言的歌词文件夹。",
+    folderCopyHint:
+      "选中的文件会复制到此作品文件夹中对应语言的歌词文件夹，作品自身的文件保持原样。更改语言的受管理歌词会被移动。",
+    folderMoveHint: "选中的文件会移到此作品文件夹中对应语言的歌词文件夹。",
+    folderMode: "作品自身的文件",
+    folderModeCopy: "复制到 lyrics_kikoto",
+    folderModeMove: "移动到 lyrics_kikoto",
     localHint: "选中的文件会复制到对应语言的歌词文件夹，来源文件夹保持不变。",
     remoteHint: "选中的文件会从 {{source}} 下载到对应语言的歌词文件夹。",
     listManaged: "同时列出受管理的歌词，以更改其语言",
