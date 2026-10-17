@@ -13,7 +13,6 @@ import (
 	"github.com/yexca/kikoto/backend/internal/asr"
 	"github.com/yexca/kikoto/backend/internal/kikotohelper"
 	"github.com/yexca/kikoto/backend/internal/outbound"
-	"github.com/yexca/kikoto/backend/internal/proxyconfig"
 )
 
 type asrProviderResponse struct {
@@ -253,12 +252,13 @@ func (s *Server) asrConfigHash(p asr.Provider, model string) string {
 }
 
 // asrClient reaches only the administrator-configured origin, including its
-// private address exception, and refuses every redirect. A transcription
+// private address exception, and refuses every redirect. It follows the LLM
+// and ASR proxy route. A transcription
 // service answers once a chunk is transcribed, so the header wait is the
 // request bound rather than the default.
 func (s *Server) asrClient(ctx context.Context, p asr.Provider, timeout time.Duration) (asr.Client, func(), error) {
 	base := p.Endpoint(s.cfg.HostProxyAddress())
-	route, err := s.resolveProxyRoute(ctx, proxyconfig.ScopeOther, 0)
+	route, err := s.aiProxyRoute(ctx, p.DerivesHost())
 	if err != nil {
 		return asr.Client{}, nil, err
 	}

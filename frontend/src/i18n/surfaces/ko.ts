@@ -1013,17 +1013,26 @@ export const surfaceKorean = {
       scopeNeedsProxy: "적용 범위를 선택하기 전에 프록시를 추가하세요.",
       scopes: {
         all: "전체",
-        allDescription: "DLsite, 원격 소스, 기타 요청",
+        allDescription: "DLsite, 원격 소스, LLM 및 음성 인식, 기타 요청",
         dlsite: "DLsite",
         dlsiteDescription: "메타데이터, 커버, 크리에이터 카탈로그",
         remote: "원격 소스",
         remoteDescription: "탐색, 재생, 다운로드. 아래에서 소스별로 재정의할 수 있습니다.",
+        ai: "LLM 및 음성 인식",
+        aiDescription:
+          "다른 주소에 있는 LLM 제공자와 음성 인식 서비스. 이 서버와 같은 머신의 서비스는 항상 직접 연결합니다.",
         other: "기타",
         otherDescription: "업데이트 확인. 개인 Kikoeru 가져오기는 항상 직접 연결합니다.",
       },
       directFallback: "직접 연결 대체",
       directFallbackDescription:
         "요청이 시도한 모든 프록시에 연결하지 못하면 프록시 없이 한 번 다시 시도합니다. 끄면 직접 연결하지 않고 실패합니다.",
+      bypassTitle: "프록시 제외 대상",
+      bypassDescription:
+        "다른 곳의 프록시는 이 대상에 닿을 수 없으므로, 모든 적용 범위에서 직접 연결합니다. 호스트 이름, 하위 도메인을 뜻하는 *.domain, IP 주소, 또는 192.168.0.0/16 같은 네트워크를 입력합니다. 네트워크는 그 안으로 확인되는 호스트 이름에도 일치합니다.",
+      bypassPlaceholder: "호스트 이름, *.domain, IP 주소 또는 네트워크 추가",
+      bypassRestoreDefaults: "기본값으로 복원",
+      bypassSave: "제외 목록 저장",
       allProxies: "모든 프록시(우선순위순)",
       customSelection: "사용자 지정 선택",
       useProxyFor: "{{scope}}에 프록시 사용",

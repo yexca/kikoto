@@ -267,13 +267,24 @@ subdomains only and does not permit `media.example.invalid` itself. Additional
 allowed hosts never receive the private-LAN exception.
 
 The hardened outbound transport does not inherit ambient `HTTP_PROXY`,
-`HTTPS_PROXY`, or `NO_PROXY` settings. Administrators instead configure
+`HTTPS_PROXY`, or `NO_PROXY` settings; the **Bypass proxy** list below takes
+the place of `NO_PROXY`. Administrators instead configure
 forward proxies under `Settings -> Proxy`: an ordered list of up to
 eight `http`, `https`, `socks5`, or `socks5h` proxies with an explicit host and
 port and an optional username and password. **Proxy scope** routes built-in
 DLsite requests, remote-source requests (with per-source direct or proxy
-overrides), and other built-in requests such as the update check.
+overrides), LLM provider and speech recognition requests, and other built-in
+requests such as the update check. An LLM provider or speech recognition
+service on Kikoto's own machine is reached at an address only that machine
+resolves, so it always connects directly.
 Destination names are resolved and validated locally, including for `socks5h`.
+**Bypass proxy** lists up to 64 hostnames, `*.domain` suffixes, IP addresses,
+and networks that every scope reaches directly; it starts with loopback, the
+container host names, private and link-local networks, and `*.local`,
+`*.lan`, `*.internal`, and `*.home.arpa`. A network matches the locally
+resolved address, so a hostname resolving into it bypasses the proxy too. A
+bypassed request dials the address already validated for it, under the same
+private-address rule, so the list never widens what a request may reach.
 HTTP(S) proxies use CONNECT tunnels to a validated numeric address for both
 HTTP and HTTPS destinations; SOCKS proxies also receive a numeric destination.
 The original HTTP Host and HTTPS certificate verification remain intact. A
@@ -284,7 +295,10 @@ source-returned URLs. Personal Kikoeru account imports keep their separate
 direct-only route. A request
 tries its proxies in priority order and moves to the next one only when a
 proxy produced no response, the failure was not a policy rejection, the
-request is still live, and its body can be replayed; a proxy that failed stays
+request is still live, and its body can be replayed. A request that is not
+idempotent, such as a translation or transcription POST, moves on only when it
+was never written, so a proxy that drops it mid-request cannot make the
+destination receive it twice. A proxy that failed stays
 behind the others for 30 seconds. If every proxy fails, the request fails
 closed rather than connecting directly unless **Direct connection fallback** is
 enabled. That opt-in switch, off by default, retries the request once without a

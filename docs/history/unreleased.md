@@ -222,6 +222,18 @@
   that ran out of memory while loading and one whose risk notice is not
   accepted in the helper each name their cause, so a start failure never asks
   to install a model that is already installed.
+- Proxy has an **LLM & ASR** scope for LLM providers and ASR services at
+  another address, off by default. A provider or service on the server's own
+  machine always connects directly. A translation or transcription request
+  that a proxy drops after it was sent fails instead of moving to the next
+  proxy, so the service never receives it twice.
+- Proxy has a **Bypass proxy** list of hostnames, `*.domain` suffixes, IP
+  addresses and networks that every scope reaches directly. It starts with
+  this machine, the container host (`host.docker.internal` and its Docker
+  and Podman counterparts), private networks, and `*.local`, `*.lan`,
+  `*.internal` and `*.home.arpa`, so a remote source or service on the LAN
+  no longer goes through a proxy that cannot reach it. A network also matches
+  a hostname that resolves into it.
 - The ellipsis between the page numbers below a list opens a field that goes
   to a typed page number.
 

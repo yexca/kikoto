@@ -31,14 +31,16 @@ func patchSettingsAsSourceWriter(t *testing.T, server *Server, body string) *htt
 }
 
 // proxySettingsBody builds a settings PATCH body with a proxy configuration.
+// Its bypass list is empty, so requests to the loopback test servers follow
+// the routes under test.
 func proxySettingsBody(t *testing.T, proxies []map[string]any, routes map[string]any) string {
 	t.Helper()
-	for _, scope := range []string{"dlsite", "remote", "other"} {
+	for _, scope := range []string{"dlsite", "remote", "ai", "other"} {
 		if _, ok := routes[scope]; !ok {
 			routes[scope] = map[string]any{"enabled": false, "proxyIds": []string{}}
 		}
 	}
-	encoded, err := json.Marshal(map[string]any{"proxy": map[string]any{"proxies": proxies, "routes": routes}})
+	encoded, err := json.Marshal(map[string]any{"proxy": map[string]any{"proxies": proxies, "routes": routes, "bypass": []string{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +158,7 @@ func TestSettingsReturnEmptyProxySelectionsAsArrays(t *testing.T) {
 	if body.Proxy.Proxies == nil {
 		t.Fatal("proxies is null for an empty configuration")
 	}
-	for _, scope := range []string{"dlsite", "remote", "other"} {
+	for _, scope := range []string{"dlsite", "remote", "ai", "other"} {
 		if !strings.Contains(string(body.Proxy.Routes[scope]), `"proxyIds":[]`) {
 			t.Fatalf("%s route = %s, want an empty proxyIds array", scope, body.Proxy.Routes[scope])
 		}

@@ -17,14 +17,19 @@ export const DEFAULT_PROXY_PORTS: Record<ProxyScheme, number> = {
   socks5h: 1080,
 };
 
-export type ProxyScope = "dlsite" | "remote" | "other";
+export type ProxyScope = "dlsite" | "remote" | "ai" | "other";
 
-export const PROXY_SCOPES: ProxyScope[] = ["dlsite", "remote", "other"];
+export const PROXY_SCOPES: ProxyScope[] = ["dlsite", "remote", "ai", "other"];
 
 /** An edited proxy. password is present only when the administrator typed one. */
 export type ProxyDraft = OutboundProxy & { password?: string };
 
-export type ProxyConfigDraft = { proxies: ProxyDraft[]; routes: ProxyRoutes; directFallback: boolean };
+export type ProxyConfigDraft = {
+  proxies: ProxyDraft[];
+  routes: ProxyRoutes;
+  directFallback: boolean;
+  bypass: string[];
+};
 
 /**
  * A route's proxy choice as one select value: every proxy by priority, one
@@ -52,10 +57,12 @@ export function proxyConfigDraft(settings: ProxySettings | undefined): ProxyConf
     routes: {
       dlsite: draftRoute(settings?.routes.dlsite),
       remote: draftRoute(settings?.routes.remote),
+      ai: draftRoute(settings?.routes.ai),
       other: draftRoute(settings?.routes.other),
       sources,
     },
     directFallback: Boolean(settings?.directFallback),
+    bypass: [...(settings?.bypass ?? [])],
   };
 }
 
@@ -73,6 +80,7 @@ export function proxySettingsPayload(draft: ProxyConfigDraft): ProxySettingsPayl
     })),
     routes: draft.routes,
     directFallback: draft.directFallback,
+    bypass: draft.bypass,
   };
 }
 
@@ -157,6 +165,7 @@ export function removeProxy(draft: ProxyConfigDraft, id: string): ProxyConfigDra
     routes: {
       dlsite: route(draft.routes.dlsite),
       remote: route(draft.routes.remote),
+      ai: route(draft.routes.ai),
       other: route(draft.routes.other),
       sources,
     },
@@ -203,6 +212,21 @@ export function setRouteSelection(
 /** The "all" switch is on only when every scope uses a proxy. */
 export function allRoutesEnabled(routes: ProxyRoutes) {
   return PROXY_SCOPES.every((scope) => routes[scope].enabled);
+}
+
+export function setBypass(draft: ProxyConfigDraft, bypass: string[]): ProxyConfigDraft {
+  return { ...draft, bypass };
+}
+
+/**
+ * A plausible bypass entry: a hostname, *.domain or .domain, an IP address,
+ * or a network in CIDR notation. The server is the authority on validity.
+ */
+export function bypassEntryValid(value: string) {
+  const entry = value.trim();
+  if (/^(\*?\.)?[a-z0-9_-]+(\.[a-z0-9_-]+)*\.?$/i.test(entry)) return true;
+  if (/^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/.test(entry)) return true;
+  return entry.includes(":") && /^\[?[0-9a-f:.]+\]?(\/\d{1,3})?$/i.test(entry);
 }
 
 export function setDirectFallback(draft: ProxyConfigDraft, directFallback: boolean): ProxyConfigDraft {

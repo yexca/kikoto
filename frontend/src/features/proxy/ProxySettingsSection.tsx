@@ -7,12 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { TokenInput } from "@/components/ui/token-input";
 import type { AppSettings, FileSource, OutboundProxy, ProxySettings } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
+import { WORD_TOKEN_SEPARATORS } from "@/lib/tokenDraft";
 
 import { ProxyDialog } from "./ProxyDialog";
 import {
   allRoutesEnabled,
+  bypassEntryValid,
   emptyProxy,
   moveProxy,
   PROXY_SCOPES,
@@ -20,6 +23,7 @@ import {
   removeProxy,
   routeSelection,
   setAllRoutesEnabled,
+  setBypass,
   setDirectFallback,
   setRouteEnabled,
   setRouteSelection,
@@ -66,6 +70,14 @@ export function ProxySettingsSection({
   const { draft, saving, save } = useProxySettingsSave(saved, onSaved);
   const [editing, setEditing] = useState<{ proxy: ProxyDraft; existing: boolean } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ProxyDraft | null>(null);
+  // An edited bypass list stays local until it is saved.
+  const [bypassEdit, setBypassEdit] = useState<string[] | null>(null);
+  const bypass = bypassEdit ?? draft.bypass;
+  const bypassChanged = bypass.join("\n") !== draft.bypass.join("\n");
+  const bypassIsDefault = bypass.join("\n") === saved.defaultBypass.join("\n");
+  const saveBypass = async () => {
+    if (await save(setBypass(draft, bypass))) setBypassEdit(null);
+  };
   const hasProxies = draft.proxies.length > 0;
   const locked = readOnly || saving;
   // The row title already names an unnamed proxy by its kind or address.
@@ -101,6 +113,7 @@ export function ProxySettingsSection({
       title: t("maintenance.proxy.scopes.remote"),
       description: t("maintenance.proxy.scopes.remoteDescription"),
     },
+    ai: { title: t("maintenance.proxy.scopes.ai"), description: t("maintenance.proxy.scopes.aiDescription") },
     other: { title: t("maintenance.proxy.scopes.other"), description: t("maintenance.proxy.scopes.otherDescription") },
   };
 
@@ -285,6 +298,41 @@ export function ProxySettingsSection({
             onCheckedChange={(enabled) => void save(setDirectFallback(draft, enabled))}
           />
         </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
+        id="proxy-bypass"
+        title={t("maintenance.proxy.bypassTitle")}
+        description={t("maintenance.proxy.bypassDescription")}
+      >
+        <div className="grid gap-3 px-4 py-3">
+          <TokenInput
+            values={bypass}
+            onChange={setBypassEdit}
+            isValid={bypassEntryValid}
+            separators={WORD_TOKEN_SEPARATORS}
+            ariaLabel={t("maintenance.proxy.bypassTitle")}
+            placeholder={t("maintenance.proxy.bypassPlaceholder")}
+            disabled={locked}
+          />
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={locked || bypassIsDefault}
+              onClick={() => setBypassEdit([...saved.defaultBypass])}
+            >
+              {t("maintenance.proxy.bypassRestoreDefaults")}
+            </Button>
+            <Button
+              size="sm"
+              disabled={locked || !bypassChanged || !bypass.every(bypassEntryValid)}
+              onClick={() => void saveBypass()}
+            >
+              {t("maintenance.proxy.bypassSave")}
+            </Button>
+          </div>
+        </div>
       </SettingsSection>
 
       {editing && (

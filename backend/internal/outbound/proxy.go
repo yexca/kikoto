@@ -45,6 +45,8 @@ func (p *Policy) dialDestination(ctx context.Context, network string, address st
 	if err != nil {
 		return nil, err
 	}
+	// A bypassed destination connects directly to the address validated above.
+	bypassHost := p.bypass.matchesHost(host)
 	var lastErr error
 	for _, resolved := range addresses {
 		if network == "tcp4" && !resolved.Is4() || network == "tcp6" && !resolved.Is6() {
@@ -52,8 +54,10 @@ func (p *Policy) dialDestination(ctx context.Context, network string, address st
 		}
 		target := net.JoinHostPort(resolved.String(), port)
 		var connection net.Conn
-		switch p.proxy.Scheme {
-		case "socks5", "socks5h":
+		switch {
+		case bypassHost || p.bypass.matchesAddress(resolved):
+			connection, err = p.dialContext(dialCtx, network, target)
+		case p.proxy.Scheme == "socks5" || p.proxy.Scheme == "socks5h":
 			connection, err = p.dialSOCKS(dialCtx, network, target)
 		default:
 			connection, err = p.dialHTTPTunnel(dialCtx, network, target)

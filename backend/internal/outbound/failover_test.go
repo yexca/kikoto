@@ -1,9 +1,11 @@
 package outbound
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -111,6 +113,61 @@ func TestFailoverTransportReplaysOnlyReplayableBodies(t *testing.T) {
 	request.GetBody = nil
 	if _, err := transport.RoundTrip(request); err == nil || strings.Join(calls, ",") != "first:stream" {
 		t.Fatalf("non-replayable body error = %v after routes %v, want no replay", err, calls)
+	}
+}
+
+// droppingRoute is a route whose upstream reads the request and then drops the
+// connection, as a proxy that fails while a paid service is still answering.
+func droppingRoute(t *testing.T) http.RoundTripper {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			if request, err := http.ReadRequest(bufio.NewReader(conn)); err == nil {
+				_, _ = io.Copy(io.Discard, request.Body)
+			}
+			_ = conn.Close()
+		}
+	}()
+	address := listener.Addr().String()
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, address)
+		},
+		DisableKeepAlives: true,
+	}
+	t.Cleanup(transport.CloseIdleConnections)
+	return transport
+}
+
+func TestFailoverTransportNeverResendsAWrittenRequestThatIsNotIdempotent(t *testing.T) {
+	var calls []string
+	transport := NewFailoverTransport(droppingRoute(t), recordingRoute{name: "second", calls: &calls})
+	request, _ := http.NewRequest(http.MethodPost, "http://llm.test/translate", strings.NewReader("lines"))
+	if _, err := transport.RoundTrip(request); err == nil || len(calls) != 0 {
+		t.Fatalf("written POST error = %v after routes %v, want the failure without a resend", err, calls)
+	}
+
+	transport = NewFailoverTransport(droppingRoute(t), recordingRoute{name: "second", calls: &calls})
+	request, _ = http.NewRequest(http.MethodGet, "http://metadata.test/work", nil)
+	if _, err := transport.RoundTrip(request); err != nil || strings.Join(calls, ",") != "second" {
+		t.Fatalf("written GET error = %v after routes %v, want it sent again on the next route", err, calls)
+	}
+
+	calls = nil
+	transport = NewFailoverTransport(droppingRoute(t), recordingRoute{name: "second", calls: &calls})
+	request, _ = http.NewRequest(http.MethodPost, "http://llm.test/translate", strings.NewReader("lines"))
+	request.Header.Set("Idempotency-Key", "synthetic-key")
+	if _, err := transport.RoundTrip(request); err != nil || strings.Join(calls, ",") != "second:lines" {
+		t.Fatalf("keyed POST error = %v after routes %v, want it sent again on the next route", err, calls)
 	}
 }
 

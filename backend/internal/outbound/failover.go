@@ -3,7 +3,9 @@ package outbound
 import (
 	"errors"
 	"net/http"
+	"net/http/httptrace"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -17,7 +19,10 @@ const failoverCooldown = 30 * time.Second
 // are tried in priority order. A request moves to the next route only when the
 // previous one produced no response, the failure was not a policy rejection,
 // the request context is still live, and the request body can be replayed; an
-// HTTP error status is an answer and is returned as is. An optional fallback
+// HTTP error status is an answer and is returned as is. A request that is not
+// idempotent, such as a POST to a paid service, moves on only when it was never
+// written, so a proxy that drops the connection mid-request cannot make the
+// destination receive it twice. An optional fallback
 // route is always tried last, after every other route failed.
 type FailoverTransport struct {
 	// routes ends with the fallback route when hasFallback is set.
@@ -63,6 +68,7 @@ func (t *FailoverTransport) RoundTrip(request *http.Request) (*http.Response, er
 		return nil, violation("outbound failover has no routes")
 	}
 	var lastErr error
+	idempotent := isIdempotent(request)
 	for attempt, index := range t.order() {
 		current := request
 		if attempt > 0 {
@@ -72,6 +78,12 @@ func (t *FailoverTransport) RoundTrip(request *http.Request) (*http.Response, er
 			}
 			current = replay
 		}
+		var written atomic.Bool
+		if !idempotent {
+			current = current.WithContext(httptrace.WithClientTrace(current.Context(), &httptrace.ClientTrace{
+				WroteHeaders: func() { written.Store(true) },
+			}))
+		}
 		response, err := t.routes[index].RoundTrip(current)
 		if err == nil {
 			t.mark(index, time.Time{})
@@ -79,6 +91,10 @@ func (t *FailoverTransport) RoundTrip(request *http.Request) (*http.Response, er
 		}
 		lastErr = err
 		if errors.Is(err, ErrPolicyViolation) || request.Context().Err() != nil {
+			return nil, err
+		}
+		if written.Load() {
+			t.mark(index, t.now().Add(failoverCooldown))
 			return nil, err
 		}
 		t.mark(index, t.now().Add(failoverCooldown))
@@ -126,6 +142,18 @@ func (t *FailoverTransport) mark(index int, until time.Time) {
 	t.mu.Lock()
 	t.failedUntil[index] = until
 	t.mu.Unlock()
+}
+
+// isIdempotent reports whether sending request twice has the effect of sending
+// it once, as net/http judges it for its own retries.
+func isIdempotent(request *http.Request) bool {
+	switch request.Method {
+	case "", http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace, http.MethodPut, http.MethodDelete:
+		return true
+	}
+	_, keyed := request.Header["Idempotency-Key"]
+	_, xKeyed := request.Header["X-Idempotency-Key"]
+	return keyed || xKeyed
 }
 
 func replayRequest(request *http.Request) (*http.Request, bool) {

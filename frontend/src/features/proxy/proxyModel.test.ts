@@ -4,12 +4,14 @@ import type { ProxySettings } from "@/lib/api";
 
 import {
   allRoutesEnabled,
+  bypassEntryValid,
   moveProxy,
   proxyAddress,
   proxyConfigDraft,
   proxySettingsPayload,
   removeProxy,
   setAllRoutesEnabled,
+  setBypass,
   setDirectFallback,
   setRouteSelection,
   setSourceSelection,
@@ -44,10 +46,13 @@ const settings: ProxySettings = {
   routes: {
     dlsite: { enabled: true, proxyIds: ["lan"] },
     remote: { enabled: true, proxyIds: [] },
+    ai: { enabled: false, proxyIds: [] },
     other: { enabled: false, proxyIds: [] },
     sources: { "7": { mode: "proxy", proxyIds: ["lan"] }, "8": { mode: "direct", proxyIds: [] } },
   },
   directFallback: false,
+  bypass: ["localhost", "192.168.0.0/16"],
+  defaultBypass: ["localhost", "192.168.0.0/16"],
 };
 
 describe("proxy configuration draft", () => {
@@ -75,6 +80,7 @@ describe("proxy configuration draft", () => {
       },
     } as unknown as ProxySettings);
     expect(draft.routes.dlsite).toEqual({ enabled: false, proxyIds: [] });
+    expect(draft.routes.ai).toEqual({ enabled: false, proxyIds: [] });
     expect(sourceSelection(draft.routes, 1)).toBe("inherit");
   });
 
@@ -93,6 +99,30 @@ describe("proxy configuration draft", () => {
     const draft = setDirectFallback(proxyConfigDraft(settings), true);
     expect(proxySettingsPayload(draft).directFallback).toBe(true);
     expect(removeProxy(draft, "lan").directFallback).toBe(true);
+  });
+
+  it("sends the bypass list and keeps it when a proxy is removed", () => {
+    const draft = setBypass(proxyConfigDraft(settings), ["*.lan"]);
+    expect(proxySettingsPayload(draft).bypass).toEqual(["*.lan"]);
+    expect(removeProxy(draft, "lan").bypass).toEqual(["*.lan"]);
+  });
+
+  it("recognises the forms a bypass entry takes", () => {
+    for (const entry of [
+      "localhost",
+      "*.home.arpa",
+      ".lan",
+      "192.168.0.0/16",
+      "127.0.0.1",
+      "::1",
+      "fc00::/7",
+      "[::1]",
+    ]) {
+      expect(bypassEntryValid(entry), entry).toBe(true);
+    }
+    for (const entry of ["nas.lan:8080", "http://nas.test", "*", "nas lan"]) {
+      expect(bypassEntryValid(entry), entry).toBe(false);
+    }
   });
 
   it("reorders proxies by priority", () => {

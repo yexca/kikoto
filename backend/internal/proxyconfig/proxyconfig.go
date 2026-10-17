@@ -47,8 +47,12 @@ type Scope string
 const (
 	ScopeDLsite Scope = "dlsite"
 	ScopeRemote Scope = "remote"
-	// ScopeOther covers outbound requests that are neither DLsite metadata
-	// nor a configured remote source, such as the update check.
+	// ScopeAI covers LLM providers and speech recognition services at an
+	// administrator-entered address. A service on Kikoto's own machine always
+	// connects directly.
+	ScopeAI Scope = "ai"
+	// ScopeOther covers outbound requests that fit no other scope, such as the
+	// update check.
 	ScopeOther Scope = "other"
 )
 
@@ -80,6 +84,7 @@ type SourceRoute struct {
 type Routes struct {
 	DLsite Route `json:"dlsite"`
 	Remote Route `json:"remote"`
+	AI     Route `json:"ai"`
 	Other  Route `json:"other"`
 	// Sources holds per-source overrides keyed by file source id. Sources
 	// without an entry inherit the remote-source route.
@@ -92,6 +97,32 @@ type Config struct {
 	// DirectFallback retries a proxied request with a direct connection
 	// after every proxy it tried failed to answer.
 	DirectFallback bool `json:"directFallback"`
+	// Bypass lists destinations every scope connects to directly, in the
+	// forms outbound.NormalizeProxyBypassEntry accepts. A configuration
+	// without the field uses DefaultBypass; an empty list bypasses nothing.
+	Bypass []string `json:"bypass"`
+}
+
+// DefaultBypass keeps this machine, the container host, private networks,
+// and local-only domain names off the proxy, since a proxy elsewhere cannot
+// reach them.
+var DefaultBypass = []string{
+	"localhost",
+	"127.0.0.0/8",
+	"::1",
+	"host.docker.internal",
+	"gateway.docker.internal",
+	"host.containers.internal",
+	"10.0.0.0/8",
+	"172.16.0.0/12",
+	"192.168.0.0/16",
+	"169.254.0.0/16",
+	"fc00::/7",
+	"fe80::/10",
+	"*.local",
+	"*.lan",
+	"*.internal",
+	"*.home.arpa",
 }
 
 // InvalidError reports administrator input that cannot be saved. Its message
@@ -115,6 +146,11 @@ func Normalize(config Config, knownSource func(int64) bool) (Config, error) {
 		return Config{}, invalid("at most %d proxies can be configured", MaxProxies)
 	}
 	normalized := Config{Proxies: make([]Proxy, 0, len(config.Proxies)), DirectFallback: config.DirectFallback}
+	bypass, err := normalizeBypass(config.Bypass)
+	if err != nil {
+		return Config{}, err
+	}
+	normalized.Bypass = bypass
 	seen := make(map[string]bool, len(config.Proxies))
 	for index, proxy := range config.Proxies {
 		next, err := normalizeProxy(proxy)
@@ -131,11 +167,13 @@ func Normalize(config Config, knownSource func(int64) bool) (Config, error) {
 		normalized.Proxies = append(normalized.Proxies, next)
 	}
 
-	var err error
 	if normalized.Routes.DLsite, err = normalized.normalizeRoute(config.Routes.DLsite, "DLsite"); err != nil {
 		return Config{}, err
 	}
 	if normalized.Routes.Remote, err = normalized.normalizeRoute(config.Routes.Remote, "remote source"); err != nil {
+		return Config{}, err
+	}
+	if normalized.Routes.AI, err = normalized.normalizeRoute(config.Routes.AI, "LLM and ASR"); err != nil {
 		return Config{}, err
 	}
 	if normalized.Routes.Other, err = normalized.normalizeRoute(config.Routes.Other, "other"); err != nil {
@@ -166,6 +204,30 @@ func Normalize(config Config, knownSource func(int64) bool) (Config, error) {
 			continue
 		}
 		normalized.Routes.Sources[id] = route
+	}
+	return normalized, nil
+}
+
+// normalizeBypass canonicalizes bypass entries in their given order without
+// duplicates. A nil list is DefaultBypass.
+func normalizeBypass(entries []string) ([]string, error) {
+	if entries == nil {
+		entries = DefaultBypass
+	}
+	if len(entries) > outbound.MaxProxyBypassEntries {
+		return nil, invalid("at most %d bypass entries can be configured", outbound.MaxProxyBypassEntries)
+	}
+	normalized := make([]string, 0, len(entries))
+	seen := make(map[string]bool, len(entries))
+	for index, entry := range entries {
+		value, err := outbound.NormalizeProxyBypassEntry(entry)
+		if err != nil {
+			return nil, invalid("bypass entry %d: %s", index+1, err.Error())
+		}
+		if !seen[value] {
+			seen[value] = true
+			normalized = append(normalized, value)
+		}
 	}
 	return normalized, nil
 }
@@ -260,6 +322,8 @@ func (config Config) Resolve(scope Scope, sourceID int64) []Proxy {
 			}
 		}
 		route = config.Routes.Remote
+	case ScopeAI:
+		route = config.Routes.AI
 	case ScopeOther:
 		route = config.Routes.Other
 	}
@@ -311,7 +375,7 @@ func (proxy Proxy) URL(hostAddress string) (*url.URL, error) {
 func FromLegacyURL(value string) (Config, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return Config{Routes: Routes{Sources: map[int64]SourceRoute{}}}, nil
+		return Config{Routes: Routes{Sources: map[int64]SourceRoute{}}, Bypass: append([]string(nil), DefaultBypass...)}, nil
 	}
 	parsed, err := outbound.ParseProxyURL(value)
 	if err != nil {
@@ -329,6 +393,7 @@ func FromLegacyURL(value string) (Config, error) {
 			Other:   Route{ProxyIDs: []string{}},
 			Sources: map[int64]SourceRoute{},
 		},
+		Bypass: append([]string(nil), DefaultBypass...),
 	}, nil
 }
 

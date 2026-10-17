@@ -236,6 +236,8 @@ export type SourceProxyRoute = { mode: "inherit" | "direct" | "proxy"; proxyIds:
 export type ProxyRoutes = {
   dlsite: ProxyRoute;
   remote: ProxyRoute;
+  /** LLM providers and speech recognition services at another address. */
+  ai: ProxyRoute;
   other: ProxyRoute;
   /** Overrides keyed by remote file source id. */
   sources: Record<string, SourceProxyRoute>;
@@ -248,6 +250,10 @@ export type ProxySettings = {
   routes: ProxyRoutes;
   /** Retry directly after every proxy of a route failed to connect. */
   directFallback: boolean;
+  /** Destinations every scope reaches directly: hostnames, *.domain, IP addresses and networks. */
+  bypass: string[];
+  /** The list a new configuration starts with. */
+  defaultBypass: string[];
 };
 
 /** Omitting password keeps the stored one for that id; an empty string clears it. */
@@ -255,6 +261,7 @@ export type ProxySettingsPayload = {
   proxies: Array<Omit<OutboundProxy, "hasPassword"> & { password?: string }>;
   routes: ProxyRoutes;
   directFallback: boolean;
+  bypass: string[];
 };
 
 export type DirectoryRoutingRule = {

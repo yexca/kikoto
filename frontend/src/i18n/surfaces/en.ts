@@ -972,17 +972,26 @@ export const surfaceEnglish = {
       scopeNeedsProxy: "Add a proxy before choosing where proxies apply.",
       scopes: {
         all: "All",
-        allDescription: "DLsite, remote sources, and other requests",
+        allDescription: "DLsite, remote sources, LLM & ASR, and other requests",
         dlsite: "DLsite",
         dlsiteDescription: "Metadata, covers, and creator catalogs",
         remote: "Remote sources",
         remoteDescription: "Browsing, playback, and downloads. Each source can override this below.",
+        ai: "LLM & ASR",
+        aiDescription:
+          "LLM providers and speech recognition services at another address. Services on this server's machine always connect directly.",
         other: "Other",
         otherDescription: "Update checks. Personal Kikoeru imports always connect directly.",
       },
       directFallback: "Direct connection fallback",
       directFallbackDescription:
         "When every proxy a request tries fails to connect, retry it once without a proxy. Off keeps proxied requests failing instead of connecting directly.",
+      bypassTitle: "Bypass proxy",
+      bypassDescription:
+        "These destinations connect directly in every scope, since a proxy elsewhere cannot reach them. Enter a hostname, *.domain for its subdomains, an IP address, or a network such as 192.168.0.0/16. A network also matches a hostname that resolves into it.",
+      bypassPlaceholder: "Add a hostname, *.domain, IP address or network",
+      bypassRestoreDefaults: "Restore defaults",
+      bypassSave: "Save bypass list",
       allProxies: "All proxies by priority",
       customSelection: "Custom selection",
       useProxyFor: "Use proxy for {{scope}}",

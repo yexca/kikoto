@@ -1014,17 +1014,26 @@ export const surfaceJapanese = {
       scopeNeedsProxy: "適用範囲を選ぶ前にプロキシを追加してください。",
       scopes: {
         all: "すべて",
-        allDescription: "DLsite、リモートソース、その他のリクエスト",
+        allDescription: "DLsite、リモートソース、LLM・音声認識、その他のリクエスト",
         dlsite: "DLsite",
         dlsiteDescription: "メタデータ、カバー画像、クリエイターカタログ",
         remote: "リモートソース",
         remoteDescription: "閲覧、再生、ダウンロード。ソースごとに下で上書きできます。",
+        ai: "LLM・音声認識",
+        aiDescription:
+          "別のアドレスにある LLM プロバイダーと音声認識サービス。このサーバーと同じマシン上のサービスは常に直接接続します。",
         other: "その他",
         otherDescription: "アップデート確認。個人の Kikoeru インポートは常に直接接続します。",
       },
       directFallback: "直接接続へのフォールバック",
       directFallbackDescription:
         "リクエストが試したプロキシがすべて接続できなかった場合、プロキシを使わずに 1 回だけ再試行します。オフの場合は直接接続せずに失敗します。",
+      bypassTitle: "プロキシを使わない宛先",
+      bypassDescription:
+        "別の場所にあるプロキシからは届かないため、これらの宛先はどの適用範囲でも直接接続します。ホスト名、サブドメインを表す *.domain、IP アドレス、または 192.168.0.0/16 のようなネットワークを入力します。ネットワークは、そこに解決されるホスト名にも一致します。",
+      bypassPlaceholder: "ホスト名、*.domain、IP アドレス、ネットワークを追加",
+      bypassRestoreDefaults: "既定に戻す",
+      bypassSave: "除外リストを保存",
       allProxies: "すべてのプロキシ（優先度順）",
       customSelection: "カスタム選択",
       useProxyFor: "{{scope}} でプロキシを使う",

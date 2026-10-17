@@ -13,7 +13,6 @@ import (
 	"github.com/yexca/kikoto/backend/internal/kikotohelper"
 	"github.com/yexca/kikoto/backend/internal/llm"
 	"github.com/yexca/kikoto/backend/internal/outbound"
-	"github.com/yexca/kikoto/backend/internal/proxyconfig"
 )
 
 type llmProviderResponse struct {
@@ -392,12 +391,12 @@ func (s *Server) acquireLLMSlot(w http.ResponseWriter, r *http.Request) bool {
 }
 
 // Only the administrator-configured origin is allowed, including its private
-// address exception. Discovery and translation refuse every redirect. A
-// translation answers once generation finishes, so the header wait is the
+// address exception. Discovery and translation refuse every redirect and
+// follow the LLM and ASR proxy route. A translation answers once generation finishes, so the header wait is the
 // request bound rather than the default.
 func (s *Server) llmClient(ctx context.Context, p llm.Provider, timeout time.Duration) (llm.Client, func(), error) {
 	base := p.Endpoint(s.cfg.HostProxyAddress())
-	route, err := s.resolveProxyRoute(ctx, proxyconfig.ScopeOther, 0)
+	route, err := s.aiProxyRoute(ctx, p.DerivesHost())
 	if err != nil {
 		return llm.Client{}, nil, err
 	}

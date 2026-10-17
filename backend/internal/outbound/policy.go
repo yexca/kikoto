@@ -73,6 +73,8 @@ type Policy struct {
 	headerTimeout       time.Duration
 	proxy               *url.URL
 	proxyEndpoint       string
+	// bypass names destinations a proxied policy dials directly.
+	bypass ProxyBypass
 }
 
 type originRule struct {

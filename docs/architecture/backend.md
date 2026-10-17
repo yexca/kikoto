@@ -332,13 +332,17 @@ to each request. Destination DNS is validated locally, and HTTP(S) CONNECT or
 SOCKS tunnels target the same validated numeric address. Original Host and TLS
 certificate checks are preserved; a configured proxy does not expand a
 destination's private-address permission. The
-`outbound_proxy_config` setting holds an ordered proxy list and routes for the
-DLsite, remote-source, and other scopes, with per-source overrides;
-`internal/proxyconfig` validates it and resolves a scope to proxies. Each
+`outbound_proxy_config` setting holds an ordered proxy list, routes for the
+DLsite, remote-source, LLM and ASR, and other scopes, with per-source overrides,
+and a bypass list; a stored configuration without the bypass list uses
+`proxyconfig.DefaultBypass`. `internal/proxyconfig` validates it and resolves
+a scope to proxies. A proxied policy dials a destination the bypass list
+matches by hostname or by validated address directly, under the same address
+rules. Each
 request path builds one policy transport per resolved proxy behind a priority
 failover transport; the opt-in direct fallback adds a direct policy transport
 that the failover always tries last. The DLsite transport and the pooled remote-source
-transports rebuild when their resolved proxies change and close the previous
+transports rebuild when their resolved proxies or bypass list change and close the previous
 idle connections. A legacy `metadata_proxy_url` value is read as a DLsite route
 until the proxy configuration is first saved. Connection, response-header, response-read idle,
 buffered-body, streamed-file, concurrency, and retry bounds are specific to

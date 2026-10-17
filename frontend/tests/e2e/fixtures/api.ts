@@ -364,10 +364,13 @@ export function appSettingsFixture(overrides: Partial<AppSettings> = {}): AppSet
       routes: {
         dlsite: { enabled: false, proxyIds: [] },
         remote: { enabled: false, proxyIds: [] },
+        ai: { enabled: false, proxyIds: [] },
         other: { enabled: false, proxyIds: [] },
         sources: {},
       },
       directFallback: false,
+      bypass: ["localhost", "192.168.0.0/16"],
+      defaultBypass: ["localhost", "192.168.0.0/16"],
     },
     kikoeruImportPrivateAddresses: false,
     hideRemoteSourceAddresses: true,

@@ -180,14 +180,27 @@ after a change. Cache contents are managed in the Cleanup tab.
   one. Every change saves immediately.
 - **Proxy scope** chooses where proxies apply: **DLsite** (metadata, covers,
   and creator catalogs), **Remote sources** (browsing, playback, and
-  downloads), and **Other** (update checks; personal Kikoeru account imports
-  always connect directly). **All**
-  switches the three together. Each scope uses every proxy by priority or one
+  downloads), **LLM & ASR** ([LLM providers](#llm-providers) and [speech
+  recognition services](#asr-services) at another address; one on this
+  server's machine always connects directly), and **Other** (update checks;
+  personal Kikoeru account imports always connect directly). **All** switches
+  the four together. Each scope uses every proxy by priority or one
   chosen proxy. Every remote source can follow the remote-source scope, connect
   directly, or use its own proxy choice.
 - **Direct connection fallback** is off by default. When off, a request whose
   proxies all fail to connect fails rather than connecting directly. When on,
   that request is retried once without a proxy, after every proxy was tried.
+- **Bypass proxy** lists destinations that connect directly in every scope,
+  including a remote source set to use a proxy, since a proxy elsewhere cannot
+  reach them. An entry is a hostname, `*.domain` for every subdomain of a
+  domain, an IP address, or a network such as `192.168.0.0/16`. Kikoto
+  resolves hostnames itself, so a network also matches a hostname that
+  resolves into it: `nas` resolving to an address in `192.168.0.0/16` connects
+  directly. The list starts with this machine, the container host,
+  private networks, and local domain names: `localhost`, `127.0.0.0/8`, `::1`, `host.docker.internal`, `gateway.docker.internal`, `host.containers.internal`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `fc00::/7`, `fe80::/10`, `*.local`, `*.lan`, `*.internal`, `*.home.arpa`. Edit it as chips,
+  then **Save bypass list**; **Restore defaults** brings the default list back
+  for saving. Bypassing the proxy never lets a request reach an address it
+  could not reach directly.
 
 ### LLM & ASR
 

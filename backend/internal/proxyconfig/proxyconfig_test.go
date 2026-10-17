@@ -95,6 +95,7 @@ func TestResolveAppliesRoutesAndSourceOverrides(t *testing.T) {
 		Routes: Routes{
 			DLsite: Route{Enabled: true, ProxyIDs: []string{"c", "a"}},
 			Remote: Route{Enabled: true},
+			AI:     Route{Enabled: true, ProxyIDs: []string{"b"}},
 			Other:  Route{Enabled: false, ProxyIDs: []string{"b"}},
 			Sources: map[int64]SourceRoute{
 				1: {Mode: SourceDirect},
@@ -115,6 +116,7 @@ func TestResolveAppliesRoutesAndSourceOverrides(t *testing.T) {
 		{"direct override", ScopeRemote, 1, []string{}},
 		{"proxy override", ScopeRemote, 2, []string{"b"}},
 		{"override with every proxy", ScopeRemote, 3, []string{"a", "b", "c"}},
+		{"LLM and ASR route is its own", ScopeAI, 0, []string{"b"}},
 		{"disabled route", ScopeOther, 0, []string{}},
 		{"overrides apply only to remote sources", ScopeDLsite, 1, []string{"a", "c"}},
 	}
@@ -161,7 +163,7 @@ func TestFromLegacyURLEnablesDLsiteRoute(t *testing.T) {
 	if len(config.Proxies) != 1 || config.Proxies[0].Scheme != "socks5" || config.Proxies[0].Host != "192.0.2.10" || config.Proxies[0].Port != 1080 {
 		t.Fatalf("legacy proxies = %+v", config.Proxies)
 	}
-	if !config.Routes.DLsite.Enabled || config.Routes.Remote.Enabled || config.Routes.Other.Enabled {
+	if !config.Routes.DLsite.Enabled || config.Routes.Remote.Enabled || config.Routes.AI.Enabled || config.Routes.Other.Enabled {
 		t.Fatalf("legacy routes = %+v, want only DLsite", config.Routes)
 	}
 	if _, err := FromLegacyURL("ftp://192.0.2.10:21"); err == nil {
@@ -169,5 +171,28 @@ func TestFromLegacyURLEnablesDLsiteRoute(t *testing.T) {
 	}
 	if empty, err := FromLegacyURL(""); err != nil || len(empty.Proxies) != 0 {
 		t.Fatalf("empty legacy proxy = %+v, %v", empty, err)
+	}
+}
+
+func TestNormalizeBypassDefaultsOnlyWhenAbsent(t *testing.T) {
+	absent, err := Normalize(Config{}, nil)
+	if err != nil || !reflect.DeepEqual(absent.Bypass, DefaultBypass) {
+		t.Fatalf("absent bypass = %v, %v; want the default list", absent.Bypass, err)
+	}
+	cleared, err := Normalize(Config{Bypass: []string{}}, nil)
+	if err != nil || cleared.Bypass == nil || len(cleared.Bypass) != 0 {
+		t.Fatalf("cleared bypass = %#v, %v; want an empty list", cleared.Bypass, err)
+	}
+	if _, err := Normalize(Config{Bypass: []string{"localhost", "nas.lan:8080"}}, nil); err == nil || !strings.Contains(err.Error(), "bypass entry 2") {
+		t.Fatalf("invalid entry error = %v, want the entry named", err)
+	}
+	legacy, err := FromLegacyURL("socks5://192.0.2.10:1080")
+	if err != nil || !reflect.DeepEqual(legacy.Bypass, DefaultBypass) {
+		t.Fatalf("legacy bypass = %v, %v", legacy.Bypass, err)
+	}
+	for _, entry := range DefaultBypass {
+		if _, err := Normalize(Config{Bypass: []string{entry}}, nil); err != nil {
+			t.Errorf("default entry %q: %v", entry, err)
+		}
 	}
 }

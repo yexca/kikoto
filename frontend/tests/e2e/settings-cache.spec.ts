@@ -115,10 +115,13 @@ async function mockCacheSettings(
       routes: {
         dlsite: { enabled: false, proxyIds: [] },
         remote: { enabled: false, proxyIds: [] },
+        ai: { enabled: false, proxyIds: [] },
         other: { enabled: false, proxyIds: [] },
         sources: {},
       },
       directFallback: false,
+      bypass: ["localhost", "192.168.0.0/16"],
+      defaultBypass: ["localhost", "192.168.0.0/16"],
     },
     kikoeruImportPrivateAddresses: false,
     hideRemoteSourceAddresses: true,
@@ -220,6 +223,8 @@ async function mockCacheSettings(
           hostAddress: currentSettings.proxy.hostAddress,
           routes: proxy.routes,
           directFallback: proxy.directFallback,
+          bypass: proxy.bypass,
+          defaultBypass: currentSettings.proxy.defaultBypass,
           proxies: proxy.proxies.map((candidate) => ({
             id: candidate.id,
             name: candidate.name,
@@ -1174,6 +1179,7 @@ test("@desktop work management owns metadata settings in a popover", async ({ pa
       proxies: [{ id: "lan", name: "", kind: "custom", scheme: "http", host: "192.0.2.10", port: 8080, username: "" }],
       routes: expect.objectContaining({ dlsite: { enabled: true, proxyIds: [] } }),
       directFallback: false,
+      bypass: ["localhost", "192.168.0.0/16"],
     },
   });
   await expect(dlsiteProxy).toHaveAttribute("aria-checked", "true");
@@ -1294,6 +1300,7 @@ test("administrators add proxies by priority and choose where they apply", async
     expect.objectContaining({
       dlsite: { enabled: true, proxyIds: [] },
       remote: { enabled: true, proxyIds: [] },
+      ai: { enabled: true, proxyIds: [] },
       other: { enabled: true, proxyIds: [] },
     }),
   );
@@ -1311,6 +1318,22 @@ test("administrators add proxies by priority and choose where they apply", async
   await expect.poll(() => proxySaves().length).toBe(6);
   expect(proxySaves()[5].directFallback).toBe(true);
   await expect(fallback).toHaveAttribute("aria-checked", "true");
+
+  // The bypass list saves only when asked, and Restore defaults brings back the default list.
+  const saveBypass = page.getByRole("button", { name: "Save bypass list", exact: true });
+  await expect(saveBypass).toBeDisabled();
+  const bypassField = page.getByRole("textbox", { name: "Bypass proxy", exact: true });
+  await bypassField.fill("nas.lan");
+  await bypassField.press("Enter");
+  await page.getByRole("button", { name: "Remove localhost", exact: true }).click();
+  await saveBypass.click();
+  await expect.poll(() => proxySaves().length).toBe(7);
+  expect(proxySaves()[6].bypass).toEqual(["192.168.0.0/16", "nas.lan"]);
+  await page.getByRole("button", { name: "Restore defaults", exact: true }).click();
+  await saveBypass.click();
+  await expect.poll(() => proxySaves().length).toBe(8);
+  expect(proxySaves()[7].bypass).toEqual(["localhost", "192.168.0.0/16"]);
+  await expect(saveBypass).toBeDisabled();
 });
 
 test("@desktop appearance saves a personal metadata language for any signed-in user", async ({ page }, testInfo) => {

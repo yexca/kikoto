@@ -36,6 +36,10 @@ type proxySettingsResponse struct {
 	Proxies        []proxyResponse    `json:"proxies"`
 	Routes         proxyconfig.Routes `json:"routes"`
 	DirectFallback bool               `json:"directFallback"`
+	Bypass         []string           `json:"bypass"`
+	// DefaultBypass is the list a new configuration starts with, offered to
+	// restore it.
+	DefaultBypass []string `json:"defaultBypass"`
 }
 
 // proxyResponse never includes the stored password.
@@ -50,10 +54,12 @@ type proxyResponse struct {
 	HasPassword bool   `json:"hasPassword"`
 }
 
+// proxySettingsPayload keeps the stored bypass list when Bypass is omitted.
 type proxySettingsPayload struct {
 	Proxies        []proxyPayload     `json:"proxies"`
 	Routes         proxyconfig.Routes `json:"routes"`
 	DirectFallback bool               `json:"directFallback"`
+	Bypass         []string           `json:"bypass"`
 }
 
 // proxyPayload omits Password to keep the stored password of the proxy with
@@ -167,6 +173,7 @@ func (s *Server) proxySettingsResponse(config proxyconfig.Config) proxySettingsR
 	routes := proxyconfig.Routes{
 		DLsite:  nonNilRoute(config.Routes.DLsite),
 		Remote:  nonNilRoute(config.Routes.Remote),
+		AI:      nonNilRoute(config.Routes.AI),
 		Other:   nonNilRoute(config.Routes.Other),
 		Sources: map[int64]proxyconfig.SourceRoute{},
 	}
@@ -181,6 +188,8 @@ func (s *Server) proxySettingsResponse(config proxyconfig.Config) proxySettingsR
 		Proxies:        proxies,
 		Routes:         routes,
 		DirectFallback: config.DirectFallback,
+		Bypass:         append([]string{}, config.Bypass...),
+		DefaultBypass:  proxyconfig.DefaultBypass,
 	}
 }
 
@@ -208,6 +217,10 @@ func applyProxySettings(ctx context.Context, tx *sql.Tx, payload proxySettingsPa
 		Routes:         payload.Routes,
 		Proxies:        make([]proxyconfig.Proxy, 0, len(payload.Proxies)),
 		DirectFallback: payload.DirectFallback,
+		Bypass:         payload.Bypass,
+	}
+	if submitted.Bypass == nil {
+		submitted.Bypass = previous.Bypass
 	}
 	for _, proxy := range payload.Proxies {
 		password := passwords[proxy.ID]
@@ -323,6 +336,10 @@ func (s *Server) forgetSourceProxyRoute(ctx context.Context, sourceID int64) err
 type proxyRoute struct {
 	proxies        []*url.URL
 	directFallback bool
+	// bypass lists the destinations its proxies never carry; bypassEntries
+	// is its canonical text for the route key.
+	bypass        outbound.ProxyBypass
+	bypassEntries []string
 }
 
 // resolveProxyRoute resolves the proxy route for a request of scope.
@@ -336,6 +353,13 @@ func (s *Server) resolveProxyRoute(ctx context.Context, scope proxyconfig.Scope,
 		proxies:        make([]*url.URL, 0, len(proxies)),
 		directFallback: config.DirectFallback && len(proxies) > 0,
 	}
+	if len(proxies) > 0 {
+		route.bypass, err = outbound.NewProxyBypass(config.Bypass)
+		if err != nil {
+			return proxyRoute{}, errProxyConfigUnavailable
+		}
+		route.bypassEntries = config.Bypass
+	}
 	for _, proxy := range proxies {
 		parsed, err := proxy.URL(s.cfg.HostProxyAddress())
 		if err != nil {
@@ -344,6 +368,16 @@ func (s *Server) resolveProxyRoute(ctx context.Context, scope proxyconfig.Scope,
 		route.proxies = append(route.proxies, parsed)
 	}
 	return route, nil
+}
+
+// aiProxyRoute resolves the route of an LLM provider or speech recognition
+// service. A service on this server's machine is reached at an address only
+// this machine resolves, so it always connects directly.
+func (s *Server) aiProxyRoute(ctx context.Context, derivesHost bool) (proxyRoute, error) {
+	if derivesHost {
+		return proxyRoute{}, nil
+	}
+	return s.resolveProxyRoute(ctx, proxyconfig.ScopeAI, 0)
 }
 
 // key identifies a resolved route, including proxy credentials, without
@@ -360,6 +394,11 @@ func (route proxyRoute) key() string {
 	for _, proxy := range route.proxies {
 		hash.Write([]byte(proxy.String()))
 		hash.Write([]byte{0})
+	}
+	hash.Write([]byte("bypass"))
+	for _, entry := range route.bypassEntries {
+		hash.Write([]byte{0})
+		hash.Write([]byte(entry))
 	}
 	return hex.EncodeToString(hash.Sum(nil))
 }
@@ -385,7 +424,7 @@ func proxiedTransport(route proxyRoute, policyFor func(*url.URL) (*outbound.Poli
 		if err != nil {
 			return nil, err
 		}
-		routes = append(routes, policy.Transport())
+		routes = append(routes, policy.WithProxyBypass(route.bypass).Transport())
 	}
 	if route.directFallback {
 		fallback, err := direct()
