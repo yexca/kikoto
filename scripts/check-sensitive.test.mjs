@@ -360,3 +360,34 @@ test("rejects malformed endpoint allowlist entries", () => {
     /must declare at least one owner file/,
   );
 });
+
+test("allows the well-known private networks only as exact CIDR blocks", () => {
+  const scan = (text) => {
+    const findings = [];
+    scanLine(
+      { file: "backend/internal/example.go", line: 1, text },
+      findings,
+      approvedAllowlist(),
+    );
+    return findings.map((finding) => finding.kind);
+  };
+
+  // Addresses are assembled so this file does not itself hold them.
+  const address = (...octets) => octets.join(".");
+  assert.deepEqual(
+    scan(
+      'defaults := []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"}',
+    ),
+    [],
+  );
+  assert.deepEqual(scan("a network such as 192.168.0.0/16."), []);
+  for (const text of [
+    `host := "${address(192, 168, 1, 20)}"`,
+    `network := "${address(192, 168, 1, 0)}/24"`,
+    `network := "${address(10, 0, 0, 0)}/16"`,
+    `pair := "192.168.0.0/16 ${address(10, 1, 2, 3)}"`,
+    `longer := "${"192.168.0.0/16"}1"`,
+  ]) {
+    assert.deepEqual(scan(text), ["non-loopback IPv4 address"], text);
+  }
+});

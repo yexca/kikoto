@@ -9,6 +9,11 @@ const repositoryRoot = path.resolve(scriptDirectory, "..");
 const approvedEndpointAllowlistFile = "scripts/privacy-allowlist.json";
 const urlPattern = /\b(?:https?|wss?):\/\/[^\s<>"'`]+/giu;
 const ipv4Pattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/gu;
+// The well-known private and link-local IPv4 networks, written exactly as
+// these CIDR blocks, name no particular machine. Any address inside them is
+// still flagged.
+const wellKnownPrivateIPv4Networks =
+  /(?<![\d.])(?:10\.0\.0\.0\/8|172\.16\.0\.0\/12|192\.168\.0\.0\/16|169\.254\.0\.0\/16)(?!\d|\.\d)/gu;
 const knownTokenPatterns = [
   /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/gu,
   /\bgithub_pat_[A-Za-z0-9_]{20,}\b/gu,
@@ -579,7 +584,8 @@ export function scanLine(entry, findings, approvedEndpoints) {
   }
 
   ipv4Pattern.lastIndex = 0;
-  for (const match of entry.text.matchAll(ipv4Pattern)) {
+  const addressText = entry.text.replace(wellKnownPrivateIPv4Networks, "");
+  for (const match of addressText.matchAll(ipv4Pattern)) {
     if (!isAllowedIPv4(match[0])) {
       findings.push({ ...entry, kind: "non-loopback IPv4 address" });
       break;
