@@ -7,6 +7,7 @@ import {
   mediaItemFixture,
   mediaLocationFixture,
   rolePermissions,
+  runtimeSettingsFixture,
   workDetailFixture,
   type ApiResponse,
 } from "./fixtures/api";
@@ -687,4 +688,77 @@ test("Manage lyrics transcribes the selected tracks without lyrics in the origin
 
   await lyrics.getByRole("tab", { name: /^All tracks/ }).click();
   await expect(lyrics.getByRole("checkbox", { name: "Select 03.mp3" })).toBeVisible();
+});
+
+test("Demo shows sample transcriptions and translations in Manage lyrics with every action off @desktop", async ({
+  page,
+}) => {
+  const localFile = (id: number, kind: string, name: string) =>
+    mediaItemFixture({
+      id,
+      kind,
+      title: name,
+      locations: [mediaLocationFixture({ id, path: `${work.primaryCode}/${name}`, availability: "available" })],
+    });
+  await mockApplication(
+    page,
+    undefined,
+    false,
+    1,
+    0,
+    [
+      localFile(1, "audio", "01.mp3"),
+      localFile(2, "audio", "02.mp3"),
+      localFile(3, "audio", "03.mp3"),
+      localFile(4, "text", "03.mp3.vtt"),
+    ],
+    undefined,
+    { work: { ...work, ageRating: "general" }, authenticated: true, permissions: ["library:read"] },
+  );
+  await page.route("**/api/runtime-settings", (route) =>
+    route.fulfill({ json: runtimeSettingsFixture({ mode: "demo", demoMode: true }) }),
+  );
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: authenticatedStateFixture({
+        username: "__demo__",
+        role: "user",
+        permissions: ["library:read"],
+        demoMode: true,
+      }),
+    }),
+  );
+  // Demo contacts no speech recognition or LLM endpoint.
+  const serviceRequests: string[] = [];
+  page.on("request", (request) => {
+    const { pathname } = new URL(request.url());
+    if (/\/(asr|llm)\/|\/(asr|llm)-/.test(pathname)) serviceRequests.push(pathname);
+  });
+
+  await page.goto("/");
+  await page.getByText(work.title, { exact: true }).click();
+  await page
+    .getByRole("complementary", { name: "Source info", exact: true })
+    .getByRole("button", { name: "Manage lyrics", exact: true })
+    .click();
+  const lyrics = page.getByRole("dialog", { name: "Manage lyrics" });
+
+  await lyrics.getByRole("tab", { name: "Transcribe" }).click();
+  await expect(lyrics.getByText(/these transcriptions are samples/)).toBeVisible();
+  await lyrics.getByRole("button", { name: "Preview the transcription of 01.mp3" }).click();
+  await expect(lyrics.getByText("Sample line 1. Demo did not transcribe this audio.")).toBeVisible();
+  await expect(lyrics.getByRole("button", { name: "Add to lyrics" })).toBeDisabled();
+  await expect(lyrics.getByRole("button", { name: "Check rating" })).toBeDisabled();
+  await lyrics.getByRole("checkbox", { name: "Select 02.mp3" }).click();
+  await expect(lyrics.getByRole("combobox", { name: "Service" })).toContainText("Example speech service");
+  await expect(lyrics.getByRole("button", { name: "Transcribe 1", exact: true })).toBeDisabled();
+
+  await lyrics.getByRole("tab", { name: "Translate" }).click();
+  await expect(lyrics.getByText(/these translations are samples/)).toBeVisible();
+  await lyrics.getByRole("button", { name: "Preview the translation for 03.mp3" }).click();
+  await expect(lyrics.getByText("Sample translated line 1. Demo did not translate these lyrics.")).toBeVisible();
+  await expect(lyrics.getByRole("button", { name: "Add to lyrics" })).toBeDisabled();
+  await expect(lyrics.getByRole("button", { name: "Check rating" })).toBeDisabled();
+
+  expect(serviceRequests).toEqual([]);
 });

@@ -17,6 +17,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { contentClassBadges } from "@/components/content/ContentAssessment";
+import { DemoLyricsTaskNotice } from "@/components/DemoReadOnlyNotice";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,11 @@ import {
 } from "@/features/work-detail/lyrics/lyricsManagerModel";
 import { ContentRatingButton, ServiceChoiceLabel } from "@/features/work-detail/lyrics/ContentRatingCheck";
 import { serviceReceives, type ContentClass } from "@/features/work-detail/lyrics/contentRatingModel";
+import {
+  demoLyricsText,
+  demoLyricsTranslations,
+  demoTranslationModels,
+} from "@/features/work-detail/lyrics/demoLyricsTaskModel";
 import { LyricsNote } from "@/features/work-detail/lyrics/LyricsNote";
 import { LyricsPreview } from "@/features/work-detail/lyrics/LyricsPreview";
 import {
@@ -125,11 +131,13 @@ type MatrixTrack = { audioId: number; entry: LyricsManagerAudio; lyrics: Readonl
  * chosen tracks into the languages they lack with an LLM provider. Each
  * translation reads one lyrics file of the track, keeps its timing, and waits
  * here for review before it joins the track's lyrics in the target language.
+ * Demo shows sample translations and providers and leaves every action off.
  */
 export function LyricsTranslationPanel({
   work,
   audio,
   lyrics,
+  demo = false,
   closeDisabled,
   onClose,
   onPublished,
@@ -137,6 +145,8 @@ export function LyricsTranslationPanel({
   work: WorkDetail;
   audio: LyricsManagerAudio[];
   lyrics: LyricsManagerFile[];
+  /** Shows samples instead of contacting the server's LLM translation. */
+  demo?: boolean;
   closeDisabled: boolean;
   onClose: () => void;
   /** Reloads the work after a translation became a lyrics file. */
@@ -156,13 +166,15 @@ export function LyricsTranslationPanel({
       })),
     [audio, sourceFiles],
   );
-  const [providers, setProviders] = useState<LLMTranslationModel[] | null>(null);
-  const [translations, setTranslations] = useState<LLMLyricsTranslation[]>([]);
-  const [listState, setListState] = useState<"loading" | "ready" | "failed">("loading");
+  const [providers, setProviders] = useState<LLMTranslationModel[] | null>(demo ? demoTranslationModels : null);
+  const [loadedTranslations, setTranslations] = useState<LLMLyricsTranslation[]>([]);
+  const [listState, setListState] = useState<"loading" | "ready" | "failed">(demo ? "ready" : "loading");
   const [selection, setSelection] = useState<TranslationSelection>(new Map());
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
   // A provider and one of its enabled models, as a serviceModelKey.
-  const [choiceKey, setChoiceKey] = useState("");
+  const [choiceKey, setChoiceKey] = useState(
+    () => (demo ? serviceModelChoices(demoTranslationModels)[0]?.key : "") ?? "",
+  );
   const [ratings, setRatings] = useState<ReadonlyMap<string, Rating>>(new Map());
   const [ratingProgress, setRatingProgress] = useState<{ done: number; total: number } | null>(null);
   const [submitting, setSubmitting] = useState<{ done: number; total: number } | null>(null);
@@ -174,7 +186,13 @@ export function LyricsTranslationPanel({
     [sourceFiles],
   );
 
+  const translations = useMemo(
+    () => (demo ? demoLyricsTranslations(tracks, sourceFiles, origin) : loadedTranslations),
+    [demo, loadedTranslations, origin, sourceFiles, tracks],
+  );
+
   const load = useCallback(async () => {
+    if (demo) return;
     try {
       setTranslations(await api.listLyricsTranslations(work.id));
       setListState("ready");
@@ -182,9 +200,10 @@ export function LyricsTranslationPanel({
       setListState((current) => (current === "ready" ? current : "failed"));
       toast.notify(toastFromError(error, t("lyricsTranslation.loadFailed")));
     }
-  }, [t, toast, work.id]);
+  }, [demo, t, toast, work.id]);
 
   useEffect(() => {
+    if (demo) return;
     void load();
     api
       .listTranslationModels(work.id)
@@ -196,7 +215,7 @@ export function LyricsTranslationPanel({
         setProviders([]);
         toast.notify(toastFromError(error, t("lyricsTranslation.providersFailed")));
       });
-  }, [load, t, toast, work.id]);
+  }, [demo, load, t, toast, work.id]);
 
   const active = translations.some((item) => activeStates.has(item.state));
   useEffect(() => {
@@ -390,6 +409,7 @@ export function LyricsTranslationPanel({
   return (
     <>
       <DialogBody className="space-y-4">
+        {demo && <DemoLyricsTaskNotice task="translation" />}
         <p className="text-sm text-muted-foreground">{t("lyricsTranslation.intro")}</p>
         {noProvider && (
           <p className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-foreground">
@@ -420,6 +440,7 @@ export function LyricsTranslationPanel({
                   checking={ratingProgress !== null}
                   checked={ratedClasses.size > 0}
                   progress={ratingProgress}
+                  disabled={demo}
                   onCheck={() => void checkRatings()}
                 />
                 <LanguageColumnsPicker hidden={hidden} onChange={setHidden} />
@@ -622,20 +643,30 @@ export function LyricsTranslationPanel({
                               <FileText className="h-4 w-4" />
                               {t("lyricsTranslation.preview")}
                             </Button>
-                            <Button variant="ghost" size="sm" disabled={busy} onClick={() => void act(item, "discard")}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={demo || busy}
+                              onClick={() => void act(item, "discard")}
+                            >
                               <Trash2 className="h-4 w-4" />
                               {t("lyricsTranslation.discard")}
                             </Button>
                           </>
                         )}
                         {reviewStates.has(item.state) && (
-                          <Button size="sm" disabled={busy} onClick={() => void act(item, "accept")}>
+                          <Button size="sm" disabled={demo || busy} onClick={() => void act(item, "accept")}>
                             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                             {t("lyricsTranslation.accept")}
                           </Button>
                         )}
                         {item.state === "uncertain" && (
-                          <Button variant="outline" size="sm" disabled={busy} onClick={() => void act(item, "resend")}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={demo || busy}
+                            onClick={() => void act(item, "resend")}
+                          >
                             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
                             {t("lyricsTranslation.resend")}
                           </Button>
@@ -662,7 +693,15 @@ export function LyricsTranslationPanel({
                       <LyricsPreview
                         label={title}
                         loadKey={`llm:${item.previewId}`}
-                        load={() => api.lyricsTranslationText(work.id, item.previewId!)}
+                        load={() =>
+                          demo
+                            ? Promise.resolve(
+                                demoLyricsText(track?.durationSeconds ?? null, (number) =>
+                                  t("lyricsTranslation.demoCue", { number }),
+                                ),
+                              )
+                            : api.lyricsTranslationText(work.id, item.previewId!)
+                        }
                         durationSeconds={track?.durationSeconds ?? null}
                       />
                     )}
@@ -703,7 +742,7 @@ export function LyricsTranslationPanel({
                 disabled={working || !providers?.length}
               />
             </div>
-            <Button onClick={() => void start()} disabled={working || !choice}>
+            <Button onClick={() => void start()} disabled={demo || working || !choice}>
               {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <Languages className="h-4 w-4" />}
               {working
                 ? t("lyricsTranslation.startingCount", { done: submitting.done, total: submitting.total })

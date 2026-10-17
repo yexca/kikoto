@@ -33,6 +33,20 @@ export function DemoListeningNotice() {
   return <DemoNotice message={t("permissions.demoListeningNotice")} />;
 }
 
+/** Demo contacts no transcription or translation service; say so above the sample lyrics tasks. */
+export function DemoLyricsTaskNotice({ task }: { task: "transcription" | "translation" }) {
+  const { t } = useTranslation();
+  return (
+    <DemoNotice
+      message={
+        task === "transcription"
+          ? t("permissions.demoTranscriptionNotice")
+          : t("permissions.demoLyricsTranslationNotice")
+      }
+    />
+  );
+}
+
 function DemoNotice({ message }: { message: string }) {
   return (
     <div

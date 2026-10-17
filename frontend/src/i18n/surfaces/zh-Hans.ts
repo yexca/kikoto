@@ -391,6 +391,10 @@ export const surfaceHans = {
       "演示模式：{{source}} 是模拟的远程来源，并非真实服务器。其中的作品是从本演示的本地作品中随机选取的。",
     demoWorksNotice: "演示模式：作品仅用于演示，版权归原作者所有。",
     demoListeningNotice: "演示模式：这里的收听记录是模拟生成的，并非真实收听；演示中的播放也不会被记录。",
+    demoTranscriptionNotice:
+      "演示模式：这些转写是示例。演示不会把音频发送给语音识别服务，因此无法检测分级，也无法开始、添加或丢弃转写。",
+    demoLyricsTranslationNotice:
+      "演示模式：这些翻译是示例。演示不会把歌词发送给 LLM 服务商，因此无法检测分级，也无法开始、添加或丢弃翻译。",
     permissionDenied: "您的账户没有使用此功能的权限。",
   },
   workflow: {
@@ -2791,6 +2795,7 @@ export const surfaceHans = {
     },
   },
   asrTranscription: {
+    demoCue: "示例第 {{number}} 行。演示没有转写这段音频。",
     service: "服务",
     detect: "自动检测",
     noService: "没有可用的语音识别服务。管理员可在「设置 → 大语言模型与语音识别」中添加。",
@@ -2883,6 +2888,7 @@ export const surfaceHans = {
     awaitingCount: "{{count}} 个待审核",
   },
   lyricsTranslation: {
+    demoCue: "示例译文第 {{number}} 行。演示没有翻译这些歌词。",
     provider: "LLM 服务商",
     noProvider: "没有可用的 LLM 服务商。管理员可在「设置 → LLM」中添加。",
     noProviderShort: "没有可用服务商",

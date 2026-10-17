@@ -392,6 +392,10 @@ export const surfaceHant = {
       "示範模式：{{source}} 是模擬的遠端來源，並非真實伺服器。其中的作品是從本示範的本機作品中隨機選取的。",
     demoWorksNotice: "示範模式：作品僅用於示範，版權歸原作者所有。",
     demoListeningNotice: "示範模式：這裡的收聽紀錄是模擬產生的，並非真實收聽；示範中的播放也不會被記錄。",
+    demoTranscriptionNotice:
+      "示範模式：這些轉寫是範例。示範不會把音訊傳送給語音辨識服務，因此無法檢測分級，也無法開始、加入或捨棄轉寫。",
+    demoLyricsTranslationNotice:
+      "示範模式：這些翻譯是範例。示範不會把歌詞傳送給 LLM 服務商，因此無法檢測分級，也無法開始、加入或捨棄翻譯。",
     permissionDenied: "您的帳戶沒有使用此功能的權限。",
   },
   workflow: {
@@ -2795,6 +2799,7 @@ export const surfaceHant = {
     },
   },
   asrTranscription: {
+    demoCue: "範例第 {{number}} 行。示範沒有轉寫這段音訊。",
     service: "服務",
     detect: "自動偵測",
     noService: "沒有可用的語音辨識服務。管理員可在「設定 → 大型語言模型與語音辨識」中新增。",
@@ -2888,6 +2893,7 @@ export const surfaceHant = {
     awaitingCount: "{{count}} 個待審核",
   },
   lyricsTranslation: {
+    demoCue: "範例譯文第 {{number}} 行。示範沒有翻譯這些歌詞。",
     provider: "LLM 服務商",
     noProvider: "沒有可用的 LLM 服務商。管理員可在「設定 → LLM」中新增。",
     noProviderShort: "沒有可用服務商",

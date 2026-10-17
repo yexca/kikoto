@@ -185,6 +185,7 @@ export function PersistedLyricsManagerOverlay({
       canTranslate={
         !demoMode && hasPermission("library:write") && hasPermission("workflows:run") && hasPermission("metadata:sync")
       }
+      demo={demoMode}
       request={request}
       onClose={onClose}
       onSaved={onSaved}
