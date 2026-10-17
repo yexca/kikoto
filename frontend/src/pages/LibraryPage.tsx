@@ -1,24 +1,15 @@
 import { ListChecks, RefreshCw, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { PageActiveProvider } from "@/app/pageHeader";
-import { REMOTE_TRACK_TERMINAL_EVENT, type RemoteTrackTerminalDetail } from "@/app/remoteTrackWorkflows";
-import {
-  WORK_DETAIL_PLAY_EVENT,
-  WORK_DETAIL_USER_STATE_EVENT,
-  WORK_DETAIL_WORKS_CHANGED_EVENT,
-  type WorkDetailPlayDetail,
-  type WorkDetailUserStateDetail,
-} from "@/app/workDetailEvents";
 import { openWorkDetail, workDetailCodeFromLocation } from "@/app/workDetailNavigation";
 import { useAuth } from "@/auth/AuthProvider";
 import { REMOTE_TRACK_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { DemoContentNotice, DemoRemoteSourceNotice } from "@/components/DemoReadOnlyNotice";
 import { MetadataOnboardingNotice } from "@/components/MetadataOnboardingNotice";
-import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { IconButton } from "@/components/ui/icon-button";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import {
@@ -48,17 +39,10 @@ import {
   type SourcePresenceItem,
   type Work,
 } from "@/lib/api";
-import {
-  currentInternalLocation,
-  historyEntryKey,
-  historyScrollY,
-  isMobileTabResumeHistoryState,
-  requestHistoryScrollRestoration,
-} from "@/lib/browserHistory";
+import { historyScrollY, isMobileTabResumeHistoryState, requestHistoryScrollRestoration } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import {
   defaultLibraryBrowseState,
-  libraryBrowseSearch,
   type LibraryBrowseState,
   libraryBrowseStateFromSearch,
   libraryLocation,
@@ -67,7 +51,6 @@ import {
   readLibraryBrowseState,
   readLibrarySortPreference,
   withSharedLibraryQuery,
-  writeLastLibraryLocation,
   writeLibraryBrowseState,
   writeLibrarySortPreference,
 } from "@/lib/libraryBrowseState";
@@ -75,8 +58,6 @@ import {
   compileLibrarySearchQuery,
   formatRemoteSearchQuery,
   formatSearchClause,
-  normalizeSearchClauseDraft,
-  parseSearchClauses,
   type SearchClause,
 } from "@/lib/librarySearchClauses";
 import { ContinueListeningRail } from "@/pages/library/ContinueListeningRail";
@@ -117,15 +98,16 @@ import { MobileLibraryToolbar } from "@/pages/library/MobileLibraryToolbar";
 import { RecommendationExplanationDialog } from "@/pages/library/RecommendationExplanationDialog";
 import { remoteWorkActionCode } from "@/pages/library/remoteSourceBrowseModel";
 import { RemoteSourcePanel } from "@/pages/library/RemoteSourcePanel";
-import {
-  SearchClauseBadges,
-  SearchClauseEditor,
-  type SearchClauseEditorState,
-} from "@/pages/library/SearchClauseEditor";
+import { SearchClauseBadges } from "@/pages/library/SearchClauseEditor";
+import { SearchClausePopover, useSearchClauseEditor } from "@/pages/library/SearchClausePopover";
+import { useLibraryBrowsePersistence } from "@/pages/library/useLibraryBrowsePersistence";
 import { useLibraryCoverSourceMode } from "@/pages/library/useLibraryCoverSourceMode";
 import { useLibraryRecommendations } from "@/pages/library/useLibraryRecommendations";
 import { useLibraryResultsScroll } from "@/pages/library/useLibraryResultsScroll";
+import { useLibrarySearchQuery } from "@/pages/library/useLibrarySearchQuery";
+import { useLibrarySources } from "@/pages/library/useLibrarySources";
 import { useLibrarySourceVisibility } from "@/pages/library/useLibrarySourceVisibility";
+import { useLibraryWorkEvents } from "@/pages/library/useLibraryWorkEvents";
 import { useLocalLibraryWorks } from "@/pages/library/useLocalLibraryWorks";
 import { useRemoteSourceWorks } from "@/pages/library/useRemoteSourceWorks";
 import { remoteOnlyWorkPreview, remoteWorkPreview } from "@/pages/library/workPreviewHistory";
@@ -140,10 +122,6 @@ function preloadLibraryDeferredSurfaces() {
   preloadWorkDetail();
   void preloadRemoteFetchWorkspaceDialog().catch(() => {});
 }
-
-const librarySearchDebounceMs = 400;
-
-const remoteSearchDebounceMs = 600;
 
 export function LibraryPage({ active = true }: { active?: boolean }) {
   useEffect(() => {
@@ -170,21 +148,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   );
   const initialBrowse = useRef(initialLibraryPageBrowseState(browseStorageScope, sessionDefaultBrowseState)).current;
   const initialBrowseState = initialBrowse.state;
-  const [sources, setSources] = useState<LibrarySource[]>([]);
-  const [sourceRoutesReady, setSourceRoutesReady] = useState(false);
-  const [browseHydrated, setBrowseHydrated] = useState(() => localBrowseRoute(window.location.pathname));
   const [activeTab, setActiveTab] = useState<LibraryTab>(initialBrowse.tab);
   const [localScope, setLocalScope] = useState<LocalLibraryScope>(initialBrowse.scope);
   const [remoteSourceStates, setRemoteSourceStates] = useState<Record<number, RemoteSourceViewState>>({});
   const [remoteSelectionMode, setRemoteSelectionMode] = useState(false);
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">(initialBrowseState.status);
-  const [searchQuery, setSearchQuery] = useState(initialBrowseState.query);
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(initialBrowseState.query);
-  const [debouncedRemoteSearchQuery, setDebouncedRemoteSearchQuery] = useState(initialBrowseState.query);
-  const [clauseEditor, setClauseEditor] = useState<SearchClauseEditorState | null>(null);
-  // The clause editor floats next to whichever control opened it: the add
-  // button in the search field or the edited clause badge.
-  const clauseEditorAnchorRef = useRef<HTMLElement | null>(null);
   const {
     mobileColumns,
     desktopColumns,
@@ -212,21 +180,48 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   // already prevent list effects from writing into a detail entry.
   const showBrowse = workDetailCodeFromLocation(window.location.pathname, window.location.search) === null;
   browseSurfaceActive.current = showBrowse;
+  const isBrowseSurfaceActive = useStableCallback(() => browseSurfaceActive.current);
   const [listVisited, setListVisited] = useState(showBrowse);
   useEffect(() => {
     if (showBrowse) setListVisited(true);
   }, [showBrowse]);
-  const searchClauses = useMemo(() => parseSearchClauses(searchQuery), [searchQuery]);
-  const debouncedSearchClauses = useMemo(() => parseSearchClauses(debouncedSearchQuery), [debouncedSearchQuery]);
-  const debouncedRemoteSearchClauses = useMemo(
-    () => parseSearchClauses(debouncedRemoteSearchQuery),
-    [debouncedRemoteSearchQuery],
-  );
-  const remoteSearchQuery = useMemo(
-    () => formatRemoteSearchQuery(debouncedRemoteSearchClauses),
-    [debouncedRemoteSearchClauses],
-  );
-  const librarySearchQuery = useMemo(() => compileLibrarySearchQuery(debouncedSearchClauses), [debouncedSearchClauses]);
+  const resultsScroll = useLibraryResultsScroll(active && showBrowse);
+  const queueResultsScroll = resultsScroll.queue;
+  const { searchQuery, setSearchQuery, searchClauses, librarySearchQuery, remoteSearchQuery, settleSearchQuery } =
+    useLibrarySearchQuery({
+      initialQuery: initialBrowseState.query,
+      activeTab,
+      queueResultsScroll,
+      setWorkPage,
+      setRemoteSourceStates,
+    });
+  /** The browse state a location shows: its search over the entry's, the saved, or the default controls. */
+  const locationBrowseState = useStableCallback((tab: LibraryTab, scope: LocalLibraryScope) => {
+    const key = libraryBrowseKey(tab, scope, browseStorageScope);
+    return libraryBrowseStateFromSearch(
+      window.location.search,
+      readLibraryHistoryBrowseState(browseStorageScope) ??
+        readLibraryBrowseState(key) ?? { ...sessionDefaultBrowseState, ...readLibrarySortPreference(key) },
+    );
+  });
+  // Resolves the current route against the sources once they load.
+  const resolveSourceRoute = useStableCallback((items: LibrarySource[]) => {
+    if (!knownLibraryRoute(window.location.pathname, window.location.search, items)) return;
+    const resolved = tabFromPath(window.location.pathname, items, activeTab);
+    const scope = localScopeFromPath(window.location.pathname);
+    if (
+      workDetailCodeFromLocation(window.location.pathname, window.location.search) === null &&
+      !localBrowseRoute(window.location.pathname)
+    ) {
+      applyBrowseState(locationBrowseState(resolved, scope), resolved, false);
+      setActiveTab(resolved);
+    }
+  });
+  const { sources, sourceRoutesReady, browseHydrated } = useLibrarySources({
+    active,
+    authLoading: auth.isLoading,
+    onLoaded: resolveSourceRoute,
+  });
   const activePrimaryTab: "local" | "tracked" | null = activeTab.kind === "source" ? null : localScope;
   const activeRemoteSourceState = activeRemoteSourceViewState(activeTab, remoteSourceStates);
   const [coverSourceMode, setCoverSourceMode] = useLibraryCoverSourceMode(browseStorageScope);
@@ -265,7 +260,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       desktopColumns,
     ],
   );
-  const currentActiveTab = useStableCallback(() => activeTab);
   const pendingBrowseKey = useRef<string | null>(null);
   const currentBrowseKey = useStableCallback(() => libraryBrowseControlsKey(activeBrowseState));
   const hasPendingBrowseRestore = useStableCallback(
@@ -274,8 +268,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   useLayoutEffect(() => {
     if (pendingBrowseKey.current === libraryBrowseControlsKey(activeBrowseState)) pendingBrowseKey.current = null;
   });
-  const resultsScroll = useLibraryResultsScroll(active && showBrowse);
-  const queueResultsScroll = resultsScroll.queue;
   const applyBrowseState = useStableCallback((state: LibraryBrowseState, tab: LibraryTab, restoreScroll = true) => {
     const key = libraryBrowseControlsKey({
       ...state,
@@ -284,9 +276,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       pageSize: libraryPageSize(state.pageSize),
     });
     pendingBrowseKey.current = key === currentBrowseKey() ? null : key;
-    setSearchQuery(state.query);
-    setDebouncedSearchQuery(state.query);
-    setDebouncedRemoteSearchQuery(state.query);
+    settleSearchQuery(state.query);
     setStatusFilter(tab.kind === "source" ? "all" : state.status);
     setLibrarySort(tab.kind === "source" ? remoteLibrarySort(state.sort) : state.sort);
     setSortDirection(state.direction);
@@ -302,36 +292,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       setWorkPageSize(libraryPageSize(state.pageSize));
     }
   });
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (searchQuery !== debouncedSearchQuery) {
-        queueResultsScroll();
-        if (activeTab.kind !== "source") setWorkPage(1);
-      }
-      setDebouncedSearchQuery(searchQuery);
-    }, librarySearchDebounceMs);
-    return () => window.clearTimeout(timer);
-  }, [activeTab.kind, queueResultsScroll, searchQuery, debouncedSearchQuery]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (searchQuery !== debouncedRemoteSearchQuery) {
-        queueResultsScroll();
-        if (activeTab.kind === "source") {
-          setRemoteSourceStates((states) => ({
-            ...states,
-            [activeTab.source.id]: {
-              ...(states[activeTab.source.id] ?? defaultRemoteSourceViewState),
-              page: 1,
-            },
-          }));
-        }
-      }
-      setDebouncedRemoteSearchQuery(searchQuery);
-    }, remoteSearchDebounceMs);
-    return () => window.clearTimeout(timer);
-  }, [activeTab, queueResultsScroll, searchQuery, debouncedRemoteSearchQuery]);
 
   const localWorks = useLocalLibraryWorks({
     visible: active && showBrowse && activeTab.kind !== "source",
@@ -354,58 +314,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   });
   const recordWorkRecommendationEvent = (work: Work, eventType: RecommendationEventInput["eventType"]) =>
     recommendations.recordWorkEvent(work, eventType, localWorks.worksRef.current);
-
-  useEffect(() => {
-    if (!active || auth.isLoading || sourceRoutesReady) return;
-    const controller = new AbortController();
-    let cancelled = false;
-    if (!localBrowseRoute(window.location.pathname)) setBrowseHydrated(false);
-    setSourceRoutesReady(false);
-    api
-      .listLibrarySources(controller.signal)
-      .then((items) => {
-        if (cancelled) return;
-        setSources(items);
-        setSourceRoutesReady(true);
-        if (!knownLibraryRoute(window.location.pathname, window.location.search, items)) return;
-        const resolved = tabFromPath(window.location.pathname, items, currentActiveTab());
-        const scope = localScopeFromPath(window.location.pathname);
-        const stored = readLibraryBrowseState(libraryBrowseKey(resolved, scope, browseStorageScope));
-        const sortPreference = readLibrarySortPreference(libraryBrowseKey(resolved, scope, browseStorageScope));
-        if (
-          workDetailCodeFromLocation(window.location.pathname, window.location.search) === null &&
-          !localBrowseRoute(window.location.pathname)
-        ) {
-          const state = libraryBrowseStateFromSearch(
-            window.location.search,
-            readLibraryHistoryBrowseState(browseStorageScope) ??
-              stored ?? { ...sessionDefaultBrowseState, ...sortPreference },
-          );
-          applyBrowseState(state, resolved, false);
-          setActiveTab(resolved);
-        }
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setSources([]);
-        setSourceRoutesReady(false);
-      })
-      .finally(() => {
-        if (!cancelled) setBrowseHydrated(true);
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [
-    active,
-    applyBrowseState,
-    auth.isLoading,
-    browseStorageScope,
-    currentActiveTab,
-    sessionDefaultBrowseState,
-    sourceRoutesReady,
-  ]);
 
   const remoteWorks = useRemoteSourceWorks({
     visible: active && showBrowse,
@@ -437,13 +345,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       if (!knownLibraryRoute(window.location.pathname, window.location.search, sources)) return;
       const nextTab = tabFromPath(window.location.pathname, sources, activeTab);
       const nextScope = localScopeFromPath(window.location.pathname);
-      const stored = readLibraryBrowseState(libraryBrowseKey(nextTab, nextScope, browseStorageScope));
-      const sortPreference = readLibrarySortPreference(libraryBrowseKey(nextTab, nextScope, browseStorageScope));
-      const state = libraryBrowseStateFromSearch(
-        window.location.search,
-        readLibraryHistoryBrowseState(browseStorageScope) ??
-          stored ?? { ...sessionDefaultBrowseState, ...sortPreference },
-      );
+      const state = locationBrowseState(nextTab, nextScope);
       applyBrowseState(
         { ...state, scrollY: historyScrollY(window.history.state, state.scrollY) },
         nextTab,
@@ -465,127 +367,43 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("kikoto:navigation", handleAppNavigation);
     };
-  }, [active, applyBrowseState, sources, activeTab, browseStorageScope, sessionDefaultBrowseState]);
-
-  useEffect(() => {
-    if (
-      !active ||
-      !browseHydrated ||
-      hasPendingBrowseRestore() ||
-      !showBrowse ||
-      !knownLibraryRoute(window.location.pathname, window.location.search, sources)
-    )
-      return;
-    const browseState = { ...activeBrowseState, scrollY: window.scrollY };
-    writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
-    writeLibrarySortPreference(libraryBrowseKey(activeTab, localScope, browseStorageScope), librarySort, sortDirection);
-    const nextSearch = libraryBrowseSearch(activeBrowseState);
-    if (sourceRoutesReady) {
-      writeLastLibraryLocation(browseStorageScope, `${pathForActiveLibrary(activeTab, localScope)}${nextSearch}`);
-    }
-    window.history.replaceState(
-      {
-        ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
-        libraryBrowseScope: browseStorageScope,
-        libraryBrowseState: browseState,
-      },
-      "",
-      `${window.location.pathname}${nextSearch}`,
-    );
   }, [
     active,
-    activeBrowseState,
+    applyBrowseState,
+    locationBrowseState,
+    sources,
     activeTab,
+    browseStorageScope,
+    sessionDefaultBrowseState,
+  ]);
+
+  useLibraryBrowsePersistence({
+    active,
     browseHydrated,
     hasPendingBrowseRestore,
-    browseStorageScope,
-    desktopColumns,
-    librarySort,
-    localScope,
-    mobileColumns,
-    randomSeed,
-    searchQuery,
     showBrowse,
-    sortDirection,
+    browseSurfaceActive: isBrowseSurfaceActive,
+    sources,
     sourceRoutesReady,
-    statusFilter,
-    workPage,
-    workPageSize,
-    remoteSourceStates,
-    sources,
-  ]);
-
-  useEffect(() => {
-    // Initial local defaults must not become a remote route's history snapshot
-    // before its source and saved browse controls have been restored.
-    if (
-      !active ||
-      !browseHydrated ||
-      hasPendingBrowseRestore() ||
-      !showBrowse ||
-      !knownLibraryRoute(window.location.pathname, window.location.search, sources)
-    )
-      return;
-    let pendingWrite: number | null = null;
-    // Cleanup runs after another workspace has replaced this one in the shared
-    // window scroll, so persist the last offset observed while this list was visible.
-    let lastScrollY = window.scrollY;
-    const entryKey = historyEntryKey(window.history.state);
-    const location = currentInternalLocation();
-    const flushScroll = () => {
-      if (pendingWrite !== null) window.clearTimeout(pendingWrite);
-      pendingWrite = null;
-      if (historyEntryKey(window.history.state) !== entryKey || currentInternalLocation() !== location) return;
-      const browseState = { ...activeBrowseState, scrollY: lastScrollY };
-      writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
-      writeLibraryHistoryBrowseState(browseStorageScope, browseState);
-    };
-    const rememberScroll = () => {
-      lastScrollY = window.scrollY;
-      if (pendingWrite !== null) return;
-      pendingWrite = window.setTimeout(flushScroll, 150);
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") flushScroll();
-    };
-    window.addEventListener("scroll", rememberScroll, { passive: true });
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.removeEventListener("scroll", rememberScroll);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      if (pendingWrite !== null) {
-        window.clearTimeout(pendingWrite);
-        pendingWrite = null;
-      }
-      if (browseSurfaceActive.current) flushScroll();
-    };
-  }, [
-    active,
     activeBrowseState,
     activeTab,
-    browseHydrated,
-    browseStorageScope,
-    hasPendingBrowseRestore,
     localScope,
-    showBrowse,
-    searchQuery,
-    statusFilter,
+    browseStorageScope,
     librarySort,
-    randomSeed,
     sortDirection,
-    mobileColumns,
-    desktopColumns,
-    workPage,
-    workPageSize,
-    remoteSourceStates,
-    sources,
-  ]);
+  });
 
-  const openWork = (work: Work, sourceIntent: DetailSourceIntent = localScope === "tracked" ? "tracked" : "local") => {
-    recordWorkRecommendationEvent(work, "open");
+  /** Saves the shown browse state with its scroll offset before the Library leaves it. */
+  const saveBrowseSnapshot = () => {
     const browseState = { ...activeBrowseState, scrollY: window.scrollY };
     writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
     writeLibraryHistoryBrowseState(browseStorageScope, browseState);
+  };
+  const returnLocation = () => libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState);
+
+  const openWork = (work: Work, sourceIntent: DetailSourceIntent = localScope === "tracked" ? "tracked" : "local") => {
+    recordWorkRecommendationEvent(work, "open");
+    saveBrowseSnapshot();
     openWorkDetail(
       {
         kind: "known",
@@ -593,7 +411,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         view: sourceIntent === "tracked" ? "tracked" : "local",
       },
       {
-        returnTo: libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState),
+        returnTo: returnLocation(),
         returnLabel: t("nav.library"),
         workPreview: work,
       },
@@ -603,83 +421,64 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const openRemotePreview = (source: LibrarySource, work: RemoteWork) => {
     const code = remoteWorkActionCode(work);
     if (!code) return;
-    const browseState = { ...activeBrowseState, scrollY: window.scrollY };
-    writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), browseState);
-    writeLibraryHistoryBrowseState(browseStorageScope, browseState);
+    saveBrowseSnapshot();
     if (work.workId !== null && work.primaryCode) {
       openPersistedRemoteSourceWorkRoute(
         source.id,
         work.primaryCode,
         code,
-        libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState),
+        returnLocation(),
         t("nav.library"),
         remoteWorkPreview(work),
       );
       return;
     }
-    openRemoteSourceWorkRoute(
-      source.id,
-      code,
-      libraryLocation(pathForActiveLibrary(activeTab, localScope), activeBrowseState),
-      t("nav.library"),
-      remoteOnlyWorkPreview(work),
-    );
+    openRemoteSourceWorkRoute(source.id, code, returnLocation(), t("nav.library"), remoteOnlyWorkPreview(work));
   };
 
-  const changeTab = (tab: LibraryTab) => {
-    const currentState = { ...activeBrowseState, scrollY: window.scrollY };
-    writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), currentState);
-    writeLibraryHistoryBrowseState(browseStorageScope, currentState);
-    const nextScope: LocalLibraryScope = tab.kind === "all" ? "local" : localScope;
-    const nextKey = libraryBrowseKey(tab, nextScope, browseStorageScope);
+  /**
+   * Leaves the shown browse state for another tab or scope: saves it, restores
+   * the destination's own controls with the shared search query, and pushes
+   * the destination location when it differs.
+   */
+  const switchBrowse = (
+    tab: LibraryTab,
+    scope: LocalLibraryScope,
+    path: (state: LibraryBrowseState) => string | null,
+  ) => {
+    saveBrowseSnapshot();
+    const nextKey = libraryBrowseKey(tab, scope, browseStorageScope);
     const nextState = withSharedLibraryQuery(
       readLibraryBrowseState(nextKey) ?? { ...sessionDefaultBrowseState, ...readLibrarySortPreference(nextKey) },
       searchQuery,
     );
     setActiveTab(tab);
-    if (tab.kind === "all") setLocalScope(nextScope);
+    if (tab.kind === "all") setLocalScope(scope);
     applyBrowseState(nextState, tab);
-    const path = libraryLocation(pathForLibraryTab(tab), nextState);
-    if (`${window.location.pathname}${window.location.search}` !== path) {
+    const nextPath = path(nextState);
+    if (nextPath && `${window.location.pathname}${window.location.search}` !== nextPath) {
       window.history.pushState(
         requestHistoryScrollRestoration(
           { libraryBrowseScope: browseStorageScope, libraryBrowseState: nextState },
           nextState.scrollY,
         ),
         "",
-        path,
+        nextPath,
       );
       window.dispatchEvent(new Event("kikoto:navigation"));
     }
   };
 
-  const changeLocalScope = (scope: LocalLibraryScope) => {
-    const currentState = { ...activeBrowseState, scrollY: window.scrollY };
-    writeLibraryBrowseState(libraryBrowseKey(activeTab, localScope, browseStorageScope), currentState);
-    writeLibraryHistoryBrowseState(browseStorageScope, currentState);
-    const nextTab: LibraryTab = { kind: "all" };
-    const nextKey = libraryBrowseKey(nextTab, scope, browseStorageScope);
-    const nextState = withSharedLibraryQuery(
-      readLibraryBrowseState(nextKey) ?? { ...sessionDefaultBrowseState, ...readLibrarySortPreference(nextKey) },
-      searchQuery,
+  const changeTab = (tab: LibraryTab) =>
+    switchBrowse(tab, tab.kind === "all" ? "local" : localScope, (state) =>
+      libraryLocation(pathForLibraryTab(tab), state),
     );
-    setActiveTab({ kind: "all" });
-    setLocalScope(scope);
-    applyBrowseState(nextState, nextTab);
-    const basePath = pathForLocalScope(scope);
-    const path = basePath ? libraryLocation(basePath, nextState) : null;
-    if (path && `${window.location.pathname}${window.location.search}` !== path) {
-      window.history.pushState(
-        requestHistoryScrollRestoration(
-          { libraryBrowseScope: browseStorageScope, libraryBrowseState: nextState },
-          nextState.scrollY,
-        ),
-        "",
-        path,
-      );
-      window.dispatchEvent(new Event("kikoto:navigation"));
-    }
-  };
+
+  const changeLocalScope = (scope: LocalLibraryScope) =>
+    switchBrowse({ kind: "all" }, scope, (state) => {
+      const basePath = pathForLocalScope(scope);
+      return basePath ? libraryLocation(basePath, state) : null;
+    });
 
   const changePrimaryTab = (tab: "local" | "tracked") => {
     changeLocalScope(tab);
@@ -735,50 +534,17 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     await localWorks.refresh();
   });
 
-  const refreshAfterTrack = useStableCallback((event: Event) => {
-    const terminal = (event as CustomEvent<RemoteTrackTerminalDetail>).detail;
-    if (!terminal || (terminal.status !== "succeeded" && terminal.status !== "partial")) return;
-    if (activeTab.kind === "source") {
-      if (activeTab.source.id === terminal.sourceId) {
-        remoteWorks.loadNow(activeTab.source, remoteSearchQuery, activeRemoteSourceState.page, { clearResult: false });
-      }
-      return;
-    }
-    void refreshCurrentWorksPage();
+  useLibraryWorkEvents({
+    active,
+    activeTab,
+    localWorks,
+    reloadRemoteSource: () => {
+      if (activeTab.kind !== "source") return;
+      remoteWorks.loadNow(activeTab.source, remoteSearchQuery, activeRemoteSourceState.page, { clearResult: false });
+    },
+    refreshLocalWorks: refreshCurrentWorksPage,
+    recordWorkEvent: recordWorkRecommendationEvent,
   });
-  useEffect(() => {
-    if (!active) return;
-    window.addEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshAfterTrack);
-    return () => window.removeEventListener(REMOTE_TRACK_TERMINAL_EVENT, refreshAfterTrack);
-  }, [active, refreshAfterTrack]);
-
-  // Work detail is another page; a retained list follows what happened there.
-  const followDetailUserState = useStableCallback((event: Event) => {
-    const { ownerPage, workID, listeningStatus, favorite } = (event as CustomEvent<WorkDetailUserStateDetail>).detail;
-    localWorks.patchWork(workID, { listeningStatus, favorite });
-    const work = localWorks.worksRef.current.find((item) => item.id === workID);
-    if (ownerPage === "library" && work && ["relisten", "paused"].includes(listeningStatus)) {
-      recordWorkRecommendationEvent(work, listeningStatus === "paused" ? "paused_mark" : "positive_mark");
-    }
-  });
-  const followDetailPlay = useStableCallback((event: Event) => {
-    const { ownerPage, workID } = (event as CustomEvent<WorkDetailPlayDetail>).detail;
-    const work = localWorks.worksRef.current.find((item) => item.id === workID);
-    if (ownerPage === "library" && work) recordWorkRecommendationEvent(work, "play");
-  });
-  const followDetailWorksChanged = useStableCallback(() => {
-    void refreshCurrentWorksPage().catch(() => {});
-  });
-  useEffect(() => {
-    window.addEventListener(WORK_DETAIL_USER_STATE_EVENT, followDetailUserState);
-    window.addEventListener(WORK_DETAIL_PLAY_EVENT, followDetailPlay);
-    window.addEventListener(WORK_DETAIL_WORKS_CHANGED_EVENT, followDetailWorksChanged);
-    return () => {
-      window.removeEventListener(WORK_DETAIL_USER_STATE_EVENT, followDetailUserState);
-      window.removeEventListener(WORK_DETAIL_PLAY_EVENT, followDetailPlay);
-      window.removeEventListener(WORK_DETAIL_WORKS_CHANGED_EVENT, followDetailWorksChanged);
-    };
-  }, [followDetailPlay, followDetailUserState, followDetailWorksChanged]);
 
   const trackedFetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged: refreshCurrentWorksPage });
   const openTrackedFetchSelection = (work: Work, presence: SourcePresenceItem) => {
@@ -813,9 +579,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     const nextQuery = nextClauses.map(formatSearchClause).join(" ");
     const nextLibraryQuery = compileLibrarySearchQuery(nextClauses);
     const nextRemoteQuery = formatRemoteSearchQuery(nextClauses);
-    setSearchQuery(nextQuery);
-    setDebouncedSearchQuery(nextQuery);
-    setDebouncedRemoteSearchQuery(nextQuery);
+    settleSearchQuery(nextQuery);
     queueResultsScroll();
     if (activeTab.kind === "source") {
       remoteWorks.skipNextLoad();
@@ -831,43 +595,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const addTagSearchClause = (tag: string) => addNamedTagSearchClause("tag", tag);
   const addUserTagSearchClause = (tag: string) => addNamedTagSearchClause("user_tag", tag);
 
-  const removeSearchClause = (index: number) => {
-    updateSearchClauses(searchClauses.filter((_clause, clauseIndex) => clauseIndex !== index));
-    setClauseEditor(null);
-  };
-
-  const openAddClauseEditor = (anchor: HTMLElement) => {
-    if (clauseEditor?.mode === "add") {
-      setClauseEditor(null);
-      return;
-    }
-    clauseEditorAnchorRef.current = anchor;
-    setClauseEditor({ mode: "add", index: null, draft: { kind: "text", value: "" } });
-  };
-
-  const openEditClauseEditor = (clause: SearchClause, index: number, anchor: HTMLElement) => {
-    if (clauseEditor?.mode === "edit" && clauseEditor.index === index) {
-      setClauseEditor(null);
-      return;
-    }
-    clauseEditorAnchorRef.current = anchor;
-    setClauseEditor({ mode: "edit", index, draft: { kind: clause.kind, value: clause.value } });
-  };
-  const closeClauseEditor = useCallback((open: boolean) => {
-    if (!open) setClauseEditor(null);
-  }, []);
-
-  const saveClauseEditor = () => {
-    if (!clauseEditor) return;
-    const clause = normalizeSearchClauseDraft(clauseEditor.draft);
-    if (!clause) return;
-    if (clauseEditor.mode === "add") {
-      updateSearchClauses([...searchClauses, clause]);
-    } else if (clauseEditor.index !== null) {
-      updateSearchClauses(searchClauses.map((item, index) => (index === clauseEditor.index ? clause : item)));
-    }
-    setClauseEditor(null);
-  };
+  const clauseEditor = useSearchClauseEditor({ clauses: searchClauses, onClausesChange: updateSearchClauses });
 
   // Stable card handlers let unchanged cards skip rendering when the page
   // re-renders, such as when a tab switch toggles `active`.
@@ -1043,8 +771,8 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
           sourceTabs={<LibraryPrimaryTabs variant="chips" {...primaryTabs} />}
           searchQuery={searchQuery}
           onSearchChange={changeSearchQuery}
-          onAddClause={openAddClauseEditor}
-          addClauseOpen={clauseEditor?.mode === "add"}
+          onAddClause={clauseEditor.openAdd}
+          addClauseOpen={clauseEditor.editor?.mode === "add"}
           resultCount={activeTab.kind === "source" ? (remoteWorks.result?.total ?? null) : localWorks.total}
           resultPage={
             activeTab.kind === "source"
@@ -1075,8 +803,8 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
           sourceTabs={<LibraryPrimaryTabs {...primaryTabs} />}
           searchQuery={searchQuery}
           onSearchChange={changeSearchQuery}
-          onAddClause={openAddClauseEditor}
-          addClauseOpen={clauseEditor?.mode === "add"}
+          onAddClause={clauseEditor.openAdd}
+          addClauseOpen={clauseEditor.editor?.mode === "add"}
           onOpenRecent={openRecentWork}
           displayPicker={displayPicker}
           recommendationAction={recommendationBadgeToggle}
@@ -1088,27 +816,11 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       )}
       <SearchClauseBadges
         clauses={searchClauses}
-        editor={clauseEditor}
-        onEdit={openEditClauseEditor}
-        onRemove={removeSearchClause}
+        editor={clauseEditor.editor}
+        onEdit={clauseEditor.openEdit}
+        onRemove={clauseEditor.remove}
       />
-      <AnchoredPopover
-        open={active && showBrowse && clauseEditor !== null}
-        anchorRef={clauseEditorAnchorRef}
-        align="start"
-        ariaLabel={clauseEditor?.mode === "edit" ? t("library.editSearchCondition") : t("library.addSearchCondition")}
-        onOpenChange={closeClauseEditor}
-        className="w-[min(24rem,calc(100vw-1.5rem))] p-3"
-      >
-        {clauseEditor && (
-          <SearchClauseEditor
-            editor={clauseEditor}
-            onChange={(draft) => setClauseEditor((current) => (current ? { ...current, draft } : current))}
-            onCancel={() => setClauseEditor(null)}
-            onSave={saveClauseEditor}
-          />
-        )}
-      </AnchoredPopover>
+      <SearchClausePopover open={active && showBrowse} control={clauseEditor} />
       <div ref={resultsScroll.anchorRef} className="scroll-mt-24" />
 
       {activeTab.kind === "source" ? (
