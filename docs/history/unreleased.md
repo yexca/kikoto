@@ -14,10 +14,15 @@
 <details>
 <summary><strong>Library and work detail</strong></summary>
 
+- Official bundles such as complete packs list the works they contain.
+  Metadata sync fills the list when DLsite names the contents, and a library
+  editor adds or removes works under **Bundle contents** in the metadata
+  editor, with suggestions from the bundle's DLsite series. The bundle's
+  detail shows **Includes** and each work's detail shows **Included in**; the
+  works stay separate. Searching for a work's code or title also finds the
+  bundles that include it.
 - **Edit files** has **Check sources**, which asks every remote source about
   each edition of the work and refreshes the remote editions it lists.
-- The bottom page bar shows more page numbers on wider screens and keeps the
-  same number of items on every page, so its arrows stay in place.
 - The bottom page bar shows more page numbers on wider screens and keeps the
   same number of items on every page, so its arrows stay in place.
 - Favorites has smart lists. A smart list shows the works that carry all of its

@@ -313,3 +313,31 @@ func TestSearchExcludesCirclesAndVoicesAndKeepsQuotedPhrasesWhole(t *testing.T) 
 		assertSearchCodes(t, store, 0, tc.query, tc.ordinals...)
 	}
 }
+
+func TestSearchFindsBundlesByTheirMembers(t *testing.T) {
+	db := openSearchTestDB(t, "../../migrations")
+	insertSearchWork(t, db, 20, "Example Series Complete Pack")
+	member := insertSearchWork(t, db, 21, "Example Moonlit Episode")
+	insertSearchWork(t, db, 23, "Unrelated Example")
+	bundleCode := testfixture.WorkCode(testfixture.PrefixRJ, 20)
+	execSearchFixture(t, db, `INSERT INTO work_bundle_member (bundle_code, member_code, position, status, origin) VALUES (?, ?, 0, 'linked', 'user'), (?, ?, 1, 'linked', 'user')`,
+		bundleCode, testfixture.WorkCode(testfixture.PrefixRJ, 21),
+		bundleCode, testfixture.WorkCode(testfixture.PrefixRJ, 22))
+	store := NewStore(db)
+
+	// A member's title or code finds the member and the bundle; a code
+	// outside the library finds the bundle alone.
+	assertSearchCodes(t, store, 0, "moonlit", 20, 21)
+	assertSearchCodes(t, store, 0, testfixture.WorkCode(testfixture.PrefixRJ, 21), 20, 21)
+	assertSearchCodes(t, store, 0, testfixture.WorkCode(testfixture.PrefixRJ, 22), 20)
+
+	// A member's new title replaces the old one in the bundle's document.
+	execSearchFixture(t, db, `UPDATE work SET title = 'Example Starlit Episode' WHERE id = ?`, member)
+	assertSearchCodes(t, store, 0, "moonlit")
+	assertSearchCodes(t, store, 0, "starlit", 20, 21)
+
+	// A removed member no longer finds the bundle.
+	execSearchFixture(t, db, `UPDATE work_bundle_member SET status = 'dismissed' WHERE member_code = ?`, testfixture.WorkCode(testfixture.PrefixRJ, 21))
+	assertSearchCodes(t, store, 0, "starlit", 21)
+	assertSearchCodes(t, store, 0, testfixture.WorkCode(testfixture.PrefixRJ, 22), 20)
+}

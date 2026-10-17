@@ -13,6 +13,7 @@ Important tables:
 - `work_external_id`
 - `work_metadata_link`
 - `work_purchase_bonus`
+- `work_bundle_member`
 - `work_manual_override`
 - `metadata_provider`
 - `metadata_snapshot`
@@ -425,6 +426,36 @@ bonus's code, title, introduction, cover and release date, and records
 `_kikoto.purchase_bonus_parent_code` and `_kikoto.purchase_bonus_inherited`, so
 the tag, credit, card-summary and search projections need no bonus logic. A
 dismissal queues a refresh that stores the bonus's own product again.
+
+### Bundles
+
+`work_bundle_member` records that an official bundle contains a member, both
+by DLsite code in upper case; see
+[ADR-0004](../decisions/ADR-0004-bundle-membership.md). Neither code has to be
+a work, and membership is not an edition, alias, or family: the bundle and
+each member keep their own work, edition family, playback, availability, and
+files. `status` is `linked` or `dismissed`; `origin` is `detected` or
+`user`. Metadata sync inserts the members a product declares in
+`work_pack_children` and the bundles it declares in `work_pack_parent`,
+reading only codes that stand as an entry or as an entry's `workno` or
+`product_id`, at most 64 per field. It only inserts: a row a user decided,
+including a dismissal, stays as it is, and a member DLsite stops declaring
+stays until a user removes it. Removing a detected member dismisses it;
+removing one a user added deletes the row.
+
+A work's detail resolves the relation through its family's codes: its own
+code, its editions, and the edition codes its family declares. `bundleMembers`
+lists the linked members of any of those codes as a bundle, each code once in
+the bundle's order, and `includedInBundles` lists the bundles outside the
+family that name one of them as a member. Each entry carries the library work
+for its code, resolved as a purchase bonus's parent is, when one exists.
+Demo keeps only the entries whose library work is eligible for Demo.
+
+A bundle's search document holds the codes of its linked members and the
+titles of the members in the library, and a code search also matches a bundle
+that lists the code as a linked member, so searching for a member finds its
+bundles. Triggers on `work_bundle_member` and on a member work's code and
+title queue the bundle's document.
 
 ### Remote Metadata Fallback
 
@@ -1007,6 +1038,8 @@ separate from these derived caches.
   holds the work's own `dlsite_metadata_variant` title and, for a work without
   non-remote metadata, its `remote_metadata_title_variant` titles, so each
   stored edition title matches independently of the projected `work.title`.
+  A bundle's code and title columns also hold its members' codes and library
+  titles; see [Bundles](#bundles).
   The tag column also holds every learned `dlsite_genre_name` for the work's
   genre ids, so a tag matches in each language the library has fetched.
   Matching remains a substring test; a Library page orders works whose indexed

@@ -17,9 +17,11 @@ type dlsiteSnapshotMetadata struct {
 	ReleaseDate      *string
 	RatingCount      *int64
 	Series           string
-	DLsiteUpdatedAt  *string
-	Tags             []string
-	VoiceActors      []string
+	// SeriesID is the DLsite series (title) id, such as SRI0000000000.
+	SeriesID        string
+	DLsiteUpdatedAt *string
+	Tags            []string
+	VoiceActors     []string
 }
 
 type dlsiteSnapshotLanguage struct {
@@ -77,6 +79,8 @@ type dlsiteSnapshotPayload struct {
 	RateCount          *int64                        `json:"rate_count"`
 	ReviewCount        *int64                        `json:"review_count"`
 	SeriesName         string                        `json:"series_name"`
+	SeriesID           string                        `json:"series_id"`
+	TitleID            string                        `json:"title_id"`
 	Series             string                        `json:"series"`
 	Genres             []dlsiteSnapshotGenre         `json:"genres"`
 	SeriesWork         []dlsiteSnapshotSeriesWork    `json:"series_work"`
@@ -117,6 +121,7 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 		metadata.RatingCount = payload.ReviewCount
 	}
 	metadata.Series = dlsiteSnapshotSeries(payload)
+	metadata.SeriesID = strings.ToUpper(strings.TrimSpace(firstNonEmpty(payload.TitleID, payload.SeriesID)))
 	metadata.Tags = uniqueDLsiteSnapshotTags(payload.Genres)
 	metadata.VoiceActors = uniqueDLsiteSnapshotActors(payload.Creators)
 	return metadata

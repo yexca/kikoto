@@ -296,6 +296,17 @@ func loadSearchDocuments(ctx context.Context, tx *sql.Tx, ids []int64) (map[int6
 			FROM work_edition AS edition
 			INNER JOIN work_code_alias AS alias ON alias.logical_work_id = edition.logical_work_id
 			WHERE edition.work_id IN (%s)`, func(d *searchDocument) *[]string { return &d.code }},
+		// A bundle matches the codes of its members and the titles of those
+		// in the library, so searching for a member finds the bundle too.
+		{`SELECT bundle.id, member.member_code
+			FROM work AS bundle
+			INNER JOIN work_bundle_member AS member ON member.bundle_code = UPPER(bundle.primary_code)
+			WHERE member.status = 'linked' AND bundle.id IN (%s)`, func(d *searchDocument) *[]string { return &d.code }},
+		{`SELECT bundle.id, member_work.title
+			FROM work AS bundle
+			INNER JOIN work_bundle_member AS member ON member.bundle_code = UPPER(bundle.primary_code)
+			INNER JOIN work AS member_work ON UPPER(member_work.primary_code) = member.member_code
+			WHERE member.status = 'linked' AND bundle.id IN (%s)`, func(d *searchDocument) *[]string { return &d.title }},
 		{`SELECT relation.work_id, party.display_name
 			FROM work_party AS relation
 			INNER JOIN party ON party.id = relation.party_id

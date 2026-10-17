@@ -95,7 +95,7 @@ func TestCodeSearchUsesExactNormalizedAliases(t *testing.T) {
 	if !strings.Contains(where, "work_code_alias") || strings.Contains(where, " LIKE ") {
 		t.Fatalf("code predicate = %s", where)
 	}
-	want := []any{"RJ00000000", "RJ00000000", "RJ00000000", "RJ00000000"}
+	want := []any{"RJ00000000", "RJ00000000", "RJ00000000", "RJ00000000", "RJ00000000"}
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("code args = %#v, want %#v", args, want)
 	}

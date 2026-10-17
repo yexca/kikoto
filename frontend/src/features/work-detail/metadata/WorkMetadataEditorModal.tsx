@@ -11,6 +11,8 @@ import { MetadataEditorCreditsSection, useMetadataCreditsEditor } from "./Metada
 import { MetadataEditorFamilySection } from "./MetadataEditorFamilySection";
 import { MetadataEditorSourceSection, type StagedMetadataLink } from "./MetadataEditorSourceSection";
 import { MetadataEditorPurchaseBonusSection, type StagedPurchaseBonus } from "./MetadataEditorPurchaseBonusSection";
+import { MetadataEditorBundleSection } from "./MetadataEditorBundleSection";
+import { bundleMembersChanged, noStagedBundleMembers, type StagedBundleMembers } from "./bundleMembersModel";
 import { WorkMetadataTagsSection } from "./WorkMetadataTagsSection";
 import { LLMTranslationDialog } from "./LLMTranslationDialog";
 import { WorkTitleEditor } from "./WorkTitleEditor";
@@ -96,6 +98,7 @@ export function WorkMetadataEditorModal({
   const [coverReverted, setCoverReverted] = useState(false);
   const [stagedLink, setStagedLink] = useState<StagedMetadataLink>(null);
   const [stagedBonus, setStagedBonus] = useState<StagedPurchaseBonus>(null);
+  const [stagedBundle, setStagedBundle] = useState<StagedBundleMembers>(noStagedBundleMembers);
   const [saving, setSaving] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [translationOpen, setTranslationOpen] = useState(false);
@@ -117,7 +120,7 @@ export function WorkMetadataEditorModal({
     cover: coverChanged || coverReverted,
     tags: tagEditor.changed,
     credits: payloadChangesCredits(credits.payload),
-    source: stagedLink !== null || stagedBonus !== null,
+    source: stagedLink !== null || stagedBonus !== null || bundleMembersChanged(stagedBundle),
   };
   const changedSections = sections.filter((item) => changed[item.id]);
   const dirty = changedSections.length > 0;
@@ -150,6 +153,15 @@ export function WorkMetadataEditorModal({
         applied = true;
       } else if (coverReverted) {
         await api.deleteWorkManualOverride(work.id, "cover");
+        applied = true;
+      }
+      // Removals first, so a bundle at its member limit can take a replacement.
+      for (const code of stagedBundle.remove) {
+        await api.removeWorkBundleMember(work.id, code);
+        applied = true;
+      }
+      for (const code of stagedBundle.add) {
+        await api.addWorkBundleMember(work.id, code);
         applied = true;
       }
       const linkMessages: string[] = [];
@@ -368,6 +380,14 @@ export function WorkMetadataEditorModal({
                     primaryCode={work.primaryCode}
                     staged={stagedBonus}
                     onStage={setStagedBonus}
+                  />
+                  <MetadataEditorBundleSection
+                    workId={work.id}
+                    primaryCode={work.primaryCode}
+                    members={work.bundleMembers ?? []}
+                    staged={stagedBundle}
+                    readOnly={readOnly}
+                    onStage={setStagedBundle}
                   />
                   <MetadataEditorFamilySection work={work} languageScope={languageScope} />
                 </div>

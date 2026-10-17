@@ -19,16 +19,17 @@ const purchaseBonusAutoLinkSetting = "metadata_purchase_bonus_auto_link"
 // The parent is a family by code: ParentWork is set only while a work in the
 // library carries that code or edition alias.
 type workPurchaseBonus struct {
-	Status     string                 `json:"status"`
-	ParentCode string                 `json:"parentCode,omitempty"`
-	Origin     string                 `json:"origin"`
-	Evidence   string                 `json:"evidence,omitempty"`
-	URL        string                 `json:"url,omitempty"`
-	ParentWork *workPurchaseBonusWork `json:"parentWork,omitempty"`
-	UpdatedAt  string                 `json:"updatedAt"`
+	Status     string          `json:"status"`
+	ParentCode string          `json:"parentCode,omitempty"`
+	Origin     string          `json:"origin"`
+	Evidence   string          `json:"evidence,omitempty"`
+	URL        string          `json:"url,omitempty"`
+	ParentWork *workLinkedWork `json:"parentWork,omitempty"`
+	UpdatedAt  string          `json:"updatedAt"`
 }
 
-type workPurchaseBonusWork struct {
+// workLinkedWork names a library work that another record refers to by code.
+type workLinkedWork struct {
 	ID    int64  `json:"id"`
 	Code  string `json:"code"`
 	Title string `json:"title"`
@@ -157,7 +158,7 @@ func (s *Server) loadWorkPurchaseBonus(ctx context.Context, workID int64) (*work
 		return &bonus, nil
 	}
 	bonus.URL = s.dlsiteURL(bonus.ParentCode)
-	parent, err := s.loadPurchaseBonusParentWork(ctx, bonus.ParentCode)
+	parent, err := s.libraryWorkForCode(ctx, bonus.ParentCode)
 	if err != nil {
 		return nil, err
 	}
@@ -165,10 +166,10 @@ func (s *Server) loadWorkPurchaseBonus(ctx context.Context, workID int64) (*work
 	return &bonus, nil
 }
 
-// loadPurchaseBonusParentWork finds the library work for a parent code: the
-// work with that code, otherwise the canonical work of the family declaring it.
-func (s *Server) loadPurchaseBonusParentWork(ctx context.Context, parentCode string) (*workPurchaseBonusWork, error) {
-	var parent workPurchaseBonusWork
+// libraryWorkForCode finds the library work for a code: the work with that
+// code, otherwise the canonical work of the family declaring it.
+func (s *Server) libraryWorkForCode(ctx context.Context, code string) (*workLinkedWork, error) {
+	var work workLinkedWork
 	err := s.db.QueryRowContext(ctx, `SELECT work.id, work.primary_code, COALESCE(work.title, '')
 		FROM work
 		WHERE work.id = COALESCE(
@@ -178,19 +179,19 @@ func (s *Server) loadPurchaseBonusParentWork(ctx context.Context, parentCode str
 				JOIN logical_work AS logical ON logical.id = alias.logical_work_id
 				WHERE UPPER(alias.primary_code) = UPPER(?)
 				LIMIT 1)
-		)`, parentCode, parentCode).Scan(&parent.ID, &parent.Code, &parent.Title)
+		)`, code, code).Scan(&work.ID, &work.Code, &work.Title)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &parent, nil
+	return &work, nil
 }
 
 // loadWorkPurchaseBonuses lists the linked bonuses whose parent code belongs
 // to the work's family.
-func (s *Server) loadWorkPurchaseBonuses(ctx context.Context, workID int64) ([]workPurchaseBonusWork, error) {
+func (s *Server) loadWorkPurchaseBonuses(ctx context.Context, workID int64) ([]workLinkedWork, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		WITH family_code(code) AS (
 			SELECT UPPER(primary_code) FROM work WHERE id = ?
@@ -212,9 +213,9 @@ func (s *Server) loadWorkPurchaseBonuses(ctx context.Context, workID int64) ([]w
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	bonuses := []workPurchaseBonusWork{}
+	bonuses := []workLinkedWork{}
 	for rows.Next() {
-		var bonus workPurchaseBonusWork
+		var bonus workLinkedWork
 		if err := rows.Scan(&bonus.ID, &bonus.Code, &bonus.Title); err != nil {
 			return nil, err
 		}

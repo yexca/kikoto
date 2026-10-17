@@ -382,6 +382,16 @@ much is pending, and repeating the request continues from the stored hashes. A
 link, an unreadable file, and a file that changes while it is read are left
 out. The request never changes a library file.
 
+`GET /api/works/{id}/bundle-candidates`, `PUT /api/works/{id}/bundle-members/{code}`,
+and `DELETE /api/works/{id}/bundle-members/{code}` require `library:write` and
+manage the members of the bundle a work is; see
+[Bundles](data-model.md#bundles). A member cannot be a code of the work's own
+family, and a bundle holds at most 64 members. Candidates come from the work's
+DLsite series: the series' catalog codes in catalog order, then library works
+of the work's circles whose stored DLsite metadata names the series, at most
+32, leaving out members, removed members, and the family. The response reports
+whether the title names a bundle or the bundle has members.
+
 `GET /api/works/{id}/folder-edit/sources`,
 `POST /api/works/{id}/folder-edit/plan`, and `POST /api/works/{id}/folder-edit`
 edit one active local folder of a work. Sources lists the family's editions

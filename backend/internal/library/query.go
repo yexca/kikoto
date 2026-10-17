@@ -568,7 +568,7 @@ func searchWhereClause(clause SearchClause, userID int64) (string, []any) {
 	switch clause.Kind {
 	case "code":
 		exactCode := strings.ToUpper(needle)
-		return familyCodeClause(), []any{exactCode, exactCode, exactCode, exactCode}
+		return familyCodeClause(), []any{exactCode, exactCode, exactCode, exactCode, exactCode}
 	case "rating_min", "sales_min", "duration_min", "duration_max":
 		return searchNumericClause(clause.Kind, needle)
 	case "shelf":
@@ -656,6 +656,12 @@ func familyCodeClause() string {
 		WHERE search_external_id.work_id = work.id
 			AND search_external_id.id_type IN ('workno', 'product_id')
 			AND UPPER(search_external_id.external_id) = ?
+	) OR EXISTS (
+		SELECT 1
+		FROM work_bundle_member AS search_bundle_member
+		WHERE search_bundle_member.status = 'linked'
+			AND search_bundle_member.member_code = ?
+			AND search_bundle_member.bundle_code = UPPER(work.primary_code)
 	))`
 }
 

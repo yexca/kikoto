@@ -188,6 +188,9 @@ func (s *DLsiteSyncer) syncFetchedProduct(ctx context.Context, code string, fetc
 	if err == nil {
 		err = s.applyProduct(ctx, workID, product)
 	}
+	if err == nil {
+		err = s.recordDeclaredBundles(ctx, product)
+	}
 	if err != nil {
 		if stateErr := s.recordCodeOutcome(ctx, code, "metadata", err); stateErr != nil {
 			return product, workID, stateErr

@@ -385,6 +385,8 @@ export function persistedWorkDetailPresentation({
     voiceCredits: fields.voiceCredits,
     purchaseBonus: work?.purchaseBonus,
     purchaseBonuses: work?.purchaseBonuses,
+    bundleMembers: work?.bundleMembers,
+    includedInBundles: work?.includedInBundles,
     tags: fields.tags,
     personalTags,
     loading,

@@ -13,6 +13,8 @@ import type {
   WorkMetadataLink,
   WorkMetadataPresentation,
   WorkMetadataSyncStatus,
+  WorkBundleMember,
+  WorkBundleRef,
   WorkPurchaseBonus,
   WorkPurchaseBonusWork,
   WorkTitleChoice,
@@ -68,6 +70,10 @@ export type WorkDetail = {
   purchaseBonus?: WorkPurchaseBonus | null;
   /** Linked purchase bonuses whose parent belongs to this work's family. */
   purchaseBonuses?: WorkPurchaseBonusWork[] | null;
+  /** Members of the official bundle this work is, in the bundle's order. */
+  bundleMembers?: WorkBundleMember[] | null;
+  /** Official bundles that include this work. */
+  includedInBundles?: WorkBundleRef[] | null;
   sourcePresence: SourcePresenceItem[] | null;
   localFolders: WorkFolderLocation[];
   mediaItems: MediaItem[];

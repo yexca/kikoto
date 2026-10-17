@@ -60,6 +60,7 @@ import { formatBytes, formatDuration } from "@/features/work-detail/media/mediaT
 import { sourceTabStatusClass } from "@/features/work-detail/source/sourceContextModel";
 import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
 import type { SourceActionLayout } from "@/features/work-detail/WorkDetailActionBars";
+import { DetailBundleLine } from "@/features/work-detail/DetailBundleLine";
 import { DetailPurchaseBonusLine } from "@/features/work-detail/DetailPurchaseBonusLine";
 
 export type UnifiedWorkDetailPresentation = {
@@ -100,6 +101,8 @@ export type UnifiedWorkDetailPresentation = {
   voiceCredits: VoiceCredit[];
   purchaseBonus?: WorkDetail["purchaseBonus"];
   purchaseBonuses?: WorkDetail["purchaseBonuses"];
+  bundleMembers?: WorkDetail["bundleMembers"];
+  includedInBundles?: WorkDetail["includedInBundles"];
   tags: string[];
   personalTags?: ReactNode;
   loading?: boolean;
@@ -193,6 +196,8 @@ function DesktopWorkDetailLayout({
     voiceCredits,
     purchaseBonus,
     purchaseBonuses,
+    bundleMembers,
+    includedInBundles,
     tags,
     personalTags,
     dlsiteFetchedAt,
@@ -251,6 +256,7 @@ function DesktopWorkDetailLayout({
             />
             <DetailCreditLine voiceActors={voiceActors} voiceCredits={voiceCredits} entityResolver={entityResolver} />
             <DetailPurchaseBonusLine purchaseBonus={purchaseBonus} purchaseBonuses={purchaseBonuses} />
+            <DetailBundleLine bundleMembers={bundleMembers} includedInBundles={includedInBundles} />
             <DetailTagLine tags={tags} personalTags={personalTags} />
             <DetailStatStrip {...presentation} />
             <MetadataSyncNotice
@@ -578,6 +584,8 @@ function MobileWorkDetailLayout({
   voiceCredits,
   purchaseBonus,
   purchaseBonuses,
+  bundleMembers,
+  includedInBundles,
   tags,
   personalTags,
   loading,
@@ -623,6 +631,8 @@ function MobileWorkDetailLayout({
   voiceCredits: VoiceCredit[];
   purchaseBonus?: WorkDetail["purchaseBonus"];
   purchaseBonuses?: WorkDetail["purchaseBonuses"];
+  bundleMembers?: WorkDetail["bundleMembers"];
+  includedInBundles?: WorkDetail["includedInBundles"];
   tags: string[];
   personalTags?: ReactNode;
   loading?: boolean;
@@ -683,6 +693,8 @@ function MobileWorkDetailLayout({
       <DetailCreditLine voiceActors={voiceActors} voiceCredits={voiceCredits} entityResolver={entityResolver} />
 
       <DetailPurchaseBonusLine purchaseBonus={purchaseBonus} purchaseBonuses={purchaseBonuses} />
+
+      <DetailBundleLine bundleMembers={bundleMembers} includedInBundles={includedInBundles} />
 
       <DetailTagLine tags={tags} personalTags={personalTags} />
 

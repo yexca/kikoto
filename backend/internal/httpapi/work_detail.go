@@ -55,7 +55,9 @@ type workDetail struct {
 	ManualOverrides  workManualOverrides        `json:"manualOverrides"`
 	MetadataLink     *workMetadataLink          `json:"metadataLink"`
 	PurchaseBonus    *workPurchaseBonus         `json:"purchaseBonus"`
-	PurchaseBonuses  []workPurchaseBonusWork    `json:"purchaseBonuses"`
+	PurchaseBonuses  []workLinkedWork           `json:"purchaseBonuses"`
+	BundleMembers    []workBundleMember         `json:"bundleMembers"`
+	IncludedIn       []workBundleRef            `json:"includedInBundles"`
 	SourcePresence   []sourcePresenceItem       `json:"sourcePresence"`
 	LocalFolders     []workFolderLocationDetail `json:"localFolders"`
 	MediaItems       []mediaItemDetail          `json:"mediaItems"`
@@ -216,6 +218,10 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		work.RecommendScore = &score
+		if work.BundleMembers, work.IncludedIn, err = s.demoBundleRelations(r.Context(), work.BundleMembers, work.IncludedIn); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, work)
 }
@@ -275,6 +281,12 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 		return workDetail{}, err
 	}
 	if work.PurchaseBonuses, err = s.loadWorkPurchaseBonuses(ctx, id); err != nil {
+		return workDetail{}, err
+	}
+	if work.BundleMembers, err = s.loadWorkBundleMembers(ctx, id); err != nil {
+		return workDetail{}, err
+	}
+	if work.IncludedIn, err = s.loadWorkIncludedInBundles(ctx, id); err != nil {
 		return workDetail{}, err
 	}
 	if !includeMedia {

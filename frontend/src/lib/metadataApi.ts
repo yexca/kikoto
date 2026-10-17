@@ -32,6 +32,35 @@ export type WorkPurchaseBonusWork = {
   title: string;
 };
 
+/**
+ * A work of an official bundle, by code. The code need not be a work; `work`
+ * is set while the library has a work in its family.
+ */
+export type WorkBundleMember = {
+  code: string;
+  origin: "detected" | "user";
+  url: string;
+  work?: WorkPurchaseBonusWork | null;
+};
+
+/** A bundle that includes a work, by code. */
+export type WorkBundleRef = {
+  code: string;
+  url: string;
+  work?: WorkPurchaseBonusWork | null;
+};
+
+export type WorkBundleCandidates = {
+  /** The title names a bundle, or the bundle already has members. */
+  looksLikeBundle: boolean;
+  seriesId: string;
+  candidates: WorkBundleRef[];
+};
+
+export type WorkBundleMembersResult = {
+  bundleMembers: WorkBundleMember[];
+};
+
 export type WorkPurchaseBonusResult = {
   purchaseBonus: WorkPurchaseBonus | null;
   sync?: WorkMetadataSyncRunResult;
@@ -388,6 +417,12 @@ export const metadataApi = {
   setWorkPurchaseBonus: (id: number, parentCode: string) =>
     putJSONBody<WorkPurchaseBonusResult>(`/api/works/${id}/purchase-bonus`, { parentCode }),
   deleteWorkPurchaseBonus: (id: number) => deleteJSON<WorkPurchaseBonusResult>(`/api/works/${id}/purchase-bonus`),
+  listWorkBundleCandidates: (id: number, signal?: AbortSignal) =>
+    getJSON<WorkBundleCandidates>(`/api/works/${id}/bundle-candidates`, signal),
+  addWorkBundleMember: (id: number, code: string) =>
+    putJSONBody<WorkBundleMembersResult>(`/api/works/${id}/bundle-members/${encodeURIComponent(code)}`, {}),
+  removeWorkBundleMember: (id: number, code: string) =>
+    deleteJSON<WorkBundleMembersResult>(`/api/works/${id}/bundle-members/${encodeURIComponent(code)}`),
   listWorkCoverCandidates: (id: number) =>
     getJSON<{ candidates: WorkCoverCandidate[]; providerCoverUrl: string }>(`/api/works/${id}/cover-candidates`),
   setWorkCoverOverride: (id: number, locationId: number) =>
