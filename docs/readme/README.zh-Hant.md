@@ -92,7 +92,7 @@ mkdir config cache data
 docker compose up -d
 ```
 
-開啟 <http://127.0.0.1:7655>，輸入 `docker compose logs kikoto` 中的設定權杖，並建立管理員。接著 **設定媒體庫** 會執行首次掃描。在 Windows 上，[引導式輔助工具](../operations/docker.md#windows-helper)會為你完成這一切。[快速開始](../user/zh-Hant/getting-started.md)涵蓋每個步驟。
+開啟 <http://127.0.0.1:7655>，輸入 `docker compose logs kikoto` 中的設定權杖，並建立管理員。接著 **設定媒體庫** 會執行首次掃描。在 Windows 上，[Kikoto Helper](https://github.com/yexca/kikoto-helper)會為你完成這一切。[快速開始](../user/zh-Hant/getting-started.md)涵蓋每個步驟。
 
 > [!WARNING]
 > 預設的連接埠對應會監聽每個主機網路介面。請將它綁定到回送位址、使用 VPN，或在前面加上受保護的反向代理；請參閱[安全性](../operations/security.md)。

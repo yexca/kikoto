@@ -41,6 +41,23 @@
       "reason": "Kikoto's public repository, release pages, README Android download link, and About links."
     },
     {
+      "url": "https://github.com/yexca/kikoto-helper",
+      "files": [
+        "README.md",
+        "docs/readme/README.*.md",
+        "docs/history/v0.9.0.md",
+        "docs/operations/docker.md",
+        "kikoto-helper/README.md",
+        "kikoto-helper/kikoto-helper.cmd"
+      ],
+      "reason": "Kikoto Helper's public repository, linked from the README, Docker docs, release note, and the legacy helper's end-of-maintenance notice."
+    },
+    {
+      "url": "https://github.com/yexca/kikoto-helper/**",
+      "files": ["kikoto-helper/README.md"],
+      "reason": "Kikoto Helper's public README pages, linked from the legacy helper folder."
+    },
+    {
       "url": "https://img.shields.io/**",
       "files": ["README.md", "docs/readme/README.*.md"],
       "reason": "Public README status badges for the release, demo, Docker image, and license."

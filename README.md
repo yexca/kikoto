@@ -115,8 +115,8 @@ docker compose up -d
 
 Open <http://127.0.0.1:7655>, enter the setup token from
 `docker compose logs kikoto`, and create the administrator. **Set up your
-library** then runs the first scan. On Windows, the
-[guided helper](docs/operations/docker.md#windows-helper) does all of this for
+library** then runs the first scan. On Windows,
+[Kikoto Helper](https://github.com/yexca/kikoto-helper) does all of this for
 you. [Getting Started](docs/user/en/getting-started.md) covers each step.
 
 > [!WARNING]

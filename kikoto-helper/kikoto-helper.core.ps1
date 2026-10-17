@@ -1,4 +1,4 @@
-﻿param([ValidateSet('en','zh')][string]$Language = 'en', [string]$LauncherVersion = 'v0.2.0')
+﻿param([ValidateSet('en','zh')][string]$Language = 'en', [string]$LauncherVersion = 'v0.2.1')
 $ErrorActionPreference = 'Stop'
 # Windows PowerShell's progress repaint can corrupt wide-character console output.
 $ProgressPreference = 'SilentlyContinue'
@@ -14,6 +14,7 @@ $Raw = ('https://' + 'raw.githubusercontent.com/' + $Repo + '/' + $Version)
 $HelperVersion = $LauncherVersion
 $HelperRaw = ('https://' + 'raw.githubusercontent.com/' + $Repo + '/main/kikoto-helper')
 $script:Lang = $Language
+$NewHelperUrl = ('https://' + 'github.com/yexca/kikoto-helper')
 
 function T([string]$en, [string]$zh) { if ($script:Lang -eq 'zh') { return $zh }; return $en }
 function Pause-Helper { Read-Host (T 'Press Enter to continue' '按 Enter 返回') | Out-Null }
@@ -572,9 +573,15 @@ function Service-Menu {
     elseif ($c -eq '0') { return }
   }
 }
+function Show-MaintenanceNotice {
+  Write-Host ''
+  Write-Host (T 'This PowerShell helper is no longer maintained and receives no new features or fixes.' '此 PowerShell 助手已停止维护，不会再有新功能或修复。') -ForegroundColor Yellow
+  Write-Host (T "Please use the new Kikoto Helper: $NewHelperUrl" "请使用新版 Kikoto Helper：$NewHelperUrl") -ForegroundColor Yellow
+}
 function Main-Menu {
   while ($true) {
     Write-Section (T 'Kikoto Helper' 'Kikoto 助手')
+    Write-Host (T "No longer maintained. New version: $NewHelperUrl (9 opens it)" "已停止维护。新版本：$NewHelperUrl（输入 9 打开）") -ForegroundColor Yellow
     Write-Host (T '1. Change administrator password  2. Audio folders  3. Service  4. Backup  5. Other  0. Exit' '1. 修改管理员密码  2. 音声文件夹  3. 服务管理  4. 备份  5. 其他  0. 退出')
     $c = Ask (T 'Choose' '请选择')
     if ($c -eq '1') { Change-AdminPassword }
@@ -586,10 +593,12 @@ function Main-Menu {
     }
     elseif ($c -eq '5') { Other-Menu
     }
+    elseif ($c -eq '9') { Start-Process $NewHelperUrl }
     elseif ($c -eq '0') { return }
   }
 }
 
+Show-MaintenanceNotice
 if (-not (Ensure-Docker)) { Pause-Helper; exit 0 }
 if (-not (Ensure-Project)) { Pause-Helper; exit 1 }
 if (-not (Upgrade-LegacyCompose)) { Pause-Helper; exit 1 }

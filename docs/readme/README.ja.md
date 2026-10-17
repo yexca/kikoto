@@ -92,7 +92,7 @@ mkdir config cache data
 docker compose up -d
 ```
 
-<http://127.0.0.1:7655> を開き、`docker compose logs kikoto` に表示されるセットアップトークンを入力して、管理者を作成します。続いて **ライブラリを設定** が最初のスキャンを実行します。Windows では、[ガイド付きヘルパー](../operations/docker.md#windows-helper)がこれらをすべて行います。各手順は[はじめに](../user/ja/getting-started.md)で説明しています。
+<http://127.0.0.1:7655> を開き、`docker compose logs kikoto` に表示されるセットアップトークンを入力して、管理者を作成します。続いて **ライブラリを設定** が最初のスキャンを実行します。Windows では、[Kikoto Helper](https://github.com/yexca/kikoto-helper)がこれらをすべて行います。各手順は[はじめに](../user/ja/getting-started.md)で説明しています。
 
 > [!WARNING]
 > 既定のポートマッピングは、すべてのホストインターフェースで待ち受けます。ループバックにバインドするか、VPN を使うか、保護されたリバースプロキシを前段に置いてください。[セキュリティ](../operations/security.md)を参照してください。

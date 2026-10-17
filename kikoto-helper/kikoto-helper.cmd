@@ -1,8 +1,12 @@
 @echo off
 setlocal
-set "HELPER_VERSION=v0.2.0"
+set "HELPER_VERSION=v0.2.1"
 chcp 65001 >nul
 cd /d "%~dp0"
+echo This helper is no longer maintained. Please use the new Kikoto Helper:
+echo 此助手已停止维护，请使用新版 Kikoto Helper：
+echo https://github.com/yexca/kikoto-helper
+echo.
 echo 1. English (will download if missing)
 echo 2. 简体中文 (如果不存在将下载)
 echo.

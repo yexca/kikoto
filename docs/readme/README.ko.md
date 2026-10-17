@@ -114,7 +114,7 @@ docker compose up -d
 
 <http://127.0.0.1:7655>를 열고 `docker compose logs kikoto`에 나오는 설정 토큰을
 입력한 뒤 관리자를 만드세요. 그러면 **라이브러리 설정**이 첫 스캔을 실행합니다.
-Windows에서는 [안내형 도우미](../operations/docker.md#windows-helper)가 이 모든
+Windows에서는 [Kikoto Helper](https://github.com/yexca/kikoto-helper)가 이 모든
 과정을 대신해 줍니다. 각 단계는 [시작하기](../user/ko/getting-started.md)에서
 설명합니다.
 
