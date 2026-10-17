@@ -247,3 +247,141 @@ func normalizeFavoriteMembershipListChanges(addIDs, removeIDs []int64) (map[int6
 	}
 	return add, remove, nil
 }
+
+func (s *Server) getWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "library:read")
+	if !ok {
+		return
+	}
+	workID, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		return
+	}
+	if err := s.requireWorkExists(r.Context(), workID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	lists, err := s.loadFavoriteLists(r.Context(), user.ID, &workID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, lists)
+}
+
+func (s *Server) setWorkFavoriteLists(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requirePermission(w, r, "favorites:write")
+	if !ok {
+		return
+	}
+	workID, err := parseInt64PathValue(r, "id")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
+		return
+	}
+	if err := s.requireWorkExists(r.Context(), workID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	var payload struct {
+		ListIDs []int64 `json:"listIds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	selected := map[int64]bool{}
+	for _, id := range payload.ListIDs {
+		if id > 0 {
+			selected[id] = true
+		}
+	}
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := applyWorkFavoriteListSelection(r.Context(), tx, user.ID, workID, selected); err != nil {
+		if errors.Is(err, errInvalidFavoriteListID) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	favorite, err := refreshWorkFavoriteFlagTx(r.Context(), tx, user.ID, workID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, err)
+		return
+	}
+	lists, err := s.loadFavoriteLists(r.Context(), user.ID, &workID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"workId": workID, "favorite": favorite, "lists": lists})
+}
+
+// applyWorkFavoriteListSelection makes the work belong to exactly the selected
+// user and smart lists. The caller refreshes the favorite flag.
+func applyWorkFavoriteListSelection(ctx context.Context, tx *sql.Tx, userID, workID int64, selected map[int64]bool) error {
+	lists, err := loadEditableFavoriteLists(ctx, tx, userID)
+	if err != nil {
+		return err
+	}
+	for id := range selected {
+		if _, ok := lists[id]; !ok {
+			return errInvalidFavoriteListID
+		}
+	}
+	for _, list := range lists {
+		contains, err := favoriteListContainsWork(ctx, tx, list, workID)
+		if err != nil {
+			return err
+		}
+		switch {
+		case selected[list.ID] && !contains:
+			err = addWorkToFavoriteListTx(ctx, tx, list, workID)
+		case !selected[list.ID] && contains:
+			err = removeWorkFromFavoriteListTx(ctx, tx, list, workID)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// syncWorkFavoriteFlag sets user_work_state.favorite to the given value.
+func syncWorkFavoriteFlag(ctx context.Context, tx *sql.Tx, userID, workID int64, favorite bool) error {
+	var err error
+	if favorite {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO user_work_state (user_id, work_id, listening_status, favorite)
+			VALUES (?, ?, 'none', 1)
+			ON CONFLICT(user_id, work_id) DO UPDATE SET favorite = excluded.favorite
+			WHERE user_work_state.favorite <> excluded.favorite
+		`, userID, workID)
+	} else {
+		_, err = tx.ExecContext(ctx, `
+			UPDATE user_work_state
+			SET favorite = 0
+			WHERE user_id = ? AND work_id = ? AND favorite <> 0
+		`, userID, workID)
+	}
+	return err
+}
