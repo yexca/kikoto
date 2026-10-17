@@ -1,10 +1,14 @@
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { pageJumpTarget, paginationItems } from "@/components/work-collection/paginationModel";
+import {
+  pageJumpTarget,
+  paginationItems,
+  paginationSiblingsForWidth,
+} from "@/components/work-collection/paginationModel";
 import i18n from "@/i18n";
 import { cn } from "@/lib/tailwindClassNames";
 
@@ -50,11 +54,13 @@ export function CollectionPagination({
   const { t } = useTranslation("translation", { i18n });
   const lastPage = Math.max(1, totalPages);
   const currentPage = Math.min(lastPage, Math.max(1, page));
+  const barRef = useRef<HTMLElement>(null);
+  const siblings = usePageBarSiblings(barRef, placement === "bottom" && lastPage > 1);
 
   if (placement === "bottom") {
     if (lastPage <= 1) return null;
     return (
-      <nav className="flex justify-center" aria-label={ariaLabel}>
+      <nav ref={barRef} className="flex justify-center" aria-label={ariaLabel}>
         <div className="inline-flex min-h-10 max-w-full items-center gap-1 overflow-x-auto overflow-y-hidden rounded-lg border bg-card px-2 py-1.5 text-sm">
           <Button
             variant="ghost"
@@ -67,7 +73,7 @@ export function CollectionPagination({
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          {paginationItems(currentPage, lastPage).map((item) =>
+          {paginationItems(currentPage, lastPage, siblings).map((item) =>
             item === "ellipsis-left" || item === "ellipsis-right" ? (
               <PageJump key={item} currentPage={currentPage} lastPage={lastPage} onPageChange={onPageChange} />
             ) : (
@@ -244,6 +250,22 @@ export function CollectionPagination({
       </div>
     </div>
   );
+}
+
+/** Pages shown on each side of the current one, from the width the page bar may take. */
+function usePageBarSiblings(barRef: RefObject<HTMLElement | null>, enabled: boolean) {
+  const [siblings, setSiblings] = useState(1);
+  useLayoutEffect(() => {
+    const bar = barRef.current;
+    if (!enabled || !bar) return;
+    const measure = () => setSiblings(paginationSiblingsForWidth(bar.clientWidth));
+    measure();
+    if (typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [barRef, enabled]);
+  return siblings;
 }
 
 /** An ellipsis between page numbers that turns into a page number field where it was pressed. */

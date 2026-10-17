@@ -14,6 +14,8 @@
 <details>
 <summary><strong>Library and work detail</strong></summary>
 
+- The bottom page bar shows more page numbers on wider screens and keeps the
+  same number of items on every page, so its arrows stay in place.
 - Favorites has smart lists. A smart list shows the works that carry all of its
   required tags, at least one of its any-of tags, and none of its excluded tags,
   using shared metadata tags and your own tags. Matching works are not favorites;

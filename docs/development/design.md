@@ -159,6 +159,13 @@ scanned by its artwork while the work detail page carries everything else. Only
 cover source marks and the selection control ride on a mini cover. Loading
 placeholders match the footprint of the mode in use.
 
+The bottom page bar of a collection shows the first and last pages and the
+current page with its neighbors, with an ellipsis for each gap that opens a
+page number field. The bar's own width sets how many neighbors it shows: one
+on each side on a phone, up to four on a wide bar. Once the pages outnumber
+the bar's slots, it keeps the same number of items on every page, so the
+arrows stay in place while paging.
+
 Work detail pages should show decision-level facts:
 
 - Metadata source.
