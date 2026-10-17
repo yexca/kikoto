@@ -300,6 +300,22 @@ and the raw entry; a catalog item is not a work. `party_catalog_refresh_state`
 records each circle and provider's latest catalog refresh attempt, mode,
 status, run and error.
 
+A work's primary circle is its own manual override, then from its family's
+canonical work a manual override, the circle whose maker id matches the
+canonical edition, and DLsite relations, then its own relations; ties go to the
+lowest party id. A catalog item belongs to the canonical work's manual
+override, then the circle of the family's origin edition maker id, then the
+canonical work's primary circle, then the circle that lists it, so a
+translation's listing counts for the original circle and an unknown code stays
+with the circle that lists it. The `work_primary_circle_ranking` and
+`party_catalog_owner_resolution` views define these rules. Triggers on
+`work_party`, `work_edition`, `logical_work`, `party_external_id`, `work`, and
+`party_catalog_item` persist the results in `work_primary_circle_projection`
+and `party_catalog_item.owner_party_id`, so reading one circle costs in
+proportion to that circle's catalog. `work_primary_circle` is the reader-facing
+view with the party's current name and preferred external id. A migration that
+rebuilds one of those tables recreates its triggers.
+
 `user_party_state` and `user_person_state` hold one account's rating, note,
 favorite, and cover choice for a circle or voice actor.
 `cover_primary_code` names the work whose cover represents the creator for
