@@ -1,8 +1,7 @@
 import { AlertTriangle, X } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { SuggestionCombobox, type SuggestionOption } from "@/components/ui/suggestion-combobox";
 import { api, type SmartRuleTagOption, type UserTagSuggestion } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
@@ -13,13 +12,17 @@ import {
   smartRuleCanSave,
   smartRuleFromDraft,
   smartRuleMatchKey,
+  smartRuleModes,
   smartTagKey,
   type SmartRuleDraft,
   type SmartRuleDraftTag,
   type SmartRuleMode,
 } from "./smartListModel";
 
-/** The rule section of the smart list editor: included and excluded tags, and a live match count. */
+/**
+ * The rule section of the smart list editor: required, any, and excluded tags,
+ * and a live match count.
+ */
 export function SmartRuleEditor({
   listId,
   value,
@@ -31,48 +34,59 @@ export function SmartRuleEditor({
 }) {
   const { t } = useTranslation();
   const personalTags = usePersonalTagVocabulary();
-  const matchLabelId = useId();
+  const groups: Record<SmartRuleMode, { label: string; hint: string }> = {
+    require: { label: t("favorites.smart.require"), hint: t("favorites.smart.requireHint") },
+    any: { label: t("favorites.smart.any"), hint: t("favorites.smart.anyHint") },
+    exclude: { label: t("favorites.smart.exclude"), hint: t("favorites.smart.excludeHint") },
+  };
   return (
     <div className="grid gap-3 rounded-md border bg-muted/20 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span id={matchLabelId} className="text-xs font-medium text-muted-foreground">
-          {t("favorites.smart.include")}
-        </span>
-        <div role="radiogroup" aria-labelledby={matchLabelId} className={segmentedListClassName("p-0.5")}>
-          {(["all", "any"] as const).map((match) => (
-            <button
-              key={match}
-              type="button"
-              role="radio"
-              aria-checked={value.includeMatch === match}
-              className={segmentedItemClassName(value.includeMatch === match, "h-7 px-2.5 text-xs")}
-              onClick={() => onChange({ ...value, includeMatch: match })}
-            >
-              {match === "all" ? t("favorites.smart.matchAll") : t("favorites.smart.matchAny")}
-            </button>
-          ))}
-        </div>
-      </div>
-      <SmartRuleTagField
-        mode="include"
-        draft={value}
-        personalTags={personalTags}
-        onChange={onChange}
-        placeholder={t("favorites.smart.searchTags")}
-        label={t("favorites.smart.include")}
-      />
-      <div className="grid gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground">{t("favorites.smart.exclude")}</span>
-        <SmartRuleTagField
-          mode="exclude"
+      {smartRuleModes.map((mode) => (
+        <SmartRuleGroup
+          key={mode}
+          mode={mode}
+          label={groups[mode].label}
+          hint={groups[mode].hint}
           draft={value}
           personalTags={personalTags}
           onChange={onChange}
-          placeholder={t("favorites.smart.searchTags")}
-          label={t("favorites.smart.exclude")}
         />
-      </div>
+      ))}
       <SmartRulePreviewLine listId={listId} draft={value} />
+    </div>
+  );
+}
+
+function SmartRuleGroup({
+  mode,
+  label,
+  hint,
+  draft,
+  personalTags,
+  onChange,
+}: {
+  mode: SmartRuleMode;
+  label: string;
+  hint: string;
+  draft: SmartRuleDraft;
+  personalTags: UserTagSuggestion[];
+  onChange: (value: SmartRuleDraft) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className="text-xs font-medium text-foreground">{label}</span>
+        <span className="text-xs text-muted-foreground">{hint}</span>
+      </div>
+      <SmartRuleTagField
+        mode={mode}
+        draft={draft}
+        personalTags={personalTags}
+        onChange={onChange}
+        placeholder={t("favorites.smart.searchTags")}
+        label={label}
+      />
     </div>
   );
 }
@@ -166,7 +180,7 @@ function SmartRuleChip({ tag, mode, onRemove }: { tag: SmartRuleDraftTag; mode: 
     <li
       className={cn(
         "inline-flex h-7 max-w-full items-center gap-1 rounded-full border pl-2.5 pr-1 text-xs",
-        unusable ? "border-dashed text-muted-foreground" : mode === "include" ? "bg-card" : "bg-muted/60",
+        unusable ? "border-dashed text-muted-foreground" : mode === "exclude" ? "bg-muted/60" : "bg-card",
       )}
       title={note}
     >
@@ -214,7 +228,7 @@ function SmartRulePreviewLine({ listId, draft }: { listId?: number; draft: Smart
     };
   }, [canPreview, key, listId, ruleJSON]);
   let message: string;
-  if (!canPreview) message = t("favorites.smart.includeRequired");
+  if (!canPreview) message = t("favorites.smart.matchRequired");
   else if (state.key !== key) message = t("favorites.smart.previewLoading");
   else if (state.failed || state.total === null) message = t("favorites.smart.previewFailed");
   else message = t("favorites.smart.previewCount", { count: state.total });

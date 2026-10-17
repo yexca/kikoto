@@ -386,7 +386,7 @@ func existingSmartRuleTags(ctx context.Context, q personal.Querier, userID, list
 	if err != nil {
 		return nil, err
 	}
-	for _, tag := range append(append([]personal.SmartRuleTag{}, rules[listID].Include...), rules[listID].Exclude...) {
+	for _, tag := range rules[listID].Tags() {
 		allowed[tag] = true
 	}
 	return allowed, nil
@@ -623,7 +623,6 @@ func (s *Server) convertFavoriteList(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, statement := range []string{
 		"DELETE FROM favorite_list_smart_tag WHERE list_id = ?",
-		"DELETE FROM favorite_list_smart_rule WHERE list_id = ?",
 		"DELETE FROM favorite_list_smart_exclusion WHERE list_id = ?",
 		"DELETE FROM favorite_list_smart_seen WHERE list_id = ?",
 	} {

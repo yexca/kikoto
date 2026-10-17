@@ -16,9 +16,17 @@ const (
 	SmartTagMetadata = "metadata"
 	SmartTagUser     = "user"
 
-	MaxSmartRuleIncludes = 16
-	MaxSmartRuleExcludes = 16
-	MaxSmartListsPerUser = 30
+	MaxSmartRuleGroupTags = 16
+	MaxSmartListsPerUser  = 30
+)
+
+// Condition groups of a rule. A work matches when it carries every required
+// tag, at least one tag of the any group when that group has tags, and no
+// excluded tag.
+const (
+	SmartModeRequire = "require"
+	SmartModeAny     = "any"
+	SmartModeExclude = "exclude"
 )
 
 // Tag states of a rule condition. A hidden or missing tag matches no work.
@@ -35,9 +43,18 @@ type SmartRuleTag struct {
 }
 
 type SmartRule struct {
-	IncludeMatch string         `json:"includeMatch"`
-	Include      []SmartRuleTag `json:"include"`
-	Exclude      []SmartRuleTag `json:"exclude"`
+	Require []SmartRuleTag `json:"require"`
+	Any     []SmartRuleTag `json:"any"`
+	Exclude []SmartRuleTag `json:"exclude"`
+}
+
+// Tags lists every condition of the rule, group by group.
+func (rule SmartRule) Tags() []SmartRuleTag {
+	return append(append(append([]SmartRuleTag{}, rule.Require...), rule.Any...), rule.Exclude...)
+}
+
+func emptySmartRule() SmartRule {
+	return SmartRule{Require: []SmartRuleTag{}, Any: []SmartRuleTag{}, Exclude: []SmartRuleTag{}}
 }
 
 // SmartRuleError names why a rule was refused, so the editor can point at the
@@ -55,16 +72,9 @@ type Querier interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-// NormalizeSmartRule checks the rule's shape: known kinds, bounded sizes, at
-// least one included tag, and no tag both included and excluded.
+// NormalizeSmartRule checks the rule's shape: known kinds, bounded group
+// sizes, at least one required or any tag, and each tag in one group only.
 func NormalizeSmartRule(rule SmartRule) (SmartRule, error) {
-	match := strings.ToLower(strings.TrimSpace(rule.IncludeMatch))
-	if match == "" {
-		match = "all"
-	}
-	if match != "all" && match != "any" {
-		return SmartRule{}, SmartRuleError{Reason: "include_match"}
-	}
 	seen := map[SmartRuleTag]string{}
 	normalize := func(tags []SmartRuleTag, mode string) ([]SmartRuleTag, error) {
 		result := make([]SmartRuleTag, 0, len(tags))
@@ -84,21 +94,25 @@ func NormalizeSmartRule(rule SmartRule) (SmartRule, error) {
 		}
 		return result, nil
 	}
-	include, err := normalize(rule.Include, "include")
+	require, err := normalize(rule.Require, SmartModeRequire)
 	if err != nil {
 		return SmartRule{}, err
 	}
-	exclude, err := normalize(rule.Exclude, "exclude")
+	anyOf, err := normalize(rule.Any, SmartModeAny)
 	if err != nil {
 		return SmartRule{}, err
 	}
-	if len(include) == 0 {
-		return SmartRule{}, SmartRuleError{Reason: "include_required"}
+	exclude, err := normalize(rule.Exclude, SmartModeExclude)
+	if err != nil {
+		return SmartRule{}, err
 	}
-	if len(include) > MaxSmartRuleIncludes || len(exclude) > MaxSmartRuleExcludes {
+	if len(require)+len(anyOf) == 0 {
+		return SmartRule{}, SmartRuleError{Reason: "match_required"}
+	}
+	if len(require) > MaxSmartRuleGroupTags || len(anyOf) > MaxSmartRuleGroupTags || len(exclude) > MaxSmartRuleGroupTags {
 		return SmartRule{}, SmartRuleError{Reason: "too_many_tags"}
 	}
-	return SmartRule{IncludeMatch: match, Include: include, Exclude: exclude}, nil
+	return SmartRule{Require: require, Any: anyOf, Exclude: exclude}, nil
 }
 
 // ValidateSmartRuleTags refuses a tag the user cannot use: another account's
@@ -106,7 +120,7 @@ func NormalizeSmartRule(rule SmartRule) (SmartRule, error) {
 // tag. allowed lists conditions the stored rule already holds, so editing a
 // list keeps a condition whose tag was hidden or deleted after it was added.
 func ValidateSmartRuleTags(ctx context.Context, q Querier, userID int64, rule SmartRule, allowed map[SmartRuleTag]bool) error {
-	for _, tag := range append(append([]SmartRuleTag{}, rule.Include...), rule.Exclude...) {
+	for _, tag := range rule.Tags() {
 		if allowed[tag] {
 			continue
 		}
@@ -133,18 +147,15 @@ func ValidateSmartRuleTags(ctx context.Context, q Querier, userID int64, rule Sm
 
 // SaveSmartRuleTx replaces a list's rule.
 func SaveSmartRuleTx(ctx context.Context, tx *sql.Tx, listID int64, rule SmartRule) error {
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO favorite_list_smart_rule (list_id, include_match) VALUES (?, ?)
-		ON CONFLICT(list_id) DO UPDATE SET include_match = excluded.include_match, updated_at = CURRENT_TIMESTAMP
-	`, listID, rule.IncludeMatch); err != nil {
-		return err
-	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM favorite_list_smart_tag WHERE list_id = ?", listID); err != nil {
 		return err
 	}
-	for mode, tags := range map[string][]SmartRuleTag{"include": rule.Include, "exclude": rule.Exclude} {
-		for _, tag := range tags {
-			if _, err := tx.ExecContext(ctx, "INSERT INTO favorite_list_smart_tag (list_id, tag_kind, tag_id, mode) VALUES (?, ?, ?, ?)", listID, tag.Kind, tag.ID, mode); err != nil {
+	for _, group := range []struct {
+		mode string
+		tags []SmartRuleTag
+	}{{SmartModeRequire, rule.Require}, {SmartModeAny, rule.Any}, {SmartModeExclude, rule.Exclude}} {
+		for _, tag := range group.tags {
+			if _, err := tx.ExecContext(ctx, "INSERT INTO favorite_list_smart_tag (list_id, tag_kind, tag_id, mode) VALUES (?, ?, ?, ?)", listID, tag.Kind, tag.ID, group.mode); err != nil {
 				return err
 			}
 		}
@@ -152,8 +163,8 @@ func SaveSmartRuleTx(ctx context.Context, tx *sql.Tx, listID int64, rule SmartRu
 	return nil
 }
 
-// LoadSmartRules returns the rules of the given smart lists. A list without a
-// stored rule gets an empty rule, which matches no work.
+// LoadSmartRules returns the rules of the given smart lists. A list without
+// stored conditions gets an empty rule, which matches no work.
 func LoadSmartRules(ctx context.Context, q Querier, listIDs []int64) (map[int64]SmartRule, error) {
 	result := make(map[int64]SmartRule, len(listIDs))
 	if len(listIDs) == 0 {
@@ -162,28 +173,10 @@ func LoadSmartRules(ctx context.Context, q Querier, listIDs []int64) (map[int64]
 	args := make([]any, len(listIDs))
 	for index, id := range listIDs {
 		args[index] = id
-		result[id] = SmartRule{IncludeMatch: "all", Include: []SmartRuleTag{}, Exclude: []SmartRuleTag{}}
+		result[id] = emptySmartRule()
 	}
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(listIDs)), ",")
-	rows, err := q.QueryContext(ctx, "SELECT list_id, include_match FROM favorite_list_smart_rule WHERE list_id IN ("+placeholders+")", args...)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var id int64
-		var match string
-		if err := rows.Scan(&id, &match); err != nil {
-			_ = rows.Close()
-			return nil, err
-		}
-		rule := result[id]
-		rule.IncludeMatch = match
-		result[id] = rule
-	}
-	if err := closeSmartRows(rows); err != nil {
-		return nil, err
-	}
-	rows, err = q.QueryContext(ctx, "SELECT list_id, tag_kind, tag_id, mode FROM favorite_list_smart_tag WHERE list_id IN ("+placeholders+") ORDER BY list_id, mode, rowid", args...)
+	rows, err := q.QueryContext(ctx, "SELECT list_id, tag_kind, tag_id, mode FROM favorite_list_smart_tag WHERE list_id IN ("+placeholders+") ORDER BY list_id, rowid", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -196,10 +189,13 @@ func LoadSmartRules(ctx context.Context, q Querier, listIDs []int64) (map[int64]
 			return nil, err
 		}
 		rule := result[id]
-		if mode == "exclude" {
+		switch mode {
+		case SmartModeRequire:
+			rule.Require = append(rule.Require, tag)
+		case SmartModeAny:
+			rule.Any = append(rule.Any, tag)
+		default:
 			rule.Exclude = append(rule.Exclude, tag)
-		} else {
-			rule.Include = append(rule.Include, tag)
 		}
 		result[id] = rule
 	}
@@ -220,7 +216,7 @@ func CompileSmartRule(ctx context.Context, q Querier, userID int64, rule SmartRu
 	if err != nil {
 		return SmartMatch{}, err
 	}
-	if len(rule.Include) == 0 {
+	if len(rule.Require)+len(rule.Any) == 0 {
 		return SmartMatch{Where: "0"}, nil
 	}
 	metadataIDs := func(tags []SmartRuleTag) []int64 {
@@ -245,24 +241,23 @@ func CompileSmartRule(ctx context.Context, q Querier, userID int64, rule SmartRu
 	}
 	clauses := []string{}
 	args := []any{}
-	if rule.IncludeMatch == "any" {
-		where, whereArgs := smartTagGroupWhere(userID, metadataIDs(rule.Include), userIDs(rule.Include))
+	for _, tag := range rule.Require {
+		var where string
+		var whereArgs []any
+		if tag.Kind == SmartTagUser {
+			where, whereArgs = smartTagGroupWhere(userID, nil, []int64{tag.ID})
+		} else if id, ok := resolved[tag.ID]; ok {
+			where, whereArgs = smartTagGroupWhere(userID, []int64{id}, nil)
+		} else {
+			where = "0"
+		}
 		clauses = append(clauses, where)
 		args = append(args, whereArgs...)
-	} else {
-		for _, tag := range rule.Include {
-			var where string
-			var whereArgs []any
-			if tag.Kind == SmartTagUser {
-				where, whereArgs = smartTagGroupWhere(userID, nil, []int64{tag.ID})
-			} else if id, ok := resolved[tag.ID]; ok {
-				where, whereArgs = smartTagGroupWhere(userID, []int64{id}, nil)
-			} else {
-				where = "0"
-			}
-			clauses = append(clauses, where)
-			args = append(args, whereArgs...)
-		}
+	}
+	if len(rule.Any) > 0 {
+		where, whereArgs := smartTagGroupWhere(userID, metadataIDs(rule.Any), userIDs(rule.Any))
+		clauses = append(clauses, where)
+		args = append(args, whereArgs...)
 	}
 	if excludeMetadata, excludeUser := metadataIDs(rule.Exclude), userIDs(rule.Exclude); len(excludeMetadata)+len(excludeUser) > 0 {
 		where, whereArgs := smartTagGroupWhere(userID, excludeMetadata, excludeUser)
@@ -315,7 +310,7 @@ func smartTagGroupWhere(userID int64, metadataIDs, userTagIDs []int64) (string, 
 // merges resolve to. Unknown ids are absent.
 func resolveSmartMetadataTags(ctx context.Context, q Querier, rule SmartRule) (map[int64]int64, error) {
 	ids := []any{}
-	for _, tag := range append(append([]SmartRuleTag{}, rule.Include...), rule.Exclude...) {
+	for _, tag := range rule.Tags() {
 		if tag.Kind == SmartTagMetadata {
 			ids = append(ids, tag.ID)
 		}
@@ -351,16 +346,16 @@ type SmartRuleTagView struct {
 }
 
 type SmartRuleView struct {
-	IncludeMatch string             `json:"includeMatch"`
-	Include      []SmartRuleTagView `json:"include"`
-	Exclude      []SmartRuleTagView `json:"exclude"`
+	Require []SmartRuleTagView `json:"require"`
+	Any     []SmartRuleTagView `json:"any"`
+	Exclude []SmartRuleTagView `json:"exclude"`
 }
 
 // DescribeSmartRule names each condition and reports its state. names maps a
 // resolved metadata tag id to the viewer's name; tags without an entry keep
 // their stored display name.
 func DescribeSmartRule(ctx context.Context, q Querier, userID int64, rule SmartRule, names map[int64]string) (SmartRuleView, error) {
-	view := SmartRuleView{IncludeMatch: rule.IncludeMatch, Include: []SmartRuleTagView{}, Exclude: []SmartRuleTagView{}}
+	view := SmartRuleView{Require: []SmartRuleTagView{}, Any: []SmartRuleTagView{}, Exclude: []SmartRuleTagView{}}
 	describe := func(tag SmartRuleTag) (SmartRuleTagView, error) {
 		item := SmartRuleTagView{Kind: tag.Kind, ID: tag.ID, State: SmartTagMissing}
 		if tag.Kind == SmartTagUser {
@@ -399,19 +394,24 @@ func DescribeSmartRule(ctx context.Context, q Querier, userID int64, rule SmartR
 		}
 		return item, nil
 	}
-	for _, tag := range rule.Include {
-		item, err := describe(tag)
-		if err != nil {
-			return view, err
+	describeGroup := func(tags []SmartRuleTag, into *[]SmartRuleTagView) error {
+		for _, tag := range tags {
+			item, err := describe(tag)
+			if err != nil {
+				return err
+			}
+			*into = append(*into, item)
 		}
-		view.Include = append(view.Include, item)
+		return nil
 	}
-	for _, tag := range rule.Exclude {
-		item, err := describe(tag)
-		if err != nil {
-			return view, err
-		}
-		view.Exclude = append(view.Exclude, item)
+	if err := describeGroup(rule.Require, &view.Require); err != nil {
+		return view, err
+	}
+	if err := describeGroup(rule.Any, &view.Any); err != nil {
+		return view, err
+	}
+	if err := describeGroup(rule.Exclude, &view.Exclude); err != nil {
+		return view, err
 	}
 	return view, nil
 }
@@ -421,8 +421,7 @@ func DescribeSmartRule(ctx context.Context, q Querier, userID int64, rule SmartR
 func SmartRuleMetadataTagIDs(ctx context.Context, q Querier, rules []SmartRule) ([]int64, error) {
 	combined := SmartRule{}
 	for _, rule := range rules {
-		combined.Include = append(combined.Include, rule.Include...)
-		combined.Exclude = append(combined.Exclude, rule.Exclude...)
+		combined.Require = append(combined.Require, rule.Tags()...)
 	}
 	resolved, err := resolveSmartMetadataTags(ctx, q, combined)
 	if err != nil {

@@ -39,7 +39,7 @@ export function SmartListPanel({
   const [busy, setBusy] = useState<"" | "seen" | "convert">("");
   const [confirmingConvert, setConfirmingConvert] = useState(false);
   const rule = list.rule;
-  const summary = rule ? smartRuleSummary(rule) : { shown: [], hidden: 0 };
+  const summary = rule ? smartRuleSummary(rule) : { require: [], any: [], hidden: 0 };
   const run = async (action: "seen" | "convert", task: () => Promise<void>) => {
     setBusy(action);
     try {
@@ -56,12 +56,18 @@ export function SmartListPanel({
       className="grid gap-2 rounded-[var(--radius)] border bg-card/60 px-3 py-2.5"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <Zap className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-          {rule?.includeMatch === "any" ? t("favorites.smart.summaryAny") : t("favorites.smart.summaryAll")}
-        </span>
+        <Zap className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
         <ul className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-          {summary.shown.map((tag) => (
+          {summary.require.length > 0 && <RuleSummaryLabel>{t("favorites.smart.summaryAll")}</RuleSummaryLabel>}
+          {summary.require.map((tag) => (
+            <RuleSummaryChip key={`${tag.kind}:${tag.id}`} tag={tag} />
+          ))}
+          {summary.any.length > 0 && (
+            <RuleSummaryLabel>
+              {summary.require.length > 0 ? t("favorites.smart.summaryAnyAfter") : t("favorites.smart.summaryAny")}
+            </RuleSummaryLabel>
+          )}
+          {summary.any.map((tag) => (
             <RuleSummaryChip key={`${tag.kind}:${tag.id}`} tag={tag} />
           ))}
           {summary.hidden > 0 && (
@@ -145,6 +151,10 @@ export function SmartListPanel({
       )}
     </section>
   );
+}
+
+function RuleSummaryLabel({ children }: { children: string }) {
+  return <li className="text-xs font-medium text-muted-foreground">{children}</li>;
 }
 
 function RuleSummaryChip({ tag, excluded = false }: { tag: SmartRuleTagView; excluded?: boolean }) {
