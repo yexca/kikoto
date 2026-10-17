@@ -69,6 +69,9 @@ export type WorkFolderEditResult = {
 export const workFolderEditApi = {
   getWorkFolderEditSources: (workId: number, signal?: AbortSignal) =>
     getJSON<WorkFolderEditSources>(`/api/works/${workId}/folder-edit/sources`, signal),
+  /** Asks every remote source about each family edition, then lists the sources with the answers. */
+  checkWorkFolderEditSources: (workId: number, signal?: AbortSignal) =>
+    postJSONBody<WorkFolderEditSources>(`/api/works/${workId}/folder-edit/sources/check`, {}, signal),
   planWorkFolderEdit: (workId: number, request: WorkFolderEditRequest) =>
     postJSONBody<WorkFolderEditPlan>(`/api/works/${workId}/folder-edit/plan`, request),
   applyWorkFolderEdit: (workId: number, request: WorkFolderEditRequest) =>

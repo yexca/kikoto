@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -447,5 +448,91 @@ func TestWorkFolderEditFailedDownloadChangesNothing(t *testing.T) {
 			}
 			fixture.assertNoEditStaging(t)
 		})
+	}
+}
+
+func TestWorkFolderEditFamilyCheckRecordsEveryEditionsAvailability(t *testing.T) {
+	var mu sync.Mutex
+	var searched []string
+	searchedCodes := func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), searched...)
+	}
+	fixture := newFolderEditFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/health":
+			_ = json.NewEncoder(w).Encode("ok")
+		case strings.HasPrefix(r.URL.Path, "/api/search/"):
+			code := strings.TrimPrefix(r.URL.Path, "/api/search/")
+			mu.Lock()
+			searched = append(searched, code)
+			mu.Unlock()
+			page := kikoeru.WorksPage{Works: []kikoeru.Work{}}
+			if code == "RJ00000002" {
+				page.Works = append(page.Works, kikoeru.Work{ID: 72, SourceID: code, Title: "Example Work 2"})
+			}
+			_ = json.NewEncoder(w).Encode(page)
+		default:
+			serveFolderEditMedia(w, r)
+		}
+	})
+	if _, err := fixture.db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('remote_request_delay_base_seconds', '0'), ('remote_request_delay_random_seconds', '0')`); err != nil {
+		t.Fatal(err)
+	}
+	sourceStatus := func(sources workFolderEditSources, code string) string {
+		for _, edition := range sources.Editions {
+			if edition.PrimaryCode != code {
+				continue
+			}
+			for _, source := range edition.Sources {
+				if source.SourceID == 7 {
+					return source.Status
+				}
+			}
+		}
+		return ""
+	}
+	decode := func(response *httptest.ResponseRecorder) workFolderEditSources {
+		t.Helper()
+		if response.Code != http.StatusOK {
+			t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+		}
+		var sources workFolderEditSources
+		if err := json.Unmarshal(response.Body.Bytes(), &sources); err != nil {
+			t.Fatal(err)
+		}
+		return sources
+	}
+
+	before := decode(fixture.request(t, fixture.server.listWorkFolderEditSources, nil, "downloads:manage"))
+	if status := sourceStatus(before, "RJ00000002"); status == "available" {
+		t.Fatalf("sibling edition is available before any check: %q", status)
+	}
+
+	if response := fixture.request(t, fixture.server.checkWorkFolderEditSources, nil, "downloads:manage"); response.Code != http.StatusForbidden {
+		t.Fatalf("check without remote:track status = %d", response.Code)
+	}
+	if codes := searchedCodes(); len(codes) != 0 {
+		t.Fatalf("a refused check asked the source about %v", codes)
+	}
+
+	checked := decode(fixture.request(t, fixture.server.checkWorkFolderEditSources, nil, "downloads:manage", "remote:track"))
+	if status := sourceStatus(checked, "RJ00000002"); status != "available" {
+		t.Fatalf("sibling edition status = %q, want available", status)
+	}
+	if status := sourceStatus(checked, "RJ00000001"); status != "not_found" {
+		t.Fatalf("origin edition status = %q, want not_found", status)
+	}
+	for _, code := range searchedCodes() {
+		if code == "RJ00000003" {
+			t.Fatal("the check asked about a work outside the family")
+		}
+	}
+
+	// The answers are stored, so the ordinary listing reports them too.
+	after := decode(fixture.request(t, fixture.server.listWorkFolderEditSources, nil, "downloads:manage"))
+	if status := sourceStatus(after, "RJ00000002"); status != "available" {
+		t.Fatalf("stored sibling status = %q, want available", status)
 	}
 }

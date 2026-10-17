@@ -385,7 +385,11 @@ out. The request never changes a library file.
 `GET /api/works/{id}/folder-edit/sources`,
 `POST /api/works/{id}/folder-edit/plan`, and `POST /api/works/{id}/folder-edit`
 edit one active local folder of a work. Sources lists the family's editions
-with their local folders and stored source availability. A plan names the
+with their local folders and stored source availability.
+`POST /api/works/{id}/folder-edit/sources/check` first asks every enabled
+remote source that passes its health check about each of the family's
+editions, at most 16, one edition at a time, records the answers as their
+stored availability, and then returns the same listing. A plan names the
 files to add, from another active local folder of the family or from a remote
 edition of the family, and the folder's local file locations to remove. It
 resolves each addition's target as a Fetch plan does, with the same decisions,

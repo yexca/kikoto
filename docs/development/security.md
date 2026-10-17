@@ -224,6 +224,10 @@ an administrator accepts it, so the notice does not depend on the client.
 `POST /api/works/{id}/folder-edit/plan` and `POST /api/works/{id}/folder-edit`
 change one active local folder of a work. Both require `downloads:manage`,
 plus `remote:fetch` when the request names a remote file.
+`POST /api/works/{id}/folder-edit/sources/check` requires `downloads:manage`
+and `remote:track`. It contacts only configured sources, through the shared
+remote-source transport, asks only about editions of the requested work's
+family, and stops before the next edition when the request is cancelled.
 
 - The target must be an active local folder of the requested work on an online
   storage pool. A local source must be another active local folder of the same

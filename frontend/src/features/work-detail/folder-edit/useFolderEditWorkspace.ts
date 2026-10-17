@@ -145,6 +145,31 @@ export function useFolderEditWorkspace({
     return () => controller.abort();
   }, [loadResource, sourcesAttempt, target]);
 
+  // A check asks the remote sources again; until then the list shows the
+  // availability they reported last.
+  const [remoteCheck, setRemoteCheck] = useState<"idle" | "checking">("idle");
+  const remoteCheckAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => remoteCheckAbort.current?.abort(), []);
+  const checkRemote = useCallback(async () => {
+    if (remoteCheckAbort.current) return;
+    const controller = new AbortController();
+    remoteCheckAbort.current = controller;
+    setRemoteCheck("checking");
+    try {
+      const next = folderEditResources(await api.checkWorkFolderEditSources(target.workId, controller.signal), target);
+      setResources(next);
+      setSourcesStatus("ready");
+      const found = next.filter((resource) => resource.kind === "remote").length;
+      if (found > 0) toast.success(t("folderEdit.remoteCheckFound", { count: found }));
+      else toast.info(t("folderEdit.remoteCheckNone"));
+    } catch (error) {
+      if (!controller.signal.aborted) toast.notify(toastFromError(error, t("folderEdit.remoteCheckFailed")));
+    } finally {
+      if (remoteCheckAbort.current === controller) remoteCheckAbort.current = null;
+      if (!controller.signal.aborted) setRemoteCheck("idle");
+    }
+  }, [t, target, toast]);
+
   const readyFiles = useMemo(() => {
     const ready: Record<string, FolderEditFile[]> = {};
     for (const [id, state] of Object.entries(files)) if (state.status === "ready") ready[id] = state.files;
@@ -217,6 +242,8 @@ export function useFolderEditWorkspace({
     resources,
     sourcesStatus,
     retrySources: () => setSourcesAttempt((value) => value + 1),
+    remoteCheck,
+    checkRemote: () => void checkRemote(),
     files,
     selection,
     activeResource: resources.find((resource) => resource.id === activeId) ?? resources[0] ?? currentResource,

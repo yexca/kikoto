@@ -14,6 +14,10 @@
 <details>
 <summary><strong>Library and work detail</strong></summary>
 
+- **Edit files** has **Check sources**, which asks every remote source about
+  each edition of the work and refreshes the remote editions it lists.
+- The bottom page bar shows more page numbers on wider screens and keeps the
+  same number of items on every page, so its arrows stay in place.
 - The bottom page bar shows more page numbers on wider screens and keeps the
   same number of items on every page, so its arrows stay in place.
 - Favorites has smart lists. A smart list shows the works that carry all of its

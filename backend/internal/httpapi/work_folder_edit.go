@@ -22,8 +22,10 @@ import (
 const (
 	maxWorkFolderEditAdditions = 5000
 	maxWorkFolderEditRemovals  = maxMediaCleanupTargets
-	workFolderEditWorkerType   = "work_folder_edit"
-	workFolderEditWorkflowCode = "work_folder_edit"
+	// A family check asks every healthy source about each edition in turn.
+	maxWorkFolderEditCheckedEditions = 16
+	workFolderEditWorkerType         = "work_folder_edit"
+	workFolderEditWorkflowCode       = "work_folder_edit"
 )
 
 type workFolderEditAdditionRequest struct {
@@ -159,24 +161,88 @@ func (s *Server) listWorkFolderEditSources(w http.ResponseWriter, r *http.Reques
 	if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
 		return
 	}
+	workID, code, ok := s.workFolderEditSourcesWork(w, r)
+	if !ok {
+		return
+	}
+	s.writeWorkFolderEditSources(w, r, workID, code, nil)
+}
+
+// checkWorkFolderEditSources asks every enabled remote source that answers its
+// health check whether it offers each edition of the work's family, records
+// the answers as the editions' stored availability, and reports the sources
+// as listWorkFolderEditSources does. Editions are checked one after another,
+// at most maxWorkFolderEditCheckedEditions of them, and a cancelled request
+// stops before the next edition.
+func (s *Server) checkWorkFolderEditSources(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
+		return
+	}
+	if _, ok := s.requirePermission(w, r, "remote:track"); !ok {
+		return
+	}
+	workID, code, ok := s.workFolderEditSourcesWork(w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	editions, err := s.loadRemoteFetchEditions(ctx, code)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	healthy, err := s.healthyRemoteSourceIDsForAvailability(ctx, 0)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	warnings := []string{}
+	if len(healthy) == 0 {
+		warnings = append(warnings, "no enabled remote source answered its health check")
+	}
+	for index, edition := range editions {
+		if len(healthy) == 0 {
+			break
+		}
+		if index >= maxWorkFolderEditCheckedEditions {
+			warnings = append(warnings, fmt.Sprintf("only the first %d editions were checked", maxWorkFolderEditCheckedEditions))
+			break
+		}
+		if err := ctx.Err(); err != nil {
+			writeError(w, err)
+			return
+		}
+		if _, err := s.checkWorkSourceAvailabilityForSourcesWithHealth(ctx, edition.PrimaryCode, 0, healthy, "manual", "folder_edit_family_check"); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	s.writeWorkFolderEditSources(w, r, workID, code, warnings)
+}
+
+func (s *Server) workFolderEditSourcesWork(w http.ResponseWriter, r *http.Request) (int64, string, bool) {
 	workID, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work id"})
-		return
+		return 0, "", false
 	}
 	var code string
 	if err := s.db.QueryRowContext(r.Context(), "SELECT primary_code FROM work WHERE id = ?", workID).Scan(&code); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, notFoundError("work not found"))
-			return
+			return 0, "", false
 		}
 		writeError(w, err)
-		return
+		return 0, "", false
 	}
+	return workID, code, true
+}
+
+func (s *Server) writeWorkFolderEditSources(w http.ResponseWriter, r *http.Request, workID int64, code string, warnings []string) {
 	preparation := s.prepareRemoteFetch(r.Context(), code)
 	writeJSON(w, http.StatusOK, workFolderEditSources{
 		WorkID: workID, PrimaryCode: strings.ToUpper(strings.TrimSpace(code)),
-		Editions: preparation.Editions, Warnings: preparation.Warnings,
+		Editions: preparation.Editions, Warnings: append(preparation.Warnings, warnings...),
 	})
 }
 

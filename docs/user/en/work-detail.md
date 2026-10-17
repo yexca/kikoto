@@ -288,7 +288,10 @@ A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), 
 - **Manage files** on a local work has **Edit files** for users who manage
   local files. It edits the listed folder in three columns. **Sources** lists
   **This folder**, every other local folder of the work's editions, and every
-  edition a configured remote source offers. **Select** shows the files of the
+  edition a configured remote source was last found to offer. **Check sources**
+  beside **Remote**, for users who may check sources, asks every remote source
+  that answers again about each edition of the work and refreshes the list.
+  **Select** shows the files of the
   chosen place: clearing a file of this folder removes it, and selecting a
   file anywhere else adds it. **Final folder** shows the folder as it will be
   and marks each file as kept, removed, copied, downloaded, replaced, or

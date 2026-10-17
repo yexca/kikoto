@@ -1,7 +1,18 @@
-import { AlertTriangle, ArrowLeft, CheckCircle2, Cloud, FolderCog, FolderOpen, HardDrive, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  Cloud,
+  FolderCog,
+  FolderOpen,
+  HardDrive,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
@@ -166,6 +177,9 @@ function ResourceColumn({
   onSelect: (resource: FolderEditResource) => void;
 }) {
   const { t } = useTranslation();
+  const auth = useAuth();
+  const canCheckRemote = !auth.demoMode && auth.hasPermission("remote:track");
+  const checkingRemote = workspace.remoteCheck === "checking";
   const local = workspace.resources.filter((resource) => resource.kind !== "remote");
   const remote = workspace.resources.filter((resource) => resource.kind === "remote");
   const groups = [
@@ -182,7 +196,22 @@ function ResourceColumn({
     >
       {groups.map((group) => (
         <div key={group.key} className="px-3 py-3 lg:px-4" role="group" aria-label={group.label}>
-          <ColumnLabel className="mb-2">{group.label}</ColumnLabel>
+          <div className="mb-2 flex min-h-6 items-center justify-between gap-2">
+            <ColumnLabel>{group.label}</ColumnLabel>
+            {group.key === "remote" && canCheckRemote && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="-mr-2 h-6 gap-1 px-2 text-2xs"
+                disabled={checkingRemote || workspace.sourcesStatus === "loading" || workspace.applying}
+                onClick={workspace.checkRemote}
+                title={t("folderEdit.checkRemoteHint")}
+              >
+                <RefreshCw className={cn("h-3 w-3", checkingRemote && "animate-spin")} />
+                {checkingRemote ? t("folderEdit.checkingRemote") : t("folderEdit.checkRemote")}
+              </Button>
+            )}
+          </div>
           <div className="space-y-1.5">
             {group.items.map((resource) => (
               <ResourceOption

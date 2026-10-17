@@ -217,6 +217,7 @@ func (s *Server) Routes() http.Handler {
 	handleSlowFirstResponse("POST /api/works/{id}/lyrics-edit/plan", s.planWorkLyricsEdit)
 	handleSlowFirstResponse("POST /api/works/{id}/lyrics-edit", s.applyWorkLyricsEdit)
 	mux.HandleFunc("GET /api/works/{id}/folder-edit/sources", s.listWorkFolderEditSources)
+	handleSlowFirstResponse("POST /api/works/{id}/folder-edit/sources/check", s.checkWorkFolderEditSources)
 	handleSlowFirstResponse("POST /api/works/{id}/folder-edit/plan", s.planWorkFolderEdit)
 	handleSlowFirstResponse("POST /api/works/{id}/folder-edit", s.applyWorkFolderEdit)
 	mux.HandleFunc("GET /api/metadata/circles", s.listMetadataCircles)
