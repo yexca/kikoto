@@ -150,6 +150,34 @@ or run the image under another orchestrator. Docker's default 10-second grace
 period can kill the process before the drain finishes, and the interrupted work
 is then recovered at the next start.
 
+## Windows Helper
+
+On Windows, place
+[`kikoto-helper.cmd`](../../kikoto-helper/kikoto-helper.cmd) in a deployment
+folder and run it. The first screen selects English or Simplified Chinese and
+downloads only that language's helper beside the command file. It checks
+Docker Desktop, downloads the current Compose files, creates the runtime
+directories, supports browser administrator setup, manages additional
+media-folder mappings, and offers start, stop, upgrade, status, logs, and
+configuration backup. Existing `.env` and Compose files are kept on re-runs;
+legacy Compose account settings are updated after copies of the original files
+are saved.
+
+New installations create the administrator in the browser without an `.env`
+password. Existing helper-managed accounts keep environment mode, and changing
+their password can recreate the service to apply it; restarting alone does not
+reload `.env`. Upgrade and Backup save `config/` and deployment settings
+outside the deployment directory; mounted `data/` is not copied. Service
+management also offers explicit recreation, container removal, and the local
+image version. Removing containers keeps host-mounted files.
+
+Folder management requires Docker Compose 2.24.4 or newer. Single-folder mode
+mounts the selected directory at `/data`. Multiple-folder mode keeps the host
+`data/` mount at `/data` for downloads and mounts only the selected
+directories below it; it creates no persistent volume. **Other →
+Multiple-folder repair** restores that host mount for deployments created by
+older helper versions.
+
 ## Development Stack
 
 Use `deploy/compose/dev.yml` when working on local development behavior that
