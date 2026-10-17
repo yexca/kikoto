@@ -747,7 +747,6 @@ Important tables:
 - `user_media_lyrics_preference`
 - `favorite_list`
 - `favorite_list_item`
-- `favorite_list_smart_rule`
 - `favorite_list_smart_tag`
 - `favorite_list_smart_exclusion`
 - `favorite_list_smart_seen`
@@ -843,9 +842,10 @@ shows the default list icon, and the system list never reports one.
 A smart list shows its hand-added works plus the works that match its rule,
 minus the rule matches its owner removed (`favorite_list_smart_exclusion`).
 Rule matches are computed on read and are not favorites. The rule
-(`favorite_list_smart_rule`, `favorite_list_smart_tag`) includes shared
-metadata tags or the owner's personal tags, all or any of them, and excludes
-others. Conditions keep the tag id without a foreign key: a metadata tag
+(`favorite_list_smart_tag`) sorts shared metadata tags or the owner's personal
+tags into three groups: a work matches when it carries every required tag, at
+least one tag of the any group when that group has tags, and no excluded tag.
+A rule needs at least one required or any tag, and a tag belongs to one group. Conditions keep the tag id without a foreign key: a metadata tag
 matches through its current merge target, a hidden or deleted tag matches no
 work, and merging a personal tag moves the owner's conditions to the merge
 target. A metadata tag matches a work when the work or another edition of its

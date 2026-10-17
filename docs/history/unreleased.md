@@ -14,9 +14,9 @@
 <details>
 <summary><strong>Library and work detail</strong></summary>
 
-- Favorites has smart lists. A smart list shows the works that carry the tags
-  it includes (all or any of them) and none of the tags it excludes, using
-  shared metadata tags and your own tags. Matching works are not favorites;
+- Favorites has smart lists. A smart list shows the works that carry all of its
+  required tags, at least one of its any-of tags, and none of its excluded tags,
+  using shared metadata tags and your own tags. Matching works are not favorites;
   works you add by hand are, and a matching work you remove stays out. The
   shelf counts and marks works that started to match since you last chose
   **Mark all as seen**, and **Convert to regular list** keeps the current works

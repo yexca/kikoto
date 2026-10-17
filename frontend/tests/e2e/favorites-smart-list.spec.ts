@@ -56,8 +56,8 @@ async function mockSmartLists(page: Page) {
         kind: body.kind ?? "user",
         sortOrder: 0,
         rule: {
-          includeMatch: "all",
-          include: [{ kind: "metadata", id: 101, name: "Example Tag A", state: "active" }],
+          require: [{ kind: "metadata", id: 101, name: "Example Tag A", state: "active" }],
+          any: [],
           exclude: [],
         },
       });
@@ -130,11 +130,11 @@ test("@desktop a smart list is created from tags and reports its new works until
   await expect(create).toBeDisabled();
   await editor.getByRole("textbox").first().fill("Example smart list");
   // Suggestions open as a dropdown over the editor, so the fields below stay in place.
-  const excludeField = editor.getByRole("combobox", { name: "Exclude tags: Search tags" });
+  const excludeField = editor.getByRole("combobox", { name: "Excluded tags: Search tags" });
   const excludeTop = (await excludeField.boundingBox())?.y;
-  await editor.getByRole("combobox", { name: "Include tags: Search tags" }).fill("example");
+  await editor.getByRole("combobox", { name: "Required tags: Search tags" }).fill("example");
   const suggestion = page
-    .getByRole("listbox", { name: "Include tags: Search tags" })
+    .getByRole("listbox", { name: "Required tags: Search tags" })
     .getByRole("option", { name: /Example Tag A/ });
   await expect(suggestion).toBeVisible();
   expect((await excludeField.boundingBox())?.y).toBe(excludeTop);
@@ -146,10 +146,11 @@ test("@desktop a smart list is created from tags and reports its new works until
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(state.created).toMatchObject({
     kind: "smart",
-    rule: { includeMatch: "all", include: [{ kind: "metadata", id: 101 }], exclude: [] },
+    rule: { require: [{ kind: "metadata", id: 101 }], any: [], exclude: [] },
   });
 
   const rule = page.getByRole("region", { name: "Smart list rule" });
+  await expect(rule).toContainText("Has all of");
   await expect(rule).toContainText("Example Tag A");
   await expect(rule.getByText("1 new work")).toBeVisible();
   await expect(

@@ -227,10 +227,13 @@ export type SmartRuleTagKind = "metadata" | "user";
 
 export type SmartRuleTag = { kind: SmartRuleTagKind; id: number };
 
-/** A smart list rule as it is saved: included tags (all or any) minus excluded tags. */
+/**
+ * A smart list rule as it is saved: a work carries every required tag, at least
+ * one tag of the any group when that group has tags, and no excluded tag.
+ */
 export type SmartListRule = {
-  includeMatch: "all" | "any";
-  include: SmartRuleTag[];
+  require: SmartRuleTag[];
+  any: SmartRuleTag[];
   exclude: SmartRuleTag[];
 };
 
@@ -240,8 +243,8 @@ export type SmartRuleTagState = "active" | "merged" | "hidden" | "missing";
 export type SmartRuleTagView = SmartRuleTag & { resolvedId?: number; name: string; state: SmartRuleTagState };
 
 export type SmartListRuleView = {
-  includeMatch: "all" | "any";
-  include: SmartRuleTagView[];
+  require: SmartRuleTagView[];
+  any: SmartRuleTagView[];
   exclude: SmartRuleTagView[];
 };
 

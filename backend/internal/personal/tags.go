@@ -129,7 +129,7 @@ func (s Store) ChangeTag(ctx context.Context, user int64, scope string, id int64
 
 // moveSmartRuleUserTagTx points the user's smart list conditions on a merged
 // personal tag at the merge target. A list that already names the target keeps
-// its own condition, so the target's include or exclude mode wins.
+// its own condition, so the target's group wins.
 func moveSmartRuleUserTagTx(ctx context.Context, tx *sql.Tx, user, source, target int64) error {
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM favorite_list_smart_tag

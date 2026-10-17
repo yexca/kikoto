@@ -146,7 +146,7 @@ func changeSmartListMembership(t *testing.T, server *Server, body string) {
 
 func TestSmartListShowsRuleMatchesAndHandEditsWithoutFavoritingMatches(t *testing.T) {
 	server, db := openSmartListTestServer(t)
-	list := createSmartList(t, server, "Example Smart", `{"includeMatch":"all","include":[{"kind":"metadata","id":101}],"exclude":[{"kind":"metadata","id":102}]}`)
+	list := createSmartList(t, server, "Example Smart", `{"require":[{"kind":"metadata","id":101}],"exclude":[{"kind":"metadata","id":102}]}`)
 	listQuery := "listId=" + strconv.FormatInt(list.ID, 10)
 	listKey := strconv.FormatInt(list.ID, 10)
 
@@ -192,7 +192,7 @@ func TestSmartListShowsRuleMatchesAndHandEditsWithoutFavoritingMatches(t *testin
 		t.Fatal(err)
 	}
 	index := slices.IndexFunc(lists, func(item favoriteListResponse) bool { return item.ID == list.ID })
-	if index < 0 || !lists[index].Selected || !lists[index].MatchedByRule || lists[index].Rule == nil || lists[index].Rule.Include[0].Name != "Example Tag A" {
+	if index < 0 || !lists[index].Selected || !lists[index].MatchedByRule || lists[index].Rule == nil || lists[index].Rule.Require[0].Name != "Example Tag A" {
 		t.Fatalf("work lists = %#v", lists)
 	}
 	code, body = callSmartListHandler(t, server.getWorkFavoriteLists, http.MethodGet, "/api/works/3/favorite-lists", "", smartListUser)
@@ -219,7 +219,7 @@ func TestSmartListShowsRuleMatchesAndHandEditsWithoutFavoritingMatches(t *testin
 
 func TestSmartListReportsNewMatchesUntilSeen(t *testing.T) {
 	server, db := openSmartListTestServer(t)
-	list := createSmartList(t, server, "Example Sleep", `{"include":[{"kind":"user","id":7}]}`)
+	list := createSmartList(t, server, "Example Sleep", `{"require":[{"kind":"user","id":7}]}`)
 	listQuery := "listId=" + strconv.FormatInt(list.ID, 10)
 	listKey := strconv.FormatInt(list.ID, 10)
 
@@ -252,7 +252,7 @@ func TestSmartListReportsNewMatchesUntilSeen(t *testing.T) {
 	if _, err := db.Exec("INSERT INTO user_work_tag (user_id, work_id, user_tag_id) VALUES (1, 1, 7)"); err != nil {
 		t.Fatal(err)
 	}
-	code, body = callSmartListHandler(t, server.updateFavoriteList, http.MethodPatch, "/api/favorite-lists/"+listKey, `{"rule":{"include":[{"kind":"user","id":7}],"exclude":[{"kind":"metadata","id":102}]}}`, smartListUser)
+	code, body = callSmartListHandler(t, server.updateFavoriteList, http.MethodPatch, "/api/favorite-lists/"+listKey, `{"rule":{"require":[{"kind":"user","id":7}],"exclude":[{"kind":"metadata","id":102}]}}`, smartListUser)
 	if code != http.StatusOK {
 		t.Fatalf("rule update status = %d, body = %s", code, body)
 	}
@@ -261,14 +261,42 @@ func TestSmartListReportsNewMatchesUntilSeen(t *testing.T) {
 	}
 }
 
+// A work matches when it carries every required tag, at least one tag of the
+// any group, and no excluded tag.
+func TestSmartRuleCombinesRequiredAnyAndExcludedTags(t *testing.T) {
+	server, db := openSmartListTestServer(t)
+	list := createSmartList(t, server, "Example Groups", `{"require":[{"kind":"metadata","id":101}],"any":[{"kind":"metadata","id":102},{"kind":"user","id":7}]}`)
+	listQuery := "listId=" + strconv.FormatInt(list.ID, 10)
+	if list.Rule == nil || len(list.Rule.Require) != 1 || len(list.Rule.Any) != 2 || len(list.Rule.Exclude) != 0 {
+		t.Fatalf("rule view = %#v", list.Rule)
+	}
+	if got := pageCodes(requestSmartListPage(t, server, listQuery)); !slices.Equal(got, []string{"RJ00000002"}) {
+		t.Fatalf("matches = %v, want the work with the required tag and one any tag", got)
+	}
+	if _, err := db.Exec("INSERT INTO user_work_tag (user_id, work_id, user_tag_id) VALUES (1, 1, 7)"); err != nil {
+		t.Fatal(err)
+	}
+	if got := pageCodes(requestSmartListPage(t, server, listQuery)); !slices.Equal(got, []string{"RJ00000001", "RJ00000002"}) {
+		t.Fatalf("matches = %v, want the other any tag to match too", got)
+	}
+	code, body := callSmartListHandler(t, server.updateFavoriteList, http.MethodPatch, "/api/favorite-lists/"+strconv.FormatInt(list.ID, 10), `{"rule":{"require":[{"kind":"metadata","id":101}],"any":[{"kind":"user","id":7},{"kind":"user","id":8}],"exclude":[{"kind":"metadata","id":102}]}}`, smartListUser)
+	if code != http.StatusOK {
+		t.Fatalf("rule update status = %d, body = %s", code, body)
+	}
+	if got := pageCodes(requestSmartListPage(t, server, listQuery)); !slices.Equal(got, []string{"RJ00000001"}) {
+		t.Fatalf("matches = %v, want the excluded tag to drop a work", got)
+	}
+}
+
 func TestSmartRuleRefusesUnusableTagsAndFollowsTagChanges(t *testing.T) {
 	server, db := openSmartListTestServer(t)
 	for name, rule := range map[string]string{
-		"another account's tag": `{"include":[{"kind":"user","id":9}]}`,
-		"no include":            `{"include":[],"exclude":[{"kind":"metadata","id":102}]}`,
-		"hidden tag":            `{"include":[{"kind":"metadata","id":104}]}`,
-		"unknown tag":           `{"include":[{"kind":"metadata","id":999}]}`,
-		"included and excluded": `{"include":[{"kind":"metadata","id":101}],"exclude":[{"kind":"metadata","id":101}]}`,
+		"another account's tag": `{"require":[{"kind":"user","id":9}]}`,
+		"no require or any":     `{"require":[],"exclude":[{"kind":"metadata","id":102}]}`,
+		"hidden tag":            `{"require":[{"kind":"metadata","id":104}]}`,
+		"unknown tag":           `{"require":[{"kind":"metadata","id":999}]}`,
+		"required and excluded": `{"require":[{"kind":"metadata","id":101}],"exclude":[{"kind":"metadata","id":101}]}`,
+		"required and any":      `{"require":[{"kind":"metadata","id":101}],"any":[{"kind":"metadata","id":101},{"kind":"metadata","id":102}]}`,
 	} {
 		code, body := callSmartListHandler(t, server.createFavoriteList, http.MethodPost, "/api/favorite-lists", `{"name":"Refused","kind":"smart","rule":`+rule+`}`, smartListUser)
 		if code != http.StatusBadRequest || !strings.Contains(body, "invalid_smart_rule") {
@@ -276,15 +304,15 @@ func TestSmartRuleRefusesUnusableTagsAndFollowsTagChanges(t *testing.T) {
 		}
 	}
 
-	merged := createSmartList(t, server, "Example Merged", `{"include":[{"kind":"metadata","id":103}]}`)
-	if merged.Rule == nil || merged.Rule.Include[0].State != personal.SmartTagMerged || merged.Rule.Include[0].ResolvedID != 101 {
+	merged := createSmartList(t, server, "Example Merged", `{"require":[{"kind":"metadata","id":103}]}`)
+	if merged.Rule == nil || merged.Rule.Require[0].State != personal.SmartTagMerged || merged.Rule.Require[0].ResolvedID != 101 {
 		t.Fatalf("merged tag view = %#v", merged.Rule)
 	}
 	if got := pageCodes(requestSmartListPage(t, server, "listId="+strconv.FormatInt(merged.ID, 10))); !slices.Equal(got, []string{"RJ00000001", "RJ00000002", "RJ00000005"}) {
 		t.Fatalf("a merged tag matches %v, want its target's works", got)
 	}
 
-	personalList := createSmartList(t, server, "Example Personal", `{"includeMatch":"any","include":[{"kind":"user","id":7},{"kind":"metadata","id":101}]}`)
+	personalList := createSmartList(t, server, "Example Personal", `{"any":[{"kind":"user","id":7},{"kind":"metadata","id":101}]}`)
 	if _, err := (personal.Store{DB: db}).ChangeTag(context.Background(), 1, "work", 7, "merge", "", 8); err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +320,7 @@ func TestSmartRuleRefusesUnusableTagsAndFollowsTagChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(rules[personalList.ID].Include, personal.SmartRuleTag{Kind: personal.SmartTagUser, ID: 8}) {
+	if !slices.Contains(rules[personalList.ID].Any, personal.SmartRuleTag{Kind: personal.SmartTagUser, ID: 8}) {
 		t.Fatalf("merged personal tag rule = %#v, want the merge target", rules[personalList.ID])
 	}
 	if got := pageCodes(requestSmartListPage(t, server, "listId="+strconv.FormatInt(personalList.ID, 10))); !slices.Contains(got, "RJ00000003") {
@@ -302,7 +330,7 @@ func TestSmartRuleRefusesUnusableTagsAndFollowsTagChanges(t *testing.T) {
 	if _, err := db.Exec("UPDATE metadata_tag SET hidden = 1 WHERE tag_id = 101"); err != nil {
 		t.Fatal(err)
 	}
-	code, body := callSmartListHandler(t, server.updateFavoriteList, http.MethodPatch, "/api/favorite-lists/"+strconv.FormatInt(merged.ID, 10), `{"name":"Example Renamed","rule":{"include":[{"kind":"metadata","id":103}]}}`, smartListUser)
+	code, body := callSmartListHandler(t, server.updateFavoriteList, http.MethodPatch, "/api/favorite-lists/"+strconv.FormatInt(merged.ID, 10), `{"name":"Example Renamed","rule":{"require":[{"kind":"metadata","id":103}]}}`, smartListUser)
 	if code != http.StatusOK || !strings.Contains(body, `"state":"hidden"`) {
 		t.Fatalf("editing a list keeps a condition whose tag was hidden later: status %d, body %s", code, body)
 	}
@@ -310,7 +338,7 @@ func TestSmartRuleRefusesUnusableTagsAndFollowsTagChanges(t *testing.T) {
 	if _, err := db.Exec("INSERT INTO favorite_list (id, user_id, name, kind) VALUES (40, 1, 'Plain', 'user')"); err != nil {
 		t.Fatal(err)
 	}
-	code, body = callSmartListHandler(t, server.updateFavoriteList, http.MethodPatch, "/api/favorite-lists/40", `{"rule":{"include":[{"kind":"metadata","id":102}]}}`, smartListUser)
+	code, body = callSmartListHandler(t, server.updateFavoriteList, http.MethodPatch, "/api/favorite-lists/40", `{"rule":{"require":[{"kind":"metadata","id":102}]}}`, smartListUser)
 	if code != http.StatusBadRequest {
 		t.Fatalf("a user list accepted a rule: status %d, body %s", code, body)
 	}
@@ -318,7 +346,7 @@ func TestSmartRuleRefusesUnusableTagsAndFollowsTagChanges(t *testing.T) {
 
 func TestConvertSmartListKeepsTheShownWorksAsFavorites(t *testing.T) {
 	server, db := openSmartListTestServer(t)
-	list := createSmartList(t, server, "Example Convert", `{"include":[{"kind":"metadata","id":101}]}`)
+	list := createSmartList(t, server, "Example Convert", `{"require":[{"kind":"metadata","id":101}]}`)
 	listKey := strconv.FormatInt(list.ID, 10)
 	changeSmartListMembership(t, server, `{"workIds":[2],"removeListIds":[`+listKey+`]}`)
 	changeSmartListMembership(t, server, `{"workIds":[3],"addListIds":[`+listKey+`]}`)
@@ -337,10 +365,9 @@ func TestConvertSmartListKeepsTheShownWorksAsFavorites(t *testing.T) {
 	}
 	var leftovers int
 	if err := db.QueryRow(`SELECT
-		(SELECT COUNT(*) FROM favorite_list_smart_rule WHERE list_id = ?) +
 		(SELECT COUNT(*) FROM favorite_list_smart_tag WHERE list_id = ?) +
 		(SELECT COUNT(*) FROM favorite_list_smart_exclusion WHERE list_id = ?) +
-		(SELECT COUNT(*) FROM favorite_list_smart_seen WHERE list_id = ?)`, list.ID, list.ID, list.ID, list.ID).Scan(&leftovers); err != nil {
+		(SELECT COUNT(*) FROM favorite_list_smart_seen WHERE list_id = ?)`, list.ID, list.ID, list.ID).Scan(&leftovers); err != nil {
 		t.Fatal(err)
 	}
 	if leftovers != 0 {
@@ -373,7 +400,7 @@ func TestSmartRuleTagsAndPreviewNeedOnlyLibraryRead(t *testing.T) {
 		t.Fatalf("a merged tag's name finds its target: status %d, body %s", code, body)
 	}
 
-	code, body = callSmartListHandler(t, server.previewSmartRule, http.MethodPost, "/api/favorite-lists/rule-preview", `{"rule":{"include":[{"kind":"metadata","id":101}]}}`, reader)
+	code, body = callSmartListHandler(t, server.previewSmartRule, http.MethodPost, "/api/favorite-lists/rule-preview", `{"rule":{"require":[{"kind":"metadata","id":101}]}}`, reader)
 	if code != http.StatusOK || !strings.Contains(body, `"total":3`) {
 		t.Fatalf("preview status = %d, body = %s", code, body)
 	}

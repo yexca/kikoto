@@ -176,9 +176,11 @@ the works stays untouched unless you change it. Phones open both as a bottom
 sheet.
 
 A smart list fills itself from tags. When you add a list, choose **Smart list**
-and pick tags to include (all of them or any of them) and tags to exclude, from
-the shared metadata tags and your own tags; the editor counts the matching
-works as you go. Works that match appear in the list without becoming
+and sort tags from the shared metadata tags and your own tags into three
+groups: **Required tags** a work must all have, **Any of these tags** of which
+it needs at least one, and **Excluded tags** it must have none of. An empty
+group is skipped, but the rule needs at least one required or any-of tag. The
+editor counts the matching works as you go. Works that match appear in the list without becoming
 favorites. You can still add other works by hand, which makes them favorites
 like in any list, and remove a matching work, which keeps it out of the list
 until you add it again. The list only gathers works already in your library.
