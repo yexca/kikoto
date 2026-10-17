@@ -2626,6 +2626,8 @@ export const surfaceEnglish = {
     llmServiceStartFailed: "The provider could not start its model. Check the provider.",
     llmServiceOutOfMemory:
       "The provider could not load its model because memory ran out. Free GPU memory or set the helper's GPU sharing to take turns, then try again.",
+    llmServiceAgreementRequired:
+      "The provider's model needs its risk notice accepted. Accept it on the helper's Translation page, then try again.",
     invalidRequest: "Check the supplied values and try again.",
     conflict: "This item changed or conflicts with existing data. Refresh and try again.",
     sourceNotUsable: "This remote source is disabled or does not support this action.",
@@ -3121,6 +3123,8 @@ export const surfaceEnglish = {
       service_start_failed: "The provider could not start its model. Check the provider, then retry it from Activity.",
       service_out_of_memory:
         "The provider could not load its model because memory ran out. Free GPU memory or set the helper's GPU sharing to take turns, then retry it from Activity.",
+      service_agreement_required:
+        "The provider's model needs its risk notice accepted. Accept it on the helper's Translation page, then retry it from Activity.",
       unknown: "The translation stopped. Translate again, or check it in Activity.",
     },
     errors: {

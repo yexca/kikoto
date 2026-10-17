@@ -2454,6 +2454,7 @@ export const surfaceHans = {
     llmServiceNotReady: "服务商没有可用的模型。请在服务商中安装或选择模型。",
     llmServiceStartFailed: "服务商无法启动其模型。请检查服务商。",
     llmServiceOutOfMemory: "服务商因内存不足无法加载模型。请释放显存，或将助手的显存调度设为轮流加载，然后重试。",
+    llmServiceAgreementRequired: "服务商的模型需要先同意风险提示。请在助手的翻译页面同意后重试。",
     invalidRequest: "请检查输入内容后重试。",
     conflict: "此项目已变化或与现有数据冲突，请刷新后重试。",
     sourceNotUsable: "此远程来源已停用，或不支持此操作。",
@@ -2935,6 +2936,7 @@ export const surfaceHans = {
       service_start_failed: "服务商无法启动其模型。请检查服务商后，在 Activity 中重试。",
       service_out_of_memory:
         "服务商因内存不足无法加载模型。请释放显存，或将助手的显存调度设为轮流加载，然后在 Activity 中重试。",
+      service_agreement_required: "服务商的模型需要先同意风险提示。请在助手的翻译页面同意后，在 Activity 中重试。",
       unknown: "翻译已停止。请重新翻译，或在 Activity 中查看。",
     },
     errors: {

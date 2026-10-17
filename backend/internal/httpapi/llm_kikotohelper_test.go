@@ -32,6 +32,9 @@ func TestKikotoHelperRejectionsNameTheirCause(t *testing.T) {
 		case "out_of_memory":
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"error":{"message":"could not start","type":"start_failed","code":"start_failed","reason":"out_of_memory"}}`))
+		case "agreement":
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":{"message":"accept the notice","type":"abliterated_agreement_required","code":"abliterated_agreement_required"}}`))
 		default:
 			_, _ = w.Write([]byte(`{"text":{"title":"Example translation"},"model":"example-helper-model"}`))
 		}
@@ -65,6 +68,12 @@ func TestKikotoHelperRejectionsNameTheirCause(t *testing.T) {
 		t.Fatalf("out of memory: %d %s", w.Code, w.Body.String())
 	}
 
+	// A model whose risk notice is not accepted in the helper says so.
+	answer.Store("agreement")
+	if w := llmTestTranslate(t, f, p); w.Code != http.StatusUnprocessableEntity || json.Unmarshal(w.Body.Bytes(), &failure) != nil || failure.Code != "llm_service_agreement_required" {
+		t.Fatalf("agreement required: %d %s", w.Code, w.Body.String())
+	}
+
 	// A queued translation names the cause, and a start failure stays
 	// retryable once memory is freed.
 	ctx := context.Background()
@@ -74,7 +83,7 @@ func TestKikotoHelperRejectionsNameTheirCause(t *testing.T) {
 		t.Fatal(err)
 	}
 	actor, _ := f.server.accountStore.LoadByID(ctx, f.userID)
-	for i, want := range []struct{ answer, code string }{{"not_installed", "service_not_ready"}, {"out_of_memory", "service_out_of_memory"}} {
+	for i, want := range []struct{ answer, code string }{{"not_installed", "service_not_ready"}, {"out_of_memory", "service_out_of_memory"}, {"agreement", "service_agreement_required"}} {
 		answer.Store(want.answer)
 		if i > 0 {
 			if _, err := f.server.retryLLMTranslationRun(ctx, actor, runs[0].RunID); err != nil {

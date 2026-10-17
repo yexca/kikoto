@@ -41,6 +41,10 @@ const (
 // administrator installs one in the helper.
 var ErrNotInstalled = errors.New("helper has no installed model")
 
+// ErrAgreementRequired reports a helper whose selected translation model is
+// used only after the administrator accepts its risk notice in the helper.
+var ErrAgreementRequired = errors.New("helper model needs its risk notice accepted")
+
 // ErrIncompatible reports an answer that is not the expected helper service or
 // protocol version.
 var ErrIncompatible = errors.New("helper answered with an unsupported service or protocol version")
@@ -61,6 +65,10 @@ type Info struct {
 	ModelName  string  `json:"model_name"`
 	Models     []Model `json:"models"`
 	Pairs      Pairs   `json:"pairs"`
+
+	// AgreementRequired is set by an LLM helper whose selected model is used
+	// only after its risk notice is accepted.
+	AgreementRequired bool `json:"agreement_required"`
 }
 
 // Pairs are the source and target language codes of the directions an LLM
@@ -110,7 +118,8 @@ func LanguageToken(code string) string {
 }
 
 // DecodeInfo reads the info probe of service. A helper whose model is not
-// installed yet is ErrNotInstalled.
+// installed yet is ErrNotInstalled, and one whose model waits for its risk
+// notice to be accepted is ErrAgreementRequired.
 func DecodeInfo(data []byte, service string) (Info, error) {
 	var info Info
 	if json.Unmarshal(data, &info) != nil || info.Service != service || info.APIVersion != APIVersion {
@@ -118,6 +127,9 @@ func DecodeInfo(data []byte, service string) (Info, error) {
 	}
 	if !info.Installed {
 		return Info{}, ErrNotInstalled
+	}
+	if info.AgreementRequired {
+		return Info{}, ErrAgreementRequired
 	}
 	return info, nil
 }
@@ -129,6 +141,9 @@ const (
 	CodeModelNotFound           = "model_not_found"
 	CodeUnknownModel            = "unknown_model"
 	CodeUnsupportedLanguagePair = "unsupported_language_pair"
+	// CodeAgreementRequired: the selected model is used only after its risk
+	// notice is accepted in the helper.
+	CodeAgreementRequired = "abliterated_agreement_required"
 )
 
 // ReasonOutOfMemory refines CodeStartFailed: the installed model ran out of
@@ -146,6 +161,9 @@ const (
 	FailureOutOfMemory = "service_out_of_memory"
 	// FailureUnsupportedLanguagePair: the model does not translate the direction.
 	FailureUnsupportedLanguagePair = "unsupported_language_pair"
+	// FailureAgreementRequired: the model's risk notice is not accepted in the
+	// helper.
+	FailureAgreementRequired = "service_agreement_required"
 )
 
 // Failure names a rejection the administrator resolves in the helper rather
@@ -163,6 +181,8 @@ func Failure(rejection Rejection) string {
 		return FailureStartFailed
 	case CodeUnsupportedLanguagePair:
 		return FailureUnsupportedLanguagePair
+	case CodeAgreementRequired:
+		return FailureAgreementRequired
 	}
 	return ""
 }

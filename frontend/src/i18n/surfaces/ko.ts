@@ -2567,6 +2567,8 @@ export const surfaceKorean = {
     llmServiceStartFailed: "제공자가 모델을 시작하지 못했습니다. 제공자를 확인하세요.",
     llmServiceOutOfMemory:
       "메모리가 부족해 제공자가 모델을 불러오지 못했습니다. GPU 메모리를 확보하거나 헬퍼의 GPU 공유를 번갈아 불러오기로 설정한 뒤 다시 시도하세요.",
+    llmServiceAgreementRequired:
+      "제공자의 모델을 사용하려면 위험 고지에 동의해야 합니다. 헬퍼의 번역 페이지에서 동의한 뒤 다시 시도하세요.",
     invalidRequest: "입력한 값을 확인한 후 다시 시도하세요.",
     conflict: "이 항목이 변경되었거나 기존 데이터와 충돌합니다. 새로 고친 후 다시 시도하세요.",
     sourceNotUsable: "이 원격 소스는 비활성화되어 있거나 이 작업을 지원하지 않습니다.",
@@ -3060,6 +3062,8 @@ export const surfaceKorean = {
       service_start_failed: "제공자가 모델을 시작하지 못했습니다. 제공자를 확인한 뒤 Activity에서 다시 시도하세요.",
       service_out_of_memory:
         "메모리가 부족해 제공자가 모델을 불러오지 못했습니다. GPU 메모리를 확보하거나 헬퍼의 GPU 공유를 번갈아 불러오기로 설정한 뒤 Activity에서 다시 시도하세요.",
+      service_agreement_required:
+        "제공자의 모델을 사용하려면 위험 고지에 동의해야 합니다. 헬퍼의 번역 페이지에서 동의한 뒤 Activity에서 다시 시도하세요.",
       unknown: "번역이 중지되었습니다. 다시 번역하거나 Activity에서 확인하세요.",
     },
     errors: {

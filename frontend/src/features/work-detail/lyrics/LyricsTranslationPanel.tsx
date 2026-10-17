@@ -108,6 +108,7 @@ const knownFailures = new Set([
   "service_not_ready",
   "service_start_failed",
   "service_out_of_memory",
+  "service_agreement_required",
 ]);
 
 /** Refusals that say what to change, rather than that starting failed. */

@@ -172,6 +172,8 @@ func (s *Server) requestLLMTranslation(ctx context.Context, plan llmTranslationP
 			return result, llmInvalid("llm_service_start_failed", "The provider could not start its model. Check the provider.")
 		case kikotohelper.FailureOutOfMemory:
 			return result, llmInvalid("llm_service_out_of_memory", "The provider could not load its model because memory ran out. Free GPU memory or set the helper's GPU sharing to take turns, then retry.")
+		case kikotohelper.FailureAgreementRequired:
+			return result, llmInvalid("llm_service_agreement_required", "The provider's model needs its risk notice accepted. Accept it on the helper's Translation page, then retry.")
 		}
 		if err != nil {
 			return result, err

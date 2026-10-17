@@ -218,9 +218,10 @@
   language the model supports, show other languages as unavailable, and refuse
   an unsupported direction before queuing. Fetching models from a helper
   without an installed model, a model that cannot translate between the
-  chosen languages, a model that is not installed, one that cannot start and
-  one that ran out of memory while loading each name their cause, so a start
-  failure never asks to install a model that is already installed.
+  chosen languages, a model that is not installed, one that cannot start, one
+  that ran out of memory while loading and one whose risk notice is not
+  accepted in the helper each name their cause, so a start failure never asks
+  to install a model that is already installed.
 - The ellipsis between the page numbers below a list opens a field that goes
   to a typed page number.
 

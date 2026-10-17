@@ -2458,6 +2458,7 @@ export const surfaceHant = {
     llmServiceStartFailed: "服務商無法啟動其模型。請檢查服務商。",
     llmServiceOutOfMemory:
       "服務商因記憶體不足無法載入模型。請釋放顯示記憶體，或將助手的顯示記憶體排程設為輪流載入，然後重試。",
+    llmServiceAgreementRequired: "服務商的模型需要先同意風險提示。請在助手的翻譯頁面同意後重試。",
     invalidRequest: "請檢查輸入內容後重試。",
     conflict: "此項目已變更或與現有資料衝突，請重新整理後重試。",
     sourceNotUsable: "此遠端來源已停用，或不支援此操作。",
@@ -2940,6 +2941,7 @@ export const surfaceHant = {
       service_start_failed: "服務商無法啟動其模型。請檢查服務商後，在 Activity 中重試。",
       service_out_of_memory:
         "服務商因記憶體不足無法載入模型。請釋放顯示記憶體，或將助手的顯示記憶體排程設為輪流載入，然後在 Activity 中重試。",
+      service_agreement_required: "服務商的模型需要先同意風險提示。請在助手的翻譯頁面同意後，在 Activity 中重試。",
       unknown: "翻譯已停止。請重新翻譯，或在 Activity 中查看。",
     },
     errors: {

@@ -365,6 +365,10 @@ func (s *Server) fetchLLMModels(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, 502, "service_model_not_installed", "The service has no installed model. Install one in the service first.", false)
 		return
 	}
+	if errors.Is(err, kikotohelper.ErrAgreementRequired) {
+		writeAPIError(w, 502, "service_agreement_required", "The service's model needs its risk notice accepted. Accept it on the helper's Translation page first.", false)
+		return
+	}
 	if err != nil {
 		writeAPIError(w, 502, "llm_models_failed", "Models could not be fetched. Check the endpoint and key.", false)
 		return

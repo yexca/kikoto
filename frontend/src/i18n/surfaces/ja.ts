@@ -2578,6 +2578,8 @@ export const surfaceJapanese = {
     llmServiceStartFailed: "プロバイダーがモデルを起動できませんでした。プロバイダーを確認してください。",
     llmServiceOutOfMemory:
       "メモリ不足のため、プロバイダーがモデルを読み込めませんでした。GPU メモリを空けるか、ヘルパーの GPU 共有を交互に読み込む設定にしてから、もう一度お試しください。",
+    llmServiceAgreementRequired:
+      "プロバイダーのモデルを使うには、リスクに関する注意への同意が必要です。ヘルパーの翻訳ページで同意してから、もう一度お試しください。",
     invalidRequest: "入力内容を確認して再試行してください。",
     conflict: "この項目が変更されたか、既存データと競合しています。更新して再試行してください。",
     sourceNotUsable: "このリモートソースは無効になっているか、この操作に対応していません。",
@@ -3078,6 +3080,8 @@ export const surfaceJapanese = {
         "プロバイダーがモデルを起動できませんでした。プロバイダーを確認してから、Activity で再試行してください。",
       service_out_of_memory:
         "メモリ不足のため、プロバイダーがモデルを読み込めませんでした。GPU メモリを空けるか、ヘルパーの GPU 共有を交互に読み込む設定にしてから、Activity で再試行してください。",
+      service_agreement_required:
+        "プロバイダーのモデルを使うには、リスクに関する注意への同意が必要です。ヘルパーの翻訳ページで同意してから、Activity で再試行してください。",
       unknown: "翻訳が停止しました。もう一度翻訳するか、Activity で確認してください。",
     },
     errors: {
