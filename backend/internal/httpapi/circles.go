@@ -223,15 +223,12 @@ type circleCatalogWork struct {
 // row remains under its source party so translator identity and raw provider
 // provenance are preserved. Unknown or metadata-only codes fall back to the
 // physical party because there is no safe ownership relationship to infer.
+// The owner is party_catalog_item.owner_party_id, which triggers maintain from
+// the party_catalog_owner_resolution view.
 const circleCatalogProjection = `(
 	SELECT
 		catalog.id,
-		COALESCE(
-			CASE WHEN canonical_circle.source = 'manual_override' THEN canonical_circle.party_id END,
-			origin_external.party_id,
-			canonical_circle.party_id,
-			catalog.party_id
-		) AS party_id,
+		catalog.owner_party_id AS party_id,
 		catalog.party_id AS source_party_id,
 		catalog.provider_id,
 		catalog.primary_code,
@@ -243,23 +240,6 @@ const circleCatalogProjection = `(
 		catalog.raw_json,
 		catalog.last_seen_at
 	FROM party_catalog_item AS catalog
-	LEFT JOIN work AS catalog_work
-		ON UPPER(catalog_work.primary_code) = UPPER(catalog.primary_code)
-	LEFT JOIN work_edition AS catalog_edition
-		ON catalog_edition.work_id = catalog_work.id
-	LEFT JOIN logical_work AS logical
-		ON logical.id = catalog_edition.logical_work_id
-	LEFT JOIN work_edition AS origin_edition
-		ON origin_edition.logical_work_id = logical.id
-		AND origin_edition.is_canonical = 1
-	LEFT JOIN metadata_provider AS dlsite_provider
-		ON dlsite_provider.code = 'dlsite'
-	LEFT JOIN party_external_id AS origin_external
-		ON origin_external.provider_id = dlsite_provider.id
-		AND origin_external.id_type = 'maker_id'
-		AND UPPER(origin_external.external_id) = UPPER(origin_edition.maker_id)
-	LEFT JOIN work_primary_circle AS canonical_circle
-		ON canonical_circle.work_id = COALESCE(logical.canonical_work_id, catalog_work.id)
 )`
 
 // circlePartyVisibilityPredicate is built only with trusted SQL aliases from

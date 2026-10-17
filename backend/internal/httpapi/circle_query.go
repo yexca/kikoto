@@ -50,10 +50,6 @@ func (s *Server) loadCircleDetailWithWorksQuery(ctx context.Context, userID int6
 	if err != nil {
 		return circleDetail{}, err
 	}
-	availableWorks, err := s.loadCircleAvailableWorks(ctx, partyID)
-	if err != nil {
-		return circleDetail{}, err
-	}
 	series, err := s.loadCircleSeries(ctx, partyID)
 	if err != nil {
 		return circleDetail{}, err
@@ -67,7 +63,7 @@ func (s *Server) loadCircleDetailWithWorksQuery(ctx context.Context, userID int6
 	hasMore := worksQuery.Page*worksQuery.PageSize < worksTotal
 	return circleDetail{
 		circleSummary:  summary,
-		AvailableWorks: availableWorks,
+		AvailableWorks: summary.PlayableWorks,
 		Works:          works,
 		WorksMeta: circleWorksMeta{
 			Page:      worksQuery.Page,
