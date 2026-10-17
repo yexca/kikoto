@@ -218,3 +218,99 @@ func TestLoadCircleAvailableWorksCountsCanonicalUnionOnce(t *testing.T) {
 		t.Fatalf("page totals = %+v, want catalog 2 and available 1", page)
 	}
 }
+
+// Favorite and tag filters select creators before their counts and latest works
+// are read; the selected creators must still be fully summarized.
+func TestFavoriteCreatorFiltersStillSummarizeTheSelectedCreators(t *testing.T) {
+	db := openMigratedTestDB(t)
+	for _, statement := range []string{
+		"INSERT INTO user_account (id, username, role) VALUES (1, 'listener', 'user')",
+		"INSERT INTO party (id, display_name) VALUES (1, 'Example Circle 1'), (2, 'Example Circle 2')",
+		"INSERT INTO party_external_id (party_id, provider_id, id_type, external_id) SELECT 1, id, 'maker_id', 'RG00000001' FROM metadata_provider WHERE code = 'dlsite'",
+		"INSERT INTO party_external_id (party_id, provider_id, id_type, external_id) SELECT 2, id, 'maker_id', 'RG00000002' FROM metadata_provider WHERE code = 'dlsite'",
+		"INSERT INTO work (id, primary_code, title, release_date) VALUES (1, 'RJ00000001', 'Example Work 1', '2024-01-01'), (2, 'RJ00000002', 'Example Work 2', '2025-02-03')",
+		"INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, release_date) SELECT 1, id, 'RJ00000001', 'Example Work 1', '2024-01-01' FROM metadata_provider WHERE code = 'dlsite'",
+		"INSERT INTO party_catalog_item (party_id, provider_id, primary_code, title, release_date) SELECT 2, id, 'RJ00000002', 'Example Work 2', '2025-02-03' FROM metadata_provider WHERE code = 'dlsite'",
+		"INSERT INTO user_party_state (user_id, party_id, favorite) VALUES (1, 2, 1)",
+		"INSERT INTO person (id, display_name) VALUES (1, 'Example Voice 1'), (2, 'Example Voice 2')",
+		"INSERT INTO work_credit (work_id, person_id, role, source) VALUES (1, 1, 'voice_actor', 'test'), (2, 2, 'voice_actor', 'test')",
+		"INSERT INTO user_person_state (user_id, person_id, favorite) VALUES (1, 2, 1)",
+		"INSERT INTO user_person_tag (id, user_id, name) VALUES (1, 1, 'Example Tag')",
+		"INSERT INTO user_person_tag_assignment (user_id, person_id, user_person_tag_id) VALUES (1, 1, 1)",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := &Server{db: db}
+	get := func(path string, handler func(http.ResponseWriter, *http.Request), out any) {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1}))
+		response := httptest.NewRecorder()
+		handler(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, body = %s", path, response.Code, response.Body.String())
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), out); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var circles circleSummaryPage
+	get("/api/circles?filter=favorite", server.listCircles, &circles)
+	if circles.Total != 1 || len(circles.Circles) != 1 || circles.Circles[0].ExternalID != "RG00000002" {
+		t.Fatalf("favorite circles = %+v, want only RG00000002", circles)
+	}
+	if circle := circles.Circles[0]; circle.CatalogWorks != 1 || circle.LatestWork == nil || circle.LatestWork.PrimaryCode != "RJ00000002" {
+		t.Fatalf("favorite circle = %+v, want its catalog count and latest work", circle)
+	}
+	if circles.CatalogWorks != 1 {
+		t.Fatalf("page catalog works = %d, want the favorite circle's only", circles.CatalogWorks)
+	}
+
+	var voices voiceSummaryPage
+	get("/api/voices?filter=favorite", server.listVoices, &voices)
+	if voices.Total != 1 || len(voices.Voices) != 1 || voices.Voices[0].PersonID != 2 {
+		t.Fatalf("favorite voices = %+v, want only person 2", voices)
+	}
+	if voice := voices.Voices[0]; voice.KnownWorks != 1 || voice.LatestWork == nil || voice.LatestWork.PrimaryCode != "RJ00000002" || voice.SyncState == "" {
+		t.Fatalf("favorite voice = %+v, want its counts, latest work, and sync state", voice)
+	}
+	if len(voices.TagOptions) != 1 || voices.TagOptions[0] != "Example Tag" {
+		t.Fatalf("tag options = %v, want the tags of every voice actor", voices.TagOptions)
+	}
+
+	get("/api/voices?tag=Example%20Tag", server.listVoices, &voices)
+	if voices.Total != 1 || voices.Voices[0].PersonID != 1 || voices.Voices[0].LatestWork == nil {
+		t.Fatalf("tagged voices = %+v, want person 1 with its latest work", voices)
+	}
+}
+
+// The voice list reads every voice actor in one statement. Its union of credited
+// and catalog works must be built once, not re-run for each person.
+func TestVoiceSummaryQueryBuildsWorkRootsOnce(t *testing.T) {
+	db := openMigratedTestDB(t)
+	rows, err := db.Query("EXPLAIN QUERY PLAN "+voiceSummaryQuery("", false), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	materialized := false
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		if detail == "MATERIALIZE voice_work_roots" {
+			materialized = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !materialized {
+		t.Fatal("voice_work_roots is not materialized; the person join re-runs it per person")
+	}
+}

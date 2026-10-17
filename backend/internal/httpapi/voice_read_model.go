@@ -15,6 +15,16 @@ import (
 )
 
 func (s *Server) loadVoiceSummaries(ctx context.Context, userID int64) ([]voiceSummary, error) {
+	summaries, err := s.loadVoiceSummaryRows(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return summaries, s.enrichVoiceSummaries(ctx, userID, summaries)
+}
+
+// loadVoiceSummaryRows reads every voice actor's counts, user state, and user
+// tags; enrichVoiceSummaries adds the catalog sync state and latest work.
+func (s *Server) loadVoiceSummaryRows(ctx context.Context, userID int64) ([]voiceSummary, error) {
 	rows, err := s.db.QueryContext(ctx, voiceSummaryQuery("", s.cfg.IsDemo())+" ORDER BY known_works DESC, person.display_name ASC", userID)
 	if err != nil {
 		return nil, err
@@ -46,8 +56,12 @@ func (s *Server) loadVoiceSummaries(ctx context.Context, userID int64) ([]voiceS
 		}
 		summaries[index].UserTags = tags
 	}
+	return summaries, nil
+}
+
+func (s *Server) enrichVoiceSummaries(ctx context.Context, userID int64, summaries []voiceSummary) error {
 	if err := s.fillVoiceCatalogSyncStates(ctx, summaries); err != nil {
-		return nil, err
+		return err
 	}
 	personIDs := make([]int64, 0, len(summaries))
 	for _, summary := range summaries {
@@ -55,13 +69,13 @@ func (s *Server) loadVoiceSummaries(ctx context.Context, userID int64) ([]voiceS
 	}
 	latestByPerson, coverByPerson, err := s.loadVoiceLatestWorks(ctx, personIDs, savedCreatorCoverChoice("user_person_state", "person_id", userID))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	for index := range summaries {
 		summaries[index].LatestWork = latestByPerson[summaries[index].PersonID]
 		summaries[index].coverWork = coverByPerson[summaries[index].PersonID]
 	}
-	return summaries, nil
+	return nil
 }
 
 func (s *Server) loadVoiceSummary(ctx context.Context, userID int64, personID int64) (voiceSummary, error) {
@@ -239,7 +253,9 @@ func voiceSummaryQuery(where string, demo bool) string {
 			WHERE 1 = 1
 				` + catalogDemoWhere + `
 			GROUP BY catalog.person_id, UPPER(catalog.primary_code)
-		), voice_work_roots AS (
+		), voice_work_roots AS MATERIALIZED (
+			-- Materialized so the person join builds one index instead of
+			-- re-running this union for every person.
 			SELECT person_id, logical_code, MAX(last_seen_at) AS last_seen_at
 			FROM (
 				SELECT person_id, logical_code, last_seen_at FROM credited_roots
@@ -376,6 +392,25 @@ func filterVoiceSummaries(items []voiceSummary, query string, filter string, tag
 			continue
 		}
 		if voiceSummaryMatchesFilter(item, filter) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+// filterVoiceSummariesByUserState applies the filters that depend only on the
+// viewer's own state and tags; filterVoiceSummaries still applies them all.
+func filterVoiceSummariesByUserState(items []voiceSummary, filter string, tagFilter string) []voiceSummary {
+	filter = strings.ToLower(strings.TrimSpace(filter))
+	if filter != "favorite" && filter != "tagged" {
+		filter = ""
+	}
+	if filter == "" && tagFilter == "" {
+		return items
+	}
+	filtered := make([]voiceSummary, 0, len(items))
+	for _, item := range items {
+		if (tagFilter == "" || voiceSummaryHasTag(item, tagFilter)) && voiceSummaryMatchesFilter(item, filter) {
 			filtered = append(filtered, item)
 		}
 	}

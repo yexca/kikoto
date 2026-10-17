@@ -13,6 +13,16 @@ import (
 // presentation together behind the HTTP composition layer.
 
 func (s *Server) loadCircleSummaries(ctx context.Context, userID int64) ([]circleSummary, error) {
+	items, err := s.loadCircleSummaryRows(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return items, s.enrichCircleSummaries(ctx, userID, items)
+}
+
+// loadCircleSummaryRows reads every visible circle with its user state, user
+// tags, and aliases; enrichCircleSummaries adds work counts and latest works.
+func (s *Server) loadCircleSummaryRows(ctx context.Context, userID int64) ([]circleSummary, error) {
 	demoWhere := ""
 	if s.cfg.IsDemo() {
 		demoWhere = `
@@ -101,14 +111,7 @@ func (s *Server) loadCircleSummaries(ctx context.Context, userID int64) ([]circl
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	if err := s.fillCircleStatsBatch(ctx, items, partyIDs); err != nil {
-		return nil, err
-	}
 	tagsByParty, err := s.loadCircleUserTagsBatch(ctx, userID, partyIDs)
-	if err != nil {
-		return nil, err
-	}
-	latestByParty, coverByParty, err := s.loadCircleLatestWorks(ctx, partyIDs, savedCreatorCoverChoice("user_party_state", "party_id", userID))
 	if err != nil {
 		return nil, err
 	}
@@ -123,15 +126,41 @@ func (s *Server) loadCircleSummaries(ctx context.Context, userID int64) ([]circl
 		if tags := tagsByParty[items[index].ID]; tags != nil {
 			items[index].UserTags = tags
 		}
-		items[index].LatestWork = latestByParty[items[index].ID]
-		items[index].coverWork = coverByParty[items[index].ID]
 	}
 	return items, nil
 }
 
-func (s *Server) circleSummaryPage(ctx context.Context, userID int64, query, filter string, page, pageSize int) (circleSummaryPage, error) {
-	items, err := s.loadCircleSummaries(ctx, userID)
+func (s *Server) enrichCircleSummaries(ctx context.Context, userID int64, items []circleSummary) error {
+	if len(items) == 0 {
+		return nil
+	}
+	partyIDs := make([]int64, 0, len(items))
+	for _, item := range items {
+		partyIDs = append(partyIDs, item.ID)
+	}
+	if err := s.fillCircleStatsBatch(ctx, items, partyIDs); err != nil {
+		return err
+	}
+	latestByParty, coverByParty, err := s.loadCircleLatestWorks(ctx, partyIDs, savedCreatorCoverChoice("user_party_state", "party_id", userID))
 	if err != nil {
+		return err
+	}
+	for index := range items {
+		items[index].LatestWork = latestByParty[items[index].ID]
+		items[index].coverWork = coverByParty[items[index].ID]
+	}
+	return nil
+}
+
+func (s *Server) circleSummaryPage(ctx context.Context, userID int64, query, filter string, page, pageSize int) (circleSummaryPage, error) {
+	items, err := s.loadCircleSummaryRows(ctx, userID)
+	if err != nil {
+		return circleSummaryPage{}, err
+	}
+	// User state and tags are known before enrichment, so those filters skip
+	// the catalog and latest-work reads for every other circle.
+	items = filterCircleSummariesByUserState(items, filter)
+	if err := s.enrichCircleSummaries(ctx, userID, items); err != nil {
 		return circleSummaryPage{}, err
 	}
 	items = filterCircleSummaries(items, query, filter)
@@ -218,6 +247,22 @@ func filterCircleSummaries(items []circleSummary, query string, filter string) [
 		if !circleSummaryMatchesQuery(item, needle) {
 			continue
 		}
+		if circleSummaryMatchesFilter(item, filter) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+// filterCircleSummariesByUserState applies the filters that depend only on the
+// viewer's own state and tags; filterCircleSummaries still applies them all.
+func filterCircleSummariesByUserState(items []circleSummary, filter string) []circleSummary {
+	filter = strings.ToLower(strings.TrimSpace(filter))
+	if filter != "favorite" && filter != "tagged" {
+		return items
+	}
+	filtered := make([]circleSummary, 0, len(items))
+	for _, item := range items {
 		if circleSummaryMatchesFilter(item, filter) {
 			filtered = append(filtered, item)
 		}

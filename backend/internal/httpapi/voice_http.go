@@ -11,7 +11,7 @@ import (
 
 func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
 	userID := optionalUserID(r.Context())
-	summaries, err := s.loadVoiceSummaries(r.Context(), userID)
+	summaries, err := s.loadVoiceSummaryRows(r.Context(), userID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -27,12 +27,16 @@ func (s *Server) listVoices(w http.ResponseWriter, r *http.Request) {
 		tagOptions = append(tagOptions, name)
 	}
 	sort.Strings(tagOptions)
-	summaries = filterVoiceSummaries(
-		summaries,
-		strings.TrimSpace(r.URL.Query().Get("q")),
-		strings.TrimSpace(r.URL.Query().Get("filter")),
-		strings.TrimSpace(r.URL.Query().Get("tag")),
-	)
+	filter := strings.TrimSpace(r.URL.Query().Get("filter"))
+	tag := strings.TrimSpace(r.URL.Query().Get("tag"))
+	// User state and tags are known before enrichment, so those filters skip
+	// the catalog and latest-work reads for every other voice actor.
+	summaries = filterVoiceSummariesByUserState(summaries, filter, tag)
+	if err := s.enrichVoiceSummaries(r.Context(), userID, summaries); err != nil {
+		writeError(w, err)
+		return
+	}
+	summaries = filterVoiceSummaries(summaries, strings.TrimSpace(r.URL.Query().Get("q")), filter, tag)
 	// Metadata organizes voice actors by Kikoto person id, independent of
 	// names or credit counts; browsing keeps the most-credited first.
 	if r.URL.Query().Get("sort") == "id" {

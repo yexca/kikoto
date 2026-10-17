@@ -307,6 +307,9 @@
   page chooses one of their works as their cover, on the tile and the detail
   summary. **Latest work** in the same dialog restores the cover that follows
   each new release. Each account keeps its own choice.
+- The voice actor list loads much faster, and the favorite circles and voice
+  actors on Favorites only summarize the creators you favorited, so these
+  lists hold up other pages far less when many people use the server at once.
 </details>
 
 <details>
