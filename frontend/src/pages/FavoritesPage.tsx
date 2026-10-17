@@ -1,4 +1,4 @@
-import { ListMusic, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -14,15 +14,12 @@ import {
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionLoadingState } from "@/components/work-collection/WorkCollectionLoadingState";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
-import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { favoriteListIcon } from "@/components/favorite-list/favoriteListIcons";
 import { FavoriteContinueStrip, useFavoriteContinueListening } from "@/features/favorites/FavoriteContinueStrip";
 import { FavoriteCreatorShelf } from "@/features/favorites/FavoriteCreatorShelf";
-import {
-  FavoriteListMembershipPicker,
-  type FavoriteListMembershipChanges,
-} from "@/features/favorites/FavoriteListMembershipPicker";
-import { FavoriteListManager, type FavoriteListDraft } from "@/features/favorites/FavoriteListManager";
+import type { FavoriteListMembershipChanges } from "@/features/favorites/FavoriteListMembershipPicker";
+import { FavoriteListManager } from "@/features/favorites/FavoriteListManager";
+import { FavoriteSelectionBar } from "@/features/favorites/FavoriteSelectionBar";
 import { FavoriteShelfHeader } from "@/features/favorites/FavoriteShelfHeader";
 import {
   FavoriteShelfSidebar,
@@ -50,7 +47,11 @@ import {
   favoriteStatusFilterOptions,
 } from "@/features/favorites/favoriteShelfModel";
 import { useFavoriteViewMode } from "@/features/favorites/favoriteViewMode";
+import { useFavoriteCreators } from "@/features/favorites/useFavoriteCreators";
+import { useFavoriteListEditing } from "@/features/favorites/useFavoriteListEditing";
+import { useFavoriteLists } from "@/features/favorites/useFavoriteLists";
 import { useFavoriteShelfCovers } from "@/features/favorites/useFavoriteShelfCovers";
+import { useFavoriteWorks } from "@/features/favorites/useFavoriteWorks";
 import {
   defaultFavoritesBrowseState,
   favoritePageSizeOptions,
@@ -69,23 +70,10 @@ import {
 import { useBrowseHistoryState } from "@/hooks/useBrowseHistoryState";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
-import {
-  api,
-  type CircleSummary,
-  type FavoriteList,
-  type FavoriteSort,
-  type ListeningStatus,
-  type SortDirection,
-  type VoiceSummary,
-  type Work,
-} from "@/lib/api";
+import { api, type FavoriteSort, type ListeningStatus, type SortDirection, type Work } from "@/lib/api";
 import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { defaultLibraryBrowseState, libraryLocation } from "@/lib/libraryBrowseState";
-import { loadAllPages } from "@/lib/pagedList";
-
-// The largest page the creator list endpoints serve.
-const favoriteCreatorPageSize = 100;
 
 function createFavoriteRandomSeed() {
   return (window.crypto.getRandomValues(new Uint32Array(1))[0] % 2147483646) + 1;
@@ -120,16 +108,14 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     ),
   ).current;
   const pendingAnchor = useRef(initialEntryState.favoritesAnchor ?? null);
-  const [works, setWorks] = useState<Work[]>([]);
-  const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
-  const [areFavoriteListsLoading, setAreFavoriteListsLoading] = useState(true);
+  const {
+    setFavoriteLists,
+    isLoading: areFavoriteListsLoading,
+    markedList,
+    userLists,
+  } = useFavoriteLists({ active, user: auth.user, notifyUnavailable });
   const [favoriteEntity, setFavoriteEntity] = useState<FavoriteEntity>(initialBrowseState.entity);
-  const [circles, setCircles] = useState<CircleSummary[]>([]);
-  const [voices, setVoices] = useState<VoiceSummary[]>([]);
-  const [isEntitiesLoading, setIsEntitiesLoading] = useState(true);
-  const [entitySnapshotUserID, setEntitySnapshotUserID] = useState<number | null>(null);
-  const [entityLoadError, setEntityLoadError] = useState("");
-  const [entityReloadToken, setEntityReloadToken] = useState(0);
+  const creators = useFavoriteCreators({ active, user: auth.user, notifyUnavailable });
   const [query, setQuery] = useState(initialBrowseState.query);
   const [statusFilter, setStatusFilter] = useState<ListeningStatus | "all">(initialBrowseState.status);
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>(initialBrowseState.availability);
@@ -139,14 +125,8 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [sort, setSort] = useState<FavoriteSort>(initialBrowseState.sort);
   const [sortDirection, setSortDirection] = useState<SortDirection>(initialBrowseState.direction);
   const [randomSeed, setRandomSeed] = useState(initialBrowseState.randomSeed);
-  const [totalWorks, setTotalWorks] = useState(0);
-  const [favoriteTotal, setFavoriteTotal] = useState(0);
-  const [listCounts, setListCounts] = useState<Record<string, number>>({});
-  const [newCounts, setNewCounts] = useState<Record<string, number>>({});
-  const [newWorkIDs, setNewWorkIDs] = useState<Set<number>>(() => new Set());
   // The smart list whose new works alone are shown; switching shelves ends the filter.
   const [newOnlyList, setNewOnlyList] = useState<number | null>(null);
-  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const { mobileColumns, desktopColumns, setMobileColumns, setDesktopColumns } = useWorkCollectionLayout();
   const [viewMode, setViewMode] = useFavoriteViewMode();
   const [selectionMode, setSelectionMode] = useState(Boolean(initialEntryState.favoritesSelection?.active));
@@ -154,24 +134,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     () => new Set(initialEntryState.favoritesSelection?.workIDs ?? []),
   );
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
-  const [listPickerOpen, setListPickerOpen] = useState(false);
-  const listActionRef = useRef<HTMLDivElement | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [worksSnapshotUserID, setWorksSnapshotUserID] = useState<number | null>(null);
-  const [worksLoadError, setWorksLoadError] = useState("");
-  const [worksReloadToken, setWorksReloadToken] = useState(0);
-  const [shelfCountsUserID, setShelfCountsUserID] = useState<number | null>(null);
-  const [listEditor, setListEditor] = useState<FavoriteList | "new" | null>(null);
-  const [deleteListTarget, setDeleteListTarget] = useState<FavoriteList | null>(null);
-  const [isDeletingList, setIsDeletingList] = useState(false);
-  const [listManagerOpen, setListManagerOpen] = useState(false);
-  // An editor opened from Edit lists returns there; one opened from a shelf closes the dialog.
-  const [listEditorReturnsToList, setListEditorReturnsToList] = useState(false);
-  const listOrderSave = useRef<Promise<void>>(Promise.resolve());
-  const requestSeq = useRef(0);
-  const favoriteListsLoadedFor = useRef<number | null>(null);
-  const entitiesLoadedRequestKey = useRef("");
-  const worksLoadedRequestKey = useRef("");
   const mobileNavigationLayout = useMobileNavigationLayout();
   const browseState: FavoritesBrowseState = {
     entity: favoriteEntity,
@@ -186,20 +148,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     randomSeed,
   };
   const newOnly = newOnlyList !== null && newOnlyList === activeList;
-  const worksRequestKey = JSON.stringify([
-    newOnly,
-    principalID,
-    page,
-    pageSize,
-    query,
-    activeList,
-    statusFilter,
-    availabilityFilter,
-    sort,
-    sortDirection,
-    randomSeed,
-    worksReloadToken,
-  ]);
   const hasPendingRestoration = useBrowseHistoryState({
     active,
     stateKey: JSON.stringify(browseState),
@@ -231,179 +179,35 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       pendingAnchor.current = entry.favoritesAnchor ?? null;
     },
   });
-
-  useEffect(() => {
-    if (!auth.user) {
-      favoriteListsLoadedFor.current = null;
-      setFavoriteLists([]);
-      setAreFavoriteListsLoading(false);
-      return;
-    }
-    if (!active || favoriteListsLoadedFor.current === principalID) return;
-    const controller = new AbortController();
-    let cancelled = false;
-    setAreFavoriteListsLoading(true);
-    api
-      .listFavoriteLists(controller.signal)
-      .then((lists) => {
-        if (!cancelled) {
-          favoriteListsLoadedFor.current = principalID;
-          setFavoriteLists(lists);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) notifyUnavailable(error);
-      })
-      .finally(() => {
-        if (!cancelled) setAreFavoriteListsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [active, auth.user, notifyUnavailable, principalID]);
-
-  useEffect(() => {
-    if (!auth.user) {
-      entitiesLoadedRequestKey.current = "";
-      setCircles([]);
-      setVoices([]);
-      setEntitySnapshotUserID(null);
-      setEntityLoadError("");
-      setIsEntitiesLoading(false);
-      return;
-    }
-    if (!active) return;
-    const requestKey = `${principalID ?? "anonymous"}:${entityReloadToken}`;
-    if (entitiesLoadedRequestKey.current === requestKey) return;
-    const controller = new AbortController();
-    let cancelled = false;
-    setIsEntitiesLoading(true);
-    setEntityLoadError("");
-    // Favorites are shown and counted as a whole, so every page is read.
-    Promise.all([
-      loadAllPages(
-        (page) =>
-          api
-            .listCircles({ filter: "favorite", page, pageSize: favoriteCreatorPageSize, signal: controller.signal })
-            .then((result) => ({ items: result.circles, total: result.total })),
-        favoriteCreatorPageSize,
-      ),
-      loadAllPages(
-        (page) =>
-          api
-            .listVoices({ filter: "favorite", page, pageSize: favoriteCreatorPageSize, signal: controller.signal })
-            .then((result) => ({ items: result.voices, total: result.total })),
-        favoriteCreatorPageSize,
-      ),
-    ])
-      .then(([favoriteCircles, favoriteVoices]) => {
-        if (cancelled) return;
-        entitiesLoadedRequestKey.current = requestKey;
-        setCircles(favoriteCircles);
-        setVoices(favoriteVoices);
-        setEntitySnapshotUserID(principalID);
-      })
-      .catch((error) => {
-        if (!cancelled) notifyUnavailable(error, setEntityLoadError);
-      })
-      .finally(() => {
-        if (!cancelled) setIsEntitiesLoading(false);
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [active, auth.user, entityReloadToken, notifyUnavailable, principalID]);
-
-  useEffect(() => {
-    if (!auth.user) {
-      worksLoadedRequestKey.current = "";
-      setWorks([]);
-      setTotalWorks(0);
-      setFavoriteTotal(0);
-      setListCounts({});
-      setNewCounts({});
-      setNewWorkIDs(new Set());
-      setStatusCounts({});
-      setWorksSnapshotUserID(null);
-      setWorksLoadError("");
-      setIsLoading(false);
-      return;
-    }
-    if (favoriteEntity !== "works") {
-      setIsLoading(false);
-      return;
-    }
-    if (!active || hasPendingRestoration()) return;
-    const requestKey = worksRequestKey;
-    if (worksLoadedRequestKey.current === requestKey) {
-      setIsLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    const seq = ++requestSeq.current;
-    setIsLoading(true);
-    setWorksLoadError("");
-    api
-      .listFavoriteWorksPage(
-        page,
-        pageSize,
-        query,
-        activeList,
-        statusFilter,
-        availabilityFilter,
-        sort,
-        sortDirection,
-        randomSeed,
-        controller.signal,
-        newOnly,
-      )
-      .then((result) => {
-        if (controller.signal.aborted || seq !== requestSeq.current) return;
-        worksLoadedRequestKey.current = requestKey;
-        setWorks(result.works);
-        setTotalWorks(result.total);
-        setFavoriteTotal(result.shelfTotal);
-        setListCounts(result.listCounts);
-        setNewCounts(result.newCounts ?? {});
-        setNewWorkIDs(new Set(result.newWorkIds ?? []));
-        setStatusCounts(result.statusCounts);
-        setWorksSnapshotUserID(principalID);
-      })
-      .catch((error) => {
-        if (controller.signal.aborted || seq !== requestSeq.current) return;
-        notifyUnavailable(error, setWorksLoadError);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted && seq === requestSeq.current) setIsLoading(false);
-      });
-    return () => controller.abort();
-  }, [
+  const favoriteWorks = useFavoriteWorks({
     active,
-    activeList,
-    availabilityFilter,
-    auth.user,
-    favoriteEntity,
-    hasPendingRestoration,
+    user: auth.user,
+    browse: browseState,
     newOnly,
+    hasPendingRestoration,
     notifyUnavailable,
-    page,
-    pageSize,
-    principalID,
-    query,
-    randomSeed,
-    sort,
-    sortDirection,
-    statusFilter,
-    worksReloadToken,
-    worksRequestKey,
-  ]);
+  });
+  const {
+    works,
+    setWorks,
+    totalWorks,
+    favoriteTotal,
+    listCounts,
+    newCounts,
+    newWorkIDs,
+    statusCounts,
+    isLoading,
+    hasSnapshot: hasWorksSnapshot,
+    loadError: worksLoadError,
+    reloadToken: worksReloadToken,
+    reload: reloadWorks,
+    isCurrent: worksAreCurrent,
+  } = favoriteWorks;
 
   useEffect(() => {
-    if (!active || isLoading || worksLoadedRequestKey.current !== worksRequestKey) return;
+    if (!active || isLoading || !worksAreCurrent) return;
     setSelectedWorkIDs((ids) => new Set(Array.from(ids).filter((id) => works.some((work) => work.id === id))));
-  }, [active, isLoading, works, worksRequestKey]);
+  }, [active, isLoading, works, worksAreCurrent]);
 
   useEffect(() => {
     if (!active || hasPendingRestoration() || window.location.pathname !== "/favorites") return;
@@ -460,39 +264,11 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const totalPages = Math.max(1, Math.ceil(totalWorks / pageSize));
   const currentPage = Math.min(page, totalPages);
   const hasWorkFilters = Boolean(query.trim()) || statusFilter !== "all" || availabilityFilter !== "all";
-  const markedList = favoriteLists.find((list) => list.kind === "marked") ?? null;
-  const userFavoriteLists = favoriteLists.filter((list) => list.kind !== "marked");
   const selectedWorks = works.filter((work) => selectedWorkIDs.has(work.id));
-  // The bulk list picker belongs to the selection bar and closes with it or an emptied selection.
-  const listPickerVisible = listPickerOpen && selectionMode && selectedWorks.length > 0;
-  const favoriteCircles = circles.filter((circle) => circle.favorite);
-  const favoriteVoices = voices.filter((voice) => voice.favorite);
-  const hasEntitySnapshot = entitySnapshotUserID === principalID;
-  const hasWorksSnapshot = worksSnapshotUserID === principalID;
   const shelfKind = favoriteShelfKind(activeList, markedList);
-  const activeUserList =
-    shelfKind === "list" ? (userFavoriteLists.find((list) => list.id === activeList) ?? null) : null;
+  const activeUserList = shelfKind === "list" ? (userLists.find((list) => list.id === activeList) ?? null) : null;
   const activeSmartList = activeUserList?.kind === "smart" ? activeUserList : null;
   const shelfTotal = activeList === "all" ? favoriteTotal : (listCounts[String(activeList)] ?? 0);
-  // A creator shelf opened first still labels the works shelves, from a one-item request.
-  useEffect(() => {
-    if (!active || !auth.user || favoriteEntity === "works" || hasWorksSnapshot) return;
-    if (shelfCountsUserID === principalID) return;
-    const controller = new AbortController();
-    api
-      .listFavoriteWorksPage(1, 1, "", "all", "all", "all", "added", "desc", 1, controller.signal)
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        setFavoriteTotal(result.shelfTotal);
-        setListCounts(result.listCounts);
-        setNewCounts(result.newCounts ?? {});
-        setShelfCountsUserID(principalID);
-      })
-      .catch(() => {
-        // The shelves stay usable; their counts appear once works load.
-      });
-    return () => controller.abort();
-  }, [active, auth.user, favoriteEntity, hasWorksSnapshot, principalID, shelfCountsUserID]);
   const continueWorks = useFavoriteContinueListening({
     enabled: active && Boolean(auth.user) && favoriteEntity === "works" && !query.trim() && currentPage === 1,
     listID: activeList,
@@ -500,20 +276,15 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   });
   const shelfCovers = useFavoriteShelfCovers({
     // Waiting for the shelf counts avoids a second request when the first count arrives.
-    enabled:
-      active &&
-      Boolean(auth.user) &&
-      favoriteEntity === "works" &&
-      (hasWorksSnapshot || shelfCountsUserID === principalID),
+    enabled: active && Boolean(auth.user) && favoriteEntity === "works" && favoriteWorks.shelfCountsKnown,
     listID: activeList,
     // The shelf total follows membership changes that do not reload the works.
     requestKey: `${principalID ?? "anonymous"}:${worksReloadToken}:${shelfTotal}`,
   });
 
   useEffect(() => {
-    if (active && !isLoading && worksLoadedRequestKey.current === worksRequestKey && page > totalPages)
-      setPage(totalPages);
-  }, [active, isLoading, page, totalPages, worksRequestKey]);
+    if (active && !isLoading && worksAreCurrent && page > totalPages) setPage(totalPages);
+  }, [active, isLoading, page, totalPages, worksAreCurrent]);
 
   const openWork = (work: Work) => {
     const browseState = {
@@ -557,7 +328,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
         item.id === workID ? { ...item, listeningStatus: result.listeningStatus, favorite: result.favorite } : item,
       ),
     );
-    setWorksReloadToken((value) => value + 1);
+    reloadWorks();
   };
 
   // Clearing filters keeps the open shelf; switching shelves is navigation, not a filter.
@@ -647,28 +418,22 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const reloadFavoriteLists = async () => {
     const lists = await api.listFavoriteLists();
     setFavoriteLists(lists);
-    const result = await api.listFavoriteWorksPage(
-      currentPage,
-      pageSize,
-      query,
-      activeList,
-      statusFilter,
-      availabilityFilter,
-      sort,
-      sortDirection,
-      randomSeed,
-      undefined,
-      newOnly,
-    );
-    setWorks(result.works);
-    setTotalWorks(result.total);
-    setFavoriteTotal(result.shelfTotal);
-    setListCounts(result.listCounts);
-    setNewCounts(result.newCounts ?? {});
-    setNewWorkIDs(new Set(result.newWorkIds ?? []));
-    setStatusCounts(result.statusCounts);
+    await favoriteWorks.refetch(currentPage);
     return lists;
   };
+
+  const listEditing = useFavoriteListEditing({
+    userLists,
+    setFavoriteLists,
+    reloadLists: reloadFavoriteLists,
+    onShowList: (list) => {
+      setActiveList(list);
+      if (favoriteEntity !== "works") setFavoriteEntity("works");
+    },
+    onListDeleted: (listID) => {
+      if (activeList === listID) setActiveList("all");
+    },
+  });
 
   const markSmartListSeen = async (listID: number) => {
     try {
@@ -689,107 +454,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     } catch (error) {
       toast.notify(toastFromError(error, t("favorites.smart.convertFailed")));
     }
-  };
-
-  const saveFavoriteList = async (payload: FavoriteListDraft) => {
-    if (listEditor === null) return;
-    if (listEditor === "new") {
-      const list = await api.createFavoriteList(payload);
-      const lists = await reloadFavoriteLists();
-      setActiveList(lists.some((item) => item.id === list.id) ? list.id : "all");
-    } else {
-      const list = await api.updateFavoriteList(listEditor.id, payload);
-      await reloadFavoriteLists();
-      setActiveList(list.id);
-    }
-    if (favoriteEntity !== "works") setFavoriteEntity("works");
-    finishListEdit();
-    toast.success(t("favorites.listSaved"));
-  };
-
-  /** Opens Edit lists, or the editor of one list straight from a shelf. */
-  const openFavoriteListManager = (editor: FavoriteList | "new" | null = null) => {
-    setListEditor(editor);
-    setListEditorReturnsToList(false);
-    setDeleteListTarget(null);
-    setListManagerOpen(true);
-  };
-
-  const editFromListManager = (editor: FavoriteList | "new") => {
-    setListEditor(editor);
-    setListEditorReturnsToList(true);
-  };
-
-  const closeFavoriteListManager = () => {
-    if (isDeletingList) return;
-    setListManagerOpen(false);
-    setListEditor(null);
-    setDeleteListTarget(null);
-  };
-
-  /** Leaves the editor: back to Edit lists when it came from there, otherwise closed. */
-  const finishListEdit = () => {
-    if (listEditorReturnsToList) setListEditor(null);
-    else closeFavoriteListManager();
-  };
-
-  /** Deletes a list; failures are reported and rethrown so the caller can stay put. */
-  const removeFavoriteList = async (list: FavoriteList) => {
-    setIsDeletingList(true);
-    try {
-      await api.deleteFavoriteList(list.id);
-      if (activeList === list.id) setActiveList("all");
-      await reloadFavoriteLists();
-      toast.success(t("favorites.listDeleted"));
-    } catch (error) {
-      toast.notify(toastFromError(error, t("favorites.listDeleteFailed")));
-      throw error;
-    } finally {
-      setIsDeletingList(false);
-    }
-  };
-
-  const deleteFavoriteList = async () => {
-    if (!deleteListTarget || isDeletingList) return;
-    try {
-      await removeFavoriteList(deleteListTarget);
-      setDeleteListTarget(null);
-    } catch {
-      // Reported by removeFavoriteList; the confirmation stays for a retry.
-    }
-  };
-
-  const deleteEditedFavoriteList = async (list: FavoriteList) => {
-    if (isDeletingList) return;
-    await removeFavoriteList(list);
-    if (listEditorReturnsToList) setListEditor(null);
-    else {
-      setListManagerOpen(false);
-      setListEditor(null);
-    }
-  };
-
-  // Moves apply at once and save in order; only lists whose position changed are written.
-  const moveFavoriteListByID = (listID: number, direction: -1 | 1) => {
-    const targetIndex = userFavoriteLists.findIndex((list) => list.id === listID);
-    const nextIndex = targetIndex + direction;
-    if (targetIndex < 0 || nextIndex < 0 || nextIndex >= userFavoriteLists.length) return;
-    const reordered = [...userFavoriteLists];
-    const [moving] = reordered.splice(targetIndex, 1);
-    reordered.splice(nextIndex, 0, moving);
-    const changed = reordered.flatMap((list, index) => (list.sortOrder === index ? [] : [{ id: list.id, index }]));
-    setFavoriteLists((lists) => [
-      ...lists.filter((list) => list.kind === "marked"),
-      ...reordered.map((list, index) => ({ ...list, sortOrder: index })),
-    ]);
-    listOrderSave.current = listOrderSave.current
-      .then(async () => {
-        for (const { id, index } of changed) await api.updateFavoriteList(id, { sortOrder: index });
-      })
-      .catch(async (error) => {
-        toast.notify(toastFromError(error, t("favorites.reorderFailed")));
-        await reloadFavoriteLists().catch(() => undefined);
-      });
   };
 
   const toggleWorkSelection = (workID: number, selected: boolean) => {
@@ -821,7 +485,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       await reloadFavoriteLists();
       setSelectedWorkIDs(new Set());
       setSelectionMode(false);
-      setListPickerOpen(false);
       toast.success(t("favorites.membershipUpdated", { count: targetWorks.length }));
     } catch (error) {
       toast.notify(toastFromError(error, t("errors.unavailable")));
@@ -846,12 +509,6 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     onSelectedChange: changeItemSelection,
     onListsChanged: refreshItemLists,
   }).current;
-  const changeCircle = useStableCallback((next: CircleSummary) =>
-    setCircles((items) => items.map((item) => (item.externalId === next.externalId ? { ...item, ...next } : item))),
-  );
-  const changeVoice = useStableCallback((next: VoiceSummary) =>
-    setVoices((items) => items.map((item) => (item.personId === next.personId ? { ...item, ...next } : item))),
-  );
 
   if (!auth.user) {
     return (
@@ -865,18 +522,18 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     entity: favoriteEntity,
     activeList,
     markedList,
-    userLists: userFavoriteLists,
+    userLists,
     favoriteTotal,
     listCounts,
     newCounts,
-    worksCountsKnown: hasWorksSnapshot || shelfCountsUserID === principalID,
-    circleCount: hasEntitySnapshot ? favoriteCircles.length : null,
-    voiceCount: hasEntitySnapshot ? favoriteVoices.length : null,
+    worksCountsKnown: favoriteWorks.shelfCountsKnown,
+    circleCount: creators.hasSnapshot ? creators.favoriteCircles.length : null,
+    voiceCount: creators.hasSnapshot ? creators.favoriteVoices.length : null,
     listsLoading: areFavoriteListsLoading,
     onWorksShelf: openWorksShelf,
     onCreatorShelf: openCreatorShelf,
-    onEditLists: () => openFavoriteListManager(),
-    onAddList: () => openFavoriteListManager("new"),
+    onEditLists: () => listEditing.openManager(),
+    onAddList: () => listEditing.openManager("new"),
   };
   const searchPlaceholder =
     favoriteEntity === "works"
@@ -933,7 +590,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 shrink-0 text-muted-foreground"
-                        onClick={() => openFavoriteListManager(activeUserList)}
+                        onClick={() => listEditing.openManager(activeUserList)}
                         aria-label={t("favorites.editList")}
                         title={t("favorites.editList")}
                       >
@@ -952,10 +609,10 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                       : t("favorites.voiceShelfDescription")
                   }
                   countLabel={
-                    hasEntitySnapshot
+                    creators.hasSnapshot
                       ? favoriteEntity === "circles"
-                        ? t("favorites.circleCount", { count: favoriteCircles.length })
-                        : t("favorites.voiceCount", { count: favoriteVoices.length })
+                        ? t("favorites.circleCount", { count: creators.favoriteCircles.length })
+                        : t("favorites.voiceCount", { count: creators.favoriteVoices.length })
                       : null
                   }
                   covers={[]}
@@ -1046,7 +703,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                 setPage(1);
               }}
               onMarkSeen={() => markSmartListSeen(activeSmartList.id)}
-              onEditRule={() => openFavoriteListManager(activeSmartList)}
+              onEditRule={() => listEditing.openManager(activeSmartList)}
               onConvert={() => convertSmartList(activeSmartList.id)}
             />
           )}
@@ -1057,69 +714,43 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
             <FavoriteCreatorShelf
               kind={favoriteEntity}
               query={query}
-              isLoading={isEntitiesLoading}
-              hasSnapshot={hasEntitySnapshot}
-              loadError={entityLoadError}
-              circles={favoriteCircles}
-              voices={favoriteVoices}
-              onRetry={() => setEntityReloadToken((value) => value + 1)}
-              onCircleChange={changeCircle}
-              onVoiceChange={changeVoice}
+              isLoading={creators.isLoading}
+              hasSnapshot={creators.hasSnapshot}
+              loadError={creators.loadError}
+              circles={creators.favoriteCircles}
+              voices={creators.favoriteVoices}
+              onRetry={creators.reload}
+              onCircleChange={creators.changeCircle}
+              onVoiceChange={creators.changeVoice}
             />
           )}
 
           {favoriteEntity === "works" && (
             <>
               {selectionMode && (
-                <WorkSelectionBar
-                  selectedCount={selectedWorks.length}
-                  scopeSelectableCount={works.length}
-                  scopeSelectedCount={selectedWorks.length}
-                  onSelectScope={() => togglePagedSelection(true)}
+                <FavoriteSelectionBar
+                  selectedWorks={selectedWorks}
+                  pageWorkCount={works.length}
+                  userLists={userLists}
+                  mobile={mobileNavigationLayout}
+                  busy={isBulkUpdating}
+                  onSelectPage={() => togglePagedSelection(true)}
                   onClear={() => setSelectedWorkIDs(new Set())}
                   onExit={() => {
                     setSelectedWorkIDs(new Set());
                     setSelectionMode(false);
                   }}
-                >
-                  <div ref={listActionRef}>
-                    <WorkSelectionAction
-                      icon={<ListMusic className="h-4 w-4" />}
-                      label={t("favorites.changeLists")}
-                      count={selectedWorks.length}
-                      disabled={isBulkUpdating}
-                      className="w-full"
-                      aria-expanded={listPickerVisible}
-                      onClick={() => setListPickerOpen(!listPickerVisible)}
-                    />
-                    <FavoriteListMembershipPicker
-                      open={listPickerVisible}
-                      onOpenChange={setListPickerOpen}
-                      anchorRef={listActionRef}
-                      mobile={mobileNavigationLayout}
-                      workIDs={selectedWorks.map((work) => work.id)}
-                      favoriteLists={userFavoriteLists}
-                      disabled={isBulkUpdating}
-                      onListCreated={() => void api.listFavoriteLists().then(setFavoriteLists, () => undefined)}
-                      onSave={applyListMembership}
-                    />
-                  </div>
-                </WorkSelectionBar>
+                  onListCreated={() => void api.listFavoriteLists().then(setFavoriteLists, () => undefined)}
+                  onSave={applyListMembership}
+                />
               )}
 
               {hasWorksSnapshot && worksLoadError && (
-                <FavoriteLoadError
-                  message={worksLoadError}
-                  compact
-                  onRetry={() => setWorksReloadToken((value) => value + 1)}
-                />
+                <FavoriteLoadError message={worksLoadError} compact onRetry={reloadWorks} />
               )}
               {!hasWorksSnapshot ? (
                 worksLoadError ? (
-                  <FavoriteLoadError
-                    message={worksLoadError}
-                    onRetry={() => setWorksReloadToken((value) => value + 1)}
-                  />
+                  <FavoriteLoadError message={worksLoadError} onRetry={reloadWorks} />
                 ) : viewMode === "list" ? (
                   <FavoriteWorkListSkeleton label={t("favorites.loadingWorks")} />
                 ) : (
@@ -1180,32 +811,15 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                     setNewOnlyList(null);
                   }}
                   onBrowseLibrary={browseLibrary}
-                  onEditRule={activeSmartList ? () => openFavoriteListManager(activeSmartList) : undefined}
+                  onEditRule={activeSmartList ? () => listEditing.openManager(activeSmartList) : undefined}
                 />
               )}
             </>
           )}
         </div>
       </div>
-      {listManagerOpen && (
-        <FavoriteListManager
-          markedList={markedList}
-          lists={userFavoriteLists}
-          editor={listEditor}
-          editorReturnsToList={listEditorReturnsToList}
-          deleteTarget={deleteListTarget}
-          deleting={isDeletingList}
-          onClose={closeFavoriteListManager}
-          onNew={() => editFromListManager("new")}
-          onEdit={editFromListManager}
-          onCancelEdit={finishListEdit}
-          onSave={saveFavoriteList}
-          onDelete={setDeleteListTarget}
-          onCancelDelete={() => setDeleteListTarget(null)}
-          onConfirmDelete={() => void deleteFavoriteList()}
-          onDeleteFromEditor={deleteEditedFavoriteList}
-          onMove={moveFavoriteListByID}
-        />
+      {listEditing.open && (
+        <FavoriteListManager markedList={markedList} lists={userLists} {...listEditing.managerProps} />
       )}
       <BrowseLoadingIndicator
         refreshing={favoriteEntity === "works" && isLoading && hasWorksSnapshot}
