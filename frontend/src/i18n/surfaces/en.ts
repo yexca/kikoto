@@ -451,6 +451,10 @@ export const surfaceEnglish = {
       "Demo mode: these works are shown for demonstration only, and their copyrights belong to their original creators.",
     demoListeningNotice:
       "Demo mode: this listening history is simulated. Nobody listened to it, and listening in this demo is not recorded.",
+    demoTranscriptionNotice:
+      "Demo mode: these transcriptions are samples. Demo sends no audio to a speech recognition service, so checking ratings and starting, adding, or discarding transcriptions are unavailable.",
+    demoLyricsTranslationNotice:
+      "Demo mode: these translations are samples. Demo sends no lyrics to an LLM provider, so checking ratings and starting, adding, or discarding translations are unavailable.",
     permissionDenied: "Your account does not have permission to use this feature.",
   },
   workflow: {
@@ -2968,6 +2972,7 @@ export const surfaceEnglish = {
     },
   },
   asrTranscription: {
+    demoCue: "Sample line {{number}}. Demo did not transcribe this audio.",
     service: "Service",
     detect: "Detect automatically",
     noService: "No speech recognition service is ready. An administrator can add one under Settings → LLM & ASR.",
@@ -3063,6 +3068,7 @@ export const surfaceEnglish = {
     awaitingCount: "{{count}} to review",
   },
   lyricsTranslation: {
+    demoCue: "Sample translated line {{number}}. Demo did not translate these lyrics.",
     provider: "LLM provider",
     noProvider: "No LLM provider is ready. An administrator can add one under Settings → LLM.",
     noProviderShort: "No provider available",

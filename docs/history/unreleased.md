@@ -234,6 +234,11 @@
   dashboard was empty there.
 - Subscriptions in Demo shows a fixed sample feed and subscription list with
   fictional names, read-only.
+- **Manage lyrics** in Demo shows the **Transcribe** and **Translate** tabs
+  with sample transcriptions and translations, an example service and
+  provider, and sample previews, with a notice. Demo sends nothing to a
+  service, and starting, rating checks, adding and discarding stay off; the
+  tabs were hidden there.
 </details>
 
 <details>

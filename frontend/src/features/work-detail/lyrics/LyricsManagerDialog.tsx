@@ -67,7 +67,8 @@ export type LyricsManagerRequest = {
  * uses for each local track. Personal player choices still override these
  * assignments. A manager of local files also edits the lyrics files Kikoto
  * manages in a local folder: which stay, and which come in from the folder,
- * the work's other folders, and remote editions.
+ * the work's other folders, and remote editions. Demo shows the transcription
+ * and translation tabs with samples.
  */
 export function LyricsManagerDialog({
   work,
@@ -75,6 +76,7 @@ export function LyricsManagerDialog({
   canDownload = false,
   canTranscribe = false,
   canTranslate = false,
+  demo = false,
   request,
   onClose,
   onSaved,
@@ -87,6 +89,8 @@ export function LyricsManagerDialog({
   canTranscribe?: boolean;
   /** Whether the viewer may start LLM lyrics translations and review their results. */
   canTranslate?: boolean;
+  /** Shows the transcription and translation tabs with samples and every action off. */
+  demo?: boolean;
   request: LyricsManagerRequest;
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -103,8 +107,8 @@ export function LyricsManagerDialog({
     [canDownload, work.localFolders],
   );
   const filesAvailable = localFolders.length > 0;
-  const transcribeAvailable = canTranscribe && entries.audio.length > 0;
-  const translateAvailable = canTranslate && entries.audio.length > 0;
+  const transcribeAvailable = (canTranscribe || demo) && entries.audio.length > 0;
+  const translateAvailable = (canTranslate || demo) && entries.audio.length > 0;
   const [tab, setTab] = useState<LyricsManagerTab>(request.tab === "files" && filesAvailable ? "files" : "assign");
   const [folderId, setFolderId] = useState(request.folderId ?? 0);
   const folder = localFolders.find((candidate) => candidate.id === folderId) ?? localFolders[0];
@@ -225,6 +229,7 @@ export function LyricsManagerDialog({
         <TranscriptionPanel
           work={work}
           audio={entries.audio}
+          demo={demo}
           closeDisabled={busy}
           onClose={onClose}
           onPublished={onSaved}
@@ -234,6 +239,7 @@ export function LyricsManagerDialog({
           work={work}
           audio={entries.audio}
           lyrics={entries.lyrics}
+          demo={demo}
           closeDisabled={busy}
           onClose={onClose}
           onPublished={onSaved}

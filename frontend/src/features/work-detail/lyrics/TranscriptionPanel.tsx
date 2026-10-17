@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DemoLyricsTaskNotice } from "@/components/DemoReadOnlyNotice";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DialogBody, DialogFooter } from "@/components/ui/dialog";
 import { FloatingSelect, type FloatingSelectOption } from "@/components/ui/floating-select";
@@ -17,6 +18,7 @@ import {
   useContentRating,
 } from "@/features/work-detail/lyrics/ContentRatingCheck";
 import { serviceReceives } from "@/features/work-detail/lyrics/contentRatingModel";
+import { demoASRServices, demoLyricsText, demoTranscriptions } from "@/features/work-detail/lyrics/demoLyricsTaskModel";
 import { LyricsNote } from "@/features/work-detail/lyrics/LyricsNote";
 import { LyricsPreview } from "@/features/work-detail/lyrics/LyricsPreview";
 import {
@@ -96,16 +98,20 @@ const startRefusals = new Set([
  * Lists the work's local tracks with the lyrics they have, starts speech
  * transcriptions of the selected ones, and reviews the results. A finished
  * transcription waits here until someone adds it to the lyrics or discards it.
+ * Demo shows sample transcriptions and services and leaves every action off.
  */
 export function TranscriptionPanel({
   work,
   audio,
+  demo = false,
   closeDisabled,
   onClose,
   onPublished,
 }: {
   work: WorkDetail;
   audio: LyricsManagerAudio[];
+  /** Shows samples instead of contacting the server's speech recognition. */
+  demo?: boolean;
   closeDisabled: boolean;
   onClose: () => void;
   /** Reloads the work after a transcription became a lyrics file. */
@@ -113,14 +119,14 @@ export function TranscriptionPanel({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const [services, setServices] = useState<ASRService[] | null>(null);
-  const [transcriptions, setTranscriptions] = useState<ASRTranscription[]>([]);
-  const [listState, setListState] = useState<"loading" | "ready" | "failed">("loading");
+  const [services, setServices] = useState<ASRService[] | null>(demo ? demoASRServices : null);
+  const [loadedTranscriptions, setTranscriptions] = useState<ASRTranscription[]>([]);
+  const [listState, setListState] = useState<"loading" | "ready" | "failed">(demo ? "ready" : "loading");
   const [serverOrigin, setServerOrigin] = useState<string | null>(null);
   const [filter, setFilter] = useState<TranscribeFilter>("noLyrics");
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   // A service and one of its enabled models, as a serviceModelKey.
-  const [choiceKey, setChoiceKey] = useState("");
+  const [choiceKey, setChoiceKey] = useState(() => (demo ? serviceModelChoices(demoASRServices)[0]?.key : "") ?? "");
   // The spoken language the user chose; until then, the work's original language.
   const [chosenLanguage, setChosenLanguage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<{ done: number; total: number } | null>(null);
@@ -133,8 +139,13 @@ export function TranscriptionPanel({
   );
   const origin = serverOrigin ?? workOriginLyricsLanguage(work);
   const language = chosenLanguage ?? origin;
+  const transcriptions = useMemo(
+    () => (demo ? demoTranscriptions(audio, origin) : loadedTranscriptions),
+    [audio, demo, loadedTranscriptions, origin],
+  );
 
   const load = useCallback(async () => {
+    if (demo) return;
     try {
       const result = await api.listASRTranscriptions(work.id);
       setTranscriptions(result.transcriptions);
@@ -144,9 +155,10 @@ export function TranscriptionPanel({
       setListState((current) => (current === "ready" ? current : "failed"));
       toast.notify(toastFromError(error, t("asrTranscription.loadFailed")));
     }
-  }, [t, toast, work.id]);
+  }, [demo, t, toast, work.id]);
 
   useEffect(() => {
+    if (demo) return;
     void load();
     api
       .listASRServices()
@@ -158,7 +170,7 @@ export function TranscriptionPanel({
         setServices([]);
         toast.notify(toastFromError(error, t("asrTranscription.servicesFailed")));
       });
-  }, [load, t, toast]);
+  }, [demo, load, t, toast]);
 
   const active = transcriptions.some((item) => activeStates.has(item.state));
   useEffect(() => {
@@ -324,6 +336,7 @@ export function TranscriptionPanel({
   return (
     <>
       <DialogBody className="space-y-4">
+        {demo && <DemoLyricsTaskNotice task="transcription" />}
         <p className="text-sm text-muted-foreground">{t("asrTranscription.intro")}</p>
         {noService && (
           <p className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-foreground">
@@ -352,7 +365,7 @@ export function TranscriptionPanel({
           <ContentRatingButton
             checking={rating.status === "checking"}
             checked={rating.status === "done"}
-            disabled={!ratingTrack}
+            disabled={demo || !ratingTrack}
             onCheck={rating.run}
           />
         </div>
@@ -519,12 +532,17 @@ export function TranscriptionPanel({
                             </Button>
                           )}
                           {item.state === "ready" && (
-                            <Button variant="ghost" size="sm" disabled={busy} onClick={() => void act(item, "discard")}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={demo || busy}
+                              onClick={() => void act(item, "discard")}
+                            >
                               <Trash2 className="h-4 w-4" />
                               {t("asrTranscription.discard")}
                             </Button>
                           )}
-                          <Button size="sm" disabled={busy} onClick={() => void act(item, "accept")}>
+                          <Button size="sm" disabled={demo || busy} onClick={() => void act(item, "accept")}>
                             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                             {t("asrTranscription.accept")}
                           </Button>
@@ -546,7 +564,16 @@ export function TranscriptionPanel({
                       <LyricsPreview
                         label={title}
                         loadKey={`asr:${item.id}`}
-                        load={() => api.asrTranscriptionText(item.id)}
+                        load={() =>
+                          demo
+                            ? Promise.resolve(
+                                demoLyricsText(
+                                  audioByID.get(item.audioMediaItemId)?.durationSeconds ?? null,
+                                  (number) => t("asrTranscription.demoCue", { number }),
+                                ),
+                              )
+                            : api.asrTranscriptionText(item.id)
+                        }
                         durationSeconds={audioByID.get(item.audioMediaItemId)?.durationSeconds ?? null}
                       />
                     )}
@@ -597,7 +624,7 @@ export function TranscriptionPanel({
                 disabled={working || !services?.length}
               />
             </div>
-            <Button onClick={() => void start()} disabled={working || !choice}>
+            <Button onClick={() => void start()} disabled={demo || working || !choice}>
               {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <AudioLines className="h-4 w-4" />}
               {working
                 ? t("asrTranscription.startingCount", { done: submitting.done, total: submitting.total })

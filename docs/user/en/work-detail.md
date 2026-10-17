@@ -36,6 +36,8 @@ Transcription is an Activity workflow. Kikoto decodes the track itself and sends
 
 The finished transcription waits in the list below the tracks. **Preview** shows its first lines with the same timing check as other lyrics. **Add to lyrics** saves it as a WebVTT file in the language's lyrics folder inside the track's work folder, under the track's own path, such as `lyrics_kikoto/ja/mp3/Track 01.vtt`, and assigns it to the track. A different file or a folder already at that name is kept, and the transcription is saved beside it with a numbered name. A file or folder Kikoto did not create where the lyrics folder, or a folder inside it, belongs stops **Add to lyrics** until you rename or move it; the transcription is kept. **Discard** drops a transcription that is not wanted. If adding to the lyrics does not finish, the result is kept and **Add to lyrics** tries again.
 
+Demo shows this tab with sample transcriptions of the work's tracks and an example service. It sends no audio, **Preview** shows sample text, and **Check rating**, **Transcribe**, **Add to lyrics** and **Discard** are unavailable.
+
 ## Translate
 
 **Manage lyrics → Translate** translates the lyrics of local tracks with a configured [LLM provider](settings.md#llm-providers). The tab is a table of the work's local tracks against the lyrics languages. A green cell has lyrics in that language and a red cell has none; the **Fallback** column shows a dash where a track has no fallback lyrics, since fallback lyrics are not a translation target. **Languages** at the top right chooses the columns shown. Click a red cell to create that language for the track, or a language's header to select every track that lacks it. Each selected track translates from its lyrics in the work's original language, then its fallback lyrics, then its first other language, and that cell is marked as the source; click another green cell in the row to translate from that file instead. A cell whose translation is running or waiting for review shows its state and cannot be selected again. The bar at the bottom chooses the provider and model, and **Translate** queues one translation per selected cell. A column the chosen model cannot translate into is marked, as in [LLM translation](#llm-translation), and its cells cannot be selected. The track must have a local file in a work folder, and that work folder receives the translation. A remote lyrics file that matches a track by name counts as its fallback lyrics and is marked with a cloud; translating it requires administrator opt-in and remote fetch permission. The content safety policy is the one [LLM translation](#llm-translation) uses, and it checks the complete lyrics before anything is sent. **Check rating** runs that check on every lyrics file in the shown columns without sending anything, marks each green cell with its class, counts the classes, and marks the providers that may not receive the selected sources; the check runs only when you press it.
@@ -44,6 +46,7 @@ Translation is an Activity workflow that sends the lyrics in bounded parts and k
 
 The finished translation waits in the list below the table for 24 hours and belongs to whoever started it. **Preview** shows its first lines with the same timing check as other lyrics. **Add to lyrics** checks the lyrics file, the policy and the provider again, then saves the translation in the target language's lyrics folder inside the track's work folder, under the track's own path with the original file's extension, such as `lyrics_kikoto/zh-hans/mp3/Track 01.lrc`, and assigns it to the track in that language. The original lyrics file is never changed. A different file or a folder already at that name is kept, and the translation is saved beside it with a numbered name. A file or folder Kikoto did not create where the lyrics folder, or a folder inside it, belongs stops **Add to lyrics** until you rename or move it; the translation is kept. **Discard** drops a translation that is not wanted. If adding to the lyrics does not finish, the result is kept and **Add to lyrics** tries again without contacting the provider.
 
+Demo shows this tab with sample translations of the tracks that have lyrics and an example provider. It sends no lyrics, **Preview** shows sample text, and **Check rating**, **Translate**, **Add to lyrics**, **Discard** and **Resend** are unavailable.
 
 ## Editing metadata
 
@@ -270,7 +273,7 @@ A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), 
 - **Manage lyrics** has a **Transcribe** tab for users with library write and
   workflow permission when a [speech recognition
   service](settings.md#asr-services) is configured. See
-  [Transcribe](#transcribe).
+  [Transcribe](#transcribe). Demo shows it with samples.
 - **Quick select** in **Manage files** selects files by location or format.
   On a local work it also has **Find identical files**, which compares
   the local files of every edition and folder of the work by content, so a

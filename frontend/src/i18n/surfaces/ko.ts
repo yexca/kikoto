@@ -401,6 +401,10 @@ export const surfaceKorean = {
     demoWorksNotice: "데모 모드: 작품은 데모 용도로만 표시되며, 저작권은 원저작자에게 있습니다.",
     demoListeningNotice:
       "데모 모드: 이 청취 기록은 시뮬레이션이며 실제 청취가 아닙니다. 이 데모에서의 재생도 기록되지 않습니다.",
+    demoTranscriptionNotice:
+      "데모 모드: 이 전사 기록은 예시입니다. 데모는 오디오를 음성 인식 서비스로 보내지 않으므로 등급 확인과 전사 시작·추가·폐기를 사용할 수 없습니다.",
+    demoLyricsTranslationNotice:
+      "데모 모드: 이 번역은 예시입니다. 데모는 가사를 LLM 제공자에게 보내지 않으므로 등급 확인과 번역 시작·추가·폐기를 사용할 수 없습니다.",
     permissionDenied: "이 기능을 사용할 권한이 없습니다.",
   },
   workflow: {
@@ -2909,6 +2913,7 @@ export const surfaceKorean = {
     },
   },
   asrTranscription: {
+    demoCue: "예시 {{number}}번째 줄. 데모는 이 오디오를 전사하지 않았습니다.",
     service: "서비스",
     detect: "자동 감지",
     noService: "사용할 수 있는 음성 인식 서비스가 없습니다. 관리자가 설정 → LLM 및 음성 인식에서 추가할 수 있습니다.",
@@ -3005,6 +3010,7 @@ export const surfaceKorean = {
     awaitingCount: "검토 대기 {{count}}개",
   },
   lyricsTranslation: {
+    demoCue: "번역 예시 {{number}}번째 줄. 데모는 이 가사를 번역하지 않았습니다.",
     provider: "LLM 제공자",
     noProvider: "사용할 수 있는 LLM 제공자가 없습니다. 관리자가 설정 → LLM에서 추가할 수 있습니다.",
     noProviderShort: "사용 가능한 제공자 없음",

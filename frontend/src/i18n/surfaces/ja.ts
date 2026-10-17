@@ -402,6 +402,10 @@ export const surfaceJapanese = {
     demoWorksNotice: "デモモード：作品はデモ用途でのみ表示しており、著作権は原作者に帰属します。",
     demoListeningNotice:
       "デモモード：この聴取履歴はシミュレーションで、実際の聴取ではありません。このデモでの再生も記録されません。",
+    demoTranscriptionNotice:
+      "デモモード：これらの文字起こしはサンプルです。デモは音声を音声認識サービスに送信しないため、区分の確認や、文字起こしの開始・追加・破棄はできません。",
+    demoLyricsTranslationNotice:
+      "デモモード：これらの翻訳はサンプルです。デモは歌詞を LLM プロバイダーに送信しないため、区分の確認や、翻訳の開始・追加・破棄はできません。",
     permissionDenied: "この機能を使用する権限がありません。",
   },
   workflow: {
@@ -2921,6 +2925,7 @@ export const surfaceJapanese = {
     },
   },
   asrTranscription: {
+    demoCue: "サンプル {{number}} 行目。デモはこの音声を文字起こししていません。",
     service: "サービス",
     detect: "自動検出",
     noService: "利用できる音声認識サービスがありません。管理者が「設定 → LLM・音声認識」で追加できます。",
@@ -3019,6 +3024,7 @@ export const surfaceJapanese = {
     awaitingCount: "確認待ち {{count}} 件",
   },
   lyricsTranslation: {
+    demoCue: "翻訳サンプル {{number}} 行目。デモはこの歌詞を翻訳していません。",
     provider: "LLM プロバイダー",
     noProvider: "利用できる LLM プロバイダーがありません。管理者が「設定 → LLM」で追加できます。",
     noProviderShort: "利用できるプロバイダーなし",
