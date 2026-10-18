@@ -28,6 +28,8 @@ export type FolderWorkspace = {
   retrySources: () => void;
   /** Present where the remote sources can be asked again about every edition. */
   remoteCheck?: { checking: boolean; check: () => void };
+  /** Set for a custom work, which no remote source has: only local places are listed. */
+  localOnly?: boolean;
   files: Readonly<Record<string, FolderEditFilesState>>;
   selection: Readonly<Record<string, ReadonlySet<string>>>;
   lyrics: FolderEditLyricsRoles;

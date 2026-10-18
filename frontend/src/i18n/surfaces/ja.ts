@@ -1863,6 +1863,8 @@ export const surfaceJapanese = {
     openDlsiteFor: "{{code}} の DLsite を開く",
     noVoiceActorMetadata: "声優メタデータなし",
     noTagMetadata: "タグメタデータなし",
+    customWorkNoFolderDescription:
+      "このカスタム作品にはライブラリ内のローカルフォルダーがありません。名前の末尾にこの KT 番号が付いたフォルダーがあれば、スキャンで再び見つかります。",
     noSourceDirectoryDescription:
       "この作品はローカルデータベースにありますが、ローカルファイル、キャッシュ、追跡済みソース、既知のソース情報はまだありません。",
     sourceAvailable: "{{source}} を利用できます",

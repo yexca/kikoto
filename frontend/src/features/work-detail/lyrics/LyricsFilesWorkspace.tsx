@@ -62,6 +62,7 @@ export function LyricsFilesWorkspace({
   folders,
   canAssign,
   initialPaths,
+  localOnly = false,
   onFolderChange,
   onBusyChange,
   onApplied,
@@ -76,6 +77,8 @@ export function LyricsFilesWorkspace({
   canAssign: boolean;
   /** Lyrics files of the folder to start with selected, by their path below it. */
   initialPaths?: readonly string[];
+  /** Lists only local places, for a custom work that no remote source has. */
+  localOnly?: boolean;
   onFolderChange: (folderId: number) => void;
   onBusyChange: (busy: boolean) => void;
   onApplied: () => Promise<void>;
@@ -86,7 +89,7 @@ export function LyricsFilesWorkspace({
     () => ({ workId, folderId: folder.id, rootPath: folder.rootPath }),
     [folder.id, folder.rootPath, workId],
   );
-  const workspace = useLyricsEditWorkspace({ target, items, canAssign, initialPaths, onApplied });
+  const workspace = useLyricsEditWorkspace({ target, items, canAssign, initialPaths, localOnly, onApplied });
   const [pane, setPane] = useState<LyricsPane>(initialPaths?.length ? "select" : "sources");
   const [confirmation, setConfirmation] = useState<{ step: 1 | 2; targets: MediaDeleteTarget[] } | null>(null);
   const trackCounts = useMemo(() => lyricsFileTrackCounts(items), [items]);
@@ -225,7 +228,9 @@ function ResourceColumn({
       items: workspace.resources.filter((resource) => resource.kind === "remote"),
       empty: t("folderEdit.noRemoteSources"),
     },
-  ];
+  ].filter((group) => !(workspace.localOnly && group.key === "remote"));
+  // The place list loads with the remote sources; without them its state shows under local places.
+  const statusGroup = workspace.localOnly ? "local" : "remote";
   return (
     <aside
       aria-label={t("folderEdit.pane.sources")}
@@ -261,13 +266,13 @@ function ResourceColumn({
                 />
               );
             })}
-            {group.key === "remote" && workspace.sourcesStatus === "loading" && (
+            {group.key === statusGroup && workspace.sourcesStatus === "loading" && (
               <div className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground" role="status">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 {t("folderEdit.loadingSources")}
               </div>
             )}
-            {group.key === "remote" && workspace.sourcesStatus === "error" && (
+            {group.key === statusGroup && workspace.sourcesStatus === "error" && (
               <div className="space-y-1.5 px-1 text-xs text-muted-foreground" role="alert">
                 <div>{t("folderEdit.sourcesFailed")}</div>
                 <Button variant="outline" size="sm" onClick={workspace.retrySources}>

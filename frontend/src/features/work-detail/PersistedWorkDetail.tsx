@@ -35,6 +35,7 @@ import { useMetadataSyncWorkflow } from "@/features/work-detail/workflows/useMet
 import { WorkMetadataRefreshControl, type MetadataEditorSection } from "@/features/work-detail/metadata";
 import type { ClientPrincipalID } from "@/lib/clientStorageScope";
 import { useAuth } from "@/auth/AuthProvider";
+import { isCustomWorkCode } from "@/lib/workCode";
 import { useWorkSourceContext } from "@/features/work-detail/source/useWorkSourceContext";
 import { useSourceTrackingActions } from "@/features/work-detail/source/useSourceTrackingActions";
 import { useMediaTree } from "@/features/work-detail/media/useMediaTree";
@@ -140,10 +141,14 @@ export function PersistedWorkDetailController({
   const auth = useAuth();
   const toast = useToast();
   const { t } = useTranslation();
+  // A custom work has no provider metadata and no remote source has it, so
+  // the page offers only its local folders and manual metadata.
+  const customWork = work ? Boolean(work.customWork) : isCustomWorkCode(code);
+  const detailSources = useMemo(() => (customWork ? [] : sources), [customWork, sources]);
   const sourceContext = useWorkSourceContext({
     code,
     work,
-    sources,
+    sources: detailSources,
     initialSourceIntent,
     initialTrackedSourceID,
     initialRemoteCode,
@@ -649,7 +654,8 @@ export function PersistedWorkDetailController({
       selectionModal={fetchSelectionModal}
       onActiveKeyChange={changeSourceKey}
       onTrackedPresenceChange={changeTrackedPresence}
-      onCheckSources={() => void tracking.checkSources()}
+      customWork={customWork}
+      onCheckSources={customWork ? undefined : () => void tracking.checkSources()}
       onRetry={retryDirectory}
       onSelectRemote={(remote) => changeSourceKey(remoteSourceTabKey(remote.source.id))}
       onOpenCleanupRun={() => {
@@ -672,8 +678,8 @@ export function PersistedWorkDetailController({
     selectedRemoteDetail,
     personalTags,
     loading: isDetailLoading,
-    metadataSync: work?.metadataSync,
-    canSyncMetadata,
+    metadataSync: customWork ? undefined : work?.metadataSync,
+    canSyncMetadata: canSyncMetadata && !customWork,
     metadataSyncBusy,
     onSyncMetadata: () => void metadataSync.sync(),
     onLinkMetadata: () => setMetadataEditorSection("source"),
@@ -742,7 +748,7 @@ export function PersistedWorkDetailController({
         selectedMetadataVariantKey={selectedMetadataVariantKey}
         canSyncMetadata={canSyncMetadata}
         refreshActions={
-          canSyncMetadata || auth.demoMode ? (
+          !customWork && (canSyncMetadata || auth.demoMode) ? (
             <WorkMetadataRefreshControl
               sources={sources}
               busy={metadataSyncBusy}

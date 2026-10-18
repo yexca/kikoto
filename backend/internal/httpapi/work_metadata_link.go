@@ -39,6 +39,9 @@ func (s *Server) setWorkMetadataLink(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 		return
 	}
+	if s.refuseCustomWork(w, r, workID) {
+		return
+	}
 	sourceCode := normalizeDLsiteCode(payload.SourceCode)
 	if sourceCode == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})

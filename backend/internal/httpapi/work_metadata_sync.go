@@ -15,6 +15,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/remotemetadata"
+	"github.com/yexca/kikoto/backend/internal/workcode"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -71,6 +72,10 @@ func (s *Server) createWorkMetadataSyncRun(w http.ResponseWriter, r *http.Reques
 	}
 	result, err := s.enqueueWorkMetadataSyncForSource(r.Context(), workID, false, sourceID)
 	if err != nil {
+		if errors.Is(err, errCustomWorkUnsupported) {
+			writeCustomWorkUnsupported(w)
+			return
+		}
 		if errors.Is(err, errMetadataSourceUnavailable) {
 			writeAPIError(w, http.StatusBadRequest, "metadata_source_unavailable", "metadata source is unavailable", false)
 			return
@@ -131,6 +136,9 @@ func (s *Server) enqueueWorkMetadataSyncForSource(ctx context.Context, workID in
 		return workMetadataSyncRunResult{}, err
 	}
 	payload.PrimaryCode = strings.ToUpper(strings.TrimSpace(payload.PrimaryCode))
+	if workcode.IsCustom(payload.PrimaryCode) {
+		return workMetadataSyncRunResult{}, errCustomWorkUnsupported
+	}
 	payload.FamilyCode = strings.ToUpper(strings.TrimSpace(payload.FamilyCode))
 	payload.SourceID = sourceID
 	if sourceID == 0 {

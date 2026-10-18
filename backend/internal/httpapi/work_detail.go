@@ -11,6 +11,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
+	"github.com/yexca/kikoto/backend/internal/workcode"
 )
 
 type workDetail struct {
@@ -30,6 +31,7 @@ type workDetail struct {
 	UpdatedAt        string                     `json:"updatedAt"`
 	CoverURL         string                     `json:"coverUrl"`
 	DLsiteURL        string                     `json:"dlsiteUrl"`
+	CustomWork       bool                       `json:"customWork"`
 	Circle           string                     `json:"circle"`
 	CircleExternalID string                     `json:"circleExternalId"`
 	Rating           *float64                   `json:"rating"`
@@ -372,6 +374,9 @@ func (s *Server) loadWorkDetailBase(ctx context.Context, userID int64, id int64)
 	}
 	work.CoverURL = coverURL
 	work.DLsiteURL = s.dlsiteURL(work.PrimaryCode)
+	// A custom work has no provider metadata or remote sources, only local
+	// folders and manual metadata.
+	work.CustomWork = workcode.IsCustom(work.PrimaryCode)
 	work.SourcePresence = s.sourcePresenceForCode(ctx, work.PrimaryCode)
 	localFolders, err := s.loadWorkFolderLocations(ctx, work.ID)
 	if err != nil {

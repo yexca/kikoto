@@ -50,6 +50,7 @@ export function useFolderEditWorkspace({
   currentItems,
   initialRemote,
   canAssign,
+  localOnly = false,
   onApplied,
 }: {
   target: FolderEditTarget;
@@ -58,6 +59,8 @@ export function useFolderEditWorkspace({
   initialRemote?: FolderEditInitialRemote | null;
   /** Whether the viewer may assign added lyrics to tracks. */
   canAssign: boolean;
+  /** Lists only local places, for a custom work that no remote source has. */
+  localOnly?: boolean;
   onApplied: (result: WorkFolderEditResult) => void;
 }) {
   const { t } = useTranslation();
@@ -243,7 +246,8 @@ export function useFolderEditWorkspace({
     resources,
     sourcesStatus,
     retrySources: () => setSourcesAttempt((value) => value + 1),
-    remoteCheck: { checking: remoteCheck === "checking", check: () => void checkRemote() },
+    remoteCheck: localOnly ? undefined : { checking: remoteCheck === "checking", check: () => void checkRemote() },
+    localOnly,
     files,
     selection,
     lyrics,

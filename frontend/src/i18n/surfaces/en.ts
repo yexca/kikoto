@@ -1913,6 +1913,8 @@ export const surfaceEnglish = {
     openDlsiteFor: "Open DLsite for {{code}}",
     noVoiceActorMetadata: "No voice actor metadata",
     noTagMetadata: "No tag metadata",
+    customWorkNoFolderDescription:
+      "This custom work has no local folder in the library. A scan finds it again when a folder's name ends with its KT code.",
     noSourceDirectoryDescription:
       "This work exists in the local database, but Kikoto has no local files, cache, tracked source, or known source presence for it yet.",
     sourceAvailable: "{{source}} available",

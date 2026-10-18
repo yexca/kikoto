@@ -197,7 +197,7 @@ func (s *Server) checkWorkFolderEditSources(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	workID, code, ok := s.workFolderEditSourcesWork(w, r)
-	if !ok {
+	if !ok || refuseCustomWorkCode(w, code) {
 		return
 	}
 	ctx := r.Context()

@@ -254,6 +254,7 @@ export function LyricsManagerDialog({
           folders={localFolders}
           canAssign={!readOnly}
           initialPaths={folder.id === request.folderId ? request.paths : undefined}
+          localOnly={Boolean(work.customWork)}
           onFolderChange={setFolderId}
           onBusyChange={setFilesBusy}
           onApplied={onSaved}

@@ -57,6 +57,9 @@ func (s *Server) setWorkPurchaseBonus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 		return
 	}
+	if s.refuseCustomWork(w, r, workID) {
+		return
+	}
 	parentCode := normalizeDLsiteCode(payload.ParentCode)
 	if parentCode == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid work code"})

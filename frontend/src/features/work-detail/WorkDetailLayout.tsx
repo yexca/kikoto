@@ -70,6 +70,8 @@ export type UnifiedWorkDetailPresentation = {
   fallbackCode: string;
   code: string;
   dlsiteUrl: string;
+  /** A custom work has no provider rating or sales to show. */
+  customWork?: boolean;
   title: string;
   description?: string;
   circle: string;
@@ -453,13 +455,14 @@ function DetailStatStrip({
   rating,
   ratingCount,
   sales,
+  customWork = false,
   releaseDate,
   ageRating,
   sourceInfo,
   compact = false,
 }: Pick<
   UnifiedWorkDetailPresentation,
-  "ratingLabel" | "rating" | "ratingCount" | "sales" | "releaseDate" | "ageRating" | "sourceInfo"
+  "ratingLabel" | "rating" | "ratingCount" | "sales" | "customWork" | "releaseDate" | "ageRating" | "sourceInfo"
 > & { compact?: boolean }) {
   const normalizedRatingLabel = ratingLabel.toLowerCase().includes("dl") ? i18n.t("workCard.ratingShort") : ratingLabel;
   const age = ageRatingPresentation(ageRating);
@@ -517,7 +520,7 @@ function DetailStatStrip({
           : i18n.t("libraryDetail.metadataDuration"),
       value: durationSeconds ? formatDuration(durationSeconds) : sourceInfo.loading ? "…" : "—",
     },
-  ];
+  ].filter((stat) => !customWork || (stat.key !== "rating" && stat.key !== "sales"));
   return (
     <dl
       data-testid="dlsite-info"
@@ -564,6 +567,7 @@ function MobileWorkDetailLayout({
   rating,
   ratingCount,
   sales,
+  customWork,
   baseCode,
   metadataLanguage,
   metadataPresentation,
@@ -611,6 +615,7 @@ function MobileWorkDetailLayout({
   rating: number | null;
   ratingCount: number | null;
   sales: number | null;
+  customWork?: boolean;
   baseCode?: string;
   metadataLanguage?: string;
   metadataPresentation?: WorkMetadataPresentation;
@@ -705,6 +710,7 @@ function MobileWorkDetailLayout({
         rating={rating}
         ratingCount={ratingCount}
         sales={sales}
+        customWork={customWork}
         releaseDate={releaseDate}
         ageRating={ageRating}
         sourceInfo={sourceInfo}

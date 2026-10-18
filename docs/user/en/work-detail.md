@@ -92,6 +92,10 @@ Completion shows merged names as their final tag. A hidden match, including a me
 
 Until a background update finishes, the work keeps its last saved tag set, including an empty set, even when metadata refreshes. The voice actor page’s list of remote works shows remote tags alongside manually added shared tags.
 
+## Custom works
+
+A [custom work](settings.md#metadata) has no provider metadata and no remote source. Its detail shows no DLsite link, rating, sales, or metadata notice, and offers no metadata refresh, remote source tabs, or source checks; the directory lists only its local folders. The metadata editor has no **Fetch for edit** and no Metadata source section, so a custom work takes no metadata link, purchase bonus parent, or bundle contents; its title, description, age rating, cover, tags, and credits are edited by hand. **Edit files** and the **Lyrics files** tab of **Manage lyrics** list only local folders and editions. When its folder is missing, the directory explains that a scan finds the work again once a folder's name ends with its KT code.
+
 ## Purchase bonuses
 
 A purchase bonus, such as an early purchase bonus (`【早期購入特典】`), is its own DLsite product with its own files, but DLsite does not say which work it belongs to. Metadata sync can link it to that parent work (see [purchase bonuses](settings.md#purchase-bonuses)), and a library editor can enter or remove the parent's code under **Purchase bonus** in the editor's Metadata source section. A linked bonus stays a separate work: it keeps its own title, cover, files, playback progress, and library card, and takes the tags, voice actors, and series it lacks from the parent. Its detail shows **Bonus for** with the parent work, or the parent code with a DLsite link when the parent is not in the library, and the parent's detail lists its **Bonuses** that are in the library, including bonuses linked to another edition of its family. The parent code never becomes a library work. Removing the link also stops automatic detection for that work, and the next refresh drops the inherited values.

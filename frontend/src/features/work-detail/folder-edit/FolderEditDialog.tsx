@@ -23,6 +23,7 @@ export function FolderEditDialog({
   folder,
   currentItems,
   initialRemote,
+  localOnly = false,
   onBack,
   onClose,
   onApplied,
@@ -31,6 +32,8 @@ export function FolderEditDialog({
   folder: { id: number; rootPath: string };
   currentItems: MediaItem[];
   initialRemote?: FolderEditInitialRemote | null;
+  /** Lists only local places, for a custom work that no remote source has. */
+  localOnly?: boolean;
   /** Returns to the folder's own file list. */
   onBack?: () => void;
   onClose: () => void;
@@ -47,6 +50,7 @@ export function FolderEditDialog({
     currentItems,
     initialRemote,
     canAssign: !auth.demoMode && auth.hasPermission("library:write"),
+    localOnly,
     onApplied,
   });
   const [confirmation, setConfirmation] = useState<{ step: 1 | 2; targets: MediaDeleteTarget[] } | null>(null);

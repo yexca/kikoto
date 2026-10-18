@@ -88,7 +88,7 @@ func (s *Server) checkWorkSourceAvailabilityNow(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return
 	}
-	if !s.requireDemoWorkCode(w, r, code) {
+	if !s.requireDemoWorkCode(w, r, code) || refuseCustomWorkCode(w, code) {
 		return
 	}
 	var payload sourceAvailabilityCheckRequest

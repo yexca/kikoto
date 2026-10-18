@@ -176,6 +176,8 @@ type MockApplicationFixture = {
   detailMetadataSync?: WorkMetadataSyncStatus;
   detailLocalFolders?: WorkFolderLocation[];
   detailPurchaseBonus?: WorkPurchaseBonus;
+  /** Serves the work as a custom work, which has no provider metadata or remote sources. */
+  detailCustomWork?: boolean;
   /** Summary the finished media cleanup run reports, such as a forgotten work. */
   cleanupRunSummary?: Record<string, unknown>;
   metadataSyncControl?: {
@@ -489,6 +491,7 @@ export async function mockApplication(
           localFolders: fixture.detailLocalFolders ?? [],
           ...(fixture.detailMetadataPresentation ? { metadataPresentation: fixture.detailMetadataPresentation } : {}),
           ...(fixture.detailPurchaseBonus ? { purchaseBonus: fixture.detailPurchaseBonus } : {}),
+          ...(fixture.detailCustomWork ? { customWork: true, dlsiteUrl: "" } : {}),
           metadataSync: fixture.metadataSyncControl?.detailReady
             ? { status: "available", checkedAt: "2026-01-01T00:01:00Z" }
             : (fixture.detailMetadataSync ?? { status: "available", checkedAt: "" }),

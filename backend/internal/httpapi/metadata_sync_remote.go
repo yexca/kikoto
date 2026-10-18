@@ -9,6 +9,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/remotemetadata"
+	"github.com/yexca/kikoto/backend/internal/workcode"
 )
 
 // Preserve retry classification without exposing upstream URLs or diagnostics.
@@ -56,7 +57,8 @@ func (s *Server) syncMetadataScopeFromRemote(ctx context.Context, job workflowJo
 			_ = rows.Close()
 			return result, err
 		}
-		if scope.WorkIDs != nil && !wanted[item.id] {
+		// A custom work's code exists on no remote source.
+		if (scope.WorkIDs != nil && !wanted[item.id]) || workcode.IsCustom(item.code) {
 			continue
 		}
 		if described && !scope.Full {

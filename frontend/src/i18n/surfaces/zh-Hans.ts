@@ -1754,6 +1754,8 @@ export const surfaceHans = {
     openDlsiteFor: "打开 {{code}} 的 DLsite 页面",
     noVoiceActorMetadata: "没有声优元数据",
     noTagMetadata: "没有标签元数据",
+    customWorkNoFolderDescription:
+      "此自定义作品在媒体库中没有本地文件夹。当有文件夹名称以其 KT 编号结尾时，扫描会重新找到它。",
     noSourceDirectoryDescription:
       "此作品存在于本地数据库中，但 Kikoto 尚无其本地文件、缓存、已跟踪来源或已知来源存在记录。",
     sourceAvailable: "{{source}} 可用",

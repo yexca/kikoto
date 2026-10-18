@@ -23,7 +23,7 @@
 <details>
 <summary><strong>Metadata and scans</strong></summary>
 
-- The Metadata page's **Custom works** view lists library folders whose names carry no work code and turns one into a custom work. Kikoto assigns it a `KT` code and appends the code to the folder's name, such as `Example Work [KT00000001]`, so every scan finds it. The view opens with a notice describing the rename, and an administrator accepts it before custom works can be created. A custom work has no DLsite link or DLsite metadata sync, and its title and description come from the metadata editor.
+- The Metadata page's **Custom works** view lists library folders whose names carry no work code and turns one into a custom work. Kikoto assigns it a `KT` code and appends the code to the folder's name, such as `Example Work [KT00000001]`, so every scan finds it. The view opens with a notice describing the rename, and an administrator accepts it before custom works can be created. A custom work has no DLsite link, provider metadata, or remote source: its detail shows no rating, sales, metadata refresh, Fetch for edit, Metadata source section, remote source tabs, or source checks, **Edit files** and **Lyrics files** list only local places, and its title, description, age rating, and other fields come from the metadata editor. The server refuses metadata sync, metadata previews, metadata links, purchase bonus and bundle changes, and source checks for a custom work, and per-source metadata runs and source presence checks leave it out.
 
 </details>
 

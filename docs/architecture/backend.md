@@ -168,6 +168,12 @@ and an optional title, which defaults to the folder name. It answers 201 with
 the work id, the assigned code, the renamed path, and the queued scan run; 409
 `custom_work_notice_required` before the notice is accepted; and 409 when the
 folder is no longer eligible or the library is unavailable.
+
+Provider and remote-source actions on a custom work answer 409
+`custom_work_unsupported`: `POST /api/works/{id}/metadata-sync` and
+`.../metadata-preview`, `PUT .../metadata-link`, `.../purchase-bonus`, and
+`.../bundle-members/{code}`, `POST .../folder-edit/sources/check`, and
+`POST /api/works/{code}/source-availability`.
 Filesystem failures are logged; the response does not name host paths.
 
 The Library list endpoint always returns one bounded page; a request without

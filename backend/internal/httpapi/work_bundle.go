@@ -264,7 +264,7 @@ func (s *Server) addWorkBundleMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	workID, bundleCode, memberCode, _, ok := s.bundleMemberRequest(w, r)
-	if !ok {
+	if !ok || refuseCustomWorkCode(w, bundleCode) {
 		return
 	}
 	ctx := r.Context()

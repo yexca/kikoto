@@ -168,7 +168,9 @@ function ResourceColumn({
   const groups = [
     { key: "remote", label: t("folderEdit.remote"), items: remote, empty: t("folderEdit.noRemoteSources") },
     { key: "local", label: t("folderEdit.local"), items: local, empty: "" },
-  ];
+  ].filter((group) => !(workspace.localOnly && group.key === "remote"));
+  // The place list loads with the remote sources; without them its state shows under local places.
+  const statusGroup = workspace.localOnly ? "local" : "remote";
   // An edit lists its own folder first; a Fetch lists the edition it fetches first.
   if (local[0]?.kind === "current") groups.reverse();
   return (
@@ -218,13 +220,13 @@ function ResourceColumn({
                   onSelect={() => onSelect(resource)}
                 />
               ))}
-              {group.key === "remote" && workspace.sourcesStatus === "loading" && (
+              {group.key === statusGroup && workspace.sourcesStatus === "loading" && (
                 <div className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground" role="status">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   {t("folderEdit.loadingSources")}
                 </div>
               )}
-              {group.key === "remote" && workspace.sourcesStatus === "error" && (
+              {group.key === statusGroup && workspace.sourcesStatus === "error" && (
                 <div className="space-y-1.5 px-1 text-xs text-muted-foreground" role="alert">
                   <div>{t("folderEdit.sourcesFailed")}</div>
                   <Button variant="outline" size="sm" onClick={workspace.retrySources}>

@@ -51,6 +51,7 @@ export function useLyricsEditWorkspace({
   items,
   canAssign,
   initialPaths,
+  localOnly = false,
   onApplied,
 }: {
   target: FolderEditTarget;
@@ -60,6 +61,8 @@ export function useLyricsEditWorkspace({
   canAssign: boolean;
   /** Lyrics files of the folder to start with selected, by their path below it. */
   initialPaths?: readonly string[];
+  /** Lists only local places, for a custom work that no remote source has. */
+  localOnly?: boolean;
   onApplied: (result: LyricsEditResult) => Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -257,6 +260,7 @@ export function useLyricsEditWorkspace({
   const activeResource = resources.find((resource) => resource.id === activeId) ?? resources[0];
   return {
     resources,
+    localOnly,
     sourcesStatus,
     retrySources: () => setSourcesAttempt((value) => value + 1),
     files,

@@ -690,8 +690,12 @@ renames the folder back. An incremental scan of the renamed folder then
 records its location and files. The `custom_work_rename_notice` setting
 records the accepted version of the notice that creating a custom work renames
 its folder, the administrator who accepted it and when; creation is refused
-until the current version is accepted. A custom work has no DLsite page and is never
-a DLsite metadata sync target; its metadata comes from manual overrides.
+until the current version is accepted. A custom work has no DLsite page,
+provider metadata, or remote source, and its metadata comes from manual
+overrides. Work detail marks it `customWork`. Metadata sync, metadata previews,
+metadata links, purchase bonus and bundle member changes, and source checks
+refuse it with `409 custom_work_unsupported`; per-source metadata runs and
+source presence checks leave it out.
 
 `media_item.file_version` and `media_file_location.file_version` version local
 file observations. Local scans observe file size and nanosecond modification

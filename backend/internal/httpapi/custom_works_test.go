@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -120,5 +121,52 @@ func TestCustomWorkRefusesAFolderThatHoldsAWork(t *testing.T) {
 	var works int
 	if err := server.db.QueryRow("SELECT COUNT(*) FROM work").Scan(&works); err != nil || works != 0 {
 		t.Fatalf("works = %d, %v; want none", works, err)
+	}
+}
+
+func TestCustomWorkRefusesProviderAndRemoteSourceActions(t *testing.T) {
+	server := NewServer(openMigratedTestDB(t), config.Config{DataRoot: t.TempDir()})
+	code := testfixture.WorkCode(testfixture.PrefixKT, 0)
+	inserted, err := server.db.Exec("INSERT INTO work (primary_code, title) VALUES (?, 'Example Work')", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workID, _ := inserted.LastInsertId()
+	id := strconv.FormatInt(workID, 10)
+	parentCode := testfixture.WorkCode(testfixture.PrefixRJ, 0)
+	permissions := []string{"metadata:sync", "library:write", "downloads:manage", "remote:track"}
+	for _, action := range []struct {
+		name    string
+		handler http.HandlerFunc
+		method  string
+		target  string
+		body    string
+		values  map[string]string
+	}{
+		{"metadata sync", server.createWorkMetadataSyncRun, http.MethodPost, "/api/works/" + id + "/metadata-sync", "", map[string]string{"id": id}},
+		{"metadata preview", server.createWorkMetadataPreview, http.MethodPost, "/api/works/" + id + "/metadata-preview", "", map[string]string{"id": id}},
+		{"metadata link", server.setWorkMetadataLink, http.MethodPut, "/api/works/" + id + "/metadata-link", `{"sourceCode":"` + parentCode + `"}`, map[string]string{"id": id}},
+		{"purchase bonus", server.setWorkPurchaseBonus, http.MethodPut, "/api/works/" + id + "/purchase-bonus", `{"parentCode":"` + parentCode + `"}`, map[string]string{"id": id}},
+		{"bundle member", server.addWorkBundleMember, http.MethodPut, "/api/works/" + id + "/bundle-members/" + parentCode, "", map[string]string{"id": id, "code": parentCode}},
+		{"source check", server.checkWorkSourceAvailabilityNow, http.MethodPost, "/api/works/" + code + "/source-availability", "{}", map[string]string{"code": code}},
+		{"folder edit source check", server.checkWorkFolderEditSources, http.MethodPost, "/api/works/" + id + "/folder-edit/sources/check", "{}", map[string]string{"id": id}},
+	} {
+		request := customWorkRequest(action.method, action.target, action.body, permissions...)
+		for key, value := range action.values {
+			request.SetPathValue(key, value)
+		}
+		response := httptest.NewRecorder()
+		action.handler(response, request)
+		if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "custom_work_unsupported") {
+			t.Fatalf("%s = %d %s, want the custom work refusal", action.name, response.Code, response.Body.String())
+		}
+	}
+	var runs int
+	if err := server.db.QueryRow("SELECT COUNT(*) FROM workflow_run").Scan(&runs); err != nil || runs != 0 {
+		t.Fatalf("workflow runs = %d, %v; want none", runs, err)
+	}
+	detail, err := server.loadWorkDetail(context.Background(), 0, workID, false)
+	if err != nil || !detail.CustomWork || detail.DLsiteURL != "" {
+		t.Fatalf("detail customWork = %t dlsiteUrl = %q, %v", detail.CustomWork, detail.DLsiteURL, err)
 	}
 }

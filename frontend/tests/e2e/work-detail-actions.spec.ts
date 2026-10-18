@@ -106,6 +106,43 @@ test("Metadata opens the editor directly with the default refresh and no unconfi
   await expect(dialog).toBeVisible();
 });
 
+test("a custom work edits its metadata and age rating without provider refreshes", async ({ page }) => {
+  const control = { runId: 611, status: "queued" as const, postRequests: 0, statusRequests: 0, detailRequests: 0 };
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "library:write", "metadata:sync"],
+    librarySources: [librarySourceFixture({ metadataCapable: true })],
+    detailMetadataSync: { status: "not_synced", checkedAt: "" },
+    detailCustomWork: true,
+    metadataSyncControl: control,
+  });
+  await page.route("**/api/works/1/cover-candidates", (route) =>
+    route.fulfill({ json: { candidates: [], providerCoverUrl: "" } satisfies ApiResponse<"listWorkCoverCandidates"> }),
+  );
+  const overrides: unknown[] = [];
+  await page.route("**/api/works/1/manual-overrides", (route) => {
+    overrides.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ageRating: "general" } });
+  });
+  await page.goto("/RJ00000000");
+  const stats = page.getByTestId("dlsite-info");
+  await expect(stats.getByText("Age rating", { exact: true })).toBeVisible();
+  await expect(stats.getByText("Sales", { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("metadata-sync-notice")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  await expect(dialog.getByRole("tab", { name: "Metadata source" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Fetch for edit", exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Refresh metadata", exact: true })).toHaveCount(0);
+  const rating = dialog.getByRole("radiogroup", { name: "Age rating", exact: true });
+  await expect(dialog).toContainText("The provider gives no rating.");
+  await rating.getByRole("radio", { name: "全年齢", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => overrides).toEqual([{ ageRating: "general" }]);
+  expect(control.postRequests).toBe(0);
+});
+
 test("remote metadata choices use declared capabilities and preserve drafts after refreshing", async ({ page }) => {
   const control = await metadataActions(page, [
     librarySourceFixture({ metadataCapable: true }),

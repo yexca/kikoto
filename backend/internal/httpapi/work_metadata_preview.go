@@ -115,6 +115,9 @@ func (s *Server) createWorkMetadataPreview(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
 		return
 	}
+	if s.refuseCustomWork(w, r, workID) {
+		return
+	}
 	var options workMetadataPreviewOptions
 	if r.Body != nil {
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))

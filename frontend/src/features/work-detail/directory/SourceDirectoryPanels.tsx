@@ -122,18 +122,23 @@ export function NoSourceDirectoryPanel({
   checking,
   checkedAt,
   remoteSources,
+  description,
   onRefresh,
 }: {
   checking: boolean;
   checkedAt: string;
   remoteSources: RemoteSourceAvailability[];
-  onRefresh: () => void;
+  description?: string;
+  /** Asks the remote sources again; absent where none can have the work. */
+  onRefresh?: () => void;
 }) {
   const availableSources = remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
   return (
     <div className="rounded-md border border-warning-border bg-warning-surface p-4 text-sm text-warning-foreground">
       <div className="font-medium">{i18n.t("libraryDetail.noSourceLinked")}</div>
-      <p className="mt-1 text-warning-foreground/80">{i18n.t("libraryDetail.noSourceDirectoryDescription")}</p>
+      <p className="mt-1 text-warning-foreground/80">
+        {description ?? i18n.t("libraryDetail.noSourceDirectoryDescription")}
+      </p>
       {availableSources.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {availableSources.map((remote) => (
@@ -143,17 +148,19 @@ export function NoSourceDirectoryPanel({
           ))}
         </div>
       )}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" onClick={onRefresh} disabled={checking}>
-          <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
-          {i18n.t("libraryDetail.refreshSources")}
-        </Button>
-        {!checking && checkedAt && (
-          <span className="text-xs text-warning-foreground/80">
-            {i18n.t("libraryDetail.checkedAt", { time: formatDateTime(checkedAt) })}
-          </span>
-        )}
-      </div>
+      {onRefresh && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onRefresh} disabled={checking}>
+            <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
+            {i18n.t("libraryDetail.refreshSources")}
+          </Button>
+          {!checking && checkedAt && (
+            <span className="text-xs text-warning-foreground/80">
+              {i18n.t("libraryDetail.checkedAt", { time: formatDateTime(checkedAt) })}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

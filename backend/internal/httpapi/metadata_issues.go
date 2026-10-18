@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -104,6 +105,10 @@ func (s *Server) retryMetadataIssues(w http.ResponseWriter, r *http.Request) {
 			// Explicit recovery may recheck not_found without clearing that
 			// observation first. Only a successful new result changes it.
 			_, err = s.enqueueWorkMetadataSyncWithOptions(r.Context(), id, true)
+		}
+		if errors.Is(err, errCustomWorkUnsupported) {
+			result.Skipped++
+			continue
 		}
 		if err != nil {
 			slog.Warn("queue metadata recovery", "work_id", id, "error", err)

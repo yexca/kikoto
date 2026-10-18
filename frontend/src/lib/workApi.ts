@@ -43,6 +43,8 @@ export type WorkDetail = {
   updatedAt: string;
   coverUrl: string;
   dlsiteUrl: string;
+  /** A work created from a folder without a work code: no provider metadata or remote sources. */
+  customWork?: boolean;
   circle: string;
   circleExternalId: string;
   rating: number | null;

@@ -155,6 +155,7 @@ export function PersistedFolderEditOverlay({
       folder={folder}
       currentItems={work.mediaItems}
       initialRemote={initialRemote}
+      localOnly={Boolean(work.customWork)}
       onBack={onBack}
       onClose={onClose}
       onApplied={onApplied}

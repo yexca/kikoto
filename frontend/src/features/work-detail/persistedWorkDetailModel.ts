@@ -352,6 +352,7 @@ export function persistedWorkDetailPresentation({
     fallbackCode: hero.primaryCode,
     code: hero.primaryCode,
     dlsiteUrl: fields.dlsiteUrl,
+    customWork: Boolean(work?.customWork),
     title: fields.title,
     description: activeMetadataVariant?.description ?? work?.description,
     circle: hero.circle,

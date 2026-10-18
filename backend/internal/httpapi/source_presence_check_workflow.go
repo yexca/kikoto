@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/workcode"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -382,7 +383,7 @@ func (s *Server) selectSourcePresenceCheckWorks(ctx context.Context, options sou
 		FROM work
 		LEFT JOIN work_source_presence AS checked
 			ON checked.work_id = work.id AND checked.file_source_id = ? AND checked.presence_type = ?
-		WHERE work.primary_code <> ''
+		WHERE work.primary_code <> '' AND work.primary_code NOT LIKE '` + workcode.CustomPrefix + `%'
 	`
 	args := []any{options.SourceID, sourcePresenceTypeRemoteSource}
 	if options.Library == sourcePresenceLibraryLocal {

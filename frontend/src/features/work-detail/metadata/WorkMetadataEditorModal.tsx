@@ -41,7 +41,7 @@ import { useWorkMetadataTagsEditor } from "./useWorkMetadataTagsEditor";
 
 export type MetadataEditorSection = "title" | "cover" | "tags" | "credits" | "source";
 
-const sections: { id: MetadataEditorSection; icon: LucideIcon }[] = [
+const allSections: { id: MetadataEditorSection; icon: LucideIcon }[] = [
   { id: "title", icon: Type },
   { id: "cover", icon: Image },
   { id: "tags", icon: Tags },
@@ -80,7 +80,9 @@ export function WorkMetadataEditorModal({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const [section, setSection] = useState(initialSection);
+  // A custom work has no provider product to link, bundle, or fetch from.
+  const sections = work.customWork ? allSections.filter((item) => item.id !== "source") : allSections;
+  const [section, setSection] = useState(work.customWork && initialSection === "source" ? "title" : initialSection);
   const scopes = metadataLanguageScopes(work, selectedMetadataVariantKey);
   const [languageScopeKey, setLanguageScopeKey] = useState(() => {
     // A caller only supplies `selectedMetadataVariantKey` when the editor is
@@ -440,7 +442,7 @@ export function WorkMetadataEditorModal({
           ) : (
             <>
               <div className="flex min-w-0 flex-wrap items-center gap-2">
-                {canSyncMetadata && !readOnly && (
+                {canSyncMetadata && !readOnly && !work.customWork && (
                   <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)}>
                     {t("metadataEditor.fetchForEdit")}
                   </Button>
@@ -493,7 +495,7 @@ export function WorkMetadataEditorModal({
         work={work}
         sources={sources}
         open={previewOpen}
-        readOnly={readOnly || !canSyncMetadata}
+        readOnly={readOnly || !canSyncMetadata || Boolean(work.customWork)}
         onClose={() => setPreviewOpen(false)}
         onApply={applyPreview}
       />

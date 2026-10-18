@@ -65,7 +65,9 @@ export type PersistedDirectoryPanelProps = {
   selectionModal: ReactNode;
   onActiveKeyChange: (key: string) => void;
   onTrackedPresenceChange: (key: string) => void;
-  onCheckSources: () => void;
+  /** A custom work has no remote source to check. */
+  customWork?: boolean;
+  onCheckSources?: () => void;
   onRetry: () => void;
   onSelectRemote: (remote: RemoteSourceAvailability) => void;
   onOpenCleanupRun: () => void;
@@ -117,6 +119,7 @@ function persistedDirectorySourceState(props: PersistedDirectoryPanelProps) {
         checking={props.checkingSources}
         checkedAt={props.checkedAt}
         remoteSources={props.remoteSources}
+        description={props.customWork ? i18n.t("libraryDetail.customWorkNoFolderDescription") : undefined}
         onRefresh={props.onCheckSources}
       />
     );
