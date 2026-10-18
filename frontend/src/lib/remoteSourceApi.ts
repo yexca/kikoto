@@ -48,6 +48,18 @@ export type RemoteWork = {
   favorite: boolean;
   listeningStatus: ListeningStatus;
   recommendScore: number;
+  /** Every edition of the card's work family the source returned, the presented one included. */
+  editions: RemoteWorkEdition[];
+};
+
+/** One upstream entry folded into a remote card; `language` is a metadata language token when known. */
+export type RemoteWorkEdition = {
+  remoteId: string;
+  remoteCode: string;
+  title: string;
+  language: string;
+  label: string;
+  origin: boolean;
 };
 
 export type RemoteTrack = {

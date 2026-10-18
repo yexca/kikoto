@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/agerating"
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 )
 
@@ -66,6 +68,19 @@ type remoteWorkSummary struct {
 	RecommendScore  int               `json:"recommendScore"`
 	DurationSeconds *int64            `json:"-"`
 	SearchUserTags  []string          `json:"-"`
+	// Editions lists every edition of the card's work family that the upstream
+	// returned, the presented one included.
+	Editions []remoteWorkEdition `json:"editions"`
+}
+
+// remoteWorkEdition is one upstream entry folded into a remote card.
+type remoteWorkEdition struct {
+	RemoteID   string `json:"remoteId"`
+	RemoteCode string `json:"remoteCode"`
+	Title      string `json:"title"`
+	Language   string `json:"language"`
+	Label      string `json:"label"`
+	Origin     bool   `json:"origin"`
 }
 
 func (s *Server) listRemoteSourceWorks(w http.ResponseWriter, r *http.Request) {
@@ -162,7 +177,7 @@ func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Reque
 		return nil
 	}
 	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
-	works, err := s.remoteWorkSummariesWithLanguages(ctx, userID, source.ID, remotePage.Works, request.Languages)
+	works, err := s.remoteWorkSummariesWithLanguages(ctx, userID, source.ID, remotePage.Works, request.Languages, request.Plan.FocusCodes)
 	if err != nil {
 		return err
 	}
@@ -172,8 +187,28 @@ func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	works = s.presentRemoteWorkSummaries(ctx, source.ID, works)
-	writeJSON(w, http.StatusOK, remoteWorksResponse{SourceID: source.ID, Works: works, Page: request.Page, PageSize: request.PageSize, Total: remotePageTotal(remotePage), Status: "ok", Sort: request.Sort, Direction: request.Direction, SortApplied: remotePage.SortApplied, RecommendationUnavailable: request.RecommendationUnavailable})
+	writeJSON(w, http.StatusOK, remoteWorksResponse{SourceID: source.ID, Works: works, Page: request.Page, PageSize: request.PageSize, Total: remoteFoldedPageTotal(remotePage, request.Page, request.PageSize, len(works)), Status: "ok", Sort: request.Sort, Direction: request.Direction, SortApplied: remotePage.SortApplied, RecommendationUnavailable: request.RecommendationUnavailable})
 	return nil
+}
+
+// remoteFoldedPageTotal counts the folded cards when the first page holds the
+// whole upstream result. Otherwise it keeps the upstream entry count, because
+// folding on pages not loaded is unknown and a smaller total would hide pages.
+func remoteFoldedPageTotal(page kikoeru.WorksPage, pageNumber, pageSize, cards int) int {
+	total := remotePageTotal(page)
+	if pageNumber != 1 {
+		return total
+	}
+	if total > 0 {
+		if total <= len(page.Works) {
+			return cards
+		}
+		return total
+	}
+	if len(page.Works) < pageSize {
+		return cards
+	}
+	return total
 }
 
 func (s *Server) writeRemoteSourceWorksResult(w http.ResponseWriter, ctx context.Context, source remoteSourceForUse, diagnosticURL string, request remoteSourceWorksRequest, works []remoteWorkSummary, total int, sortApplied bool, err error) error {
@@ -281,7 +316,8 @@ func (s *Server) remotePostFilteredPageUsing(ctx context.Context, userID, source
 	const upstreamPageSize = 100
 	const maxUpstreamPages = 100
 	filtered := []remoteWorkSummary{}
-	seen := map[string]bool{}
+	families := map[string]int{}
+	preference := remoteEditionPreference{codes: plan.FocusCodes, languages: languages}
 	sortApplied := true
 	for upstreamPage := 1; upstreamPage <= maxUpstreamPages; upstreamPage++ {
 		result, err := loadPage(upstreamPage)
@@ -289,16 +325,18 @@ func (s *Server) remotePostFilteredPageUsing(ctx context.Context, userID, source
 			return nil, 0, false, err
 		}
 		sortApplied = sortApplied && result.SortApplied
-		summaries, err := s.remoteWorkSummariesWithLanguages(ctx, userID, sourceID, result.Works, languages)
+		summaries, err := s.remoteWorkSummariesWithLanguages(ctx, userID, sourceID, result.Works, languages, plan.FocusCodes)
 		if err != nil {
 			return nil, 0, false, err
 		}
+		// A family split across upstream pages still shows as one card.
 		for _, work := range filterRemoteWorkSummaries(summaries, plan.PostFilterClauses) {
-			key := strings.ToUpper(strings.TrimSpace(work.PrimaryCode)) + ":" + work.RemoteID
-			if seen[key] {
+			key := remoteWorkFamilyKey(work)
+			if index, ok := families[key]; ok {
+				filtered[index] = mergeRemoteWorkFamily(filtered[index], work, preference)
 				continue
 			}
-			seen[key] = true
+			families[key] = len(filtered)
 			filtered = append(filtered, work)
 		}
 		upstreamTotal := firstPositiveInt(result.Pagination.TotalCount, result.Pagination.Total, result.Pagination.Count)
@@ -355,6 +393,9 @@ type remoteSourceQueryPlan struct {
 	PushdownQuery     string
 	PushdownClause    *listSearchClause
 	PostFilterClauses []listSearchClause
+	// FocusCodes are the work codes the query names; a folded card presents
+	// the edition the user searched for.
+	FocusCodes []string
 }
 
 func planRemoteSourceQuery(query string, sourceType string) remoteSourceQueryPlan {
@@ -362,6 +403,16 @@ func planRemoteSourceQuery(query string, sourceType string) remoteSourceQueryPla
 	if len(clauses) == 0 {
 		return remoteSourceQueryPlan{}
 	}
+	plan := planRemoteSourceClauses(clauses, sourceType)
+	for _, clause := range clauses {
+		if clause.Kind == "code" {
+			plan.FocusCodes = append(plan.FocusCodes, clause.Value)
+		}
+	}
+	return plan
+}
+
+func planRemoteSourceClauses(clauses []listSearchClause, sourceType string) remoteSourceQueryPlan {
 	if sourceType == sourceTypeKikoeruCompatible {
 		plan := remoteSourceQueryPlan{}
 		pushdown := make([]string, 0, len(clauses))
@@ -504,7 +555,7 @@ func remoteWorkSummaryMatchesClause(work remoteWorkSummary, clause listSearchCla
 func remoteWorkSummaryMatchesTextClause(work remoteWorkSummary, kind, needle string) bool {
 	switch kind {
 	case "code":
-		return strings.Contains(strings.ToLower(work.PrimaryCode), needle) || strings.Contains(strings.ToLower(work.RemoteCode), needle) || strings.Contains(strings.ToLower(work.RemoteID), needle)
+		return stringSliceContainsSubstringFold(remoteWorkSummaryCodes(work), needle)
 	case "circle":
 		return strings.Contains(strings.ToLower(work.Circle), needle)
 	default:
@@ -544,33 +595,63 @@ func remoteWorkSummaryMatchesNumericClause(work remoteWorkSummary, kind, needle 
 }
 
 func remoteWorkSummaryMatchesFreeText(work remoteWorkSummary, needle string) bool {
-	return stringSliceContainsSubstringFold([]string{work.PrimaryCode, work.RemoteCode, work.RemoteID, work.Title, work.Circle, work.ReleaseDate, work.AgeRating}, needle) ||
+	if stringSliceContainsSubstringFold(remoteWorkSummaryCodes(work), needle) {
+		return true
+	}
+	for _, edition := range work.Editions {
+		if strings.Contains(strings.ToLower(edition.Title), needle) {
+			return true
+		}
+	}
+	return stringSliceContainsSubstringFold([]string{work.Title, work.Circle, work.ReleaseDate, work.AgeRating}, needle) ||
 		stringSliceContainsSubstringFold(work.Tags, needle) || stringSliceContainsSubstringFold(work.VoiceActors, needle) ||
 		stringSliceContainsSubstringFold(work.SearchUserTags, needle)
 }
 
-func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, language string) ([]remoteWorkSummary, error) {
-	return s.remoteWorkSummariesWithLanguages(ctx, userID, sourceID, works, []string{language})
+// remoteWorkSummaryCodes are the codes and ids a card answers to: its family
+// code and every folded edition's.
+func remoteWorkSummaryCodes(work remoteWorkSummary) []string {
+	codes := []string{work.PrimaryCode, work.RemoteCode, work.RemoteID}
+	for _, edition := range work.Editions {
+		codes = append(codes, edition.RemoteCode, edition.RemoteID)
+	}
+	return codes
 }
 
-func (s *Server) remoteWorkSummariesWithLanguages(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, languages []string) ([]remoteWorkSummary, error) {
+func (s *Server) remoteWorkSummaries(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, language string) ([]remoteWorkSummary, error) {
+	return s.remoteWorkSummariesWithLanguages(ctx, userID, sourceID, works, []string{language}, nil)
+}
+
+// remoteWorkSummariesWithLanguages folds upstream entries whose codes belong
+// to one locally known work family into one card. Only persisted family
+// relationships fold entries; a family the library does not know keeps one
+// card per upstream entry.
+func (s *Server) remoteWorkSummariesWithLanguages(ctx context.Context, userID int64, sourceID int64, works []kikoeru.Work, languages []string, focusCodes []string) ([]remoteWorkSummary, error) {
 	result := make([]remoteWorkSummary, 0, len(works))
 	seen := map[string]int{}
 	projector := newRemoteCatalogProjectorWithLanguages(languages)
+	preference := remoteEditionPreference{codes: focusCodes, languages: languages}
 	for _, work := range works {
 		item, err := s.buildRemoteWorkSummary(ctx, userID, sourceID, projector, work)
 		if err != nil {
 			return nil, err
 		}
-		key := strings.ToUpper(strings.TrimSpace(item.PrimaryCode))
+		key := remoteWorkFamilyKey(item)
 		if index, ok := seen[key]; ok {
-			mergeRemoteWorkSummary(&result[index], item)
+			result[index] = mergeRemoteWorkFamily(result[index], item, preference)
 			continue
 		}
 		seen[key] = len(result)
 		result = append(result, item)
 	}
 	return s.enrichRemoteWorkSummaries(ctx, userID, result)
+}
+
+func remoteWorkFamilyKey(work remoteWorkSummary) string {
+	if code := strings.ToUpper(strings.TrimSpace(work.PrimaryCode)); code != "" {
+		return code
+	}
+	return "remote:" + work.RemoteID
 }
 
 func (s *Server) buildRemoteWorkSummary(ctx context.Context, userID, sourceID int64, projector remoteCatalogProjector, work kikoeru.Work) (remoteWorkSummary, error) {
@@ -614,24 +695,133 @@ func (s *Server) buildRemoteWorkSummary(ctx context.Context, userID, sourceID in
 		Tags: projected.Tags, VoiceActors: projected.VoiceActors, VoiceRefs: projected.VoiceRefs,
 		ImportStatus: status, RemotePlayable: true, WorkID: workID, Favorite: favorite,
 		ListeningStatus: listeningStatus, RecommendScore: recommendScore, DurationSeconds: projected.DurationSeconds,
+		Editions: []remoteWorkEdition{remoteWorkOwnEdition(work, projected)},
 	}, nil
 }
 
-func mergeRemoteWorkSummary(existing *remoteWorkSummary, item remoteWorkSummary) {
-	existing.RemotePlayable = existing.RemotePlayable || item.RemotePlayable
-	existing.Favorite = existing.Favorite || item.Favorite
-	if existing.ListeningStatus == "none" {
-		existing.ListeningStatus = item.ListeningStatus
+// remoteWorkOwnEdition describes the edition one upstream entry is, from the
+// entry's own family declaration.
+func remoteWorkOwnEdition(work kikoeru.Work, projected remoteCatalogWorkProjection) remoteWorkEdition {
+	code := projected.RemoteCode
+	var declared kikoeru.LanguageEdition
+	for _, edition := range work.LanguageEditions {
+		if code != "" && strings.EqualFold(strings.TrimSpace(edition.WorkNo), code) {
+			declared = edition
+			break
+		}
 	}
-	if existing.WorkID == nil {
-		existing.WorkID, existing.ImportStatus = item.WorkID, item.ImportStatus
+	origin := false
+	if original := strings.TrimSpace(work.OriginalWorkNumber); original != "" {
+		origin = strings.EqualFold(original, code)
+	} else if order := earliestRemoteLanguageEditionOrder(work.LanguageEditions); order > 0 {
+		origin = declared.DisplayOrder == order
 	}
-	if existing.Price == nil {
-		existing.Price = item.Price
+	language := strings.TrimSpace(declared.Language)
+	if normalized := dlsite.NormalizeMetadataLanguage(language); normalized != "" {
+		language = normalized
 	}
-	if existing.RemoteCode == "" || strings.EqualFold(item.RemoteCode, item.PrimaryCode) {
-		existing.RemoteCode, existing.RemoteID = item.RemoteCode, item.RemoteID
+	return remoteWorkEdition{
+		RemoteID: projected.RemoteID, RemoteCode: code, Title: projected.Title,
+		Language: language, Label: strings.TrimSpace(declared.Label), Origin: origin,
 	}
+}
+
+// remoteEditionPreference decides which folded edition a card presents: the
+// edition the query names, then the viewer's metadata languages in order,
+// then the family's canonical code. Ties keep the earlier upstream entry.
+type remoteEditionPreference struct {
+	codes     []string
+	languages []string
+}
+
+func (preference remoteEditionPreference) rank(work remoteWorkSummary) [3]int {
+	edition := presentedRemoteWorkEdition(work)
+	focus := 1
+	for _, code := range preference.codes {
+		if edition.RemoteCode != "" && strings.EqualFold(strings.TrimSpace(code), edition.RemoteCode) {
+			focus = 0
+			break
+		}
+	}
+	language := len(preference.languages)
+	for index, token := range preference.languages {
+		if remoteEditionHasLanguage(edition, token) {
+			language = index
+			break
+		}
+	}
+	canonical := 1
+	if edition.RemoteCode != "" && strings.EqualFold(edition.RemoteCode, work.PrimaryCode) {
+		canonical = 0
+	}
+	return [3]int{focus, language, canonical}
+}
+
+func (preference remoteEditionPreference) prefers(candidate, current remoteWorkSummary) bool {
+	left, right := preference.rank(candidate), preference.rank(current)
+	for index := range left {
+		if left[index] != right[index] {
+			return left[index] < right[index]
+		}
+	}
+	return false
+}
+
+func remoteEditionHasLanguage(edition remoteWorkEdition, token string) bool {
+	token = strings.TrimSpace(token)
+	if token == dlsite.OriginMetadataLanguage {
+		return edition.Origin
+	}
+	normalized := dlsite.NormalizeMetadataLanguage(token)
+	return normalized != "" && normalized == edition.Language
+}
+
+// presentedRemoteWorkEdition is the folded edition whose title, cover, and
+// actions a card shows.
+func presentedRemoteWorkEdition(work remoteWorkSummary) remoteWorkEdition {
+	for _, edition := range work.Editions {
+		if edition.RemoteID == work.RemoteID && strings.EqualFold(edition.RemoteCode, work.RemoteCode) {
+			return edition
+		}
+	}
+	return remoteWorkEdition{RemoteID: work.RemoteID, RemoteCode: work.RemoteCode, Title: work.Title}
+}
+
+// mergeRemoteWorkFamily folds two cards of one work family. The preferred
+// card's edition supplies every presented field, so a card never mixes one
+// edition's code with another's title, cover, or price.
+func mergeRemoteWorkFamily(existing, item remoteWorkSummary, preference remoteEditionPreference) remoteWorkSummary {
+	merged, other := existing, item
+	if preference.prefers(item, existing) {
+		merged, other = item, existing
+	}
+	merged.Editions = mergeRemoteWorkEditions(existing.Editions, item.Editions)
+	merged.RemotePlayable = merged.RemotePlayable || other.RemotePlayable
+	merged.Favorite = merged.Favorite || other.Favorite
+	if merged.ListeningStatus == "none" {
+		merged.ListeningStatus = other.ListeningStatus
+	}
+	if merged.WorkID == nil {
+		merged.WorkID, merged.ImportStatus = other.WorkID, other.ImportStatus
+	}
+	return merged
+}
+
+// mergeRemoteWorkEditions keeps each upstream entry once, the origin edition
+// first and the rest in upstream order.
+func mergeRemoteWorkEditions(left, right []remoteWorkEdition) []remoteWorkEdition {
+	result := make([]remoteWorkEdition, 0, len(left)+len(right))
+	seen := map[string]bool{}
+	for _, edition := range append(append([]remoteWorkEdition(nil), left...), right...) {
+		key := strings.ToUpper(edition.RemoteCode) + ":" + edition.RemoteID
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, edition)
+	}
+	sort.SliceStable(result, func(i, j int) bool { return result[i].Origin && !result[j].Origin })
+	return result
 }
 
 func (s *Server) enrichRemoteWorkSummaries(ctx context.Context, userID int64, result []remoteWorkSummary) ([]remoteWorkSummary, error) {

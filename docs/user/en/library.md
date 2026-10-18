@@ -222,6 +222,17 @@ track or sync a work before it has local files, but the resulting state attaches
 to the same unified work identity. Track also persists the selected source tree
 and opens that source in Tracked.
 
+A remote source can hold several language editions of one work. When the
+library already knows that work's edition family, a remote tab shows the
+editions it returns as one card. The card presents one edition: the code the
+search names, otherwise the first of your metadata languages the source has,
+otherwise the family's own code. The code, title, cover, DLsite link, Track,
+and Fetch on the card all belong to that edition. When the source returned more
+than one edition, the languages button in the card footer lists them and opens
+the one you choose. Editions of a family the library does not know yet appear
+as separate cards. A result that fits on one page counts its cards; a result
+over several pages counts the source's entries.
+
 ## Source Tabs
 
 Source tabs should help users answer where a work can be played or fetched from.

@@ -48,6 +48,7 @@ const libraryJapanese = {
     },
   },
   remoteWorkNoCode: "このリモート作品には安定した作品コードがありません。",
+  remoteEditions: "このソースにある {{count}} 件の版",
   remoteBrowseDescription: "ユーザー操作でローカル状態が必要になるまで、インポートせずにソース結果を閲覧します。",
   select: "選択",
   enabled: "有効",

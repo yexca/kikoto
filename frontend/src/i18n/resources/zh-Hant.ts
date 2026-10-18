@@ -49,6 +49,7 @@ const libraryHant = {
     },
   },
   remoteWorkNoCode: "此遠端作品沒有穩定的作品代碼。",
+  remoteEditions: "此來源的 {{count}} 個版本",
   remoteBrowseDescription: "瀏覽來源結果；只有在使用者操作需要時才匯入本機狀態。",
   select: "選取",
   enabled: "已啟用",

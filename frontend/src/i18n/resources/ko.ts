@@ -48,6 +48,7 @@ const libraryKorean = {
     },
   },
   remoteWorkNoCode: "이 원격 작품에는 안정적인 작품 코드가 없습니다.",
+  remoteEditions: "이 소스의 판본 {{count}}개",
   remoteBrowseDescription: "사용자 작업에 로컬 상태가 필요할 때까지 가져오지 않고 소스 결과를 탐색합니다.",
   select: "선택",
   enabled: "활성화됨",

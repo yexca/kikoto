@@ -22,7 +22,12 @@ import type { LibraryColumnSetting } from "@/lib/libraryBrowseState";
 import type { SearchClause } from "@/lib/librarySearchClauses";
 
 import type { RemoteSourceViewState } from "./libraryBrowseModel";
-import { remoteSourceBrowseModel, remoteSourcePanelModel, remoteWorkActionCode } from "./remoteSourceBrowseModel";
+import {
+  remoteSourceBrowseModel,
+  remoteSourcePanelModel,
+  remoteWorkActionCode,
+  remoteWorkForEdition,
+} from "./remoteSourceBrowseModel";
 import { RemoteWorkCard } from "./RemoteWorkCard";
 import { recommendationRevealDelay, useRemoteRecommendations } from "./useRemoteRecommendations";
 import { useRemoteSourceActions } from "./useRemoteSourceActions";
@@ -187,6 +192,7 @@ function RemoteSourceResults({
               isBusy={isSyncingCode === work.primaryCode || actions.fetchWorkspace.isBusy}
               onSelectedChange={(checked) => onToggleBulkCode(work.primaryCode, checked)}
               onOpen={() => onOpenPreview(work)}
+              onOpenEdition={(edition) => onOpenPreview(remoteWorkForEdition(work, edition))}
               onFork={() => void actions.forkWork(work, "manual_fork")}
               onTagOpen={onTagOpen}
               onMark={(status) => void actions.markRemoteWork(work, status)}

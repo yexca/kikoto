@@ -482,6 +482,7 @@ export function remoteWorkFixture(overrides: Partial<RemoteWork> = {}): RemoteWo
     favorite: false,
     listeningStatus: "none",
     recommendScore: 0,
+    editions: [],
     ...overrides,
   };
 }

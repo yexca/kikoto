@@ -47,6 +47,7 @@ export const libraryEnglish = {
     },
   },
   remoteWorkNoCode: "This remote work has no stable work code.",
+  remoteEditions: "{{count}} editions on this source",
   remoteBrowseDescription: "Browse source results without importing until a user action needs local state.",
   select: "Select",
   enabled: "enabled",

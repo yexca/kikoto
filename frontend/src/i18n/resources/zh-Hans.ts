@@ -48,6 +48,7 @@ export const libraryHans = {
     },
   },
   remoteWorkNoCode: "此远程作品没有稳定的作品代码。",
+  remoteEditions: "此来源的 {{count}} 个版本",
   remoteBrowseDescription: "浏览来源结果；只有在用户操作需要时才导入本地状态。",
   select: "选择",
   enabled: "已启用",
