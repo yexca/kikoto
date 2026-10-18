@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useMobileRuntime } from "@/app/MobileRuntime";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import type { CurrentUser } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import { buildMobileDiagnosticsText } from "@/lib/mobileDiagnostics";
 import { clearStoredServerURL } from "@/lib/serverConfig";
 
@@ -37,7 +38,8 @@ export function useServerConnection(user: CurrentUser | null) {
       user: user ? user.username : undefined,
     });
     setDiagnosticsText(text);
-    await navigator.clipboard?.writeText(text).catch(() => {});
+    // The text stays on screen for a manual copy when the clipboard is unavailable.
+    await copyText(text).catch(() => {});
   };
 
   const clearServer = async () => {

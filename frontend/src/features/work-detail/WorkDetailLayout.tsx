@@ -55,6 +55,7 @@ import {
 } from "@/features/work-detail/metadataPresentationModel";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { ageRatingPresentation } from "@/lib/ageRating";
+import { copyText } from "@/lib/clipboard";
 import { openLibraryAgeRatingSearch } from "@/lib/libraryAgeRatingSearch";
 import { formatBytes, formatDuration } from "@/features/work-detail/media/mediaTreeModel";
 import { sourceTabStatusClass } from "@/features/work-detail/source/sourceContextModel";
@@ -811,12 +812,11 @@ function DetailTitleBlock({
   versionMenu?: ReactNode;
 }) {
   const toast = useToast();
-  const codeLabel = code || fallbackCode || i18n.t("libraryDetail.remoteOnly");
+  const workCode = code || fallbackCode;
   const copyWorkCode = async () => {
     try {
-      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
-      await navigator.clipboard.writeText(codeLabel);
-      toast.success(i18n.t("libraryDetail.copiedWorkCode", { code: codeLabel }));
+      await copyText(workCode);
+      toast.success(i18n.t("libraryDetail.copiedWorkCode", { code: workCode }));
     } catch {
       toast.error(i18n.t("libraryDetail.copyWorkCodeFailed"));
     }
@@ -827,15 +827,21 @@ function DetailTitleBlock({
       <div className="space-y-1.5">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <div className="flex items-center gap-1.5" role="group" aria-label={i18n.t("libraryDetail.workCodeActions")}>
-            <button
-              type="button"
-              className={badgeVariants({ variant: "secondary", className: "w-fit cursor-copy" })}
-              aria-label={i18n.t("libraryDetail.copyWorkCodeFor", { code: codeLabel })}
-              title={i18n.t("libraryDetail.work")}
-              onClick={() => void copyWorkCode()}
-            >
-              {codeLabel}
-            </button>
+            {workCode ? (
+              <button
+                type="button"
+                className={badgeVariants({ variant: "secondary", className: "w-fit cursor-copy" })}
+                aria-label={i18n.t("libraryDetail.copyWorkCodeFor", { code: workCode })}
+                title={i18n.t("libraryDetail.work")}
+                onClick={() => void copyWorkCode()}
+              >
+                {workCode}
+              </button>
+            ) : (
+              <span className={badgeVariants({ variant: "secondary", className: "w-fit" })}>
+                {i18n.t("libraryDetail.remoteOnly")}
+              </span>
+            )}
             {dlsiteUrl && (
               <Button
                 variant="outline"
@@ -848,7 +854,7 @@ function DetailTitleBlock({
                   href={dlsiteUrl}
                   target="_blank"
                   rel="noreferrer"
-                  aria-label={i18n.t("libraryDetail.openDlsiteFor", { code: codeLabel })}
+                  aria-label={i18n.t("libraryDetail.openDlsiteFor", { code: workCode })}
                 >
                   <ExternalLink className="h-3 w-3" />
                 </a>

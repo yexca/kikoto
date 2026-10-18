@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { intlLocaleFor } from "@/i18n";
 import { useLocale } from "@/i18n/LocaleProvider";
 import type { WorkflowEvent, WorkflowNodeRun } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 
 import { formatClockTime, parseWorkflowTimestamp } from "./runPresentation";
 
@@ -62,7 +63,7 @@ export function RunDiagnostics({
     });
     if (summary) lines.push("", summary);
     try {
-      await navigator.clipboard.writeText(lines.join("\n"));
+      await copyText(lines.join("\n"));
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     } catch {

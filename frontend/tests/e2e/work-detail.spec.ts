@@ -1077,6 +1077,30 @@ test("mobile work detail keeps tags in the hero and work-code utilities together
   await expect(detail.getByTestId("active-source-info")).toBeVisible();
 });
 
+test("work detail copies the work code over plain HTTP without the Clipboard API", async ({ page }) => {
+  // A LAN address over HTTP is not a secure context, so browsers expose no navigator.clipboard.
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "isSecureContext", { configurable: true, value: false });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    document.execCommand = (command: string) => {
+      const selected = document.activeElement;
+      if (command !== "copy" || !(selected instanceof HTMLTextAreaElement)) return false;
+      localStorage.setItem("kikoto:e2e-copied-work-code", selected.value);
+      return true;
+    };
+  });
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true, work });
+  await page.goto("/");
+  await page.getByText(work.title, { exact: true }).click();
+
+  await page
+    .getByRole("group", { name: "Work code actions" })
+    .getByRole("button", { name: `Copy work code ${work.primaryCode}` })
+    .click();
+  await expect(page.getByText(`Copied ${work.primaryCode}.`, { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("kikoto:e2e-copied-work-code"))).toBe(work.primaryCode);
+});
+
 test("work detail personal tags open a personal tag library search", async ({ page }) => {
   const requests: string[] = [];
   const detailWork: Work = { ...work, userTags: [{ id: 1, name: "Personal tag", color: "" }] };

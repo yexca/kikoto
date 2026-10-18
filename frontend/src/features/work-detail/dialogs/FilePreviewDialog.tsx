@@ -22,6 +22,7 @@ import { VideoPreview } from "@/features/work-detail/media/VideoPreview";
 import { formatBytes, formatTrackDuration } from "@/features/work-detail/media/mediaTreeModel";
 import i18n from "@/i18n";
 import { api, assetURL, mediaDownloadURL } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 import { cn } from "@/lib/tailwindClassNames";
 import { usePlayer } from "@/player/PlayerProvider";
 
@@ -177,10 +178,10 @@ export function FilePreviewDialog({
   const images = items.filter((item) => item.kind === "image");
   const stepsByGesture = preview.kind === "image" && images.length > 1;
 
-  const copyText = async () => {
+  const copyPreviewText = async () => {
     if (textContent === null) return;
     try {
-      await navigator.clipboard.writeText(textContent);
+      await copyText(textContent);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -243,7 +244,7 @@ export function FilePreviewDialog({
             <HeaderButton
               label={copied ? i18n.t("libraryDetail.textCopied") : i18n.t("libraryDetail.copyText")}
               disabled={textContent === null}
-              onClick={() => void copyText()}
+              onClick={() => void copyPreviewText()}
             >
               {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
             </HeaderButton>
