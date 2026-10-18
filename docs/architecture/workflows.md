@@ -81,11 +81,13 @@ Media, cleanup, and database:
   locations unavailable. `media_cleanup_forget_work` also removes the then
   unlinked work family and its personal state.
 - `work_folder_edit`: add files from the family's other local folders and
-  remote editions to one local folder of a work, and remove the files taken
-  out of it. It collects and size-checks every added file in `.kikoto-staging`
-  on the folder's pool, removes the files taken out, moves each collected file
-  into the folder, and indexes the folder. A retried or resumed run continues
-  from its checkpoint.
+  remote editions to one local folder of a work, as files or as lyrics of a
+  declared language, and remove the files taken out of it. It collects and
+  size-checks every added file in `.kikoto-staging` on the folder's pool,
+  removes the files taken out, moves each collected file into the folder,
+  indexes the folder, and stores the requested lyrics assignments. A retried
+  or resumed run continues from its checkpoint. A Fetch into a new folder
+  queues one as its follow-up once it completes.
 - `local_media_delete`: delete one local media file and mark only that location
   unavailable. `local_symlink_review` notifies users when such a request
   targets a symlink.
@@ -435,7 +437,8 @@ the backend.
   a popular collection requires `tags:write` and its
   action's permission, cleanup and local deletion jobs require
   `downloads:manage`, a folder edit requires `downloads:manage` plus
-  `remote:fetch` when it downloads, metadata jobs require `metadata:sync`, a
+  `remote:fetch` when it downloads and `library:write` when it assigns lyrics,
+  metadata jobs require `metadata:sync`, a
   speech transcription requires `library:write`, and graph jobs require their
   graph's permissions.
 - Local files: candidate decisions, local cleanup, and archived-root review

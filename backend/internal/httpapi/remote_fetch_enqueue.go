@@ -32,6 +32,7 @@ type remoteWorkSavePreparation struct {
 	rawWork            []byte
 	rawTracks          []byte
 	localScanDepth     int
+	followUp           *remoteFetchFollowUp
 }
 
 func (s *Server) prepareRemoteWorkSaveEnqueue(
@@ -164,6 +165,9 @@ func (s *Server) enqueuePreparedRemoteWorkSave(ctx context.Context, prep remoteW
 	if existing, found, err := activeRemoteFetchResult(ctx, tx, prep.workCode); err != nil {
 		return remoteWorkSaveResult{}, err
 	} else if found {
+		if prep.followUp != nil {
+			return remoteWorkSaveResult{}, errRemoteFetchFollowUpBusy
+		}
 		if err := subscribeRemoteFetchNotification(ctx, tx, prep.requestedByUserID, existing.RunID, existing.WorkID, existing.PrimaryCode); err != nil {
 			return remoteWorkSaveResult{}, err
 		}
@@ -189,6 +193,7 @@ func (s *Server) insertPreparedRemoteFetchTx(ctx context.Context, tx *sql.Tx, pr
 		EditionCode: prep.workCode, RemoteCode: normalizedRemoteWorkCode(prep.remoteWork),
 		Paths: prep.selectedPaths, LocalPaths: prep.selectedLocalPaths, TargetRoot: prep.plan.SaveRoot,
 		RequestID: prep.requestID, Decisions: prep.decisions, MinFreeBytes: prep.minFreeBytes,
+		FollowUp: prep.followUp,
 	}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_work_fetch", remoteFetchRunName(prep.workCode), "queued", "manual", remoteFetchOrigin(ctx), runInput, map[string]any{"plan": prep.plan.Summary})
 	if err != nil {
@@ -253,6 +258,9 @@ type remoteWorkSaveRequest struct {
 	RequestID    string                    `json:"requestId"`
 	Decisions    []remoteFetchFileDecision `json:"decisions"`
 	MinFreeBytes int64                     `json:"minFreeBytes"`
+	// FollowUp adds other files to the published folder; see
+	// remoteFetchFollowUp.
+	FollowUp *remoteFetchFollowUp `json:"followUp,omitempty"`
 }
 
 type remoteWorkFetchJobPayload struct {
@@ -267,6 +275,7 @@ type remoteWorkFetchJobPayload struct {
 	RequestID         string                    `json:"request_id"`
 	Decisions         []remoteFetchFileDecision `json:"decisions"`
 	MinFreeBytes      int64                     `json:"min_free_bytes"`
+	FollowUp          *remoteFetchFollowUp      `json:"follow_up,omitempty"`
 }
 
 var remoteFetchRequestIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{8,128}$`)
@@ -278,6 +287,13 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 	sourceID, code, payload, ok := parseRemoteWorkSaveRequest(w, r)
 	if !ok {
 		return
+	}
+	if !payload.FollowUp.empty() {
+		// A preview stores nothing, so it needs no permission to assign lyrics.
+		payload.FollowUp.Assignments = nil
+		if _, ok := s.requirePermissions(w, r, remoteFetchFollowUpPermissions(payload.FollowUp)...); !ok {
+			return
+		}
 	}
 	r = r.WithContext(withRemoteFetchEdition(r.Context(), payload.EditionCode))
 	if err := s.requireUsableRemoteSource(r.Context(), sourceID); err != nil {
@@ -291,6 +307,15 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 			writeUpstreamError(w, err)
 		}
 		return
+	}
+	var followUp *workFolderEditPlan
+	if !payload.FollowUp.empty() {
+		preview, err := s.planRemoteFetchFollowUp(r.Context(), plan, payload.FollowUp)
+		if err != nil {
+			writeWorkFolderEditError(w, err)
+			return
+		}
+		followUp = &preview
 	}
 	preparation := s.prepareRemoteFetch(r.Context(), code)
 	if metadataErr != nil {
@@ -311,6 +336,10 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 			plan.Items[index].SourcePath = ""
 		}
 	}
+	if followUp != nil {
+		writeJSON(w, http.StatusOK, remoteWorkSavePlanResponse{remoteWorkSavePlan: plan, FollowUp: followUp})
+		return
+	}
 	writeJSON(w, http.StatusOK, plan)
 }
 
@@ -322,6 +351,17 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	sourceID, code, payload, ok := parseRemoteWorkSaveRequest(w, r)
 	if !ok {
 		return
+	}
+	if !payload.FollowUp.empty() {
+		if _, ok := s.requirePermissions(w, r, remoteFetchFollowUpPermissions(payload.FollowUp)...); !ok {
+			return
+		}
+		// An empty selection fetches every file of the edition, which a
+		// follow-up never asks for.
+		if len(payload.Paths) == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "choose at least one file of the edition to fetch"})
+			return
+		}
 	}
 	r = r.WithContext(withRemoteFetchEdition(r.Context(), payload.EditionCode))
 	payload.RequestID = strings.TrimSpace(payload.RequestID)
@@ -344,7 +384,7 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	}
 	operationCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
 	defer cancel()
-	result, err := s.enqueueRemoteWorkSave(operationCtx, sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.RequestID, payload.Decisions, payload.MinFreeBytes, actor.ID, workflow.JobPriorityUserInitiated)
+	result, err := s.enqueueRemoteWorkSaveWithFollowUp(operationCtx, sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.RequestID, payload.Decisions, payload.MinFreeBytes, actor.ID, workflow.JobPriorityUserInitiated, payload.FollowUp)
 	if err != nil {
 		if payload.RequestID != "" {
 			if existing, found, lookupErr := s.remoteFetchRequestResult(r.Context(), payload.RequestID, sourceID, code); lookupErr == nil && found {
@@ -357,20 +397,28 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "summary": conflict.Summary})
 			return
 		}
-		if writeFetchDestinationError(w, err) {
-			return
-		}
-		writeUpstreamError(w, err)
+		writeWorkFolderEditError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, result)
 }
 
+// errRemoteFetchFollowUpBusy refuses a Fetch with a follow-up while another
+// Fetch of the work runs: joining that run would drop the follow-up.
+var errRemoteFetchFollowUpBusy = conflictError("a Fetch for this work is still running; wait for it to finish before adding files from other sources")
+
 func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string, requestID string, decisions []remoteFetchFileDecision, minFreeBytes int64, requestedByUserID int64, jobPriority int) (remoteWorkSaveResult, error) {
+	return s.enqueueRemoteWorkSaveWithFollowUp(ctx, sourceID, code, selectedPaths, selectedLocalPaths, targetRoot, requestID, decisions, minFreeBytes, requestedByUserID, jobPriority, nil)
+}
+
+func (s *Server) enqueueRemoteWorkSaveWithFollowUp(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string, requestID string, decisions []remoteFetchFileDecision, minFreeBytes int64, requestedByUserID int64, jobPriority int, followUp *remoteFetchFollowUp) (remoteWorkSaveResult, error) {
 	requestedCode := strings.ToUpper(strings.TrimSpace(code))
 	if existing, found, err := activeRemoteFetchResult(ctx, s.db, requestedCode); err != nil {
 		return remoteWorkSaveResult{}, err
 	} else if found {
+		if !followUp.empty() {
+			return remoteWorkSaveResult{}, errRemoteFetchFollowUpBusy
+		}
 		if err := subscribeRemoteFetchNotification(ctx, s.db, requestedByUserID, existing.RunID, existing.WorkID, existing.PrimaryCode); err != nil {
 			return remoteWorkSaveResult{}, err
 		}
@@ -382,6 +430,9 @@ func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code
 	}
 	prep, err := s.prepareRemoteWorkSaveEnqueue(ctx, sourceID, code, selectedPaths, selectedLocalPaths, targetRoot, requestID, decisions, minFreeBytes, requestedByUserID, jobPriority)
 	if err != nil {
+		return remoteWorkSaveResult{}, err
+	}
+	if prep.followUp, err = s.prepareRemoteFetchFollowUp(ctx, prep.plan, followUp); err != nil {
 		return remoteWorkSaveResult{}, err
 	}
 	return s.enqueuePreparedRemoteWorkSave(ctx, prep)

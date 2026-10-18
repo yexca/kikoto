@@ -2442,6 +2442,15 @@ export const surfaceEnglish = {
     localHint: "Selected files are copied into this folder. The folder they come from is not changed.",
     remoteHint: "Selected files are downloaded from {{source}} into this folder.",
     selectionSummary: "{{selected}} of {{total}} selected",
+    asFile: "As a file",
+    asLyrics: "Lyrics · {{language}}",
+    roleMixed: "Mixed",
+    selectedLyricsRole: "Selected lyrics files",
+    fileRole: "Add {{name}} as",
+    lyricsTarget: "Files added as lyrics go to the folder of their language inside {{folder}}.",
+    assign: "Assign added lyrics to matching tracks",
+    assignHint:
+      "File names are matched first, then track order. A track that already has lyrics in the language keeps them.",
     loadingFiles: "Loading files",
     filesFailed: "The files could not be loaded.",
     noFiles: "No files",
@@ -2473,6 +2482,25 @@ export const surfaceEnglish = {
     completed: "Files updated in workflow #{{runId}}.",
     runEnded: "Folder edit workflow #{{runId}} ended as {{status}}.",
     reloadFailed: "Files were updated, but the work could not be refreshed.",
+  },
+  fetchCompose: {
+    title: "Fetch",
+    description:
+      "Fetch {{code}} into a new folder, and add files from other editions, sources, and local folders, or lyrics in a language.",
+    newFolder: "New folder",
+    primaryHint: "Selected files are fetched from {{source}} into the new folder.",
+    remoteHint: "Selected files are downloaded from {{source}} into the new folder once the Fetch has published it.",
+    localHint: "Selected files are copied into the new folder once the Fetch has published it.",
+    emptyResult: "Select the files to fetch.",
+    statusIdle: "Select at least one file of this edition to fetch",
+    statusReady: "Ready: {{count}} files for the new folder",
+    applying: "Starting the Fetch",
+    apply: "Fetch",
+    applyFailed: "The Fetch could not be started. Review the updated preview.",
+    queued: "Fetch {{code}} queued as workflow run #{{runId}}.",
+    queuedWithFollowUp:
+      "Fetch {{code}} queued as workflow run #{{runId}}. The files from other places are added in a second run once it has finished.",
+    openStandardFetch: "Review in the standard Fetch",
   },
   remoteFetch: {
     destination: {

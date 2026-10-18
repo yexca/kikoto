@@ -50,6 +50,8 @@ import { useFolderEditWorkflow } from "@/features/work-detail/folder-edit/useFol
 import { invalidateCachedWorkMedia, setCachedWorkMedia } from "@/features/work-detail/media/workMediaCache";
 import { PageHeaderBackAction } from "@/app/pageHeader";
 import { Card, CardContent } from "@/components/ui/card";
+import { FetchComposeDialog } from "@/features/work-detail/folder-edit/FetchComposeDialog";
+import type { FetchComposeTarget } from "@/features/work-detail/folder-edit/folderEditModel";
 import { LazyRemoteFetchWorkspaceDialog } from "@/features/work-detail/workflows/LazyRemoteFetchWorkspaceDialog";
 import { useDirectoryRoutingRules } from "@/features/work-detail/directory/useDirectoryRoutingRules";
 import { usePersistedWorkPlayback } from "@/features/work-detail/media/usePersistedWorkPlayback";
@@ -281,9 +283,12 @@ export function PersistedWorkDetailController({
   const canManageLocalCopies =
     !auth.demoMode && auth.hasPermission("downloads:manage") && selectedSource?.kind === "local";
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged });
-  const openFetchWorkspace = () => {
+  // A manager of local files builds a new folder from several places; the
+  // single-edition Fetch stays for everyone else.
+  const canComposeFetch = canEditFolders && auth.hasPermission("remote:fetch") && auth.hasPermission("metadata:sync");
+  const [composeFetch, setComposeFetch] = useState<FetchComposeTarget | null>(null);
+  const openStandardFetch = () => {
     if (!fetchRemote) return;
-    if (files.editFolderWithRemote({ sourceId: fetchRemote.source.id, remoteCode: fetchRemoteCode })) return;
     void fetchWorkspace.open({
       sourceId: fetchRemote.source.id,
       remoteCode: fetchRemoteCode,
@@ -291,6 +296,20 @@ export function PersistedWorkDetailController({
       sourceDisplayName: fetchRemote.source.displayName,
       detail: fetchRemote.detail,
     });
+  };
+  const openFetchWorkspace = () => {
+    if (!fetchRemote) return;
+    if (files.editFolderWithRemote({ sourceId: fetchRemote.source.id, remoteCode: fetchRemoteCode })) return;
+    if (canComposeFetch && fetchRemoteCode) {
+      setComposeFetch({
+        sourceId: fetchRemote.source.id,
+        sourceName: fetchRemote.source.displayName,
+        remoteCode: fetchRemoteCode,
+        editionCode: fetchRemoteCode.toUpperCase(),
+      });
+      return;
+    }
+    openStandardFetch();
   };
   /** Reloads the shown edition with its media, then the library. */
   const reloadShownEdition = async () => {
@@ -511,7 +530,27 @@ export function PersistedWorkDetailController({
   const hero = detailHeroModel(code, work, workPreview);
 
   const personalTags = persistedPersonalTags(work, saveWorkUserTags);
-  const fetchSelectionModal = <LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />;
+  const fetchSelectionModal = (
+    <>
+      <LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
+      {composeFetch && (
+        <FetchComposeDialog
+          // A different edition or source is a different Fetch.
+          key={`${composeFetch.sourceId}:${composeFetch.remoteCode}`}
+          fetch={composeFetch}
+          onClose={() => setComposeFetch(null)}
+          onApplied={async () => {
+            setComposeFetch(null);
+            await onWorksChanged();
+          }}
+          onOpenStandardFetch={() => {
+            setComposeFetch(null);
+            openStandardFetch();
+          }}
+        />
+      )}
+    </>
+  );
   const activeSourceLabel = persistedActiveSourceLabel(selectedTrackedPresence, selectedSource);
   const sourceInfo = persistedSourceInfo({
     label: activeSourceLabel,

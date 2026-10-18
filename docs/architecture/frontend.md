@@ -122,11 +122,14 @@ opening a work normally renders without suspending. Library, circle, voice actor
 detail surfaces load the remote Fetch workspace dialog on demand through
 `LazyRemoteFetchWorkspaceDialog`, which mounts it only while a draft is open
 and closes the draft with a toast if its chunk fails to load. The persisted
-work detail's `folder-edit` feature owns **Edit files**: `folderEditModel`
-derives the resources, the request, and the final folder from the selection,
-`useFolderEditWorkspace` loads each resource's files and the server preview of
-the additions, `FolderEditDialog` renders the three columns, and
-`useFolderEditWorkflow` follows the queued run and reloads the detail. The production
+work detail's `folder-edit` feature owns **Edit files** and the Fetch into a
+new folder: `folderEditModel` derives the resources, the request, and the
+final folder from the selection and the lyrics role of each file,
+`useFolderEditWorkspace` and `useFetchComposeWorkspace` load each resource's
+files and the server preview, `folderEditLyrics` suggests track assignments
+for added lyrics, `FolderWorkspaceView` renders the three columns for both
+`FolderEditDialog` and `FetchComposeDialog`, and `useFolderEditWorkflow`
+follows the queued run and reloads the detail. The production
 build keeps React, i18next, and `tailwind-merge` in a separate `vendor` chunk
 so a release that changes only app code leaves it cached; list only libraries
 the entry already loads there, because everything in that chunk loads eagerly.

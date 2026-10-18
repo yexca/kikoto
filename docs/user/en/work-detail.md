@@ -302,6 +302,15 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   already there. Files from another local folder are copied, and that folder
   is left unchanged. Files from a remote edition are downloaded, which also
   needs permission to fetch, and the edition is not added to the library. A
+  lyrics file (`.lrc`, `.vtt`, `.srt`, `.ass`, or `.txt`) from another place
+  can be added as lyrics instead of at its own path: choose a language under
+  its name, or for all selected lyrics files of the place under **Selected
+  lyrics files**, and it goes to that language's folder inside
+  `lyrics_kikoto`, as in **Lyrics files**. You declare the language; Kikoto
+  does not guess it. With library write access, **Assign added lyrics to
+  matching tracks** assigns each added lyrics file in its language to the track
+  it matches by file name, then by track order, including tracks the same edit
+  adds; a track that already has lyrics in that language keeps them. A
   file that would land on a different file of the same name is a conflict:
   keep the file in the folder, replace it, keep both, or rename the incoming
   file. A folder or link already at that name is never replaced, so only the
@@ -358,7 +367,16 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   anonymous.
 - **Fetch** on a remote source of a work that has a local folder opens
   **Edit files** on that source's edition, for users who may manage local
-  files and fetch. Otherwise it opens the Fetch dialog.
+  files and fetch. For those users, a work without a local folder opens a
+  Fetch into a new folder in the same three columns: the source's edition
+  comes first with all its files selected, the work's other editions,
+  sources, and local folders can add files, and lyrics files can be added as
+  lyrics of a language with track assignments, as in **Edit files**. The
+  edition's own files are one Fetch. Everything else is added by an
+  **Edit files** workflow once the Fetch has published the folder, so a file
+  that would land on one the Fetch publishes is a conflict to resolve first.
+  When the destination folder needs review, **Review in the standard Fetch**
+  opens the Fetch dialog. Anyone else gets the Fetch dialog.
 - Open source-specific Track, Fork, Fetch, Origin, cache, refresh, and file
   maintenance commands from the selected source's Hero Source menu.
 - Track the selected remote source, persist its browsable tree, and open the

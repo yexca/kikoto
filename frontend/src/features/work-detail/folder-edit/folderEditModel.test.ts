@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type {
+  ComposedFetchPlan,
   MediaItem,
   RemoteFetchEdition,
   WorkFolderEditItem,
@@ -11,6 +12,10 @@ import {
   CURRENT_FOLDER_RESOURCE,
   buildFolderEditTree,
   conflictResolutions,
+  fetchComposeReadiness,
+  fetchComposeRequest,
+  fetchComposeResources,
+  fetchComposeResult,
   folderEditReadiness,
   folderEditRemoteResource,
   folderEditRequest,
@@ -137,6 +142,7 @@ function plan(items: WorkFolderEditItem[], conflict = 0): WorkFolderEditPlan {
       skip: 0,
       conflict,
       remove: 0,
+      lyrics: 0,
       addBytes: 0,
       removeBytes: 0,
     },
@@ -324,5 +330,132 @@ describe("folder edit conflicts", () => {
     expect(conflictResolutions({})).toContain("replace");
     expect(conflictResolutions({ targetBlock: "not_a_file" })).toEqual(["auto", "keep_local", "keep_both", "rename"]);
     expect(conflictResolutions({ targetBlock: "blocked_path" })).toEqual(["auto", "keep_local", "rename"]);
+  });
+});
+
+describe("folder edit lyrics", () => {
+  const resources = folderEditResources(sources, target);
+
+  it("adds a file with a declared language as lyrics, and any other file at its own path", () => {
+    const request = folderEditRequest({
+      target,
+      resources,
+      files: { "remote:7:RJ00000002": [file("sub/01.vtt"), file("sub/02.vtt")] },
+      selection: { "remote:7:RJ00000002": new Set(["sub/01.vtt", "sub/02.vtt"]) },
+      lyrics: { "remote:7:RJ00000002": { "sub/01.vtt": "zh-cn" } },
+      decisions: {},
+    });
+    expect(request.additions).toEqual([
+      { kind: "remote", sourceId: 7, remoteCode: "RJ00000002", path: "sub/01.vtt", language: "zh-cn" },
+      { kind: "remote", sourceId: 7, remoteCode: "RJ00000002", path: "sub/02.vtt" },
+    ]);
+  });
+});
+
+describe("fetch into a new folder", () => {
+  const fetch = { sourceId: 8, sourceName: "Example Remote B", remoteCode: "RJ00000001", editionCode: "RJ00000001" };
+  const preparation = {
+    requestedCode: "RJ00000001",
+    canonicalCode: "RJ00000001",
+    metadataStatus: "complete" as const,
+    warnings: [],
+    editions: sources.editions,
+  };
+
+  it("lists the fetched edition on its source first, then the other remote editions, then the local folders", () => {
+    expect(fetchComposeResources(preparation, fetch).map((resource) => resource.id)).toEqual([
+      "remote:8:RJ00000001",
+      "remote:7:RJ00000001",
+      "remote:7:RJ00000002",
+      "local:11",
+      "local:12",
+      "local:21",
+    ]);
+    // Before the first preview reports the family, the fetched edition is the only place.
+    expect(fetchComposeResources(null, fetch).map((resource) => resource.id)).toEqual(["remote:8:RJ00000001"]);
+  });
+
+  it("fetches the edition's plain files and adds everything else once the folder exists", () => {
+    const resources = fetchComposeResources(preparation, fetch);
+    const fetchedDecision = {
+      itemKey: "remote:mp3/01.mp3",
+      sourceId: 0,
+      resolution: "exclude" as const,
+      targetPath: "",
+    };
+    const followDecision = {
+      itemKey: "remote:7:RJ00000002:sub/01.vtt",
+      sourceId: 0,
+      resolution: "keep_both" as const,
+      targetPath: "",
+    };
+    const request = fetchComposeRequest({
+      fetch,
+      resources,
+      files: {
+        "remote:8:RJ00000001": [file("mp3/01.mp3"), file("mp3/01.lrc")],
+        "remote:7:RJ00000002": [file("sub/01.vtt")],
+        "local:21": [file("wav/01.wav")],
+      },
+      selection: {
+        "remote:8:RJ00000001": new Set(["mp3/01.mp3", "mp3/01.lrc"]),
+        "remote:7:RJ00000002": new Set(["sub/01.vtt"]),
+        "local:21": new Set(["wav/01.wav"]),
+      },
+      lyrics: { "remote:8:RJ00000001": { "mp3/01.lrc": "ja-jp" }, "remote:7:RJ00000002": { "sub/01.vtt": "zh-cn" } },
+      decisions: { fetchedDecision, followDecision },
+      minFreeBytes: 1,
+    });
+    expect(request).toEqual({
+      paths: ["mp3/01.mp3"],
+      decisions: [fetchedDecision],
+      minFreeBytes: 1,
+      followUp: {
+        additions: [
+          { kind: "remote", sourceId: 8, remoteCode: "RJ00000001", path: "mp3/01.lrc", language: "ja-jp" },
+          { kind: "remote", sourceId: 7, remoteCode: "RJ00000002", path: "sub/01.vtt", language: "zh-cn" },
+          { kind: "local", folderId: 21, path: "wav/01.wav" },
+        ],
+        decisions: [followDecision],
+      },
+    });
+  });
+
+  it("shows both parts in the new folder and starts only without conflicts in either", () => {
+    const fetched = planItem({
+      itemKey: "remote:mp3/01.mp3",
+      sourceKind: "remote",
+      action: "cache_download",
+      targetPath: "Fetch/RJ00000001/mp3/01.mp3",
+    });
+    const lyrics = planItem({
+      itemKey: "remote:7:RJ00000002:sub/01.vtt",
+      sourceKind: "remote",
+      kind: "text",
+      action: "cache_download",
+      targetPath: "Fetch/RJ00000001/lyrics_kikoto/zh-hans/sub/01.vtt",
+      language: "zh-cn",
+    });
+    const composed = (conflict: number): ComposedFetchPlan => ({
+      sourceId: 8,
+      primaryCode: "RJ00000001",
+      saveRoot: "Fetch/RJ00000001",
+      fetchRoot: { rootPath: "", status: "ready", conflict: false, message: "" },
+      localFiles: [],
+      items: [fetched],
+      summary: { total: 1, skipExisting: 0, cacheHit: 0, cacheDownload: 1, promote: 1, conflict: 0 },
+      preparation,
+      followUp: { ...plan([lyrics], conflict), saveRoot: "Fetch/RJ00000001" },
+    });
+    expect(fetchComposeResult(composed(0)).map((entry) => [entry.path, entry.state])).toEqual([
+      ["mp3/01.mp3", "add_remote"],
+      ["lyrics_kikoto/zh-hans/sub/01.vtt", "add_remote"],
+    ]);
+    const request = { paths: ["mp3/01.mp3"], decisions: [], minFreeBytes: 1 };
+    const idle = { ...request, paths: [] };
+    expect(fetchComposeReadiness({ request: idle, plan: composed(0), planCurrent: true })).toBe("idle");
+    expect(fetchComposeReadiness({ request, plan: composed(0), planCurrent: false })).toBe("refreshing");
+    expect(fetchComposeReadiness({ request, plan: composed(1), planCurrent: true })).toBe("blocked");
+    expect(fetchComposeReadiness({ request, plan: composed(0), planCurrent: true })).toBe("ready");
   });
 });

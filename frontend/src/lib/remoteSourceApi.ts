@@ -335,7 +335,7 @@ export type RemoteEntityRef = {
   name: string;
 };
 
-const DEFAULT_MANUAL_FETCH_MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024;
+export const DEFAULT_MANUAL_FETCH_MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024;
 
 export const remoteSourceApi = {
   getRemoteTrackRunStatus: (id: number) => getJSON<RemoteTrackRunStatus>(`/api/remote-track-runs/${id}`),

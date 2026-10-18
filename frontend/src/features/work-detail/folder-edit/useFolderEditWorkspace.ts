@@ -10,11 +10,16 @@ import {
   folderEditResources,
   folderEditResult,
   localFolderFiles,
-  remoteEditionFiles,
-  type FolderEditFile,
   type FolderEditResource,
   type FolderEditTarget,
 } from "@/features/work-detail/folder-edit/folderEditModel";
+import { folderEditAssignments } from "@/features/work-detail/folder-edit/folderEditLyrics";
+import {
+  createFolderWorkspaceRequestId,
+  useFolderWorkspaceFiles,
+  type FolderWorkspace,
+} from "@/features/work-detail/folder-edit/folderWorkspace";
+import { folderAudio } from "@/features/work-detail/lyrics/lyricsEditModel";
 import {
   ApiError,
   api,
@@ -24,10 +29,7 @@ import {
   type WorkFolderEditResult,
 } from "@/lib/api";
 
-export type FolderEditFilesState = {
-  status: "loading" | "ready" | "error";
-  files: FolderEditFile[];
-};
+export type { FolderEditFilesState } from "@/features/work-detail/folder-edit/folderWorkspace";
 
 /** The remote edition a Fetch opens the workspace on. */
 export type FolderEditInitialRemote = {
@@ -36,31 +38,26 @@ export type FolderEditInitialRemote = {
 };
 
 const PLAN_DELAY_MS = 500;
-const noFiles: FolderEditFile[] = [];
 const noSelection: ReadonlySet<string> = new Set();
-
-function createFolderEditRequestId() {
-  const random =
-    typeof globalThis.crypto?.randomUUID === "function"
-      ? globalThis.crypto.randomUUID()
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  return `edit:${random}`;
-}
 
 /**
  * The state of one folder edit: where files can come from, what is selected in
- * each place, the server's preview of the additions, and the submission.
+ * each place and which files are added as lyrics, the server's preview of the
+ * additions, and the submission.
  */
 export function useFolderEditWorkspace({
   target,
   currentItems,
   initialRemote,
+  canAssign,
   onApplied,
 }: {
   target: FolderEditTarget;
   /** The media of the edited work, which the page has already loaded. */
   currentItems: MediaItem[];
   initialRemote?: FolderEditInitialRemote | null;
+  /** Whether the viewer may assign added lyrics to tracks. */
+  canAssign: boolean;
   onApplied: (result: WorkFolderEditResult) => void;
 }) {
   const { t } = useTranslation();
@@ -73,17 +70,17 @@ export function useFolderEditWorkspace({
   const [resources, setResources] = useState<FolderEditResource[]>([currentResource]);
   const [sourcesStatus, setSourcesStatus] = useState<"loading" | "ready" | "error">("loading");
   const [sourcesAttempt, setSourcesAttempt] = useState(0);
-  const [files, setFiles] = useState<Record<string, FolderEditFilesState>>({});
-  const [selection, setSelection] = useState<Record<string, ReadonlySet<string>>>({});
+  const { files, setFiles, selection, setSelection, setSelected, lyrics, setLyricsRole, loadResource, readyFiles } =
+    useFolderWorkspaceFiles();
   const [activeId, setActiveId] = useState(CURRENT_FOLDER_RESOURCE);
   const [decisions, setDecisions] = useState<Record<string, RemoteFetchFileDecision>>({});
   const [plan, setPlan] = useState<WorkFolderEditPlan | null>(null);
   const [plannedRevision, setPlannedRevision] = useState("");
   const [planFailed, setPlanFailed] = useState(false);
   const [planAttempt, setPlanAttempt] = useState(0);
+  const [assign, setAssign] = useState(true);
   const [applying, setApplying] = useState(false);
-  const requestId = useRef(createFolderEditRequestId());
-  const loading = useRef(new Set<string>());
+  const requestId = useRef(createFolderWorkspaceRequestId("edit"));
   // Only the first load opens on the remote edition a Fetch asked for.
   const pendingInitialRemote = useRef(initialRemote ?? null);
 
@@ -95,24 +92,7 @@ export function useFolderEditWorkspace({
       ...current,
       [CURRENT_FOLDER_RESOURCE]: new Set(currentFiles.map((file) => file.path)),
     }));
-  }, [currentFiles]);
-
-  const loadResource = useCallback(async (resource: FolderEditResource) => {
-    if (resource.kind === "current" || loading.current.has(resource.id)) return;
-    loading.current.add(resource.id);
-    setFiles((current) => ({ ...current, [resource.id]: { status: "loading", files: noFiles } }));
-    try {
-      const loaded =
-        resource.kind === "local"
-          ? localFolderFiles((await api.getWork(resource.workId)).mediaItems, resource.rootPath)
-          : remoteEditionFiles((await api.getRemoteSourceWork(resource.sourceId, resource.editionCode)).tracks);
-      setFiles((current) => ({ ...current, [resource.id]: { status: "ready", files: loaded } }));
-    } catch {
-      setFiles((current) => ({ ...current, [resource.id]: { status: "error", files: noFiles } }));
-    } finally {
-      loading.current.delete(resource.id);
-    }
-  }, []);
+  }, [currentFiles, setFiles, setSelection]);
 
   const selectResource = useCallback(
     (resource: FolderEditResource) => {
@@ -170,14 +150,9 @@ export function useFolderEditWorkspace({
     }
   }, [t, target, toast]);
 
-  const readyFiles = useMemo(() => {
-    const ready: Record<string, FolderEditFile[]> = {};
-    for (const [id, state] of Object.entries(files)) if (state.status === "ready") ready[id] = state.files;
-    return ready;
-  }, [files]);
   const request = useMemo(
-    () => folderEditRequest({ target, resources, files: readyFiles, selection, decisions }),
-    [decisions, readyFiles, resources, selection, target],
+    () => folderEditRequest({ target, resources, files: readyFiles, selection, lyrics, decisions }),
+    [decisions, lyrics, readyFiles, resources, selection, target],
   );
   const revision = useMemo(() => JSON.stringify(request), [request]);
   const needsPlan = request.additions.length > 0;
@@ -218,12 +193,38 @@ export function useFolderEditWorkspace({
     () => currentFiles.filter((file) => !currentSelection.has(file.path)),
     [currentFiles, currentSelection],
   );
+  const lyricsAdditionCount = request.additions.filter((addition) => addition.language !== undefined).length;
+  const assignments = useMemo(() => {
+    if (!canAssign || !assign || !planCurrent || !currentPlan || lyricsAdditionCount === 0) return [];
+    const kept = folderAudio(currentItems, target.rootPath).filter((audio) => currentSelection.has(audio.path));
+    const addedAudio = result
+      .filter((entry) => entry.kind === "audio" && (entry.state === "add_local" || entry.state === "add_remote"))
+      .map((entry) => entry.path);
+    return folderEditAssignments({ audio: kept, addedAudio, additions: request.additions, items: currentPlan.items });
+  }, [
+    assign,
+    canAssign,
+    currentItems,
+    currentPlan,
+    currentSelection,
+    lyricsAdditionCount,
+    planCurrent,
+    request.additions,
+    result,
+    target.rootPath,
+  ]);
 
   const apply = async () => {
     if (readiness !== "ready" || applying) return;
     setApplying(true);
     try {
-      onApplied(await api.applyWorkFolderEdit(target.workId, { ...request, requestId: requestId.current }));
+      onApplied(
+        await api.applyWorkFolderEdit(target.workId, {
+          ...request,
+          ...(assignments.length > 0 ? { assignments } : {}),
+          requestId: requestId.current,
+        }),
+      );
     } catch (error) {
       if (error instanceof ApiError && error.status === 409 && error.code === "folder_edit_conflict") {
         // The folder changed since the preview; show what it holds now.
@@ -238,35 +239,42 @@ export function useFolderEditWorkspace({
     }
   };
 
-  return {
+  const workspace: FolderWorkspace = {
     resources,
     sourcesStatus,
     retrySources: () => setSourcesAttempt((value) => value + 1),
-    remoteCheck,
-    checkRemote: () => void checkRemote(),
+    remoteCheck: { checking: remoteCheck === "checking", check: () => void checkRemote() },
     files,
     selection,
+    lyrics,
     activeResource: resources.find((resource) => resource.id === activeId) ?? resources[0] ?? currentResource,
     selectResource,
     retryResource: (resource: FolderEditResource) => void loadResource(resource),
-    setSelected: (resourceId: string, paths: ReadonlySet<string>) =>
-      setSelection((current) => ({ ...current, [resourceId]: paths })),
+    setSelected,
+    setLyricsRole,
     decisions,
     setDecision: (decision: RemoteFetchFileDecision) =>
       setDecisions((current) => ({ ...current, [decision.itemKey]: decision })),
-    request,
-    plan: currentPlan,
+    additionCount: request.additions.length,
+    lyricsAdditionCount,
+    rootPath: target.rootPath,
+    result,
+    readiness,
+    addCount: currentPlan?.summary.add ?? 0,
+    removeCount: request.removeLocationIds.length,
+    conflictCount: currentPlan?.summary.conflict ?? 0,
     planFailed: needsPlan && planFailed && !planCurrent,
     retryPlan: () => {
       setPlanFailed(false);
       setPlanAttempt((value) => value + 1);
     },
-    readiness,
-    result,
-    removedFiles,
+    canAssign,
+    assign,
+    setAssign,
+    assignmentCount: assignments.length,
     applying,
-    apply,
   };
+  return { ...workspace, removedFiles, apply };
 }
 
 export type FolderEditWorkspace = ReturnType<typeof useFolderEditWorkspace>;

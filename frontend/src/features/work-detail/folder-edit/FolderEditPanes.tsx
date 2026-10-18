@@ -165,7 +165,7 @@ function sortedFolders<T>(node: FolderEditTreeNode<T>) {
 
 /**
  * One folder of a selection tree with its files. `meta` adds a note to a file
- * row, before its size.
+ * row, before its size, and `below` a line under the file's name.
  */
 export function SelectionNode({
   node,
@@ -174,6 +174,7 @@ export function SelectionNode({
   disabled,
   isRoot = false,
   meta,
+  below,
   onToggle,
 }: {
   node: FolderEditTreeNode<FolderEditFile>;
@@ -182,6 +183,7 @@ export function SelectionNode({
   disabled: boolean;
   isRoot?: boolean;
   meta?: (file: FolderEditFile) => ReactNode;
+  below?: (file: FolderEditFile) => ReactNode;
   onToggle: (paths: readonly string[], included: boolean) => void;
 }) {
   const { t } = useTranslation();
@@ -239,13 +241,15 @@ export function SelectionNode({
             selected={selected}
             disabled={disabled}
             meta={meta}
+            below={below}
             onToggle={onToggle}
           />
         ))}
       {(isRoot || open) &&
         files.map((file) => {
           const included = selected.has(file.path);
-          return (
+          const line = below?.(file);
+          const row = (
             <label
               key={file.path}
               className={cn(
@@ -269,6 +273,16 @@ export function SelectionNode({
                 {file.sizeBytes === null ? "" : formatBytes(file.sizeBytes)}
               </span>
             </label>
+          );
+          if (!line) return row;
+          // The line starts under the file's name: past the spacer, checkbox, and icon.
+          return (
+            <div key={file.path}>
+              {row}
+              <div className="-mt-1 pb-1.5 pr-2" style={{ paddingLeft: depth * 14 + 82 }}>
+                {line}
+              </div>
+            </div>
           );
         })}
     </div>

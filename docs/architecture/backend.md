@@ -401,13 +401,28 @@ remote source that passes its health check about each of the family's
 editions, at most 16, one edition at a time, records the answers as their
 stored availability, and then returns the same listing. A plan names the
 files to add, from another active local folder of the family or from a remote
-edition of the family, and the folder's local file locations to remove. It
-resolves each addition's target as a Fetch plan does, with the same decisions,
-and never changes a file. Apply rejects a plan that has conflicts or changes
-nothing, and queues one `work_folder_edit` run; a folder has one active run,
-and a repeated request id returns the run it queued. Its permissions,
-destination checks, and limits are in
+edition of the family, and the folder's local file locations to remove. An
+addition with a declared `language` is a lyrics file of that language and
+targets the language's folder inside `lyrics_kikoto`. It resolves each
+addition's target as a Fetch plan does, with the same decisions, and never
+changes a file. Apply rejects a plan that has conflicts or changes nothing,
+and queues one `work_folder_edit` run; a folder has one active run, and a
+repeated request id returns the run it queued. Apply may also carry
+`assignments`, each naming an added lyrics file and an audio file of the work
+by media item or by path below the folder; the run stores them in the lyrics'
+language once it has indexed the folder, skipping a file the index does not
+hold. Its permissions, destination checks, and limits are in
 [Folder edit](../development/security.md#folder-edit).
+
+A Fetch plan or Fetch request may carry `followUp`: folder edit additions,
+decisions, and assignments for the folder the Fetch publishes. The plan
+response then adds `followUp`, a folder edit plan resolved against that folder
+with the Fetch's own targets already taken, so a follow-up file that would
+land on a fetched file is a conflict. Once the Fetch completes, it queues one
+`work_folder_edit` run on the folder it registered, with request id
+`fetch-follow-up:<run id>`, and records `follow_up_run_id` or
+`follow_up_error` in its run summary. Automatic Fetches never carry a
+follow-up.
 
 Remote queries requiring local filtering retain only upstream pages for up to
 30 seconds, with at most 32 pages and 16 MiB of serialized data per server.

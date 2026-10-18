@@ -1,8 +1,12 @@
 import type {
+  ComposedFetchPlan,
+  ComposedFetchRequest,
   MediaItem,
   RemoteFetchFileDecision,
+  RemoteFetchPreparation,
   RemoteFetchResolution,
   RemoteTrack,
+  RemoteWorkSavePlanItem,
   WorkFolderEditAddition,
   WorkFolderEditItem,
   WorkFolderEditPlan,
@@ -16,8 +20,19 @@ export const CURRENT_FOLDER_RESOURCE = "current";
 
 export type FolderEditTarget = {
   workId: number;
+  /** The edited folder; 0 for the new folder a Fetch creates. */
   folderId: number;
   rootPath: string;
+};
+
+/** The edition a Fetch publishes into a new folder, and the source it fetches it from. */
+export type FetchComposeTarget = {
+  sourceId: number;
+  sourceName: string;
+  /** The code the source knows the edition by. */
+  remoteCode: string;
+  /** The library edition the new folder belongs to. */
+  editionCode: string;
 };
 
 /**
@@ -37,6 +52,8 @@ export type FolderEditResource = {
   /** Remote resources: the configured source that offers the edition. */
   sourceId: number;
   sourceName: string;
+  /** The code the source knows the edition by, when it differs from the edition's own. */
+  remoteCode?: string;
 };
 
 export type FolderEditFile = {
@@ -50,6 +67,27 @@ export type FolderEditFile = {
 };
 
 export type FolderEditSelection = Readonly<Record<string, ReadonlySet<string>>>;
+
+/**
+ * The files of each resource that are added as lyrics, by path, with their
+ * declared language; the empty language is the fallback lyrics. A file without
+ * an entry is added as a file at its own path.
+ */
+export type FolderEditLyricsRoles = Readonly<Record<string, Readonly<Record<string, string>>>>;
+
+/** Sets the role of the given files: lyrics of a language, or a plain file for `null`. */
+export function withLyricsRole(
+  roles: Readonly<Record<string, string>> | undefined,
+  paths: readonly string[],
+  language: string | null,
+): Readonly<Record<string, string>> {
+  const next: Record<string, string> = { ...roles };
+  for (const path of paths) {
+    if (language === null) delete next[path];
+    else next[path] = language;
+  }
+  return next;
+}
 
 export type FolderEditTreeNode<T> = {
   name: string;
@@ -291,12 +329,14 @@ export function folderEditRequest({
   resources,
   files,
   selection,
+  lyrics = {},
   decisions,
 }: {
   target: FolderEditTarget;
   resources: readonly FolderEditResource[];
   files: Readonly<Record<string, readonly FolderEditFile[] | undefined>>;
   selection: FolderEditSelection;
+  lyrics?: FolderEditLyricsRoles;
   decisions: Readonly<Record<string, RemoteFetchFileDecision>>;
 }): WorkFolderEditRequest {
   const additions: WorkFolderEditAddition[] = [];
@@ -307,27 +347,31 @@ export function folderEditRequest({
       const included = selected?.has(file.path) ?? false;
       if (resource.kind === "current") {
         if (!included && file.locationId !== null) removeLocationIds.push(file.locationId);
-      } else if (included && resource.kind === "local") {
-        additions.push({ kind: "local", folderId: resource.folderId, path: file.path });
       } else if (included) {
-        additions.push({
-          kind: "remote",
-          sourceId: resource.sourceId,
-          remoteCode: resource.editionCode,
-          path: file.path,
-        });
+        additions.push(folderEditAddition(resource, file.path, lyrics[resource.id]?.[file.path]));
       }
     }
   }
-  const itemKeys = new Set(additions.map(folderEditItemKey));
   return {
     folderId: target.folderId,
     additions,
     removeLocationIds,
-    decisions: Object.values(decisions)
-      .filter((decision) => itemKeys.has(decision.itemKey))
-      .sort((left, right) => left.itemKey.localeCompare(right.itemKey)),
+    decisions: decisionsFor(decisions, new Set(additions.map(folderEditItemKey))),
   };
+}
+
+function folderEditAddition(resource: FolderEditResource, path: string, language: string | undefined) {
+  const addition: WorkFolderEditAddition =
+    resource.kind === "local"
+      ? { kind: "local", folderId: resource.folderId, path }
+      : { kind: "remote", sourceId: resource.sourceId, remoteCode: resource.editionCode, path };
+  return language === undefined ? addition : { ...addition, language };
+}
+
+function decisionsFor(decisions: Readonly<Record<string, RemoteFetchFileDecision>>, itemKeys: ReadonlySet<string>) {
+  return Object.values(decisions)
+    .filter((decision) => itemKeys.has(decision.itemKey))
+    .sort((left, right) => left.itemKey.localeCompare(right.itemKey));
 }
 
 /** The key the server gives the plan item of an addition. */
@@ -413,4 +457,158 @@ export function folderEditReadiness({
   if (!plan || !planCurrent) return "refreshing";
   if (plan.summary.conflict > 0) return "blocked";
   return plan.summary.add > 0 || request.removeLocationIds.length > 0 ? "ready" : "idle";
+}
+
+/** The key a Fetch plan gives the item of a file of the fetched edition. */
+export function fetchItemKey(path: string) {
+  return `remote:${path}`;
+}
+
+/**
+ * The places a Fetch into a new folder can take files from: the fetched
+ * edition on its source first, then every edition a configured source offers,
+ * then the family's local folders.
+ */
+export function fetchComposeResources(
+  preparation: RemoteFetchPreparation | null,
+  fetch: FetchComposeTarget,
+): FolderEditResource[] {
+  const editions = preparation?.editions ?? [];
+  const editionCode = fetch.editionCode.toUpperCase();
+  const fetched = editions.find((edition) => edition.primaryCode.toUpperCase() === editionCode);
+  const primary: FolderEditResource = {
+    id: remoteResourceId(fetch.sourceId, editionCode),
+    kind: "remote",
+    editionCode,
+    language: fetched?.metadataLanguage || fetched?.editionLabel || "",
+    origin: fetched?.origin ?? false,
+    folderId: 0,
+    workId: fetched?.workId ?? 0,
+    rootPath: "",
+    sourceId: fetch.sourceId,
+    sourceName: fetch.sourceName,
+    remoteCode: fetch.remoteCode,
+  };
+  const family = folderEditResources(
+    { workId: 0, primaryCode: editionCode, editions, warnings: [] },
+    { workId: 0, folderId: 0, rootPath: "" },
+  ).filter((resource) => resource.kind !== "current" && resource.id !== primary.id);
+  return [
+    primary,
+    ...family.filter((resource) => resource.kind === "remote"),
+    ...family.filter((resource) => resource.kind === "local"),
+  ];
+}
+
+/**
+ * Turns the selection into a Fetch into a new folder: the fetched edition's
+ * selected files are the Fetch, and everything else selected, including the
+ * fetched edition's files added as lyrics, follows once the folder exists.
+ */
+export function fetchComposeRequest({
+  fetch,
+  resources,
+  files,
+  selection,
+  lyrics,
+  decisions,
+  minFreeBytes,
+}: {
+  fetch: FetchComposeTarget;
+  resources: readonly FolderEditResource[];
+  files: Readonly<Record<string, readonly FolderEditFile[] | undefined>>;
+  selection: FolderEditSelection;
+  lyrics: FolderEditLyricsRoles;
+  decisions: Readonly<Record<string, RemoteFetchFileDecision>>;
+  minFreeBytes: number;
+}): ComposedFetchRequest {
+  const primaryId = remoteResourceId(fetch.sourceId, fetch.editionCode);
+  const paths: string[] = [];
+  const additions: WorkFolderEditAddition[] = [];
+  for (const resource of resources) {
+    const selected = selection[resource.id];
+    for (const file of files[resource.id] ?? []) {
+      if (!selected?.has(file.path)) continue;
+      const language = lyrics[resource.id]?.[file.path];
+      if (resource.id === primaryId && language === undefined) paths.push(file.path);
+      else additions.push(folderEditAddition(resource, file.path, language));
+    }
+  }
+  const request: ComposedFetchRequest = {
+    paths,
+    decisions: decisionsFor(decisions, new Set(paths.map(fetchItemKey))),
+    minFreeBytes,
+  };
+  if (additions.length > 0) {
+    request.followUp = {
+      additions,
+      decisions: decisionsFor(decisions, new Set(additions.map(folderEditItemKey))),
+    };
+  }
+  return request;
+}
+
+function fetchResultState(item: RemoteWorkSavePlanItem): FolderEditResultState {
+  if (item.targetConflict || item.action === "conflict") return "conflict";
+  if (item.action === "exclude") return "excluded";
+  if (item.action === "skip") return "same";
+  if (item.action === "copy_local") return "add_local";
+  return "add_remote";
+}
+
+/** The new folder as the Fetch and what follows it will make it. */
+export function fetchComposeResult(plan: ComposedFetchPlan | null): FolderEditResultEntry[] {
+  if (!plan) return [];
+  const prefix = `${normalizePath(plan.saveRoot)}/`;
+  const below = (target: string) => {
+    const path = normalizePath(target);
+    return path.startsWith(prefix) ? path.slice(prefix.length) : path;
+  };
+  const entry = (
+    item: RemoteWorkSavePlanItem & { remoteCode?: string },
+    state: FolderEditResultState,
+  ): FolderEditResultEntry => {
+    const path = below(item.targetPath);
+    return {
+      key: item.itemKey,
+      path,
+      name: path.split("/").pop() ?? path,
+      kind: item.kind,
+      sizeBytes: item.sizeBytes,
+      state,
+      item,
+    };
+  };
+  const fetchedCode = plan.editionCode || plan.primaryCode;
+  return [
+    ...plan.items.map((item) => entry({ ...item, remoteCode: fetchedCode }, fetchResultState(item))),
+    ...(plan.followUp?.items ?? []).map((item) => entry(item, resultStateForItem(item))),
+  ];
+}
+
+/** How many files the Fetch and what follows it put into the new folder. */
+export function fetchComposeAddCount(plan: ComposedFetchPlan | null) {
+  return (plan?.summary.promote ?? 0) + (plan?.followUp?.summary.add ?? 0);
+}
+
+/**
+ * Whether the Fetch can start. It fetches at least one file of its edition,
+ * and waits for a current preview without conflicts in either part or a
+ * folder that needs review.
+ */
+export function fetchComposeReadiness({
+  request,
+  plan,
+  planCurrent,
+}: {
+  request: ComposedFetchRequest;
+  plan: ComposedFetchPlan | null;
+  planCurrent: boolean;
+}): FolderEditReadiness {
+  if (request.paths.length === 0) return "idle";
+  if (!plan || !planCurrent) return "refreshing";
+  if (plan.summary.conflict > 0 || (plan.followUp?.summary.conflict ?? 0) > 0 || plan.fetchRoot.conflict) {
+    return "blocked";
+  }
+  return fetchComposeAddCount(plan) > 0 ? "ready" : "idle";
 }

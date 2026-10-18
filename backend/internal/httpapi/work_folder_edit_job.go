@@ -20,7 +20,9 @@ type workFolderEditJobPayload struct {
 	TransactionPool string               `json:"transaction_pool,omitempty"`
 	Items           []workFolderEditItem `json:"items"`
 	Removals        []mediaCleanupTarget `json:"removals"`
-	RequestID       string               `json:"request_id"`
+	// Assignments are stored once the folder is indexed.
+	Assignments []workFolderEditAssignment `json:"assignments,omitempty"`
+	RequestID   string                     `json:"request_id"`
 }
 
 // workFolderEditCheckpoint records what already happened, so a resumed or
@@ -35,12 +37,17 @@ type workFolderEditCheckpoint struct {
 // workFolderEditPermissions is what starting the edit requires, so a retry
 // never does more than its actor could start directly.
 func workFolderEditPermissions(payload workFolderEditJobPayload) []string {
+	permissions := []string{"downloads:manage"}
 	for _, item := range payload.Items {
 		if item.SourceKind == "remote" && workFolderEditItemAdds(item) {
-			return []string{"downloads:manage", "remote:fetch"}
+			permissions = append(permissions, "remote:fetch")
+			break
 		}
 	}
-	return []string{"downloads:manage"}
+	if len(payload.Assignments) > 0 {
+		permissions = append(permissions, "library:write")
+	}
+	return permissions
 }
 
 func workFolderEditItemAdds(item workFolderEditItem) bool {
@@ -69,6 +76,7 @@ type workFolderEditExecution struct {
 	targetAbs  string
 	progress   int
 	total      int
+	assigned   int
 	// node is the step an error belongs to.
 	node string
 }
@@ -133,6 +141,11 @@ func (e *workFolderEditExecution) run(ctx context.Context) error {
 	if err := s.indexLocalMediaForWork(ctx, e.payload.WorkID, e.payload.FileSourceID, e.payload.TargetRoot); err != nil {
 		return err
 	}
+	assigned, err := s.declareWorkFolderEditAssignments(ctx, e.payload)
+	if err != nil {
+		return err
+	}
+	e.assigned = assigned
 	return e.finish(ctx)
 }
 
@@ -319,6 +332,7 @@ func (e *workFolderEditExecution) publish(ctx context.Context) error {
 	published := stringSet(e.checkpoint.Published)
 	base := e.progress
 	count := 0
+	lyricsRootReady := false
 	for index, item := range e.payload.Items {
 		if !workFolderEditItemAdds(item) {
 			continue
@@ -330,6 +344,14 @@ func (e *workFolderEditExecution) publish(ctx context.Context) error {
 		}
 		if err := s.ensureWorkflowRunActive(ctx, e.job.RunID); err != nil {
 			return err
+		}
+		if item.Language != nil && !lyricsRootReady {
+			// Kikoto creates and marks its lyrics folder, and never writes
+			// lyrics into a folder of that name it did not create.
+			if err := ensureLyricsRoot(e.targetAbs); err != nil {
+				return err
+			}
+			lyricsRootReady = true
 		}
 		statusCtx := context.WithoutCancel(ctx)
 		if err := e.publishItem(index, item); err != nil {
@@ -417,6 +439,7 @@ func (e *workFolderEditExecution) finish(ctx context.Context) error {
 		"added":     len(e.checkpoint.Published),
 		"removed":   len(e.checkpoint.Removed),
 		"deleted":   e.checkpoint.Deleted,
+		"assigned":  e.assigned,
 		"work_id":   e.payload.WorkID,
 		"folder_id": e.payload.FolderID,
 	}

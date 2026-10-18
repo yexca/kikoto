@@ -223,7 +223,14 @@ an administrator accepts it, so the notice does not depend on the client.
 
 `POST /api/works/{id}/folder-edit/plan` and `POST /api/works/{id}/folder-edit`
 change one active local folder of a work. Both require `downloads:manage`,
-plus `remote:fetch` when the request names a remote file.
+plus `remote:fetch` when the request names a remote file; apply also requires
+`library:write` when it assigns lyrics to tracks. A Fetch that carries a
+follow-up requires `downloads:manage` on top of the Fetch permissions, plus
+`library:write` when the follow-up assigns lyrics, and names at least one file
+of the edition, since an empty selection fetches every file. Its follow-up is
+planned against the folder the Fetch publishes before the Fetch is queued, is
+refused while another Fetch of the work runs, and later runs as a folder edit
+of that folder under every rule below.
 `POST /api/works/{id}/folder-edit/sources/check` requires `downloads:manage`
 and `remote:track`. It contacts only configured sources, through the shared
 remote-source transport, asks only about editions of the requested work's
@@ -241,6 +248,13 @@ family, and stops before the next edition when the request is cancelled.
 - A removed file must be a local location of the requested work inside the
   target folder. Applying the edit runs the destructive-path checks of media
   cleanup, including the symbolic-link review.
+- An addition with a declared language must be a lyrics text file of at most
+  2 MiB. It lands in the language's folder inside a `lyrics_kikoto` folder
+  Kikoto created and marked; an unmarked one is refused with
+  `lyrics_folder_blocked`, and a renamed lyrics file stays in its language's
+  folder. An assignment names an added lyrics file of the plan and an audio
+  media item of the work or an audio path below the folder, at most once per
+  audio file and language.
 - Target paths stay inside the target folder. A target that exists is kept
   when it has the same size and is otherwise a conflict, which apply rejects
   until a decision resolves it. Two additions never share a target, compared

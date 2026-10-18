@@ -2384,6 +2384,15 @@ export const surfaceKorean = {
     localHint: "선택한 파일은 이 폴더로 복사됩니다. 원본 폴더는 변경되지 않습니다.",
     remoteHint: "선택한 파일은 {{source}}에서 이 폴더로 다운로드됩니다.",
     selectionSummary: "{{total}}개 중 {{selected}}개 선택됨",
+    asFile: "파일로",
+    asLyrics: "가사 · {{language}}",
+    roleMixed: "혼합",
+    selectedLyricsRole: "선택한 가사 파일",
+    fileRole: "{{name}} 추가 방식",
+    lyricsTarget: "가사로 추가한 파일은 {{folder}} 안의 해당 언어 폴더로 들어갑니다.",
+    assign: "추가한 가사를 일치하는 트랙에 지정",
+    assignHint:
+      "파일 이름으로 먼저 맞추고 다음으로 트랙 순서로 맞춥니다. 해당 언어 가사가 이미 있는 트랙은 그대로 둡니다.",
     loadingFiles: "파일을 불러오는 중",
     filesFailed: "파일을 불러오지 못했습니다.",
     noFiles: "파일 없음",
@@ -2415,6 +2424,25 @@ export const surfaceKorean = {
     completed: "워크플로 #{{runId}}에서 파일을 업데이트했습니다.",
     runEnded: "폴더 편집 워크플로 #{{runId}}이(가) {{status}} 상태로 종료되었습니다.",
     reloadFailed: "파일은 업데이트되었지만 작품을 새로 고치지 못했습니다.",
+  },
+  fetchCompose: {
+    title: "Fetch",
+    description:
+      "{{code}}를 새 폴더로 Fetch하고, 다른 판·소스·로컬 폴더의 파일이나 언어를 지정한 가사를 함께 추가합니다.",
+    newFolder: "새 폴더",
+    primaryHint: "선택한 파일은 {{source}}에서 새 폴더로 Fetch됩니다.",
+    remoteHint: "선택한 파일은 Fetch가 폴더를 게시한 뒤 {{source}}에서 다운로드됩니다.",
+    localHint: "선택한 파일은 Fetch가 폴더를 게시한 뒤 새 폴더로 복사됩니다.",
+    emptyResult: "Fetch할 파일을 선택하세요.",
+    statusIdle: "이 판의 파일을 하나 이상 선택하세요",
+    statusReady: "준비됨: 새 폴더에 파일 {{count}}개",
+    applying: "Fetch를 시작하는 중",
+    apply: "Fetch",
+    applyFailed: "Fetch를 시작하지 못했습니다. 업데이트된 미리 보기를 확인하세요.",
+    queued: "Fetch {{code}}를 워크플로 실행 #{{runId}}(으)로 대기열에 추가했습니다.",
+    queuedWithFollowUp:
+      "Fetch {{code}}를 워크플로 실행 #{{runId}}(으)로 대기열에 추가했습니다. 다른 위치의 파일은 완료 후 두 번째 실행에서 추가됩니다.",
+    openStandardFetch: "일반 Fetch에서 검토",
   },
   remoteFetch: {
     destination: {
