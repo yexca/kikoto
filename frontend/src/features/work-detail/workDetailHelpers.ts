@@ -71,52 +71,93 @@ export function formatDateTime(value: string) {
   return parseServerTimestamp(value)?.toLocaleString() ?? value;
 }
 
-const languageLabels: Record<string, string> = {
-  ja: "Japanese",
-  "ja-jp": "Japanese",
-  jpn: "Japanese",
-  en: "English",
-  "en-us": "English",
-  eng: "English",
-  zh: "Simplified Chinese",
-  "zh-cn": "Simplified Chinese",
-  chi_hans: "Simplified Chinese",
-  "zh-tw": "Traditional Chinese",
-  chi_hant: "Traditional Chinese",
-  ko: "Korean",
-  "ko-kr": "Korean",
-  ko_kr: "Korean",
-  id: "Indonesian",
-  "id-id": "Indonesian",
-  ind: "Indonesian",
-  es: "Spanish",
-  "es-es": "Spanish",
-  spa: "Spanish",
-  vi: "Vietnamese",
-  "vi-vn": "Vietnamese",
-  vie: "Vietnamese",
-  pt: "Portuguese",
-  "pt-br": "Portuguese",
-  por: "Portuguese",
-  fr: "French",
-  "fr-fr": "French",
-  fre: "French",
-  de: "German",
-  "de-de": "German",
-  ger: "German",
-  it: "Italian",
-  "it-it": "Italian",
-  ita: "Italian",
-  th: "Thai",
-  "th-th": "Thai",
-  tha: "Thai",
-  sv: "Swedish",
-  "sv-se": "Swedish",
-  swe: "Swedish",
+type DetailLanguage = {
+  /** The language tag `Intl.DisplayNames` names when there is no translated name. */
+  tag: string;
+  /** The code a narrow header shows in place of the name. */
+  short: string;
+  nameKey?: string;
+  /** The name used when the browser cannot name the tag. */
+  name: string;
 };
 
+const detailLanguages: Record<string, DetailLanguage> = {
+  ja: { tag: "ja", short: "JA", nameKey: "metadata.japanese", name: "Japanese" },
+  en: { tag: "en", short: "EN", nameKey: "metadata.english", name: "English" },
+  "zh-cn": { tag: "zh-Hans", short: "SC", nameKey: "metadata.simplifiedChinese", name: "Simplified Chinese" },
+  "zh-tw": { tag: "zh-Hant", short: "TC", nameKey: "metadata.traditionalChinese", name: "Traditional Chinese" },
+  ko: { tag: "ko", short: "KO", nameKey: "metadata.korean", name: "Korean" },
+  id: { tag: "id", short: "ID", name: "Indonesian" },
+  es: { tag: "es", short: "ES", name: "Spanish" },
+  vi: { tag: "vi", short: "VI", name: "Vietnamese" },
+  pt: { tag: "pt", short: "PT", name: "Portuguese" },
+  fr: { tag: "fr", short: "FR", name: "French" },
+  de: { tag: "de", short: "DE", name: "German" },
+  it: { tag: "it", short: "IT", name: "Italian" },
+  th: { tag: "th", short: "TH", name: "Thai" },
+  sv: { tag: "sv", short: "SV", name: "Swedish" },
+};
+
+const detailLanguageAliases: Record<string, string> = {
+  "ja-jp": "ja",
+  jpn: "ja",
+  "en-us": "en",
+  eng: "en",
+  zh: "zh-cn",
+  "zh-hans": "zh-cn",
+  "chi-hans": "zh-cn",
+  "zh-hant": "zh-tw",
+  "chi-hant": "zh-tw",
+  "ko-kr": "ko",
+  kor: "ko",
+  "id-id": "id",
+  ind: "id",
+  "es-es": "es",
+  spa: "es",
+  "vi-vn": "vi",
+  vie: "vi",
+  "pt-br": "pt",
+  por: "pt",
+  "fr-fr": "fr",
+  fre: "fr",
+  "de-de": "de",
+  ger: "de",
+  "it-it": "it",
+  ita: "it",
+  "th-th": "th",
+  tha: "th",
+  "sv-se": "sv",
+  swe: "sv",
+};
+
+function detailLanguage(value: string): DetailLanguage | undefined {
+  const normalized = value.trim().toLowerCase().replace(/_/g, "-");
+  return detailLanguages[detailLanguageAliases[normalized] ?? normalized];
+}
+
+/** Names an edition or metadata language in the interface language. */
 export function languageLabel(value: string) {
-  return languageLabels[value.trim().toLowerCase()] ?? (value || i18n.t("libraryDetail.unknownLanguage"));
+  const language = detailLanguage(value);
+  if (!language) return value.trim() || i18n.t("libraryDetail.unknownLanguage");
+  if (language.nameKey) return i18n.t(language.nameKey);
+  try {
+    return new Intl.DisplayNames([i18n.language], { type: "language" }).of(language.tag) || language.name;
+  } catch {
+    return language.name;
+  }
+}
+
+/**
+ * The short code a narrow work header shows for a language, such as "JA" or
+ * "SC". A spelling that already looks like a language tag is shown upper-case;
+ * anything else, and an undeclared language, keeps its full label.
+ */
+export function languageShortLabel(value: string) {
+  const language = detailLanguage(value);
+  if (language) return language.short;
+  const trimmed = value.trim();
+  if (/^[a-z]{2,3}(?:[-_][a-z0-9]{2,8})*$/i.test(trimmed)) return trimmed.toUpperCase().replace(/_/g, "-");
+  return languageLabel(value);
 }
 
 export function detailReturnTarget(fallbackPath: string) {

@@ -105,6 +105,10 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
 - Keeps the metadata-language and directory-edition selectors as two separate
   compact chips beside the work code. Each chip names its current choice and
   opens its own list; an Origin directory edition reads `Origin · <language>`.
+  On a phone the code and both chips stay on one line: a chip names a language
+  by its code (`JA`, `EN`, `SC` for Simplified Chinese, `TC` for Traditional
+  Chinese, `KO`), and an Origin directory edition reads `Origin`. The lists
+  keep full language names.
   The metadata chip becomes a read-only label when there is only one variant.
   Metadata defaults to your preferred metadata language for local works; for
   remote-only works it defaults to the first of your languages the source

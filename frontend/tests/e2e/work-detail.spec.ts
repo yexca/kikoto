@@ -749,7 +749,9 @@ test("local work detail lists Origin first and expands from local to all edition
   await page.getByText(work.title, { exact: true }).click();
 
   const metadataTrigger = page.getByRole("button", { name: "Metadata language", exact: true });
-  await expect(metadataTrigger).toContainText("English");
+  // A phone header shows the language code and keeps the full name for assistive technology.
+  await expect(metadataTrigger).toHaveText("EN");
+  await expect(metadataTrigger).toHaveAccessibleDescription("English");
   await metadataTrigger.click();
   const metadataLanguages = page
     .getByRole("dialog", { name: "Metadata language", exact: true })
@@ -764,6 +766,7 @@ test("local work detail lists Origin first and expands from local to all edition
   const editionTrigger = page.getByRole("button", { name: "Directory edition", exact: true });
   // The language chip beside it names the language, so a phone shows only the edition kind.
   await expect(editionTrigger).toHaveText("Origin");
+  await expect(editionTrigger).toHaveAccessibleDescription("Origin · Japanese");
   await editionTrigger.click();
   const versionMenu = page.getByRole("dialog", { name: "Directory edition", exact: true });
   await expect(versionMenu.getByRole("group", { name: "Japanese versions" })).toBeVisible();

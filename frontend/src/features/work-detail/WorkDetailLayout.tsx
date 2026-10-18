@@ -7,12 +7,13 @@ import {
   type WorkMetadataPresentation,
   type WorkMetadataSyncStatus,
 } from "@/lib/api";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import {
   type ActiveSourceInfoModel,
   detailReturnTarget,
   formatDateTime,
   languageLabel,
+  languageShortLabel,
   openDetailTagSearch,
 } from "@/features/work-detail/workDetailHelpers";
 import { usePageHeaderBack } from "@/app/pageHeader";
@@ -825,8 +826,13 @@ function DetailTitleBlock({
   return (
     <div className="space-y-2">
       <div className="space-y-1.5">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <div className="flex items-center gap-1.5" role="group" aria-label={i18n.t("libraryDetail.workCodeActions")}>
+        {/* A narrow header keeps the code and its language chips on one line; a chip truncates instead of wrapping. */}
+        <div className="flex min-w-0 items-center gap-1.5 md:flex-wrap">
+          <div
+            className="flex shrink-0 items-center gap-1.5"
+            role="group"
+            aria-label={i18n.t("libraryDetail.workCodeActions")}
+          >
             {workCode ? (
               <button
                 type="button"
@@ -1111,28 +1117,46 @@ function WorkVersionMenus({
 }
 
 const versionChipClassName =
-  "inline-flex h-[22px] max-w-full items-center gap-1 rounded-md border px-2 text-xs text-muted-foreground";
+  "inline-flex h-[22px] min-w-0 max-w-full items-center gap-1 rounded-md border px-2 text-xs text-muted-foreground";
 
+/**
+ * A header chip naming the current language or edition. A narrow header shows
+ * `shortLabel`, such as a language code, while assistive technology and the
+ * open menu keep the full name.
+ */
 function VersionChipMenu({
   icon,
   label,
+  shortLabel,
   menuLabel,
   interactive,
   children,
 }: {
   icon: ReactNode;
   label: string;
+  shortLabel?: string;
   menuLabel: string;
   interactive: boolean;
   children: (close: () => void) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement | null>(null);
+  const labelId = useId();
+  const visibleLabel = shortLabel || label;
   if (!interactive) {
     return (
       <div role="group" aria-label={menuLabel} title={menuLabel} className={versionChipClassName}>
         {icon}
-        <span className="truncate">{label}</span>
+        {visibleLabel === label ? (
+          <span className="truncate">{label}</span>
+        ) : (
+          <>
+            <span className="truncate" aria-hidden="true">
+              {visibleLabel}
+            </span>
+            <span className="sr-only">{label}</span>
+          </>
+        )}
       </div>
     );
   }
@@ -1142,15 +1166,19 @@ function VersionChipMenu({
         type="button"
         className={`${versionChipClassName} bg-background/60 font-medium transition-colors hover:border-primary hover:text-primary aria-expanded:border-primary aria-expanded:text-primary`}
         aria-label={menuLabel}
+        aria-describedby={labelId}
         aria-haspopup="dialog"
         aria-expanded={open}
         title={menuLabel}
         onClick={() => setOpen((current) => !current)}
       >
         {icon}
-        <span className="truncate">{label}</span>
+        <span className="truncate">{visibleLabel}</span>
         <ChevronDown className="h-3 w-3 shrink-0" />
       </button>
+      <span id={labelId} hidden>
+        {label}
+      </span>
       <AnchoredPopover
         open={open}
         anchorRef={anchorRef}
@@ -1184,16 +1212,20 @@ function MetadataLanguageMenu({
   const activeMetadataVariant = resolveMetadataVariant(metadataPresentation, activeMetadataVariantKey);
   const choices = metadataLanguageChoices(metadataPresentation, activeMetadataVariantKey);
   const activeChoice = choices.find((choice) => choice.variant.key === activeMetadataVariant?.key);
-  const label = activeChoice
-    ? metadataVariantLabel(activeChoice.variant)
-    : metadataLanguage
-      ? languageLabel(metadataLanguage)
-      : "";
+  const compact = useCompactDetailLayout();
+  const chipLabel = (short: boolean) =>
+    activeChoice
+      ? metadataVariantLabel(activeChoice.variant, short)
+      : metadataLanguage
+        ? (short ? languageShortLabel : languageLabel)(metadataLanguage)
+        : "";
+  const label = chipLabel(false);
   if (!label) return null;
   return (
     <VersionChipMenu
       icon={<Languages className="h-3 w-3 shrink-0" />}
       label={label}
+      shortLabel={compact ? chipLabel(true) : undefined}
       menuLabel={i18n.t("libraryDetail.metadataLanguage")}
       interactive={choices.length > 1}
     >
@@ -1271,14 +1303,19 @@ function DirectoryEditionMenu({
     (version) => version.primaryCode.trim().toUpperCase() === activeCode,
   );
   const activeLanguage = activeGroup?.language ? languageLabel(activeGroup.language) : "";
-  // The language chip beside this one already names the language, so a narrow
-  // header shows only "Origin" rather than truncating "Origin · language".
   const label =
     activeVersion?.translationKind === "origin" && activeLanguage
-      ? compact
-        ? workVersionKindLabel(activeVersion)
-        : `${workVersionKindLabel(activeVersion)} · ${activeLanguage}`
+      ? `${workVersionKindLabel(activeVersion)} · ${activeLanguage}`
       : activeLanguage || activeVersionCode;
+  // The language chip beside this one already names the language, so a narrow
+  // header shows only "Origin", and a translation by its language code.
+  const shortLabel = !compact
+    ? undefined
+    : activeVersion?.translationKind === "origin" && activeLanguage
+      ? workVersionKindLabel(activeVersion)
+      : activeGroup?.language
+        ? languageShortLabel(activeGroup.language)
+        : activeVersionCode;
 
   const selectVersion = (translation: WorkDetail["translations"][number], close: () => void) => {
     const active = translation.primaryCode.trim().toUpperCase() === activeCode;
@@ -1295,6 +1332,7 @@ function DirectoryEditionMenu({
     <VersionChipMenu
       icon={<FolderTree className="h-3 w-3 shrink-0" />}
       label={label}
+      shortLabel={shortLabel}
       menuLabel={i18n.t("libraryDetail.directoryEdition")}
       interactive
     >
@@ -1387,10 +1425,10 @@ function DirectoryEditionMenu({
   );
 }
 
-function metadataVariantLabel(variant: WorkMetadataPresentation["variants"][number]) {
+function metadataVariantLabel(variant: WorkMetadataPresentation["variants"][number], short = false) {
   return metadataVariantLabelFor(variant, {
     original: i18n.t("libraryDetail.original"),
-    language: languageLabel,
+    language: short ? languageShortLabel : languageLabel,
   });
 }
 
