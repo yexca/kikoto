@@ -351,7 +351,11 @@ export function WorkMetadataEditorModal({
             <MetadataLanguageScopeTabs scopes={scopes} selected={languageScope.key} onSelect={setLanguageScopeKey} />
             {/* Demo opens the editor for inspection; every field stays visible but cannot be changed. */}
             <fieldset disabled={readOnly || saving} className="m-0 min-w-0 space-y-5 border-0 p-0">
-              <p className="text-sm text-muted-foreground">{t(`metadataEditor.descriptions.${section}`)}</p>
+              <p className="text-sm text-muted-foreground">
+                {section === "cover" && work.customWork
+                  ? t("metadataEditor.customCoverDescription")
+                  : t(`metadataEditor.descriptions.${section}`)}
+              </p>
               {section === "title" && (
                 <WorkTitleEditor
                   work={work}
@@ -382,6 +386,7 @@ export function WorkMetadataEditorModal({
                   manualCover={manual.cover}
                   providerCoverUrl={coverState.providerCoverUrl}
                   providerSource={providerCoverSource(work.metadataSync)}
+                  customWork={Boolean(work.customWork)}
                   candidates={coverState.coverCandidates}
                   selected={coverChoice}
                   status={coverFieldStatus({

@@ -73,12 +73,14 @@ function CoverTile({
 
 /**
  * Picks the cover from a thumbnail grid: the provider's original cover first,
- * then a manual cover that is no longer indexed, then each local image.
+ * then a manual cover that is no longer indexed, then each local image. A
+ * custom work has no original cover, so its first tile removes the manual one.
  */
 export function MetadataEditorCoverSection({
   manualCover,
   providerCoverUrl,
   providerSource,
+  customWork = false,
   candidates,
   selected,
   status,
@@ -89,6 +91,7 @@ export function MetadataEditorCoverSection({
   providerCoverUrl: string;
   /** Remote source that filled the cover, or empty for DLsite. */
   providerSource: string;
+  customWork?: boolean;
   candidates: WorkCoverCandidate[];
   selected: CoverChoice;
   status: MetadataFieldStatus;
@@ -106,7 +109,11 @@ export function MetadataEditorCoverSection({
       status={status}
       revertLabel={t("libraryDetail.resetCover")}
       onRevert={() => onSelect("provider")}
-      hint={status === "reverting" ? t("metadataEditor.coverRevertHint") : t("metadataEditor.coverHint")}
+      hint={
+        status === "reverting"
+          ? t(customWork ? "metadataEditor.customCoverRevertHint" : "metadataEditor.coverRevertHint")
+          : t("metadataEditor.coverHint")
+      }
     >
       {loading ? (
         <p className="rounded-md border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
@@ -122,11 +129,19 @@ export function MetadataEditorCoverSection({
                   current={!manualCover}
                   imageUrl={providerCoverUrl}
                   title={
-                    providerSource
-                      ? t("metadataEditor.sourceCover", { source: providerSource })
-                      : t("metadataEditor.dlsiteCover")
+                    customWork
+                      ? t("metadataEditor.noCover")
+                      : providerSource
+                        ? t("metadataEditor.sourceCover", { source: providerSource })
+                        : t("metadataEditor.dlsiteCover")
                   }
-                  detail={providerCoverUrl ? t("metadataEditor.originalCover") : t("metadataEditor.coverNotDownloaded")}
+                  detail={
+                    customWork
+                      ? t("metadataEditor.noCoverDetail")
+                      : providerCoverUrl
+                        ? t("metadataEditor.originalCover")
+                        : t("metadataEditor.coverNotDownloaded")
+                  }
                   onSelect={() => onSelect("provider")}
                 />
               )}
