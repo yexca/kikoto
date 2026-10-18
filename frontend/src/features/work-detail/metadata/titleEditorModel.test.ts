@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  changedDescription,
   changedTitles,
+  currentDescription,
   currentTitles,
   titleFieldStatus,
   titleLanguageMarkers,
@@ -79,6 +81,63 @@ describe("current titles", () => {
     });
     expect(titles).toMatchObject({ "": "Global", "ja-jp": "Japanese", "zh-cn": "Example Chinese", "en-us": "Global" });
     expect(currentTitles({ title: "Example fallback", manualOverrides: {} })["ko-kr"]).toBe("Example fallback");
+  });
+});
+
+describe("universal description drafts", () => {
+  const presentation = {
+    defaultVariantKey: "chinese",
+    variants: [
+      {
+        key: "original",
+        language: "ja-jp",
+        title: "Example original",
+        description: "Original intro",
+        tags: [],
+        origin: true,
+      },
+      {
+        key: "chinese",
+        language: "zh-cn",
+        title: "Example Chinese",
+        description: "Chinese intro",
+        tags: [],
+        origin: false,
+      },
+    ],
+  };
+
+  it("starts from the manual description or the selected edition's introduction", () => {
+    const work = { description: "Chinese intro", manualOverrides: {}, metadataPresentation: presentation };
+    expect(currentDescription(work, "")).toBe("Chinese intro");
+    expect(currentDescription(work, "original")).toBe("Original intro");
+    expect(currentDescription({ ...work, manualOverrides: { description: "Authored intro" } }, "original")).toBe(
+      "Authored intro",
+    );
+    // A work without provider metadata starts empty.
+    expect(
+      currentDescription(
+        { description: "", manualOverrides: {}, metadataPresentation: { defaultVariantKey: "", variants: [] } },
+        "",
+      ),
+    ).toBe("");
+  });
+
+  it("saves an edited introduction as a manual description", () => {
+    expect(changedDescription(undefined, undefined, "Chinese intro")).toBeUndefined();
+    expect(changedDescription(" Chinese intro ", undefined, "Chinese intro")).toBeUndefined();
+    expect(changedDescription("Line one\nLine two \n", undefined, "Chinese intro")).toBe("Line one\nLine two");
+    expect(changedDescription("Written intro", undefined, "")).toBe("Written intro");
+    expect(changedDescription("Authored intro revised", "Authored intro", "Authored intro")).toBe(
+      "Authored intro revised",
+    );
+  });
+
+  it("resets only an owned manual description", () => {
+    expect(changedDescription("", "Authored intro", "Authored intro")).toBeNull();
+    expect(titleFieldStatus("", "Authored intro", "Authored intro")).toBe("reverting");
+    expect(changedDescription("", undefined, "Chinese intro")).toBeUndefined();
+    expect(titleFieldStatus("", undefined, "Chinese intro")).toBe("source");
   });
 });
 

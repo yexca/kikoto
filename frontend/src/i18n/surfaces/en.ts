@@ -115,6 +115,12 @@ export const surfaceEnglish = {
     advancedTitles: "Advanced title options",
     universalTitle: "Universal title",
     revertUniversalTitle: "Revert the universal title",
+    universalDescription: "Description",
+    universalDescriptionHint:
+      "Replaces the introduction in every language. Your manual description survives metadata refreshes.",
+    revertDescription: "Revert the description",
+    descriptionRevertHint: "Saving removes this description, so the provider introduction shows again.",
+    noDescription: "No introduction",
     universalTitleDescription:
       "Overrides provider titles in every language. Per-language manual titles take precedence; the edition and description stay the same.",
     coverHint: "The image is copied, so the cover stays even if the file later moves.",
@@ -210,7 +216,8 @@ export const surfaceEnglish = {
       source: "Metadata source",
     },
     descriptions: {
-      title: "Edit a title for each display language. Your manual titles survive metadata refreshes.",
+      title:
+        "Edit a title for each display language and the work's description. Your manual titles and description survive metadata refreshes.",
       cover: "Choose this work's original cover or one of its local images.",
       tags: "Add or remove tags for this work, and edit each tag's name by language. Tag names are shared, so a renamed tag changes on every work that has it.",
       credits:

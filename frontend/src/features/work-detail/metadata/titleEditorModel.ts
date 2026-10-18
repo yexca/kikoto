@@ -63,6 +63,30 @@ export function titleFieldStatus(draft: string | undefined, own: string | undefi
   return manualValueStatus(draft, own);
 }
 
+/**
+ * The introduction the universal description field starts from: the manual
+ * description, or the one the selected edition currently shows.
+ */
+export function currentDescription(
+  work: Pick<WorkDetail, "description" | "manualOverrides" | "metadataPresentation">,
+  selectedMetadataVariantKey: string,
+) {
+  const shown =
+    resolveMetadataVariant(work.metadataPresentation, selectedMetadataVariantKey)?.description ?? work.description;
+  return (work.manualOverrides?.description || shown || "").trim();
+}
+
+/**
+ * The universal description a draft saves, following the title rules: the
+ * trimmed text, null to remove the manual description, or undefined when
+ * the draft keeps the current text or clears an inherited introduction.
+ */
+export function changedDescription(draft: string | undefined, own: string | undefined, current: string) {
+  if (draft === undefined) return undefined;
+  const next = draft.trim();
+  return titleDraftChanges(next, own, current) ? next || null : undefined;
+}
+
 export type TitleSourceLabel = { key: string; values?: Record<string, string> };
 
 /**

@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,8 @@ import { resolveMetadataVariant } from "../metadataPresentationModel";
 import { metadataLanguageScopeLabel, scopeMatchesLanguage, type MetadataLanguageScope } from "./metadataLanguageScope";
 
 /**
- * Shows per-language titles first, with the universal title in advanced options.
+ * Shows per-language titles first, then the universal description, with the
+ * universal title in advanced options.
  * Existing universal titles and drafts open those options for editing or reset.
  * Every row starts with the title it currently shows, so editing starts from
  * the existing text; keeping or clearing an inherited title leaves it inherited.
@@ -28,12 +29,15 @@ export function WorkTitleEditor({
   drafts,
   onDraft,
   languageScope,
+  description,
 }: {
   work: WorkDetail;
   selectedMetadataVariantKey?: string;
   drafts: Record<string, string>;
   onDraft: (language: string, title: string) => void;
   languageScope?: MetadataLanguageScope;
+  /** The universal description field; descriptions do not follow the language scope. */
+  description?: ReactNode;
 }) {
   const { t, i18n } = useTranslation();
   // Titles are saved only in the supported languages; another edition shows its provider title.
@@ -132,6 +136,7 @@ export function WorkTitleEditor({
           <div className="grid gap-3">{visibleLanguages.map((language) => row(language))}</div>
         )}
       </div>
+      {description}
       <details
         open={advancedOpen}
         onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
