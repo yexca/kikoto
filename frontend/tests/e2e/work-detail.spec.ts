@@ -587,7 +587,7 @@ test("work detail summarizes DLsite stats in the hero and groups active source i
 
   const dlsiteInfo = page.getByTestId("dlsite-info");
   await expect(dlsiteInfo.getByText("Rate", { exact: true })).toBeVisible();
-  await expect(dlsiteInfo.getByText("Age", { exact: true })).toBeVisible();
+  await expect(dlsiteInfo.getByText("Age rating", { exact: true })).toBeVisible();
   await expect(dlsiteInfo.getByText("Sales", { exact: true })).toBeVisible();
   await expect(dlsiteInfo.getByText("Released", { exact: true })).toBeVisible();
   await expect(dlsiteInfo.getByText("Duration", { exact: true })).toBeVisible();

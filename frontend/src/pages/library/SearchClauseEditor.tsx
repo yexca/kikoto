@@ -187,7 +187,10 @@ function searchClauseLabel(clause: SearchClause, t?: TFunction) {
       return translate("library.searchClauseLabels.durationMax", `Duration <= ${clause.value}`);
     case "age": {
       const label = ageRatingPresentation(clause.value).label;
-      return t?.("library.searchClauseLabels.age", { value: label, defaultValue: `Age: ${label}` }) ?? `Age: ${label}`;
+      return (
+        t?.("library.searchClauseLabels.age", { value: label, defaultValue: `Age rating: ${label}` }) ??
+        `Age rating: ${label}`
+      );
     }
     case "language":
       return translate("library.searchClauseLabels.language", `Language: ${clause.value}`);

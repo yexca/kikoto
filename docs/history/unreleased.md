@@ -6,6 +6,7 @@
 - Copying a work code, file preview text, or diagnostics works when Kikoto is opened over plain HTTP on a LAN address, where browsers withhold the Clipboard API. A work without a known code shows a plain badge instead of a copy button.
 - **Edit files** can add a lyrics file from another folder or edition as lyrics of a language you choose, into that language's folder inside `lyrics_kikoto`, and can assign the added lyrics to matching tracks, including tracks the same edit adds.
 - The metadata editor's Title section edits a work's description in every language, starting from the introduction it shows, and **Revert** restores the provider introduction. It does not need **Fetch for edit**, so a work without provider metadata can have a description.
+- The work detail stat and the Library's age search clause read **Age rating** in every language, such as 年龄分级, 年齡分級, 年齢区分, and 연령 등급.
 - On a phone, the work code and its language chips fit on one line: the chips name a language by its code, such as `JA`, `SC`, or `TC`, while their lists keep full names. Language names on work detail follow the interface language instead of always reading in English.
 
 </details>

@@ -37,7 +37,7 @@ export const editableSearchClauseKinds: { value: SearchClauseKind; label: string
   { value: "sales_min", label: "Sales >=" },
   { value: "duration_min", label: "Duration >=" },
   { value: "duration_max", label: "Duration <=" },
-  { value: "age", label: "Age" },
+  { value: "age", label: "Age rating" },
   { value: "language", label: "Language" },
   { value: "shelf", label: "On shelf" },
 ];

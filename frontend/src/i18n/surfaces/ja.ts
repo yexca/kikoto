@@ -1927,7 +1927,7 @@ export const surfaceJapanese = {
     metadataFields: {
       title: "タイトル",
       release_date: "発売日",
-      age_rating: "年齢指定",
+      age_rating: "年齢区分",
       duration: "再生時間",
       circle: "サークル",
       tags: "タグ",

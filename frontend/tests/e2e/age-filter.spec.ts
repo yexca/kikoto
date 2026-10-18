@@ -8,7 +8,7 @@ test("age rating chip filters the library without opening the work", async ({ pa
     work: { ...work, ageRating: "adult" },
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Age: R18", exact: true }).click();
+  await page.getByRole("button", { name: "Age rating: R18", exact: true }).click();
   await expect.poll(() => requests).toContain("$age:adult$");
   await expect(page).toHaveURL(/\/\?q=age%3Aadult$/);
   await expect(page.getByText(work.title, { exact: true })).toBeVisible();
@@ -20,8 +20,8 @@ test("age rating search offers categories and applies the selected value", async
   await page.goto("/");
   await page.getByRole("button", { name: "Add search condition", exact: true }).click();
   await page.getByRole("combobox", { name: "Search clause type", exact: true }).click();
-  await page.getByRole("option", { name: "Age", exact: true }).click();
-  await page.getByRole("combobox", { name: "Age", exact: true }).click();
+  await page.getByRole("option", { name: "Age rating", exact: true }).click();
+  await page.getByRole("combobox", { name: "Age rating", exact: true }).click();
   await page.getByRole("option", { name: "R18", exact: true }).click();
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect.poll(() => requests).toContain("$age:adult$");
@@ -35,7 +35,7 @@ test("age rating in work detail searches the tracked library it was opened from"
   );
   await page.goto("/tracked");
   await page.getByText(work.title, { exact: true }).click();
-  await page.getByRole("main").getByRole("button", { name: "Age: R18", exact: true }).click();
+  await page.getByRole("main").getByRole("button", { name: "Age rating: R18", exact: true }).click();
   await expect(page).toHaveURL(/\/tracked\?q=age%3Aadult$/);
   await expect.poll(() => requests).toContain("$age:adult$");
 });
