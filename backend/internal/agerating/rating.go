@@ -36,3 +36,46 @@ func Matches(value, query string) bool {
 	}
 	return strings.Contains(value, query)
 }
+
+// Canonical returns the shared name of a known rating ("general", "r15", or
+// "adult"), or "" for an empty or unknown value.
+func Canonical(value string) string {
+	if aliases := Aliases(value); len(aliases) > 0 {
+		switch aliases[0] {
+		case "adult":
+			return "adult"
+		case "r15":
+			return "r15"
+		default:
+			return "general"
+		}
+	}
+	return ""
+}
+
+// Strictness orders known ratings from general (1) to adult (3); an unknown
+// value is 0.
+func Strictness(value string) int {
+	switch Canonical(value) {
+	case "adult":
+		return 3
+	case "r15":
+		return 2
+	case "general":
+		return 1
+	}
+	return 0
+}
+
+// Effective combines a provider rating with a manual one. The manual rating
+// stands in for a missing or unknown provider rating; when both are known the
+// stricter wins, so a manual value never relaxes the provider's.
+func Effective(provider, manual string) string {
+	if Strictness(manual) == 0 {
+		return provider
+	}
+	if Strictness(provider) > Strictness(manual) {
+		return Canonical(provider)
+	}
+	return Canonical(manual)
+}

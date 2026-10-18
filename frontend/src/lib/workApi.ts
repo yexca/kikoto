@@ -36,6 +36,8 @@ export type WorkDetail = {
   description: string;
   releaseDate: string | null;
   ageRating: string;
+  /** The rating before a manual override, which may only fill it in or make it stricter. */
+  providerAgeRating?: string;
   durationSeconds: number | null;
   createdAt: string;
   updatedAt: string;

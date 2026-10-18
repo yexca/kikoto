@@ -394,6 +394,15 @@ the universal value; using both forms in one request is rejected. GET returns
 `.../manual-overrides/title?language=zh-cn` resets only that title scope; an
 omitted language resets only the universal scope.
 
+An `ageRating` override stores a known rating under its canonical name,
+`general`, `r15`, or `adult`. It may fill in a missing provider rating or
+make the work's provider rating stricter; any other value is refused with
+`400 invalid_age_rating`. The effective rating is the manual one unless the
+provider rating is stricter: work detail shows it with the provider value as
+`providerAgeRating`, library search matches it, and the content safety
+assessment uses it. A stored manual value that is not a known rating leaves
+the assessment unknown.
+
 ### Normalized Fields and Metadata Links
 
 `work.rating_average`, `work.sales_count`, and the current commercial fields are

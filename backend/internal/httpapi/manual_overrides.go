@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/agerating"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/download"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
@@ -150,7 +151,7 @@ func (s *Server) updateWorkManualOverrides(w http.ResponseWriter, r *http.Reques
 	defer func() { _ = tx.Rollback() }()
 	for field := range fields {
 		if err := patchManualOverride(r.Context(), tx, workID, field, payload, user.ID); err != nil {
-			writeError(w, err)
+			writeManualOverrideError(w, err)
 			return
 		}
 	}
@@ -184,7 +185,7 @@ func patchManualOverride(ctx context.Context, tx *sql.Tx, workID int64, field st
 	case "releaseDate":
 		return upsertManualTextOverride(ctx, tx, workID, "release_date", payload.ReleaseDate, userID)
 	case "ageRating":
-		return upsertManualTextOverride(ctx, tx, workID, "age_rating", payload.AgeRating, userID)
+		return upsertManualAgeRating(ctx, tx, workID, payload.AgeRating, userID)
 	case "circle":
 		value := normalizeManualEntity(payload.Circle)
 		var encoded any
@@ -488,7 +489,7 @@ func applyManualOverridesToLibrarySummary(work *libraryWorkSummary, overrides wo
 		work.ReleaseDate = overrides.ReleaseDate
 	}
 	if overrides.AgeRating != nil {
-		work.AgeRating = *overrides.AgeRating
+		work.AgeRating = agerating.Effective(work.AgeRating, *overrides.AgeRating)
 	}
 	if overrides.Circle != nil {
 		work.Circle = overrides.Circle.Name
@@ -522,6 +523,8 @@ func (s *Server) applyManualOverridesToDetail(ctx context.Context, work *workDet
 		return err
 	}
 	work.ManualOverrides = overrides
+	// The rating before a manual override, which may only fill it in or make it stricter.
+	work.ProviderAge = work.AgeRating
 	selectedTitle, choices, err := s.loadWorkTitleSelection(ctx, work.ID)
 	if err != nil {
 		return err
@@ -559,7 +562,7 @@ func (s *Server) applyManualOverridesToDetail(ctx context.Context, work *workDet
 		work.ReleaseDate = overrides.ReleaseDate
 	}
 	if overrides.AgeRating != nil {
-		work.AgeRating = *overrides.AgeRating
+		work.AgeRating = agerating.Effective(work.AgeRating, *overrides.AgeRating)
 	}
 	if overrides.Circle != nil {
 		work.Circle = overrides.Circle.Name
@@ -702,6 +705,39 @@ func upsertManualTextOverride(ctx context.Context, tx *sql.Tx, workID int64, fie
 	}
 	trimmed := strings.TrimSpace(*value)
 	return upsertManualOverride(ctx, tx, workID, field, mustJSON(trimmed), "", userID)
+}
+
+// errManualAgeRating rejects a manual age rating that is not a known rating or
+// that is less strict than the work's provider rating.
+var errManualAgeRating = errors.New("invalid manual age rating")
+
+// upsertManualAgeRating stores a known rating under its canonical name. It may
+// fill in a missing provider rating or make a known one stricter, never relax
+// it, so the displayed rating and the content safety class agree.
+func upsertManualAgeRating(ctx context.Context, tx *sql.Tx, workID int64, value *string, userID int64) error {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return upsertManualTextOverride(ctx, tx, workID, "age_rating", nil, userID)
+	}
+	rating := agerating.Canonical(*value)
+	if rating == "" {
+		return errManualAgeRating
+	}
+	var provider string
+	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(age_rating, '') FROM work WHERE id = ?", workID).Scan(&provider); err != nil {
+		return err
+	}
+	if agerating.Strictness(rating) < agerating.Strictness(provider) {
+		return errManualAgeRating
+	}
+	return upsertManualTextOverride(ctx, tx, workID, "age_rating", &rating, userID)
+}
+
+func writeManualOverrideError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errManualAgeRating) {
+		writeAPIError(w, http.StatusBadRequest, "invalid_age_rating", "age rating must be a known rating no less strict than the provider rating", false)
+		return
+	}
+	writeError(w, err)
 }
 
 func upsertManualJSONOverride(ctx context.Context, tx *sql.Tx, workID int64, field string, value any, userID int64) error {

@@ -74,6 +74,12 @@ export const surfaceKorean = {
       "모든 언어의 작품 소개를 대체합니다. 수동 작품 소개는 메타데이터를 새로 고쳐도 유지됩니다.",
     revertDescription: "작품 소개 되돌리기",
     descriptionRevertHint: "저장하면 이 작품 소개가 삭제되고 제공처의 작품 소개가 다시 표시됩니다.",
+    ageRating: "연령 등급",
+    ageRatingProviderHint:
+      "제공처의 연령 등급은 {{rating}}입니다. 수동 연령 등급은 이보다 엄격하게만 설정할 수 있습니다.",
+    ageRatingMissingHint:
+      "제공처의 연령 등급이 없습니다. 콘텐츠 안전 정책은 ASR과 LLM 서비스에 이 연령 등급을 사용하며, 없는 작품은 알 수 없음으로 처리합니다.",
+    revertAgeRating: "연령 등급 되돌리기",
     noDescription: "작품 소개 없음",
     universalTitleDescription:
       "각 언어의 제공자 제목보다 우선합니다. 언어별 수동 제목이 있으면 그 제목을 우선하며, 판본과 소개는 바뀌지 않습니다.",
@@ -170,7 +176,8 @@ export const surfaceKorean = {
       source: "메타데이터 출처",
     },
     descriptions: {
-      title: "표시 언어별 제목과 작품 소개를 수정합니다. 수동 제목과 작품 소개는 메타데이터를 새로 고쳐도 유지됩니다.",
+      title:
+        "표시 언어별 제목, 작품 소개와 연령 등급을 수정합니다. 수동으로 설정한 내용은 메타데이터를 새로 고쳐도 유지됩니다.",
       cover: "이 작품의 원본 커버나 로컬 이미지 중 하나를 선택합니다.",
       tags: "이 작품의 태그를 추가하거나 삭제하고 태그마다 언어별 이름을 편집합니다. 태그 이름은 공유되므로 변경하면 그 태그가 있는 모든 작품에 적용됩니다.",
       credits:

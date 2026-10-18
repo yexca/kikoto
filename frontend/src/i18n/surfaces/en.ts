@@ -120,6 +120,11 @@ export const surfaceEnglish = {
       "Replaces the introduction in every language. Your manual description survives metadata refreshes.",
     revertDescription: "Revert the description",
     descriptionRevertHint: "Saving removes this description, so the provider introduction shows again.",
+    ageRating: "Age rating",
+    ageRatingProviderHint: "The provider rates this work {{rating}}. A manual rating can only make it stricter.",
+    ageRatingMissingHint:
+      "The provider gives no rating. Content safety uses this rating for ASR and LLM services and treats a work without one as unknown.",
+    revertAgeRating: "Revert the age rating",
     noDescription: "No introduction",
     universalTitleDescription:
       "Overrides provider titles in every language. Per-language manual titles take precedence; the edition and description stay the same.",
@@ -217,7 +222,7 @@ export const surfaceEnglish = {
     },
     descriptions: {
       title:
-        "Edit a title for each display language and the work's description. Your manual titles and description survive metadata refreshes.",
+        "Edit a title for each display language, the work's description, and its age rating. Your manual values survive metadata refreshes.",
       cover: "Choose this work's original cover or one of its local images.",
       tags: "Add or remove tags for this work, and edit each tag's name by language. Tag names are shared, so a renamed tag changes on every work that has it.",
       credits:

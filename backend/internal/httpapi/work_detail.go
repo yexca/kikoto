@@ -24,6 +24,7 @@ type workDetail struct {
 	Description      string                     `json:"description"`
 	ReleaseDate      *string                    `json:"releaseDate"`
 	AgeRating        string                     `json:"ageRating"`
+	ProviderAge      string                     `json:"providerAgeRating"`
 	DurationSeconds  *int64                     `json:"durationSeconds"`
 	CreatedAt        string                     `json:"createdAt"`
 	UpdatedAt        string                     `json:"updatedAt"`

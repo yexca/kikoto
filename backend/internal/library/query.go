@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -775,13 +776,35 @@ func familyAgeRatingClause(value string) (string, []any) {
 			args[index] = alias
 		}
 	}
-	return `(` + match("work.age_rating") + ` OR EXISTS (
+	return `(` + match(effectiveAgeRatingSQL()) + ` OR EXISTS (
 		SELECT 1
 		FROM work_edition AS search_current_edition
 		INNER JOIN work_edition AS search_sibling_edition ON search_sibling_edition.logical_work_id = search_current_edition.logical_work_id
 		INNER JOIN work AS search_sibling_work ON search_sibling_work.id = search_sibling_edition.work_id
 		WHERE search_current_edition.work_id = work.id AND ` + match("search_sibling_work.age_rating") + `
 	))`, append(args, args...)
+}
+
+// effectiveAgeRatingSQL is agerating.Effective for the listed work: its
+// manual rating applies unless the provider rating is stricter.
+func effectiveAgeRatingSQL() string {
+	manual := `(SELECT json_extract(manual_age.value_json, '$') FROM work_manual_override AS manual_age
+		WHERE manual_age.work_id = work.id AND manual_age.field_name = 'age_rating' AND manual_age.language = '')`
+	return `(CASE WHEN ` + ageStrictnessSQL(manual) + ` > 0 AND ` + ageStrictnessSQL(manual) + ` >= ` + ageStrictnessSQL("work.age_rating") +
+		` THEN ` + manual + ` ELSE work.age_rating END)`
+}
+
+// ageStrictnessSQL is agerating.Strictness. The aliases are fixed literals.
+func ageStrictnessSQL(expression string) string {
+	value := `LOWER(TRIM(COALESCE(` + expression + `, '')))`
+	clause := `(CASE`
+	for strictness, rating := range []string{"", "general", "r15", "adult"} {
+		if rating == "" {
+			continue
+		}
+		clause += ` WHEN ` + value + ` IN ('` + strings.Join(agerating.Aliases(rating), `','`) + `') THEN ` + strconv.Itoa(strictness)
+	}
+	return clause + ` ELSE 0 END)`
 }
 
 func familyEditionLanguageContainsClause() string {

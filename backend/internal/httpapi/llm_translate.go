@@ -90,6 +90,7 @@ func loadLLMWorkInput(ctx context.Context, q llmInputQuerier, workID int64) (llm
 	if err != nil {
 		return result, err
 	}
+	manualAges := []string{}
 	for manualRows.Next() {
 		var field, raw, value string
 		if err := manualRows.Scan(&field, &raw); err != nil {
@@ -106,11 +107,7 @@ func loadLLMWorkInput(ctx context.Context, q llmInputQuerier, workID int64) (llm
 		case "description":
 			result.ManualDescription += value + "\n"
 		case "age_rating":
-			if len(agerating.Aliases(result.Age)) == 0 || len(agerating.Aliases(value)) == 0 {
-				result.Age = "unknown"
-			} else if !agerating.Matches(value, "general") && agerating.Matches(result.Age, "general") {
-				result.Age = value
-			}
+			manualAges = append(manualAges, value)
 		}
 	}
 	if err := manualRows.Err(); err != nil {
@@ -118,6 +115,15 @@ func loadLLMWorkInput(ctx context.Context, q llmInputQuerier, workID int64) (llm
 		return result, err
 	}
 	_ = manualRows.Close()
+	// A manual rating fills in a missing provider rating or makes a known one
+	// stricter; one that is not a known rating leaves the work unknown.
+	for _, value := range manualAges {
+		if agerating.Strictness(value) == 0 {
+			result.Age = "unknown"
+			break
+		}
+		result.Age = agerating.Effective(result.Age, value)
+	}
 	rows, err := q.QueryContext(ctx, `WITH risk_tags AS (
  SELECT tag_id FROM work_metadata_tag_base WHERE work_id IN (?,?)
  UNION SELECT tag_id FROM work_tag WHERE work_id IN (?,?)

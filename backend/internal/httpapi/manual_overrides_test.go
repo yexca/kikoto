@@ -448,3 +448,58 @@ func mustLastInsertID(t *testing.T, result sql.Result) int64 {
 	}
 	return id
 }
+
+func TestManualAgeRatingFillsInOrTightensTheProviderRating(t *testing.T) {
+	fixture := newManualOverrideFixture(t, config.Config{})
+	ctx := context.Background()
+	setProvider := func(age string) {
+		t.Helper()
+		if _, err := fixture.db.Exec("UPDATE work SET age_rating = ? WHERE id = ?", age, fixture.workID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertRatings := func(effective, provider, policy string) {
+		t.Helper()
+		detail, err := fixture.server.loadWorkDetail(ctx, fixture.userID, fixture.workID, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		input, err := loadLLMWorkInput(ctx, fixture.db, fixture.workID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if detail.AgeRating != effective || detail.ProviderAge != provider || input.Age != policy {
+			t.Fatalf("age = %q provider = %q policy = %q, want %q %q %q", detail.AgeRating, detail.ProviderAge, input.Age, effective, provider, policy)
+		}
+	}
+
+	setProvider("")
+	if response := updateManualOverridesRequest(t, fixture, `{"ageRating": " R-18 "}`); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"ageRating":"adult"`) {
+		t.Fatalf("fill in = %d %s", response.Code, response.Body.String())
+	}
+	assertRatings("adult", "", "adult")
+
+	setProvider("adult")
+	for _, body := range []string{`{"ageRating": "general"}`, `{"ageRating": "unrated"}`} {
+		if response := updateManualOverridesRequest(t, fixture, body); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invalid_age_rating") {
+			t.Fatalf("%s = %d %s", body, response.Code, response.Body.String())
+		}
+	}
+
+	setProvider("general")
+	if response := updateManualOverridesRequest(t, fixture, `{"ageRating": "r15"}`); response.Code != http.StatusOK {
+		t.Fatalf("tighten = %d %s", response.Code, response.Body.String())
+	}
+	assertRatings("r15", "general", "r15")
+
+	// A provider rating that later becomes stricter than the manual one wins.
+	setProvider("adult")
+	assertRatings("adult", "adult", "adult")
+
+	// A stored value that is not a known rating cannot relax the policy.
+	if _, err := fixture.db.Exec(`UPDATE work_manual_override SET value_json = '"unrated"' WHERE work_id = ? AND field_name = 'age_rating'`, fixture.workID); err != nil {
+		t.Fatal(err)
+	}
+	setProvider("general")
+	assertRatings("general", "general", "unknown")
+}

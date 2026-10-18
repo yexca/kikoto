@@ -34,6 +34,8 @@ import {
 } from "./metadataEditorModel";
 import { changedDescription, changedTitles, currentDescription, currentTitles } from "./titleEditorModel";
 import { WorkDescriptionEditor } from "./WorkDescriptionEditor";
+import { WorkAgeRatingEditor } from "./WorkAgeRatingEditor";
+import { changedAgeRating, type AgeRatingDraft } from "./ageRatingEditorModel";
 import { useWorkCoverCandidates } from "./useMetadataSuggestions";
 import { useWorkMetadataTagsEditor } from "./useWorkMetadataTagsEditor";
 
@@ -94,6 +96,7 @@ export function WorkMetadataEditorModal({
   const manual = initialState.manual;
   const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
   const [descriptionDraft, setDescriptionDraft] = useState<string>();
+  const [ageRatingDraft, setAgeRatingDraft] = useState<AgeRatingDraft>();
   const credits = useMetadataCreditsEditor(initialState);
   const tagEditor = useWorkMetadataTagsEditor(work.id);
   const coverState = useWorkCoverCandidates(work.id, toast);
@@ -110,6 +113,8 @@ export function WorkMetadataEditorModal({
   const titles = changedTitles(titleDrafts, manual, currentTitles(work));
   const shownDescription = currentDescription(work, selectedMetadataVariantKey ?? "");
   const description = changedDescription(descriptionDraft, manual.description, shownDescription);
+  const providerAgeRating = work.providerAgeRating ?? work.ageRating;
+  const ageRating = changedAgeRating(ageRatingDraft, manual.ageRating, providerAgeRating);
   const coverChanged = coverState.selectedCoverId !== coverState.initialCoverId;
   const coverChoice: CoverChoice = coverReverted
     ? "provider"
@@ -120,7 +125,7 @@ export function WorkMetadataEditorModal({
     setCoverReverted(choice === "provider" && Boolean(manual.cover));
   };
   const changed: Record<MetadataEditorSection, boolean> = {
-    title: Object.keys(titles).length > 0 || description !== undefined,
+    title: Object.keys(titles).length > 0 || description !== undefined || ageRating !== undefined,
     cover: coverChanged || coverReverted,
     tags: tagEditor.changed,
     credits: payloadChangesCredits(credits.payload),
@@ -145,6 +150,7 @@ export function WorkMetadataEditorModal({
       const payload = { ...credits.payload };
       if (Object.keys(titles).length) payload.titles = titles;
       if (description !== undefined) payload.description = description;
+      if (ageRating !== undefined) payload.ageRating = ageRating;
       if (Object.keys(payload).length) {
         await api.updateWorkManualOverrides(work.id, payload);
         applied = true;
@@ -359,6 +365,14 @@ export function WorkMetadataEditorModal({
                       onDraft={setDescriptionDraft}
                     />
                   }
+                />
+              )}
+              {section === "title" && (
+                <WorkAgeRatingEditor
+                  own={manual.ageRating}
+                  provider={providerAgeRating}
+                  draft={ageRatingDraft}
+                  onDraft={setAgeRatingDraft}
                 />
               )}
               {section === "cover" && (

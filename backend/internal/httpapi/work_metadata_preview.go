@@ -315,7 +315,7 @@ func (s *Server) applyWorkMetadataPreview(w http.ResponseWriter, r *http.Request
 		}
 	}
 	if err := s.applyPreviewManualOverrides(r.Context(), workID, user.ID, payload); err != nil {
-		writeError(w, err)
+		writeManualOverrideError(w, err)
 		return
 	}
 	s.discardMetadataPreview(preview.ID)
