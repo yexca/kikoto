@@ -69,6 +69,12 @@ export const surfaceKorean = {
     advancedTitles: "고급 제목 옵션",
     universalTitle: "모든 언어 공통 제목",
     revertUniversalTitle: "모든 언어 공통 제목 되돌리기",
+    universalDescription: "작품 소개",
+    universalDescriptionHint:
+      "모든 언어의 작품 소개를 대체합니다. 수동 작품 소개는 메타데이터를 새로 고쳐도 유지됩니다.",
+    revertDescription: "작품 소개 되돌리기",
+    descriptionRevertHint: "저장하면 이 작품 소개가 삭제되고 제공처의 작품 소개가 다시 표시됩니다.",
+    noDescription: "작품 소개 없음",
     universalTitleDescription:
       "각 언어의 제공자 제목보다 우선합니다. 언어별 수동 제목이 있으면 그 제목을 우선하며, 판본과 소개는 바뀌지 않습니다.",
     coverHint: "이미지는 복사되므로 나중에 파일을 옮겨도 커버가 유지됩니다.",
@@ -164,7 +170,7 @@ export const surfaceKorean = {
       source: "메타데이터 출처",
     },
     descriptions: {
-      title: "표시 언어별로 제목을 수정합니다. 수동 제목은 메타데이터를 새로 고쳐도 유지됩니다.",
+      title: "표시 언어별 제목과 작품 소개를 수정합니다. 수동 제목과 작품 소개는 메타데이터를 새로 고쳐도 유지됩니다.",
       cover: "이 작품의 원본 커버나 로컬 이미지 중 하나를 선택합니다.",
       tags: "이 작품의 태그를 추가하거나 삭제하고 태그마다 언어별 이름을 편집합니다. 태그 이름은 공유되므로 변경하면 그 태그가 있는 모든 작품에 적용됩니다.",
       credits:

@@ -69,6 +69,12 @@ export const surfaceJapanese = {
     advancedTitles: "タイトルの詳細設定",
     universalTitle: "全言語共通タイトル",
     revertUniversalTitle: "全言語共通タイトルを元に戻す",
+    universalDescription: "作品紹介",
+    universalDescriptionHint:
+      "すべての言語で作品紹介を置き換えます。手動の作品紹介はメタデータを更新しても保持されます。",
+    revertDescription: "作品紹介を元に戻す",
+    descriptionRevertHint: "保存するとこの作品紹介が削除され、提供元の作品紹介が表示されます。",
+    noDescription: "作品紹介なし",
     universalTitleDescription:
       "各言語の提供元タイトルより優先されます。言語別の手動タイトルがあれば、そちらを優先します。版や紹介文は変わりません。",
     coverHint: "画像はコピーされるため、元のファイルを移動してもカバーは残ります。",
@@ -165,7 +171,8 @@ export const surfaceJapanese = {
       source: "メタデータ提供元",
     },
     descriptions: {
-      title: "表示言語ごとにタイトルを編集します。手動タイトルはメタデータを更新しても保持されます。",
+      title:
+        "表示言語ごとのタイトルと作品紹介を編集します。手動タイトルと作品紹介はメタデータを更新しても保持されます。",
       cover: "この作品の元のカバーか、ローカル画像から 1 枚を選びます。",
       tags: "この作品のタグを追加・削除し、各タグの言語別の名前を編集します。タグ名は共有されるため、変更はそのタグを持つすべての作品に反映されます。",
       credits:

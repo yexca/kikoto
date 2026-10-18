@@ -32,7 +32,8 @@ import {
   providerCoverSource,
   type CoverChoice,
 } from "./metadataEditorModel";
-import { changedTitles, currentTitles } from "./titleEditorModel";
+import { changedDescription, changedTitles, currentDescription, currentTitles } from "./titleEditorModel";
+import { WorkDescriptionEditor } from "./WorkDescriptionEditor";
 import { useWorkCoverCandidates } from "./useMetadataSuggestions";
 import { useWorkMetadataTagsEditor } from "./useWorkMetadataTagsEditor";
 
@@ -92,6 +93,7 @@ export function WorkMetadataEditorModal({
   const [initialState] = useState(() => metadataEditorInitialState(work));
   const manual = initialState.manual;
   const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
+  const [descriptionDraft, setDescriptionDraft] = useState<string>();
   const credits = useMetadataCreditsEditor(initialState);
   const tagEditor = useWorkMetadataTagsEditor(work.id);
   const coverState = useWorkCoverCandidates(work.id, toast);
@@ -106,6 +108,8 @@ export function WorkMetadataEditorModal({
   const tabRefs = useRef<Partial<Record<MetadataEditorSection, HTMLButtonElement | null>>>({});
 
   const titles = changedTitles(titleDrafts, manual, currentTitles(work));
+  const shownDescription = currentDescription(work, selectedMetadataVariantKey ?? "");
+  const description = changedDescription(descriptionDraft, manual.description, shownDescription);
   const coverChanged = coverState.selectedCoverId !== coverState.initialCoverId;
   const coverChoice: CoverChoice = coverReverted
     ? "provider"
@@ -116,7 +120,7 @@ export function WorkMetadataEditorModal({
     setCoverReverted(choice === "provider" && Boolean(manual.cover));
   };
   const changed: Record<MetadataEditorSection, boolean> = {
-    title: Object.keys(titles).length > 0,
+    title: Object.keys(titles).length > 0 || description !== undefined,
     cover: coverChanged || coverReverted,
     tags: tagEditor.changed,
     credits: payloadChangesCredits(credits.payload),
@@ -139,7 +143,8 @@ export function WorkMetadataEditorModal({
     let applied = false;
     try {
       const payload = { ...credits.payload };
-      if (changed.title) payload.titles = titles;
+      if (Object.keys(titles).length) payload.titles = titles;
+      if (description !== undefined) payload.description = description;
       if (Object.keys(payload).length) {
         await api.updateWorkManualOverrides(work.id, payload);
         applied = true;
@@ -346,6 +351,14 @@ export function WorkMetadataEditorModal({
                   languageScope={languageScope}
                   drafts={titleDrafts}
                   onDraft={(language, title) => setTitleDrafts((current) => ({ ...current, [language]: title }))}
+                  description={
+                    <WorkDescriptionEditor
+                      own={manual.description}
+                      current={shownDescription}
+                      draft={descriptionDraft}
+                      onDraft={setDescriptionDraft}
+                    />
+                  }
                 />
               )}
               {section === "cover" && (

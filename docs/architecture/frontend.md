@@ -685,6 +685,13 @@ manual values so unchanged provider text never freezes. Clearing an owned
 manual title, or its row's Revert, removes it on Save; clearing an inherited
 hint changes nothing.
 
+`WorkDescriptionEditor` sits between the language titles and the advanced
+options and edits the universal manual description, independent of the
+language scope. It starts from the manual description or the selected
+edition's introduction. `changedDescription` applies the title draft rules: an
+unchanged or cleared inherited introduction stays out of the PATCH, and
+clearing an owned description sends `description: null`.
+
 `WorkMetadataEditorModal` splits the editor into Title, Cover, Tags, Credits,
 and Metadata source tabs, each marked while it holds unsaved changes. Every
 change is a draft until Save: credit reverts become explicit `null` or empty

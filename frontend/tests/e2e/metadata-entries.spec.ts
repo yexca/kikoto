@@ -240,6 +240,44 @@ test("inherited titles prefill without becoming overrides and clearing matches v
   expect(writes[2]).toEqual({ titles: { "": null, "en-us": "Example authored English" } });
 });
 
+test("the title section saves and resets a universal description without fetching", async ({ page }) => {
+  await metadataWorkEditor(page);
+  let detail = workDetailFixture(work, { description: "Example provider introduction", manualOverrides: {} });
+  await page.route("**/api/works/1?includeMedia=false", (route) => route.fulfill({ json: detail }));
+  const writes: unknown[] = [];
+  await page.route("**/api/works/1/manual-overrides", (route) => {
+    const payload = route.request().postDataJSON();
+    writes.push(payload);
+    const description = payload.description ?? undefined;
+    detail = { ...detail, description: description ?? "", manualOverrides: description ? { description } : {} };
+    return route.fulfill({ json: detail.manualOverrides });
+  });
+  await page.goto("/metadata");
+  const open = () => page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
+  await open();
+  const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
+  const description = dialog.getByRole("textbox", { name: "Description", exact: true });
+  const save = dialog.getByRole("button", { name: "Save", exact: true });
+  await expect(dialog.getByRole("button", { name: "Fetch for edit" })).toHaveCount(0);
+  await expect(description).toHaveValue("Example provider introduction");
+  await description.clear();
+  await expect(save).toBeDisabled();
+  await description.fill("Example authored introduction\nSecond line");
+  await expect(dialog.getByRole("group", { name: "Description" }).getByText("Edited", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Unsaved: Title", { exact: true })).toBeVisible();
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+  expect(writes).toEqual([{ description: "Example authored introduction\nSecond line" }]);
+
+  await open();
+  await expect(description).toHaveValue("Example authored introduction\nSecond line");
+  await dialog.getByRole("button", { name: "Revert the description", exact: true }).click();
+  await expect(dialog.getByRole("group", { name: "Description" }).getByText("Reverts on save")).toBeVisible();
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+  expect(writes[1]).toEqual({ description: null });
+});
+
 test("@desktop cover-only metadata saves do not freeze any displayed scalar fields", async ({ page }) => {
   await metadataWorkEditor(page);
   await page.route("**/api/works/1/cover-candidates", (route) =>
