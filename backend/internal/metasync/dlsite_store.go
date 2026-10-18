@@ -344,6 +344,15 @@ func (s *DLsiteSyncer) ensureWorkForProduct(ctx context.Context, product dlsite.
 	if code == "" {
 		return 0, fmt.Errorf("empty product code")
 	}
+	// DLsite may publish a replacement product code for an existing language
+	// edition.  The replacement remains a provider code, not a second Kikoto
+	// work. Reuse a known parent only inside the explicitly declared origin
+	// family, and do not merge a replacement that already has its own work.
+	if ownerID, _, err := ExistingReplacementEdition(ctx, s.db, product); err != nil {
+		return 0, err
+	} else if ownerID > 0 {
+		return ownerID, nil
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -433,6 +442,34 @@ func upsertDLsiteWorkEdition(ctx context.Context, tx *sql.Tx, providerID int64, 
 	}
 	if currentCode == "" {
 		return nil
+	}
+	var existingPrimaryCode string
+	if err := tx.QueryRowContext(ctx, "SELECT primary_code FROM work WHERE id = ?", workID).Scan(&existingPrimaryCode); err != nil {
+		return err
+	}
+	// A product with a declared parent can be a reissued code for an existing
+	// edition. Keep the edition's stable primary code and record the provider
+	// code as an alias instead of overwriting work_edition.primary_code.
+	if !strings.EqualFold(strings.TrimSpace(existingPrimaryCode), currentCode) {
+		matches, err := ProductMatchesExistingEdition(ctx, tx, product, existingPrimaryCode)
+		if err != nil {
+			return err
+		}
+		if matches {
+			var logicalWorkID int64
+			if err := tx.QueryRowContext(ctx, "SELECT logical_work_id FROM work_edition WHERE work_id = ?", workID).Scan(&logicalWorkID); err != nil {
+				return err
+			}
+			if err := upsertWorkCodeAlias(ctx, tx, logicalWorkID, providerID, currentCode, productEditionLanguage(product), productEditionLabel(product), workID, "provider_reissued"); err != nil {
+				return err
+			}
+			canonicalCode := ""
+			if err := tx.QueryRowContext(ctx, "SELECT canonical_code FROM logical_work WHERE id = ?", logicalWorkID).Scan(&canonicalCode); err != nil {
+				return err
+			}
+			return syncKnownProductLanguageEditions(ctx, tx, providerID, logicalWorkID, canonicalCode, product.LanguageEditions)
+		}
+		return fmt.Errorf("provider product does not match the existing edition")
 	}
 	baseCode := baseProductCode(product)
 	canonicalCode := currentCode
@@ -548,10 +585,10 @@ func upsertWorkCodeAlias(ctx context.Context, tx *sql.Tx, logicalWorkID int64, p
 	if !dlsiteWorkNoPattern.MatchString(code) {
 		return nil
 	}
-	if relationshipKind != "persisted_edition" {
+	if relationshipKind != "persisted_edition" && relationshipKind != "provider_reissued" {
 		relationshipKind = "provider_declared"
 	}
-	_, err := tx.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO work_code_alias (
 			logical_work_id, provider_id, primary_code, metadata_language,
 			edition_label, source_work_id, relationship_kind, updated_at
@@ -569,11 +606,23 @@ func upsertWorkCodeAlias(ctx context.Context, tx *sql.Tx, logicalWorkID int64, p
 			END,
 			source_work_id = COALESCE(excluded.source_work_id, work_code_alias.source_work_id),
 			relationship_kind = CASE
-				WHEN excluded.source_work_id IS NOT NULL THEN 'persisted_edition'
+				WHEN excluded.source_work_id IS NOT NULL THEN excluded.relationship_kind
 				ELSE work_code_alias.relationship_kind
 			END,
 			updated_at = CURRENT_TIMESTAMP
+		WHERE work_code_alias.relationship_kind <> 'provider_reissued'
+			OR (work_code_alias.logical_work_id = excluded.logical_work_id
+				AND (excluded.source_work_id IS NULL OR work_code_alias.source_work_id = excluded.source_work_id))
 	`, logicalWorkID, providerID, code, strings.TrimSpace(language), strings.TrimSpace(label), sourceWorkID, relationshipKind)
+	if err == nil && relationshipKind == "provider_reissued" {
+		changed, changeErr := result.RowsAffected()
+		if changeErr != nil {
+			return changeErr
+		}
+		if changed == 0 {
+			return errors.New("provider replacement conflicts with an existing work identity")
+		}
+	}
 	return err
 }
 

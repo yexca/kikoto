@@ -44,7 +44,9 @@ func (s *Server) prepareRemoteWorkFetchExecution(
 	jobID int64,
 	payload remoteWorkFetchJobPayload,
 ) (remoteWorkFetchExecution, error) {
-	execution := remoteWorkFetchExecution{workCode: strings.ToUpper(strings.TrimSpace(payload.WorkCode))}
+	editionCode := firstNonEmpty(payload.EditionCode, payload.WorkCode)
+	remoteCode := firstNonEmpty(payload.RemoteCode, payload.WorkCode)
+	execution := remoteWorkFetchExecution{workCode: strings.ToUpper(strings.TrimSpace(editionCode))}
 	source, err := s.loadRemoteSourceForUse(ctx, payload.SourceID)
 	if err != nil {
 		return execution, err
@@ -65,13 +67,14 @@ func (s *Server) prepareRemoteWorkFetchExecution(
 	if manifestErr != nil || plan.PrimaryCode == "" {
 		var remoteWork kikoeru.Work
 		var tracks []kikoeru.Track
-		source, remoteWork, tracks, err = s.loadInstanceRemoteWorkTracksCached(ctx, payload.SourceID, payload.WorkCode)
+		source, remoteWork, tracks, err = s.loadInstanceRemoteWorkTracksCached(ctx, payload.SourceID, remoteCode)
 		if err != nil {
 			return execution, err
 		}
 		execution.source = source
-		if normalized := normalizedRemoteWorkCode(remoteWork); normalized != "" {
-			execution.workCode = normalized
+		execution.workCode = s.localCodeForRemoteWork(ctx, editionCode, remoteWork)
+		if payload.EditionCode != "" && execution.workCode != normalizeWorkCode(payload.EditionCode) {
+			return execution, errors.New("remote work no longer resolves to the selected edition")
 		}
 		plan, err = s.buildRemoteWorkSavePlanFromSnapshot(ctx, source, remoteWork, tracks, execution.workCode, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.Decisions)
 		if err != nil {

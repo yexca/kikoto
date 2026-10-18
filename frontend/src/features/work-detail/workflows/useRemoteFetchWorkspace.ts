@@ -11,6 +11,7 @@ import {
   createDemoRemoteFetchPlan,
   formatRemoteFetchPreparation,
   remoteDetailActionCode,
+  remoteFetchEditionRemoteCode,
   selectRemoteFetchEdition,
   type FetchIntent,
   type RemoteFetchDraft,
@@ -75,7 +76,16 @@ export function useRemoteFetchWorkspace({
       }
       const plan = auth.demoMode
         ? createDemoRemoteFetchPlan({ detail, paths })
-        : await api.planRemoteSourceWorkFetch(intent.sourceId, remoteDetailActionCode(detail), paths);
+        : await api.planRemoteSourceWorkFetch(
+            intent.sourceId,
+            remoteDetailActionCode(detail),
+            paths,
+            [],
+            "",
+            [],
+            undefined,
+            intent.editionCode,
+          );
       setDraft(createRemoteFetchDraft({ intent, detail, paths, plan }));
       return true;
     } catch (error) {
@@ -92,7 +102,8 @@ export function useRemoteFetchWorkspace({
     if (!cleanCode) return false;
     if (!beginOperation()) return false;
     try {
-      const detail = await api.getRemoteSourceWork(draft.intent.sourceId, cleanCode);
+      const remoteCode = remoteFetchEditionRemoteCode(draft.preparation, draft.intent.sourceId, cleanCode);
+      const detail = await api.getRemoteSourceWork(draft.intent.sourceId, remoteCode);
       const paths = filterRemoteFetchPaths(
         remoteSelectablePaths(
           buildRemoteTree(detail.tracks, { sourceId: detail.sourceId, workCode: remoteDetailActionCode(detail) }),
@@ -105,7 +116,7 @@ export function useRemoteFetchWorkspace({
       }
       setDraft((current) => {
         if (!current) return current;
-        const next = selectRemoteFetchEdition({ draft: current, detail, paths });
+        const next = selectRemoteFetchEdition({ draft: current, detail, paths, editionCode: cleanCode });
         if (!auth.demoMode) return next;
         const plan = createDemoRemoteFetchPlan({ detail, paths });
         return {
@@ -158,6 +169,8 @@ export function useRemoteFetchWorkspace({
           selectedLocalPaths,
           draft.targetRoot,
           decisionList(draft.decisions),
+          undefined,
+          draft.intent.editionCode,
         );
         setDraft((current) =>
           current
@@ -187,6 +200,8 @@ export function useRemoteFetchWorkspace({
         draft.requestId,
         draft.targetRoot || draft.plan.saveRoot,
         decisionList(draft.decisions),
+        undefined,
+        draft.intent.editionCode,
       );
       notifyFetchQueued(toast, result, t);
       setDraft(null);
@@ -221,6 +236,8 @@ export function useRemoteFetchWorkspace({
             selectedLocalPaths,
             draft.targetRoot,
             decisionList(draft.decisions),
+            undefined,
+            draft.intent.editionCode,
           );
           setDraft((current) =>
             current

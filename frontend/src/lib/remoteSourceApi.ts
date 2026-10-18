@@ -136,6 +136,8 @@ export type SourceAvailabilitySource = {
   status: "available" | "not_found" | "unavailable" | "disabled" | "error" | "unknown";
   remoteId: string;
   primaryCode: string;
+  editionCode?: string;
+  remoteCode?: string;
   title: string;
   coverUrl: string;
   workId: number | null;
@@ -252,6 +254,8 @@ export type RemoteFetchRootReview = {
 export type RemoteWorkSavePlan = {
   sourceId: number;
   primaryCode: string;
+  editionCode?: string;
+  remoteCode?: string;
   saveRoot: string;
   fetchRoot: RemoteFetchRootReview;
   localFiles: RemoteWorkSaveLocalFile[];
@@ -416,6 +420,7 @@ export const remoteSourceApi = {
     targetRoot = "",
     decisions: RemoteFetchFileDecision[] = [],
     minFreeBytes = DEFAULT_MANUAL_FETCH_MIN_FREE_BYTES,
+    editionCode = "",
   ) =>
     postJSONBody<RemoteWorkSavePlan>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch-plan`, {
       paths,
@@ -423,6 +428,7 @@ export const remoteSourceApi = {
       targetRoot,
       decisions,
       minFreeBytes,
+      ...(editionCode ? { editionCode } : {}),
     }),
   fetchRemoteSourceWork: (
     id: number,
@@ -433,6 +439,7 @@ export const remoteSourceApi = {
     targetRoot = "",
     decisions: RemoteFetchFileDecision[] = [],
     minFreeBytes = DEFAULT_MANUAL_FETCH_MIN_FREE_BYTES,
+    editionCode = "",
   ) =>
     postJSONBody<RemoteWorkSaveResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/fetch`, {
       paths,
@@ -441,6 +448,7 @@ export const remoteSourceApi = {
       targetRoot,
       decisions,
       minFreeBytes,
+      ...(editionCode ? { editionCode } : {}),
     }),
   trackRemoteSourceWork: (id: number, code: string, triggerReason: string) =>
     postJSONBody<RemoteWorkTrackResult>(`/api/remote-sources/${id}/works/${encodeURIComponent(code)}/track`, {

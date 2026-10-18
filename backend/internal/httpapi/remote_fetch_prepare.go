@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/localfs"
 )
 
@@ -54,7 +55,8 @@ func (s *Server) prepareRemoteFetch(ctx context.Context, requestedCode string) r
 		Warnings:       []string{},
 		Editions:       []remoteFetchEdition{},
 	}
-	editions, err := s.loadRemoteFetchEditions(ctx, requestedCode)
+	localCode := s.localCodeForRemoteWork(ctx, requestedCode, kikoeru.Work{SourceID: requestedCode})
+	editions, err := s.loadRemoteFetchEditions(ctx, localCode)
 	if err != nil {
 		result.MetadataStatus = "degraded"
 		result.Warnings = append(result.Warnings, err.Error())
@@ -90,6 +92,7 @@ func (s *Server) ensureRemoteFetchMetadata(ctx context.Context, requestedCode st
 	if requestedCode == "" {
 		return nil
 	}
+	requestedCode = s.localCodeForRemoteWork(ctx, requestedCode, kikoeru.Work{SourceID: requestedCode})
 	ready, err := s.remoteFetchMetadataReady(ctx, requestedCode)
 	if err != nil {
 		return err

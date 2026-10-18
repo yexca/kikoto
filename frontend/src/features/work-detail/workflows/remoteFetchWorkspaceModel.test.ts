@@ -9,12 +9,72 @@ import {
   editionLocalRoots,
   remoteFetchExtensions,
   remoteFetchExtensionSelection,
+  remoteFetchEditionRemoteCode,
   selectRemoteFetchEdition,
   selectableFetchTargetRoots,
   setRemoteFetchExtensionIncluded,
 } from "./remoteFetchWorkspaceModel";
 
 describe("remote fetch workspace model", () => {
+  it("uses the checked source code while keeping the selected local edition", () => {
+    const remoteDetail = detail("RJ00000002");
+    const mappedPlan = { ...plan("RJ00000001"), editionCode: "RJ00000001", remoteCode: "RJ00000002" };
+    mappedPlan.preparation.editions = [
+      {
+        workId: 1,
+        primaryCode: "RJ00000001",
+        title: "Example Work",
+        metadataLanguage: "CHI_HANS",
+        editionLabel: "Chinese",
+        translationKind: "unknown",
+        classificationSource: "dlsite",
+        makerId: "",
+        originMakerId: "",
+        origin: false,
+        localRoots: [],
+        sources: [
+          {
+            sourceId: 7,
+            sourceCode: "example_remote_a",
+            displayName: "Example Remote A",
+            status: "available",
+            remoteId: "2",
+            primaryCode: "RJ00000002",
+            editionCode: "RJ00000001",
+            remoteCode: "RJ00000002",
+            title: "Example Work",
+            coverUrl: "",
+            workId: 1,
+            hasRemote: true,
+            hasTracked: false,
+            hasCache: false,
+            hasLocal: false,
+            error: "",
+            elapsedMs: 0,
+          },
+        ],
+      },
+    ];
+    expect(remoteFetchEditionRemoteCode(mappedPlan.preparation, 7, "RJ00000001")).toBe("RJ00000002");
+    expect(remoteFetchEditionRemoteCode(mappedPlan.preparation, 8, "RJ00000001")).toBe("RJ00000001");
+    const draft = createRemoteFetchDraft({
+      intent: { sourceId: 7, remoteCode: "RJ00000002" },
+      detail: remoteDetail,
+      paths: ["track.mp3"],
+      plan: mappedPlan,
+    });
+    expect(draft.intent.editionCode).toBe("RJ00000001");
+    expect(draft.intent.remoteCode).toBe("RJ00000002");
+    const selected = selectRemoteFetchEdition({
+      draft,
+      detail: remoteDetail,
+      paths: ["track.mp3"],
+      editionCode: "RJ00000001",
+    });
+    expect(selected.intent.editionCode).toBe("RJ00000001");
+    expect(selected.intent.remoteCode).toBe("RJ00000002");
+  });
+
   it("creates an opaque Fetch request id", () => {
     expect(createRemoteFetchRequestId(() => "stable-id")).toBe("fetch:stable-id");
   });

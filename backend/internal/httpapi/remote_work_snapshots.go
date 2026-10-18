@@ -110,7 +110,7 @@ func (s *Server) loadRemoteWork(ctx context.Context, sourceID int64, code string
 		return remoteSourceForUse{}, kikoeru.Work{}, errRemoteSourceNotUsable
 	}
 	client := s.kikoeruClientForSourceWithLanguages(source, sourceRequestInteractive, languages)
-	remoteWork, _, err := s.resolveKikoeruWork(ctx, client, code)
+	remoteWork, _, err := s.resolveRemoteEdition(ctx, source, client, code)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
@@ -177,7 +177,7 @@ func (s *Server) loadRemoteWorkCachedWithLanguages(ctx context.Context, sourceID
 	s.remoteSourceConfigMu.RUnlock()
 
 	client := s.kikoeruClientForSourceWithLanguages(source, sourceRequestInteractive, languages)
-	work, _, err := s.resolveKikoeruWork(ctx, client, code)
+	work, _, err := s.resolveRemoteEdition(ctx, source, client, code)
 	s.remoteSourceConfigMu.RLock()
 	defer s.remoteSourceConfigMu.RUnlock()
 	current, currentErr := s.currentRemoteCacheSource(ctx, sourceID)

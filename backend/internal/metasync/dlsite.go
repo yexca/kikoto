@@ -164,12 +164,13 @@ func (s *DLsiteSyncer) WithTriggerID(triggerID int64) *DLsiteSyncer {
 // FetchProduct fetches one product using the syncer's language, pacing, and
 // retry policy without writing anything to the database.
 func (s *DLsiteSyncer) FetchProduct(ctx context.Context, workno string) (dlsite.Product, error) {
-	return s.fetchProduct(ctx, strings.ToUpper(strings.TrimSpace(workno)))
+	return fetchVerifiedProduct(ctx, strings.ToUpper(strings.TrimSpace(workno)), s.fetchProduct)
 }
 
 // SyncProductOnly stores exactly the supplied product. Unlike SyncProduct, it
 // does not fetch related editions or download a cover, which makes it suitable
 // for callers that have already applied their own admission policy.
+// The supplied product must come from an exact request for its returned code.
 func (s *DLsiteSyncer) SyncProductOnly(ctx context.Context, product dlsite.Product) (int64, error) {
 	release, err := s.coordinator.acquireProduct(ctx, dlsiteProductCode(product))
 	if err != nil {

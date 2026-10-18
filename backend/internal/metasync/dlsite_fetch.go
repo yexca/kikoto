@@ -15,6 +15,24 @@ func (s *DLsiteSyncer) fetchProduct(ctx context.Context, workno string) (dlsite.
 	return s.fetchProductWithLanguages(ctx, workno, s.languages)
 }
 
+func fetchVerifiedProduct(ctx context.Context, code string, fetch func(context.Context, string) (dlsite.Product, error)) (dlsite.Product, error) {
+	product, err := fetch(ctx, code)
+	if err != nil || strings.EqualFold(dlsiteProductCode(product), code) {
+		return product, err
+	}
+	// A redirected response only supplies a candidate. Verification requires
+	// one exact request; a second mismatch is rejected rather than followed.
+	candidate := dlsiteProductCode(product)
+	if !dlsiteWorkNoPattern.MatchString(candidate) {
+		return dlsite.Product{}, errors.New("provider returned an invalid product code")
+	}
+	product, err = fetch(ctx, candidate)
+	if err == nil && dlsiteProductCode(product) != candidate {
+		return dlsite.Product{}, errors.New("provider returned a mismatched product code")
+	}
+	return product, err
+}
+
 // fetchProductForEdition first discovers the provider-declared edition and
 // then retries that same code with the locale mapped to the edition. DLsite
 // often returns a successful but mixed-language response for a mismatched

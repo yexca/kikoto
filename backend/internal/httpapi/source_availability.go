@@ -28,6 +28,8 @@ type sourceAvailabilitySummary struct {
 	Status      string `json:"status"`
 	RemoteID    string `json:"remoteId"`
 	PrimaryCode string `json:"primaryCode"`
+	EditionCode string `json:"editionCode"`
+	RemoteCode  string `json:"remoteCode"`
 	Title       string `json:"title"`
 	CoverURL    string `json:"coverUrl"`
 	WorkID      *int64 `json:"workId"`
@@ -133,7 +135,7 @@ func (s *Server) checkWorkSourceAvailabilityForSourcesWithHealth(ctx context.Con
 }
 
 func (s *Server) checkOneWorkSourceAvailability(ctx context.Context, source remoteSourceForUse, code, triggerType string) (sourceAvailabilitySummary, error) {
-	result := sourceAvailabilitySummary{SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName, Status: "disabled"}
+	result := sourceAvailabilitySummary{SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName, Status: "disabled", EditionCode: code}
 	if !isKikoeruSourceType(source.SourceType) {
 		result.Status = "unavailable"
 		result.Error = "source is not a supported kikoeru source"
@@ -176,9 +178,10 @@ func (s *Server) checkOneWorkSourceAvailability(ctx context.Context, source remo
 	result.Status = "available"
 	result.RemoteID = strconv.FormatInt(remoteWork.ID, 10)
 	result.PrimaryCode = workCode
+	result.RemoteCode = workCode
 	result.Title = firstNonEmpty(remoteWork.Title, remoteWork.Name, workCode)
 	result.CoverURL = firstNonEmpty(remoteWork.MainCoverURL, remoteWork.SamCoverURL, remoteWork.ThumbnailCoverURL)
-	return result, s.attachSourceAvailabilityFlags(ctx, &result, source.ID, workCode)
+	return result, s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code)
 }
 
 func (s *Server) recordSourceAvailabilityObservation(ctx context.Context, code string, results []sourceAvailabilitySummary) error {
@@ -249,7 +252,7 @@ func (s *Server) readWorkSourceAvailability(ctx context.Context, code string) (s
 	results := make([]sourceAvailabilitySummary, 0, len(sources))
 	for _, source := range sources {
 		result := sourceAvailabilitySummary{
-			SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName, Status: "unknown",
+			SourceID: source.ID, SourceCode: source.Code, DisplayName: source.DisplayName, Status: "unknown", EditionCode: code,
 		}
 		if !isKikoeruSourceType(source.SourceType) {
 			result.Status = "unavailable"
@@ -260,7 +263,7 @@ func (s *Server) readWorkSourceAvailability(ctx context.Context, code string) (s
 		if err := s.attachCachedSourcePresence(ctx, &result, source.ID, code); err != nil {
 			return sourceAvailabilityResponse{}, err
 		}
-		if err := s.attachSourceAvailabilityFlags(ctx, &result, source.ID, firstNonEmpty(result.PrimaryCode, code)); err != nil {
+		if err := s.attachSourceAvailabilityFlags(ctx, &result, source.ID, code); err != nil {
 			return sourceAvailabilityResponse{}, err
 		}
 		results = append(results, result)
@@ -287,15 +290,15 @@ func (s *Server) latestSourceAvailabilityCheckedAt(ctx context.Context, code str
 }
 
 func (s *Server) attachCachedSourcePresence(ctx context.Context, result *sourceAvailabilitySummary, sourceID int64, workCode string) error {
-	var availability, remoteID, rawJSON sql.NullString
+	var availability, remoteID, remoteCode, rawJSON sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-		SELECT presence.availability, presence.remote_id, presence.raw_json
+		SELECT presence.availability, presence.remote_id, presence.remote_code, presence.raw_json
 		FROM work_source_presence AS presence
 		INNER JOIN work ON work.id = presence.work_id
 		WHERE work.primary_code = ?
 			AND presence.file_source_id = ?
 			AND presence.presence_type = ?
-	`, workCode, sourceID, sourcePresenceTypeRemoteSource).Scan(&availability, &remoteID, &rawJSON)
+	`, workCode, sourceID, sourcePresenceTypeRemoteSource).Scan(&availability, &remoteID, &remoteCode, &rawJSON)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
@@ -327,12 +330,15 @@ func (s *Server) attachCachedSourcePresence(ctx context.Context, result *sourceA
 		}
 		if json.Unmarshal([]byte(rawJSON.String), &cached) == nil {
 			result.PrimaryCode = cached.PrimaryCode
+			result.RemoteCode = cached.PrimaryCode
 			result.Title = cached.Title
 			result.CoverURL = cached.CoverURL
 			result.Error = cached.Error
 			result.ElapsedMS = cached.ElapsedMS
 		}
 	}
+	result.RemoteCode = firstNonEmpty(remoteCode.String, result.PrimaryCode)
+	result.PrimaryCode = result.RemoteCode
 	return nil
 }
 
@@ -405,7 +411,7 @@ func (s *Server) checkRemoteWorkAvailabilityWithClass(ctx context.Context, sourc
 		return kikoeru.Work{}, fmt.Errorf("source has no API endpoint")
 	}
 	client := s.kikoeruClientForSourceClass(ctx, source, class)
-	remoteWork, _, err := s.resolveKikoeruWork(ctx, client, code)
+	remoteWork, _, err := s.resolveRemoteEdition(ctx, source, client, code)
 	return remoteWork, err
 }
 

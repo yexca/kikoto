@@ -39,9 +39,12 @@ func (s *Server) prepareRemoteFetchPlanInputs(
 	requestedTargetRoot string,
 	decisions []remoteFetchFileDecision,
 ) (remoteFetchPlanInputs, error) {
-	workCode := normalizedRemoteWorkCode(remoteWork)
+	workCode := s.localCodeForRemoteWork(ctx, code, remoteWork)
 	if workCode == "" {
 		workCode = strings.ToUpper(strings.TrimSpace(code))
+	}
+	if err := requireRemoteFetchEdition(ctx, workCode); err != nil {
+		return remoteFetchPlanInputs{}, err
 	}
 	saveRoot, err := s.resolveRemoteFetchSaveRoot(ctx, source, workCode, requestedTargetRoot)
 	if err != nil {
@@ -329,6 +332,8 @@ type remoteFetchSourceOption struct {
 type remoteWorkSavePlan struct {
 	SourceID    int64  `json:"sourceId"`
 	PrimaryCode string `json:"primaryCode"`
+	EditionCode string `json:"editionCode"`
+	RemoteCode  string `json:"remoteCode"`
 	SaveRoot    string `json:"saveRoot"`
 	// TransactionPool is the storage pool that holds SaveRoot, and with it
 	// this Fetch's staging, backup, and trash entries. Empty is the data root.
@@ -417,6 +422,9 @@ func (s *Server) buildRemoteWorkSavePlan(ctx context.Context, sourceID int64, co
 	if err != nil {
 		return remoteWorkSavePlan{}, err
 	}
+	if err := s.verifyRemoteWorkIdentity(ctx, remoteWork); err != nil {
+		return remoteWorkSavePlan{}, err
+	}
 	return s.buildRemoteWorkSavePlanFromSnapshot(ctx, source, remoteWork, tracks, code, selectedPaths, selectedLocalPaths, requestedTargetRoot, decisions)
 }
 
@@ -441,6 +449,7 @@ func (s *Server) buildRemoteWorkSavePlanFromSnapshot(ctx context.Context, source
 	}
 	plan := remoteWorkSavePlan{
 		SourceID: source.ID, PrimaryCode: inputs.workCode, SaveRoot: inputs.saveRoot,
+		EditionCode: inputs.workCode, RemoteCode: normalizedRemoteWorkCode(remoteWork),
 		TransactionPool: transactionPool, LocalFiles: inputs.localFiles, Items: items,
 	}
 	validateResolvedFetchTargets(plan.Items)

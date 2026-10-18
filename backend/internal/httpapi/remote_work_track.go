@@ -312,11 +312,14 @@ func (s *Server) prepareRemoteWorkTrack(ctx context.Context, sourceID int64, cod
 		return preparedRemoteWorkTrack{}, errRemoteSourceNotUsable
 	}
 	client := s.kikoeruCrawlClientForSource(ctx, source)
-	remoteWork, rawWork, err := s.resolveKikoeruWork(ctx, client, requestedCode)
+	remoteWork, rawWork, err := s.resolveRemoteEdition(ctx, source, client, requestedCode)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			_ = s.updateSourceHealth(ctx, sourceID, "unavailable")
 		}
+		return preparedRemoteWorkTrack{}, err
+	}
+	if err := s.verifyRemoteWorkIdentity(ctx, remoteWork); err != nil {
 		return preparedRemoteWorkTrack{}, err
 	}
 	tracks, _, err := client.Tracks(ctx, remoteWork.ID)
@@ -328,7 +331,7 @@ func (s *Server) prepareRemoteWorkTrack(ctx context.Context, sourceID int64, cod
 		return preparedRemoteWorkTrack{}, err
 	}
 	_ = s.updateSourceHealth(ctx, sourceID, "healthy")
-	workCode := strings.ToUpper(strings.TrimSpace(normalizedRemoteWorkCode(remoteWork)))
+	workCode := s.localCodeForRemoteWork(ctx, requestedCode, remoteWork)
 	if workCode == "" {
 		workCode = requestedCode
 	}
@@ -362,7 +365,7 @@ func persistRemoteWorkSync(ctx context.Context, tx *sql.Tx, prepared preparedRem
 			FileSourceID: prepared.Source.ID,
 			PresenceType: "tracked",
 			RemoteID:     strconv.FormatInt(prepared.RemoteWork.ID, 10),
-			RemoteCode:   prepared.WorkCode,
+			RemoteCode:   normalizedRemoteWorkCode(prepared.RemoteWork),
 			SourceURL:    prepared.RemoteWork.SourceURL,
 			Availability: "available",
 			RawJSON:      string(prepared.RawWork),

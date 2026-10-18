@@ -407,6 +407,26 @@ Demo mode.
 alias may reference a persisted edition work, but metadata-only aliases do not
 create works and do not imply local or remote file availability.
 
+A verified DLsite replacement code has `relationship_kind = provider_reissued`
+and `source_work_id` pointing to the existing edition. The edition keeps its
+local primary code. Verification requires an exact request returning the
+candidate code, `original_workno` matching the local canonical code, and either
+`parent_workno` naming the local edition or a nonzero `edition_id` and nonempty
+language exactly matching that edition's stored DLsite snapshot. Ambiguous
+matches and independently persisted works retain their own identities. Remote
+source language lists supply candidates only; titles and language labels do
+not prove a relationship.
+
+Check source reports `editionCode` for the local edition and `remoteCode` for
+the product available on each source. Fetch plans and recoverable job payloads
+keep both codes: remote requests use `remoteCode`, while folders, manifests,
+cache entries, and media ownership use `editionCode`. Fetch requests carry the
+selected local `editionCode`; the server checks it against the verified mapping
+before planning files or reusing a queued result. Remote persistence
+resolves verified aliases before inserting works. An explicitly selected
+unknown code is checked for a replacement relationship before persistence;
+discovery does not materialize candidate siblings.
+
 `work_metadata_link` records a user-declared DLsite product whose metadata a
 work uses, for example when a bonus edition is withdrawn from sale and the
 regular edition is sold under another code. Metadata sync for a linked work

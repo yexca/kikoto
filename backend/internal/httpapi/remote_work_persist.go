@@ -30,7 +30,13 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 		return 0, fmt.Errorf("remote work does not expose a stable work code")
 	}
 	title := firstNonEmpty(remoteWork.Title, remoteWork.Name, code)
-	workID, err := insertRemoteWorkIfMissing(ctx, tx, code, title, remoteWork)
+	workID, err := remoteWorkIDForVerifiedDLsiteAlias(ctx, tx, code)
+	if err != nil {
+		return 0, err
+	}
+	if workID == 0 {
+		workID, err = insertRemoteWorkIfMissing(ctx, tx, code, title, remoteWork)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -47,6 +53,30 @@ func upsertRemoteWork(ctx context.Context, tx *sql.Tx, source remoteSourceForUse
 		return 0, err
 	}
 	return workID, nil
+}
+
+func remoteWorkIDForVerifiedDLsiteAlias(ctx context.Context, tx *sql.Tx, code string) (int64, error) {
+	var workID sql.NullInt64
+	err := tx.QueryRowContext(ctx, `
+		SELECT alias.source_work_id
+		FROM work_code_alias AS alias
+		INNER JOIN metadata_provider AS provider ON provider.id = alias.provider_id AND provider.code = 'dlsite'
+		INNER JOIN work_edition AS edition ON edition.work_id = alias.source_work_id AND edition.logical_work_id = alias.logical_work_id
+		WHERE UPPER(alias.primary_code) = UPPER(?)
+			AND alias.relationship_kind = 'provider_reissued'
+			AND alias.source_work_id IS NOT NULL
+		LIMIT 1
+	`, code).Scan(&workID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if !workID.Valid {
+		return 0, nil
+	}
+	return workID.Int64, nil
 }
 
 func insertRemoteWorkIfMissing(ctx context.Context, tx *sql.Tx, code, title string, remoteWork kikoeru.Work) (int64, error) {

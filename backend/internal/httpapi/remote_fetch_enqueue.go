@@ -51,7 +51,10 @@ func (s *Server) prepareRemoteWorkSaveEnqueue(
 	if err != nil {
 		return remoteWorkSavePreparation{}, err
 	}
-	workCode := normalizedRemoteWorkCode(remoteWork)
+	if err := s.verifyRemoteWorkIdentity(ctx, remoteWork); err != nil {
+		return remoteWorkSavePreparation{}, err
+	}
+	workCode := s.localCodeForRemoteWork(ctx, code, remoteWork)
 	if workCode == "" {
 		workCode = strings.ToUpper(strings.TrimSpace(code))
 	}
@@ -183,6 +186,7 @@ func (s *Server) insertPreparedRemoteFetchTx(ctx context.Context, tx *sql.Tx, pr
 	}
 	runInput := remoteWorkFetchJobPayload{
 		RequestedByUserID: prep.requestedByUserID, SourceID: prep.requestedSourceID, WorkCode: prep.workCode,
+		EditionCode: prep.workCode, RemoteCode: normalizedRemoteWorkCode(prep.remoteWork),
 		Paths: prep.selectedPaths, LocalPaths: prep.selectedLocalPaths, TargetRoot: prep.plan.SaveRoot,
 		RequestID: prep.requestID, Decisions: prep.decisions, MinFreeBytes: prep.minFreeBytes,
 	}
@@ -242,6 +246,7 @@ func (s *Server) persistPreparedRemoteFetchTx(ctx context.Context, tx *sql.Tx, p
 }
 
 type remoteWorkSaveRequest struct {
+	EditionCode  string                    `json:"editionCode"`
 	Paths        []string                  `json:"paths"`
 	LocalPaths   []string                  `json:"localPaths"`
 	TargetRoot   string                    `json:"targetRoot"`
@@ -254,6 +259,8 @@ type remoteWorkFetchJobPayload struct {
 	RequestedByUserID int64                     `json:"requested_by_user_id,omitempty"`
 	SourceID          int64                     `json:"source_id"`
 	WorkCode          string                    `json:"work_code"`
+	EditionCode       string                    `json:"edition_code,omitempty"`
+	RemoteCode        string                    `json:"remote_code,omitempty"`
 	Paths             []string                  `json:"paths"`
 	LocalPaths        []string                  `json:"local_paths"`
 	TargetRoot        string                    `json:"target_root"`
@@ -272,22 +279,23 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
+	r = r.WithContext(withRemoteFetchEdition(r.Context(), payload.EditionCode))
 	if err := s.requireUsableRemoteSource(r.Context(), sourceID); err != nil {
 		writeError(w, err)
 		return
 	}
 	metadataErr := s.ensureRemoteFetchMetadata(r.Context(), code)
-	preparation := s.prepareRemoteFetch(r.Context(), code)
-	if metadataErr != nil {
-		preparation.MetadataStatus = "degraded"
-		preparation.Warnings = append(preparation.Warnings, "metadata refresh: "+metadataErr.Error())
-	}
 	plan, err := s.buildRemoteWorkSavePlan(r.Context(), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.Decisions)
 	if err != nil {
 		if !writeFetchDestinationError(w, err) {
 			writeUpstreamError(w, err)
 		}
 		return
+	}
+	preparation := s.prepareRemoteFetch(r.Context(), code)
+	if metadataErr != nil {
+		preparation.MetadataStatus = "degraded"
+		preparation.Warnings = append(preparation.Warnings, "metadata refresh: "+metadataErr.Error())
 	}
 	if err := validateRemoteFetchDownloadPlan(plan.Items, s.remoteMediaDownloadLimitBytes(r.Context())); err != nil {
 		writeUpstreamError(w, rejectedRequestError("download_limit_exceeded", "a selected file is larger than the remote download limit", err))
@@ -315,6 +323,7 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	r = r.WithContext(withRemoteFetchEdition(r.Context(), payload.EditionCode))
 	payload.RequestID = strings.TrimSpace(payload.RequestID)
 	if payload.RequestID != "" && !validRemoteFetchRequestID(payload.RequestID) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid fetch request id"})
@@ -431,6 +440,9 @@ func activeRemoteFetchResult(ctx context.Context, queryer rowQueryer, workCode s
 		result.Plan = plan.Summary
 	}
 	result.Deduplicated = true
+	if err := requireRemoteFetchEdition(ctx, result.PrimaryCode); err != nil {
+		return remoteWorkSaveResult{}, false, err
+	}
 	return result, true, nil
 }
 
@@ -490,6 +502,9 @@ func (s *Server) remoteFetchRequestResult(ctx context.Context, requestID string,
 	}
 	var result remoteWorkSaveResult
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		return remoteWorkSaveResult{}, false, err
+	}
+	if err := requireRemoteFetchEdition(ctx, result.PrimaryCode); err != nil {
 		return remoteWorkSaveResult{}, false, err
 	}
 	result.Deduplicated = true

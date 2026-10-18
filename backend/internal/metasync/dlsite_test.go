@@ -151,6 +151,83 @@ func TestSyncProductRecordsConfiguredPublicURL(t *testing.T) {
 	}
 }
 
+func TestSyncProductReissuedEditionKeepsExistingWorkAndAddsAlias(t *testing.T) {
+	db := openTestDB(t)
+	syncer := NewDLsiteSyncer(db, fakeDLsiteClient{})
+	origin := dlsite.Product{
+		WorkNo: "RJ00000000", ProductName: "Origin",
+		LanguageEditions: []dlsite.LanguageEdition{{WorkNo: "RJ00000000", DisplayOrder: 1, Lang: "JPN"}, {WorkNo: "RJ00000001", DisplayOrder: 2, Lang: "CHI_HANS"}},
+		Raw:              json.RawMessage(`{"workno":"RJ00000000"}`),
+	}
+	translated := dlsite.Product{
+		WorkNo: "RJ00000001", ProductName: "Chinese",
+		TranslationInfo:  dlsite.TranslationInfo{OriginalWorkNo: "RJ00000000"},
+		LanguageEditions: origin.LanguageEditions,
+		Raw:              json.RawMessage(`{"workno":"RJ00000001"}`),
+	}
+	reissued := dlsite.Product{
+		WorkNo: "RJ00000002", ProductName: "Chinese",
+		TranslationInfo:  dlsite.TranslationInfo{OriginalWorkNo: "RJ00000000", ParentWorkNo: "RJ00000001", Lang: "CHI_HANS"},
+		LanguageEditions: origin.LanguageEditions,
+		Raw:              json.RawMessage(`{"workno":"RJ00000002"}`),
+	}
+	originID, err := syncer.SyncProductOnly(context.Background(), origin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	translatedID, err := syncer.SyncProductOnly(context.Background(), translated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reissuedID, err := syncer.SyncProductOnly(context.Background(), reissued)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repeatedID, err := syncer.SyncProductOnly(context.Background(), reissued); err != nil || repeatedID != reissuedID {
+		t.Fatalf("repeated sync = %d, error = %v; want %d", repeatedID, err, reissuedID)
+	}
+	if reissuedID != translatedID || translatedID == originID {
+		t.Fatalf("reissued work id = %d, translated = %d, origin = %d", reissuedID, translatedID, originID)
+	}
+	var workCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code = 'RJ00000002'").Scan(&workCount); err != nil {
+		t.Fatal(err)
+	}
+	if workCount != 0 {
+		t.Fatalf("reissued product created %d work rows", workCount)
+	}
+	var aliasLogical, aliasWork int64
+	if err := db.QueryRow(`
+		SELECT alias.logical_work_id, alias.source_work_id
+		FROM work_code_alias AS alias
+		INNER JOIN metadata_provider AS provider ON provider.id = alias.provider_id
+		WHERE provider.code = 'dlsite' AND alias.primary_code = 'RJ00000002'
+	`).Scan(&aliasLogical, &aliasWork); err != nil {
+		t.Fatal(err)
+	}
+	var translatedLogical int64
+	if err := db.QueryRow("SELECT logical_work_id FROM work_edition WHERE work_id = ?", translatedID).Scan(&translatedLogical); err != nil {
+		t.Fatal(err)
+	}
+	if aliasLogical != translatedLogical || aliasWork != translatedID {
+		t.Fatalf("alias = logical %d/work %d, want logical %d/work %d", aliasLogical, aliasWork, translatedLogical, translatedID)
+	}
+	var relationship string
+	if err := db.QueryRow(`SELECT relationship_kind FROM work_code_alias WHERE primary_code = 'RJ00000002'`).Scan(&relationship); err != nil {
+		t.Fatal(err)
+	}
+	if relationship != "provider_reissued" {
+		t.Fatalf("relationship kind = %q, want provider_reissued", relationship)
+	}
+	var primaryCode string
+	if err := db.QueryRow("SELECT primary_code FROM work_edition WHERE work_id = ?", translatedID).Scan(&primaryCode); err != nil {
+		t.Fatal(err)
+	}
+	if primaryCode != translated.WorkNo {
+		t.Fatalf("edition primary code = %q, want %q", primaryCode, translated.WorkNo)
+	}
+}
+
 func TestSyncFamilyRestoresCanonicalOriginTitleAfterLocalizedResponse(t *testing.T) {
 	db := openTestDB(t)
 	client := &localizedFakeDLsiteClient{products: map[string]map[string]dlsite.Product{

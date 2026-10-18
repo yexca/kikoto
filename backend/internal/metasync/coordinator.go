@@ -177,7 +177,7 @@ func (s *DLsiteSyncer) syncFetchedProduct(ctx context.Context, code string, fetc
 	if err != nil {
 		return dlsite.Product{}, 0, err
 	}
-	product, fetchErr := fetch(ctx, code)
+	product, fetchErr := fetchVerifiedProduct(ctx, code, fetch)
 	if fetchErr != nil {
 		if err := s.recordCodeOutcome(ctx, code, "metadata", fetchErr); err != nil {
 			return dlsite.Product{}, 0, err

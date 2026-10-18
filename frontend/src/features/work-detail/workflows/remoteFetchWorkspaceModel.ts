@@ -32,6 +32,7 @@ export function selectableFetchTargetRoots(
 export type FetchIntent = {
   sourceId: number;
   remoteCode: string;
+  editionCode?: string;
   sourceDisplayName?: string;
   canonicalCode?: string;
   detail?: RemoteWorkDetail;
@@ -165,7 +166,12 @@ export function createRemoteFetchDraft({
   requestId?: string;
 }): RemoteFetchDraft {
   return {
-    intent: { ...intent, remoteCode: remoteDetailActionCode(detail), detail },
+    intent: {
+      ...intent,
+      editionCode: plan.editionCode || plan.primaryCode,
+      remoteCode: plan.remoteCode || remoteDetailActionCode(detail),
+      detail,
+    },
     detail,
     selectedPaths: new Set(paths),
     selectedLocalPaths: new Set(),
@@ -183,16 +189,23 @@ export function selectRemoteFetchEdition({
   draft,
   detail,
   paths,
+  editionCode,
   requestId = createRemoteFetchRequestId(),
 }: {
   draft: RemoteFetchDraft;
   detail: RemoteWorkDetail;
   paths: string[];
+  editionCode?: string;
   requestId?: string;
 }): RemoteFetchDraft {
   return {
     ...draft,
-    intent: { ...draft.intent, remoteCode: remoteDetailActionCode(detail), detail },
+    intent: {
+      ...draft.intent,
+      editionCode: editionCode || detail.primaryCode,
+      remoteCode: remoteDetailActionCode(detail),
+      detail,
+    },
     detail,
     selectedPaths: new Set(paths),
     selectedLocalPaths: new Set(),
@@ -281,6 +294,16 @@ export function createDemoRemoteFetchPlan({
 
 export function remoteDetailActionCode(detail: RemoteWorkDetail) {
   return detail.remoteCode || detail.primaryCode || detail.remoteId;
+}
+
+export function remoteFetchEditionRemoteCode(
+  preparation: RemoteFetchPreparation,
+  sourceId: number,
+  editionCode: string,
+) {
+  const edition = preparation.editions.find((item) => item.primaryCode.toUpperCase() === editionCode.toUpperCase());
+  const source = edition?.sources.find((item) => item.sourceId === sourceId && item.status === "available");
+  return source?.remoteCode || source?.primaryCode || editionCode;
 }
 
 export function formatRemoteFetchPreparation(plan: RemoteWorkSavePlan) {

@@ -86,7 +86,12 @@ export function RemoteFetchWorkspaceDialog({ workspace }: { workspace: RemoteFet
       onChange={workspace.setSelectedPaths}
       onLocalChange={workspace.setSelectedLocalPaths}
       onDecisionChange={workspace.setDecision}
-      activeEditionCode={remoteDetailActionCode(draft.detail)}
+      activeEditionCode={
+        draft.intent.editionCode ||
+        draft.plan?.editionCode ||
+        draft.plan?.primaryCode ||
+        remoteDetailActionCode(draft.detail)
+      }
       onEditionChange={workspace.selectEdition}
       sourceId={draft.intent.sourceId}
       targetRoot={draft.targetRoot}
