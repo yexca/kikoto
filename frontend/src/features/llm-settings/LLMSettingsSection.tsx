@@ -76,8 +76,8 @@ export function LLMSettingsSection({
   );
 
   useEffect(() => {
-    if (!readOnly) void load();
-  }, [load, readOnly]);
+    void load();
+  }, [load]);
 
   const upsert = (next: LLMProvider) =>
     setProviders((current) =>
@@ -163,17 +163,6 @@ export function LLMSettingsSection({
     }
   };
 
-  if (readOnly) {
-    return (
-      <div className="space-y-6">
-        <SettingsSection title={t("maintenance.llm.title")} description={t("maintenance.llm.description")}>
-          <EmptyState icon={<Bot className="h-5 w-5" />}>{t("maintenance.llm.demoDisabled")}</EmptyState>
-        </SettingsSection>
-        {otherServices}
-      </div>
-    );
-  }
-
   const ready = loadState === "ready";
   // Until the external service notice is accepted, the tab stays visible but cannot be used.
   const locked = ready && !noticeAccepted;
@@ -201,7 +190,7 @@ export function LLMSettingsSection({
               <Button
                 variant="outline"
                 size="sm"
-                disabled={!ready || presets.length === 0}
+                disabled={readOnly || !ready || presets.length === 0}
                 onClick={() => setEditing({ provider: null })}
               >
                 <Plus className="h-4 w-4" />
@@ -265,7 +254,7 @@ export function LLMSettingsSection({
                   <Switch
                     className="mr-2"
                     checked={provider.enabled}
-                    disabled={togglingID === provider.id}
+                    disabled={readOnly || togglingID === provider.id}
                     aria-label={t("maintenance.llm.enableNamed", { name: provider.name })}
                     onCheckedChange={(enabled) => void setEnabled(provider, enabled)}
                   />
@@ -284,6 +273,7 @@ export function LLMSettingsSection({
                     className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                     aria-label={t("maintenance.llm.deleteNamed", { name: provider.name })}
                     title={t("maintenance.llm.deleteNamed", { name: provider.name })}
+                    disabled={readOnly}
                     onClick={() => setPendingDelete(provider)}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -308,19 +298,19 @@ export function LLMSettingsSection({
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={savingPolicy || !policyDirty}
+                  disabled={readOnly || savingPolicy || !policyDirty}
                   onClick={() => setPolicy(savedPolicy)}
                 >
                   {t("maintenance.llm.policyDiscard")}
                 </Button>
-                <Button size="sm" disabled={savingPolicy || !policyDirty} onClick={() => void savePolicy()}>
+                <Button size="sm" disabled={readOnly || savingPolicy || !policyDirty} onClick={() => void savePolicy()}>
                   {savingPolicy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   {t("maintenance.llm.save")}
                 </Button>
               </>
             }
           >
-            <LLMPolicyEditor policy={policy} onChange={setPolicy} disabled={savingPolicy} />
+            <LLMPolicyEditor policy={policy} onChange={setPolicy} disabled={readOnly || savingPolicy} />
           </SettingsSection>
         )}
       </div>
@@ -338,6 +328,7 @@ export function LLMSettingsSection({
           onSave={saveProvider}
           onFetchModels={fetchModels}
           onClose={() => setEditing(null)}
+          readOnly={readOnly}
         />
       )}
       {pendingDelete && (

@@ -32,7 +32,12 @@ type asrProviderResponse struct {
 }
 
 func (s *Server) asrResponse(p asr.Provider) asrProviderResponse {
-	return asrProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, MaxContentClass: p.MaxContentClass, Scope: p.Scope, Port: p.Port, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", EnabledModels: p.EnabledModels, DefaultModel: p.DefaultModel, Models: p.Models}
+	return asrProviderView(p, s.cfg.HostProxyAddress())
+}
+
+// asrProviderView presents a service whose same-machine host is host.
+func asrProviderView(p asr.Provider, host string) asrProviderResponse {
+	return asrProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, BaseURL: p.Endpoint(host), Boundary: p.Boundary, MaxContentClass: p.MaxContentClass, Scope: p.Scope, Port: p.Port, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", EnabledModels: p.EnabledModels, DefaultModel: p.DefaultModel, Models: p.Models}
 }
 
 func writeASRDisabled(w http.ResponseWriter) {
@@ -40,11 +45,11 @@ func writeASRDisabled(w http.ResponseWriter) {
 }
 
 func (s *Server) listASRProviders(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.IsDemo() {
-		writeASRDisabled(w)
+	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
 		return
 	}
-	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
+	if s.cfg.IsDemo() {
+		writeDemoASRServices(w)
 		return
 	}
 	providers, err := s.asrStore.List(r.Context())

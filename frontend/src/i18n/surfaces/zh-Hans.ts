@@ -437,7 +437,6 @@ export const surfaceHans = {
     asr: {
       title: "语音识别服务",
       description: "通过 OpenAI 兼容的转写接口，把本地音轨转写为带时间轴的歌词。只有在有人开始转写时才会发送音频。",
-      demoDisabled: "Demo 不开放语音识别。",
       refresh: "刷新",
       add: "添加服务",
       addTitle: "添加语音识别服务",
@@ -515,7 +514,6 @@ export const surfaceHans = {
         accept: "同意并继续",
         acceptFailed: "无法保存同意。",
       },
-      demoDisabled: "Demo 不开放 LLM 配置和翻译。",
       remoteLyrics: "启用远程歌词翻译",
       remoteLyricsDescription: "只读取明确选择的远程文件，并要求远程获取权限。",
       boundary: "数据边界",

@@ -43,6 +43,7 @@ export function LLMProviderDialog({
   onSave,
   onFetchModels,
   onClose,
+  readOnly = false,
 }: {
   presets: LLMProviderPreset[];
   /** The provider to edit, or null to add one. */
@@ -53,6 +54,8 @@ export function LLMProviderDialog({
   /** Resolves to the provider as last saved, or null when it could not be saved. */
   onFetchModels: (draft: ProviderDraft) => Promise<LLMProvider | null>;
   onClose: () => void;
+  /** Demo opens a provider for inspection; every field stays visible but cannot be changed. */
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<ProviderDraft>(() =>
@@ -101,7 +104,7 @@ export function LLMProviderDialog({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (busy) return;
+    if (busy || readOnly) return;
     if (invalid) {
       setShowErrors(true);
       return;
@@ -156,7 +159,7 @@ export function LLMProviderDialog({
               : null
           }
         >
-          <fieldset disabled={busy} className="min-w-0 space-y-5 border-0 p-0">
+          <fieldset disabled={busy || readOnly} className="min-w-0 space-y-5 border-0 p-0">
             <Field label={t("maintenance.llm.name")} hint={t("maintenance.llm.nameDescription")}>
               <Input
                 value={draft.name}
@@ -415,18 +418,20 @@ export function LLMProviderDialog({
         </PresetDialogBody>
         <DialogFooter>
           <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onClose}>
-            {t("maintenance.cancel")}
+            {readOnly ? t("maintenance.close") : t("maintenance.cancel")}
           </Button>
-          <Button type="submit" size="sm" disabled={busy}>
-            {pending === "save" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : editing ? (
-              <Save className="h-4 w-4" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
-            {editing ? t("maintenance.llm.save") : t("maintenance.llm.add")}
-          </Button>
+          {!readOnly && (
+            <Button type="submit" size="sm" disabled={busy}>
+              {pending === "save" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : editing ? (
+                <Save className="h-4 w-4" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              {editing ? t("maintenance.llm.save") : t("maintenance.llm.add")}
+            </Button>
+          )}
         </DialogFooter>
       </form>
     </Dialog>

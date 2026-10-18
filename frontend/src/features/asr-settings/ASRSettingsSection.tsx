@@ -52,8 +52,8 @@ export function ASRSettingsSection({ readOnly = false }: { readOnly?: boolean })
   );
 
   useEffect(() => {
-    if (!readOnly) void load();
-  }, [load, readOnly]);
+    void load();
+  }, [load]);
 
   const upsert = (next: ASRProvider) =>
     setProviders((current) =>
@@ -125,14 +125,6 @@ export function ASRSettingsSection({ readOnly = false }: { readOnly?: boolean })
     }
   };
 
-  if (readOnly) {
-    return (
-      <SettingsSection title={t("maintenance.asr.title")} description={t("maintenance.asr.description")}>
-        <EmptyState icon={<AudioLines className="h-5 w-5" />}>{t("maintenance.asr.demoDisabled")}</EmptyState>
-      </SettingsSection>
-    );
-  }
-
   const ready = loadState === "ready";
   const presetName = (provider: ASRProvider) => {
     const preset = presets.find((item) => item.id === provider.presetId);
@@ -165,7 +157,7 @@ export function ASRSettingsSection({ readOnly = false }: { readOnly?: boolean })
             <Button
               variant="outline"
               size="sm"
-              disabled={!ready || presets.length === 0}
+              disabled={readOnly || !ready || presets.length === 0}
               onClick={() => setEditing({ provider: null })}
             >
               <Plus className="h-4 w-4" />
@@ -227,7 +219,7 @@ export function ASRSettingsSection({ readOnly = false }: { readOnly?: boolean })
                 <Switch
                   className="mr-2"
                   checked={provider.enabled}
-                  disabled={togglingID === provider.id}
+                  disabled={readOnly || togglingID === provider.id}
                   aria-label={t("maintenance.asr.enableNamed", { name: provider.name })}
                   onCheckedChange={(enabled) => void setEnabled(provider, enabled)}
                 />
@@ -246,6 +238,7 @@ export function ASRSettingsSection({ readOnly = false }: { readOnly?: boolean })
                   className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                   aria-label={t("maintenance.asr.deleteNamed", { name: provider.name })}
                   title={t("maintenance.asr.deleteNamed", { name: provider.name })}
+                  disabled={readOnly}
                   onClick={() => setPendingDelete(provider)}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -264,6 +257,7 @@ export function ASRSettingsSection({ readOnly = false }: { readOnly?: boolean })
           onSave={saveProvider}
           onFetchModels={fetchModels}
           onClose={() => setEditing(null)}
+          readOnly={readOnly}
         />
       )}
       {pendingDelete && (

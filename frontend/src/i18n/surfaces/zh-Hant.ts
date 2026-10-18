@@ -438,7 +438,6 @@ export const surfaceHant = {
     asr: {
       title: "語音辨識服務",
       description: "透過 OpenAI 相容的轉寫介面，將本機音軌轉寫為帶時間軸的歌詞。只有在有人開始轉寫時才會傳送音訊。",
-      demoDisabled: "Demo 不開放語音辨識。",
       refresh: "重新整理",
       add: "新增服務",
       addTitle: "新增語音辨識服務",
@@ -517,7 +516,6 @@ export const surfaceHant = {
         accept: "同意並繼續",
         acceptFailed: "無法儲存同意。",
       },
-      demoDisabled: "Demo 不開放 LLM 設定與翻譯。",
       remoteLyrics: "啟用遠端歌詞翻譯",
       remoteLyricsDescription: "只讀取明確選擇的遠端檔案，並要求遠端取得權限。",
       boundary: "資料邊界",

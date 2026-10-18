@@ -37,6 +37,7 @@ export function ASRServiceDialog({
   onSave,
   onFetchModels,
   onClose,
+  readOnly = false,
 }: {
   presets: ASRPreset[];
   /** The service to edit, or null to add one. */
@@ -47,6 +48,8 @@ export function ASRServiceDialog({
   /** Resolves to the service as last saved, or null when it could not be saved. */
   onFetchModels: (draft: ASRServiceDraft) => Promise<ASRProvider | null>;
   onClose: () => void;
+  /** Demo opens a service for inspection; every field stays visible but cannot be changed. */
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<ASRServiceDraft>(() =>
@@ -85,7 +88,7 @@ export function ASRServiceDialog({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (busy) return;
+    if (busy || readOnly) return;
     if (invalid) {
       setShowErrors(true);
       return;
@@ -143,7 +146,7 @@ export function ASRServiceDialog({
               : null
           }
         >
-          <fieldset disabled={busy} className="min-w-0 space-y-5 border-0 p-0">
+          <fieldset disabled={busy || readOnly} className="min-w-0 space-y-5 border-0 p-0">
             <SettingsField label={t("maintenance.asr.name")} hint={t("maintenance.asr.nameDescription")}>
               <Input
                 value={draft.name}
@@ -333,18 +336,20 @@ export function ASRServiceDialog({
         </PresetDialogBody>
         <DialogFooter>
           <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onClose}>
-            {t("maintenance.cancel")}
+            {readOnly ? t("maintenance.close") : t("maintenance.cancel")}
           </Button>
-          <Button type="submit" size="sm" disabled={busy}>
-            {pending === "save" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : editing ? (
-              <Save className="h-4 w-4" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
-            {editing ? t("maintenance.asr.save") : t("maintenance.asr.add")}
-          </Button>
+          {!readOnly && (
+            <Button type="submit" size="sm" disabled={busy}>
+              {pending === "save" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : editing ? (
+                <Save className="h-4 w-4" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              {editing ? t("maintenance.asr.save") : t("maintenance.asr.add")}
+            </Button>
+          )}
         </DialogFooter>
       </form>
     </Dialog>

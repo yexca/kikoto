@@ -496,7 +496,6 @@ export const surfaceEnglish = {
       title: "ASR services",
       description:
         "Transcribe local tracks into timed lyrics through an OpenAI-compatible transcription endpoint. Audio is sent only when someone starts a transcription.",
-      demoDisabled: "ASR is unavailable in Demo.",
       refresh: "Refresh",
       add: "Add service",
       addTitle: "Add ASR service",
@@ -583,7 +582,6 @@ export const surfaceEnglish = {
         accept: "Accept and continue",
         acceptFailed: "The notice could not be accepted.",
       },
-      demoDisabled: "LLM configuration and translation are unavailable in Demo.",
       remoteLyrics: "Enable remote lyrics translation",
       remoteLyricsDescription:
         "Remote files are read only when explicitly selected. Remote fetch permission is required.",

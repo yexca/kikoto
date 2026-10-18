@@ -38,15 +38,20 @@ type llmProviderResponse struct {
 }
 
 func (s *Server) llmResponse(p llm.Provider) llmProviderResponse {
-	return llmProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, Kind: p.Preset().Kind, BaseURL: p.Endpoint(s.cfg.HostProxyAddress()), Boundary: p.Boundary, MaxContentClass: p.MaxContentClass, OllamaScope: p.OllamaScope, Scope: p.Scope, Port: p.Port, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", EnabledModels: p.EnabledModels, DefaultModel: p.DefaultModel, Models: p.Models, RequestTimeoutSeconds: int(p.RequestTimeout() / time.Second), OllamaContextLength: p.OllamaContextLength, OllamaDisableThinking: p.OllamaDisableThinking}
+	return llmProviderView(p, s.cfg.HostProxyAddress())
+}
+
+// llmProviderView presents a provider whose same-machine host is host.
+func llmProviderView(p llm.Provider, host string) llmProviderResponse {
+	return llmProviderResponse{ID: p.ID, PresetID: p.PresetID, Name: p.Name, Kind: p.Preset().Kind, BaseURL: p.Endpoint(host), Boundary: p.Boundary, MaxContentClass: p.MaxContentClass, OllamaScope: p.OllamaScope, Scope: p.Scope, Port: p.Port, Enabled: p.Enabled, HasAPIKey: p.APIKey != "", EnabledModels: p.EnabledModels, DefaultModel: p.DefaultModel, Models: p.Models, RequestTimeoutSeconds: int(p.RequestTimeout() / time.Second), OllamaContextLength: p.OllamaContextLength, OllamaDisableThinking: p.OllamaDisableThinking}
 }
 
 func (s *Server) listLLMProviders(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.IsDemo() {
-		writeAPIError(w, 403, "llm_disabled", "LLM translation is unavailable in Demo.", false)
+	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
 		return
 	}
-	if _, ok := s.requirePermission(w, r, "sources:write"); !ok {
+	if s.cfg.IsDemo() {
+		writeDemoLLMProviders(w)
 		return
 	}
 	providers, err := s.llmStore.List(r.Context())

@@ -449,7 +449,6 @@ export const surfaceJapanese = {
       title: "音声認識サービス",
       description:
         "OpenAI 互換の文字起こし API を使い、ローカルのトラックをタイムスタンプ付きの歌詞に文字起こしします。音声は文字起こしを開始したときにだけ送信されます。",
-      demoDisabled: "Demo では音声認識を利用できません。",
       refresh: "再読み込み",
       add: "サービスを追加",
       addTitle: "音声認識サービスを追加",
@@ -534,7 +533,6 @@ export const surfaceJapanese = {
         accept: "同意して続行",
         acceptFailed: "同意を保存できませんでした。",
       },
-      demoDisabled: "Demo では LLM の設定と翻訳を使用できません。",
       remoteLyrics: "リモート歌詞の翻訳を有効化",
       remoteLyricsDescription: "明示的に選択したリモートファイルだけを読み込みます。取得権限が必要です。",
       boundary: "データ境界",

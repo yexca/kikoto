@@ -448,7 +448,6 @@ export const surfaceKorean = {
       title: "음성 인식 서비스",
       description:
         "OpenAI 호환 전사 API로 로컬 트랙을 타임스탬프가 있는 가사로 전사합니다. 오디오는 누군가 전사를 시작할 때만 전송됩니다.",
-      demoDisabled: "Demo에서는 음성 인식을 사용할 수 없습니다.",
       refresh: "새로 고침",
       add: "서비스 추가",
       addTitle: "음성 인식 서비스 추가",
@@ -533,7 +532,6 @@ export const surfaceKorean = {
         accept: "동의하고 계속",
         acceptFailed: "동의를 저장할 수 없습니다.",
       },
-      demoDisabled: "Demo에서는 LLM 설정과 번역을 사용할 수 없습니다.",
       remoteLyrics: "원격 가사 번역 활성화",
       remoteLyricsDescription: "명시적으로 선택한 원격 파일만 읽습니다. 원격 가져오기 권한이 필요합니다.",
       boundary: "데이터 경계",
