@@ -10,6 +10,7 @@ Important tables:
 - `logical_work`
 - `work_edition`
 - `work_code_alias`
+- `custom_work_code_counter`
 - `work_external_id`
 - `work_metadata_link`
 - `work_purchase_bonus`
@@ -659,6 +660,29 @@ A work folder is the deepest folder within the scan depth whose name carries a
 work code. A folder named `Lyrics - <language> - <code> - <date>-<time>`, the
 name a remote lyrics download gives a folder after the edition it read, names
 no work: it stays part of the work folder that holds it.
+
+### Custom Works
+
+A custom work is a local folder the library holds as a work without a catalog
+code ([ADR-0005](../decisions/ADR-0005-custom-work-codes.md)). Its code is `KT`
+followed by eight digits, a work code like the catalog prefixes, and its
+folder's name carries the code in brackets, such as
+`Example Work [KT00000001]`, so scans find it like any other work folder.
+`custom_work_code_counter` holds the highest number assigned; a number is
+assigned once, and a number a work or a folder name within the scan depth
+already uses is skipped.
+
+A folder can become a custom work when it lies in an online storage pool
+within the scan depth, is not hidden or one of Kikoto's own directories, and
+neither it nor any folder above or below it within the depth carries a work
+code. Creating the work assigns the code, inserts the work with its title, and
+renames the folder inside its parent in one transaction; a failed commit
+renames the folder back. An incremental scan of the renamed folder then
+records its location and files. The `custom_work_rename_notice` setting
+records the accepted version of the notice that creating a custom work renames
+its folder, the administrator who accepted it and when; creation is refused
+until the current version is accepted. A custom work has no DLsite page and is never
+a DLsite metadata sync target; its metadata comes from manual overrides.
 
 `media_item.file_version` and `media_file_location.file_version` version local
 file observations. Local scans observe file size and nanosecond modification

@@ -86,14 +86,14 @@ export function MaintenanceToolbar({
   label: string;
   placeholder: string;
   loading: boolean;
-  pageSize: number;
-  pageSizeOptions: readonly number[];
+  pageSize?: number;
+  pageSizeOptions?: readonly number[];
   children?: ReactNode;
   onQueryChange: (value: string) => void;
   onQueryCommit: () => void;
   onClear: () => void;
   onRefresh: () => void;
-  onPageSizeChange: (pageSize: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
 }) {
   const { t } = useTranslation();
   const searchId = useId();
@@ -173,7 +173,9 @@ export function MaintenanceToolbar({
       <IconButton title={t("unlinked.refresh")} disabled={loading} onClick={onRefresh}>
         <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
       </IconButton>
-      <PageSizePicker value={pageSize} options={pageSizeOptions} onChange={onPageSizeChange} />
+      {pageSize !== undefined && pageSizeOptions && onPageSizeChange && (
+        <PageSizePicker value={pageSize} options={pageSizeOptions} onChange={onPageSizeChange} />
+      )}
       {children}
     </>
   );

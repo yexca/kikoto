@@ -400,6 +400,11 @@ cannot create an unchecked outbound path.
 - Use `Lstat` or an equivalent no-follow check before destructive operations.
   A symlink or junction encountered during deletion requires a safe stop or a
   review flow, not recursive traversal.
+- Creating a custom work renames only a folder the server's own candidate walk
+  returned for that request, never a client-supplied path as given. The walk
+  stays below the data root in online pools, does not follow links, and the
+  rename stays inside the folder's parent and refuses an existing target. The
+  server refuses creation until an administrator accepts the rename notice.
 - Keep Fetch staging, rollback backup, and reviewable trash on `/data` so
   publication and rollback use same-filesystem rename semantics.
 - Keep `/cache` disposable. It must not become the only owner of a transaction,

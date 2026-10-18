@@ -1,4 +1,5 @@
 import { NAVIGATION_EVENT, historyStateWithReturn, normalizeInternalLocation } from "@/lib/browserHistory";
+import { isWorkCodePath } from "@/lib/workCode";
 
 const lastVoiceListLocationPrefix = "kikoto:voice-list-location:v1:";
 
@@ -57,7 +58,7 @@ export function voiceReturnLabelForLocation(location: string) {
     if (/^\/circles(?:\/|$)/i.test(pathname)) return "Back to circles";
     if (/^\/voices\/?$/i.test(pathname)) return "Back to voices";
     if (/^\/settings\/?$/i.test(pathname)) return "Back to settings";
-    if (/^\/(?:RJ|BJ|VJ|CC)/i.test(pathname)) return "Back to work";
+    if (isWorkCodePath(pathname)) return "Back to work";
   } catch {
     // Fall through to the generic label for malformed history state.
   }

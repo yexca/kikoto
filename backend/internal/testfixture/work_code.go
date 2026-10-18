@@ -9,6 +9,9 @@ const (
 	PrefixBJ WorkCodePrefix = "BJ"
 	PrefixVJ WorkCodePrefix = "VJ"
 	PrefixCC WorkCodePrefix = "CC"
+	// PrefixKT is the custom work prefix. Kikoto assigns these codes itself,
+	// so WorkCodeAt never spans it.
+	PrefixKT WorkCodePrefix = "KT"
 
 	workCodesPerPrefix = 100
 )
@@ -44,6 +47,9 @@ func HighCardinalityWorkCodeAt(index int) string {
 }
 
 func validWorkCodePrefix(prefix WorkCodePrefix) bool {
+	if prefix == PrefixKT {
+		return true
+	}
 	for _, candidate := range workCodePrefixes {
 		if prefix == candidate {
 			return true

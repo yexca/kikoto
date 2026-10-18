@@ -19,6 +19,13 @@
 </details>
 
 <details>
+<summary><strong>Metadata and scans</strong></summary>
+
+- The Metadata page's **Custom works** view lists library folders whose names carry no work code and turns one into a custom work. Kikoto assigns it a `KT` code and appends the code to the folder's name, such as `Example Work [KT00000001]`, so every scan finds it. The view opens with a notice describing the rename, and an administrator accepts it before custom works can be created. A custom work has no DLsite link or DLsite metadata sync, and its title and description come from the metadata editor.
+
+</details>
+
+<details>
 <summary><strong>Settings and interface</strong></summary>
 
 - Demo's **LLM & ASR** tab lists example LLM providers and ASR services at addresses no request reaches, and the content safety policy. Selecting one opens its dialog with every option visible; adding, editing, switching, deleting, fetching models, and saving the policy stay unavailable.

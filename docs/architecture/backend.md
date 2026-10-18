@@ -157,6 +157,19 @@ work as its audio; a null lyrics file removes that language's assignment. `PUT` 
 audio item under the same same-work rule. How clients rank preferences,
 assignments, and name matching is in [Data model](data-model.md).
 
+`GET /api/custom-works/folders`, `POST /api/custom-works`, and
+`POST /api/custom-works/notice-acceptance` require both `library:write` and
+`downloads:manage` and are unavailable in Demo. The list walks the folders a
+local scan can observe and returns at most 200 folders that can become a
+[custom work](data-model.md#custom-works), as paths relative to the data root,
+with `noticeAccepted`; `q` narrows it by path. The notice acceptance records
+the current rename notice version. The create request names one listed path
+and an optional title, which defaults to the folder name. It answers 201 with
+the work id, the assigned code, the renamed path, and the queued scan run; 409
+`custom_work_notice_required` before the notice is accepted; and 409 when the
+folder is no longer eligible or the library is unavailable.
+Filesystem failures are logged; the response does not name host paths.
+
 The Library list endpoint always returns one bounded page; a request without
 page parameters receives the first page of the default order. No endpoint
 returns the complete library in one response.

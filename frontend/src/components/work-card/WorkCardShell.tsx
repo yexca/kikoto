@@ -1293,8 +1293,10 @@ export function WorkCardListButton({
   );
 }
 
+/** Opens a work on DLsite; a work without a DLsite page, such as a custom work, shows none. */
 export function WorkCardDLsiteAction({ href }: { href: string }) {
   const { t } = useTranslation();
+  if (!href) return null;
   return (
     <Button variant="ghost" size="icon" className="h-8 w-8" asChild title={t("workCard.openDLsite")}>
       <a

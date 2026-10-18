@@ -36,3 +36,16 @@ func TestNormalizeRejectsValuesThatAreNotOneCode(t *testing.T) {
 		}
 	}
 }
+
+func TestCustomCodesAreWorkCodes(t *testing.T) {
+	code := Custom(1)
+	if code != testfixture.WorkCode(testfixture.PrefixKT, 1) {
+		t.Fatalf("Custom(1) = %q", code)
+	}
+	if !Valid(code) || !IsCustom(strings.ToLower(code)) {
+		t.Fatalf("custom code %q is not a valid custom work code", code)
+	}
+	if IsCustom(testfixture.WorkCode(testfixture.PrefixRJ, 0)) {
+		t.Fatal("a catalog code is reported as custom")
+	}
+}

@@ -7,12 +7,20 @@
 package workcode
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
 
+// CustomPrefix is the prefix of the codes Kikoto assigns to custom works:
+// local folders the library holds as works without a catalog code.
+const CustomPrefix = "KT"
+
+// CustomDigits is the number of digits of an assigned custom work code.
+const CustomDigits = 8
+
 // prefixes are the catalog prefixes that identify a work.
-var prefixes = []string{"RJ", "BJ", "VJ", "CC"}
+var prefixes = []string{"RJ", "BJ", "VJ", "CC", CustomPrefix}
 
 // PrefixAlternation is the regular-expression alternation of every work-code
 // prefix, for callers that embed a work code in a larger pattern.
@@ -41,4 +49,14 @@ func Normalize(value string) string {
 // Valid reports whether the value is exactly one work code in any letter case.
 func Valid(value string) bool {
 	return Normalize(value) != ""
+}
+
+// IsCustom reports whether the value is a custom work code.
+func IsCustom(value string) bool {
+	return strings.HasPrefix(Normalize(value), CustomPrefix)
+}
+
+// Custom returns the custom work code with the given positive number.
+func Custom(number int64) string {
+	return fmt.Sprintf("%s%0*d", CustomPrefix, CustomDigits, number)
 }

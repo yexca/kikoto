@@ -3,6 +3,7 @@ import {
   Tags,
   CircleAlert,
   FileWarning,
+  FolderPlus,
   LayoutGrid,
   MicVocal,
   Settings,
@@ -18,6 +19,7 @@ import { IconRail, type IconRailItem } from "@/components/ui/icon-rail";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import type { MaintenanceToolbarSlots } from "@/features/maintenance/MaintenanceControls";
 import { WorkMaintenance } from "@/features/maintenance/WorkMaintenance";
+import { CustomWorkMaintenance } from "@/features/maintenance/CustomWorkMaintenance";
 import { MetadataSettingsPanel } from "@/features/maintenance/MetadataSettingsPanel";
 import { MetadataEntryMaintenance } from "@/features/maintenance/MetadataEntryMaintenance";
 import { VoiceAliasMaintenance } from "@/features/maintenance/VoiceAliasMaintenance";
@@ -26,14 +28,15 @@ import { api, type MaintenanceWork, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { metadataIssueRunFromLocation } from "@/lib/metadataMaintenance";
 
-type MetadataView = "works" | "aliases" | "tags" | "circles";
-type MetadataRailValue = "catalog" | "all" | "metadata" | "no_source" | "aliases" | "tags" | "circles";
+type MetadataView = "works" | "custom" | "aliases" | "tags" | "circles";
+type MetadataRailValue = "catalog" | "all" | "metadata" | "no_source" | "custom" | "aliases" | "tags" | "circles";
 
 const railIcons: Record<MetadataRailValue, LucideIcon> = {
   catalog: LayoutGrid,
   all: CircleAlert,
   metadata: FileWarning,
   no_source: Unlink,
+  custom: FolderPlus,
   aliases: MicVocal,
   tags: Tags,
   circles: Building2,
@@ -49,7 +52,7 @@ function reasonFromLocation() {
 
 function viewFromLocation(): MetadataView {
   const view = new URLSearchParams(window.location.search).get("view");
-  return view === "aliases" || view === "tags" || view === "circles" ? view : "works";
+  return view === "custom" || view === "aliases" || view === "tags" || view === "circles" ? view : "works";
 }
 
 // The requested reason and view fall back to what the viewer may open.
@@ -60,8 +63,9 @@ function availableReasonFromLocation(canSyncMetadata: boolean, canManageSources:
   return requested;
 }
 
-function availableViewFromLocation(canSyncMetadata: boolean): MetadataView {
+function availableViewFromLocation(canSyncMetadata: boolean, canCreateCustomWorks: boolean): MetadataView {
   const view = viewFromLocation();
+  if (view === "custom" && !canCreateCustomWorks) return "works";
   return view === "aliases" && !canSyncMetadata ? "works" : view;
 }
 
@@ -115,19 +119,23 @@ export function WorkManagementPage({
   canSyncMetadata,
   canManageSources,
   canEditMetadata = false,
+  canCreateCustomWorks = false,
   readOnly = false,
 }: {
   preferenceRevision?: number;
   canSyncMetadata: boolean;
   canManageSources: boolean;
   canEditMetadata?: boolean;
+  canCreateCustomWorks?: boolean;
   readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
   const [reason, setReason] = useState(() => availableReasonFromLocation(canSyncMetadata, canManageSources));
   const [runId, setRunId] = useState<number | null>(metadataIssueRunFromLocation);
-  const [view, setView] = useState<MetadataView>(() => availableViewFromLocation(canSyncMetadata));
+  const [view, setView] = useState<MetadataView>(() =>
+    availableViewFromLocation(canSyncMetadata, canCreateCustomWorks),
+  );
   const [settingsOpen, setSettingsOpen] = useState(settingsFromLocation);
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
   const [inlineSearchSlot, setInlineSearchSlot] = useState<HTMLDivElement | null>(null);
@@ -145,7 +153,7 @@ export function WorkManagementPage({
     const sync = () => {
       setReason(availableReasonFromLocation(canSyncMetadata, canManageSources));
       setRunId(metadataIssueRunFromLocation());
-      setView(availableViewFromLocation(canSyncMetadata));
+      setView(availableViewFromLocation(canSyncMetadata, canCreateCustomWorks));
       setSettingsOpen(settingsFromLocation());
     };
     window.addEventListener("popstate", sync);
@@ -154,7 +162,7 @@ export function WorkManagementPage({
       window.removeEventListener("popstate", sync);
       window.removeEventListener(NAVIGATION_EVENT, sync);
     };
-  }, [canManageSources, canSyncMetadata]);
+  }, [canCreateCustomWorks, canManageSources, canSyncMetadata]);
 
   const inlineSearch = useInlineSearchFits(headerRef, titleRef, headerActionsRef);
   const toolbar: MaintenanceToolbarSlots = {
@@ -171,7 +179,7 @@ export function WorkManagementPage({
     setRunId(nextRun);
     setView("works");
   };
-  const showEntries = (nextView: "tags" | "circles" | "aliases") => {
+  const showEntries = (nextView: "custom" | "tags" | "circles" | "aliases") => {
     window.history.replaceState(window.history.state, "", `/metadata?view=${nextView}`);
     setView(nextView);
   };
@@ -210,6 +218,7 @@ export function WorkManagementPage({
     ["all", t("workMaintenance.all"), true],
     ["metadata", t("workMaintenance.metadata"), canSyncMetadata],
     ["no_source", t("workMaintenance.noSource"), canManageSources],
+    ["custom", t("customWorks.rail"), canCreateCustomWorks],
     ["tags", t("metadataEntries.tags"), true],
     ["circles", t("metadataEntries.circles"), true],
     ["aliases", t("workManagement.voiceAliases"), canSyncMetadata],
@@ -224,7 +233,7 @@ export function WorkManagementPage({
       controls:
         value === "aliases"
           ? "metadata-aliases"
-          : value === "tags" || value === "circles"
+          : value === "custom" || value === "tags" || value === "circles"
             ? `metadata-${value}`
             : "metadata-records",
       separated: value === "tags",
@@ -251,7 +260,9 @@ export function WorkManagementPage({
           items={railItems}
           selected={railSelected}
           onSelect={(value) =>
-            value === "aliases" || value === "tags" || value === "circles" ? showEntries(value) : showWorks(value)
+            value === "custom" || value === "aliases" || value === "tags" || value === "circles"
+              ? showEntries(value)
+              : showWorks(value)
           }
         />
         <div className="min-w-0 flex-1 space-y-3">
@@ -294,7 +305,9 @@ export function WorkManagementPage({
             </div>
           </div>
           <div ref={setSearchRowSlot} className="empty:hidden" />
-          {view === "aliases" ? (
+          {view === "custom" ? (
+            <CustomWorkMaintenance canCreate={canCreateCustomWorks} toolbar={toolbar} />
+          ) : view === "aliases" ? (
             <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} readOnly={readOnly} toolbar={toolbar} />
           ) : view === "tags" || view === "circles" ? (
             <MetadataEntryMaintenance

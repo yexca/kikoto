@@ -306,4 +306,10 @@ func normalizeDLsiteCode(value string) string {
 	return ""
 }
 
-func (s *Server) dlsiteURL(primaryCode string) string { return s.dlsiteEndpoints.WorkURL(primaryCode) }
+// dlsiteURL is the DLsite page of a work code; a custom work has none.
+func (s *Server) dlsiteURL(primaryCode string) string {
+	if workcode.IsCustom(primaryCode) {
+		return ""
+	}
+	return s.dlsiteEndpoints.WorkURL(primaryCode)
+}

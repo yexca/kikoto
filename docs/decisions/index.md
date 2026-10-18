@@ -6,6 +6,7 @@ ADRs record durable design decisions.
 - [ADR-0002: Source presence boundary](ADR-0002-source-presence-boundary.md)
 - [ADR-0003: SQLite first](ADR-0003-sqlite-first.md)
 - [ADR-0004: Bundle membership](ADR-0004-bundle-membership.md)
+- [ADR-0005: Custom work codes](ADR-0005-custom-work-codes.md)
 
 ## When To Add An ADR
 

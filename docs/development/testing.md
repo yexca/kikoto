@@ -47,6 +47,7 @@ Use these repository-reserved values unless the value itself is under test:
 | Several distinct works | `RJ00000001` through `RJ00000099` |
 | Another supported prefix | The equivalent all-zero form, such as `VJ00000000`, only when prefix behavior matters |
 | Generated work codes | Go `testfixture.WorkCode` or TypeScript `syntheticWorkCode`, with an explicit prefix and ordinal |
+| Custom work code | `KT00000001` upward, from Go `testfixture.WorkCode(PrefixKT, n)`; Kikoto assigns these itself, so `WorkCodeAt` never spans them |
 | 101–400 distinct works | `WorkCodeAt` or `syntheticWorkCodeAt`, which deterministically spans the reserved prefix ranges |
 | Isolated larger scale experiment | Go `HighCardinalityWorkCodeAt`, with explicit ordinals in its bounded zero-prefixed range |
 | Work, circle, or person name | `Example Work`, `Example Circle`, or `Example Voice` with a numeric suffix when needed |

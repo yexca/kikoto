@@ -55,6 +55,7 @@ type Server struct {
 	remoteBrowseCache              remoteBrowsePageCache
 	remoteSourceConfigMu           sync.RWMutex
 	manualCoverMu                  sync.Mutex
+	customWorkMu                   sync.Mutex
 	remoteWorkCacheGenerations     map[int64]uint64
 	remoteWorkCache                map[string]remoteWorkSnapshot
 	remoteWorkCacheCalls           map[string]*remoteWorkCall
@@ -434,6 +435,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/workflow-candidates/{id}/local-cleanup", s.cleanupLocalWorkflowCandidate)
 	handleSlowFirstResponse("POST /api/workflow-candidates/{id}/archived-root-review", s.reviewArchivedFetchRoots)
 	mux.HandleFunc("POST /api/workflow-runs/local-scan", s.createLocalScanRun)
+	mux.HandleFunc("GET /api/custom-works/folders", s.listCustomWorkFolders)
+	mux.HandleFunc("POST /api/custom-works", s.createCustomWork)
+	mux.HandleFunc("POST /api/custom-works/notice-acceptance", s.acceptCustomWorkNotice)
 	mux.HandleFunc("POST /api/workflow-runs/local-media-index", s.createLocalMediaIndexRun)
 	mux.HandleFunc("POST /api/workflow-runs/source-presence-check", s.createSourcePresenceCheckRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-bulk", s.createRemoteBulkRun)

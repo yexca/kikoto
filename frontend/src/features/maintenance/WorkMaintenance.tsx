@@ -593,22 +593,24 @@ export function WorkMaintenance({
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           )}
-                          <Button
-                            asChild
-                            size="icon-sm"
-                            variant="ghost"
-                            className="text-muted-foreground max-sm:h-11 max-sm:w-11"
-                            title={t("unlinked.openDlsite")}
-                          >
-                            <a
-                              href={work.dlsiteUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              aria-label={`Open DLsite page for ${work.primaryCode}`}
+                          {work.dlsiteUrl && (
+                            <Button
+                              asChild
+                              size="icon-sm"
+                              variant="ghost"
+                              className="text-muted-foreground max-sm:h-11 max-sm:w-11"
+                              title={t("unlinked.openDlsite")}
                             >
-                              <ExternalLink className="h-4 w-4" />
-                            </a>
-                          </Button>
+                              <a
+                                href={work.dlsiteUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label={`Open DLsite page for ${work.primaryCode}`}
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </a>
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
