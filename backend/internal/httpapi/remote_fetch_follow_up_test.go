@@ -2,13 +2,16 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/internal/storagepool"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -138,6 +141,112 @@ func TestRemoteFetchFollowUpEditsThePublishedFolderOnce(t *testing.T) {
 		WHERE assignment.language = 'zh-cn' AND audio.path = ?
 	`, followUpFetchRoot+"/"+folderEditAudioPath).Scan(&assigned); err != nil || assigned != 1 {
 		t.Fatalf("assignments of the fetched audio = %d, %v", assigned, err)
+	}
+}
+
+// A Fetch whose completion committed before the service stopped has no
+// recorded follow-up. Startup recovery queues it exactly once, waits while its
+// storage pool is offline, or records in Activity why it cannot be queued.
+func TestRemoteFetchFollowUpStartsOnceAfterARestart(t *testing.T) {
+	fixture := newPoolFolderEditFixture(t, serveFolderEditMedia)
+	fixture.addSiblingFolder(t, map[string]string{folderEditAudioPath: folderEditRemoteAudio})
+	var localSourceID int64
+	if err := fixture.db.QueryRow("SELECT file_source_id FROM work_folder_location WHERE work_id = 902").Scan(&localSourceID); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	seedCompletedFetch := func(targetRoot string) int64 {
+		t.Helper()
+		payload := remoteWorkFetchJobPayload{SourceID: 7, WorkCode: "RJ00000002", FollowUp: &remoteFetchFollowUp{
+			Additions: []workFolderEditAdditionRequest{{Kind: "remote", SourceID: 7, RemoteCode: "RJ00000002", Path: folderEditVTTPath, Language: followUpLanguage("zh-cn")}},
+		}}
+		tx, err := fixture.db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		definitionID, err := workflow.EnsureDefinition(ctx, tx, "remote_work_fetch", "Fetch remote work", "", remoteWorkFetchDefinition())
+		if err != nil {
+			t.Fatal(err)
+		}
+		runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_work_fetch", "Fetch RJ00000002", "succeeded", "manual", "fetch_selected", payload, map[string]any{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO remote_fetch_manifest (workflow_run_id, work_id, remote_source_id, local_source_id, edition_code, target_root, staging_root, state, plan_json)
+			VALUES (?, 902, 7, ?, 'RJ00000002', ?, '.kikoto-staging/fetch/work', 'completed', '{}')
+		`, runID, localSourceID, targetRoot); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		return runID
+	}
+	type followUpOutcome struct {
+		editRunID                int64
+		waiting, failure         string
+		waitEvents, failedEvents int
+	}
+	outcome := func(runID int64) followUpOutcome {
+		t.Helper()
+		var editRunID sql.NullInt64
+		var waiting, failure sql.NullString
+		var result followUpOutcome
+		if err := fixture.db.QueryRow(`
+			SELECT json_extract(summary_json, '$.follow_up_run_id'), json_extract(summary_json, '$.follow_up_waiting'),
+				json_extract(summary_json, '$.follow_up_error'),
+				(SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = run.id AND event_type = 'fetch.follow_up_waiting'),
+				(SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = run.id AND event_type = 'fetch.follow_up_failed')
+			FROM workflow_run AS run WHERE id = ?
+		`, runID).Scan(&editRunID, &waiting, &failure, &result.waitEvents, &result.failedEvents); err != nil {
+			t.Fatal(err)
+		}
+		result.editRunID, result.waiting, result.failure = editRunID.Int64, waiting.String, failure.String
+		return result
+	}
+	recoverTwice := func() {
+		t.Helper()
+		for range 2 {
+			if err := fixture.server.RecoverInterruptedWorkflows(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	fetched := seedCompletedFetch(fixture.siblingPool + "/" + followUpFetchRoot)
+	// The pool holding the fetched folder is not mounted at startup.
+	fixture.takePoolOffline(t, fixture.siblingPool)
+	recoverTwice()
+	if got := outcome(fetched); fixture.queuedRuns(t) != 0 || got.waiting != errStoragePoolOffline.Message || got.waitEvents != 1 || got.failure != "" {
+		t.Fatalf("a follow-up on an offline pool queued %d runs and recorded %+v", fixture.queuedRuns(t), got)
+	}
+	if err := storagepool.WriteMarker(filepath.Join(fixture.dataRoot, fixture.siblingPool), lyricsFetchTestPools[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	fixture.server.retryRemoteFetchFollowUps(ctx)
+	editRunID := outcome(fetched).editRunID
+	if got := outcome(fetched); fixture.queuedRuns(t) != 1 || editRunID == 0 || got.waiting != "" {
+		t.Fatalf("once the pool was back, %d follow-up runs were queued and %+v recorded", fixture.queuedRuns(t), got)
+	}
+
+	// The service stopped after queueing the follow-up but before recording it.
+	if _, err := fixture.db.Exec("UPDATE workflow_run SET summary_json = '{}' WHERE id = ?", fetched); err != nil {
+		t.Fatal(err)
+	}
+	recoverTwice()
+	if got := outcome(fetched); fixture.queuedRuns(t) != 1 || got.editRunID != editRunID {
+		t.Fatalf("a repeated recovery queued %d follow-up runs, recorded run %d, want run %d", fixture.queuedRuns(t), got.editRunID, editRunID)
+	}
+
+	lost := seedCompletedFetch(fixture.siblingPool + "/RJ00000002-removed")
+	recoverTwice()
+	if got := outcome(lost); got.failure != "the fetched folder is no longer in the library" || got.failedEvents != 1 {
+		t.Fatalf("a follow-up that cannot be queued recorded %+v", got)
+	}
+	if runs := fixture.queuedRuns(t); runs != 1 {
+		t.Fatalf("follow-up runs = %d, want 1", runs)
 	}
 }
 

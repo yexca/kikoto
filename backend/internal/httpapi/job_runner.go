@@ -82,6 +82,8 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 	defer ticker.Stop()
 	stagingCleanupTicker := time.NewTicker(remoteFetchStagingCleanupPeriod)
 	defer stagingCleanupTicker.Stop()
+	followUpRetryTicker := time.NewTicker(remoteFetchFollowUpRetryPeriod)
+	defer followUpRetryTicker.Stop()
 	databaseCleanupTimer := time.NewTimer(databaseAutoCleanupInitialDelay)
 	defer databaseCleanupTimer.Stop()
 	databaseBackupTimer := time.NewTimer(databaseBackupCheckInitialDelay)
@@ -110,6 +112,8 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 			if _, err := s.cleanupExpiredRemoteFetchStaging(ctx, time.Now()); err != nil && !errors.Is(err, context.Canceled) {
 				slog.Error("clean expired remote Fetch staging", "error", err)
 			}
+		case <-followUpRetryTicker.C:
+			s.retryRemoteFetchFollowUps(ctx)
 		case <-databaseCleanupTimer.C:
 			s.runAutomaticDatabaseCleanup(ctx)
 			databaseCleanupTimer.Reset(databaseAutoCleanupPeriod)
