@@ -994,6 +994,9 @@ func (s *Server) streamRemoteSourceMedia(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	code := remoteWorkCodeFromPath(r)
+	if refuseCustomWorkCode(w, code) {
+		return
+	}
 	path := cleanRemoteRelativePath(r.URL.Query().Get("path"))
 	if code == "" || path == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code and media path are required"})

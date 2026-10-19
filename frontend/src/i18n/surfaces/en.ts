@@ -1927,7 +1927,7 @@ export const surfaceEnglish = {
     noVoiceActorMetadata: "No voice actor metadata",
     noTagMetadata: "No tag metadata",
     customWorkNoFolderDescription:
-      "This custom work has no local folder in the library. A scan finds it again when a folder's name ends with its KT code.",
+      "This custom work has no local folder in the library. A scan finds it again when a folder's name carries its KT code in brackets, such as [KT00000001].",
     noSourceDirectoryDescription:
       "This work exists in the local database, but Kikoto has no local files, cache, tracked source, or known source presence for it yet.",
     sourceAvailable: "{{source}} available",

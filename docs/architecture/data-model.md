@@ -697,6 +697,8 @@ code ([ADR-0005](../decisions/ADR-0005-custom-work-codes.md)). Its code is `KT`
 followed by eight digits, a work code like the catalog prefixes, and its
 folder's name carries the code in brackets, such as
 `Example Work [KT00000001]`, so scans find it like any other work folder.
+Scans recognize a custom code only in that bracketed form, and remote-source
+codes are catalog codes only, so no remote entry resolves to a custom work.
 `custom_work_code_counter` holds the highest number assigned; a number is
 assigned once, and a number a work or a folder name within the scan depth
 already uses is skipped.

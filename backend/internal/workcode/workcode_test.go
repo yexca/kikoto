@@ -30,10 +30,22 @@ func TestNormalizeRejectsValuesThatAreNotOneCode(t *testing.T) {
 		"XX00000000",
 		"RJ00000000 RJ00000001",
 		"../RJ00000000",
+		"KT12345",
+		"KT000000001",
 	} {
 		if got := Normalize(value); got != "" {
 			t.Fatalf("Normalize(%q) = %q, want empty", value, got)
 		}
+	}
+}
+
+func TestNormalizeCatalogRejectsCustomCodes(t *testing.T) {
+	if got := NormalizeCatalog(Custom(1)); got != "" {
+		t.Fatalf("NormalizeCatalog(%q) = %q, want empty", Custom(1), got)
+	}
+	code := testfixture.WorkCode(testfixture.PrefixRJ, 0)
+	if got := NormalizeCatalog(strings.ToLower(code)); got != code {
+		t.Fatalf("NormalizeCatalog(%q) = %q, want %q", code, got, code)
 	}
 }
 

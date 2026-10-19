@@ -40,6 +40,9 @@ func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 		if code == "" || seen[code] {
 			continue
 		}
+		if refuseCustomWorkCode(w, code) {
+			return
+		}
 		seen[code] = true
 		codes = append(codes, code)
 	}

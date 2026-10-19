@@ -15,7 +15,7 @@ const workflowGraphSchemaVersion = 2
 
 var (
 	workflowGraphIDPattern       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
-	workflowGraphWorkCodePattern = regexp.MustCompile(`(?i)^(?:` + workcode.PrefixAlternation + `)` + workcode.Digits + `$`)
+	workflowGraphWorkCodePattern = regexp.MustCompile(`(?i)^` + workcode.ExactAlternation + `$`)
 )
 
 type workflowGraphDefinition struct {

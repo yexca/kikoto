@@ -134,7 +134,9 @@ func TestCustomWorkRefusesProviderAndRemoteSourceActions(t *testing.T) {
 	workID, _ := inserted.LastInsertId()
 	id := strconv.FormatInt(workID, 10)
 	parentCode := testfixture.WorkCode(testfixture.PrefixRJ, 0)
-	permissions := []string{"metadata:sync", "library:write", "downloads:manage", "remote:track"}
+	permissions := []string{"metadata:sync", "library:write", "downloads:manage", "remote:track", "remote:fetch", "workflows:run"}
+	remote := "/api/remote-sources/1/works/" + code
+	remoteValues := map[string]string{"id": "1", "code": code}
 	for _, action := range []struct {
 		name    string
 		handler http.HandlerFunc
@@ -150,6 +152,14 @@ func TestCustomWorkRefusesProviderAndRemoteSourceActions(t *testing.T) {
 		{"bundle member", server.addWorkBundleMember, http.MethodPut, "/api/works/" + id + "/bundle-members/" + parentCode, "", map[string]string{"id": id, "code": parentCode}},
 		{"source check", server.checkWorkSourceAvailabilityNow, http.MethodPost, "/api/works/" + code + "/source-availability", "{}", map[string]string{"code": code}},
 		{"folder edit source check", server.checkWorkFolderEditSources, http.MethodPost, "/api/works/" + id + "/folder-edit/sources/check", "{}", map[string]string{"id": id}},
+		{"remote work", server.getRemoteSourceWork, http.MethodGet, remote, "", remoteValues},
+		{"remote tracks", server.getRemoteSourceWorkTracks, http.MethodGet, remote + "/tracks", "", remoteValues},
+		{"remote Fetch plan", server.planRemoteSourceWorkSave, http.MethodPost, remote + "/fetch-plan", "{}", remoteValues},
+		{"remote Fetch", server.saveRemoteSourceWork, http.MethodPost, remote + "/fetch", "{}", remoteValues},
+		{"remote track", server.trackRemoteSourceWork, http.MethodPost, remote + "/track", "{}", remoteValues},
+		{"remote sync", server.syncRemoteSourceWork, http.MethodPost, remote + "/sync", "{}", remoteValues},
+		{"remote cache", server.cacheRemoteSourceWorkMedia, http.MethodPost, remote + "/cache", "{}", remoteValues},
+		{"remote bulk", server.createRemoteBulkRun, http.MethodPost, "/api/workflow-runs/remote-bulk", `{"sourceId":1,"action":"fetch","codes":["` + code + `"]}`, nil},
 	} {
 		request := customWorkRequest(action.method, action.target, action.body, permissions...)
 		for key, value := range action.values {

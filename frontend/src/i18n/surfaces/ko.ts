@@ -1869,7 +1869,7 @@ export const surfaceKorean = {
     noVoiceActorMetadata: "성우 메타데이터 없음",
     noTagMetadata: "태그 메타데이터 없음",
     customWorkNoFolderDescription:
-      "이 사용자 지정 작품은 라이브러리에 로컬 폴더가 없습니다. 이름이 이 KT 코드로 끝나는 폴더가 있으면 스캔에서 다시 찾습니다.",
+      "이 사용자 지정 작품은 라이브러리에 로컬 폴더가 없습니다. 이름에 [KT00000001]처럼 대괄호로 묶은 이 KT 코드가 있는 폴더가 있으면 스캔에서 다시 찾습니다.",
     noSourceDirectoryDescription:
       "이 작품은 로컬 데이터베이스에 있지만 로컬 파일, 캐시, 추적 소스 또는 알려진 소스 정보가 아직 없습니다.",
     sourceAvailable: "{{source}} 사용 가능",

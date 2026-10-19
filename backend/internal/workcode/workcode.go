@@ -19,21 +19,34 @@ const CustomPrefix = "KT"
 // CustomDigits is the number of digits of an assigned custom work code.
 const CustomDigits = 8
 
-// prefixes are the catalog prefixes that identify a work.
-var prefixes = []string{"RJ", "BJ", "VJ", "CC", CustomPrefix}
+// catalogPrefixes are the prefixes of the codes a store catalogs, which remote
+// sources and folder names carry.
+var catalogPrefixes = []string{"RJ", "BJ", "VJ", "CC"}
 
-// PrefixAlternation is the regular-expression alternation of every work-code
-// prefix, for callers that embed a work code in a larger pattern.
-var PrefixAlternation = strings.Join(prefixes, "|")
+// CatalogPrefixAlternation is the regular-expression alternation of every
+// catalog prefix, for callers that embed a catalog code in a larger pattern.
+var CatalogPrefixAlternation = strings.Join(catalogPrefixes, "|")
 
-// Digits is the regular-expression fragment for the numeric part of a code.
+// Digits is the regular-expression fragment for the numeric part of a
+// catalog code.
 const Digits = `[0-9]{5,8}`
 
-var exactPattern = regexp.MustCompile(`^(?:` + PrefixAlternation + `)` + Digits + `$`)
+// CustomDigitsPattern is the regular-expression fragment for the numeric part
+// of a custom work code, which always has CustomDigits digits.
+var CustomDigitsPattern = fmt.Sprintf(`[0-9]{%d}`, CustomDigits)
 
-// Prefixes returns the catalog prefixes that identify a work.
+// ExactAlternation is the regular-expression fragment for exactly one work
+// code, for callers that embed a work code in a larger pattern.
+var ExactAlternation = `(?:(?:` + CatalogPrefixAlternation + `)` + Digits + `|` + CustomPrefix + CustomDigitsPattern + `)`
+
+var (
+	exactPattern   = regexp.MustCompile(`^` + ExactAlternation + `$`)
+	catalogPattern = regexp.MustCompile(`^(?:` + CatalogPrefixAlternation + `)` + Digits + `$`)
+)
+
+// Prefixes returns the prefixes that identify a work, the custom prefix last.
 func Prefixes() []string {
-	return append([]string(nil), prefixes...)
+	return append(append([]string(nil), catalogPrefixes...), CustomPrefix)
 }
 
 // Normalize returns the canonical upper-case form of a work code, or "" when
@@ -41,6 +54,18 @@ func Prefixes() []string {
 func Normalize(value string) string {
 	code := strings.ToUpper(strings.TrimSpace(value))
 	if !exactPattern.MatchString(code) {
+		return ""
+	}
+	return code
+}
+
+// NormalizeCatalog returns the canonical upper-case form of a catalog code, or
+// "" for anything else, including a custom work code. Use it for codes that
+// come from a remote source: a custom work exists only in this library, so a
+// remote code never addresses one.
+func NormalizeCatalog(value string) string {
+	code := strings.ToUpper(strings.TrimSpace(value))
+	if !catalogPattern.MatchString(code) {
 		return ""
 	}
 	return code

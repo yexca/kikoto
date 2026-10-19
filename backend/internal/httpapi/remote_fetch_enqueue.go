@@ -520,6 +520,9 @@ func parseRemoteWorkSaveRequest(w http.ResponseWriter, r *http.Request) (int64, 
 		return 0, "", remoteWorkSaveRequest{}, false
 	}
 	code := remoteWorkCodeFromPath(r)
+	if refuseCustomWorkCode(w, code) {
+		return 0, "", remoteWorkSaveRequest{}, false
+	}
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return 0, "", remoteWorkSaveRequest{}, false

@@ -1771,7 +1771,7 @@ export const surfaceHant = {
     noVoiceActorMetadata: "沒有聲優中繼資料",
     noTagMetadata: "沒有標籤中繼資料",
     customWorkNoFolderDescription:
-      "此自訂作品在媒體庫中沒有本機資料夾。當有資料夾名稱以其 KT 編號結尾時，掃描會重新找到它。",
+      "此自訂作品在媒體庫中沒有本機資料夾。當有資料夾名稱帶有以方括號括起的 KT 編號（如 [KT00000001]）時，掃描會重新找到它。",
     noSourceDirectoryDescription:
       "此作品存在於本機資料庫中，但 Kikoto 尚無其本機檔案、快取、已追蹤來源或已知來源存在記錄。",
     sourceAvailable: "{{source}} 可用",
