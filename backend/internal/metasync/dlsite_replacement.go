@@ -42,7 +42,17 @@ func ProductMatchesExistingEdition(ctx context.Context, queryer replacementQuery
 	if err != nil || !strings.EqualFold(canonical, original) {
 		return false, err
 	}
+	var previous dlsite.Product
+	previousOK := json.Unmarshal([]byte(raw), &previous) == nil && dlsiteProductCode(previous) == localCode
 	if strings.EqualFold(strings.TrimSpace(product.TranslationInfo.ParentWorkNo), localCode) {
+		// A product in another language that names the local edition as its
+		// parent is a translation made from it, not its reissue.
+		if previousOK {
+			local, candidate := replacementLanguage(previous, localCode), replacementLanguage(product, code)
+			if local != "" && candidate != "" && !strings.EqualFold(local, candidate) {
+				return false, nil
+			}
+		}
 		return true, nil
 	}
 	var verified int
@@ -59,8 +69,7 @@ func ProductMatchesExistingEdition(ctx context.Context, queryer replacementQuery
 	if verified == 1 {
 		return true, nil
 	}
-	var previous dlsite.Product
-	if json.Unmarshal([]byte(raw), &previous) != nil || dlsiteProductCode(previous) != localCode {
+	if !previousOK {
 		return false, nil
 	}
 	// Compare the local provider snapshot with the exact candidate response.
@@ -68,6 +77,20 @@ func ProductMatchesExistingEdition(ctx context.Context, queryer replacementQuery
 	local, localOK := replacementEdition(previous.LanguageEditions, localCode)
 	candidate, candidateOK := replacementEdition(product.LanguageEditions, code)
 	return localOK && candidateOK && local.EditionID == candidate.EditionID && strings.TrimSpace(local.Lang) == strings.TrimSpace(candidate.Lang), nil
+}
+
+// replacementLanguage is the provider language token of a product's edition,
+// or "" when the product names none.
+func replacementLanguage(product dlsite.Product, code string) string {
+	if language := strings.TrimSpace(product.TranslationInfo.Lang); language != "" {
+		return language
+	}
+	for _, edition := range product.LanguageEditions {
+		if strings.EqualFold(strings.TrimSpace(edition.WorkNo), code) {
+			return strings.TrimSpace(edition.Lang)
+		}
+	}
+	return ""
 }
 
 func replacementEdition(editions []dlsite.LanguageEdition, code string) (dlsite.LanguageEdition, bool) {
