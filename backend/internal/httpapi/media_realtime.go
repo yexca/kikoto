@@ -870,6 +870,10 @@ func remotePlaybackContentType(response *http.Response, path string) string {
 		return "audio/wav"
 	case ".wma":
 		return "audio/x-ms-wma"
+	case ".aiff", ".aif":
+		return "audio/aiff"
+	case ".mka":
+		return "audio/x-matroska"
 	case ".oga", ".ogg", ".opus":
 		return "audio/ogg"
 	case ".aac":

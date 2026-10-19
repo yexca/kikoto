@@ -4,7 +4,21 @@ import type { MediaItem, MediaLyricsAssignment } from "@/lib/api";
 // backend/internal/httpapi/lyrics_match.go. Both must accept the same track and
 // lyrics pairs, so change them together.
 const lyricExtensions = [".lrc", ".vtt", ".srt", ".ass", ".txt", ".cue"];
-const audioExtensions = [".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".opus", ".aac"];
+// The same list as audioFileExtensions in backend/internal/httpapi/media_items.go.
+export const audioExtensions = [
+  ".mp3",
+  ".m4a",
+  ".flac",
+  ".wav",
+  ".wma",
+  ".ogg",
+  ".oga",
+  ".opus",
+  ".aac",
+  ".aiff",
+  ".aif",
+  ".mka",
+];
 const sharedLyricNames = new Set(["lyrics", "lyric", "subtitle", "subtitles", "字幕", "翻译", "翻譯"]);
 
 export type LyricsMatch = {

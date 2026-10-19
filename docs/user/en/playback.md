@@ -11,7 +11,8 @@ Playback is handled by a global browser audio player.
 - When direct audio decoding fails and the file still exists, the player offers
   compatibility playback for only the current track, the current queue, or all
   future local and cached playback. Compatibility playback and audio with an
-  unsupported extension are converted by FFmpeg to a complete MP3 cache file
+  extension the browser does not play, such as `.wma`, `.aiff`, `.aif`, or
+  `.mka`, are converted by FFmpeg to a complete MP3 cache file
   with duration and seeking information. First playback waits for preparation;
   later requests reuse the result and support HTTP Range, seeking, Resume, and
   normal end-of-track queue advancement. A confirmed missing file does not

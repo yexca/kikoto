@@ -14,7 +14,7 @@ import (
 
 var (
 	lyricsMatchExtensions      = []string{".lrc", ".vtt", ".srt", ".ass", ".txt", ".cue"}
-	lyricsMatchAudioExtensions = []string{".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".opus", ".aac"}
+	lyricsMatchAudioExtensions = audioFileExtensions
 	// sharedLyricsNames are the names of a lyrics file that serves every track
 	// of its folder.
 	sharedLyricsNames = map[string]bool{
