@@ -59,15 +59,21 @@ export function activeLocalFolders(work: WorkDetail | null, fileSourceId: number
   );
 }
 
-/** The media items that have a local file inside one work folder. */
+/**
+ * The media items that have a local file inside one work folder, with only
+ * that folder's local locations. Files at the same path in two folders of a
+ * work are one media item, so its locations in the other folders are dropped.
+ */
 export function mediaItemsInLocalFolder(items: MediaItem[], rootPath: string) {
   const root = rootPath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
   if (!root) return items;
-  return items.filter((item) =>
-    item.locations.some(
-      (location) => location.locationType === "local" && location.path.replace(/^\/+/, "").startsWith(`${root}/`),
-    ),
-  );
+  const insideRoot = (path: string) => path.replace(/\\/g, "/").replace(/^\/+/, "").startsWith(`${root}/`);
+  return items.flatMap((item) => {
+    const locations = item.locations.filter(
+      (location) => location.locationType !== "local" || insideRoot(location.path),
+    );
+    return locations.some((location) => location.locationType === "local") ? [{ ...item, locations }] : [];
+  });
 }
 
 export function persistedMediaTreeInput({

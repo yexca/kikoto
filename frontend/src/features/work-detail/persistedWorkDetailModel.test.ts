@@ -4,10 +4,12 @@ vi.hoisted(() => {
   (globalThis as typeof globalThis & { __APP_VERSION__: string }).__APP_VERSION__ = "test";
 });
 
-import type { SourcePresenceItem, WorkDetail } from "@/lib/api";
+import type { MediaFileLocation, MediaItem, SourcePresenceItem, WorkDetail } from "@/lib/api";
+import { buildTree, flattenTreeFiles } from "@/features/work-detail/media/mediaTreeModel";
 import type { RemoteSourceAvailability, SourceTabInfo } from "@/features/work-detail/source/sourceContextModel";
 import { syntheticWorkCode } from "@/test-support/workCode";
 import {
+  mediaItemsInLocalFolder,
   persistedDetailActionMode,
   persistedDirectoryLoadState,
   persistedFetchTarget,
@@ -38,6 +40,40 @@ function trackedPresence(overrides: Partial<SourcePresenceItem> = {}) {
 
 function work(sourcePresence: SourcePresenceItem[] = []) {
   return { id: 1, primaryCode: workCode, sourcePresence } as WorkDetail;
+}
+
+function localLocation(id: number, path: string): MediaFileLocation {
+  return {
+    id,
+    fileSourceId: 1,
+    fileSourceCode: "local",
+    fileSourceName: "Local",
+    locationType: "local",
+    path,
+    streamUrl: `/api/media/${id}/stream`,
+    downloadUrl: "",
+    remoteHash: "",
+    sizeBytes: 1024,
+    durationSeconds: 60,
+    availability: "available",
+    lastCheckedAt: null,
+  };
+}
+
+function audioItem(id: number, title: string, locations: MediaFileLocation[]): MediaItem {
+  return {
+    id,
+    parentId: null,
+    kind: "audio",
+    title,
+    discNo: null,
+    trackNo: id,
+    durationSeconds: 60,
+    sizeBytes: 1024,
+    fingerprint: `fixture-${id}`,
+    progress: null,
+    locations,
+  };
 }
 
 const loadState = {
@@ -127,5 +163,30 @@ describe("persistedWorkDetailModel", () => {
     expect(
       persistedDirectoryLoadState({ ...loadState, mediaError: "local failed", isDirectoryLoading: true }),
     ).toMatchObject({ mediaLoadError: "local failed", showSkeleton: false });
+  });
+
+  it("lists only one folder's files when a work has two folders on the same source", () => {
+    const folderCode = syntheticWorkCode("RJ", 23);
+    const first = `disk1/${folderCode}`;
+    const second = `disk2/${folderCode}`;
+    // A file at the same path in both folders is one media item with a location in each.
+    const items = [
+      audioItem(1, "01.mp3", [localLocation(11, `${first}/audio/01.mp3`), localLocation(12, `${second}/audio/01.mp3`)]),
+      audioItem(2, "first.mp3", [localLocation(21, `${first}/first.mp3`)]),
+      audioItem(3, "second.mp3", [localLocation(31, `${second}/second.mp3`)]),
+    ];
+    const folderFiles = (root: string) =>
+      flattenTreeFiles(buildTree(mediaItemsInLocalFolder(items, root), 1, folderCode))
+        .map((file) => ({ sourcePath: file.sourcePath, localPath: file.localPath }))
+        .sort((a, b) => a.sourcePath.localeCompare(b.sourcePath));
+
+    expect(folderFiles(first)).toEqual([
+      { sourcePath: "audio/01.mp3", localPath: `${first}/audio/01.mp3` },
+      { sourcePath: "first.mp3", localPath: `${first}/first.mp3` },
+    ]);
+    expect(folderFiles(second)).toEqual([
+      { sourcePath: "audio/01.mp3", localPath: `${second}/audio/01.mp3` },
+      { sourcePath: "second.mp3", localPath: `${second}/second.mp3` },
+    ]);
   });
 });
