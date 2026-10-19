@@ -39,7 +39,7 @@ func TestKikotoHelperListsInstalledModelsFromItsInfoProbe(t *testing.T) {
 		switch r.URL.Path {
 		case kikotohelper.InfoPath:
 			if installed.Load() {
-				_, _ = w.Write([]byte(`{"service":"asr","api_version":1,"installed":true,"state":"stopped","model":"example-asr","models":[{"id":"example-asr","name":"Example ASR"},{"id":"example-asr","name":"Duplicate"}]}`))
+				_, _ = w.Write([]byte(`{"service":"asr","api_version":1,"installed":true,"state":"stopped","model":"example-asr","models":[{"id":"example-asr","name":"Example ASR"},{"id":"example-asr","name":"Duplicate"},{"id":"example-translating-asr","name":"Example translating ASR","translation":{"source":"ja","target":"zh-CN"}},{"id":"example-unknown-direction","translation":{"source":"ja","target":"xx"}}]}`))
 			} else {
 				_, _ = w.Write([]byte(`{"service":"asr","api_version":1,"installed":false,"state":"stopped","models":[]}`))
 			}
@@ -57,11 +57,31 @@ func TestKikotoHelperListsInstalledModelsFromItsInfoProbe(t *testing.T) {
 	}
 	client := Client{HTTP: upstream.Client(), Provider: p}
 	models, err := client.Models(context.Background())
-	if err != nil || len(models) != 1 || models[0] != (Model{ID: "example-asr", Name: "Example ASR"}) {
+	if err != nil || len(models) != 3 || models[0] != (Model{ID: "example-asr", Name: "Example ASR"}) {
 		t.Fatalf("models = %+v, %v", models, err)
 	}
+	// A translating model names its direction in lyrics language tokens; a
+	// direction the server cannot name matches no request.
+	p.Models = models
+	for _, check := range []struct {
+		model, audio, lyrics string
+		writes               bool
+	}{
+		{"example-asr", "ja-jp", "ja-jp", true},
+		{"example-asr", "ja-jp", "zh-cn", false},
+		{"example-translating-asr", "ja-jp", "zh-cn", true},
+		{"example-translating-asr", "ja-jp", "ja-jp", false},
+		{"example-translating-asr", "ja-jp", "zh-tw", false},
+		{"example-translating-asr", "", "zh-cn", false},
+		{"example-unknown-direction", "ja-jp", "", false},
+		{"example-unknown-direction", "ja-jp", "ja-jp", false},
+	} {
+		if got := p.Writes(check.model, check.audio, check.lyrics); got != check.writes {
+			t.Errorf("Writes(%s, %q, %q) = %v", check.model, check.audio, check.lyrics, got)
+		}
+	}
 
-	_, err = client.Transcribe(context.Background(), "example-asr", "ja", make([]byte, BytesPerSecond))
+	_, err = client.Transcribe(context.Background(), "example-asr", "ja", "", make([]byte, BytesPerSecond))
 	var rejected UpstreamError
 	if !errors.As(err, &rejected) || rejected.Status != http.StatusServiceUnavailable || kikotohelper.Failure(rejected.Rejection) != kikotohelper.FailureOutOfMemory {
 		t.Fatalf("transcription error = %#v", err)

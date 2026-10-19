@@ -1,4 +1,4 @@
-import type { MediaItem, WorkDetail } from "@/lib/api";
+import type { ASRTranslation, MediaItem, WorkDetail } from "@/lib/api";
 import { allLyricsLanguages, editionLyricsLanguage, lyricsLanguages } from "@/lib/lyricsLanguage";
 import type { LyricsManagerAudio, LyricsManagerFile } from "@/features/work-detail/lyrics/lyricsManagerModel";
 import { isLyricsPath } from "@/player/lyricsMatching";
@@ -71,6 +71,23 @@ export function matchesTranscribeFilter(lyrics: ReadonlyMap<string, number>, fil
   if (filter === "noLyrics") return lyrics.size === 0;
   if (filter === "noOrigin") return !lyrics.has(origin);
   return true;
+}
+
+/** The audio and lyrics languages of a transcription. */
+export type TranscriptionLanguages = { audio: string; lyrics: string };
+
+/**
+ * Whether a model writes lyrics in `lyrics` from speech in `audio`: a
+ * translating model only its own direction, any other model only the language
+ * it hears.
+ */
+export function transcriptionWrites(
+  translation: ASRTranslation | undefined,
+  { audio, lyrics }: TranscriptionLanguages,
+) {
+  if (translation)
+    return lyrics !== allLyricsLanguages && translation.source === audio && translation.target === lyrics;
+  return audio === lyrics;
 }
 
 /** What one track translates: the language it reads, and the languages it creates. */

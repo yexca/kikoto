@@ -232,7 +232,14 @@ func (s *Server) listASRServices(w http.ResponseWriter, r *http.Request) {
 	result := []map[string]any{}
 	for _, p := range providers {
 		if p.Enabled && p.DefaultModel != "" {
-			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "boundary": p.Boundary, "maxContentClass": p.MaxContentClass})
+			// The direction of each enabled model that translates.
+			translations := map[string]asr.Translation{}
+			for _, model := range p.EnabledModels {
+				if translation := p.ModelTranslation(model); translation != nil {
+					translations[model] = *translation
+				}
+			}
+			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "translations": translations, "boundary": p.Boundary, "maxContentClass": p.MaxContentClass})
 		}
 	}
 	writeJSON(w, 200, result)

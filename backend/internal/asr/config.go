@@ -58,6 +58,39 @@ const apiPrefix = "/v1"
 type Model struct {
 	ID   string `json:"id"`
 	Name string `json:"name,omitempty"`
+	// Translation is set for a model that writes lyrics in another language
+	// than the one spoken; nil for a model that writes what it hears.
+	Translation *Translation `json:"translation,omitempty"`
+}
+
+// Translation is the one direction a translating model writes: Target lyrics
+// from Source speech, as lyrics language tokens. A token the server does not
+// know is empty, so no request matches it.
+type Translation struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+}
+
+// ModelTranslation is the direction a discovered model translates, or nil
+// for a model that writes the language it hears or was never discovered.
+func (p Provider) ModelTranslation(id string) *Translation {
+	for _, model := range p.Models {
+		if model.ID == id {
+			return model.Translation
+		}
+	}
+	return nil
+}
+
+// Writes reports whether model writes lyrics in language from speech in
+// audioLanguage: a translating model only its own direction, any other model
+// only the language it hears. Empty languages detect speech and declare
+// fallback lyrics.
+func (p Provider) Writes(model, audioLanguage, language string) bool {
+	if translation := p.ModelTranslation(model); translation != nil {
+		return language != "" && translation.Source == audioLanguage && translation.Target == language
+	}
+	return audioLanguage == language
 }
 
 type Provider struct {

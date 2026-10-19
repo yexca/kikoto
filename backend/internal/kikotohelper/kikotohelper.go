@@ -52,6 +52,15 @@ var ErrIncompatible = errors.New("helper answered with an unsupported service or
 type Model struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// Translation is set for an ASR model that writes its target language
+	// from source speech instead of the language it hears.
+	Translation *Direction `json:"translation"`
+}
+
+// Direction is the source and target language code of a translating model.
+type Direction struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
 }
 
 // Info is the part of the info probe this server uses. An ASR helper lists

@@ -2,7 +2,10 @@ import type { ContentMaximum } from "@/lib/contentPolicy";
 import { deleteJSON, getJSON, getText, postJSONBody, putJSONBody } from "@/lib/apiTransport";
 import type { LLMAssessment } from "@/lib/llmApi";
 
-export type ASRModel = { id: string; name?: string };
+/** The one direction a translating model writes: `target` lyrics from `source` speech, as lyrics language tokens. */
+export type ASRTranslation = { source: string; target: string };
+
+export type ASRModel = { id: string; name?: string; translation?: ASRTranslation };
 
 export type ASRScope = "local_machine" | "other_machine";
 
@@ -65,6 +68,8 @@ export type ASRProviderList = {
 export type ASRService = Pick<ASRProvider, "id" | "name" | "defaultModel" | "boundary" | "maxContentClass"> & {
   /** The enabled models, any of which a transcription may use. */
   models: string[];
+  /** The direction of each enabled model that translates; any other model writes the language it hears. */
+  translations?: Record<string, ASRTranslation>;
 };
 
 export type ASRTranscriptionState =
@@ -75,6 +80,8 @@ export type ASRTranscription = {
   runId: number;
   audioMediaItemId: number;
   audioTitle: string;
+  /** The language spoken in the audio; it differs from `language` only for a translating model. */
+  audioLanguage: string;
   language: string;
   providerName: string;
   model: string;
@@ -96,8 +103,10 @@ export type ASRTranscriptionRequest = {
   providerId: string;
   /** One of the service's enabled models; omitted uses its default. */
   model?: string;
-  /** A lyrics language token, or empty to let the service detect it. */
+  /** The lyrics language token the result is saved in, or empty for fallback lyrics of detected speech. */
   language: string;
+  /** The language spoken in the audio; omitted, it is `language`. */
+  audioLanguage?: string;
 };
 
 export const asrApi = {

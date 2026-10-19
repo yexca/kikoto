@@ -3149,6 +3149,8 @@ export const surfaceKorean = {
       service_start_failed: "서비스가 모델을 시작하지 못했습니다. 서비스를 확인한 뒤 다시 전사하세요.",
       service_out_of_memory:
         "메모리가 부족해 서비스가 모델을 불러오지 못했습니다. GPU 메모리를 확보하거나 헬퍼의 GPU 공유를 번갈아 불러오기로 설정한 뒤 다시 전사하세요.",
+      unsupported_language_pair:
+        "모델이 이 오디오 언어에서 이 언어의 가사를 작성하지 못합니다. 관리자가 설정 → LLM 및 음성 인식에서 서비스의 모델을 다시 가져온 뒤 다시 전사하세요.",
       ffmpeg_unavailable: "이 서버에서 오디오를 준비할 수 없습니다.",
       endpoint_unavailable: "서비스 연결을 준비할 수 없습니다.",
       cancelled: "전사가 취소되었습니다.",
@@ -3158,6 +3160,7 @@ export const surfaceKorean = {
       asr_policy_blocked: "서비스 수신 상한을 초과하거나 콘텐츠 등급이 알 수 없음 또는 차단입니다.",
       asr_audio_unavailable: "이 트랙에는 작품 폴더에서 사용할 수 있는 로컬 파일이 없습니다.",
       asr_not_ready: "서비스가 꺼져 있거나 모델이 설정되지 않았습니다. 관리자에게 확인을 요청하세요.",
+      asr_language_unsupported: "이 모델은 이 오디오 언어에서 이 언어의 가사를 작성하지 못합니다.",
       asr_audio_too_long: "트랙이 너무 길어 전사할 수 없습니다.",
       asr_ffmpeg_unavailable: "이 서버에서 오디오를 준비할 수 없습니다.",
     },
@@ -3175,8 +3178,14 @@ export const surfaceKorean = {
     intro:
       "트랙을 선택해 음성 인식 서비스로 전사합니다. 결과는 아래에서 검토를 기다리며, 추가하면 해당 언어의 가사 폴더에 WebVTT 파일로 저장되고 트랙에 지정됩니다.",
     language: "오디오 언어",
-    languageHint:
-      "오디오에서 말하는 언어로, 서비스에 힌트로 전송됩니다. 가사는 이 언어로 저장되고 지정되며, 자동 감지하면 대체 가사로 저장됩니다.",
+    languageHint: "오디오에서 말하는 언어로, 서비스에 힌트로 전송됩니다.",
+    lyricsLanguage: "가사 언어",
+    lyricsLanguageHint:
+      "가사는 이 언어로 저장되고 지정되며, 자동 감지하면 대체 가사로 저장됩니다. 모델이 번역하지 않는 한 오디오 언어와 같습니다.",
+    sameAsAudio: "오디오 언어와 같음",
+    languageDirection: "{{audio}} → {{lyrics}}",
+    translatesOnly: "이 모델은 {{audio}} 오디오에서 {{lyrics}} 가사만 작성합니다.",
+    writesAudioLanguage: "이 모델은 오디오 언어로만 가사를 작성합니다.",
     filter: "표시할 트랙",
     filters: {
       noLyrics: "가사 없음",

@@ -9,6 +9,7 @@ import {
   toggleTranslationColumn,
   toggleTranslationTarget,
   trackLyricsByLanguage,
+  transcriptionWrites,
   translationJobs,
   workOriginLyricsLanguage,
   whenLLMFree,
@@ -81,6 +82,20 @@ describe("matchesTranscribeFilter", () => {
     expect(matchesTranscribeFilter(fallback, "noOrigin", "ja-jp")).toBe(true);
     expect(matchesTranscribeFilter(japanese, "noOrigin", "ja-jp")).toBe(false);
     expect(matchesTranscribeFilter(japanese, "all", "ja-jp")).toBe(true);
+  });
+});
+
+describe("transcriptionWrites", () => {
+  const japaneseToChinese = { source: "ja-jp", target: "zh-cn" };
+
+  it("lets a model write the language it hears, and a translating model only its direction", () => {
+    expect(transcriptionWrites(undefined, { audio: "ja-jp", lyrics: "ja-jp" })).toBe(true);
+    expect(transcriptionWrites(undefined, { audio: "", lyrics: "" })).toBe(true);
+    expect(transcriptionWrites(undefined, { audio: "ja-jp", lyrics: "zh-cn" })).toBe(false);
+    expect(transcriptionWrites(japaneseToChinese, { audio: "ja-jp", lyrics: "zh-cn" })).toBe(true);
+    expect(transcriptionWrites(japaneseToChinese, { audio: "ja-jp", lyrics: "ja-jp" })).toBe(false);
+    expect(transcriptionWrites(japaneseToChinese, { audio: "ja-jp", lyrics: "zh-tw" })).toBe(false);
+    expect(transcriptionWrites(japaneseToChinese, { audio: "", lyrics: "zh-cn" })).toBe(false);
   });
 });
 

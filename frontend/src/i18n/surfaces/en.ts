@@ -3211,6 +3211,8 @@ export const surfaceEnglish = {
       service_start_failed: "The service could not start its model. Check the service, then transcribe again.",
       service_out_of_memory:
         "The service could not load its model because memory ran out. Free GPU memory or set the helper's GPU sharing to take turns, then transcribe again.",
+      unsupported_language_pair:
+        "The model does not write lyrics in this language from this audio language. An administrator can fetch the service's models again under Settings → LLM & ASR, then transcribe again.",
       ffmpeg_unavailable: "Audio preparation is unavailable on this server.",
       endpoint_unavailable: "The service connection could not be prepared.",
       cancelled: "The transcription was cancelled.",
@@ -3220,6 +3222,7 @@ export const surfaceEnglish = {
       asr_policy_blocked: "The content exceeds this service's receive maximum, or its class is unknown or blocked.",
       asr_audio_unavailable: "This track has no available local file in a work folder.",
       asr_not_ready: "The service is turned off or has no model. Ask an administrator to check it.",
+      asr_language_unsupported: "This model does not write lyrics in this language from this audio language.",
       asr_audio_too_long: "The track is too long to transcribe.",
       asr_ffmpeg_unavailable: "Audio preparation is unavailable on this server.",
     },
@@ -3237,8 +3240,14 @@ export const surfaceEnglish = {
     intro:
       "Select tracks to transcribe them with a speech recognition service. Results wait below for review; adding one saves a WebVTT file in the language's lyrics folder and assigns it to the track.",
     language: "Audio language",
-    languageHint:
-      "The language spoken in the audio, sent to the service as a hint. The lyrics are saved and assigned in this language; detected speech is saved as fallback lyrics.",
+    languageHint: "The language spoken in the audio, sent to the service as a hint.",
+    lyricsLanguage: "Lyrics language",
+    lyricsLanguageHint:
+      "The lyrics are saved and assigned in this language; detected speech is saved as fallback lyrics. It is the audio language unless the model translates.",
+    sameAsAudio: "Same as audio language",
+    languageDirection: "{{audio}} → {{lyrics}}",
+    translatesOnly: "This model writes only {{lyrics}} lyrics from {{audio}} audio.",
+    writesAudioLanguage: "This model writes lyrics only in the audio language.",
     filter: "Show tracks",
     filters: {
       noLyrics: "No lyrics",
