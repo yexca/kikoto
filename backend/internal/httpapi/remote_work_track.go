@@ -325,8 +325,11 @@ func (s *Server) prepareRemoteWorkTrack(ctx context.Context, sourceID int64, cod
 		}
 		return preparedRemoteWorkTrack{}, err
 	}
-	if err := s.verifyRemoteWorkIdentity(ctx, remoteWork); err != nil {
-		return preparedRemoteWorkTrack{}, err
+	// resolveRemoteEdition has already verified a work returned under another code.
+	if remoteEditionCodeMatches(requestedCode, remoteWork) {
+		if err := s.verifyRemoteWorkIdentity(ctx, remoteWork); err != nil {
+			return preparedRemoteWorkTrack{}, err
+		}
 	}
 	tracks, _, err := client.Tracks(ctx, remoteWork.ID)
 	if err != nil {

@@ -48,6 +48,7 @@ type Server struct {
 	cfg                            config.Config
 	dlsiteEndpoints                dlsite.Endpoints
 	dlsiteClient                   metasync.DLsiteClient
+	editionIdentity                editionIdentityLookups
 	proxyConfig                    *proxyConfigStore
 	metadataTransport              *metadataTransport
 	metadataHTTPClient             *http.Client

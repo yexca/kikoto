@@ -78,10 +78,12 @@ func TestRemoteEditionFallbackRequiresProviderOriginAndParent(t *testing.T) {
 			if _, err := syncer.SyncProductOnly(ctx, dlsite.Product{WorkNo: originCode, ProductName: "Example Work"}); err != nil {
 				t.Fatal(err)
 			}
-			parentID, err := syncer.SyncProductOnly(ctx, dlsite.Product{
+			parentProduct := dlsite.Product{
 				WorkNo: parentCode, ProductName: "Example Work Chinese",
 				TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: originCode, Lang: "CHI_HANS"},
-			})
+			}
+			parentProduct.Raw, _ = json.Marshal(parentProduct)
+			parentID, err := syncer.SyncProductOnly(ctx, parentProduct)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -232,7 +234,9 @@ func TestRemotePersistenceVerifiesSelectedUnknownCodeBeforeInsert(t *testing.T) 
 			if _, err := syncer.SyncProductOnly(ctx, dlsite.Product{WorkNo: original, ProductName: "Example Work"}); err != nil {
 				t.Fatal(err)
 			}
-			localID, err := syncer.SyncProductOnly(ctx, dlsite.Product{WorkNo: local, ProductName: product.ProductName, TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: original, Lang: "CHI_HANS"}})
+			localProduct := dlsite.Product{WorkNo: local, ProductName: product.ProductName, TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: original, Lang: "CHI_HANS"}}
+			localProduct.Raw, _ = json.Marshal(localProduct)
+			localID, err := syncer.SyncProductOnly(ctx, localProduct)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -271,7 +275,9 @@ func TestReplacementAliasWaitsForAnotherWriter(t *testing.T) {
 	if _, err := syncer.SyncProductOnly(ctx, dlsite.Product{WorkNo: original, ProductName: "Example Work"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := syncer.SyncProductOnly(ctx, dlsite.Product{WorkNo: parent, ProductName: product.ProductName, TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: original, Lang: "CHI_HANS"}}); err != nil {
+	parentProduct := dlsite.Product{WorkNo: parent, ProductName: product.ProductName, TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: original, Lang: "CHI_HANS"}}
+	parentProduct.Raw, _ = json.Marshal(parentProduct)
+	if _, err := syncer.SyncProductOnly(ctx, parentProduct); err != nil {
 		t.Fatal(err)
 	}
 	// Another connection holds the write lock for a moment, and this one does
@@ -302,5 +308,85 @@ func TestReplacementAliasWaitsForAnotherWriter(t *testing.T) {
 	<-released
 	if err != nil || !stored {
 		t.Fatalf("replacement alias while another writer held the lock = %v, %v; want it stored once the lock is free", stored, err)
+	}
+}
+
+type unreachableDLsiteClient struct{ requests atomic.Int32 }
+
+func (c *unreachableDLsiteClient) FetchProduct(context.Context, string) (dlsite.Product, error) {
+	c.requests.Add(1)
+	return dlsite.Product{}, errors.New("dial tcp: connection refused")
+}
+
+func (*unreachableDLsiteClient) DownloadCover(context.Context, dlsite.Product, string) (string, error) {
+	return "", nil
+}
+
+// A deployment that reaches its remote source but not DLsite keeps working:
+// unverified identity leaves the remote work its own code, DLsite failures do
+// not mark the source unavailable, and one failure pauses further lookups.
+func TestRemoteRequestsProceedWhenDLsiteCannotVerifyIdentity(t *testing.T) {
+	originCode, localCode := testfixture.WorkCode("RJ", 0), testfixture.WorkCode("RJ", 1)
+	remoteCode, candidateCode := testfixture.WorkCode("RJ", 2), testfixture.WorkCode("RJ", 3)
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/workInfo/" + originCode:
+			_ = json.NewEncoder(w).Encode(kikoeru.Work{
+				ID: 1, SourceID: originCode, Title: "Example Work",
+				OtherLanguageEditions: []kikoeru.OtherLanguageEdition{{SourceID: candidateCode, Language: "CHI_HANT"}},
+			})
+		case "/api/workInfo/" + remoteCode:
+			_ = json.NewEncoder(w).Encode(kikoeru.Work{ID: 2, SourceID: remoteCode, Title: "Example Remote Work"})
+		case "/api/tracks/2":
+			_ = json.NewEncoder(w).Encode([]kikoeru.Track{{Type: "audio", Title: "track.mp3", MediaDownloadURL: "/media/track.mp3", Size: int64Pointer(5)}})
+		case "/api/works", "/api/search/" + localCode:
+			_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{Works: []kikoeru.Work{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: t.TempDir(), CacheRoot: t.TempDir()})
+	provider := &unreachableDLsiteClient{}
+	server.dlsiteClient = provider
+	syncer := metasync.NewDLsiteSyncer(db, &availabilityWatchDLsiteClient{})
+	ctx := context.Background()
+	if _, err := syncer.SyncProductOnly(ctx, dlsite.Product{WorkNo: originCode, ProductName: "Example Work"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := syncer.SyncProductOnly(ctx, dlsite.Product{WorkNo: localCode, ProductName: "Example Work Chinese", TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: originCode, Lang: "CHI_HANS"}}); err != nil {
+		t.Fatal(err)
+	}
+	metadataReviewExec(t, db, `INSERT INTO file_source (id, code, display_name, source_type) VALUES (7, 'example_remote_a', 'Example Remote A', 'kikoeru_compatible')`)
+	metadataReviewExec(t, db, `INSERT INTO file_source_endpoint (file_source_id, api_url, base_url) VALUES (7, ?, ?)`, remote.URL, remote.URL)
+
+	plan, err := server.buildRemoteWorkSavePlan(ctx, 7, remoteCode, nil, nil, "", nil)
+	if err != nil || plan.EditionCode != remoteCode || !strings.Contains(plan.SaveRoot, remoteCode) {
+		t.Fatalf("Fetch plan = %+v, error = %v", plan, err)
+	}
+	prepared, err := server.prepareRemoteWorkTrack(ctx, 7, remoteCode)
+	if err != nil || prepared.WorkCode != remoteCode {
+		t.Fatalf("Track = %+v, error = %v", prepared, err)
+	}
+	source, err := server.loadRemoteSourceForUse(ctx, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	availability, err := server.checkOneWorkSourceAvailability(ctx, source, localCode, "source_poll")
+	if err != nil || availability.Status != "not_found" {
+		t.Fatalf("local edition availability = %+v, error = %v", availability, err)
+	}
+	var health string
+	if err := db.QueryRow("SELECT COALESCE(health_status, '') FROM file_source_endpoint WHERE file_source_id = 7").Scan(&health); err != nil || health != "healthy" {
+		t.Fatalf("source health = %q, error = %v", health, err)
+	}
+	if requests := provider.requests.Load(); requests != 1 {
+		t.Fatalf("DLsite requests = %d, want one before the failure pause", requests)
+	}
+	var aliases int
+	if err := db.QueryRow("SELECT COUNT(*) FROM work_code_alias WHERE relationship_kind = 'provider_reissued'").Scan(&aliases); err != nil || aliases != 0 {
+		t.Fatalf("unverified aliases = %d, error = %v", aliases, err)
 	}
 }
