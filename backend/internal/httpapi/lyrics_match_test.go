@@ -23,6 +23,8 @@ func TestLyricsCandidateMatchesTrackLikeThePlayer(t *testing.T) {
 		{"different track", "work/01_abc.mp3", "work/02_def.vtt", false},
 		{"same name with another track number", "work/01_abc.wav", "work/02_abc.lrc", false},
 		{"same name with another part number", "work/abc 1.wav", "work/abc 2.lrc", false},
+		{"sidecar keeping the AIFF extension", "work/01_abc.aiff", "work/01_abc.aiff.lrc", true},
+		{"Matroska audio sidecar in another folder", "work/01_abc.mka", "work/subs/01_abc.mka.vtt", true},
 		{"same track number written differently", "work/track 1 abc.wav", "work/01_abc.lrc", true},
 		{"sound effect variant", "work/本編_SEあり.wav", "work/本編_SEなし.lrc", true},
 		{"sound effect variant in kanji", "work/02 本編 SE有.flac", "work/subs/本編(SE無し).vtt", true},

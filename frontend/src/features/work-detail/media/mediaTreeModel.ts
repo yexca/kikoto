@@ -2,6 +2,7 @@ import type { MediaItem, RemoteTrack, RemoteWorkDetail, WorkDetail, WorkProgress
 import { mediaItemLyricsAssignments } from "../../../lib/lyricsLanguage";
 import type { PlayerTrack, PlayerTrackLocation } from "../../../player/playerTypes";
 import {
+  audioExtensions,
   findLocalLyricsChoices,
   findRemoteLyricsMatches,
   isLyricsPath,
@@ -767,7 +768,7 @@ function remotePlayableKind(kind: string, path: string) {
   const normalizedKind = kind.trim().toLowerCase();
   if (["audio", "video", "image", "text", "folder"].includes(normalizedKind)) return normalizedKind;
   const extension = path.slice(path.lastIndexOf(".")).toLowerCase();
-  if ([".mp3", ".m4a", ".aac", ".flac", ".wav", ".wma", ".ogg", ".oga", ".opus"].includes(extension)) {
+  if (audioExtensions.includes(extension)) {
     return "audio";
   }
   if (

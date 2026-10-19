@@ -84,6 +84,8 @@ describe("findLyricsMatch", () => {
     ["work/01_a.mp3", "work/subs/02_a.txt", false],
     ["work/01_abc.mp3", "work/02_def.vtt", false],
     ["work/01_abc.wav", "work/02_abc.lrc", false],
+    ["work/01_abc.aiff", "work/01_abc.aiff.lrc", true],
+    ["work/01_abc.mka", "work/subs/01_abc.mka.vtt", true],
     ["work/abc 1.wav", "work/abc 2.lrc", false],
     ["work/track 1 abc.wav", "work/01_abc.lrc", true],
     ["work/本編_SEあり.wav", "work/本編_SEなし.lrc", true],

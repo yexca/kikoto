@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
@@ -338,11 +339,21 @@ func (s *Server) workHasUnindexedAvailableLocalPresence(ctx context.Context, wor
 	return exists, nil
 }
 
+// audioFileExtensions are the extensions of the files Kikoto plays as audio.
+// A format the browser cannot play directly, such as AIFF or Matroska audio,
+// plays through compatibility conversion.
+var audioFileExtensions = []string{".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".oga", ".opus", ".aac", ".aiff", ".aif", ".mka"}
+
+func isAudioFileExtension(extension string) bool {
+	return slices.Contains(audioFileExtensions, strings.ToLower(extension))
+}
+
 func localFileKind(path string) string {
 	extension := strings.ToLower(filepath.Ext(path))
-	switch extension {
-	case ".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".oga", ".opus", ".aac":
+	if isAudioFileExtension(extension) {
 		return "audio"
+	}
+	switch extension {
 	case ".mp4", ".m4v", ".webm", ".mkv", ".mov", ".avi", ".wmv", ".flv", ".f4v", ".mpeg", ".mpg", ".mpe", ".m2v", ".m2ts", ".mts", ".ts", ".3gp", ".3g2", ".ogv", ".asf", ".rm", ".rmvb", ".vob", ".divx", ".xvid", ".mxf", ".ogm", ".svi", ".nsv", ".wtv", ".amv", ".mjpeg", ".mjpg", ".dv", ".y4m", ".ismv", ".ism":
 		return "video"
 	case ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif":

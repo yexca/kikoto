@@ -47,6 +47,7 @@
 - ASS and SSA lyrics show as timed lyrics, read from their `Dialogue` lines.
 - Lyrics matching ignores sound effect and music switches such as `SEあり`, `SE無し`, `SE ON`, or `BGMなし`, so `本編_SEなし.lrc` serves `本編_SEあり.wav`, and matches names macOS stores decomposed. A lyrics file whose name differs from the track's only in its numbers, such as `02_opening.lrc` for `01_opening.wav`, is no longer chosen.
 - When FFmpeg cannot convert a file, repeated requests for it fail at once for 30 seconds instead of occupying one of the two encode slots.
+- AIFF (`.aiff`, `.aif`) and Matroska audio (`.mka`) files are audio tracks in local folders and remote sources: they show in the track list and queue, get their duration, match lyrics, and count toward folder choice. The browser cannot play them directly, so they play through compatibility conversion.
 - A long next track that needs conversion starts warming earlier, a fortieth of its length before the current track ends, so a two-hour file is ready when it starts.
 
 </details>

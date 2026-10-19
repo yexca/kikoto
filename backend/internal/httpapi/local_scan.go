@@ -100,7 +100,7 @@ func (s *Server) upsertLocalFileSource(ctx context.Context, tx *sql.Tx, scanDept
 		"root":             s.cfg.DataRoot,
 		"scan_depth":       scanDepth,
 		"code_patterns":    workcode.Prefixes(),
-		"audio_extensions": []string{".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".opus", ".aac"},
+		"audio_extensions": audioFileExtensions,
 	})); err != nil {
 		return 0, err
 	}
