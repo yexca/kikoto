@@ -754,6 +754,7 @@ function mediaKindFromRemotePath(path: string) {
     ".srt",
     ".vtt",
     ".ass",
+    ".ssa",
     ".csv",
     ".log",
     ".ini",

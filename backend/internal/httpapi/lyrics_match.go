@@ -13,7 +13,7 @@ import (
 // same track and lyrics pairs, so change them together.
 
 var (
-	lyricsMatchExtensions      = []string{".lrc", ".vtt", ".srt", ".ass", ".txt", ".cue"}
+	lyricsMatchExtensions      = []string{".lrc", ".vtt", ".srt", ".ass", ".ssa", ".txt", ".cue"}
 	lyricsMatchAudioExtensions = audioFileExtensions
 	// sharedLyricsNames are the names of a lyrics file that serves every track
 	// of its folder.

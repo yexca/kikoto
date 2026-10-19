@@ -113,15 +113,20 @@ func markLocalLocationsMissing(ctx context.Context, tx *sql.Tx, locations []inde
 
 // folderRoot bounds reconciliation to the folder that was actually indexed.
 // Only the isolated demo indexer passes an empty root to reconcile its full set.
-// A file in an ignored directory or with an ignored name is unseen, not missing.
+// A root in an ignored place is unseen, so its files keep their state. Inside
+// a root the index read, an ignored directory or file name is not a file of
+// the work, so a location recorded there is missing like any file not seen.
 func markMissingLocalLocationsForWork(ctx context.Context, tx *sql.Tx, workID, fileSourceID int64, seenPaths map[string]bool, folderRoot string) (int, error) {
+	if folderRoot != "" && localfs.IsIgnoredPath(normalizeFolderRootPath(folderRoot)) {
+		return 0, nil
+	}
 	locations, err := availableLocalLocationsForWork(ctx, tx, workID, fileSourceID)
 	if err != nil {
 		return 0, err
 	}
 	missing := locations[:0]
 	for _, location := range locations {
-		if localfs.IsIgnoredPath(location.path) {
+		if folderRoot == "" && localfs.IsIgnoredPath(location.path) {
 			continue
 		}
 		if !seenPaths[location.path] && (folderRoot == "" || localLocationWithinRoot(location.path, folderRoot)) {
@@ -129,6 +134,28 @@ func markMissingLocalLocationsForWork(ctx context.Context, tx *sql.Tx, workID, f
 		}
 	}
 	return markLocalLocationsMissing(ctx, tx, missing)
+}
+
+// markIgnoredLocalLocationsMissing marks the locations recorded inside a work
+// folder a scan found that lie in an ignored directory or carry an ignored
+// file name: no walk offers them as files of the work. A folder that itself
+// lies in an ignored place is unseen and keeps its state.
+func markIgnoredLocalLocationsMissing(ctx context.Context, tx *sql.Tx, workID, fileSourceID int64, folderRoot string) (int, error) {
+	root := normalizeFolderRootPath(folderRoot)
+	if root == "" || localfs.IsIgnoredPath(root) {
+		return 0, nil
+	}
+	locations, err := availableLocalLocationsForWork(ctx, tx, workID, fileSourceID)
+	if err != nil {
+		return 0, err
+	}
+	ignored := locations[:0]
+	for _, location := range locations {
+		if localLocationWithinRoot(location.path, root) && localfs.IsIgnoredPath(location.path) {
+			ignored = append(ignored, location)
+		}
+	}
+	return markLocalLocationsMissing(ctx, tx, ignored)
 }
 
 func markLocalLocationsMissingForChangedFolder(ctx context.Context, tx *sql.Tx, workID, fileSourceID int64, folderPath string, scope localScanScope) (int, error) {

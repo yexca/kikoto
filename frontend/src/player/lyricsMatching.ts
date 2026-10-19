@@ -3,7 +3,7 @@ import type { MediaItem, MediaLyricsAssignment } from "@/lib/api";
 // The server reports a work's lyrics status with a copy of this name matching in
 // backend/internal/httpapi/lyrics_match.go. Both must accept the same track and
 // lyrics pairs, so change them together.
-const lyricExtensions = [".lrc", ".vtt", ".srt", ".ass", ".txt", ".cue"];
+const lyricExtensions = [".lrc", ".vtt", ".srt", ".ass", ".ssa", ".txt", ".cue"];
 // The same list as audioFileExtensions in backend/internal/httpapi/media_items.go.
 export const audioExtensions = [
   ".mp3",
@@ -232,7 +232,7 @@ function lyricFormatPreference(name: string) {
   if (lower.endsWith(".lrc")) return 6;
   if (lower.endsWith(".vtt")) return 5;
   if (lower.endsWith(".srt")) return 4;
-  if (lower.endsWith(".ass")) return 3;
+  if (lower.endsWith(".ass") || lower.endsWith(".ssa")) return 3;
   if (lower.endsWith(".txt")) return 2;
   return 1;
 }

@@ -152,10 +152,12 @@ func (e *workFolderEditExecution) locate(ctx context.Context) error {
 // deletes what it collected when no executor was working on it, such as an
 // edit waiting for a retry or for recovery after a restart. It waits for any
 // job that is changing library folders. An edit whose folder is offline keeps
-// its staging folder until it can be settled.
+// its staging folder until it can be settled; the folders it merges are
+// folders of the work again either way.
 func (s *Server) settleCancelledWorkFolderEdit(ctx context.Context, runID int64) {
 	s.mediaCleanupMu.Lock()
 	defer s.mediaCleanupMu.Unlock()
+	defer func() { _ = s.restoreMediaCleanupFolders(ctx, runID) }()
 	execution := &workFolderEditExecution{server: s}
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, workflow_run_id, payload_json, checkpoint_json FROM workflow_job
@@ -180,7 +182,6 @@ func (s *Server) settleCancelledWorkFolderEdit(ctx context.Context, runID int64)
 	if kept := execution.discardStaging(ctx); kept > 0 {
 		slog.Error("cancelled work folder edit keeps moved files in staging", "run_id", runID, "files", kept)
 	}
-	_ = s.restoreMediaCleanupFolders(ctx, runID)
 }
 
 func (e *workFolderEditExecution) run(ctx context.Context) error {
@@ -242,13 +243,16 @@ func (e *workFolderEditExecution) saveCheckpoint(ctx context.Context, phase stri
 }
 
 // stage collects every added file on the edited folder's storage pool and
-// checks its size, before anything in the folder changes.
+// checks its size, before anything in the folder changes. A file an earlier
+// attempt already published is in the folder, and its source may be gone
+// with a merged folder, so it is not collected again.
 func (e *workFolderEditExecution) stage(ctx context.Context) error {
 	s := e.server
 	if err := s.updateRemoteFetchPhaseNode(ctx, e.job.RunID, "stage", "running", nil); err != nil {
 		return err
 	}
 	staged := stringSet(e.checkpoint.Staged)
+	published := stringSet(e.checkpoint.Published)
 	family, err := s.lyricsAssignmentFamily(ctx, e.payload.WorkID)
 	if err != nil {
 		return err
@@ -274,7 +278,7 @@ func (e *workFolderEditExecution) stage(ctx context.Context) error {
 		}
 		count++
 		stagedPath := e.stagedPath(index)
-		if staged[item.ItemKey] && existingFileMatches(stagedPath, item.SizeBytes) {
+		if published[item.ItemKey] || (staged[item.ItemKey] && existingFileMatches(stagedPath, item.SizeBytes)) {
 			if item.Action == "cache_download" {
 				if err := byteProgress.skipDownload(downloadIndex, item.remoteWorkSavePlanItem); err != nil {
 					return err
@@ -645,8 +649,8 @@ func (s *Server) keepWorkFolderEditMovedItems(ctx context.Context, payload workF
 		}
 	}
 	for _, entry := range follows {
-		var taken bool
-		if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM media_item WHERE fingerprint = ?)", entry.fingerprint).Scan(&taken); err != nil {
+		taken, err := workFolderEditFingerprintTaken(ctx, tx, entry.fingerprint, code, payload)
+		if err != nil {
 			return err
 		}
 		fingerprint := entry.fingerprint
@@ -664,6 +668,71 @@ func (s *Server) keepWorkFolderEditMovedItems(ctx context.Context, payload workF
 		}
 	}
 	return tx.Commit()
+}
+
+// workFolderEditFingerprintTaken reports whether another media item keeps the
+// path a moved file takes. An item whose file at that path the same edit
+// removes, and which has no other available file outside the folders the edit
+// merges away, keeps nothing there: it gives the path up, keeping its
+// playback progress and lyrics, so the moved file keeps its own item.
+func workFolderEditFingerprintTaken(ctx context.Context, tx *sql.Tx, fingerprint string, code string, payload workFolderEditJobPayload) (bool, error) {
+	var holderID int64
+	err := tx.QueryRowContext(ctx, "SELECT id FROM media_item WHERE fingerprint = ? ORDER BY id LIMIT 1", fingerprint).Scan(&holderID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	removed := map[int64]bool{}
+	for _, removal := range payload.Removals {
+		if removal.LocationID > 0 {
+			removed[removal.LocationID] = true
+		}
+	}
+	rows, err := tx.QueryContext(ctx, "SELECT id, COALESCE(path, ''), availability FROM media_file_location WHERE media_item_id = ?", holderID)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	givesUp := false
+	for rows.Next() {
+		var locationID int64
+		var other, availability string
+		if err := rows.Scan(&locationID, &other, &availability); err != nil {
+			return false, err
+		}
+		if removed[locationID] {
+			givesUp = true
+			continue
+		}
+		if availability != "available" {
+			continue
+		}
+		merged := false
+		for _, merge := range payload.Merges {
+			if mediaCleanupPathWithinRoot(merge.RootPath, filepath.ToSlash(other)) {
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			return true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	if !givesUp {
+		return true, nil
+	}
+	// A work-relative path never starts with a slash, so the placeholder
+	// matches no file the index finds.
+	if _, err := tx.ExecContext(ctx, "UPDATE media_item SET fingerprint = ? WHERE id = ?",
+		fmt.Sprintf("local:%s:/removed/%d", code, holderID), holderID); err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 // workFolderEditItemKeptElsewhere reports whether a moved file's media item

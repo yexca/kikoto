@@ -44,7 +44,7 @@ func TestLyricsCandidateMatchesTrackLikeThePlayer(t *testing.T) {
 func TestLyricsMatchPathAcceptsOnlyLyricsFormats(t *testing.T) {
 	for path, want := range map[string]bool{
 		"work/track.LRC": true, "work/track.vtt": true, "work/track.srt": true,
-		"work/track.ass": true, "work/track.txt": true, "work/track.cue": true,
+		"work/track.ass": true, "work/track.ssa": true, "work/track.txt": true, "work/track.cue": true,
 		"work/notes.md": false, "work/track.json": false, "work/track.mp3": false,
 	} {
 		if got := isLyricsMatchPath(path); got != want {

@@ -278,6 +278,42 @@ func TestLocalScanPreservesCopiesOutsideItsScope(t *testing.T) {
 	}
 }
 
+// Earlier releases indexed sidecar files and NAS metadata inside work folders.
+// A scan that reads the work folder no longer offers them as files of the
+// work, while the work's real files stay available.
+func TestLocalScanMarksIgnoredEntriesInsideAReadWorkFolderMissing(t *testing.T) {
+	dataRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 2})
+	if err := storagepool.WriteMarker(dataRoot, "library-test"); err != nil {
+		t.Fatal(err)
+	}
+	code := testfixture.WorkCode(testfixture.PrefixRJ, 36)
+	for _, rel := range []string{"track.mp3", "._track.mp3", "@eaDir/track.mp3/SYNOINDEX_MEDIA_INFO"} {
+		path := filepath.Join(dataRoot, code, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("audio"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sidecar, metadata := code+"/._track.mp3", code+"/@eaDir/track.mp3/SYNOINDEX_MEDIA_INFO"
+	seeded := seedIndexedLocalScanWork(t, db, server, code, code, code+"/track.mp3")
+	for _, path := range []string{sidecar, metadata} {
+		if _, err := db.Exec(`
+			INSERT INTO media_file_location (media_item_id, file_source_id, location_type, path, size_bytes, availability)
+			VALUES (?, ?, 'local', ?, 5, 'available')
+		`, seeded.mediaItemID, seeded.sourceID, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	executeLocalScanForTest(t, server)
+	assertLocalScanLocationAvailability(t, db, sidecar, "missing")
+	assertLocalScanLocationAvailability(t, db, metadata, "missing")
+	assertLocalScanLocationAvailability(t, db, code+"/track.mp3", "available")
+}
+
 func assertLocalScanLocationAvailability(t *testing.T, db *sql.DB, path, want string) {
 	t.Helper()
 	var availability string

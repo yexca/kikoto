@@ -461,7 +461,9 @@ decisions, and never changes a file. The merge check takes the same request
 and lists the files of the merged folders that the edited folder will not hold
 with the same size and SHA-256, hashing within a time budget, caching hashes on
 the files' locations, and reporting `complete: false` while files remain to
-compare; a remote addition is not compared. A complete check returns a
+compare; a remote addition is not compared, and a file an addition replaces
+does not stay even when its path differs only as a case-insensitive
+filesystem compares it. A complete check returns a
 `review` that identifies the files it compared, with their sizes and
 modification times. Apply of an edit that merges folders requires that
 `mergeReview` and answers `409 folder_edit_merge_changed` when the merged
@@ -473,12 +475,17 @@ repeated request id returns the run it queued. The run collects additions,
 removes files, takes every moved file out of its place before any file takes a
 path, publishes, gives each moved file's media item its new path when the item
 has no other available file outside the folders the edit merges, so its
-references follow it, removes the folders
-it emptied, creates the requested folders, and indexes the folder. It deletes
+references follow it; an item whose file at that path the edit removes gives
+the path up and keeps its own references. It then removes the folders
+it emptied, creates the requested folders, and indexes the folder. A resumed
+or retried run never collects again a file it already published. It deletes
 each merged folder last, only while it holds exactly the files the edit was
-planned with, and marks its locations unavailable and its folder ignored; a
-run that fails or is cancelled returns a merged folder it had started on to
-the work. A run that stops before it finishes puts every moved file that left
+planned with and each of them the merge check did not report lost still has a
+file of the same size and SHA-256 in the edited folder; otherwise the run
+stops and asks for a new review. It marks the deleted folder's locations
+unavailable and its folder ignored; a run that fails or is cancelled returns a
+merged folder it had started on to the work, also while the edited folder is
+offline. A run that stops before it finishes puts every moved file that left
 its place but has not reached its new path back where it was; a file whose old
 path another file took since stays in the run's staging folder for a retry.
 Cancelling a run that no executor holds, such as one waiting for a retry or

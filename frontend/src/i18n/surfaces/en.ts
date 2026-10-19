@@ -2291,6 +2291,7 @@ export const surfaceEnglish = {
     lyricsEarlier: "Show lyrics 0.5 s earlier",
     lyricsLater: "Show lyrics 0.5 s later",
     lyricsTimingReset: "Reset lyrics timing",
+    lyricsTimingSaveFailed: "Lyrics timing could not be saved.",
     lyricsOffsetSeconds: "{{value}} s",
     speakerConfirmTitle: "Play through the phone speaker?",
     speakerConfirmDescription:
@@ -3451,7 +3452,7 @@ export const surfaceEnglish = {
     readOnly: "You can review these lyrics, but changing them requires library write access.",
     noAudio: "This work has no local audio files.",
     noLyrics:
-      "No local lyrics files were found. Add .lrc, .vtt, .srt, .ass, or .txt files to the work folder, then refresh local files.",
+      "No local lyrics files were found. Add .lrc, .vtt, .srt, .ass, .ssa, or .txt files to the work folder, then refresh local files.",
     track: "Track",
     lyrics: "Lyrics",
     lyricsFor: "Lyrics for {{title}}",
@@ -3493,7 +3494,7 @@ export const surfaceEnglish = {
     tabFiles: "Lyrics files",
     usedByTracks: "Tracks: {{count}}",
     manageAsLyrics: "Manage as lyrics",
-    manageAsLyricsHint: "Select .lrc, .vtt, .srt, .ass, or .txt files to manage them as lyrics of a language.",
+    manageAsLyricsHint: "Select .lrc, .vtt, .srt, .ass, .ssa, or .txt files to manage them as lyrics of a language.",
     chooseLanguage: "Choose a language",
     managedByKikoto: "Lyrics managed by Kikoto",
     managedByKikotoHint: "Handled in Manage lyrics",

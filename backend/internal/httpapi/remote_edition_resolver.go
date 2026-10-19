@@ -156,7 +156,7 @@ func (s *Server) remoteEditionAliasCodes(ctx context.Context, localCode string) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := []string{}
 	for rows.Next() {
 		var code string

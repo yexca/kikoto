@@ -2287,6 +2287,7 @@ export const surfaceKorean = {
     lyricsEarlier: "가사를 0.5초 일찍 표시",
     lyricsLater: "가사를 0.5초 늦게 표시",
     lyricsTimingReset: "가사 타이밍 초기화",
+    lyricsTimingSaveFailed: "가사 타이밍을 저장하지 못했습니다.",
     lyricsOffsetSeconds: "{{value}}초",
     speakerConfirmTitle: "휴대폰 스피커로 재생할까요?",
     speakerConfirmDescription:
@@ -3382,7 +3383,7 @@ export const surfaceKorean = {
     readOnly: "가사 설정을 확인할 수 있지만, 변경하려면 라이브러리 쓰기 권한이 필요합니다.",
     noAudio: "이 작품에는 로컬 오디오 파일이 없습니다.",
     noLyrics:
-      "로컬 가사 파일을 찾지 못했습니다. .lrc, .vtt, .srt, .ass 또는 .txt 파일을 작품 폴더에 추가한 뒤 로컬 파일을 새로 고치세요.",
+      "로컬 가사 파일을 찾지 못했습니다. .lrc, .vtt, .srt, .ass, .ssa 또는 .txt 파일을 작품 폴더에 추가한 뒤 로컬 파일을 새로 고치세요.",
     track: "트랙",
     lyrics: "가사",
     lyricsFor: "{{title}} 가사",
@@ -3423,7 +3424,7 @@ export const surfaceKorean = {
     tabFiles: "가사 파일",
     usedByTracks: "트랙: {{count}}",
     manageAsLyrics: "가사로 관리",
-    manageAsLyricsHint: ".lrc, .vtt, .srt, .ass, .txt 파일을 선택하면 특정 언어의 가사로 관리할 수 있습니다.",
+    manageAsLyricsHint: ".lrc, .vtt, .srt, .ass, .ssa, .txt 파일을 선택하면 특정 언어의 가사로 관리할 수 있습니다.",
     chooseLanguage: "언어 선택",
     managedByKikoto: "Kikoto가 관리하는 가사",
     managedByKikotoHint: "가사 관리에서 다룹니다",

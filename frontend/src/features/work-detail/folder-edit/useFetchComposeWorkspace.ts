@@ -209,24 +209,30 @@ export function useFetchComposeWorkspace({
   const apply = async () => {
     if (readiness !== "ready" || applying || !currentPlan) return;
     setApplying(true);
+    const followUp = request.followUp
+      ? { ...request.followUp, ...(assignments.length > 0 ? { assignments } : {}) }
+      : undefined;
+    let applied: RemoteWorkSaveResult;
     try {
-      const followUp = request.followUp
-        ? { ...request.followUp, ...(assignments.length > 0 ? { assignments } : {}) }
-        : undefined;
-      await onApplied(
-        await api.applyComposedFetch(fetch.sourceId, fetch.remoteCode, {
-          ...request,
-          followUp,
-          requestId: requestId.current,
-          targetRoot: currentPlan.saveRoot,
-        }),
-        Boolean(followUp),
-      );
+      applied = await api.applyComposedFetch(fetch.sourceId, fetch.remoteCode, {
+        ...request,
+        followUp,
+        requestId: requestId.current,
+        targetRoot: currentPlan.saveRoot,
+      });
     } catch (error) {
       // A conflict means the folder or a source changed since the preview.
       setPlannedRevision("");
       setPlanAttempt((value) => value + 1);
       toast.notify(toastFromError(error, t("fetchCompose.applyFailed")));
+      setApplying(false);
+      return;
+    }
+    try {
+      await onApplied(applied, Boolean(followUp));
+    } catch {
+      // The Fetch is queued; a page that fails to refresh afterwards did not
+      // fail it.
     } finally {
       setApplying(false);
     }

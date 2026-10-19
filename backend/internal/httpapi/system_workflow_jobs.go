@@ -350,6 +350,12 @@ func (s *Server) persistLocalScanFolder(ctx context.Context, tx *sql.Tx, fileSou
 		state.newWorkCodes = append(state.newWorkCodes, folder.Code)
 	}
 	state.seenWorkIDs[workID] = true
+	// The rest of a completed index stays valid, so it is kept.
+	ignored, err := markIgnoredLocalLocationsMissing(ctx, tx, workID, fileSourceID, folder.RelPath)
+	if err != nil {
+		return 0, err
+	}
+	state.missingLocations += ignored
 	var previousRoot, previousAvailability, previousScannedAt string
 	var previousScanned int
 	if err := tx.QueryRowContext(ctx, `

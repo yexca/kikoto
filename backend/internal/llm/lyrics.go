@@ -54,7 +54,7 @@ func ParseLyrics(name, text string) (LyricsDocument, error) {
 		}
 	}
 	d.Format = ext
-	if ext != ".lrc" && ext != ".srt" && ext != ".vtt" && ext != ".ass" && ext != ".txt" {
+	if ext != ".lrc" && ext != ".srt" && ext != ".vtt" && ext != ".ass" && ext != ".ssa" && ext != ".txt" {
 		return d, errors.New("unsupported lyrics format")
 	}
 	active := false
@@ -65,7 +65,7 @@ func ParseLyrics(name, text string) (LyricsDocument, error) {
 			if prefix := lrcTimestamp.FindString(line); prefix != "" {
 				slot = LyricsLine{Prefix: prefix, Text: strings.TrimPrefix(line, prefix), Translatable: true}
 			}
-		case ".ass":
+		case ".ass", ".ssa":
 			if strings.HasPrefix(strings.TrimSpace(line), "Dialogue:") {
 				parts := strings.SplitN(line, ",", 10)
 				if len(parts) != 10 {
