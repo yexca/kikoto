@@ -8,7 +8,7 @@ import {
   Image as ImageIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
@@ -151,7 +151,7 @@ export function PaneNote({ children }: { children: ReactNode }) {
   );
 }
 
-function KindIcon({ kind }: { kind: string }) {
+export function KindIcon({ kind }: { kind: string }) {
   const className = "h-4 w-4 shrink-0 text-muted-foreground";
   if (kind === "audio") return <FileAudio className={className} aria-hidden="true" />;
   if (kind === "video") return <FileVideo className={className} aria-hidden="true" />;
@@ -159,13 +159,15 @@ function KindIcon({ kind }: { kind: string }) {
   return <FileText className={className} aria-hidden="true" />;
 }
 
-function sortedFolders<T>(node: FolderEditTreeNode<T>) {
+export function sortedFolders<T>(node: FolderEditTreeNode<T>) {
   return Array.from(node.children.values()).sort((left, right) => naturalCompare(left.name, right.name));
 }
 
 /**
  * One folder of a selection tree with its files. `meta` adds a note to a file
- * row, before its size, and `below` a line under the file's name.
+ * row, before its size, and `below` a line under the file's name. With
+ * `onDragFiles`, a file or folder can be dragged: it hands over the files'
+ * paths and the folder above them.
  */
 export function SelectionNode({
   node,
@@ -176,6 +178,7 @@ export function SelectionNode({
   meta,
   below,
   onToggle,
+  onDragFiles,
 }: {
   node: FolderEditTreeNode<FolderEditFile>;
   depth: number;
@@ -185,7 +188,10 @@ export function SelectionNode({
   meta?: (file: FolderEditFile) => ReactNode;
   below?: (file: FolderEditFile) => ReactNode;
   onToggle: (paths: readonly string[], included: boolean) => void;
+  onDragFiles?: (event: DragEvent, paths: readonly string[], base: string) => void;
 }) {
+  const draggable = Boolean(onDragFiles) && !disabled;
+  const parentOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
   const { t } = useTranslation();
   const [open, setOpen] = useState(depth <= 1);
   const paths = useMemo(() => folderEditTreeFiles(node).map((file) => file.path), [node]);
@@ -196,8 +202,13 @@ export function SelectionNode({
     <div className="space-y-px">
       {!isRoot && (
         <div
-          className="flex min-h-9 items-center gap-2 rounded-md px-2 text-sm hover:bg-muted/70"
+          className={cn(
+            "flex min-h-9 items-center gap-2 rounded-md px-2 text-sm hover:bg-muted/70",
+            draggable && "cursor-grab",
+          )}
           style={{ paddingLeft: (depth - 1) * 14 + 8 }}
+          draggable={draggable}
+          onDragStart={draggable ? (event) => onDragFiles?.(event, paths, parentOf(node.path)) : undefined}
         >
           <button
             type="button"
@@ -243,6 +254,7 @@ export function SelectionNode({
             meta={meta}
             below={below}
             onToggle={onToggle}
+            onDragFiles={onDragFiles}
           />
         ))}
       {(isRoot || open) &&
@@ -258,6 +270,8 @@ export function SelectionNode({
               )}
               style={{ paddingLeft: depth * 14 + 8 }}
               title={file.path}
+              draggable={draggable}
+              onDragStart={draggable ? (event) => onDragFiles?.(event, [file.path], parentOf(file.path)) : undefined}
             >
               <span className="w-[18px] shrink-0" aria-hidden="true" />
               <Checkbox
@@ -312,6 +326,7 @@ const resultBadge: Record<
   moved: { key: "folderEdit.state.moved", variant: "outline" },
   conflict: { key: "remoteFetch.actionConflict", variant: "error" },
   excluded: { key: "remoteFetch.actionExcluded", variant: "outline" },
+  pending: { key: "folderEdit.state.pending", variant: "outline" },
 };
 
 /** One folder of the result tree: the files it keeps, loses, and gains, with the decision each conflict needs. */
@@ -377,17 +392,20 @@ export function ResultNode({
   );
 }
 
-function ResultRow({
+/** One file of the result with its state; `actions` sits at the end of the row. */
+export function ResultRow({
   entry,
   depth,
   decision,
   disabled,
+  actions,
   onDecisionChange,
 }: {
   entry: FolderEditResultEntry;
   depth: number;
   decision: RemoteFetchFileDecision | undefined;
   disabled: boolean;
+  actions?: ReactNode;
   onDecisionChange: (decision: RemoteFetchFileDecision) => void;
 }) {
   const { t } = useTranslation();
@@ -425,6 +443,7 @@ function ResultRow({
         <Badge variant={badge.variant} className="shrink-0 px-2 py-0 text-2xs">
           {t(badge.key)}
         </Badge>
+        {actions}
       </div>
       {showEditor && item && (
         <div className="grid gap-2 border-t px-2 py-2 text-xs">

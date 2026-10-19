@@ -221,8 +221,10 @@ an administrator accepts it, so the notice does not depend on the client.
 
 ### Folder edit
 
-`POST /api/works/{id}/folder-edit/plan` and `POST /api/works/{id}/folder-edit`
-change one active local folder of a work. Both require `downloads:manage`,
+`POST /api/works/{id}/folder-edit/plan`,
+`POST /api/works/{id}/folder-edit/merge-check`, and
+`POST /api/works/{id}/folder-edit` change one active local folder of a work.
+All three require `downloads:manage`,
 plus `remote:fetch` when the request names a remote file; apply also requires
 `library:write` when it assigns lyrics to tracks. A Fetch that carries a
 follow-up requires `downloads:manage` on top of the Fetch permissions, plus
@@ -257,8 +259,21 @@ family, and stops before the next edition when the request is cancelled.
   audio file and language.
 - Target paths stay inside the target folder. A target that exists is kept
   when it has the same size and is otherwise a conflict, which apply rejects
-  until a decision resolves it. Two additions never share a target, compared
-  without letter case or Unicode composition.
+  until a decision resolves it. Two files of the result never share a path,
+  compared without letter case or Unicode composition. A moved file must be a
+  local location of the requested work inside the target folder, lands only on
+  a path that is free or that the edit frees, and neither leaves nor enters
+  `lyrics_kikoto`; neither does a created folder or a placed addition. At most
+  1000 folders are created at once.
+- A merged folder must be another active local folder of the family, neither
+  inside the target folder nor holding it, that passes the destructive-path
+  checks and holds only plain folders and regular files, at most 20000. The
+  plan records its files, and the run deletes the folder only after the target
+  folder is indexed and only while it holds exactly those files with their
+  sizes. The run claims the folder before deleting, so another cleanup or edit
+  cannot change it meanwhile, and returns it to the work when the run fails or
+  is cancelled. The merge check only reads and hashes files below the merged
+  folders and the target folder.
 - The job resolves each download address again from the source's tree when it
   runs; the plan response and the stored job carry none. The address must be
   HTTP(S) without credentials and pass the source's outbound policy before any

@@ -11,6 +11,19 @@ import {
   type FolderEditResource,
   type FolderEditResultEntry,
 } from "@/features/work-detail/folder-edit/folderEditModel";
+import {
+  addFolder,
+  deleteFolder,
+  folderContains,
+  folderNameError,
+  moveFilesTo,
+  moveFolderTo,
+  placeFilesBelow,
+  renameFolder,
+  type FolderEditLayout,
+  type FolderEditNameError,
+  type FolderEditPlaced,
+} from "@/features/work-detail/folder-edit/folderEditLayout";
 import { api, type RemoteFetchFileDecision } from "@/lib/api";
 
 export type FolderEditFilesState = {
@@ -59,7 +72,95 @@ export type FolderWorkspace = {
   setAssign: (assign: boolean) => void;
   assignmentCount: number;
   applying: boolean;
+  /** Present where the final folder's files and folders can be arranged. */
+  arrange?: FolderWorkspaceArrange;
+  /** Present where local places can be merged into the final folder. */
+  merge?: FolderWorkspaceMerge;
 };
+
+/** Arranges the final folder: moves its files and folders, and creates, renames, and deletes folders. */
+export type FolderWorkspaceArrange = {
+  /** The folders the user created. */
+  folders: readonly string[];
+  /** Whether a created folder that ends up holding nothing is still created. */
+  createsEmptyFolders: boolean;
+  moveEntries: (keys: readonly string[], folder: string) => void;
+  moveFolder: (folder: string, target: string) => void;
+  folderNameError: (parent: string, name: string, self?: string) => FolderEditNameError | null;
+  addFolder: (parent: string, name: string) => void;
+  renameFolder: (folder: string, name: string) => void;
+  deleteFolder: (folder: string) => void;
+  /** Adds files of a place below a folder of the final folder, keeping their paths below `base`. */
+  placeFromResource: (resource: FolderEditResource, paths: readonly string[], base: string, folder: string) => void;
+};
+
+/** The local places that are deleted once the final folder holds what it takes from them. */
+export type FolderWorkspaceMerge = {
+  folderIds: ReadonlySet<number>;
+  setMerged: (resource: FolderEditResource, merged: boolean) => void;
+};
+
+/**
+ * The arrange actions over a layout. `entries` is the final folder as it is
+ * now; `include` selects files of a place as plain files at their own path,
+ * and `forget` drops the conflict decisions an addition made at its earlier
+ * path.
+ */
+export function folderWorkspaceArrange({
+  layout,
+  setLayout,
+  entries,
+  include,
+  forget,
+  keyFor,
+  createsEmptyFolders = true,
+}: {
+  layout: FolderEditLayout;
+  setLayout: (layout: FolderEditLayout) => void;
+  entries: readonly FolderEditResultEntry[];
+  include: (resource: FolderEditResource, paths: readonly string[]) => void;
+  forget: (keys: readonly string[]) => void;
+  keyFor: (resource: FolderEditResource, path: string) => string;
+  createsEmptyFolders?: boolean;
+}): FolderWorkspaceArrange {
+  const placed: FolderEditPlaced[] = entries
+    .filter((entry) => entry.state !== "remove" && entry.state !== "excluded" && entry.state !== "moved")
+    .map((entry) => ({ key: entry.key, path: entry.path }));
+  const movedAdditions = (keys: readonly string[]) => forget(keys.filter((key) => !key.startsWith("current:")));
+  return {
+    folders: layout.folders,
+    createsEmptyFolders,
+    moveEntries: (keys, folder) => {
+      movedAdditions(keys);
+      setLayout(moveFilesTo(layout, placed, keys, folder));
+    },
+    moveFolder: (folder, target) => {
+      movedAdditions(placed.filter((file) => folderContains(folder, file.path)).map((file) => file.key));
+      setLayout(moveFolderTo(layout, placed, folder, target));
+    },
+    folderNameError: (parent, name, self) => folderNameError(placed, layout.folders, parent, name, self),
+    addFolder: (parent, name) => setLayout(addFolder(layout, parent, name)),
+    renameFolder: (folder, name) => {
+      movedAdditions(placed.filter((file) => folderContains(folder, file.path)).map((file) => file.key));
+      setLayout(renameFolder(layout, placed, folder, name));
+    },
+    deleteFolder: (folder) => {
+      movedAdditions(placed.filter((file) => folderContains(folder, file.path)).map((file) => file.key));
+      setLayout(deleteFolder(layout, placed, folder));
+    },
+    placeFromResource: (resource, paths, base, folder) => {
+      if (paths.length === 0) return;
+      include(resource, paths);
+      const prefix = base ? `${base}/` : "";
+      const arriving = paths.map((path) => ({
+        key: keyFor(resource, path),
+        path: path.startsWith(prefix) ? path.slice(prefix.length) : path,
+      }));
+      movedAdditions(arriving.map((file) => file.key));
+      setLayout(placeFilesBelow(layout, placed, arriving, folder));
+    },
+  };
+}
 
 const noFiles: FolderEditFile[] = [];
 

@@ -220,6 +220,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/works/{id}/folder-edit/sources", s.listWorkFolderEditSources)
 	handleSlowFirstResponse("POST /api/works/{id}/folder-edit/sources/check", s.checkWorkFolderEditSources)
 	handleSlowFirstResponse("POST /api/works/{id}/folder-edit/plan", s.planWorkFolderEdit)
+	handleSlowFirstResponse("POST /api/works/{id}/folder-edit/merge-check", s.checkWorkFolderEditMerge)
 	handleSlowFirstResponse("POST /api/works/{id}/folder-edit", s.applyWorkFolderEdit)
 	mux.HandleFunc("GET /api/metadata/circles", s.listMetadataCircles)
 	mux.HandleFunc("GET /api/metadata/circles/{partyId}", s.getMetadataCircle)

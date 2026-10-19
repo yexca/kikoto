@@ -99,7 +99,7 @@ func (s *Server) planRemoteFetchFollowUp(ctx context.Context, plan remoteWorkSav
 		if err != nil {
 			return workFolderEditPlan{}, err
 		}
-		if err := s.resolveWorkFolderEditItem(&candidate.remoteWorkSavePlanItem, decision, rootPath, map[string]bool{}, seenTargets); err != nil {
+		if err := s.resolveWorkFolderEditItem(&candidate.remoteWorkSavePlanItem, decision, rootPath, map[string]bool{}, map[string]bool{}, seenTargets); err != nil {
 			return workFolderEditPlan{}, err
 		}
 		items = append(items, candidate)
@@ -120,7 +120,8 @@ func (s *Server) planRemoteFetchFollowUp(ctx context.Context, plan remoteWorkSav
 	removals := []workFolderEditRemoval{}
 	return workFolderEditPlan{
 		WorkID: workID, PrimaryCode: strings.ToUpper(strings.TrimSpace(code)), SaveRoot: rootPath,
-		Items: items, Removals: removals, Summary: summarizeWorkFolderEdit(items, removals),
+		Items: items, Removals: removals, Moves: []workFolderEditMove{}, Folders: []string{}, Merges: []workFolderEditMerge{},
+		Summary: summarizeWorkFolderEdit(items, removals),
 	}, nil
 }
 

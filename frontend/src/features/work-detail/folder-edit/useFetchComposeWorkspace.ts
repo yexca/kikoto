@@ -2,18 +2,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { emptyFolderEditLayout, type FolderEditLayout } from "@/features/work-detail/folder-edit/folderEditLayout";
 import {
   fetchComposeAddCount,
   fetchComposeReadiness,
   fetchComposeRequest,
   fetchComposeResources,
   fetchComposeResult,
+  fetchItemKey,
+  folderEditItemKey,
+  folderEditResourceItemKey,
+  withFolderEditPaths,
   type FetchComposeTarget,
+  type FolderEditPendingAddition,
   type FolderEditResource,
 } from "@/features/work-detail/folder-edit/folderEditModel";
 import { folderEditAssignments } from "@/features/work-detail/folder-edit/folderEditLyrics";
 import {
   createFolderWorkspaceRequestId,
+  folderWorkspaceArrange,
   useFolderWorkspaceFiles,
   type FolderWorkspace,
 } from "@/features/work-detail/folder-edit/folderWorkspace";
@@ -95,6 +102,14 @@ export function useFetchComposeWorkspace({
     [files, loadResource],
   );
 
+  const [layout, setLayout] = useState<FolderEditLayout>(emptyFolderEditLayout);
+  // The fetched edition's files are keyed as the Fetch plans them, any other
+  // place's as the follow-up does.
+  const keyFor = useCallback(
+    (resource: FolderEditResource, path: string) =>
+      resource.id === primary.id ? fetchItemKey(path) : folderEditResourceItemKey(resource, path),
+    [primary.id],
+  );
   const request = useMemo(
     () =>
       fetchComposeRequest({
@@ -105,8 +120,9 @@ export function useFetchComposeWorkspace({
         lyrics,
         decisions,
         minFreeBytes: DEFAULT_MANUAL_FETCH_MIN_FREE_BYTES,
+        layout,
       }),
-    [decisions, fetch, lyrics, readyFiles, resources, selection],
+    [decisions, fetch, layout, lyrics, readyFiles, resources, selection],
   );
   const revision = useMemo(() => JSON.stringify(request), [request]);
   const needsPlan = request.paths.length > 0;
@@ -140,7 +156,30 @@ export function useFetchComposeWorkspace({
   const currentPlan = needsPlan ? plan : null;
   const planCurrent = needsPlan && plannedRevision === revision;
   const readiness = fetchComposeReadiness({ request, plan: currentPlan, planCurrent });
-  const result = useMemo(() => fetchComposeResult(currentPlan), [currentPlan]);
+  const pending = useMemo(() => {
+    const additions: FolderEditPendingAddition[] = [];
+    for (const resource of resources) {
+      const selected = selection[resource.id];
+      for (const file of readyFiles[resource.id] ?? []) {
+        if (!selected?.has(file.path) || lyrics[resource.id]?.[file.path] !== undefined) continue;
+        additions.push({
+          key: keyFor(resource, file.path),
+          path: file.path,
+          kind: file.kind,
+          sizeBytes: file.sizeBytes,
+        });
+      }
+    }
+    return additions;
+  }, [keyFor, lyrics, readyFiles, resources, selection]);
+  const requestKeys = useMemo(
+    () => new Set([...request.paths.map(fetchItemKey), ...(request.followUp?.additions ?? []).map(folderEditItemKey)]),
+    [request],
+  );
+  const result = useMemo(
+    () => fetchComposeResult(currentPlan, layout, pending, requestKeys),
+    [currentPlan, layout, pending, requestKeys],
+  );
   const additions = request.followUp?.additions;
   const lyricsAdditionCount = (additions ?? []).filter((addition) => addition.language !== undefined).length;
   const assignments = useMemo(() => {
@@ -215,6 +254,27 @@ export function useFetchComposeWorkspace({
     setAssign,
     assignmentCount: assignments.length,
     applying,
+    arrange: folderWorkspaceArrange({
+      layout,
+      setLayout,
+      entries: result,
+      include: (resource, paths) => {
+        setSelection((current) => ({
+          ...current,
+          [resource.id]: withFolderEditPaths(current[resource.id] ?? new Set(), paths, true),
+        }));
+        setLyricsRole(resource.id, paths, null);
+      },
+      forget: (keys) =>
+        setDecisions((current) => {
+          const next = { ...current };
+          for (const key of keys) delete next[key];
+          return next;
+        }),
+      keyFor,
+      // A Fetch publishes files; a folder that holds none is not created.
+      createsEmptyFolders: false,
+    }),
   };
   return {
     ...workspace,

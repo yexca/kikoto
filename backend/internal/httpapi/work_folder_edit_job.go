@@ -2,10 +2,12 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -20,6 +22,12 @@ type workFolderEditJobPayload struct {
 	TransactionPool string               `json:"transaction_pool,omitempty"`
 	Items           []workFolderEditItem `json:"items"`
 	Removals        []mediaCleanupTarget `json:"removals"`
+	Moves           []workFolderEditMove `json:"moves,omitempty"`
+	// Folders are the folders to create, as library paths.
+	Folders []string `json:"folders,omitempty"`
+	// Merges are deleted once the folder is indexed, with the files each held
+	// when the edit was planned.
+	Merges []workFolderEditMerge `json:"merges,omitempty"`
 	// Assignments are stored once the folder is indexed.
 	Assignments []workFolderEditAssignment `json:"assignments,omitempty"`
 	RequestID   string                     `json:"request_id"`
@@ -31,7 +39,15 @@ type workFolderEditCheckpoint struct {
 	Staged    []string `json:"staged"`
 	Removed   []string `json:"removed"`
 	Published []string `json:"published"`
-	Deleted   int      `json:"deleted"`
+	// Lifted and Placed record moved files, by location, that left their
+	// place for the staging folder and that reached their new path.
+	Lifted []int64 `json:"lifted,omitempty"`
+	Placed []int64 `json:"placed,omitempty"`
+	// Arranged is set once moved files keep their identity, emptied folders
+	// are gone, and requested folders exist.
+	Arranged bool    `json:"arranged,omitempty"`
+	Merged   []int64 `json:"merged,omitempty"`
+	Deleted  int     `json:"deleted"`
 }
 
 // workFolderEditPermissions is what starting the edit requires, so a retry
@@ -55,9 +71,13 @@ func workFolderEditItemAdds(item workFolderEditItem) bool {
 }
 
 // workFolderEditProgressTotal counts one step to collect and one to publish
-// each added file, and one for each removed file.
+// each added file, one for each removed or moved file, and one for each file
+// a merged folder deletes.
 func workFolderEditProgressTotal(payload workFolderEditJobPayload) int {
-	total := len(payload.Removals)
+	total := len(payload.Removals) + len(payload.Moves)
+	for _, merge := range payload.Merges {
+		total += merge.FileCount
+	}
 	for _, item := range payload.Items {
 		if workFolderEditItemAdds(item) {
 			total += 2
@@ -146,6 +166,10 @@ func (e *workFolderEditExecution) run(ctx context.Context) error {
 		return err
 	}
 	e.assigned = assigned
+	e.node = "merge"
+	if err := e.mergeFolders(ctx); err != nil {
+		return err
+	}
 	return e.finish(ctx)
 }
 
@@ -329,6 +353,12 @@ func (e *workFolderEditExecution) publish(ctx context.Context) error {
 	if err := s.updateRemoteFetchPhaseNode(ctx, e.job.RunID, "publish", "running", nil); err != nil {
 		return err
 	}
+	// Every moved file leaves its place before any file takes a path, so
+	// files can trade places and an added file can take a path a moved file
+	// frees.
+	if err := e.liftMoves(ctx); err != nil {
+		return err
+	}
 	published := stringSet(e.checkpoint.Published)
 	base := e.progress
 	count := 0
@@ -365,9 +395,254 @@ func (e *workFolderEditExecution) publish(ctx context.Context) error {
 		}
 	}
 	e.progress = base + count
+	if err := e.placeMoves(ctx); err != nil {
+		return err
+	}
+	if err := e.arrange(ctx); err != nil {
+		return err
+	}
 	return s.updateRemoteFetchPhaseNode(ctx, e.job.RunID, "publish", "succeeded", map[string]any{
-		"published": count, "target_root": e.payload.TargetRoot,
+		"published": count, "moved": len(e.checkpoint.Placed), "target_root": e.payload.TargetRoot,
 	})
+}
+
+func (e *workFolderEditExecution) liftedPath(index int) string {
+	return filepath.Join(e.stagingAbs, fmt.Sprintf("m%06d", index))
+}
+
+// liftMoves takes each moved file out of its place into the staging folder,
+// which lies on the folder's own filesystem, so the move is a rename.
+func (e *workFolderEditExecution) liftMoves(ctx context.Context) error {
+	lifted := int64Set(e.checkpoint.Lifted)
+	for index, move := range e.payload.Moves {
+		if lifted[move.LocationID] {
+			continue
+		}
+		if err := e.server.ensureWorkflowRunActive(ctx, e.job.RunID); err != nil {
+			return err
+		}
+		source, err := safeDataPath(e.server.cfg.DataRoot, move.Path)
+		if err != nil {
+			return err
+		}
+		staged := e.liftedPath(index)
+		info, err := os.Lstat(source)
+		if errors.Is(err, os.ErrNotExist) && existingFileMatches(staged, move.SizeBytes) {
+			// The rename finished before its checkpoint was written.
+		} else if err != nil || !info.Mode().IsRegular() || (move.SizeBytes != nil && info.Size() != *move.SizeBytes) {
+			return fmt.Errorf("%s changed after the edit was planned", move.Path)
+		} else {
+			if err := os.MkdirAll(e.stagingAbs, 0o755); err != nil {
+				return err
+			}
+			if err := os.Rename(source, staged); err != nil {
+				return err
+			}
+		}
+		e.checkpoint.Lifted = append(e.checkpoint.Lifted, move.LocationID)
+		if err := e.saveCheckpoint(context.WithoutCancel(ctx), "publish"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// placeMoves puts each lifted file at its new path. Like an added file, it
+// never lands on a file that is still there.
+func (e *workFolderEditExecution) placeMoves(ctx context.Context) error {
+	placed := int64Set(e.checkpoint.Placed)
+	for index, move := range e.payload.Moves {
+		if placed[move.LocationID] {
+			e.progress++
+			continue
+		}
+		relative, err := fetchPathRelativeToRoot(e.payload.TargetRoot, move.TargetPath)
+		if err != nil {
+			return err
+		}
+		destination := filepath.Join(e.targetAbs, filepath.FromSlash(relative))
+		staged := e.liftedPath(index)
+		if _, err := os.Lstat(staged); errors.Is(err, os.ErrNotExist) {
+			if !existingFileMatches(destination, move.SizeBytes) {
+				return fmt.Errorf("the moved file %s is missing; retry the edit", move.Path)
+			}
+		} else if err != nil {
+			return err
+		} else {
+			if err := mkdirPlainDirectories(e.targetAbs, filepath.Dir(destination)); err != nil {
+				return err
+			}
+			if _, err := os.Lstat(destination); err == nil {
+				return fmt.Errorf("%s appeared in the folder after the edit was planned", relative)
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			if err := os.Rename(staged, destination); err != nil {
+				return err
+			}
+		}
+		e.checkpoint.Placed = append(e.checkpoint.Placed, move.LocationID)
+		e.progress++
+		if err := e.saveCheckpoint(context.WithoutCancel(ctx), "publish"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// arrange finishes the folder's layout: moved files keep their media items,
+// folders the edit emptied are removed, and the requested folders exist.
+func (e *workFolderEditExecution) arrange(ctx context.Context) error {
+	if e.checkpoint.Arranged {
+		return nil
+	}
+	s := e.server
+	if err := s.keepWorkFolderEditMovedItems(ctx, e.payload); err != nil {
+		return err
+	}
+	emptied := []string{}
+	for _, move := range e.payload.Moves {
+		emptied = append(emptied, move.Path)
+	}
+	for _, removal := range e.payload.Removals {
+		emptied = append(emptied, removal.Path)
+	}
+	for _, libraryPath := range emptied {
+		if relative, err := fetchPathRelativeToRoot(e.payload.TargetRoot, libraryPath); err == nil {
+			removeEmptyDirectoriesBelow(e.targetAbs, path.Dir(relative))
+		}
+	}
+	for _, folder := range e.payload.Folders {
+		relative, err := fetchPathRelativeToRoot(e.payload.TargetRoot, folder)
+		if err != nil {
+			return err
+		}
+		if err := mkdirPlainDirectories(e.targetAbs, filepath.Join(e.targetAbs, filepath.FromSlash(relative))); err != nil {
+			return err
+		}
+	}
+	e.checkpoint.Arranged = true
+	return e.saveCheckpoint(context.WithoutCancel(ctx), "publish")
+}
+
+// keepWorkFolderEditMovedItems gives each moved file's media item its new
+// path before the folder is indexed, so playback progress, lyrics, and every
+// other reference to the file follow it. An item that still has a file
+// elsewhere, such as the same path in another folder of the work, stays with
+// that file, and the index gives the moved file an item of its own.
+func (s *Server) keepWorkFolderEditMovedItems(ctx context.Context, payload workFolderEditJobPayload) error {
+	if len(payload.Moves) == 0 {
+		return nil
+	}
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	type follow struct {
+		move                  workFolderEditMove
+		previous, fingerprint string
+	}
+	follows := []follow{}
+	code := strings.ToUpper(strings.TrimSpace(payload.WorkCode))
+	for _, move := range payload.Moves {
+		var current, previous string
+		err := tx.QueryRowContext(ctx, `
+			SELECT location.path, item.fingerprint
+			FROM media_file_location AS location
+			INNER JOIN media_item AS item ON item.id = location.media_item_id
+			WHERE location.id = ? AND item.id = ?
+		`, move.LocationID, move.MediaItemID).Scan(&current, &previous)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		// A retried job finds the files it already followed at their new path.
+		if filepath.ToSlash(current) != move.Path {
+			continue
+		}
+		elsewhere, err := workFolderEditItemKeptElsewhere(ctx, tx, move, payload.Merges)
+		if err != nil {
+			return err
+		}
+		if elsewhere {
+			continue
+		}
+		relative, err := fetchPathRelativeToRoot(payload.TargetRoot, move.TargetPath)
+		if err != nil {
+			return err
+		}
+		follows = append(follows, follow{move: move, previous: previous, fingerprint: fmt.Sprintf("local:%s:%s", code, relative)})
+	}
+	// Moving items first take a placeholder, so files that trade places can
+	// take each other's identity.
+	for _, entry := range follows {
+		if _, err := tx.ExecContext(ctx, "UPDATE media_item SET fingerprint = ? WHERE id = ?",
+			fmt.Sprintf("moving:%d", entry.move.MediaItemID), entry.move.MediaItemID); err != nil {
+			return err
+		}
+	}
+	for _, entry := range follows {
+		var taken bool
+		if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM media_item WHERE fingerprint = ?)", entry.fingerprint).Scan(&taken); err != nil {
+			return err
+		}
+		fingerprint := entry.fingerprint
+		if taken {
+			// Another item already has the new path; the moved file joins it on
+			// indexing, and this item keeps its own path.
+			fingerprint = entry.previous
+		} else if _, err := tx.ExecContext(ctx, `
+			UPDATE media_file_location SET path = ?, last_checked_at = CURRENT_TIMESTAMP WHERE id = ?
+		`, entry.move.TargetPath, entry.move.LocationID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE media_item SET fingerprint = ? WHERE id = ?", fingerprint, entry.move.MediaItemID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// workFolderEditItemKeptElsewhere reports whether a moved file's media item
+// still has an available file outside the folders the same edit merges away,
+// which then keeps the item.
+func workFolderEditItemKeptElsewhere(ctx context.Context, tx *sql.Tx, move workFolderEditMove, merges []workFolderEditMerge) (bool, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT path FROM media_file_location
+		WHERE media_item_id = ? AND id <> ? AND availability = 'available'
+	`, move.MediaItemID, move.LocationID)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var other string
+		if err := rows.Scan(&other); err != nil {
+			return false, err
+		}
+		merged := false
+		for _, merge := range merges {
+			if mediaCleanupPathWithinRoot(merge.RootPath, filepath.ToSlash(other)) {
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+func int64Set(values []int64) map[int64]bool {
+	set := make(map[int64]bool, len(values))
+	for _, value := range values {
+		set[value] = true
+	}
+	return set
 }
 
 func (e *workFolderEditExecution) publishItem(index int, item workFolderEditItem) error {
@@ -499,11 +774,15 @@ func (e *workFolderEditExecution) fail(ctx context.Context, runErr error) error 
 		// keeps its result.
 		if runStatus == "cancelled" {
 			e.removeStaging()
+			_ = s.restoreMediaCleanupFolders(statusCtx, e.job.RunID)
 		}
 		return runErr
 	}
 	if willRetry := isRetryableWorkflowError(runErr) && e.job.RetryCount < e.job.MaxRetries; !willRetry {
 		e.removeStaging()
+		// A merged folder the edit had started to delete is a folder of the
+		// work again, holding whatever it still holds.
+		_ = s.restoreMediaCleanupFolders(statusCtx, e.job.RunID)
 	}
 	slog.Error("work folder edit failed", "run_id", e.job.RunID, "job_id", e.job.ID, "step", e.node, "error", runErr)
 	tx, err := beginTxWithDatabaseBusyRetry(statusCtx, s.db)

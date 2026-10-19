@@ -412,7 +412,9 @@ of the work's circles whose stored DLsite metadata names the series, at most
 whether the title names a bundle or the bundle has members.
 
 `GET /api/works/{id}/folder-edit/sources`,
-`POST /api/works/{id}/folder-edit/plan`, and `POST /api/works/{id}/folder-edit`
+`POST /api/works/{id}/folder-edit/plan`,
+`POST /api/works/{id}/folder-edit/merge-check`, and
+`POST /api/works/{id}/folder-edit`
 edit one active local folder of a work. Sources lists the family's editions
 with their local folders and stored source availability.
 `POST /api/works/{id}/folder-edit/sources/check` first asks every enabled
@@ -422,11 +424,31 @@ stored availability, and then returns the same listing. A plan names the
 files to add, from another active local folder of the family or from a remote
 edition of the family, and the folder's local file locations to remove. An
 addition with a declared `language` is a lyrics file of that language and
-targets the language's folder inside `lyrics_kikoto`. It resolves each
-addition's target as a Fetch plan does, with the same decisions, and never
-changes a file. Apply rejects a plan that has conflicts or changes nothing,
-and queues one `work_folder_edit` run; a folder has one active run, and a
-repeated request id returns the run it queued. Apply may also carry
+targets the language's folder inside `lyrics_kikoto`; any other addition may
+name a `targetPath` below the folder instead of its own path. `moves` give
+files of the folder another path below it, `folders` are folders to create,
+and `mergeFolderIds` are other active local folders of the family to delete
+once the folder holds what the edit copies from them. The plan checks that no
+two files of the result share a path and that no file sits where a folder of
+another path belongs; a path a removed or moved file frees can be taken. It
+resolves each addition's target as a Fetch plan does, with the same
+decisions, and never changes a file. The merge check takes the same request
+and lists the files of the merged folders that the edited folder will not hold
+with the same size and SHA-256, hashing within a time budget, caching hashes on
+the files' locations, and reporting `complete: false` while files remain to
+compare; a remote addition is not compared. Apply rejects a plan that has
+conflicts or changes nothing, and queues one `work_folder_edit` run; a folder
+has one active run, which also covers a folder another run merges, and a
+repeated request id returns the run it queued. The run collects additions,
+removes files, takes every moved file out of its place before any file takes a
+path, publishes, gives each moved file's media item its new path when the item
+has no other available file outside the folders the edit merges, so its
+references follow it, removes the folders
+it emptied, creates the requested folders, and indexes the folder. It deletes
+each merged folder last, only while it holds exactly the files the edit was
+planned with, and marks its locations unavailable and its folder ignored; a
+run that fails or is cancelled returns a merged folder it had started on to
+the work. Apply may also carry
 `assignments`, each naming an added lyrics file and an audio file of the work
 by media item or by path below the folder; the run stores them in the lyrics'
 language once it has indexed the folder, skipping a file the index does not

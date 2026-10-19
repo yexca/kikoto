@@ -9,11 +9,13 @@ import type {
   RemoteWorkSavePlanItem,
   WorkFolderEditAddition,
   WorkFolderEditItem,
+  WorkFolderEditMoveRequest,
   WorkFolderEditPlan,
   WorkFolderEditRequest,
   WorkFolderEditSources,
 } from "../../../lib/api";
 import { buildRemoteTree, flattenTreeFiles } from "../media/mediaTreeModel";
+import { emptyFolderEditLayout, inLyricsFolder, type FolderEditLayout } from "./folderEditLayout";
 
 /** The resource that is the edited folder itself. */
 export const CURRENT_FOLDER_RESOURCE = "current";
@@ -98,10 +100,21 @@ export type FolderEditTreeNode<T> = {
 
 /**
  * What happens to one file of the result. A file added by a move inside the
- * folder is `add_move`, and the place it leaves is `moved`.
+ * folder is `add_move`, and the place it leaves is `moved`. A `pending` file is
+ * added once the server's preview of it arrives.
  */
 export type FolderEditResultState =
-  "keep" | "remove" | "replaced" | "moved" | "same" | "add_local" | "add_remote" | "add_move" | "conflict" | "excluded";
+  | "keep"
+  | "remove"
+  | "replaced"
+  | "moved"
+  | "same"
+  | "add_local"
+  | "add_remote"
+  | "add_move"
+  | "conflict"
+  | "excluded"
+  | "pending";
 
 /** What a result row shows of the planned addition behind it. */
 export type FolderEditResultItem = Pick<
@@ -255,12 +268,15 @@ export function remoteEditionFiles(tracks: RemoteTrack[]): FolderEditFile[] {
   return files;
 }
 
-export function buildFolderEditTree<T extends { path: string }>(files: readonly T[]): FolderEditTreeNode<T> {
+/** The tree of files, with the given folders present even where they hold nothing. */
+export function buildFolderEditTree<T extends { path: string }>(
+  files: readonly T[],
+  folders: readonly string[] = [],
+): FolderEditTreeNode<T> {
   const root: FolderEditTreeNode<T> = { name: "", path: "", children: new Map(), files: [] };
-  for (const file of files) {
-    const parts = normalizePath(file.path).split("/").filter(Boolean);
+  const place = (parts: readonly string[]) => {
     let cursor = root;
-    for (const folder of parts.slice(0, -1)) {
+    for (const folder of parts) {
       let child = cursor.children.get(folder);
       if (!child) {
         child = {
@@ -273,7 +289,12 @@ export function buildFolderEditTree<T extends { path: string }>(files: readonly 
       }
       cursor = child;
     }
-    cursor.files.push(file);
+    return cursor;
+  };
+  for (const folder of folders) place(normalizePath(folder).split("/").filter(Boolean));
+  for (const file of files) {
+    const parts = normalizePath(file.path).split("/").filter(Boolean);
+    place(parts.slice(0, -1)).files.push(file);
   }
   return root;
 }
@@ -320,9 +341,17 @@ export function folderEditResourceChanges(
   return resource.kind === "current" ? files.length - count : count;
 }
 
+/** The key of a file of the edited folder, both as a result entry and as a placement. */
+export function currentFileKey(path: string) {
+  return `current:${path}`;
+}
+
 /**
  * Turns the selection into the edit: every selected file of another resource
- * is added, and every cleared file of the edited folder is removed.
+ * is added, and every cleared file of the edited folder is removed. The layout
+ * moves the edited folder's placed files, gives placed additions their target
+ * path, and creates its folders; the merged local folders are deleted once
+ * the edit is in place.
  */
 export function folderEditRequest({
   target,
@@ -331,6 +360,8 @@ export function folderEditRequest({
   selection,
   lyrics = {},
   decisions,
+  layout = emptyFolderEditLayout,
+  merges = [],
 }: {
   target: FolderEditTarget;
   resources: readonly FolderEditResource[];
@@ -338,26 +369,43 @@ export function folderEditRequest({
   selection: FolderEditSelection;
   lyrics?: FolderEditLyricsRoles;
   decisions: Readonly<Record<string, RemoteFetchFileDecision>>;
+  layout?: FolderEditLayout;
+  merges?: readonly number[];
 }): WorkFolderEditRequest {
   const additions: WorkFolderEditAddition[] = [];
   const removeLocationIds: number[] = [];
+  const moves: WorkFolderEditMoveRequest[] = [];
   for (const resource of resources) {
     const selected = selection[resource.id];
     for (const file of files[resource.id] ?? []) {
       const included = selected?.has(file.path) ?? false;
       if (resource.kind === "current") {
-        if (!included && file.locationId !== null) removeLocationIds.push(file.locationId);
+        if (file.locationId === null) continue;
+        const placed = layout.placements[currentFileKey(file.path)];
+        if (!included) removeLocationIds.push(file.locationId);
+        else if (placed !== undefined && placed !== file.path)
+          moves.push({ locationId: file.locationId, path: placed });
       } else if (included) {
-        additions.push(folderEditAddition(resource, file.path, lyrics[resource.id]?.[file.path]));
+        const addition = folderEditAddition(resource, file.path, lyrics[resource.id]?.[file.path]);
+        const placed = layout.placements[folderEditItemKey(addition)];
+        additions.push(
+          addition.language === undefined && placed !== undefined && placed !== file.path
+            ? { ...addition, targetPath: placed }
+            : addition,
+        );
       }
     }
   }
-  return {
+  const request: WorkFolderEditRequest = {
     folderId: target.folderId,
     additions,
     removeLocationIds,
     decisions: decisionsFor(decisions, new Set(additions.map(folderEditItemKey))),
   };
+  if (moves.length > 0) request.moves = moves;
+  if (layout.folders.length > 0) request.folders = [...layout.folders];
+  if (merges.length > 0) request.mergeFolderIds = [...merges];
+  return request;
 }
 
 function folderEditAddition(resource: FolderEditResource, path: string, language: string | undefined) {
@@ -366,6 +414,13 @@ function folderEditAddition(resource: FolderEditResource, path: string, language
       ? { kind: "local", folderId: resource.folderId, path }
       : { kind: "remote", sourceId: resource.sourceId, remoteCode: resource.editionCode, path };
   return language === undefined ? addition : { ...addition, language };
+}
+
+/** The key of the result entry and placement a file of another place takes once it is added. */
+export function folderEditResourceItemKey(resource: FolderEditResource, path: string) {
+  return resource.kind === "current"
+    ? currentFileKey(path)
+    : folderEditItemKey(folderEditAddition(resource, path, undefined));
 }
 
 function decisionsFor(decisions: Readonly<Record<string, RemoteFetchFileDecision>>, itemKeys: ReadonlySet<string>) {
@@ -389,34 +444,49 @@ function resultStateForItem(item: WorkFolderEditItem): FolderEditResultState {
   return "same";
 }
 
+/** An addition the server has not previewed yet, with the kind of file it is. */
+export type FolderEditPendingAddition = { key: string; path: string; kind: string; sizeBytes: number | null };
+
 /**
  * The folder after the edit: the files it keeps, the files it loses, and the
  * planned additions. An addition that is already in the folder marks the file
  * there instead of appearing twice, and one that takes a kept file's place
- * marks that file as replaced.
+ * marks that file as replaced. A placed file shows at its place at once; an
+ * addition the preview does not cover yet shows as pending.
  */
 export function folderEditResult(
   currentFiles: readonly FolderEditFile[],
   currentSelection: ReadonlySet<string>,
   plan: WorkFolderEditPlan | null,
+  layout: FolderEditLayout = emptyFolderEditLayout,
+  pending: readonly FolderEditPendingAddition[] = [],
 ): FolderEditResultEntry[] {
   const entries = new Map<string, FolderEditResultEntry>();
+  const leaving: FolderEditResultEntry[] = [];
   for (const file of currentFiles) {
-    entries.set(file.path.toLowerCase(), {
-      key: `current:${file.path}`,
-      path: file.path,
-      name: file.name,
+    const key = currentFileKey(file.path);
+    const kept = currentSelection.has(file.path);
+    const placed = kept ? layout.placements[key] : undefined;
+    const path = placed ?? file.path;
+    const entry: FolderEditResultEntry = {
+      key,
+      path,
+      name: path.split("/").pop() ?? path,
       kind: file.kind,
       sizeBytes: file.sizeBytes,
-      state: currentSelection.has(file.path) ? "keep" : "remove",
+      state: !kept ? "remove" : placed !== undefined && placed !== file.path ? "add_move" : "keep",
       item: null,
-    });
+    };
+    if (kept) entries.set(path.toLowerCase(), entry);
+    else leaving.push(entry);
   }
   const added: FolderEditResultEntry[] = [];
   const prefix = plan ? `${normalizePath(plan.saveRoot)}/` : "";
+  const planned = new Set<string>();
   for (const item of plan?.items ?? []) {
+    planned.add(item.itemKey);
     const target = normalizePath(item.targetPath);
-    const path = target.startsWith(prefix) ? target.slice(prefix.length) : target;
+    const path = layout.placements[item.itemKey] ?? (target.startsWith(prefix) ? target.slice(prefix.length) : target);
     const state = resultStateForItem(item);
     const existing = entries.get(path.toLowerCase());
     if (state === "same" && existing) {
@@ -434,7 +504,27 @@ export function folderEditResult(
       item,
     });
   }
-  return [...entries.values(), ...added];
+  for (const addition of pending) {
+    if (planned.has(addition.key)) continue;
+    const path = layout.placements[addition.key] ?? addition.path;
+    added.push({
+      key: addition.key,
+      path,
+      name: path.split("/").pop() ?? path,
+      kind: addition.kind,
+      sizeBytes: addition.sizeBytes,
+      state: "pending",
+      item: null,
+    });
+  }
+  return [...entries.values(), ...leaving, ...added];
+}
+
+/** Whether a result entry can be moved within the final folder. */
+export function folderEditEntryMovable(entry: FolderEditResultEntry) {
+  return (
+    entry.state !== "remove" && entry.state !== "moved" && entry.state !== "excluded" && !inLyricsFolder(entry.path)
+  );
 }
 
 export type FolderEditReadiness = "idle" | "refreshing" | "blocked" | "ready";
@@ -453,10 +543,21 @@ export function folderEditReadiness({
   plan: WorkFolderEditPlan | null;
   planCurrent: boolean;
 }): FolderEditReadiness {
-  if (request.additions.length === 0) return request.removeLocationIds.length > 0 ? "ready" : "idle";
+  if (!folderEditNeedsPlan(request)) return request.removeLocationIds.length > 0 ? "ready" : "idle";
   if (!plan || !planCurrent) return "refreshing";
   if (plan.summary.conflict > 0) return "blocked";
-  return plan.summary.add > 0 || request.removeLocationIds.length > 0 ? "ready" : "idle";
+  const { add, move, folders, merge } = plan.summary;
+  return add > 0 || move > 0 || folders > 0 || merge > 0 || request.removeLocationIds.length > 0 ? "ready" : "idle";
+}
+
+/** Whether the edit waits for the server's preview: anything but removals alone. */
+export function folderEditNeedsPlan(request: WorkFolderEditRequest) {
+  return (
+    request.additions.length > 0 ||
+    (request.moves?.length ?? 0) > 0 ||
+    (request.folders?.length ?? 0) > 0 ||
+    (request.mergeFolderIds?.length ?? 0) > 0
+  );
 }
 
 /** The key a Fetch plan gives the item of a file of the fetched edition. */
@@ -513,6 +614,7 @@ export function fetchComposeRequest({
   lyrics,
   decisions,
   minFreeBytes,
+  layout = emptyFolderEditLayout,
 }: {
   fetch: FetchComposeTarget;
   resources: readonly FolderEditResource[];
@@ -521,6 +623,7 @@ export function fetchComposeRequest({
   lyrics: FolderEditLyricsRoles;
   decisions: Readonly<Record<string, RemoteFetchFileDecision>>;
   minFreeBytes: number;
+  layout?: FolderEditLayout;
 }): ComposedFetchRequest {
   const primaryId = remoteResourceId(fetch.sourceId, fetch.editionCode);
   const paths: string[] = [];
@@ -530,13 +633,36 @@ export function fetchComposeRequest({
     for (const file of files[resource.id] ?? []) {
       if (!selected?.has(file.path)) continue;
       const language = lyrics[resource.id]?.[file.path];
-      if (resource.id === primaryId && language === undefined) paths.push(file.path);
-      else additions.push(folderEditAddition(resource, file.path, language));
+      if (resource.id === primaryId && language === undefined) {
+        paths.push(file.path);
+        continue;
+      }
+      const addition = folderEditAddition(resource, file.path, language);
+      const placed = layout.placements[folderEditItemKey(addition)];
+      additions.push(
+        language === undefined && placed !== undefined && placed !== file.path
+          ? { ...addition, targetPath: placed }
+          : addition,
+      );
+    }
+  }
+  // A placed file of the fetched edition is renamed to its place; a decision
+  // made for it at its own path no longer applies.
+  const placedDecisions: Record<string, RemoteFetchFileDecision> = { ...decisions };
+  for (const path of paths) {
+    const placed = layout.placements[fetchItemKey(path)];
+    if (placed !== undefined && placed !== path) {
+      placedDecisions[fetchItemKey(path)] = {
+        itemKey: fetchItemKey(path),
+        sourceId: 0,
+        resolution: "rename",
+        targetPath: placed,
+      };
     }
   }
   const request: ComposedFetchRequest = {
     paths,
-    decisions: decisionsFor(decisions, new Set(paths.map(fetchItemKey))),
+    decisions: decisionsFor(placedDecisions, new Set(paths.map(fetchItemKey))),
     minFreeBytes,
   };
   if (additions.length > 0) {
@@ -556,10 +682,19 @@ function fetchResultState(item: RemoteWorkSavePlanItem): FolderEditResultState {
   return "add_remote";
 }
 
-/** The new folder as the Fetch and what follows it will make it. */
-export function fetchComposeResult(plan: ComposedFetchPlan | null): FolderEditResultEntry[] {
-  if (!plan) return [];
-  const prefix = `${normalizePath(plan.saveRoot)}/`;
+/**
+ * The new folder as the Fetch and what follows it will make it. A placed file
+ * shows at its place at once, and its rename to that place is not a decision
+ * to review; a selected file the preview does not cover yet shows as pending.
+ */
+export function fetchComposeResult(
+  plan: ComposedFetchPlan | null,
+  layout: FolderEditLayout = emptyFolderEditLayout,
+  pending: readonly FolderEditPendingAddition[] = [],
+  /** The keys the request still holds; a stale preview shows nothing else. */
+  keys?: ReadonlySet<string>,
+): FolderEditResultEntry[] {
+  const prefix = plan ? `${normalizePath(plan.saveRoot)}/` : "";
   const below = (target: string) => {
     const path = normalizePath(target);
     return path.startsWith(prefix) ? path.slice(prefix.length) : path;
@@ -568,7 +703,10 @@ export function fetchComposeResult(plan: ComposedFetchPlan | null): FolderEditRe
     item: RemoteWorkSavePlanItem & { remoteCode?: string },
     state: FolderEditResultState,
   ): FolderEditResultEntry => {
-    const path = below(item.targetPath);
+    const placed = layout.placements[item.itemKey];
+    const path = placed ?? below(item.targetPath);
+    const shown =
+      placed !== undefined && item.resolution === "rename" ? { ...item, resolution: "auto" as const } : item;
     return {
       key: item.itemKey,
       path,
@@ -576,14 +714,32 @@ export function fetchComposeResult(plan: ComposedFetchPlan | null): FolderEditRe
       kind: item.kind,
       sizeBytes: item.sizeBytes,
       state,
-      item,
+      item: shown,
     };
   };
-  const fetchedCode = plan.editionCode || plan.primaryCode;
-  return [
-    ...plan.items.map((item) => entry({ ...item, remoteCode: fetchedCode }, fetchResultState(item))),
-    ...(plan.followUp?.items ?? []).map((item) => entry(item, resultStateForItem(item))),
-  ];
+  const fetchedCode = plan ? plan.editionCode || plan.primaryCode : "";
+  const wanted = (item: { itemKey: string }) => !keys || keys.has(item.itemKey);
+  const entries = plan
+    ? [
+        ...plan.items.filter(wanted).map((item) => entry({ ...item, remoteCode: fetchedCode }, fetchResultState(item))),
+        ...(plan.followUp?.items ?? []).filter(wanted).map((item) => entry(item, resultStateForItem(item))),
+      ]
+    : [];
+  const planned = new Set(entries.map((shown) => shown.key));
+  for (const addition of pending) {
+    if (planned.has(addition.key)) continue;
+    const path = layout.placements[addition.key] ?? addition.path;
+    entries.push({
+      key: addition.key,
+      path,
+      name: path.split("/").pop() ?? path,
+      kind: addition.kind,
+      sizeBytes: addition.sizeBytes,
+      state: "pending",
+      item: null,
+    });
+  }
+  return entries;
 }
 
 /** How many files the Fetch and what follows it put into the new folder. */

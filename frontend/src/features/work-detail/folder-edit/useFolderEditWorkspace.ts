@@ -2,20 +2,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { emptyFolderEditLayout, type FolderEditLayout } from "@/features/work-detail/folder-edit/folderEditLayout";
 import {
   CURRENT_FOLDER_RESOURCE,
+  folderEditItemKey,
+  folderEditNeedsPlan,
   folderEditReadiness,
   folderEditRemoteResource,
   folderEditRequest,
+  folderEditResourceItemKey,
   folderEditResources,
   folderEditResult,
   localFolderFiles,
+  withFolderEditPaths,
+  type FolderEditPendingAddition,
   type FolderEditResource,
   type FolderEditTarget,
 } from "@/features/work-detail/folder-edit/folderEditModel";
 import { folderEditAssignments } from "@/features/work-detail/folder-edit/folderEditLyrics";
 import {
   createFolderWorkspaceRequestId,
+  folderWorkspaceArrange,
   useFolderWorkspaceFiles,
   type FolderWorkspace,
 } from "@/features/work-detail/folder-edit/folderWorkspace";
@@ -83,6 +90,8 @@ export function useFolderEditWorkspace({
   const [planAttempt, setPlanAttempt] = useState(0);
   const [assign, setAssign] = useState(true);
   const [applying, setApplying] = useState(false);
+  const [layout, setLayout] = useState<FolderEditLayout>(emptyFolderEditLayout);
+  const [merged, setMerged] = useState<ReadonlySet<number>>(new Set());
   const requestId = useRef(createFolderWorkspaceRequestId("edit"));
   // Only the first load opens on the remote edition a Fetch asked for.
   const pendingInitialRemote = useRef(initialRemote ?? null);
@@ -153,12 +162,20 @@ export function useFolderEditWorkspace({
     }
   }, [t, target, toast]);
 
+  // A merged place is one the sources still list.
+  const merges = useMemo(
+    () =>
+      resources
+        .filter((resource) => resource.kind === "local" && merged.has(resource.folderId))
+        .map((resource) => resource.folderId),
+    [merged, resources],
+  );
   const request = useMemo(
-    () => folderEditRequest({ target, resources, files: readyFiles, selection, lyrics, decisions }),
-    [decisions, lyrics, readyFiles, resources, selection, target],
+    () => folderEditRequest({ target, resources, files: readyFiles, selection, lyrics, decisions, layout, merges }),
+    [decisions, layout, lyrics, merges, readyFiles, resources, selection, target],
   );
   const revision = useMemo(() => JSON.stringify(request), [request]);
-  const needsPlan = request.additions.length > 0;
+  const needsPlan = folderEditNeedsPlan(request);
 
   useEffect(() => {
     if (!needsPlan || applying) return;
@@ -188,9 +205,29 @@ export function useFolderEditWorkspace({
   const planCurrent = needsPlan && plannedRevision === revision;
   const readiness = folderEditReadiness({ request, plan: currentPlan, planCurrent });
   const currentSelection = selection[CURRENT_FOLDER_RESOURCE] ?? noSelection;
+  // Until the preview catches up, the final folder shows only what is still
+  // selected, and a newly selected file as pending.
+  const shownPlan = useMemo(() => {
+    if (!currentPlan) return null;
+    const keys = new Set(request.additions.map(folderEditItemKey));
+    return { ...currentPlan, items: currentPlan.items.filter((item) => keys.has(item.itemKey)) };
+  }, [currentPlan, request.additions]);
+  const pending = useMemo(() => {
+    const additions: FolderEditPendingAddition[] = [];
+    for (const resource of resources) {
+      if (resource.kind === "current") continue;
+      const selected = selection[resource.id];
+      for (const file of readyFiles[resource.id] ?? []) {
+        if (!selected?.has(file.path) || lyrics[resource.id]?.[file.path] !== undefined) continue;
+        const key = folderEditResourceItemKey(resource, file.path);
+        additions.push({ key, path: file.path, kind: file.kind, sizeBytes: file.sizeBytes });
+      }
+    }
+    return additions;
+  }, [lyrics, readyFiles, resources, selection]);
   const result = useMemo(
-    () => folderEditResult(currentFiles, currentSelection, currentPlan),
-    [currentFiles, currentPlan, currentSelection],
+    () => folderEditResult(currentFiles, currentSelection, shownPlan, layout, pending),
+    [currentFiles, currentSelection, layout, pending, shownPlan],
   );
   const removedFiles = useMemo(
     () => currentFiles.filter((file) => !currentSelection.has(file.path)),
@@ -277,8 +314,50 @@ export function useFolderEditWorkspace({
     setAssign,
     assignmentCount: assignments.length,
     applying,
+    arrange: folderWorkspaceArrange({
+      layout,
+      setLayout,
+      entries: result,
+      include: (resource, paths) => {
+        setSelection((current) => ({
+          ...current,
+          [resource.id]: withFolderEditPaths(current[resource.id] ?? new Set(), paths, true),
+        }));
+        if (resource.kind !== "current") setLyricsRole(resource.id, paths, null);
+      },
+      forget: (keys) =>
+        setDecisions((current) => {
+          const next = { ...current };
+          for (const key of keys) delete next[key];
+          return next;
+        }),
+      keyFor: folderEditResourceItemKey,
+    }),
+    merge: {
+      folderIds: merged,
+      setMerged: (resource, merging) => {
+        if (resource.kind !== "local") return;
+        setMerged((current) => {
+          const next = new Set(current);
+          if (merging) next.add(resource.folderId);
+          else next.delete(resource.folderId);
+          return next;
+        });
+        // Merging a place takes all of it unless some of it is already chosen.
+        const state = files[resource.id];
+        if (merging && state?.status === "ready" && !(selection[resource.id]?.size ?? 0)) {
+          setSelected(resource.id, new Set(state.files.map((file) => file.path)));
+        }
+      },
+    },
   };
-  return { ...workspace, removedFiles, apply };
+  return {
+    ...workspace,
+    removedFiles,
+    apply,
+    request,
+    mergePlan: planCurrent ? (currentPlan?.merges ?? []) : [],
+  };
 }
 
 export type FolderEditWorkspace = ReturnType<typeof useFolderEditWorkspace>;

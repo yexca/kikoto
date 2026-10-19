@@ -310,9 +310,24 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   **Select** shows the files of the
   chosen place: clearing a file of this folder removes it, and selecting a
   file anywhere else adds it. **Final folder** shows the folder as it will be
-  and marks each file as kept, removed, copied, downloaded, replaced, or
-  already there. Files from another local folder are copied, and that folder
-  is left unchanged. Files from a remote edition are downloaded, which also
+  and marks each file as kept, removed, moved, copied, downloaded, replaced,
+  or already there; a file just selected shows as checking until the preview
+  includes it. It is arranged like a file manager: drag a file or folder onto
+  a folder to move it there, drag files or folders from the middle column onto
+  a folder to add them there, which leaves the middle column as it is, and use
+  **New folder** or a folder's menu to create, rename, and delete folders.
+  Each row's menu also has **Move to**, for touch screens and keyboards.
+  Deleting a folder that holds something asks first, then moves what it held
+  up one level. A name already taken where a file or folder lands gets a
+  number, such as `01 (2).mp3`. A moved file keeps its playback progress,
+  lyrics, and other references. Folders the edit empties are removed, and
+  folders you create stay even when empty. Kikoto's `lyrics_kikoto` folder is
+  arranged only through lyrics roles. Files from another local folder are
+  copied, and that folder is left unchanged unless **Merge into this folder**
+  is on for it. A merged folder takes all its files when none are selected yet,
+  and once this folder holds what the edit copies, the merged folder is
+  deleted with everything it still holds. Files from a remote edition are
+  downloaded, which also
   needs permission to fetch, and the edition is not added to the library. A
   lyrics file (`.lrc`, `.vtt`, `.srt`, `.ass`, or `.txt`) from another place
   can be added as lyrics instead of at its own path: choose a language under
@@ -329,8 +344,14 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   other choices are offered. A file where a folder of the incoming path belongs
   leaves only keeping that file or renaming the incoming file to another path.
   **Apply changes** asks for both deletion confirmations when files are
-  removed, then runs as one Activity workflow that collects every added file
-  before it removes or adds anything. The directory reloads when it finishes.
+  removed. With a merged folder it first compares every file of the merged
+  folders by content with the folder as it will be, lists each file that has
+  no identical copy there and is lost when its folder is deleted, and asks
+  again before deleting; files downloaded from a remote source are not
+  compared. The edit runs as one Activity workflow that collects every added
+  file before it removes, moves, or adds anything, and deletes a merged folder
+  last, only if it still holds exactly the files the review listed. The
+  directory reloads when it finishes.
 - A work whose code a scan finds in several local folders keeps all of them.
   The directory then shows one folder per copy, **Manage files** lists one
   folder at a time with a **Folder** choice, and the work can be forgotten
@@ -383,8 +404,10 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   Fetch into a new folder in the same three columns: the source's edition
   comes first with all its files selected, the work's other editions,
   sources, and local folders can add files, and lyrics files can be added as
-  lyrics of a language with track assignments, as in **Edit files**. The
-  edition's own files are one Fetch. Everything else is added by an
+  lyrics of a language with track assignments, as in **Edit files**. Its
+  **Final folder** is arranged as in **Edit files**, except that a folder
+  holding no file is not created. The edition's own files are one Fetch.
+  Everything else is added by an
   **Edit files** workflow once the Fetch has published the folder, so a file
   that would land on one the Fetch publishes is a conflict to resolve first.
   When the destination folder needs review, **Review in the standard Fetch**

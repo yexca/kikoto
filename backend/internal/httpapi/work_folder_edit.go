@@ -42,15 +42,24 @@ type workFolderEditAdditionRequest struct {
 	// instead of keeping its path. Empty is the fallback lyrics. A language is
 	// never inferred.
 	Language *string `json:"language,omitempty"`
+	// TargetPath, when present, is the path below the edited folder the file
+	// lands at instead of its own path. A lyrics role takes precedence.
+	TargetPath string `json:"targetPath,omitempty"`
 }
 
 type workFolderEditRequest struct {
 	FolderID          int64                           `json:"folderId"`
 	Additions         []workFolderEditAdditionRequest `json:"additions"`
 	RemoveLocationIDs []int64                         `json:"removeLocationIds"`
-	Decisions         []remoteFetchFileDecision       `json:"decisions"`
-	Assignments       []workFolderEditAssignment      `json:"assignments"`
-	RequestID         string                          `json:"requestId"`
+	Moves             []workFolderEditMoveRequest     `json:"moves"`
+	// Folders are folders below the edited folder to create, as paths below it.
+	Folders []string `json:"folders"`
+	// MergeFolderIDs are other local folders of the family to delete once the
+	// edited folder holds what the edit takes from them.
+	MergeFolderIDs []int64                    `json:"mergeFolderIds"`
+	Decisions      []remoteFetchFileDecision  `json:"decisions"`
+	Assignments    []workFolderEditAssignment `json:"assignments"`
+	RequestID      string                     `json:"requestId"`
 }
 
 // workFolderEditItem is one file to add to the folder. It shares the Fetch
@@ -76,6 +85,12 @@ type workFolderEditSummary struct {
 	Skip     int `json:"skip"`
 	Conflict int `json:"conflict"`
 	Remove   int `json:"remove"`
+	Move     int `json:"move"`
+	// Folders counts the requested folders that do not exist yet.
+	Folders int `json:"folders"`
+	// Merge counts the merged folders, and MergeFiles the files they hold.
+	Merge      int `json:"merge"`
+	MergeFiles int `json:"mergeFiles"`
 	// Lyrics counts the added files that go to a lyrics folder.
 	Lyrics      int   `json:"lyrics"`
 	AddBytes    int64 `json:"addBytes"`
@@ -91,7 +106,11 @@ type workFolderEditPlan struct {
 	TransactionPool string                  `json:"transactionPool,omitempty"`
 	Items           []workFolderEditItem    `json:"items"`
 	Removals        []workFolderEditRemoval `json:"removals"`
-	Summary         workFolderEditSummary   `json:"summary"`
+	Moves           []workFolderEditMove    `json:"moves"`
+	// Folders are the folders to create, as library paths.
+	Folders []string              `json:"folders"`
+	Merges  []workFolderEditMerge `json:"merges"`
+	Summary workFolderEditSummary `json:"summary"`
 }
 
 type workFolderEditSources struct {
@@ -337,6 +356,7 @@ func publicWorkFolderEditPlan(plan workFolderEditPlan) workFolderEditPlan {
 	for index := range plan.Items {
 		plan.Items[index].SourcePath = ""
 	}
+	plan.Merges = publicWorkFolderEditMerges(plan.Merges)
 	return plan
 }
 
@@ -378,6 +398,18 @@ func (s *Server) buildWorkFolderEditPlan(ctx context.Context, workID int64, payl
 	for _, removal := range removals {
 		removing[fetchTargetKey(removal.Path)] = true
 	}
+	moves, err := s.workFolderEditMoves(ctx, target, payload.Moves, removals)
+	if err != nil {
+		return workFolderEditPlan{}, err
+	}
+	layout, err := s.planWorkFolderEditLayout(ctx, target, moves, removals, payload.Folders)
+	if err != nil {
+		return workFolderEditPlan{}, err
+	}
+	merges, err := s.workFolderEditMerges(ctx, family, target, payload.MergeFolderIDs)
+	if err != nil {
+		return workFolderEditPlan{}, err
+	}
 	candidates, err := s.workFolderEditCandidates(ctx, family, target, payload.Additions)
 	if err != nil {
 		return workFolderEditPlan{}, err
@@ -388,14 +420,18 @@ func (s *Server) buildWorkFolderEditPlan(ctx context.Context, workID int64, payl
 		}
 	}
 	decisions := normalizeRemoteFetchDecisions(payload.Decisions)
+	// A moved file holds its new path, so no added file can take it.
 	seenTargets := map[string]string{}
+	for key, from := range layout.moved {
+		seenTargets[key] = from
+	}
 	items := make([]workFolderEditItem, 0, len(candidates))
 	for _, candidate := range candidates {
 		decision, err := workFolderEditItemDecision(candidate, decisions[candidate.ItemKey], target.RootPath)
 		if err != nil {
 			return workFolderEditPlan{}, err
 		}
-		if err := s.resolveWorkFolderEditItem(&candidate.remoteWorkSavePlanItem, decision, target.RootPath, removing, seenTargets); err != nil {
+		if err := s.resolveWorkFolderEditItem(&candidate.remoteWorkSavePlanItem, decision, target.RootPath, removing, layout.vacated, seenTargets); err != nil {
 			return workFolderEditPlan{}, err
 		}
 		items = append(items, candidate)
@@ -415,11 +451,23 @@ func (s *Server) buildWorkFolderEditPlan(ctx context.Context, workID int64, payl
 	if err != nil {
 		return workFolderEditPlan{}, err
 	}
+	summary := summarizeWorkFolderEdit(items, removals)
+	summary.Move = len(moves)
+	summary.Folders = layout.newFolders
+	summary.Merge = len(merges)
+	for _, merge := range merges {
+		summary.MergeFiles += merge.FileCount
+	}
 	return workFolderEditPlan{
 		WorkID: workID, PrimaryCode: strings.ToUpper(strings.TrimSpace(code)), FolderID: target.ID,
 		SaveRoot: target.RootPath, TransactionPool: transactionPool,
-		Items: items, Removals: removals, Summary: summarizeWorkFolderEdit(items, removals),
+		Items: items, Removals: removals, Moves: moves, Folders: layout.folders, Merges: merges, Summary: summary,
 	}, nil
+}
+
+// workFolderEditChanges reports whether a plan changes anything on disk.
+func workFolderEditChanges(summary workFolderEditSummary) bool {
+	return summary.Add > 0 || summary.Remove > 0 || summary.Move > 0 || summary.Folders > 0 || summary.Merge > 0
 }
 
 func summarizeWorkFolderEdit(items []workFolderEditItem, removals []workFolderEditRemoval) workFolderEditSummary {
@@ -495,32 +543,11 @@ func (s *Server) workFolderEditRemovals(ctx context.Context, target workFolderEd
 			continue
 		}
 		seen[locationID] = true
-		var removal workFolderEditRemoval
-		var workID, sourceID int64
-		var locationType string
-		var size sql.NullInt64
-		err := s.db.QueryRowContext(ctx, `
-			SELECT location.id, item.work_id, location.file_source_id, location.location_type, location.path, location.size_bytes
-			FROM media_file_location AS location
-			INNER JOIN media_item AS item ON item.id = location.media_item_id
-			WHERE location.id = ?
-		`, locationID).Scan(&removal.LocationID, &workID, &sourceID, &locationType, &removal.Path, &size)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, mediaCleanupTargetConflictError{message: "a file to remove is no longer listed; refresh the work and try again"}
-		}
+		location, err := s.workFolderEditLocalFile(ctx, target, locationID, "remove")
 		if err != nil {
 			return nil, err
 		}
-		removal.Path = filepath.ToSlash(removal.Path)
-		if locationType != "local" || workID != target.WorkID || sourceID != target.FileSourceID ||
-			normalizeFolderRootPath(removal.Path) == target.RootPath || !mediaCleanupPathWithinRoot(target.RootPath, removal.Path) {
-			return nil, invalidRequestError("a file to remove is not inside the edited folder")
-		}
-		if size.Valid {
-			value := size.Int64
-			removal.SizeBytes = &value
-		}
-		removals = append(removals, removal)
+		removals = append(removals, workFolderEditRemoval{LocationID: location.locationID, Path: location.path, SizeBytes: location.size})
 	}
 	return removals, nil
 }
@@ -593,7 +620,11 @@ func (s *Server) workFolderEditCandidates(ctx context.Context, family map[int64]
 		seen[item.ItemKey] = true
 		item.LocalPaths = []string{}
 		item.SourceOptions = []remoteFetchSourceOption{}
-		item.TargetPath = path.Join(target.RootPath, relative)
+		placed, err := workFolderEditAdditionTarget(addition, relative)
+		if err != nil {
+			return nil, err
+		}
+		item.TargetPath = path.Join(target.RootPath, placed)
 		if err := applyWorkFolderEditLyricsRole(&item, addition.Language, target.RootPath); err != nil {
 			return nil, err
 		}
@@ -664,9 +695,10 @@ func localFolderFileSize(root string, relative string) (int64, error) {
 }
 
 // resolveWorkFolderEditItem decides what adding one file does to the folder.
-// A target that the same edit removes is replaced; any other file already at
-// the target is kept when it has the same size and is a conflict otherwise.
-func (s *Server) resolveWorkFolderEditItem(item *remoteWorkSavePlanItem, decision remoteFetchFileDecision, targetRoot string, removing map[string]bool, seenTargets map[string]string) error {
+// A target that the same edit removes is replaced, and one a moved file
+// leaves is free; any other file already at the target is kept when it has the
+// same size and is a conflict otherwise.
+func (s *Server) resolveWorkFolderEditItem(item *remoteWorkSavePlanItem, decision remoteFetchFileDecision, targetRoot string, removing map[string]bool, vacated map[string]bool, seenTargets map[string]string) error {
 	if err := applyRemoteFetchRename(item, decision, targetRoot); err != nil {
 		return err
 	}
@@ -686,6 +718,8 @@ func (s *Server) resolveWorkFolderEditItem(item *remoteWorkSavePlanItem, decisio
 	info, statErr := os.Lstat(absolute)
 	switch {
 	case markBlockedPath(item, rootAbsolute, relative):
+	case statErr == nil && info.Mode().IsRegular() && vacated[fetchTargetKey(item.TargetPath)] && !removing[fetchTargetKey(item.TargetPath)]:
+		// A moved file leaves this path before any added file takes it.
 	case statErr == nil:
 		item.TargetExists = true
 		switch {
@@ -742,7 +776,7 @@ func (s *Server) enqueueWorkFolderEdit(ctx context.Context, workID int64, payloa
 	if plan.Summary.Conflict > 0 {
 		return workFolderEditResult{}, workFolderEditConflictError{Summary: plan.Summary}
 	}
-	if plan.Summary.Add == 0 && plan.Summary.Remove == 0 {
+	if !workFolderEditChanges(plan.Summary) {
 		return workFolderEditResult{}, invalidRequestError("the edit does not change the folder")
 	}
 	assignments, err := s.workFolderEditAssignments(ctx, plan, payload.Assignments)
@@ -766,7 +800,8 @@ func (s *Server) enqueueWorkFolderEdit(ctx context.Context, workID int64, payloa
 	jobPayload := workFolderEditJobPayload{
 		ActorUserID: actorUserID, WorkID: plan.WorkID, WorkCode: plan.PrimaryCode, FolderID: plan.FolderID,
 		FileSourceID: fileSourceID, TargetRoot: plan.SaveRoot, TransactionPool: plan.TransactionPool,
-		Items: plan.Items, Removals: removals, Assignments: assignments, RequestID: payload.RequestID,
+		Items: plan.Items, Removals: removals, Moves: plan.Moves, Folders: plan.Folders, Merges: plan.Merges,
+		Assignments: assignments, RequestID: payload.RequestID,
 	}
 	for index := range jobPayload.Items {
 		// A download address is resolved again when the job runs.
@@ -777,13 +812,30 @@ func (s *Server) enqueueWorkFolderEdit(ctx context.Context, workID int64, payloa
 		return workFolderEditResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// No other edit may change the edited folder or a merged one, whether it
+	// edits that folder or merges it away.
+	folderIDs := []int64{plan.FolderID}
+	for _, merge := range plan.Merges {
+		folderIDs = append(folderIDs, merge.FolderID)
+	}
+	inFolders := strings.TrimSuffix(strings.Repeat("?,", len(folderIDs)), ",")
+	args := []any{workFolderEditWorkflowCode}
+	for range 2 {
+		for _, id := range folderIDs {
+			args = append(args, id)
+		}
+	}
 	var activeRunID int64
 	err = tx.QueryRowContext(ctx, `
 		SELECT run.id FROM workflow_run AS run
 		WHERE run.workflow_code = ? AND run.status IN ('queued', 'running')
-			AND CAST(json_extract(run.input_json, '$.folder_id') AS INTEGER) = ?
+			AND (CAST(json_extract(run.input_json, '$.folder_id') AS INTEGER) IN (`+inFolders+`)
+				OR EXISTS (
+					SELECT 1 FROM json_each(run.input_json, '$.merges') AS merge
+					WHERE CAST(json_extract(merge.value, '$.folderId') AS INTEGER) IN (`+inFolders+`)
+				))
 		ORDER BY run.id ASC LIMIT 1
-	`, workFolderEditWorkflowCode, plan.FolderID).Scan(&activeRunID)
+	`, args...).Scan(&activeRunID)
 	if err == nil {
 		return workFolderEditResult{}, conflictError(fmt.Sprintf("this folder is already being edited by workflow run #%d", activeRunID))
 	}
@@ -874,19 +926,22 @@ func workFolderEditDefinition() systemWorkflowSpec {
 	return systemWorkflowSpec{
 		Code:        workFolderEditWorkflowCode,
 		Name:        "Edit work files",
-		Description: "Add files from the work's other local folders and remote editions to one local folder, as files or as lyrics of a language, and remove the files taken out of it.",
+		Description: "Add files from the work's other local folders and remote editions to one local folder, as files or as lyrics of a language, arrange its files and folders, remove the files taken out of it, and delete the folders merged into it.",
 		Nodes: []map[string]string{
 			{"id": "select", "type": "select_media_items", "displayName": "Select files"},
 			{"id": "stage", "type": "stage_fetch_result", "displayName": "Collect added files"},
 			{"id": "remove", "type": "cleanup_media_locations", "displayName": "Remove files"},
-			{"id": "publish", "type": "publish_staged_fetch", "displayName": "Add files to the folder"},
+			{"id": "publish", "type": "publish_staged_fetch", "displayName": "Add and arrange files in the folder"},
 			{"id": "index", "type": "sync_file_locations", "displayName": "Index the folder"},
+			{"id": "merge", "type": "cleanup_media_locations", "displayName": "Delete merged folders"},
 		},
 	}
 }
 
 func insertWorkFolderEditNodeRuns(ctx context.Context, tx *sql.Tx, runID int64, plan workFolderEditPlan) (int64, error) {
-	counts := map[string]any{"add": plan.Summary.Add, "remove": plan.Summary.Remove}
+	counts := map[string]any{
+		"add": plan.Summary.Add, "remove": plan.Summary.Remove, "move": plan.Summary.Move, "merge": plan.Summary.Merge,
+	}
 	var stageNodeID int64
 	for index, node := range workFolderEditDefinition().Nodes {
 		spec := workflow.NodeRunSpec{

@@ -4,18 +4,21 @@ import {
   CheckCircle2,
   Cloud,
   FolderOpen,
+  FolderPlus,
   HardDrive,
   Loader2,
   RefreshCw,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { FolderEditArrangeTree, startFolderEditDrag } from "@/features/work-detail/folder-edit/FolderEditArrangeTree";
 import {
   buildFolderEditTree,
   folderEditExtensions,
@@ -206,7 +209,13 @@ function ResourceColumn({
                   key={resource.id}
                   icon={resourceIcon(resource)}
                   title={resourceTitle(resource, t)}
-                  note={resource.kind !== "current" && resource.origin ? t("remoteFetch.origin") : undefined}
+                  note={
+                    resource.kind === "local" && workspace.merge?.folderIds.has(resource.folderId)
+                      ? t("folderEdit.mergeBadge")
+                      : resource.kind !== "current" && resource.origin
+                        ? t("remoteFetch.origin")
+                        : undefined
+                  }
                   code={resource.editionCode}
                   detail={resource.kind === "remote" ? resource.sourceName : resource.rootPath}
                   removes={resource.kind === "current"}
@@ -316,6 +325,16 @@ function SelectionColumn({ workspace, hint, active }: { workspace: FolderWorkspa
   const bytes = folderEditSelectedBytes(files, selected);
   const setIncluded = (paths: readonly string[], included: boolean) =>
     workspace.setSelected(resource.id, withFolderEditPaths(selected, paths, included));
+  const merging = resource.kind === "local" && Boolean(workspace.merge?.folderIds.has(resource.folderId));
+  // Dragging a file or folder to the final folder adds it there; this list does not change.
+  const onDragFiles = workspace.arrange
+    ? (event: DragEvent, paths: readonly string[], base: string) =>
+        startFolderEditDrag(
+          event,
+          { kind: "source", resource, paths, base },
+          paths.length === 1 ? (paths[0].split("/").pop() ?? paths[0]) : `${paths.length}`,
+        )
+    : undefined;
   return (
     <section
       aria-label={t("folderEdit.pane.select")}
@@ -356,7 +375,21 @@ function SelectionColumn({ workspace, hint, active }: { workspace: FolderWorkspa
             </Button>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">{hint}</p>
+        <p className="text-xs text-muted-foreground">{merging ? t("folderEdit.mergeHint") : hint}</p>
+        {workspace.merge && resource.kind === "local" && (
+          <label className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-sm">
+            <span className="min-w-0">
+              <span className="block font-medium">{t("folderEdit.merge")}</span>
+              <span className="block text-2xs text-muted-foreground">{t("folderEdit.mergeDetail")}</span>
+            </span>
+            <Switch
+              checked={merging}
+              disabled={workspace.applying}
+              aria-label={t("folderEdit.merge")}
+              onCheckedChange={(checked) => workspace.merge?.setMerged(resource, checked)}
+            />
+          </label>
+        )}
         {extensions.length > 1 && (
           <div role="group" aria-label={t("remoteFetch.fileTypes")} className="flex flex-wrap items-center gap-1.5">
             {extensions.map(({ extension, paths }) => {
@@ -424,6 +457,7 @@ function SelectionColumn({ workspace, hint, active }: { workspace: FolderWorkspa
             selected={selected}
             disabled={workspace.applying}
             onToggle={setIncluded}
+            onDragFiles={onDragFiles}
             below={
               lyricsPaths.length > 0
                 ? (file) =>
@@ -459,8 +493,10 @@ function ResultColumn({
 }) {
   const { t } = useTranslation();
   const tree = useMemo(() => buildFolderEditTree(workspace.result), [workspace.result]);
+  const [creatingFolder, setCreatingFolder] = useState(false);
   const added = workspace.result.filter((entry) => entry.state === "add_local" || entry.state === "add_remote").length;
   const removed = workspace.result.filter((entry) => entry.state === "remove").length;
+  const moved = workspace.result.filter((entry) => entry.state === "add_move").length;
   const showAssign = workspace.canAssign && workspace.lyricsAdditionCount > 0;
   return (
     <section
@@ -476,10 +512,27 @@ function ResultColumn({
                 {t("folderEdit.addCount", { count: added })}
               </span>
             )}
+            {moved > 0 && (
+              <span className="rounded-full bg-muted px-1.5 py-px font-medium">
+                {t("folderEdit.moveCount", { count: moved })}
+              </span>
+            )}
             {removed > 0 && (
               <span className="rounded-full bg-error-surface px-1.5 py-px font-medium text-error-foreground">
                 {t("folderEdit.removeCount", { count: removed })}
               </span>
+            )}
+            {workspace.arrange && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="-mr-2 h-7 gap-1 px-2 text-xs"
+                disabled={workspace.applying}
+                onClick={() => setCreatingFolder(true)}
+              >
+                <FolderPlus className="h-3.5 w-3.5" />
+                {t("folderEdit.newFolder")}
+              </Button>
             )}
           </div>
         </div>
@@ -509,7 +562,22 @@ function ResultColumn({
         {notice}
       </div>
       <div className="app-scroll min-h-0 flex-1 overflow-auto overscroll-contain px-2 py-2">
-        {workspace.result.length === 0 ? (
+        {workspace.arrange ? (
+          <>
+            {workspace.result.length === 0 && workspace.arrange.folders.length === 0 && !creatingFolder && (
+              <PaneNote>{emptyResult}</PaneNote>
+            )}
+            <FolderEditArrangeTree
+              entries={workspace.result}
+              arrange={workspace.arrange}
+              decisions={workspace.decisions}
+              disabled={workspace.applying}
+              onDecisionChange={workspace.setDecision}
+              creatingAtRoot={creatingFolder}
+              onCreatedAtRoot={() => setCreatingFolder(false)}
+            />
+          </>
+        ) : workspace.result.length === 0 ? (
           <PaneNote>{emptyResult}</PaneNote>
         ) : (
           <ResultNode

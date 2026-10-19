@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/auth/AuthProvider";
 import { ConfirmMediaBatchDeleteDialog } from "@/features/work-detail/dialogs/ConfirmMediaBatchDeleteDialog";
 import type { FolderEditResource, FolderEditTarget } from "@/features/work-detail/folder-edit/folderEditModel";
+import { FolderEditMergeConfirmDialog } from "@/features/work-detail/folder-edit/FolderEditMergeConfirmDialog";
 import { FolderWorkspaceView } from "@/features/work-detail/folder-edit/FolderWorkspaceView";
 import {
   useFolderEditWorkspace,
@@ -54,6 +55,7 @@ export function FolderEditDialog({
     onApplied,
   });
   const [confirmation, setConfirmation] = useState<{ step: 1 | 2; targets: MediaDeleteTarget[] } | null>(null);
+  const [reviewingMerge, setReviewingMerge] = useState(false);
   const removalTargets = useMemo<MediaDeleteTarget[]>(
     () =>
       workspace.removedFiles
@@ -68,8 +70,12 @@ export function FolderEditDialog({
         })),
     [target.rootPath, workId, workspace.removedFiles],
   );
+  const merging = (workspace.request.mergeFolderIds?.length ?? 0) > 0;
+  // A merge deletes folders, so it always takes its own review; the review
+  // also counts the files the edit removes from this folder.
   const startApply = () => {
-    if (removalTargets.length > 0) setConfirmation({ step: 1, targets: removalTargets });
+    if (merging) setReviewingMerge(true);
+    else if (removalTargets.length > 0) setConfirmation({ step: 1, targets: removalTargets });
     else void workspace.apply();
   };
   const hints = (resource: FolderEditResource) =>
@@ -78,6 +84,12 @@ export function FolderEditDialog({
       : resource.kind === "local"
         ? t("folderEdit.localHint")
         : t("folderEdit.remoteHint", { source: resource.sourceName });
+  const moveCount = workspace.request.moves?.length ?? 0;
+  const statusReady = [
+    t("folderEdit.statusReady", { add: workspace.addCount, remove: workspace.removeCount }),
+    ...(moveCount > 0 ? [t("folderEdit.statusMove", { count: moveCount })] : []),
+    ...(merging ? [t("folderEdit.statusMerge", { count: workspace.request.mergeFolderIds?.length ?? 0 })] : []),
+  ].join(" · ");
 
   return (
     <>
@@ -90,7 +102,7 @@ export function FolderEditDialog({
         hints={hints}
         emptyResult={t("folderEdit.emptyResult")}
         statusIdle={t("folderEdit.statusIdle")}
-        statusReady={t("folderEdit.statusReady", { add: workspace.addCount, remove: workspace.removeCount })}
+        statusReady={statusReady}
         applyingLabel={t("folderEdit.applying")}
         applyLabel={t("folderEdit.apply")}
         initialPane={initialRemote ? "select" : "sources"}
@@ -98,6 +110,20 @@ export function FolderEditDialog({
         onClose={onClose}
         onApply={startApply}
       />
+      {reviewingMerge && (
+        <FolderEditMergeConfirmDialog
+          workId={workId}
+          request={workspace.request}
+          merges={workspace.mergePlan}
+          removeCount={removalTargets.length}
+          applying={workspace.applying}
+          onCancel={() => setReviewingMerge(false)}
+          onConfirm={() => {
+            setReviewingMerge(false);
+            void workspace.apply();
+          }}
+        />
+      )}
       {confirmation && (
         <ConfirmMediaBatchDeleteDialog
           targets={confirmation.targets}
