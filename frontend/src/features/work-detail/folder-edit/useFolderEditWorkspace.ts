@@ -2,11 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { emptyFolderEditLayout, type FolderEditLayout } from "@/features/work-detail/folder-edit/folderEditLayout";
+import {
+  emptyFolderEditLayout,
+  prunedLayout,
+  type FolderEditLayout,
+} from "@/features/work-detail/folder-edit/folderEditLayout";
 import {
   CURRENT_FOLDER_RESOURCE,
+  folderEditCanMerge,
   folderEditItemKey,
+  folderEditMerges,
   folderEditNeedsPlan,
+  folderEditPlacementKeys,
   folderEditReadiness,
   folderEditRemoteResource,
   folderEditRequest,
@@ -151,6 +158,8 @@ export function useFolderEditWorkspace({
     try {
       const next = folderEditResources(await api.checkWorkFolderEditSources(target.workId, controller.signal), target);
       setResources(next);
+      // A folder the check found offline cannot be merged.
+      setMerged((current) => new Set(folderEditMerges(next, current)));
       setSourcesStatus("ready");
       const found = next.filter((resource) => resource.kind === "remote").length;
       if (found > 0) toast.success(t("folderEdit.remoteCheckFound", { count: found }));
@@ -163,14 +172,15 @@ export function useFolderEditWorkspace({
     }
   }, [t, target, toast]);
 
-  // A merged place is one the sources still list.
-  const merges = useMemo(
+  const merges = useMemo(() => folderEditMerges(resources, merged), [merged, resources]);
+  // A file that is cleared, or becomes lyrics, gives up its place, so selecting
+  // it again cannot land it where another file has gone since.
+  const placementKeys = useMemo(
     () =>
-      resources
-        .filter((resource) => resource.kind === "local" && merged.has(resource.folderId))
-        .map((resource) => resource.folderId),
-    [merged, resources],
+      folderEditPlacementKeys({ resources, files: readyFiles, selection, lyrics, keyFor: folderEditResourceItemKey }),
+    [lyrics, readyFiles, resources, selection],
   );
+  useEffect(() => setLayout((current) => prunedLayout(current, placementKeys)), [placementKeys]);
   const request = useMemo(
     () => folderEditRequest({ target, resources, files: readyFiles, selection, lyrics, decisions, layout, merges }),
     [decisions, layout, lyrics, merges, readyFiles, resources, selection, target],
@@ -350,7 +360,9 @@ export function useFolderEditWorkspace({
     merge: {
       folderIds: merged,
       setMerged: (resource, merging) => {
-        if (resource.kind !== "local") return;
+        // A place merges only once its files are loaded, so it takes all of them.
+        const state = files[resource.id];
+        if (merging ? !folderEditCanMerge(resource, state) : resource.kind !== "local") return;
         setMerged((current) => {
           const next = new Set(current);
           if (merging) next.add(resource.folderId);
@@ -358,7 +370,6 @@ export function useFolderEditWorkspace({
           return next;
         });
         // Merging a place takes all of it unless some of it is already chosen.
-        const state = files[resource.id];
         if (merging && state?.status === "ready" && !(selection[resource.id]?.size ?? 0)) {
           setSelected(resource.id, new Set(state.files.map((file) => file.path)));
         }

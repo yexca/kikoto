@@ -2369,6 +2369,7 @@ export const surfaceHant = {
     replaceExisting: "取代資料夾中的檔案",
     targetPath: "此資料夾內的路徑",
     planFailed: "無法重新整理預覽。",
+    collision: "{{path}} 處會有兩個檔案。請移動其中一個或取消選取。",
     applying: "正在開始編輯",
     statusBlocked: "待解決的衝突：{{count}}",
     statusReady: "就緒：加入 {{add}}，移除 {{remove}}",
@@ -2435,7 +2436,7 @@ export const surfaceHant = {
     mergeConfirmLoss_other: "刪除並遺失 {{count}} 個檔案",
   },
   fetchCompose: {
-    title: "Fetch",
+    title: "取得",
     description: "將 {{code}} Fetch 到新資料夾，並加入其他版本、來源、本機資料夾的檔案，或指定語言的歌詞。",
     newFolder: "新資料夾",
     primaryHint: "所選檔案會從 {{source}} Fetch 到新資料夾。",
@@ -2445,7 +2446,7 @@ export const surfaceHant = {
     statusIdle: "請至少選取此版本的一個檔案",
     statusReady: "就緒：新資料夾共 {{count}} 個檔案",
     applying: "正在開始 Fetch",
-    apply: "Fetch",
+    apply: "取得",
     applyFailed: "無法開始 Fetch。請檢閱更新後的預覽。",
     queued: "Fetch {{code}} 已作為工作流程執行 #{{runId}} 排入佇列。",
     queuedWithFollowUp:

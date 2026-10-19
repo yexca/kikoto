@@ -2484,6 +2484,7 @@ export const surfaceJapanese = {
     replaceExisting: "フォルダー内のファイルを置き換える",
     targetPath: "このフォルダー内のパス",
     planFailed: "プレビューを更新できませんでした。",
+    collision: "{{path}} に 2 つのファイルが置かれます。どちらかを移動するか、選択を外してください。",
     applying: "編集を開始しています",
     statusBlocked: "解決が必要な競合：{{count}}",
     statusReady: "準備完了：追加 {{add}}、削除 {{remove}}",
@@ -2553,7 +2554,7 @@ export const surfaceJapanese = {
     mergeConfirmLoss_other: "{{count}} ファイルを失って削除",
   },
   fetchCompose: {
-    title: "Fetch",
+    title: "取得",
     description:
       "{{code}} を新しいフォルダーに Fetch し、ほかの版・ソース・ローカルフォルダーのファイルや、言語を指定した歌詞を加えます。",
     newFolder: "新しいフォルダー",
@@ -2564,7 +2565,7 @@ export const surfaceJapanese = {
     statusIdle: "この版のファイルを 1 つ以上選択してください",
     statusReady: "準備完了：新しいフォルダーに {{count}} ファイル",
     applying: "Fetch を開始しています",
-    apply: "Fetch",
+    apply: "取得",
     applyFailed: "Fetch を開始できませんでした。更新されたプレビューを確認してください。",
     queued: "Fetch {{code}} をワークフロー実行 #{{runId}} としてキューに追加しました。",
     queuedWithFollowUp:

@@ -16,7 +16,7 @@ import type {
 } from "../../../lib/api";
 import { buildRemoteTree, flattenTreeFiles } from "../media/mediaTreeModel";
 import { isLocalOffline } from "../../../lib/localAvailability";
-import { emptyFolderEditLayout, inLyricsFolder, type FolderEditLayout } from "./folderEditLayout";
+import { emptyFolderEditLayout, inLyricsFolder, pathIdentity, type FolderEditLayout } from "./folderEditLayout";
 
 /** The resource that is the edited folder itself. */
 export const CURRENT_FOLDER_RESOURCE = "current";
@@ -170,10 +170,13 @@ function remoteResourceId(sourceId: number, editionCode: string) {
 
 /**
  * Lists the edited folder first, then every other active local folder of the
- * family, then every edition a configured source reports as available.
+ * family, then every edition a configured source reports as available. A
+ * folder whose path differs from the edited folder's only in letter case is
+ * the edited folder to the server, so it is not listed as another place.
  */
 export function folderEditResources(sources: WorkFolderEditSources, target: FolderEditTarget): FolderEditResource[] {
   const base = { folderId: 0, workId: 0, rootPath: "", sourceId: 0, sourceName: "" };
+  const targetRoot = normalizePath(target.rootPath).toLowerCase();
   const targetEdition = sources.editions.find((edition) => edition.workId === target.workId);
   const resources: FolderEditResource[] = [
     {
@@ -191,6 +194,7 @@ export function folderEditResources(sources: WorkFolderEditSources, target: Fold
   for (const edition of sources.editions) {
     for (const root of edition.localRoots ?? []) {
       if (root.state !== "active" || root.id === target.folderId) continue;
+      if (targetRoot && normalizePath(root.rootPath).toLowerCase() === targetRoot) continue;
       resources.push({
         ...base,
         id: localResourceId(root.id),
@@ -481,7 +485,7 @@ export function folderEditResult(
       state: !kept ? "remove" : placed !== undefined && placed !== file.path ? "add_move" : "keep",
       item: null,
     };
-    if (kept) entries.set(path.toLowerCase(), entry);
+    if (kept) entries.set(pathIdentity(path), entry);
     else leaving.push(entry);
   }
   const added: FolderEditResultEntry[] = [];
@@ -492,7 +496,7 @@ export function folderEditResult(
     const target = normalizePath(item.targetPath);
     const path = layout.placements[item.itemKey] ?? (target.startsWith(prefix) ? target.slice(prefix.length) : target);
     const state = resultStateForItem(item);
-    const existing = entries.get(path.toLowerCase());
+    const existing = entries.get(pathIdentity(path));
     if (state === "same" && existing) {
       if (existing.state === "keep") existing.state = "same";
       continue;
@@ -529,6 +533,80 @@ export function folderEditEntryMovable(entry: FolderEditResultEntry) {
   return (
     entry.state !== "remove" && entry.state !== "moved" && entry.state !== "excluded" && !inLyricsFolder(entry.path)
   );
+}
+
+/**
+ * The keys of the files the final folder can place: the selected files of
+ * every place except those added as lyrics, whose lyrics role decides where
+ * they go. A placement of any other key is stale.
+ */
+export function folderEditPlacementKeys({
+  resources,
+  files,
+  selection,
+  lyrics,
+  keyFor,
+}: {
+  resources: readonly FolderEditResource[];
+  files: Readonly<Record<string, readonly FolderEditFile[] | undefined>>;
+  selection: FolderEditSelection;
+  lyrics: FolderEditLyricsRoles;
+  keyFor: (resource: FolderEditResource, path: string) => string;
+}): Set<string> {
+  const keys = new Set<string>();
+  for (const resource of resources) {
+    const selected = selection[resource.id];
+    for (const file of files[resource.id] ?? []) {
+      if (!selected?.has(file.path) || lyrics[resource.id]?.[file.path] !== undefined) continue;
+      keys.add(keyFor(resource, file.path));
+    }
+  }
+  return keys;
+}
+
+const collidingStates: ReadonlySet<FolderEditResultState> = new Set([
+  "keep",
+  "same",
+  "add_move",
+  "add_local",
+  "add_remote",
+  "pending",
+]);
+
+/**
+ * The path two files of the final folder would share because one of them was
+ * placed there, or null. A file that lands on another at its own path is a
+ * conflict the preview offers resolutions for instead.
+ */
+export function folderEditCollision(
+  entries: readonly FolderEditResultEntry[],
+  placements: Readonly<Record<string, string>>,
+): string | null {
+  const byPath = new Map<string, FolderEditResultEntry[]>();
+  for (const entry of entries) {
+    if (!collidingStates.has(entry.state)) continue;
+    const identity = pathIdentity(entry.path);
+    byPath.set(identity, [...(byPath.get(identity) ?? []), entry]);
+  }
+  for (const group of byPath.values()) {
+    if (group.length > 1 && group.some((entry) => placements[entry.key] !== undefined)) return group[0].path;
+  }
+  return null;
+}
+
+/**
+ * The local places merged into the edited folder: those still listed, and
+ * not on an offline storage pool, whose files cannot be read or deleted.
+ */
+export function folderEditMerges(resources: readonly FolderEditResource[], merged: ReadonlySet<number>): number[] {
+  return resources
+    .filter((resource) => resource.kind === "local" && !resource.offline && merged.has(resource.folderId))
+    .map((resource) => resource.folderId);
+}
+
+/** Whether a local place can be merged: its files are loaded and its storage pool is online. */
+export function folderEditCanMerge(resource: FolderEditResource, files: { status: string } | undefined) {
+  return resource.kind === "local" && !resource.offline && files?.status === "ready";
 }
 
 export type FolderEditReadiness = "idle" | "refreshing" | "blocked" | "ready";

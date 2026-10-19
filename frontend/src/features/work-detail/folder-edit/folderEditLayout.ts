@@ -23,9 +23,16 @@ function normalize(path: string) {
   return path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
 }
 
-function identity(path: string) {
+/**
+ * The identity of a path below a folder, as the server compares target paths:
+ * two paths that differ only in letter case or Unicode composition are the
+ * same path.
+ */
+export function pathIdentity(path: string) {
   return normalize(path).normalize("NFC").toLowerCase();
 }
+
+const identity = pathIdentity;
 
 export function joinFolderPath(folder: string, name: string) {
   return folder ? `${folder}/${name}` : name;
@@ -44,6 +51,15 @@ export function baseName(path: string) {
 export function inLyricsFolder(path: string) {
   const first = normalize(path).split("/")[0] ?? "";
   return first.toLowerCase() === lyricsRootFolderName.toLowerCase();
+}
+
+/**
+ * Whether files dragged from a place, by their paths there, hold Kikoto's
+ * lyrics folder or files in it. Such a tree is not dropped into the final
+ * folder: managed lyrics arrive only through lyrics roles.
+ */
+export function holdsLyricsFolder(paths: readonly string[]) {
+  return paths.some(inLyricsFolder);
 }
 
 /** Whether folder is path itself or one of its folders. */
@@ -248,9 +264,17 @@ export function folderHasContent(files: readonly FolderEditPlaced[], folders: re
   );
 }
 
-/** Drops placements of files the edit no longer holds, and created folders a file now fills. */
+/**
+ * Drops the placements of files the edit no longer places, so a file that is
+ * cleared and selected again returns at its own path rather than at a place
+ * another file may have taken since. An unchanged layout is returned as is.
+ */
 export function prunedLayout(layout: FolderEditLayout, keys: ReadonlySet<string>): FolderEditLayout {
   const placements: Record<string, string> = {};
-  for (const [key, path] of Object.entries(layout.placements)) if (keys.has(key)) placements[key] = path;
-  return { placements, folders: layout.folders };
+  let dropped = false;
+  for (const [key, path] of Object.entries(layout.placements)) {
+    if (keys.has(key)) placements[key] = path;
+    else dropped = true;
+  }
+  return dropped ? { placements, folders: layout.folders } : layout;
 }

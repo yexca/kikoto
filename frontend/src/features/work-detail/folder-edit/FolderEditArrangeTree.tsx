@@ -19,6 +19,7 @@ import {
   baseName,
   folderContains,
   folderHasContent,
+  holdsLyricsFolder,
   inLyricsFolder,
   parentFolder,
   type FolderEditNameError,
@@ -61,6 +62,8 @@ function endFolderEditDrag() {
 
 function canDropInto(drag: FolderEditDrag | null, folder: string) {
   if (!drag || inLyricsFolder(folder)) return false;
+  // Managed lyrics arrive through lyrics roles, never by dropping their folder.
+  if (drag.kind === "source") return !holdsLyricsFolder(drag.paths);
   return drag.kind !== "folder" || !folderContains(drag.path, folder);
 }
 

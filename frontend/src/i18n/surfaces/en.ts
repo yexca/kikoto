@@ -2535,6 +2535,7 @@ export const surfaceEnglish = {
     replaceExisting: "Replace the file in the folder",
     targetPath: "Path inside this folder",
     planFailed: "The preview could not be refreshed.",
+    collision: "Two files would be at {{path}}. Move or clear one of them.",
     applying: "Starting the edit",
     statusBlocked: "Conflicts to resolve: {{count}}",
     statusReady: "Ready: add {{add}}, remove {{remove}}",

@@ -325,12 +325,18 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   Each row's menu also has **Move to**, for touch screens and keyboards.
   Deleting a folder that holds something asks first, then moves what it held
   up one level. A name already taken where a file or folder lands gets a
-  number, such as `01 (2).mp3`. A moved file keeps its playback progress,
+  number, such as `01 (2).mp3`. A file you clear gives up the place you moved
+  it to, so selecting it again returns it to its own path. When two files
+  would still end up at one path, the edit names that path and waits until you
+  move or clear one of them. A moved file keeps its playback progress,
   lyrics, and other references. Folders the edit empties are removed, and
   folders you create stay even when empty. Kikoto's `lyrics_kikoto` folder is
-  arranged only through lyrics roles. Files from another local folder are
+  arranged only through lyrics roles, so a dragged selection that holds it is
+  not dropped. Files from another local folder are
   copied, and that folder is left unchanged unless **Merge into this folder**
-  is on for it. A merged folder takes all its files when none are selected yet,
+  is on for it. The switch turns on once the folder's files have loaded, and a
+  folder on an offline storage pool is never merged. A merged folder takes all
+  its files when none are selected yet,
   and once this folder holds what the edit copies, the merged folder is
   deleted with everything it still holds. Files from a remote edition are
   downloaded, which also

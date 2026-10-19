@@ -2478,6 +2478,7 @@ export const surfaceKorean = {
     replaceExisting: "폴더의 파일 교체",
     targetPath: "이 폴더 안의 경로",
     planFailed: "미리보기를 새로 고치지 못했습니다.",
+    collision: "{{path}}에 두 파일이 놓이게 됩니다. 하나를 옮기거나 선택을 해제하세요.",
     applying: "편집을 시작하는 중",
     statusBlocked: "해결할 충돌: {{count}}",
     statusReady: "준비됨: 추가 {{add}}, 제거 {{remove}}",
@@ -2545,7 +2546,7 @@ export const surfaceKorean = {
     mergeConfirmLoss_other: "파일 {{count}}개를 잃고 삭제",
   },
   fetchCompose: {
-    title: "Fetch",
+    title: "가져오기",
     description:
       "{{code}}를 새 폴더로 Fetch하고, 다른 판·소스·로컬 폴더의 파일이나 언어를 지정한 가사를 함께 추가합니다.",
     newFolder: "새 폴더",
@@ -2556,7 +2557,7 @@ export const surfaceKorean = {
     statusIdle: "이 판의 파일을 하나 이상 선택하세요",
     statusReady: "준비됨: 새 폴더에 파일 {{count}}개",
     applying: "Fetch를 시작하는 중",
-    apply: "Fetch",
+    apply: "가져오기",
     applyFailed: "Fetch를 시작하지 못했습니다. 업데이트된 미리 보기를 확인하세요.",
     queued: "Fetch {{code}}를 워크플로 실행 #{{runId}}(으)로 대기열에 추가했습니다.",
     queuedWithFollowUp:
