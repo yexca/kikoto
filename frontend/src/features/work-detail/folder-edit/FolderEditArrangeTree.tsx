@@ -47,10 +47,19 @@ export type FolderEditDrag =
 const dragType = "application/x-kikoto-folder-edit";
 // A drag stays inside one page, so the dragged item is kept here rather than
 // serialized: drop targets need it during dragover, when browsers hide data.
+// The element a drag starts from always receives its dragend, wherever the
+// drag ends or is cancelled, so it clears the item.
 let activeDrag: FolderEditDrag | null = null;
 
 export function startFolderEditDrag(event: DragEvent, drag: FolderEditDrag, label: string) {
   activeDrag = drag;
+  event.currentTarget.addEventListener(
+    "dragend",
+    () => {
+      if (activeDrag === drag) activeDrag = null;
+    },
+    { once: true },
+  );
   event.dataTransfer.effectAllowed = drag.kind === "source" ? "copy" : "move";
   event.dataTransfer.setData(dragType, "1");
   event.dataTransfer.setData("text/plain", label);
@@ -60,6 +69,11 @@ function endFolderEditDrag() {
   activeDrag = null;
 }
 
+/** The Kikoto drag in progress over this event, never an outside file or text. */
+function eventDrag(event: DragEvent) {
+  return event.dataTransfer.types.includes(dragType) ? activeDrag : null;
+}
+
 function canDropInto(drag: FolderEditDrag | null, folder: string) {
   if (!drag || inLyricsFolder(folder)) return false;
   // Managed lyrics arrive through lyrics roles, never by dropping their folder.
@@ -67,8 +81,7 @@ function canDropInto(drag: FolderEditDrag | null, folder: string) {
   return drag.kind !== "folder" || !folderContains(drag.path, folder);
 }
 
-function dropInto(arrange: FolderWorkspaceArrange, folder: string) {
-  const drag = activeDrag;
+function dropInto(arrange: FolderWorkspaceArrange, folder: string, drag: FolderEditDrag | null) {
   activeDrag = null;
   if (!canDropInto(drag, folder) || !drag) return;
   if (drag.kind === "entry") arrange.moveEntries([drag.key], folder);
@@ -92,17 +105,20 @@ function dropTarget(
     over: over === folder,
     handlers: {
       onDragOver: (event: DragEvent) => {
-        if (!canDropInto(activeDrag, folder)) return;
+        const drag = eventDrag(event);
+        if (!canDropInto(drag, folder)) return;
         event.preventDefault();
         event.stopPropagation();
-        event.dataTransfer.dropEffect = activeDrag?.kind === "source" ? "copy" : "move";
+        event.dataTransfer.dropEffect = drag?.kind === "source" ? "copy" : "move";
         if (over !== folder) setOver(folder);
       },
       onDrop: (event: DragEvent) => {
+        const drag = eventDrag(event);
+        if (!drag) return;
         event.preventDefault();
         event.stopPropagation();
         setOver(null);
-        dropInto(arrange, folder);
+        dropInto(arrange, folder, drag);
       },
     },
   };

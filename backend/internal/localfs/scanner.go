@@ -409,7 +409,9 @@ func isKikotoInternalDirectory(name string) bool {
 // Kikoto's own publication directories, and the metadata, recycle, and
 // snapshot directories that NAS systems and operating systems add, such as
 // Synology's @eaDir, which can carry a work folder's name. A skipped directory
-// is unseen: nothing inside it is discovered, indexed, or marked missing.
+// is unseen: nothing inside it is discovered or indexed, and a work root in it
+// keeps its state. Inside a work root that is read, it holds no file of the
+// work.
 func IsIgnoredDirectoryName(name string) bool {
 	if isKikotoInternalDirectory(name) {
 		return true

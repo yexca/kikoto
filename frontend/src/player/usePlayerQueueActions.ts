@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useTranslation } from "react-i18next";
 
 import { currentPlaybackOrigin } from "@/app/playingWorkNavigation";
-import { useToast } from "@/components/ui/toast";
+import { toastFromError, useToast } from "@/components/ui/toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { api } from "@/lib/api";
 
@@ -52,6 +53,7 @@ export function usePlayerQueueActions({
   resetTransientPlaybackCompatibility: () => void;
   clearSleepTimer: () => void;
 }) {
+  const { t } = useTranslation();
   const toast = useToast();
   const { refs, currentTrack, carriedPlaybackPosition, invalidatePlaybackRequests, updatePlayingState } = engine;
   const [lyricsPreferenceOverrides, setLyricsPreferenceOverrides] = useState<Record<string, number | null>>({});
@@ -257,14 +259,12 @@ export function usePlayerQueueActions({
       timers[preferenceKey] = window.setTimeout(() => {
         delete timers[preferenceKey];
         api.setMediaLyricsOffset(target.mediaItemId, offset).catch((error: unknown) => {
-          toast.notify({
-            kind: "warning",
-            message: error instanceof Error ? error.message : "Lyrics timing could not be saved.",
-          });
+          // The timing still applies in this session, so a failed save warns.
+          toast.notify({ ...toastFromError(error, t("player.lyricsTimingSaveFailed")), kind: "warning" });
         });
       }, LYRICS_OFFSET_SAVE_DELAY_MS);
     },
-    [setQueue, toast],
+    [setQueue, t, toast],
   );
 
   useEffect(

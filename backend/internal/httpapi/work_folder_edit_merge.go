@@ -27,11 +27,14 @@ import (
 // content in the edited folder as it will be, since deleting them loses them.
 
 // workFolderEditMergeFile is a file of a merged folder, by its path below the
-// folder, with the version of it the edit was planned with.
+// folder, with the version of it the edit was planned with. Lost marks a file
+// the merge check reported without an identical copy in the edited folder;
+// any other file is deleted only while such a copy is there.
 type workFolderEditMergeFile struct {
 	Path      string `json:"path"`
 	SizeBytes int64  `json:"sizeBytes"`
 	Version   string `json:"version"`
+	Lost      bool   `json:"lost,omitempty"`
 }
 
 // workFolderEditMerge is a local folder of the family that the edit deletes
@@ -194,13 +197,16 @@ type workFolderEditContent struct {
 func (s *Server) workFolderEditFinalContents(ctx context.Context, plan workFolderEditPlan) (map[string]bool, []workFolderEditContent, error) {
 	copied := map[string]bool{}
 	final := []workFolderEditContent{}
+	// Paths compare the way the edited folder's filesystem may compare them, so
+	// a file an added file replaces under another case does not count as
+	// staying.
 	replaced := map[string]bool{}
 	for _, item := range plan.Items {
 		if !workFolderEditItemAdds(item) {
 			continue
 		}
 		if item.Resolution == "replace" || item.Status == "replace_target" {
-			replaced[item.TargetPath] = true
+			replaced[fetchTargetKey(item.TargetPath)] = true
 		}
 		if item.Action != "copy_local" {
 			continue
@@ -214,7 +220,7 @@ func (s *Server) workFolderEditFinalContents(ctx context.Context, plan workFolde
 	}
 	removed := map[string]bool{}
 	for _, removal := range plan.Removals {
-		removed[removal.Path] = true
+		removed[fetchTargetKey(removal.Path)] = true
 	}
 	target := workFolderEditFolder{ID: plan.FolderID, WorkID: plan.WorkID, RootPath: plan.SaveRoot}
 	if err := s.db.QueryRowContext(ctx, "SELECT file_source_id FROM work_folder_location WHERE id = ?", plan.FolderID).Scan(&target.FileSourceID); err != nil {
@@ -225,7 +231,7 @@ func (s *Server) workFolderEditFinalContents(ctx context.Context, plan workFolde
 		return nil, nil, err
 	}
 	for _, file := range current {
-		if removed[file] || replaced[file] {
+		if removed[fetchTargetKey(file)] || replaced[fetchTargetKey(file)] {
 			continue
 		}
 		absolute, err := safeDataPath(s.cfg.DataRoot, file)
@@ -279,7 +285,10 @@ func (workFolderEditMergeChangedError) Error() string {
 }
 
 // verifyWorkFolderEditMergeReview refuses to merge folders without a complete
-// merge check of the same files.
+// merge check of the same files, and marks the merged files that check
+// reported lost. Every other merged file must still have its identical copy
+// in the edited folder when the merge deletes it; one whose comparison is not
+// established again in time counts as having a copy, so the merge verifies it.
 func (s *Server) verifyWorkFolderEditMergeReview(ctx context.Context, plan workFolderEditPlan, review string) error {
 	if len(plan.Merges) == 0 {
 		return nil
@@ -293,6 +302,65 @@ func (s *Server) verifyWorkFolderEditMergeReview(ctx context.Context, plan workF
 	}
 	if workFolderEditMergeReview(plan.Merges, final) != review {
 		return workFolderEditMergeChangedError{}
+	}
+	check, err := s.workFolderEditMergeLosses(ctx, plan, workFolderEditMergeCheckBudget)
+	if err != nil {
+		return err
+	}
+	lost := map[string]bool{}
+	for _, file := range check.Lost {
+		lost[fmt.Sprintf("%d:%s", file.FolderID, file.Path)] = true
+	}
+	for _, merge := range plan.Merges {
+		for index, file := range merge.Files {
+			merge.Files[index].Lost = lost[fmt.Sprintf("%d:%s", merge.FolderID, path.Join(merge.RootPath, file.Path))]
+		}
+	}
+	return nil
+}
+
+// verifyWorkFolderEditMergeCopies checks, before a merged folder loses any
+// file, that each of its files the merge check did not report lost still has
+// a file of the same size and SHA-256 in the edited folder. A copy that was
+// deleted or rewritten since the review stops the edit for a new review.
+func (e *workFolderEditExecution) verifyWorkFolderEditMergeCopies(ctx context.Context, merge workFolderEditMerge, present []workFolderEditMergeFile) error {
+	kept := map[string]bool{}
+	for _, file := range merge.Files {
+		kept[file.Path] = !file.Lost
+	}
+	final := map[int64][]workFolderEditContent{}
+	targetRoot := normalizeFolderRootPath(e.payload.TargetRoot)
+	err := filepath.WalkDir(e.targetAbs, func(current string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.Type().IsRegular() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		libraryPath := path.Join(targetRoot, relativeDataPath(e.targetAbs, current))
+		final[info.Size()] = append(final[info.Size()], workFolderEditContent{libraryPath: libraryPath, size: info.Size()})
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("the edited folder could not be read to check the merge: %w", err)
+	}
+	hashes := newWorkFolderEditHashes(e.server, time.Now().Add(24*time.Hour))
+	for _, file := range present {
+		if !kept[file.Path] {
+			continue
+		}
+		mergedPath := path.Join(normalizeFolderRootPath(merge.RootPath), file.Path)
+		matched, _, err := hashes.matchesAny(ctx, mergedPath, final[file.SizeBytes])
+		if err != nil {
+			return err
+		}
+		if !matched {
+			return fmt.Errorf("%s no longer has an identical copy in the edited folder; review the merge again", mergedPath)
+		}
 	}
 	return nil
 }
@@ -552,6 +620,9 @@ func (e *workFolderEditExecution) mergeFolder(ctx context.Context, merge workFol
 		if reviewed, ok := planned[file.Path]; !ok || reviewed.SizeBytes != file.SizeBytes || reviewed.Version != file.Version {
 			return fmt.Errorf("%s changed after the edit was planned; review the merge again", path.Join(merge.RootPath, file.Path))
 		}
+	}
+	if err := e.verifyWorkFolderEditMergeCopies(ctx, merge, present); err != nil {
+		return err
 	}
 	for _, file := range present {
 		deleted, err := s.removeWorkFolderEditMergedFile(statusCtx, merge, file.Path)

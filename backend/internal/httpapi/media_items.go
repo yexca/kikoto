@@ -358,7 +358,7 @@ func localFileKind(path string) string {
 		return "video"
 	case ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif":
 		return "image"
-	case ".txt", ".md", ".json", ".lrc", ".cue", ".srt", ".vtt", ".ass", ".csv", ".log", ".ini", ".yaml", ".yml":
+	case ".txt", ".md", ".json", ".lrc", ".cue", ".srt", ".vtt", ".ass", ".ssa", ".csv", ".log", ".ini", ".yaml", ".yml":
 		return "text"
 	default:
 		return "file"

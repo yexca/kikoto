@@ -782,6 +782,7 @@ describe("mediaTreeModel", () => {
       ".srt",
       ".vtt",
       ".ass",
+      ".ssa",
       ".csv",
       ".log",
       ".ini",

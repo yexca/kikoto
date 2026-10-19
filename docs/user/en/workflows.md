@@ -244,7 +244,9 @@ started, and can follow their status, events, and file progress.
   `System Volume Information`, and `lost+found`, and the files `._*`,
   `.DS_Store`, and `Thumbs.db`. A work folder inside a recycle bin or a NAS
   thumbnail folder is never found as a work, and a work already recorded there
-  keeps its state.
+  keeps its state. Inside a work folder a scan reads, these folders and files
+  are not files of the work, and the scan marks any that the library lists as
+  missing.
 - When FFprobe cannot read a media file, such as a damaged file, Kikoto records
   that for the file's current version and stops probing it in the background.
   A timeout or an interrupted probe records nothing, and a scan that sees the

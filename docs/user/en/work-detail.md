@@ -282,7 +282,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   the work's own file keeps its assignments. A remote edition you read from is
   not added to the library.
 - **Manage files** on a local work has **Manage as lyrics** for lyrics that are
-  elsewhere in the work folder. Select `.lrc`, `.vtt`, `.srt`, `.ass`, or `.txt`
+  elsewhere in the work folder. Select `.lrc`, `.vtt`, `.srt`, `.ass`, `.ssa`, or `.txt`
   files and choose it to open **Lyrics files** with those files selected under
   **Other lyrics in this folder**.
 - **Manage files** hides the lyrics Kikoto manages by default when **Manage
@@ -341,7 +341,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   deleted with everything it still holds. Files from a remote edition are
   downloaded, which also
   needs permission to fetch, and the edition is not added to the library. A
-  lyrics file (`.lrc`, `.vtt`, `.srt`, `.ass`, or `.txt`) from another place
+  lyrics file (`.lrc`, `.vtt`, `.srt`, `.ass`, `.ssa`, or `.txt`) from another place
   can be added as lyrics instead of at its own path: choose a language under
   its name, or for all selected lyrics files of the place under **Selected
   lyrics files**, and it goes to that language's folder inside
@@ -364,7 +364,10 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   the edit is not applied and asks you to review the merge again. The edit runs
   as one Activity workflow that collects every added file before it removes,
   moves, or adds anything, and deletes a merged folder last, only if it still
-  holds exactly the files the review listed, unchanged. A merged folder of a
+  holds exactly the files the review listed, unchanged, and every file the
+  review found a copy of still has that identical copy in this folder;
+  otherwise it stops and asks you to review the merge again. A stopped edit
+  that you retry continues where it stopped. A merged folder of a
   work that a Fetch is still filling is not merged. The
   directory reloads when it finishes.
 - A work whose code a scan finds in several local folders keeps all of them.

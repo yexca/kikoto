@@ -2294,6 +2294,7 @@ export const surfaceJapanese = {
     lyricsEarlier: "歌詞を0.5秒早く表示",
     lyricsLater: "歌詞を0.5秒遅く表示",
     lyricsTimingReset: "歌詞のタイミングをリセット",
+    lyricsTimingSaveFailed: "歌詞のタイミングを保存できませんでした。",
     lyricsOffsetSeconds: "{{value}} 秒",
     speakerConfirmTitle: "スマートフォンのスピーカーで再生しますか？",
     speakerConfirmDescription:
@@ -3399,7 +3400,7 @@ export const surfaceJapanese = {
     readOnly: "歌詞の設定は確認できますが、変更にはライブラリの書き込み権限が必要です。",
     noAudio: "この作品にはローカルの音声ファイルがありません。",
     noLyrics:
-      "ローカルの歌詞ファイルが見つかりません。.lrc、.vtt、.srt、.ass、.txt ファイルを作品フォルダーに追加してから、ローカルファイルを更新してください。",
+      "ローカルの歌詞ファイルが見つかりません。.lrc、.vtt、.srt、.ass、.ssa、.txt ファイルを作品フォルダーに追加してから、ローカルファイルを更新してください。",
     track: "トラック",
     lyrics: "歌詞",
     lyricsFor: "{{title}} の歌詞",
@@ -3442,7 +3443,7 @@ export const surfaceJapanese = {
     tabFiles: "歌詞ファイル",
     usedByTracks: "トラック: {{count}}",
     manageAsLyrics: "歌詞として管理",
-    manageAsLyricsHint: ".lrc、.vtt、.srt、.ass、.txt ファイルを選択すると、特定の言語の歌詞として管理できます。",
+    manageAsLyricsHint: ".lrc、.vtt、.srt、.ass、.ssa、.txt ファイルを選択すると、特定の言語の歌詞として管理できます。",
     chooseLanguage: "言語を選択",
     managedByKikoto: "Kikoto が管理する歌詞",
     managedByKikotoHint: "「歌詞を管理」で扱います",

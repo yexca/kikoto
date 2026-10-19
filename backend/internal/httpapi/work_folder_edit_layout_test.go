@@ -269,6 +269,141 @@ func TestWorkFolderEditPutsMovedFilesBackWhenItStops(t *testing.T) {
 	fixture.assertNoEditStaging(t)
 }
 
+func TestWorkFolderEditMovedOntoARemovedFileKeepsItsOwnItem(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	before := fixture.withSecondTrack(t)
+	originalName := filepath.ToSlash(fixture.originalPath)[len(fixture.root)+1:]
+	movedItem := fixture.mediaItemOf(t, before[originalName])
+	removedItem := fixture.mediaItemOf(t, before[folderEditSecondTrack])
+
+	fixture.run(t, map[string]any{
+		"moves":             []any{move(before[originalName], folderEditSecondTrack)},
+		"removeLocationIds": []int64{before[folderEditSecondTrack]},
+	})
+	if content, err := os.ReadFile(fixture.targetFile(folderEditSecondTrack)); err != nil || string(content) != "synthetic audio" {
+		t.Fatalf("%s = %q, %v", folderEditSecondTrack, content, err)
+	}
+	after := fixture.locations(t)
+	if got := fixture.mediaItemOf(t, after[folderEditSecondTrack]); got != movedItem {
+		t.Fatalf("the moved file has media item %d, want its own %d and not the removed file's %d", got, movedItem, removedItem)
+	}
+}
+
+func TestWorkFolderEditRetryFinishesAfterAMergedSourceWasCleared(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	siblingFolderID := fixture.addSiblingFolder(t, map[string]string{"selected.txt": "copied into the edited folder"})
+	job := fixture.apply(t, map[string]any{
+		"additions":      []any{localAddition(siblingFolderID, "selected.txt")},
+		"mergeFolderIds": []int64{siblingFolderID},
+	})
+	// A Fetch of the merged folder's work stops the merge after the copied
+	// file was published.
+	fetch := []string{
+		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch')`,
+		`INSERT INTO workflow_run (workflow_definition_id, workflow_code, display_name, status, trigger_type, input_json)
+			VALUES ((SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Fetch', 'running', 'manual', '{"work_code":"RJ00000002"}')`,
+	}
+	for _, statement := range fetch {
+		if _, err := fixture.db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var fetchRunID int64
+	if err := fixture.db.QueryRow("SELECT last_insert_rowid()").Scan(&fetchRunID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec(`INSERT INTO workflow_job (workflow_run_id, worker_type, status) VALUES (?, 'remote_work_fetch', 'running')`, fetchRunID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec("UPDATE workflow_job SET max_retries = 0 WHERE id = ?", job.ID); err != nil {
+		t.Fatal(err)
+	}
+	job.MaxRetries = 0
+	ctx := context.Background()
+	if err := fixture.server.executeWorkFolderEditJob(ctx, job); err == nil {
+		t.Fatal("the merge ran while a Fetch filled the merged folder")
+	}
+	// The merged folder was then deleted and recorded as gone, so the copied
+	// file's source is no longer an active folder.
+	merge := fixture.siblingMerge(t, siblingFolderID)
+	target := mediaCleanupTarget{
+		Kind: "local_root", FolderID: merge.FolderID, WorkID: merge.WorkID, SourceID: merge.FileSourceID,
+		Path: merge.RootPath, ExpectedPath: merge.RootPath, CleanupRunID: job.RunID,
+	}
+	if err := fixture.server.claimMediaCleanupFolder(ctx, target, job.RunID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.server.removeWorkFolderEditMergedFile(ctx, merge, "selected.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.server.clearLocalWorkRoot(ctx, target); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec("UPDATE workflow_run SET status = 'succeeded' WHERE id = ?", fetchRunID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec("UPDATE workflow_job SET status = 'succeeded' WHERE workflow_run_id = ?", fetchRunID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := fixture.server.retryFailedWorkflowJob(ctx, job.RunID); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.db.QueryRow(`SELECT payload_json, checkpoint_json, retry_count, max_retries FROM workflow_job WHERE id = ?`, job.ID).Scan(
+		&job.PayloadJSON, &job.CheckpointJSON, &job.RetryCount, &job.MaxRetries,
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{"UPDATE workflow_job SET status = 'running' WHERE id = ?", "UPDATE workflow_run SET status = 'running' WHERE id = ?"} {
+		id := job.ID
+		if strings.Contains(statement, "workflow_run") {
+			id = job.RunID
+		}
+		if _, err := fixture.db.Exec(statement, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := fixture.server.executeWorkFolderEditJob(ctx, job); err != nil {
+		t.Fatalf("retrying an edit whose merged source is gone: %v", err)
+	}
+	if status := fixture.runStatus(t, job.RunID); status != "succeeded" {
+		t.Fatalf("run status = %q", status)
+	}
+	if content, err := os.ReadFile(fixture.targetFile("selected.txt")); err != nil || string(content) != "copied into the edited folder" {
+		t.Fatalf("published file = %q, %v", content, err)
+	}
+}
+
+func TestWorkFolderEditMergeKeepsAFileWhoseReviewedCopyIsGone(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	originalName := filepath.ToSlash(fixture.originalPath)[len(fixture.root)+1:]
+	siblingFolderID := fixture.addSiblingFolder(t, map[string]string{"Same/copy.mp3": "synthetic audio"})
+	body := map[string]any{"mergeFolderIds": []int64{siblingFolderID}}
+	if check := fixture.mergeCheck(t, body); !check.Complete || len(check.Lost) != 0 {
+		t.Fatalf("merge check = %+v", check)
+	}
+	job := fixture.apply(t, body)
+	// The edited folder's copy, which the review relied on, is deleted before
+	// the merge runs.
+	if err := os.Remove(fixture.targetFile(originalName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec("UPDATE workflow_job SET max_retries = 0 WHERE id = ?", job.ID); err != nil {
+		t.Fatal(err)
+	}
+	job.MaxRetries = 0
+	if err := fixture.server.executeWorkFolderEditJob(context.Background(), job); err == nil {
+		t.Fatal("the merge deleted a file whose reviewed copy is gone")
+	}
+	if content, err := os.ReadFile(filepath.Join(fixture.dataRoot, fixture.siblingPool, "RJ00000002", "Same", "copy.mp3")); err != nil || string(content) != "synthetic audio" {
+		t.Fatalf("merged file = %q, %v", content, err)
+	}
+	var state string
+	if err := fixture.db.QueryRow("SELECT state FROM work_folder_location WHERE id = ?", siblingFolderID).Scan(&state); err != nil || state != "active" {
+		t.Fatalf("merged folder state = %q, %v", state, err)
+	}
+}
+
 func TestWorkFolderEditRejectsLayoutsThatCollide(t *testing.T) {
 	fixture := newFolderEditFixture(t, serveFolderEditMedia)
 	before := fixture.withSecondTrack(t)

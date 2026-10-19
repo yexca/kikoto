@@ -57,7 +57,9 @@ function stubPage({
     style: { cssText: "" },
     setAttribute: vi.fn(),
     focus: vi.fn(),
-    select: vi.fn(() => selectedText.push(area.value)),
+    select: vi.fn(),
+    // iOS selects a read-only field's text only through an explicit range.
+    setSelectionRange: vi.fn((start: number, end: number) => selectedText.push(area.value.slice(start, end))),
     remove: vi.fn(),
   };
   const focused = { focus: vi.fn() };

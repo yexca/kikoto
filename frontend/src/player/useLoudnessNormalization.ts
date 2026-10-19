@@ -63,11 +63,15 @@ export function useLoudnessNormalization(
   const nextLocationId = measurableLocationId(nextTrack);
 
   // A measurement keeps running when the track changes, since the next track
-  // usually becomes the current one; only leaving the player cancels it.
+  // usually becomes the current one; only leaving the player cancels it. A
+  // player that mounts again, as under StrictMode, measures with a new
+  // controller and forgets the cancelled requests.
   const controllerRef = useRef<AbortController | null>(null);
   useEffect(
     () => () => {
       controllerRef.current?.abort();
+      controllerRef.current = null;
+      pendingRef.current = new Set();
     },
     [],
   );
@@ -76,9 +80,10 @@ export function useLoudnessNormalization(
     if (mode === "off") return;
     controllerRef.current ??= new AbortController();
     const { signal } = controllerRef.current;
+    const pending = pendingRef.current;
     for (const id of [locationId, nextLocationId]) {
-      if (id === null || knownRef.current.has(id) || pendingRef.current.has(id)) continue;
-      pendingRef.current.add(id);
+      if (id === null || knownRef.current.has(id) || pending.has(id)) continue;
+      pending.add(id);
       api
         .getMediaLoudness(id, signal)
         .then((loudness) => {
@@ -88,7 +93,7 @@ export function useLoudnessNormalization(
         // An unavailable or busy measurement leaves the track at its own level;
         // the next time it plays asks again.
         .catch(() => {})
-        .finally(() => pendingRef.current.delete(id));
+        .finally(() => pending.delete(id));
     }
   }, [locationId, mode, nextLocationId]);
 

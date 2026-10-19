@@ -162,7 +162,7 @@ func TestGetRemoteSourceWorkTextAcceptsEveryPreviewableTextFile(t *testing.T) {
 	server := newRemoteTextPreviewServer(t, upstream.URL, upstream.URL+"/media/01.lrc")
 	key := server.remoteWorkCacheKey(context.Background(), 7, "RJ00000000")
 	snapshot := server.remoteWorkTracksCache[key]
-	accepted := []string{".txt", ".md", ".json", ".lrc", ".cue", ".srt", ".vtt", ".ass", ".csv", ".log", ".ini", ".yaml", ".yml"}
+	accepted := []string{".txt", ".md", ".json", ".lrc", ".cue", ".srt", ".vtt", ".ass", ".ssa", ".csv", ".log", ".ini", ".yaml", ".yml"}
 	snapshot.Tracks = []kikoeru.Track{
 		{Type: "text", Title: "listed-as-text.nfo", MediaStreamURL: upstream.URL + "/media/file"},
 		{Type: "audio", Title: "track.mp3", MediaStreamURL: upstream.URL + "/media/file"},

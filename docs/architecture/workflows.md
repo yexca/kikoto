@@ -813,8 +813,11 @@ error still fails the scan. Every walk, the folder watcher, and file indexing
 skip the directories and files `localfs.IsIgnoredDirectoryName` and
 `IsIgnoredFileName` name: Kikoto's own transaction directories and the NAS and
 operating system additions such as `@eaDir`, `#recycle`, `__MACOSX`, `._*`,
-and `.DS_Store`. A recorded root or file location in such a place is outside
-the scope and is never marked missing. Fetch planning resolves
+and `.DS_Store`. A recorded root in such a place is outside the scope, and
+its locations are never marked missing. Inside a root a scan finds or an
+index reads, such an entry is not a file of the work: the scan marks a
+location recorded there missing, while the rest of a completed index stays
+valid. Fetch planning resolves
 new works into the Fetch pool and existing folders in their own pool, rejects
 `library_not_configured`, `fetch_pool_required`, `fetch_pool_offline`, and
 `library_offline` with `409`, records the pool as `transactionPool` in the

@@ -45,6 +45,14 @@ export function routeLoudnessGain(element: HTMLMediaElement | null, gain: number
       context.createMediaElementSource(element).connect(gainNode).connect(context.destination);
       graph = { context, gain: gainNode };
       graphs.set(element, graph);
+      // A call, Siri, or another app's audio interrupts the context. Playback
+      // that resumes afterwards, from the page or the lock screen, and an
+      // interruption that ends while the element still plays resume it too.
+      const resume = () => {
+        if (!element.paused) resumeLoudnessGain(element);
+      };
+      element.addEventListener("playing", resume);
+      context.addEventListener("statechange", resume);
     } catch {
       return false;
     }
@@ -56,8 +64,12 @@ export function routeLoudnessGain(element: HTMLMediaElement | null, gain: number
   return true;
 }
 
-/** A routed element only sounds while its context runs; browsers start it suspended. */
+/**
+ * A routed element only sounds while its context runs. Browsers start it
+ * suspended, and Safari leaves it interrupted after an audio interruption.
+ */
 export function resumeLoudnessGain(element: HTMLMediaElement | null) {
   const graph = element ? graphs.get(element) : undefined;
-  if (graph && graph.context.state === "suspended") void graph.context.resume().catch(() => {});
+  const state: string | undefined = graph?.context.state;
+  if (graph && state !== "running" && state !== "closed") void graph.context.resume().catch(() => {});
 }

@@ -157,10 +157,10 @@ manages Kikoto and runs local speech recognition and translation for it. It is
 developed and released in its own repository; follow its README to install it.
 
 The PowerShell helper in [`kikoto-helper/`](../../kikoto-helper/README.md) is
-no longer maintained. It shows a notice that points to Kikoto Helper when it
-starts and in its main menu. The folder stays in this repository because
-existing `kikoto-helper.cmd` launchers download their language script and
-check for updates there.
+unmaintained and receives no new features. When it starts and in its main
+menu, it shows a notice that points to Kikoto Helper. The folder stays in this
+repository because existing `kikoto-helper.cmd` launchers download their
+language script and check for updates there.
 
 ## Development Stack
 

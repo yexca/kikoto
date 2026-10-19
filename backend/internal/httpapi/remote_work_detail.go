@@ -530,7 +530,7 @@ func mediaKindFromPath(path string) string {
 		return "video"
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp":
 		return "image"
-	case ".txt", ".lrc", ".srt", ".vtt", ".ass":
+	case ".txt", ".lrc", ".srt", ".vtt", ".ass", ".ssa":
 		return "text"
 	default:
 		return "file"

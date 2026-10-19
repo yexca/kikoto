@@ -137,7 +137,7 @@ assigns tracks. The preview never changes a file.
   path component of a local file must be a regular directory or file, so a
   link inside a folder cannot read or move a file from outside it. A source
   folder is not changed.
-- Each added file must be a `.lrc`, `.vtt`, `.srt`, `.ass`, or `.txt`
+- Each added file must be a `.lrc`, `.vtt`, `.srt`, `.ass`, `.ssa`, or `.txt`
   file and declares its language, one of the languages a lyrics assignment
   accepts or the empty language for every language; a language is never
   inferred. The language selects the folder inside `lyrics_kikoto`: `ja`,
@@ -275,9 +275,11 @@ family, and stops before the next edition when the request is cancelled.
   [library file change](../architecture/workflows.md#library-layout-and-onboarding).
   Apply requires the review of a complete merge check of the same files and
   refuses the edit when they changed since. The plan records the files with
-  their sizes and modification times, and the run deletes the folder only
-  after the target folder is indexed and only while it holds exactly those
-  files, unchanged. The run claims the folder before deleting, so another cleanup or edit
+  their sizes and modification times and the files the check reported lost,
+  and the run deletes the folder only after the target folder is indexed, only
+  while it holds exactly those files, unchanged, and only while each file not
+  reported lost still has a copy of the same size and SHA-256 in the target
+  folder. The run claims the folder before deleting, so another cleanup or edit
   cannot change it meanwhile, and returns it to the work when the run fails or
   is cancelled. Each deleted file's location turns unavailable with its
   deletion, and a resumed run counts a folder an earlier attempt already
@@ -319,7 +321,7 @@ current tree the same way.
 - A read has a 20-second bound and a 512 KiB limit; local and cached files
   share the size limit.
 - Both endpoints accept the same files: one the source lists as text, or one
-  with a `.txt`, `.md`, `.json`, `.lrc`, `.cue`, `.srt`, `.vtt`, `.ass`,
+  with a `.txt`, `.md`, `.json`, `.lrc`, `.cue`, `.srt`, `.vtt`, `.ass`, `.ssa`,
   `.csv`, `.log`, `.ini`, `.yaml`, or `.yml` extension.
 - Errors expose fixed messages only. Upstream URLs and local paths stay in
   protected logs.
