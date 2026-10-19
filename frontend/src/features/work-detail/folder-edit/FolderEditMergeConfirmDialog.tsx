@@ -4,11 +4,20 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import {
+  folderEditMergeCheckProgress,
+  type FolderEditMergeCheckProgress,
+} from "@/features/work-detail/folder-edit/folderEditModel";
 import { formatBytes } from "@/features/work-detail/media/mediaTreeModel";
 import { api, type WorkFolderEditMerge, type WorkFolderEditMergeCheck, type WorkFolderEditRequest } from "@/lib/api";
 
-/** A check that still has files to compare is asked again, up to this many times. */
-const MAX_CHECK_ROUNDS = 40;
+/**
+ * A check that still has files to compare is asked again for as long as it
+ * gets further. The server hashes at least one file per round and keeps the
+ * hashes, so a round can pass without a file compared only while it hashes
+ * the candidates of one; this many such rounds in a row mean the check is stuck.
+ */
+const MAX_STALLED_ROUNDS = 5;
 const SHOWN_LOST_FILES = 50;
 
 type CheckState =
@@ -53,7 +62,8 @@ export function FolderEditMergeConfirmDialog({
     void (async () => {
       setState({ status: "checking", check: null });
       try {
-        for (let round = 0; round < MAX_CHECK_ROUNDS; round++) {
+        let furthest: FolderEditMergeCheckProgress | null = null;
+        for (let stalled = 0; stalled < MAX_STALLED_ROUNDS;) {
           const check = await api.checkWorkFolderEditMerge(workId, checked, controller.signal);
           if (cancelled) return;
           if (check.complete && check.review) {
@@ -61,6 +71,9 @@ export function FolderEditMergeConfirmDialog({
             return;
           }
           setState({ status: "checking", check });
+          const round = folderEditMergeCheckProgress(furthest, check);
+          furthest = round.progress;
+          stalled = round.advanced ? 0 : stalled + 1;
         }
         if (!cancelled) setState({ status: "failed" });
       } catch {
