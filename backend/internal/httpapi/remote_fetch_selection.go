@@ -81,17 +81,12 @@ func flattenRemoteSaveFiles(tracks []kikoeru.Track) []remoteSaveFile {
 			if sourceURL == "" {
 				continue
 			}
-			var size *int64
-			if node.Size > 0 {
-				value := node.Size
-				size = &value
-			}
 			files = append(files, remoteSaveFile{
 				Path:        path,
 				Kind:        kind,
 				StreamURL:   firstNonEmpty(node.MediaStreamURL, node.StreamLowQualityURL),
 				DownloadURL: node.MediaDownloadURL,
-				SizeBytes:   size,
+				SizeBytes:   node.KnownSize(),
 				Hash:        strings.TrimSpace(node.Hash),
 			})
 		}

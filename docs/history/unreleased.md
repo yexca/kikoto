@@ -25,6 +25,7 @@
 
 - A remote source tab folds the editions of a known work family into one card that lists every edition the source returned. The card presents the searched edition, then your metadata language, then the family's own code, and its code, title, cover, Track, and Fetch all come from that one edition. A one-page result counts cards instead of upstream entries.
 - Fetch on a work without a local folder builds the new folder from several places for users who manage local files: the source's edition, the work's other editions, sources, and local folders, and lyrics files added as lyrics of a language. The edition's files are one Fetch, and the rest is added by an **Edit files** run once the Fetch has published the folder. Its **Final folder** is arranged as in **Edit files**.
+- Fetch opens for a work whose source lists an empty file, such as a 0-byte notice text: the free disk space check counts it as 0 bytes instead of refusing the Fetch as having an unknown size. A source that leaves a file's size out still stops the Fetch, and the message now says that free space cannot be checked instead of a generic, untranslated failure.
 
 </details>
 

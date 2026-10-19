@@ -2645,6 +2645,7 @@ export const surfaceHans = {
     sourceNotUsable: "此远程来源已停用，或不支持此操作。",
     downloadLimitExceeded: "所选文件中有超过远程下载上限的文件。请取消选择该文件，或在设置中提高上限。",
     insufficientDiskSpace: "磁盘可用空间不足，无法完成此操作。",
+    unknownFileSize: "来源未提供部分所选文件的大小，无法检查磁盘可用空间。",
     scanDepthTooShallow: "扫描深度比获取作品的保存目录更浅。请增大扫描深度，或缩短远程来源的保存路径。",
     saveTemplateTooDeep: "此保存路径会把作品放在超过最大扫描深度的位置。请减少目录层级。",
     rateLimited: "请求过多，请稍后重试。",

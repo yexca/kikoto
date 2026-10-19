@@ -36,7 +36,7 @@ func TestRemoteFetchUsesSourceFallbackLanguageAfterPersonalBrowse(t *testing.T) 
 			}
 			_ = json.NewEncoder(w).Encode(kikoeru.Work{ID: 1, SourceID: code, Title: title})
 		case "/api/tracks/1":
-			_ = json.NewEncoder(w).Encode([]kikoeru.Track{{Type: "audio", Title: "track.mp3", MediaDownloadURL: "/media/track.mp3", Size: 3}})
+			_ = json.NewEncoder(w).Encode([]kikoeru.Track{{Type: "audio", Title: "track.mp3", MediaDownloadURL: "/media/track.mp3", Size: int64Pointer(3)}})
 		default:
 			http.NotFound(w, r)
 		}

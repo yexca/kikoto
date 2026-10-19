@@ -48,7 +48,7 @@ func TestRemoteEditionFallbackRequiresProviderOriginAndParent(t *testing.T) {
 				case "/api/workInfo/" + candidateCode:
 					_ = json.NewEncoder(w).Encode(kikoeru.Work{ID: 2, SourceID: tc.remoteCode, Title: "Example Work Chinese"})
 				case "/api/tracks/2":
-					_ = json.NewEncoder(w).Encode([]kikoeru.Track{{Type: "audio", Title: "track.mp3", MediaDownloadURL: "/media/" + candidateCode + "/track.mp3", Size: 5}})
+					_ = json.NewEncoder(w).Encode([]kikoeru.Track{{Type: "audio", Title: "track.mp3", MediaDownloadURL: "/media/" + candidateCode + "/track.mp3", Size: int64Pointer(5)}})
 				case "/media/" + candidateCode + "/track.mp3":
 					w.Header().Set("Content-Type", "audio/mpeg")
 					downloads.Add(1)

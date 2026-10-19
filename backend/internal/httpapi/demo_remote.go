@@ -21,6 +21,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // Demo has no real remote server. It publishes one simulated
@@ -485,7 +486,7 @@ type demoRemoteFile struct {
 	locationID int64
 	path       string
 	kind       string
-	size       int64
+	size       sql.NullInt64
 	duration   float64
 }
 
@@ -529,7 +530,7 @@ func (s *Server) demoRemoteWorkFiles(ctx context.Context, workID int64) ([]demoR
 	folder = strings.Trim(strings.ReplaceAll(folder, `\`, "/"), "/")
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT location.id, location.path, item.kind,
-			COALESCE(location.size_bytes, item.size_bytes, 0),
+			COALESCE(location.size_bytes, item.size_bytes),
 			COALESCE(location.duration_seconds, item.duration_seconds, 0)
 		FROM media_file_location AS location
 		INNER JOIN media_item AS item ON item.id = location.media_item_id
@@ -584,7 +585,7 @@ func demoRemoteTrackTree(files []demoRemoteFile) []kikoeru.Track {
 			Type: demoRemoteTrackType(file.kind, file.path), Title: path.Base(file.path),
 			Hash:           fmt.Sprintf("demo-%d", file.locationID),
 			MediaStreamURL: mediaURL, MediaDownloadURL: mediaURL,
-			Duration: file.duration, Size: file.size,
+			Duration: file.duration, Size: sqlutil.Int64(file.size),
 		})
 	}
 	var build func(node *folderNode) []kikoeru.Track

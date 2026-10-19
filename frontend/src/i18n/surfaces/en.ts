@@ -2826,6 +2826,8 @@ export const surfaceEnglish = {
     downloadLimitExceeded:
       "A selected file is larger than the remote download limit. Deselect it or raise the limit in Settings.",
     insufficientDiskSpace: "There is not enough free disk space for this.",
+    unknownFileSize:
+      "The source does not report the size of every selected file, so free disk space cannot be checked.",
     scanDepthTooShallow:
       "The scan depth is shallower than the folders Fetch saves works into. Increase the scan depth, or shorten the save path of the remote sources.",
     saveTemplateTooDeep: "This save path places works deeper than the maximum scan depth. Use fewer folder levels.",

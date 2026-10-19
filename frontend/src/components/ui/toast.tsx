@@ -134,6 +134,7 @@ const apiErrorMessageKeys: Record<string, string> = {
   save_template_too_deep: "errorFeedback.saveTemplateTooDeep",
   download_limit_exceeded: "errorFeedback.downloadLimitExceeded",
   insufficient_disk_space: "errorFeedback.insufficientDiskSpace",
+  unknown_file_size: "errorFeedback.unknownFileSize",
   rate_limited: "errorFeedback.rateLimited",
   upstream_unavailable: "errors.unavailable",
   service_unavailable: "errors.unavailable",
