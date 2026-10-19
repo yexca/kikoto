@@ -935,6 +935,18 @@ export const japaneseResource = {
         seekInvalid: "{{min}} 秒から {{max}} 秒までの整数を入力してください。",
         savePlayback: "再生設定を保存",
         seekUpdated: "再生の早送り／巻き戻し設定を更新しました。",
+        loudness: "ラウドネスの正規化",
+        loudnessDescription:
+          "トラック間の音量差をそろえます。各ローカルファイルは、正規化をオンにして初めて再生したときに一度だけ測定されます。",
+        loudnessMode: "正規化",
+        loudnessOff: "オフ",
+        loudnessOffDescription: "各トラックを元の音量で再生します。",
+        loudnessAttenuate: "大きいトラックを下げる",
+        loudnessAttenuateDescription:
+          "大きいトラックを小さくし、小さいトラックはそのままにします。バックグラウンド再生中も働きます。",
+        loudnessFull: "大きいトラックを下げ、小さいトラックを上げる",
+        loudnessFullDescription:
+          "Web Audio を使って小さいトラックも大きくします。モバイルアプリでは上げる処理は行われず、一部のブラウザはバックグラウンドで Web Audio を停止します。",
         playbackSources: "再生ソース",
         playbackSourcesDescription:
           "ローカルファイルとリモートストリームなど、複数の場所があるトラックに適用されます。既定ではオフです。",

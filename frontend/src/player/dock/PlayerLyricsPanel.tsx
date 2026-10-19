@@ -1,3 +1,4 @@
+import { Minus, Plus, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -6,6 +7,10 @@ import { lyricsLanguageLabelKey } from "@/lib/lyricsLanguage";
 import { cn } from "@/lib/tailwindClassNames";
 import type { ParsedLyrics } from "@/lib/timedLyrics";
 import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
+import { LYRICS_OFFSET_LIMIT_MS } from "@/player/lyricsPreference";
+
+/** One press of the lyrics timing buttons moves the lines by half a second. */
+const LYRICS_OFFSET_STEP_MS = 500;
 
 export function LyricsLoadingSkeleton() {
   const { t } = useTranslation();
@@ -31,6 +36,8 @@ export function LyricsPanel({
   activeLocationId,
   automatic,
   onChoiceChange,
+  offsetMs = 0,
+  onOffsetChange,
   onSeek,
 }: {
   title: string;
@@ -41,6 +48,9 @@ export function LyricsPanel({
   activeLocationId: number;
   automatic: boolean;
   onChoiceChange: (locationId: number | null) => void;
+  /** The listener's timing offset; the panel offers its control only for timed lyrics. */
+  offsetMs?: number;
+  onOffsetChange?: (offsetMs: number) => void;
   onSeek: (seconds: number) => void;
 }) {
   const { t } = useTranslation();
@@ -100,7 +110,10 @@ export function LyricsPanel({
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      <div className="shrink-0 px-5 pt-3">{selector}</div>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-5 pt-3">
+        <div className="min-w-0 flex-1">{selector}</div>
+        {onOffsetChange && <LyricsOffsetControl offsetMs={offsetMs} onOffsetChange={onOffsetChange} />}
+      </div>
       <div
         ref={scrollerRef}
         className="lyrics-scroller app-scroll relative min-h-0 flex-1 overflow-auto px-3"
@@ -143,6 +156,59 @@ export function LyricsPanel({
             {t("player.followLyrics")}
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Moves timed lyrics earlier or later for this listener, half a second per press. */
+function LyricsOffsetControl({
+  offsetMs,
+  onOffsetChange,
+}: {
+  offsetMs: number;
+  onOffsetChange: (offsetMs: number) => void;
+}) {
+  const { t } = useTranslation();
+  const seconds = offsetMs / 1000;
+  const value = `${seconds > 0 ? "+" : ""}${seconds.toFixed(1)}`;
+  const buttonClass =
+    "inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40";
+  return (
+    <div role="group" aria-label={t("player.lyricsTiming")} className="flex shrink-0 items-center gap-1 text-xs">
+      <button
+        type="button"
+        className={buttonClass}
+        aria-label={t("player.lyricsEarlier")}
+        title={t("player.lyricsEarlier")}
+        disabled={offsetMs <= -LYRICS_OFFSET_LIMIT_MS}
+        onClick={() => onOffsetChange(offsetMs - LYRICS_OFFSET_STEP_MS)}
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+      <span className="min-w-[3.5rem] text-center font-medium tabular-nums text-muted-foreground" aria-live="polite">
+        {t("player.lyricsOffsetSeconds", { value })}
+      </span>
+      <button
+        type="button"
+        className={buttonClass}
+        aria-label={t("player.lyricsLater")}
+        title={t("player.lyricsLater")}
+        disabled={offsetMs >= LYRICS_OFFSET_LIMIT_MS}
+        onClick={() => onOffsetChange(offsetMs + LYRICS_OFFSET_STEP_MS)}
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+      {offsetMs !== 0 && (
+        <button
+          type="button"
+          className={buttonClass}
+          aria-label={t("player.lyricsTimingReset")}
+          title={t("player.lyricsTimingReset")}
+          onClick={() => onOffsetChange(0)}
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+        </button>
       )}
     </div>
   );

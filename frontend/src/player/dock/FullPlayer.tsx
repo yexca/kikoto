@@ -201,6 +201,8 @@ export function FullPlayer({
         activeLocationId={activeLyricsLocationId}
         automatic={lyrics.usingAutomaticLyrics}
         onChoiceChange={lyrics.selectLyricsLocation}
+        offsetMs={lyrics.lyricsOffsetMs}
+        onOffsetChange={lyrics.setLyricsOffset}
         onSeek={player.seekTo}
       />
     )

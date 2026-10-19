@@ -922,6 +922,18 @@ export const koreanResource = {
         seekInvalid: "{{min}}초에서 {{max}}초 사이의 정수를 입력하세요.",
         savePlayback: "재생 설정 저장",
         seekUpdated: "재생 빨리감기/되감기 설정이 업데이트되었습니다.",
+        loudness: "음량 정규화",
+        loudnessDescription:
+          "트랙 간 음량 차이를 맞춥니다. 각 로컬 파일은 정규화를 켠 상태로 처음 재생할 때 한 번만 측정됩니다.",
+        loudnessMode: "정규화",
+        loudnessOff: "끄기",
+        loudnessOffDescription: "모든 트랙을 원래 음량으로 재생합니다.",
+        loudnessAttenuate: "큰 트랙 줄이기",
+        loudnessAttenuateDescription:
+          "큰 트랙은 작게 재생하고 작은 트랙은 그대로 둡니다. 백그라운드 재생 중에도 적용됩니다.",
+        loudnessFull: "큰 트랙은 줄이고 작은 트랙은 키우기",
+        loudnessFullDescription:
+          "Web Audio로 작은 트랙도 키웁니다. 모바일 앱에서는 키우기가 적용되지 않으며, 일부 브라우저는 백그라운드에서 Web Audio를 멈춥니다.",
         playbackSources: "재생 소스",
         playbackSourcesDescription:
           "로컬 파일과 원격 스트림처럼 위치가 여러 개인 트랙에 적용됩니다. 기본값은 꺼짐입니다.",

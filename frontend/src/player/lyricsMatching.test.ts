@@ -56,6 +56,13 @@ describe("findLyricsMatch", () => {
     ).toBe(2);
   });
 
+  it("prefers the track's own lyrics over another sound effect variant", () => {
+    expect(
+      findLyricsMatch("work/本編_SEあり.wav", [lyric("work/本編_SEなし.lrc", 1), lyric("work/本編_SEあり.lrc", 2)])
+        ?.locationId,
+    ).toBe(2);
+  });
+
   it("chooses deterministically between equal candidates", () => {
     expect(
       findLyricsMatch("work/01_abc.wav", [lyric("work/01_abc.srt", 2), lyric("work/01_abc.vtt", 1)])?.locationId,
@@ -76,6 +83,13 @@ describe("findLyricsMatch", () => {
     ["work/01_abc.mp3", "work/台本.txt", false],
     ["work/01_a.mp3", "work/subs/02_a.txt", false],
     ["work/01_abc.mp3", "work/02_def.vtt", false],
+    ["work/01_abc.wav", "work/02_abc.lrc", false],
+    ["work/abc 1.wav", "work/abc 2.lrc", false],
+    ["work/track 1 abc.wav", "work/01_abc.lrc", true],
+    ["work/本編_SEあり.wav", "work/本編_SEなし.lrc", true],
+    ["work/02 本編 SE有.flac", "work/subs/本編(SE無し).vtt", true],
+    ["work/abc_se_on.mp3", "work/abc_SE OFF.srt", true],
+    ["work/01_がっこう.mp3", "work/01_がっこう.lrc", true],
   ])("decides whether %s takes %s as lyrics", (audioPath, lyricsPath, matched) => {
     expect(findLyricsMatch(audioPath, [lyric(lyricsPath, 1)]) !== null).toBe(matched);
   });

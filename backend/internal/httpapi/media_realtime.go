@@ -217,6 +217,10 @@ const (
 
 var errRealtimeResourceBusy = errors.New("realtime media resource is busy")
 
+// errMediaProbeRejected marks a probe that ran to completion and could not use
+// the file. The same file version fails the same way, unlike a timeout.
+var errMediaProbeRejected = errors.New("media probe rejected the file")
+
 func (s *Server) realtimeResourceChannels(kind realtimeResourceKind) (chan struct{}, chan struct{}) {
 	s.realtimeResourceMu.Lock()
 	defer s.realtimeResourceMu.Unlock()
@@ -379,13 +383,16 @@ func (s *Server) runBoundedFFprobe(ctx context.Context, path string, showEntries
 	output := &limitedCommandOutput{limit: realtimeProbeOutputLimit}
 	command.Stdout = output
 	if err := command.Run(); err != nil {
-		if output.exceeded {
-			return nil, fmt.Errorf("ffprobe output exceeded limit")
-		}
 		if errors.Is(probeContext.Err(), context.DeadlineExceeded) {
 			return nil, fmt.Errorf("media probe timed out")
 		}
-		return nil, fmt.Errorf("media probe failed")
+		if err := probeContext.Err(); err != nil {
+			return nil, err
+		}
+		if output.exceeded {
+			return nil, fmt.Errorf("%w: output exceeded limit", errMediaProbeRejected)
+		}
+		return nil, fmt.Errorf("%w: ffprobe exited with an error", errMediaProbeRejected)
 	}
 	return append([]byte(nil), output.buffer.Bytes()...), nil
 }
@@ -705,6 +712,13 @@ func realtimeFFmpegArgs(profile string, input string) []string {
 }
 
 func (s *Server) streamFFmpegFile(w http.ResponseWriter, r *http.Request, path string, profile string) error {
+	failureKey := ""
+	if info, err := os.Stat(path); err == nil {
+		failureKey = mediaPreparationFailureKey("realtime-"+profile, path, info)
+		if s.mediaPreparationFailures.failedRecently(failureKey) {
+			return writeTranscodeFailure(w, fmt.Errorf("media transcoding failed recently"))
+		}
+	}
 	contextWithTimeout, cancel := context.WithTimeout(r.Context(), realtimeTranscodeTimeout)
 	defer cancel()
 	release, err := s.acquireRealtimeTranscode(contextWithTimeout)
@@ -713,8 +727,16 @@ func (s *Server) streamFFmpegFile(w http.ResponseWriter, r *http.Request, path s
 		writeAPIError(w, http.StatusServiceUnavailable, "media_transcode_busy", "media playback is temporarily busy", true)
 		return err
 	}
-	return s.streamFFmpegFileWithLease(w, r, path, profile, contextWithTimeout, release)
+	err = s.streamFFmpegFileWithLease(w, r, path, profile, contextWithTimeout, release)
+	if errors.Is(err, errRealtimeTranscodeDidNotStart) && failureKey != "" && r.Context().Err() == nil {
+		s.mediaPreparationFailures.remember(failureKey)
+	}
+	return err
 }
+
+// errRealtimeTranscodeDidNotStart marks a transcode that ended before it
+// produced any output, such as FFmpeg rejecting the input.
+var errRealtimeTranscodeDidNotStart = errors.New("media transcoding produced no output")
 
 func (s *Server) streamFFmpegFileWithLease(w http.ResponseWriter, r *http.Request, path string, profile string, contextWithTimeout context.Context, release func()) error {
 	defer release()
@@ -739,6 +761,9 @@ func (s *Server) streamFFmpegFileWithLease(w http.ResponseWriter, r *http.Reques
 	initial, initialErr := readTranscodeStart(commandContext, stdout)
 	if len(initial) == 0 && initialErr != nil {
 		_ = stopRealtimeCommand(cancel, command, stdout)
+		if errors.Is(initialErr, io.EOF) {
+			initialErr = fmt.Errorf("%w: %v", errRealtimeTranscodeDidNotStart, initialErr)
+		}
 		return writeTranscodeFailure(w, initialErr)
 	}
 	s.setRealtimePlaybackHeaders(w, realtimeContentType(profile))

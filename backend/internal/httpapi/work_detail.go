@@ -161,6 +161,9 @@ type mediaItemDetail struct {
 	Fingerprint                string               `json:"fingerprint"`
 	Progress                   *mediaProgressDetail `json:"progress"`
 	PreferredLyricsMediaItemID *int64               `json:"preferredLyricsMediaItemId"`
+	// LyricsOffsetMs is this viewer's lyrics timing offset; positive shows
+	// each line later.
+	LyricsOffsetMs int64 `json:"lyricsOffsetMs,omitempty"`
 	// AssignedLyricsMediaItemID is the first of LyricsAssignments, which lists
 	// the item's library lyrics in the order this viewer's playback tries them.
 	AssignedLyricsMediaItemID *int64                        `json:"assignedLyricsMediaItemId"`
@@ -182,6 +185,9 @@ type fileLocationDetail struct {
 	DurationSeconds *int64  `json:"durationSeconds"`
 	Availability    string  `json:"availability"`
 	LastCheckedAt   *string `json:"lastCheckedAt"`
+	// Loudness is the measured loudness of the file version the location
+	// holds, present once playback has measured it.
+	Loudness *mediaLoudnessDetail `json:"loudness,omitempty"`
 }
 
 func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {

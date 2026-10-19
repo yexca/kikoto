@@ -144,11 +144,23 @@ func localDuplicateFolderSummaries(folders []localfs.WorkFolder) []map[string]an
 }
 
 func (s *Server) probeMediaMetadataSeconds(ctx context.Context, path string) (int64, bool, bool) {
+	duration, hasAudio, err := s.probeMediaMetadata(ctx, path)
+	return duration, hasAudio, err == nil
+}
+
+// probeMediaMetadata returns a file's duration and whether it has audio. An
+// error wrapping errMediaProbeRejected means FFprobe read the file and could
+// not use it; any other error, such as a timeout, says nothing about the file.
+func (s *Server) probeMediaMetadata(ctx context.Context, path string) (int64, bool, error) {
 	output, err := s.runBoundedFFprobe(ctx, path, "format=duration:stream=codec_type")
 	if err != nil {
-		return 0, false, false
+		return 0, false, err
 	}
-	return parseMediaProbeOutput(output)
+	duration, hasAudio, ok := parseMediaProbeOutput(output)
+	if !ok {
+		return 0, false, fmt.Errorf("%w: invalid output", errMediaProbeRejected)
+	}
+	return duration, hasAudio, nil
 }
 
 func parseMediaProbeOutput(output []byte) (int64, bool, bool) {

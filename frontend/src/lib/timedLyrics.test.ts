@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseTimedLyrics } from "./timedLyrics";
+import { activeTimedLyricIndex, offsetTimedLyrics, parseTimedLyrics } from "./timedLyrics";
 
 function times(text: string) {
   return parseTimedLyrics(text).lines.map((line) => [line.time, line.text]);
@@ -37,11 +37,49 @@ describe("parseTimedLyrics", () => {
     expect(parseTimedLyrics("plain text\nwithout tags")).toEqual({ timed: false, lines: [] });
   });
 
+  it("reads ASS dialogue in its declared field order", () => {
+    const ass = [
+      "[Script Info]",
+      "Title: Synthetic",
+      "",
+      "[Events]",
+      "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+      "Comment: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,not shown",
+      "Dialogue: 0,0:00:05.50,0:00:07.00,Default,,0,0,0,,{\\an8}second, with a comma",
+      "Dialogue: 0,0:00:01.25,0:00:03.00,Default,,0,0,0,,first\\Nline",
+      "Dialogue: 0,1:02:03.00,1:02:04.00,Default,,0,0,0,,{\\i1}{\\i0}",
+    ].join("\n");
+    expect(times(ass)).toEqual([
+      [1.25, "first line"],
+      [5.5, "second, with a comma"],
+    ]);
+    const reordered = "Format: Start, End, Style, Text\nDialogue: 0:00:02.00,0:00:03.00,Default,reordered";
+    expect(times(reordered)).toEqual([[2, "reordered"]]);
+  });
+
   it("reads WebVTT and SRT cues", () => {
     expect(times("WEBVTT\n\n00:01.000 --> 00:02.000\nfirst\n\n01:00:03.500 --> 01:00:04.000\nsecond\nline")).toEqual([
       [1, "first"],
       [3603.5, "second line"],
     ]);
     expect(times("1\n00:00:05,250 --> 00:00:06,000\ncue")).toEqual([[5.25, "cue"]]);
+  });
+});
+
+describe("offsetTimedLyrics", () => {
+  const parsed = parseTimedLyrics("[00:01.00]first\n[00:05.00]second");
+
+  it("moves every line by the listener's offset, which the active line then follows", () => {
+    const later = offsetTimedLyrics(parsed, 1500);
+    expect(later.lines.map((line) => line.time)).toEqual([2.5, 6.5]);
+    expect(activeTimedLyricIndex(parsed.lines, 5.2)).toBe(1);
+    expect(activeTimedLyricIndex(later.lines, 5.2)).toBe(0);
+  });
+
+  it("never moves a line before the start, and leaves untimed text alone", () => {
+    expect(offsetTimedLyrics(parsed, -2000).lines.map((line) => line.time)).toEqual([0, 3]);
+    const untimed = parseTimedLyrics("plain text");
+    expect(offsetTimedLyrics(untimed, 1000)).toBe(untimed);
+    expect(offsetTimedLyrics(parsed, 0)).toBe(parsed);
   });
 });

@@ -225,6 +225,30 @@ type localScanScope struct {
 	online  []string
 	offline []libraryPoolState
 	depth   int
+	// unreadable holds the normalized folders this scan's walk could not read.
+	unreadable []string
+}
+
+// withUnreadableFolders returns the scope without the folders the walk could
+// not read, so the works at or below them keep their state like works deeper
+// than the scan depth.
+func (scope localScanScope) withUnreadableFolders(folders []string) localScanScope {
+	scope.unreadable = nil
+	for _, folder := range folders {
+		if normalized := normalizeFolderRootPath(folder); normalized != "" {
+			scope.unreadable = append(scope.unreadable, normalized)
+		}
+	}
+	return scope
+}
+
+// applyUnreadableResult makes a scan that skipped unreadable folders partial,
+// so they appear in Activity instead of passing silently.
+func (scope localScanScope) applyUnreadableResult(result *localScanResult) {
+	for _, folder := range scope.unreadable {
+		result.Status = "partial"
+		result.Failures = append(result.Failures, fmt.Sprintf("Folder %q could not be read; works in it were left unchanged.", folder))
+	}
 }
 
 func (s *Server) localScanScope(ctx context.Context, root string, depth int) (localScanScope, error) {
@@ -276,8 +300,17 @@ func (scope localScanScope) poolOnline(poolPath string) bool {
 }
 
 // contains reports whether a work root, relative to the data root, can be
-// observed by this scan.
+// observed by this scan. A root in an ignored directory, such as a NAS recycle
+// bin, or at or below a folder the scan could not read, is unseen.
 func (scope localScanScope) contains(rel string) bool {
+	if localfs.IsIgnoredPath(rel) {
+		return false
+	}
+	for _, unreadable := range scope.unreadable {
+		if localLocationWithinRoot(rel, unreadable) {
+			return false
+		}
+	}
 	poolPath, rest := storagepool.Split(scope.mode, rel)
 	if !scope.poolOnline(poolPath) {
 		return false

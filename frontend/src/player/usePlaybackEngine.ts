@@ -38,7 +38,18 @@ function createPlaybackRefs() {
     nativeMediaSyncRef: { current: () => {} },
     // Returns false to hold a start; the guard owns any follow-up, such as a confirmation.
     playbackStartGuardRef: { current: (() => true) as () => boolean },
+    // The element volume is the product of these: the sleep timer's fade and
+    // the loudness normalization cut, each from 0 to 1.
+    sleepFadeRef: { current: 1 },
+    loudnessVolumeRef: { current: 1 },
   };
+}
+
+/** Sets the element volume from the sleep fade and the loudness cut. */
+export function applyElementVolume(refs: Pick<PlaybackRefs, "audioRef" | "sleepFadeRef" | "loudnessVolumeRef">) {
+  const audio = refs.audioRef.current;
+  if (!audio) return;
+  audio.volume = Math.max(0, Math.min(1, refs.sleepFadeRef.current * refs.loudnessVolumeRef.current));
 }
 
 /**

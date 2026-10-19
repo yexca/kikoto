@@ -27,8 +27,9 @@ type CustomWorkDiscovery struct {
 // DiscoverCustomWorkCandidates returns the folders within the scan depth that
 // a scan holds as no work and that hold no work folder: neither the folder nor
 // any ancestor or descendant within the depth carries a work code in its name.
-// Kikoto's own directories and hidden folders are left out. Discovery reads
-// only directory names, like DiscoverFolders, and never follows a link.
+// Ignored directories (IsIgnoredDirectoryName), folders it cannot read, and
+// hidden folders are left out. Discovery reads only directory names, like
+// DiscoverFolders, and never follows a link.
 func DiscoverCustomWorkCandidates(root string, options Options) (CustomWorkDiscovery, error) {
 	if options.ScanDepth <= 0 {
 		options.ScanDepth = 3
@@ -42,12 +43,15 @@ func DiscoverCustomWorkCandidates(root string, options Options) (CustomWorkDisco
 	codes := map[string]bool{}
 	visit := func(current string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
+			if entry != nil && isSkippableWalkError(walkErr) {
+				return filepath.SkipDir
+			}
 			return walkErr
 		}
 		if !entry.IsDir() {
 			return nil
 		}
-		if current != absRoot && isKikotoInternalDirectory(entry.Name()) {
+		if current != absRoot && IsIgnoredDirectoryName(entry.Name()) {
 			return filepath.SkipDir
 		}
 		depth, rel, err := relativeDepth(absRoot, current)

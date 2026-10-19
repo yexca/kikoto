@@ -11,7 +11,7 @@ import {
   storeSleepRewindMinutes,
   type SleepRewindChangeDetail,
 } from "./sleepRewind";
-import type { PlaybackEngine } from "./usePlaybackEngine";
+import { applyElementVolume, type PlaybackEngine } from "./usePlaybackEngine";
 import { seekMediaElement } from "./usePlayerSeeking";
 
 /** The account's sleep rewind minutes, kept in sync with other players and tabs. */
@@ -147,7 +147,8 @@ export function useSleepTimer({
     const trackRemaining = Math.max(0, duration - currentTime);
     const trackEndFade =
       sleepTimer?.waitingForTrackEnd && duration > 0 && trackRemaining <= 10 ? trackRemaining / 10 : 1;
-    audio.volume = Math.max(0, Math.min(1, Math.min(deadlineFade, trackEndFade)));
+    refs.sleepFadeRef.current = Math.max(0, Math.min(1, Math.min(deadlineFade, trackEndFade)));
+    applyElementVolume(refs);
   }, [refs, sleepTimer, sleepRemainingSeconds, currentTime, duration]);
 
   useEffect(() => {

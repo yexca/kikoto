@@ -45,6 +45,7 @@ func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflo
 		payload.FullFallbackReason = "changed_path_resolution_failed"
 		return s.executeFullLocalScanJob(ctx, job, payload)
 	}
+	scope = scope.withUnreadableFolders(scanSummary.UnreadableFolders)
 	workFolders = scope.filterFolders(workFolders)
 	scanSummary.DetectedWorks = len(workFolders)
 	knownRoots, err := s.loadKnownLocalWorkRoots(ctx)
@@ -87,8 +88,12 @@ func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflo
 		return err
 	}
 	scope.applyOfflineResult(&result)
+	scope.applyUnreadableResult(&result)
 	if len(scope.offline) > 0 {
 		runSummary["offline_pools"] = scope.offlinePoolSummaries()
+	}
+	if len(scope.unreadable) > 0 {
+		runSummary["unreadable_folders"] = scope.unreadable
 	}
 	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "finishing", map[string]any{
 		"detected_works": result.DetectedWorks, "scan_mode": localScanModeIncremental,

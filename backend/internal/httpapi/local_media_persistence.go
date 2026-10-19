@@ -90,10 +90,17 @@ func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, 
 	} else if affected > 0 {
 		return result.LastInsertId()
 	}
+	// A changed file version drops what was learned about the earlier file: its
+	// duration, a failed probe, and its loudness. SET reads the old row values.
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_file_location
 		SET size_bytes = ?,
 			duration_seconds = CASE WHEN file_version IS NOT ? OR size_bytes IS NOT ? THEN ? ELSE COALESCE(?, duration_seconds) END,
+			probe_failed_version = CASE WHEN file_version IS NOT ? THEN NULL ELSE probe_failed_version END,
+			loudness_version = CASE WHEN file_version IS NOT ? THEN NULL ELSE loudness_version END,
+			loudness_integrated_lufs = CASE WHEN file_version IS NOT ? THEN NULL ELSE loudness_integrated_lufs END,
+			loudness_peak_dbfs = CASE WHEN file_version IS NOT ? THEN NULL ELSE loudness_peak_dbfs END,
+			loudness_peak_kind = CASE WHEN file_version IS NOT ? THEN NULL ELSE loudness_peak_kind END,
 			file_version = ?,
 			availability = 'available',
 			last_checked_at = CURRENT_TIMESTAMP
@@ -101,7 +108,9 @@ func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, 
 			AND file_source_id = ?
 			AND location_type = 'local'
 			AND path = ?
-	`, file.SizeBytes, file.FileVersion, file.SizeBytes, durationValue, durationValue, file.FileVersion, mediaItemID, fileSourceID, file.RelPath); err != nil {
+	`, file.SizeBytes, file.FileVersion, file.SizeBytes, durationValue, durationValue,
+		file.FileVersion, file.FileVersion, file.FileVersion, file.FileVersion, file.FileVersion,
+		file.FileVersion, mediaItemID, fileSourceID, file.RelPath); err != nil {
 		return 0, err
 	}
 	return sqlutil.SelectID(ctx, tx, `
@@ -125,7 +134,7 @@ func (s *Server) updateLocalMediaMetadata(ctx context.Context, locationID int64,
 	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `
 		UPDATE media_file_location
-		SET duration_seconds = ?, file_version = ?
+		SET duration_seconds = ?, file_version = ?, probe_failed_version = NULL
 		WHERE id = ? AND location_type = 'local' AND path = ?
 			AND size_bytes = ? AND file_version = ? AND availability = 'available'
 	`, durationValue, file.FileVersion, locationID, file.RelPath, file.SizeBytes, expectedVersion)

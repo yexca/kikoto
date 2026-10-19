@@ -804,7 +804,17 @@ Depth counts inside a pool and is at least the deepest Fetch save template or
 active `managed_fetch` root. Discovery walks only online pools; missing-marking
 of folders and presences applies only to recorded roots inside that scope.
 Offline pools make a full or incremental scan `partial` with an
-`offline_pools` summary; no online pool fails the scan. Fetch planning resolves
+`offline_pools` summary; no online pool fails the scan.
+A folder below a walk's start that the walk cannot read, for lack of
+permission or because it disappeared during the walk, is skipped and recorded
+in an `unreadable_folders` summary that makes the scan `partial`; recorded
+roots at or below it leave the scope, so they keep their state. Any other walk
+error still fails the scan. Every walk, the folder watcher, and file indexing
+skip the directories and files `localfs.IsIgnoredDirectoryName` and
+`IsIgnoredFileName` name: Kikoto's own transaction directories and the NAS and
+operating system additions such as `@eaDir`, `#recycle`, `__MACOSX`, `._*`,
+and `.DS_Store`. A recorded root or file location in such a place is outside
+the scope and is never marked missing. Fetch planning resolves
 new works into the Fetch pool and existing folders in their own pool, rejects
 `library_not_configured`, `fetch_pool_required`, `fetch_pool_offline`, and
 `library_offline` with `409`, records the pool as `transactionPool` in the
