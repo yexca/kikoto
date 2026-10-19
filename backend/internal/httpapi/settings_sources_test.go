@@ -838,7 +838,7 @@ func TestRemoteFetchEnqueueDoesNotReenterConnectionPoolInsideTransaction(t *test
 			_ = json.NewEncoder(w).Encode(kikoeru.Work{ID: 10, SourceID: code, Title: "Remote fetch work"})
 		case "/api/tracks/10":
 			_ = json.NewEncoder(w).Encode([]kikoeru.Track{{
-				Type: "audio", Title: "track.mp3", MediaDownloadURL: "/media/track.mp3", Size: 3,
+				Type: "audio", Title: "track.mp3", MediaDownloadURL: "/media/track.mp3", Size: int64Pointer(3),
 			}})
 		default:
 			http.NotFound(w, r)

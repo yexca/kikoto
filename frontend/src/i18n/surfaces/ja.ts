@@ -2778,6 +2778,7 @@ export const surfaceJapanese = {
     downloadLimitExceeded:
       "選択したファイルの中にリモートダウンロードの上限を超えるものがあります。選択を外すか、設定で上限を引き上げてください。",
     insufficientDiskSpace: "この操作に必要なディスクの空き容量が足りません。",
+    unknownFileSize: "ソースが選択したファイルの一部のサイズを報告していないため、ディスクの空き容量を確認できません。",
     scanDepthTooShallow:
       "スキャンの深さが、取得した作品の保存先フォルダーより浅くなっています。スキャンの深さを増やすか、リモートソースの保存パスを短くしてください。",
     saveTemplateTooDeep:

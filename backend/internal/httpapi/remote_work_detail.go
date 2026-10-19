@@ -395,11 +395,6 @@ func remoteTrackDetails(sourceCode string, workCode string, tracks []kikoeru.Tra
 			value := int64(track.Duration)
 			duration = &value
 		}
-		var size *int64
-		if track.Size > 0 {
-			value := track.Size
-			size = &value
-		}
 		detail := remoteTrackDetail{
 			Type:            remoteTrackKindForPath(track.Type, path),
 			Title:           title,
@@ -407,7 +402,7 @@ func remoteTrackDetails(sourceCode string, workCode string, tracks []kikoeru.Tra
 			StreamURL:       firstNonEmpty(track.MediaStreamURL, track.StreamLowQualityURL),
 			DownloadURL:     track.MediaDownloadURL,
 			DurationSeconds: duration,
-			SizeBytes:       size,
+			SizeBytes:       track.KnownSize(),
 			Children:        []remoteTrackDetail{},
 		}
 		if len(track.Children) > 0 || detail.Type == "folder" {

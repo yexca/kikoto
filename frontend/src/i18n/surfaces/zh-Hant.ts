@@ -2652,6 +2652,7 @@ export const surfaceHant = {
     sourceNotUsable: "此遠端來源已停用，或不支援此操作。",
     downloadLimitExceeded: "所選檔案中有超過遠端下載上限的檔案。請取消選取該檔案，或在設定中提高上限。",
     insufficientDiskSpace: "磁碟可用空間不足，無法完成此操作。",
+    unknownFileSize: "來源未提供部分所選檔案的大小，無法檢查磁碟可用空間。",
     scanDepthTooShallow: "掃描深度比取得作品的儲存資料夾更淺。請增加掃描深度，或縮短遠端來源的儲存路徑。",
     saveTemplateTooDeep: "此儲存路徑會把作品放在超過最大掃描深度的位置。請減少資料夾層級。",
     rateLimited: "請求過多，請稍後重試。",

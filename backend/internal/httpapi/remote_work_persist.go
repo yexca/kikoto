@@ -218,8 +218,8 @@ func syncRemoteTrackNode(ctx context.Context, tx *sql.Tx, fileSourceID, workID i
 	duration := nullableSeconds(node.Duration)
 	hasAudio := remoteMediaHasAudio(kind)
 	var size any
-	if node.Size > 0 {
-		size = node.Size
+	if known := node.KnownSize(); known != nil && len(node.Children) == 0 && kind != "folder" {
+		size = *known
 	}
 	if err := upsertRemoteMediaItem(ctx, tx, workID, parent, kind, title, index, duration, hasAudio, size, fingerprint); err != nil {
 		return err

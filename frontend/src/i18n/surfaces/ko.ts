@@ -2766,6 +2766,7 @@ export const surfaceKorean = {
     downloadLimitExceeded:
       "선택한 파일 중 원격 다운로드 한도를 넘는 파일이 있습니다. 선택을 해제하거나 설정에서 한도를 높이세요.",
     insufficientDiskSpace: "이 작업에 필요한 디스크 여유 공간이 부족합니다.",
+    unknownFileSize: "소스가 선택한 일부 파일의 크기를 알려 주지 않아 디스크 여유 공간을 확인할 수 없습니다.",
     scanDepthTooShallow:
       "스캔 깊이가 가져온 작품을 저장하는 폴더보다 얕습니다. 스캔 깊이를 늘리거나 원격 소스의 저장 경로를 줄이세요.",
     saveTemplateTooDeep: "이 저장 경로는 작품을 최대 스캔 깊이보다 깊은 곳에 둡니다. 폴더 단계를 줄이세요.",

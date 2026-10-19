@@ -416,7 +416,7 @@ func (fixture folderEditFixture) listRemoteAudio(t *testing.T, downloadURL strin
 		downloadURL = strings.TrimSuffix(snapshot.Tracks[0].Children[1].MediaDownloadURL, "/media/audio.mp3") + downloadURL
 	}
 	snapshot.Tracks = []kikoeru.Track{{Type: "folder", Title: "Translated", Children: []kikoeru.Track{
-		{Type: "audio", Title: "Track1.Translated name.mp3", Size: size, MediaDownloadURL: downloadURL},
+		{Type: "audio", Title: "Track1.Translated name.mp3", Size: int64Pointer(size), MediaDownloadURL: downloadURL},
 	}}}
 	snapshot.ExpiresAt = time.Now().Add(time.Minute)
 	fixture.server.remoteWorkTracksCache[key] = snapshot
