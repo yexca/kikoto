@@ -338,7 +338,11 @@ const staffRoleOrder: StaffRole[] = ["author", "scenario", "illustration", "musi
 function DetailStaffCredits({ credits = [] }: { credits?: StaffCredit[] }) {
   const headingId = useId();
   const groups = staffRoleOrder
-    .map((role) => ({ role, names: credits.filter((credit) => credit.role === role).map((credit) => credit.name) }))
+    .map((role) => ({
+      role,
+      // Provider data can list a name twice in one role; it is credited once.
+      names: [...new Set(credits.filter((credit) => credit.role === role).map((credit) => credit.name))],
+    }))
     .filter((group) => group.names.length > 0);
   if (groups.length === 0) return null;
   return (

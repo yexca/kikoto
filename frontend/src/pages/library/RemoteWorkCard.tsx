@@ -165,6 +165,8 @@ function RemoteWorkEditionsButton({
     <div className="relative" ref={anchorRef}>
       <WorkCardActionButton
         title={label}
+        popup="dialog"
+        expanded={open}
         onClick={(event) => {
           event.stopPropagation();
           setOpen((current) => !current);
@@ -178,7 +180,13 @@ function RemoteWorkEditionsButton({
       >
         {editions.length}
       </span>
-      <AnchoredPopover open={open} anchorRef={anchorRef} onOpenChange={setOpen} className="w-64 p-1 text-sm">
+      <AnchoredPopover
+        open={open}
+        anchorRef={anchorRef}
+        onOpenChange={setOpen}
+        ariaLabel={label}
+        className="w-64 p-1 text-sm"
+      >
         <div className="px-2 pb-1 pt-1.5 text-xs font-medium text-muted-foreground">{label}</div>
         {editions.map((edition) => {
           const presented = remoteWorkPresentsEdition(work, edition);

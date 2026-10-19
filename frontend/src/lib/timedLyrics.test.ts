@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { activeTimedLyricIndex, offsetTimedLyrics, parseTimedLyrics } from "./timedLyrics";
+import { activeTimedLyricIndex, firstReachableLyricIndex, offsetTimedLyrics, parseTimedLyrics } from "./timedLyrics";
 
 function times(text: string) {
   return parseTimedLyrics(text).lines.map((line) => [line.time, line.text]);
@@ -76,8 +76,18 @@ describe("offsetTimedLyrics", () => {
     expect(activeTimedLyricIndex(later.lines, 5.2)).toBe(0);
   });
 
-  it("never moves a line before the start, and leaves untimed text alone", () => {
-    expect(offsetTimedLyrics(parsed, -2000).lines.map((line) => line.time)).toEqual([0, 3]);
+  it("keeps lines moved before the start distinct, with only the last of them current at the start", () => {
+    const opening = parseTimedLyrics("[00:01.00]one\n[00:02.00]two\n[00:04.00]three\n[00:06.00]four\n[00:08.00]five");
+    const earlier = offsetTimedLyrics(opening, -5000);
+    expect(earlier.lines.map((line) => line.time)).toEqual([-4, -3, -1, 1, 3]);
+    expect(firstReachableLyricIndex(earlier.lines)).toBe(2);
+    expect(activeTimedLyricIndex(earlier.lines, 0)).toBe(2);
+    expect(activeTimedLyricIndex(earlier.lines, 1)).toBe(3);
+    expect(activeTimedLyricIndex(earlier.lines, 3)).toBe(4);
+    expect(firstReachableLyricIndex(opening.lines)).toBe(0);
+  });
+
+  it("leaves untimed text and a zero offset alone", () => {
     const untimed = parseTimedLyrics("plain text");
     expect(offsetTimedLyrics(untimed, 1000)).toBe(untimed);
     expect(offsetTimedLyrics(parsed, 0)).toBe(parsed);

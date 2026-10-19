@@ -1,11 +1,11 @@
 import { Minus, Plus, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { lyricsLanguageLabelKey } from "@/lib/lyricsLanguage";
 import { cn } from "@/lib/tailwindClassNames";
-import type { ParsedLyrics } from "@/lib/timedLyrics";
+import { firstReachableLyricIndex, type ParsedLyrics } from "@/lib/timedLyrics";
 import { lyricsChoiceDisplayLabel, type LyricsChoice } from "@/player/lyricsMatching";
 import { LYRICS_OFFSET_LIMIT_MS } from "@/player/lyricsPreference";
 
@@ -58,6 +58,7 @@ export function LyricsPanel({
   const activeRef = useRef<HTMLButtonElement | null>(null);
   const manualScrollUntilRef = useRef(0);
   const [following, setFollowing] = useState(true);
+  const firstReachableIndex = useMemo(() => firstReachableLyricIndex(parsed.lines), [parsed.lines]);
 
   const centerActiveLine = useCallback((behavior: ScrollBehavior) => {
     const scroller = scrollerRef.current;
@@ -123,6 +124,8 @@ export function LyricsPanel({
         <div className="pb-[55%] pt-[30%]">
           {parsed.lines.map((line, index) => {
             const active = index === activeIndex;
+            // A line the offset moved before the start has already passed.
+            const passed = index < firstReachableIndex;
             return (
               <button
                 key={`${line.time}:${index}`}
@@ -130,15 +133,20 @@ export function LyricsPanel({
                 type="button"
                 data-lyric-index={index}
                 aria-current={active ? "true" : undefined}
+                disabled={passed}
                 className={cn(
-                  "block w-full rounded-xl px-2 py-2 text-left text-xl font-bold leading-snug tracking-tight transition-[color,opacity] duration-300 hover:bg-foreground/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
-                  active ? "text-foreground" : "text-foreground/30 hover:text-foreground/60",
+                  "block w-full rounded-xl px-2 py-2 text-left text-xl font-bold leading-snug tracking-tight transition-[color,opacity] duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
+                  active
+                    ? "text-foreground hover:bg-foreground/[0.05]"
+                    : passed
+                      ? "text-foreground/30"
+                      : "text-foreground/30 hover:bg-foreground/[0.05] hover:text-foreground/60",
                 )}
                 onClick={() => {
                   onSeek(line.time);
                   setFollowing(true);
                 }}
-                title={t("player.seekToLine")}
+                title={passed ? undefined : t("player.seekToLine")}
               >
                 {line.text || " "}
               </button>

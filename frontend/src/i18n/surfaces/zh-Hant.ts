@@ -2086,6 +2086,7 @@ export const surfaceHant = {
     noWorks: "沒有未關聯作品",
     openDlsite: "開啟 DLsite 頁面",
     deleteFor: "刪除 {{code}} 的本機資訊",
+    openDlsiteFor: "開啟 {{code}} 的 DLsite 頁面",
     confirmTitle: "刪除本機作品資訊？",
     confirmDescription: "這會刪除所選作品系列的本機作品記錄和可用性資訊。",
     deleting: "正在刪除……",

@@ -605,7 +605,7 @@ export function WorkMaintenance({
                                 href={work.dlsiteUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                aria-label={`Open DLsite page for ${work.primaryCode}`}
+                                aria-label={t("unlinked.openDlsiteFor", { code: work.primaryCode })}
                               >
                                 <ExternalLink className="h-4 w-4" />
                               </a>
