@@ -813,8 +813,15 @@ error still fails the scan. Every walk, the folder watcher, and file indexing
 skip the directories and files `localfs.IsIgnoredDirectoryName` and
 `IsIgnoredFileName` name: Kikoto's own transaction directories and the NAS and
 operating system additions such as `@eaDir`, `#recycle`, `__MACOSX`, `._*`,
-and `.DS_Store`. A recorded root in such a place is outside the scope, and
-its locations are never marked missing. Inside a root a scan finds or an
+and `.DS_Store`. Of these directories, `localfs.IsMetadataDirectoryName`
+names the ones that only hold metadata and never the user's files: `@eaDir`
+and `__MACOSX`. A recorded root in any other ignored directory, such as a
+recycle bin or snapshot, is outside the scope, and its locations are never
+marked missing. A recorded root in a metadata directory
+(`localfs.IsMetadataPath`) is never a work folder: it is never indexed or
+made primary, and a scan whose online-pool, depth, and unreadable-folder
+limits reach it marks it and its locations missing as not found. Inside a
+root a scan finds or an
 index reads, such an entry is not a file of the work: the scan marks a
 location recorded there missing, while the rest of a completed index stays
 valid. Fetch planning resolves

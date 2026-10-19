@@ -303,9 +303,19 @@ func (scope localScanScope) poolOnline(poolPath string) bool {
 // observed by this scan. A root in an ignored directory, such as a NAS recycle
 // bin, or at or below a folder the scan could not read, is unseen.
 func (scope localScanScope) contains(rel string) bool {
-	if localfs.IsIgnoredPath(rel) {
-		return false
-	}
+	return !localfs.IsIgnoredPath(rel) && scope.reaches(rel)
+}
+
+// observes reports whether this scan can tell that a recorded root is absent:
+// every root it contains, and a root in a metadata directory such as
+// Synology's @eaDir where the scan reaches. Such a folder is never a work
+// folder, so the scan retires it as not found. It is never indexed.
+func (scope localScanScope) observes(rel string) bool {
+	return scope.contains(rel) || (localfs.IsMetadataPath(rel) && scope.reaches(rel))
+}
+
+// reaches applies the unreadable-folder, online-pool, and depth limits.
+func (scope localScanScope) reaches(rel string) bool {
 	for _, unreadable := range scope.unreadable {
 		if localLocationWithinRoot(rel, unreadable) {
 			return false
@@ -339,7 +349,7 @@ func (scope localScanScope) filterChangedPaths(paths []string) []string {
 func (scope localScanScope) filterKnownRoots(roots []knownLocalWorkRoot) []knownLocalWorkRoot {
 	kept := roots[:0]
 	for _, root := range roots {
-		if scope.contains(root.Root) {
+		if scope.observes(root.Root) {
 			kept = append(kept, root)
 		}
 	}

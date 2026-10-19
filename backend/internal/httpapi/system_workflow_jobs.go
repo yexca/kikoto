@@ -230,10 +230,10 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 		return localScanResult{}, nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := markMissingExternalWorkFolderLocations(ctx, tx, fileSourceID, seenRoots, scope.contains); err != nil {
+	if err := markMissingExternalWorkFolderLocations(ctx, tx, fileSourceID, seenRoots, scope.observes); err != nil {
 		return localScanResult{}, nil, err
 	}
-	missingWorkIDs, err := markMissingLocalPresence(ctx, tx, fileSourceID, state.seenWorkIDs, scope.contains)
+	missingWorkIDs, err := markMissingLocalPresence(ctx, tx, fileSourceID, state.seenWorkIDs, scope.observes)
 	if err != nil {
 		return localScanResult{}, nil, err
 	}

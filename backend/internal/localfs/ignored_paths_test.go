@@ -61,6 +61,26 @@ func TestIgnoredPathRecognizesDirectoriesAndSidecarFiles(t *testing.T) {
 	}
 }
 
+// A metadata directory never holds the user's files; a recycle bin or snapshot
+// can, even around a metadata directory.
+func TestMetadataPathExcludesDirectoriesThatHoldUserFiles(t *testing.T) {
+	for path, want := range map[string]bool{
+		"pool/Circle/@eaDir/RJ00000017":  true,
+		`__MACOSX\RJ00000017`:            true,
+		"#recycle/@eaDir/RJ00000017":     false,
+		"@eaDir/#snapshot/RJ00000017":    false,
+		".Trash-1000/RJ00000017":         false,
+		"lost+found/RJ00000017":          false,
+		"System Volume Information/x":    false,
+		"Circle/RJ00000017":              false,
+		"Circle/RJ00000017/eaDir/01.mp3": false,
+	} {
+		if got := IsMetadataPath(path); got != want {
+			t.Errorf("IsMetadataPath(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
 func TestDiscoverSkipsUnreadableFoldersAndReportsThem(t *testing.T) {
 	root := t.TempDir()
 	folders := unreadableFolders{root: root}
