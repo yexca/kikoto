@@ -37,7 +37,8 @@ export function FolderEditMergeConfirmDialog({
   removeCount: number;
   applying: boolean;
   onCancel: () => void;
-  onConfirm: () => void;
+  /** Receives the request the check compared and the check's review. */
+  onConfirm: (reviewed: { request: WorkFolderEditRequest; review: string }) => void;
 }) {
   const { t } = useTranslation();
   const [step, setStep] = useState<1 | 2>(1);
@@ -55,7 +56,7 @@ export function FolderEditMergeConfirmDialog({
         for (let round = 0; round < MAX_CHECK_ROUNDS; round++) {
           const check = await api.checkWorkFolderEditMerge(workId, checked, controller.signal);
           if (cancelled) return;
-          if (check.complete) {
+          if (check.complete && check.review) {
             setState({ status: "done", check });
             return;
           }
@@ -162,7 +163,14 @@ export function FolderEditMergeConfirmDialog({
             {t("libraryDetail.continue")}
           </Button>
         ) : (
-          <Button variant="destructive" onClick={onConfirm} disabled={applying}>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              if (state.status === "done" && state.check.review)
+                onConfirm({ request: checked, review: state.check.review });
+            }}
+            disabled={applying || state.status !== "done"}
+          >
             <Trash2 className="h-4 w-4" />
             {lost.length > 0 ? t("folderEdit.mergeConfirmLoss", { count: lost.length }) : t("folderEdit.mergeConfirm")}
           </Button>

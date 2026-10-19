@@ -120,13 +120,10 @@ func (s *Server) executeWorkFolderEditJob(ctx context.Context, job workflowJobRe
 	return execution.fail(ctx, err)
 }
 
-func (e *workFolderEditExecution) run(ctx context.Context) error {
+// locate finds the edited folder, which must be online, and the run's staging
+// folder on its pool.
+func (e *workFolderEditExecution) locate(ctx context.Context) error {
 	s := e.server
-	nodes, err := workflowNodeIDsByNodeID(ctx, s.db, e.job.RunID)
-	if err != nil {
-		return err
-	}
-	e.nodes = nodes
 	if err := s.ensureLibraryPathOnline(ctx, e.payload.TargetRoot); err != nil {
 		return err
 	}
@@ -142,7 +139,60 @@ func (e *workFolderEditExecution) run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// A link at .kikoto-staging, or below it, would carry the staged files,
+	// and their removal, outside the pool.
+	if _, err := validateFetchStagingPath(s.cfg.DataRoot, stagingAbs); err != nil {
+		return fmt.Errorf("edit staging: %w", err)
+	}
 	e.stagingAbs = stagingAbs
+	return nil
+}
+
+// settleCancelledWorkFolderEdit puts back what a cancelled edit lifted and
+// deletes what it collected when no executor was working on it, such as an
+// edit waiting for a retry or for recovery after a restart. It waits for any
+// job that is changing library folders. An edit whose folder is offline keeps
+// its staging folder until it can be settled.
+func (s *Server) settleCancelledWorkFolderEdit(ctx context.Context, runID int64) {
+	s.mediaCleanupMu.Lock()
+	defer s.mediaCleanupMu.Unlock()
+	execution := &workFolderEditExecution{server: s}
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, workflow_run_id, payload_json, checkpoint_json FROM workflow_job
+		WHERE workflow_run_id = ? AND worker_type = ? ORDER BY id DESC LIMIT 1
+	`, runID, workFolderEditWorkerType).Scan(&execution.job.ID, &execution.job.RunID, &execution.job.PayloadJSON, &execution.job.CheckpointJSON)
+	if err == nil {
+		err = decodeWorkflowJobPayload(execution.job.PayloadJSON, &execution.payload)
+	}
+	if err == nil {
+		err = decodeWorkflowJobCheckpointDetail(execution.job.CheckpointJSON, &execution.checkpoint)
+	}
+	if err == nil {
+		execution.total = workFolderEditProgressTotal(execution.payload)
+		err = execution.locate(ctx)
+	}
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			slog.Error("settle cancelled work folder edit", "run_id", runID, "error", err)
+		}
+		return
+	}
+	if kept := execution.discardStaging(ctx); kept > 0 {
+		slog.Error("cancelled work folder edit keeps moved files in staging", "run_id", runID, "files", kept)
+	}
+	_ = s.restoreMediaCleanupFolders(ctx, runID)
+}
+
+func (e *workFolderEditExecution) run(ctx context.Context) error {
+	s := e.server
+	nodes, err := workflowNodeIDsByNodeID(ctx, s.db, e.job.RunID)
+	if err != nil {
+		return err
+	}
+	e.nodes = nodes
+	if err := e.locate(ctx); err != nil {
+		return err
+	}
 	if err := e.stage(ctx); err != nil {
 		return err
 	}
@@ -158,7 +208,7 @@ func (e *workFolderEditExecution) run(ctx context.Context) error {
 	if err := s.updateRemoteFetchPhaseNode(ctx, e.job.RunID, "index", "running", nil); err != nil {
 		return err
 	}
-	if err := s.indexLocalMediaForWork(ctx, e.payload.WorkID, e.payload.FileSourceID, e.payload.TargetRoot); err != nil {
+	if err := e.index(ctx); err != nil {
 		return err
 	}
 	assigned, err := s.declareWorkFolderEditAssignments(ctx, e.payload)
@@ -171,6 +221,16 @@ func (e *workFolderEditExecution) run(ctx context.Context) error {
 		return err
 	}
 	return e.finish(ctx)
+}
+
+// index reads the edited folder into the library. A pool that went offline
+// since the edit started shows an empty mount point, which would mark every
+// file of the folder missing, so the pool must still be online.
+func (e *workFolderEditExecution) index(ctx context.Context) error {
+	if err := e.server.ensureLibraryPathOnline(ctx, e.payload.TargetRoot); err != nil {
+		return err
+	}
+	return e.server.indexLocalMediaForWork(ctx, e.payload.WorkID, e.payload.FileSourceID, e.payload.TargetRoot)
 }
 
 func (e *workFolderEditExecution) stagedPath(index int) string {
@@ -751,14 +811,95 @@ func (e *workFolderEditExecution) removeStaging() {
 	if e.stagingAbs == "" {
 		return
 	}
+	if _, err := validateFetchStagingPath(e.server.cfg.DataRoot, filepath.Dir(e.stagingAbs)); err != nil {
+		slog.Warn("remove work folder edit staging", "run_id", e.job.RunID, "error", err)
+		return
+	}
 	if err := os.RemoveAll(filepath.Dir(e.stagingAbs)); err != nil {
 		slog.Warn("remove work folder edit staging", "run_id", e.job.RunID, "error", err)
 	}
 }
 
+// putBackLiftedMoves returns each moved file that left its place but did not
+// reach its new path to where it was, so a stopped edit never leaves a file
+// only in its staging folder. A file whose old path another file took since
+// stays lifted, and the staging folder keeps it for a retry. It returns how
+// many files stay lifted.
+func (e *workFolderEditExecution) putBackLiftedMoves(ctx context.Context) int {
+	if e.stagingAbs == "" || e.targetAbs == "" || len(e.checkpoint.Lifted) == 0 {
+		return 0
+	}
+	lifted := int64Set(e.checkpoint.Lifted)
+	placed := int64Set(e.checkpoint.Placed)
+	remaining := make([]int64, 0, len(e.checkpoint.Lifted))
+	kept := 0
+	for index, move := range e.payload.Moves {
+		if !lifted[move.LocationID] {
+			continue
+		}
+		if placed[move.LocationID] {
+			remaining = append(remaining, move.LocationID)
+			continue
+		}
+		if err := e.putBackMove(index, move); err != nil {
+			slog.Error("work folder edit could not put a moved file back", "run_id", e.job.RunID, "path", move.Path, "error", err)
+			remaining = append(remaining, move.LocationID)
+			kept++
+		}
+	}
+	e.checkpoint.Lifted = remaining
+	if err := e.saveCheckpoint(context.WithoutCancel(ctx), "publish"); err != nil {
+		slog.Warn("save work folder edit checkpoint", "run_id", e.job.RunID, "error", err)
+	}
+	return kept
+}
+
+func (e *workFolderEditExecution) putBackMove(index int, move workFolderEditMove) error {
+	source, err := safeDataPath(e.server.cfg.DataRoot, move.Path)
+	if err != nil {
+		return err
+	}
+	staged := e.liftedPath(index)
+	if _, err := os.Lstat(staged); errors.Is(err, os.ErrNotExist) {
+		if existingFileMatches(source, move.SizeBytes) {
+			// The file never left its place.
+			return nil
+		}
+		return errors.New("the lifted file is missing")
+	} else if err != nil {
+		return err
+	}
+	if _, err := os.Lstat(source); err == nil {
+		return errors.New("another file took its place")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := mkdirPlainDirectories(e.targetAbs, filepath.Dir(source)); err != nil {
+		return err
+	}
+	return os.Rename(staged, source)
+}
+
+// discardStaging puts lifted files back and deletes what the run collected.
+// A moved file that could not go back keeps the staging folder, so it is never
+// deleted; it returns how many such files there are.
+func (e *workFolderEditExecution) discardStaging(ctx context.Context) int {
+	kept := e.putBackLiftedMoves(ctx)
+	if kept == 0 {
+		e.removeStaging()
+		return 0
+	}
+	for index, item := range e.payload.Items {
+		if workFolderEditItemAdds(item) {
+			_ = os.Remove(e.stagedPath(index))
+		}
+	}
+	return kept
+}
+
 // fail records why the edit stopped. A service stop leaves the job for
-// startup recovery, and a failure that will be retried keeps what it already
-// collected.
+// startup recovery. Any other stop puts lifted files back first, and a
+// failure that will be retried keeps what it already collected.
 func (e *workFolderEditExecution) fail(ctx context.Context, runErr error) error {
 	s := e.server
 	if shutdownInterrupted(ctx) {
@@ -773,13 +914,17 @@ func (e *workFolderEditExecution) fail(ctx context.Context, runErr error) error 
 		// A cancelled run is settled by its cancellation, and a finished one
 		// keeps its result.
 		if runStatus == "cancelled" {
-			e.removeStaging()
+			e.discardStaging(statusCtx)
 			_ = s.restoreMediaCleanupFolders(statusCtx, e.job.RunID)
 		}
 		return runErr
 	}
-	if willRetry := isRetryableWorkflowError(runErr) && e.job.RetryCount < e.job.MaxRetries; !willRetry {
-		e.removeStaging()
+	kept := 0
+	if willRetry := isRetryableWorkflowError(runErr) && e.job.RetryCount < e.job.MaxRetries; willRetry {
+		// A queued retry can still be cancelled, so it holds no moved file.
+		kept = e.putBackLiftedMoves(statusCtx)
+	} else {
+		kept = e.discardStaging(statusCtx)
 		// A merged folder the edit had started to delete is a folder of the
 		// work again, holding whatever it still holds.
 		_ = s.restoreMediaCleanupFolders(statusCtx, e.job.RunID)
@@ -791,6 +936,9 @@ func (e *workFolderEditExecution) fail(ctx context.Context, runErr error) error 
 	}
 	defer func() { _ = tx.Rollback() }()
 	message := runErr.Error()
+	if kept > 0 {
+		message = fmt.Sprintf("%s; %d moved files could not return to their place and wait in the edit's staging folder for a retry", message, kept)
+	}
 	if _, err := tx.ExecContext(statusCtx, `
 		UPDATE workflow_node_run
 		SET status = 'failed', error_message = ?, finished_at = CURRENT_TIMESTAMP

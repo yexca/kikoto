@@ -16,6 +16,7 @@ import {
   fetchComposeRequest,
   fetchComposeResources,
   fetchComposeResult,
+  folderEditMerges,
   folderEditReadiness,
   folderEditRemoteResource,
   folderEditRequest,
@@ -213,6 +214,25 @@ describe("folder edit resources", () => {
     expect(listed.find((resource) => resource.id === "local:12")?.offline).toBe(false);
   });
 
+  it("merges no folder a check found offline", () => {
+    const checked = resources.map((resource) =>
+      resource.id === "local:21" ? { ...resource, offline: true } : resource,
+    );
+    expect(folderEditMerges(checked, new Set([12, 21]))).toEqual([12]);
+  });
+
+  it("does not list a folder whose path is the edited folder's in another letter case", () => {
+    const sameFolder = {
+      ...sources,
+      editions: sources.editions.map((edition) =>
+        edition.workId === 1
+          ? { ...edition, localRoots: edition.localRoots.map((root) => ({ ...root, rootPath: "library/rj00000001" })) }
+          : edition,
+      ),
+    };
+    expect(folderEditResources(sameFolder, target).map((resource) => resource.id)).not.toContain("local:12");
+  });
+
   it("opens a Fetch on the source's edition, or on any edition the source offers", () => {
     expect(folderEditRemoteResource(resources, 7, "rj00000002")?.id).toBe("remote:7:RJ00000002");
     expect(folderEditRemoteResource(resources, 7, "RJ00000009")?.id).toBe("remote:7:RJ00000001");
@@ -353,6 +373,14 @@ describe("folder edit result", () => {
       "current:mp3/01.mp3": "same",
     });
     expect(folderEditResult(current, new Set(["mp3/01.mp3"]), plan([same]))).toHaveLength(3);
+  });
+
+  it("matches a file whose path differs only in Unicode composition, as the server does", () => {
+    const composed = [file("Café.mp3", 8)];
+    const same = planItem({ action: "skip", targetPath: "Library/RJ00000001/café.mp3" });
+    expect(states(folderEditResult(composed, new Set(["Café.mp3"]), plan([same])))).toEqual({
+      "current:Café.mp3": "same",
+    });
   });
 
   it("marks a kept file an addition replaces, and keeps conflicts and exclusions reviewable", () => {

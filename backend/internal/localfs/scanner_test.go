@@ -66,6 +66,7 @@ func TestExtractWorkCodeAllowsSeparatorAndIgnoresShortBuckets(t *testing.T) {
 		{name: "VJ with hyphen and lowercase", path: "vj-00000002 title", want: testfixture.WorkCode(testfixture.PrefixVJ, 2)},
 		{name: "CC without separator", path: "CC00000003 title", want: testfixture.WorkCode(testfixture.PrefixCC, 3)},
 		{name: "five digit minimum", path: "RJ00000 title", want: "RJ00000"},
+		{name: "bracketed custom code", path: "Example Work [KT00000001]", want: testfixture.WorkCode(testfixture.PrefixKT, 1)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -76,7 +77,7 @@ func TestExtractWorkCodeAllowsSeparatorAndIgnoresShortBuckets(t *testing.T) {
 		})
 	}
 
-	for _, path := range []string{"RJ0000", "RJ000000000", "RJ01"} {
+	for _, path := range []string{"RJ0000", "RJ000000000", "RJ01", "Projekt 20241019", "PKT-123456", "KT00000001", "[KT12345]"} {
 		code, ambiguous := ExtractWorkCode(path)
 		if code != "" || ambiguous {
 			t.Fatalf("ExtractWorkCode(%q) returned %q, %v", path, code, ambiguous)

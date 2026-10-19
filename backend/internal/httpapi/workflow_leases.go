@@ -71,8 +71,9 @@ func (r *workflowLeaseRegistry) live() map[string]bool {
 	return live
 }
 
-// cancelRun cancels every executor working on the run.
-func (r *workflowLeaseRegistry) cancelRun(runID int64) {
+// cancelRun cancels every executor working on the run and reports whether
+// there was one.
+func (r *workflowLeaseRegistry) cancelRun(runID int64) bool {
 	r.mu.Lock()
 	cancels := []context.CancelFunc{}
 	for _, lease := range r.leases {
@@ -84,6 +85,7 @@ func (r *workflowLeaseRegistry) cancelRun(runID int64) {
 	for _, cancel := range cancels {
 		cancel()
 	}
+	return len(cancels) > 0
 }
 
 // workflowRunnerInstanceID identifies this process in job leases, so a lease

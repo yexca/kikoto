@@ -131,30 +131,28 @@ func (s *Server) projectChangedVoiceCredits(ctx context.Context) error {
 // syncCreditsForWorkFromSnapshots projects one work's voice and staff credits
 // after its metadata changed outside a full pass, such as a family sync.
 func (s *Server) syncCreditsForWorkFromSnapshots(ctx context.Context, workID int64) error {
-	if err := s.syncVoiceCreditsForWorkFromSnapshots(ctx, workID); err != nil {
+	rows, err := s.db.QueryContext(ctx, voiceCreditProjectionSQL+` AND work.id = ?`, snapshotProjectionVersion, workID)
+	if err != nil {
 		return err
+	}
+	voices, err := scanVoiceCreditProjections(rows)
+	if err != nil {
+		return err
+	}
+	if len(voices) > 0 {
+		if err := s.applyVoiceCreditProjections(ctx, voices); err != nil {
+			return err
+		}
 	}
 	providerID, ok, err := s.dlsiteProviderID(ctx)
 	if err != nil || !ok {
 		return err
 	}
-	batch, err := s.queryStaffCreditProjections(ctx, providerID, ` AND work.id = ?`, workID)
-	if err != nil || len(batch) == 0 {
+	staff, err := s.queryStaffCreditProjections(ctx, providerID, ` AND work.id = ?`, workID)
+	if err != nil || len(staff) == 0 {
 		return err
 	}
-	return s.applyStaffCreditProjections(ctx, batch)
-}
-
-func (s *Server) syncVoiceCreditsForWorkFromSnapshots(ctx context.Context, workID int64) error {
-	rows, err := s.db.QueryContext(ctx, voiceCreditProjectionSQL+` AND work.id = ?`, snapshotProjectionVersion, workID)
-	if err != nil {
-		return err
-	}
-	batch, err := scanVoiceCreditProjections(rows)
-	if err != nil || len(batch) == 0 {
-		return err
-	}
-	return s.applyVoiceCreditProjections(ctx, batch)
+	return s.applyStaffCreditProjections(ctx, staff)
 }
 
 func (s *Server) applyVoiceCreditProjections(ctx context.Context, batch []voiceCreditProjection) error {

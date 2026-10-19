@@ -8,6 +8,7 @@ import {
   moveFilesTo,
   moveFolderTo,
   placeFilesBelow,
+  prunedLayout,
   renameFolder,
   type FolderEditLayout,
   type FolderEditPlaced,
@@ -17,7 +18,10 @@ import {
   currentFileKey,
   fetchComposeRequest,
   fetchItemKey,
+  folderEditCollision,
+  folderEditPlacementKeys,
   folderEditRequest,
+  folderEditResourceItemKey,
   folderEditResult,
   type FolderEditFile,
   type FolderEditResource,
@@ -162,6 +166,59 @@ describe("an arranged folder edit", () => {
       ["mp3/02.mp3", "keep"],
       ["Extras/notes.txt", "pending"],
     ]);
+  });
+});
+
+describe("a placement of a cleared file", () => {
+  const additions: FolderEditFile[] = [
+    { path: "01.mp3", name: "01.mp3", kind: "audio", sizeBytes: 10, locationId: 201 },
+  ];
+  const resources = [currentResource, other];
+  const all = new Set(["mp3/01.mp3", "mp3/02.mp3"]);
+  const placed = (entries: ReturnType<typeof folderEditResult>) =>
+    entries.filter((entry) => entry.state !== "remove").map((entry) => ({ key: entry.key, path: entry.path }));
+  const keys = (selected: ReadonlySet<string>, added: ReadonlySet<string>) =>
+    folderEditPlacementKeys({
+      resources,
+      files: { [CURRENT_FOLDER_RESOURCE]: current, "local:12": additions },
+      selection: { [CURRENT_FOLDER_RESOURCE]: selected, "local:12": added },
+      lyrics: {},
+      keyFor: folderEditResourceItemKey,
+    });
+  const pendingAddition = { key: "local:12:01.mp3", path: "01.mp3", kind: "audio", sizeBytes: 10 };
+
+  /** Moves 01.mp3 into Disc 1, clears it, then moves another 01.mp3 into Disc 1 and selects the first again. */
+  function arrange(prune: boolean) {
+    let layout = moveFilesTo(
+      emptyFolderEditLayout,
+      placed(folderEditResult(current, all, null)),
+      [currentFileKey("mp3/01.mp3")],
+      "Disc 1",
+    );
+    const cleared = new Set(["mp3/02.mp3"]);
+    if (prune) layout = prunedLayout(layout, keys(cleared, new Set(["01.mp3"])));
+    layout = moveFilesTo(
+      layout,
+      placed(folderEditResult(current, cleared, null, layout, [pendingAddition])),
+      ["local:12:01.mp3"],
+      "Disc 1",
+    );
+    return { layout, entries: folderEditResult(current, all, null, layout, [pendingAddition]) };
+  }
+
+  it("is dropped, so the file selected again returns to its own path", () => {
+    const { layout, entries } = arrange(true);
+    expect(entries.map((entry) => [entry.key, entry.path])).toEqual([
+      [currentFileKey("mp3/01.mp3"), "mp3/01.mp3"],
+      [currentFileKey("mp3/02.mp3"), "mp3/02.mp3"],
+      ["local:12:01.mp3", "Disc 1/01.mp3"],
+    ]);
+    expect(folderEditCollision(entries, layout.placements)).toBeNull();
+  });
+
+  it("names the path two placed files would share", () => {
+    const { layout, entries } = arrange(false);
+    expect(folderEditCollision(entries, layout.placements)).toBe("Disc 1/01.mp3");
   });
 });
 

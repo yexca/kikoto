@@ -1927,7 +1927,7 @@ export const surfaceEnglish = {
     noVoiceActorMetadata: "No voice actor metadata",
     noTagMetadata: "No tag metadata",
     customWorkNoFolderDescription:
-      "This custom work has no local folder in the library. A scan finds it again when a folder's name ends with its KT code.",
+      "This custom work has no local folder in the library. A scan finds it again when a folder's name carries its KT code in brackets, such as [KT00000001].",
     noSourceDirectoryDescription:
       "This work exists in the local database, but Kikoto has no local files, cache, tracked source, or known source presence for it yet.",
     sourceAvailable: "{{source}} available",
@@ -2540,6 +2540,7 @@ export const surfaceEnglish = {
     replaceExisting: "Replace the file in the folder",
     targetPath: "Path inside this folder",
     planFailed: "The preview could not be refreshed.",
+    collision: "Two files would be at {{path}}. Move or clear one of them.",
     applying: "Starting the edit",
     statusBlocked: "Conflicts to resolve: {{count}}",
     statusReady: "Ready: add {{add}}, remove {{remove}}",
@@ -2547,6 +2548,7 @@ export const surfaceEnglish = {
     back: "Back to files",
     apply: "Apply changes",
     folderChanged: "The folder changed. Review the updated preview.",
+    mergeChanged: "A merged folder or this folder changed after the comparison. Review the merge again.",
     applyFailed: "The edit could not be started.",
     queued: "Folder edit queued as workflow run #{{runId}}.",
     completed: "Files updated in workflow #{{runId}}.",

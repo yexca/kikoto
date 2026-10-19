@@ -115,7 +115,7 @@ export function WorkMetadataEditorModal({
   const titles = changedTitles(titleDrafts, manual, currentTitles(work));
   const shownDescription = currentDescription(work, selectedMetadataVariantKey ?? "");
   const description = changedDescription(descriptionDraft, manual.description, shownDescription);
-  const providerAgeRating = work.providerAgeRating ?? work.ageRating;
+  const providerAgeRating = work.providerAgeRating;
   const ageRating = changedAgeRating(ageRatingDraft, manual.ageRating, providerAgeRating);
   const coverChanged = coverState.selectedCoverId !== coverState.initialCoverId;
   const coverChoice: CoverChoice = coverReverted

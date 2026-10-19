@@ -27,6 +27,9 @@ func (s *Server) cacheRemoteSourceWorkMedia(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	code := remoteWorkCodeFromPath(r)
+	if refuseCustomWorkCode(w, code) {
+		return
+	}
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return

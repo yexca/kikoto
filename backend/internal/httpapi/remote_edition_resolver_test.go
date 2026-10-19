@@ -11,11 +11,13 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -256,5 +258,49 @@ func TestRemotePersistenceVerifiesSelectedUnknownCodeBeforeInsert(t *testing.T) 
 				t.Fatalf("replacement work count = %d, error = %v", created, err)
 			}
 		})
+	}
+}
+
+func TestReplacementAliasWaitsForAnotherWriter(t *testing.T) {
+	original, parent, candidate := testfixture.WorkCode("RJ", 0), testfixture.WorkCode("RJ", 1), testfixture.WorkCode("RJ", 2)
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: t.TempDir(), CacheRoot: t.TempDir()})
+	product := dlsite.Product{WorkNo: candidate, ProductName: "Example Work Chinese", TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: original, ParentWorkNo: parent, Lang: "CHI_HANS"}}
+	syncer := metasync.NewDLsiteSyncer(db, &availabilityWatchDLsiteClient{products: map[string]dlsite.Product{candidate: product}})
+	ctx := context.Background()
+	if _, err := syncer.SyncProductOnly(ctx, dlsite.Product{WorkNo: original, ProductName: "Example Work"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := syncer.SyncProductOnly(ctx, dlsite.Product{WorkNo: parent, ProductName: product.ProductName, TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: original, Lang: "CHI_HANS"}}); err != nil {
+		t.Fatal(err)
+	}
+	// Another connection holds the write lock for a moment, and this one does
+	// not wait for a lock by itself.
+	var path string
+	if err := db.QueryRow("SELECT file FROM pragma_database_list WHERE name = 'main'").Scan(&path); err != nil {
+		t.Fatal(err)
+	}
+	writer, err := storage.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = writer.Close() }()
+	holder, err := writer.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("PRAGMA busy_timeout = 0"); err != nil {
+		t.Fatal(err)
+	}
+	released := make(chan struct{})
+	go func() {
+		defer close(released)
+		time.Sleep(10 * time.Millisecond)
+		_ = holder.Rollback()
+	}()
+	stored, err := server.persistDLsiteReplacementAlias(ctx, parent, candidate, product)
+	<-released
+	if err != nil || !stored {
+		t.Fatalf("replacement alias while another writer held the lock = %v, %v; want it stored once the lock is free", stored, err)
 	}
 }
