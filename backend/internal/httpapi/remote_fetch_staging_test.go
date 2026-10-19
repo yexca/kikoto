@@ -168,6 +168,86 @@ func TestStageAndPublishRemoteFetchKeepsCacheAndPublishesCompleteRoot(t *testing
 	}
 }
 
+func TestFetchWaitingToPublishBehindLibraryFolderJobCanBeCancelled(t *testing.T) {
+	db := openMigratedTestDB(t)
+	dataRoot := t.TempDir()
+	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: t.TempDir()})
+	statements := []string{
+		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'remote', 'Remote', 'kikoeru'), (2, 'local', 'Local', 'local_folder')`,
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Work')`,
+		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('remote_work_fetch', 'Fetch')`,
+		`INSERT INTO workflow_run (id, workflow_definition_id, workflow_code, display_name, status, trigger_type) VALUES (1, (SELECT id FROM workflow_definition WHERE code = 'remote_work_fetch'), 'remote_work_fetch', 'Fetch', 'running', 'manual')`,
+		`INSERT INTO workflow_job (id, workflow_run_id, worker_type, status) VALUES (1, 1, 'remote_work_fetch', 'running')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plan := remoteWorkSavePlan{SourceID: 1, PrimaryCode: "RJ00000001", SaveRoot: "remote/RJ00000001"}
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := createRemoteFetchManifest(context.Background(), tx, 1, 1, "", 1, 1, 2, plan); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(`UPDATE remote_fetch_manifest SET state = 'verified' WHERE workflow_run_id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := server.loadRemoteFetchManifest(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := server.remoteFetchPublishPaths(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(paths.stageRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(paths.stageRoot, "track.mp3"), []byte("verified"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// A scan, cleanup, or Edit files job holds the library folders.
+	server.mediaCleanupMu.Lock()
+	ctx, cancel := context.WithCancel(context.Background())
+	published := make(chan error, 1)
+	go func() { published <- server.publishRemoteFetchRoot(ctx, manifest, paths) }()
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-published:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancelled publication = %v, want context.Canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a Fetch waiting to publish ignored cancellation")
+	}
+	server.mediaCleanupMu.Unlock()
+	if manifest, err := server.loadRemoteFetchManifest(context.Background(), 1); err != nil || manifest.State != "verified" {
+		t.Fatalf("manifest after cancelled wait = %+v err=%v, want verified", manifest, err)
+	}
+	if _, err := os.Stat(paths.targetRoot); !os.IsNotExist(err) {
+		t.Fatalf("target root after cancelled wait: %v", err)
+	}
+
+	// Once the folders are free, the same staged root publishes.
+	if err := server.publishRemoteFetchRoot(context.Background(), manifest, paths); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(filepath.Join(paths.targetRoot, "track.mp3")); err != nil || string(got) != "verified" {
+		t.Fatalf("published track = %q err=%v", got, err)
+	}
+	if manifest, err := server.loadRemoteFetchManifest(context.Background(), 1); err != nil || manifest.State != "published" {
+		t.Fatalf("manifest = %+v err=%v, want published", manifest, err)
+	}
+}
+
 func TestCleanupPromotedFetchCacheRemovesOnlySelectedItems(t *testing.T) {
 	db := openMigratedTestDB(t)
 	cacheRoot := t.TempDir()
