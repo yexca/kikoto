@@ -519,8 +519,18 @@ with the Fetch's own targets already taken, so a follow-up file that would
 land on a fetched file is a conflict. Once the Fetch completes, it queues one
 `work_folder_edit` run on the folder it registered, with request id
 `fetch-follow-up:<run id>`, and records `follow_up_run_id` or
-`follow_up_error` in its run summary. Automatic Fetches never carry a
-follow-up.
+`follow_up_error` in its run summary. `follow_up_error` holds only a reason
+written for the user, which a `fetch.follow_up_failed` event of the Fetch run
+repeats in Activity; any other cause stays in the server log. While the
+library or a storage pool the follow-up reads or writes is offline, the
+summary records `follow_up_waiting` instead, with one `fetch.follow_up_waiting`
+event, and the workflow coordinator tries again every minute until the
+storage is back. Startup recovery queues the follow-up of every completed
+Fetch that records neither `follow_up_run_id` nor `follow_up_error`, so a stop
+between the Fetch's completion and its follow-up neither loses the follow-up
+nor queues it twice: the request id finds a run queued before the stop. A
+failure of this recovery is logged and never keeps the service from starting.
+Automatic Fetches never carry a follow-up.
 
 Remote queries requiring local filtering retain only upstream pages for up to
 30 seconds, with at most 32 pages and 16 MiB of serialized data per server.
