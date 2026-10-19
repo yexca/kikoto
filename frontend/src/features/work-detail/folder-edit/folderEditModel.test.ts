@@ -16,6 +16,7 @@ import {
   fetchComposeRequest,
   fetchComposeResources,
   fetchComposeResult,
+  folderEditMergeCheckProgress,
   folderEditMerges,
   folderEditReadiness,
   folderEditRemoteResource,
@@ -24,6 +25,7 @@ import {
   folderEditResources,
   folderEditResult,
   localFolderFiles,
+  refreshedFolderEditSelection,
   type FolderEditFile,
 } from "./folderEditModel";
 
@@ -299,6 +301,17 @@ describe("folder edit files", () => {
     expect(tree.children.get("a")?.files.map((entry) => entry.path)).toEqual(["a/2.mp3"]);
     expect(tree.children.get("a")?.children.get("b")?.path).toBe("a/b");
   });
+
+  it("keeps the selection of a folder whose files are listed again, and selects only the files that appear", () => {
+    const files = [file("01.mp3"), file("02.mp3"), file("03.mp3")];
+    expect([...refreshedFolderEditSelection(undefined, null, files)]).toEqual(["01.mp3", "02.mp3", "03.mp3"]);
+    const listed = new Set(["01.mp3", "02.mp3", "03.mp3"]);
+    const refreshed = [file("01.mp3"), file("02.mp3"), file("04.mp3")];
+    expect([...refreshedFolderEditSelection(new Set(["01.mp3", "03.mp3"]), listed, refreshed)]).toEqual([
+      "01.mp3",
+      "04.mp3",
+    ]);
+  });
 });
 
 describe("folder edit request", () => {
@@ -536,5 +549,27 @@ describe("fetch into a new folder", () => {
     expect(fetchComposeReadiness({ request, plan: composed(0), planCurrent: false })).toBe("refreshing");
     expect(fetchComposeReadiness({ request, plan: composed(1), planCurrent: true })).toBe("blocked");
     expect(fetchComposeReadiness({ request, plan: composed(0), planCurrent: true })).toBe("ready");
+  });
+});
+
+describe("folder edit merge check", () => {
+  it("counts a round as progress while it compares more files or leaves fewer to compare", () => {
+    const first = folderEditMergeCheckProgress(null, { checkedFiles: 2, pendingFiles: 8, pendingBytes: 800 });
+    expect(first.advanced).toBe(true);
+    const same = folderEditMergeCheckProgress(first.progress, { checkedFiles: 2, pendingFiles: 8, pendingBytes: 800 });
+    expect(same.advanced).toBe(false);
+    const further = folderEditMergeCheckProgress(same.progress, {
+      checkedFiles: 3,
+      pendingFiles: 7,
+      pendingBytes: 700,
+    });
+    expect(further.advanced).toBe(true);
+    // A round that falls back behind the furthest one does not count.
+    const back = folderEditMergeCheckProgress(further.progress, {
+      checkedFiles: 2,
+      pendingFiles: 8,
+      pendingBytes: 800,
+    });
+    expect(back).toEqual({ progress: { checkedFiles: 3, pendingFiles: 7, pendingBytes: 700 }, advanced: false });
   });
 });

@@ -9,6 +9,7 @@ import type {
   RemoteWorkSavePlanItem,
   WorkFolderEditAddition,
   WorkFolderEditItem,
+  WorkFolderEditMergeCheck,
   WorkFolderEditMoveRequest,
   WorkFolderEditPlan,
   WorkFolderEditRequest,
@@ -320,6 +321,24 @@ export function withFolderEditPaths(selected: ReadonlySet<string>, paths: readon
   return next;
 }
 
+/**
+ * The selection of a folder whose file list was refreshed: a file that was
+ * already listed keeps its selection, a file that newly appears starts
+ * selected, and a file that is gone drops out. Without an earlier list every
+ * file starts selected.
+ */
+export function refreshedFolderEditSelection(
+  selected: ReadonlySet<string> | undefined,
+  previous: ReadonlySet<string> | null,
+  files: readonly FolderEditFile[],
+) {
+  const next = new Set<string>();
+  for (const file of files) {
+    if (!previous?.has(file.path) || selected?.has(file.path)) next.add(file.path);
+  }
+  return next;
+}
+
 export function folderEditSelectedBytes(files: readonly FolderEditFile[], selected: ReadonlySet<string>) {
   return files.reduce((sum, file) => (selected.has(file.path) ? sum + (file.sizeBytes ?? 0) : sum), 0);
 }
@@ -607,6 +626,37 @@ export function folderEditMerges(resources: readonly FolderEditResource[], merge
 /** Whether a local place can be merged: its files are loaded and its storage pool is online. */
 export function folderEditCanMerge(resource: FolderEditResource, files: { status: string } | undefined) {
   return resource.kind === "local" && !resource.offline && files?.status === "ready";
+}
+
+/** How far a merge check has come: the most files it compared and the fewest it still had to. */
+export type FolderEditMergeCheckProgress = Pick<
+  WorkFolderEditMergeCheck,
+  "checkedFiles" | "pendingFiles" | "pendingBytes"
+>;
+
+/**
+ * Folds one round of a merge check into the furthest the check has come, and
+ * reports whether the round got further.
+ */
+export function folderEditMergeCheckProgress(
+  furthest: FolderEditMergeCheckProgress | null,
+  check: FolderEditMergeCheckProgress,
+): { progress: FolderEditMergeCheckProgress; advanced: boolean } {
+  if (!furthest) {
+    const { checkedFiles, pendingFiles, pendingBytes } = check;
+    return { progress: { checkedFiles, pendingFiles, pendingBytes }, advanced: true };
+  }
+  return {
+    progress: {
+      checkedFiles: Math.max(furthest.checkedFiles, check.checkedFiles),
+      pendingFiles: Math.min(furthest.pendingFiles, check.pendingFiles),
+      pendingBytes: Math.min(furthest.pendingBytes, check.pendingBytes),
+    },
+    advanced:
+      check.checkedFiles > furthest.checkedFiles ||
+      check.pendingFiles < furthest.pendingFiles ||
+      check.pendingBytes < furthest.pendingBytes,
+  };
 }
 
 export type FolderEditReadiness = "idle" | "refreshing" | "blocked" | "ready";

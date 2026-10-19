@@ -21,6 +21,7 @@ import {
   folderEditResources,
   folderEditResult,
   localFolderFiles,
+  refreshedFolderEditSelection,
   withFolderEditPaths,
   type FolderEditPendingAddition,
   type FolderEditResource,
@@ -105,12 +106,16 @@ export function useFolderEditWorkspace({
   const pendingInitialRemote = useRef(initialRemote ?? null);
 
   // The edited folder's files come from the page; everything in it stays
-  // selected until the user clears it.
+  // selected until the user clears it. When the page reloads the work, the
+  // files it already listed keep the user's choice.
+  const listedCurrentPaths = useRef<ReadonlySet<string> | null>(null);
   useEffect(() => {
+    const previous = listedCurrentPaths.current;
+    listedCurrentPaths.current = new Set(currentFiles.map((file) => file.path));
     setFiles((current) => ({ ...current, [CURRENT_FOLDER_RESOURCE]: { status: "ready", files: currentFiles } }));
     setSelection((current) => ({
       ...current,
-      [CURRENT_FOLDER_RESOURCE]: new Set(currentFiles.map((file) => file.path)),
+      [CURRENT_FOLDER_RESOURCE]: refreshedFolderEditSelection(current[CURRENT_FOLDER_RESOURCE], previous, currentFiles),
     }));
   }, [currentFiles, setFiles, setSelection]);
 
