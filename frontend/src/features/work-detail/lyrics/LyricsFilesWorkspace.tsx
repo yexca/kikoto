@@ -251,7 +251,14 @@ function ResourceColumn({
                   key={resource.id}
                   icon={resourceIcons[resource.kind]}
                   title={resourceTitle(resource, t)}
-                  note={!own && resource.origin ? t("remoteFetch.origin") : undefined}
+                  noteTone={resource.offline ? "warning" : "muted"}
+                  note={
+                    resource.offline
+                      ? t("libraryOffline.badge")
+                      : !own && resource.origin
+                        ? t("remoteFetch.origin")
+                        : undefined
+                  }
                   code={own ? undefined : resource.editionCode}
                   detail={resource.kind === "remote" ? resource.sourceName : resource.rootPath}
                   removes={resource.kind === "current"}
@@ -261,7 +268,7 @@ function ResourceColumn({
                     state?.status === "ready" ? state.files : undefined,
                     workspace.selection[resource.id],
                   )}
-                  disabled={workspace.applying}
+                  disabled={workspace.applying || Boolean(resource.offline)}
                   onSelect={() => onSelect(resource)}
                 />
               );

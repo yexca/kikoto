@@ -43,6 +43,9 @@ type remoteFetchLocalRoot struct {
 	RootPath     string `json:"rootPath"`
 	Role         string `json:"role"`
 	State        string `json:"state"`
+	// Availability is "offline" while the folder's storage pool is offline,
+	// otherwise "available".
+	Availability string `json:"availability"`
 	Primary      bool   `json:"primary"`
 }
 
@@ -248,6 +251,10 @@ func (s *Server) loadRemoteFetchLocalRoots(ctx context.Context, workID int64, co
 	if err := s.discoverRemoteFetchLocalRoots(ctx, workID, code); err != nil {
 		return nil, err
 	}
+	availability, err := s.loadLibraryAvailability(ctx)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, file_source_id, root_path, role, state, is_primary
 		FROM work_folder_location
@@ -264,6 +271,7 @@ func (s *Server) loadRemoteFetchLocalRoots(ctx context.Context, workID int64, co
 		if err := rows.Scan(&item.ID, &item.FileSourceID, &item.RootPath, &item.Role, &item.State, &item.Primary); err != nil {
 			return nil, err
 		}
+		item.Availability = availability.localAvailability(item.RootPath, "available")
 		result = append(result, item)
 	}
 	return result, rows.Err()

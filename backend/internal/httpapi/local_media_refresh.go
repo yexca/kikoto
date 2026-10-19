@@ -58,6 +58,10 @@ func (s *Server) refreshWorkLocalFiles(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if err := s.ensureLibraryPathOnline(r.Context(), relPath); err != nil {
+		writeError(w, err)
+		return
+	}
 	if err := s.indexLocalMediaForWork(r.Context(), targetWorkID, fileSourceID, relPath); err != nil {
 		writeError(w, err)
 		return

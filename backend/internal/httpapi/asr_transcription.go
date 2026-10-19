@@ -71,6 +71,9 @@ func (s *Server) asrWorkTrack(w http.ResponseWriter, r *http.Request, workID, au
 		writeAPIError(w, 400, "asr_audio_unavailable", "Choose an available local audio track of this work.", false)
 		return localTrack{}, false
 	}
+	if err == nil {
+		err = s.ensureLibraryPathOnline(r.Context(), source.Path)
+	}
 	if err != nil {
 		writeError(w, err)
 		return localTrack{}, false
@@ -396,7 +399,7 @@ func (s *Server) acceptASRTranscription(w http.ResponseWriter, r *http.Request) 
 			writeAPIError(w, requestErr.status, cmp.Or(requestErr.code, "asr_publish_failed"), requestErr.message, false)
 			return
 		}
-		if writeFetchDestinationError(w, err) {
+		if writeLibraryStorageError(w, err) {
 			return
 		}
 		slog.Warn("speech transcription publication failed", "transcription", id, "work_id", workID, "error", err)

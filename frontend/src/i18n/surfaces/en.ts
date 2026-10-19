@@ -2274,6 +2274,7 @@ export const surfaceEnglish = {
       missing: "Missing",
       unavailable: "Unavailable",
       unknown: "Unknown",
+      offline: "Disk not mounted",
     },
     noMatchedLyrics: "No matched lyrics",
     viewLyrics: "View lyrics",
@@ -3516,5 +3517,14 @@ export const surfaceEnglish = {
     applying: "Updating the lyrics",
     applyFailed: "The lyrics could not be changed.",
     folder: "Work folder",
+  },
+  libraryOffline: {
+    storage_pool_offline: "The storage pool holding these files is offline. Check that its disk is mounted.",
+    library_offline: "The library folder is unavailable. Check that the data directory is mounted.",
+    badge: "Offline",
+    title: "The disk holding these files is not mounted",
+    description: "Kikoto keeps these files as they were and shows them again once the disk is mounted.",
+    editBlocked: "Mount the disk holding this folder to change its files.",
+    someFolders: "Some of these folders are on a disk that is not mounted.",
   },
 } as const;

@@ -267,7 +267,7 @@ func (s *Server) performLocalMediaDelete(ctx context.Context, target localMediaD
 	}
 	defer stopHeartbeat()
 
-	deleted, _, err := removeDestructiveFile(s.cfg.DataRoot, target.RelPath)
+	deleted, err := s.removeLibraryFile(jobCtx, target.RelPath)
 	if err != nil {
 		_ = s.finishLocalMediaDelete(jobCtx, runID, deleteNodeID, jobID, "failed", target.LocationID, target.RelPath, deleted, err.Error())
 		return mediaLocalDeleteResult{}, err
@@ -304,7 +304,7 @@ func (s *Server) executeLocalMediaDeleteJob(ctx context.Context, job workflowJob
 		return err
 	}
 	deleted := false
-	deleted, _, err := removeDestructiveFile(s.cfg.DataRoot, payload.Path)
+	deleted, err := s.removeLibraryFile(ctx, payload.Path)
 	if err == nil {
 		_, err = s.db.ExecContext(ctx, `
 			UPDATE media_file_location

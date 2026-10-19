@@ -35,6 +35,7 @@ import { useMetadataSyncWorkflow } from "@/features/work-detail/workflows/useMet
 import { WorkMetadataRefreshControl, type MetadataEditorSection } from "@/features/work-detail/metadata";
 import type { ClientPrincipalID } from "@/lib/clientStorageScope";
 import { useAuth } from "@/auth/AuthProvider";
+import { isLocalOffline } from "@/lib/localAvailability";
 import { isCustomWorkCode } from "@/lib/workCode";
 import { useWorkSourceContext } from "@/features/work-detail/source/useWorkSourceContext";
 import { useSourceTrackingActions } from "@/features/work-detail/source/useSourceTrackingActions";
@@ -644,6 +645,7 @@ export function PersistedWorkDetailController({
         canManageLocalCopies && (localFolders.length > 1 || otherLocalEditionCount > 0)
           ? {
               folderCount: localFolders.length,
+              offlineFolderCount: localFolders.filter((folder) => isLocalOffline(folder.availability)).length,
               editionCount: otherLocalEditionCount,
               onManageFiles: files.openManager,
               onManageLyrics: detailActionProps.onManageLyrics,

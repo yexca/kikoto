@@ -7,6 +7,7 @@ import type {
   VoiceCredit,
   WorkProgressSummary,
 } from "@/lib/libraryApi";
+import type { LocalFolderAvailability } from "@/lib/localAvailability";
 import type { MediaItem } from "@/lib/mediaApi";
 import type {
   WorkManualOverrides,
@@ -100,6 +101,8 @@ export type WorkFolderLocation = {
   rootPath: string;
   role: string;
   state: "active" | "pending_cleanup" | "ignored" | string;
+  /** "offline" while the folder's storage pool is offline. */
+  availability: LocalFolderAvailability;
   primary: boolean;
 };
 

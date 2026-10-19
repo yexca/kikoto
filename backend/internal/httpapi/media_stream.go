@@ -54,6 +54,10 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "media location is not available"})
 		return
 	}
+	if err := s.ensureMediaLocationReadable(r.Context(), target.LocationType, target.RelativePath); err != nil {
+		writeError(w, err)
+		return
+	}
 
 	root := s.cfg.DataRoot
 	if target.LocationType == "cache" {
@@ -76,7 +80,9 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 func (s *Server) serveMediaAsset(w http.ResponseWriter, r *http.Request) {
 	path, relPath, err := s.storedMediaPath(r, r.PathValue("id"))
 	if err != nil {
-		writeAPIError(w, http.StatusNotFound, "not_found", "media file was not found", false)
+		if !writeLibraryStorageError(w, err) {
+			writeAPIError(w, http.StatusNotFound, "not_found", "media file was not found", false)
+		}
 		return
 	}
 	serveRevalidatedFile(w, r, path, relPath)
@@ -186,6 +192,9 @@ func (s *Server) readMediaLocationText(r *http.Request, target mediaStreamTarget
 		if target.Availability != "available" {
 			return nil, "", notFound
 		}
+		if err := s.ensureMediaLocationReadable(r.Context(), target.LocationType, target.RelativePath); err != nil {
+			return nil, "", err
+		}
 		root := s.cfg.DataRoot
 		if target.LocationType == "cache" {
 			root = s.cfg.CacheRoot
@@ -231,7 +240,9 @@ func (s *Server) readMediaLocationText(r *http.Request, target mediaStreamTarget
 func (s *Server) downloadMedia(w http.ResponseWriter, r *http.Request) {
 	path, relPath, err := s.storedMediaPath(r, r.PathValue("id"))
 	if err != nil {
-		writeAPIError(w, http.StatusNotFound, "not_found", "media file was not found", false)
+		if !writeLibraryStorageError(w, err) {
+			writeAPIError(w, http.StatusNotFound, "not_found", "media file was not found", false)
+		}
 		return
 	}
 	setUntrustedFileHeaders(w)
@@ -264,6 +275,9 @@ func (s *Server) storedMediaPath(r *http.Request, idValue string) (string, strin
 	}
 	if (locationType != "local" && locationType != "cache") || availability != "available" {
 		return "", "", fmt.Errorf("media location is not stored on this server")
+	}
+	if err := s.ensureMediaLocationReadable(r.Context(), locationType, relPath); err != nil {
+		return "", "", err
 	}
 	root := s.cfg.DataRoot
 	if locationType == "cache" {

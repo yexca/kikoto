@@ -197,7 +197,7 @@ func (s *Server) reviewArchivedFetchRoots(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if request.Action == "delete_archived" {
-		if err := s.deleteArchivedFetchRoots(archivedRoots); err != nil {
+		if err := s.deleteArchivedFetchRoots(r.Context(), archivedRoots); err != nil {
 			var pathErr *archivedFetchRootPathError
 			if errors.As(err, &pathErr) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -245,13 +245,18 @@ func (err *archivedFetchRootPathError) Error() string {
 	return "archived root is outside the Fetch trash area"
 }
 
-func (s *Server) deleteArchivedFetchRoots(roots []archivedFetchRoot) error {
+func (s *Server) deleteArchivedFetchRoots(ctx context.Context, roots []archivedFetchRoot) error {
 	for _, root := range roots {
 		archive := filepath.ToSlash(strings.Trim(root.ArchivePath, "/"))
 		if !fetchTrashArchiveAllowed(archive) {
 			return &archivedFetchRootPathError{}
 		}
 		if _, err := safeDataPath(s.cfg.DataRoot, archive); err != nil {
+			return err
+		}
+		// An archive on an offline pool is still on its disk; resolving the
+		// review would forget it there.
+		if err := s.ensureLibraryPathOnline(ctx, archive); err != nil {
 			return err
 		}
 		if _, err := removeDestructiveTree(s.cfg.DataRoot, archive); err != nil {
@@ -572,7 +577,7 @@ func (s *Server) cleanupLocalLocation(ctx context.Context, locationID int64, del
 	deleted := false
 	if deleteFile && availability == "available" {
 		var err error
-		deleted, _, err = removeDestructiveFile(s.cfg.DataRoot, relPath)
+		deleted, err = s.removeLibraryFile(ctx, relPath)
 		if err != nil {
 			return false, false, err
 		}

@@ -214,7 +214,7 @@ func writeLyricsEditError(w http.ResponseWriter, workID int64, err error) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "work not found"})
 		return
 	}
-	if writeFetchDestinationError(w, err) {
+	if writeLibraryStorageError(w, err) {
 		return
 	}
 	slog.Warn("lyrics edit failed", "work_id", workID, "error", err)

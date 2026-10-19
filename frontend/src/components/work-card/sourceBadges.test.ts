@@ -14,6 +14,11 @@ describe("source presence badges", () => {
     expect(badges[1]).toMatchObject({ label: "Unforked", variant: "warning" });
   });
 
+  it("labels a local presence on an offline storage pool as offline", () => {
+    const [badge] = sourcePresenceBadges([{ type: "local", availability: "offline" }], ["local"]);
+    expect(badge).toMatchObject({ key: "source:local", label: "Local · Offline", variant: "warning" });
+  });
+
   it("uses playable availability to label tracked sources and falls back to availability badges", () => {
     const tracked = sourcePresenceBadges(
       [{ type: "tracked", availability: "available", fileSourceId: 5, fileSourceName: "Example Tracked" }],

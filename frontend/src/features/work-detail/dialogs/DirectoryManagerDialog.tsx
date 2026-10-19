@@ -14,6 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { LibraryOfflineNotice } from "@/components/library-offline/LibraryOfflineNotice";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
@@ -61,6 +62,7 @@ import {
 import type { MediaCleanupMode, MediaDeleteTarget } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
 import i18n from "@/i18n";
 import { api, type DuplicateFileGroup } from "@/lib/api";
+import { isLocalOffline } from "@/lib/localAvailability";
 
 /** Marks of the listed local files that have an identical file, by location id. */
 const DuplicateMarksContext = createContext<ReadonlyMap<number, DuplicateFileMark>>(new Map());
@@ -188,9 +190,10 @@ export function DirectoryManagerDialog({
   onDeleteTargets?: (targets: MediaDeleteTarget[], mode: MediaCleanupMode) => void;
   allowCacheDelete?: boolean;
   allowLocalDelete?: boolean;
-  localRoot?: { folderId: number; path: string } | null;
+  /** The listed folder; offline while its storage pool is offline, when its files cannot be changed. */
+  localRoot?: { folderId: number; path: string; offline?: boolean } | null;
   /** The work's local folders when it has several; the dialog lists the one named by localRoot. */
-  localFolders?: { id: number; rootPath: string }[];
+  localFolders?: { id: number; rootPath: string; availability?: string }[];
   onSelectLocalFolder?: (folderId: number) => void;
   /** Opens the edit that adds files from other editions and sources to the listed folder. */
   onEditFiles?: () => void;
@@ -322,7 +325,12 @@ export function DirectoryManagerDialog({
               {canSwitchFolder && (
                 <FloatingSelect
                   value={String(localRoot?.folderId ?? "")}
-                  options={localFolders.map((folder) => ({ value: String(folder.id), label: folder.rootPath }))}
+                  options={localFolders.map((folder) => ({
+                    value: String(folder.id),
+                    label: isLocalOffline(folder.availability)
+                      ? `${i18n.t("libraryOffline.badge")} · ${folder.rootPath}`
+                      : folder.rootPath,
+                  }))}
                   onValueChange={(value) => {
                     // A selection belongs to the folder it was made in.
                     setSelectedKeys(new Set());
@@ -369,8 +377,8 @@ export function DirectoryManagerDialog({
                   <Button
                     variant="toolbar"
                     size="sm"
-                    disabled={deleting}
-                    title={i18n.t("folderEdit.description")}
+                    disabled={deleting || Boolean(localRoot?.offline)}
+                    title={localRoot?.offline ? i18n.t("libraryOffline.editBlocked") : i18n.t("folderEdit.description")}
                     onClick={onEditFiles}
                   >
                     <FolderPlus className="h-4 w-4" aria-hidden="true" />
@@ -381,6 +389,7 @@ export function DirectoryManagerDialog({
             </div>
           )}
           <div className="app-scroll min-h-0 flex-1 overflow-auto px-2 pb-2">
+            {localRoot?.offline && <LibraryOfflineNotice className="mx-2 mt-3" />}
             {hasQuickSelect && quickSelectOpen && (
               <div
                 id="directory-manager-quick-select"
@@ -435,7 +444,8 @@ export function DirectoryManagerDialog({
               <MixedLocationsContext.Provider value={locationGroups.length > 1}>
                 <DirectoryManagerTree
                   root={root}
-                  emptyLabel={emptyLabel}
+                  // The notice already says why an offline folder lists nothing.
+                  emptyLabel={localRoot?.offline ? "" : emptyLabel}
                   selectedKeys={selectedKeys}
                   options={options}
                   showOnlyDeletable={showOnlyDeletable}
@@ -712,6 +722,7 @@ function DirectoryManagerTree({
   const hasFiles = useMemo(() => sortedFilesDeep(root).length > 0, [root]);
   // A folder that holds only managed lyrics still lists its root, which removes the folder.
   if (!hasFiles && !rootTarget) {
+    if (!emptyLabel) return null;
     return <div className="px-2 py-10 text-center text-sm text-muted-foreground">{emptyLabel}</div>;
   }
   const children = (

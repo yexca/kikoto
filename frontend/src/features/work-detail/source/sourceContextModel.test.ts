@@ -108,6 +108,17 @@ describe("sourceContextModel", () => {
     expect(tabs.filter((tab) => tab.kind === "local").map((tab) => tab.label)).toEqual(["Pool A", "Pool B"]);
   });
 
+  it("shows local files on an offline storage pool as offline rather than missing", () => {
+    const offline = localMediaItem(1, 3, "Pool A");
+    offline.locations[0] = { ...offline.locations[0], availability: "offline", streamUrl: "" };
+    const local = buildSourceTabs([offline]).filter((tab) => tab.kind === "local");
+    expect(local).toMatchObject([{ key: "local", fileSourceId: 3, status: "degraded", offline: true }]);
+    // Files of another pool that is online keep their own tab.
+    const mixed = buildSourceTabs([offline, localMediaItem(2, 4, "Pool B")]).filter((tab) => tab.kind === "local");
+    expect(mixed).toMatchObject([{ fileSourceId: 4, status: "available" }]);
+    expect(mixed[0].offline).toBeUndefined();
+  });
+
   it("uses the currently loaded remote edition instead of the routed edition", () => {
     const summary = {
       primaryCode: "SAMPLE-ORIGIN",

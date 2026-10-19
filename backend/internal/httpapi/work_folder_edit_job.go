@@ -127,7 +127,7 @@ func (e *workFolderEditExecution) run(ctx context.Context) error {
 		return err
 	}
 	e.nodes = nodes
-	if err := s.ensureFetchTargetWritable(ctx, e.payload.TargetRoot); err != nil {
+	if err := s.ensureLibraryPathOnline(ctx, e.payload.TargetRoot); err != nil {
 		return err
 	}
 	targetAbs, err := safeDataPath(s.cfg.DataRoot, e.payload.TargetRoot)

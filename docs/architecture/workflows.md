@@ -810,6 +810,22 @@ new works into the Fetch pool and existing folders in their own pool, rejects
 `library_offline` with `409`, records the pool as `transactionPool` in the
 plan, and creates staging, backup, and quarantine entries under that pool.
 
+Pool availability outside scans is computed per request and never stored. A
+local file location, work folder, or local presence on an offline pool keeps
+its indexed state, and responses report its availability as `offline`, without
+a stream URL; it reads as available again once the pool is back, without a
+scan. Library filters and counts still treat such a work as local. Every read,
+write, or deletion of library files checks the pool of the path it touches
+first: streaming, download, text preview, HLS playback, ASR, local file
+refresh, Edit files and its copy and merge folders, lyrics edits and their copy
+folders, generated-lyrics publication, file and folder deletion, workflow
+review cleanup, Fetch trash deletion, and a starting or resuming Fetch run. A
+refused request answers `409` with `storage_pool_offline` in pool mode or
+`library_offline` in standard mode and changes nothing. Fetch quarantine leaves
+a root on an offline pool in place, opening a work does not index a folder on
+one, cover candidates omit its images, and the duplicate-file check leaves its
+files out.
+
 `remote_work_fetch` runs are named `Fetch <code>`, expose `workCode` in run
 records, match Activity search by code, and record the queuing workflow as
 their trigger reason. The Workflows page's Fetch run form accepts one work code

@@ -237,6 +237,12 @@ started, and can follow their status, events, and file progress.
   folder or offline storage pool, or folders deeper than the scan depth. A scan
   of an unmounted standard library fails and changes nothing; a scan that skips
   an offline pool finishes as partial and names the pool.
+- Works on a disk that is not mounted stay in the library. Their cards show
+  **Local · Offline**, and the work's local files say that the disk is not
+  mounted. Until it is mounted again, their files cannot be played, downloaded,
+  edited, or deleted, and **Edit files** shows such a folder as offline and takes
+  nothing from it. Once the disk is back, the files are available again without
+  a scan.
 
 ## Limits
 

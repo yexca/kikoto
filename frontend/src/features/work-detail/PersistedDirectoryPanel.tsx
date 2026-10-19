@@ -57,6 +57,8 @@ export type PersistedDirectoryPanelProps = {
   /** Set when the work's files lie in several local folders or editions the viewer can tidy up. */
   localCopies?: {
     folderCount: number;
+    /** Folders whose storage pool is offline. */
+    offlineFolderCount?: number;
     editionCount: number;
     onManageFiles: () => void;
     onManageLyrics?: () => void;
@@ -102,6 +104,7 @@ function persistedDirectorySourceState(props: PersistedDirectoryPanelProps) {
     return (
       <LocalSourceStatePanel
         status={props.selectedSource.status}
+        offline={props.selectedSource.offline}
         remoteSources={props.remoteSources}
         onSelectRemote={props.onSelectRemote}
       />

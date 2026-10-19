@@ -215,6 +215,17 @@ func (s *Server) remoteWorkTracksDetail(ctx context.Context, source remoteSource
 	if err != nil {
 		return remoteWorkTracksDetail{}, err
 	}
+	availability, err := s.loadLibraryAvailability(ctx)
+	if err != nil {
+		return remoteWorkTracksDetail{}, err
+	}
+	// A library copy on an offline pool cannot be played from here.
+	for path, state := range locationState.Local {
+		if state.Available && !availability.readable(state.Path) {
+			state.Available = false
+			locationState.Local[path] = state
+		}
+	}
 	return remoteWorkTracksDetail{
 		SourceID:    source.ID,
 		SourceCode:  source.Code,

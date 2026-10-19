@@ -1,6 +1,7 @@
 import { remoteSourceVisibilityKey, type SourceVisibilityKey } from "@/components/source-visibility/sourceVisibility";
 import i18n from "@/i18n";
 import type { LibrarySource, MediaItem, RemoteWorkDetail, SourceAvailabilitySource, WorkDetail } from "@/lib/api";
+import { isLocalOffline } from "@/lib/localAvailability";
 
 export type DetailSourceIntent = "local" | "tracked" | `remote-source:${number}`;
 
@@ -13,6 +14,8 @@ export type SourceTabInfo = {
   presence?: NonNullable<WorkDetail["sourcePresence"]>[number];
   status: "available" | "degraded" | "unavailable";
   statusLabel: string;
+  /** A local tab whose files are all on an offline storage pool. */
+  offline?: boolean;
   /** The viewer's visibility preference this tab follows. */
   visibilityKey?: SourceVisibilityKey;
   /** False for a placeholder the strip hides unless the viewer always shows it. */
@@ -59,8 +62,12 @@ export function buildSourceTabs(
 ): SourceTabInfo[] {
   const localLabel = i18n.t("workCard.local");
   const sources = new Map<number, SourceTabInfo>();
+  // The local source holding files whose storage pool is offline, if any.
+  let offlineSourceId: number | null = null;
   for (const item of items) {
     for (const location of item.locations) {
+      if (location.locationType === "local" && isLocalOffline(location.availability))
+        offlineSourceId ??= location.fileSourceId;
       if (location.locationType !== "local" || location.availability !== "available") continue;
       if (!sources.has(location.fileSourceId)) {
         sources.set(location.fileSourceId, {
@@ -82,6 +89,21 @@ export function buildSourceTabs(
   const localTabs = Array.from(sources.values());
   const tabs =
     localTabs.length > 1 ? localTabs.map((tab) => ({ ...tab, label: tab.sourceName ?? tab.label })) : localTabs;
+  if (tabs.length === 0 && offlineSourceId !== null) {
+    // The files are known but their disk is not mounted; they come back with
+    // it. The tab keeps their source, so its folders can still be listed.
+    tabs.push({
+      key: "local",
+      label: localLabel,
+      sourceName: localLabel,
+      fileSourceId: offlineSourceId,
+      kind: "local",
+      visibilityKey: "local",
+      status: "degraded",
+      statusLabel: i18n.t("libraryOffline.title"),
+      offline: true,
+    });
+  }
   if (tabs.length === 0) {
     tabs.push({
       key: "local",

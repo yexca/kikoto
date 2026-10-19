@@ -94,6 +94,9 @@ type workFolderLocationDetail struct {
 	RootPath     string `json:"rootPath"`
 	Role         string `json:"role"`
 	State        string `json:"state"`
+	// Availability is "offline" while the folder's storage pool is offline,
+	// otherwise "available"; it never changes State.
+	Availability string `json:"availability"`
 	Primary      bool   `json:"primary"`
 }
 
@@ -517,6 +520,10 @@ func (s *Server) loadWorkDetailVoiceCredits(ctx context.Context, workID int64) (
 }
 
 func (s *Server) loadWorkFolderLocations(ctx context.Context, workID int64) ([]workFolderLocationDetail, error) {
+	availability, err := s.loadLibraryAvailability(ctx)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, work_id, file_source_id, root_path, role, state, is_primary
 		FROM work_folder_location
@@ -535,6 +542,7 @@ func (s *Server) loadWorkFolderLocations(ctx context.Context, workID int64) ([]w
 			return nil, err
 		}
 		folder.RootPath = filepath.ToSlash(strings.Trim(folder.RootPath, "/"))
+		folder.Availability = availability.localAvailability(folder.RootPath, "available")
 		folder.Primary = primary != 0
 		folders = append(folders, folder)
 	}

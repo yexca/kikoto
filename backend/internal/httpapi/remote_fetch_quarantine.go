@@ -91,6 +91,15 @@ func (s *Server) quarantineFetchRoot(ctx context.Context, runID, workID, localSo
 	if root == "" || fetchRootsOverlap(root, publishedRoot) || targetRoots[root] {
 		return nil, false, nil
 	}
+	// A root on an offline pool stays as it is until its pool is back; what
+	// sits at its path now is not the indexed folder.
+	if err := s.ensureLibraryPathOnline(ctx, root); err != nil {
+		var offline libraryStorageError
+		if errors.As(err, &offline) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
 	// The archive stays on the old root's pool so archiving is a rename.
 	poolPath, err := s.fetchTransactionPool(ctx, root)
 	if err != nil {

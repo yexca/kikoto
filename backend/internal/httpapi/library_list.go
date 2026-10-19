@@ -12,6 +12,10 @@ import (
 func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []library.RawWork, canonicalFiltered bool, includeRecommendation ...bool) ([]libraryWorkSummary, error) {
 	works := make([]libraryWorkSummary, 0, len(rows))
 	hideAddresses := s.remoteAddressesHidden(ctx)
+	availability, err := s.loadLibraryAvailability(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for _, row := range rows {
 		item := libraryWorkSummary{
 			ID: row.ID, PrimaryCode: row.PrimaryCode, Title: row.Title, CreatedAt: row.CreatedAt,
@@ -22,6 +26,7 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 			ListeningStatus: row.ListeningStatus, Favorite: row.Favorite, RecommendScore: row.RecommendScore,
 		}
 		item.SourcePresence = parseSourcePresenceSummary(row.SourcePresence)
+		markOfflineLocalSourcePresence(item.SourcePresence, availability)
 		hideLocalSourcePresenceAddresses(item.SourcePresence)
 		if hideAddresses {
 			hideSourcePresenceAddresses(item.SourcePresence)

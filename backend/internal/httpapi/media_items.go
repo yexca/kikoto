@@ -165,6 +165,10 @@ func (s *Server) loadMediaItemRows(ctx context.Context, userID int64, mediaWorkI
 }
 
 func (s *Server) loadMediaLocationRows(ctx context.Context, mediaWorkID int64, mediaItems []mediaItemDetail, itemIndexes map[int64]int) error {
+	availability, err := s.loadLibraryAvailability(ctx)
+	if err != nil {
+		return err
+	}
 	locationRows, err := s.db.QueryContext(ctx, `
 		SELECT
 			location.id,
@@ -220,6 +224,9 @@ func (s *Server) loadMediaLocationRows(ctx context.Context, mediaWorkID int64, m
 		location.SizeBytes = sqlutil.Int64(sizeBytes)
 		location.DurationSeconds = sqlutil.Int64(locationDurationSeconds)
 		location.LastCheckedAt = sqlutil.String(lastCheckedAt)
+		if location.LocationType == "local" {
+			location.Availability = availability.localAvailability(location.Path, location.Availability)
+		}
 		if (location.LocationType == "local" || location.LocationType == "cache") && location.Availability == "available" && location.StreamURL == "" {
 			location.StreamURL = fmt.Sprintf("/api/media/%d/stream", location.ID)
 		}
@@ -246,7 +253,7 @@ func inferMediaItemKinds(mediaItems []mediaItemDetail) {
 			continue
 		}
 		for _, location := range mediaItems[index].Locations {
-			if location.Availability != "available" && location.Availability != "remote" {
+			if location.Availability != "available" && location.Availability != "remote" && location.Availability != localAvailabilityOffline {
 				continue
 			}
 			if kind := mediaKindFromPath(location.Path); kind != "file" {

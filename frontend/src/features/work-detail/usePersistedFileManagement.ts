@@ -6,6 +6,7 @@ import { buildTree, emptyTree, type TreeNode } from "@/features/work-detail/medi
 import { activeLocalFolders, mediaItemsInLocalFolder } from "@/features/work-detail/persistedWorkDetailModel";
 import type { useWorkSourceContext } from "@/features/work-detail/source/useWorkSourceContext";
 import type { WorkDetail } from "@/lib/api";
+import { isLocalOffline } from "@/lib/localAvailability";
 
 type SourceContext = ReturnType<typeof useWorkSourceContext>;
 
@@ -53,13 +54,25 @@ export function usePersistedFileManagement({
     localFolders[0] ??
     null;
   const localRoot = useMemo(
-    () => (manageFolder ? { folderId: manageFolder.id, path: manageFolder.rootPath } : null),
+    () =>
+      manageFolder
+        ? {
+            folderId: manageFolder.id,
+            path: manageFolder.rootPath,
+            offline: isLocalOffline(manageFolder.availability),
+          }
+        : null,
     [manageFolder],
   );
   const managementTree = useMemo(() => {
     if (!isManageOpen) return emptyTree();
     if (selectedTrackedPresence && localDirectoryWork && selectedTrackedSourceID) {
       return buildTree(localDirectoryWork.mediaItems, selectedTrackedSourceID, localDirectoryWork.primaryCode);
+    }
+    // A folder on an offline storage pool lists nothing to act on. Its files
+    // may have copies in another folder, which must never stand in for them.
+    if (manageFolder && isLocalOffline(manageFolder.availability) && selectedSource?.kind === "local") {
+      return emptyTree();
     }
     if (localDirectoryWork && manageFolder && localFolders.length > 1 && selectedSource?.kind === "local") {
       return buildTree(
@@ -85,7 +98,10 @@ export function usePersistedFileManagement({
     () =>
       (localDirectoryWork?.localFolders ?? []).filter(
         (folder) =>
-          folder.workId === localDirectoryWork?.id && folder.state === "active" && folder.rootPath.trim() !== "",
+          folder.workId === localDirectoryWork?.id &&
+          folder.state === "active" &&
+          !isLocalOffline(folder.availability) &&
+          folder.rootPath.trim() !== "",
       ),
     [localDirectoryWork],
   );
@@ -96,8 +112,9 @@ export function usePersistedFileManagement({
     ? (editableFolders.find((folder) => folder.id === folderEdit.folderId) ?? null)
     : null;
   const localFolderManaged = selectedSource?.kind === "local" && !selectedTrackedPresence;
-  // The lyrics manager handles lyrics files only for a manager of the listed local folder.
-  const canManageLyricsFiles = canEditFolders && localFolderManaged;
+  // The lyrics manager handles lyrics files only for a manager of the listed
+  // local folder, and only while that folder's storage pool is online.
+  const canManageLyricsFiles = canEditFolders && localFolderManaged && !localRoot?.offline;
 
   const openFromManager = (open: () => void) => {
     setIsManageOpen(false);

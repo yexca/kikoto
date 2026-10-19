@@ -1197,6 +1197,7 @@ export async function mockRemoteSource(
                     rootPath: "Existing/RJ00000051",
                     role: "external",
                     state: "active",
+                    availability: "available",
                     primary: false,
                   },
                 ],

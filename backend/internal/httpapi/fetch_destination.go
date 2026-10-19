@@ -10,38 +10,43 @@ import (
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
-// fetchDestinationError explains why Fetch cannot write into the library now.
-// Its code lets the interface point the user at the setting that fixes it.
-type fetchDestinationError struct {
+// libraryStorageError explains why part of the library cannot be read or
+// written now. Its code lets the interface point the user at the setting or
+// the disk that fixes it.
+type libraryStorageError struct {
 	Code    string
 	Message string
 }
 
-func (err fetchDestinationError) Error() string { return err.Message }
+func (err libraryStorageError) Error() string { return err.Message }
 
 var (
-	errFetchLibraryNotConfigured = fetchDestinationError{
+	errFetchLibraryNotConfigured = libraryStorageError{
 		Code:    "library_not_configured",
 		Message: "Set up the library before fetching works.",
 	}
-	errFetchPoolRequired = fetchDestinationError{
+	errFetchPoolRequired = libraryStorageError{
 		Code:    "fetch_pool_required",
 		Message: "Choose a Fetch storage pool in Settings -> Library before fetching works.",
 	}
-	errFetchPoolOffline = fetchDestinationError{
+	errFetchPoolOffline = libraryStorageError{
 		Code:    "fetch_pool_offline",
 		Message: "The storage pool Fetch saves to is offline. Check that its disk is mounted.",
 	}
-	errFetchLibraryOffline = fetchDestinationError{
+	errLibraryOffline = libraryStorageError{
 		Code:    "library_offline",
 		Message: "The library folder is unavailable. Check that the data directory is mounted.",
 	}
+	errStoragePoolOffline = libraryStorageError{
+		Code:    "storage_pool_offline",
+		Message: "The storage pool holding these files is offline. Check that its disk is mounted.",
+	}
 )
 
-// writeFetchDestinationError writes err when it is a destination error and
+// writeLibraryStorageError writes err when it is a library storage error and
 // reports whether it did.
-func writeFetchDestinationError(w http.ResponseWriter, err error) bool {
-	var destination fetchDestinationError
+func writeLibraryStorageError(w http.ResponseWriter, err error) bool {
+	var destination libraryStorageError
 	if !errors.As(err, &destination) {
 		return false
 	}
@@ -95,7 +100,7 @@ func (s *Server) ensureFetchTargetWritable(ctx context.Context, targetRoot strin
 	if layout.poolsMode() {
 		return errFetchPoolOffline
 	}
-	return errFetchLibraryOffline
+	return errLibraryOffline
 }
 
 // fetchTransactionPool returns the pool whose root holds the staging, backup,

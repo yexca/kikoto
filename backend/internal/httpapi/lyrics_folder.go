@@ -110,7 +110,7 @@ func (s *Server) lyricsFetchTarget(ctx context.Context, family map[int64]bool, f
 	if err != nil {
 		return lyricsFetchTarget{}, lyricsFetchBadRequest("the local folder is outside the library")
 	}
-	if err := s.ensureFetchTargetWritable(ctx, target.RootPath); err != nil {
+	if err := s.ensureLibraryPathOnline(ctx, target.RootPath); err != nil {
 		return lyricsFetchTarget{}, err
 	}
 	info, err := os.Lstat(absolute)
@@ -149,6 +149,9 @@ func (s *Server) lyricsSourceFolder(ctx context.Context, family map[int64]bool, 
 	absolute, err := safeDataPath(s.cfg.DataRoot, rootPath)
 	if err != nil {
 		return lyricsSourceFolder{}, lyricsFetchBadRequest("the local folder is outside the library")
+	}
+	if err := s.ensureLibraryPathOnline(ctx, rootPath); err != nil {
+		return lyricsSourceFolder{}, err
 	}
 	info, err := os.Lstat(absolute)
 	if err != nil || !info.IsDir() || unsafeFetchStagingEntry(info) {

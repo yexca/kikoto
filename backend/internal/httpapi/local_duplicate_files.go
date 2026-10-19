@@ -212,15 +212,22 @@ func (s *Server) loadDuplicateFileCandidates(ctx context.Context, family map[int
 	}
 	// The files are inspected after the cursor is closed, so a slow disk does
 	// not hold a pooled connection.
+	availability, err := s.loadLibraryAvailability(ctx)
+	if err != nil {
+		return nil, err
+	}
 	candidates := make([]duplicateFileCandidate, 0, len(stored))
 	for _, entry := range stored {
+		if !availability.readable(entry.file.Path) {
+			continue
+		}
 		absolute, err := safeDataPath(s.cfg.DataRoot, entry.file.Path)
 		if err != nil {
 			continue
 		}
 		info, err := os.Lstat(absolute)
-		// A link is not this folder's own copy of the bytes, and a file in an
-		// offline pool cannot be read; neither is compared.
+		// A link is not this folder's own copy of the bytes, and a file on an
+		// offline pool is not compared.
 		if err != nil || !info.Mode().IsRegular() || unsafeFetchStagingEntry(info) {
 			continue
 		}

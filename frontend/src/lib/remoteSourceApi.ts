@@ -1,6 +1,7 @@
 import { apiSessionVersion, assertApiSession } from "@/lib/apiSession";
 import { deleteJSON, getJSON, postJSONBody } from "@/lib/apiTransport";
 import type { LibrarySort, ListeningStatus, SortDirection } from "@/lib/libraryApi";
+import type { LocalFolderAvailability } from "@/lib/localAvailability";
 import type { MediaCacheResult } from "@/lib/mediaApi";
 import type { WorkMetadataPresentation } from "@/lib/metadataApi";
 
@@ -293,6 +294,8 @@ export type RemoteFetchLocalRoot = {
   rootPath: string;
   role: "managed_fetch" | "external" | "alternate";
   state: "active" | "pending_cleanup" | "ignored";
+  /** "offline" while the folder's storage pool is offline. */
+  availability: LocalFolderAvailability;
   primary: boolean;
 };
 

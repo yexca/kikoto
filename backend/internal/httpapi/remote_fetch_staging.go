@@ -149,6 +149,11 @@ func (s *Server) refreshRemoteFetchManifestPlan(ctx context.Context, manifestID 
 }
 
 func (s *Server) stageAndPublishRemoteFetch(ctx context.Context, manifest remoteFetchManifestRecord, plan remoteWorkSavePlan) (int, error) {
+	// The plan checked the pool, but the run may start or resume after the
+	// pool went offline; writing then would fill its empty mount point.
+	if err := s.ensureLibraryPathOnline(ctx, manifest.TargetRoot); err != nil {
+		return 0, err
+	}
 	paths, err := s.remoteFetchPublishPaths(manifest)
 	if err != nil {
 		return 0, err

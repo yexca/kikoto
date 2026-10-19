@@ -80,9 +80,9 @@ export function PersistedDirectoryManagerOverlay({
   onDeleteTargets: (targets: MediaDeleteTarget[], mode: MediaCleanupMode) => void;
   workID: number;
   canForgetWork: boolean;
-  localRoot: { folderId: number; path: string } | null;
+  localRoot: { folderId: number; path: string; offline?: boolean } | null;
   /** The work's local folders when it has several; file management then shows one at a time. */
-  localFolders?: { id: number; rootPath: string }[];
+  localFolders?: { id: number; rootPath: string; availability?: string }[];
   onSelectLocalFolder?: (folderId: number) => void;
   /** Opens the three-column edit of the listed folder; absent when the folder cannot be edited. */
   onEditFiles?: () => void;

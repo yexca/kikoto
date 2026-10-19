@@ -209,12 +209,15 @@ function ResourceColumn({
                   key={resource.id}
                   icon={resourceIcon(resource)}
                   title={resourceTitle(resource, t)}
+                  noteTone={resource.offline ? "warning" : "muted"}
                   note={
-                    resource.kind === "local" && workspace.merge?.folderIds.has(resource.folderId)
-                      ? t("folderEdit.mergeBadge")
-                      : resource.kind !== "current" && resource.origin
-                        ? t("remoteFetch.origin")
-                        : undefined
+                    resource.offline
+                      ? t("libraryOffline.badge")
+                      : resource.kind === "local" && workspace.merge?.folderIds.has(resource.folderId)
+                        ? t("folderEdit.mergeBadge")
+                        : resource.kind !== "current" && resource.origin
+                          ? t("remoteFetch.origin")
+                          : undefined
                   }
                   code={resource.editionCode}
                   detail={resource.kind === "remote" ? resource.sourceName : resource.rootPath}
@@ -225,7 +228,7 @@ function ResourceColumn({
                     workspace.files[resource.id]?.status === "ready" ? workspace.files[resource.id].files : undefined,
                     workspace.selection[resource.id],
                   )}
-                  disabled={workspace.applying}
+                  disabled={workspace.applying || Boolean(resource.offline)}
                   onSelect={() => onSelect(resource)}
                 />
               ))}

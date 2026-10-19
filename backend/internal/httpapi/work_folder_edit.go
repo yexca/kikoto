@@ -344,7 +344,7 @@ func writeWorkFolderEditError(w http.ResponseWriter, err error) {
 		writeMediaCleanupError(w, err)
 		return
 	}
-	if writeFetchDestinationError(w, err) {
+	if writeLibraryStorageError(w, err) {
 		return
 	}
 	writeUpstreamError(w, err)
@@ -382,9 +382,6 @@ func (s *Server) buildWorkFolderEditPlan(ctx context.Context, workID int64, payl
 	}
 	if target.WorkID != workID {
 		return workFolderEditPlan{}, invalidRequestError("choose a local folder of this work to edit")
-	}
-	if err := s.ensureFetchTargetWritable(ctx, target.RootPath); err != nil {
-		return workFolderEditPlan{}, err
 	}
 	var code string
 	if err := s.db.QueryRowContext(ctx, "SELECT primary_code FROM work WHERE id = ?", workID).Scan(&code); err != nil {
@@ -502,7 +499,9 @@ func summarizeWorkFolderEdit(items []workFolderEditItem, removals []workFolderEd
 }
 
 // workFolderEditFolder loads an active local folder of the family and checks
-// that it is a plain directory inside the library.
+// that it is a plain directory inside the library, on an online pool. Every
+// folder an edit touches comes through here: the edited folder, a folder files
+// are copied from, and a merged folder.
 func (s *Server) workFolderEditFolder(ctx context.Context, family map[int64]bool, folderID int64) (workFolderEditFolder, error) {
 	var folder workFolderEditFolder
 	err := s.db.QueryRowContext(ctx, `
@@ -524,6 +523,9 @@ func (s *Server) workFolderEditFolder(ctx context.Context, family map[int64]bool
 	absolute, err := safeDataPath(s.cfg.DataRoot, folder.RootPath)
 	if err != nil {
 		return workFolderEditFolder{}, invalidRequestError("the local folder is outside the library")
+	}
+	if err := s.ensureLibraryPathOnline(ctx, folder.RootPath); err != nil {
+		return workFolderEditFolder{}, err
 	}
 	info, err := os.Lstat(absolute)
 	if err != nil || !info.IsDir() || unsafeFetchStagingEntry(info) {

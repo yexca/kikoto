@@ -77,7 +77,7 @@ func defaultErrorClassification(status int) (string, bool) {
 }
 
 func writeError(w http.ResponseWriter, err error) {
-	if writeRequestError(w, err) {
+	if writeRequestError(w, err) || writeLibraryStorageError(w, err) {
 		return
 	}
 	if errors.Is(err, library.ErrRecommendationNotReady) {

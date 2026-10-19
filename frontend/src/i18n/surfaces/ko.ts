@@ -2270,6 +2270,7 @@ export const surfaceKorean = {
       missing: "누락됨",
       unavailable: "사용 불가",
       unknown: "알 수 없음",
+      offline: "디스크 마운트 안 됨",
     },
     noMatchedLyrics: "일치하는 가사 없음",
     viewLyrics: "가사 보기",
@@ -3446,5 +3447,14 @@ export const surfaceKorean = {
     applying: "가사를 업데이트하는 중",
     applyFailed: "가사를 변경할 수 없습니다.",
     folder: "작품 폴더",
+  },
+  libraryOffline: {
+    storage_pool_offline: "이 파일이 있는 스토리지 풀이 오프라인입니다. 디스크가 마운트되었는지 확인하세요.",
+    library_offline: "라이브러리 폴더를 사용할 수 없습니다. 데이터 디렉터리가 마운트되었는지 확인하세요.",
+    badge: "오프라인",
+    title: "이 파일이 있는 디스크가 마운트되지 않았습니다",
+    description: "Kikoto는 이 파일들을 그대로 유지하고 디스크가 마운트되면 다시 표시합니다.",
+    editBlocked: "이 폴더의 파일을 변경하려면 폴더가 있는 디스크를 마운트하세요.",
+    someFolders: "이 폴더 중 일부는 마운트되지 않은 디스크에 있습니다.",
   },
 } as const;

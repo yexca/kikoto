@@ -2277,6 +2277,7 @@ export const surfaceJapanese = {
       missing: "見つかりません",
       unavailable: "利用不可",
       unknown: "不明",
+      offline: "ディスク未マウント",
     },
     noMatchedLyrics: "一致する歌詞はありません",
     viewLyrics: "歌詞を表示",
@@ -3464,5 +3465,15 @@ export const surfaceJapanese = {
     applying: "歌詞を更新しています",
     applyFailed: "歌詞を変更できませんでした。",
     folder: "作品フォルダー",
+  },
+  libraryOffline: {
+    storage_pool_offline:
+      "これらのファイルがあるストレージプールはオフラインです。ディスクがマウントされているか確認してください。",
+    library_offline: "ライブラリフォルダーを利用できません。データディレクトリがマウントされているか確認してください。",
+    badge: "オフライン",
+    title: "これらのファイルがあるディスクはマウントされていません",
+    description: "Kikoto はこれらのファイルをそのまま保持し、ディスクがマウントされると再び表示します。",
+    editBlocked: "このフォルダーのファイルを変更するには、フォルダーがあるディスクをマウントしてください。",
+    someFolders: "これらのフォルダーの一部は、マウントされていないディスクにあります。",
   },
 } as const;

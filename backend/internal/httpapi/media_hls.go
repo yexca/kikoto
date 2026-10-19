@@ -152,6 +152,9 @@ func (s *Server) serveVideoHLS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) writeHLSPlaybackError(w http.ResponseWriter, err error) {
+	if writeLibraryStorageError(w, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, errHLSMediaNotFound):
 		writeAPIError(w, http.StatusNotFound, "media_not_found", "media file was not found", false)
@@ -177,6 +180,9 @@ func (s *Server) loadHLSPlaybackSource(ctx context.Context, locationID int64) (h
 	}
 	if (target.LocationType != "local" && target.LocationType != "cache") || target.Availability != "available" || effectiveMediaKind(target.Kind, target.RelativePath) != "video" {
 		return hlsPlaybackSource{}, errHLSMediaNotFound
+	}
+	if err := s.ensureMediaLocationReadable(ctx, target.LocationType, target.RelativePath); err != nil {
+		return hlsPlaybackSource{}, err
 	}
 	root := s.cfg.DataRoot
 	if target.LocationType == "cache" {

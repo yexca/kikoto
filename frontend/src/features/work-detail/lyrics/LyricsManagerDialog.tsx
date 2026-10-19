@@ -46,6 +46,7 @@ import { LyricsTranslationPanel } from "@/features/work-detail/lyrics/LyricsTran
 import { TranscriptionPanel } from "@/features/work-detail/lyrics/TranscriptionPanel";
 import { formatTrackDuration } from "@/features/work-detail/media/mediaTreeModel";
 import { api, type WorkDetail } from "@/lib/api";
+import { isLocalOffline } from "@/lib/localAvailability";
 import { allLyricsLanguages, lyricsLanguages } from "@/lib/lyricsLanguage";
 import { cn } from "@/lib/tailwindClassNames";
 
@@ -102,8 +103,14 @@ export function LyricsManagerDialog({
   const lyricsByID = useMemo(() => new Map(entries.lyrics.map((file) => [file.mediaItemId, file])), [entries.lyrics]);
   const [drafts, setDrafts] = useState(() => initialLyricsAssignmentDrafts(entries.audio));
   const [language, setLanguage] = useState<string>(allLyricsLanguages);
+  // Lyrics files change only in a folder whose storage pool is online.
   const localFolders = useMemo(
-    () => (canDownload ? (work.localFolders ?? []).filter((folder) => folder.state === "active") : []),
+    () =>
+      canDownload
+        ? (work.localFolders ?? []).filter(
+            (folder) => folder.state === "active" && !isLocalOffline(folder.availability),
+          )
+        : [],
     [canDownload, work.localFolders],
   );
   const filesAvailable = localFolders.length > 0;

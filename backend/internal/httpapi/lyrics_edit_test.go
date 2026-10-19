@@ -31,12 +31,32 @@ type lyricsFetchFixture struct {
 	folderID int64
 	root     string
 	requests *atomic.Int32
+	// pool holds the origin edition's folder and siblingPool the folders the
+	// fixture adds for the sibling edition; both are empty in standard mode.
+	pool        string
+	siblingPool string
 }
 
 // newLyricsFetchFixture builds a scanned local origin edition, a translated
 // sibling edition known only as metadata, and a configured remote source whose
 // cached tree lists the sibling's lyrics at textURL.
 func newLyricsFetchFixture(t *testing.T, handler http.HandlerFunc, textURL func(upstream string) string) lyricsFetchFixture {
+	t.Helper()
+	return buildLyricsFetchFixture(t, handler, textURL, false)
+}
+
+// lyricsFetchTestPools are the storage pools of a pool-mode fixture: the
+// origin edition lives on the first and the sibling edition on the second.
+var lyricsFetchTestPools = []storagepool.Pool{{Path: "disk1", ID: "pool-disk1"}, {Path: "disk2", ID: "pool-disk2"}}
+
+// newPoolLyricsFetchFixture builds the fixture in a library in storage pool
+// mode, with the origin and sibling editions on different online pools.
+func newPoolLyricsFetchFixture(t *testing.T, handler http.HandlerFunc, textURL func(upstream string) string) lyricsFetchFixture {
+	t.Helper()
+	return buildLyricsFetchFixture(t, handler, textURL, true)
+}
+
+func buildLyricsFetchFixture(t *testing.T, handler http.HandlerFunc, textURL func(upstream string) string, pools bool) lyricsFetchFixture {
 	t.Helper()
 	requests := &atomic.Int32{}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -46,22 +66,43 @@ func newLyricsFetchFixture(t *testing.T, handler http.HandlerFunc, textURL func(
 	t.Cleanup(upstream.Close)
 
 	dataRoot := t.TempDir()
-	audioDir := filepath.Join(dataRoot, "RJ00000001", "mp3")
+	db := openMigratedTestDB(t)
+	fixture := lyricsFetchFixture{db: db, dataRoot: dataRoot, requests: requests}
+	if pools {
+		fixture.pool, fixture.siblingPool = lyricsFetchTestPools[0].Path, lyricsFetchTestPools[1].Path
+		for _, pool := range lyricsFetchTestPools {
+			if err := os.MkdirAll(filepath.Join(dataRoot, pool.Path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := storagepool.WriteMarker(filepath.Join(dataRoot, pool.Path), pool.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		encoded, err := json.Marshal(lyricsFetchTestPools)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`UPDATE app_setting SET value_json = '"pools"' WHERE key = 'library_mode'`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec("INSERT INTO app_setting (key, value_json) VALUES ('storage_pools', ?)", string(encoded)); err != nil {
+			t.Fatal(err)
+		}
+	} else if err := storagepool.WriteMarker(dataRoot, "synthetic-library"); err != nil {
+		t.Fatal(err)
+	}
+	audioDir := filepath.Join(dataRoot, fixture.pool, "RJ00000001", "mp3")
 	if err := os.MkdirAll(audioDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(audioDir, "Track1.Original name.mp3"), []byte("synthetic audio"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := storagepool.WriteMarker(dataRoot, "synthetic-library"); err != nil {
-		t.Fatal(err)
-	}
-	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 2})
+	fixture.server = server
 	executeLocalScanForTest(t, server)
 
 	ctx := context.Background()
-	fixture := lyricsFetchFixture{server: server, db: db, dataRoot: dataRoot, requests: requests}
 	var fileSourceID int64
 	if err := db.QueryRow(`
 		SELECT folder.id, folder.work_id, folder.file_source_id, folder.root_path
@@ -316,7 +357,7 @@ func lyricsFetchVTTURL(upstream string) string { return upstream + "/media/1.vtt
 
 func (fixture lyricsFetchFixture) assertNoStagingLeft(t *testing.T) {
 	t.Helper()
-	entries, err := os.ReadDir(filepath.Join(fixture.dataRoot, ".kikoto-staging"))
+	entries, err := os.ReadDir(filepath.Join(fixture.dataRoot, fixture.pool, ".kikoto-staging"))
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}

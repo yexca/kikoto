@@ -1,4 +1,5 @@
 import i18n from "@/i18n";
+import { LibraryOfflineNotice } from "@/components/library-offline/LibraryOfflineNotice";
 import { Button } from "@/components/ui/button";
 import { Check, ChevronDown, MoreHorizontal, RefreshCw } from "lucide-react";
 import type { DirectoryRoutingRule, WorkDetail } from "@/lib/api";
@@ -74,26 +75,38 @@ export function TrackedUnforkedPanel({
 
 export function LocalSourceStatePanel({
   status,
+  offline = false,
   remoteSources,
   onSelectRemote,
 }: {
   status: SourceTabInfo["status"];
+  /** The local files are on an offline storage pool rather than missing. */
+  offline?: boolean;
   remoteSources: RemoteSourceAvailability[];
   onSelectRemote: (remote: RemoteSourceAvailability) => void;
 }) {
   const availableSources = remoteSources.filter((remote) => remoteSourceCanBrowse(remote.summary));
+  const fetchButtons = availableSources.map((remote) => (
+    <Button key={remote.source.id} variant="outline" size="sm" onClick={() => onSelectRemote(remote)}>
+      {i18n.t("detailActions.fetch")} {remote.source.displayName}
+    </Button>
+  ));
+  if (offline) {
+    return (
+      <div className="space-y-3">
+        <LibraryOfflineNotice />
+        {fetchButtons.length > 0 && <div className="flex flex-wrap gap-2">{fetchButtons}</div>}
+      </div>
+    );
+  }
   return (
     <div
       className={`rounded-md border p-4 text-sm ${status === "unavailable" ? "border-error-border bg-error-surface text-error-foreground" : "border-warning-border bg-warning-surface text-warning-foreground"}`}
     >
       <div className="font-medium">{i18n.t("libraryDetail.localFilesUnavailable")}</div>
       <div className="mt-3 flex flex-wrap gap-2">
-        {availableSources.length > 0 ? (
-          availableSources.map((remote) => (
-            <Button key={remote.source.id} variant="outline" size="sm" onClick={() => onSelectRemote(remote)}>
-              {i18n.t("detailActions.fetch")} {remote.source.displayName}
-            </Button>
-          ))
+        {fetchButtons.length > 0 ? (
+          fetchButtons
         ) : (
           <Badge variant={status === "unavailable" ? "error" : "warning"}>
             {status === "unavailable" ? i18n.t("detailActions.sourceUnavailable") : i18n.t("sources.title")}
@@ -564,11 +577,14 @@ export function DirectoryMessage({ message }: { message: string }) {
  */
 export function LocalCopiesBanner({
   folderCount,
+  offlineFolderCount = 0,
   editionCount,
   onManageFiles,
   onManageLyrics,
 }: {
   folderCount: number;
+  /** Folders whose storage pool is offline; their files are not listed. */
+  offlineFolderCount?: number;
   editionCount: number;
   onManageFiles: () => void;
   onManageLyrics?: () => void;
@@ -583,6 +599,9 @@ export function LocalCopiesBanner({
             : i18n.t("libraryDetail.localCopiesEditions", { count: editionCount })}
         </div>
         <div className="text-xs text-muted-foreground">{i18n.t("libraryDetail.localCopiesHint")}</div>
+        {offlineFolderCount > 0 && (
+          <div className="mt-0.5 text-xs text-warning-foreground">{i18n.t("libraryOffline.someFolders")}</div>
+        )}
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
         {onManageLyrics && (

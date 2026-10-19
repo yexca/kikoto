@@ -94,6 +94,9 @@ func TestFetchArchivesOldLocalRootAndReviewDeletesArchive(t *testing.T) {
 func TestStageAndPublishRemoteFetchKeepsCacheAndPublishesCompleteRoot(t *testing.T) {
 	db := openMigratedTestDB(t)
 	dataRoot := filepath.Join(t.TempDir(), "data")
+	if err := os.MkdirAll(dataRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	cacheRoot := filepath.Join(t.TempDir(), "cache")
 	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: cacheRoot})
 	ctx := context.Background()

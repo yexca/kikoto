@@ -319,6 +319,11 @@ func (s *Server) loadMediaCleanupTarget(ctx context.Context, requested mediaClea
 	if err != nil {
 		return mediaCleanupTarget{}, err
 	}
+	if requested.Kind != "cache" {
+		if err := s.ensureMediaLocationReadable(ctx, locationType, target.Path); err != nil {
+			return mediaCleanupTarget{}, err
+		}
+	}
 	switch requested.Kind {
 	case "local_root":
 		return s.prepareLocalRootCleanupTarget(ctx, requested, target, locationType)
@@ -926,6 +931,11 @@ func (s *Server) finishMediaCleanupForget(
 }
 
 func (s *Server) clearLocalWorkRoot(ctx context.Context, target mediaCleanupTarget) (bool, error) {
+	// On an offline pool the folder Kikoto would find is not the indexed one,
+	// and an empty mount point would mark every file unavailable.
+	if err := s.ensureLibraryPathOnline(ctx, target.Path); err != nil {
+		return false, err
+	}
 	// The lyrics folder's marker is never indexed, so no file target removes
 	// it; it goes with the folder that holds it.
 	if err := s.removeLyricsRootMarker(target.Path); err != nil {
@@ -1054,6 +1064,9 @@ func (s *Server) markLocalWorkRootUnavailable(ctx context.Context, target mediaC
 }
 
 func (s *Server) clearLocalMediaLocation(ctx context.Context, locationID int64, relPath string) (bool, error) {
+	if err := s.ensureLibraryPathOnline(ctx, relPath); err != nil {
+		return false, err
+	}
 	deleted, _, err := removeDestructiveFile(s.cfg.DataRoot, relPath)
 	if err != nil {
 		return false, err

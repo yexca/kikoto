@@ -112,6 +112,7 @@ function remoteOnlyDirectoryEmptyState(props: RemoteOnlyDirectoryPanelProps) {
     return (
       <LocalSourceStatePanel
         status={props.activeTab.status}
+        offline={props.activeTab.offline}
         remoteSources={props.remoteAvailability}
         onSelectRemote={props.onSelectRemote}
       />

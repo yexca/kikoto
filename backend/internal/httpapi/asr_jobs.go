@@ -155,6 +155,9 @@ func (s *Server) executeASRTranscriptionWithDecoder(ctx context.Context, job wor
 		if err != nil {
 			return s.failASRTask(ctx, job, task, "source_changed")
 		}
+		if err := s.ensureLibraryPathOnline(ctx, source.Path); err != nil {
+			return s.failASRTask(ctx, job, task, "source_unavailable")
+		}
 		if info, err := os.Stat(input); err != nil || !info.Mode().IsRegular() {
 			return s.failASRTask(ctx, job, task, "source_unavailable")
 		}

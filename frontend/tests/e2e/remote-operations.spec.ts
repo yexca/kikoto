@@ -353,6 +353,7 @@ function localRootFolder(id: number): WorkFolderLocation {
     rootPath: work.primaryCode,
     role: "external",
     state: "active",
+    availability: "available",
     primary: true,
   };
 }

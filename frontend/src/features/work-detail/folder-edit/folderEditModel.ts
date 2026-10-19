@@ -15,6 +15,7 @@ import type {
   WorkFolderEditSources,
 } from "../../../lib/api";
 import { buildRemoteTree, flattenTreeFiles } from "../media/mediaTreeModel";
+import { isLocalOffline } from "../../../lib/localAvailability";
 import { emptyFolderEditLayout, inLyricsFolder, type FolderEditLayout } from "./folderEditLayout";
 
 /** The resource that is the edited folder itself. */
@@ -56,6 +57,8 @@ export type FolderEditResource = {
   sourceName: string;
   /** The code the source knows the edition by, when it differs from the edition's own. */
   remoteCode?: string;
+  /** Local resources: the folder's storage pool is offline, so nothing can be taken from it. */
+  offline?: boolean;
 };
 
 export type FolderEditFile = {
@@ -198,6 +201,7 @@ export function folderEditResources(sources: WorkFolderEditSources, target: Fold
         folderId: root.id,
         workId: edition.workId,
         rootPath: normalizePath(root.rootPath),
+        offline: isLocalOffline(root.availability),
       });
     }
   }

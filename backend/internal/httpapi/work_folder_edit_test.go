@@ -47,7 +47,12 @@ type folderEditFixture struct {
 
 func newFolderEditFixture(t *testing.T, handler http.HandlerFunc) folderEditFixture {
 	t.Helper()
-	fixture := folderEditFixture{lyricsFetchFixture: newLyricsFetchFixture(t, handler, lyricsFetchVTTURL)}
+	return folderEditFixtureFor(t, newLyricsFetchFixture(t, handler, lyricsFetchVTTURL))
+}
+
+func folderEditFixtureFor(t *testing.T, library lyricsFetchFixture) folderEditFixture {
+	t.Helper()
+	fixture := folderEditFixture{lyricsFetchFixture: library}
 	if err := fixture.db.QueryRow(`
 		SELECT location.id, location.path
 		FROM media_file_location AS location
@@ -64,7 +69,7 @@ func newFolderEditFixture(t *testing.T, handler http.HandlerFunc) folderEditFixt
 func (fixture folderEditFixture) addSiblingFolder(t *testing.T, files map[string]string) int64 {
 	t.Helper()
 	for name, content := range files {
-		path := filepath.Join(fixture.dataRoot, "RJ00000002", filepath.FromSlash(name))
+		path := filepath.Join(fixture.dataRoot, fixture.siblingPool, "RJ00000002", filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -166,7 +171,7 @@ func (fixture folderEditFixture) queuedRuns(t *testing.T) int {
 
 func (fixture folderEditFixture) assertNoEditStaging(t *testing.T) {
 	t.Helper()
-	entries, err := os.ReadDir(filepath.Join(fixture.dataRoot, ".kikoto-staging"))
+	entries, err := os.ReadDir(filepath.Join(fixture.dataRoot, fixture.pool, ".kikoto-staging"))
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}

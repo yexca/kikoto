@@ -665,6 +665,10 @@ func (s *Server) workCoverCandidates(ctx context.Context, workID int64) ([]workC
 	if overrides.Cover != nil {
 		selectedPath = strings.ToUpper(filepath.ToSlash(overrides.Cover.OriginalPath))
 	}
+	availability, err := s.loadLibraryAvailability(ctx)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT location.id, location.path, location.size_bytes
 		FROM media_file_location AS location
@@ -688,6 +692,10 @@ func (s *Server) workCoverCandidates(ctx context.Context, workID int64) ([]workC
 			return nil, err
 		}
 		candidate.Path = filepath.ToSlash(candidate.Path)
+		// An image on an offline pool cannot be previewed or copied.
+		if !availability.readable(candidate.Path) {
+			continue
+		}
 		candidate.FileName = filepath.Base(candidate.Path)
 		revision := sha1.Sum([]byte(fmt.Sprintf("%s:%d", candidate.Path, size.Int64)))
 		candidate.PreviewURL = fmt.Sprintf("/api/media/%d/asset?v=%s", candidate.LocationID, hex.EncodeToString(revision[:])[:12])

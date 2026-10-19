@@ -73,6 +73,7 @@ export function ResourceOption({
   icon: Icon,
   title,
   note,
+  noteTone = "muted",
   code,
   detail,
   changes,
@@ -85,6 +86,8 @@ export function ResourceOption({
   title: string;
   /** A short remark next to the title. */
   note?: string;
+  /** "warning" when the remark says the place is unavailable now. */
+  noteTone?: "muted" | "warning";
   code?: string;
   detail: string;
   changes: number;
@@ -111,7 +114,16 @@ export function ResourceOption({
       <span className="min-w-0 flex-1 leading-tight">
         <span className="flex items-center gap-1.5">
           <span className="truncate text-sm font-medium">{title}</span>
-          {note && <span className="shrink-0 text-2xs text-muted-foreground">{note}</span>}
+          {note && (
+            <span
+              className={cn(
+                "shrink-0 text-2xs",
+                noteTone === "warning" ? "text-warning-foreground" : "text-muted-foreground",
+              )}
+            >
+              {note}
+            </span>
+          )}
         </span>
         {code && <span className="mt-1 block truncate font-mono text-2xs text-muted-foreground">{code}</span>}
         <span className="mt-0.5 block truncate text-2xs text-muted-foreground">{detail}</span>

@@ -491,6 +491,7 @@ test("Manage lyrics translates a track into a missing language and adds the revi
           rootPath: work.primaryCode,
           role: "external",
           state: "active",
+          availability: "available",
           primary: true,
         },
       ],

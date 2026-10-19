@@ -252,7 +252,7 @@ func TestFetchDestinationFollowsFetchPool(t *testing.T) {
 	}
 
 	_, err := server.resolveRemoteFetchSaveRoot(ctx, source, "RJ00000041", "")
-	var destination fetchDestinationError
+	var destination libraryStorageError
 	if !errors.As(err, &destination) || destination.Code != "fetch_pool_required" {
 		t.Fatalf("without a fetch pool = %v, want fetch_pool_required", err)
 	}

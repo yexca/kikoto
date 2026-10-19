@@ -383,6 +383,9 @@ func (e *workFolderEditExecution) mergeFolders(ctx context.Context) error {
 		if err := s.ensureWorkflowRunActive(ctx, e.job.RunID); err != nil {
 			return err
 		}
+		if err := s.ensureLibraryPathOnline(ctx, merge.RootPath); err != nil {
+			return err
+		}
 		statusCtx := context.WithoutCancel(ctx)
 		target := mediaCleanupTarget{
 			Kind: "local_root", FolderID: merge.FolderID, WorkID: merge.WorkID, SourceID: merge.FileSourceID,

@@ -179,6 +179,12 @@ func (s *Server) ensurePresenceFolderIndexed(ctx context.Context, workID int64) 
 		}
 		return err
 	}
+	// A folder on an offline pool keeps what is indexed until the pool is back.
+	if availability, err := s.loadLibraryAvailability(ctx); err != nil {
+		return err
+	} else if !availability.readable(relPath) {
+		return nil
+	}
 	return s.indexLocalMediaForWork(ctx, targetWorkID, fileSourceID, relPath)
 }
 

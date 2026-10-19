@@ -46,6 +46,8 @@ export type LyricsEditResource = {
   /** Remote resources: the configured source that offers the edition. */
   sourceId: number;
   sourceName: string;
+  /** Local resources: the folder's storage pool is offline, so nothing can be taken from it. */
+  offline?: boolean;
   /**
    * The lyrics language the files of this place are taken to be in until the
    * viewer says otherwise, or null when the viewer has to declare it.

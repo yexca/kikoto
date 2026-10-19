@@ -84,7 +84,7 @@ func (s *Server) loadLLMLyrics(ctx context.Context, workID int64, payload llmTra
 			return result, err
 		}
 	case "local":
-		if err := s.ensureFetchTargetWritable(ctx, relative); err != nil {
+		if err := s.ensureLibraryPathOnline(ctx, relative); err != nil {
 			return result, llmInvalid("llm_lyrics_scope", "The lyrics storage pool is offline.")
 		}
 		root, scopedPath, err := s.openLLMPoolRoot(ctx, relative)

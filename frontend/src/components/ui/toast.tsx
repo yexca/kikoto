@@ -109,6 +109,8 @@ export function toastFromError(error: unknown, fallback: string): ToastInput {
 // Public errors use the stable API classification; diagnostic messages stay in
 // the existing API diagnostics store instead of leaking into translated UI copy.
 const apiErrorMessageKeys: Record<string, string> = {
+  storage_pool_offline: "libraryOffline.storage_pool_offline",
+  library_offline: "libraryOffline.library_offline",
   metadata_tag_hidden: "metadataEntries.hiddenNameConflict",
   database_busy: "errorFeedback.databaseBusy",
   service_model_not_installed: "errorFeedback.serviceModelNotInstalled",

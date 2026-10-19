@@ -115,6 +115,10 @@ type sourcePresenceItem struct {
 }
 
 func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourcePresenceItem {
+	availability, err := s.loadLibraryAvailability(ctx)
+	if err != nil {
+		return nil
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			presence.presence_type,
@@ -154,6 +158,7 @@ func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourc
 		return nil
 	}
 	s.enrichTrackedPresenceForkState(ctx, code, items)
+	markOfflineLocalSourcePresence(items, availability)
 	// Local source URLs are storage paths, not public metadata. Keep the
 	// persisted value for scans and destructive cleanup, but never expose it
 	// through the response projection.
@@ -162,6 +167,22 @@ func (s *Server) sourcePresenceForCode(ctx context.Context, code string) []sourc
 		hideSourcePresenceAddresses(items)
 	}
 	return items
+}
+
+// markOfflineLocalSourcePresence reports a local presence whose folder is on an
+// offline pool as offline. It reads the stored folder path, so it runs before
+// the path is hidden.
+func markOfflineLocalSourcePresence(items []sourcePresenceItem, availability libraryAvailability) {
+	for index := range items {
+		item := &items[index]
+		if !strings.EqualFold(item.Type, "local") || item.SourceURL == "" {
+			continue
+		}
+		if item.FileSourceType != "" && !strings.EqualFold(item.FileSourceType, "local_folder") {
+			continue
+		}
+		item.Availability = availability.localAvailability(normalizeFolderRootPath(item.SourceURL), item.Availability)
+	}
 }
 
 // hideLocalSourcePresenceAddresses removes local storage paths from a public

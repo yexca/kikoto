@@ -1,4 +1,5 @@
 import type { CircleSourceStat, SourcePresenceItem } from "@/lib/api";
+import { isLocalOffline } from "@/lib/localAvailability";
 import i18n from "@/i18n";
 
 import type { WorkCardBadge } from "./WorkCardShell";
@@ -34,6 +35,14 @@ function presenceBadge(item: SourcePresenceItem, hasPlayable: boolean): WorkCard
   const type = normalizePresenceType(item.type);
   const availability = item.availability || "unknown";
   if (type === "local") {
+    if (isLocalOffline(availability)) {
+      return {
+        key: "source:local",
+        label: `${i18n.t("workCard.local")} · ${i18n.t("libraryOffline.badge")}`,
+        variant: "warning",
+        title: i18n.t("libraryOffline.title"),
+      };
+    }
     return {
       key: "source:local",
       label: i18n.t("workCard.local"),

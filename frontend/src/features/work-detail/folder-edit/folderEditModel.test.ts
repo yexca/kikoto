@@ -73,9 +73,33 @@ const sources: WorkFolderEditSources = {
   editions: [
     edition({
       localRoots: [
-        { id: 11, fileSourceId: 1, rootPath: "Library/RJ00000001", role: "external", state: "active", primary: true },
-        { id: 12, fileSourceId: 1, rootPath: "Other/RJ00000001", role: "alternate", state: "active", primary: false },
-        { id: 13, fileSourceId: 1, rootPath: "Gone/RJ00000001", role: "alternate", state: "ignored", primary: false },
+        {
+          id: 11,
+          fileSourceId: 1,
+          rootPath: "Library/RJ00000001",
+          role: "external",
+          state: "active",
+          availability: "available",
+          primary: true,
+        },
+        {
+          id: 12,
+          fileSourceId: 1,
+          rootPath: "Other/RJ00000001",
+          role: "alternate",
+          state: "active",
+          availability: "available",
+          primary: false,
+        },
+        {
+          id: 13,
+          fileSourceId: 1,
+          rootPath: "Gone/RJ00000001",
+          role: "alternate",
+          state: "ignored",
+          availability: "available",
+          primary: false,
+        },
       ],
       sources: [remoteSource(7, "available")],
     }),
@@ -86,7 +110,15 @@ const sources: WorkFolderEditSources = {
       translationKind: "official",
       origin: false,
       localRoots: [
-        { id: 21, fileSourceId: 1, rootPath: "Library/RJ00000002", role: "external", state: "active", primary: true },
+        {
+          id: 21,
+          fileSourceId: 1,
+          rootPath: "Library/RJ00000002",
+          role: "external",
+          state: "active",
+          availability: "available",
+          primary: true,
+        },
       ],
       sources: [remoteSource(7, "available"), remoteSource(8, "not_found")],
     }),
@@ -164,6 +196,21 @@ describe("folder edit resources", () => {
       "remote:7:RJ00000001",
       "remote:7:RJ00000002",
     ]);
+  });
+
+  it("keeps a folder on an offline storage pool in the list, marked offline", () => {
+    const offline = {
+      ...sources,
+      editions: sources.editions.map((edition) => ({
+        ...edition,
+        localRoots: edition.localRoots.map((root) =>
+          root.id === 21 ? { ...root, availability: "offline" as const } : root,
+        ),
+      })),
+    };
+    const listed = folderEditResources(offline, target);
+    expect(listed.find((resource) => resource.id === "local:21")?.offline).toBe(true);
+    expect(listed.find((resource) => resource.id === "local:12")?.offline).toBe(false);
   });
 
   it("opens a Fetch on the source's edition, or on any edition the source offers", () => {

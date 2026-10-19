@@ -303,7 +303,7 @@ func (s *Server) planRemoteSourceWorkSave(w http.ResponseWriter, r *http.Request
 	metadataErr := s.ensureRemoteFetchMetadata(r.Context(), code)
 	plan, err := s.buildRemoteWorkSavePlan(r.Context(), sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.Decisions)
 	if err != nil {
-		if !writeFetchDestinationError(w, err) {
+		if !writeLibraryStorageError(w, err) {
 			writeUpstreamError(w, err)
 		}
 		return

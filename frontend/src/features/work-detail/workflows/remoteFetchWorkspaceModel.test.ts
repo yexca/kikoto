@@ -304,6 +304,7 @@ describe("Fetch target folders", () => {
     rootPath,
     role: "external" as const,
     state,
+    availability: "available" as const,
     primary: false,
   });
 
