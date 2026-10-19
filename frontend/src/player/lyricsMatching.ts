@@ -4,7 +4,21 @@ import type { MediaItem, MediaLyricsAssignment } from "@/lib/api";
 // backend/internal/httpapi/lyrics_match.go. Both must accept the same track and
 // lyrics pairs, so change them together.
 const lyricExtensions = [".lrc", ".vtt", ".srt", ".ass", ".txt", ".cue"];
-const audioExtensions = [".mp3", ".m4a", ".flac", ".wav", ".wma", ".ogg", ".opus", ".aac"];
+// The same list as audioFileExtensions in backend/internal/httpapi/media_items.go.
+export const audioExtensions = [
+  ".mp3",
+  ".m4a",
+  ".flac",
+  ".wav",
+  ".wma",
+  ".ogg",
+  ".oga",
+  ".opus",
+  ".aac",
+  ".aiff",
+  ".aif",
+  ".mka",
+];
 const sharedLyricNames = new Set(["lyrics", "lyric", "subtitle", "subtitles", "字幕", "翻译", "翻譯"]);
 
 export type LyricsMatch = {
@@ -187,17 +201,21 @@ function scoreCandidate(
   const lyricDirectory = directoryName(path);
   const lyricBase = stripKnownExtension(lyricName, lyricExtensions);
   const lyricStem = stripKnownExtension(lyricBase, audioExtensions);
-  const sameDirectory = lyricDirectory.toLowerCase() === audioDirectory.toLowerCase();
+  const sameDirectory = matchKey(lyricDirectory) === matchKey(audioDirectory);
   let score = sameDirectory ? 1000 : 0;
   let reason: LyricsMatch["reason"] | null = null;
 
-  if (sameDirectory && lyricBase.toLowerCase() === audioName.toLowerCase()) {
+  if (sameDirectory && matchKey(lyricBase) === matchKey(audioName)) {
     score += 10000;
     reason = "exact_sidecar";
-  } else if (lyricStem.toLowerCase() === audioStem.toLowerCase()) {
+  } else if (matchKey(lyricStem) === matchKey(audioStem)) {
     score += 7000;
     reason = "same_stem";
-  } else if (normalizeMediaName(lyricStem) === normalizedAudioStem && normalizedAudioStem.length >= 2) {
+  } else if (
+    normalizeMediaName(lyricStem) === normalizedAudioStem &&
+    normalizedAudioStem.length >= 2 &&
+    numbersAgree(nameNumbers(lyricStem), nameNumbers(audioStem))
+  ) {
     score += 4000;
     reason = "normalized_name";
   } else if (sameDirectory && sharedLyricNames.has(normalizeMediaName(lyricStem))) {
@@ -219,9 +237,34 @@ function lyricFormatPreference(name: string) {
   return 1;
 }
 
+/**
+ * A sound effect or music switch, such as "SEあり", "SE無し", or "BGM OFF".
+ * One lyrics file serves every variant, so the switch folds away. It is applied
+ * twice so adjacent switches that share one separator both fold.
+ */
+const variantPattern = /(^|[^a-z0-9])(?:se|bgm|効果音)[\s﻿_.-]*(?:あり|有り|有|なし|無し|無|on|off)([^a-z0-9]|$)/g;
+
+/** The form names are compared in: composed (NFC) and lowercased. Stored paths keep their own form. */
+function matchKey(value: string) {
+  return value.normalize("NFC").toLowerCase();
+}
+
+/** The numbers of a name outside brackets without leading zeros, so "track 1" and "01" carry the same number. */
+function nameNumbers(value: string) {
+  return (value.replace(/\[[^\]]*\]|\([^)]*\)/g, "").match(/[0-9]+/g) ?? []).map(
+    (number) => number.replace(/^0+(?=.)/, "") || "0",
+  );
+}
+
+/** Names that differ only in their numbers, such as "01_abc" and "02_abc", name different tracks. */
+function numbersAgree(left: string[], right: string[]) {
+  return left.length === 0 || right.length === 0 || left.join(",") === right.join(",");
+}
+
 function normalizeMediaName(value: string) {
-  return value
-    .toLowerCase()
+  return matchKey(value)
+    .replace(variantPattern, "$1$2")
+    .replace(variantPattern, "$1$2")
     .replace(/\[[^\]]*\]|\([^)]*\)/g, "")
     .replace(/^(track|tr|disc|cd)[\s_.-]*/i, "")
     .replace(/^[0-9]+[\s_.-]*/, "")

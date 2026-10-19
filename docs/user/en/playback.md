@@ -11,7 +11,8 @@ Playback is handled by a global browser audio player.
 - When direct audio decoding fails and the file still exists, the player offers
   compatibility playback for only the current track, the current queue, or all
   future local and cached playback. Compatibility playback and audio with an
-  unsupported extension are converted by FFmpeg to a complete MP3 cache file
+  extension the browser does not play, such as `.wma`, `.aiff`, `.aif`, or
+  `.mka`, are converted by FFmpeg to a complete MP3 cache file
   with duration and seeking information. First playback waits for preparation;
   later requests reuse the result and support HTTP Range, seeking, Resume, and
   normal end-of-track queue advancement. A confirmed missing file does not
@@ -36,6 +37,10 @@ Playback is handled by a global browser audio player.
   the transcode cache quota with video. Preparation is limited to four minutes
   and 512 MiB per file; incomplete or failed output is never published. Source
   changes invalidate the cached result. Originals remain unchanged.
+- When FFmpeg cannot prepare a file, audio preparation and realtime video
+  conversion remember the failure for 30 seconds for that file revision.
+  Requests in that time fail at once instead of occupying one of the encode
+  slots; a changed file is tried again immediately.
 - Tracked remote and remote-preview media is fetched through the configured
   source policy and proxied unchanged through the backend by default. The
   proxy keeps the browser-facing response same-origin and forwards range and
@@ -92,9 +97,12 @@ Playback is handled by a global browser audio player.
   adds a Next control.
 - While a track plays, the next track that end-of-track advancement would
   select is preloaded once the current track is within 45 seconds of its end
-  or already fully buffered. Only that one track is warmed, through the same
-  playback URL the player will request, so a prepared compatibility conversion
-  is also ready. Preloading is skipped for repeat-one, the end of an ordered
+  or already fully buffered. When the next track is converted before it plays,
+  through compatibility playback or because its format needs conversion, the
+  window grows with its length to a fortieth of its duration, so a two-hour
+  file starts warming three minutes ahead. Only that one track is warmed,
+  through the same playback URL the player will request, so a prepared
+  compatibility conversion is also ready. Preloading is skipped for repeat-one, the end of an ordered
   queue, a finishing sleep timer, and when the browser requests reduced data
   usage.
 - Backward and forward seeking default to 10 and 30 seconds. Settings accepts
@@ -123,11 +131,20 @@ Playback is handled by a global browser audio player.
   with the Up and Down arrow keys. Move-up, move-down, and remove remain in an
   Options menu that closes after selection, on Escape, or on outside
   interaction. Overflowing queue titles scroll without resizing the player.
-- Text lyrics include LRC, SRT, VTT, and plain-text sidecars. A compound
+- Text lyrics include LRC, SRT, VTT, ASS, and plain-text sidecars. A compound
   sidecar such as `track.mp3.vtt` is preferred for `track.mp3`, followed by a
   same-stem file and then normalized-name matches. LRC timestamps may count
   minutes past 99 or carry an hour field, as in `[100:00.00]` or
-  `[01:40:00.00]`.
+  `[01:40:00.00]`. ASS and SSA files are timed by their `Dialogue` lines in the
+  field order their `Format` line declares; override tags such as `{\an8}` are
+  left out.
+- A normalized-name match ignores case, brackets, a leading track number, and
+  separators, and compares names in composed Unicode form, so a name macOS
+  stored decomposed still matches. A sound effect or music switch such as
+  `SEあり`, `SE無し`, `SE ON`, `BGMなし`, or `効果音あり` is ignored, so
+  `本編_SEなし.lrc` serves `本編_SEあり.wav`; a file for the track's own variant
+  still ranks first. Names that differ only in their numbers, such as
+  `01_opening.lrc` and `02_opening.wav`, name different tracks and never match.
 - If several lyrics files match, the lyrics panel exposes an explicit choice
   instead of depending on database row order. Clearly generic same-directory
   names such as `lyrics` or `subtitle` may be shared by tracks in that folder.
@@ -146,6 +163,26 @@ Playback is handled by a global browser audio player.
   line stays centered, manual scrolling pauses following for a few seconds, and
   selecting a line seeks to it. Tracks without matched lyrics keep the control
   disabled.
+- The timing buttons beside timed lyrics move every line 0.5 seconds earlier or
+  later, up to 30 seconds either way, and a reset button returns to the file's
+  own timing. The offset applies to the active line, line seeking, and screen
+  lyrics. It belongs to the listener and the audio file, is saved for library
+  audio and kept for the session elsewhere, and never changes the lyrics file.
+- **Loudness normalization** in Settings evens out loudness between local
+  tracks. It is off by default. **Turn loud tracks down** lowers a track whose
+  integrated loudness is above -18 LUFS through the player's own volume, which
+  also works during background playback. **Turn loud tracks down and quiet
+  tracks up** also raises quieter tracks through Web Audio, by up to 12 dB and
+  never past 1 dB below the measured peak, and Web Audio then applies the cuts
+  too. Web Audio is used only when the media comes from the page's own server,
+  so the Android app lowers tracks but does not raise them. iPhone and iPad do
+  not let a page set media volume: there only the second choice, in Safari,
+  changes loudness, and the iOS app plays every track at its own level. The
+  server measures a file's EBU R 128 loudness and true peak
+  with FFmpeg the first time it plays with normalization on, falling back to
+  the sample peak, and keeps the result until the file changes. Measurement
+  shares the transcode slots and time limit, and the next queued track is
+  measured ahead. A track plays at its own level until its measurement arrives.
 - Screen lyrics keep the current and next line visible outside the page.
   Browsers with Document Picture-in-Picture open a small always-on-top window
   that stays visible while the browser is minimized; other browsers with video
@@ -165,7 +202,8 @@ An authenticated user's explicit lyrics selection is stored per audio media
 item. The preference targets the lyrics media item rather than a concrete file
 location, so source replacement can choose another available location. `Auto`
 clears the override and restores deterministic matching; an unavailable saved
-choice falls back without deleting the preference.
+choice falls back without deleting the preference. The lyrics timing offset is
+stored beside the choice and stays when `Auto` clears it.
 
 A lyrics assignment saved in **Manage lyrics** is the library default for an
 audio file in one language, or as its fallback lyrics. Playback uses the

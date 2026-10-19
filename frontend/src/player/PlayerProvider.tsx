@@ -21,6 +21,7 @@ import type {
   SleepTimerState,
 } from "./playerTypes";
 import { usePlaybackCompatibility } from "./usePlaybackCompatibility";
+import { useLoudnessNormalization, useLoudnessNormalizationMode } from "./useLoudnessNormalization";
 import { usePlaybackEngine } from "./usePlaybackEngine";
 import { usePlaybackProgress } from "./usePlaybackProgress";
 import { usePlaybackRecovery } from "./usePlaybackRecovery";
@@ -93,6 +94,8 @@ type PlayerContextValue = {
   setMode: (mode: PlayMode) => void;
   lyricsPreferenceOverrides: Record<string, number | null>;
   changeLyricsChoice: (target: LyricsPreferenceTarget, choice: LyricsChoice | null) => Promise<void>;
+  /** Sets the listener's lyrics timing offset for a track, in milliseconds. */
+  changeLyricsOffset: (target: LyricsPreferenceTarget, offsetMs: number) => void;
 };
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -196,6 +199,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     nextTrack,
     nextTrackCompatibility: supportsCompatibilityPlayback(nextTrack) && queueWideCompatibilityEnabled,
   });
+  // After the source hook, so the element already holds the current source.
+  const loudnessMode = useLoudnessNormalizationMode(principalID);
+  useLoudnessNormalization(engine, loudnessMode, nextTrack);
   useRemoteStreamCaching(currentTrack, auth.demoMode, {
     cacheLocation: auth.hasPermission("remote:fetch"),
     cacheRemoteWork: auth.hasPermission("remote:fetch") && auth.hasPermission("remote:track"),
@@ -210,6 +216,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const {
     lyricsPreferenceOverrides,
     changeLyricsChoice,
+    changeLyricsOffset,
     playQueue,
     selectTrack,
     next,
@@ -343,6 +350,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setMode,
       lyricsPreferenceOverrides,
       changeLyricsChoice,
+      changeLyricsOffset,
     }),
     [
       queue,
@@ -387,6 +395,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       cycleMode,
       lyricsPreferenceOverrides,
       changeLyricsChoice,
+      changeLyricsOffset,
     ],
   );
   const timeValue = useMemo<PlayerTimeContextValue>(

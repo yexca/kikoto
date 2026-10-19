@@ -841,3 +841,30 @@ describe("mediaTreeModel", () => {
     ).toEqual(["RJ00000000 mp3 only/01.mp3", "archive / RJ00000000/mp3/01.mp3", "library / RJ00000000/mp3/01.mp3"]);
   });
 });
+
+describe("remote audio formats", () => {
+  it("treats untyped AIFF and Matroska audio tracks as audio", () => {
+    const remoteTrack = (title: string) =>
+      ({
+        type: "",
+        title,
+        streamUrl: `https://media.invalid/${title}`,
+        downloadUrl: "",
+        cacheAvailable: false,
+        cacheLocationId: null,
+        cachePath: "",
+        localAvailable: false,
+        localLocationId: null,
+        localPath: "",
+      }) as RemoteTrack;
+    const tree = buildRemoteTree([remoteTrack("01.aiff"), remoteTrack("02.aif"), remoteTrack("03.mka")], {
+      sourceId: 7,
+      workCode: "RJ00000045",
+    });
+    expect(flattenTracks(tree).map((track) => [track.title, track.kind])).toEqual([
+      ["01.aiff", "audio"],
+      ["02.aif", "audio"],
+      ["03.mka", "audio"],
+    ]);
+  });
+});

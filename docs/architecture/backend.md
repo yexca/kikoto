@@ -94,6 +94,27 @@ indexing during a pass requests one follow-up. Duration probes share the
 bounded FFprobe runner with playback probes: at most two concurrent processes,
 two waiters that give up after one second, a five-second limit per probe
 including that wait, and 128 KiB of output. Shutdown cancels active probing.
+A probe that FFprobe completes but cannot use, by exiting with an error,
+printing invalid output, or exceeding the output limit, records the observed
+version in `probe_failed_version`, and the worker skips that location until a
+scan records another version. A timeout, a busy runner, cancellation, or a
+missing FFprobe records nothing.
+
+`GET /api/media/{id}/loudness` returns a local audio or video location's EBU
+R 128 integrated loudness and peak. When its current file version has none, the
+request measures it with FFmpeg's `ebur128` filter on the first audio stream,
+asking for the true peak and retrying with the sample peak, under one of the two
+transcode slots and the four-minute audio preparation limit. FFmpeg's stderr is
+kept only as a 16 KiB tail for the summary. Concurrent requests for one file
+share a measurement, a measurement of a file that changed meanwhile is
+discarded, and the stored result is keyed by the file version. Remote and cache
+locations answer `404`, a busy runner `503 media_loudness_busy`, and a failed
+measurement `503 media_loudness_unavailable`; Demo measures nothing.
+
+Audio preparation, realtime video conversion that ends before any output, and
+loudness measurement remember a failure for 30 seconds, keyed by purpose, path,
+size, and modification time, holding at most 256 entries. A request in that
+time fails at once instead of waiting for a transcode slot.
 
 Compatibility preparation starts only from a playback request for that file,
 including the player's single next-track preload, which requests the same
@@ -154,8 +175,12 @@ the work's edition family. Each change names an audio item, a language (empty
 for every language), and a lyrics file, which must be a text item of the same
 work as its audio; a null lyrics file removes that language's assignment. `PUT` and `DELETE /api/media/{id}/lyrics-preference` require
 `playback:use` and set or clear the signed-in user's own lyrics choice for one
-audio item under the same same-work rule. How clients rank preferences,
-assignments, and name matching is in [Data model](data-model.md).
+audio item under the same same-work rule. `PUT` takes `lyricsMediaItemId`,
+`lyricsOffsetMs`, or both; a field left out keeps its value, and an offset is
+an integer from -30000 to 30000 where 0 removes it. `DELETE` clears only the
+choice. Both answer with the item's current choice and offset. How clients
+rank preferences, assignments, and name matching is in
+[Data model](data-model.md).
 
 `GET /api/custom-works/folders`, `POST /api/custom-works`, and
 `POST /api/custom-works/notice-acceptance` require both `library:write` and

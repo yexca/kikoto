@@ -26,6 +26,8 @@ export type MediaItem = {
   fingerprint: string;
   progress: MediaProgress | null;
   preferredLyricsMediaItemId?: number | null;
+  /** This viewer's lyrics timing offset in milliseconds; positive shows each line later. Absent means 0. */
+  lyricsOffsetMs?: number;
   /** The first of `lyricsAssignments`: the library lyrics this viewer's playback uses. */
   assignedLyricsMediaItemId?: number | null;
   /**
@@ -71,6 +73,16 @@ export type MediaFileLocation = {
   durationSeconds: number | null;
   availability: string;
   lastCheckedAt: string | null;
+  /** The measured loudness of the file the location holds, once playback has measured it. */
+  loudness?: MediaLoudness;
+};
+
+/** EBU R 128 integrated loudness and the peak level of one file. */
+export type MediaLoudness = {
+  integratedLufs: number;
+  peakDbfs: number;
+  /** "true" for a true peak, "sample" when only the sample peak could be measured. */
+  peakKind: "true" | "sample";
 };
 
 export type MediaTextPreview = {
@@ -211,6 +223,15 @@ export const mediaApi = {
     deleteJSON<{ audioMediaItemId: number; lyricsMediaItemId: null }>(
       `/api/media/${audioMediaItemId}/lyrics-preference`,
     ),
+  /** Stores this viewer's lyrics timing offset; 0 removes it and the lyrics choice is kept. */
+  setMediaLyricsOffset: (audioMediaItemId: number, lyricsOffsetMs: number) =>
+    putJSONBody<{ audioMediaItemId: number; lyricsMediaItemId: number | null; lyricsOffsetMs: number }>(
+      `/api/media/${audioMediaItemId}/lyrics-preference`,
+      { lyricsOffsetMs },
+    ),
+  /** Returns a local location's loudness, measuring it on the server first when needed. */
+  getMediaLoudness: (locationId: number, signal?: AbortSignal) =>
+    getJSON<MediaLoudness>(`/api/media/${locationId}/loudness`, signal),
   setWorkLyricsAssignments: (workId: number, assignments: LyricsAssignmentChange[]) =>
     putJSONBody<{ workId: number; assignments: LyricsAssignmentChange[] }>(`/api/works/${workId}/lyrics-assignments`, {
       assignments,

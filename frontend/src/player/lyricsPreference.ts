@@ -50,3 +50,19 @@ export function lyricsPreferencePersists(target: LyricsPreferenceTarget) {
   if (target.mediaItemId <= 0 || (target.kind !== undefined && target.kind !== "audio")) return false;
   return target.lyricsPreferencePersistable ?? target.progressRecordable ?? false;
 }
+
+/** A lyrics timing offset stays within 30 seconds either way. */
+export const LYRICS_OFFSET_LIMIT_MS = 30_000;
+
+export function clampLyricsOffset(offsetMs: number) {
+  if (!Number.isFinite(offsetMs)) return 0;
+  return Math.max(-LYRICS_OFFSET_LIMIT_MS, Math.min(LYRICS_OFFSET_LIMIT_MS, Math.round(offsetMs)));
+}
+
+/** Applies an offset the listener changed in this session to a track queued from older page data. */
+export function applyLyricsOffsetOverride(track: PlayerTrack, overrides: Record<string, number>) {
+  const preferenceKey = lyricsPreferenceKey(track);
+  return Object.prototype.hasOwnProperty.call(overrides, preferenceKey)
+    ? { ...track, lyricsOffsetMs: overrides[preferenceKey] }
+    : track;
+}

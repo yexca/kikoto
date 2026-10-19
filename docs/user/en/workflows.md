@@ -234,9 +234,21 @@ started, and can follow their status, events, and file progress.
   Fetches queued by Availability Watch, bulk actions, popular collections, or
   preset workflows record that origin as their trigger reason.
 - A scan never marks works missing in a place it cannot see: an unmounted data
-  folder or offline storage pool, or folders deeper than the scan depth. A scan
-  of an unmounted standard library fails and changes nothing; a scan that skips
-  an offline pool finishes as partial and names the pool.
+  folder or offline storage pool, folders deeper than the scan depth, folders
+  it has no permission to read, and the folders and files that NAS systems and
+  operating systems add. A scan of an unmounted standard library fails and
+  changes nothing; a scan that skips an offline pool or an unreadable folder
+  finishes as partial and names it.
+- Scans, file lists, and folder watching skip the folders `@eaDir`, `#recycle`,
+  `#snapshot`, `__MACOSX`, `.Trash-*`, `$RECYCLE.BIN`,
+  `System Volume Information`, and `lost+found`, and the files `._*`,
+  `.DS_Store`, and `Thumbs.db`. A work folder inside a recycle bin or a NAS
+  thumbnail folder is never found as a work, and a work already recorded there
+  keeps its state.
+- When FFprobe cannot read a media file, such as a damaged file, Kikoto records
+  that for the file's current version and stops probing it in the background.
+  A timeout or an interrupted probe records nothing, and a scan that sees the
+  file change probes it again.
 - Works on a disk that is not mounted stay in the library. Their cards show
   **Local · Offline**, and the work's local files say that the disk is not
   mounted. Until it is mounted again, their files cannot be played, downloaded,

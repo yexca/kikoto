@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -10,6 +11,10 @@ import (
 )
 
 const localMediaProbeBatchSize = 64
+
+// localMediaProbe returns a file's duration and whether it has audio. An error
+// wrapping errMediaProbeRejected is a definite failure for that file version.
+type localMediaProbe func(context.Context, string) (int64, bool, error)
 
 type localMediaProbeTarget struct {
 	locationID   int64
@@ -48,14 +53,14 @@ func (s *Server) runLocalMediaProbeWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-wake:
-			if err := s.probeMissingLocalMedia(ctx, s.probeMediaMetadataSeconds); err != nil && ctx.Err() == nil {
+			if err := s.probeMissingLocalMedia(ctx, s.probeMediaMetadata); err != nil && ctx.Err() == nil {
 				slog.Warn("probe pending local media", "error", err)
 			}
 		}
 	}
 }
 
-func (s *Server) probeMissingLocalMedia(ctx context.Context, probe func(context.Context, string) (int64, bool, bool)) error {
+func (s *Server) probeMissingLocalMedia(ctx context.Context, probe localMediaProbe) error {
 	// Fix the pass boundary. Indexing during this pass leaves one wakeup for a
 	// follow-up, including changes to locations already passed by the cursor.
 	var lastID int64
@@ -90,6 +95,7 @@ func (s *Server) loadLocalMediaProbeBatch(ctx context.Context, afterID, lastID i
 			AND location.location_type = 'local' AND location.availability = 'available'
 			AND item.kind IN ('audio', 'video') AND location.size_bytes IS NOT NULL
 			AND (location.file_version = '' OR location.duration_seconds IS NULL OR item.duration_seconds IS NULL OR item.has_audio IS NULL)
+			AND (location.probe_failed_version IS NULL OR location.probe_failed_version <> location.file_version)
 		ORDER BY location.id LIMIT ?
 	`, afterID, lastID, localMediaProbeBatchSize)
 	if err != nil {
@@ -107,7 +113,7 @@ func (s *Server) loadLocalMediaProbeBatch(ctx context.Context, afterID, lastID i
 	return batch, rows.Err()
 }
 
-func (s *Server) probeLocalMediaTarget(ctx context.Context, target localMediaProbeTarget, probe func(context.Context, string) (int64, bool, bool)) error {
+func (s *Server) probeLocalMediaTarget(ctx context.Context, target localMediaProbeTarget, probe localMediaProbe) error {
 	allowed, err := s.localMediaPathInScanScope(ctx, target.workID, target.fileSourceID, target.file.RelPath)
 	if err != nil || !allowed {
 		return err
@@ -133,13 +139,17 @@ func (s *Server) probeLocalMediaTarget(ctx context.Context, target localMediaPro
 	if target.file.FileVersion != "" && target.file.FileVersion != file.FileVersion {
 		return nil
 	}
-	duration, hasAudio, ok := probe(ctx, file.AbsPath)
-	if !ok {
+	duration, hasAudio, probeErr := probe(ctx, file.AbsPath)
+	if probeErr != nil && !errors.Is(probeErr, errMediaProbeRejected) {
+		// A timeout, cancellation, or busy probe says nothing about the file.
 		return ctx.Err()
 	}
 	after, err := os.Stat(file.AbsPath)
 	if err != nil || !os.SameFile(before, after) || localfs.FileVersion(after) != file.FileVersion {
 		return nil
+	}
+	if probeErr != nil {
+		return s.recordLocalMediaProbeFailure(ctx, target.locationID, file, target.file.FileVersion)
 	}
 	if target.kind == "audio" {
 		hasAudio = true
@@ -149,4 +159,17 @@ func (s *Server) probeLocalMediaTarget(ctx context.Context, target localMediaPro
 		return err
 	}
 	return s.updateLocalMediaMetadata(ctx, target.locationID, file, target.file.FileVersion, duration, hasAudio)
+}
+
+// recordLocalMediaProbeFailure remembers that the probe rejected this file
+// version. The background probe skips the location until a scan records a
+// different version, which clears the mark.
+func (s *Server) recordLocalMediaProbeFailure(ctx context.Context, locationID int64, file localfs.LocalFile, expectedVersion string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE media_file_location
+		SET probe_failed_version = ?, file_version = ?
+		WHERE id = ? AND location_type = 'local' AND path = ?
+			AND size_bytes = ? AND file_version = ? AND availability = 'available'
+	`, file.FileVersion, file.FileVersion, locationID, file.RelPath, file.SizeBytes, expectedVersion)
+	return err
 }

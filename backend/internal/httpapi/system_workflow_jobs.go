@@ -147,6 +147,7 @@ func (s *Server) executeFullLocalScanJob(ctx context.Context, job workflowJobRec
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
+	scope = scope.withUnreadableFolders(scanSummary.UnreadableFolders)
 	workFolders = scope.filterFolders(workFolders)
 	scanSummary.DetectedWorks = len(workFolders)
 	nodeIDs, err := workflowNodeIDsByNodeID(ctx, s.db, job.RunID)
@@ -263,6 +264,9 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 	if len(scope.offline) > 0 {
 		runSummary["offline_pools"] = scope.offlinePoolSummaries()
 	}
+	if len(scope.unreadable) > 0 {
+		runSummary["unreadable_folders"] = scope.unreadable
+	}
 	if err := completeLocalScanNodes(ctx, tx, nodeIDs, fileSourceID, scanSummary, state); err != nil {
 		return localScanResult{}, nil, err
 	}
@@ -279,6 +283,7 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 		FollowUpRun: payload.FollowUpRun, NewWorkCodes: state.newWorkCodes, Failures: []string{},
 	}
 	scope.applyOfflineResult(&result)
+	scope.applyUnreadableResult(&result)
 	return result, runSummary, nil
 }
 

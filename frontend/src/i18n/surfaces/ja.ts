@@ -2290,6 +2290,11 @@ export const surfaceJapanese = {
     closePanel: "パネルを閉じる",
     seekToLine: "この行へ移動",
     followLyrics: "再生に追従",
+    lyricsTiming: "歌詞のタイミング",
+    lyricsEarlier: "歌詞を0.5秒早く表示",
+    lyricsLater: "歌詞を0.5秒遅く表示",
+    lyricsTimingReset: "歌詞のタイミングをリセット",
+    lyricsOffsetSeconds: "{{value}} 秒",
     speakerConfirmTitle: "スマートフォンのスピーカーで再生しますか？",
     speakerConfirmDescription:
       "ヘッドホンなどの音声出力が接続されていないため、周囲に音が聞こえます。音声出力を接続または切断すると、再度確認します。",

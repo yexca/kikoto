@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   bufferedEndAt,
+  nextTrackNeedsTranscoding,
+  nextTrackPreloadWindowSeconds,
   NEXT_TRACK_PRELOAD_WINDOW_SECONDS,
   nextAutoAdvanceIndex,
   shouldPreloadNextTrack,
@@ -65,5 +67,26 @@ describe("bufferedEndAt", () => {
       ),
     ).toBe(200);
     expect(bufferedEndAt(media([[0, 30]], 50))).toBe(0);
+  });
+});
+
+describe("nextTrackPreloadWindowSeconds", () => {
+  it("warms a long track the server must transcode early enough to prepare it", () => {
+    expect(nextTrackPreloadWindowSeconds(7200, true)).toBe(180);
+    expect(nextTrackPreloadWindowSeconds(600, true)).toBe(NEXT_TRACK_PRELOAD_WINDOW_SECONDS);
+    expect(nextTrackPreloadWindowSeconds(7200, false)).toBe(NEXT_TRACK_PRELOAD_WINDOW_SECONDS);
+    expect(nextTrackPreloadWindowSeconds(null, true)).toBe(NEXT_TRACK_PRELOAD_WINDOW_SECONDS);
+  });
+
+  it("applies the wider window to the preload decision", () => {
+    const state = { playing: true, currentTime: 400, duration: 600, bufferedEnd: 450 };
+    expect(shouldPreloadNextTrack(state)).toBe(false);
+    expect(shouldPreloadNextTrack({ ...state, windowSeconds: nextTrackPreloadWindowSeconds(9000, true) })).toBe(true);
+  });
+
+  it("treats formats the browser cannot play, or compatibility playback, as transcoded", () => {
+    expect(nextTrackNeedsTranscoding("01 track.wma", false)).toBe(true);
+    expect(nextTrackNeedsTranscoding("01 track.WAV", false)).toBe(false);
+    expect(nextTrackNeedsTranscoding("01 track.flac", true)).toBe(true);
   });
 });

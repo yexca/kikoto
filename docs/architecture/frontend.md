@@ -217,11 +217,17 @@ controls (Media Session and the Android notification) stay registered and read
 the latest actions through a ref, so they never act on a stale queue or mode.
 Source loading also warms the next auto-advance track in one detached audio
 element (`useNextTrackPreload`) so the player element can reuse the buffered
-bytes for the identical URL. The dock UI
+bytes for the identical URL; `nextTrackPreload` widens the window for a track
+the server converts. The element volume is the product of the sleep timer's
+fade and the loudness normalization cut (`applyElementVolume`), and
+`useLoudnessNormalization` adds a Web Audio gain node only for a boost of a
+same-origin source (`loudnessBoost`). The dock UI
 lives in `player/dock`: `PlayerDock` owns the Mini, Compact, and full surfaces,
 while queue reordering math and formatting stay in pure modules. Timed-lyrics
 parsing lives in `lib/timedLyrics`, so the player and the work detail file
-viewer read LRC, WebVTT, and SRT files the same way.
+viewer read LRC, WebVTT, SRT, and ASS files the same way. `usePlayerLyrics`
+moves parsed lines by the listener's lyrics offset, so the active line, line
+seeking, and screen lyrics share one timeline.
 
 ## Major Surfaces
 

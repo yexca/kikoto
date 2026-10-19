@@ -34,11 +34,17 @@ password is reset from the server host; see
 
 ## Playback And Recommendations
 
-- **Playback** contains the backward and forward seek intervals, **Playback
-  sources**, and **Folder preference**. Seek intervals default to 10 and 30
-  seconds and accept whole-second values from 1 through 300. The Android and
+- **Playback** contains the backward and forward seek intervals, **Loudness
+  normalization**, **Playback sources**, and **Folder preference**. Seek
+  intervals default to 10 and 30 seconds and accept whole-second values from 1
+  through 300. The Android and
   iOS apps also show **Privacy on this device**, described in
   [Sleep and headphone privacy](playback.md#sleep-and-headphone-privacy).
+- **Loudness normalization** is off by default. **Turn loud tracks down**
+  lowers loud tracks, and **Turn loud tracks down and quiet tracks up** also
+  raises quiet ones; see [Playback](playback.md#current-behavior). The choice
+  is stored per server and user in the browser and applies from the next
+  measured track.
 - **Playback sources**: **Quick source switching** makes the Now Playing
   source label a menu for choosing another location of the current track, and
   **Switch sources on failure** lets a failed location continue from the

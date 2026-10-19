@@ -1,6 +1,7 @@
 package localfs
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -47,6 +48,10 @@ type Summary struct {
 	ScannedFiles     int
 	AmbiguousFolders []string
 	DuplicateGroups  []DuplicateGroup
+	// UnreadableFolders are slash-separated folders below the root that the
+	// walk could not read and skipped. Like folders deeper than the scan depth
+	// they are unseen: nothing at or below them may be marked missing.
+	UnreadableFolders []string
 }
 
 type DuplicateGroup struct {
@@ -91,14 +96,15 @@ func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error
 
 	var summary Summary
 	var candidates []WorkFolder
+	unreadable := unreadableFolders{root: absRoot}
 	visit := func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return walkErr
+			return unreadable.skip(path, entry, walkErr)
 		}
 		if !entry.IsDir() {
 			return nil
 		}
-		if path != absRoot && isKikotoInternalDirectory(entry.Name()) {
+		if path != absRoot && IsIgnoredDirectoryName(entry.Name()) {
 			return filepath.SkipDir
 		}
 
@@ -140,6 +146,8 @@ func DiscoverFolders(root string, options Options) ([]WorkFolder, Summary, error
 		}
 	}
 
+	candidates = unreadable.withoutCandidatesInside(candidates)
+	summary.UnreadableFolders = unreadable.list()
 	summary.CandidateFolders = len(candidates)
 	workFolders := chooseDeepest(candidates)
 	summary.DuplicateGroups = duplicateGroups(workFolders)
@@ -190,7 +198,15 @@ func DiscoverChangedFolders(root string, options Options, changedPaths []string)
 		if err := discovery.addAncestorCandidates(rel); err != nil {
 			return nil, Summary{}, err
 		}
+		if IsIgnoredPath(rel) {
+			// Only the ancestors before the ignored part can name a work.
+			continue
+		}
 		isDirectory, err := changedPathIsDirectory(absPath)
+		if isSkippableWalkError(err) {
+			discovery.unreadable.add(absPath)
+			continue
+		}
 		if err != nil {
 			return nil, Summary{}, err
 		}
@@ -214,6 +230,7 @@ type changedFolderDiscovery struct {
 	scanDepth  int
 	candidates map[string]WorkFolder
 	ambiguous  map[string]bool
+	unreadable unreadableFolders
 }
 
 func newChangedFolderDiscovery(root string, scanDepth int) (*changedFolderDiscovery, error) {
@@ -227,6 +244,7 @@ func newChangedFolderDiscovery(root string, scanDepth int) (*changedFolderDiscov
 	return &changedFolderDiscovery{
 		absRoot: absRoot, scanDepth: scanDepth,
 		candidates: map[string]WorkFolder{}, ambiguous: map[string]bool{},
+		unreadable: unreadableFolders{root: absRoot},
 	}, nil
 }
 
@@ -250,7 +268,7 @@ func (discovery *changedFolderDiscovery) addAncestorCandidates(rel string) error
 	ancestor := discovery.absRoot
 	parts := strings.Split(rel, string(filepath.Separator))
 	for index, part := range parts {
-		if index >= discovery.scanDepth {
+		if index >= discovery.scanDepth || IsIgnoredDirectoryName(part) {
 			break
 		}
 		ancestor = filepath.Join(ancestor, part)
@@ -297,12 +315,17 @@ func minimalChangedScopes(scopes map[string]string) []string {
 func (discovery *changedFolderDiscovery) walkScope(scope string) error {
 	return filepath.WalkDir(scope, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return walkErr
+			if entry == nil && errors.Is(walkErr, fs.ErrNotExist) {
+				// The changed directory was removed again; its ancestors were
+				// already considered.
+				return nil
+			}
+			return discovery.unreadable.skip(path, entry, walkErr)
 		}
 		if !entry.IsDir() {
 			return nil
 		}
-		if path != discovery.absRoot && isKikotoInternalDirectory(entry.Name()) {
+		if path != discovery.absRoot && IsIgnoredDirectoryName(entry.Name()) {
 			return filepath.SkipDir
 		}
 		depth, _, err := relativeDepth(discovery.absRoot, path)
@@ -326,6 +349,10 @@ func (discovery *changedFolderDiscovery) addCandidate(path string) error {
 	}
 	info, err := os.Lstat(path)
 	if os.IsNotExist(err) {
+		return nil
+	}
+	if isSkippableWalkError(err) {
+		discovery.unreadable.add(path)
 		return nil
 	}
 	if err != nil {
@@ -354,6 +381,7 @@ func (discovery *changedFolderDiscovery) result() ([]WorkFolder, Summary, error)
 	for _, candidate := range discovery.candidates {
 		candidateList = append(candidateList, candidate)
 	}
+	candidateList = discovery.unreadable.withoutCandidatesInside(candidateList)
 	workFolders := chooseDeepest(candidateList)
 	sort.Slice(workFolders, func(i, j int) bool { return workFolders[i].RelPath < workFolders[j].RelPath })
 	ambiguousFolders := make([]string, 0, len(discovery.ambiguous))
@@ -364,6 +392,7 @@ func (discovery *changedFolderDiscovery) result() ([]WorkFolder, Summary, error)
 	return workFolders, Summary{
 		CandidateFolders: len(candidateList), DetectedWorks: len(workFolders),
 		AmbiguousFolders: ambiguousFolders, DuplicateGroups: duplicateGroups(workFolders),
+		UnreadableFolders: discovery.unreadable.list(),
 	}, nil
 }
 
@@ -374,6 +403,50 @@ func isKikotoInternalDirectory(name string) bool {
 	default:
 		return false
 	}
+}
+
+// IsIgnoredDirectoryName reports whether every library walk skips a directory:
+// Kikoto's own publication directories, and the metadata, recycle, and
+// snapshot directories that NAS systems and operating systems add, such as
+// Synology's @eaDir, which can carry a work folder's name. A skipped directory
+// is unseen: nothing inside it is discovered, indexed, or marked missing.
+func IsIgnoredDirectoryName(name string) bool {
+	if isKikotoInternalDirectory(name) {
+		return true
+	}
+	lower := strings.ToLower(strings.TrimSpace(name))
+	switch lower {
+	case "@eadir", "#recycle", "#snapshot", "__macosx", "$recycle.bin", "system volume information", "lost+found":
+		return true
+	}
+	return strings.HasPrefix(lower, ".trash-")
+}
+
+// IsIgnoredFileName reports whether every library walk skips a file: the
+// sidecar files that macOS and Windows write beside real files.
+func IsIgnoredFileName(name string) bool {
+	trimmed := strings.TrimSpace(name)
+	lower := strings.ToLower(trimmed)
+	return strings.HasPrefix(trimmed, "._") || lower == ".ds_store" || lower == "thumbs.db"
+}
+
+// IsIgnoredPath reports whether a slash- or OS-separated path lies in an
+// ignored directory or names an ignored file.
+func IsIgnoredPath(path string) bool {
+	parts := strings.FieldsFunc(path, func(char rune) bool { return char == '/' || char == '\\' })
+	for index, part := range parts {
+		if IsIgnoredDirectoryName(part) || (index == len(parts)-1 && IsIgnoredFileName(part)) {
+			return true
+		}
+	}
+	return false
+}
+
+// isSkippableWalkError reports whether a walk can step over a directory it
+// cannot read: one it has no permission for, or one removed while the walk
+// ran. Any other error, such as an I/O failure, still stops the walk.
+func isSkippableWalkError(err error) bool {
+	return errors.Is(err, fs.ErrPermission) || errors.Is(err, fs.ErrNotExist)
 }
 
 func duplicateGroups(folders []WorkFolder) []DuplicateGroup {
@@ -483,6 +556,12 @@ func collectFiles(root string, workPath string) ([]LocalFile, error) {
 			return walkErr
 		}
 		if entry.IsDir() {
+			if path != workPath && IsIgnoredDirectoryName(entry.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if IsIgnoredFileName(entry.Name()) {
 			return nil
 		}
 
@@ -559,4 +638,67 @@ func isAncestorOrSame(parent string, child string) bool {
 		return false
 	}
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+// unreadableFolders collects the folders a discovery walk skipped because it
+// could not read them.
+type unreadableFolders struct {
+	root  string
+	paths map[string]bool
+}
+
+// skip handles a walk error. A folder below the root that cannot be read is
+// recorded and skipped; an unreadable walk start, or any other error, stops the
+// walk.
+func (folders *unreadableFolders) skip(path string, entry fs.DirEntry, err error) error {
+	if entry == nil || !isSkippableWalkError(err) || sameFilesystemPath(path, folders.root) {
+		return err
+	}
+	folders.add(path)
+	if entry.IsDir() {
+		return filepath.SkipDir
+	}
+	return nil
+}
+
+func (folders *unreadableFolders) add(path string) {
+	if folders.paths == nil {
+		folders.paths = map[string]bool{}
+	}
+	folders.paths[filepath.Clean(path)] = true
+}
+
+// withoutCandidatesInside drops candidates at or below an unreadable folder: a
+// folder whose contents are unknown is not a discovered work.
+func (folders *unreadableFolders) withoutCandidatesInside(candidates []WorkFolder) []WorkFolder {
+	if len(folders.paths) == 0 {
+		return candidates
+	}
+	kept := candidates[:0]
+	for _, candidate := range candidates {
+		inside := false
+		for path := range folders.paths {
+			if isAncestorOrSame(path, candidate.AbsPath) {
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			kept = append(kept, candidate)
+		}
+	}
+	return kept
+}
+
+// list returns the unreadable folders relative to the root, slash-separated
+// and sorted.
+func (folders *unreadableFolders) list() []string {
+	result := make([]string, 0, len(folders.paths))
+	for path := range folders.paths {
+		if rel, err := filepath.Rel(folders.root, path); err == nil && rel != "." {
+			result = append(result, filepath.ToSlash(rel))
+		}
+	}
+	sort.Strings(result)
+	return result
 }

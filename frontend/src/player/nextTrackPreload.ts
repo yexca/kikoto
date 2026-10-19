@@ -4,6 +4,34 @@ import type { PlayMode } from "./playerTypes";
 export const NEXT_TRACK_PRELOAD_WINDOW_SECONDS = 45;
 
 /**
+ * The server prepares a transcoded audio track completely before it serves it,
+ * at a conservative 40 times real time. A long next track that needs this
+ * starts warming early enough for that preparation to finish.
+ */
+const TRANSCODE_PREPARATION_SPEED = 40;
+
+/** Extensions the player streams without conversion when compatibility playback is off. */
+const directAudioExtensions = new Set([".mp3", ".m4a", ".mp4", ".wav", ".flac", ".oga", ".ogg", ".opus", ".webm"]);
+
+/** Whether the server converts this file for playback: compatibility mode, or a format the browser cannot play. */
+export function nextTrackNeedsTranscoding(fileName: string, compatibility: boolean) {
+  if (compatibility) return true;
+  const dot = fileName.lastIndexOf(".");
+  return dot < 0 || !directAudioExtensions.has(fileName.slice(dot).toLowerCase());
+}
+
+/** How many seconds before the current track ends the next track starts warming. */
+export function nextTrackPreloadWindowSeconds(
+  nextDurationSeconds: number | null | undefined,
+  needsTranscoding: boolean,
+) {
+  if (!needsTranscoding || !nextDurationSeconds || !Number.isFinite(nextDurationSeconds)) {
+    return NEXT_TRACK_PRELOAD_WINDOW_SECONDS;
+  }
+  return Math.max(NEXT_TRACK_PRELOAD_WINDOW_SECONDS, nextDurationSeconds / TRANSCODE_PREPARATION_SPEED);
+}
+
+/**
  * Returns the queue index that end-of-track advancement will play next, or
  * null when playback stops or repeats the current item.
  */
@@ -22,14 +50,16 @@ export function shouldPreloadNextTrack({
   currentTime,
   duration,
   bufferedEnd,
+  windowSeconds = NEXT_TRACK_PRELOAD_WINDOW_SECONDS,
 }: {
   playing: boolean;
   currentTime: number;
   duration: number;
   bufferedEnd: number;
+  windowSeconds?: number;
 }) {
   if (!playing || !Number.isFinite(duration) || duration <= 0) return false;
-  if (Number.isFinite(currentTime) && duration - currentTime <= NEXT_TRACK_PRELOAD_WINDOW_SECONDS) return true;
+  if (Number.isFinite(currentTime) && duration - currentTime <= windowSeconds) return true;
   return Number.isFinite(bufferedEnd) && bufferedEnd >= duration - 0.5;
 }
 

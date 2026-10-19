@@ -29,6 +29,8 @@ export type PlayerTrack = {
   lyricsChoices?: LyricsChoice[];
   autoLyricsLocationId?: number | null;
   preferredLyricsMediaItemId?: number | null;
+  /** The listener's lyrics timing offset in milliseconds; positive shows each line later. */
+  lyricsOffsetMs?: number;
   remoteSourceId?: number;
   remoteWorkCode?: string;
   remotePath?: string;

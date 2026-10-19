@@ -2,8 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 
 import { assetURL } from "@/lib/api";
 
-import { bufferedEndAt, shouldPreloadNextTrack } from "./nextTrackPreload";
-import { playerTrackAudioURL } from "./playerTrackMedia";
+import {
+  bufferedEndAt,
+  nextTrackNeedsTranscoding,
+  nextTrackPreloadWindowSeconds,
+  shouldPreloadNextTrack,
+} from "./nextTrackPreload";
+import { playerTrackAudioURL, supportsCompatibilityPlayback } from "./playerTrackMedia";
 import type { PlayerTrack } from "./playerTypes";
 import type { PlaybackEngine } from "./usePlaybackEngine";
 import { useNextTrackPreload } from "./useNextTrackPreload";
@@ -172,7 +177,22 @@ export function usePlaybackSource(
     const audio = refs.audioRef.current;
     if (!audio || currentLocationId === null || !currentPlaybackInstanceKey || preloadArmed) return;
     if (durationLocationId !== currentLocationId) return;
-    if (shouldPreloadNextTrack({ playing: isPlaying, currentTime, duration, bufferedEnd: bufferedEndAt(audio) })) {
+    const windowSeconds = nextTrack
+      ? nextTrackPreloadWindowSeconds(
+          nextTrack.durationSeconds,
+          supportsCompatibilityPlayback(nextTrack) &&
+            nextTrackNeedsTranscoding(nextTrack.title, nextTrackCompatibility),
+        )
+      : undefined;
+    if (
+      shouldPreloadNextTrack({
+        playing: isPlaying,
+        currentTime,
+        duration,
+        bufferedEnd: bufferedEndAt(audio),
+        windowSeconds,
+      })
+    ) {
       setPreloadArmedInstanceKey(currentPlaybackInstanceKey);
     }
   }, [
@@ -182,6 +202,8 @@ export function usePlaybackSource(
     duration,
     durationLocationId,
     isPlaying,
+    nextTrack,
+    nextTrackCompatibility,
     preloadArmed,
     refs,
   ]);

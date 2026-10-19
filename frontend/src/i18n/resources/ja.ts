@@ -820,7 +820,7 @@ export const japaneseResource = {
         hideReferenceDetails: "詳細を非表示",
         referenceAreas: {
           recommendation: "推薦設計",
-          remoteSources: "リモートソース",
+          design: "デザイン",
           playbackReporting: "再生レポート",
           workflows: "ワークフロー",
           engineering: "エンジニアリングと CI",
@@ -834,7 +834,8 @@ export const japaneseResource = {
             "疎なフィードバックプロフィールと候補数を制限したスコアリング。ALS、BPR、ItemKNN は取り込んでいません。",
           troi: "メディアライブラリのエンティティ対応付けと候補パイプラインの考え方。ソースコードは含めていません。",
           recbole: "評価と全件ランキング比較の資料。実行時の依存関係ではありません。",
-          kikoeru: "Kikoeru 互換リモートソースが従う公開バックエンドインターフェース。",
+          kikoeru:
+            "聴取状況のクイックマーク、カードと作品詳細での作品の見せ方、一部の機能の挙動についての設計上の参考。",
           audiobookshelf: "再生位置と実際の聴取時間をまとめて報告する方式。",
           navidrome: "イベント集約、永続化された送信キュー、待機時間を延ばす再試行方式。",
           jellyfin: "再生イベントと定期的な進捗報告を組み合わせる方式。",
@@ -935,6 +936,18 @@ export const japaneseResource = {
         seekInvalid: "{{min}} 秒から {{max}} 秒までの整数を入力してください。",
         savePlayback: "再生設定を保存",
         seekUpdated: "再生の早送り／巻き戻し設定を更新しました。",
+        loudness: "ラウドネスの正規化",
+        loudnessDescription:
+          "トラック間の音量差をそろえます。各ローカルファイルは、正規化をオンにして初めて再生したときに一度だけ測定されます。",
+        loudnessMode: "正規化",
+        loudnessOff: "オフ",
+        loudnessOffDescription: "各トラックを元の音量で再生します。",
+        loudnessAttenuate: "大きいトラックを下げる",
+        loudnessAttenuateDescription:
+          "大きいトラックを小さくし、小さいトラックはそのままにします。バックグラウンド再生中も働きます。",
+        loudnessFull: "大きいトラックを下げ、小さいトラックを上げる",
+        loudnessFullDescription:
+          "Web Audio を使って小さいトラックも大きくします。モバイルアプリでは上げる処理は行われず、一部のブラウザはバックグラウンドで Web Audio を停止します。",
         playbackSources: "再生ソース",
         playbackSourcesDescription:
           "ローカルファイルとリモートストリームなど、複数の場所があるトラックに適用されます。既定ではオフです。",

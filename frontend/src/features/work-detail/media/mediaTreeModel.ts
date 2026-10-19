@@ -2,6 +2,7 @@ import type { MediaItem, RemoteTrack, RemoteWorkDetail, WorkDetail, WorkProgress
 import { mediaItemLyricsAssignments } from "../../../lib/lyricsLanguage";
 import type { PlayerTrack, PlayerTrackLocation } from "../../../player/playerTypes";
 import {
+  audioExtensions,
   findLocalLyricsChoices,
   findRemoteLyricsMatches,
   isLyricsPath,
@@ -500,6 +501,7 @@ export function toPlayerTrack(track: TreeTrack, work: WorkDetail, fallbackCoverU
     lyricsChoices,
     autoLyricsLocationId: automaticLyrics?.locationId ?? null,
     preferredLyricsMediaItemId,
+    lyricsOffsetMs: audioItem?.lyricsOffsetMs ?? 0,
     playbackKey: track.playbackKey ?? playbackKeyForLocation(track.locationId),
   };
 }
@@ -766,7 +768,7 @@ function remotePlayableKind(kind: string, path: string) {
   const normalizedKind = kind.trim().toLowerCase();
   if (["audio", "video", "image", "text", "folder"].includes(normalizedKind)) return normalizedKind;
   const extension = path.slice(path.lastIndexOf(".")).toLowerCase();
-  if ([".mp3", ".m4a", ".aac", ".flac", ".wav", ".wma", ".ogg", ".oga", ".opus"].includes(extension)) {
+  if (audioExtensions.includes(extension)) {
     return "audio";
   }
   if (

@@ -33,12 +33,29 @@
 
 - Kikoto stores each voice actor's DLsite creator id from DLsite metadata. When DLsite renames a voice actor, the person follows the new name and keeps the former one as an alias instead of splitting into a second voice actor. Staff credits keep their DLsite creator ids as well.
 - The Metadata page's **Custom works** view lists library folders whose names carry no work code and turns one into a custom work. Kikoto assigns it a `KT` code and appends the code to the folder's name, such as `Example Work [KT00000001]`, so every scan finds it. Scans read a `KT` code only in that bracketed form, so a folder name such as `Projekt 20241019` names no work. The view opens with a notice describing the rename, and an administrator accepts it before custom works can be created. Creation refuses a Fetch folder and a folder a running Fetch or **Edit files** writes into, and asks to try again while another job is changing library folders. A custom work has no DLsite link, provider metadata, or remote source: its detail shows no rating, sales, metadata refresh, Fetch for edit, Metadata source section, remote source tabs, or source checks, **Edit files** and **Lyrics files** list only local places, and its title, description, age rating, and other fields come from the metadata editor. The server refuses metadata sync, metadata previews, metadata links, purchase bonus and bundle changes, and source checks for a custom work, and per-source metadata runs and source presence checks leave it out.
+- Scans, file lists, and folder watching skip the folders and files NAS systems and operating systems add: `@eaDir`, `#recycle`, `#snapshot`, `__MACOSX`, `.Trash-*`, `$RECYCLE.BIN`, `System Volume Information`, `lost+found`, `._*`, `.DS_Store`, and `Thumbs.db`. A Synology thumbnail folder no longer appears as a second folder of a work, a work in a recycle bin is not found again, and a work already recorded in one of these places keeps its state instead of being marked missing.
+- A folder the scan cannot read, such as a `lost+found` folder the container user has no permission for, or a folder removed during the scan, no longer stops the whole scan. The scan skips it, finishes as partial naming it, and leaves the works inside it unchanged.
+- A media file FFprobe cannot read, such as a damaged file or a macOS `._` file, is probed once per file version instead of on every pass. A timeout or an interrupted probe is tried again, and a changed file is probed again.
+
+</details>
+
+<details>
+<summary><strong>Playback</strong></summary>
+
+- **Loudness normalization** in Settings → Playback evens out loudness between local tracks. **Turn loud tracks down** lowers loud tracks through the player's own volume and works during background playback; **Turn loud tracks down and quiet tracks up** also raises quiet tracks through Web Audio, never past the measured peak, in the browser. Kikoto measures each file's EBU R 128 loudness once, the first time it plays with normalization on, and measures the next queued track ahead. It is off by default.
+- The lyrics view has timing buttons that move timed lyrics 0.5 seconds earlier or later, up to 30 seconds either way. The offset is your own, saved per audio file, applies to screen lyrics too, and never changes the lyrics file.
+- ASS and SSA lyrics show as timed lyrics, read from their `Dialogue` lines.
+- Lyrics matching ignores sound effect and music switches such as `SEあり`, `SE無し`, `SE ON`, or `BGMなし`, so `本編_SEなし.lrc` serves `本編_SEあり.wav`, and matches names macOS stores decomposed. A lyrics file whose name differs from the track's only in its numbers, such as `02_opening.lrc` for `01_opening.wav`, is no longer chosen.
+- When FFmpeg cannot convert a file, repeated requests for it fail at once for 30 seconds instead of occupying one of the two encode slots.
+- AIFF (`.aiff`, `.aif`) and Matroska audio (`.mka`) files are audio tracks in local folders and remote sources: they show in the track list and queue, get their duration, match lyrics, and count toward folder choice. The browser cannot play them directly, so they play through compatibility conversion.
+- A long next track that needs conversion starts warming earlier, a fortieth of its length before the current track ends, so a two-hour file is ready when it starts.
 
 </details>
 
 <details>
 <summary><strong>Settings and interface</strong></summary>
 
+- About lists Number178/kikoeru-express under **Design**, as a design reference for quick listening-status marks, work cards and work detail, and some feature behavior, instead of as the interface remote sources follow.
 - Demo's **LLM & ASR** tab lists example LLM providers and ASR services at addresses no request reaches, and the content safety policy. Selecting one opens its dialog with every option visible; adding, editing, switching, deleting, fetching models, and saving the policy stay unavailable.
 
 </details>

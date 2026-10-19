@@ -2287,6 +2287,11 @@ export const surfaceEnglish = {
     closePanel: "Close panel",
     seekToLine: "Jump to this line",
     followLyrics: "Follow playback",
+    lyricsTiming: "Lyrics timing",
+    lyricsEarlier: "Show lyrics 0.5 s earlier",
+    lyricsLater: "Show lyrics 0.5 s later",
+    lyricsTimingReset: "Reset lyrics timing",
+    lyricsOffsetSeconds: "{{value}} s",
     speakerConfirmTitle: "Play through the phone speaker?",
     speakerConfirmDescription:
       "No headphones or other audio output are connected, so people nearby can hear playback. Kikoto asks again after an audio output connects or disconnects.",

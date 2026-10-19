@@ -113,6 +113,7 @@ func markLocalLocationsMissing(ctx context.Context, tx *sql.Tx, locations []inde
 
 // folderRoot bounds reconciliation to the folder that was actually indexed.
 // Only the isolated demo indexer passes an empty root to reconcile its full set.
+// A file in an ignored directory or with an ignored name is unseen, not missing.
 func markMissingLocalLocationsForWork(ctx context.Context, tx *sql.Tx, workID, fileSourceID int64, seenPaths map[string]bool, folderRoot string) (int, error) {
 	locations, err := availableLocalLocationsForWork(ctx, tx, workID, fileSourceID)
 	if err != nil {
@@ -120,6 +121,9 @@ func markMissingLocalLocationsForWork(ctx context.Context, tx *sql.Tx, workID, f
 	}
 	missing := locations[:0]
 	for _, location := range locations {
+		if localfs.IsIgnoredPath(location.path) {
+			continue
+		}
 		if !seenPaths[location.path] && (folderRoot == "" || localLocationWithinRoot(location.path, folderRoot)) {
 			missing = append(missing, location)
 		}
