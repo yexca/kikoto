@@ -120,13 +120,10 @@ func (s *Server) executeWorkFolderEditJob(ctx context.Context, job workflowJobRe
 	return execution.fail(ctx, err)
 }
 
-func (e *workFolderEditExecution) run(ctx context.Context) error {
+// locate finds the edited folder, which must be online, and the run's staging
+// folder on its pool.
+func (e *workFolderEditExecution) locate(ctx context.Context) error {
 	s := e.server
-	nodes, err := workflowNodeIDsByNodeID(ctx, s.db, e.job.RunID)
-	if err != nil {
-		return err
-	}
-	e.nodes = nodes
 	if err := s.ensureLibraryPathOnline(ctx, e.payload.TargetRoot); err != nil {
 		return err
 	}
@@ -148,6 +145,54 @@ func (e *workFolderEditExecution) run(ctx context.Context) error {
 		return fmt.Errorf("edit staging: %w", err)
 	}
 	e.stagingAbs = stagingAbs
+	return nil
+}
+
+// settleCancelledWorkFolderEdit puts back what a cancelled edit lifted and
+// deletes what it collected when no executor was working on it, such as an
+// edit waiting for a retry or for recovery after a restart. It waits for any
+// job that is changing library folders. An edit whose folder is offline keeps
+// its staging folder until it can be settled.
+func (s *Server) settleCancelledWorkFolderEdit(ctx context.Context, runID int64) {
+	s.mediaCleanupMu.Lock()
+	defer s.mediaCleanupMu.Unlock()
+	execution := &workFolderEditExecution{server: s}
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, workflow_run_id, payload_json, checkpoint_json FROM workflow_job
+		WHERE workflow_run_id = ? AND worker_type = ? ORDER BY id DESC LIMIT 1
+	`, runID, workFolderEditWorkerType).Scan(&execution.job.ID, &execution.job.RunID, &execution.job.PayloadJSON, &execution.job.CheckpointJSON)
+	if err == nil {
+		err = decodeWorkflowJobPayload(execution.job.PayloadJSON, &execution.payload)
+	}
+	if err == nil {
+		err = decodeWorkflowJobCheckpointDetail(execution.job.CheckpointJSON, &execution.checkpoint)
+	}
+	if err == nil {
+		execution.total = workFolderEditProgressTotal(execution.payload)
+		err = execution.locate(ctx)
+	}
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			slog.Error("settle cancelled work folder edit", "run_id", runID, "error", err)
+		}
+		return
+	}
+	if kept := execution.discardStaging(ctx); kept > 0 {
+		slog.Error("cancelled work folder edit keeps moved files in staging", "run_id", runID, "files", kept)
+	}
+	_ = s.restoreMediaCleanupFolders(ctx, runID)
+}
+
+func (e *workFolderEditExecution) run(ctx context.Context) error {
+	s := e.server
+	nodes, err := workflowNodeIDsByNodeID(ctx, s.db, e.job.RunID)
+	if err != nil {
+		return err
+	}
+	e.nodes = nodes
+	if err := e.locate(ctx); err != nil {
+		return err
+	}
 	if err := e.stage(ctx); err != nil {
 		return err
 	}

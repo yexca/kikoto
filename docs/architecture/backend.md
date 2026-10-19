@@ -453,7 +453,12 @@ it emptied, creates the requested folders, and indexes the folder. It deletes
 each merged folder last, only while it holds exactly the files the edit was
 planned with, and marks its locations unavailable and its folder ignored; a
 run that fails or is cancelled returns a merged folder it had started on to
-the work. Apply may also carry
+the work. A run that stops before it finishes puts every moved file that left
+its place but has not reached its new path back where it was; a file whose old
+path another file took since stays in the run's staging folder for a retry.
+Cancelling a run that no executor holds, such as one waiting for a retry or
+for recovery after a restart, settles it the same way once no other job is
+changing library folders. Apply may also carry
 `assignments`, each naming an added lyrics file and an audio file of the work
 by media item or by path below the folder; the run stores them in the lyrics'
 language once it has indexed the folder, skipping a file the index does not

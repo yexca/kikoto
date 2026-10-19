@@ -389,8 +389,10 @@ func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobReco
 	}, nil
 }
 
-func (s *Server) cancelActiveWorkflowJob(runID int64) {
-	s.workflowLeases.cancelRun(runID)
+// cancelActiveWorkflowJob stops the executor working on the run and reports
+// whether one was working on it.
+func (s *Server) cancelActiveWorkflowJob(runID int64) bool {
+	return s.workflowLeases.cancelRun(runID)
 }
 
 func (s *Server) claimNextQueuedWorkflowJob(ctx context.Context, runnerID string) (workflowJobRecord, bool, error) {

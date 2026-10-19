@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -145,6 +146,67 @@ func TestWorkFolderEditLetsFilesTradePlaces(t *testing.T) {
 	}
 	if got := fixture.mediaItemOf(t, after[originalName]); got != secondItem {
 		t.Fatalf("the second track's item did not follow it: %d, want %d", got, secondItem)
+	}
+}
+
+func TestWorkFolderEditCancelledWhileWaitingPutsMovedFilesBack(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	originalName := filepath.ToSlash(fixture.originalPath)[len(fixture.root)+1:]
+	job := fixture.apply(t, map[string]any{"moves": []any{move(fixture.originalLocationID, "Disc 1/Track1.Original name.mp3")}})
+	// The edit lifted the moved file, then stopped and waits for a retry or
+	// for recovery after a restart, with no executor working on it.
+	execution := &workFolderEditExecution{server: fixture.server, job: job}
+	if err := decodeWorkflowJobPayload(job.PayloadJSON, &execution.payload); err != nil {
+		t.Fatal(err)
+	}
+	execution.stagingAbs = filepath.Join(fixture.dataRoot, filepath.FromSlash(workFolderEditStagingRoot(execution.payload.TransactionPool, job.RunID)))
+	if err := os.MkdirAll(execution.stagingAbs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(fixture.targetFile(originalName), execution.liftedPath(0)); err != nil {
+		t.Fatal(err)
+	}
+	execution.checkpoint.Lifted = []int64{fixture.originalLocationID}
+	if err := execution.saveCheckpoint(context.Background(), "publish"); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{"UPDATE workflow_job SET status = 'queued' WHERE id = ?", "UPDATE workflow_run SET status = 'queued' WHERE id = ?"} {
+		id := job.ID
+		if strings.Contains(statement, "workflow_run") {
+			id = job.RunID
+		}
+		if _, err := fixture.db.Exec(statement, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/"+jsonNumber(job.RunID)+"/cancel", nil)
+	request.SetPathValue("id", jsonNumber(job.RunID))
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 0, Permissions: []string{"workflows:run", "system:admin"}}))
+	response := httptest.NewRecorder()
+	fixture.server.cancelWorkflowRun(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("cancel status = %d, body = %s", response.Code, response.Body.String())
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		content, err := os.ReadFile(fixture.targetFile(originalName))
+		if err == nil && string(content) == "synthetic audio" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the cancelled edit's moved file did not return to its place: %q, %v", content, err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		if _, err := os.Stat(filepath.Dir(execution.stagingAbs)); os.IsNotExist(err) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the cancelled edit's staging folder was left behind")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
