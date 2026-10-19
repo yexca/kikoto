@@ -2189,6 +2189,7 @@ export const surfaceKorean = {
     noWorks: "연결되지 않은 작품이 없습니다",
     openDlsite: "DLsite 페이지 열기",
     deleteFor: "{{code}} 로컬 정보 삭제",
+    openDlsiteFor: "{{code}}의 DLsite 페이지 열기",
     confirmTitle: "로컬 작품 정보를 삭제하시겠습니까?",
     confirmDescription: "선택한 작품군의 로컬 작품 기록과 가용성 정보를 삭제합니다.",
     deleting: "삭제 중...",
