@@ -384,7 +384,7 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 	}
 	operationCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
 	defer cancel()
-	result, err := s.enqueueRemoteWorkSaveWithFollowUp(operationCtx, sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.RequestID, payload.Decisions, payload.MinFreeBytes, actor.ID, workflow.JobPriorityUserInitiated, payload.FollowUp)
+	result, err := s.enqueueRemoteWorkSave(operationCtx, sourceID, code, payload.Paths, payload.LocalPaths, payload.TargetRoot, payload.RequestID, payload.Decisions, payload.MinFreeBytes, actor.ID, workflow.JobPriorityUserInitiated, payload.FollowUp)
 	if err != nil {
 		if payload.RequestID != "" {
 			if existing, found, lookupErr := s.remoteFetchRequestResult(r.Context(), payload.RequestID, sourceID, code); lookupErr == nil && found {
@@ -407,11 +407,7 @@ func (s *Server) saveRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 // Fetch of the work runs: joining that run would drop the follow-up.
 var errRemoteFetchFollowUpBusy = conflictError("a Fetch for this work is still running; wait for it to finish before adding files from other sources")
 
-func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string, requestID string, decisions []remoteFetchFileDecision, minFreeBytes int64, requestedByUserID int64, jobPriority int) (remoteWorkSaveResult, error) {
-	return s.enqueueRemoteWorkSaveWithFollowUp(ctx, sourceID, code, selectedPaths, selectedLocalPaths, targetRoot, requestID, decisions, minFreeBytes, requestedByUserID, jobPriority, nil)
-}
-
-func (s *Server) enqueueRemoteWorkSaveWithFollowUp(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string, requestID string, decisions []remoteFetchFileDecision, minFreeBytes int64, requestedByUserID int64, jobPriority int, followUp *remoteFetchFollowUp) (remoteWorkSaveResult, error) {
+func (s *Server) enqueueRemoteWorkSave(ctx context.Context, sourceID int64, code string, selectedPaths []string, selectedLocalPaths []string, targetRoot string, requestID string, decisions []remoteFetchFileDecision, minFreeBytes int64, requestedByUserID int64, jobPriority int, followUp *remoteFetchFollowUp) (remoteWorkSaveResult, error) {
 	requestedCode := strings.ToUpper(strings.TrimSpace(code))
 	if existing, found, err := activeRemoteFetchResult(ctx, s.db, requestedCode); err != nil {
 		return remoteWorkSaveResult{}, err
