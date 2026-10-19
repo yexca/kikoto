@@ -1771,7 +1771,7 @@ export const surfaceHant = {
     noVoiceActorMetadata: "沒有聲優中繼資料",
     noTagMetadata: "沒有標籤中繼資料",
     customWorkNoFolderDescription:
-      "此自訂作品在媒體庫中沒有本機資料夾。當有資料夾名稱以其 KT 編號結尾時，掃描會重新找到它。",
+      "此自訂作品在媒體庫中沒有本機資料夾。當有資料夾名稱帶有以方括號括起的 KT 編號（如 [KT00000001]）時，掃描會重新找到它。",
     noSourceDirectoryDescription:
       "此作品存在於本機資料庫中，但 Kikoto 尚無其本機檔案、快取、已追蹤來源或已知來源存在記錄。",
     sourceAvailable: "{{source}} 可用",
@@ -2374,6 +2374,7 @@ export const surfaceHant = {
     replaceExisting: "取代資料夾中的檔案",
     targetPath: "此資料夾內的路徑",
     planFailed: "無法重新整理預覽。",
+    collision: "{{path}} 處會有兩個檔案。請移動其中一個或取消選取。",
     applying: "正在開始編輯",
     statusBlocked: "待解決的衝突：{{count}}",
     statusReady: "就緒：加入 {{add}}，移除 {{remove}}",
@@ -2381,6 +2382,7 @@ export const surfaceHant = {
     back: "返回檔案清單",
     apply: "套用變更",
     folderChanged: "資料夾已發生變化，請檢查更新後的預覽。",
+    mergeChanged: "比較之後，要合併的資料夾或此資料夾發生了變化，請重新檢查合併。",
     applyFailed: "無法開始編輯。",
     queued: "資料夾編輯已加入佇列，工作流程執行 #{{runId}}。",
     completed: "檔案已在工作流程 #{{runId}} 中更新。",
@@ -2439,7 +2441,7 @@ export const surfaceHant = {
     mergeConfirmLoss_other: "刪除並遺失 {{count}} 個檔案",
   },
   fetchCompose: {
-    title: "Fetch",
+    title: "取得",
     description: "將 {{code}} Fetch 到新資料夾，並加入其他版本、來源、本機資料夾的檔案，或指定語言的歌詞。",
     newFolder: "新資料夾",
     primaryHint: "所選檔案會從 {{source}} Fetch 到新資料夾。",
@@ -2449,7 +2451,7 @@ export const surfaceHant = {
     statusIdle: "請至少選取此版本的一個檔案",
     statusReady: "就緒：新資料夾共 {{count}} 個檔案",
     applying: "正在開始 Fetch",
-    apply: "Fetch",
+    apply: "取得",
     applyFailed: "無法開始 Fetch。請檢閱更新後的預覽。",
     queued: "Fetch {{code}} 已作為工作流程執行 #{{runId}} 排入佇列。",
     queuedWithFollowUp:
@@ -2650,6 +2652,7 @@ export const surfaceHant = {
     sourceNotUsable: "此遠端來源已停用，或不支援此操作。",
     downloadLimitExceeded: "所選檔案中有超過遠端下載上限的檔案。請取消選取該檔案，或在設定中提高上限。",
     insufficientDiskSpace: "磁碟可用空間不足，無法完成此操作。",
+    unknownFileSize: "來源未提供部分所選檔案的大小，無法檢查磁碟可用空間。",
     scanDepthTooShallow: "掃描深度比取得作品的儲存資料夾更淺。請增加掃描深度，或縮短遠端來源的儲存路徑。",
     saveTemplateTooDeep: "此儲存路徑會把作品放在超過最大掃描深度的位置。請減少資料夾層級。",
     rateLimited: "請求過多，請稍後重試。",

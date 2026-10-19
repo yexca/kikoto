@@ -838,7 +838,7 @@ func TestRemoteFetchEnqueueDoesNotReenterConnectionPoolInsideTransaction(t *test
 			_ = json.NewEncoder(w).Encode(kikoeru.Work{ID: 10, SourceID: code, Title: "Remote fetch work"})
 		case "/api/tracks/10":
 			_ = json.NewEncoder(w).Encode([]kikoeru.Track{{
-				Type: "audio", Title: "track.mp3", MediaDownloadURL: "/media/track.mp3", Size: 3,
+				Type: "audio", Title: "track.mp3", MediaDownloadURL: "/media/track.mp3", Size: int64Pointer(3),
 			}})
 		default:
 			http.NotFound(w, r)
@@ -859,7 +859,7 @@ func TestRemoteFetchEnqueueDoesNotReenterConnectionPoolInsideTransaction(t *test
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	result, err := server.enqueueRemoteWorkSave(ctx, 1, code, nil, nil, "", "", nil, 0, 0, workflow.JobPriorityUserInitiated)
+	result, err := server.enqueueRemoteWorkSave(ctx, 1, code, nil, nil, "", "", nil, 0, 0, workflow.JobPriorityUserInitiated, nil)
 	if err != nil {
 		t.Fatalf("enqueueRemoteWorkSave() error = %v", err)
 	}
@@ -989,7 +989,7 @@ func TestRemoteFetchDeduplicatesActiveWorkBeforeLoadingSource(t *testing.T) {
 	jobID, _ := result.LastInsertId()
 
 	server := NewServer(db, config.Config{})
-	fetch, err := server.enqueueRemoteWorkSave(context.Background(), 999, "rj00000007", nil, nil, "", "", nil, 0, 0, workflow.JobPriorityUserInitiated)
+	fetch, err := server.enqueueRemoteWorkSave(context.Background(), 999, "rj00000007", nil, nil, "", "", nil, 0, 0, workflow.JobPriorityUserInitiated, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1031,7 +1031,7 @@ func TestRemoteFetchDeduplicatesOriginReviewBeforeLoadingSource(t *testing.T) {
 	}
 
 	server := NewServer(db, config.Config{})
-	fetch, err := server.enqueueRemoteWorkSave(context.Background(), 999, "rj00000001", nil, nil, "", "", nil, 0, 0, workflow.JobPriorityUserInitiated)
+	fetch, err := server.enqueueRemoteWorkSave(context.Background(), 999, "rj00000001", nil, nil, "", "", nil, 0, 0, workflow.JobPriorityUserInitiated, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

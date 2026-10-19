@@ -120,9 +120,24 @@ func (fixture folderEditFixture) plan(t *testing.T, body map[string]any) workFol
 	return plan
 }
 
-// apply queues the edit and returns its job, ready to execute.
+// apply queues the edit and returns its job, ready to execute. An edit that
+// merges folders and names no review is applied with the review of a merge
+// check run now.
 func (fixture folderEditFixture) apply(t *testing.T, body map[string]any) workflowJobRecord {
 	t.Helper()
+	if _, merges := body["mergeFolderIds"]; merges {
+		if _, reviewed := body["mergeReview"]; !reviewed {
+			check := fixture.mergeCheck(t, body)
+			if !check.Complete || check.Review == "" {
+				t.Fatalf("merge check = %+v", check)
+			}
+			reviewedBody := map[string]any{"mergeReview": check.Review}
+			for key, value := range body {
+				reviewedBody[key] = value
+			}
+			body = reviewedBody
+		}
+	}
 	response := fixture.request(t, fixture.server.applyWorkFolderEdit, body)
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("apply status = %d, body = %s", response.Code, response.Body.String())
@@ -401,7 +416,7 @@ func (fixture folderEditFixture) listRemoteAudio(t *testing.T, downloadURL strin
 		downloadURL = strings.TrimSuffix(snapshot.Tracks[0].Children[1].MediaDownloadURL, "/media/audio.mp3") + downloadURL
 	}
 	snapshot.Tracks = []kikoeru.Track{{Type: "folder", Title: "Translated", Children: []kikoeru.Track{
-		{Type: "audio", Title: "Track1.Translated name.mp3", Size: size, MediaDownloadURL: downloadURL},
+		{Type: "audio", Title: "Track1.Translated name.mp3", Size: int64Pointer(size), MediaDownloadURL: downloadURL},
 	}}}
 	snapshot.ExpiresAt = time.Now().Add(time.Minute)
 	fixture.server.remoteWorkTracksCache[key] = snapshot

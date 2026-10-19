@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import {
+  folderEditCollision,
   localFolderFiles,
   remoteEditionFiles,
   withFolderEditPaths,
@@ -16,6 +17,7 @@ import {
   deleteFolder,
   folderContains,
   folderNameError,
+  holdsLyricsFolder,
   moveFilesTo,
   moveFolderTo,
   placeFilesBelow,
@@ -82,6 +84,8 @@ export type FolderWorkspace = {
 export type FolderWorkspaceArrange = {
   /** The folders the user created. */
   folders: readonly string[];
+  /** A path two files would share because one was placed there, which stops the change until one moves. */
+  collision: string | null;
   /** Whether a created folder that ends up holding nothing is still created. */
   createsEmptyFolders: boolean;
   moveEntries: (keys: readonly string[], folder: string) => void;
@@ -129,6 +133,7 @@ export function folderWorkspaceArrange({
   const movedAdditions = (keys: readonly string[]) => forget(keys.filter((key) => !key.startsWith("current:")));
   return {
     folders: layout.folders,
+    collision: folderEditCollision(entries, layout.placements),
     createsEmptyFolders,
     moveEntries: (keys, folder) => {
       movedAdditions(keys);
@@ -149,7 +154,7 @@ export function folderWorkspaceArrange({
       setLayout(deleteFolder(layout, placed, folder));
     },
     placeFromResource: (resource, paths, base, folder) => {
-      if (paths.length === 0) return;
+      if (paths.length === 0 || holdsLyricsFolder(paths)) return;
       include(resource, paths);
       const prefix = base ? `${base}/` : "";
       const arriving = paths.map((path) => ({
@@ -173,27 +178,26 @@ export function useFolderWorkspaceFiles() {
   const [files, setFiles] = useState<Record<string, FolderEditFilesState>>({});
   const [selection, setSelection] = useState<Record<string, ReadonlySet<string>>>({});
   const [lyrics, setLyrics] = useState<Record<string, Readonly<Record<string, string>>>>({});
-  const loading = useRef(new Set<string>());
+  const loading = useRef(new Map<string, Promise<FolderEditFile[] | null>>());
 
-  const loadResource = useCallback(async (resource: FolderEditResource): Promise<FolderEditFile[] | null> => {
-    if (resource.kind === "current" || loading.current.has(resource.id)) return null;
-    loading.current.add(resource.id);
-    setFiles((current) => ({ ...current, [resource.id]: { status: "loading", files: noFiles } }));
-    try {
-      const loaded =
-        resource.kind === "local"
-          ? localFolderFiles((await api.getWork(resource.workId)).mediaItems, resource.rootPath)
-          : remoteEditionFiles(
-              (await api.getRemoteSourceWork(resource.sourceId, resource.remoteCode ?? resource.editionCode)).tracks,
-            );
-      setFiles((current) => ({ ...current, [resource.id]: { status: "ready", files: loaded } }));
-      return loaded;
-    } catch {
-      setFiles((current) => ({ ...current, [resource.id]: { status: "error", files: noFiles } }));
-      return null;
-    } finally {
-      loading.current.delete(resource.id);
-    }
+  const loadResource = useCallback((resource: FolderEditResource): Promise<FolderEditFile[] | null> => {
+    if (resource.kind === "current") return Promise.resolve(null);
+    return sharedLoad(loading.current, resource.id, async () => {
+      setFiles((current) => ({ ...current, [resource.id]: { status: "loading", files: noFiles } }));
+      try {
+        const loaded =
+          resource.kind === "local"
+            ? localFolderFiles((await api.getWork(resource.workId)).mediaItems, resource.rootPath)
+            : remoteEditionFiles(
+                (await api.getRemoteSourceWork(resource.sourceId, resource.remoteCode ?? resource.editionCode)).tracks,
+              );
+        setFiles((current) => ({ ...current, [resource.id]: { status: "ready", files: loaded } }));
+        return loaded;
+      } catch {
+        setFiles((current) => ({ ...current, [resource.id]: { status: "error", files: noFiles } }));
+        return null;
+      }
+    });
   }, []);
 
   const readyFiles = useMemo(() => {
@@ -220,6 +224,21 @@ export function useFolderWorkspaceFiles() {
   }, []);
 
   return { files, setFiles, selection, setSelection, setSelected, lyrics, setLyricsRole, loadResource, readyFiles };
+}
+
+/**
+ * Starts a load once per key: a caller that asks while the load is in flight,
+ * such as an effect that React runs twice in development, awaits the same
+ * load instead of getting nothing.
+ */
+export function sharedLoad<T>(inFlight: Map<string, Promise<T>>, key: string, load: () => Promise<T>): Promise<T> {
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+  const started = load().finally(() => {
+    if (inFlight.get(key) === started) inFlight.delete(key);
+  });
+  inFlight.set(key, started);
+  return started;
 }
 
 export function createFolderWorkspaceRequestId(prefix: string) {

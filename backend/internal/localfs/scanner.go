@@ -13,7 +13,13 @@ import (
 	"github.com/yexca/kikoto/backend/internal/workcode"
 )
 
-var workCodePattern = regexp.MustCompile(`(?i)(` + workcode.PrefixAlternation + `)[\s_-]?(` + workcode.Digits + `)`)
+var (
+	catalogCodePattern = regexp.MustCompile(`(?i)(` + workcode.CatalogPrefixAlternation + `)[\s_-]?(` + workcode.Digits + `)`)
+	// customCodePattern matches only the bracketed code Kikoto appends to a
+	// custom work's folder name, such as "Example Work [KT00000001]", so a
+	// word or number that happens to follow "kt" names no work.
+	customCodePattern = regexp.MustCompile(`(?i)\[(` + workcode.CustomPrefix + `)(` + workcode.CustomDigitsPattern + `)\]`)
+)
 
 type WorkFolder struct {
 	Code    string
@@ -481,13 +487,24 @@ func ExtractWorkCode(name string) (string, bool) {
 	if downloadedLyricsFolderPattern.MatchString(strings.TrimSpace(name)) {
 		return "", false
 	}
-	indices := workCodePattern.FindAllStringSubmatchIndex(name, -1)
-	codes := make([]string, 0, len(indices))
-	for _, match := range indices {
+	type found struct {
+		at   int
+		code string
+	}
+	matches := []found{}
+	for _, match := range catalogCodePattern.FindAllStringSubmatchIndex(name, -1) {
 		if match[1] < len(name) && name[match[1]] >= '0' && name[match[1]] <= '9' {
 			continue
 		}
-		codes = append(codes, strings.ToUpper(name[match[2]:match[3]])+name[match[4]:match[5]])
+		matches = append(matches, found{at: match[0], code: strings.ToUpper(name[match[2]:match[3]]) + name[match[4]:match[5]]})
+	}
+	for _, match := range customCodePattern.FindAllStringSubmatchIndex(name, -1) {
+		matches = append(matches, found{at: match[0], code: strings.ToUpper(name[match[2]:match[3]]) + name[match[4]:match[5]]})
+	}
+	sort.Slice(matches, func(i, j int) bool { return matches[i].at < matches[j].at })
+	codes := make([]string, 0, len(matches))
+	for _, match := range matches {
+		codes = append(codes, match.code)
 	}
 	if len(codes) == 0 {
 		return "", false

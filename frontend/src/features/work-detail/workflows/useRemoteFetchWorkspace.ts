@@ -89,7 +89,7 @@ export function useRemoteFetchWorkspace({
       setDraft(createRemoteFetchDraft({ intent, detail, paths, plan }));
       return true;
     } catch (error) {
-      if (!notifyFetchDestination(toast, error, t)) toast.notify(toastFromError(error, "Fetch preparation failed."));
+      if (!notifyFetchDestination(toast, error, t)) toast.notify(toastFromError(error, t("remoteFetch.planFailed")));
       return false;
     } finally {
       endOperation();

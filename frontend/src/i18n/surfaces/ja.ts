@@ -1877,7 +1877,7 @@ export const surfaceJapanese = {
     noVoiceActorMetadata: "声優メタデータなし",
     noTagMetadata: "タグメタデータなし",
     customWorkNoFolderDescription:
-      "このカスタム作品にはライブラリ内のローカルフォルダーがありません。名前の末尾にこの KT 番号が付いたフォルダーがあれば、スキャンで再び見つかります。",
+      "このカスタム作品にはライブラリ内のローカルフォルダーがありません。名前に [KT00000001] のように角括弧で囲んだこの KT 番号が付いたフォルダーがあれば、スキャンで再び見つかります。",
     noSourceDirectoryDescription:
       "この作品はローカルデータベースにありますが、ローカルファイル、キャッシュ、追跡済みソース、既知のソース情報はまだありません。",
     sourceAvailable: "{{source}} を利用できます",
@@ -2489,6 +2489,7 @@ export const surfaceJapanese = {
     replaceExisting: "フォルダー内のファイルを置き換える",
     targetPath: "このフォルダー内のパス",
     planFailed: "プレビューを更新できませんでした。",
+    collision: "{{path}} に 2 つのファイルが置かれます。どちらかを移動するか、選択を外してください。",
     applying: "編集を開始しています",
     statusBlocked: "解決が必要な競合：{{count}}",
     statusReady: "準備完了：追加 {{add}}、削除 {{remove}}",
@@ -2496,6 +2497,7 @@ export const surfaceJapanese = {
     back: "ファイル一覧に戻る",
     apply: "変更を適用",
     folderChanged: "フォルダーが変更されました。更新されたプレビューを確認してください。",
+    mergeChanged: "比較の後に統合するフォルダーまたはこのフォルダーが変更されました。統合をもう一度確認してください。",
     applyFailed: "編集を開始できませんでした。",
     queued: "フォルダーの編集をワークフロー実行 #{{runId}} としてキューに追加しました。",
     completed: "ワークフロー #{{runId}} でファイルを更新しました。",
@@ -2557,7 +2559,7 @@ export const surfaceJapanese = {
     mergeConfirmLoss_other: "{{count}} ファイルを失って削除",
   },
   fetchCompose: {
-    title: "Fetch",
+    title: "取得",
     description:
       "{{code}} を新しいフォルダーに Fetch し、ほかの版・ソース・ローカルフォルダーのファイルや、言語を指定した歌詞を加えます。",
     newFolder: "新しいフォルダー",
@@ -2568,7 +2570,7 @@ export const surfaceJapanese = {
     statusIdle: "この版のファイルを 1 つ以上選択してください",
     statusReady: "準備完了：新しいフォルダーに {{count}} ファイル",
     applying: "Fetch を開始しています",
-    apply: "Fetch",
+    apply: "取得",
     applyFailed: "Fetch を開始できませんでした。更新されたプレビューを確認してください。",
     queued: "Fetch {{code}} をワークフロー実行 #{{runId}} としてキューに追加しました。",
     queuedWithFollowUp:
@@ -2776,6 +2778,7 @@ export const surfaceJapanese = {
     downloadLimitExceeded:
       "選択したファイルの中にリモートダウンロードの上限を超えるものがあります。選択を外すか、設定で上限を引き上げてください。",
     insufficientDiskSpace: "この操作に必要なディスクの空き容量が足りません。",
+    unknownFileSize: "ソースが選択したファイルの一部のサイズを報告していないため、ディスクの空き容量を確認できません。",
     scanDepthTooShallow:
       "スキャンの深さが、取得した作品の保存先フォルダーより浅くなっています。スキャンの深さを増やすか、リモートソースの保存パスを短くしてください。",
     saveTemplateTooDeep:

@@ -20,6 +20,13 @@ import (
 // work tree so the browser never has to orchestrate sequential child runs.
 const maxMediaCleanupTargets = 20000
 
+// mediaCleanupResourceKey is the resource of every job that deletes or
+// rearranges library files. Server.mediaCleanupMu holds it in this process: a
+// running job with that resource, a local scan, and a Fetch publication hold
+// the mutex while they change or read library folders, and creating a custom
+// work renames a folder only while it holds it.
+const mediaCleanupResourceKey = "media:cleanup"
+
 type mediaCleanupMode string
 
 const (
@@ -245,7 +252,7 @@ func (s *Server) insertMediaCleanupWorkflow(ctx context.Context, targets []media
 		return 0, 0, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cleanupNodeID, WorkerType: "media_location_cleanup", Status: "queued", Priority: workflow.JobPriorityUserInitiated, ResourceKey: "media:cleanup", Payload: payload,
+		NodeRunID: cleanupNodeID, WorkerType: "media_location_cleanup", Status: "queued", Priority: workflow.JobPriorityUserInitiated, ResourceKey: mediaCleanupResourceKey, Payload: payload,
 		Checkpoint: mediaCleanupCheckpoint{CompletedKeys: []string{}}, Recoverable: true, MaxRetries: 3,
 		ProgressCurrent: 0, ProgressTotal: len(targets),
 	})

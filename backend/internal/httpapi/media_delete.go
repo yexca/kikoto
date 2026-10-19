@@ -245,7 +245,7 @@ func (s *Server) createLocalMediaDeleteWorkflow(ctx context.Context, target loca
 		return 0, 0, 0, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: deleteNodeID, WorkerType: "local_media_delete", Status: "queued", ResourceKey: "media:cleanup", Payload: input,
+		NodeRunID: deleteNodeID, WorkerType: "local_media_delete", Status: "queued", ResourceKey: mediaCleanupResourceKey, Payload: input,
 		Checkpoint: map[string]any{"phase": "pending"}, Recoverable: true, MaxRetries: 3, ProgressCurrent: 0, ProgressTotal: 1,
 	})
 	if err != nil {

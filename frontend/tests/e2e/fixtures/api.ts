@@ -134,6 +134,7 @@ export function workDetailFixture(work: Work = workFixture(), overrides: Partial
     description: "",
     releaseDate: work.releaseDate,
     ageRating: work.ageRating,
+    providerAgeRating: work.ageRating,
     durationSeconds: null,
     createdAt: work.createdAt,
     updatedAt: work.updatedAt,

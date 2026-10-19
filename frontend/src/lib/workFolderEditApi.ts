@@ -37,6 +37,8 @@ export type WorkFolderEditRequest = {
   folders?: string[];
   /** Other local folders of the work to delete once the edited folder holds what the edit takes from them. */
   mergeFolderIds?: number[];
+  /** The review of the complete merge check of the same edit, which merging folders requires. */
+  mergeReview?: string;
   decisions: RemoteFetchFileDecision[];
   assignments?: WorkFolderEditAssignment[];
   requestId?: string;
@@ -109,13 +111,17 @@ export type WorkFolderEditMerge = {
 /** A file of a merged folder that the edited folder will not hold with identical content. */
 export type WorkFolderEditLostFile = { folderId: number; path: string; sizeBytes: number };
 
-/** What deleting the merged folders loses. While `complete` is false, files are still being compared. */
+/**
+ * What deleting the merged folders loses. While `complete` is false, files are still being compared;
+ * a complete check carries the `review` that applying the same edit sends back.
+ */
 export type WorkFolderEditMergeCheck = {
   complete: boolean;
   checkedFiles: number;
   pendingFiles: number;
   pendingBytes: number;
   lost: WorkFolderEditLostFile[];
+  review?: string;
 };
 
 /** Where files for a folder of the work can come from: its family's local folders and remote editions. */

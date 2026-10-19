@@ -44,6 +44,7 @@ type customWorkNoticeAcceptance struct {
 var (
 	errCustomWorkFolderUnavailable = errors.New("the folder cannot become a custom work")
 	errCustomWorkCodesExhausted    = errors.New("no custom work code is left to assign")
+	errCustomWorkFolderInUse       = errors.New("the folder is a Fetch folder or one a running job writes into")
 )
 
 type customWorkFolder struct {
@@ -129,8 +130,13 @@ func (s *Server) createCustomWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.customWorkMu.Lock()
-	defer s.customWorkMu.Unlock()
+	// The rename holds the media:cleanup resource, so no Edit files job,
+	// cleanup, scan, or Fetch publication changes library folders meanwhile.
+	if !s.mediaCleanupMu.TryLock() {
+		writeAPIError(w, http.StatusConflict, "custom_work_library_busy", "Another job is changing library folders; try again when it finishes.", true)
+		return
+	}
+	defer s.mediaCleanupMu.Unlock()
 	created, err := s.createCustomWorkFromFolder(r.Context(), rel, title)
 	if err != nil {
 		writeCustomWorkError(w, err)
@@ -202,6 +208,8 @@ func writeCustomWorkError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": errCustomWorkFolderUnavailable.Error()})
 	case errors.Is(err, errCustomWorkCodesExhausted):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": errCustomWorkCodesExhausted.Error()})
+	case errors.Is(err, errCustomWorkFolderInUse):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": errCustomWorkFolderInUse.Error()})
 	default:
 		// Filesystem errors name host paths; they stay in the server log.
 		slog.Warn("custom work request failed", "error", err)
@@ -253,6 +261,11 @@ func (s *Server) createCustomWorkFromFolder(ctx context.Context, rel, title stri
 	if folder == nil {
 		return createCustomWorkResponse{}, errCustomWorkFolderUnavailable
 	}
+	if inUse, err := s.customWorkFolderInUse(ctx, folder.AbsPath); err != nil {
+		return createCustomWorkResponse{}, err
+	} else if inUse {
+		return createCustomWorkResponse{}, errCustomWorkFolderInUse
+	}
 	if title == "" {
 		title = strings.TrimSpace(folder.Name)
 	}
@@ -271,11 +284,6 @@ func (s *Server) createCustomWorkFromFolder(ctx context.Context, rel, title stri
 		return createCustomWorkResponse{}, errCustomWorkFolderUnavailable
 	}
 	target := filepath.Join(filepath.Dir(folder.AbsPath), name)
-	if _, err := os.Lstat(target); err == nil {
-		return createCustomWorkResponse{}, errCustomWorkFolderUnavailable
-	} else if !os.IsNotExist(err) {
-		return createCustomWorkResponse{}, err
-	}
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO work (primary_code, work_type, title, description)
 		VALUES (?, 'audio', ?, '')
@@ -287,11 +295,14 @@ func (s *Server) createCustomWorkFromFolder(ctx context.Context, rel, title stri
 	if err != nil {
 		return createCustomWorkResponse{}, err
 	}
-	if err := os.Rename(folder.AbsPath, target); err != nil {
+	// The rename never replaces a folder that already has the new name.
+	if err := renameNoReplace(folder.AbsPath, target); errors.Is(err, os.ErrExist) {
+		return createCustomWorkResponse{}, errCustomWorkFolderUnavailable
+	} else if err != nil {
 		return createCustomWorkResponse{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		if restoreErr := os.Rename(target, folder.AbsPath); restoreErr != nil {
+		if restoreErr := renameNoReplace(target, folder.AbsPath); restoreErr != nil {
 			return createCustomWorkResponse{}, errors.Join(err, restoreErr)
 		}
 		return createCustomWorkResponse{}, err
@@ -301,6 +312,62 @@ func (s *Server) createCustomWorkFromFolder(ctx context.Context, rel, title stri
 		Code:   code,
 		Path:   path.Join(path.Dir(rel), name),
 	}, nil
+}
+
+// customWorkFolderInUse reports whether a folder is, holds, or lies inside a
+// folder Fetch writes into: a configured Fetch root, or the target of an
+// active Fetch or Edit files run, including a folder that run merges away.
+func (s *Server) customWorkFolderInUse(ctx context.Context, absolute string) (bool, error) {
+	fetchRoots, err := s.configuredRemoteFetchWatchRoots(ctx)
+	if err != nil {
+		return false, err
+	}
+	roots := []string{}
+	for _, root := range fetchRoots {
+		roots = append(roots, relativeDataPath(s.cfg.DataRoot, root))
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT manifest.target_root
+		FROM remote_fetch_manifest AS manifest
+		INNER JOIN workflow_run AS run ON run.id = manifest.workflow_run_id
+		WHERE run.status IN ('queued', 'running')
+		UNION ALL
+		SELECT COALESCE(CAST(json_extract(job.payload_json, '$.target_root') AS TEXT), '')
+		FROM workflow_job AS job
+		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
+		WHERE job.worker_type = ? AND run.status IN ('queued', 'running')
+		UNION ALL
+		SELECT COALESCE(CAST(json_extract(merge.value, '$.rootPath') AS TEXT), '')
+		FROM workflow_job AS job
+		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id,
+			json_each(job.payload_json, '$.merges') AS merge
+		WHERE job.worker_type = ? AND run.status IN ('queued', 'running')
+	`, workFolderEditWorkerType, workFolderEditWorkerType)
+	if err != nil {
+		return false, err
+	}
+	for rows.Next() {
+		var root string
+		if err := rows.Scan(&root); err != nil {
+			_ = rows.Close()
+			return false, err
+		}
+		roots = append(roots, root)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return false, err
+	}
+	if err := rows.Close(); err != nil {
+		return false, err
+	}
+	folder := relativeDataPath(s.cfg.DataRoot, absolute)
+	for _, root := range roots {
+		if fetchPathWithinRoot(root, folder) || fetchPathWithinRoot(folder, root) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // customWorkFolderName keeps the folder's own name first and appends the code

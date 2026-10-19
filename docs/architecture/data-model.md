@@ -697,6 +697,8 @@ code ([ADR-0005](../decisions/ADR-0005-custom-work-codes.md)). Its code is `KT`
 followed by eight digits, a work code like the catalog prefixes, and its
 folder's name carries the code in brackets, such as
 `Example Work [KT00000001]`, so scans find it like any other work folder.
+Scans recognize a custom code only in that bracketed form, and remote-source
+codes are catalog codes only, so no remote entry resolves to a custom work.
 `custom_work_code_counter` holds the highest number assigned; a number is
 assigned once, and a number a work or a folder name within the scan depth
 already uses is skipped.
@@ -1154,7 +1156,11 @@ separate from these derived caches.
   `work_search_dirty`; a background worker rebuilds queued documents in bounded
   batches. A search rebuilds a queue of at most 64 works itself, so an edit is
   searchable at once; a longer queue leaves the search on the previous index
-  state and wakes the worker instead of holding the request. Edition-family
+  state and wakes the worker instead of holding the request. A migration that
+  recreates the index carries every existing document into it before queueing
+  every work, so a search during the full rebuild reads the previous documents
+  and a negated clause never matches a work only because its document is
+  missing. Edition-family
   matching is applied at query time, so the index never duplicates a sibling's
   text or creates another work identity.
 - User state should survive metadata refresh and source replacement.

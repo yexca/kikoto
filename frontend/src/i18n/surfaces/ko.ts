@@ -1869,7 +1869,7 @@ export const surfaceKorean = {
     noVoiceActorMetadata: "성우 메타데이터 없음",
     noTagMetadata: "태그 메타데이터 없음",
     customWorkNoFolderDescription:
-      "이 사용자 지정 작품은 라이브러리에 로컬 폴더가 없습니다. 이름이 이 KT 코드로 끝나는 폴더가 있으면 스캔에서 다시 찾습니다.",
+      "이 사용자 지정 작품은 라이브러리에 로컬 폴더가 없습니다. 이름에 [KT00000001]처럼 대괄호로 묶은 이 KT 코드가 있는 폴더가 있으면 스캔에서 다시 찾습니다.",
     noSourceDirectoryDescription:
       "이 작품은 로컬 데이터베이스에 있지만 로컬 파일, 캐시, 추적 소스 또는 알려진 소스 정보가 아직 없습니다.",
     sourceAvailable: "{{source}} 사용 가능",
@@ -2483,6 +2483,7 @@ export const surfaceKorean = {
     replaceExisting: "폴더의 파일 교체",
     targetPath: "이 폴더 안의 경로",
     planFailed: "미리보기를 새로 고치지 못했습니다.",
+    collision: "{{path}}에 두 파일이 놓이게 됩니다. 하나를 옮기거나 선택을 해제하세요.",
     applying: "편집을 시작하는 중",
     statusBlocked: "해결할 충돌: {{count}}",
     statusReady: "준비됨: 추가 {{add}}, 제거 {{remove}}",
@@ -2490,6 +2491,7 @@ export const surfaceKorean = {
     back: "파일 목록으로 돌아가기",
     apply: "변경 사항 적용",
     folderChanged: "폴더가 변경되었습니다. 업데이트된 미리보기를 확인하세요.",
+    mergeChanged: "비교 후 병합할 폴더 또는 이 폴더가 변경되었습니다. 병합을 다시 검토하세요.",
     applyFailed: "편집을 시작하지 못했습니다.",
     queued: "폴더 편집이 워크플로 실행 #{{runId}}(으)로 대기열에 추가되었습니다.",
     completed: "워크플로 #{{runId}}에서 파일을 업데이트했습니다.",
@@ -2549,7 +2551,7 @@ export const surfaceKorean = {
     mergeConfirmLoss_other: "파일 {{count}}개를 잃고 삭제",
   },
   fetchCompose: {
-    title: "Fetch",
+    title: "가져오기",
     description:
       "{{code}}를 새 폴더로 Fetch하고, 다른 판·소스·로컬 폴더의 파일이나 언어를 지정한 가사를 함께 추가합니다.",
     newFolder: "새 폴더",
@@ -2560,7 +2562,7 @@ export const surfaceKorean = {
     statusIdle: "이 판의 파일을 하나 이상 선택하세요",
     statusReady: "준비됨: 새 폴더에 파일 {{count}}개",
     applying: "Fetch를 시작하는 중",
-    apply: "Fetch",
+    apply: "가져오기",
     applyFailed: "Fetch를 시작하지 못했습니다. 업데이트된 미리 보기를 확인하세요.",
     queued: "Fetch {{code}}를 워크플로 실행 #{{runId}}(으)로 대기열에 추가했습니다.",
     queuedWithFollowUp:
@@ -2764,6 +2766,7 @@ export const surfaceKorean = {
     downloadLimitExceeded:
       "선택한 파일 중 원격 다운로드 한도를 넘는 파일이 있습니다. 선택을 해제하거나 설정에서 한도를 높이세요.",
     insufficientDiskSpace: "이 작업에 필요한 디스크 여유 공간이 부족합니다.",
+    unknownFileSize: "소스가 선택한 일부 파일의 크기를 알려 주지 않아 디스크 여유 공간을 확인할 수 없습니다.",
     scanDepthTooShallow:
       "스캔 깊이가 가져온 작품을 저장하는 폴더보다 얕습니다. 스캔 깊이를 늘리거나 원격 소스의 저장 경로를 줄이세요.",
     saveTemplateTooDeep: "이 저장 경로는 작품을 최대 스캔 깊이보다 깊은 곳에 둡니다. 폴더 단계를 줄이세요.",

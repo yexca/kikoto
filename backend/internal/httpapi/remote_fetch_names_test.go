@@ -49,7 +49,7 @@ func newRemoteTreeFetchServer(t *testing.T, tracks []kikoeru.Track) (*Server, *s
 }
 
 func remoteTreeFile(title string, download string) kikoeru.Track {
-	return kikoeru.Track{Type: "audio", Title: title, MediaDownloadURL: download, Size: int64(len(download))}
+	return kikoeru.Track{Type: "audio", Title: title, MediaDownloadURL: download, Size: int64Pointer(int64(len(download)))}
 }
 
 // Two names that differ only by letter case are one file on a case-insensitive
@@ -284,7 +284,7 @@ func TestRemoteFetchCompletesWhenTitlesCarryPathComponents(t *testing.T) {
 // as a 4xx with a stable code, never as an upstream failure that may be retried.
 func TestRemoteFetchEnqueueRejectionsAreClientErrors(t *testing.T) {
 	oversized := remoteTreeFile("huge.mp3", "/media/huge")
-	oversized.Size = 200 << 30
+	oversized.Size = int64Pointer(200 << 30)
 	server, _, code := newRemoteTreeFetchServer(t, []kikoeru.Track{oversized})
 	ctx := context.Background()
 
@@ -315,7 +315,7 @@ func TestRemoteFetchEnqueueRejectionsAreClientErrors(t *testing.T) {
 
 func TestRemoteFetchPlanRejectsFilesAboveDownloadLimit(t *testing.T) {
 	oversized := remoteTreeFile("huge.mp3", "/media/huge")
-	oversized.Size = 200 << 30
+	oversized.Size = int64Pointer(200 << 30)
 	server, _, code := newRemoteTreeFetchServer(t, []kikoeru.Track{oversized})
 	request := httptest.NewRequest(http.MethodPost, "/api/remote-sources/7/works/"+code+"/fetch-plan", strings.NewReader(`{}`))
 	request.SetPathValue("id", "7")
@@ -336,5 +336,44 @@ func TestRemoteFetchPlanRejectsFilesAboveDownloadLimit(t *testing.T) {
 	}
 	if body.Code != "download_limit_exceeded" || body.Retryable {
 		t.Fatalf("response = %+v, want non-retryable download_limit_exceeded", body)
+	}
+}
+
+// A source that declares a file as 0 bytes describes an empty file, so the
+// disk reserve can still be checked. Only a size the source does not declare
+// leaves the reserve unmeasurable.
+func TestRemoteFetchPlanReserveTreatsDeclaredEmptyFileAsKnown(t *testing.T) {
+	planWith := func(empty kikoeru.Track) *httptest.ResponseRecorder {
+		server, _, code := newRemoteTreeFetchServer(t, []kikoeru.Track{remoteTreeFile("track.mp3", "/media/track"), empty})
+		request := httptest.NewRequest(http.MethodPost, "/api/remote-sources/7/works/"+code+"/fetch-plan", strings.NewReader(`{"minFreeBytes":1}`))
+		request.SetPathValue("id", "7")
+		request.SetPathValue("code", code)
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{
+			ID: 1, Permissions: []string{"remote:fetch", "metadata:sync"},
+		}))
+		response := httptest.NewRecorder()
+		server.planRemoteSourceWorkSave(response, request)
+		return response
+	}
+
+	declared := planWith(kikoeru.Track{Type: "text", Title: "notice.txt", MediaDownloadURL: "/media/notice", Size: int64Pointer(0)})
+	if declared.Code != http.StatusOK {
+		t.Fatalf("declared empty file: status = %d, want 200: %s", declared.Code, declared.Body)
+	}
+	var plan remoteWorkSavePlan
+	if err := json.Unmarshal(declared.Body.Bytes(), &plan); err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items) != 2 || plan.Items[1].SizeBytes == nil || *plan.Items[1].SizeBytes != 0 {
+		t.Fatalf("plan items = %+v, want notice.txt planned with a known size of 0", plan.Items)
+	}
+
+	undeclared := planWith(kikoeru.Track{Type: "text", Title: "notice.txt", MediaDownloadURL: "/media/notice"})
+	var body errorResponseBody
+	if err := json.Unmarshal(undeclared.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if undeclared.Code != http.StatusUnprocessableEntity || body.Code != "unknown_file_size" || body.Retryable {
+		t.Fatalf("undeclared size: got %d %+v, want non-retryable 422 unknown_file_size", undeclared.Code, body)
 	}
 }

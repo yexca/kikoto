@@ -94,7 +94,7 @@ Until a background update finishes, the work keeps its last saved tag set, inclu
 
 ## Custom works
 
-A [custom work](settings.md#metadata) has no provider metadata and no remote source. Its detail shows no DLsite link, rating, sales, or metadata notice, and offers no metadata refresh, remote source tabs, or source checks; the directory lists only its local folders. The metadata editor has no **Fetch for edit** and no Metadata source section, so a custom work takes no metadata link, purchase bonus parent, or bundle contents; its title, description, age rating, cover, tags, and credits are edited by hand. **Edit files** and the **Lyrics files** tab of **Manage lyrics** list only local folders and editions. When its folder is missing, the directory explains that a scan finds the work again once a folder's name ends with its KT code. Its cover is one of its local images; resetting the cover shows the work code in its place.
+A [custom work](settings.md#metadata) has no provider metadata and no remote source. Its detail shows no DLsite link, rating, sales, or metadata notice, and offers no metadata refresh, remote source tabs, or source checks; the directory lists only its local folders. The metadata editor has no **Fetch for edit** and no Metadata source section, so a custom work takes no metadata link, purchase bonus parent, or bundle contents; its title, description, age rating, cover, tags, and credits are edited by hand. **Edit files** and the **Lyrics files** tab of **Manage lyrics** list only local folders and editions. When its folder is missing, the directory explains that a scan finds the work again once a folder's name carries its KT code in brackets, such as `[KT00000001]`. Its cover is one of its local images; resetting the cover shows the work code in its place.
 
 ## Purchase bonuses
 
@@ -325,12 +325,18 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   Each row's menu also has **Move to**, for touch screens and keyboards.
   Deleting a folder that holds something asks first, then moves what it held
   up one level. A name already taken where a file or folder lands gets a
-  number, such as `01 (2).mp3`. A moved file keeps its playback progress,
+  number, such as `01 (2).mp3`. A file you clear gives up the place you moved
+  it to, so selecting it again returns it to its own path. When two files
+  would still end up at one path, the edit names that path and waits until you
+  move or clear one of them. A moved file keeps its playback progress,
   lyrics, and other references. Folders the edit empties are removed, and
   folders you create stay even when empty. Kikoto's `lyrics_kikoto` folder is
-  arranged only through lyrics roles. Files from another local folder are
+  arranged only through lyrics roles, so a dragged selection that holds it is
+  not dropped. Files from another local folder are
   copied, and that folder is left unchanged unless **Merge into this folder**
-  is on for it. A merged folder takes all its files when none are selected yet,
+  is on for it. The switch turns on once the folder's files have loaded, and a
+  folder on an offline storage pool is never merged. A merged folder takes all
+  its files when none are selected yet,
   and once this folder holds what the edit copies, the merged folder is
   deleted with everything it still holds. Files from a remote edition are
   downloaded, which also
@@ -354,9 +360,12 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   folders by content with the folder as it will be, lists each file that has
   no identical copy there and is lost when its folder is deleted, and asks
   again before deleting; files downloaded from a remote source are not
-  compared. The edit runs as one Activity workflow that collects every added
-  file before it removes, moves, or adds anything, and deletes a merged folder
-  last, only if it still holds exactly the files the review listed. The
+  compared. When a merged folder or this folder changes after the comparison,
+  the edit is not applied and asks you to review the merge again. The edit runs
+  as one Activity workflow that collects every added file before it removes,
+  moves, or adds anything, and deletes a merged folder last, only if it still
+  holds exactly the files the review listed, unchanged. A merged folder of a
+  work that a Fetch is still filling is not merged. The
   directory reloads when it finishes.
 - A work whose code a scan finds in several local folders keeps all of them.
   The directory then shows one folder per copy, **Manage files** lists one

@@ -229,8 +229,19 @@ type Track struct {
 	MediaDownloadURL    string  `json:"mediaDownloadUrl"`
 	StreamLowQualityURL string  `json:"streamLowQualityUrl"`
 	Duration            float64 `json:"duration"`
-	Size                int64   `json:"size"`
-	Children            []Track `json:"children"`
+	// Size is nil when the source omits it; a declared 0 is an empty file.
+	Size     *int64  `json:"size"`
+	Children []Track `json:"children"`
+}
+
+// KnownSize returns a copy of the declared size, or nil when the source
+// omitted it or declared a negative value.
+func (t Track) KnownSize() *int64 {
+	if t.Size == nil || *t.Size < 0 {
+		return nil
+	}
+	value := *t.Size
+	return &value
 }
 
 func NewClient(baseURL string, httpClient *http.Client) *Client {
@@ -593,8 +604,10 @@ func cloneValues(values url.Values) url.Values {
 	return clone
 }
 
+// normalizeWorkCode accepts only catalog codes: a remote source never holds a
+// custom work, which exists only in this library.
 func normalizeWorkCode(value string) string {
-	return workcode.Normalize(value)
+	return workcode.NormalizeCatalog(value)
 }
 
 func (c *Client) normalizeTrackURLs(tracks []Track) {

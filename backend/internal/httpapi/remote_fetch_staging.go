@@ -398,6 +398,9 @@ func (s *Server) publishRemoteFetchRoot(ctx context.Context, manifest remoteFetc
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), remoteFetchPublishTimeout)
 	defer cancel()
+	// No custom work renames a folder while the swap places the target root.
+	s.mediaCleanupMu.Lock()
+	defer s.mediaCleanupMu.Unlock()
 	_ = s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, "promote", "running", nil)
 	// Once a publication rename has happened, the backup is the only copy of
 	// the previous root. Never replace it; recovery must settle it first.
