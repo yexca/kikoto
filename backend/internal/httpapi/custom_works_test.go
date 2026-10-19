@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -178,5 +179,79 @@ func TestCustomWorkRefusesProviderAndRemoteSourceActions(t *testing.T) {
 	detail, err := server.loadWorkDetail(context.Background(), 0, workID, false)
 	if err != nil || !detail.CustomWork || detail.DLsiteURL != "" {
 		t.Fatalf("detail customWork = %t dlsiteUrl = %q, %v", detail.CustomWork, detail.DLsiteURL, err)
+	}
+}
+
+func TestCustomWorkRefusesAFolderARunningEditWritesInto(t *testing.T) {
+	root := t.TempDir()
+	writeCaseScanTrack(t, root, "Incoming/Example Track")
+	server := NewServer(openMigratedTestDB(t), config.Config{DataRoot: root, LocalScanDepth: 2})
+	permissions := []string{"library:write", "downloads:manage"}
+	acceptCustomWorkNoticeForTest(t, server, permissions...)
+	// A queued Edit files run publishes a work folder inside it that does not
+	// exist yet.
+	payload := `{"target_root":"Incoming/` + testfixture.WorkCode(testfixture.PrefixRJ, 0) + `"}`
+	for _, statement := range []string{
+		`INSERT OR IGNORE INTO workflow_definition (code, display_name) VALUES ('` + workFolderEditWorkflowCode + `', 'Edit files')`,
+		`INSERT INTO workflow_run (workflow_definition_id, workflow_code, display_name, status, trigger_type, input_json)
+			VALUES ((SELECT id FROM workflow_definition WHERE code = '` + workFolderEditWorkflowCode + `'), '` + workFolderEditWorkflowCode + `', 'Edit files', 'queued', 'manual', '{}')`,
+		`INSERT INTO workflow_job (workflow_run_id, worker_type, status, payload_json) VALUES (last_insert_rowid(), '` + workFolderEditWorkerType + `', 'queued', '` + payload + `')`,
+	} {
+		if _, err := server.db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	response := httptest.NewRecorder()
+	server.createCustomWork(response, customWorkRequest(http.MethodPost, "/api/custom-works", `{"path":"Incoming"}`, permissions...))
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), errCustomWorkFolderInUse.Error()) {
+		t.Fatalf("create from a folder a running edit writes into = %d %s, want %d", response.Code, response.Body.String(), http.StatusConflict)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Incoming")); err != nil {
+		t.Fatalf("refused folder changed: %v", err)
+	}
+}
+
+func TestCustomWorkWaitsForJobsThatChangeLibraryFolders(t *testing.T) {
+	root := t.TempDir()
+	writeCaseScanTrack(t, root, "Example Work")
+	server := NewServer(openMigratedTestDB(t), config.Config{DataRoot: root, LocalScanDepth: 2})
+	permissions := []string{"library:write", "downloads:manage"}
+	acceptCustomWorkNoticeForTest(t, server, permissions...)
+	// A running Edit files job, cleanup, scan, or Fetch publication holds the
+	// media:cleanup resource.
+	server.mediaCleanupMu.Lock()
+	response := httptest.NewRecorder()
+	server.createCustomWork(response, customWorkRequest(http.MethodPost, "/api/custom-works", `{"path":"Example Work"}`, permissions...))
+	server.mediaCleanupMu.Unlock()
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "custom_work_library_busy") {
+		t.Fatalf("create while library folders change = %d %s, want the busy refusal", response.Code, response.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "Example Work")); err != nil {
+		t.Fatalf("folder changed while busy: %v", err)
+	}
+}
+
+func TestRenameNoReplaceKeepsAnExistingTarget(t *testing.T) {
+	root := t.TempDir()
+	from, to := filepath.Join(root, "Example Work"), filepath.Join(root, "Example Work [KT00000001]")
+	for _, folder := range []string{from, to} {
+		if err := os.Mkdir(folder, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := renameNoReplace(from, to); !errors.Is(err, os.ErrExist) {
+		t.Fatalf("rename onto an existing folder = %v, want os.ErrExist", err)
+	}
+	for _, folder := range []string{from, to} {
+		if _, err := os.Stat(folder); err != nil {
+			t.Fatalf("%s after the refused rename: %v", folder, err)
+		}
+	}
+	if err := os.Remove(to); err != nil {
+		t.Fatal(err)
+	}
+	if err := renameNoReplace(from, to); err != nil {
+		t.Fatalf("rename onto a free name = %v", err)
 	}
 }

@@ -181,8 +181,19 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context) error {
 	jobCtx, stopHeartbeat := s.startWorkflowJobHeartbeat(ctx, job)
 	defer stopHeartbeat()
 	s.workflowLeases.activate(lease, job.RunID, job.ID, stopHeartbeat)
-	runErr := s.executeClaimedWorkflowJob(jobCtx, job)
+	runErr := s.executeClaimedWorkflowJobWithResources(jobCtx, job)
 	return s.handleWorkflowJobResult(ctx, jobCtx, job, runErr)
+}
+
+// executeClaimedWorkflowJobWithResources runs a job that changes library
+// folders, or scans them, while it holds the media:cleanup resource, so no
+// custom work renames a folder under it.
+func (s *Server) executeClaimedWorkflowJobWithResources(ctx context.Context, job workflowJobRecord) error {
+	if job.ResourceKey == mediaCleanupResourceKey || job.WorkerType == "local_library_scan" {
+		s.mediaCleanupMu.Lock()
+		defer s.mediaCleanupMu.Unlock()
+	}
+	return s.executeClaimedWorkflowJob(ctx, job)
 }
 
 func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobRecord) (runErr error) {

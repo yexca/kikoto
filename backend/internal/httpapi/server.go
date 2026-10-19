@@ -55,7 +55,7 @@ type Server struct {
 	remoteBrowseCache              remoteBrowsePageCache
 	remoteSourceConfigMu           sync.RWMutex
 	manualCoverMu                  sync.Mutex
-	customWorkMu                   sync.Mutex
+	mediaCleanupMu                 sync.Mutex
 	remoteWorkCacheGenerations     map[int64]uint64
 	remoteWorkCache                map[string]remoteWorkSnapshot
 	remoteWorkCacheCalls           map[string]*remoteWorkCall

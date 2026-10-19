@@ -881,7 +881,7 @@ func (s *Server) enqueueWorkFolderEdit(ctx context.Context, workID int64, payloa
 	bytesTotal, bytesUnknown := remoteFetchTransferTotals(workFolderEditBaseItems(plan.Items))
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
 		NodeRunID: stageNodeID, WorkerType: workFolderEditWorkerType, Status: "queued", Priority: workflow.JobPriorityUserInitiated,
-		ResourceKey: "media:cleanup", Payload: jobPayload, Checkpoint: workFolderEditCheckpoint{}, Recoverable: true, MaxRetries: 3,
+		ResourceKey: mediaCleanupResourceKey, Payload: jobPayload, Checkpoint: workFolderEditCheckpoint{}, Recoverable: true, MaxRetries: 3,
 		ProgressCurrent: 0, ProgressTotal: workFolderEditProgressTotal(jobPayload),
 		ProgressBytesTotal: bytesTotal, ProgressBytesUnknownItems: bytesUnknown,
 	})

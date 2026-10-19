@@ -355,7 +355,7 @@ func (s *Server) runLocalCandidateCleanup(ctx context.Context, candidateID int64
 	initialResult := localCandidateCleanupResult{RunID: runID, CandidateID: candidateID, Action: action, Status: "succeeded", Failures: []string{}}
 	initialCheckpoint := localLocationCleanupCheckpoint{CompletedLocationIDs: []int64{}, Result: initialResult}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cleanupNodeID, WorkerType: "local_location_cleanup", Status: "queued", ResourceKey: "media:cleanup", Payload: input,
+		NodeRunID: cleanupNodeID, WorkerType: "local_location_cleanup", Status: "queued", ResourceKey: mediaCleanupResourceKey, Payload: input,
 		Checkpoint: initialCheckpoint, Recoverable: true, MaxRetries: 3, ProgressCurrent: 0, ProgressTotal: len(locationIDs),
 	})
 	if err != nil {

@@ -423,8 +423,14 @@ cannot create an unchecked outbound path.
 - Creating a custom work renames only a folder the server's own candidate walk
   returned for that request, never a client-supplied path as given. The walk
   stays below the data root in online pools, does not follow links, and the
-  rename stays inside the folder's parent and refuses an existing target. The
-  server refuses creation until an administrator accepts the rename notice.
+  rename stays inside the folder's parent. It never replaces an existing
+  target: on Linux, macOS, and Windows the rename itself refuses one, and
+  elsewhere a check precedes it. The rename holds the `media:cleanup`
+  resource, which every running job with that resource, every local scan, and
+  every Fetch publication hold too, and the server refuses a configured Fetch
+  root, a folder inside or holding one, and a folder an active Fetch or Edit
+  files run writes into or merges away. The server refuses creation until an
+  administrator accepts the rename notice.
 - Keep Fetch staging, rollback backup, and reviewable trash on `/data` so
   publication and rollback use same-filesystem rename semantics.
 - Keep `/cache` disposable. It must not become the only owner of a transaction,
