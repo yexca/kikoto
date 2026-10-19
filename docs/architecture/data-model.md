@@ -61,11 +61,27 @@ provider that supplied the relation; `work_credit` relates a work to a person
 in a role such as `voice_actor`. `person_external_id` records a provider's
 voice actor id for a person (`id_type = 'voice_actor_id'`), scoped to that
 provider: the DLsite creator id from a DLsite snapshot, or a remote source's
-own id. Credit projection resolves a credited voice actor by that id first, so
-a provider rename renames the person and keeps the former name as an alias;
+own id. Credit projection resolves a credited voice actor by that id first;
 an unknown id falls back to the name and is then bound to the person found.
 `person.id` stays the voice actor's identity, and one person may hold several
 ids. Two people who share a display name still resolve to one person.
+
+A person resolved by a provider id is named by that provider's spelling on an
+original edition, so a provider rename renames the person and keeps the former
+name as an alias. A translated edition (a non-canonical `work_edition`) adds its
+spelling as an alias and names the person only while no original edition's
+snapshot of the same provider credits them. A name an administrator merged into
+the person never replaces the display name they kept. A person whose display
+name is the snapshot's spelling of a resolved id is the same voice actor
+credited by name before the id was known: projection merges the two through the
+same recorded, undoable merge an administrator makes, so each id is one person
+credited once per work. When the spelling names the voice actor, the person
+already displayed under it survives, unless an administrator merged that name
+into the person carrying the id; otherwise the person carrying the id survives.
+Projection keeps them apart when the other person carries another id of
+the same provider or an administrator undid a merge of the two; when a manual
+override credits the other person, it stays apart and loses only its snapshot
+credit on the projected work.
 
 `work_staff_credit` holds a work's non-voice DLsite credits: the author,
 scenario writer, illustrator, composer, and other staff (`role` is `author`,
@@ -85,7 +101,8 @@ projection input is unchanged, such as a new sales count, writes nothing but
 the record. Triggers drop a record when a credit or circle relation is removed
 or reassigned, or when the work's imported circle catalog row changes, so the
 next pass restores what the snapshot still declares. The voice credit
-projection never removes a credit its snapshot does not name. `party_metadata_snapshot` keeps the two
+projection removes no credit its snapshot does not name, apart from the
+duplicate credits of one provider id described above. `party_metadata_snapshot` keeps the two
 latest snapshots per circle and provider, as `metadata_snapshot` does per work.
 
 `metadata_snapshot_card_summary` holds one compact, versioned card summary per
@@ -660,7 +677,10 @@ captured catalogs and refresh states. A merge also moves the source's provider
 voice actor ids to the target. Credit projection resolves a name that is no
 person's display name through a confirmed alias held by exactly one person, so
 metadata sync keeps a merge instead of recreating the merged-away person. A
-merged name never replaces the target's display name.
+name an administrator merged never replaces the target's display name. A merge
+that credit projection makes gives the merged names `identity_merged_*` alias
+sources instead of `merged_*`, so they carry no such priority; Undo treats both
+alike.
 
 ## File Availability
 

@@ -357,7 +357,7 @@ func TestVoiceMergeMovesProviderIdentityAndUndoRestoresIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	personID, err := upsertPersonIdentity(ctx, tx, "Source Voice", sql.NullInt64{Int64: 11, Valid: true}, "voice-0001")
+	personID, err := upsertPersonIdentity(ctx, tx, voiceCreditTarget{}, "Source Voice", sql.NullInt64{Int64: 11, Valid: true}, "voice-0001")
 	if err != nil {
 		_ = tx.Rollback()
 		t.Fatal(err)

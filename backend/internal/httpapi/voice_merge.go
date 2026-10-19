@@ -14,20 +14,48 @@ func (s *Server) mergeVoicePeople(ctx context.Context, targetID int64, sourceID 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	targetName, sourceName, mergeReviewID, err := prepareVoiceMergeReview(ctx, tx, targetID, sourceID)
+	targetName, sourceName, mergeReviewID, err := mergeVoicePeopleInTx(ctx, tx, targetID, sourceID, administratorVoiceMergeAliases)
 	if err != nil {
-		return nil, err
-	}
-	if err := mergeVoiceRelations(ctx, tx, targetID, sourceID, sourceName); err != nil {
-		return nil, err
-	}
-	if err := deleteMergedVoicePerson(ctx, tx, sourceID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return map[string]any{"mergeId": mergeReviewID, "targetPersonId": targetID, "sourcePersonId": sourceID, "targetName": targetName, "mergedName": sourceName}, nil
+}
+
+// voiceMergeAliasSources names the alias sources a merge gives the source
+// person's names on the target.
+type voiceMergeAliasSources struct {
+	Name        string
+	PrimaryName string
+	Alias       string
+}
+
+// An administrator merge gives priority to the display name it keeps: a
+// provider identity that arrives again under a merged name never renames the
+// person. A merge the voice credit projection makes because two people share
+// one provider voice actor id is recorded and undone the same way, but its
+// names carry no such priority, so the person still follows the provider name.
+var (
+	administratorVoiceMergeAliases = voiceMergeAliasSources{Name: "merged_name", PrimaryName: "merged_primary_name", Alias: "merged_alias"}
+	identityVoiceMergeAliases      = voiceMergeAliasSources{Name: "identity_merged_name", PrimaryName: "identity_merged_primary_name", Alias: "identity_merged_alias"}
+)
+
+// mergeVoicePeopleInTx merges the source person into the target and records
+// an undoable merge review.
+func mergeVoicePeopleInTx(ctx context.Context, tx *sql.Tx, targetID, sourceID int64, aliases voiceMergeAliasSources) (string, string, int64, error) {
+	targetName, sourceName, mergeReviewID, err := prepareVoiceMergeReview(ctx, tx, targetID, sourceID)
+	if err != nil {
+		return "", "", 0, err
+	}
+	if err := mergeVoiceRelations(ctx, tx, targetID, sourceID, sourceName, aliases); err != nil {
+		return "", "", 0, err
+	}
+	if err := deleteMergedVoicePerson(ctx, tx, sourceID); err != nil {
+		return "", "", 0, err
+	}
+	return targetName, sourceName, mergeReviewID, nil
 }
 
 func prepareVoiceMergeReview(ctx context.Context, tx *sql.Tx, targetID, sourceID int64) (string, string, int64, error) {
@@ -57,21 +85,27 @@ func prepareVoiceMergeReview(ctx context.Context, tx *sql.Tx, targetID, sourceID
 	return targetName, sourceName, mergeReviewID, err
 }
 
-func mergeVoiceRelations(ctx context.Context, tx *sql.Tx, targetID, sourceID int64, sourceName string) error {
+func mergeVoiceRelations(ctx context.Context, tx *sql.Tx, targetID, sourceID int64, sourceName string, aliases voiceMergeAliasSources) error {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO person_alias (person_id, alias, source)
-		VALUES (?, ?, 'merged_name')
+		VALUES (?, ?, ?)
 		ON CONFLICT(person_id, alias) DO NOTHING
-	`, targetID, sourceName); err != nil {
+	`, targetID, sourceName, aliases.Name); err != nil {
 		return err
 	}
+	// A name an administrator merged into the source keeps its priority on
+	// the target.
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO person_alias (person_id, alias, source)
-		SELECT ?, alias, CASE WHEN source = 'primary_name' THEN 'merged_primary_name' ELSE 'merged_alias' END
+		SELECT ?, alias, CASE
+			WHEN source = 'primary_name' THEN ?
+			WHEN source IN ('merged_name', 'merged_primary_name', 'merged_alias') THEN 'merged_alias'
+			ELSE ?
+		END
 		FROM person_alias
 		WHERE person_id = ?
 		ON CONFLICT(person_id, alias) DO NOTHING
-	`, targetID, sourceID); err != nil {
+	`, targetID, aliases.PrimaryName, aliases.Alias, sourceID); err != nil {
 		return err
 	}
 	// Provider identities follow the merge. Deleting the source person would
@@ -230,7 +264,8 @@ func restoreVoiceMergeSnapshot(ctx context.Context, tx *sql.Tx, targetID int64, 
 			DELETE FROM person_alias
 			WHERE person_id = ?
 				AND alias = ?
-				AND source IN ('merged_name', 'merged_primary_name', 'merged_alias')
+				AND source IN ('merged_name', 'merged_primary_name', 'merged_alias',
+					'identity_merged_name', 'identity_merged_primary_name', 'identity_merged_alias')
 		`, targetID, alias); err != nil {
 			return err
 		}
