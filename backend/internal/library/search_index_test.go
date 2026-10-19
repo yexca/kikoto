@@ -314,6 +314,42 @@ func TestSearchExcludesCirclesAndVoicesAndKeepsQuotedPhrasesWhole(t *testing.T) 
 	}
 }
 
+// Each staff role has its own clause, "staff" matches any role, a short needle
+// takes the instr path, and a plain-text search finds staff names too.
+func TestSearchMatchesStaffCreditsByRoleAndAcrossRoles(t *testing.T) {
+	db := openSearchTestDB(t, "../../migrations")
+	written := insertSearchWork(t, db, 8, "Example First Work")
+	illustrated := insertSearchWork(t, db, 9, "Example Second Work")
+	insertSearchWork(t, db, 10, "Example Third Work")
+	execSearchFixture(t, db, `INSERT INTO work_staff_credit (work_id, role, position, name) VALUES
+		(?, 'scenario', 0, 'Example Writer'), (?, 'author', 1, 'Example Author'), (?, 'music', 2, 'Example Composer')`, written, written, written)
+	execSearchFixture(t, db, `INSERT INTO work_staff_credit (work_id, role, position, name) VALUES
+		(?, 'illustration', 0, 'Example Writer'), (?, 'other', 1, 'Ab')`, illustrated, illustrated)
+	store := NewStore(db)
+
+	for _, tc := range []struct {
+		query    string
+		ordinals []int
+	}{
+		{`scenario:"Example Writer"`, []int{8}},
+		{`illust:"Example Writer"`, []int{9}},
+		{`$illust:Example Writer$`, []int{9}},
+		{`illustration:"Example Writer"`, []int{9}},
+		{`author:"Example Author"`, []int{8}},
+		{`staff:"Example Writer"`, []int{8, 9}},
+		{`staff:"Example Composer"`, []int{8}},
+		{`staff:ab`, []int{9}},
+		{`-staff:"Example Writer"`, []int{10}},
+		{`$-scenario:Example Writer$`, []int{9, 10}},
+		{`-illust:"Example Writer" -author:"Example Author"`, []int{10}},
+		{`scenario:"Example Composer"`, nil},
+		{`"Example Composer"`, []int{8}},
+		{`creator:"Example Writer"`, nil},
+	} {
+		assertSearchCodes(t, store, 0, tc.query, tc.ordinals...)
+	}
+}
+
 func TestSearchFindsBundlesByTheirMembers(t *testing.T) {
 	db := openSearchTestDB(t, "../../migrations")
 	insertSearchWork(t, db, 20, "Example Series Complete Pack")

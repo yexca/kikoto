@@ -169,6 +169,22 @@ function searchClauseLabel(clause: SearchClause, t?: TFunction) {
       return translate("library.searchClauseLabels.voiceActor", `VA: ${clause.value}`);
     case "exclude_voice_actor":
       return translate("library.searchClauseLabels.excludeVoiceActor", `Exclude VA: ${clause.value}`);
+    case "staff":
+      return translate("library.searchClauseLabels.staff", `Staff: ${clause.value}`);
+    case "exclude_staff":
+      return translate("library.searchClauseLabels.excludeStaff", `Exclude staff: ${clause.value}`);
+    case "author":
+      return translate("library.searchClauseLabels.author", `Author: ${clause.value}`);
+    case "exclude_author":
+      return translate("library.searchClauseLabels.excludeAuthor", `Exclude author: ${clause.value}`);
+    case "scenario":
+      return translate("library.searchClauseLabels.scenario", `Scenario: ${clause.value}`);
+    case "exclude_scenario":
+      return translate("library.searchClauseLabels.excludeScenario", `Exclude scenario: ${clause.value}`);
+    case "illustration":
+      return translate("library.searchClauseLabels.illustration", `Illustration: ${clause.value}`);
+    case "exclude_illustration":
+      return translate("library.searchClauseLabels.excludeIllustration", `Exclude illustration: ${clause.value}`);
     case "tag":
       return translate("library.searchClauseLabels.tag", `Tag: ${clause.value}`);
     case "exclude_tag":

@@ -10,16 +10,17 @@ import (
 	"strings"
 )
 
-// Voice credits and DLsite circle relations are projected from each work's
-// latest metadata snapshot. work_snapshot_projection records the snapshot and
-// projection input each work last produced, so a pass reads only works whose
-// latest snapshot changed since then, in bounded batches, instead of loading
-// every snapshot of the library. A changed snapshot whose projection input is
-// unchanged, such as a new sales count, only advances the record. Triggers
-// drop a record when another writer removes or reassigns a projected row, so
-// the next pass restores what the snapshot still declares.
+// Voice credits, staff credits, and DLsite circle relations are projected from
+// each work's latest metadata snapshot. work_snapshot_projection records the
+// snapshot and projection input each work last produced, so a pass reads only
+// works whose latest snapshot changed since then, in bounded batches, instead
+// of loading every snapshot of the library. A changed snapshot whose
+// projection input is unchanged, such as a new sales count, only advances the
+// record. Triggers drop a record when another writer removes or reassigns a
+// projected row, so the next pass restores what the snapshot still declares.
 const (
 	snapshotProjectionVoiceCredits = "voice_credit"
+	snapshotProjectionStaffCredits = "staff_credit"
 	snapshotProjectionDLsiteParty  = "dlsite_party"
 	// Increase snapshotProjectionVersion when a projection starts writing
 	// different rows for the same snapshot, so every work is projected again.
@@ -34,7 +35,10 @@ func (s *Server) projectChangedSnapshots(ctx context.Context) error {
 	if err := s.projectChangedDLsiteParties(ctx); err != nil {
 		return err
 	}
-	return s.projectChangedVoiceCredits(ctx)
+	if err := s.projectChangedVoiceCredits(ctx); err != nil {
+		return err
+	}
+	return s.projectChangedStaffCredits(ctx)
 }
 
 func snapshotProjectionHash(input any) (string, error) {
@@ -124,8 +128,23 @@ func (s *Server) projectChangedVoiceCredits(ctx context.Context) error {
 	}
 }
 
-// syncVoiceCreditsForWorkFromSnapshots projects one work's voice credits after
-// its metadata changed outside a full pass, such as a family sync.
+// syncCreditsForWorkFromSnapshots projects one work's voice and staff credits
+// after its metadata changed outside a full pass, such as a family sync.
+func (s *Server) syncCreditsForWorkFromSnapshots(ctx context.Context, workID int64) error {
+	if err := s.syncVoiceCreditsForWorkFromSnapshots(ctx, workID); err != nil {
+		return err
+	}
+	providerID, ok, err := s.dlsiteProviderID(ctx)
+	if err != nil || !ok {
+		return err
+	}
+	batch, err := s.queryStaffCreditProjections(ctx, providerID, ` AND work.id = ?`, workID)
+	if err != nil || len(batch) == 0 {
+		return err
+	}
+	return s.applyStaffCreditProjections(ctx, batch)
+}
+
 func (s *Server) syncVoiceCreditsForWorkFromSnapshots(ctx context.Context, workID int64) error {
 	rows, err := s.db.QueryContext(ctx, voiceCreditProjectionSQL+` AND work.id = ?`, snapshotProjectionVersion, workID)
 	if err != nil {

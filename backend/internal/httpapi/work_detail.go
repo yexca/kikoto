@@ -49,6 +49,7 @@ type workDetail struct {
 	UserTags         []workUserTag              `json:"userTags"`
 	VoiceActors      []string                   `json:"voiceActors"`
 	VoiceCredits     []voiceCredit              `json:"voiceCredits"`
+	StaffCredits     []staffCredit              `json:"staffCredits"`
 	ListeningStatus  string                     `json:"listeningStatus"`
 	Favorite         bool                       `json:"favorite"`
 	RecommendScore   *int                       `json:"recommendScore,omitempty"`
@@ -272,6 +273,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 	}
 	work.VoiceCredits, err = s.loadWorkDetailVoiceCredits(ctx, id)
 	if err != nil {
+		return workDetail{}, err
+	}
+	if work.StaffCredits, err = s.loadWorkStaffCredits(ctx, id); err != nil {
 		return workDetail{}, err
 	}
 	if err := s.applyManualOverridesToDetail(ctx, &work); err != nil {

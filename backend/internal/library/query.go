@@ -542,7 +542,7 @@ func SearchWhere(queryText string) (string, []any) {
 }
 
 // SearchWhereForUser returns a predicate over the work table. Text, circle,
-// voice, and tag clauses read the work_search index, so callers run
+// voice, staff, and tag clauses read the work_search index, so callers run
 // Store.PrepareSearch with the same query first.
 func SearchWhereForUser(queryText string, userID int64) (string, []any) {
 	clauses := []string{}
@@ -592,6 +592,10 @@ func searchWhereClause(clause SearchClause, userID int64) (string, []any) {
 		return familySearchIndexClause("tag", folded, false)
 	case "exclude_tag":
 		return familySearchIndexClause("tag", folded, true)
+	case "staff", "author", "scenario", "illustration":
+		return familySearchIndexClause(clause.Kind, folded, false)
+	case "exclude_staff", "exclude_author", "exclude_scenario", "exclude_illustration":
+		return familySearchIndexClause(strings.TrimPrefix(clause.Kind, "exclude_"), folded, true)
 	case "user_tag":
 		return userTagContainsClause(false), []any{userID, folded}
 	case "exclude_user_tag":
@@ -667,26 +671,27 @@ func familyCodeClause() string {
 }
 
 // familySearchIndexClause matches works whose own work_search document, or a
-// sibling edition's document, contains folded. An empty column searches every
-// indexed column. Needles of at least three characters use the trigram index
-// through a quoted FTS5 phrase; shorter needles cannot form a trigram and scan
-// the compact index table with instr instead.
-func familySearchIndexClause(column string, folded string, negated bool) (string, []any) {
+// sibling edition's document, contains folded in the columns kind reads. An
+// empty kind searches every indexed column. Needles of at least three
+// characters use the trigram index through a quoted FTS5 phrase; shorter
+// needles cannot form a trigram and scan the compact index table with instr
+// instead.
+func familySearchIndexClause(kind string, folded string, negated bool) (string, []any) {
 	var hits string
 	var args []any
+	columns := searchIndexColumns(kind)
 	if utf8.RuneCountInString(folded) >= 3 {
 		phrase := `"` + strings.ReplaceAll(folded, `"`, `""`) + `"`
-		if column != "" {
-			phrase = searchIndexColumn(column) + ` : ` + phrase
+		switch {
+		case len(columns) == 1:
+			phrase = columns[0] + ` : ` + phrase
+		case kind != "":
+			phrase = `{` + strings.Join(columns, " ") + `} : ` + phrase
 		}
 		hits = `SELECT rowid FROM work_search WHERE work_search MATCH ?`
 		args = []any{phrase}
 	} else {
-		target := `work_search.code || char(10) || work_search.title || char(10) || work_search.circle || char(10) || work_search.voice_actor || char(10) || work_search.tag`
-		if column != "" {
-			target = `work_search.` + searchIndexColumn(column)
-		}
-		hits = `SELECT rowid FROM work_search WHERE instr(` + target + `, ?) > 0`
+		hits = `SELECT rowid FROM work_search WHERE instr(` + searchIndexTarget(columns) + `, ?) > 0`
 		args = []any{folded}
 	}
 	operator := "IN"
@@ -705,19 +710,20 @@ func familySearchIndexClause(column string, folded string, negated bool) (string
 }
 
 // searchExactRankSQL returns an expression counting the query's index-backed
-// text, circle, voice, and tag clauses whose needle equals one whole indexed
-// value of the work or a sibling edition, such as a tag name in any learned
-// language. Matching itself stays a substring test; the rank only moves exact
-// matches ahead of partial ones. Without such clauses it returns "".
+// text, circle, voice, staff, and tag clauses whose needle equals one whole
+// indexed value of the work or a sibling edition, such as a tag name in any
+// learned language. Matching itself stays a substring test; the rank only
+// moves exact matches ahead of partial ones. Without such clauses it returns
+// "".
 func searchExactRankSQL(queryText string) (string, []any) {
 	terms := []string{}
 	args := []any{}
 	for _, clause := range ParseSearchClauses(queryText) {
-		column := ""
+		kind := ""
 		switch clause.Kind {
 		case "text":
-		case "circle", "voice_actor", "tag":
-			column = clause.Kind
+		case "circle", "voice_actor", "tag", "staff", "author", "scenario", "illustration":
+			kind = clause.Kind
 		default:
 			continue
 		}
@@ -725,10 +731,7 @@ func searchExactRankSQL(queryText string) (string, []any) {
 		if folded == "" {
 			continue
 		}
-		target := `work_search.code || char(10) || work_search.title || char(10) || work_search.circle || char(10) || work_search.voice_actor || char(10) || work_search.tag`
-		if column != "" {
-			target = `work_search.` + searchIndexColumn(column)
-		}
+		target := searchIndexTarget(searchIndexColumns(kind))
 		// Values in one column are separated by newlines, and Fold removes
 		// newlines from both values and needles, so a delimited needle matches
 		// exactly one whole value.
@@ -752,15 +755,37 @@ func searchExactRankSQL(queryText string) (string, []any) {
 	return "(" + strings.Join(terms, " + ") + ")", args
 }
 
-func searchIndexColumn(kind string) string {
+// The work_search columns: one per staff role besides the work's own text.
+var (
+	searchIndexStaffColumns = []string{"staff_author", "staff_scenario", "staff_illustration", "staff_music", "staff_other"}
+	searchIndexAllColumns   = append([]string{"code", "title", "circle", "voice_actor", "tag"}, searchIndexStaffColumns...)
+)
+
+// searchIndexColumns names the work_search columns a clause kind reads. An
+// empty kind reads every column, and "staff" reads every staff role.
+func searchIndexColumns(kind string) []string {
 	switch kind {
-	case "circle":
-		return "circle"
-	case "voice_actor":
-		return "voice_actor"
+	case "":
+		return searchIndexAllColumns
+	case "circle", "voice_actor":
+		return []string{kind}
+	case "staff":
+		return searchIndexStaffColumns
+	case "author", "scenario", "illustration":
+		return []string{"staff_" + kind}
 	default:
-		return "tag"
+		return []string{"tag"}
 	}
+}
+
+// searchIndexTarget joins columns into one newline-separated text expression,
+// so a needle never matches across two columns.
+func searchIndexTarget(columns []string) string {
+	qualified := make([]string, len(columns))
+	for index, column := range columns {
+		qualified[index] = `work_search.` + column
+	}
+	return strings.Join(qualified, ` || char(10) || `)
 }
 
 func familyAgeRatingClause(value string) (string, []any) {

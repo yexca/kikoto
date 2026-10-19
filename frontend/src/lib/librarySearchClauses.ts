@@ -7,6 +7,14 @@ export type SearchClauseKind =
   | "exclude_circle"
   | "voice_actor"
   | "exclude_voice_actor"
+  | "staff"
+  | "exclude_staff"
+  | "author"
+  | "exclude_author"
+  | "scenario"
+  | "exclude_scenario"
+  | "illustration"
+  | "exclude_illustration"
   | "tag"
   | "exclude_tag"
   | "user_tag"
@@ -29,6 +37,14 @@ export const editableSearchClauseKinds: { value: SearchClauseKind; label: string
   { value: "exclude_circle", label: "Not circle" },
   { value: "voice_actor", label: "Voice actor" },
   { value: "exclude_voice_actor", label: "Not voice actor" },
+  { value: "staff", label: "Staff" },
+  { value: "exclude_staff", label: "Not staff" },
+  { value: "author", label: "Author" },
+  { value: "exclude_author", label: "Not author" },
+  { value: "scenario", label: "Scenario" },
+  { value: "exclude_scenario", label: "Not scenario" },
+  { value: "illustration", label: "Illustration" },
+  { value: "exclude_illustration", label: "Not illustration" },
   { value: "tag", label: "Tag" },
   { value: "exclude_tag", label: "Not tag" },
   { value: "user_tag", label: "My tag" },
@@ -43,16 +59,18 @@ export const editableSearchClauseKinds: { value: SearchClauseKind; label: string
 ];
 
 // Every key the server's clause parser accepts. A leading "-" excludes on the
-// circle, voice actor, and tag keys; "-duration" is an upper bound.
+// circle, voice actor, staff, and tag keys; "-duration" is an upper bound.
+// "staff" matches any staff role; "creator" names a voice actor.
 const searchClauseKeyPattern =
-  "-?mytag|-?tagw?|-?circle|-?va|-?voice|-?creator|duration|-duration|rate|rating|sell|sales|age|lang|language|shelf";
+  "-?mytag|-?tagw?|-?circle|-?va|-?voice|-?creator|-?staff|-?author|-?scenario|-?illust(?:ration)?|duration|-duration|rate|rating|sell|sales|age|lang|language|shelf";
 const pendingClauseKeyPattern = new RegExp(`^(${searchClauseKeyPattern}):$`, "i");
 const prefixedClausePattern = new RegExp(`^(${searchClauseKeyPattern}):(.+)$`, "i");
 
 export function parseSearchClauses(query: string): SearchClause[] {
   const clauses: SearchClause[] = [];
   let rest = query;
-  const wrappedPattern = /\$(-?mytag|-?tagw?|-?circle|-?va|duration|-duration|rate|sell|age|lang|shelf):([^$]+)\$/gi;
+  const wrappedPattern =
+    /\$(-?mytag|-?tagw?|-?circle|-?va|-?staff|-?author|-?scenario|-?illust(?:ration)?|duration|-duration|rate|sell|age|lang|shelf):([^$]+)\$/gi;
   rest = rest.replace(wrappedPattern, (_match, key: string, value: string) => {
     const clause = searchClauseFromKeyValue(key, value);
     if (clause) clauses.push(clause);
@@ -111,6 +129,15 @@ export function compileLibrarySearchQuery(clauses: SearchClause[]) {
           return `$va:${clause.value}$`;
         case "exclude_voice_actor":
           return `$-va:${clause.value}$`;
+        case "staff":
+        case "exclude_staff":
+        case "author":
+        case "exclude_author":
+        case "scenario":
+        case "exclude_scenario":
+        case "illustration":
+        case "exclude_illustration":
+          return `$${staffClauseKey(clause.kind)}:${clause.value}$`;
         case "tag":
           return `$tag:${clause.value}$`;
         case "exclude_tag":
@@ -166,7 +193,16 @@ export function formatRemoteSearchQuery(clauses: SearchClause[]) {
           return `$age:${clause.value}$`;
         case "language":
           return `$lang:${clause.value}$`;
+        // Shelves are personal, and remote sources publish no staff credits.
         case "shelf":
+        case "staff":
+        case "exclude_staff":
+        case "author":
+        case "exclude_author":
+        case "scenario":
+        case "exclude_scenario":
+        case "illustration":
+        case "exclude_illustration":
           return null;
         default:
           return formatSearchClause(clause);
@@ -190,6 +226,15 @@ export function formatSearchClause(clause: SearchClause) {
       return `va:${value}`;
     case "exclude_voice_actor":
       return `-va:${value}`;
+    case "staff":
+    case "exclude_staff":
+    case "author":
+    case "exclude_author":
+    case "scenario":
+    case "exclude_scenario":
+    case "illustration":
+    case "exclude_illustration":
+      return `${staffClauseKey(clause.kind)}:${value}`;
     case "tag":
       return `tag:${value}`;
     case "exclude_tag":
@@ -244,6 +289,24 @@ function searchClauseFromKeyValue(key: string, rawValue: string): SearchClause |
     case "-voice":
     case "-creator":
       return { kind: "exclude_voice_actor", value };
+    case "staff":
+      return { kind: "staff", value };
+    case "-staff":
+      return { kind: "exclude_staff", value };
+    case "author":
+      return { kind: "author", value };
+    case "-author":
+      return { kind: "exclude_author", value };
+    case "scenario":
+      return { kind: "scenario", value };
+    case "-scenario":
+      return { kind: "exclude_scenario", value };
+    case "illust":
+    case "illustration":
+      return { kind: "illustration", value };
+    case "-illust":
+    case "-illustration":
+      return { kind: "exclude_illustration", value };
     case "tag":
     case "tagw":
       return { kind: "tag", value };
@@ -276,6 +339,23 @@ function searchClauseFromKeyValue(key: string, rawValue: string): SearchClause |
     default:
       return null;
   }
+}
+
+type StaffClauseKind = Extract<
+  SearchClauseKind,
+  | "staff"
+  | "exclude_staff"
+  | "author"
+  | "exclude_author"
+  | "scenario"
+  | "exclude_scenario"
+  | "illustration"
+  | "exclude_illustration"
+>;
+
+function staffClauseKey(kind: StaffClauseKind) {
+  const key = kind.replace(/^exclude_/, "").replace("illustration", "illust");
+  return kind.startsWith("exclude_") ? `-${key}` : key;
 }
 
 function formatSearchValue(value: string) {

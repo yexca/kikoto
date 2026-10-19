@@ -2,7 +2,7 @@ import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { defaultLibraryBrowseState, libraryBrowseSearch, libraryBrowseStateFromSearch } from "@/lib/libraryBrowseState";
 import { formatSearchClause, parseSearchClauses } from "@/lib/librarySearchClauses";
 
-export type LibraryTagSearchKind = "tag" | "user_tag";
+export type LibraryTagSearchKind = "tag" | "user_tag" | "staff";
 
 // Personal tags belong to local works, so they never narrow a remote source
 // or another page's query.

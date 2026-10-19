@@ -1839,6 +1839,15 @@ export const surfaceJapanese = {
     dlsiteInfo: "DLsite 情報",
     metadataUpdatedAt: "メタデータ更新 {{time}}",
     sourceInfo: "ソース情報",
+    staffCredits: "クレジット",
+    staffRoles: {
+      author: "作者",
+      scenario: "シナリオ",
+      illustration: "イラスト",
+      music: "音楽",
+      other: "その他",
+    },
+    searchStaff: "{{name}} の作品を検索",
     trackedSourceUnforkedDescription: "{{source}} は追跡済みですが、ディレクトリはまだフォークされていません。",
     workNotTrackedDescription:
       "この作品はまだ追跡されていません。閲覧可能なソース関係を保持するには、リモートソースを追跡してください。",

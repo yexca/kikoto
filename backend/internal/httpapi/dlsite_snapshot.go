@@ -22,6 +22,10 @@ type dlsiteSnapshotMetadata struct {
 	DLsiteUpdatedAt *string
 	Tags            []string
 	VoiceActors     []string
+	// VoiceActorIdentities are VoiceActors with their DLsite creator ids.
+	VoiceActorIdentities []voiceActorIdentity
+	// Staff are the non-voice credits, such as the scenario writer.
+	Staff []dlsite.StaffCredit
 }
 
 type dlsiteSnapshotLanguage struct {
@@ -91,7 +95,7 @@ type dlsiteSnapshotPayload struct {
 }
 
 func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
-	metadata := dlsiteSnapshotMetadata{Tags: []string{}, VoiceActors: []string{}}
+	metadata := dlsiteSnapshotMetadata{Tags: []string{}, VoiceActors: []string{}, VoiceActorIdentities: []voiceActorIdentity{}, Staff: []dlsite.StaffCredit{}}
 	envelope, payload, ok := decodeDLsiteSnapshot(raw)
 	if !ok {
 		return metadata
@@ -123,7 +127,11 @@ func parseDLsiteSnapshot(raw string) dlsiteSnapshotMetadata {
 	metadata.Series = dlsiteSnapshotSeries(payload)
 	metadata.SeriesID = strings.ToUpper(strings.TrimSpace(firstNonEmpty(payload.TitleID, payload.SeriesID)))
 	metadata.Tags = uniqueDLsiteSnapshotTags(payload.Genres)
-	metadata.VoiceActors = uniqueDLsiteSnapshotActors(payload.Creators)
+	metadata.VoiceActorIdentities = uniqueDLsiteSnapshotActors(payload.Creators)
+	for _, actor := range metadata.VoiceActorIdentities {
+		metadata.VoiceActors = append(metadata.VoiceActors, actor.Name)
+	}
+	metadata.Staff = payload.Creators.Staff()
 	return metadata
 }
 
@@ -241,16 +249,16 @@ func uniqueDLsiteSnapshotTags(genres []dlsiteSnapshotGenre) []string {
 	return tags
 }
 
-func uniqueDLsiteSnapshotActors(creators dlsite.Creators) []string {
+func uniqueDLsiteSnapshotActors(creators dlsite.Creators) []voiceActorIdentity {
 	seen := map[string]bool{}
-	actors := []string{}
+	actors := []voiceActorIdentity{}
 	for _, creator := range creators["voice_by"] {
 		name := strings.TrimSpace(creator.Name)
 		if name == "" || seen[name] {
 			continue
 		}
 		seen[name] = true
-		actors = append(actors, name)
+		actors = append(actors, voiceActorIdentity{Name: name, ExternalID: string(creator.ID)})
 	}
 	return actors
 }

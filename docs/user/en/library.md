@@ -8,21 +8,23 @@ The Library is the main browsing surface for works.
 - Shows local, tracked, and configured remote source tabs.
 - Uses server-side pagination for large result sets.
 - Searches normalized titles, codes, language-edition aliases, circles, tags,
-  and voice credits before hydrating the current page. Provider-declared edition
+  voice credits, and staff credits before hydrating the current page. Provider-declared edition
   codes remain searchable without creating extra works or scanning raw metadata
   snapshots during a Library request.
 - Matches search text literally and ignores width, letter case, and kana
   script: `100%` and `a_b` are not wildcards, full-width `ＡＢＣ` finds `abc`, and
   katakana finds the same word written in hiragana. Prefix a term with a
   clause such as `tag: 癒し`, `circle:`, `va:`, or `mytag:` to search one field.
-  Put `-` in front of `tag:`, `mytag:`, `circle:`, or `va:` to leave out the
-  works that match, and quote a phrase, as in `"calm night"` or
-  `circle:"Example Circle"`, to match it as a whole.
+  `staff:` searches every staff credit from DLsite, and `author:`,
+  `scenario:`, and `illust:` search one staff role; `creator:` searches voice
+  actors. Put `-` in front of `tag:`, `mytag:`, `circle:`, `va:`, or a staff
+  clause to leave out the works that match, and quote a phrase, as in
+  `"calm night"` or `circle:"Example Circle"`, to match it as a whole.
 - A DLsite tag also matches its name in every language Kikoto has fetched for
   that tag: when an edition requested in English reports `Healing` for the tag
   shown as `癒し`, `tag: healing` finds both. Results whose tag, title, circle,
-  or voice credit equals the search term exactly appear before partial matches,
-  and the selected sort orders each group.
+  voice credit, or staff credit equals the search term exactly appear before
+  partial matches, and the selected sort orders each group.
 - The `+` button in the search field opens a floating editor for a
   structured search condition. Selecting a condition badge edits it in the same
   popover without moving the results.

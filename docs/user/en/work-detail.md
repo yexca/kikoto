@@ -183,9 +183,15 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   beside the Directory on wide pages and follows it on narrower ones. Source
   info reports file/audio counts, size and duration coverage, and labels a
   metadata-duration fallback instead of silently replacing source duration.
+  A Credits card below that panel lists the staff DLsite credits besides the
+  voice actors: author, scenario, illustration, music, and other staff. It
+  shows only the roles the work credits and is absent when DLsite names no
+  staff. Selecting a name adds a `staff:` clause to the library search the
+  detail was opened from, which finds the name in any staff role.
   On compact screens, the Hero keeps the same credit line, tag row, stat
   strip, and actions above the Info and Directory tabs, Info shows the source
-  panel, and Mark, List, DLsite, Metadata, and Source collapse to icons.
+  panel and the Credits card, and Mark, List, DLsite, Metadata, and Source
+  collapse to icons.
 - Presents Directory as one panel: a header with the file summary and source
   checking, underline source tabs with status dots, and a folder explorer.
   When the directory is wide enough and the work has folders, a sticky folder

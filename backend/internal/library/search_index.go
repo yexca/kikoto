@@ -46,7 +46,13 @@ var searchIndexOverrideFields = []string{"title", "circle", "series", "voice_act
 
 type searchDocument struct {
 	code, title, circle, voiceActor, tag []string
+	// staff holds the staff names by role, such as "scenario".
+	staff map[string][]string
 }
+
+// searchIndexStaffRoles are the work_staff_credit roles in work_search column
+// order: role "author" fills column staff_author.
+var searchIndexStaffRoles = []string{"author", "scenario", "illustration", "music", "other"}
 
 // searchIndexRefresh bounds one refresh. A zero value drains the complete
 // queue and waits for the write lock like any other writer.
@@ -131,7 +137,8 @@ func (s *Store) PrepareTextSearch(ctx context.Context) {
 func searchUsesIndex(queryText string) bool {
 	for _, clause := range ParseSearchClauses(queryText) {
 		switch clause.Kind {
-		case "text", "circle", "voice_actor", "tag", "exclude_circle", "exclude_voice_actor", "exclude_tag":
+		case "text", "circle", "voice_actor", "tag", "exclude_circle", "exclude_voice_actor", "exclude_tag",
+			"staff", "author", "scenario", "illustration", "exclude_staff", "exclude_author", "exclude_scenario", "exclude_illustration":
 			return true
 		}
 	}
@@ -236,7 +243,8 @@ func refreshSearchIndexBatch(ctx context.Context, beginner txBeginner, limit int
 	if _, err := tx.ExecContext(ctx, `DELETE FROM work_search WHERE rowid IN (`+placeholders+`)`, idArgs...); err != nil {
 		return 0, err
 	}
-	insert, err := tx.PrepareContext(ctx, `INSERT INTO work_search (rowid, code, title, circle, voice_actor, tag) VALUES (?, ?, ?, ?, ?, ?)`)
+	insert, err := tx.PrepareContext(ctx, `INSERT INTO work_search (rowid, code, title, circle, voice_actor, tag,
+		staff_author, staff_scenario, staff_illustration, staff_music, staff_other) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return 0, err
 	}
@@ -246,13 +254,17 @@ func refreshSearchIndexBatch(ctx context.Context, beginner txBeginner, limit int
 		if !ok {
 			continue
 		}
-		if _, err := insert.ExecContext(ctx, id,
+		values := []any{id,
 			joinSearchValues(document.code),
 			joinSearchValues(document.title),
 			joinSearchValues(document.circle),
 			joinSearchValues(document.voiceActor),
 			joinSearchValues(document.tag),
-		); err != nil {
+		}
+		for _, role := range searchIndexStaffRoles {
+			values = append(values, joinSearchValues(document.staff[role]))
+		}
+		if _, err := insert.ExecContext(ctx, values...); err != nil {
 			return 0, err
 		}
 	}
@@ -282,7 +294,7 @@ func loadSearchDocuments(ctx context.Context, tx *sql.Tx, ids []int64) (map[int6
 			_ = rows.Close()
 			return nil, err
 		}
-		documents[id] = &searchDocument{code: []string{code}, title: []string{title}}
+		documents[id] = &searchDocument{code: []string{code}, title: []string{title}, staff: map[string][]string{}}
 	}
 	if err := closeRows(rows); err != nil {
 		return nil, err
@@ -373,7 +385,29 @@ func loadSearchDocuments(ctx context.Context, tx *sql.Tx, ids []int64) (map[int6
 	if err := appendOverrideSearchValues(ctx, tx, placeholders, idArgs, documents); err != nil {
 		return nil, err
 	}
+	if err := appendStaffSearchValues(ctx, tx, placeholders, idArgs, documents); err != nil {
+		return nil, err
+	}
 	return documents, nil
+}
+
+func appendStaffSearchValues(ctx context.Context, tx *sql.Tx, placeholders string, idArgs []any, documents map[int64]*searchDocument) error {
+	rows, err := tx.QueryContext(ctx, `SELECT work_id, role, name FROM work_staff_credit WHERE work_id IN (`+placeholders+`)`, idArgs...)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id int64
+		var role, name string
+		if err := rows.Scan(&id, &role, &name); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if document, ok := documents[id]; ok {
+			document.staff[role] = append(document.staff[role], name)
+		}
+	}
+	return closeRows(rows)
 }
 
 func appendSearchValues(ctx context.Context, tx *sql.Tx, query string, args []any, documents map[int64]*searchDocument, field func(*searchDocument) *[]string) error {

@@ -49,6 +49,8 @@ Important tables:
 - `person_alias`
 - `person_merge_review`
 - `work_credit`
+- `person_external_id`
+- `work_staff_credit`
 - `work_snapshot_projection`
 
 DLsite metadata sync stores raw snapshots and updates normalized fields used by
@@ -56,16 +58,34 @@ library and detail views.
 
 `work_party` relates a work to a circle (`role = 'circle'`) and records the
 provider that supplied the relation; `work_credit` relates a work to a person
-in a role such as `voice_actor`. Voice credits and DLsite circle relations are
-projected from each work's latest snapshot. `work_snapshot_projection` records,
+in a role such as `voice_actor`. `person_external_id` records a provider's
+voice actor id for a person (`id_type = 'voice_actor_id'`), scoped to that
+provider: the DLsite creator id from a DLsite snapshot, or a remote source's
+own id. Credit projection resolves a credited voice actor by that id first, so
+a provider rename renames the person and keeps the former name as an alias;
+an unknown id falls back to the name and is then bound to the person found.
+`person.id` stays the voice actor's identity, and one person may hold several
+ids. Two people who share a display name still resolve to one person.
+
+`work_staff_credit` holds a work's non-voice DLsite credits: the author,
+scenario writer, illustrator, composer, and other staff (`role` is `author`,
+`scenario`, `illustration`, `music`, or `other`), each with its provider order
+and DLsite creator id. A staff name is a plain credit of the work, not a
+`person`: it never appears among voice actors, aliases, merges, or
+subscriptions. The projection replaces a work's snapshot-owned staff rows, so a
+staff credit the latest DLsite snapshot no longer names is removed.
+
+Voice credits, staff credits, and DLsite circle relations are projected from
+each work's latest snapshot; staff credits read the latest DLsite snapshot.
+`work_snapshot_projection` records,
 per work and projection, the snapshot and a hash of the projection input it
 last produced. Startup and each metadata sync project only works whose latest
 snapshot changed since that record, in bounded batches; a new snapshot whose
 projection input is unchanged, such as a new sales count, writes nothing but
 the record. Triggers drop a record when a credit or circle relation is removed
 or reassigned, or when the work's imported circle catalog row changes, so the
-next pass restores what the snapshot still declares. A projection never removes
-a credit its snapshot does not name. `party_metadata_snapshot` keeps the two
+next pass restores what the snapshot still declares. The voice credit
+projection never removes a credit its snapshot does not name. `party_metadata_snapshot` keeps the two
 latest snapshots per circle and provider, as `metadata_snapshot` does per work.
 
 `metadata_snapshot_card_summary` holds one compact, versioned card summary per
@@ -1107,7 +1127,10 @@ separate from these derived caches.
   than scanning raw provider snapshot JSON.
 - `work_search` is a derived FTS5 trigram index with one row per work
   (`rowid = work.id`) holding folded code/alias, title, circle, voice actor,
-  and tag text, including relevant manual overrides. The title column also
+  and tag text, including relevant manual overrides, plus one column per staff
+  role (`staff_author`, `staff_scenario`, `staff_illustration`, `staff_music`,
+  `staff_other`). A role clause reads its column, `staff:` reads every staff
+  column, and plain text reads every column. The title column also
   holds the work's own `dlsite_metadata_variant` title and, for a work without
   non-remote metadata, its `remote_metadata_title_variant` titles, so each
   stored edition title matches independently of the projected `work.title`.
@@ -1116,8 +1139,8 @@ separate from these derived caches.
   The tag column also holds every learned `dlsite_genre_name` for the work's
   genre ids, so a tag matches in each language the library has fetched.
   Matching remains a substring test; a Library page orders works whose indexed
-  value equals a text, circle, voice, or tag needle exactly ahead of partial
-  matches, then applies the selected sort. Folding applies NFKC, Unicode
+  value equals a text, circle, voice, staff, or tag needle exactly ahead of
+  partial matches, then applies the selected sort. Folding applies NFKC, Unicode
   lowercase, and katakana-to-hiragana mapping. Triggers queue changed works in
   `work_search_dirty`; a background worker rebuilds queued documents in bounded
   batches. A search rebuilds a queue of at most 64 works itself, so an edit is

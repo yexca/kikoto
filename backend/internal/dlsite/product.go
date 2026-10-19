@@ -346,12 +346,84 @@ func (id *GenreID) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// Creator is one credited person. ID is DLsite's creator id: one person keeps
+// it across roles, request locales, and language editions.
 type Creator struct {
-	Name           string `json:"name"`
-	Classification string `json:"classification"`
+	ID             CreatorID `json:"id"`
+	Name           string    `json:"name"`
+	Classification string    `json:"classification"`
+}
+
+// CreatorID is a DLsite creator id, or empty when the provider omits it or
+// sends a value that is not a positive integer. DLsite sends it as a string.
+type CreatorID string
+
+func (id *CreatorID) UnmarshalJSON(data []byte) error {
+	*id = ""
+	var value any
+	if err := json.Unmarshal(data, &value); err != nil {
+		return nil
+	}
+	var text string
+	switch typed := value.(type) {
+	case float64:
+		if typed != float64(int64(typed)) {
+			return nil
+		}
+		text = strconv.FormatInt(int64(typed), 10)
+	case string:
+		text = strings.TrimSpace(typed)
+	}
+	if number, err := strconv.ParseInt(text, 10, 64); err == nil && number > 0 {
+		*id = CreatorID(strconv.FormatInt(number, 10))
+	}
+	return nil
+}
+
+// Staff roles are the non-voice credits Kikoto stores, in display order.
+const (
+	StaffRoleAuthor       = "author"
+	StaffRoleScenario     = "scenario"
+	StaffRoleIllustration = "illustration"
+	StaffRoleMusic        = "music"
+	StaffRoleOther        = "other"
+)
+
+var staffRoleClassifications = []struct{ classification, role string }{
+	{"created_by", StaffRoleAuthor},
+	{"scenario_by", StaffRoleScenario},
+	{"illust_by", StaffRoleIllustration},
+	{"music_by", StaffRoleMusic},
+	{"others_by", StaffRoleOther},
+}
+
+// StaffCredit is one non-voice credit of a product.
+type StaffCredit struct {
+	Role string    `json:"role"`
+	Name string    `json:"name"`
+	ID   CreatorID `json:"id"`
 }
 
 type Creators map[string][]Creator
+
+// Staff returns the product's non-voice credits in role order and then
+// provider order, once per role and name. Voice actors are credited
+// separately.
+func (c Creators) Staff() []StaffCredit {
+	credits := []StaffCredit{}
+	for _, mapping := range staffRoleClassifications {
+		seen := map[string]bool{}
+		for _, creator := range c[mapping.classification] {
+			name := strings.TrimSpace(creator.Name)
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			credits = append(credits, StaffCredit{Role: mapping.role, Name: name, ID: creator.ID})
+		}
+	}
+	return credits
+}
 
 func (c *Creators) UnmarshalJSON(data []byte) error {
 	var grouped map[string][]Creator

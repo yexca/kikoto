@@ -384,6 +384,7 @@ export function persistedWorkDetailPresentation({
     sourceInfo,
     voiceActors: hero.voiceActors,
     voiceCredits: fields.voiceCredits,
+    staffCredits: work?.staffCredits ?? [],
     purchaseBonus: work?.purchaseBonus,
     purchaseBonuses: work?.purchaseBonuses,
     bundleMembers: work?.bundleMembers,

@@ -19,14 +19,11 @@ func syncVoiceCreditSnapshot(ctx context.Context, tx *sql.Tx, snapshot voiceCred
 	return writeVoiceCredits(ctx, tx, snapshot.WorkID, snapshot.ProviderID, voiceCreditActors(snapshot.Raw))
 }
 
-// voiceCreditActors returns the distinct voice actors a snapshot credits, or
-// the unknown voice actor when it names none.
+// voiceCreditActors returns the distinct voice actors a snapshot credits, with
+// the provider's id for each when it publishes one, or the unknown voice actor
+// when it names none.
 func voiceCreditActors(raw string) []voiceActorIdentity {
-	metadata := parseDLsiteSnapshot(raw)
-	actors := make([]voiceActorIdentity, 0, len(metadata.VoiceActors))
-	for _, name := range metadata.VoiceActors {
-		actors = append(actors, voiceActorIdentity{Name: name})
-	}
+	actors := parseDLsiteSnapshot(raw).VoiceActorIdentities
 	if len(actors) == 0 {
 		actors = parseKikoeruVoiceActorIdentities(raw)
 	}

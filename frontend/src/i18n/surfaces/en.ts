@@ -1890,6 +1890,15 @@ export const surfaceEnglish = {
     dlsiteInfo: "DLsite info",
     metadataUpdatedAt: "Metadata updated {{time}}",
     sourceInfo: "Source info",
+    staffCredits: "Credits",
+    staffRoles: {
+      author: "Author",
+      scenario: "Scenario",
+      illustration: "Illustration",
+      music: "Music",
+      other: "Other",
+    },
+    searchStaff: "Search works crediting {{name}}",
     trackedSourceUnforkedDescription: "{{source}} is tracked, but its directory has not been forked.",
     workNotTrackedDescription:
       "This work is not tracked yet. Track a remote source to keep a browsable source relationship.",

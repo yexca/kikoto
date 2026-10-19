@@ -1832,6 +1832,15 @@ export const surfaceKorean = {
     dlsiteInfo: "DLsite 정보",
     metadataUpdatedAt: "메타데이터 업데이트 {{time}}",
     sourceInfo: "소스 정보",
+    staffCredits: "크레딧",
+    staffRoles: {
+      author: "작가",
+      scenario: "시나리오",
+      illustration: "일러스트",
+      music: "음악",
+      other: "기타",
+    },
+    searchStaff: "{{name}}의 작품 검색",
     trackedSourceUnforkedDescription: "{{source}}이(가) 추적 중이지만 디렉터리가 아직 분기되지 않았습니다.",
     workNotTrackedDescription:
       "이 작품은 아직 추적되지 않았습니다. 탐색 가능한 소스 관계를 유지하려면 원격 소스를 추적하세요.",

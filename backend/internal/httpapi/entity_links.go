@@ -179,7 +179,7 @@ func (s *Server) hydrateWorkEntityLinksFromSnapshots(ctx context.Context, code s
 		}
 		return err
 	}
-	return s.syncVoiceCreditsForWorkFromSnapshots(ctx, workID)
+	return s.syncCreditsForWorkFromSnapshots(ctx, workID)
 }
 
 func (s *Server) syncWorkEntityMetadata(ctx context.Context, code string) error {
@@ -226,7 +226,7 @@ func (s *Server) syncWorkMetadataFamilyWithBonus(ctx context.Context, code strin
 			continue
 		}
 		seen[workID] = true
-		if err := s.syncVoiceCreditsForWorkFromSnapshots(ctx, workID); err != nil {
+		if err := s.syncCreditsForWorkFromSnapshots(ctx, workID); err != nil {
 			return family, err
 		}
 	}

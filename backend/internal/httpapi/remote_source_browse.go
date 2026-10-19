@@ -547,6 +547,11 @@ func remoteWorkSummaryMatchesClause(work remoteWorkSummary, clause listSearchCla
 		return remoteWorkSummaryMatchesNumericClause(work, clause.Kind, needle)
 	case "language":
 		return false
+	// A remote source summary carries no staff credits.
+	case "staff", "author", "scenario", "illustration":
+		return false
+	case "exclude_staff", "exclude_author", "exclude_scenario", "exclude_illustration":
+		return true
 	default:
 		return remoteWorkSummaryMatchesFreeText(work, needle)
 	}

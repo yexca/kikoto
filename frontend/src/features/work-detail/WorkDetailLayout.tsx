@@ -2,12 +2,14 @@ import { WorkDescription } from "./metadata/WorkDescription";
 import {
   api,
   assetURL,
+  type StaffCredit,
+  type StaffRole,
   type VoiceCredit,
   type WorkDetail,
   type WorkMetadataPresentation,
   type WorkMetadataSyncStatus,
 } from "@/lib/api";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import {
   type ActiveSourceInfoModel,
   detailReturnTarget,
@@ -33,6 +35,7 @@ import {
   Link2,
   RefreshCw,
   Star,
+  UsersRound,
 } from "lucide-react";
 import { openVoiceRoute } from "@/lib/voiceNavigationState";
 import { useAuth } from "@/auth/AuthProvider";
@@ -103,6 +106,8 @@ export type UnifiedWorkDetailPresentation = {
   sourceInfo: ActiveSourceInfoModel;
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
+  /** Non-voice credits, shown in their own card below Source info. */
+  staffCredits?: StaffCredit[];
   purchaseBonus?: WorkDetail["purchaseBonus"];
   purchaseBonuses?: WorkDetail["purchaseBonuses"];
   bundleMembers?: WorkDetail["bundleMembers"];
@@ -205,6 +210,7 @@ function DesktopWorkDetailLayout({
     tags,
     personalTags,
     dlsiteFetchedAt,
+    staffCredits,
   } = presentation;
   const entityResolver = useDetailEntityResolver(code);
   const versionMenu = detailVersionMenu(presentation);
@@ -283,12 +289,15 @@ function DesktopWorkDetailLayout({
           <WorkDescription description={presentation.description} />
           {directory}
         </div>
-        <DetailInfoPanel
-          sourceInfo={sourceInfo}
-          dlsiteFetchedAt={dlsiteFetchedAt}
-          actions={sourceActionsInPanel ? renderSourceActions?.("list") : undefined}
-          className="xl:sticky xl:top-20"
-        />
+        <div className="min-w-0 space-y-4 xl:sticky xl:top-20">
+          <DetailInfoPanel
+            sourceInfo={sourceInfo}
+            dlsiteFetchedAt={dlsiteFetchedAt}
+            actions={sourceActionsInPanel ? renderSourceActions?.("list") : undefined}
+            className=""
+          />
+          <DetailStaffCredits credits={staffCredits} />
+        </div>
       </div>
     </div>
   );
@@ -320,6 +329,47 @@ function DetailInfoPanel({
         </div>
       )}
     </aside>
+  );
+}
+
+const staffRoleOrder: StaffRole[] = ["author", "scenario", "illustration", "music", "other"];
+
+/** The work's staff by role; each name searches the library for works crediting it in any staff role. */
+function DetailStaffCredits({ credits = [] }: { credits?: StaffCredit[] }) {
+  const headingId = useId();
+  const groups = staffRoleOrder
+    .map((role) => ({ role, names: credits.filter((credit) => credit.role === role).map((credit) => credit.name) }))
+    .filter((group) => group.names.length > 0);
+  if (groups.length === 0) return null;
+  return (
+    <section className="min-w-0 rounded-xl border bg-card p-4 text-sm" aria-labelledby={headingId}>
+      <h2 id={headingId} className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <UsersRound className="h-4 w-4 shrink-0" />
+        {i18n.t("libraryDetail.staffCredits")}
+      </h2>
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
+        {groups.map((group) => (
+          <Fragment key={group.role}>
+            <dt className="text-muted-foreground">{i18n.t(`libraryDetail.staffRoles.${group.role}`)}</dt>
+            <dd className="flex min-w-0 flex-wrap items-baseline gap-x-1 gap-y-1">
+              {group.names.map((name, index) => (
+                <span key={name} className="inline-flex min-w-0 items-baseline">
+                  <button
+                    type="button"
+                    className="min-w-0 break-words rounded-sm text-left font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
+                    title={i18n.t("libraryDetail.searchStaff", { name })}
+                    onClick={() => openDetailTagSearch("staff", name)}
+                  >
+                    {name}
+                  </button>
+                  {index < group.names.length - 1 && <span className="ml-1 text-muted-foreground">·</span>}
+                </span>
+              ))}
+            </dd>
+          </Fragment>
+        ))}
+      </dl>
+    </section>
   );
 }
 
@@ -588,6 +638,7 @@ function MobileWorkDetailLayout({
   sourceInfo,
   voiceActors,
   voiceCredits,
+  staffCredits,
   purchaseBonus,
   purchaseBonuses,
   bundleMembers,
@@ -636,6 +687,7 @@ function MobileWorkDetailLayout({
   sourceInfo: ActiveSourceInfoModel;
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
+  staffCredits?: StaffCredit[];
   purchaseBonus?: WorkDetail["purchaseBonus"];
   purchaseBonuses?: WorkDetail["purchaseBonuses"];
   bundleMembers?: WorkDetail["bundleMembers"];
@@ -748,6 +800,7 @@ function MobileWorkDetailLayout({
         <div className="space-y-4">
           <WorkDescription description={description} />
           <DetailInfoPanel sourceInfo={sourceInfo} dlsiteFetchedAt={dlsiteFetchedAt} className="" />
+          <DetailStaffCredits credits={staffCredits} />
         </div>
       ) : (
         directory

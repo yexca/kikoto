@@ -150,7 +150,7 @@ func (s *Server) processDemoLibraryFolder(ctx context.Context, syncer *metasync.
 	workID := family.WorkID
 	err = s.storeDemoLocalWork(ctx, fileSourceID, workID, folder)
 	if err == nil {
-		err = s.syncVoiceCreditsForWorkFromSnapshots(ctx, workID)
+		err = s.syncCreditsForWorkFromSnapshots(ctx, workID)
 	}
 	if err != nil {
 		_ = s.hideDemoWork(ctx, workID)

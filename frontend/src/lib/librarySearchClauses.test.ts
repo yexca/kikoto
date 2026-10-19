@@ -94,6 +94,28 @@ describe("Library structured search clauses", () => {
     expect(clauses.map((clause) => clause.kind)).not.toContain("text");
   });
 
+  it("parses each staff key, keeps creator a voice key, and leaves staff out of remote queries", () => {
+    const clauses = parseSearchClauses(
+      'staff:"Example Writer" -author:Example illust:Artist -illustration:Other $-scenario:Wrapped Writer$ creator:Voice',
+    );
+
+    expect(clauses).toEqual([
+      { kind: "exclude_scenario", value: "Wrapped Writer" },
+      { kind: "staff", value: "Example Writer" },
+      { kind: "exclude_author", value: "Example" },
+      { kind: "illustration", value: "Artist" },
+      { kind: "exclude_illustration", value: "Other" },
+      { kind: "voice_actor", value: "Voice" },
+    ]);
+    expect(compileLibrarySearchQuery(clauses)).toBe(
+      "$-scenario:Wrapped Writer$ $staff:Example Writer$ $-author:Example$ $illust:Artist$ $-illust:Other$ $va:Voice$",
+    );
+    expect(clauses.map(formatSearchClause).join(" ")).toBe(
+      '-scenario:"Wrapped Writer" staff:"Example Writer" -author:Example illust:Artist -illust:Other va:Voice',
+    );
+    expect(formatRemoteSearchQuery(clauses)).toBe("$va:Voice$");
+  });
+
   it("sends exclusions to the library and to remote sources in the server's negated syntax", () => {
     const clauses = parseSearchClauses('-circle:"Example Circle" -va:"Example Voice" -mytag:"Sleep aid"');
 

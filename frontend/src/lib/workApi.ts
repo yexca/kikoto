@@ -24,6 +24,14 @@ export type WorkPlaybackCursorResponse = {
   cursor: WorkProgressSummary | null;
 };
 
+export type StaffRole = "author" | "scenario" | "illustration" | "music" | "other";
+
+/** One credited staff name; staff names are plain text, not voice actor people. */
+export type StaffCredit = {
+  role: StaffRole;
+  name: string;
+};
+
 export type WorkDetail = {
   titleChoices?: Record<string, WorkTitleChoice>;
   id: number;
@@ -62,6 +70,8 @@ export type WorkDetail = {
   userTags: UserTag[];
   voiceActors: string[];
   voiceCredits: VoiceCredit[];
+  /** Non-voice credits from DLsite, in role order. */
+  staffCredits?: StaffCredit[] | null;
   listeningStatus: ListeningStatus;
   favorite: boolean;
   metadataPresentation: WorkMetadataPresentation;
