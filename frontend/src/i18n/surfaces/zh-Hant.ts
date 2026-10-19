@@ -2376,6 +2376,7 @@ export const surfaceHant = {
     back: "返回檔案清單",
     apply: "套用變更",
     folderChanged: "資料夾已發生變化，請檢查更新後的預覽。",
+    mergeChanged: "比較之後，要合併的資料夾或此資料夾發生了變化，請重新檢查合併。",
     applyFailed: "無法開始編輯。",
     queued: "資料夾編輯已加入佇列，工作流程執行 #{{runId}}。",
     completed: "檔案已在工作流程 #{{runId}} 中更新。",

@@ -56,10 +56,13 @@ type workFolderEditRequest struct {
 	Folders []string `json:"folders"`
 	// MergeFolderIDs are other local folders of the family to delete once the
 	// edited folder holds what the edit takes from them.
-	MergeFolderIDs []int64                    `json:"mergeFolderIds"`
-	Decisions      []remoteFetchFileDecision  `json:"decisions"`
-	Assignments    []workFolderEditAssignment `json:"assignments"`
-	RequestID      string                     `json:"requestId"`
+	MergeFolderIDs []int64 `json:"mergeFolderIds"`
+	// MergeReview is the review of the complete merge check of the same edit,
+	// which merging folders requires.
+	MergeReview string                     `json:"mergeReview,omitempty"`
+	Decisions   []remoteFetchFileDecision  `json:"decisions"`
+	Assignments []workFolderEditAssignment `json:"assignments"`
+	RequestID   string                     `json:"requestId"`
 }
 
 // workFolderEditItem is one file to add to the folder. It shares the Fetch
@@ -327,6 +330,11 @@ func writeWorkFolderEditError(w http.ResponseWriter, err error) {
 	var conflict workFolderEditConflictError
 	if errors.As(err, &conflict) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "folder_edit_conflict", "summary": conflict.Summary})
+		return
+	}
+	var mergeChanged workFolderEditMergeChangedError
+	if errors.As(err, &mergeChanged) {
+		writeAPIError(w, http.StatusConflict, "folder_edit_merge_changed", err.Error(), false)
 		return
 	}
 	var lyricsErr lyricsFetchRequestError
@@ -781,6 +789,9 @@ func (s *Server) enqueueWorkFolderEdit(ctx context.Context, workID int64, payloa
 	if !workFolderEditChanges(plan.Summary) {
 		return workFolderEditResult{}, invalidRequestError("the edit does not change the folder")
 	}
+	if err := s.verifyWorkFolderEditMergeReview(ctx, plan, payload.MergeReview); err != nil {
+		return workFolderEditResult{}, err
+	}
 	assignments, err := s.workFolderEditAssignments(ctx, plan, payload.Assignments)
 	if err != nil {
 		return workFolderEditResult{}, err
@@ -848,6 +859,11 @@ func (s *Server) enqueueWorkFolderEdit(ctx context.Context, workID int64, payloa
 		return workFolderEditResult{}, err
 	} else if found {
 		return workFolderEditResult{}, conflictError("a Fetch for this work is still running; wait for it to finish")
+	}
+	for _, merge := range plan.Merges {
+		if err := activeRemoteFetchForWork(ctx, tx, merge.WorkID); err != nil {
+			return workFolderEditResult{}, err
+		}
 	}
 	spec := workFolderEditDefinition()
 	definitionID, err := workflow.EnsureDefinition(ctx, tx, spec.Code, spec.Name, spec.Description, map[string]any{"nodes": spec.Nodes})

@@ -2373,6 +2373,7 @@ export const surfaceHans = {
     back: "返回文件列表",
     apply: "应用更改",
     folderChanged: "文件夹已发生变化，请检查更新后的预览。",
+    mergeChanged: "比较之后，要合并的文件夹或此文件夹发生了变化，请重新检查合并。",
     applyFailed: "无法开始编辑。",
     queued: "文件夹编辑已加入队列，工作流运行 #{{runId}}。",
     completed: "文件已在工作流 #{{runId}} 中更新。",

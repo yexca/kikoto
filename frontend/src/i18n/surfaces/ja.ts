@@ -2491,6 +2491,7 @@ export const surfaceJapanese = {
     back: "ファイル一覧に戻る",
     apply: "変更を適用",
     folderChanged: "フォルダーが変更されました。更新されたプレビューを確認してください。",
+    mergeChanged: "比較の後に統合するフォルダーまたはこのフォルダーが変更されました。統合をもう一度確認してください。",
     applyFailed: "編集を開始できませんでした。",
     queued: "フォルダーの編集をワークフロー実行 #{{runId}} としてキューに追加しました。",
     completed: "ワークフロー #{{runId}} でファイルを更新しました。",

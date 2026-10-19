@@ -33,6 +33,7 @@ import {
   type MediaItem,
   type RemoteFetchFileDecision,
   type WorkFolderEditPlan,
+  type WorkFolderEditRequest,
   type WorkFolderEditResult,
 } from "@/lib/api";
 
@@ -254,19 +255,32 @@ export function useFolderEditWorkspace({
     target.rootPath,
   ]);
 
-  const apply = async () => {
+  /**
+   * Applies the edit. An edit that merges folders passes the merge check it was reviewed with: the
+   * request the check compared, which must still be the edit, and the check's review.
+   */
+  const apply = async (mergeReview?: { request: WorkFolderEditRequest; review: string }) => {
     if (readiness !== "ready" || applying) return;
+    if (mergeReview && JSON.stringify(mergeReview.request) !== revision) {
+      toast.notify({ kind: "warning", message: t("folderEdit.mergeChanged") });
+      return;
+    }
     setApplying(true);
     try {
       onApplied(
         await api.applyWorkFolderEdit(target.workId, {
           ...request,
           ...(assignments.length > 0 ? { assignments } : {}),
+          ...(mergeReview ? { mergeReview: mergeReview.review } : {}),
           requestId: requestId.current,
         }),
       );
     } catch (error) {
-      if (error instanceof ApiError && error.status === 409 && error.code === "folder_edit_conflict") {
+      if (error instanceof ApiError && error.status === 409 && error.code === "folder_edit_merge_changed") {
+        setPlannedRevision("");
+        setPlanAttempt((value) => value + 1);
+        toast.notify({ kind: "warning", message: t("folderEdit.mergeChanged") });
+      } else if (error instanceof ApiError && error.status === 409 && error.code === "folder_edit_conflict") {
         // The folder changed since the preview; show what it holds now.
         setPlannedRevision("");
         setPlanAttempt((value) => value + 1);

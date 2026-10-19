@@ -354,9 +354,12 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   folders by content with the folder as it will be, lists each file that has
   no identical copy there and is lost when its folder is deleted, and asks
   again before deleting; files downloaded from a remote source are not
-  compared. The edit runs as one Activity workflow that collects every added
-  file before it removes, moves, or adds anything, and deletes a merged folder
-  last, only if it still holds exactly the files the review listed. The
+  compared. When a merged folder or this folder changes after the comparison,
+  the edit is not applied and asks you to review the merge again. The edit runs
+  as one Activity workflow that collects every added file before it removes,
+  moves, or adds anything, and deletes a merged folder last, only if it still
+  holds exactly the files the review listed, unchanged. A merged folder of a
+  work that a Fetch is still filling is not merged. The
   directory reloads when it finishes.
 - A work whose code a scan finds in several local folders keeps all of them.
   The directory then shows one folder per copy, **Manage files** lists one

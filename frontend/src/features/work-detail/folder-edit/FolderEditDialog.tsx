@@ -118,9 +118,9 @@ export function FolderEditDialog({
           removeCount={removalTargets.length}
           applying={workspace.applying}
           onCancel={() => setReviewingMerge(false)}
-          onConfirm={() => {
+          onConfirm={(reviewed) => {
             setReviewingMerge(false);
-            void workspace.apply();
+            void workspace.apply(reviewed);
           }}
         />
       )}

@@ -2542,6 +2542,7 @@ export const surfaceEnglish = {
     back: "Back to files",
     apply: "Apply changes",
     folderChanged: "The folder changed. Review the updated preview.",
+    mergeChanged: "A merged folder or this folder changed after the comparison. Review the merge again.",
     applyFailed: "The edit could not be started.",
     queued: "Folder edit queued as workflow run #{{runId}}.",
     completed: "Files updated in workflow #{{runId}}.",

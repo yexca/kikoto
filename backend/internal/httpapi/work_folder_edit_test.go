@@ -120,9 +120,24 @@ func (fixture folderEditFixture) plan(t *testing.T, body map[string]any) workFol
 	return plan
 }
 
-// apply queues the edit and returns its job, ready to execute.
+// apply queues the edit and returns its job, ready to execute. An edit that
+// merges folders and names no review is applied with the review of a merge
+// check run now.
 func (fixture folderEditFixture) apply(t *testing.T, body map[string]any) workflowJobRecord {
 	t.Helper()
+	if _, merges := body["mergeFolderIds"]; merges {
+		if _, reviewed := body["mergeReview"]; !reviewed {
+			check := fixture.mergeCheck(t, body)
+			if !check.Complete || check.Review == "" {
+				t.Fatalf("merge check = %+v", check)
+			}
+			reviewedBody := map[string]any{"mergeReview": check.Review}
+			for key, value := range body {
+				reviewedBody[key] = value
+			}
+			body = reviewedBody
+		}
+	}
 	response := fixture.request(t, fixture.server.applyWorkFolderEdit, body)
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("apply status = %d, body = %s", response.Code, response.Body.String())

@@ -436,7 +436,12 @@ decisions, and never changes a file. The merge check takes the same request
 and lists the files of the merged folders that the edited folder will not hold
 with the same size and SHA-256, hashing within a time budget, caching hashes on
 the files' locations, and reporting `complete: false` while files remain to
-compare; a remote addition is not compared. Apply rejects a plan that has
+compare; a remote addition is not compared. A complete check returns a
+`review` that identifies the files it compared, with their sizes and
+modification times. Apply of an edit that merges folders requires that
+`mergeReview` and answers `409 folder_edit_merge_changed` when the merged
+folders or the files the edited folder keeps changed since the check, or a
+Fetch of a merged folder's work is still running. Apply rejects a plan that has
 conflicts or changes nothing, and queues one `work_folder_edit` run; a folder
 has one active run, which also covers a folder another run merges, and a
 repeated request id returns the run it queued. The run collects additions,

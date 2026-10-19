@@ -2485,6 +2485,7 @@ export const surfaceKorean = {
     back: "파일 목록으로 돌아가기",
     apply: "변경 사항 적용",
     folderChanged: "폴더가 변경되었습니다. 업데이트된 미리보기를 확인하세요.",
+    mergeChanged: "비교 후 병합할 폴더 또는 이 폴더가 변경되었습니다. 병합을 다시 검토하세요.",
     applyFailed: "편집을 시작하지 못했습니다.",
     queued: "폴더 편집이 워크플로 실행 #{{runId}}(으)로 대기열에 추가되었습니다.",
     completed: "워크플로 #{{runId}}에서 파일을 업데이트했습니다.",

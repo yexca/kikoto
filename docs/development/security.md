@@ -271,9 +271,11 @@ family, and stops before the next edition when the request is cancelled.
   storage pool must be online both when the edit is planned and when the run
   deletes it, as for every
   [library file change](../architecture/workflows.md#library-layout-and-onboarding).
-  The plan records its files, and the run deletes the folder only after the target
-  folder is indexed and only while it holds exactly those files with their
-  sizes. The run claims the folder before deleting, so another cleanup or edit
+  Apply requires the review of a complete merge check of the same files and
+  refuses the edit when they changed since. The plan records the files with
+  their sizes and modification times, and the run deletes the folder only
+  after the target folder is indexed and only while it holds exactly those
+  files, unchanged. The run claims the folder before deleting, so another cleanup or edit
   cannot change it meanwhile, and returns it to the work when the run fails or
   is cancelled. The merge check only reads and hashes files below the merged
   folders and the target folder.
