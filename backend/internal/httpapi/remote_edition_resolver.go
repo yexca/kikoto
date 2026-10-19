@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -27,21 +28,30 @@ func (s *Server) resolveRemoteEdition(ctx context.Context, source remoteSourceFo
 	if err != nil {
 		return work, raw, err
 	}
-	if local := normalizeDLsiteCode(code); local != "" && normalizedRemoteWorkCode(work) != local {
+	if !remoteEditionCodeMatches(code, work) {
 		if err := s.verifyRemoteWorkIdentity(ctx, work); err != nil {
 			return kikoeru.Work{}, nil, err
 		}
-		if s.localCodeForRemoteWork(ctx, local, work) != local {
+		if local := normalizeDLsiteCode(code); s.localCodeForRemoteWork(ctx, local, work) != local {
 			return kikoeru.Work{}, nil, errRemoteWorkNotFound
 		}
 	}
 	return work, raw, nil
 }
 
+// remoteEditionCodeMatches reports whether a source answered a requested
+// DLsite code with that same code. resolveRemoteEdition verifies the identity
+// of every other answer before returning it.
+func remoteEditionCodeMatches(requestedCode string, work kikoeru.Work) bool {
+	local := normalizeDLsiteCode(requestedCode)
+	return local == "" || normalizedRemoteWorkCode(work) == local
+}
+
 // resolveRemoteEditionFallback keeps source-local discovery separate from work
 // identity. Only exact DLsite responses with verified family evidence authorize an alias.
 // Requests use the supplied source client and the shared DLsite transport; no
-// URL from either response becomes a new request destination.
+// URL from either response becomes a new request destination. When DLsite
+// cannot answer, the local code is reported as not found on the source.
 func (s *Server) resolveRemoteEditionFallback(ctx context.Context, source remoteSourceForUse, client *kikoeru.Client, localCode string) (kikoeru.Work, error) {
 	if s.cfg.IsDemo() || !source.Enabled || !isKikoeruSourceType(source.SourceType) {
 		return kikoeru.Work{}, errRemoteWorkNotFound
@@ -102,9 +112,12 @@ func (s *Server) resolveRemoteEditionFallback(ctx context.Context, source remote
 		}
 		seen[candidate] = true
 		checked++
-		product, err := s.dlsiteClient.FetchProduct(ctx, candidate)
+		product, err := s.editionIdentityProduct(ctx, candidate)
 		if errors.Is(err, dlsite.ErrNoProduct) {
 			continue
+		}
+		if errors.Is(err, errEditionIdentityUnverified) {
+			break
 		}
 		if err != nil {
 			return kikoeru.Work{}, err
@@ -269,6 +282,9 @@ func (s *Server) persistDLsiteReplacementAlias(ctx context.Context, localCode, c
 // verifyRemoteWorkIdentity runs before persistence transactions, so an exact
 // candidate lookup can reuse a known edition without holding a database lock.
 // Only the explicitly selected remote work is checked; siblings stay candidates.
+// Identity that cannot be verified is not an error: the remote work keeps its
+// own code, so the worst outcome is a separate edition, never a merged one.
+// Only local database failures and cancellation are returned.
 func (s *Server) verifyRemoteWorkIdentity(ctx context.Context, work kikoeru.Work) error {
 	if s.cfg.IsDemo() || s.dlsiteClient == nil {
 		return nil
@@ -291,17 +307,16 @@ func (s *Server) verifyRemoteWorkIdentity(ctx context.Context, work kikoeru.Work
 	if known != 0 {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	product, err := s.dlsiteClient.FetchProduct(ctx, code)
-	if errors.Is(err, dlsite.ErrNoProduct) {
+	product, err := s.editionIdentityProduct(ctx, code)
+	if errors.Is(err, dlsite.ErrNoProduct) || errors.Is(err, errEditionIdentityUnverified) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 	if normalizeWorkCode(firstNonEmpty(product.WorkNo, product.ProductID)) != code {
-		return errors.New("provider returned a mismatched product code")
+		slog.Warn("dlsite edition identity lookup returned another product code", "work_code", code)
+		return nil
 	}
 	ownerID, localCode, err := metasync.ExistingReplacementEdition(ctx, s.db, product)
 	if err != nil || ownerID == 0 {
@@ -309,7 +324,7 @@ func (s *Server) verifyRemoteWorkIdentity(ctx context.Context, work kikoeru.Work
 	}
 	persisted, err := s.persistDLsiteReplacementAlias(ctx, localCode, code, product)
 	if err == nil && !persisted {
-		return errors.New("provider replacement conflicts with an existing work identity")
+		slog.Warn("dlsite replacement conflicts with an existing work identity", "work_code", code, "edition_code", localCode)
 	}
 	return err
 }

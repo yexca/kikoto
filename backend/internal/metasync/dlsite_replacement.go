@@ -44,16 +44,14 @@ func ProductMatchesExistingEdition(ctx context.Context, queryer replacementQuery
 	}
 	var previous dlsite.Product
 	previousOK := json.Unmarshal([]byte(raw), &previous) == nil && dlsiteProductCode(previous) == localCode
-	if strings.EqualFold(strings.TrimSpace(product.TranslationInfo.ParentWorkNo), localCode) {
-		// A product in another language that names the local edition as its
-		// parent is a translation made from it, not its reissue.
-		if previousOK {
-			local, candidate := replacementLanguage(previous, localCode), replacementLanguage(product, code)
-			if local != "" && candidate != "" && !strings.EqualFold(local, candidate) {
-				return false, nil
-			}
+	if strings.EqualFold(strings.TrimSpace(product.TranslationInfo.ParentWorkNo), localCode) && previousOK {
+		// A product that names the local edition as its parent is either that
+		// edition relisted or a translation made from it. The provider language
+		// of both decides; without both, only the evidence below can join them.
+		local, candidate := replacementLanguage(previous, localCode), replacementLanguage(product, code)
+		if local != "" && candidate != "" {
+			return strings.EqualFold(local, candidate), nil
 		}
-		return true, nil
 	}
 	var verified int
 	if err := queryer.QueryRowContext(ctx, `

@@ -65,17 +65,24 @@ func TestReplacementRequiresExactEditionIDAndLanguageWithoutParent(t *testing.T)
 	}
 }
 
-func TestParentInAnotherLanguageIsNotAReplacement(t *testing.T) {
+func TestParentIsAReplacementOnlyInTheSameLanguage(t *testing.T) {
 	original := testfixture.WorkCode("RJ", 0)
 	local := testfixture.WorkCode("RJ", 1)
 	candidate := testfixture.WorkCode("RJ", 2)
 	for _, tc := range []struct {
-		name     string
-		language string
-		wantSame bool
+		name          string
+		localLanguage string
+		localSnapshot bool
+		language      string
+		wantSame      bool
 	}{
-		{"same language", "CHI_HANS", true},
-		{"translated from the local edition", "CHI_HANT", false},
+		{"same language", "CHI_HANS", true, "CHI_HANS", true},
+		{"translated from the local edition", "CHI_HANS", true, "CHI_HANT", false},
+		// Without both provider languages a parent proves nothing; the worst
+		// case of doubt is a separate edition, never a merged one.
+		{"product language unknown", "CHI_HANS", true, "", false},
+		{"local language unknown", "", true, "CHI_HANT", false},
+		{"no local provider snapshot", "CHI_HANS", false, "CHI_HANT", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := openTestDB(t)
@@ -86,9 +93,11 @@ func TestParentInAnotherLanguageIsNotAReplacement(t *testing.T) {
 			}
 			previous := dlsite.Product{
 				WorkNo: local, ProductName: "Example Work Simplified Chinese",
-				TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: original, Lang: "CHI_HANS"},
+				TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: original, Lang: tc.localLanguage},
 			}
-			previous.Raw, _ = json.Marshal(previous)
+			if tc.localSnapshot {
+				previous.Raw, _ = json.Marshal(previous)
+			}
 			localID, err := syncer.SyncProductOnly(ctx, previous)
 			if err != nil {
 				t.Fatal(err)
@@ -125,7 +134,9 @@ func TestFetchedReplacementMustBeRequestedByItsExactCode(t *testing.T) {
 			if _, err := syncer.SyncProductOnly(ctx, dlsite.Product{WorkNo: original, ProductName: "Example Work"}); err != nil {
 				t.Fatal(err)
 			}
-			localID, err := syncer.SyncProductOnly(ctx, dlsite.Product{WorkNo: local, ProductName: "Example Work Chinese", TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: original}})
+			localProduct := dlsite.Product{WorkNo: local, ProductName: "Example Work Chinese", TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: original, Lang: "CHI_HANS"}}
+			localProduct.Raw, _ = json.Marshal(localProduct)
+			localID, err := syncer.SyncProductOnly(ctx, localProduct)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -136,7 +147,7 @@ func TestFetchedReplacementMustBeRequestedByItsExactCode(t *testing.T) {
 				if code == candidate && wrongExactResponse {
 					actual = testfixture.WorkCode("RJ", 3)
 				}
-				return dlsite.Product{WorkNo: actual, TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: original, ParentWorkNo: local}}, nil
+				return dlsite.Product{WorkNo: actual, TranslationInfo: dlsite.TranslationInfo{OriginalWorkNo: original, ParentWorkNo: local, Lang: "CHI_HANS"}}, nil
 			})
 			if len(requests) != 2 || requests[0] != local || requests[1] != candidate {
 				t.Fatalf("exact provider requests = %v", requests)

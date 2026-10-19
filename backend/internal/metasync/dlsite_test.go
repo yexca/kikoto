@@ -163,7 +163,7 @@ func TestSyncProductReissuedEditionKeepsExistingWorkAndAddsAlias(t *testing.T) {
 		WorkNo: "RJ00000001", ProductName: "Chinese",
 		TranslationInfo:  dlsite.TranslationInfo{OriginalWorkNo: "RJ00000000"},
 		LanguageEditions: origin.LanguageEditions,
-		Raw:              json.RawMessage(`{"workno":"RJ00000001"}`),
+		Raw:              json.RawMessage(`{"workno":"RJ00000001","translation_info":{"original_workno":"RJ00000000","lang":"CHI_HANS"}}`),
 	}
 	reissued := dlsite.Product{
 		WorkNo: "RJ00000002", ProductName: "Chinese",

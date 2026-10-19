@@ -440,12 +440,16 @@ create works and do not imply local or remote file availability.
 A verified DLsite replacement code has `relationship_kind = provider_reissued`
 and `source_work_id` pointing to the existing edition. The edition keeps its
 local primary code. Verification requires an exact request returning the
-candidate code, `original_workno` matching the local canonical code, and either
-`parent_workno` naming the local edition or a nonzero `edition_id` and nonempty
-language exactly matching that edition's stored DLsite snapshot. Ambiguous
-matches and independently persisted works retain their own identities. Remote
-source language lists supply candidates only; titles and language labels do
-not prove a relationship.
+candidate code, `original_workno` matching the local canonical code, and
+evidence of the same language edition checked against that edition's stored
+DLsite snapshot: either `parent_workno` naming the local edition with the same
+provider language on both sides, or a nonzero `edition_id` and nonempty
+language exactly matching the snapshot. A product made from the local edition
+in another language, or one whose language either side does not name, is a
+separate edition in the same family. Ambiguous matches and independently
+persisted works retain their own identities. Remote source language lists
+supply candidates only; titles and language labels do not prove a
+relationship.
 
 Check source reports `editionCode` for the local edition and `remoteCode` for
 the product available on each source. Fetch plans and recoverable job payloads
@@ -455,7 +459,11 @@ selected local `editionCode`; the server checks it against the verified mapping
 before planning files or reusing a queued result. Remote persistence
 resolves verified aliases before inserting works. An explicitly selected
 unknown code is checked for a replacement relationship before persistence;
-discovery does not materialize candidate siblings.
+discovery does not materialize candidate siblings. When DLsite fails or does not
+answer within 10 seconds, the relationship stays unverified: the remote work
+keeps its own code and the request proceeds. The failure goes to the server
+log, never to the remote source's health, and pauses these DLsite checks for
+five minutes; DLsite answers used for them are reused for six hours.
 
 `work_metadata_link` records a user-declared DLsite product whose metadata a
 work uses, for example when a bonus edition is withdrawn from sale and the
