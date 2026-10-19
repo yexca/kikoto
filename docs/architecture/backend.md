@@ -455,7 +455,9 @@ files of the folder another path below it, `folders` are folders to create,
 and `mergeFolderIds` are other active local folders of the family to delete
 once the folder holds what the edit copies from them. The plan checks that no
 two files of the result share a path and that no file sits where a folder of
-another path belongs; a path a removed or moved file frees can be taken. It
+another path belongs; a path a removed or moved file frees can be taken, and
+only that very file frees it: another file whose path differs only in letter
+case or Unicode composition stays and is a conflict. It
 resolves each addition's target as a Fetch plan does, with the same
 decisions, and never changes a file. The merge check takes the same request
 and lists the files of the merged folders that the edited folder will not hold
@@ -463,25 +465,33 @@ with the same size and SHA-256, hashing within a time budget, caching hashes on
 the files' locations, and reporting `complete: false` while files remain to
 compare; a remote addition is not compared, and a file an addition replaces
 does not stay even when its path differs only as a case-insensitive
-filesystem compares it. A complete check returns a
-`review` that identifies the files it compared, with their sizes and
-modification times. Apply of an edit that merges folders requires that
-`mergeReview` and answers `409 folder_edit_merge_changed` when the merged
-folders or the files the edited folder keeps changed since the check, or a
-Fetch of a merged folder's work is still running. Apply rejects a plan that has
+filesystem compares it. Metadata a NAS or operating system keeps beside files
+(`@eaDir`, `__MACOSX`, `._` files, `.DS_Store`, `Thumbs.db`) is neither
+listed nor compared and is deleted with its merged folder. A complete check
+returns a `review` that identifies the files it compared, with their sizes
+and modification times, and carries the files it reported lost. Apply of an
+edit that merges folders requires that `mergeReview` and answers
+`409 folder_edit_merge_changed` when the merged folders or the files the
+edited folder keeps changed since the check, when comparing again finds a
+merged file without a copy that the review did not report lost, such as a
+file that can no longer be read, or a Fetch of a merged folder's work is still
+running. Apply rejects a plan that has
 conflicts or changes nothing, and queues one `work_folder_edit` run; a folder
 has one active run, which also covers a folder another run merges, and a
 repeated request id returns the run it queued. The run collects additions,
-removes files, takes every moved file out of its place before any file takes a
-path, publishes, gives each moved file's media item its new path when the item
+removes each removed file only while it is the version the plan saw on disk,
+takes every moved file out of its place before any file takes a path,
+publishes without ever replacing a file that appeared after planning, and
+replaces an existing file only where a decision chose to and while it has the
+size the plan saw, gives each moved file's media item its new path when the item
 has no other available file outside the folders the edit merges, so its
 references follow it; an item whose file at that path the edit removes gives
 the path up and keeps its own references. It then removes the folders
 it emptied, creates the requested folders, and indexes the folder. A resumed
 or retried run never collects again a file it already published. It deletes
 each merged folder last, only while it holds exactly the files the edit was
-planned with and each of them the merge check did not report lost still has a
-file of the same size and SHA-256 in the edited folder; otherwise the run
+planned with and each of them the reviewed merge check did not report lost
+still has a file of the same size and SHA-256 in the edited folder; otherwise the run
 stops and asks for a new review. It marks the deleted folder's locations
 unavailable and its folder ignored; a run that fails or is cancelled returns a
 merged folder it had started on to the work, also while the edited folder is

@@ -738,3 +738,91 @@ func TestWorkFolderEditMovedFileKeepsItsItemWhenItsOtherCopyIsMergedAway(t *test
 		t.Fatalf("the moved file has media item %d, want %d", got, item)
 	}
 }
+
+func TestWorkFolderEditMergeRefusesALossTheReviewDidNotReport(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	siblingFolderID := fixture.addSiblingFolder(t, map[string]string{"Same/copy.mp3": "synthetic audio"})
+	body := map[string]any{"mergeFolderIds": []int64{siblingFolderID}}
+	check := fixture.mergeCheck(t, body)
+	if !check.Complete || len(check.Lost) != 0 {
+		t.Fatalf("merge check = %+v", check)
+	}
+	// Every file keeps its version, but the edited folder's copy no longer
+	// compares equal, as when it cannot be read any more.
+	if _, err := fixture.db.Exec("UPDATE media_file_location SET content_hash = 'unreadable' WHERE id = ?", fixture.originalLocationID); err != nil {
+		t.Fatal(err)
+	}
+	response := fixture.request(t, fixture.server.applyWorkFolderEdit, map[string]any{
+		"mergeFolderIds": []int64{siblingFolderID}, "mergeReview": check.Review,
+	})
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "folder_edit_merge_changed") {
+		t.Fatalf("a loss the review did not report: status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if fixture.queuedRuns(t) != 0 {
+		t.Fatal("a merge with a loss the review did not report queued a run")
+	}
+}
+
+func TestWorkFolderEditMergeLeavesNASMetadataOutOfTheReview(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	siblingFolderID := fixture.addSiblingFolder(t, map[string]string{
+		"only-here.txt": "a note no other folder holds",
+		"Thumbs.db":     "thumbnail cache",
+		"@eaDir/only-here.txt/SYNOINDEX_MEDIA_INFO": "indexer metadata",
+	})
+	body := map[string]any{"mergeFolderIds": []int64{siblingFolderID}}
+	check := fixture.mergeCheck(t, body)
+	if !check.Complete || len(check.Lost) != 1 || check.Lost[0].Path != "RJ00000002/only-here.txt" {
+		t.Fatalf("merge check = %+v", check)
+	}
+	// The NAS rewrites its metadata after the review.
+	metadata := filepath.Join(fixture.dataRoot, fixture.siblingPool, "RJ00000002", "@eaDir", "only-here.txt", "SYNOINDEX_MEDIA_INFO")
+	if err := os.WriteFile(metadata, []byte("indexer metadata, rewritten"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fixture.run(t, map[string]any{"mergeFolderIds": []int64{siblingFolderID}, "mergeReview": check.Review})
+	if _, err := os.Stat(filepath.Join(fixture.dataRoot, fixture.siblingPool, "RJ00000002")); !os.IsNotExist(err) {
+		t.Fatalf("the merged folder is still there: %v", err)
+	}
+}
+
+func TestWorkFolderEditKeepsARemovedFileRewrittenAfterPlanning(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	job := fixture.apply(t, map[string]any{"removeLocationIds": []int64{fixture.originalLocationID}})
+	// Another writer, such as a Fetch, puts a new version at the path.
+	if err := os.WriteFile(filepath.Join(fixture.dataRoot, filepath.FromSlash(fixture.originalPath)), []byte("a newer recording"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec("UPDATE workflow_job SET max_retries = 0 WHERE id = ?", job.ID); err != nil {
+		t.Fatal(err)
+	}
+	job.MaxRetries = 0
+	if err := fixture.server.executeWorkFolderEditJob(context.Background(), job); err == nil {
+		t.Fatal("the edit removed a file that changed after it was planned")
+	}
+	if content, err := os.ReadFile(filepath.Join(fixture.dataRoot, filepath.FromSlash(fixture.originalPath))); err != nil || string(content) != "a newer recording" {
+		t.Fatalf("rewritten file = %q, %v", content, err)
+	}
+}
+
+func TestWorkFolderEditReplacesOnlyTheExactRemovedFile(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	originalName := strings.TrimPrefix(fixture.originalPath, fixture.root+"/")
+	otherName := strings.ToLower(originalName)
+	if err := os.WriteFile(fixture.targetFile(otherName), []byte("another recording"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if content, err := os.ReadFile(fixture.targetFile(originalName)); err != nil || string(content) != "synthetic audio" {
+		t.Skip("the filesystem does not tell letter case apart")
+	}
+	locations := fixture.withSecondTrack(t)
+	siblingFolderID := fixture.addSiblingFolder(t, map[string]string{"incoming.mp3": "an incoming recording"})
+	addition := localAddition(siblingFolderID, "incoming.mp3")
+	addition["targetPath"] = originalName
+	// Removing the lower-case file does not free the path of the file whose
+	// name differs from it only in letter case.
+	plan := fixture.plan(t, map[string]any{"additions": []any{addition}, "removeLocationIds": []int64{locations[otherName]}})
+	if len(plan.Items) != 1 || plan.Items[0].Status == "replace_target" || plan.Items[0].Action != "conflict" {
+		t.Fatalf("plan items = %+v", plan.Items)
+	}
+}

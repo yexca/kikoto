@@ -360,10 +360,13 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   folders by content with the folder as it will be, lists each file that has
   no identical copy there and is lost when its folder is deleted, and asks
   again before deleting; files downloaded from a remote source are not
-  compared. When a merged folder or this folder changes after the comparison,
+  compared. Metadata that a NAS or the system keeps beside files, such as
+  `@eaDir` folders and `Thumbs.db`, is not compared and goes with the merged
+  folder. When a merged folder or this folder changes after the comparison,
   the edit is not applied and asks you to review the merge again. The edit runs
   as one Activity workflow that collects every added file before it removes,
-  moves, or adds anything, and deletes a merged folder last, only if it still
+  moves, or adds anything, removes a file only while it is unchanged since you
+  applied the edit, and deletes a merged folder last, only if it still
   holds exactly the files the review listed, unchanged, and every file the
   review found a copy of still has that identical copy in this folder;
   otherwise it stops and asks you to review the merge again. A stopped edit

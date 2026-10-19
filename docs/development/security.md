@@ -251,7 +251,9 @@ family, and stops before the next edition when the request is cancelled.
   location. Each requested path must be a file of that tree.
 - A removed file must be a local location of the requested work inside the
   target folder. Applying the edit runs the destructive-path checks of media
-  cleanup, including the symbolic-link review.
+  cleanup, including the symbolic-link review, and records the file's size and
+  modification time on disk; the run deletes it only while it is still that
+  version.
 - An addition with a declared language must be a lyrics text file of at most
   2 MiB. It lands in the language's folder inside a `lyrics_kikoto` folder
   Kikoto created and marked; an unmarked one is refused with
@@ -262,7 +264,12 @@ family, and stops before the next edition when the request is cancelled.
 - Target paths stay inside the target folder. A target that exists is kept
   when it has the same size and is otherwise a conflict, which apply rejects
   until a decision resolves it. Two files of the result never share a path,
-  compared without letter case or Unicode composition. A moved file must be a
+  compared without letter case or Unicode composition. A removed or moved file
+  frees only its own path, decided by file identity on disk, so a different
+  file whose path differs only in letter case or composition is never taken
+  for it. The run publishes and moves files with a rename that refuses an
+  existing target where the filesystem supports one, and replaces an existing
+  file only where a decision chose to and while it has the size the plan saw. A moved file must be a
   local location of the requested work inside the target folder, lands only on
   a path that is free or that the edit frees, and neither leaves nor enters
   `lyrics_kikoto`; neither does a created folder or a placed addition. At most
@@ -274,8 +281,14 @@ family, and stops before the next edition when the request is cancelled.
   deletes it, as for every
   [library file change](../architecture/workflows.md#library-layout-and-onboarding).
   Apply requires the review of a complete merge check of the same files and
-  refuses the edit when they changed since. The plan records the files with
-  their sizes and modification times and the files the check reported lost,
+  refuses the edit when they changed since. The review carries the files the
+  check reported lost, and apply compares again: a merged file now without a
+  copy that the review did not report lost, such as one that can no longer be
+  read, refuses the edit. Metadata a NAS or operating system keeps beside files
+  (`@eaDir`, `__MACOSX`, `._` files, `.DS_Store`, `Thumbs.db`) is not part
+  of the review and is deleted with the folder, under the same link and
+  special-file refusal. The plan records the files with
+  their sizes and modification times and the files the review reported lost,
   and the run deletes the folder only after the target folder is indexed, only
   while it holds exactly those files, unchanged, and only while each file not
   reported lost still has a copy of the same size and SHA-256 in the target

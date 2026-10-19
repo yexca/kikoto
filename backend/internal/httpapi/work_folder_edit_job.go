@@ -10,6 +10,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/localfs"
 )
 
 type workFolderEditJobPayload struct {
@@ -22,7 +24,9 @@ type workFolderEditJobPayload struct {
 	TransactionPool string               `json:"transaction_pool,omitempty"`
 	Items           []workFolderEditItem `json:"items"`
 	Removals        []mediaCleanupTarget `json:"removals"`
-	Moves           []workFolderEditMove `json:"moves,omitempty"`
+	// RemovalFiles are the removed files as the plan saw them on disk.
+	RemovalFiles []workFolderEditRemoval `json:"removal_files,omitempty"`
+	Moves        []workFolderEditMove    `json:"moves,omitempty"`
 	// Folders are the folders to create, as library paths.
 	Folders []string `json:"folders,omitempty"`
 	// Merges are deleted once the folder is indexed, with the files each held
@@ -31,6 +35,8 @@ type workFolderEditJobPayload struct {
 	// Assignments are stored once the folder is indexed.
 	Assignments []workFolderEditAssignment `json:"assignments,omitempty"`
 	RequestID   string                     `json:"request_id"`
+	// Summary is the summary of the plan the edit was queued with.
+	Summary *workFolderEditSummary `json:"summary,omitempty"`
 }
 
 // workFolderEditCheckpoint records what already happened, so a resumed or
@@ -366,11 +372,16 @@ func (e *workFolderEditExecution) stage(ctx context.Context) error {
 }
 
 // remove deletes the files taken out of the folder. It runs after every added
-// file is collected, so a failed download removes nothing.
+// file is collected, so a failed download removes nothing, and it deletes a
+// file only while it is the version the plan saw.
 func (e *workFolderEditExecution) remove(ctx context.Context) error {
 	s := e.server
 	if err := s.updateRemoteFetchPhaseNode(ctx, e.job.RunID, "remove", "running", nil); err != nil {
 		return err
+	}
+	planned := map[int64]workFolderEditRemoval{}
+	for _, file := range e.payload.RemovalFiles {
+		planned[file.LocationID] = file
 	}
 	removed := stringSet(e.checkpoint.Removed)
 	base := e.progress
@@ -386,6 +397,11 @@ func (e *workFolderEditExecution) remove(ctx context.Context) error {
 		if target.Kind != "local" || normalizeFolderRootPath(target.Path) == normalizeFolderRootPath(e.payload.TargetRoot) ||
 			!mediaCleanupPathWithinRoot(e.payload.TargetRoot, target.Path) {
 			return fmt.Errorf("refusing to remove a file outside the edited folder")
+		}
+		if file, ok := planned[target.LocationID]; ok {
+			if err := s.checkWorkFolderEditRemoval(file); err != nil {
+				return err
+			}
 		}
 		// A removal that started is recorded even if the service stops next.
 		statusCtx := context.WithoutCancel(ctx)
@@ -407,6 +423,27 @@ func (e *workFolderEditExecution) remove(ctx context.Context) error {
 	return s.updateRemoteFetchPhaseNode(ctx, e.job.RunID, "remove", "succeeded", map[string]any{
 		"locations": len(e.payload.Removals), "deleted": e.checkpoint.Deleted,
 	})
+}
+
+// checkWorkFolderEditRemoval refuses to remove a file that changed since the
+// edit was planned, or that appeared where the plan saw none, such as a file
+// a Fetch published there meanwhile. A file already gone needs no deletion.
+func (s *Server) checkWorkFolderEditRemoval(file workFolderEditRemoval) error {
+	absolute, err := safeDataPath(s.cfg.DataRoot, file.Path)
+	if err != nil {
+		return err
+	}
+	info, err := os.Lstat(absolute)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if file.Version == "" || localfs.FileVersion(info) != file.Version {
+		return fmt.Errorf("%s changed after the edit was planned; review the edit again", file.Path)
+	}
+	return nil
 }
 
 // publish moves each collected file into the folder. A move is a rename on
@@ -536,12 +573,9 @@ func (e *workFolderEditExecution) placeMoves(ctx context.Context) error {
 			if err := mkdirPlainDirectories(e.targetAbs, filepath.Dir(destination)); err != nil {
 				return err
 			}
-			if _, err := os.Lstat(destination); err == nil {
+			if err := renameNoReplace(staged, destination); errors.Is(err, os.ErrExist) {
 				return fmt.Errorf("%s appeared in the folder after the edit was planned", relative)
-			} else if !errors.Is(err, os.ErrNotExist) {
-				return err
-			}
-			if err := os.Rename(staged, destination); err != nil {
+			} else if err != nil {
 				return err
 			}
 		}
@@ -794,8 +828,12 @@ func (e *workFolderEditExecution) publishItem(index int, item workFolderEditItem
 	if err := mkdirPlainDirectories(e.targetAbs, filepath.Dir(destination)); err != nil {
 		return err
 	}
-	if _, err := os.Lstat(destination); err == nil {
-		if item.Resolution != "replace" && item.Status != "replace_target" {
+	// Only a file the review chose to replace gives way, and only while it is
+	// the file the plan saw there. A removed file the added file takes the
+	// place of is already gone, so anything at its path came later.
+	if info, err := os.Lstat(destination); err == nil {
+		if item.Resolution != "replace" || !item.TargetExists || item.TargetSizeBytes == nil ||
+			!info.Mode().IsRegular() || info.Size() != *item.TargetSizeBytes {
 			return fmt.Errorf("%s appeared in the folder after the edit was planned", relative)
 		}
 		if _, _, err := removeDestructiveFile(s.cfg.DataRoot, item.TargetPath); err != nil {
@@ -804,7 +842,12 @@ func (e *workFolderEditExecution) publishItem(index int, item workFolderEditItem
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return os.Rename(stagedPath, destination)
+	if err := renameNoReplace(stagedPath, destination); errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("%s appeared in the folder after the edit was planned", relative)
+	} else if err != nil {
+		return err
+	}
+	return nil
 }
 
 // mkdirPlainDirectories creates directory below base. Every component that
@@ -869,9 +912,21 @@ func (e *workFolderEditExecution) finish(ctx context.Context) error {
 	return nil
 }
 
+// summarizeWorkFolderEditPayload is the summary of the plan the edit was
+// queued with. An edit queued without one is summarized from its files, with
+// the removed files' sizes where it records them.
 func summarizeWorkFolderEditPayload(payload workFolderEditJobPayload) workFolderEditSummary {
-	removals := make([]workFolderEditRemoval, len(payload.Removals))
-	return summarizeWorkFolderEdit(payload.Items, removals)
+	if payload.Summary != nil {
+		return *payload.Summary
+	}
+	summary := summarizeWorkFolderEdit(payload.Items, payload.RemovalFiles)
+	summary.Remove = len(payload.Removals)
+	summary.Move = len(payload.Moves)
+	summary.Merge = len(payload.Merges)
+	for _, merge := range payload.Merges {
+		summary.MergeFiles += merge.FileCount
+	}
+	return summary
 }
 
 // removeStaging deletes the run's staging directory, which holds only what
@@ -938,15 +993,15 @@ func (e *workFolderEditExecution) putBackMove(index int, move workFolderEditMove
 	} else if err != nil {
 		return err
 	}
-	if _, err := os.Lstat(source); err == nil {
-		return errors.New("another file took its place")
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
 	if err := mkdirPlainDirectories(e.targetAbs, filepath.Dir(source)); err != nil {
 		return err
 	}
-	return os.Rename(staged, source)
+	if err := renameNoReplace(staged, source); errors.Is(err, os.ErrExist) {
+		return errors.New("another file took its place")
+	} else if err != nil {
+		return err
+	}
+	return nil
 }
 
 // discardStaging puts lifted files back and deletes what the run collected.

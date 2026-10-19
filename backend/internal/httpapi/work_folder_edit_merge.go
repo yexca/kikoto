@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -91,7 +92,8 @@ func (s *Server) workFolderEditMerges(ctx context.Context, family map[int64]bool
 
 // workFolderEditMergeFiles lists every file below a merged folder on disk,
 // including files the index does not hold, since deleting the folder deletes
-// them too. Kikoto's lyrics folder marker is not a file of the work.
+// them too. Kikoto's lyrics folder marker and metadata sidecars are not files
+// of the work.
 func workFolderEditMergeFiles(root string) ([]workFolderEditMergeFile, error) {
 	files := []workFolderEditMergeFile{}
 	err := filepath.WalkDir(root, func(current string, entry fs.DirEntry, walkErr error) error {
@@ -106,7 +108,7 @@ func workFolderEditMergeFiles(root string) ([]workFolderEditMergeFile, error) {
 		if unsafeFetchStagingEntry(info) || (!info.IsDir() && !info.Mode().IsRegular()) {
 			return invalidRequestError("a merged folder holds a link or special file at " + relative + "; remove it first")
 		}
-		if info.IsDir() || localfs.IsLyricsRootMarker(relative) {
+		if info.IsDir() || localfs.IsLyricsRootMarker(relative) || workFolderEditMergeSidecarPath(relative) {
 			return nil
 		}
 		if len(files) >= maxWorkFolderEditRemovals {
@@ -124,6 +126,74 @@ func workFolderEditMergeFiles(root string) ([]workFolderEditMergeFile, error) {
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	return files, nil
+}
+
+// workFolderEditMergeSidecar reports whether an entry of a merged folder is
+// metadata that a NAS or operating system keeps beside the folder's files and
+// that every library walk skips: Synology's @eaDir, an archive's __MACOSX, and
+// sidecar files such as ._ files, .DS_Store, and Thumbs.db. Such metadata can
+// change at any time on its own, so the merge check neither lists nor compares
+// it, and it goes with the merged folder. Other folders the library skips,
+// such as a recycle bin, can hold the user's files and are listed.
+func workFolderEditMergeSidecar(name string, directory bool) bool {
+	if !directory {
+		return localfs.IsIgnoredFileName(name)
+	}
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "@eadir", "__macosx":
+		return true
+	}
+	return false
+}
+
+// workFolderEditMergeSidecarPath reports whether a file, by its path below a
+// merged folder, is a sidecar or lies in a sidecar folder.
+func workFolderEditMergeSidecarPath(relative string) bool {
+	parts := strings.Split(relative, "/")
+	for index, part := range parts {
+		if workFolderEditMergeSidecar(part, index < len(parts)-1) {
+			return true
+		}
+	}
+	return false
+}
+
+// removeWorkFolderEditMergeSidecars deletes the sidecar folders and files left
+// in a merged folder once its files are gone, so the folder itself can go.
+// Like every deletion below the library, it refuses links and special files.
+func (s *Server) removeWorkFolderEditMergeSidecars(absolute string) error {
+	folders, files := []string{}, []string{}
+	err := filepath.WalkDir(absolute, func(current string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if errors.Is(walkErr, os.ErrNotExist) {
+				return nil
+			}
+			return walkErr
+		}
+		if current == absolute || !workFolderEditMergeSidecar(entry.Name(), entry.IsDir()) {
+			return nil
+		}
+		if entry.IsDir() {
+			folders = append(folders, relativeDataPath(s.cfg.DataRoot, current))
+			return fs.SkipDir
+		}
+		files = append(files, relativeDataPath(s.cfg.DataRoot, current))
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for _, folder := range folders {
+		if _, err := removeDestructiveTree(s.cfg.DataRoot, folder); err != nil {
+			return err
+		}
+	}
+	for _, file := range files {
+		if _, _, err := removeDestructiveFile(s.cfg.DataRoot, file); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // publicWorkFolderEditMerges leaves out the file lists, which the merge check
@@ -175,7 +245,7 @@ func (s *Server) checkWorkFolderEditMerge(w http.ResponseWriter, r *http.Request
 		writeWorkFolderEditError(w, err)
 		return
 	}
-	check, err := s.workFolderEditMergeLosses(r.Context(), plan, workFolderEditMergeCheckBudget)
+	check, _, err := s.workFolderEditMergeLosses(r.Context(), plan, workFolderEditMergeCheckBudget)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -211,7 +281,7 @@ func (s *Server) workFolderEditFinalContents(ctx context.Context, plan workFolde
 		if item.Action != "copy_local" {
 			continue
 		}
-		copied[fmt.Sprintf("%d:%s", item.SourceFolderID, item.Path)] = true
+		copied[workFolderEditMergeKey(item.SourceFolderID, item.Path)] = true
 		if item.SizeBytes != nil {
 			final = append(final, workFolderEditContent{
 				libraryPath: item.LocalSourcePath, size: *item.SizeBytes, version: s.workFolderEditFileVersion(item.LocalSourcePath),
@@ -257,10 +327,32 @@ func (s *Server) workFolderEditFileVersion(libraryPath string) string {
 	return localfs.FileVersion(info)
 }
 
-// workFolderEditMergeReview identifies the files a merge check compares: every
-// file of the merged folders and every file the edited folder will hold, each
-// with its version.
-func workFolderEditMergeReview(merges []workFolderEditMerge, final []workFolderEditContent) string {
+// workFolderEditMergeKey identifies a merged file by its folder and its path
+// below the folder.
+func workFolderEditMergeKey(folderID int64, relative string) string {
+	return fmt.Sprintf("%d:%s", folderID, relative)
+}
+
+// workFolderEditMergeKeys lists the merged files by folder id, then path.
+func workFolderEditMergeKeys(merges []workFolderEditMerge) []string {
+	ordered := append([]workFolderEditMerge(nil), merges...)
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].FolderID < ordered[j].FolderID })
+	keys := []string{}
+	for _, merge := range ordered {
+		for _, file := range merge.Files {
+			keys = append(keys, workFolderEditMergeKey(merge.FolderID, file.Path))
+		}
+	}
+	return keys
+}
+
+// workFolderEditMergeReview identifies a complete merge check: every file of
+// the merged folders and every file the edited folder will hold, each with its
+// version, and the merged files the check reported lost. The review also
+// carries those lost files, one bit per merged file in the order of
+// workFolderEditMergeKeys, so applying the edit knows which losses were
+// reviewed.
+func workFolderEditMergeReview(merges []workFolderEditMerge, final []workFolderEditContent, lost map[string]bool) string {
 	lines := []string{}
 	for _, merge := range merges {
 		lines = append(lines, fmt.Sprintf("folder\x00%d\x00%s", merge.FolderID, merge.RootPath))
@@ -271,9 +363,39 @@ func workFolderEditMergeReview(merges []workFolderEditMerge, final []workFolderE
 	for _, content := range final {
 		lines = append(lines, fmt.Sprintf("final\x00%s\x00%s", content.libraryPath, content.version))
 	}
+	keys := workFolderEditMergeKeys(merges)
+	bits := make([]byte, (len(keys)+7)/8)
+	for index, key := range keys {
+		if lost[key] {
+			lines = append(lines, "lost\x00"+key)
+			bits[index/8] |= 1 << (index % 8)
+		}
+	}
 	sort.Strings(lines)
 	digest := sha256.Sum256([]byte(strings.Join(lines, "\n")))
-	return hex.EncodeToString(digest[:])
+	return hex.EncodeToString(digest[:]) + "." + base64.RawURLEncoding.EncodeToString(bits)
+}
+
+// workFolderEditReviewedLosses reads the lost files a review carries. A
+// review that does not fit the merged files carries none, and then does not
+// match the review of the same files either.
+func workFolderEditReviewedLosses(merges []workFolderEditMerge, review string) map[string]bool {
+	lost := map[string]bool{}
+	_, encoded, ok := strings.Cut(review, ".")
+	if !ok {
+		return lost
+	}
+	keys := workFolderEditMergeKeys(merges)
+	bits, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || len(bits) != (len(keys)+7)/8 {
+		return lost
+	}
+	for index, key := range keys {
+		if bits[index/8]&(1<<(index%8)) != 0 {
+			lost[key] = true
+		}
+	}
+	return lost
 }
 
 // workFolderEditMergeChangedError refuses an edit whose merged or edited
@@ -286,9 +408,12 @@ func (workFolderEditMergeChangedError) Error() string {
 
 // verifyWorkFolderEditMergeReview refuses to merge folders without a complete
 // merge check of the same files, and marks the merged files that check
-// reported lost. Every other merged file must still have its identical copy
-// in the edited folder when the merge deletes it; one whose comparison is not
-// established again in time counts as having a copy, so the merge verifies it.
+// reported lost. Only those files may be deleted without a copy: a merged file
+// the comparison now finds without one, such as a file that can no longer be
+// read, refuses the edit for a new review. Every other merged file must still
+// have its identical copy in the edited folder when the merge deletes it; one
+// whose comparison is not established again in time counts as having a copy,
+// so the merge verifies it.
 func (s *Server) verifyWorkFolderEditMergeReview(ctx context.Context, plan workFolderEditPlan, review string) error {
 	if len(plan.Merges) == 0 {
 		return nil
@@ -296,24 +421,26 @@ func (s *Server) verifyWorkFolderEditMergeReview(ctx context.Context, plan workF
 	if strings.TrimSpace(review) == "" {
 		return invalidRequestError("merging folders needs a completed merge check")
 	}
+	reviewed := workFolderEditReviewedLosses(plan.Merges, review)
 	_, final, err := s.workFolderEditFinalContents(ctx, plan)
 	if err != nil {
 		return err
 	}
-	if workFolderEditMergeReview(plan.Merges, final) != review {
+	if workFolderEditMergeReview(plan.Merges, final, reviewed) != review {
 		return workFolderEditMergeChangedError{}
 	}
-	check, err := s.workFolderEditMergeLosses(ctx, plan, workFolderEditMergeCheckBudget)
+	_, lost, err := s.workFolderEditMergeLosses(ctx, plan, workFolderEditMergeCheckBudget)
 	if err != nil {
 		return err
 	}
-	lost := map[string]bool{}
-	for _, file := range check.Lost {
-		lost[fmt.Sprintf("%d:%s", file.FolderID, file.Path)] = true
+	for key := range lost {
+		if !reviewed[key] {
+			return workFolderEditMergeChangedError{}
+		}
 	}
 	for _, merge := range plan.Merges {
 		for index, file := range merge.Files {
-			merge.Files[index].Lost = lost[fmt.Sprintf("%d:%s", merge.FolderID, path.Join(merge.RootPath, file.Path))]
+			merge.Files[index].Lost = reviewed[workFolderEditMergeKey(merge.FolderID, file.Path)]
 		}
 	}
 	return nil
@@ -334,14 +461,16 @@ func (e *workFolderEditExecution) verifyWorkFolderEditMergeCopies(ctx context.Co
 		if walkErr != nil {
 			return walkErr
 		}
-		if !entry.Type().IsRegular() {
+		relative := relativeDataPath(e.targetAbs, current)
+		if !entry.Type().IsRegular() || localfs.IsIgnoredPath(relative) {
+			// A file the library skips, such as NAS metadata, is no copy.
 			return nil
 		}
 		info, err := entry.Info()
 		if err != nil {
 			return err
 		}
-		libraryPath := path.Join(targetRoot, relativeDataPath(e.targetAbs, current))
+		libraryPath := path.Join(targetRoot, relative)
 		final[info.Size()] = append(final[info.Size()], workFolderEditContent{libraryPath: libraryPath, size: info.Size()})
 		return nil
 	})
@@ -369,16 +498,18 @@ func (e *workFolderEditExecution) verifyWorkFolderEditMergeCopies(ctx context.Co
 // folder will hold. A merged file the edit copies in is kept by definition;
 // any other is kept only when a file of the same size and SHA-256 stays in or
 // is copied into the edited folder. A file downloaded from a remote source is
-// not compared, since its content is known only once it is downloaded.
-func (s *Server) workFolderEditMergeLosses(ctx context.Context, plan workFolderEditPlan, budget time.Duration) (workFolderEditMergeCheck, error) {
+// not compared, since its content is known only once it is downloaded. It
+// also returns the lost files by workFolderEditMergeKey.
+func (s *Server) workFolderEditMergeLosses(ctx context.Context, plan workFolderEditPlan, budget time.Duration) (workFolderEditMergeCheck, map[string]bool, error) {
 	check := workFolderEditMergeCheck{Lost: []workFolderEditLostFile{}}
+	lostKeys := map[string]bool{}
 	if len(plan.Merges) == 0 {
 		check.Complete = true
-		return check, nil
+		return check, lostKeys, nil
 	}
 	copied, final, err := s.workFolderEditFinalContents(ctx, plan)
 	if err != nil {
-		return check, err
+		return check, lostKeys, err
 	}
 	bySize := map[int64][]workFolderEditContent{}
 	for _, content := range final {
@@ -387,18 +518,20 @@ func (s *Server) workFolderEditMergeLosses(ctx context.Context, plan workFolderE
 	hashes := newWorkFolderEditHashes(s, time.Now().Add(budget))
 	for _, merge := range plan.Merges {
 		for _, file := range merge.Files {
-			if copied[fmt.Sprintf("%d:%s", merge.FolderID, file.Path)] {
+			key := workFolderEditMergeKey(merge.FolderID, file.Path)
+			if copied[key] {
 				continue
 			}
 			lost := workFolderEditLostFile{FolderID: merge.FolderID, Path: path.Join(merge.RootPath, file.Path), SizeBytes: file.SizeBytes}
 			candidates := bySize[file.SizeBytes]
 			if len(candidates) == 0 {
 				check.Lost = append(check.Lost, lost)
+				lostKeys[key] = true
 				continue
 			}
 			kept, known, err := hashes.matchesAny(ctx, lost.Path, candidates)
 			if err != nil {
-				return check, err
+				return check, lostKeys, err
 			}
 			switch {
 			case !known:
@@ -409,14 +542,15 @@ func (s *Server) workFolderEditMergeLosses(ctx context.Context, plan workFolderE
 			default:
 				check.CheckedFiles++
 				check.Lost = append(check.Lost, lost)
+				lostKeys[key] = true
 			}
 		}
 	}
 	check.Complete = check.PendingFiles == 0
 	if check.Complete {
-		check.Review = workFolderEditMergeReview(plan.Merges, final)
+		check.Review = workFolderEditMergeReview(plan.Merges, final, lostKeys)
 	}
-	return check, nil
+	return check, lostKeys, nil
 }
 
 // workFolderEditHashes hashes library files once per check, reusing and
@@ -633,6 +767,9 @@ func (e *workFolderEditExecution) mergeFolder(ctx context.Context, merge workFol
 			e.checkpoint.Deleted++
 		}
 		e.progress++
+	}
+	if err := s.removeWorkFolderEditMergeSidecars(absolute); err != nil {
+		return err
 	}
 	_, err = s.clearLocalWorkRoot(statusCtx, target)
 	return err

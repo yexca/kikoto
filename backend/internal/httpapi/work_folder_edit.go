@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/localfs"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -75,10 +76,14 @@ type workFolderEditItem struct {
 	Language *string `json:"language,omitempty"`
 }
 
+// workFolderEditRemoval is a file the edit removes. Version is the version of
+// the file on disk when the edit was planned, empty when none was there; the
+// edit deletes only that version.
 type workFolderEditRemoval struct {
 	LocationID int64  `json:"locationId"`
 	Path       string `json:"path"`
 	SizeBytes  *int64 `json:"sizeBytes"`
+	Version    string `json:"version,omitempty"`
 }
 
 type workFolderEditSummary struct {
@@ -399,9 +404,9 @@ func (s *Server) buildWorkFolderEditPlan(ctx context.Context, workID int64, payl
 	if err != nil {
 		return workFolderEditPlan{}, err
 	}
-	removing := map[string]bool{}
+	removing := workFolderEditFiles{}
 	for _, removal := range removals {
-		removing[fetchTargetKey(removal.Path)] = true
+		removing.add(removal.Path)
 	}
 	moves, err := s.workFolderEditMoves(ctx, target, payload.Moves, removals)
 	if err != nil {
@@ -557,7 +562,15 @@ func (s *Server) workFolderEditRemovals(ctx context.Context, target workFolderEd
 		if err != nil {
 			return nil, err
 		}
-		removals = append(removals, workFolderEditRemoval{LocationID: location.locationID, Path: location.path, SizeBytes: location.size})
+		removal := workFolderEditRemoval{LocationID: location.locationID, Path: location.path, SizeBytes: location.size}
+		if absolute, err := safeDataPath(s.cfg.DataRoot, location.path); err == nil {
+			if info, err := os.Lstat(absolute); err == nil {
+				removal.Version = localfs.FileVersion(info)
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return nil, conflictError("a file to remove could not be checked")
+			}
+		}
+		removals = append(removals, removal)
 	}
 	return removals, nil
 }
@@ -705,10 +718,12 @@ func localFolderFileSize(root string, relative string) (int64, error) {
 }
 
 // resolveWorkFolderEditItem decides what adding one file does to the folder.
-// A target that the same edit removes is replaced, and one a moved file
-// leaves is free; any other file already at the target is kept when it has the
-// same size and is a conflict otherwise.
-func (s *Server) resolveWorkFolderEditItem(item *remoteWorkSavePlanItem, decision remoteFetchFileDecision, targetRoot string, removing map[string]bool, vacated map[string]bool, seenTargets map[string]string) error {
+// A target holding the very file the same edit removes is replaced, and one
+// holding the very file a move takes away is free; any other file already at
+// the target, including one whose name differs from a removed file's only in
+// letter case or Unicode composition, is kept when it has the same size and
+// is a conflict otherwise.
+func (s *Server) resolveWorkFolderEditItem(item *remoteWorkSavePlanItem, decision remoteFetchFileDecision, targetRoot string, removing workFolderEditFiles, vacated workFolderEditFiles, seenTargets map[string]string) error {
 	if err := applyRemoteFetchRename(item, decision, targetRoot); err != nil {
 		return err
 	}
@@ -728,14 +743,14 @@ func (s *Server) resolveWorkFolderEditItem(item *remoteWorkSavePlanItem, decisio
 	info, statErr := os.Lstat(absolute)
 	switch {
 	case markBlockedPath(item, rootAbsolute, relative):
-	case statErr == nil && info.Mode().IsRegular() && vacated[fetchTargetKey(item.TargetPath)] && !removing[fetchTargetKey(item.TargetPath)]:
+	case statErr == nil && info.Mode().IsRegular() && s.workFolderEditHolds(vacated, item.TargetPath, info) && !s.workFolderEditHolds(removing, item.TargetPath, info):
 		// A moved file leaves this path before any added file takes it.
 	case statErr == nil:
 		item.TargetExists = true
 		switch {
 		case info.IsDir() || unsafeFetchStagingEntry(info) || !info.Mode().IsRegular():
 			markNotFileTarget(item, info)
-		case removing[fetchTargetKey(item.TargetPath)]:
+		case s.workFolderEditHolds(removing, item.TargetPath, info):
 			replacesRemoved = true
 		default:
 			size := info.Size()
@@ -813,8 +828,8 @@ func (s *Server) enqueueWorkFolderEdit(ctx context.Context, workID int64, payloa
 	jobPayload := workFolderEditJobPayload{
 		ActorUserID: actorUserID, WorkID: plan.WorkID, WorkCode: plan.PrimaryCode, FolderID: plan.FolderID,
 		FileSourceID: fileSourceID, TargetRoot: plan.SaveRoot, TransactionPool: plan.TransactionPool,
-		Items: plan.Items, Removals: removals, Moves: plan.Moves, Folders: plan.Folders, Merges: plan.Merges,
-		Assignments: assignments, RequestID: payload.RequestID,
+		Items: plan.Items, Removals: removals, RemovalFiles: plan.Removals, Moves: plan.Moves, Folders: plan.Folders,
+		Merges: plan.Merges, Assignments: assignments, RequestID: payload.RequestID, Summary: &plan.Summary,
 	}
 	for index := range jobPayload.Items {
 		// A download address is resolved again when the job runs.
