@@ -219,9 +219,13 @@ Source loading also warms the next auto-advance track in one detached audio
 element (`useNextTrackPreload`) so the player element can reuse the buffered
 bytes for the identical URL; `nextTrackPreload` widens the window for a track
 the server converts. The element volume is the product of the sleep timer's
-fade and the loudness normalization cut (`applyElementVolume`), and
-`useLoudnessNormalization` adds a Web Audio gain node only for a boost of a
-same-origin source (`loudnessBoost`). The dock UI
+fade and the loudness normalization cut (`applyElementVolume`).
+`useLoudnessNormalization` measures the current track, then the next one, and
+moves a level that changes mid-track gradually. In full normalization it routes
+a same-origin element through a Web Audio gain node (`loudnessBoost`) only
+while the page is visible and the element's context already runs; user
+gestures start and resume that context, and until it runs the element keeps
+its own output and the cut uses element volume. The dock UI
 lives in `player/dock`: `PlayerDock` owns the Mini, Compact, and full surfaces,
 while queue reordering math and formatting stay in pure modules. Timed-lyrics
 parsing lives in `lib/timedLyrics`, so the player and the work detail file

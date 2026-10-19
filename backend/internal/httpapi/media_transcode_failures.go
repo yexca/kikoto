@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	// mediaPreparationFailureTTL is how long a failed transcode or loudness
-	// measurement is answered from memory. Repeated requests for a file FFmpeg
-	// cannot read then return at once instead of occupying an encode slot.
+	// mediaPreparationFailureTTL is how long a failed transcode is answered
+	// from memory. Repeated requests for a file FFmpeg cannot read then return
+	// at once instead of occupying an encode slot.
 	mediaPreparationFailureTTL = 30 * time.Second
 	// mediaPreparationFailureLimit bounds the remembered failures.
 	mediaPreparationFailureLimit = 256
@@ -42,6 +42,11 @@ func (failures *mediaPreparationFailures) failedRecently(key string) bool {
 }
 
 func (failures *mediaPreparationFailures) remember(key string) {
+	failures.rememberFor(key, mediaPreparationFailureTTL)
+}
+
+// rememberFor remembers a failure for ttl instead of the default TTL.
+func (failures *mediaPreparationFailures) rememberFor(key string, ttl time.Duration) {
 	now := time.Now()
 	failures.mu.Lock()
 	defer failures.mu.Unlock()
@@ -63,5 +68,5 @@ func (failures *mediaPreparationFailures) remember(key string) {
 		}
 		delete(failures.expires, oldestKey)
 	}
-	failures.expires[key] = now.Add(mediaPreparationFailureTTL)
+	failures.expires[key] = now.Add(ttl)
 }

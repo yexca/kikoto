@@ -726,10 +726,13 @@ duration/audio metadata without replacing media ids or personal state. Probes
 compare their location id and expected version in the write transaction,
 rejecting delayed results after a rescan. An empty version is established on
 the next visible scan or probe. `probe_failed_version` marks the version
-FFprobe could not read, and `loudness_version` the version that
-`loudness_integrated_lufs`, `loudness_peak_dbfs`, and `loudness_peak_kind`
-(`true` or `sample`) describe; a scan that records another version clears
-both, and readers use neither for another version.
+FFprobe could not read; a scan that records another version clears it.
+`loudness_version` is the version that `loudness_integrated_lufs`,
+`loudness_peak_dbfs`, and `loudness_peak_kind` (`true` or `sample`) describe,
+as read from disk by the measurement, so it can be ahead of `file_version`
+until the next scan or probe. A scan that records a version other than
+`loudness_version` clears the loudness, playback uses it only for the version
+on disk, and listings only while it matches `file_version`.
 
 `media_file_location.content_hash` caches the SHA-256 of a local file for
 identical-file detection, and `content_hash_version` holds the size and

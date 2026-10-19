@@ -101,20 +101,25 @@ scan records another version. A timeout, a busy runner, cancellation, or a
 missing FFprobe records nothing.
 
 `GET /api/media/{id}/loudness` returns a local audio or video location's EBU
-R 128 integrated loudness and peak. When its current file version has none, the
-request measures it with FFmpeg's `ebur128` filter on the first audio stream,
-asking for the true peak and retrying with the sample peak, under one of the two
-transcode slots and the four-minute audio preparation limit. FFmpeg's stderr is
-kept only as a 16 KiB tail for the summary. Concurrent requests for one file
-share a measurement, a measurement of a file that changed meanwhile is
-discarded, and the stored result is keyed by the file version. Remote and cache
-locations answer `404`, a busy runner `503 media_loudness_busy`, and a failed
+R 128 integrated loudness and peak. It is readable wherever the location's
+stream is. When the file version on disk has none, the request measures it with
+FFmpeg's `ebur128` filter on the first audio stream, asking for the true peak
+and retrying with the sample peak, under the four-minute audio preparation
+limit. Measurements run one at a time in their own slot, never in a transcode
+slot, so playback conversion does not wait for them; a request waits at most
+one second for that slot. FFmpeg's stderr is kept only as a 16 KiB tail for
+the summary. Concurrent requests for one file share a measurement, a
+measurement of a file that changed meanwhile is discarded, and the stored
+result is keyed by the version the measurement read, even before a scan or
+probe records that version for the location. Remote and cache locations answer
+`404`, a busy slot `503 media_loudness_busy`, and a failed or timed-out
 measurement `503 media_loudness_unavailable`; Demo measures nothing.
 
-Audio preparation, realtime video conversion that ends before any output, and
-loudness measurement remember a failure for 30 seconds, keyed by purpose, path,
-size, and modification time, holding at most 256 entries. A request in that
-time fails at once instead of waiting for a transcode slot.
+Audio preparation and realtime video conversion that ends before any output
+remember a failure for 30 seconds, and loudness measurement remembers a failure
+or timeout for an hour, keyed by purpose, path, size, and modification time,
+holding at most 256 entries. A request in that time fails at once instead of
+running FFmpeg again.
 
 Compatibility preparation starts only from a playback request for that file,
 including the player's single next-track preload, which requests the same
