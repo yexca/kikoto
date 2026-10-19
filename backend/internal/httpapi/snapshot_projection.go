@@ -22,10 +22,14 @@ const (
 	snapshotProjectionVoiceCredits = "voice_credit"
 	snapshotProjectionStaffCredits = "staff_credit"
 	snapshotProjectionDLsiteParty  = "dlsite_party"
-	// Increase snapshotProjectionVersion when a projection starts writing
-	// different rows for the same snapshot, so every work is projected again.
+	// Increase a projection's version when it starts writing different rows
+	// for the same snapshot, so every work is projected again by it.
 	snapshotProjectionVersion = 1
-	snapshotProjectionBatch   = 200
+	// Voice credits have their own version, which is also part of their
+	// projection input, so a change to that projection rewrites only voice
+	// credits.
+	voiceCreditProjectionVersion = 2
+	snapshotProjectionBatch      = 200
 )
 
 // projectChangedSnapshots projects the works whose latest snapshot changed
@@ -51,6 +55,10 @@ func snapshotProjectionHash(input any) (string, error) {
 }
 
 func recordSnapshotProjection(ctx context.Context, execer contextExecer, workID int64, kind string, snapshotID int64, inputHash string) error {
+	version := snapshotProjectionVersion
+	if kind == snapshotProjectionVoiceCredits {
+		version = voiceCreditProjectionVersion
+	}
 	_, err := execer.ExecContext(ctx, `
 		INSERT INTO work_snapshot_projection (work_id, kind, snapshot_id, version, input_hash)
 		VALUES (?, ?, ?, ?, ?)
@@ -58,7 +66,7 @@ func recordSnapshotProjection(ctx context.Context, execer contextExecer, workID 
 			snapshot_id = excluded.snapshot_id,
 			version = excluded.version,
 			input_hash = excluded.input_hash
-	`, workID, kind, snapshotID, snapshotProjectionVersion, inputHash)
+	`, workID, kind, snapshotID, version, inputHash)
 	return err
 }
 
@@ -110,7 +118,7 @@ func (s *Server) projectChangedVoiceCredits(ctx context.Context) error {
 			AND work.id > ?
 			ORDER BY work.id
 			LIMIT ?
-		`, snapshotProjectionVersion, afterWorkID, snapshotProjectionBatch)
+		`, voiceCreditProjectionVersion, afterWorkID, snapshotProjectionBatch)
 		if err != nil {
 			return err
 		}
@@ -131,7 +139,7 @@ func (s *Server) projectChangedVoiceCredits(ctx context.Context) error {
 // syncCreditsForWorkFromSnapshots projects one work's voice and staff credits
 // after its metadata changed outside a full pass, such as a family sync.
 func (s *Server) syncCreditsForWorkFromSnapshots(ctx context.Context, workID int64) error {
-	rows, err := s.db.QueryContext(ctx, voiceCreditProjectionSQL+` AND work.id = ?`, snapshotProjectionVersion, workID)
+	rows, err := s.db.QueryContext(ctx, voiceCreditProjectionSQL+` AND work.id = ?`, voiceCreditProjectionVersion, workID)
 	if err != nil {
 		return err
 	}
@@ -164,9 +172,10 @@ func (s *Server) applyVoiceCreditProjections(ctx context.Context, batch []voiceC
 	for _, projection := range batch {
 		actors := voiceCreditActors(projection.Raw)
 		hash, err := snapshotProjectionHash(struct {
+			Version    int
 			ProviderID sql.NullInt64
 			Actors     []voiceActorIdentity
-		}{projection.ProviderID, actors})
+		}{voiceCreditProjectionVersion, projection.ProviderID, actors})
 		if err != nil {
 			return err
 		}
