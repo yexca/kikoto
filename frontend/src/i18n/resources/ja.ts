@@ -820,7 +820,7 @@ export const japaneseResource = {
         hideReferenceDetails: "詳細を非表示",
         referenceAreas: {
           recommendation: "推薦設計",
-          remoteSources: "リモートソース",
+          design: "デザイン",
           playbackReporting: "再生レポート",
           workflows: "ワークフロー",
           engineering: "エンジニアリングと CI",
@@ -834,7 +834,8 @@ export const japaneseResource = {
             "疎なフィードバックプロフィールと候補数を制限したスコアリング。ALS、BPR、ItemKNN は取り込んでいません。",
           troi: "メディアライブラリのエンティティ対応付けと候補パイプラインの考え方。ソースコードは含めていません。",
           recbole: "評価と全件ランキング比較の資料。実行時の依存関係ではありません。",
-          kikoeru: "Kikoeru 互換リモートソースが従う公開バックエンドインターフェース。",
+          kikoeru:
+            "聴取状況のクイックマーク、カードと作品詳細での作品の見せ方、一部の機能の挙動についての設計上の参考。",
           audiobookshelf: "再生位置と実際の聴取時間をまとめて報告する方式。",
           navidrome: "イベント集約、永続化された送信キュー、待機時間を延ばす再試行方式。",
           jellyfin: "再生イベントと定期的な進捗報告を組み合わせる方式。",

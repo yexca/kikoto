@@ -27,7 +27,7 @@ const referenceGroups = [
     ],
   },
   {
-    area: "remoteSources",
+    area: "design",
     projects: [
       { name: "Number178/kikoeru-express", url: "https://github.com/Number178/kikoeru-express", note: "kikoeru" },
     ],

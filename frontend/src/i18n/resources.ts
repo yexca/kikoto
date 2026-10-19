@@ -482,7 +482,7 @@ export const englishResource = {
         hideReferenceDetails: "Hide details",
         referenceAreas: {
           recommendation: "Recommendation design",
-          remoteSources: "Remote sources",
+          design: "Design",
           playbackReporting: "Playback reporting",
           workflows: "Workflows",
           engineering: "Engineering & CI",
@@ -494,7 +494,8 @@ export const englishResource = {
             "Sparse feedback profiles and bounded candidate scoring; Kikoto does not import ALS, BPR, or ItemKNN.",
           troi: "Entity mapping and candidate-pipeline ideas for a media library; no source code is bundled.",
           recbole: "Evaluation and full-sort comparison material; it is not a runtime dependency.",
-          kikoeru: "The public backend interface that Kikoeru-compatible remote sources follow.",
+          kikoeru:
+            "A design reference for quick listening-status marks, how cards and work detail present a work, and some feature behavior.",
           audiobookshelf: "Reports that combine playback position with listening time.",
           navidrome: "Event coalescing and a durable report queue with retry backoff.",
           jellyfin: "Playback events alongside periodic progress reports.",

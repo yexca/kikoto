@@ -54,6 +54,7 @@
 <details>
 <summary><strong>Settings and interface</strong></summary>
 
+- About lists Number178/kikoeru-express under **Design**, as a design reference for quick listening-status marks, work cards and work detail, and some feature behavior, instead of as the interface remote sources follow.
 - Demo's **LLM & ASR** tab lists example LLM providers and ASR services at addresses no request reaches, and the content safety policy. Selecting one opens its dialog with every option visible; adding, editing, switching, deleting, fetching models, and saving the policy stay unavailable.
 
 </details>

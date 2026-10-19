@@ -793,7 +793,7 @@ export const zhHantResource = {
         hideReferenceDetails: "隱藏詳情",
         referenceAreas: {
           recommendation: "推薦設計",
-          remoteSources: "遠端來源",
+          design: "設計",
           playbackReporting: "播放回報",
           workflows: "工作流程",
           engineering: "工程與 CI",
@@ -804,7 +804,7 @@ export const zhHantResource = {
           implicit: "稀疏回饋設定檔和有界候選評分；Kikoto 沒有引入 ALS、BPR 或 ItemKNN。",
           troi: "媒體庫中的實體對應和候選管線思路；專案不包含其原始碼。",
           recbole: "評測和全量排序對照資料；它不是執行階段依賴。",
-          kikoeru: "Kikoeru 相容遠端來源所遵循的公開後端介面。",
+          kikoeru: "收聽狀態快速標記、卡片與作品詳情中的作品呈現，以及部分功能行為的設計參考。",
           audiobookshelf: "將播放位置與實際聆聽時長合併回報的方式。",
           navidrome: "事件合併、持久化回報佇列和退避重試機制。",
           jellyfin: "將播放事件與定期進度回報結合的方式。",

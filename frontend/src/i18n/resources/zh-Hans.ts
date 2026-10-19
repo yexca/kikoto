@@ -788,7 +788,7 @@ export const zhHansResource = {
         hideReferenceDetails: "隐藏详情",
         referenceAreas: {
           recommendation: "推荐设计",
-          remoteSources: "远程来源",
+          design: "设计",
           playbackReporting: "播放上报",
           workflows: "工作流",
           engineering: "工程与 CI",
@@ -799,7 +799,7 @@ export const zhHansResource = {
           implicit: "稀疏反馈画像和有界候选评分；Kikoto 没有引入 ALS、BPR 或 ItemKNN。",
           troi: "媒体库中的实体映射和候选流水线思路；项目不包含其源代码。",
           recbole: "评测和全量排序对照资料；它不是运行时依赖。",
-          kikoeru: "Kikoeru 兼容远程来源所遵循的公开后端接口。",
+          kikoeru: "收听状态快速标记、卡片与作品详情中的作品呈现，以及部分功能行为的设计参考。",
           audiobookshelf: "将播放位置与实际收听时长合并上报的方式。",
           navidrome: "事件合并、持久化上报队列和退避重试机制。",
           jellyfin: "将播放事件与定期进度上报结合的方式。",

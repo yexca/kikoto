@@ -811,7 +811,7 @@ export const koreanResource = {
         hideReferenceDetails: "세부 정보 숨기기",
         referenceAreas: {
           recommendation: "추천 설계",
-          remoteSources: "원격 소스",
+          design: "디자인",
           playbackReporting: "재생 보고",
           workflows: "워크플로",
           engineering: "엔지니어링 및 CI",
@@ -822,7 +822,7 @@ export const koreanResource = {
           implicit: "희소 피드백 프로필과 제한된 후보 점수 계산. ALS, BPR, ItemKNN은 가져오지 않습니다.",
           troi: "미디어 라이브러리의 엔티티 매핑과 후보 파이프라인 아이디어. 소스 코드는 포함하지 않습니다.",
           recbole: "평가와 전체 순위 비교 자료. 런타임 의존성이 아닙니다.",
-          kikoeru: "Kikoeru 호환 원격 소스가 따르는 공개 백엔드 인터페이스.",
+          kikoeru: "청취 상태 빠른 표시, 카드와 작품 상세의 작품 표현, 일부 기능 동작에 대한 설계 참고.",
           audiobookshelf: "재생 위치와 실제 감상 시간을 함께 보고하는 방식.",
           navidrome: "이벤트 병합, 영구 저장 보고 큐, 재시도 대기 시간을 늘리는 방식.",
           jellyfin: "재생 이벤트와 주기적인 진행 상황 보고를 함께 사용하는 방식.",
