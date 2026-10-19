@@ -242,7 +242,9 @@ family, and stops before the next edition when the request is cancelled.
   storage pool. A local source must be another active local folder of the same
   family. Each requested path is resolved below it, and every path component
   must be a regular directory or file, so a link inside the folder cannot read
-  from outside it. The source folder is not changed.
+  from outside it. The source folder is not changed. The run checks the
+  target's pool again before it indexes the folder, so an unmounted pool never
+  marks the folder's files missing.
 - A remote code must be an edition of the requested work's family, and its
   source an enabled compatible source. The edition's tree is read through the
   remote snapshot cache; it is not stored as a work, presence, or media
@@ -277,7 +279,9 @@ family, and stops before the next edition when the request is cancelled.
   after the target folder is indexed and only while it holds exactly those
   files, unchanged. The run claims the folder before deleting, so another cleanup or edit
   cannot change it meanwhile, and returns it to the work when the run fails or
-  is cancelled. The merge check only reads and hashes files below the merged
+  is cancelled. Each deleted file's location turns unavailable with its
+  deletion, and a resumed run counts a folder an earlier attempt already
+  deleted and recorded as gone as merged. The merge check only reads and hashes files below the merged
   folders and the target folder.
 - The job resolves each download address again from the source's tree when it
   runs; the plan response and the stored job carry none. The address must be
@@ -286,7 +290,10 @@ family, and stops before the next edition when the request is cancelled.
   transport, and only configured origins keep the private-address exception.
 - Downloads stream through the source's download lane into the run's
   `.kikoto-staging` directory on the target's pool, bounded by the remote
-  download limit and the size the listing declares. One request adds at most
+  download limit and the size the listing declares. Like Fetch staging
+  cleanup, the run refuses a staging path with a link or reparse point from
+  the data root down, so neither staging nor its removal leaves the pool. One
+  request adds at most
   5000 files. A file whose size differs from its listing fails the run before
   anything in the folder changes.
 - Publication renames each collected file into the folder through plain

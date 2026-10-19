@@ -142,6 +142,11 @@ func (e *workFolderEditExecution) run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// A link at .kikoto-staging, or below it, would carry the staged files,
+	// and their removal, outside the pool.
+	if _, err := validateFetchStagingPath(s.cfg.DataRoot, stagingAbs); err != nil {
+		return fmt.Errorf("edit staging: %w", err)
+	}
 	e.stagingAbs = stagingAbs
 	if err := e.stage(ctx); err != nil {
 		return err
@@ -158,7 +163,7 @@ func (e *workFolderEditExecution) run(ctx context.Context) error {
 	if err := s.updateRemoteFetchPhaseNode(ctx, e.job.RunID, "index", "running", nil); err != nil {
 		return err
 	}
-	if err := s.indexLocalMediaForWork(ctx, e.payload.WorkID, e.payload.FileSourceID, e.payload.TargetRoot); err != nil {
+	if err := e.index(ctx); err != nil {
 		return err
 	}
 	assigned, err := s.declareWorkFolderEditAssignments(ctx, e.payload)
@@ -171,6 +176,16 @@ func (e *workFolderEditExecution) run(ctx context.Context) error {
 		return err
 	}
 	return e.finish(ctx)
+}
+
+// index reads the edited folder into the library. A pool that went offline
+// since the edit started shows an empty mount point, which would mark every
+// file of the folder missing, so the pool must still be online.
+func (e *workFolderEditExecution) index(ctx context.Context) error {
+	if err := e.server.ensureLibraryPathOnline(ctx, e.payload.TargetRoot); err != nil {
+		return err
+	}
+	return e.server.indexLocalMediaForWork(ctx, e.payload.WorkID, e.payload.FileSourceID, e.payload.TargetRoot)
 }
 
 func (e *workFolderEditExecution) stagedPath(index int) string {
@@ -749,6 +764,10 @@ func summarizeWorkFolderEditPayload(payload workFolderEditJobPayload) workFolder
 // this run collected.
 func (e *workFolderEditExecution) removeStaging() {
 	if e.stagingAbs == "" {
+		return
+	}
+	if _, err := validateFetchStagingPath(e.server.cfg.DataRoot, filepath.Dir(e.stagingAbs)); err != nil {
+		slog.Warn("remove work folder edit staging", "run_id", e.job.RunID, "error", err)
 		return
 	}
 	if err := os.RemoveAll(filepath.Dir(e.stagingAbs)); err != nil {

@@ -474,7 +474,10 @@ func activeRemoteFetchForWork(ctx context.Context, queryer rowQueryer, workID in
 
 // mergeFolders deletes each merged folder once the edited folder is complete.
 // A merged folder must still hold exactly the files the edit was planned
-// with, so nothing added since the review is deleted unseen.
+// with, so nothing added since the review is deleted unseen. Each deleted
+// file's location turns unavailable with the deletion, and a folder an earlier
+// attempt already cleared counts as merged, so a stopped merge never leaves a
+// deleted file reading available and a resumed one finishes where it stopped.
 func (e *workFolderEditExecution) mergeFolders(ctx context.Context) error {
 	s := e.server
 	if err := s.updateRemoteFetchPhaseNode(ctx, e.job.RunID, "merge", "running", nil); err != nil {
@@ -494,47 +497,14 @@ func (e *workFolderEditExecution) mergeFolders(ctx context.Context) error {
 		if err := s.ensureLibraryPathOnline(ctx, merge.RootPath); err != nil {
 			return err
 		}
-		// A Fetch of the merged folder's work may publish into it.
-		if err := activeRemoteFetchForWork(ctx, s.db, merge.WorkID); err != nil {
-			return err
-		}
 		statusCtx := context.WithoutCancel(ctx)
-		target := mediaCleanupTarget{
-			Kind: "local_root", FolderID: merge.FolderID, WorkID: merge.WorkID, SourceID: merge.FileSourceID,
-			Path: merge.RootPath, ExpectedPath: merge.RootPath, CleanupRunID: e.job.RunID,
-		}
-		if err := s.claimMediaCleanupFolder(statusCtx, target, e.job.RunID); err != nil {
-			return err
-		}
-		absolute, err := safeDataPath(s.cfg.DataRoot, merge.RootPath)
+		cleared, err := s.workFolderEditMergeCleared(statusCtx, merge)
 		if err != nil {
 			return err
 		}
-		present, err := workFolderEditMergeFiles(absolute)
-		if err != nil {
-			return err
-		}
-		planned := map[string]workFolderEditMergeFile{}
-		for _, file := range merge.Files {
-			planned[file.Path] = file
-		}
-		for _, file := range present {
-			// A file already deleted by an earlier attempt is simply absent.
-			if reviewed, ok := planned[file.Path]; !ok || reviewed.SizeBytes != file.SizeBytes || reviewed.Version != file.Version {
-				return fmt.Errorf("%s changed after the edit was planned; review the merge again", path.Join(merge.RootPath, file.Path))
-			}
-		}
-		for _, file := range present {
-			deleted, _, err := removeDestructiveFile(s.cfg.DataRoot, path.Join(merge.RootPath, file.Path))
-			if err != nil {
-				return err
-			}
-			if deleted {
-				e.checkpoint.Deleted++
-			}
-			e.progress++
-		}
-		if _, err := s.clearLocalWorkRoot(statusCtx, target); err != nil {
+		if cleared {
+			e.progress += merge.FileCount
+		} else if err := e.mergeFolder(ctx, merge); err != nil {
 			return err
 		}
 		e.checkpoint.Merged = append(e.checkpoint.Merged, merge.FolderID)
@@ -543,4 +513,105 @@ func (e *workFolderEditExecution) mergeFolders(ctx context.Context) error {
 		}
 	}
 	return s.updateRemoteFetchPhaseNode(ctx, e.job.RunID, "merge", "succeeded", map[string]any{"merged": len(e.checkpoint.Merged)})
+}
+
+func (e *workFolderEditExecution) mergeFolder(ctx context.Context, merge workFolderEditMerge) error {
+	s := e.server
+	statusCtx := context.WithoutCancel(ctx)
+	// A Fetch of the merged folder's work may publish into it.
+	if err := activeRemoteFetchForWork(ctx, s.db, merge.WorkID); err != nil {
+		return err
+	}
+	target := mediaCleanupTarget{
+		Kind: "local_root", FolderID: merge.FolderID, WorkID: merge.WorkID, SourceID: merge.FileSourceID,
+		Path: merge.RootPath, ExpectedPath: merge.RootPath, CleanupRunID: e.job.RunID,
+	}
+	if err := s.claimMediaCleanupFolder(statusCtx, target, e.job.RunID); err != nil {
+		return err
+	}
+	absolute, err := safeDataPath(s.cfg.DataRoot, merge.RootPath)
+	if err != nil {
+		return err
+	}
+	// An earlier attempt may have deleted the folder itself before it could
+	// record the folder as gone.
+	present := []workFolderEditMergeFile{}
+	if _, err := os.Lstat(absolute); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	} else if err == nil {
+		if present, err = workFolderEditMergeFiles(absolute); err != nil {
+			return err
+		}
+	}
+	planned := map[string]workFolderEditMergeFile{}
+	for _, file := range merge.Files {
+		planned[file.Path] = file
+	}
+	for _, file := range present {
+		// A file already deleted by an earlier attempt is simply absent.
+		if reviewed, ok := planned[file.Path]; !ok || reviewed.SizeBytes != file.SizeBytes || reviewed.Version != file.Version {
+			return fmt.Errorf("%s changed after the edit was planned; review the merge again", path.Join(merge.RootPath, file.Path))
+		}
+	}
+	for _, file := range present {
+		deleted, err := s.removeWorkFolderEditMergedFile(statusCtx, merge, file.Path)
+		if err != nil {
+			return err
+		}
+		if deleted {
+			e.checkpoint.Deleted++
+		}
+		e.progress++
+	}
+	_, err = s.clearLocalWorkRoot(statusCtx, target)
+	return err
+}
+
+// removeWorkFolderEditMergedFile deletes one file of a merged folder and marks
+// its indexed location unavailable at once.
+func (s *Server) removeWorkFolderEditMergedFile(ctx context.Context, merge workFolderEditMerge, relative string) (bool, error) {
+	libraryPath := path.Join(normalizeFolderRootPath(merge.RootPath), relative)
+	deleted, _, err := removeDestructiveFile(s.cfg.DataRoot, libraryPath)
+	if err != nil {
+		return false, err
+	}
+	err = withDatabaseBusyRetry(ctx, func() error {
+		_, err := s.db.ExecContext(ctx, `
+			UPDATE media_file_location
+			SET availability = 'unavailable', last_checked_at = CURRENT_TIMESTAMP
+			WHERE file_source_id = ? AND location_type = 'local' AND path = ?
+				AND media_item_id IN (SELECT id FROM media_item WHERE work_id = ?)
+		`, merge.FileSourceID, libraryPath, merge.WorkID)
+		return err
+	})
+	return deleted, err
+}
+
+// workFolderEditMergeCleared reports whether an earlier attempt already
+// deleted a merged folder and recorded it as gone: the folder is no longer
+// part of the library and nothing is left on disk.
+func (s *Server) workFolderEditMergeCleared(ctx context.Context, merge workFolderEditMerge) (bool, error) {
+	var state string
+	err := withDatabaseBusyRetry(ctx, func() error {
+		return s.db.QueryRowContext(ctx, `
+			SELECT state FROM work_folder_location
+			WHERE id = ? AND work_id = ? AND file_source_id = ? AND root_path = ?
+		`, merge.FolderID, merge.WorkID, merge.FileSourceID, normalizeFolderRootPath(merge.RootPath)).Scan(&state)
+	})
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && state != "ignored") {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	absolute, err := safeDataPath(s.cfg.DataRoot, merge.RootPath)
+	if err != nil {
+		return false, err
+	}
+	if _, err := os.Lstat(absolute); errors.Is(err, os.ErrNotExist) {
+		return true, nil
+	} else if err != nil {
+		return false, err
+	}
+	return false, nil
 }

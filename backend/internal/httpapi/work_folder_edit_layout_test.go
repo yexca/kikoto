@@ -356,6 +356,81 @@ func TestWorkFolderEditMergeKeepsAFileRewrittenWithTheSameSize(t *testing.T) {
 	}
 }
 
+// siblingMerge is the merge of the sibling edition's folder.
+func (fixture folderEditFixture) siblingMerge(t *testing.T, folderID int64) workFolderEditMerge {
+	t.Helper()
+	merge := workFolderEditMerge{FolderID: folderID}
+	if err := fixture.db.QueryRow("SELECT work_id, file_source_id, root_path FROM work_folder_location WHERE id = ?", folderID).Scan(
+		&merge.WorkID, &merge.FileSourceID, &merge.RootPath,
+	); err != nil {
+		t.Fatal(err)
+	}
+	return merge
+}
+
+func TestWorkFolderEditMergedFileReadsUnavailableOnceDeleted(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	siblingFolderID := fixture.addSiblingFolder(t, map[string]string{"first.mp3": "first synthetic audio", "second.mp3": "second synthetic audio"})
+	merge := fixture.siblingMerge(t, siblingFolderID)
+	if err := fixture.server.indexLocalMediaForWork(context.Background(), merge.WorkID, merge.FileSourceID, merge.RootPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.server.removeWorkFolderEditMergedFile(context.Background(), merge, "first.mp3"); err != nil {
+		t.Fatal(err)
+	}
+	// The merge may stop before the folder is gone; the deleted file must not
+	// read available until the next scan.
+	availability := map[string]string{}
+	rows, err := fixture.db.Query("SELECT path, availability FROM media_file_location WHERE file_source_id = ? AND path LIKE ? || '/%'", merge.FileSourceID, merge.RootPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var libraryPath, state string
+		if err := rows.Scan(&libraryPath, &state); err != nil {
+			t.Fatal(err)
+		}
+		availability[strings.TrimPrefix(libraryPath, merge.RootPath+"/")] = state
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if availability["first.mp3"] != "unavailable" || availability["second.mp3"] != "available" {
+		t.Fatalf("availability after deleting one file = %v", availability)
+	}
+}
+
+func TestWorkFolderEditMergeResumesAfterTheFolderWasCleared(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	siblingFolderID := fixture.addSiblingFolder(t, map[string]string{"reviewed.mp3": "synthetic audio"})
+	job := fixture.apply(t, map[string]any{"mergeFolderIds": []int64{siblingFolderID}})
+	// An earlier attempt deleted the folder and recorded it as gone, then
+	// stopped before it saved its checkpoint.
+	merge := fixture.siblingMerge(t, siblingFolderID)
+	target := mediaCleanupTarget{
+		Kind: "local_root", FolderID: merge.FolderID, WorkID: merge.WorkID, SourceID: merge.FileSourceID,
+		Path: merge.RootPath, ExpectedPath: merge.RootPath, CleanupRunID: job.RunID,
+	}
+	ctx := context.Background()
+	if err := fixture.server.claimMediaCleanupFolder(ctx, target, job.RunID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.server.removeWorkFolderEditMergedFile(ctx, merge, "reviewed.mp3"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.server.clearLocalWorkRoot(ctx, target); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := fixture.server.executeWorkFolderEditJob(ctx, job); err != nil {
+		t.Fatalf("resuming a merge whose folder is already gone: %v", err)
+	}
+	if status := fixture.runStatus(t, job.RunID); status != "succeeded" {
+		t.Fatalf("run status = %q", status)
+	}
+}
+
 func TestWorkFolderEditMergeRequiresTheReviewOfTheSameFiles(t *testing.T) {
 	fixture := newFolderEditFixture(t, serveFolderEditMedia)
 	siblingFolderID := fixture.addSiblingFolder(t, map[string]string{"reviewed.txt": "reviewed"})
