@@ -52,6 +52,7 @@ type asrTask struct {
 	LocationID    int64
 	ProviderID    string
 	Model         string
+	AudioLanguage string
 	Language      string
 	ConfigHash    string
 	SourceVersion string
@@ -64,8 +65,8 @@ func (s *Server) loadASRTask(ctx context.Context, id string) (asrTask, error) {
 	var task asrTask
 	var userID sql.NullInt64
 	var cues string
-	err := s.db.QueryRowContext(ctx, `SELECT id,workflow_run_id,user_id,work_id,audio_media_item_id,audio_location_id,provider_id,model,language,config_hash,source_version,state,offset_ms,cues_json FROM asr_transcription WHERE id=?`, id).Scan(
-		&task.ID, &task.RunID, &userID, &task.WorkID, &task.AudioID, &task.LocationID, &task.ProviderID, &task.Model, &task.Language, &task.ConfigHash, &task.SourceVersion, &task.State, &task.OffsetMS, &cues)
+	err := s.db.QueryRowContext(ctx, `SELECT id,workflow_run_id,user_id,work_id,audio_media_item_id,audio_location_id,provider_id,model,audio_language,language,config_hash,source_version,state,offset_ms,cues_json FROM asr_transcription WHERE id=?`, id).Scan(
+		&task.ID, &task.RunID, &userID, &task.WorkID, &task.AudioID, &task.LocationID, &task.ProviderID, &task.Model, &task.AudioLanguage, &task.Language, &task.ConfigHash, &task.SourceVersion, &task.State, &task.OffsetMS, &cues)
 	if err != nil {
 		return task, err
 	}
@@ -194,7 +195,12 @@ func (s *Server) executeASRTranscriptionWithDecoder(ctx context.Context, job wor
 		if count, err := result.RowsAffected(); err != nil || count != 1 {
 			return errors.New("transcription task cannot send a request")
 		}
-		transcript, requestErr := client.Transcribe(ctx, task.Model, asr.RequestLanguage(task.Language), send)
+		// A translating model is asked for the lyrics language it writes.
+		target := ""
+		if task.AudioLanguage != task.Language {
+			target = task.Language
+		}
+		transcript, requestErr := client.Transcribe(ctx, task.Model, asr.RequestLanguage(task.AudioLanguage), target, send)
 		if requestErr != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()

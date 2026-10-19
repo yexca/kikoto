@@ -122,8 +122,12 @@ type asrTranscriptionRequest struct {
 	AudioMediaItemID int64  `json:"audioMediaItemId"`
 	ProviderID       string `json:"providerId"`
 	// Model is one of the service's enabled models; empty requests the default.
-	Model    string `json:"model,omitempty"`
+	Model string `json:"model,omitempty"`
+	// Language is the lyrics language the result is saved and assigned in.
 	Language string `json:"language"`
+	// AudioLanguage is the language spoken in the audio; omitted, it is
+	// Language. It differs only for a model that translates.
+	AudioLanguage *string `json:"audioLanguage,omitempty"`
 }
 
 func (s *Server) createASRTranscription(w http.ResponseWriter, r *http.Request) {
@@ -148,6 +152,10 @@ func (s *Server) createASRTranscription(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	language, ok := normalizeLyricsLanguage(body.Language)
+	audioLanguage := language
+	if ok && body.AudioLanguage != nil {
+		audioLanguage, ok = normalizeLyricsLanguage(*body.AudioLanguage)
+	}
 	if !ok {
 		writeAPIError(w, 400, "invalid_asr_request", "Choose a supported lyrics language.", false)
 		return
@@ -156,6 +164,10 @@ func (s *Server) createASRTranscription(w http.ResponseWriter, r *http.Request) 
 	model, enabled := provider.ResolveModel(body.Model)
 	if err != nil || !provider.Enabled || !enabled {
 		writeAPIError(w, 400, "asr_not_ready", "Choose an enabled speech recognition service with a model.", false)
+		return
+	}
+	if !provider.Writes(model, audioLanguage, language) {
+		writeAPIError(w, 400, "asr_language_unsupported", "The model does not write lyrics in this language from this audio language.", false)
 		return
 	}
 	source, ok := s.asrWorkTrack(w, r, workID, body.AudioMediaItemID)
@@ -190,7 +202,7 @@ func (s *Server) createASRTranscription(w http.ResponseWriter, r *http.Request) 
 		writeError(w, err)
 		return
 	}
-	id, runID, err := s.enqueueASRTranscription(r.Context(), actor.ID, source, provider, model, language)
+	id, runID, err := s.enqueueASRTranscription(r.Context(), actor.ID, source, provider, model, audioLanguage, language)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -198,7 +210,7 @@ func (s *Server) createASRTranscription(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, 202, map[string]any{"id": id, "runId": runID, "state": "pending", "deduplicated": false})
 }
 
-func (s *Server) enqueueASRTranscription(ctx context.Context, userID int64, source localTrack, provider asr.Provider, model, language string) (string, int64, error) {
+func (s *Server) enqueueASRTranscription(ctx context.Context, userID int64, source localTrack, provider asr.Provider, model, audioLanguage, language string) (string, int64, error) {
 	var token [16]byte
 	if _, err := rand.Read(token[:]); err != nil {
 		return "", 0, err
@@ -217,13 +229,13 @@ func (s *Server) enqueueASRTranscription(ctx context.Context, userID int64, sour
 	if err != nil {
 		return "", 0, err
 	}
-	input := map[string]any{workflowRunRequesterKey: userID, "work_id": source.WorkID, "work_code": code, "audio_media_item_id": source.AudioID, "language": language}
+	input := map[string]any{workflowRunRequesterKey: userID, "work_id": source.WorkID, "work_code": code, "audio_media_item_id": source.AudioID, "audio_language": audioLanguage, "language": language}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, asrWorkerType, "Transcribe "+code, "queued", "manual", "selected_track_transcription", input, map[string]any{})
 	if err != nil {
 		return "", 0, err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO asr_transcription(id,workflow_run_id,user_id,work_id,audio_media_item_id,audio_location_id,folder_id,provider_id,provider_name,model,language,config_hash,source_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		id, runID, userID, source.WorkID, source.AudioID, source.LocationID, source.FolderID, provider.ID, provider.Name, model, language, s.asrConfigHash(provider, model), source.Version); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO asr_transcription(id,workflow_run_id,user_id,work_id,audio_media_item_id,audio_location_id,folder_id,provider_id,provider_name,model,audio_language,language,config_hash,source_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, runID, userID, source.WorkID, source.AudioID, source.LocationID, source.FolderID, provider.ID, provider.Name, model, audioLanguage, language, s.asrConfigHash(provider, model), source.Version); err != nil {
 		return "", 0, err
 	}
 	nodeID, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{NodeID: "transcribe", NodeType: asrWorkerType, DisplayName: "Transcribe for review", Position: 1, Status: "queued", Input: input})
@@ -241,6 +253,7 @@ type asrTranscriptionResponse struct {
 	RunID            int64  `json:"runId"`
 	AudioMediaItemID int64  `json:"audioMediaItemId"`
 	AudioTitle       string `json:"audioTitle"`
+	AudioLanguage    string `json:"audioLanguage"`
 	Language         string `json:"language"`
 	ProviderName     string `json:"providerName"`
 	Model            string `json:"model"`
@@ -279,7 +292,7 @@ func (s *Server) listASRTranscriptions(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT transcription.id, transcription.workflow_run_id, transcription.audio_media_item_id, item.title,
-			transcription.language, transcription.provider_name, transcription.model, transcription.state,
+			transcription.audio_language, transcription.language, transcription.provider_name, transcription.model, transcription.state,
 			transcription.failure_code, transcription.offset_ms,
 			COALESCE(location.duration_seconds, item.duration_seconds, 0) * 1000, transcription.created_at
 		FROM asr_transcription AS transcription
@@ -297,7 +310,7 @@ func (s *Server) listASRTranscriptions(w http.ResponseWriter, r *http.Request) {
 	result := []asrTranscriptionResponse{}
 	for rows.Next() {
 		var item asrTranscriptionResponse
-		if err := rows.Scan(&item.ID, &item.RunID, &item.AudioMediaItemID, &item.AudioTitle, &item.Language, &item.ProviderName, &item.Model, &item.State, &item.FailureCode, &item.ProgressMS, &item.DurationMS, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.RunID, &item.AudioMediaItemID, &item.AudioTitle, &item.AudioLanguage, &item.Language, &item.ProviderName, &item.Model, &item.State, &item.FailureCode, &item.ProgressMS, &item.DurationMS, &item.CreatedAt); err != nil {
 			writeError(w, err)
 			return
 		}

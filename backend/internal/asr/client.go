@@ -154,20 +154,29 @@ func (c Client) helperModels(ctx context.Context) ([]Model, error) {
 			continue
 		}
 		seen[id] = true
-		result = append(result, Model{ID: id, Name: strings.TrimSpace(item.Name)})
+		model := Model{ID: id, Name: strings.TrimSpace(item.Name)}
+		if item.Translation != nil {
+			model.Translation = &Translation{Source: kikotohelper.LanguageToken(item.Translation.Source), Target: kikotohelper.LanguageToken(item.Translation.Target)}
+		}
+		result = append(result, model)
 	}
 	return result, nil
 }
 
 // Transcribe sends 16 kHz mono 16-bit PCM as a WAV file and returns its timed
 // segments. Every compatible service accepts WAV, and the body is assembled
-// around the samples without copying them.
-func (c Client) Transcribe(ctx context.Context, model string, language string, pcm []byte) (Transcript, error) {
+// around the samples without copying them. Target is the lyrics language
+// token a translating model writes, sent as target_language, or empty for
+// lyrics in the spoken language.
+func (c Client) Transcribe(ctx context.Context, model, language, target string, pcm []byte) (Transcript, error) {
 	var head bytes.Buffer
 	form := multipart.NewWriter(&head)
 	fields := [][2]string{{"model", model}, {"response_format", "verbose_json"}, {"timestamp_granularities[]", "segment"}}
 	if language != "" {
 		fields = append(fields, [2]string{"language", language})
+	}
+	if target != "" {
+		fields = append(fields, [2]string{"target_language", target})
 	}
 	for _, field := range fields {
 		if err := form.WriteField(field[0], field[1]); err != nil {

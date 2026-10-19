@@ -3021,6 +3021,8 @@ export const surfaceHans = {
       service_not_ready: "服务没有可用的模型。请在服务中安装或选择模型后重新转写。",
       service_start_failed: "服务无法启动其模型。请检查服务后重新转写。",
       service_out_of_memory: "服务因内存不足无法加载模型。请释放显存，或将助手的显存调度设为轮流加载，然后重新转写。",
+      unsupported_language_pair:
+        "该模型无法根据此音频语言写出此语言的歌词。管理员可在「设置 → 大语言模型与语音识别」中重新获取服务的模型，然后重新转写。",
       ffmpeg_unavailable: "此服务器无法准备音频。",
       endpoint_unavailable: "无法建立服务连接。",
       cancelled: "转写已取消。",
@@ -3030,6 +3032,7 @@ export const surfaceHans = {
       asr_policy_blocked: "内容等级超过此服务的接收上限，或内容分级未知、禁止发送。",
       asr_audio_unavailable: "这条音轨在作品文件夹中没有可用的本地文件。",
       asr_not_ready: "该服务已关闭或未设置模型。请联系管理员检查。",
+      asr_language_unsupported: "此模型无法根据此音频语言写出此语言的歌词。",
       asr_audio_too_long: "音轨过长，无法转写。",
       asr_ffmpeg_unavailable: "此服务器无法准备音频。",
     },
@@ -3046,7 +3049,13 @@ export const surfaceHans = {
     intro:
       "选择音轨，用语音识别服务转写。结果会在下方等待审核；添加后会在对应语言的歌词文件夹中保存 WebVTT 文件，并指派给该音轨。",
     language: "音频语言",
-    languageHint: "音频中所说的语言，会作为提示发送给服务。歌词以此语言保存并指派；自动检测时保存为后备歌词。",
+    languageHint: "音频中所说的语言，会作为提示发送给服务。",
+    lyricsLanguage: "歌词语言",
+    lyricsLanguageHint: "歌词以此语言保存并指派；自动检测时保存为后备歌词。除非模型会翻译，否则它就是音频语言。",
+    sameAsAudio: "与音频语言相同",
+    languageDirection: "{{audio}} → {{lyrics}}",
+    translatesOnly: "此模型只能根据{{audio}}音频写出{{lyrics}}歌词。",
+    writesAudioLanguage: "此模型只能以音频语言写出歌词。",
     filter: "显示的音轨",
     filters: {
       noLyrics: "无歌词",

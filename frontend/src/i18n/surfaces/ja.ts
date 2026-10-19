@@ -3161,6 +3161,8 @@ export const surfaceJapanese = {
         "サービスがモデルを起動できませんでした。サービスを確認してから、もう一度文字起こししてください。",
       service_out_of_memory:
         "メモリ不足のため、サービスがモデルを読み込めませんでした。GPU メモリを空けるか、ヘルパーの GPU 共有を交互に読み込む設定にしてから、もう一度文字起こししてください。",
+      unsupported_language_pair:
+        "モデルはこの音声の言語からこの言語の歌詞を書き出せません。管理者が「設定 → LLM・音声認識」でサービスのモデルを取得し直してから、もう一度文字起こししてください。",
       ffmpeg_unavailable: "このサーバーでは音声を準備できません。",
       endpoint_unavailable: "サービスへの接続を準備できませんでした。",
       cancelled: "文字起こしはキャンセルされました。",
@@ -3170,6 +3172,7 @@ export const surfaceJapanese = {
       asr_policy_blocked: "内容がサービスの受信上限を超えているか、不明・禁止に分類されています。",
       asr_audio_unavailable: "このトラックには、作品フォルダー内で利用できるローカルファイルがありません。",
       asr_not_ready: "サービスが無効か、モデルが設定されていません。管理者に確認を依頼してください。",
+      asr_language_unsupported: "このモデルはこの音声の言語からこの言語の歌詞を書き出せません。",
       asr_audio_too_long: "トラックが長すぎるため文字起こしできません。",
       asr_ffmpeg_unavailable: "このサーバーでは音声を準備できません。",
     },
@@ -3187,8 +3190,14 @@ export const surfaceJapanese = {
     intro:
       "トラックを選んで音声認識サービスで文字起こしします。結果は下で確認を待ち、追加すると言語別の歌詞フォルダーに WebVTT ファイルとして保存され、トラックに割り当てられます。",
     language: "音声の言語",
-    languageHint:
-      "音声で話されている言語で、サービスへのヒントとして送られます。歌詞はこの言語で保存・割り当てされ、自動検出の場合はフォールバックの歌詞として保存されます。",
+    languageHint: "音声で話されている言語で、サービスへのヒントとして送られます。",
+    lyricsLanguage: "歌詞の言語",
+    lyricsLanguageHint:
+      "歌詞はこの言語で保存・割り当てされ、自動検出の場合はフォールバックの歌詞として保存されます。モデルが翻訳しない限り、音声の言語と同じです。",
+    sameAsAudio: "音声の言語と同じ",
+    languageDirection: "{{audio}} → {{lyrics}}",
+    translatesOnly: "このモデルは{{audio}}の音声から{{lyrics}}の歌詞だけを書き出します。",
+    writesAudioLanguage: "このモデルは音声の言語でのみ歌詞を書き出します。",
     filter: "表示するトラック",
     filters: {
       noLyrics: "歌詞なし",

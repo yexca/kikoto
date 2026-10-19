@@ -54,6 +54,7 @@ export function demoTranscriptions(audio: readonly LyricsManagerAudio[], languag
       runId: 0,
       audioMediaItemId: entry.mediaItemId,
       audioTitle: entry.title,
+      audioLanguage: language,
       language,
       providerName: service.name,
       model: service.defaultModel,

@@ -3027,6 +3027,8 @@ export const surfaceHant = {
       service_start_failed: "服務無法啟動其模型。請檢查服務後重新轉寫。",
       service_out_of_memory:
         "服務因記憶體不足無法載入模型。請釋放顯示記憶體，或將助手的顯示記憶體排程設為輪流載入，然後重新轉寫。",
+      unsupported_language_pair:
+        "該模型無法根據此音訊語言寫出此語言的歌詞。管理員可在「設定 → 大型語言模型與語音辨識」中重新取得服務的模型，然後重新轉寫。",
       ffmpeg_unavailable: "此伺服器無法準備音訊。",
       endpoint_unavailable: "無法建立服務連線。",
       cancelled: "轉寫已取消。",
@@ -3036,6 +3038,7 @@ export const surfaceHant = {
       asr_policy_blocked: "內容等級超過此服務的接收上限，或內容分級未知、禁止傳送。",
       asr_audio_unavailable: "這條音軌在作品資料夾中沒有可用的本機檔案。",
       asr_not_ready: "該服務已關閉或未設定模型。請聯絡管理員檢查。",
+      asr_language_unsupported: "此模型無法根據此音訊語言寫出此語言的歌詞。",
       asr_audio_too_long: "音軌過長，無法轉寫。",
       asr_ffmpeg_unavailable: "此伺服器無法準備音訊。",
     },
@@ -3052,7 +3055,13 @@ export const surfaceHant = {
     intro:
       "選擇音軌，以語音辨識服務轉寫。結果會在下方等待審核；加入後會在對應語言的歌詞資料夾中儲存 WebVTT 檔案，並指派給該音軌。",
     language: "音訊語言",
-    languageHint: "音訊中所說的語言，會作為提示傳送給服務。歌詞會以此語言儲存並指派；自動偵測時儲存為備用歌詞。",
+    languageHint: "音訊中所說的語言，會作為提示傳送給服務。",
+    lyricsLanguage: "歌詞語言",
+    lyricsLanguageHint: "歌詞會以此語言儲存並指派；自動偵測時儲存為備用歌詞。除非模型會翻譯，否則它就是音訊語言。",
+    sameAsAudio: "與音訊語言相同",
+    languageDirection: "{{audio}} → {{lyrics}}",
+    translatesOnly: "此模型只能根據{{audio}}音訊寫出{{lyrics}}歌詞。",
+    writesAudioLanguage: "此模型只能以音訊語言寫出歌詞。",
     filter: "顯示的音軌",
     filters: {
       noLyrics: "無歌詞",

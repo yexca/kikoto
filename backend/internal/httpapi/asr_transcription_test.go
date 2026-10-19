@@ -546,13 +546,91 @@ func TestASRClientRefusesRedirectsAndUnboundedResponses(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer closeClient()
-			if _, err := client.Transcribe(context.Background(), "example-model", "", make([]byte, asr.BytesPerSecond)); err == nil {
+			if _, err := client.Transcribe(context.Background(), "example-model", "", "", make([]byte, asr.BytesPerSecond)); err == nil {
 				t.Fatal("unsafe or unbounded response accepted")
 			}
 			if forwarded.Load() != 0 {
 				t.Fatal("a redirect was followed")
 			}
 		})
+	}
+}
+
+func TestASRTranslatingModelWritesItsLyricsLanguageFromTheSpokenOne(t *testing.T) {
+	fixture := newASRFixture(t, 3)
+	ctx := context.Background()
+	provider := fixture.provider
+	provider.EnabledModels = []string{"example-model", "translating-model"}
+	provider, err := fixture.server.asrStore.Mutate(ctx, provider.ID, provider, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.server.asrStore.Models(ctx, provider, []asr.Model{{ID: "example-model"}, {ID: "translating-model", Translation: &asr.Translation{Source: "ja-jp", Target: "zh-cn"}}}); err != nil {
+		t.Fatal(err)
+	}
+	create := func(model, audioLanguage, language string) (*httptest.ResponseRecorder, string) {
+		body, _ := json.Marshal(asrTranscriptionRequest{AudioMediaItemID: fixture.audioID, ProviderID: provider.ID, Model: model, Language: language, AudioLanguage: &audioLanguage})
+		workID := jsonNumber(fixture.workID)
+		response := httptest.NewRecorder()
+		fixture.server.createASRTranscription(response, fixture.request(t, http.MethodPost, "/api/works/"+workID+"/asr-transcriptions", string(body), map[string]string{"id": workID}))
+		var result struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(response.Body.Bytes(), &result)
+		return response, result.ID
+	}
+	// A model writes the language it hears, and a translating model only its
+	// own direction; neither request reaches the service.
+	for _, refused := range [][3]string{{"example-model", "ja-jp", "zh-cn"}, {"translating-model", "ja-jp", "ja-jp"}, {"translating-model", "en-us", "zh-cn"}} {
+		if response, _ := create(refused[0], refused[1], refused[2]); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "asr_language_unsupported") {
+			t.Fatalf("%v = %d %s", refused, response.Code, response.Body.String())
+		}
+	}
+	response, id := create("translating-model", "ja-jp", "zh-cn")
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("create = %d %s", response.Code, response.Body.String())
+	}
+	if err := fixture.server.runNextQueuedWorkflowJob(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if state, failure, _ := fixture.state(t, id); state != "ready" {
+		t.Fatalf("state = %s (%s)", state, failure)
+	}
+	if len(*fixture.uploads) != 1 {
+		t.Fatalf("uploads = %d", len(*fixture.uploads))
+	}
+	if fields := (*fixture.uploads)[0].Fields; fields["model"] != "translating-model" || fields["language"] != "ja" || fields["target_language"] != "zh-cn" {
+		t.Fatalf("fields = %v", fields)
+	}
+	list := httptest.NewRecorder()
+	workID := jsonNumber(fixture.workID)
+	fixture.server.listASRTranscriptions(list, fixture.request(t, http.MethodGet, "/api/works/"+workID+"/asr-transcriptions", "", map[string]string{"id": workID}))
+	if !strings.Contains(list.Body.String(), `"audioLanguage":"ja-jp","language":"zh-cn"`) {
+		t.Fatalf("list = %s", list.Body.String())
+	}
+	if accepted := fixture.accept(t, id); accepted.Code != http.StatusOK {
+		t.Fatalf("accept = %d %s", accepted.Code, accepted.Body.String())
+	}
+	var assignedPath string
+	if err := fixture.db.QueryRow(`
+		SELECT location.path
+		FROM media_lyrics_assignment AS assignment
+		INNER JOIN media_file_location AS location ON location.media_item_id = assignment.lyrics_media_item_id
+		WHERE assignment.audio_media_item_id = ? AND assignment.language = 'zh-cn'
+	`, fixture.audioID).Scan(&assignedPath); err != nil || assignedPath != fixture.root+"/lyrics_kikoto/zh-hans/mp3/Track1.vtt" {
+		t.Fatalf("assignment = %q, %v", assignedPath, err)
+	}
+
+	// A model in the spoken language sends no target.
+	if response, id := create("example-model", "ja-jp", "ja-jp"); response.Code != http.StatusAccepted {
+		t.Fatalf("same language = %d %s", response.Code, response.Body.String())
+	} else if err := fixture.server.runNextQueuedWorkflowJob(ctx); err != nil {
+		t.Fatal(err)
+	} else if state, failure, _ := fixture.state(t, id); state != "ready" {
+		t.Fatalf("state = %s (%s)", state, failure)
+	}
+	if _, sent := (*fixture.uploads)[1].Fields["target_language"]; sent {
+		t.Fatalf("fields = %v", (*fixture.uploads)[1].Fields)
 	}
 }
 
