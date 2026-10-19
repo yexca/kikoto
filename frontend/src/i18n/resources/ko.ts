@@ -811,7 +811,7 @@ export const koreanResource = {
         hideReferenceDetails: "세부 정보 숨기기",
         referenceAreas: {
           recommendation: "추천 설계",
-          remoteSources: "원격 소스",
+          design: "디자인",
           playbackReporting: "재생 보고",
           workflows: "워크플로",
           engineering: "엔지니어링 및 CI",
@@ -822,7 +822,7 @@ export const koreanResource = {
           implicit: "희소 피드백 프로필과 제한된 후보 점수 계산. ALS, BPR, ItemKNN은 가져오지 않습니다.",
           troi: "미디어 라이브러리의 엔티티 매핑과 후보 파이프라인 아이디어. 소스 코드는 포함하지 않습니다.",
           recbole: "평가와 전체 순위 비교 자료. 런타임 의존성이 아닙니다.",
-          kikoeru: "Kikoeru 호환 원격 소스가 따르는 공개 백엔드 인터페이스.",
+          kikoeru: "청취 상태 빠른 표시, 카드와 작품 상세의 작품 표현, 일부 기능 동작에 대한 설계 참고.",
           audiobookshelf: "재생 위치와 실제 감상 시간을 함께 보고하는 방식.",
           navidrome: "이벤트 병합, 영구 저장 보고 큐, 재시도 대기 시간을 늘리는 방식.",
           jellyfin: "재생 이벤트와 주기적인 진행 상황 보고를 함께 사용하는 방식.",
@@ -922,6 +922,18 @@ export const koreanResource = {
         seekInvalid: "{{min}}초에서 {{max}}초 사이의 정수를 입력하세요.",
         savePlayback: "재생 설정 저장",
         seekUpdated: "재생 빨리감기/되감기 설정이 업데이트되었습니다.",
+        loudness: "음량 정규화",
+        loudnessDescription:
+          "트랙 간 음량 차이를 맞춥니다. 각 로컬 파일은 정규화를 켠 상태로 처음 재생할 때 한 번만 측정됩니다.",
+        loudnessMode: "정규화",
+        loudnessOff: "끄기",
+        loudnessOffDescription: "모든 트랙을 원래 음량으로 재생합니다.",
+        loudnessAttenuate: "큰 트랙 줄이기",
+        loudnessAttenuateDescription:
+          "큰 트랙은 작게 재생하고 작은 트랙은 그대로 둡니다. 백그라운드 재생 중에도 적용됩니다.",
+        loudnessFull: "큰 트랙은 줄이고 작은 트랙은 키우기",
+        loudnessFullDescription:
+          "Web Audio로 작은 트랙도 키웁니다. 모바일 앱에서는 키우기가 적용되지 않으며, 일부 브라우저는 백그라운드에서 Web Audio를 멈춥니다.",
         playbackSources: "재생 소스",
         playbackSourcesDescription:
           "로컬 파일과 원격 스트림처럼 위치가 여러 개인 트랙에 적용됩니다. 기본값은 꺼짐입니다.",

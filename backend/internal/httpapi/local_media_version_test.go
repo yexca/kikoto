@@ -20,7 +20,7 @@ func TestSameSizeMediaReplacementInvalidatesDurationAndRejectsOldProbe(t *testin
 	}
 	metadataReviewExec(t, s.db, "INSERT INTO user_account(id,username,role) VALUES (1,'synthetic-user','user')")
 	metadataReviewExec(t, s.db, "INSERT INTO user_work_state(user_id,work_id,favorite,note) VALUES (1,1,1,'Example note')")
-	if err := s.probeMissingLocalMedia(ctx, func(context.Context, string) (int64, bool, bool) { return 60, true, true }); err != nil {
+	if err := s.probeMissingLocalMedia(ctx, func(context.Context, string) (int64, bool, error) { return 60, true, nil }); err != nil {
 		t.Fatal(err)
 	}
 	assertLocalVersionDuration(t, s, 60)
@@ -48,7 +48,7 @@ func TestSameSizeMediaReplacementInvalidatesDurationAndRejectsOldProbe(t *testin
 	assertLocalVersionDuration(t, s, 0)
 	// Pending work remains durable across worker/server recreation.
 	restarted := NewServer(s.db, s.cfg)
-	if err := restarted.probeMissingLocalMedia(ctx, func(context.Context, string) (int64, bool, bool) { return 120, true, true }); err != nil {
+	if err := restarted.probeMissingLocalMedia(ctx, func(context.Context, string) (int64, bool, error) { return 120, true, nil }); err != nil {
 		t.Fatal(err)
 	}
 	assertLocalVersionDuration(t, s, 120)
@@ -141,9 +141,9 @@ func TestLocalMediaProbeSkipsOfflinePoolsAndRootsBeyondDepth(t *testing.T) {
 			}
 			metadataReviewExec(t, s.db, "UPDATE media_file_location SET path=? WHERE id=1", path)
 			s.cfg.LocalScanDepth = 1
-			if err := s.probeMissingLocalMedia(ctx, func(context.Context, string) (int64, bool, bool) {
+			if err := s.probeMissingLocalMedia(ctx, func(context.Context, string) (int64, bool, error) {
 				t.Fatal("probed a file outside the visible pool/depth scope")
-				return 60, true, true
+				return 60, true, nil
 			}); err != nil {
 				t.Fatal(err)
 			}

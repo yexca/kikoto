@@ -86,6 +86,10 @@ func (s *Server) openCompatibleAudio(ctx context.Context, input string, inputInf
 		return openCompleteAudio(output)
 	}
 	releasePath()
+	failureKey := mediaPreparationFailureKey("audio-transcode", input, inputInfo)
+	if s.mediaPreparationFailures.failedRecently(failureKey) {
+		return nil, fmt.Errorf("%w: preparation failed recently", errAudioTranscodeUnavailable)
+	}
 
 	// Reserve before locking the path: LRU eviction must not wait for a path
 	// held by a request that is itself waiting for the quota lock.
@@ -107,6 +111,9 @@ func (s *Server) openCompatibleAudio(ctx context.Context, input string, inputInf
 			return nil, err
 		}
 		if err := s.generateCompatibleAudio(ctx, input, inputInfo, output, audioTranscodeMaximumBytes); err != nil {
+			if errors.Is(err, errAudioTranscodeUnavailable) {
+				s.mediaPreparationFailures.remember(failureKey)
+			}
 			return nil, err
 		}
 	}

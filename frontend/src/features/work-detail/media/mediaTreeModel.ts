@@ -500,6 +500,7 @@ export function toPlayerTrack(track: TreeTrack, work: WorkDetail, fallbackCoverU
     lyricsChoices,
     autoLyricsLocationId: automaticLyrics?.locationId ?? null,
     preferredLyricsMediaItemId,
+    lyricsOffsetMs: audioItem?.lyricsOffsetMs ?? 0,
     playbackKey: track.playbackKey ?? playbackKeyForLocation(track.locationId),
   };
 }

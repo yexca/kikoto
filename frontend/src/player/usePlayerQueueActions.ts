@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
 import { currentPlaybackOrigin } from "@/app/playingWorkNavigation";
 import { useToast } from "@/components/ui/toast";
@@ -8,7 +8,9 @@ import { api } from "@/lib/api";
 import type { LyricsChoice } from "./lyricsMatching";
 import {
   applyLyricsChoiceToTrack,
+  applyLyricsOffsetOverride,
   applyLyricsPreferenceOverride,
+  clampLyricsOffset,
   lyricsPreferenceKey,
   lyricsPreferencePersists,
 } from "./lyricsPreference";
@@ -18,6 +20,8 @@ import type { LyricsPreferenceTarget, PlayerTrack, PlayMode } from "./playerType
 import { moveQueueItemToIndex, stepQueueIndex } from "./queueOrder";
 import { applyTrackLocation } from "./trackLocations";
 import type { PlaybackEngine } from "./usePlaybackEngine";
+
+const LYRICS_OFFSET_SAVE_DELAY_MS = 700;
 
 /**
  * Queue and lyrics-preference operations. Every operation keeps a stable
@@ -53,12 +57,19 @@ export function usePlayerQueueActions({
   const [lyricsPreferenceOverrides, setLyricsPreferenceOverrides] = useState<Record<string, number | null>>({});
   const lyricsPreferenceOverridesRef = useRef(lyricsPreferenceOverrides);
   lyricsPreferenceOverridesRef.current = lyricsPreferenceOverrides;
+  // Offsets changed in this session, by preference key; page data loaded
+  // earlier may still carry the previous value.
+  const lyricsOffsetOverridesRef = useRef<Record<string, number>>({});
+  const lyricsOffsetSaveTimersRef = useRef<Record<string, number>>({});
 
   const prepareTrack = (track: PlayerTrack) =>
     withQueueIdentity(
-      applyLyricsPreferenceOverride(
-        track.originPage ? track : { ...track, ...currentPlaybackOrigin() },
-        lyricsPreferenceOverridesRef.current,
+      applyLyricsOffsetOverride(
+        applyLyricsPreferenceOverride(
+          track.originPage ? track : { ...track, ...currentPlaybackOrigin() },
+          lyricsPreferenceOverridesRef.current,
+        ),
+        lyricsOffsetOverridesRef.current,
       ),
     );
 
@@ -228,9 +239,45 @@ export function usePlayerQueueActions({
     [setQueue, toast],
   );
 
+  /**
+   * Moves the track's lyrics timing for this listener. The queue follows at
+   * once; a burst of adjustments is saved once it settles.
+   */
+  const changeLyricsOffset = useCallback(
+    (target: LyricsPreferenceTarget, offsetMs: number) => {
+      const preferenceKey = lyricsPreferenceKey(target);
+      const offset = clampLyricsOffset(offsetMs);
+      lyricsOffsetOverridesRef.current = { ...lyricsOffsetOverridesRef.current, [preferenceKey]: offset };
+      setQueue((items) =>
+        items.map((item) => (lyricsPreferenceKey(item) === preferenceKey ? { ...item, lyricsOffsetMs: offset } : item)),
+      );
+      if (!lyricsPreferencePersists(target)) return;
+      const timers = lyricsOffsetSaveTimersRef.current;
+      if (timers[preferenceKey] !== undefined) window.clearTimeout(timers[preferenceKey]);
+      timers[preferenceKey] = window.setTimeout(() => {
+        delete timers[preferenceKey];
+        api.setMediaLyricsOffset(target.mediaItemId, offset).catch((error: unknown) => {
+          toast.notify({
+            kind: "warning",
+            message: error instanceof Error ? error.message : "Lyrics timing could not be saved.",
+          });
+        });
+      }, LYRICS_OFFSET_SAVE_DELAY_MS);
+    },
+    [setQueue, toast],
+  );
+
+  useEffect(
+    () => () => {
+      for (const timer of Object.values(lyricsOffsetSaveTimersRef.current)) window.clearTimeout(timer);
+    },
+    [],
+  );
+
   return {
     lyricsPreferenceOverrides,
     changeLyricsChoice,
+    changeLyricsOffset,
     playQueue,
     selectTrack,
     next,

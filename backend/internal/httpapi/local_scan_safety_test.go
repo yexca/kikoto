@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -285,5 +286,70 @@ func assertLocalScanLocationAvailability(t *testing.T, db *sql.DB, path, want st
 	}
 	if availability != want {
 		t.Fatalf("location %q availability = %q, want %q", path, availability, want)
+	}
+}
+
+// NAS recycle bins, metadata folders, and folders the scan cannot read are
+// unseen. A scan never discovers works in them and never marks their works
+// missing.
+func TestLocalScanLeavesIgnoredAndUnreadableFoldersUnseen(t *testing.T) {
+	dataRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 3})
+	writeSyntheticTrack := func(rel string) {
+		t.Helper()
+		path := filepath.Join(dataRoot, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("audio"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeSyntheticTrack("RJ00000032/track.mp3")
+	recycled := seedIndexedLocalScanWork(t, db, server, "RJ00000033", "#recycle/RJ00000033", "#recycle/RJ00000033/track.mp3")
+	writeSyntheticTrack("#recycle/RJ00000033/track.mp3")
+	writeSyntheticTrack("@eaDir/RJ00000034/track.mp3")
+	locked := seedIndexedLocalScanWork(t, db, server, "RJ00000035", "locked/RJ00000035", "locked/RJ00000035/track.mp3")
+	permissionsEnforced := runtime.GOOS != "windows" && os.Geteuid() != 0
+	if permissionsEnforced {
+		writeSyntheticTrack("locked/RJ00000035/track.mp3")
+		lockedPath := filepath.Join(dataRoot, "locked")
+		if err := os.Chmod(lockedPath, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(lockedPath, 0o755) })
+	}
+
+	runID, err := runQueuedLocalScan(t, server)
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if got := localPresenceAvailability(t, db, recycled.workID, recycled.sourceID); got != "available" {
+		t.Fatalf("work in a recycle bin = %q, want it left unchanged", got)
+	}
+	var discovered int
+	if err := db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code IN ('RJ00000032', 'RJ00000034')").Scan(&discovered); err != nil {
+		t.Fatal(err)
+	}
+	if discovered != 1 {
+		t.Fatalf("discovered %d works, want the real folder only and nothing from @eaDir", discovered)
+	}
+	if !permissionsEnforced {
+		scope := localScanScope{mode: storagepool.ModeStandard, online: []string{""}, depth: 3}.withUnreadableFolders([]string{"locked"})
+		if scope.contains("locked/RJ00000035") || !scope.contains("RJ00000032") {
+			t.Fatal("a root below an unreadable folder must be unseen while other roots stay in scope")
+		}
+		return
+	}
+	if got := localPresenceAvailability(t, db, locked.workID, locked.sourceID); got != "available" {
+		t.Fatalf("work below an unreadable folder = %q, want it left unchanged", got)
+	}
+	var summary string
+	if err := db.QueryRow("SELECT summary_json FROM workflow_run WHERE id = ?", runID).Scan(&summary); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(summary, `"unreadable_folders":["locked"]`) {
+		t.Fatalf("run summary = %s, want the unreadable folder recorded", summary)
 	}
 }

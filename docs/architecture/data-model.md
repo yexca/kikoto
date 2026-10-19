@@ -723,7 +723,11 @@ time independently of the stable path fingerprint. Changed observations clear
 duration/audio metadata without replacing media ids or personal state. Probes
 compare their location id and expected version in the write transaction,
 rejecting delayed results after a rescan. An empty version is established on
-the next visible scan or probe.
+the next visible scan or probe. `probe_failed_version` marks the version
+FFprobe could not read, and `loudness_version` the version that
+`loudness_integrated_lufs`, `loudness_peak_dbfs`, and `loudness_peak_kind`
+(`true` or `sample`) describe; a scan that records another version clears
+both, and readers use neither for another version.
 
 `media_file_location.content_hash` caches the SHA-256 of a local file for
 identical-file detection, and `content_hash_version` holds the size and
@@ -773,6 +777,10 @@ playback tries them: the viewer's metadata languages in priority order, where
 then the every-language assignment, then the remaining languages in the fixed
 supported order. Clients rank a user's `user_media_lyrics_preference` first,
 then these assignments in that order, then name matching.
+`user_media_lyrics_offset` holds a user's lyrics timing offset for one audio
+item, a nonzero number of milliseconds within 30 seconds either way. It is
+independent of the lyrics choice and is read into that viewer's media item as
+`lyricsOffsetMs`; lyrics files are never rewritten for it.
 
 The lyrics indicator of a work card is the same resolution run on the server
 for every track of the work. The personal preference takes no part, because it
@@ -869,6 +877,7 @@ Important tables:
 - `user_work_state`
 - `user_work_playback_cursor`
 - `user_media_lyrics_preference`
+- `user_media_lyrics_offset`
 - `favorite_list`
 - `favorite_list_item`
 - `favorite_list_smart_tag`

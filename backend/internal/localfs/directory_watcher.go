@@ -197,6 +197,10 @@ func (w *DirectoryWatcher) emitChange(path string, event fsnotify.Event) {
 func (w *DirectoryWatcher) addTree(start string) error {
 	return filepath.WalkDir(start, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
+			// A folder the scan cannot read is unseen; the watcher skips it too.
+			if entry != nil && !sameFilesystemPath(path, w.root) && isSkippableWalkError(walkErr) {
+				return filepath.SkipDir
+			}
 			return walkErr
 		}
 		if !entry.IsDir() {
@@ -282,12 +286,7 @@ func (w *DirectoryWatcher) isInternalPath(path string) bool {
 			return true
 		}
 	}
-	for _, part := range strings.Split(rel, string(filepath.Separator)) {
-		if isKikotoInternalDirectory(part) {
-			return true
-		}
-	}
-	return false
+	return IsIgnoredPath(rel)
 }
 
 func (w *DirectoryWatcher) addExcludedRoot(path string) error {

@@ -27,6 +27,7 @@ export function PlayerDock() {
     track,
     preferenceOverrides: player.lyricsPreferenceOverrides,
     changeLyricsChoice: player.changeLyricsChoice,
+    changeLyricsOffset: player.changeLyricsOffset,
   });
   const screenLyrics = useScreenLyrics();
   const screenLyricsSync = (
@@ -120,7 +121,8 @@ function ScreenLyricsSync({
   const portal = useScreenLyricsSync(
     screenLyrics,
     {
-      trackKey: `${track?.queueItemId ?? track?.locationId ?? ""}:${activeLyricsLocationId ?? ""}`,
+      // The offset is part of the key, so a native surface receives the moved lines.
+      trackKey: `${track?.queueItemId ?? track?.locationId ?? ""}:${activeLyricsLocationId ?? ""}:${track?.lyricsOffsetMs ?? 0}`,
       title: track?.title ?? "",
       subtitle: track?.circle || track?.workTitle || "",
       lines,

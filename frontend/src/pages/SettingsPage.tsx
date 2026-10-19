@@ -1,5 +1,6 @@
 import {
   DevicePrivacyPreferences,
+  PlaybackLoudnessPreference,
   PlaybackSourcePreferences,
   RecommendationActivity,
   UserPreferencePanels,
@@ -539,6 +540,7 @@ export function SettingsPage({
                   />
                 </SettingsSection>
               </form>
+              <PlaybackLoudnessPreference userId={user.id} />
               <PlaybackSourcePreferences userId={user.id} />
               {supportsNativePrivacy() && <DevicePrivacyPreferences />}
               <UserPreferencePanels userId={user.id} section="playback" readOnly={readOnly} />

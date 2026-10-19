@@ -232,3 +232,40 @@ func waitForDirectoryChange(t *testing.T, changes <-chan DirectoryChange) {
 		t.Fatal("timed out waiting for directory change")
 	}
 }
+
+func TestDirectoryWatcherIgnoresNASAndOperatingSystemJunk(t *testing.T) {
+	root := t.TempDir()
+	workDir := filepath.Join(root, "RJ00000025")
+	if err := os.MkdirAll(filepath.Join(root, "@eaDir", "RJ00000025"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(workDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	watcher, err := NewDirectoryWatcher(root, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = watcher.Close() })
+	if watcher.WatchedDirectoryCount() != 2 {
+		t.Fatalf("watched directories = %d, want the root and the work folder", watcher.WatchedDirectoryCount())
+	}
+	for _, name := range []string{".DS_Store", "._track.mp3", "Thumbs.db"} {
+		if err := os.WriteFile(filepath.Join(workDir, name), []byte("sidecar"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Some platforms also report the parent folder as written; only the
+	// sidecar paths themselves must stay invisible.
+	deadline := time.After(300 * time.Millisecond)
+	for {
+		select {
+		case change := <-watcher.Changes():
+			if IsIgnoredPath(change.Path) {
+				t.Fatalf("operating system sidecar emitted a visible change: %s", change.Path)
+			}
+		case <-deadline:
+			return
+		}
+	}
+}

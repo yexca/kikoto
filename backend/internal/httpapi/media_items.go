@@ -89,7 +89,13 @@ func (s *Server) loadMediaItemRows(ctx context.Context, userID int64, mediaWorkI
 				FROM user_media_lyrics_preference AS preference
 				WHERE preference.user_id = ?
 					AND preference.audio_media_item_id = media_item.id
-			) AS preferred_lyrics_media_item_id
+			) AS preferred_lyrics_media_item_id,
+			COALESCE((
+				SELECT lyrics_offset.offset_ms
+				FROM user_media_lyrics_offset AS lyrics_offset
+				WHERE lyrics_offset.user_id = ?
+					AND lyrics_offset.audio_media_item_id = media_item.id
+			), 0) AS lyrics_offset_ms
 		FROM media_item
 		LEFT JOIN user_work_playback_cursor AS playback_cursor ON playback_cursor.media_item_id = media_item.id
 			AND playback_cursor.user_id = ?
@@ -99,7 +105,7 @@ func (s *Server) loadMediaItemRows(ctx context.Context, userID int64, mediaWorkI
 			COALESCE(media_item.track_no, 0) ASC,
 			media_item.title ASC,
 			media_item.id ASC
-	`, userID, userID, mediaWorkID)
+	`, userID, userID, userID, mediaWorkID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -135,6 +141,7 @@ func (s *Server) loadMediaItemRows(ctx context.Context, userID int64, mediaWorkI
 			&progressCompleted,
 			&progressLastPlayedAt,
 			&preferredLyricsMediaItemID,
+			&item.LyricsOffsetMs,
 		); err != nil {
 			_ = rows.Close()
 			return nil, nil, err
@@ -184,7 +191,13 @@ func (s *Server) loadMediaLocationRows(ctx context.Context, mediaWorkID int64, m
 			location.size_bytes,
 			location.duration_seconds,
 			location.availability,
-			location.last_checked_at
+			location.last_checked_at,
+			CASE WHEN location.loudness_version = location.file_version AND location.file_version <> ''
+				THEN location.loudness_integrated_lufs END,
+			CASE WHEN location.loudness_version = location.file_version AND location.file_version <> ''
+				THEN location.loudness_peak_dbfs END,
+			CASE WHEN location.loudness_version = location.file_version AND location.file_version <> ''
+				THEN location.loudness_peak_kind END
 		FROM media_file_location AS location
 		INNER JOIN file_source AS source ON source.id = location.file_source_id
 		INNER JOIN media_item AS item ON item.id = location.media_item_id
@@ -202,6 +215,8 @@ func (s *Server) loadMediaLocationRows(ctx context.Context, mediaWorkID int64, m
 		var sizeBytes sql.NullInt64
 		var locationDurationSeconds sql.NullInt64
 		var lastCheckedAt sql.NullString
+		var loudnessLUFS, loudnessPeak sql.NullFloat64
+		var loudnessPeakKind sql.NullString
 		if err := locationRows.Scan(
 			&location.ID,
 			&mediaItemID,
@@ -217,6 +232,9 @@ func (s *Server) loadMediaLocationRows(ctx context.Context, mediaWorkID int64, m
 			&locationDurationSeconds,
 			&location.Availability,
 			&lastCheckedAt,
+			&loudnessLUFS,
+			&loudnessPeak,
+			&loudnessPeakKind,
 		); err != nil {
 			_ = locationRows.Close()
 			return err
@@ -224,6 +242,7 @@ func (s *Server) loadMediaLocationRows(ctx context.Context, mediaWorkID int64, m
 		location.SizeBytes = sqlutil.Int64(sizeBytes)
 		location.DurationSeconds = sqlutil.Int64(locationDurationSeconds)
 		location.LastCheckedAt = sqlutil.String(lastCheckedAt)
+		location.Loudness = mediaLoudnessFromColumns(loudnessLUFS, loudnessPeak, loudnessPeakKind)
 		if location.LocationType == "local" {
 			location.Availability = availability.localAvailability(location.Path, location.Availability)
 		}

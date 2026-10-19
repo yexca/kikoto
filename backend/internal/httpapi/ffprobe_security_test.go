@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -42,5 +43,24 @@ func TestLocalFFprobeRejectsEmbeddedNetworkPlaylist(t *testing.T) {
 	}
 	if _, err := server.runBoundedFFprobe(context.Background(), local, "format=duration"); err != nil {
 		t.Fatalf("local audio probe was blocked: %v", err)
+	}
+}
+
+func TestLocalFFprobeSeparatesRejectedFilesFromCancelledProbes(t *testing.T) {
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		t.Skip("ffprobe is not installed")
+	}
+	server := NewServer(nil, config.Config{})
+	corrupt := filepath.Join(t.TempDir(), "._example.mp3")
+	if err := os.WriteFile(corrupt, []byte("synthetic resource fork, not media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := server.probeMediaMetadata(context.Background(), corrupt); !errors.Is(err, errMediaProbeRejected) {
+		t.Fatalf("corrupt file probe = %v, want a definite rejection", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := server.probeMediaMetadata(ctx, corrupt); err == nil || errors.Is(err, errMediaProbeRejected) {
+		t.Fatalf("cancelled probe = %v, want an error that says nothing about the file", err)
 	}
 }

@@ -482,7 +482,7 @@ export const englishResource = {
         hideReferenceDetails: "Hide details",
         referenceAreas: {
           recommendation: "Recommendation design",
-          remoteSources: "Remote sources",
+          design: "Design",
           playbackReporting: "Playback reporting",
           workflows: "Workflows",
           engineering: "Engineering & CI",
@@ -494,7 +494,8 @@ export const englishResource = {
             "Sparse feedback profiles and bounded candidate scoring; Kikoto does not import ALS, BPR, or ItemKNN.",
           troi: "Entity mapping and candidate-pipeline ideas for a media library; no source code is bundled.",
           recbole: "Evaluation and full-sort comparison material; it is not a runtime dependency.",
-          kikoeru: "The public backend interface that Kikoeru-compatible remote sources follow.",
+          kikoeru:
+            "A design reference for quick listening-status marks, how cards and work detail present a work, and some feature behavior.",
           audiobookshelf: "Reports that combine playback position with listening time.",
           navidrome: "Event coalescing and a durable report queue with retry backoff.",
           jellyfin: "Playback events alongside periodic progress reports.",
@@ -595,6 +596,18 @@ export const englishResource = {
         seekInvalid: "Enter whole numbers from {{min}} to {{max}} seconds.",
         savePlayback: "Save playback",
         seekUpdated: "Playback seek settings updated.",
+        loudness: "Loudness normalization",
+        loudnessDescription:
+          "Evens out loudness between tracks. Kikoto measures each local file once, the first time it plays with normalization on.",
+        loudnessMode: "Normalization",
+        loudnessOff: "Off",
+        loudnessOffDescription: "Every track plays at its own level.",
+        loudnessAttenuate: "Turn loud tracks down",
+        loudnessAttenuateDescription:
+          "Loud tracks play quieter and quiet tracks keep their level. This also works during background playback.",
+        loudnessFull: "Turn loud tracks down and quiet tracks up",
+        loudnessFullDescription:
+          "Also raises quiet tracks through Web Audio. Raising does not apply in the mobile apps, and some browsers pause Web Audio in the background.",
         playbackSources: "Playback sources",
         playbackSourcesDescription:
           "Applies to tracks with more than one location, such as a local file and a remote stream. Both are off by default.",
