@@ -180,9 +180,14 @@ Playback is handled by a global browser audio player.
   changes loudness, and the iOS app plays every track at its own level. The
   server measures a file's EBU R 128 loudness and true peak
   with FFmpeg the first time it plays with normalization on, falling back to
-  the sample peak, and keeps the result until the file changes. Measurement
-  shares the transcode slots and time limit, and the next queued track is
-  measured ahead. A track plays at its own level until its measurement arrives.
+  the sample peak, and keeps the result until the file changes. The server
+  measures one file at a time without taking a transcode slot, so playback
+  conversion never waits for it; the current track is measured first and the
+  next queued track after it. A track plays at its own level until its
+  measurement arrives and then moves to its new level smoothly. Web Audio
+  starts only after you tap, click, or press a key on the page; until it runs,
+  the second choice only lowers tracks, like the first, and iPhone and iPad
+  play every track at its own level.
 - Screen lyrics keep the current and next line visible outside the page.
   Browsers with Document Picture-in-Picture open a small always-on-top window
   that stays visible while the browser is minimized; other browsers with video

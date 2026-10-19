@@ -14,19 +14,49 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/localfs"
 )
 
 const (
-	// A measurement decodes the whole file once, much faster than real time.
-	// It shares the transcode slots and their bound on wall time.
+	// A measurement decodes the whole file once, much faster than real time,
+	// under the audio preparation bound on wall time.
 	loudnessMeasureTimeout = audioTranscodeTimeout
+	// Measurements run one at a time in their own slot, never in a transcode
+	// slot, so playback conversion never waits for one. A request waits this
+	// long for the slot before it is answered as busy.
+	loudnessMeasureQueueTimeout = time.Second
+	// A measurement that failed or timed out is answered from memory this
+	// long, so playing the file again does not decode it again.
+	loudnessFailureTTL = time.Hour
 	// FFmpeg prints the summary last; only this much of stderr is kept.
 	loudnessStderrTailLimit = 16 << 10
 )
 
 var errLoudnessUnavailable = errors.New("media loudness is unavailable")
+
+// loudnessMeasurementSlot admits one loudness measurement at a time.
+type loudnessMeasurementSlot struct {
+	once  sync.Once
+	slots chan struct{}
+}
+
+func (slot *loudnessMeasurementSlot) acquire(ctx context.Context) (func(), error) {
+	slot.once.Do(func() { slot.slots = make(chan struct{}, 1) })
+	timer := time.NewTimer(loudnessMeasureQueueTimeout)
+	defer timer.Stop()
+	select {
+	case slot.slots <- struct{}{}:
+		var releaseOnce sync.Once
+		return func() { releaseOnce.Do(func() { <-slot.slots }) }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-timer.C:
+		return nil, errRealtimeResourceBusy
+	}
+}
 
 // mediaLoudnessDetail is the integrated loudness (EBU R 128) and peak level of
 // one file version. PeakKind is "true" for a true peak, or "sample" when only
@@ -93,9 +123,11 @@ func (s *Server) getMediaLoudness(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// mediaLoudness returns the stored loudness of the location's current file
-// version, or measures and stores it. Concurrent requests for one file share a
-// measurement, and a failed one is answered from memory for a short time.
+// mediaLoudness returns the stored loudness of the file version on disk, or
+// measures and stores it. The result is keyed by the version the measurement
+// read, even when the index has not recorded that version yet. Concurrent
+// requests for one file share a measurement, and a failed or timed-out one is
+// answered from memory.
 func (s *Server) mediaLoudness(ctx context.Context, locationID int64, path string) (mediaLoudnessDetail, error) {
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() {
@@ -117,13 +149,18 @@ func (s *Server) mediaLoudness(ctx context.Context, locationID int64, path strin
 		return mediaLoudnessDetail{}, err
 	}
 	defer release()
+	// A request that waited for another measurement of this file takes its
+	// result, or its failure.
 	if stored, ok, err := s.storedMediaLoudness(ctx, locationID, version); err != nil || ok {
 		return stored, err
+	}
+	if s.mediaPreparationFailures.failedRecently(failureKey) {
+		return mediaLoudnessDetail{}, fmt.Errorf("%w: measurement failed recently", errLoudnessUnavailable)
 	}
 	loudness, err := s.measureMediaLoudness(ctx, path)
 	if err != nil {
 		if errors.Is(err, errLoudnessUnavailable) && ctx.Err() == nil {
-			s.mediaPreparationFailures.remember(failureKey)
+			s.mediaPreparationFailures.rememberFor(failureKey, loudnessFailureTTL)
 		}
 		return mediaLoudnessDetail{}, err
 	}
@@ -134,8 +171,8 @@ func (s *Server) mediaLoudness(ctx context.Context, locationID int64, path strin
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE media_file_location
 		SET loudness_version = ?, loudness_integrated_lufs = ?, loudness_peak_dbfs = ?, loudness_peak_kind = ?
-		WHERE id = ? AND location_type = 'local' AND file_version = ?
-	`, version, loudness.IntegratedLUFS, loudness.PeakDBFS, loudness.PeakKind, locationID, version); err != nil {
+		WHERE id = ? AND location_type = 'local'
+	`, version, loudness.IntegratedLUFS, loudness.PeakDBFS, loudness.PeakKind, locationID); err != nil {
 		return mediaLoudnessDetail{}, err
 	}
 	return loudness, nil
@@ -147,7 +184,7 @@ func (s *Server) storedMediaLoudness(ctx context.Context, locationID int64, vers
 	err := s.db.QueryRowContext(ctx, `
 		SELECT loudness_integrated_lufs, loudness_peak_dbfs, loudness_peak_kind
 		FROM media_file_location
-		WHERE id = ? AND file_version = ? AND loudness_version = file_version
+		WHERE id = ? AND location_type = 'local' AND loudness_version = ?
 	`, locationID, version).Scan(&integrated, &peak, &kind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return mediaLoudnessDetail{}, false, nil
@@ -168,7 +205,7 @@ func (s *Server) storedMediaLoudness(ctx context.Context, locationID int64, vers
 func (s *Server) measureMediaLoudness(ctx context.Context, path string) (mediaLoudnessDetail, error) {
 	measureContext, cancel := context.WithTimeout(ctx, loudnessMeasureTimeout)
 	defer cancel()
-	release, err := s.acquireRealtimeTranscode(measureContext)
+	release, err := s.loudnessMeasurements.acquire(measureContext)
 	if err != nil {
 		return mediaLoudnessDetail{}, err
 	}
@@ -188,7 +225,8 @@ func (s *Server) measureMediaLoudness(ctx context.Context, path string) (mediaLo
 			if parentErr := ctx.Err(); parentErr != nil {
 				return mediaLoudnessDetail{}, parentErr
 			}
-			return mediaLoudnessDetail{}, fmt.Errorf("measurement timed out: %w", err)
+			// A file too slow to decode in time is as slow the next time.
+			return mediaLoudnessDetail{}, fmt.Errorf("%w: measurement timed out", errLoudnessUnavailable)
 		}
 		if runErr == nil {
 			if loudness, ok := parseLoudnessSummary(stderr.String(), peakKind); ok {

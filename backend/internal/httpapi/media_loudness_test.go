@@ -141,8 +141,11 @@ func TestMediaLoudnessIsMeasuredOncePerFileVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec("UPDATE media_file_location SET size_bytes = ?, file_version = ? WHERE id = 1", info.Size(), localfs.FileVersion(info)); err != nil {
-		t.Fatal(err)
+	// The index still records the earlier file version, and playback
+	// conversion holds every transcode slot.
+	slots, _ := s.realtimeResourceChannels(realtimeResourceTranscode)
+	for range cap(slots) {
+		slots <- struct{}{}
 	}
 	get := func() (int, mediaLoudnessDetail) {
 		t.Helper()
@@ -163,9 +166,31 @@ func TestMediaLoudnessIsMeasuredOncePerFileVersion(t *testing.T) {
 		t.Fatalf("measurement = %d %+v", status, measured)
 	}
 	// A stored value is returned without FFmpeg.
+	searchPath := os.Getenv("PATH")
 	t.Setenv("PATH", "")
 	if status, stored := get(); status != http.StatusOK || stored != measured {
 		t.Fatalf("stored measurement = %d %+v, want %+v", status, stored, measured)
+	}
+
+	scan := func(info os.FileInfo) {
+		t.Helper()
+		tx, err := s.db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := upsertDetectedLocation(context.Background(), tx, 1, 1, localfs.LocalFile{
+			RelPath: "RJ00000000/track-1.mp3", SizeBytes: info.Size(), FileVersion: localfs.FileVersion(info),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A scan that records the measured version keeps the measurement.
+	scan(info)
+	if status, stored := get(); status != http.StatusOK || stored != measured {
+		t.Fatalf("measurement after the scan = %d %+v, want %+v", status, stored, measured)
 	}
 
 	// A scan that records a new file version drops the measurement.
@@ -177,18 +202,7 @@ func TestMediaLoudnessIsMeasuredOncePerFileVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := upsertDetectedLocation(context.Background(), tx, 1, 1, localfs.LocalFile{
-		RelPath: "RJ00000000/track-1.mp3", SizeBytes: changedInfo.Size(), FileVersion: localfs.FileVersion(changedInfo),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
+	scan(changedInfo)
 	var version *string
 	if err := s.db.QueryRow("SELECT loudness_version FROM media_file_location WHERE id = 1").Scan(&version); err != nil {
 		t.Fatal(err)
@@ -198,5 +212,15 @@ func TestMediaLoudnessIsMeasuredOncePerFileVersion(t *testing.T) {
 	}
 	if status, _ := get(); status != http.StatusServiceUnavailable {
 		t.Fatalf("measurement without FFmpeg = %d, want 503", status)
+	}
+	// The failure is remembered for this version, so the next play does not
+	// measure again even once FFmpeg could run.
+	t.Setenv("PATH", searchPath)
+	if status, _ := get(); status != http.StatusServiceUnavailable {
+		t.Fatalf("measurement after a failure = %d, want the remembered 503", status)
+	}
+	key := mediaPreparationFailureKey("loudness", path, changedInfo)
+	if expires := s.mediaPreparationFailures.expires[key]; time.Until(expires) <= mediaPreparationFailureTTL {
+		t.Fatalf("loudness failure expires in %s, want longer than a transcode failure", time.Until(expires))
 	}
 }

@@ -91,16 +91,18 @@ func upsertDetectedLocation(ctx context.Context, tx *sql.Tx, mediaItemID int64, 
 		return result.LastInsertId()
 	}
 	// A changed file version drops what was learned about the earlier file: its
-	// duration, a failed probe, and its loudness. SET reads the old row values.
+	// duration and a failed probe. Loudness is dropped unless it was measured
+	// from the version recorded now, which playback may have read before the
+	// scan. SET reads the old row values.
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE media_file_location
 		SET size_bytes = ?,
 			duration_seconds = CASE WHEN file_version IS NOT ? OR size_bytes IS NOT ? THEN ? ELSE COALESCE(?, duration_seconds) END,
 			probe_failed_version = CASE WHEN file_version IS NOT ? THEN NULL ELSE probe_failed_version END,
-			loudness_version = CASE WHEN file_version IS NOT ? THEN NULL ELSE loudness_version END,
-			loudness_integrated_lufs = CASE WHEN file_version IS NOT ? THEN NULL ELSE loudness_integrated_lufs END,
-			loudness_peak_dbfs = CASE WHEN file_version IS NOT ? THEN NULL ELSE loudness_peak_dbfs END,
-			loudness_peak_kind = CASE WHEN file_version IS NOT ? THEN NULL ELSE loudness_peak_kind END,
+			loudness_version = CASE WHEN loudness_version IS NOT ? THEN NULL ELSE loudness_version END,
+			loudness_integrated_lufs = CASE WHEN loudness_version IS NOT ? THEN NULL ELSE loudness_integrated_lufs END,
+			loudness_peak_dbfs = CASE WHEN loudness_version IS NOT ? THEN NULL ELSE loudness_peak_dbfs END,
+			loudness_peak_kind = CASE WHEN loudness_version IS NOT ? THEN NULL ELSE loudness_peak_kind END,
 			file_version = ?,
 			availability = 'available',
 			last_checked_at = CURRENT_TIMESTAMP

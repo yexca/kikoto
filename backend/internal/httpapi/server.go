@@ -67,6 +67,7 @@ type Server struct {
 	cachePathLocks                 cachePathLocker
 	audioTranscodeLocks            cachePathLocker
 	mediaPreparationFailures       mediaPreparationFailures
+	loudnessMeasurements           loudnessMeasurementSlot
 	metadataSyncMu                 sync.Mutex
 	metadataPreviewMu              sync.Mutex
 	metadataPreviews               map[string]metadataPreviewRecord
