@@ -92,7 +92,7 @@ func (s *Server) runCacheLimitCleanup(ctx context.Context, sourceID int64, keepL
 		return result, err
 	}
 	jobID, err := workflow.InsertJob(ctx, tx, runID, workflow.JobSpec{
-		NodeRunID: cleanupNodeID, WorkerType: "media_cache_limit_cleanup", Status: "queued", ResourceKey: "media:cleanup", Payload: input,
+		NodeRunID: cleanupNodeID, WorkerType: "media_cache_limit_cleanup", Status: "queued", ResourceKey: mediaCleanupResourceKey, Payload: input,
 		Checkpoint: map[string]any{"phase": "pending"}, Recoverable: true, MaxRetries: 3, ProgressCurrent: 0, ProgressTotal: 1,
 	})
 	if err != nil {

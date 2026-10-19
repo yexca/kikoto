@@ -40,6 +40,9 @@ func (s *Server) createRemoteBulkRun(w http.ResponseWriter, r *http.Request) {
 		if code == "" || seen[code] {
 			continue
 		}
+		if refuseCustomWorkCode(w, code) {
+			return
+		}
 		seen[code] = true
 		codes = append(codes, code)
 	}
@@ -203,7 +206,7 @@ func (s *Server) processRemoteBulkCode(ctx context.Context, userID, sourceID int
 	if action != "fetch" && action != "track_fetch" {
 		return
 	}
-	saveResult, err := s.enqueueRemoteWorkSave(withRemoteFetchOrigin(ctx, "remote_bulk_action"), sourceID, code, []string{}, nil, "", "", nil, 0, userID, workflow.JobPriorityBackground)
+	saveResult, err := s.enqueueRemoteWorkSave(withRemoteFetchOrigin(ctx, "remote_bulk_action"), sourceID, code, []string{}, nil, "", "", nil, 0, userID, workflow.JobPriorityBackground, nil)
 	if err != nil {
 		recordRemoteBulkFailure(result, code, err)
 		return

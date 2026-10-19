@@ -604,8 +604,10 @@ func cloneValues(values url.Values) url.Values {
 	return clone
 }
 
+// normalizeWorkCode accepts only catalog codes: a remote source never holds a
+// custom work, which exists only in this library.
 func normalizeWorkCode(value string) string {
-	return workcode.Normalize(value)
+	return workcode.NormalizeCatalog(value)
 }
 
 func (c *Client) normalizeTrackURLs(tracks []Track) {

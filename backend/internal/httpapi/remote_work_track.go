@@ -54,6 +54,9 @@ func (s *Server) trackRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	code := remoteWorkCodeFromPath(r)
+	if refuseCustomWorkCode(w, code) {
+		return
+	}
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return
@@ -89,6 +92,9 @@ func (s *Server) syncRemoteSourceWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	code := remoteWorkCodeFromPath(r)
+	if refuseCustomWorkCode(w, code) {
+		return
+	}
 	if code == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code is required"})
 		return

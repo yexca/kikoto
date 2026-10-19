@@ -62,6 +62,9 @@ func (s *Server) getRemoteSourceWorkText(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	code := remoteWorkCodeFromPath(r)
+	if refuseCustomWorkCode(w, code) {
+		return
+	}
 	targetPath := cleanRemoteRelativePath(r.URL.Query().Get("path"))
 	if code == "" || targetPath == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work code and text path are required"})

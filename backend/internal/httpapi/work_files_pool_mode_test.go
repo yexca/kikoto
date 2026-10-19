@@ -278,3 +278,51 @@ func TestTrackLyricsPublishInPoolModeStagesOnTheFolderPool(t *testing.T) {
 		t.Fatalf("publishing to an offline pool created lyrics folders: %v", folders)
 	}
 }
+
+func TestWorkFolderEditDoesNotIndexAFolderWhosePoolWentOffline(t *testing.T) {
+	fixture := newPoolFolderEditFixture(t, serveFolderEditMedia)
+	var fileSourceID int64
+	if err := fixture.db.QueryRow("SELECT file_source_id FROM work_folder_location WHERE id = ?", fixture.folderID).Scan(&fileSourceID); err != nil {
+		t.Fatal(err)
+	}
+	execution := &workFolderEditExecution{server: fixture.server, payload: workFolderEditJobPayload{
+		WorkID: fixture.workID, FileSourceID: fileSourceID, TargetRoot: fixture.root,
+	}}
+	// The pool is unmounted while the edit runs: its mount point is empty.
+	poolRoot := filepath.Join(fixture.dataRoot, fixture.pool)
+	if err := os.Rename(poolRoot, poolRoot+" unmounted"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(poolRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var destination libraryStorageError
+	if err := execution.index(context.Background()); !errors.As(err, &destination) || destination.Code != "storage_pool_offline" {
+		t.Fatalf("indexing on an offline pool = %v, want storage_pool_offline", err)
+	}
+	var availability string
+	if err := fixture.db.QueryRow("SELECT availability FROM media_file_location WHERE id = ?", fixture.originalLocationID).Scan(&availability); err != nil || availability != "available" {
+		t.Fatalf("file on the offline pool = %q, %v; want it kept available", availability, err)
+	}
+}
+
+func TestWorkFolderEditRefusesALinkedStagingFolder(t *testing.T) {
+	fixture := newPoolFolderEditFixture(t, serveFolderEditMedia)
+	siblingFolderID := fixture.addSiblingFolder(t, map[string]string{folderEditVTTPath: lyricsFetchVTT})
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(fixture.dataRoot, fixture.pool, ".kikoto-staging")); err != nil {
+		t.Skipf("symlink is not available on this system: %v", err)
+	}
+	job := fixture.apply(t, map[string]any{"additions": []any{localAddition(siblingFolderID, folderEditVTTPath)}})
+	if _, err := fixture.db.Exec("UPDATE workflow_job SET max_retries = 0 WHERE id = ?", job.ID); err != nil {
+		t.Fatal(err)
+	}
+	job.MaxRetries = 0
+	if err := fixture.server.executeWorkFolderEditJob(context.Background(), job); err == nil {
+		t.Fatal("the edit staged its files through a linked staging folder")
+	}
+	if entries, err := os.ReadDir(outside); err != nil || len(entries) != 0 {
+		t.Fatalf("the edit wrote outside the pool: %v, %v", entries, err)
+	}
+}

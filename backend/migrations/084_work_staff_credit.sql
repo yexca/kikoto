@@ -45,8 +45,15 @@ SELECT work_id, kind, snapshot_id, version, input_hash FROM work_snapshot_projec
 DROP TABLE work_snapshot_projection_kept;
 
 -- The search index gains one column per staff role. An FTS5 table cannot add
--- columns, so it is recreated and every work is queued for the background
--- rebuild.
+-- columns, so it is recreated with every existing document carried over and
+-- empty staff columns, and every work is queued for the background rebuild.
+-- Searches during the rebuild read the carried documents, so they neither miss
+-- a work nor match it by a negated clause; no work has a staff credit before
+-- the first projection pass.
+CREATE TABLE work_search_kept AS
+SELECT rowid AS work_id, code, title, circle, voice_actor, tag
+FROM work_search;
+
 DROP TABLE work_search;
 
 CREATE VIRTUAL TABLE work_search USING fts5(
@@ -62,6 +69,13 @@ CREATE VIRTUAL TABLE work_search USING fts5(
   staff_other,
   tokenize = 'trigram'
 );
+
+INSERT INTO work_search (rowid, code, title, circle, voice_actor, tag,
+  staff_author, staff_scenario, staff_illustration, staff_music, staff_other)
+SELECT work_id, code, title, circle, voice_actor, tag, '', '', '', '', ''
+FROM work_search_kept;
+
+DROP TABLE work_search_kept;
 
 INSERT INTO work_search_dirty (work_id)
 SELECT id FROM work WHERE id NOT IN (SELECT work_id FROM work_search_dirty);

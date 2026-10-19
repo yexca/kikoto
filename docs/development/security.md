@@ -242,7 +242,9 @@ family, and stops before the next edition when the request is cancelled.
   storage pool. A local source must be another active local folder of the same
   family. Each requested path is resolved below it, and every path component
   must be a regular directory or file, so a link inside the folder cannot read
-  from outside it. The source folder is not changed.
+  from outside it. The source folder is not changed. The run checks the
+  target's pool again before it indexes the folder, so an unmounted pool never
+  marks the folder's files missing.
 - A remote code must be an edition of the requested work's family, and its
   source an enabled compatible source. The edition's tree is read through the
   remote snapshot cache; it is not stored as a work, presence, or media
@@ -271,11 +273,15 @@ family, and stops before the next edition when the request is cancelled.
   storage pool must be online both when the edit is planned and when the run
   deletes it, as for every
   [library file change](../architecture/workflows.md#library-layout-and-onboarding).
-  The plan records its files, and the run deletes the folder only after the target
-  folder is indexed and only while it holds exactly those files with their
-  sizes. The run claims the folder before deleting, so another cleanup or edit
+  Apply requires the review of a complete merge check of the same files and
+  refuses the edit when they changed since. The plan records the files with
+  their sizes and modification times, and the run deletes the folder only
+  after the target folder is indexed and only while it holds exactly those
+  files, unchanged. The run claims the folder before deleting, so another cleanup or edit
   cannot change it meanwhile, and returns it to the work when the run fails or
-  is cancelled. The merge check only reads and hashes files below the merged
+  is cancelled. Each deleted file's location turns unavailable with its
+  deletion, and a resumed run counts a folder an earlier attempt already
+  deleted and recorded as gone as merged. The merge check only reads and hashes files below the merged
   folders and the target folder.
 - The job resolves each download address again from the source's tree when it
   runs; the plan response and the stored job carry none. The address must be
@@ -284,7 +290,10 @@ family, and stops before the next edition when the request is cancelled.
   transport, and only configured origins keep the private-address exception.
 - Downloads stream through the source's download lane into the run's
   `.kikoto-staging` directory on the target's pool, bounded by the remote
-  download limit and the size the listing declares. One request adds at most
+  download limit and the size the listing declares. Like Fetch staging
+  cleanup, the run refuses a staging path with a link or reparse point from
+  the data root down, so neither staging nor its removal leaves the pool. One
+  request adds at most
   5000 files. A file whose size differs from its listing fails the run before
   anything in the folder changes.
 - Publication renames each collected file into the folder through plain
@@ -421,8 +430,14 @@ cannot create an unchecked outbound path.
 - Creating a custom work renames only a folder the server's own candidate walk
   returned for that request, never a client-supplied path as given. The walk
   stays below the data root in online pools, does not follow links, and the
-  rename stays inside the folder's parent and refuses an existing target. The
-  server refuses creation until an administrator accepts the rename notice.
+  rename stays inside the folder's parent. It never replaces an existing
+  target: on Linux, macOS, and Windows the rename itself refuses one, and
+  elsewhere a check precedes it. The rename holds the `media:cleanup`
+  resource, which every running job with that resource, every local scan, and
+  every Fetch publication hold too, and the server refuses a configured Fetch
+  root, a folder inside or holding one, and a folder an active Fetch or Edit
+  files run writes into or merges away. The server refuses creation until an
+  administrator accepts the rename notice.
 - Keep Fetch staging, rollback backup, and reviewable trash on `/data` so
   publication and rollback use same-filesystem rename semantics.
 - Keep `/cache` disposable. It must not become the only owner of a transaction,

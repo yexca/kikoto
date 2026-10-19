@@ -23,8 +23,10 @@ Give a folder without a catalog code a custom work code and write the code into
 the folder's name.
 
 - A custom work code is `KT` followed by eight digits. It is a work code like
-  the catalog prefixes, so the work stays one `primary_code` and the scanner
-  finds the folder by name like any other work folder.
+  the catalog prefixes, so the work stays one `primary_code`. The scanner
+  finds the folder by name only in the bracketed form Kikoto writes, such as
+  `[KT00000001]`, and a remote source never addresses a custom work, since
+  the code exists only in this library.
 - Kikoto assigns the numbers from `custom_work_code_counter` and never assigns
   a number twice. It skips a number that a work or a folder name already uses.
 - Creating a custom work renames the folder by appending the code in brackets,
@@ -42,5 +44,5 @@ the folder's name.
 - A custom code identifies a work only in the library that assigned it.
   Personal data moved to another library matches whichever work carries the
   same code there.
-- A folder name that happens to contain `KT` and five to eight digits is a work
-  folder, as with any other work-code prefix.
+- A folder name that contains `KT` and digits outside that bracketed form names
+  no work, so words such as `Projekt 2024` do not become works.

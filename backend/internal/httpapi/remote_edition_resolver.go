@@ -197,7 +197,7 @@ func (s *Server) persistDLsiteReplacementAlias(ctx context.Context, localCode, c
 	if err != nil || ownerID == 0 || !strings.EqualFold(ownerCode, localCode) {
 		return false, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return false, err
 	}

@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { emptyFolderEditLayout, type FolderEditLayout } from "@/features/work-detail/folder-edit/folderEditLayout";
+import {
+  emptyFolderEditLayout,
+  prunedLayout,
+  type FolderEditLayout,
+} from "@/features/work-detail/folder-edit/folderEditLayout";
 import {
   fetchComposeAddCount,
   fetchComposeReadiness,
@@ -11,6 +15,7 @@ import {
   fetchComposeResult,
   fetchItemKey,
   folderEditItemKey,
+  folderEditPlacementKeys,
   folderEditResourceItemKey,
   withFolderEditPaths,
   type FetchComposeTarget,
@@ -110,6 +115,12 @@ export function useFetchComposeWorkspace({
       resource.id === primary.id ? fetchItemKey(path) : folderEditResourceItemKey(resource, path),
     [primary.id],
   );
+  // A file that is cleared, or becomes lyrics, gives up its place.
+  const placementKeys = useMemo(
+    () => folderEditPlacementKeys({ resources, files: readyFiles, selection, lyrics, keyFor }),
+    [keyFor, lyrics, readyFiles, resources, selection],
+  );
+  useEffect(() => setLayout((current) => prunedLayout(current, placementKeys)), [placementKeys]);
   const request = useMemo(
     () =>
       fetchComposeRequest({

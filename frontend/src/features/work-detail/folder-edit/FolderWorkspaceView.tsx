@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { FolderEditArrangeTree, startFolderEditDrag } from "@/features/work-detail/folder-edit/FolderEditArrangeTree";
 import {
   buildFolderEditTree,
+  folderEditCanMerge,
   folderEditExtensions,
   folderEditResourceChanges,
   folderEditSelectedBytes,
@@ -306,7 +307,15 @@ function LyricsRoleSelect({
   );
 }
 
-function SelectionColumn({ workspace, hint, active }: { workspace: FolderWorkspace; hint: string; active: boolean }) {
+export function SelectionColumn({
+  workspace,
+  hint,
+  active,
+}: {
+  workspace: FolderWorkspace;
+  hint: string;
+  active: boolean;
+}) {
   const { t } = useTranslation();
   const resource = workspace.activeResource;
   const state = workspace.files[resource.id];
@@ -387,7 +396,8 @@ function SelectionColumn({ workspace, hint, active }: { workspace: FolderWorkspa
             </span>
             <Switch
               checked={merging}
-              disabled={workspace.applying}
+              // A place merges once its files are loaded, so that it takes all of them.
+              disabled={workspace.applying || (!merging && !folderEditCanMerge(resource, state))}
               aria-label={t("folderEdit.merge")}
               onCheckedChange={(checked) => workspace.merge?.setMerged(resource, checked)}
             />
@@ -618,13 +628,21 @@ function WorkspaceFooter({
 }) {
   const { t } = useTranslation();
   const { readiness } = workspace;
+  const collision = workspace.arrange?.collision ?? null;
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-t bg-muted/35 px-3 py-2.5 sm:px-5">
       <div
         aria-live="polite"
         className="flex min-h-8 min-w-0 basis-full items-center gap-2 text-sm sm:basis-0 sm:flex-1"
       >
-        {workspace.planFailed ? (
+        {collision !== null ? (
+          <>
+            <AlertTriangle className="h-4 w-4 shrink-0 text-error" />
+            <span className="truncate text-error-foreground" title={collision}>
+              {t("folderEdit.collision", { path: collision })}
+            </span>
+          </>
+        ) : workspace.planFailed ? (
           <>
             <AlertTriangle className="h-4 w-4 shrink-0 text-error" />
             <span className="truncate text-error-foreground">{t("folderEdit.planFailed")}</span>
@@ -665,7 +683,10 @@ function WorkspaceFooter({
             {t("folderEdit.back")}
           </Button>
         )}
-        <Button onClick={onApply} disabled={readiness !== "ready" || workspace.applying || workspace.planFailed}>
+        <Button
+          onClick={onApply}
+          disabled={readiness !== "ready" || workspace.applying || workspace.planFailed || collision !== null}
+        >
           <CheckCircle2 className="h-4 w-4" />
           {applyLabel}
         </Button>
