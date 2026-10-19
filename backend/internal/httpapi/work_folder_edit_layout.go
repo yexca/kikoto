@@ -37,10 +37,51 @@ type workFolderEditMove struct {
 	SizeBytes   *int64 `json:"sizeBytes"`
 }
 
+// workFolderEditFiles holds files of the edited folder by library path, under
+// the identity fetchTargetKey gives each path. The identity finds the files a
+// path may name; whether it names one is decided on disk, since a filesystem
+// that tells letter case or Unicode composition apart holds a different file
+// at a path that only folds to the same identity.
+type workFolderEditFiles map[string][]string
+
+func (files workFolderEditFiles) add(libraryPath string) {
+	key := fetchTargetKey(libraryPath)
+	files[key] = append(files[key], libraryPath)
+}
+
+// contains reports whether libraryPath is exactly one of the files.
+func (files workFolderEditFiles) contains(libraryPath string) bool {
+	for _, file := range files[fetchTargetKey(libraryPath)] {
+		if file == libraryPath {
+			return true
+		}
+	}
+	return false
+}
+
+// holds reports whether the entry at libraryPath, which info describes, is one
+// of the files: the same path, or the same file reached under another case or
+// composition on a filesystem that does not tell them apart.
+func (s *Server) workFolderEditHolds(files workFolderEditFiles, libraryPath string, info os.FileInfo) bool {
+	for _, file := range files[fetchTargetKey(libraryPath)] {
+		if file == libraryPath {
+			return true
+		}
+		absolute, err := safeDataPath(s.cfg.DataRoot, file)
+		if err != nil {
+			continue
+		}
+		if other, err := os.Lstat(absolute); err == nil && os.SameFile(info, other) {
+			return true
+		}
+	}
+	return false
+}
+
 // workFolderEditLayout is what the edit leaves where in the edited folder:
 // the paths it frees, the paths moved files take, and the folders to create.
 type workFolderEditLayout struct {
-	vacated map[string]bool
+	vacated workFolderEditFiles
 	moved   map[string]string
 	folders []string
 	// newFolders counts the requested folders that do not exist yet.
@@ -177,22 +218,24 @@ func (s *Server) planWorkFolderEditLayout(ctx context.Context, target workFolder
 	if len(folders) > maxWorkFolderEditFolders {
 		return workFolderEditLayout{}, invalidRequestError(fmt.Sprintf("at most %d folders can be created at once", maxWorkFolderEditFolders))
 	}
-	layout := workFolderEditLayout{vacated: map[string]bool{}, moved: map[string]string{}, folders: []string{}}
+	layout := workFolderEditLayout{vacated: workFolderEditFiles{}, moved: map[string]string{}, folders: []string{}}
 	for _, removal := range removals {
-		layout.vacated[fetchTargetKey(removal.Path)] = true
+		layout.vacated.add(removal.Path)
 	}
 	for _, move := range moves {
-		layout.vacated[fetchTargetKey(move.Path)] = true
+		layout.vacated.add(move.Path)
 	}
 	current, err := s.workFolderEditCurrentPaths(ctx, target)
 	if err != nil {
 		return workFolderEditLayout{}, err
 	}
-	// Every file of the folder as the edit leaves it, by identity.
+	// Every file of the folder as the edit leaves it, by identity. Only the
+	// very files the edit removes or moves leave; another file whose path
+	// folds to the same identity stays.
 	final := map[string]string{}
 	for _, file := range current {
-		if key := fetchTargetKey(file); !layout.vacated[key] {
-			final[key] = file
+		if !layout.vacated.contains(file) {
+			final[fetchTargetKey(file)] = file
 		}
 	}
 	for _, move := range moves {
@@ -258,13 +301,14 @@ func (s *Server) planWorkFolderEditLayout(ctx context.Context, target workFolder
 // checkWorkFolderEditFreePath checks on disk that libraryPath can become a
 // file, or a folder when folder is set: whatever is there now leaves with the
 // edit, and every folder above it is a plain folder or not there yet.
-func (s *Server) checkWorkFolderEditFreePath(target workFolderEditFolder, libraryPath string, vacated map[string]bool, folder bool) error {
+func (s *Server) checkWorkFolderEditFreePath(target workFolderEditFolder, libraryPath string, vacated workFolderEditFiles, folder bool) error {
 	relative, err := fetchPathRelativeToRoot(target.RootPath, libraryPath)
 	if err != nil {
 		return invalidRequestError("a path is outside the edited folder")
 	}
 	if blocker, blocked := blockingPathEntry(target.Absolute, relative); blocked {
-		if !vacated[fetchTargetKey(path.Join(target.RootPath, blocker))] {
+		info, err := os.Lstat(filepath.Join(target.Absolute, filepath.FromSlash(blocker)))
+		if err != nil || !info.Mode().IsRegular() || !s.workFolderEditHolds(vacated, path.Join(target.RootPath, blocker), info) {
 			return invalidRequestError("a file named " + blocker + " is where a folder belongs")
 		}
 	}
@@ -277,7 +321,7 @@ func (s *Server) checkWorkFolderEditFreePath(target workFolderEditFolder, librar
 		return conflictError("a path in the edited folder could not be checked")
 	case folder && info.IsDir() && !unsafeFetchStagingEntry(info):
 		return nil
-	case !folder && info.Mode().IsRegular() && vacated[fetchTargetKey(libraryPath)]:
+	case !folder && info.Mode().IsRegular() && s.workFolderEditHolds(vacated, libraryPath, info):
 		return nil
 	case info.IsDir():
 		return invalidRequestError("a folder is already at " + relative)

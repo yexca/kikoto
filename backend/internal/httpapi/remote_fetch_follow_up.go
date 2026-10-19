@@ -99,7 +99,7 @@ func (s *Server) planRemoteFetchFollowUp(ctx context.Context, plan remoteWorkSav
 		if err != nil {
 			return workFolderEditPlan{}, err
 		}
-		if err := s.resolveWorkFolderEditItem(&candidate.remoteWorkSavePlanItem, decision, rootPath, map[string]bool{}, map[string]bool{}, seenTargets); err != nil {
+		if err := s.resolveWorkFolderEditItem(&candidate.remoteWorkSavePlanItem, decision, rootPath, workFolderEditFiles{}, workFolderEditFiles{}, seenTargets); err != nil {
 			return workFolderEditPlan{}, err
 		}
 		items = append(items, candidate)
