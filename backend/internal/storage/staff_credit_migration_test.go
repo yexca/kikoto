@@ -60,3 +60,62 @@ func TestStaffCreditMigrationReprojectsCreditsAndReindexesEveryWork(t *testing.T
 		t.Fatal("work_staff_credit accepted the voice_actor role, want only staff roles")
 	}
 }
+
+// Migration 084 recreates the search index with staff columns. Every existing
+// document is carried over, so a search during the background rebuild still
+// finds a work by its tag and a negated tag clause still excludes it.
+func TestStaffCreditMigrationKeepsSearchDocumentsDuringRebuild(t *testing.T) {
+	sourceDir := filepath.Join("..", "..", "migrations")
+	db := openMigrationManagerDB(t)
+	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 83)); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Example Work'), (2, 'RJ00000002', 'Other Work')`,
+		`DELETE FROM work_search`,
+		`INSERT INTO work_search (rowid, code, title, circle, voice_actor, tag) VALUES
+			(1, 'rj00000001', 'example work', 'example circle', 'example voice', 'example tag'),
+			(2, 'rj00000002', 'other work', '', '', '')`,
+		`DELETE FROM work_search_dirty`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 84)); err != nil {
+		t.Fatal(err)
+	}
+
+	works := func(query string) []int64 {
+		t.Helper()
+		rows, err := db.Query(query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = rows.Close() }()
+		ids := []int64{}
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				t.Fatal(err)
+			}
+			ids = append(ids, id)
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		return ids
+	}
+	if got := works(`SELECT rowid FROM work_search WHERE instr(tag, 'example tag') > 0`); len(got) != 1 || got[0] != 1 {
+		t.Fatalf("works matching the tag during the rebuild = %v, want [1]", got)
+	}
+	if got := works(`SELECT id FROM work WHERE id NOT IN (SELECT rowid FROM work_search WHERE instr(tag, 'example tag') > 0) ORDER BY id`); len(got) != 1 || got[0] != 2 {
+		t.Fatalf("works excluded by a negated tag during the rebuild = %v, want [2]", got)
+	}
+	if got := works(`SELECT rowid FROM work_search WHERE staff_author <> '' OR staff_scenario <> ''`); len(got) != 0 {
+		t.Fatalf("works with staff text before the first projection = %v, want none", got)
+	}
+	if got := works(`SELECT work_id FROM work_search_dirty ORDER BY work_id`); len(got) != 2 {
+		t.Fatalf("works queued for the rebuild = %v, want both", got)
+	}
+}
