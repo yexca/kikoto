@@ -78,3 +78,27 @@ export function loudnessGain(loudness: MediaLoudness | null | undefined, mode: L
   }
   return 10 ** (gainDb / 20);
 }
+
+/**
+ * Timers that ask a busy server again for a measurement, one per file, so a
+ * retry for the next track never replaces the current track's.
+ */
+export function createMeasurementRetries(delayMs: number) {
+  const timers = new Map<number, ReturnType<typeof setTimeout>>();
+  return {
+    schedule(id: number, retry: () => void) {
+      clearTimeout(timers.get(id));
+      timers.set(
+        id,
+        setTimeout(() => {
+          timers.delete(id);
+          retry();
+        }, delayMs),
+      );
+    },
+    clear() {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    },
+  };
+}

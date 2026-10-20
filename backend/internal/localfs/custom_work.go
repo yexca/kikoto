@@ -27,9 +27,10 @@ type CustomWorkDiscovery struct {
 // DiscoverCustomWorkCandidates returns the folders within the scan depth that
 // a scan holds as no work and that hold no work folder: neither the folder nor
 // any ancestor or descendant within the depth carries a work code in its name.
-// Ignored directories (IsIgnoredDirectoryName), folders it cannot read, and
-// hidden folders are left out. Discovery reads only directory names, like
-// DiscoverFolders, and never follows a link.
+// Ignored directories (IsIgnoredDirectoryName), hidden folders, and folders it
+// cannot read are left out, along with the folders that hold an unreadable
+// one. Discovery reads only directory names, like DiscoverFolders, and never
+// follows a link.
 func DiscoverCustomWorkCandidates(root string, options Options) (CustomWorkDiscovery, error) {
 	if options.ScanDepth <= 0 {
 		options.ScanDepth = 3
@@ -41,9 +42,15 @@ func DiscoverCustomWorkCandidates(root string, options Options) (CustomWorkDisco
 	folders := []CustomWorkCandidate{}
 	coded := map[string]bool{}
 	codes := map[string]bool{}
+	unreadable := map[string]bool{}
 	visit := func(current string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			if entry != nil && isSkippableWalkError(walkErr) {
+				// The walk visits a folder before it reads it, so the folder may
+				// already be listed.
+				if _, rel, err := relativeDepth(absRoot, current); err == nil && rel != "." {
+					unreadable[filepath.ToSlash(rel)] = true
+				}
 				return filepath.SkipDir
 			}
 			return walkErr
@@ -84,7 +91,11 @@ func DiscoverCustomWorkCandidates(root string, options Options) (CustomWorkDisco
 	}
 
 	// A folder that holds a work folder would swallow it, so every ancestor of
-	// a coded folder is excluded along with the folders inside one.
+	// a coded folder is excluded along with the folders inside one. A folder
+	// the walk cannot read may hold one, so it is excluded the same way.
+	for rel := range unreadable {
+		coded[rel] = true
+	}
 	holdsWork := map[string]bool{}
 	for rel := range coded {
 		for parent := path.Dir(rel); parent != "." && parent != "/"; parent = path.Dir(parent) {
@@ -93,7 +104,7 @@ func DiscoverCustomWorkCandidates(root string, options Options) (CustomWorkDisco
 	}
 	candidates := folders[:0]
 	for _, folder := range folders {
-		if holdsWork[folder.RelPath] || insideCodedOrHidden(folder.RelPath, coded) {
+		if unreadable[folder.RelPath] || holdsWork[folder.RelPath] || insideCodedOrHidden(folder.RelPath, coded) {
 			continue
 		}
 		candidates = append(candidates, folder)

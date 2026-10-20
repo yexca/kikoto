@@ -753,7 +753,8 @@ already uses is skipped.
 A folder can become a custom work when it lies in an online storage pool
 within the scan depth, is not hidden or one of Kikoto's own directories, and
 neither it nor any folder above or below it within the depth carries a work
-code. Creating the work assigns the code, inserts the work with its title, and
+code or cannot be read, since an unreadable folder may hold a work folder.
+Creating the work assigns the code, inserts the work with its title, and
 renames the folder inside its parent in one transaction; a failed commit
 renames the folder back. An incremental scan of the renamed folder then
 records its location and files. The `custom_work_rename_notice` setting

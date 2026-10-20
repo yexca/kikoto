@@ -5,6 +5,7 @@ import type { ClientPrincipalID } from "@/lib/clientStorageScope";
 
 import { resumeLoudnessGain, routeLoudnessGain, unlockLoudnessGain } from "./loudnessBoost";
 import {
+  createMeasurementRetries,
   getStoredLoudnessMode,
   loudnessGain,
   loudnessPreferenceStorageKey,
@@ -103,13 +104,13 @@ export function useLoudnessNormalization(
   // player that mounts again, as under StrictMode, measures with a new
   // controller and forgets the cancelled requests.
   const controllerRef = useRef<AbortController | null>(null);
-  const retryTimerRef = useRef<number | undefined>(undefined);
+  const retriesRef = useRef(createMeasurementRetries(MEASUREMENT_BUSY_RETRY_MS));
   useEffect(
     () => () => {
       controllerRef.current?.abort();
       controllerRef.current = null;
       pendingRef.current = new Set();
-      window.clearTimeout(retryTimerRef.current);
+      retriesRef.current.clear();
     },
     [],
   );
@@ -147,11 +148,10 @@ export function useLoudnessNormalization(
         // An unavailable measurement leaves the track at its own level.
         failedRef.current.add(id);
         if (error instanceof ApiError && error.code === "media_loudness_busy") {
-          window.clearTimeout(retryTimerRef.current);
-          retryTimerRef.current = window.setTimeout(() => {
+          retriesRef.current.schedule(id, () => {
             failedRef.current.delete(id);
             setSettled((value) => value + 1);
-          }, MEASUREMENT_BUSY_RETRY_MS);
+          });
         }
       })
       .finally(() => {
