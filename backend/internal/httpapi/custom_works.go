@@ -130,6 +130,15 @@ func (s *Server) createCustomWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The full walk only collects the codes folder names already carry, so it
+	// runs before the lock. Every code Kikoto assigns lies at or below the
+	// counter, so a folder renamed after the walk cannot carry the next one;
+	// the walk guards against codes named outside Kikoto, which no lock orders.
+	discovery, err := s.discoverCustomWorkCandidates(r.Context())
+	if err != nil {
+		writeCustomWorkError(w, err)
+		return
+	}
 	// The rename holds the media:cleanup resource, so no Edit files job,
 	// cleanup, scan, or Fetch publication changes library folders meanwhile.
 	if !s.mediaCleanupMu.TryLock() {
@@ -137,7 +146,7 @@ func (s *Server) createCustomWork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.mediaCleanupMu.Unlock()
-	created, err := s.createCustomWorkFromFolder(r.Context(), rel, title)
+	created, err := s.createCustomWorkFromFolder(r.Context(), rel, title, discovery.Codes)
 	if err != nil {
 		writeCustomWorkError(w, err)
 		return
@@ -217,19 +226,26 @@ func writeCustomWorkError(w http.ResponseWriter, err error) {
 	}
 }
 
-// discoverCustomWorkCandidates walks the folders a local scan can observe:
-// online storage pools, within the effective scan depth.
-func (s *Server) discoverCustomWorkCandidates(ctx context.Context) (localfs.CustomWorkDiscovery, error) {
+// customWorkScope is the part of the library a local scan can observe: online
+// storage pools, within the effective scan depth.
+func (s *Server) customWorkScope(ctx context.Context) (localScanScope, localfs.Options, error) {
 	scope, err := s.localScanScope(ctx, s.cfg.DataRoot, s.effectiveLocalScanDepth(ctx))
+	if err != nil {
+		return localScanScope{}, localfs.Options{}, err
+	}
+	if len(scope.online) == 0 {
+		return localScanScope{}, localfs.Options{}, errLibraryUnavailable
+	}
+	return scope, localfs.Options{ScanDepth: scope.walkDepth(), SubRoots: scope.subRoots()}, nil
+}
+
+// discoverCustomWorkCandidates walks every folder in the custom work scope.
+func (s *Server) discoverCustomWorkCandidates(ctx context.Context) (localfs.CustomWorkDiscovery, error) {
+	scope, options, err := s.customWorkScope(ctx)
 	if err != nil {
 		return localfs.CustomWorkDiscovery{}, err
 	}
-	if len(scope.online) == 0 {
-		return localfs.CustomWorkDiscovery{}, errLibraryUnavailable
-	}
-	discovery, err := localfs.DiscoverCustomWorkCandidates(s.cfg.DataRoot, localfs.Options{
-		ScanDepth: scope.walkDepth(), SubRoots: scope.subRoots(),
-	})
+	discovery, err := localfs.DiscoverCustomWorkCandidates(s.cfg.DataRoot, options)
 	if err != nil {
 		return localfs.CustomWorkDiscovery{}, err
 	}
@@ -243,23 +259,18 @@ func (s *Server) discoverCustomWorkCandidates(ctx context.Context) (localfs.Cust
 	return discovery, nil
 }
 
-// createCustomWorkFromFolder renames the folder inside the transaction that
-// assigns its code and inserts its work, so a failed rename leaves no work and
-// a failed commit renames the folder back.
-func (s *Server) createCustomWorkFromFolder(ctx context.Context, rel, title string) (createCustomWorkResponse, error) {
-	discovery, err := s.discoverCustomWorkCandidates(ctx)
+// renameCustomWorkFolder renames a custom work's folder. Tests replace it to
+// observe the database while the rename runs.
+var renameCustomWorkFolder = renameNoReplace
+
+// createCustomWorkFromFolder re-checks the folder, reserves its code, renames
+// the folder, and inserts its work, with no database transaction open across
+// the rename. The caller holds mediaCleanupMu. folderCodes are the codes folder
+// names in the scope already carry.
+func (s *Server) createCustomWorkFromFolder(ctx context.Context, rel, title string, folderCodes map[string]bool) (createCustomWorkResponse, error) {
+	folder, err := s.customWorkCandidate(ctx, rel)
 	if err != nil {
 		return createCustomWorkResponse{}, err
-	}
-	var folder *localfs.CustomWorkCandidate
-	for index := range discovery.Candidates {
-		if discovery.Candidates[index].RelPath == rel {
-			folder = &discovery.Candidates[index]
-			break
-		}
-	}
-	if folder == nil {
-		return createCustomWorkResponse{}, errCustomWorkFolderUnavailable
 	}
 	if inUse, err := s.customWorkFolderInUse(ctx, folder.AbsPath); err != nil {
 		return createCustomWorkResponse{}, err
@@ -269,39 +280,30 @@ func (s *Server) createCustomWorkFromFolder(ctx context.Context, rel, title stri
 	if title == "" {
 		title = strings.TrimSpace(folder.Name)
 	}
-
-	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
-	if err != nil {
-		return createCustomWorkResponse{}, err
+	// Every custom code has the same length, so a name that is too long is
+	// refused before a number is spent on it.
+	if len(customWorkFolderName(folder.Name, workcode.Custom(1))) > customWorkFolderNameLimit {
+		return createCustomWorkResponse{}, errCustomWorkFolderUnavailable
 	}
-	defer func() { _ = tx.Rollback() }()
-	code, err := assignCustomWorkCode(ctx, tx, discovery.Codes)
+
+	code, err := s.reserveCustomWorkCode(ctx, folderCodes)
 	if err != nil {
 		return createCustomWorkResponse{}, err
 	}
 	name := customWorkFolderName(folder.Name, code)
-	if len(name) > customWorkFolderNameLimit {
-		return createCustomWorkResponse{}, errCustomWorkFolderUnavailable
-	}
 	target := filepath.Join(filepath.Dir(folder.AbsPath), name)
-	result, err := tx.ExecContext(ctx, `
-		INSERT INTO work (primary_code, work_type, title, description)
-		VALUES (?, 'audio', ?, '')
-	`, code, title)
-	if err != nil {
-		return createCustomWorkResponse{}, err
-	}
-	workID, err := result.LastInsertId()
-	if err != nil {
-		return createCustomWorkResponse{}, err
-	}
-	// The rename never replaces a folder that already has the new name.
-	if err := renameNoReplace(folder.AbsPath, target); errors.Is(err, os.ErrExist) {
+	// The rename never replaces a folder that already has the new name. A
+	// refused or failed rename leaves the reserved number unused; numbers are
+	// never handed out again.
+	if err := renameCustomWorkFolder(folder.AbsPath, target); errors.Is(err, os.ErrExist) {
 		return createCustomWorkResponse{}, errCustomWorkFolderUnavailable
 	} else if err != nil {
 		return createCustomWorkResponse{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	// The folder has changed on disk, so a client that stops waiting does not
+	// abandon the record: the insert finishes, or the folder is renamed back.
+	workID, err := s.insertCustomWork(context.WithoutCancel(ctx), code, title)
+	if err != nil {
 		if restoreErr := renameNoReplace(target, folder.AbsPath); restoreErr != nil {
 			return createCustomWorkResponse{}, errors.Join(err, restoreErr)
 		}
@@ -312,6 +314,61 @@ func (s *Server) createCustomWorkFromFolder(ctx context.Context, rel, title stri
 		Code:   code,
 		Path:   path.Join(path.Dir(rel), name),
 	}, nil
+}
+
+// customWorkCandidate returns the folder at rel when it can still become a
+// custom work, by the same rules as the full candidate walk but reading only
+// the folders above it and its own subtree.
+func (s *Server) customWorkCandidate(ctx context.Context, rel string) (localfs.CustomWorkCandidate, error) {
+	scope, options, err := s.customWorkScope(ctx)
+	if err != nil {
+		return localfs.CustomWorkCandidate{}, err
+	}
+	if !scope.contains(rel) {
+		return localfs.CustomWorkCandidate{}, errCustomWorkFolderUnavailable
+	}
+	folder, ok, err := localfs.CustomWorkCandidateAt(s.cfg.DataRoot, rel, options)
+	if err != nil {
+		return localfs.CustomWorkCandidate{}, err
+	}
+	if !ok {
+		return localfs.CustomWorkCandidate{}, errCustomWorkFolderUnavailable
+	}
+	return folder, nil
+}
+
+// reserveCustomWorkCode commits the next custom work code in a transaction of
+// its own, so the counter's write lock is released before the folder changes.
+func (s *Server) reserveCustomWorkCode(ctx context.Context, folderCodes map[string]bool) (string, error) {
+	var code string
+	err := withDatabaseBusyRetry(ctx, func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+		if code, err = assignCustomWorkCode(ctx, tx, folderCodes); err != nil {
+			return err
+		}
+		return tx.Commit()
+	})
+	return code, err
+}
+
+func (s *Server) insertCustomWork(ctx context.Context, code, title string) (int64, error) {
+	var workID int64
+	err := withDatabaseBusyRetry(ctx, func() error {
+		result, err := s.db.ExecContext(ctx, `
+			INSERT INTO work (primary_code, work_type, title, description)
+			VALUES (?, 'audio', ?, '')
+		`, code, title)
+		if err != nil {
+			return err
+		}
+		workID, err = result.LastInsertId()
+		return err
+	})
+	return workID, err
 }
 
 // customWorkFolderInUse reports whether a folder is, holds, or lies inside a

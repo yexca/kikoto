@@ -442,10 +442,12 @@ cannot create an unchecked outbound path.
 - Use `Lstat` or an equivalent no-follow check before destructive operations.
   A symlink or junction encountered during deletion requires a safe stop or a
   review flow, not recursive traversal.
-- Creating a custom work renames only a folder the server's own candidate walk
-  returned for that request, never a client-supplied path as given. The walk
-  stays below the data root in online pools, does not follow links, and the
-  rename stays inside the folder's parent. It never replaces an existing
+- Creating a custom work renames only a folder the server's own candidate
+  check confirms for that request while it holds `media:cleanup`, never a
+  client-supplied path as given. The check applies the candidate walk's rules:
+  it matches each folder name on the path exactly against its parent's
+  listing, stays below the data root in online pools, does not follow links,
+  and the rename stays inside the folder's parent. It never replaces an existing
   target: on Linux, macOS, and Windows the rename itself refuses one, and
   elsewhere a check precedes it. The rename holds the `media:cleanup`
   resource, which every running job with that resource, every local scan, and

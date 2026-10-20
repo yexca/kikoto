@@ -747,17 +747,20 @@ folder's name carries the code in brackets, such as
 Scans recognize a custom code only in that bracketed form, and remote-source
 codes are catalog codes only, so no remote entry resolves to a custom work.
 `custom_work_code_counter` holds the highest number assigned; a number is
-assigned once, and a number a work or a folder name within the scan depth
-already uses is skipped.
+assigned once, even when the creation that reserved it fails, and a number a
+work or a folder name within the scan depth already uses is skipped.
 
 A folder can become a custom work when it lies in an online storage pool
 within the scan depth, is not hidden or one of Kikoto's own directories, and
 neither it nor any folder above or below it within the depth carries a work
 code or cannot be read, since an unreadable folder may hold a work folder.
-Creating the work assigns the code, inserts the work with its title, and
-renames the folder inside its parent in one transaction; a failed commit
-renames the folder back. An incremental scan of the renamed folder then
-records its location and files. The `custom_work_rename_notice` setting
+Creating the work checks the folder again, then commits the code to the
+counter in a short transaction, renames the folder inside its parent, and
+inserts the work with its title, so no database write waits on the rename. A
+failed rename inserts no work, and a failed insert renames the folder back. An
+incremental scan of the renamed folder then records its location and files; if
+the server stops between the rename and the insert, the next scan records the
+work from the renamed folder. The `custom_work_rename_notice` setting
 records the accepted version of the notice that creating a custom work renames
 its folder, the administrator who accepted it and when; creation is refused
 until the current version is accepted. A custom work has no DLsite page,
