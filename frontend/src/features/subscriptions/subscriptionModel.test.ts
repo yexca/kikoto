@@ -81,7 +81,9 @@ describe("subscription model", () => {
 
   it("links each subscription to its page", () => {
     expect(subscriptionSubjectPath(series)).toBe("/circles/RG00001/series/SRI0000000001");
-    expect(subscriptionSubjectPath({ kind: "voice", personId: 7 })).toBe("/voices/7");
+    expect(subscriptionSubjectPath({ kind: "voice", personId: 7, voiceRouteKey: "00000001" })).toBe("/voices/00000001");
+    expect(subscriptionSubjectPath({ kind: "voice", personId: 8, voiceRouteKey: "local-8" })).toBe("/voices/local-8");
+    expect(subscriptionSubjectPath({ kind: "voice", personId: 7 })).toBeNull();
     expect(subscriptionSubjectPath({ kind: "watch" })).toBeNull();
   });
 

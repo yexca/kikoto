@@ -635,7 +635,10 @@ test("@desktop Metadata voice aliases view lists people and opens alias review",
   const region = page.getByRole("region", { name: "Voice actors", exact: true });
   // One row per Kikoto person id, one column per fact.
   const row = region.getByRole("row", { name: /^#7 / });
-  await expect(row.getByRole("link", { name: "Example Voice", exact: true })).toBeVisible();
+  await expect(row.getByRole("link", { name: "Example Voice", exact: true })).toHaveAttribute(
+    "href",
+    "/voices/local-7",
+  );
   await expect(row.getByRole("cell", { name: "Voice alias", exact: true })).toBeVisible();
   await expect(row.getByRole("cell", { name: "3", exact: true })).toBeVisible();
   expect(listRequests.at(-1)?.searchParams.get("sort")).toBe("id");

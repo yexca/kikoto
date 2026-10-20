@@ -669,6 +669,7 @@ export function circleCatalogWorkFixture(overrides: Partial<CircleCatalogWork> =
 export function voiceSummaryFixture(overrides: Partial<VoiceSummary> = {}): VoiceSummary {
   return {
     personId: 1,
+    routeKey: `local-${overrides.personId ?? 1}`,
     displayName: "Example Voice",
     aliases: [],
     knownWorks: 0,
@@ -702,6 +703,13 @@ export function voiceDetailFixture(
   overrides: Partial<VoiceDetail> = {},
 ): VoiceDetail {
   return { ...voice, aliasRecords: [], works: [], remoteMatches: [], ...overrides };
+}
+
+/** The resolution of a voice detail route key to the voice's person and canonical key. */
+export function voiceRouteFixture(
+  voice: Pick<VoiceSummary, "personId" | "routeKey">,
+): ApiResponse<"resolveVoiceRoute"> {
+  return { personId: voice.personId, routeKey: voice.routeKey };
 }
 
 /** A circle, series, or voice actor this account does not subscribe to, with a fresh catalog. */

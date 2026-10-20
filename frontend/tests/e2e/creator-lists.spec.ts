@@ -21,6 +21,7 @@ import {
   subscriptionLookupFixture,
   voiceCatalogRefreshFixture,
   voiceDetailFixture,
+  voiceRouteFixture,
   voiceKnownWorkFixture,
   voiceWorksPageFixture,
   voiceSummaryFixture,
@@ -112,6 +113,7 @@ const circleSeries: CircleSeries[] = [
 
 const voice = voiceSummaryFixture({
   personId: 7,
+  routeKey: "00000001",
   displayName: "Example Voice",
   aliases: ["Voice alias"],
   knownWorks: 5,
@@ -200,6 +202,7 @@ async function mockCreatorLists(page: Page, options: { circleSyncState?: string;
           {
             ...voiceSummary,
             personId: 8,
+            routeKey: "local-8",
             displayName: "No Cover Voice",
             userTags: [
               { id: 3, name: "Warm", color: "" },
@@ -272,6 +275,11 @@ async function mockCreatorDetails(
     }
     if (url.pathname === "/api/subscriptions/lookup") {
       await route.fulfill({ json: subscriptionLookupFixture() });
+      return;
+    }
+    // The voice holds two DLsite ids; 00000001 is canonical.
+    if (url.pathname === "/api/voice-routes/00000001" || url.pathname === "/api/voice-routes/00000002") {
+      await route.fulfill({ json: voiceRouteFixture(voice) });
       return;
     }
     if (url.pathname === "/api/voices/7") {
@@ -487,7 +495,7 @@ test("creator detail does not auto-refresh and exposes First pull for a new cata
   const voiceCatalogLoaded = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/voices/7/remote-matches",
   );
-  await page.goto("/voices/7");
+  await page.goto("/voices/00000001");
   await voiceCatalogLoaded;
   await expect(page.getByText("Never", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "First pull" })).toBeVisible();
@@ -608,6 +616,16 @@ for (const role of ["admin", "member"] as const) {
   });
 }
 
+test("a voice route by another of the voice's DLsite ids shows the canonical id", async ({ page }) => {
+  await mockCreatorDetails(page);
+  await page.goto("/voices/00000002?view=works");
+
+  await expect(page.getByRole("heading", { name: "Example Voice", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/voices\/00000001\?view=works$/);
+  await page.goBack();
+  await expect(page).not.toHaveURL(/\/voices\/00000002/);
+});
+
 test("a one-circle result keeps the initial creator region height", async ({ page }) => {
   let releaseRequest: () => void = () => undefined;
   const requestGate = new Promise<void>((resolve) => {
@@ -660,7 +678,7 @@ test("voice detail renders one stable work-loading region for local and remote d
     });
   });
 
-  await page.goto("/voices/7");
+  await page.goto("/voices/00000001");
   await expect(page.getByRole("heading", { name: "Example Voice", exact: true })).toBeVisible();
   const loading = page.getByRole("status", { name: "Loading voice works" });
   await expect(loading).toHaveCount(1);
@@ -674,7 +692,7 @@ test("voice detail renders one stable work-loading region for local and remote d
 
 test("voice detail keeps compact statistics and secondary panels closed on mobile", async ({ page }) => {
   await mockCreatorDetails(page);
-  await page.goto("/voices/7");
+  await page.goto("/voices/00000001");
 
   await expect(page.getByRole("heading", { name: "Example Voice", exact: true })).toBeVisible();
   const statistics = page.locator('[aria-label="Voice actor statistics"]');
@@ -779,7 +797,7 @@ test("voice detail keeps compact statistics and secondary panels closed on mobil
 test("@desktop voice detail keeps full action labels and inline work controls", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await mockCreatorDetails(page);
-  await page.goto("/voices/7");
+  await page.goto("/voices/00000001");
 
   const actions = page.getByRole("group", { name: "Voice actor actions" });
   await expect(actions.getByText("Favorite", { exact: true })).toBeVisible();
@@ -819,7 +837,7 @@ test("@desktop voice detail orders its works and switches card modes like the Li
       json: voiceWorksPageFixture([...works].sort((left, right) => sign * fact(left).localeCompare(fact(right)))),
     });
   });
-  await page.goto("/voices/7");
+  await page.goto("/voices/00000001");
 
   const titles = page.getByTestId("work-card").getByRole("heading");
   // Newest release first is the default order.
@@ -870,7 +888,7 @@ test("@desktop voice detail reads its works one server page at a time", async ({
       ),
     });
   });
-  await page.goto("/voices/7");
+  await page.goto("/voices/00000001");
 
   const titles = page.getByTestId("work-card").getByRole("heading");
   await expect(titles).toHaveText(["Page 1 work"]);

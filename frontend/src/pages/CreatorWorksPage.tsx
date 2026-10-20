@@ -9,6 +9,7 @@ import { creatorCoverUrl } from "@/lib/creatorApi";
 import { currentInternalLocation, normalizeInternalLocation } from "@/lib/browserHistory";
 import { CreatorListPage } from "@/pages/creator/CreatorListPage";
 import { isVoiceListLocation, openVoiceRoute, writeLastVoiceListLocation } from "@/lib/voiceNavigationState";
+import { voiceRouteKeyFromPath } from "@/lib/voiceRoute";
 import { VoiceDetailPage } from "@/pages/voice/VoiceDetailPage";
 
 type CreatorKind = "circle" | "voice";
@@ -58,11 +59,11 @@ function VoiceCreatorWorksPage({ active }: { active: boolean }) {
       window.removeEventListener("kikoto:navigation", syncPath);
     };
   }, [active]);
-  const personId = voicePersonIdFromPath(path);
-  const [listVisited, setListVisited] = useState(personId === 0);
+  const routeKey = voiceRouteKeyFromPath(path);
+  const [listVisited, setListVisited] = useState(routeKey === null);
   useEffect(() => {
-    if (!personId) setListVisited(true);
-  }, [personId]);
+    if (routeKey === null) setListVisited(true);
+  }, [routeKey]);
   return (
     <>
       {demoMode && (
@@ -70,10 +71,10 @@ function VoiceCreatorWorksPage({ active }: { active: boolean }) {
           <DemoContentNotice surface="works" />
         </div>
       )}
-      {personId > 0 && <VoiceDetailPage personId={personId} active={active} />}
-      {(listVisited || personId === 0) && (
-        <div hidden={personId > 0}>
-          <VoiceListPage active={active && personId === 0} />
+      {routeKey !== null && <VoiceDetailPage routeKey={routeKey} active={active} />}
+      {(listVisited || routeKey === null) && (
+        <div hidden={routeKey !== null}>
+          <VoiceListPage active={active && routeKey === null} />
         </div>
       )}
     </>
@@ -102,7 +103,7 @@ const VoiceCard = memo(function VoiceCard({
       syncState={voice.syncState}
       availability={{ total: voice.knownWorks, local: voice.localWorks, available: voice.playableWorks }}
       availabilityCounts={{ local: voice.localWorks, remote: voice.remoteWorks }}
-      onOpen={() => openVoiceRoute(voice.personId)}
+      onOpen={() => openVoiceRoute(voice.routeKey)}
       onFavoriteToggle={() => void onFavoriteToggle(voice)}
       onTagsSave={(tags) => onTagsSave(voice, tags)}
       tagScope="voice"
@@ -162,19 +163,12 @@ function VoiceListPage({ active }: { active: boolean }) {
   );
 }
 
-function voicePersonIdFromPath(path: string) {
-  const match = path.match(/^\/voices\/([^/]+)\/?$/i);
-  if (!match) return 0;
-  const value = Number(decodeURIComponent(match[1]));
-  return Number.isFinite(value) && value > 0 ? value : 0;
-}
-
 function isVoiceWorkspaceLocation(location: string) {
   const normalized = normalizeInternalLocation(location);
   if (!normalized) return false;
   if (isVoiceListLocation(normalized)) return true;
   try {
-    return voicePersonIdFromPath(new URL(normalized, "https://kikoto.invalid").pathname) > 0;
+    return voiceRouteKeyFromPath(new URL(normalized, "https://kikoto.invalid").pathname) !== null;
   } catch {
     return false;
   }

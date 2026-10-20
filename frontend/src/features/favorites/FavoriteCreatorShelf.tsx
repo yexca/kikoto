@@ -177,7 +177,7 @@ const FavoriteVoiceCard = memo(function FavoriteVoiceCard({
       syncState={voice.syncState}
       availability={{ total: voice.knownWorks, local: voice.localWorks, available: voice.playableWorks }}
       availabilityCounts={{ local: voice.localWorks, remote: voice.remoteWorks }}
-      onOpen={() => openVoiceRoute(voice.personId)}
+      onOpen={() => openVoiceRoute(voice.routeKey)}
       onFavoriteToggle={() => void removeFavorite()}
       onTagsSave={saveTags}
       tagScope="voice"

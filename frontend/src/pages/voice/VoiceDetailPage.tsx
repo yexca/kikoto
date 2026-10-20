@@ -28,7 +28,7 @@ import { SubscribeButton } from "@/features/subscriptions/SubscribeButton";
 import { useAuth } from "@/auth/AuthProvider";
 import { REMOTE_TRACK_PERMISSIONS, usePermissionGate } from "@/auth/usePermissionGate";
 import { NotFoundPage } from "@/app/NotFoundPage";
-import { usePageHeaderBack } from "@/app/pageHeader";
+import { PageHeaderBackAction, usePageHeaderBack } from "@/app/pageHeader";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import {
   isMatchingRemoteTrack,
@@ -56,7 +56,11 @@ import { creatorCoverUrl } from "@/lib/creatorApi";
 import { NAVIGATION_EVENT, navigateToHistoryReturn } from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { useRemoteWorkActions } from "@/pages/useRemoteWorkActions";
-import { readLastVoiceListLocation, voiceReturnLabelForLocation } from "@/lib/voiceNavigationState";
+import {
+  readLastVoiceListLocation,
+  replaceVoiceRouteKey,
+  voiceReturnLabelForLocation,
+} from "@/lib/voiceNavigationState";
 import { voiceWorkRemoteTarget, type VoiceWorkView } from "@/pages/voiceWorkModel";
 import {
   isVoiceBulkSelectable,
@@ -85,7 +89,90 @@ function EntitySkeletonLine({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
 
-export function VoiceDetailPage({ personId, active }: { personId: number; active: boolean }) {
+type VoiceRouteState =
+  | { status: "loading" }
+  | { status: "found"; keys: readonly string[]; personId: number; routeKey: string }
+  | { status: "not-found" | "error"; keys: readonly string[] };
+
+/**
+ * Voice detail addressed by a route key. The key resolves to its person before
+ * the page loads; a non-canonical key is then replaced in the URL by the
+ * person's canonical one.
+ */
+export function VoiceDetailPage({ routeKey, active }: { routeKey: string; active: boolean }) {
+  const { t } = useTranslation();
+  const auth = useAuth();
+  const toast = useToast();
+  const [route, setRoute] = useState<VoiceRouteState>({ status: "loading" });
+  const resolved = route.status !== "loading" && route.keys.includes(routeKey);
+  useEffect(() => {
+    if (!active || resolved) return;
+    const controller = new AbortController();
+    setRoute({ status: "loading" });
+    void (async () => {
+      try {
+        const next = await api.resolveVoiceRoute(routeKey, controller.signal);
+        if (controller.signal.aborted) return;
+        setRoute({
+          status: "found",
+          keys: [routeKey, next.routeKey],
+          personId: next.personId,
+          routeKey: next.routeKey,
+        });
+        replaceVoiceRouteKey(routeKey, next.routeKey);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        const notFound = error instanceof ApiError && error.status === 404;
+        setRoute({ status: notFound ? "not-found" : "error", keys: [routeKey] });
+        if (!notFound) toast.notify(toastFromError(error, t("errors.unavailable")));
+      }
+    })();
+    return () => controller.abort();
+  }, [active, resolved, routeKey, t, toast]);
+
+  if (route.status === "found" && resolved) {
+    return <VoiceDetailView personId={route.personId} routeKey={route.routeKey} active={active} />;
+  }
+  if (route.status === "not-found" && resolved) return <VoiceNotFound routeKey={routeKey} />;
+  const navigateToList = () => navigateToVoicesList(currentClientStorageScope(auth.user?.id ?? null));
+  return (
+    <>
+      <PageHeaderBackAction label={voiceReturnLabel()} onBack={navigateToList} />
+      {route.status === "error" && resolved ? (
+        <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">
+          {t("errors.unavailable")}
+        </div>
+      ) : (
+        <VoiceDetailSkeleton />
+      )}
+    </>
+  );
+}
+
+function VoiceNotFound({ routeKey }: { routeKey: string }) {
+  const { t } = useTranslation();
+  const auth = useAuth();
+  const canSyncCatalog = auth.hasPermission("metadata:sync") && !auth.demoMode;
+  return (
+    <NotFoundPage
+      title={t("creatorBrowse.voiceActorNotInDatabase")}
+      // A voice actor page is created from a synced work's credits, so a
+      // metadata user is told how to create one.
+      message={
+        canSyncCatalog
+          ? t("creatorBrowse.voiceActorSyncPrompt", { id: routeKey })
+          : t("creatorBrowse.voiceActorContactAdmin", { id: routeKey })
+      }
+      onBack={() => navigateToVoicesList(currentClientStorageScope(auth.user?.id ?? null))}
+      onOpenLibrary={() => {
+        window.history.pushState({}, "", "/");
+        window.dispatchEvent(new Event(NAVIGATION_EVENT));
+      }}
+    />
+  );
+}
+
+function VoiceDetailView({ personId, routeKey, active }: { personId: number; routeKey: string; active: boolean }) {
   const { t } = useTranslation();
   const auth = useAuth();
   const toast = useToast();
@@ -571,25 +658,7 @@ export function VoiceDetailPage({ personId, active }: { personId: number; active
     return <VoiceDetailSkeleton />;
   }
 
-  if (notFound) {
-    return (
-      <NotFoundPage
-        title={t("creatorBrowse.voiceActorNotInDatabase")}
-        // A voice actor page is created from a synced work's credits, so a
-        // metadata user is told how to create one.
-        message={
-          canForceRefreshCatalog
-            ? t("creatorBrowse.voiceActorSyncPrompt", { id: personId })
-            : t("creatorBrowse.voiceActorContactAdmin", { id: personId })
-        }
-        onBack={navigateToList}
-        onOpenLibrary={() => {
-          window.history.pushState({}, "", "/");
-          window.dispatchEvent(new Event("kikoto:navigation"));
-        }}
-      />
-    );
-  }
+  if (notFound) return <VoiceNotFound routeKey={routeKey} />;
 
   if (!detail) {
     return (

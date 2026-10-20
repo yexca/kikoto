@@ -27,6 +27,13 @@ func (s *Server) enrichLibraryWorkSummaries(ctx context.Context, userID int64, w
 		return err
 	}
 	s.applyLibrarySummaryEnrichment(works, data)
+	credits := make([][]voiceCredit, len(works))
+	for index := range works {
+		credits[index] = works[index].VoiceCredits
+	}
+	if err := s.fillVoiceCreditRouteKeys(ctx, credits...); err != nil {
+		return err
+	}
 	inputs, err := s.loadWorkTitleInputs(ctx, workIDs, false)
 	if err != nil {
 		return err

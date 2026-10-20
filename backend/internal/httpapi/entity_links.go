@@ -263,9 +263,9 @@ func (s *Server) findWorkEntityRoute(ctx context.Context, code string, request w
 		}
 		return "/circles/" + url.PathEscape(makerID) + "/series/" + url.PathEscape(titleID), nil
 	case "voice":
-		var personID int64
+		var routeKey string
 		query := `
-			SELECT person.id
+			SELECT ` + voiceRouteKeySQL("person.id") + `
 			FROM work
 			INNER JOIN work_credit AS credit ON credit.work_id = work.id AND credit.role = 'voice_actor'
 			INNER JOIN person ON person.id = credit.person_id
@@ -278,14 +278,14 @@ func (s *Server) findWorkEntityRoute(ctx context.Context, code string, request w
 			args = append(args, request.Name, request.Name)
 		}
 		query += " ORDER BY person.id ASC LIMIT 1"
-		err := s.db.QueryRowContext(ctx, query, args...).Scan(&personID)
+		err := s.db.QueryRowContext(ctx, query, args...).Scan(&routeKey)
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", nil
 		}
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("/voices/%d", personID), nil
+		return "/voices/" + url.PathEscape(routeKey), nil
 	}
 	return "", nil
 }

@@ -44,7 +44,10 @@ describe("mobile tab state", () => {
 
   it("rejects another page, an external URL, or an invalid scroll position", () => {
     expect(
-      mobileTabSnapshotFromValue({ page: "voice-actors", location: "/voices/7", state: {}, scrollY: 0 }, "library"),
+      mobileTabSnapshotFromValue(
+        { page: "voice-actors", location: "/voices/local-7", state: {}, scrollY: 0 },
+        "library",
+      ),
     ).toBeNull();
     expect(
       mobileTabSnapshotFromValue(
@@ -107,9 +110,25 @@ describe("mobile tab state", () => {
     },
   );
 
+  it("resumes a voice detail by route key and ignores a snapshot of another storage version", () => {
+    const sessionStorage = memoryStorage();
+    vi.stubGlobal("window", { sessionStorage });
+    sessionStorage.setItem(
+      "kikoto:mobile-tab-state:v2:example-server:user-1:voice-actors",
+      JSON.stringify({ page: "voice-actors", location: "/voices/7", state: {}, scrollY: 0 }),
+    );
+    expect(readMobileTabSnapshot("example-server:user-1", "voice-actors")).toBeNull();
+
+    writeMobileTabSnapshot("example-server:user-1", "voice-actors", "/voices/local-7", {}, 0);
+    expect(readMobileTabSnapshot("example-server:user-1", "voice-actors")?.location).toBe("/voices/local-7");
+  });
+
   it("rejects a snapshot whose location belongs to another page", () => {
     expect(
-      mobileTabSnapshotFromValue({ page: "favorites", location: "/voices/7", state: {}, scrollY: 0 }, "favorites"),
+      mobileTabSnapshotFromValue(
+        { page: "favorites", location: "/voices/local-7", state: {}, scrollY: 0 },
+        "favorites",
+      ),
     ).toBeNull();
     expect(
       mobileTabSnapshotFromValue({ page: "favorites", location: "/RJ00000000", state: {}, scrollY: 0 }, "favorites"),

@@ -299,6 +299,7 @@ func voiceSummaryQuery(where string, demo bool) string {
 		)
 		SELECT
 			person.id,
+			` + voiceRouteKeySQL("person.id") + ` AS route_key,
 			person.display_name,
 			COALESCE((
 				SELECT GROUP_CONCAT(alias.alias, char(31))
@@ -355,6 +356,7 @@ func scanVoiceSummaryRow(scanner voiceSummaryScanner) (voiceSummary, error) {
 	var favorite int
 	if err := scanner.Scan(
 		&item.PersonID,
+		&item.RouteKey,
 		&item.DisplayName,
 		&aliasesRaw,
 		&item.KnownWorks,
@@ -833,6 +835,9 @@ func (s *Server) newVoiceKnownWork(
 	}
 	item.VoiceCredits = voiceCredits
 	if err := s.applyManualOverridesToVoiceWork(ctx, &item); err != nil {
+		return voiceKnownWork{}, err
+	}
+	if err := s.fillVoiceCreditRouteKeys(ctx, item.VoiceCredits); err != nil {
 		return voiceKnownWork{}, err
 	}
 	return item, nil

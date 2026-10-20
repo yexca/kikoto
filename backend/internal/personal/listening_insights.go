@@ -76,7 +76,9 @@ type BreakdownEntry struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
 	// ExternalID is a circle's provider id, or empty when it has none.
-	ExternalID      string  `json:"externalId,omitempty"`
+	ExternalID string `json:"externalId,omitempty"`
+	// RouteKey addresses a voice's detail page; the server sets it.
+	RouteKey        string  `json:"routeKey,omitempty"`
 	ListenedSeconds float64 `json:"listenedSeconds"`
 	ListenCount     int64   `json:"listenCount"`
 	WorkCount       int     `json:"workCount"`

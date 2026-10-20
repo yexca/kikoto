@@ -19,7 +19,7 @@ describe("metadata editor model", () => {
       series: "Example Series",
       seriesTitleId: "example-series",
       seriesCircleExternalId: "",
-      voiceCredits: [{ displayName: "Example Voice", personId: 7 }],
+      voiceCredits: [{ displayName: "Example Voice", personId: 7, routeKey: "local-7" }],
       voiceActors: ["Legacy name"],
       manualOverrides: { title: "Authored title" },
     } satisfies Parameters<typeof metadataEditorInitialState>[0];

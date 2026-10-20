@@ -328,6 +328,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/circles/{externalId}/refresh", s.refreshCircle)
 	mux.HandleFunc("DELETE /api/circles/{externalId}/catalog/{code}", s.deleteCircleCatalogWork)
 	mux.HandleFunc("GET /api/voices", s.listVoices)
+	mux.HandleFunc("GET /api/voice-routes/{routeKey}", s.getVoiceRoute)
 	mux.HandleFunc("GET /api/voices/{personId}", s.getVoice)
 	mux.HandleFunc("GET /api/voices/{personId}/works", s.getVoiceWorks)
 	mux.HandleFunc("GET /api/voices/{personId}/remote-matches", s.getVoiceRemoteMatches)

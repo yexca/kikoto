@@ -111,6 +111,7 @@ func TestResolveWorkEntityLinkUsesPersistedRelationshipsWithoutFetching(t *testi
 		"INSERT INTO party_series_work (series_id, primary_code) VALUES (30, 'RJ00000000')",
 		"INSERT INTO person (id, display_name) VALUES (40, 'Linked voice')",
 		"INSERT INTO person_alias (person_id, alias, source) VALUES (40, 'Voice alias', 'test')",
+		"INSERT INTO person_external_id (person_id, provider_id, id_type, external_id, is_primary) SELECT 40, id, 'voice_actor_id', '00000001', 1 FROM metadata_provider WHERE code = 'dlsite'",
 		"INSERT INTO work_credit (work_id, person_id, role, provider_id, source) SELECT 10, 40, 'voice_actor', id, 'test' FROM metadata_provider WHERE code = 'dlsite'",
 	}
 	for _, statement := range statements {
@@ -126,7 +127,7 @@ func TestResolveWorkEntityLinkUsesPersistedRelationshipsWithoutFetching(t *testi
 	}{
 		{kind: "circle", name: "Linked circle", want: "/circles/RG01234567"},
 		{kind: "series", name: "Linked series", want: "/circles/RG01234567/series/SRI0000000001"},
-		{kind: "voice", name: "Voice alias", want: "/voices/40"},
+		{kind: "voice", name: "Voice alias", want: "/voices/00000001"},
 	}
 	for _, test := range tests {
 		t.Run(test.kind, func(t *testing.T) {

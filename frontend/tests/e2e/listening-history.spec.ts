@@ -109,7 +109,17 @@ async function mockListeningServer(page: Page, options: { failFirstReport?: bool
         listenedSeconds: 600,
         ...(rank === "preference" ? { libraryWorkCount: 10 } : {}),
         tags: [{ id: 3, name: "Example Tag", listenedSeconds: 600, listenCount: 2, workCount: 1, ...library }],
-        voices: [{ id: 7, name: "Example Voice", listenedSeconds: 600, listenCount: 2, workCount: 1, ...library }],
+        voices: [
+          {
+            id: 7,
+            routeKey: "00000001",
+            name: "Example Voice",
+            listenedSeconds: 600,
+            listenCount: 2,
+            workCount: 1,
+            ...library,
+          },
+        ],
         circles: [
           {
             id: 5,
@@ -174,7 +184,14 @@ function statisticsFixture(range: string) {
         highlights: {
           newWorkCount: 3,
           busiestDay: { date: `${year}-03-10`, listenedSeconds: 2400 },
-          topVoice: { id: 7, name: "Example Voice", listenedSeconds: 1800, listenCount: 2, workCount: 1 },
+          topVoice: {
+            id: 7,
+            routeKey: "00000001",
+            name: "Example Voice",
+            listenedSeconds: 1800,
+            listenCount: 2,
+            workCount: 1,
+          },
         },
       }
     : {};
@@ -547,7 +564,7 @@ test("@desktop the listening dashboard ranks tags, voices, and circles and links
     .getByRole("list", { name: "Top voices" })
     .getByRole("link", { name: /Example Voice/ })
     .click();
-  await expect(page).toHaveURL(/\/voices\/7$/);
+  await expect(page).toHaveURL(/\/voices\/00000001$/);
 });
 
 test("@desktop the listening report's screen reader table adds no scroll space below the page", async ({ page }) => {

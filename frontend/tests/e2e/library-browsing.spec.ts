@@ -85,7 +85,7 @@ test("mobile tabs restore the current Library detail after visiting a voice acto
   const voicedWork: MockWork = {
     ...work,
     voiceActors: ["Example Voice"],
-    voiceCredits: [{ personId: 7, displayName: "Example Voice" }],
+    voiceCredits: [{ personId: 7, routeKey: "00000001", displayName: "Example Voice" }],
   };
   const detailMedia = Array.from({ length: 18 }, (_, index) =>
     mediaFixture(
@@ -101,7 +101,7 @@ test("mobile tabs restore the current Library detail after visiting a voice acto
   await page.getByText(voicedWork.title, { exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/${voicedWork.primaryCode}`));
   await page.getByRole("button", { name: "Example Voice", exact: true }).first().click();
-  await expect(page).toHaveURL(/\/voices\/7$/);
+  await expect(page).toHaveURL(/\/voices\/00000001$/);
   await expect(page.getByRole("heading", { name: "Example Voice", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Library", exact: true }).click();
@@ -114,7 +114,7 @@ test("mobile tabs restore the current Library detail after visiting a voice acto
   const savedDetailScroll = await page.evaluate(() => window.scrollY);
 
   await page.getByRole("button", { name: "Voice Actors", exact: true }).click();
-  await expect(page).toHaveURL(/\/voices\/7$/);
+  await expect(page).toHaveURL(/\/voices\/00000001$/);
   await page.getByRole("button", { name: "Library", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/${voicedWork.primaryCode}`));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(savedDetailScroll - 80);

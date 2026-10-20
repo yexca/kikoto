@@ -145,6 +145,7 @@ type workResolveResponse struct {
 
 type voiceCredit struct {
 	PersonID    int64  `json:"personId"`
+	RouteKey    string `json:"routeKey"`
 	DisplayName string `json:"displayName"`
 }
 
@@ -288,6 +289,9 @@ func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, inc
 		return workDetail{}, err
 	}
 	if err := s.applyManualOverridesToDetail(ctx, &work); err != nil {
+		return workDetail{}, err
+	}
+	if err := s.fillVoiceCreditRouteKeys(ctx, work.VoiceCredits); err != nil {
 		return workDetail{}, err
 	}
 	if work.MetadataLink, err = s.loadWorkMetadataLink(ctx, id); err != nil {

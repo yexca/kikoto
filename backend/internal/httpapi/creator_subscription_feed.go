@@ -24,13 +24,14 @@ var releaseFeedDayOptions = []int{5, 10, 15}
 const releaseFeedDefaultDays = 10
 
 type releaseFeedSubject struct {
-	Kind       string `json:"kind"`
-	CircleID   string `json:"circleId,omitempty"`
-	CircleName string `json:"circleName,omitempty"`
-	SeriesID   string `json:"seriesId,omitempty"`
-	SeriesName string `json:"seriesName,omitempty"`
-	PersonID   int64  `json:"personId,omitempty"`
-	VoiceName  string `json:"voiceName,omitempty"`
+	Kind          string `json:"kind"`
+	CircleID      string `json:"circleId,omitempty"`
+	CircleName    string `json:"circleName,omitempty"`
+	SeriesID      string `json:"seriesId,omitempty"`
+	SeriesName    string `json:"seriesName,omitempty"`
+	PersonID      int64  `json:"personId,omitempty"`
+	VoiceRouteKey string `json:"voiceRouteKey,omitempty"`
+	VoiceName     string `json:"voiceName,omitempty"`
 }
 
 type releaseFeedEvent struct {
@@ -275,6 +276,7 @@ func (s *Server) loadReleaseFeed(ctx context.Context, userID int64, page, days i
 				LIMIT 1
 			), ''),
 			COALESCE(person.display_name, ''),
+			CASE WHEN person.id IS NULL THEN '' ELSE `+voiceRouteKeySQL("person.id")+` END,
 			COALESCE((
 				SELECT edition.metadata_language
 				FROM work INNER JOIN work_edition AS edition ON edition.work_id = work.id
@@ -296,7 +298,7 @@ func (s *Server) loadReleaseFeed(ctx context.Context, userID int64, page, days i
 		var partyID int64
 		if err := eventRows.Scan(&key, &event.Code, &event.Type, &event.At, &event.Subject.Kind, &partyID,
 			&event.Subject.SeriesID, &event.Subject.PersonID, &event.Subject.CircleName, &event.Subject.CircleID,
-			&event.Subject.SeriesName, &event.Subject.VoiceName, &event.Language); err != nil {
+			&event.Subject.SeriesName, &event.Subject.VoiceName, &event.Subject.VoiceRouteKey, &event.Language); err != nil {
 			_ = eventRows.Close()
 			return result, err
 		}

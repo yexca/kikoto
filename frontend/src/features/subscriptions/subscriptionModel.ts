@@ -8,6 +8,7 @@ import type {
   ReleaseFeedSubject,
 } from "@/lib/api";
 import { metadataTagLanguages } from "@/lib/metadataTagModel";
+import { voiceDetailPath } from "@/lib/voiceRoute";
 
 /** The settings panel beside the feed: subscriptions with their schedule, or Availability Watch. */
 export const SUBSCRIPTION_PANELS = ["subscriptions", "watch"] as const;
@@ -74,7 +75,7 @@ export function groupReleaseFeedByDay(families: ReleaseFeedFamily[], today: stri
 
 /** The path of a subscribed circle, series, or voice actor page. */
 export function subscriptionSubjectPath(subject: ReleaseFeedSubject | CreatorSubscription): string | null {
-  if (subject.kind === "voice") return subject.personId ? `/voices/${subject.personId}` : null;
+  if (subject.kind === "voice") return voiceDetailPath(subject.voiceRouteKey);
   if (!subject.circleId) return null;
   const circle = `/circles/${encodeURIComponent(subject.circleId)}`;
   if (subject.kind === "series" && subject.seriesId) return `${circle}/series/${encodeURIComponent(subject.seriesId)}`;
