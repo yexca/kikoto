@@ -503,9 +503,11 @@ merged folder it had started on to the work, also while the edited folder is
 offline. A run that stops before it finishes puts every moved file that left
 its place but has not reached its new path back where it was; a file whose old
 path another file took since stays in the run's staging folder for a retry.
-Cancelling a run that no executor holds, such as one waiting for a retry or
-for recovery after a restart, settles it the same way once no other job is
-changing library folders. Apply may also carry
+Cancelling a run that no executor holds, such as one waiting for a retry, for
+recovery after a restart, or for another job that is changing library
+folders, settles it the same way once no other job is changing library
+folders. A cancelled run that a service stop or an offline folder kept from
+settling is settled at the next start. Apply may also carry
 `assignments`, each naming an added lyrics file and an audio file of the work
 by media item or by path below the folder; the run stores them in the lyrics'
 language once it has indexed the folder, skipping a file the index does not

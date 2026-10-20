@@ -68,7 +68,8 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		// An executor settles its own cancelled edit; one no executor holds,
 		// such as an edit waiting for a retry or for recovery after a restart,
 		// is settled here, behind any job that is changing library folders.
-		go s.settleCancelledWorkFolderEdit(context.WithoutCancel(r.Context()), id)
+		// A stop that ends the wait leaves it for the next start.
+		s.Go(func(ctx context.Context) { s.settleCancelledWorkFolderEdit(ctx, id) })
 	}
 	writeJSON(w, http.StatusOK, workflowRunActionResult{RunID: id, Status: "cancelled", Message: "run cancelled"})
 }

@@ -191,13 +191,37 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context) error {
 
 // executeClaimedWorkflowJobWithResources runs a job that changes library
 // folders, or scans them, while it holds the media:cleanup resource, so no
-// custom work renames a folder under it.
+// custom work renames a folder under it. Another holder may keep the resource
+// for a long time, so the wait ends with the job's context.
 func (s *Server) executeClaimedWorkflowJobWithResources(ctx context.Context, job workflowJobRecord) error {
 	if changesLibraryFolders(job.ResourceKey, job.WorkerType) {
-		s.mediaCleanupMu.Lock()
+		if err := s.mediaCleanupMu.LockContext(ctx); err != nil {
+			s.settleJobCancelledWhileWaitingForLibrary(ctx, job)
+			return err
+		}
 		defer s.mediaCleanupMu.Unlock()
 	}
 	return s.executeClaimedWorkflowJob(ctx, job)
+}
+
+// settleJobCancelledWhileWaitingForLibrary settles a job whose run was
+// cancelled before its executor started, as the executor settles its own
+// cancellation: a cancelled edit puts back what an earlier attempt lifted once
+// the library folders are free, and merged or cleaned folders return to their
+// work. A job stopped by a service stop is left to resume from its checkpoint.
+func (s *Server) settleJobCancelledWhileWaitingForLibrary(ctx context.Context, job workflowJobRecord) {
+	if shutdownInterrupted(ctx) {
+		return
+	}
+	if cancelled, err := s.mediaCleanupRunCancelled(ctx, job.RunID); err != nil || !cancelled {
+		return
+	}
+	if job.WorkerType == workFolderEditWorkerType {
+		// A settlement that does not start here runs at the next start.
+		s.Go(func(ctx context.Context) { s.settleCancelledWorkFolderEdit(ctx, job.RunID) })
+		return
+	}
+	_ = s.restoreMediaCleanupFolders(ctx, job.RunID)
 }
 
 // changesLibraryFolders reports whether a job changes or scans library folders

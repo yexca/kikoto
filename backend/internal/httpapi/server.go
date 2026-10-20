@@ -593,6 +593,7 @@ func (s *Server) RecoverInterruptedWorkflows(ctx context.Context) error {
 		return err
 	}
 	s.recoverRemoteFetchFollowUps(ctx)
+	s.settleCancelledWorkFolderEdits(ctx)
 	_, err := s.cleanupExpiredRemoteFetchStaging(ctx, time.Now())
 	return err
 }

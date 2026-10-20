@@ -149,12 +149,14 @@ func TestWorkFolderEditLetsFilesTradePlaces(t *testing.T) {
 	}
 }
 
-func TestWorkFolderEditCancelledWhileWaitingPutsMovedFilesBack(t *testing.T) {
-	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+// queueLiftedFolderEdit queues an edit that lifted its moved file into its
+// staging folder, then stopped and waits for a retry or for recovery after a
+// restart, with no executor working on it. It returns the job, the moved
+// file's name below the folder, and the run's staging folder.
+func (fixture folderEditFixture) queueLiftedFolderEdit(t *testing.T) (workflowJobRecord, string, string) {
+	t.Helper()
 	originalName := filepath.ToSlash(fixture.originalPath)[len(fixture.root)+1:]
 	job := fixture.apply(t, map[string]any{"moves": []any{move(fixture.originalLocationID, "Disc 1/Track1.Original name.mp3")}})
-	// The edit lifted the moved file, then stopped and waits for a retry or
-	// for recovery after a restart, with no executor working on it.
 	execution := &workFolderEditExecution{server: fixture.server, job: job}
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &execution.payload); err != nil {
 		t.Fatal(err)
@@ -179,15 +181,25 @@ func TestWorkFolderEditCancelledWhileWaitingPutsMovedFilesBack(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	return job, originalName, execution.stagingAbs
+}
 
-	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/"+jsonNumber(job.RunID)+"/cancel", nil)
-	request.SetPathValue("id", jsonNumber(job.RunID))
+func (fixture folderEditFixture) cancelRun(t *testing.T, runID int64) {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodPost, "/api/workflow-runs/"+jsonNumber(runID)+"/cancel", nil)
+	request.SetPathValue("id", jsonNumber(runID))
 	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 0, Permissions: []string{"workflows:run", "system:admin"}}))
 	response := httptest.NewRecorder()
 	fixture.server.cancelWorkflowRun(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("cancel status = %d, body = %s", response.Code, response.Body.String())
 	}
+}
+
+// waitForPutBack waits until the cancelled edit's moved file is back in its
+// place and its staging folder is gone.
+func (fixture folderEditFixture) waitForPutBack(t *testing.T, originalName, stagingAbs string) {
+	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		content, err := os.ReadFile(fixture.targetFile(originalName))
@@ -200,7 +212,7 @@ func TestWorkFolderEditCancelledWhileWaitingPutsMovedFilesBack(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	for deadline := time.Now().Add(5 * time.Second); ; {
-		if _, err := os.Stat(filepath.Dir(execution.stagingAbs)); os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Dir(stagingAbs)); os.IsNotExist(err) {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -208,6 +220,114 @@ func TestWorkFolderEditCancelledWhileWaitingPutsMovedFilesBack(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+func (fixture folderEditFixture) waitForJobStatus(t *testing.T, jobID int64, want string) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		var status string
+		if err := fixture.db.QueryRow("SELECT status FROM workflow_job WHERE id = ?", jobID).Scan(&status); err != nil {
+			t.Fatal(err)
+		}
+		if status == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("job status = %q, want %q", status, want)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestWorkFolderEditCancelledWhileWaitingPutsMovedFilesBack(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	job, originalName, stagingAbs := fixture.queueLiftedFolderEdit(t)
+	fixture.cancelRun(t, job.RunID)
+	fixture.waitForPutBack(t, originalName, stagingAbs)
+}
+
+// runQueuedJobBehindLibraryHolder claims the queued edit while another job
+// holds the library folders and returns the worker's result channel.
+func (fixture folderEditFixture) runQueuedJobBehindLibraryHolder(t *testing.T, ctx context.Context, jobID int64) <-chan error {
+	t.Helper()
+	fixture.server.mediaCleanupMu.Lock()
+	result := make(chan error, 1)
+	go func() { result <- fixture.server.runNextQueuedWorkflowJob(ctx) }()
+	fixture.waitForJobStatus(t, jobID, "running")
+	return result
+}
+
+func waitForWorker(t *testing.T, result <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-result:
+		return err
+	case <-time.After(5 * time.Second):
+		t.Fatal("a job waiting for the library folders kept waiting after its run stopped")
+		return nil
+	}
+}
+
+func TestWorkFolderEditCancelledWhileWaitingForLibraryFoldersPutsMovedFilesBack(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	job, originalName, stagingAbs := fixture.queueLiftedFolderEdit(t)
+	result := fixture.runQueuedJobBehindLibraryHolder(t, context.Background(), job.ID)
+
+	fixture.cancelRun(t, job.RunID)
+	if err := waitForWorker(t, result); err != nil {
+		t.Fatalf("worker after cancellation = %v", err)
+	}
+	// What the edit lifted goes back once the folders are free.
+	fixture.server.mediaCleanupMu.Unlock()
+	fixture.waitForPutBack(t, originalName, stagingAbs)
+}
+
+func TestWorkFolderEditStoppedWhileWaitingForLibraryFoldersStaysRecoverable(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	job, originalName, stagingAbs := fixture.queueLiftedFolderEdit(t)
+	lifetime, stop := context.WithCancelCause(context.Background())
+	result := fixture.runQueuedJobBehindLibraryHolder(t, lifetime, job.ID)
+
+	stop(ErrShuttingDown)
+	if err := waitForWorker(t, result); err != nil {
+		t.Fatalf("worker after service stop = %v", err)
+	}
+	fixture.server.mediaCleanupMu.Unlock()
+	var jobStatus, runStatus string
+	if err := fixture.db.QueryRow(`SELECT job.status, run.status FROM workflow_job AS job
+		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id WHERE job.id = ?`, job.ID).Scan(&jobStatus, &runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if jobStatus != "queued" || runStatus != "queued" {
+		t.Fatalf("statuses after service stop = job %q run %q, want queued", jobStatus, runStatus)
+	}
+	// The edit resumes from its checkpoint, so the lifted file stays staged.
+	if _, err := os.Stat(stagingAbs); err != nil {
+		t.Fatalf("staging folder after service stop: %v", err)
+	}
+	if _, err := os.Stat(fixture.targetFile(originalName)); !os.IsNotExist(err) {
+		t.Fatalf("lifted file after service stop: %v", err)
+	}
+}
+
+func TestStartupSettlesCancelledWorkFolderEditWhoseSettlementStopped(t *testing.T) {
+	fixture := newFolderEditFixture(t, serveFolderEditMedia)
+	job, originalName, stagingAbs := fixture.queueLiftedFolderEdit(t)
+	fixture.server.mediaCleanupMu.Lock()
+	fixture.cancelRun(t, job.RunID)
+	// A service stop ends the settlement's wait for the library folders.
+	if err := fixture.server.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	fixture.server.mediaCleanupMu.Unlock()
+	if _, err := os.Stat(stagingAbs); err != nil {
+		t.Fatalf("staging folder after the stopped settlement: %v", err)
+	}
+
+	if err := fixture.server.RecoverInterruptedWorkflows(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	fixture.waitForPutBack(t, originalName, stagingAbs)
 }
 
 func TestWorkFolderEditPutsMovedFilesBackWhenItStops(t *testing.T) {
