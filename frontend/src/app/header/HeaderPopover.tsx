@@ -66,6 +66,10 @@ export function HeaderPopover({
     };
   }, [open]);
 
+  // The popover is the only scroll container and is capped to the space left
+  // beside the anchor. Content that keeps its own scrolling region, such as a
+  // list under a fixed header, opts in with `min-h-0` to shrink into that space
+  // instead of nesting a second scroller.
   return (
     <div className="relative" ref={anchorRef}>
       {cloneElement(trigger, { onClick: () => onOpenChange(!open), "aria-expanded": open })}
@@ -77,7 +81,7 @@ export function HeaderPopover({
         bottomCollisionPadding={bottomCollisionPadding}
         ariaLabel={ariaLabel}
         onOpenChange={onOpenChange}
-        className="max-w-[calc(100vw-1rem)] bg-card"
+        className="flex max-w-[calc(100vw-1rem)] flex-col bg-card"
       >
         {children}
       </AnchoredPopover>

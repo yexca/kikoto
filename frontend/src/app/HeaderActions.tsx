@@ -223,17 +223,15 @@ export function HeaderActions({
             ariaLabel={t("appearance.title")}
           >
             <div className="w-[min(16rem,calc(100vw-1rem))]">
-              <div className="app-scroll max-h-[calc(var(--visual-viewport-height)-4rem)] overflow-y-auto">
-                <PopoverHeader title={t("appearance.title")} subtitle={t("appearance.subtitle")} />
-                <AppearanceControls
-                  mode={themeMode}
-                  preset={themePreset}
-                  palette={themePalette}
-                  onModeChange={setThemeMode}
-                  onPresetChange={setThemePreset}
-                  onPaletteChange={setThemePalette}
-                />
-              </div>
+              <PopoverHeader title={t("appearance.title")} subtitle={t("appearance.subtitle")} />
+              <AppearanceControls
+                mode={themeMode}
+                preset={themePreset}
+                palette={themePalette}
+                onModeChange={setThemeMode}
+                onPresetChange={setThemePreset}
+                onPaletteChange={setThemePalette}
+              />
             </div>
           </HeaderPopover>
         </div>
@@ -272,24 +270,22 @@ export function HeaderActions({
           ariaLabel={t("account.account")}
         >
           <div className="w-[min(20rem,calc(100vw-1rem))]">
-            <div className="app-scroll max-h-[calc(var(--visual-viewport-height)-4rem)] overflow-y-auto">
-              <AccountPanel
-                {...accountPanelProps}
-                server={native ? server : undefined}
-                onNavigate={(path) => {
-                  setMobileAccountOpen(false);
-                  onOpenPath(path);
-                }}
-                onLogout={() => {
-                  setMobileAccountOpen(false);
-                  onLogout();
-                }}
-                onOpenLogin={() => {
-                  setMobileAccountOpen(false);
-                  onOpenLogin();
-                }}
-              />
-            </div>
+            <AccountPanel
+              {...accountPanelProps}
+              server={native ? server : undefined}
+              onNavigate={(path) => {
+                setMobileAccountOpen(false);
+                onOpenPath(path);
+              }}
+              onLogout={() => {
+                setMobileAccountOpen(false);
+                onLogout();
+              }}
+              onOpenLogin={() => {
+                setMobileAccountOpen(false);
+                onOpenLogin();
+              }}
+            />
           </div>
         </HeaderPopover>
       </div>

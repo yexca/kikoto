@@ -252,7 +252,7 @@ export function NotificationCenter({
       align="right"
       ariaLabel={t("notifications.title")}
     >
-      <div className="flex max-h-[calc(var(--visual-viewport-height)-5rem)] w-[min(24rem,calc(100vw-1rem))] max-w-full flex-col">
+      <div className="flex min-h-0 w-[min(24rem,calc(100vw-1rem))] max-w-full flex-col">
         <PopoverHeader
           title={t("notifications.title")}
           subtitle={
