@@ -86,7 +86,8 @@ version.
    described in [Release Notes](#release-notes), leave `unreleased.md` with
    only its heading, and add the new page to the
    [history index](../history/index.md).
-4. Run the validation targets, commit, and push the tag described in
+4. Run the validation targets, commit, and push the commit to `main`.
+5. After `Full` succeeds for that commit, push the tag described in
    [Version Source](#version-source).
 
 ## Version Source
@@ -99,17 +100,15 @@ Android derives its default monotonic `versionCode` as
 `major * 1,000,000 + minor * 1,000 + patch`.
 
 The release tag must exactly match `VERSION` and point to a commit on `main`.
-Before building images or app packages, the release workflow runs the `full`
-validation tier described in
-[Continuous Integration](testing.md#continuous-integration) on the tagged
-commit itself. Every build job depends on its `Gate`, so a failed or cancelled
-validation stops the release before publication work begins, and a release
-never depends on the result of another run. Rerunning the failed jobs of the
-release resumes it.
-
-`Full` already validates every commit pushed to `main`. Tag a commit whose
-`Full` run succeeded, so the validation inside the release confirms a known
-result instead of discovering a failure.
+The `full` validation tier described in
+[Continuous Integration](testing.md#continuous-integration) runs on that same
+commit in `Full`, so the release workflow does not repeat it. Before building
+images or app packages, the release workflow requires a successful `Full` run
+for the tagged commit. Every build job depends on that check, so a commit whose
+`Full` run failed, was cancelled, or has not finished stops the release before
+publication work begins. Once `Full` succeeds, rerunning the failed jobs of the
+release resumes it; start `Full` on the tag from the Actions page when the
+commit has no run of its own.
 
 ## Publication Order
 

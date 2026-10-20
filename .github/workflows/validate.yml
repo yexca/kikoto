@@ -1,8 +1,8 @@
 name: Validate
 
-# The job definitions shared by both validation tiers. The PR, Full, and
-# Release workflows call this file and choose the tier; it has no trigger of
-# its own, so a tier is always an explicit decision of the caller.
+# The job definitions shared by both validation tiers. The PR and Full
+# workflows call this file and choose the tier; it has no trigger of its own,
+# so a tier is always an explicit decision of the caller.
 on:
   workflow_call:
     inputs:
