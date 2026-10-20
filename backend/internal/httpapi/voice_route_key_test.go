@@ -140,7 +140,7 @@ func TestVoiceRouteKeyFollowsIdentityChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := upsertPersonIdentity(ctx, tx, "Example Voice 2", sql.NullInt64{Int64: dlsiteProviderID, Valid: true}, "00000002"); err != nil {
+	if _, err := upsertPersonIdentity(ctx, tx, voiceCreditTarget{}, "Example Voice 2", sql.NullInt64{Int64: dlsiteProviderID, Valid: true}, "00000002"); err != nil {
 		_ = tx.Rollback()
 		t.Fatal(err)
 	}

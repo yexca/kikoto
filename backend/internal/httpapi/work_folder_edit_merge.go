@@ -139,11 +139,7 @@ func workFolderEditMergeSidecar(name string, directory bool) bool {
 	if !directory {
 		return localfs.IsIgnoredFileName(name)
 	}
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "@eadir", "__macosx":
-		return true
-	}
-	return false
+	return localfs.IsMetadataDirectoryName(name)
 }
 
 // workFolderEditMergeSidecarPath reports whether a file, by its path below a

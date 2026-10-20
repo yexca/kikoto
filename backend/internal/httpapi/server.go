@@ -74,6 +74,7 @@ type Server struct {
 	metadataOnboardingMu           sync.Mutex
 	metadataCoordinator            *metasync.Coordinator
 	jobRunnerMu                    sync.Mutex
+	fetchFollowUpMu                sync.Mutex
 	layoutMigrationMu              sync.Mutex
 	layoutMigrationActive          atomic.Bool
 	layoutMigrationScan            atomic.Bool
@@ -591,6 +592,7 @@ func (s *Server) RecoverInterruptedWorkflows(ctx context.Context) error {
 	if err := s.reconcileRemoteFetchManifests(ctx); err != nil {
 		return err
 	}
+	s.recoverRemoteFetchFollowUps(ctx)
 	_, err := s.cleanupExpiredRemoteFetchStaging(ctx, time.Now())
 	return err
 }

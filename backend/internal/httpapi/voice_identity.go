@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -43,16 +44,38 @@ func voiceCreditActors(raw string) []voiceActorIdentity {
 	return distinct
 }
 
+// withoutRedundantUnknownVoiceActor drops the unknown voice actor from one of
+// two snapshots of a work when the other names a voice actor, so the work is
+// not credited to the unknown voice actor beside a known one.
+func withoutRedundantUnknownVoiceActor(first, second []voiceActorIdentity) ([]voiceActorIdentity, []voiceActorIdentity) {
+	unknownOnly := func(actors []voiceActorIdentity) bool {
+		return len(actors) == 1 && isUnknownVoiceActorName(actors[0].Name)
+	}
+	switch {
+	case unknownOnly(first) && !unknownOnly(second):
+		return nil, second
+	case unknownOnly(second) && !unknownOnly(first):
+		return first, nil
+	}
+	return first, second
+}
+
 // writeVoiceCredits adds the credits without removing ones the snapshot no
-// longer names. A credit that already matches is left untouched, so it does
-// not advance the recommendation revision.
+// longer names, except an earlier credit of the same provider voice actor
+// under another person (see upsertPersonIdentity). A credit that already
+// matches is left untouched, so it does not advance the recommendation
+// revision.
 func writeVoiceCredits(ctx context.Context, tx *sql.Tx, workID int64, providerID sql.NullInt64, actors []voiceActorIdentity) error {
 	var provider any
 	if providerID.Valid {
 		provider = providerID.Int64
 	}
+	translation, err := workIsTranslationEdition(ctx, tx, workID)
+	if err != nil {
+		return err
+	}
 	for _, actor := range actors {
-		personID, err := upsertPersonIdentity(ctx, tx, actor.Name, providerID, actor.ExternalID)
+		personID, err := upsertPersonIdentity(ctx, tx, voiceCreditTarget{WorkID: workID, Translation: translation}, actor.Name, providerID, actor.ExternalID)
 		if err != nil {
 			return err
 		}
@@ -77,58 +100,192 @@ type voiceActorIdentity struct {
 	ExternalID string
 }
 
-func upsertPersonIdentity(ctx context.Context, tx *sql.Tx, name string, providerID sql.NullInt64, externalID string) (int64, error) {
+// voiceCreditTarget is the work whose snapshot names a voice actor.
+// Translation is true for a translated edition, whose spelling of a voice
+// actor's name names the person only while no original edition credits them.
+type voiceCreditTarget struct {
+	WorkID      int64
+	Translation bool
+}
+
+// translationEditionSQL matches a work that is a non-canonical edition of its
+// family, given the expression for its work id.
+const translationEditionSQL = `EXISTS (
+	SELECT 1 FROM work_edition AS edition
+	INNER JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+	WHERE edition.work_id = %s AND edition.is_canonical = 0
+		AND COALESCE(logical.canonical_work_id, 0) <> edition.work_id
+)`
+
+func workIsTranslationEdition(ctx context.Context, tx *sql.Tx, workID int64) (bool, error) {
+	var translation bool
+	err := tx.QueryRowContext(ctx, "SELECT "+fmt.Sprintf(translationEditionSQL, "?"), workID).Scan(&translation)
+	return translation, err
+}
+
+// upsertPersonIdentity resolves the person a snapshot credits. A provider
+// voice actor id resolves to the person that carries it. A person whose
+// display name is the snapshot's spelling of that id is the same voice actor
+// credited by name before the id was known, so it is merged into one person
+// through a recorded, undoable merge; one that carries another id of the
+// provider, was separated again by undoing such a merge, or is named by a
+// manual override stays a separate person, and the latter only loses its
+// metadata credit on this work. The person follows the provider's spelling on
+// an original edition, and on a translated edition only while no original
+// edition credits them, so a translation's spelling becomes an alias. A name
+// an administrator merged into the person never replaces the display name
+// they kept.
+func upsertPersonIdentity(ctx context.Context, tx *sql.Tx, target voiceCreditTarget, name string, providerID sql.NullInt64, externalID string) (int64, error) {
 	externalID = strings.TrimSpace(externalID)
-	if providerID.Valid && externalID != "" {
-		var personID int64
-		err := tx.QueryRowContext(ctx, `
-			SELECT person_id FROM person_external_id
-			WHERE provider_id = ? AND id_type = 'voice_actor_id' AND external_id = ?
-		`, providerID.Int64, externalID).Scan(&personID)
-		if err == nil {
-			// Follow a provider rename, but never let a name that an
-			// administrator merged into this person replace the display name
-			// they kept when the merged identity arrives again.
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE person
-				SET display_name = ?, sort_name = ?, updated_at = CURRENT_TIMESTAMP
-				WHERE id = ? AND (display_name IS NOT ? OR sort_name IS NOT ?) AND NOT EXISTS (
-					SELECT 1 FROM person AS other WHERE other.id <> ? AND LOWER(other.display_name) = LOWER(?)
-				) AND NOT EXISTS (
-					SELECT 1 FROM person_alias AS merged
-					WHERE merged.person_id = ? AND merged.alias = ?
-						AND merged.source IN ('merged_name', 'merged_primary_name', 'merged_alias')
-				)
-			`, name, strings.ToLower(name), personID, name, strings.ToLower(name), personID, name, personID, name); err != nil {
-				return 0, err
-			}
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO person_alias (person_id, alias, source)
-				VALUES (?, ?, 'external_identity')
-				ON CONFLICT(person_id, alias) DO NOTHING
-			`, personID, name); err != nil {
-				return 0, err
-			}
-			return personID, nil
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
+	if !providerID.Valid || externalID == "" {
+		return upsertPerson(ctx, tx, name)
+	}
+	var personID int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT person_id FROM person_external_id
+		WHERE provider_id = ? AND id_type = 'voice_actor_id' AND external_id = ?
+	`, providerID.Int64, externalID).Scan(&personID)
+	if errors.Is(err, sql.ErrNoRows) {
+		personID, err = upsertPerson(ctx, tx, name)
+		if err != nil {
 			return 0, err
 		}
-	}
-	personID, err := upsertPerson(ctx, tx, name)
-	if err != nil {
-		return 0, err
-	}
-	if providerID.Valid && externalID != "" {
-		if _, err := tx.ExecContext(ctx, `
+		_, err = tx.ExecContext(ctx, `
 			INSERT INTO person_external_id (person_id, provider_id, id_type, external_id, is_primary)
 			VALUES (?, ?, 'voice_actor_id', ?, 1)
 			ON CONFLICT(provider_id, id_type, external_id) DO UPDATE SET person_id = excluded.person_id
-		`, personID, providerID.Int64, externalID); err != nil {
+		`, personID, providerID.Int64, externalID)
+		return personID, err
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	var otherID int64
+	if err := tx.QueryRowContext(ctx, "SELECT id FROM person WHERE display_name = ? AND id <> ?", name, personID).Scan(&otherID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	names := true
+	if target.Translation {
+		credited, err := creditedOnOriginalEdition(ctx, tx, providerID.Int64, personID, otherID)
+		if err != nil {
+			return 0, err
+		}
+		names = !credited
+	}
+	if otherID != 0 {
+		merge, dropCredit, err := identityMergeAllowed(ctx, tx, providerID.Int64, personID, otherID)
+		if err != nil {
+			return 0, err
+		}
+		switch {
+		case merge:
+			// The person keeping the snapshot's spelling survives when that
+			// spelling names the voice actor, unless an administrator merged
+			// that name into the person carrying the id.
+			keep, merged := personID, otherID
+			if names {
+				adminKept, err := personHasAdministratorMergedName(ctx, tx, personID, name)
+				if err != nil {
+					return 0, err
+				}
+				if !adminKept {
+					keep, merged = otherID, personID
+				}
+			}
+			if _, _, _, err := mergeVoicePeopleInTx(ctx, tx, keep, merged, identityVoiceMergeAliases); err != nil {
+				return 0, err
+			}
+			personID = keep
+		case dropCredit:
+			if _, err := tx.ExecContext(ctx, `
+				DELETE FROM work_credit
+				WHERE work_id = ? AND person_id = ? AND role = 'voice_actor' AND source <> 'manual_override'
+			`, target.WorkID, otherID); err != nil {
+				return 0, err
+			}
+		}
+	}
+	if names {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE person
+			SET display_name = ?, sort_name = ?, updated_at = CURRENT_TIMESTAMP
+			WHERE id = ? AND (display_name IS NOT ? OR sort_name IS NOT ?) AND NOT EXISTS (
+				SELECT 1 FROM person AS other WHERE other.id <> ? AND LOWER(other.display_name) = LOWER(?)
+			) AND NOT EXISTS (
+				SELECT 1 FROM person_alias AS merged
+				WHERE merged.person_id = ? AND merged.alias = ?
+					AND merged.source IN ('merged_name', 'merged_primary_name', 'merged_alias')
+			)
+		`, name, strings.ToLower(name), personID, name, strings.ToLower(name), personID, name, personID, name); err != nil {
 			return 0, err
 		}
 	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO person_alias (person_id, alias, source)
+		VALUES (?, ?, 'external_identity')
+		ON CONFLICT(person_id, alias) DO NOTHING
+	`, personID, name); err != nil {
+		return 0, err
+	}
 	return personID, nil
+}
+
+// creditedOnOriginalEdition reports whether a snapshot of the provider
+// credits either person on a work that is not a translated edition.
+func creditedOnOriginalEdition(ctx context.Context, tx *sql.Tx, providerID, personID, otherID int64) (bool, error) {
+	var credited bool
+	err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM work_credit AS credit
+			WHERE credit.person_id IN (?, ?) AND credit.role = 'voice_actor'
+				AND credit.source = 'metadata_snapshot' AND credit.provider_id = ?
+				AND NOT `+fmt.Sprintf(translationEditionSQL, "credit.work_id")+`
+		)
+	`, personID, otherID, providerID).Scan(&credited)
+	return credited, err
+}
+
+// identityMergeAllowed reports whether the other person may be merged into
+// the person carrying a provider voice actor id, or else whether only its
+// metadata credit on the projected work goes.
+func identityMergeAllowed(ctx context.Context, tx *sql.Tx, providerID, personID, otherID int64) (merge bool, dropCredit bool, err error) {
+	var otherIdentity, undone, manual bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT
+			EXISTS (
+				SELECT 1 FROM person_external_id
+				WHERE person_id = ? AND provider_id = ? AND id_type = 'voice_actor_id'
+			),
+			EXISTS (
+				SELECT 1 FROM person_merge_review
+				WHERE status = 'undone' AND (
+					(target_person_id = ? AND source_person_id = ?)
+					OR (target_person_id = ? AND source_person_id = ?)
+				)
+			),
+			EXISTS (
+				SELECT 1 FROM work_credit WHERE person_id = ? AND source = 'manual_override'
+			)
+	`, otherID, providerID, personID, otherID, otherID, personID, otherID).Scan(&otherIdentity, &undone, &manual); err != nil {
+		return false, false, err
+	}
+	if otherIdentity || undone {
+		return false, false, nil
+	}
+	return !manual, manual, nil
+}
+
+func personHasAdministratorMergedName(ctx context.Context, tx *sql.Tx, personID int64, name string) (bool, error) {
+	var merged bool
+	err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM person_alias
+			WHERE person_id = ? AND alias = ?
+				AND source IN ('merged_name', 'merged_primary_name', 'merged_alias')
+		)
+	`, personID, name).Scan(&merged)
+	return merged, err
 }
 
 func isUnknownVoiceActorName(value string) bool {

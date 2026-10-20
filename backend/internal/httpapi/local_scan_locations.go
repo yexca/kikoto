@@ -91,7 +91,7 @@ func localLocationsInScanScope(ctx context.Context, tx *sql.Tx, workID, fileSour
 	}
 	kept := locations[:0]
 	for _, location := range locations {
-		if root := localLocationWorkRoot(location.path, roots); root != "" && scope.contains(root) {
+		if root := localLocationWorkRoot(location.path, roots); root != "" && scope.observes(root) {
 			kept = append(kept, location)
 		}
 	}

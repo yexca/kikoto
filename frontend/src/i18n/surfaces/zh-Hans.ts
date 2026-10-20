@@ -2083,6 +2083,7 @@ export const surfaceHans = {
     noWorks: "没有未关联作品",
     openDlsite: "打开 DLsite 页面",
     deleteFor: "删除 {{code}} 的本地信息",
+    openDlsiteFor: "打开 {{code}} 的 DLsite 页面",
     confirmTitle: "删除本地作品信息？",
     confirmDescription: "这将删除所选作品系列的本地作品记录和可用性信息。",
     deleting: "正在删除……",

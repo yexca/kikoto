@@ -1063,11 +1063,16 @@ export function WorkCardActionButton({
   responsiveLabel = false,
   label,
   labelClassName,
+  popup,
+  expanded,
   children,
   onClick,
 }: {
   title: string;
   disabled?: boolean;
+  /** The kind of popup the button opens; pass it with `expanded`. */
+  popup?: "dialog" | "menu";
+  expanded?: boolean;
   showLabel?: boolean;
   responsiveLabel?: boolean;
   label?: ReactNode;
@@ -1082,6 +1087,8 @@ export function WorkCardActionButton({
       className={showLabel ? (responsiveLabel ? "h-8 w-8 px-0 sm:w-auto sm:px-3" : "h-8") : "h-8 w-8"}
       title={title}
       aria-label={title}
+      aria-haspopup={popup}
+      aria-expanded={popup ? expanded : undefined}
       disabled={disabled}
       onClick={onClick}
     >

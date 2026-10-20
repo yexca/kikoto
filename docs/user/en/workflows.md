@@ -235,18 +235,22 @@ started, and can follow their status, events, and file progress.
   preset workflows record that origin as their trigger reason.
 - A scan never marks works missing in a place it cannot see: an unmounted data
   folder or offline storage pool, folders deeper than the scan depth, folders
-  it has no permission to read, and the folders and files that NAS systems and
-  operating systems add. A scan of an unmounted standard library fails and
-  changes nothing; a scan that skips an offline pool or an unreadable folder
-  finishes as partial and names it.
+  it has no permission to read, and the recycle bins and snapshots that NAS
+  systems and operating systems add. A scan of an unmounted standard library
+  fails and changes nothing; a scan that skips an offline pool or an
+  unreadable folder finishes as partial and names it.
 - Scans, file lists, and folder watching skip the folders `@eaDir`, `#recycle`,
   `#snapshot`, `__MACOSX`, `.Trash-*`, `$RECYCLE.BIN`,
   `System Volume Information`, and `lost+found`, and the files `._*`,
-  `.DS_Store`, and `Thumbs.db`. A work folder inside a recycle bin or a NAS
-  thumbnail folder is never found as a work, and a work already recorded there
-  keeps its state. Inside a work folder a scan reads, these folders and files
-  are not files of the work, and the scan marks any that the library lists as
-  missing.
+  `.DS_Store`, and `Thumbs.db`. A work folder inside any of these folders is
+  never found as a work. A work folder already recorded in a recycle bin,
+  snapshot, `.Trash-*`, `$RECYCLE.BIN`, `System Volume Information`, or
+  `lost+found` folder keeps its state. `@eaDir` and `__MACOSX` only hold
+  metadata, never your files: a folder recorded inside one is not a folder of
+  the work, its files are never added to the work, and the next scan that can
+  see it marks it missing. Inside a work folder a scan reads, these folders
+  and files are not files of the work, and the scan marks any that the library
+  lists as missing.
 - When FFprobe cannot read a media file, such as a damaged file, Kikoto records
   that for the file's current version and stops probing it in the background.
   A timeout or an interrupted probe records nothing, and a scan that sees the

@@ -2196,6 +2196,7 @@ export const surfaceJapanese = {
     noWorks: "未リンクの作品はありません",
     openDlsite: "DLsite ページを開く",
     deleteFor: "{{code}} のローカル情報を削除",
+    openDlsiteFor: "{{code}} の DLsite ページを開く",
     confirmTitle: "ローカル作品情報を削除しますか？",
     confirmDescription: "選択した作品ファミリーのローカル作品レコードと利用可能性情報を削除します。",
     deleting: "削除中…",

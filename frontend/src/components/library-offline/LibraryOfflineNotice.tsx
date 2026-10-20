@@ -1,6 +1,6 @@
 import { HardDrive } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
-import i18n from "@/i18n";
 import { cn } from "@/lib/tailwindClassNames";
 
 /**
@@ -9,6 +9,7 @@ import { cn } from "@/lib/tailwindClassNames";
  * disk is mounted, so nothing here asks the viewer to delete or re-scan them.
  */
 export function LibraryOfflineNotice({ detail, className }: { detail?: string; className?: string }) {
+  const { t } = useTranslation();
   return (
     <div
       role="status"
@@ -19,8 +20,8 @@ export function LibraryOfflineNotice({ detail, className }: { detail?: string; c
     >
       <HardDrive className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
       <div className="min-w-0">
-        <div className="font-medium">{i18n.t("libraryOffline.title")}</div>
-        <p className="mt-0.5 text-warning-foreground/80">{detail ?? i18n.t("libraryOffline.description")}</p>
+        <div className="font-medium">{t("libraryOffline.title")}</div>
+        <p className="mt-0.5 text-warning-foreground/80">{detail ?? t("libraryOffline.description")}</p>
       </div>
     </div>
   );

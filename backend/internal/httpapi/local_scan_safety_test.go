@@ -389,3 +389,104 @@ func TestLocalScanLeavesIgnoredAndUnreadableFoldersUnseen(t *testing.T) {
 		t.Fatalf("run summary = %s, want the unreadable folder recorded", summary)
 	}
 }
+
+// Earlier releases recorded a Synology thumbnail folder that carries a work
+// folder's name as a folder of the work. A scan that reaches it retires it,
+// and it is never indexed in the meantime. A folder in a recycle bin, or in an
+// offline pool, keeps its state.
+func TestLocalScanRetiresFolderRecordsInMetadataDirectories(t *testing.T) {
+	dataRoot := t.TempDir()
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 3})
+	for _, pool := range []string{"disk1", "disk2"} {
+		if err := os.MkdirAll(filepath.Join(dataRoot, pool), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := storagepool.WriteMarker(filepath.Join(dataRoot, "disk1"), "pool-disk1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE app_setting SET value_json = '"pools"' WHERE key = 'library_mode'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('storage_pools', '[{"path":"disk1","id":"pool-disk1"},{"path":"disk2","id":"pool-disk2"}]')`); err != nil {
+		t.Fatal(err)
+	}
+	code := testfixture.WorkCode(testfixture.PrefixRJ, 37)
+	realRoot := "disk1/Circle/" + code
+	thumbnails := "disk1/Circle/@eaDir/" + code
+	recycled := "disk1/#recycle/" + code
+	offlineThumbnails := "disk2/Circle/@eaDir/" + code
+	for _, rel := range []string{realRoot + "/track.mp3", thumbnails + "/SYNOPHOTO_THUMB_M.jpg", recycled + "/track.mp3"} {
+		path := filepath.Join(dataRoot, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("audio"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seeded := seedIndexedLocalScanWork(t, db, server, code, thumbnails, thumbnails+"/SYNOINDEX_MEDIA_INFO")
+	if _, err := db.Exec(`UPDATE work_source_presence SET raw_json = '{}' WHERE work_id = ?`, seeded.workID); err != nil {
+		t.Fatal(err)
+	}
+	for _, folder := range []struct {
+		root    string
+		primary int
+	}{{thumbnails, 1}, {recycled, 0}, {offlineThumbnails, 0}} {
+		if _, err := db.Exec(`
+			INSERT INTO work_folder_location (work_id, file_source_id, root_path, role, state, is_primary)
+			VALUES (?, ?, ?, 'external', 'active', ?)
+		`, seeded.workID, seeded.sourceID, folder.root, folder.primary); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// With nothing indexed, opening the work indexes its folders.
+	if _, err := db.Exec("UPDATE media_file_location SET availability = 'missing' WHERE id = ?", seeded.locationID); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.ensureLocalMediaIndexed(context.Background(), seeded.workID); err != nil {
+		t.Fatal(err)
+	}
+	var indexedThumbnails int
+	if err := db.QueryRow("SELECT COUNT(*) FROM media_file_location WHERE path = ?", thumbnails+"/SYNOPHOTO_THUMB_M.jpg").Scan(&indexedThumbnails); err != nil {
+		t.Fatal(err)
+	}
+	if indexedThumbnails != 0 {
+		t.Fatal("a folder in a metadata directory must never be indexed")
+	}
+
+	if _, err := db.Exec("UPDATE media_file_location SET availability = 'available' WHERE id = ?", seeded.locationID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runQueuedLocalScan(t, server); err != nil {
+		t.Fatal(err)
+	}
+	folderState := func(root string) (state string, primary bool) {
+		t.Helper()
+		if err := db.QueryRow("SELECT state, is_primary FROM work_folder_location WHERE root_path = ?", root).Scan(&state, &primary); err != nil {
+			t.Fatal(err)
+		}
+		return state, primary
+	}
+	for root, want := range map[string]string{thumbnails: "missing", recycled: "active", offlineThumbnails: "active", realRoot: "active"} {
+		if got, _ := folderState(root); got != want {
+			t.Errorf("folder %q state = %q, want %q", root, got, want)
+		}
+	}
+	if _, primary := folderState(realRoot); !primary {
+		t.Error("the folder the scan found must be the work's primary folder")
+	}
+	assertLocalScanLocationAvailability(t, db, thumbnails+"/SYNOINDEX_MEDIA_INFO", "missing")
+	var presenceRoot, availability string
+	if err := db.QueryRow(`
+		SELECT source_url, availability FROM work_source_presence
+		WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
+	`, seeded.workID, seeded.sourceID).Scan(&presenceRoot, &availability); err != nil {
+		t.Fatal(err)
+	}
+	if presenceRoot != realRoot || availability != "available" {
+		t.Fatalf("presence = %q (%s), want %q available", presenceRoot, availability, realRoot)
+	}
+}

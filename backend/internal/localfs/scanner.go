@@ -408,20 +408,49 @@ func isKikotoInternalDirectory(name string) bool {
 // IsIgnoredDirectoryName reports whether every library walk skips a directory:
 // Kikoto's own publication directories, and the metadata, recycle, and
 // snapshot directories that NAS systems and operating systems add, such as
-// Synology's @eaDir, which can carry a work folder's name. A skipped directory
-// is unseen: nothing inside it is discovered or indexed, and a work root in it
-// keeps its state. Inside a work root that is read, it holds no file of the
-// work.
+// Synology's @eaDir, which can carry a work folder's name. Nothing inside a
+// skipped directory is discovered or indexed, and inside a work root that is
+// read it holds no file of the work. A directory that can hold the user's
+// files, such as a recycle bin, is unseen: a work root recorded in it keeps its
+// state. A metadata directory (IsMetadataDirectoryName) is not.
 func IsIgnoredDirectoryName(name string) bool {
-	if isKikotoInternalDirectory(name) {
+	if isKikotoInternalDirectory(name) || IsMetadataDirectoryName(name) {
 		return true
 	}
 	lower := strings.ToLower(strings.TrimSpace(name))
 	switch lower {
-	case "@eadir", "#recycle", "#snapshot", "__macosx", "$recycle.bin", "system volume information", "lost+found":
+	case "#recycle", "#snapshot", "$recycle.bin", "system volume information", "lost+found":
 		return true
 	}
 	return strings.HasPrefix(lower, ".trash-")
+}
+
+// IsMetadataDirectoryName reports whether an ignored directory only holds the
+// metadata a NAS or operating system keeps beside files and never the user's
+// files: Synology's @eaDir and an archive's __MACOSX. The other ignored
+// directories, such as recycle bins, snapshots, and lost+found, can hold them.
+func IsMetadataDirectoryName(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "@eadir", "__macosx":
+		return true
+	}
+	return false
+}
+
+// IsMetadataPath reports whether a slash- or OS-separated path lies in a
+// metadata directory and in no ignored directory that can hold the user's
+// files. Nothing there is a work folder, so a recorded work root at such a
+// path is absent wherever a scan can see the folder that holds it.
+func IsMetadataPath(path string) bool {
+	metadata := false
+	for _, part := range strings.FieldsFunc(path, func(char rune) bool { return char == '/' || char == '\\' }) {
+		if IsMetadataDirectoryName(part) {
+			metadata = true
+		} else if IsIgnoredDirectoryName(part) {
+			return false
+		}
+	}
+	return metadata
 }
 
 // IsIgnoredFileName reports whether every library walk skips a file: the

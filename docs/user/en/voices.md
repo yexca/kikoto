@@ -31,6 +31,14 @@ Voice pages present persisted person and credit data.
 - Shows confirmed aliases under the detail title. Alias review, duplicate
   merge, and merge undo live in the Metadata page's **Voice actors** view;
   the detail **More** menu links there for users with `metadata:sync`.
+- Names each voice actor as the DLsite metadata of the original edition does.
+  A translated edition's spelling is kept as an alias and names the voice actor
+  only when no original edition in the library credits them. When DLsite
+  renames a voice actor, the person follows the new name and keeps the former
+  one as an alias; a name kept in a manual merge stays. Voice actors that DLsite
+  metadata shows to be one creator are merged into one person, credited once
+  per work, and the merge can be undone from **Merge history** like a manual
+  one.
 - Groups works with no provider voice credits under an `unknown` bucket.
 - Shows Local and Remote availability badges followed by user tags on the
   cover-tinted voice detail summary. Cache remains available to playback and filtering data, but is not

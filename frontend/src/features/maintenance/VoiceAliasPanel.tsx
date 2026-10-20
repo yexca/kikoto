@@ -13,7 +13,14 @@ import { cn } from "@/lib/tailwindClassNames";
 const aliasSuggestMinChars = 2;
 const aliasSuggestMaxResults = 12;
 const mergeHistoryPreview = 4;
-const mergedAliasSources = new Set(["merged_name", "merged_primary_name", "merged_alias"]);
+const mergedAliasSources = new Set([
+  "merged_name",
+  "merged_primary_name",
+  "merged_alias",
+  "identity_merged_name",
+  "identity_merged_primary_name",
+  "identity_merged_alias",
+]);
 
 export type VoiceAliasMessageTone = "success" | "error";
 

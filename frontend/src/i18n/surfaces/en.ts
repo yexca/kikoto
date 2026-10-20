@@ -2468,6 +2468,7 @@ export const surfaceEnglish = {
     noWorks: "No unlinked works",
     openDlsite: "Open DLsite page",
     deleteFor: "Delete local information for {{code}}",
+    openDlsiteFor: "Open DLsite page for {{code}}",
     confirmTitle: "Delete local work information?",
     confirmDescription: "This removes local work records and availability information for the selected work families.",
     deleting: "Deleting...",

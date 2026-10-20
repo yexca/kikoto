@@ -247,7 +247,10 @@ func (s *Server) resolveLocalMediaIndexWorkIDForRequest(ctx context.Context, wor
 
 func (s *Server) indexLocalMediaForWork(ctx context.Context, workID int64, fileSourceID int64, relPath string) error {
 	relPath = filepath.ToSlash(strings.TrimSpace(relPath))
-	if relPath == "" {
+	// A folder recorded in a metadata directory, such as Synology's @eaDir, is
+	// never a work folder: its files are not indexed and it never becomes the
+	// work's primary folder. The next scan that reaches it retires it.
+	if relPath == "" || localfs.IsMetadataPath(relPath) {
 		return nil
 	}
 	indexKey := fmt.Sprintf("%d:%d:%s", workID, fileSourceID, relPath)

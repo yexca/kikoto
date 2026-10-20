@@ -431,6 +431,9 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   Everything else is added by an
   **Edit files** workflow once the Fetch has published the folder, so a file
   that would land on one the Fetch publishes is a conflict to resolve first.
+  While a storage pool it reads or writes is offline, it waits and starts
+  once the pool is back. If it cannot be queued at all, the Fetch's run in
+  Activity says why, and the folder keeps only the Fetch's files.
   When the destination folder needs review, **Review in the standard Fetch**
   opens the Fetch dialog. Anyone else gets the Fetch dialog.
 - Open source-specific Track, Fork, Fetch, Origin, cache, refresh, and file
