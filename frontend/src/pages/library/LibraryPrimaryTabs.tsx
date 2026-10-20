@@ -122,7 +122,7 @@ export function LibrarySourceMenu({ active, activeSourceId, sources, onChange, o
       <button
         type="button"
         className={cn(
-          "inline-flex h-11 max-w-[8.5rem] items-center gap-1.5 rounded-full border bg-card pl-3.5 pr-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&>svg]:shrink-0",
+          "inline-flex h-[var(--control-height)] max-w-[8.5rem] items-center gap-1.5 rounded-[var(--control-radius)] border bg-card pl-3.5 pr-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&>svg]:shrink-0",
           open && "border-primary/50",
         )}
         aria-haspopup="menu"

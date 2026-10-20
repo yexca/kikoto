@@ -64,7 +64,7 @@ export function LibrarySortButton({
                 "h-full max-w-44 rounded-[var(--control-radius)] px-2.5 aria-expanded:bg-muted",
                 showReshuffle && "rounded-r-none",
               )
-            : "h-9 rounded-full border bg-card px-3",
+            : "touch-target h-8 rounded-[var(--control-radius)] border bg-background px-2.5 aria-expanded:bg-muted",
         )}
         aria-haspopup="dialog"
         aria-expanded={open}

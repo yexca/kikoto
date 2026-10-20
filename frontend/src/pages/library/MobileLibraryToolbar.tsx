@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { quickMarkMeta } from "@/components/work-card/WorkCardShell";
 import { listeningStatusOptions } from "@/features/work-detail/workDetailShared";
 import { numberFormat } from "@/i18n/format";
+import { Button } from "@/components/ui/button";
 import { useLocale } from "@/i18n/LocaleProvider";
 import type { ListeningStatus, Work } from "@/lib/api";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
@@ -58,7 +59,7 @@ export function MobileLibraryToolbar({
   return (
     <div className="space-y-3" data-toast-avoid>
       <div className="flex min-w-0 items-center gap-2">
-        <div className="search-field flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full border bg-card pl-4 pr-1.5 text-sm shadow-sm transition-colors focus-within:border-primary/50">
+        <div className="search-field flex h-[var(--control-height)] min-w-0 flex-1 items-center gap-2 rounded-[var(--control-radius)] border bg-card pl-4 pr-1.5 text-sm shadow-sm transition-colors focus-within:border-primary/50">
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <input
             className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
@@ -73,7 +74,7 @@ export function MobileLibraryToolbar({
           {searchQuery.trim() && (
             <button
               type="button"
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--badge-radius)] text-muted-foreground hover:bg-muted hover:text-foreground"
               onClick={() => onSearchChange("")}
               aria-label={t("library.clearSearch")}
             >
@@ -83,7 +84,7 @@ export function MobileLibraryToolbar({
           <button
             type="button"
             className={cn(
-              "grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground hover:text-foreground",
+              "grid h-8 w-8 shrink-0 place-items-center rounded-[var(--badge-radius)] bg-muted text-muted-foreground hover:text-foreground",
               addClauseOpen && "bg-primary/10 text-primary",
             )}
             onClick={(event) => onAddClause(event.currentTarget)}
@@ -186,13 +187,11 @@ function RowToggle({
   onToggle: () => void;
 }) {
   return (
-    <button
+    <Button
       type="button"
-      className={cn(
-        "relative grid h-9 w-9 shrink-0 place-items-center rounded-full border bg-card text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        (open || active) && "border-primary/30 bg-primary/10",
-        open && !active && "text-primary",
-      )}
+      variant="toolbar"
+      size="icon-sm"
+      className={cn("shrink-0", active && "border-primary/30 bg-primary/10 aria-expanded:bg-primary/10")}
       aria-expanded={open}
       aria-controls={open ? controls : undefined}
       aria-label={label}
@@ -201,9 +200,9 @@ function RowToggle({
     >
       {children}
       {active && !open && (
-        <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />
+        <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />
       )}
-    </button>
+    </Button>
   );
 }
 
@@ -219,7 +218,7 @@ function StatusChips({
   const { t } = useTranslation();
   const chip = (active: boolean) =>
     cn(
-      "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[var(--badge-radius)] border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       active
         ? "border-primary/30 bg-primary/10 text-primary"
         : "border-border bg-card text-muted-foreground hover:text-foreground",
