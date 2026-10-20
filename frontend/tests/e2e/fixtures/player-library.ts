@@ -497,7 +497,7 @@ export async function mockApplication(
           localFolders: fixture.detailLocalFolders ?? [],
           ...(fixture.detailMetadataPresentation ? { metadataPresentation: fixture.detailMetadataPresentation } : {}),
           ...(fixture.detailPurchaseBonus ? { purchaseBonus: fixture.detailPurchaseBonus } : {}),
-          ...(fixture.detailCustomWork ? { customWork: true, dlsiteUrl: "" } : {}),
+          ...(fixture.detailCustomWork ? { customWork: true, dlsiteUrl: "", providerAgeRating: "" } : {}),
           metadataSync: fixture.metadataSyncControl?.detailReady
             ? { status: "available", checkedAt: "2026-01-01T00:01:00Z" }
             : (fixture.detailMetadataSync ?? { status: "available", checkedAt: "" }),
