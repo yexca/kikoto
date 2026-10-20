@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
@@ -229,6 +230,114 @@ func TestCustomWorkWaitsForJobsThatChangeLibraryFolders(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "Example Work")); err != nil {
 		t.Fatalf("folder changed while busy: %v", err)
+	}
+}
+
+func TestCustomWorkRenameRunsWithoutTheDatabaseWriteLock(t *testing.T) {
+	root := t.TempDir()
+	writeCaseScanTrack(t, root, "Example Work")
+	server := NewServer(openMigratedTestDBWithProductionPool(t), config.Config{DataRoot: root, LocalScanDepth: 2})
+	permissions := []string{"library:write", "downloads:manage"}
+	acceptCustomWorkNoticeForTest(t, server, permissions...)
+	code := testfixture.WorkCode(testfixture.PrefixKT, 1)
+	var writeErr error
+	var reserved int64
+	var works int
+	renameCustomWorkFolder = func(from, to string) error {
+		// Another writer, such as playback progress, proceeds while the folder
+		// is renamed, and the reserved number is already committed.
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := server.db.QueryRowContext(ctx, "SELECT last_number FROM custom_work_code_counter WHERE id = 1").Scan(&reserved); err != nil {
+			t.Error(err)
+		}
+		if err := server.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM work WHERE primary_code = ?", code).Scan(&works); err != nil {
+			t.Error(err)
+		}
+		if reserved == 1 {
+			// An uncommitted reservation would make this write wait for the
+			// whole busy timeout.
+			_, writeErr = server.db.ExecContext(ctx, `INSERT INTO app_setting(key, value_json) VALUES('example_write', '{}')`)
+		}
+		return renameNoReplace(from, to)
+	}
+	t.Cleanup(func() { renameCustomWorkFolder = renameNoReplace })
+
+	response := httptest.NewRecorder()
+	server.createCustomWork(response, customWorkRequest(http.MethodPost, "/api/custom-works", `{"path":"Example Work"}`, permissions...))
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", response.Code, response.Body.String())
+	}
+	if reserved != 1 || works != 0 {
+		t.Fatalf("during the rename the counter = %d and %d works carry %s, want the number committed and no work yet", reserved, works, code)
+	}
+	if writeErr != nil {
+		t.Fatalf("a write during the rename = %v, want it to proceed", writeErr)
+	}
+}
+
+func TestCustomWorkFailedInsertRenamesTheFolderBackAndSpendsTheNumber(t *testing.T) {
+	root := t.TempDir()
+	writeCaseScanTrack(t, root, "Example Work")
+	server := NewServer(openMigratedTestDB(t), config.Config{DataRoot: root, LocalScanDepth: 2})
+	permissions := []string{"library:write", "downloads:manage"}
+	acceptCustomWorkNoticeForTest(t, server, permissions...)
+	if _, err := server.db.Exec(`CREATE TRIGGER refuse_custom_work BEFORE INSERT ON work
+		WHEN NEW.primary_code LIKE 'KT%' BEGIN SELECT RAISE(ABORT, 'refused'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	failed := httptest.NewRecorder()
+	server.createCustomWork(failed, customWorkRequest(http.MethodPost, "/api/custom-works", `{"path":"Example Work"}`, permissions...))
+	if failed.Code != http.StatusInternalServerError {
+		t.Fatalf("create with a failing insert = %d %s, want %d", failed.Code, failed.Body.String(), http.StatusInternalServerError)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Example Work")); err != nil {
+		t.Fatalf("folder after the failed insert: %v, want it under its own name", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Example Work ["+testfixture.WorkCode(testfixture.PrefixKT, 1)+"]")); !os.IsNotExist(err) {
+		t.Fatalf("renamed folder after the failed insert: %v, want none", err)
+	}
+	var works int
+	if err := server.db.QueryRow("SELECT COUNT(*) FROM work WHERE primary_code LIKE 'KT%'").Scan(&works); err != nil || works != 0 {
+		t.Fatalf("custom works after the failed insert = %d, %v; want none", works, err)
+	}
+
+	if _, err := server.db.Exec("DROP TRIGGER refuse_custom_work"); err != nil {
+		t.Fatal(err)
+	}
+	created := httptest.NewRecorder()
+	server.createCustomWork(created, customWorkRequest(http.MethodPost, "/api/custom-works", `{"path":"Example Work"}`, permissions...))
+	var response createCustomWorkResponse
+	if err := json.Unmarshal(created.Body.Bytes(), &response); err != nil || created.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s, %v", created.Code, created.Body.String(), err)
+	}
+	// The number the failed attempt reserved is never handed out.
+	if want := testfixture.WorkCode(testfixture.PrefixKT, 2); response.Code != want {
+		t.Fatalf("code after a failed attempt = %s, want %s", response.Code, want)
+	}
+}
+
+func TestCustomWorkRefusesAFolderThatGainedAWorkAfterListing(t *testing.T) {
+	root := t.TempDir()
+	writeCaseScanTrack(t, root, "Shelf/Example Track")
+	server := NewServer(openMigratedTestDB(t), config.Config{DataRoot: root, LocalScanDepth: 2})
+	permissions := []string{"library:write", "downloads:manage"}
+	acceptCustomWorkNoticeForTest(t, server, permissions...)
+	list := httptest.NewRecorder()
+	server.listCustomWorkFolders(list, customWorkRequest(http.MethodGet, "/api/custom-works/folders", "", permissions...))
+	if !strings.Contains(list.Body.String(), `"path":"Shelf"`) {
+		t.Fatalf("list = %s, want Shelf", list.Body.String())
+	}
+	writeCaseScanTrack(t, root, "Shelf/"+testfixture.WorkCode(testfixture.PrefixRJ, 0))
+
+	response := httptest.NewRecorder()
+	server.createCustomWork(response, customWorkRequest(http.MethodPost, "/api/custom-works", `{"path":"Shelf"}`, permissions...))
+	if response.Code != http.StatusConflict {
+		t.Fatalf("create from a folder that now holds a work = %d %s, want %d", response.Code, response.Body.String(), http.StatusConflict)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Shelf")); err != nil {
+		t.Fatalf("refused folder changed: %v", err)
 	}
 }
 

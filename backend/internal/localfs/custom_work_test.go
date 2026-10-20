@@ -1,6 +1,7 @@
 package localfs
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -65,5 +66,71 @@ func TestDiscoverCustomWorkCandidatesLeavesOutUnreadableFoldersAndTheirAncestors
 	// carry it along, can become a custom work.
 	if want := []string{"Example Work 1"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("candidates = %v, want %v", got, want)
+	}
+}
+
+func TestCustomWorkCandidateAtAgreesWithTheFullWalk(t *testing.T) {
+	root := t.TempDir()
+	for _, folder := range []string{
+		"Example Work 1",
+		"Shelf/Example Work 2",
+		"Collection/" + testfixture.WorkCode(testfixture.PrefixRJ, 0) + " Example Work/Extras",
+		".hidden/Example Work 3",
+		".kikoto-staging/Example Work 4",
+		"#recycle/Example Work 5",
+		"Deep/Level 2/Level 3/Level 4",
+		"Pool A/Shelf/Example Work 6",
+		"Pool A/Holder/Inner/" + testfixture.WorkCode(testfixture.PrefixRJ, 1),
+	} {
+		writeFile(t, filepath.Join(root, filepath.FromSlash(folder), "track01.mp3"))
+	}
+	// A link to a folder is never walked into.
+	_ = os.Symlink(filepath.Join(root, "Example Work 1"), filepath.Join(root, "Shelf", "Linked"))
+	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
+		writeFile(t, filepath.Join(root, "Pool A", "Locked", "Inner", "track01.mp3"))
+		locked := filepath.Join(root, "Pool A", "Locked")
+		if err := os.Chmod(locked, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+	}
+
+	paths := []string{
+		"", "Missing", "example work 1", "/Example Work 1", "Example Work 1/",
+		"Shelf/../Example Work 1", "Shelf//Example Work 2", `Shelf\Example Work 2`,
+		"Shelf/Linked", "Pool A/Locked/Inner",
+	}
+	if err := filepath.WalkDir(root, func(current string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() && current != root {
+			rel, _ := filepath.Rel(root, current)
+			paths = append(paths, filepath.ToSlash(rel))
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, options := range []Options{{ScanDepth: 2}, {ScanDepth: 4}, {ScanDepth: 4, SubRoots: []string{"Pool A"}}} {
+		discovery, err := DiscoverCustomWorkCandidates(root, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		listed := map[string]CustomWorkCandidate{}
+		for _, candidate := range discovery.Candidates {
+			listed[candidate.RelPath] = candidate
+		}
+		for _, rel := range paths {
+			candidate, ok, err := CustomWorkCandidateAt(root, rel, options)
+			if err != nil {
+				t.Fatalf("%+v: candidate at %q: %v", options, rel, err)
+			}
+			want, wantOK := listed[rel]
+			if ok != wantOK || candidate != want {
+				t.Fatalf("%+v: candidate at %q = %#v, %t; the full walk gives %#v, %t", options, rel, candidate, ok, want, wantOK)
+			}
+		}
 	}
 }
