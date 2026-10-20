@@ -16,10 +16,12 @@ import { LibrarySortButton, type LibrarySortProps } from "./LibrarySortButton";
 
 /**
  * The phone Library header: an always-visible search field with the source
- * menu beside it, then sort and view controls with two row toggles, one for
- * the Continue listening rail and one for the quick-mark filter chips, and a
- * result caption. Both rows start collapsed; the mark toggle shows an active
- * filter so a collapsed row never hides why results narrowed.
+ * menu beside it, then a row that groups what shapes the results (sort with
+ * its reshuffle, and the quick-mark filter toggle) apart from extras and view
+ * controls (the Continue listening toggle and display options), and a result
+ * caption. Toggled rows start collapsed and open in the order of their
+ * buttons; the mark toggle shows an active filter so a collapsed row never
+ * hides why results narrowed.
  */
 export function MobileLibraryToolbar({
   sourceMenu,
@@ -30,6 +32,7 @@ export function MobileLibraryToolbar({
   resultCount,
   resultPage,
   sort,
+  extras,
   actions,
   statusFilter,
   onStatusFilterChange,
@@ -44,6 +47,9 @@ export function MobileLibraryToolbar({
   /** Shown beside the count when the results span more than one page. */
   resultPage: { page: number; totalPages: number };
   sort: LibrarySortProps;
+  /** Shown before the Continue listening toggle. */
+  extras: ReactNode;
+  /** Shown after the Continue listening toggle. */
   actions: ReactNode;
   /** Null when the active view cannot filter by quick mark. */
   statusFilter: ListeningStatus | "all" | null;
@@ -98,7 +104,7 @@ export function MobileLibraryToolbar({
         {sourceMenu}
       </div>
       <div className="flex min-h-9 items-center gap-2">
-        <LibrarySortButton {...sort} />
+        <LibrarySortButton {...sort} variant="toolbar" />
         {statusFilter !== null && (
           <MarkFilterToggle
             value={statusFilter}
@@ -107,20 +113,23 @@ export function MobileLibraryToolbar({
             onToggle={() => setMarkFilterOpen((open) => !open)}
           />
         )}
-        <RowToggle
-          label={t("library.continueListening")}
-          open={continueOpen}
-          controls={continueId}
-          onToggle={() => setContinueOpen((open) => !open)}
-        >
-          <History className="h-4 w-4" aria-hidden="true" />
-        </RowToggle>
-        <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {extras}
+          <RowToggle
+            label={t("library.continueListening")}
+            open={continueOpen}
+            controls={continueId}
+            onToggle={() => setContinueOpen((open) => !open)}
+          >
+            <History className="h-4 w-4" aria-hidden="true" />
+          </RowToggle>
+          {actions}
+        </div>
       </div>
-      {continueOpen && <ContinueListeningRail id={continueId} onOpen={onOpenRecent} />}
       {statusFilter !== null && markFilterOpen && (
         <StatusChips id={markFilterId} value={statusFilter} onChange={onStatusFilterChange} />
       )}
+      {continueOpen && <ContinueListeningRail id={continueId} onOpen={onOpenRecent} />}
       <p className="flex min-h-5 min-w-0 items-center gap-2 text-xs text-muted-foreground">
         {resultCount !== null && (
           <>

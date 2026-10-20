@@ -1,4 +1,4 @@
-import { ListChecks, RefreshCw, Sparkles } from "lucide-react";
+import { ListChecks, Sparkles } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -733,12 +733,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         <Sparkles className={`h-4 w-4 ${recommendBadgesEnabled ? "fill-current text-primary" : ""}`} />
       </IconButton>
     );
-  // The wide toolbar refreshes recommendations from its sort control instead.
-  const mobileRecommendationAction = recommendationBadgeToggle ?? (
-    <IconButton title={t("library.refreshRecommendations")} disabled={localWorks.isLoading} onClick={reshuffle}>
-      <RefreshCw className={`h-4 w-4 ${localWorks.isLoading ? "animate-spin" : ""}`} />
-    </IconButton>
-  );
   const selectionToggle =
     activeTab.kind === "source" ? (
       <IconButton
@@ -783,9 +777,9 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
               : { page: currentWorkPage, totalPages: totalWorkPages }
           }
           sort={sort}
+          extras={recommendationBadgeToggle}
           actions={
             <>
-              {mobileRecommendationAction}
               {displayPicker}
               {selectionToggle}
             </>

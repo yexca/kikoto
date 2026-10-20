@@ -103,14 +103,16 @@ The Library is the main browsing surface for works.
   played covers below it, on any page and source.
 - On phones the Library leads with an always-visible search field and,
   beside it, a source button that names the current source and opens every
-  source in a menu. Below them, a sort button names the current order and
-  opens the orders and direction in a popover, and two buttons beside it show
-  or hide a row below: Continue listening and Mark filter, which holds the
-  Quick mark filter chips. Both rows start hidden. While a mark filter is set,
-  its button shows that mark. Selecting the active chip clears the filter.
-- On wide screens the toolbar's sort button also names the current order and
-  opens the orders and direction in a popover. The Recommended and Random
-  orders add a refresh button beside it.
+  source in a menu. Below them, the sort row starts with what shapes the
+  results, the sort button and a Mark filter button, and ends with extras and
+  view controls: recommendation badges, Continue listening, and display
+  options. Mark filter and Continue listening each show or hide a row below:
+  the Quick mark filter chips, then the Continue listening strip. Both rows
+  start hidden. While a mark filter is set, its button shows that mark.
+  Selecting the active chip clears the filter.
+- The sort button names the current order and opens the orders and direction
+  in a popover. The Recommended and Random orders add a refresh button beside
+  it.
 - Display options start with **Cards**, a choice of **Full**, **Compact**, and
   **Mini** that is stored with the column settings, separately for phones and
   wide screens. **Full** is the default. Automatic wide-screen columns fit up
