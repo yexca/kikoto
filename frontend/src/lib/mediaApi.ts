@@ -66,6 +66,11 @@ export type MediaFileLocation = {
   fileSourceName: string;
   locationType: string;
   path: string;
+  /**
+   * The path with the display names the viewer's metadata languages give its
+   * file and folders, segment for segment; only on a local location with such a name.
+   */
+  displayPath?: string;
   streamUrl: string;
   downloadUrl: string;
   remoteHash: string;
@@ -83,6 +88,29 @@ export type MediaLoudness = {
   peakDbfs: number;
   /** "true" for a true peak, "sample" when only the sample peak could be measured. */
   peakKind: "true" | "sample";
+};
+
+/** A local file or folder of a work that a display name can name, with its names by metadata language. */
+export type FileDisplayNameEntry = {
+  /** Present for a file. */
+  mediaItemId?: number;
+  /** The file or folder below the work folder. */
+  path: string;
+  names: Record<string, string>;
+};
+
+export type FileDisplayNames = {
+  workId: number;
+  mediaWorkId: number;
+  folders: FileDisplayNameEntry[];
+  files: FileDisplayNameEntry[];
+};
+
+/** Names in one metadata language; an empty name removes that language's name. */
+export type FileDisplayNamesChange = {
+  language: string;
+  files: { mediaItemId: number; name: string }[];
+  folders: { path: string; name: string }[];
 };
 
 export type MediaTextPreview = {
@@ -236,6 +264,10 @@ export const mediaApi = {
     putJSONBody<{ workId: number; assignments: LyricsAssignmentChange[] }>(`/api/works/${workId}/lyrics-assignments`, {
       assignments,
     }),
+  getWorkFileDisplayNames: (workId: number, signal?: AbortSignal) =>
+    getJSON<FileDisplayNames>(`/api/works/${workId}/file-display-names`, signal),
+  setWorkFileDisplayNames: (workId: number, change: FileDisplayNamesChange) =>
+    putJSONBody<FileDisplayNames>(`/api/works/${workId}/file-display-names`, change),
   cacheMediaLocation: (locationId: number) => postJSON<MediaCacheResult>(`/api/media/${locationId}/cache`),
   getCacheOverview: () => getJSON<CacheOverview>("/api/cache/overview"),
   clearTranscodeCache: () => deleteJSON<TranscodeCacheClearResult>("/api/cache/transcodes"),

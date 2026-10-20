@@ -694,7 +694,8 @@ func (e *workFolderEditExecution) arrange(ctx context.Context) error {
 // path before the folder is indexed, so playback progress, lyrics, and every
 // other reference to the file follow it. An item that still has a file
 // elsewhere, such as the same path in another folder of the work, stays with
-// that file, and the index gives the moved file an item of its own.
+// that file, and the index gives the moved file an item of its own. The
+// display names of the folders the moves rename follow them too.
 func (s *Server) keepWorkFolderEditMovedItems(ctx context.Context, payload workFolderEditJobPayload) error {
 	if len(payload.Moves) == 0 {
 		return nil
@@ -705,8 +706,8 @@ func (s *Server) keepWorkFolderEditMovedItems(ctx context.Context, payload workF
 	}
 	defer func() { _ = tx.Rollback() }()
 	type follow struct {
-		move                  workFolderEditMove
-		previous, fingerprint string
+		move                          workFolderEditMove
+		previous, source, fingerprint string
 	}
 	follows := []follow{}
 	code := strings.ToUpper(strings.TrimSpace(payload.WorkCode))
@@ -739,7 +740,11 @@ func (s *Server) keepWorkFolderEditMovedItems(ctx context.Context, payload workF
 		if err != nil {
 			return err
 		}
-		follows = append(follows, follow{move: move, previous: previous, fingerprint: fmt.Sprintf("local:%s:%s", code, relative)})
+		source, err := fetchPathRelativeToRoot(payload.TargetRoot, move.Path)
+		if err != nil {
+			return err
+		}
+		follows = append(follows, follow{move: move, previous: previous, source: source, fingerprint: fmt.Sprintf("local:%s:%s", code, relative)})
 	}
 	// Moving items first take a placeholder, so files that trade places can
 	// take each other's identity.
@@ -749,6 +754,10 @@ func (s *Server) keepWorkFolderEditMovedItems(ctx context.Context, payload workF
 			return err
 		}
 	}
+	// The folders the moves rename keep their display names.
+	prefix := fmt.Sprintf("local:%s:", code)
+	folderMoves := [][2]string{}
+	var workID int64
 	for _, entry := range follows {
 		taken, err := workFolderEditFingerprintTaken(ctx, tx, entry.fingerprint, code, payload)
 		if err != nil {
@@ -765,6 +774,17 @@ func (s *Server) keepWorkFolderEditMovedItems(ctx context.Context, payload workF
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, "UPDATE media_item SET fingerprint = ? WHERE id = ?", fingerprint, entry.move.MediaItemID); err != nil {
+			return err
+		}
+		if !taken {
+			folderMoves = append(folderMoves, [2]string{entry.source, strings.TrimPrefix(entry.fingerprint, prefix)})
+		}
+	}
+	if len(folderMoves) > 0 {
+		if err := tx.QueryRowContext(ctx, "SELECT work_id FROM media_item WHERE id = ?", follows[0].move.MediaItemID).Scan(&workID); err != nil {
+			return err
+		}
+		if err := followWorkFolderDisplayNames(ctx, tx, workID, code, folderMoves); err != nil {
 			return err
 		}
 	}

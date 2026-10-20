@@ -223,6 +223,21 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   while keeping unmatched text visible. Audio rows expose lyrics choice,
   preview, and reveal actions, and a directory control can show all folded
   lyrics. File management and Fetch selection do not fold lyrics.
+- Shows a local file or folder by its display name in the first of your
+  metadata languages that has one, and by its real name otherwise. While a
+  directory has such names, a **Display names** button sits at the top right
+  of Directory, highlighted while they show; its tooltip says that they are
+  not the real file names, and turning it off shows the real names. The choice
+  is remembered on that device, and a renamed entry keeps its real name in its
+  tooltip. The real
+  names still decide the order, track numbers, the recommended folder, and
+  lyrics matching, and file management, Fetch, previews, and downloads use
+  them. A user with library write access edits the names from the local
+  source's **Edit display names** option, one language at a time: an empty
+  field shows the real name, a file keeps its own extension, and **Copy real
+  names** and **Paste names** move the whole list out and back in, one name
+  per line. A file or folder that **Edit files** moves keeps its names; one
+  renamed outside Kikoto loses them.
 - The local source's **Manage lyrics** option lists every local audio file
   with a lyrics choice. A user with library write access can assign any local
   lyrics file of the work, including translated lyrics whose names do not

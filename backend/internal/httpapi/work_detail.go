@@ -173,12 +173,16 @@ type mediaItemDetail struct {
 }
 
 type fileLocationDetail struct {
-	ID              int64   `json:"id"`
-	FileSourceID    int64   `json:"fileSourceId"`
-	FileSourceCode  string  `json:"fileSourceCode"`
-	FileSourceName  string  `json:"fileSourceName"`
-	LocationType    string  `json:"locationType"`
-	Path            string  `json:"path"`
+	ID             int64  `json:"id"`
+	FileSourceID   int64  `json:"fileSourceId"`
+	FileSourceCode string `json:"fileSourceCode"`
+	FileSourceName string `json:"fileSourceName"`
+	LocationType   string `json:"locationType"`
+	Path           string `json:"path"`
+	// DisplayPath is Path with the display names the viewer's metadata
+	// languages give its file and folders, segment for segment. It is present
+	// only on a local location that has such a name.
+	DisplayPath     string  `json:"displayPath,omitempty"`
 	StreamURL       string  `json:"streamUrl"`
 	DownloadURL     string  `json:"downloadUrl"`
 	RemoteHash      string  `json:"remoteHash"`

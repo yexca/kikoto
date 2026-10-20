@@ -14,6 +14,8 @@ import { applyTrackLocation, preferredTrackLocation } from "../../../player/trac
 
 export type TreeNode = {
   name: string;
+  /** The name the viewer's metadata languages give the folder, when it differs from its real name. */
+  displayName?: string;
   path: string;
   children: Map<string, TreeNode>;
   files: TreeTrack[];
@@ -23,6 +25,8 @@ export type TreeTrack = {
   mediaItemId: number;
   locationId: number;
   title: string;
+  /** The name the viewer's metadata languages give the file, when it differs from its real name. */
+  displayTitle?: string;
   baseName: string;
   sourcePath: string;
   kind: string;
@@ -99,7 +103,9 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
       (candidate) => candidate.locationType === "local" && candidate.availability === "available",
     );
     const parts = displayPathParts(location.path, location.locationType, workCode, folderLabels);
+    const names = displayPathNames(location, parts.length);
     const fileName = parts.pop() ?? item.title;
+    const displayTitle = names.pop();
     const locationStreamUrl = playbackStreamURLForLocation(
       location.id,
       location.locationType,
@@ -107,17 +113,20 @@ export function buildTree(items: MediaItem[], fileSourceId: number | null, workC
       locationPlaybackURL(location),
     );
     let cursor = root;
-    for (const part of parts) {
+    parts.forEach((part, index) => {
       if (!cursor.children.has(part)) {
         const childPath = cursor.path ? `${cursor.path}/${part}` : part;
         cursor.children.set(part, { name: part, path: childPath, children: new Map(), files: [] });
       }
       cursor = cursor.children.get(part)!;
-    }
+      // Any file below a folder carries the folder's display name.
+      if (names[index] && !cursor.displayName) cursor.displayName = names[index];
+    });
     cursor.files.push({
       mediaItemId: item.id,
       locationId: location.id,
       title: fileName,
+      ...(displayTitle ? { displayTitle } : {}),
       baseName: baseNameWithoutExtension(fileName),
       sourcePath: parts.length > 0 ? `${parts.join("/")}/${fileName}` : fileName,
       kind: item.kind,
@@ -661,6 +670,24 @@ function displayPathParts(
 
 const noFolderLabels: ReadonlyMap<string, string> = new Map();
 
+/**
+ * The display names of the last `count` segments of a location's path, one per
+ * segment and undefined where the segment keeps its real name. A display path
+ * names the same segments as the path it stands for.
+ */
+function displayPathNames(location: { path: string; displayPath?: string }, count: number) {
+  const names: (string | undefined)[] = Array.from({ length: count }, () => undefined);
+  if (!location.displayPath) return names;
+  const real = location.path.split("/").filter(Boolean);
+  const shown = location.displayPath.split("/").filter(Boolean);
+  if (real.length !== shown.length || count > real.length) return names;
+  const offset = real.length - count;
+  for (let index = 0; index < count; index++) {
+    if (shown[offset + index] !== real[offset + index]) names[index] = shown[offset + index];
+  }
+  return names;
+}
+
 /** The index of the path segment that is the work's folder, or -1 when no segment names the work. */
 function localWorkRootIndex(parts: string[], workCode: string) {
   const code = workCode.toUpperCase();
@@ -717,6 +744,7 @@ function normalizeDisplayTree(root: TreeNode): TreeNode {
 
 function cloneTree(node: TreeNode, path: string): TreeNode {
   const clone: TreeNode = { name: node.name, path, children: new Map(), files: [...node.files] };
+  if (node.displayName) clone.displayName = node.displayName;
   for (const child of node.children.values()) {
     const childPath = path ? `${path}/${child.name}` : child.name;
     clone.children.set(child.name, cloneTree(child, childPath));
@@ -730,7 +758,16 @@ function collapseSingleChildFolders(node: TreeNode, isRoot = false): TreeNode {
     let next = collapseSingleChildFolders(child);
     while (!isRoot && next.files.length === 0 && next.children.size === 1) {
       const grandChild = Array.from(next.children.values())[0];
-      next = collapseSingleChildFolders({ ...grandChild, name: `${next.name}/${grandChild.name}`, path: next.path });
+      const displayName =
+        next.displayName || grandChild.displayName
+          ? `${next.displayName ?? next.name}/${grandChild.displayName ?? grandChild.name}`
+          : undefined;
+      next = collapseSingleChildFolders({
+        ...grandChild,
+        name: `${next.name}/${grandChild.name}`,
+        displayName,
+        path: next.path,
+      });
     }
     collapsed.children.set(next.name, next);
   }
