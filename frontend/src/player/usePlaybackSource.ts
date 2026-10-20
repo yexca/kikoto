@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { assetURL } from "@/lib/api";
 
@@ -36,6 +36,7 @@ export function usePlaybackSource(
     refs,
     currentTrack,
     currentPlaybackInstanceKey,
+    audioElementKey,
     isPlaying,
     currentTime,
     setCurrentTime,
@@ -65,8 +66,13 @@ export function usePlaybackSource(
     // Each load() resets playbackRate to defaultPlaybackRate, so both carry the choice across tracks.
     audio.defaultPlaybackRate = playbackRate;
     audio.playbackRate = playbackRate;
-  }, [playbackRate, refs]);
+  }, [audioElementKey, playbackRate, refs]);
 
+  const loadedSourceRef = useRef<{
+    audio: HTMLAudioElement;
+    instanceKey: string | null;
+    sourceURL: string;
+  } | null>(null);
   useEffect(() => {
     const audio = refs.audioRef.current;
     if (!audio) return;
@@ -74,6 +80,7 @@ export function usePlaybackSource(
     cancelPlaybackErrorCheck();
     clearPendingSeek();
     if (currentSourceURL === null || currentLocationId === null) {
+      loadedSourceRef.current = null;
       refs.sourceLoadingRef.current = false;
       audio.pause();
       audio.removeAttribute("src");
@@ -87,12 +94,24 @@ export function usePlaybackSource(
     audio.pause();
     audio.src = currentSourceURL;
     audio.load();
+    refs.restoredMediaItemRef.current = null;
+    // A replaced element loads the same instance again and resumes where the
+    // previous element was, so the clock and duration stay.
+    const loaded = loadedSourceRef.current;
+    loadedSourceRef.current = { audio, instanceKey: currentPlaybackInstanceKey, sourceURL: currentSourceURL };
+    if (
+      loaded &&
+      loaded.audio !== audio &&
+      loaded.instanceKey === currentPlaybackInstanceKey &&
+      loaded.sourceURL === currentSourceURL
+    )
+      return;
     refs.lastPlayerTimeCommitRef.current = null;
     setCurrentTime(0);
     setDuration(0);
     setDurationLocationId(currentLocationId);
-    refs.restoredMediaItemRef.current = null;
   }, [
+    audioElementKey,
     cancelPlaybackErrorCheck,
     clearPendingSeek,
     compatibilityPlaybackEnabled,
@@ -140,6 +159,7 @@ export function usePlaybackSource(
       refs.restoredMediaItemRef.current = currentPlaybackInstanceKey;
     }
   }, [
+    audioElementKey,
     compatibilityPlaybackEnabled,
     currentLocationId,
     currentMediaItemId,
@@ -161,6 +181,7 @@ export function usePlaybackSource(
       audio.pause();
     }
   }, [
+    audioElementKey,
     compatibilityPlaybackEnabled,
     isPlaying,
     currentTrack,

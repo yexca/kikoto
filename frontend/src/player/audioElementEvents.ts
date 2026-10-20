@@ -1,9 +1,28 @@
-import type { AudioHTMLAttributes, Dispatch, SetStateAction } from "react";
+import type { AudioHTMLAttributes, Dispatch, SetStateAction, SyntheticEvent } from "react";
 
 import { shouldCheckpointPause } from "./playbackStart";
 import { shouldCommitPlayerTime } from "./playerProgress";
 import type { PlayMode, SleepTimerState } from "./playerTypes";
 import type { PlaybackEngine } from "./usePlaybackEngine";
+
+type AudioEventHandler = (event: SyntheticEvent<HTMLAudioElement>) => void;
+
+/**
+ * An element the player replaced still reports its own teardown, which must
+ * not change the playback state of the element that took over.
+ */
+function forCurrentElement<T extends Record<string, AudioEventHandler>>(
+  handlers: T,
+  current: () => HTMLAudioElement | null,
+): T {
+  const guarded: Record<string, AudioEventHandler> = {};
+  for (const [name, handler] of Object.entries(handlers)) {
+    guarded[name] = (event) => {
+      if (event.currentTarget === current()) handler(event);
+    };
+  }
+  return guarded as T;
+}
 
 function knownDuration(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
@@ -82,7 +101,7 @@ export function audioElementEventProps(
     updatePlayingState(false);
   };
 
-  return {
+  const handlers = {
     onLoadStart: () => setIsBuffering(true),
     onWaiting: () => setIsBuffering(true),
     onCanPlay: () => setIsBuffering(false),
@@ -151,6 +170,7 @@ export function audioElementEventProps(
       saveProgress(false, true);
     },
     onEnded: handleEnded,
-    onError,
-  };
+    onError: () => onError(),
+  } satisfies AudioHTMLAttributes<HTMLAudioElement>;
+  return forCurrentElement(handlers, () => refs.audioRef.current);
 }

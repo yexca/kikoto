@@ -146,6 +146,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const engine = usePlaybackEngine(queue, currentIndex);
   const {
     refs,
+    audioElementKey,
     currentTrack,
     currentPlaybackKey,
     isPlaying,
@@ -201,7 +202,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   });
   // After the source hook, so the element already holds the current source.
   const loudnessMode = useLoudnessNormalizationMode(principalID);
-  useLoudnessNormalization(engine, loudnessMode, nextTrack);
+  const standbyAudio = useLoudnessNormalization(engine, loudnessMode, nextTrack);
   useRemoteStreamCaching(currentTrack, auth.demoMode, {
     cacheLocation: auth.hasPermission("remote:fetch"),
     cacheRemoteWork: auth.hasPermission("remote:fetch") && auth.hasPermission("remote:track"),
@@ -430,7 +431,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     <LibraryPlayerContext.Provider value={libraryValue}>
       <PlayerContext.Provider value={value}>
         <PlayerTimeContext.Provider value={timeValue}>{children}</PlayerTimeContext.Provider>
-        <audio ref={refs.audioRef} preload="metadata" {...audioEvents} />
+        {/* The player element stays first; the standby element takes its place when replaced. */}
+        <audio key={audioElementKey} ref={refs.audioRef} preload="metadata" {...audioEvents} />
+        {standbyAudio && <audio key={audioElementKey + 1} ref={refs.standbyAudioRef} preload="none" />}
         {speakerGuard.confirming && (
           <SpeakerPlaybackDialog onCancel={speakerGuard.cancel} onConfirm={speakerGuard.confirm} />
         )}

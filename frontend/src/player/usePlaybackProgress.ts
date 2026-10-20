@@ -9,11 +9,11 @@ import type { PlaybackEngine } from "./usePlaybackEngine";
 
 /** Captures eligible Resume checkpoints locally. HTTP cadence belongs to the scheduler. */
 export function usePlaybackProgress(engine: PlaybackEngine, canSaveRemotely: boolean, principalID: ClientPrincipalID) {
-  const { refs, currentTrack, currentPlaybackInstanceKey, duration, durationLocationId } = engine;
+  const { refs, currentTrack, currentPlaybackInstanceKey, duration, durationLocationId, audioElementKey } = engine;
   const scope = canSaveRemotely ? currentClientStorageScope(principalID) : null;
   const session = apiSessionForPrincipal(principalID);
   const schedulerRef = usePlaybackReportScheduler(scope, session, principalID);
-  useListeningSessionRecorder(refs.audioRef, schedulerRef, scope, currentTrack, session);
+  useListeningSessionRecorder(refs.audioRef, schedulerRef, scope, currentTrack, session, audioElementKey);
   const latestSaveRef = useRef<(completed: boolean, force?: boolean) => void>(() => {});
   const lastStageRef = useRef(0);
   const lastInstanceRef = useRef<string | null>(null);
