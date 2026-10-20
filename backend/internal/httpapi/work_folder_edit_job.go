@@ -156,13 +156,19 @@ func (e *workFolderEditExecution) locate(ctx context.Context) error {
 
 // settleCancelledWorkFolderEdit puts back what a cancelled edit lifted and
 // deletes what it collected when no executor was working on it, such as an
-// edit waiting for a retry or for recovery after a restart. It waits for any
-// job that is changing library folders. An edit whose folder is offline keeps
-// its staging folder until it can be settled; the folders it merges are
-// folders of the work again either way.
+// edit waiting for a retry, for recovery after a restart, or for the library
+// folders. It first waits, until ctx ends, for any job that is changing
+// library folders. The folders the edit merges are folders of the work again,
+// also while its folder is offline; an offline folder, or a wait that ctx
+// ended, leaves the edit for settleCancelledWorkFolderEdits at a later start.
 func (s *Server) settleCancelledWorkFolderEdit(ctx context.Context, runID int64) {
-	s.mediaCleanupMu.Lock()
+	if err := s.mediaCleanupMu.LockContext(ctx); err != nil {
+		return
+	}
 	defer s.mediaCleanupMu.Unlock()
+	// A settlement that started finishes, so a stop never leaves it between
+	// moved files.
+	ctx = context.WithoutCancel(ctx)
 	defer func() { _ = s.restoreMediaCleanupFolders(ctx, runID) }()
 	execution := &workFolderEditExecution{server: s}
 	err := s.db.QueryRowContext(ctx, `
@@ -188,6 +194,67 @@ func (s *Server) settleCancelledWorkFolderEdit(ctx context.Context, runID int64)
 	if kept := execution.discardStaging(ctx); kept > 0 {
 		slog.Error("cancelled work folder edit keeps moved files in staging", "run_id", runID, "files", kept)
 	}
+}
+
+// settleCancelledWorkFolderEdits runs at startup and settles each cancelled
+// edit that still has its staging folder or a merged folder it claimed, such
+// as one whose settlement a stop interrupted or whose folder was offline.
+func (s *Server) settleCancelledWorkFolderEdits(ctx context.Context) {
+	runIDs, err := s.unsettledCancelledWorkFolderEdits(ctx)
+	if err != nil {
+		slog.Error("find unsettled cancelled work folder edits", "error", err)
+		return
+	}
+	for _, runID := range runIDs {
+		if ctx.Err() != nil {
+			return
+		}
+		s.settleCancelledWorkFolderEdit(ctx, runID)
+	}
+}
+
+func (s *Server) unsettledCancelledWorkFolderEdits(ctx context.Context) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT job.workflow_run_id, job.payload_json,
+			EXISTS (SELECT 1 FROM work_folder_location AS folder
+				WHERE folder.cleanup_run_id = job.workflow_run_id AND folder.state = 'pending_cleanup')
+		FROM workflow_job AS job
+		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
+		WHERE job.worker_type = ? AND run.status = 'cancelled'
+			AND job.id = (SELECT MAX(latest.id) FROM workflow_job AS latest
+				WHERE latest.workflow_run_id = job.workflow_run_id AND latest.worker_type = job.worker_type)
+		ORDER BY job.workflow_run_id
+	`, workFolderEditWorkerType)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var runIDs []int64
+	for rows.Next() {
+		var runID int64
+		var payloadJSON string
+		var claimsFolders bool
+		if err := rows.Scan(&runID, &payloadJSON, &claimsFolders); err != nil {
+			return nil, err
+		}
+		if claimsFolders || s.workFolderEditStagingExists(runID, payloadJSON) {
+			runIDs = append(runIDs, runID)
+		}
+	}
+	return runIDs, rows.Err()
+}
+
+func (s *Server) workFolderEditStagingExists(runID int64, payloadJSON string) bool {
+	var payload workFolderEditJobPayload
+	if err := decodeWorkflowJobPayload(payloadJSON, &payload); err != nil {
+		return false
+	}
+	stagingAbs, err := safeDataPath(s.cfg.DataRoot, workFolderEditStagingRoot(payload.TransactionPool, runID))
+	if err != nil {
+		return false
+	}
+	_, err = os.Lstat(stagingAbs)
+	return err == nil
 }
 
 func (e *workFolderEditExecution) run(ctx context.Context) error {

@@ -732,9 +732,12 @@ A running job interrupted by the stop is settled before exit. A recoverable job
 returns to the queue with its checkpoint and does not spend its resume budget,
 because a requested stop is not a failure; a job that cannot resume from a
 checkpoint fails with the stop reason. Activity records a
-`job.interrupted_by_stop` event in both cases. Fetch publication does not start
-once a stop has begun, and a publication that already started finishes its
-directory swap and records it before the job stops.
+`job.interrupted_by_stop` event in both cases. A job waiting for the
+`media:cleanup` resource while another job, scan, or Fetch publication changes
+library folders stops waiting when the service stops or its run is cancelled.
+Fetch publication does not start once a stop has begun, and a publication that
+already started finishes its directory swap and records it before the job
+stops.
 
 Startup recovery is the path for crashes, forced kills, and a stop that
 exceeds its deadline. No lease from an earlier process is live, so every
