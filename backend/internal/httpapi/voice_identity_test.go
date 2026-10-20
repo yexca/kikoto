@@ -2,10 +2,136 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"reflect"
 	"testing"
 )
+
+// Fetching a work stores its DLsite snapshot and, moments later, a remote
+// source's snapshot of the same work. The remote snapshot is the work's latest,
+// yet the voice actor it credits is the DLsite creator the DLsite snapshot
+// names, so the next projection gives that person the DLsite id beside the
+// remote one, without a second person, and a remote snapshot naming no voice
+// actor does not credit the work to the unknown voice actor.
+func TestVoiceCreditProjectionTakesDLsiteIDsBehindNewerRemoteSnapshot(t *testing.T) {
+	db := openMigratedTestDB(t)
+	ctx := context.Background()
+	if _, err := db.Exec(`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000000', 'Example Work'), (2, 'RJ00000001', 'Example Work 2')`); err != nil {
+		t.Fatal(err)
+	}
+	var remoteProviderID int64
+	if err := db.QueryRow(`INSERT INTO metadata_provider (code, display_name) VALUES ('test_remote_metadata', 'Test remote metadata') RETURNING id`).Scan(&remoteProviderID); err != nil {
+		t.Fatal(err)
+	}
+	insertProjectionSnapshot(t, db, 1, "2000-01-01 00:00:00", `{"workno":"RJ00000000","creaters":{"voice_by":[{"id":"100","name":"Example Voice A","classification":"voice_by"}]}}`)
+	insertProjectionSnapshot(t, db, 2, "2000-01-01 00:00:00", `{"workno":"RJ00000001","creaters":{"voice_by":[{"id":"101","name":"Example Voice B","classification":"voice_by"}]}}`)
+	remote := map[int64]string{
+		1: `{"source_id":"RJ00000000","vas":[{"id":"va-1","name":"Example Voice A"}]}`,
+		2: `{"source_id":"RJ00000001","vas":[]}`,
+	}
+	for _, workID := range []int64{1, 2} {
+		var snapshotID int64
+		if err := db.QueryRow(`
+			INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json, fetched_at)
+			VALUES (?, ?, 'example', ?, '2000-01-01 00:00:05') RETURNING id
+		`, workID, remoteProviderID, remote[workID]).Scan(&snapshotID); err != nil {
+			t.Fatal(err)
+		}
+		// An earlier projection version projected only the remote snapshot.
+		if _, err := db.Exec(`
+			INSERT INTO work_snapshot_projection (work_id, kind, snapshot_id, version, input_hash)
+			VALUES (?, 'voice_credit', ?, ?, 'earlier')
+		`, workID, snapshotID, voiceCreditProjectionVersion-1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Persisting the remote work credited its voice actor with the remote id.
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syncVoiceCreditSnapshot(ctx, tx, voiceCreditSnapshotRow{
+		WorkID: 1, ProviderID: sql.NullInt64{Int64: remoteProviderID, Valid: true}, Raw: remote[1],
+	}); err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := (&Server{db: db}).projectChangedVoiceCredits(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	type identity struct{ Person, Provider, ID string }
+	rows, err := db.Query(`
+		SELECT person.display_name, provider.code, external.external_id
+		FROM person_external_id AS external
+		INNER JOIN person ON person.id = external.person_id
+		INNER JOIN metadata_provider AS provider ON provider.id = external.provider_id
+		WHERE external.id_type = 'voice_actor_id'
+		ORDER BY person.display_name, provider.code
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identities := []identity{}
+	for rows.Next() {
+		var row identity
+		if err := rows.Scan(&row.Person, &row.Provider, &row.ID); err != nil {
+			t.Fatal(err)
+		}
+		identities = append(identities, row)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	wantIdentities := []identity{
+		{"Example Voice A", "dlsite", "100"},
+		{"Example Voice A", "test_remote_metadata", "va-1"},
+		{"Example Voice B", "dlsite", "101"},
+	}
+	if !reflect.DeepEqual(identities, wantIdentities) {
+		t.Fatalf("voice actor ids = %v, want %v", identities, wantIdentities)
+	}
+
+	type credit struct {
+		WorkID           int64
+		Person, Provider string
+	}
+	rows, err = db.Query(`
+		SELECT credit.work_id, person.display_name, provider.code
+		FROM work_credit AS credit
+		INNER JOIN person ON person.id = credit.person_id
+		INNER JOIN metadata_provider AS provider ON provider.id = credit.provider_id
+		WHERE credit.role = 'voice_actor'
+		ORDER BY credit.work_id, person.display_name
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credits := []credit{}
+	for rows.Next() {
+		var row credit
+		if err := rows.Scan(&row.WorkID, &row.Person, &row.Provider); err != nil {
+			t.Fatal(err)
+		}
+		credits = append(credits, row)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	wantCredits := []credit{{1, "Example Voice A", "dlsite"}, {2, "Example Voice B", "dlsite"}}
+	var people int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM person`).Scan(&people); err != nil {
+		t.Fatal(err)
+	}
+	if people != 2 || !reflect.DeepEqual(credits, wantCredits) {
+		t.Fatalf("people = %d, voice credits = %v; want 2 and %v", people, credits, wantCredits)
+	}
+}
 
 // A library that credited voice actors by name stored one DLsite creator as
 // two people when an original and its translation spell the name differently.
