@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LOUDNESS_TARGET_LUFS, loudnessGain, normalizeLoudnessMode } from "./loudnessNormalization";
+import {
+  createMeasurementRetries,
+  LOUDNESS_TARGET_LUFS,
+  loudnessGain,
+  normalizeLoudnessMode,
+} from "./loudnessNormalization";
 import { applyElementVolume } from "./usePlaybackEngine";
 
 const decibels = (gain: number) => Math.round(20 * Math.log10(gain) * 10) / 10;
@@ -50,5 +55,35 @@ describe("applyElementVolume", () => {
     refs.sleepFadeRef.current = 1;
     applyElementVolume(refs);
     expect(audio.volume).toBe(1);
+  });
+});
+
+describe("createMeasurementRetries", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("asks again for the current track when the next one is busy too", () => {
+    vi.useFakeTimers();
+    const retries = createMeasurementRetries(5000);
+    const asked: number[] = [];
+    retries.schedule(1, () => asked.push(1));
+    retries.schedule(2, () => asked.push(2));
+    vi.advanceTimersByTime(5000);
+    expect(asked.sort()).toEqual([1, 2]);
+  });
+
+  it("keeps one retry per track and stops every retry when cleared", () => {
+    vi.useFakeTimers();
+    const retries = createMeasurementRetries(5000);
+    const asked: number[] = [];
+    retries.schedule(1, () => asked.push(1));
+    retries.schedule(1, () => asked.push(1));
+    vi.advanceTimersByTime(5000);
+    expect(asked).toEqual([1]);
+    retries.schedule(2, () => asked.push(2));
+    retries.clear();
+    vi.advanceTimersByTime(5000);
+    expect(asked).toEqual([1]);
   });
 });

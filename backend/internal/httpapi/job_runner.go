@@ -193,11 +193,17 @@ func (s *Server) runNextQueuedWorkflowJob(ctx context.Context) error {
 // folders, or scans them, while it holds the media:cleanup resource, so no
 // custom work renames a folder under it.
 func (s *Server) executeClaimedWorkflowJobWithResources(ctx context.Context, job workflowJobRecord) error {
-	if job.ResourceKey == mediaCleanupResourceKey || job.WorkerType == "local_library_scan" {
+	if changesLibraryFolders(job.ResourceKey, job.WorkerType) {
 		s.mediaCleanupMu.Lock()
 		defer s.mediaCleanupMu.Unlock()
 	}
 	return s.executeClaimedWorkflowJob(ctx, job)
+}
+
+// changesLibraryFolders reports whether a job changes or scans library folders
+// and so holds Server.mediaCleanupMu while it runs.
+func changesLibraryFolders(resourceKey, workerType string) bool {
+	return resourceKey == mediaCleanupResourceKey || workerType == "local_library_scan"
 }
 
 func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobRecord) (runErr error) {
@@ -350,6 +356,9 @@ func (s *Server) settleUnfinishedWorkflowJob(ctx context.Context, jobCtx context
 
 // Short synchronous API operations may execute only if they are at the head
 // of the same durable queue. Otherwise the background worker owns execution.
+// An operation that changes library folders holds Server.mediaCleanupMu until
+// it is settled, like a claimed job; while another job, a Fetch publication, or
+// a custom work holds it, the operation stays queued for the background worker.
 func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobRecord) (context.Context, context.CancelFunc, error) {
 	s.layoutMigrationMu.Lock()
 	defer s.layoutMigrationMu.Unlock()
@@ -357,21 +366,29 @@ func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobReco
 		return ctx, func() {}, errWorkflowJobQueued
 	}
 	var headID int64
-	err := s.db.QueryRowContext(ctx, `SELECT job.id FROM workflow_job AS job
+	var resourceKey, workerType string
+	err := s.db.QueryRowContext(ctx, `SELECT job.id, job.resource_key, job.worker_type FROM workflow_job AS job
 		INNER JOIN workflow_run AS run ON run.id = job.workflow_run_id
 		WHERE job.status = 'queued' AND run.status = 'queued'
 			AND (job.available_at IS NULL OR job.available_at <= CURRENT_TIMESTAMP)
-		ORDER BY job.priority DESC, job.created_at ASC, job.id ASC LIMIT 1`).Scan(&headID)
+		ORDER BY job.priority DESC, job.created_at ASC, job.id ASC LIMIT 1`).Scan(&headID, &resourceKey, &workerType)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && headID != job.ID) {
 		return ctx, func() {}, errWorkflowJobQueued
 	}
 	if err != nil {
 		return ctx, func() {}, err
 	}
+	holdsLibrary := changesLibraryFolders(resourceKey, workerType)
+	if holdsLibrary && !s.mediaCleanupMu.TryLock() {
+		return ctx, func() {}, errWorkflowJobQueued
+	}
 	lease := s.workflowLeases.reserve()
 	claimed, ok, err := s.claimQueuedWorkflowJob(ctx, lease, job.ID)
 	if err != nil || !ok {
 		s.workflowLeases.release(lease)
+		if holdsLibrary {
+			s.mediaCleanupMu.Unlock()
+		}
 		if err == nil {
 			err = errWorkflowJobQueued
 		}
@@ -381,6 +398,9 @@ func (s *Server) leaseInlineWorkflowJob(ctx context.Context, job workflowJobReco
 	jobCtx, stop := s.startWorkflowJobHeartbeat(ctx, job)
 	s.workflowLeases.activate(lease, job.RunID, job.ID, stop)
 	return jobCtx, func() {
+		if holdsLibrary {
+			defer s.mediaCleanupMu.Unlock()
+		}
 		// The lease stays live until the job is settled, so the orphan sweep
 		// never races the caller's own result.
 		defer s.workflowLeases.release(lease)
