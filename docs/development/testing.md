@@ -257,12 +257,11 @@ Validation runs in two tiers that share one set of job definitions:
 | Tier | Workflow | Runs on | Selects | Decides |
 | --- | --- | --- | --- | --- |
 | `pr` | `PR` | Every pull request | Jobs for the changed paths | Whether the pull request may merge |
-| `full` | `Full` | Every push to `main`, and any branch or tag on request | Every job | Whether `main` is releasable |
-| `full` | `Release` | A version tag | Every job | Whether the release is built and published |
+| `full` | `Full` | Every push to `main`, and any branch or tag on request | Every job | Whether a commit is releasable |
 
 `.github/workflows/validate.yml` holds the jobs and has no trigger of its own.
-`pr.yml`, `full.yml`, and `release.yml` call it with an explicit `tier`, so
-a tier never depends on the event or branch that started a run.
+`pr.yml` and `full.yml` call it with an explicit `tier`, so a tier never
+depends on the event or branch that started a run.
 
 ```text
 Style + plan -> Backend (static / coverage / race 1-4), Frontend,
@@ -310,7 +309,7 @@ selects all jobs. A change reaches only the jobs that consume it:
   it is listed.
 
 The `full` tier ignores changed paths and always plans every job, so whatever
-a pull request leaves out is validated on `main` and before a release.
+a pull request leaves out is validated on `main` before a release can use it.
 
 `Gate` evaluates the plan against the job results, even after failures. It
 rejects failed, cancelled, missing, or unexpectedly skipped results and a
@@ -336,7 +335,7 @@ API-intercepted browser suite remain separate checks.
 A new push to a pull request cancels that pull request's running validation.
 Every commit pushed to `main` runs to completion alongside any other run.
 Caches saved by `Full` on `main` are the ones a pull request restores.
-`Release` runs the `full` tier on the tagged commit itself, as described in
+`Release` builds only a commit whose `Full` run succeeded, as described in
 [Version Source](commit-and-release.md#version-source). Start `Full` from the
 Actions page to validate a branch completely before merging or tagging it.
 Parallel validation reduces elapsed time but can spend more runner minutes when

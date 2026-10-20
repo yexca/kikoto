@@ -16,6 +16,9 @@ jobs:
     name: Verify release source
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      actions: read # Reads the Full runs of the tagged commit.
+      contents: read
     outputs:
       version_name: ${{ steps.version.outputs.version_name }}
 
@@ -55,24 +58,33 @@ jobs:
             exit 1
           fi
 
-  # Complete validation of the tagged commit itself. Every build below needs
-  # it, so nothing is built for publication from a commit that did not pass.
-  validate:
-    name: Validate
-    needs:
-      - verify_release
-    uses: ./.github/workflows/validate.yml
-    with:
-      tier: full
+      # Full runs every validation job on the same commit, so its result is the
+      # release's validation. Every build below needs this job, so nothing is
+      # built for publication from a commit without a passing Full run.
+      - name: Require a successful Full run for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          runs_api="repos/${GITHUB_REPOSITORY}/actions/workflows/full.yml/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          passed="$(gh api "${runs_api}&status=success" --jq '.workflow_runs | length')"
+          if [ "$passed" -gt 0 ]; then
+            echo "Full passed for $GITHUB_SHA."
+            exit 0
+          fi
+          echo "No successful Full run exists for $GITHUB_SHA. Wait for Full to pass, or start it on $GITHUB_REF_NAME from the Actions page, then rerun this release." >&2
+          gh api "$runs_api" --jq '.workflow_runs[] | "\(.html_url) status=\(.status) conclusion=\(.conclusion)"' >&2
+          exit 1
 
   build_image:
     name: Build image
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
     needs:
       - verify_release
-      - validate
 
     steps:
       - name: Checkout
@@ -95,9 +107,9 @@ jobs:
   build_apk:
     name: Build and upload APK
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     needs:
       - verify_release
-      - validate
 
     steps:
       - name: Checkout
@@ -162,9 +174,9 @@ jobs:
   build_ipa:
     name: Build and upload IPA
     runs-on: macos-26
+    timeout-minutes: 45
     needs:
       - verify_release
-      - validate
 
     steps:
       - name: Checkout
@@ -200,6 +212,7 @@ jobs:
   draft_release:
     name: Draft GitHub release
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write
     needs:
@@ -247,6 +260,7 @@ jobs:
   push_image:
     name: Push image
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -304,6 +318,7 @@ jobs:
   publish_release:
     name: Publish GitHub release
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
       contents: write
     needs:
