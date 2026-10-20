@@ -11,6 +11,7 @@ import { CollectionPagination } from "@/components/collection/CollectionPaginati
 import { api, type VoiceAlias, type VoiceSummary, type VoiceSummaryPage } from "@/lib/api";
 import { creatorCoverUrl } from "@/lib/creatorApi";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { voiceDetailPath } from "@/lib/voiceRoute";
 import { MaintenanceToolbar, useMaintenanceSearch, type MaintenanceToolbarSlots } from "./MaintenanceControls";
 import { MetadataEntryCover } from "./MetadataEntryCover";
 import {
@@ -264,7 +265,7 @@ function VoiceAliasRow({
           <MetadataEntryCover url={creatorCoverUrl(voice)} name={voice.displayName} />
           <a
             onClick={onNavigate}
-            href={`/voices/${voice.personId}`}
+            href={voiceDetailPath(voice.routeKey) ?? undefined}
             className="min-w-0 font-medium transition-colors hover:text-primary"
           >
             {voice.displayName}

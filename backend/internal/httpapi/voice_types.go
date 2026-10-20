@@ -5,6 +5,7 @@ const unknownVoiceActorName = "unknown"
 
 type voiceSummary struct {
 	PersonID        int64              `json:"personId"`
+	RouteKey        string             `json:"routeKey"`
 	DisplayName     string             `json:"displayName"`
 	Aliases         []string           `json:"aliases"`
 	KnownWorks      int                `json:"knownWorks"`

@@ -4,6 +4,7 @@ import {
   workDetailCodeFromLocation,
   workDetailOwnerPage,
 } from "./workDetailNavigation";
+import { isVoiceDetailPath } from "../lib/voiceRoute";
 import { isWorkCodePath } from "../lib/workCode";
 
 export type AppPage = PageID | "not-found";
@@ -24,7 +25,7 @@ export function pageFromPath(rawPath: string): AppPage {
   if (/^\/circles\/[^/]+(?:\/series(?:\/[^/]+)?)?$/.test(path)) {
     return "circles";
   }
-  if (path === "/voices" || /^\/voices\/\d+$/.test(path)) {
+  if (path === "/voices" || isVoiceDetailPath(path)) {
     return "voice-actors";
   }
   if (

@@ -3,7 +3,9 @@ import type { PageID } from "./navigation";
 import { historyStateWithWorkDetailOwner, workDetailCodeFromLocation } from "./workDetailNavigation";
 import { normalizeInternalLocation } from "../lib/browserHistory";
 
-const storagePrefix = "kikoto:mobile-tab-state:v2:";
+// The version names the location form a snapshot holds; a snapshot under
+// another version is not resumed, so its tab opens at its root.
+const storagePrefix = "kikoto:mobile-tab-state:v3:";
 const maxSnapshotLength = 192 * 1024;
 
 export type MobileTabSnapshot = {

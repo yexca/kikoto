@@ -374,6 +374,9 @@ func (s *Server) buildCircleCatalogWork(ctx context.Context, row circleCatalogWo
 	if err := s.applyManualOverridesToCircleWork(ctx, &item); err != nil {
 		return item, false, err
 	}
+	if err := s.fillVoiceCreditRouteKeys(ctx, item.VoiceCredits); err != nil {
+		return item, false, err
+	}
 	return item, true, nil
 }
 

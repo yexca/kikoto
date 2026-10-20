@@ -38,6 +38,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { openVoiceRoute } from "@/lib/voiceNavigationState";
+import { voiceDetailPath } from "@/lib/voiceRoute";
 import { useAuth } from "@/auth/AuthProvider";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { badgeVariants } from "@/components/ui/badge";
@@ -470,7 +471,9 @@ function DetailCreditLine({
   entityResolver: DetailEntityResolver;
 }) {
   const credits =
-    voiceCredits.length > 0 ? voiceCredits : voiceActors.map((displayName) => ({ personId: 0, displayName }));
+    voiceCredits.length > 0
+      ? voiceCredits
+      : voiceActors.map((displayName): VoiceCredit => ({ personId: 0, routeKey: "", displayName }));
   return (
     <div className="flex min-w-0 items-baseline gap-3 text-sm" aria-label={i18n.t("libraryDetail.voiceActors")}>
       <span className="shrink-0 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">CV</span>
@@ -482,8 +485,8 @@ function DetailCreditLine({
                 type="button"
                 className="rounded-sm font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
                 onClick={() =>
-                  credit.personId > 0
-                    ? openVoiceRoute(credit.personId)
+                  voiceDetailPath(credit.routeKey)
+                    ? openVoiceRoute(credit.routeKey)
                     : entityResolver.resolveEntity("voice", credit.displayName)
                 }
               >

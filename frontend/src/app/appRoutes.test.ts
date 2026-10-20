@@ -16,7 +16,10 @@ describe("appPageForLocation", () => {
     expect(appPageForLocation("/?q=sample", {})).toBe("library");
     expect(appPageForLocation("/favorites", {})).toBe("favorites");
     expect(appPageForLocation("/circles/RG00000001/series/example", {})).toBe("circles");
-    expect(appPageForLocation("/voices/7", {})).toBe("voice-actors");
+    expect(appPageForLocation("/voices/00000001", {})).toBe("voice-actors");
+    expect(appPageForLocation("/voices/local-7", {})).toBe("voice-actors");
+    expect(appPageForLocation("/voices/local-07", {})).toBe("not-found");
+    expect(appPageForLocation("/voices/Example%20Voice", {})).toBe("not-found");
     expect(appPageForLocation("/library/unknown/deeper", {})).toBe("not-found");
   });
 
@@ -27,7 +30,7 @@ describe("appPageForLocation", () => {
     expect(appPageForLocation("/RJ00000000", null)).toBe("library");
     expect(appPageForLocation("/RJ00000000", { __kikotoWorkDetailOwner: "unknown" })).toBe("library");
     // The owner only applies to work detail entries.
-    expect(appPageForLocation("/voices/7", owned)).toBe("voice-actors");
+    expect(appPageForLocation("/voices/00000001", owned)).toBe("voice-actors");
   });
 });
 

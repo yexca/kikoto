@@ -13,6 +13,7 @@ export type CreatorSubscription = {
   seriesId?: string;
   seriesName?: string;
   personId?: number;
+  voiceRouteKey?: string;
   voiceName?: string;
   watchAvailability: boolean;
   /** Pending until the catalog has a baseline from a successful pull. */
@@ -76,6 +77,7 @@ export type ReleaseFeedSubject = {
   seriesId?: string;
   seriesName?: string;
   personId?: number;
+  voiceRouteKey?: string;
   voiceName?: string;
 };
 

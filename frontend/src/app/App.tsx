@@ -87,6 +87,7 @@ import { normalizeLibraryBrowseLocation, readLastLibraryLocation } from "@/lib/l
 import { libraryTagSearchLocation } from "@/lib/libraryTagSearch";
 import { isCircleListLocation, readLastCircleListLocation } from "@/lib/circleNavigationState";
 import { isVoiceListLocation, readLastVoiceListLocation } from "@/lib/voiceNavigationState";
+import { isVoiceDetailPath, voiceDetailPath } from "@/lib/voiceRoute";
 import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
 import {
   canNavigateHistoryBack,
@@ -272,7 +273,7 @@ function AuthenticatedApp() {
         kind === "tags"
           ? libraryTagSearchLocation("tag", entry.name, "/")
           : kind === "voices"
-            ? `/voices/${entry.id}`
+            ? voiceDetailPath(entry.routeKey)
             : entry.externalId
               ? `/circles/${encodeURIComponent(entry.externalId)}`
               : null;
@@ -1195,7 +1196,7 @@ function isMobileTabDetailLocation(id: PageID, location: string) {
       return pageFromPath(pathname) === "library" && normalizeLibraryBrowseLocation(listLocation) === null;
     }
     if (id === "circles") return /^\/circles\/[^/]+(?:\/series(?:\/[^/]+)?)?$/i.test(pathname);
-    if (id === "voice-actors") return /^\/voices\/\d+$/i.test(pathname);
+    if (id === "voice-actors") return isVoiceDetailPath(pathname);
   } catch {
     return false;
   }

@@ -1,4 +1,5 @@
 import { NAVIGATION_EVENT, historyStateWithReturn, normalizeInternalLocation } from "@/lib/browserHistory";
+import { voiceDetailPath, voiceRouteKeyFromPath } from "@/lib/voiceRoute";
 import { isWorkCodePath } from "@/lib/workCode";
 
 const lastVoiceListLocationPrefix = "kikoto:voice-list-location:v1:";
@@ -36,13 +37,24 @@ function storageKey(storageScope: string) {
   return `${lastVoiceListLocationPrefix}${storageScope}`;
 }
 
-export function openVoiceRoute(personId: number) {
+/** Opens the voice detail page a server-reported route key addresses. */
+export function openVoiceRoute(routeKey: string | null | undefined) {
+  const path = voiceDetailPath(routeKey);
+  if (!path) return;
   const returnTo = currentVoiceReturnPath();
-  window.history.pushState(
-    historyStateWithReturn(returnTo, voiceReturnLabelForLocation(returnTo)),
-    "",
-    `/voices/${personId}`,
-  );
+  window.history.pushState(historyStateWithReturn(returnTo, voiceReturnLabelForLocation(returnTo)), "", path);
+  window.dispatchEvent(new Event(NAVIGATION_EVENT));
+}
+
+/**
+ * Replaces a voice detail URL that is still open at the requested route key
+ * with the person's canonical key, keeping the entry's query, hash, and state.
+ */
+export function replaceVoiceRouteKey(requestedKey: string, canonicalKey: string) {
+  const path = voiceDetailPath(canonicalKey);
+  if (!path || requestedKey === canonicalKey || voiceRouteKeyFromPath(window.location.pathname) !== requestedKey)
+    return;
+  window.history.replaceState(window.history.state, "", `${path}${window.location.search}${window.location.hash}`);
   window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 

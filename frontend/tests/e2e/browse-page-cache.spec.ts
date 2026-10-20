@@ -20,6 +20,7 @@ import {
   runtimeSettingsFixture,
   voiceCatalogRefreshFixture,
   voiceDetailFixture,
+  voiceRouteFixture,
   voiceKnownWorkFixture,
   voiceWorksPageFixture,
   voiceSummaryFixture,
@@ -210,6 +211,10 @@ async function mockBrowsePages(page: Page, requests: Record<string, number>, opt
     if (url.pathname === "/api/voices") {
       count("voices");
       await route.fulfill({ json: voiceSummaryPageFixture([cachedVoice]) });
+      return;
+    }
+    if (url.pathname === "/api/voice-routes/local-7") {
+      await route.fulfill({ json: voiceRouteFixture(cachedVoice) });
       return;
     }
     if (url.pathname === "/api/voices/7") {
@@ -596,7 +601,7 @@ test("restores cached mobile detail workspaces through bottom navigation history
   await voicesTab.click();
   await expect(page).toHaveURL(/\/voices(?:\?|$)/);
   await page.getByRole("button", { name: "Open Example Voice", exact: true }).click();
-  await expect(page).toHaveURL(/\/voices\/7$/);
+  await expect(page).toHaveURL(/\/voices\/local-7$/);
   await expect(page.getByRole("heading", { name: "Example Voice", exact: true })).toBeVisible();
 
   await libraryTab.click();
@@ -608,7 +613,7 @@ test("restores cached mobile detail workspaces through bottom navigation history
   await expect(page.getByRole("heading", { name: "Example Circle", exact: true })).toBeVisible();
 
   await voicesTab.click();
-  await expect(page).toHaveURL(/\/voices\/7$/);
+  await expect(page).toHaveURL(/\/voices\/local-7$/);
   await expect(page.getByRole("heading", { name: "Example Voice", exact: true })).toBeVisible();
 
   await page.goBack();
@@ -640,7 +645,7 @@ test("active mobile tabs return entity details to their browse lists", async ({ 
 
   await page.goto("/voices?q=Example");
   await page.getByRole("button", { name: "Open Example Voice", exact: true }).click();
-  await expect(page).toHaveURL(/\/voices\/7$/);
+  await expect(page).toHaveURL(/\/voices\/local-7$/);
   await page.locator("footer").getByRole("button", { name: "Voice Actors", exact: true }).click();
   await expect(page).toHaveURL((url) => url.pathname === "/voices" && url.searchParams.get("q") === "Example");
   await expect(page.getByRole("button", { name: "Back to voices", exact: true })).toHaveCount(0);
@@ -648,7 +653,7 @@ test("active mobile tabs return entity details to their browse lists", async ({ 
 
 for (const creator of [
   { path: "/circles", tab: "Circles", name: "Example Circle", detail: "/circles/RG012345", back: "Back to circle" },
-  { path: "/voices", tab: "Voice Actors", name: "Example Voice", detail: "/voices/7", back: "Back to voices" },
+  { path: "/voices", tab: "Voice Actors", name: "Example Voice", detail: "/voices/local-7", back: "Back to voices" },
 ]) {
   for (const desktop of [false, true]) {
     test(`${desktop ? "@desktop " : ""}nested creator works keep Library reachable from ${creator.path}`, async ({

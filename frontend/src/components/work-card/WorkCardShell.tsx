@@ -47,6 +47,7 @@ import { ageRatingPresentation } from "@/lib/ageRating";
 import { openLibraryAgeRatingSearch } from "@/lib/libraryAgeRatingSearch";
 import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { cn } from "@/lib/tailwindClassNames";
+import { voiceDetailPath } from "@/lib/voiceRoute";
 import { visibleBadgeCountForRows } from "./tagLayout";
 
 export type WorkCardBadge = {
@@ -158,8 +159,9 @@ export function useWorkCardEntityActions(
   const voiceOpen = (name: string) => {
     const nameKey = name.trim().toLocaleLowerCase();
     const credit = work.voiceCredits?.find((item) => item.displayName.trim().toLocaleLowerCase() === nameKey);
-    if (credit?.personId) {
-      openEntityRoute(`/voices/${credit.personId}`);
+    const creditPath = voiceDetailPath(credit?.routeKey);
+    if (creditPath) {
+      openEntityRoute(creditPath);
       return;
     }
     if (onVoiceOpen) {

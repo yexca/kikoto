@@ -113,6 +113,8 @@ export type ListeningBreakdownEntry = {
   name: string;
   /** A circle's provider id; absent when it has none. */
   externalId?: string;
+  /** A voice's detail route key. */
+  routeKey?: string;
   listenedSeconds: number;
   listenCount: number;
   workCount: number;

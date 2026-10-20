@@ -47,6 +47,7 @@ import {
   sourceAvailabilitySourceFixture,
   voiceCatalogRefreshFixture,
   voiceDetailFixture,
+  voiceRouteFixture,
   voiceSummaryFixture,
   voiceWorksPageFixture,
   workDetailFixture,
@@ -302,11 +303,16 @@ export async function mockApplication(
       await route.fulfill({ json: { works: fixture.recentWorks ?? [] } satisfies RecentlyPlayedWorksResponse });
       return;
     }
+    if (url.pathname === "/api/voice-routes/00000001") {
+      await route.fulfill({ json: voiceRouteFixture({ personId: 7, routeKey: "00000001" }) });
+      return;
+    }
     if (url.pathname === "/api/voices/7") {
       await route.fulfill({
         json: voiceDetailFixture(
           voiceSummaryFixture({
             personId: 7,
+            routeKey: "00000001",
             displayName: "Example Voice",
             aliases: ["Example Voice"],
             knownWorks: 1,

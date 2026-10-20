@@ -265,6 +265,8 @@ export type FavoriteListMembershipSummary = {
 
 export type VoiceCredit = {
   personId: number;
+  /** The voice detail route key; empty for a credit that names no person. */
+  routeKey: string;
   displayName: string;
 };
 

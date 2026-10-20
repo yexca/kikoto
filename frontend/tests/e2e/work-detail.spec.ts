@@ -1021,7 +1021,7 @@ test("mobile work detail keeps tags in the hero and work-code utilities together
     tags: ["Example tag"],
     userTags: [{ id: 1, name: "Personal tag", color: "" }],
     voiceActors: ["Example Voice"],
-    voiceCredits: [{ personId: 7, displayName: "Example Voice" }],
+    voiceCredits: [{ personId: 7, routeKey: "00000001", displayName: "Example Voice" }],
   };
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {

@@ -170,6 +170,14 @@ func (s *Server) getListeningStatistics(w http.ResponseWriter, r *http.Request) 
 		work := result.Highlights.BusiestDay.TopWork
 		work.CoverURL = s.coverURL(work.PrimaryCode)
 	}
+	if result.Highlights != nil && result.Highlights.TopVoice != nil {
+		voices := []personal.BreakdownEntry{*result.Highlights.TopVoice}
+		if err = s.attachListeningVoiceRouteKeys(r.Context(), voices); err != nil {
+			writePersonalError(w, err)
+			return
+		}
+		result.Highlights.TopVoice = &voices[0]
+	}
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -223,7 +231,27 @@ func (s *Server) getListeningBreakdown(w http.ResponseWriter, r *http.Request) {
 		writePersonalError(w, err)
 		return
 	}
+	if err = s.attachListeningVoiceRouteKeys(r.Context(), result.Voices); err != nil {
+		writePersonalError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// attachListeningVoiceRouteKeys sets the route key of each ranked voice.
+func (s *Server) attachListeningVoiceRouteKeys(ctx context.Context, voices []personal.BreakdownEntry) error {
+	personIDs := make([]int64, 0, len(voices))
+	for _, voice := range voices {
+		personIDs = append(personIDs, voice.ID)
+	}
+	keys, err := s.voiceRouteKeys(ctx, personIDs)
+	if err != nil {
+		return err
+	}
+	for index := range voices {
+		voices[index].RouteKey = keys[voices[index].ID]
+	}
+	return nil
 }
 
 func (s *Server) getListeningProfile(w http.ResponseWriter, r *http.Request) {

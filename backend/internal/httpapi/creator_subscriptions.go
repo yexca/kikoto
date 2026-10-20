@@ -29,6 +29,7 @@ type creatorSubscription struct {
 	SeriesID          string  `json:"seriesId,omitempty"`
 	SeriesName        string  `json:"seriesName,omitempty"`
 	PersonID          int64   `json:"personId,omitempty"`
+	VoiceRouteKey     string  `json:"voiceRouteKey,omitempty"`
 	VoiceName         string  `json:"voiceName,omitempty"`
 	WatchAvailability bool    `json:"watchAvailability"`
 	Status            string  `json:"status"`
@@ -643,6 +644,7 @@ func (s *Server) loadCreatorSubscriptions(ctx context.Context, where string, arg
 				LIMIT 1
 			), ''),
 			COALESCE(person.display_name, ''),
+			CASE WHEN person.id IS NULL THEN '' ELSE `+voiceRouteKeySQL("person.id")+` END,
 			CASE WHEN sub.person_id IS NOT NULL
 				THEN (SELECT last_success_at FROM voice_catalog_refresh_state WHERE person_id = sub.person_id)
 				ELSE (SELECT last_success_at FROM party_catalog_refresh_state WHERE party_id = sub.party_id AND provider_code = 'dlsite')
@@ -662,7 +664,7 @@ func (s *Server) loadCreatorSubscriptions(ctx context.Context, where string, arg
 		var item creatorSubscription
 		var activatedAt, syncedAt sql.NullString
 		if err := rows.Scan(&item.ID, &item.Kind, &item.partyID, &item.SeriesID, &item.PersonID, &item.WatchAvailability,
-			&activatedAt, &item.CreatedAt, &item.CircleName, &item.CircleID, &item.SeriesName, &item.VoiceName, &syncedAt); err != nil {
+			&activatedAt, &item.CreatedAt, &item.CircleName, &item.CircleID, &item.SeriesName, &item.VoiceName, &item.VoiceRouteKey, &syncedAt); err != nil {
 			return nil, err
 		}
 		item.CircleID = normalizeMakerID(item.CircleID)

@@ -154,6 +154,8 @@ export type CircleDetail = CircleSummary & {
 
 export type VoiceSummary = {
   personId: number;
+  /** Addresses the voice detail page: the canonical DLsite voice actor id, or local-{personId}. */
+  routeKey: string;
   displayName: string;
   aliases: string[];
   knownWorks: number;
@@ -440,6 +442,9 @@ export const creatorApi = {
     const page = await getJSON<VoiceSummaryPage>(`/api/voices${search}`, options.signal);
     return { ...page, voices: page.voices.map(normalizeCreatorSyncState) };
   },
+  /** The person a voice detail route key addresses, with that person's canonical key. */
+  resolveVoiceRoute: (routeKey: string, signal?: AbortSignal) =>
+    getJSON<{ personId: number; routeKey: string }>(`/api/voice-routes/${encodeURIComponent(routeKey)}`, signal),
   getVoiceSummary: async (personId: number | string, signal?: AbortSignal) =>
     normalizeCreatorSyncState(
       await getJSON<VoiceDetail>(`/api/voices/${encodeURIComponent(String(personId))}?includeWorks=false`, signal),

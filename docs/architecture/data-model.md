@@ -67,6 +67,18 @@ an unknown id falls back to the name and is then bound to the person found.
 `person.id` stays the voice actor's identity, and one person may hold several
 ids. Two people who share a display name still resolve to one person.
 
+A voice actor's detail URL is `/voices/{routeKey}`. The route key is the
+person's canonical DLsite voice actor id: among its numeric `voice_actor_id`
+rows of the built-in `dlsite` provider, the primary one, then the lowest row
+id. A person without one has the key `local-{person.id}`. Remote-source voice
+actor ids never become route keys, so a bare number in the URL is always a
+DLsite id. The server sets the key on every voice link it returns and resolves
+a key to its person through `GET /api/voice-routes/{routeKey}`; another DLsite
+id of the same person, such as one a merge moved to it, and the local key of a
+person that holds a DLsite id resolve too and report the canonical key, which
+the page then shows in the URL. The other voice APIs stay keyed by
+`person.id`.
+
 `work_staff_credit` holds a work's non-voice DLsite credits: the author,
 scenario writer, illustrator, composer, and other staff (`role` is `author`,
 `scenario`, `illustration`, `music`, or `other`), each with its provider order
