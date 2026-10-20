@@ -91,8 +91,15 @@ and DLsite creator id. A staff name is a plain credit of the work, not a
 subscriptions. The projection replaces a work's snapshot-owned staff rows, so a
 staff credit the latest DLsite snapshot no longer names is removed.
 
-Voice credits, staff credits, and DLsite circle relations are projected from
-each work's latest snapshot; staff credits read the latest DLsite snapshot.
+A work's voice credits are projected from its latest snapshot of any provider
+and, when that snapshot belongs to another provider, also from its latest
+DLsite snapshot. A voice actor the DLsite snapshot credits therefore carries
+the DLsite creator id whichever provider fetched the work last, and a remote
+snapshot's id is bound to the same person when both snapshots credit the same
+name. The DLsite credits are written last, so DLsite stays the provider of a
+credit both snapshots name. One snapshot crediting no voice actor adds the
+unknown voice actor only when the other credits none either. Staff credits and
+DLsite circle relations are projected from the work's latest DLsite snapshot.
 `work_snapshot_projection` records,
 per work and projection, the snapshot and a hash of the projection input it
 last produced. Startup and each metadata sync project only works whose latest
@@ -101,7 +108,7 @@ projection input is unchanged, such as a new sales count, writes nothing but
 the record. Triggers drop a record when a credit or circle relation is removed
 or reassigned, or when the work's imported circle catalog row changes, so the
 next pass restores what the snapshot still declares. The voice credit
-projection removes no credit its snapshot does not name, apart from the
+projection removes no credit its snapshots do not name, apart from the
 duplicate credits of one provider id described above. `party_metadata_snapshot` keeps the two
 latest snapshots per circle and provider, as `metadata_snapshot` does per work.
 

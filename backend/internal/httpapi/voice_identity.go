@@ -44,6 +44,22 @@ func voiceCreditActors(raw string) []voiceActorIdentity {
 	return distinct
 }
 
+// withoutRedundantUnknownVoiceActor drops the unknown voice actor from one of
+// two snapshots of a work when the other names a voice actor, so the work is
+// not credited to the unknown voice actor beside a known one.
+func withoutRedundantUnknownVoiceActor(first, second []voiceActorIdentity) ([]voiceActorIdentity, []voiceActorIdentity) {
+	unknownOnly := func(actors []voiceActorIdentity) bool {
+		return len(actors) == 1 && isUnknownVoiceActorName(actors[0].Name)
+	}
+	switch {
+	case unknownOnly(first) && !unknownOnly(second):
+		return nil, second
+	case unknownOnly(second) && !unknownOnly(first):
+		return first, nil
+	}
+	return first, second
+}
+
 // writeVoiceCredits adds the credits without removing ones the snapshot no
 // longer names, except an earlier credit of the same provider voice actor
 // under another person (see upsertPersonIdentity). A credit that already

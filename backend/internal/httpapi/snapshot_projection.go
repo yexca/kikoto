@@ -10,14 +10,16 @@ import (
 	"strings"
 )
 
-// Voice credits, staff credits, and DLsite circle relations are projected from
-// each work's latest metadata snapshot. work_snapshot_projection records the
-// snapshot and projection input each work last produced, so a pass reads only
-// works whose latest snapshot changed since then, in bounded batches, instead
-// of loading every snapshot of the library. A changed snapshot whose
-// projection input is unchanged, such as a new sales count, only advances the
-// record. Triggers drop a record when another writer removes or reassigns a
-// projected row, so the next pass restores what the snapshot still declares.
+// Voice credits are projected from each work's latest metadata snapshot and,
+// behind a newer snapshot of another provider, its latest DLsite snapshot;
+// staff credits and DLsite circle relations from its latest DLsite snapshot.
+// work_snapshot_projection records the snapshot and projection input each work
+// last produced, so a pass reads only works whose latest snapshot changed since
+// then, in bounded batches, instead of loading every snapshot of the library.
+// A changed snapshot whose projection input is unchanged, such as a new sales
+// count, only advances the record. Triggers drop a record when another writer
+// removes or reassigns a projected row, so the next pass restores what the
+// snapshot still declares.
 const (
 	snapshotProjectionVoiceCredits = "voice_credit"
 	snapshotProjectionStaffCredits = "staff_credit"
@@ -28,7 +30,7 @@ const (
 	// Voice credits have their own version, which is also part of their
 	// projection input, so a change to that projection rewrites only voice
 	// credits.
-	voiceCreditProjectionVersion = 2
+	voiceCreditProjectionVersion = 3
 	snapshotProjectionBatch      = 200
 )
 
@@ -70,17 +72,24 @@ func recordSnapshotProjection(ctx context.Context, execer contextExecer, workID 
 	return err
 }
 
-// voiceCreditProjection is one work's latest snapshot from any provider.
+// voiceCreditProjection is one work's latest snapshot from any provider and,
+// when that snapshot is not DLsite's, the work's latest DLsite snapshot, whose
+// credits carry the DLsite creator ids.
 type voiceCreditProjection struct {
 	voiceCreditSnapshotRow
-	SnapshotID   int64
-	RecordedHash string
+	SnapshotID       int64
+	DLsiteProviderID sql.NullInt64
+	DLsite           sql.NullString
+	RecordedHash     string
 }
 
 // voiceCreditProjectionSQL selects works whose latest snapshot has not been
-// projected by this version. The caller appends the remaining filter.
+// projected by this version. Storing a DLsite snapshot makes it the work's
+// latest one, so the record of the latest snapshot also covers the DLsite
+// snapshot behind it. The caller appends the remaining filter.
 const voiceCreditProjectionSQL = `
-	SELECT work.id, snapshot.id, snapshot.provider_id, snapshot.snapshot_json, COALESCE(projection.input_hash, '')
+	SELECT work.id, snapshot.id, snapshot.provider_id, snapshot.snapshot_json,
+		dlsite.provider_id, dlsite.snapshot_json, COALESCE(projection.input_hash, '')
 	FROM work
 	INNER JOIN metadata_snapshot AS snapshot ON snapshot.id = (
 		SELECT latest.id
@@ -89,6 +98,14 @@ const voiceCreditProjectionSQL = `
 		ORDER BY latest.fetched_at DESC, latest.id DESC
 		LIMIT 1
 	)
+	LEFT JOIN metadata_snapshot AS dlsite ON dlsite.id = (
+		SELECT latest.id
+		FROM metadata_snapshot AS latest
+		WHERE latest.work_id = work.id
+			AND latest.provider_id = (SELECT id FROM metadata_provider WHERE code = 'dlsite')
+		ORDER BY latest.fetched_at DESC, latest.id DESC
+		LIMIT 1
+	) AND dlsite.id <> snapshot.id
 	LEFT JOIN work_snapshot_projection AS projection
 		ON projection.work_id = work.id AND projection.kind = 'voice_credit'
 	WHERE (
@@ -103,7 +120,8 @@ func scanVoiceCreditProjections(rows *sql.Rows) ([]voiceCreditProjection, error)
 	projections := []voiceCreditProjection{}
 	for rows.Next() {
 		var projection voiceCreditProjection
-		if err := rows.Scan(&projection.WorkID, &projection.SnapshotID, &projection.ProviderID, &projection.Raw, &projection.RecordedHash); err != nil {
+		if err := rows.Scan(&projection.WorkID, &projection.SnapshotID, &projection.ProviderID, &projection.Raw,
+			&projection.DLsiteProviderID, &projection.DLsite, &projection.RecordedHash); err != nil {
 			return nil, err
 		}
 		projections = append(projections, projection)
@@ -171,17 +189,31 @@ func (s *Server) applyVoiceCreditProjections(ctx context.Context, batch []voiceC
 	defer func() { _ = tx.Rollback() }()
 	for _, projection := range batch {
 		actors := voiceCreditActors(projection.Raw)
+		var dlsiteActors []voiceActorIdentity
+		if projection.DLsite.Valid {
+			dlsiteActors = voiceCreditActors(projection.DLsite.String)
+			actors, dlsiteActors = withoutRedundantUnknownVoiceActor(actors, dlsiteActors)
+		}
 		hash, err := snapshotProjectionHash(struct {
-			Version    int
-			ProviderID sql.NullInt64
-			Actors     []voiceActorIdentity
-		}{voiceCreditProjectionVersion, projection.ProviderID, actors})
+			Version          int
+			ProviderID       sql.NullInt64
+			Actors           []voiceActorIdentity
+			DLsiteProviderID sql.NullInt64
+			DLsiteActors     []voiceActorIdentity
+		}{voiceCreditProjectionVersion, projection.ProviderID, actors, projection.DLsiteProviderID, dlsiteActors})
 		if err != nil {
 			return err
 		}
 		if hash != projection.RecordedHash {
 			if err := writeVoiceCredits(ctx, tx, projection.WorkID, projection.ProviderID, actors); err != nil {
 				return err
+			}
+			// The DLsite credits are written last, so DLsite stays the provider
+			// of a credit both snapshots name.
+			if len(dlsiteActors) > 0 {
+				if err := writeVoiceCredits(ctx, tx, projection.WorkID, projection.DLsiteProviderID, dlsiteActors); err != nil {
+					return err
+				}
 			}
 		}
 		if err := recordSnapshotProjection(ctx, tx, projection.WorkID, snapshotProjectionVoiceCredits, projection.SnapshotID, hash); err != nil {
