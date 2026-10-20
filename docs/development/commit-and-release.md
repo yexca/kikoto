@@ -118,11 +118,15 @@ image, APK, or IPA is missing:
 1. The production image, the signed APK, and the unsigned IPA are built in
    parallel. The IPA uses `make ios-build` on a macOS runner and needs no Apple
    signing secrets; sideloading tools re-sign it at install time. The image is
-   built without pushing, so no registry tag moves yet.
+   built for `linux/amd64` and `linux/arm64` without pushing, so no registry
+   tag moves yet. Its build stages run natively and cross-compile; only the
+   arm64 runtime stage runs under QEMU. Because the validation tiers exercise
+   only the amd64 image, a native arm64 runner builds the arm64 image and runs
+   `make production-smoke` against it in the same step.
 2. After all builds succeed, the APK and IPA are attached to a draft GitHub
    Release.
-3. The image is then pushed with its version tags and `latest`, reusing the
-   build cache from step 1.
+3. The image is then pushed for both platforms under one multi-platform tag
+   for each version tag and `latest`, reusing the build cache from step 1.
 4. The draft is published last.
 
 A failure in any build leaves registry tags, including `latest`, unchanged. The

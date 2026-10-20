@@ -31,7 +31,9 @@ then run `docker compose up -d`.
 
 It defaults to `yexca/kikoto:latest`, which is updated by the public release
 workflow. The install and upgrade command above therefore selects the
-latest public release. Override `KIKOTO_IMAGE` with a reviewed version or digest
+latest public release. Release images are built for `linux/amd64` and
+`linux/arm64` hosts, including ARM NAS devices and 64-bit Raspberry Pi OS, and
+Docker pulls the one that matches the host. Override `KIKOTO_IMAGE` with a reviewed version or digest
 when reproducible deployment is required:
 
 ```sh
