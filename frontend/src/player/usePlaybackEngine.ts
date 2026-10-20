@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isActivePlaybackRequest } from "./playbackRequest";
 import { normalizePlaybackStartPosition } from "./playbackStart";
@@ -15,6 +15,9 @@ type PlayingStateUpdate = boolean | ((current: boolean) => boolean);
 function createPlaybackRefs() {
   return {
     audioRef: { current: null as HTMLAudioElement | null },
+    // An unloaded element that takes over playback when the player element is
+    // replaced; rendered only while a replacement may be needed.
+    standbyAudioRef: { current: null as HTMLAudioElement | null },
     queueRef: { current: [] as PlayerTrack[] },
     currentIndexRef: { current: 0 },
     currentTrackRef: { current: null as PlayerTrack | null },
@@ -38,6 +41,8 @@ function createPlaybackRefs() {
     nativeMediaSyncRef: { current: () => {} },
     // Returns false to hold a start; the guard owns any follow-up, such as a confirmation.
     playbackStartGuardRef: { current: (() => true) as () => boolean },
+    // Runs when playback is requested, while the gesture that requested it still counts.
+    playRequestRef: { current: () => {} },
     // The element volume is the product of these: the sleep timer's fade and
     // the loudness normalization cut, each from 0 to 1.
     sleepFadeRef: { current: 1 },
@@ -78,6 +83,8 @@ export function usePlaybackEngine(queue: PlayerTrack[], currentIndex: number) {
   const [duration, setDuration] = useState(0);
   const [durationLocationId, setDurationLocationId] = useState<number | null>(null);
   const [startPositionRequest, setStartPositionRequest] = useState(0);
+  // Changes when the player element is replaced; element-bound effects depend on it.
+  const [audioElementKey, setAudioElementKey] = useState(0);
 
   const currentTrack = queue[currentIndex] ?? null;
   const currentPlaybackKey = trackPlaybackKey(currentTrack);
@@ -96,10 +103,12 @@ export function usePlaybackEngine(queue: PlayerTrack[], currentIndex: number) {
 
   const updatePlayingState = useCallback(
     (next: PlayingStateUpdate) => {
-      const resolved = typeof next === "function" ? next(refs.isPlayingRef.current) : next;
+      const previous = refs.isPlayingRef.current;
+      const resolved = typeof next === "function" ? next(previous) : next;
       if (resolved) cancelPlaybackErrorCheck();
       refs.isPlayingRef.current = resolved;
       setIsPlaying(resolved);
+      if (resolved && !previous) refs.playRequestRef.current();
     },
     [cancelPlaybackErrorCheck, refs],
   );
@@ -173,10 +182,36 @@ export function usePlaybackEngine(queue: PlayerTrack[], currentIndex: number) {
   const requestStartPosition = useCallback(() => setStartPositionRequest((value) => value + 1), []);
   const reloadPlayback = useCallback(() => setPlaybackReloadToken((value) => value + 1), []);
 
+  /**
+   * Moves the current playback instance to the standby element at the same
+   * position and play intent. The player element is replaced only when Web
+   * Audio holds an element it can no longer use, since a new element has to
+   * load the source again.
+   */
+  const replaceAudioElement = useCallback(() => {
+    const instanceKey = refs.currentPlaybackInstanceKeyRef.current;
+    if (instanceKey) refs.unappliedStartRef.current = { instanceKey, positionSeconds: carriedPlaybackPosition() };
+    setAudioElementKey((value) => value + 1);
+  }, [carriedPlaybackPosition, refs]);
+
+  const attachedAudioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    const audio = refs.audioRef.current;
+    const previous = attachedAudioRef.current;
+    attachedAudioRef.current = audio;
+    // A replaced element stops and releases its source.
+    if (!previous || previous === audio) return;
+    previous.pause();
+    previous.removeAttribute("src");
+    previous.load();
+  }, [audioElementKey, refs]);
+
   useEffect(() => () => clearPendingSeek(), [clearPendingSeek]);
 
   return {
     refs,
+    audioElementKey,
+    replaceAudioElement,
     currentTrack,
     currentPlaybackKey,
     currentPlaybackInstanceKey,

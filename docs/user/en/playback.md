@@ -187,7 +187,11 @@ Playback is handled by a global browser audio player.
   measurement arrives and then moves to its new level smoothly. Web Audio
   starts only after you tap, click, or press a key on the page; until it runs,
   the second choice only lowers tracks, like the first, and iPhone and iPad
-  play every track at its own level.
+  play every track at its own level. Choosing another option keeps the current
+  track playing, and the player stops using Web Audio when playback pauses or
+  the next track starts. If Web Audio cannot continue after a call or another
+  interruption, the track keeps playing without it until your next tap, click,
+  or key press.
 - Screen lyrics keep the current and next line visible outside the page.
   Browsers with Document Picture-in-Picture open a small always-on-top window
   that stays visible while the browser is minimized; other browsers with video

@@ -224,8 +224,15 @@ fade and the loudness normalization cut (`applyElementVolume`).
 moves a level that changes mid-track gradually. In full normalization it routes
 a same-origin element through a Web Audio gain node (`loudnessBoost`) only
 while the page is visible and the element's context already runs; user
-gestures start and resume that context, and until it runs the element keeps
-its own output and the cut uses element volume. The dock UI
+gestures and play requests start and resume that context, and until it runs
+the element keeps its own output and the cut uses element volume. A routed
+element cannot leave Web Audio, so while one may exist the provider renders
+an empty standby `<audio>` element that each gesture prepares, and
+`replaceAudioElement` moves the playback instance to it at the same position
+and play intent. That happens when a routed element plays for a moment while
+its context cannot run, and after leaving full normalization once the routed
+element pauses or the next track starts. Element-bound effects depend on
+`audioElementKey`, and media event handlers ignore a replaced element. The dock UI
 lives in `player/dock`: `PlayerDock` owns the Mini, Compact, and full surfaces,
 while queue reordering math and formatting stay in pure modules. Timed-lyrics
 parsing lives in `lib/timedLyrics`, so the player and the work detail file

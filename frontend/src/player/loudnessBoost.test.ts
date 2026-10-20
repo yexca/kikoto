@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { routeLoudnessGain, unlockLoudnessGain, type LoudnessGainOptions } from "./loudnessBoost";
+import {
+  releaseLoudnessGain,
+  routeLoudnessGain,
+  SILENT_ROUTE_TIMEOUT_MS,
+  unlockLoudnessGain,
+  type LoudnessGainOptions,
+} from "./loudnessBoost";
 
 class FakeEvents {
   listeners: Record<string, Array<() => void>> = {};
@@ -32,6 +38,7 @@ class FakeAudioContext extends FakeEvents {
   static resumeRuns = true;
   state = "suspended";
   resumed = 0;
+  closed = 0;
   routed = 0;
   currentTime = 0;
   destination = {};
@@ -47,6 +54,11 @@ class FakeAudioContext extends FakeEvents {
       this.state = "running";
       this.emit("statechange");
     }
+    return Promise.resolve();
+  }
+  close() {
+    this.closed += 1;
+    this.state = "closed";
     return Promise.resolve();
   }
   createGain() {
@@ -67,16 +79,22 @@ function element(source: string, paused = true) {
 }
 
 function pageAt(origin: string, visibilityState = "visible") {
-  vi.stubGlobal("window", { location: { href: `${origin}/works/1`, origin }, AudioContext: FakeAudioContext });
+  vi.stubGlobal("window", {
+    location: { href: `${origin}/works/1`, origin },
+    AudioContext: FakeAudioContext,
+    setTimeout: (handler: () => void, delay: number) => setTimeout(handler, delay),
+    clearTimeout: (id: number) => clearTimeout(id),
+  });
   vi.stubGlobal("document", { visibilityState });
 }
 
 function options(overrides: Partial<LoudnessGainOptions> = {}): LoudnessGainOptions {
-  return { allowRouting: true, currentGain: 1, ramp: false, onRunning: () => {}, ...overrides };
+  return { allowRouting: true, currentGain: 1, ramp: false, onRunning: () => {}, onSilent: () => {}, ...overrides };
 }
 
 describe("routeLoudnessGain", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     FakeAudioContext.created = 0;
     FakeAudioContext.last = null;
@@ -150,6 +168,64 @@ describe("routeLoudnessGain", () => {
     context.state = "interrupted";
     audio.emit("playing");
     expect(context.resumed).toBe(resumed + 2);
+  });
+
+  it("reports a routed element that keeps playing while its context cannot run", () => {
+    vi.useFakeTimers();
+    pageAt("https://kikoto.example");
+    const audio = element("https://kikoto.example/api/media/6/stream", false);
+    const onSilent = vi.fn();
+    unlockLoudnessGain(audio, true);
+    routeLoudnessGain(audio, 2, options({ onSilent }));
+    const context = FakeAudioContext.last as FakeAudioContext;
+    // The interruption ends outside a gesture, and Safari refuses to resume.
+    FakeAudioContext.resumeRuns = false;
+    context.state = "interrupted";
+    context.emit("statechange");
+    vi.advanceTimersByTime(SILENT_ROUTE_TIMEOUT_MS - 1);
+    expect(onSilent).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(onSilent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not report a route that pauses or whose context runs again", () => {
+    vi.useFakeTimers();
+    pageAt("https://kikoto.example");
+    const audio = element("https://kikoto.example/api/media/7/stream", false);
+    const onSilent = vi.fn();
+    unlockLoudnessGain(audio, true);
+    routeLoudnessGain(audio, 2, options({ onSilent }));
+    const context = FakeAudioContext.last as FakeAudioContext;
+    FakeAudioContext.resumeRuns = false;
+    context.state = "interrupted";
+    context.emit("statechange");
+    // The system pauses the element for the call.
+    Object.assign(audio, { paused: true });
+    audio.emit("pause");
+    vi.advanceTimersByTime(SILENT_ROUTE_TIMEOUT_MS);
+    // Playback goes on from the lock screen, and the context resumes.
+    FakeAudioContext.resumeRuns = true;
+    Object.assign(audio, { paused: false });
+    audio.emit("playing");
+    vi.advanceTimersByTime(SILENT_ROUTE_TIMEOUT_MS);
+    expect(context.state).toBe("running");
+    expect(onSilent).not.toHaveBeenCalled();
+  });
+
+  it("closes the context of a replaced element, which reports nothing afterwards", () => {
+    vi.useFakeTimers();
+    pageAt("https://kikoto.example");
+    const audio = element("https://kikoto.example/api/media/8/stream", false);
+    const onSilent = vi.fn();
+    unlockLoudnessGain(audio, true);
+    routeLoudnessGain(audio, 2, options({ onSilent }));
+    const context = FakeAudioContext.last as FakeAudioContext;
+    releaseLoudnessGain(audio);
+    expect(context.closed).toBe(1);
+    context.emit("statechange");
+    audio.emit("playing");
+    vi.advanceTimersByTime(SILENT_ROUTE_TIMEOUT_MS);
+    expect(onSilent).not.toHaveBeenCalled();
   });
 
   it("never routes a cross-origin source, which Web Audio would silence", () => {
