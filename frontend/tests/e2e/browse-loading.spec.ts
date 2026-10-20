@@ -89,7 +89,7 @@ test("local list restores saved controls while source configuration is pending",
     const sourcesLoaded = page.waitForResponse("**/api/library-sources");
     releaseSources();
     await sourcesLoaded;
-    await expect(page.getByRole("button", { name: "Local", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "Source: Local", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Sort: Title", exact: true })).toBeVisible();
     await expect(
       page.getByRole("navigation", { name: "Pages", exact: true }).getByRole("button", { name: "Page 2", exact: true }),

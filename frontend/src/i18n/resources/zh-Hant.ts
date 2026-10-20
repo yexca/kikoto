@@ -35,6 +35,10 @@ const libraryHant = {
   showRecommendationBadges: "顯示推薦標記",
   markFilter: "標記",
   clearMarkFilter: "清除標記篩選",
+  markFilterToggle: "標記篩選",
+  markFilterValue: "標記篩選：{{status}}",
+  sourceMenu: "來源",
+  sourceMenuLabel: "來源：{{source}}",
   local: "本機",
   tracked: "已追蹤",
   sourceVisibility: {

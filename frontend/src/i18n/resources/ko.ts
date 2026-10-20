@@ -34,6 +34,10 @@ const libraryKorean = {
   showRecommendationBadges: "추천 배지 표시",
   markFilter: "표시",
   clearMarkFilter: "표시 필터 지우기",
+  markFilterToggle: "표시 필터",
+  markFilterValue: "표시 필터: {{status}}",
+  sourceMenu: "소스",
+  sourceMenuLabel: "소스: {{source}}",
   local: "로컬",
   tracked: "추적됨",
   sourceVisibility: {

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { worksPageFixture, type ApiErrorBody } from "./fixtures/api";
-import { work, type MockWork, mockApplication, mediaFixture } from "./fixtures/player-library";
+import { work, type MockWork, mockApplication, mediaFixture, selectLibrarySource } from "./fixtures/player-library";
 
 test("column preferences change the rendered collection and remain independent across viewport sizes", async ({
   page,
@@ -495,7 +495,7 @@ test("@desktop recently played opens from a toolbar popover and returns to the w
   await expect(page).toHaveURL(/\/RJ00000060(?:\?|$)/);
 });
 
-test("continue listening opens from a collapsed phone strip and returns to the work", async ({ page }) => {
+test("continue listening opens from a collapsed sort-row toggle and returns to the work", async ({ page }) => {
   const recentWorks = [
     {
       ...work,
@@ -514,23 +514,28 @@ test("continue listening opens from a collapsed phone strip and returns to the w
   await mockApplication(page, undefined, false, 1, 0, [], undefined, { recentWorks });
 
   await page.goto("/library");
-  const toggle = page.getByRole("button", { name: /^Continue listening/ });
+  const toggle = page.getByRole("button", { name: "Continue listening", exact: true });
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  const tile = page.getByRole("button", { name: "Open Short title" });
-  await expect(tile).toBeHidden();
+  // The toggle shares the sort row instead of adding a row above the works.
+  const [toggleBox, sortBox] = await Promise.all([
+    toggle.boundingBox(),
+    page.getByRole("button", { name: /^Sort:/ }).boundingBox(),
+  ]);
+  expect(Math.abs(toggleBox!.y + toggleBox!.height / 2 - (sortBox!.y + sortBox!.height / 2))).toBeLessThan(4);
+  const rail = page.getByRole("region", { name: "Continue listening" });
+  await expect(rail).toHaveCount(0);
 
   await toggle.click();
-  await expect(tile).toBeVisible();
-  await expect(tile.getByText("Track one", { exact: true })).toBeVisible();
-
-  // The open state is a per-device preference.
-  await page.reload();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const tile = rail.getByRole("button", { name: "Open Short title" });
+  await expect(tile.getByText("Track one", { exact: true })).toBeVisible();
   await tile.click();
   await expect(page).toHaveURL(/\/RJ00000060(?:\?|$)/);
 });
 
-test("phone mark filter chips filter the library and clear when tapped again", async ({ page }) => {
+test("phone mark filter chips open from a collapsed toggle, filter the library, and clear when tapped again", async ({
+  page,
+}) => {
   const statuses: string[] = [];
   await mockApplication(page, (url) => {
     if (url.searchParams.get("scope") === "local") statuses.push(url.searchParams.get("status") ?? "");
@@ -539,10 +544,21 @@ test("phone mark filter chips filter the library and clear when tapped again", a
   await expect(page.getByTestId("work-card").first()).toBeVisible();
 
   const chips = page.getByRole("group", { name: "Mark" });
+  const toggle = page.getByRole("button", { name: "Mark filter", exact: true });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(chips).toHaveCount(0);
+  await toggle.click();
   const listening = chips.getByRole("button", { name: "Listening", exact: true });
   await listening.click();
   await expect(listening).toHaveAttribute("aria-pressed", "true");
   await expect.poll(() => statuses.at(-1)).toBe("listening");
+
+  // A collapsed row keeps the filter and names it on the toggle.
+  const activeToggle = page.getByRole("button", { name: "Mark filter: Listening", exact: true });
+  await activeToggle.click();
+  await expect(chips).toHaveCount(0);
+  await expect.poll(() => statuses.at(-1)).toBe("listening");
+  await activeToggle.click();
 
   await listening.click();
   await expect(chips.getByRole("button", { name: "All", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -638,11 +654,11 @@ test("library search follows the user across scopes and survives navigation", as
   await expect(search).not.toBeFocused();
   await search.fill("local term");
   await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("local term");
-  await page.getByRole("button", { name: "Tracked", exact: true }).click();
+  await selectLibrarySource(page, "Tracked");
   await expect(search).toHaveValue("local term");
   await search.fill("tracked term");
   await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("tracked term");
-  await page.getByRole("button", { name: "Local", exact: true }).click();
+  await selectLibrarySource(page, "Local");
   await expect(search).toHaveValue("tracked term");
   await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("tracked term");
   await page.reload();
@@ -683,7 +699,7 @@ test("library search conditions use accessible select menus", async ({ page }) =
   const toolbar = page.locator("[data-toast-avoid]").filter({ has: searchBox });
   await expect(toolbar.getByRole("button", { name: /^Display options/ })).toBeVisible();
   await expect(toolbar.getByRole("button", { name: "Sort: Recommended" })).toBeVisible();
-  await expect(toolbar.getByRole("group", { name: "Mark" })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Mark filter", exact: true })).toBeVisible();
   const actionButtons = [
     toolbar.getByRole("button", { name: /^Display options/ }),
     toolbar.getByRole("button", { name: /^Sort:/ }),

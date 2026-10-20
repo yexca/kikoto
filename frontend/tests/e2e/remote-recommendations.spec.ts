@@ -6,7 +6,7 @@ import {
   remoteWorksResponseFixture,
   runtimeSettingsFixture,
 } from "./fixtures/api";
-import { mockRemoteSource } from "./fixtures/player-library";
+import { mockRemoteSource, selectLibrarySource } from "./fixtures/player-library";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
 
 test("remote recommendation toggle scores the page in one batch without reloading the source", async ({ page }) => {
@@ -32,7 +32,7 @@ test("remote recommendation toggle scores the page in one batch without reloadin
     });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await expect(page.getByText("Example Remote Work", { exact: true })).toBeVisible();
   expect(scoreRequests).toHaveLength(0);
   const initialBrowseCount = browseRequests.length;
@@ -68,7 +68,7 @@ test("remote recommendation failure keeps cards and retries only scoring", async
     await route.fulfill({ json: { scores: request.works.map(({ primaryCode }) => ({ primaryCode, score: 65 })) } });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   const browseCount = requests.length;
   await page.getByRole("button", { name: "Show recommendation badges", exact: true }).click();
@@ -95,7 +95,7 @@ test("remote recommendation response cannot restore badges after disabling them"
       .catch(() => undefined);
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Show recommendation badges", exact: true }).click();
   await expect.poll(() => started).toBe(true);
@@ -141,7 +141,7 @@ test("demo remote badges reuse the local score session on browse and retry", asy
     });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await expect(page.getByText("Example Demo Work", { exact: true })).toBeVisible();
   const session = localRequests.at(-1)?.searchParams.get("recommendationSession");
   expect(session).toBeTruthy();

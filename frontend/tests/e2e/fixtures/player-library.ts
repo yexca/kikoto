@@ -1,4 +1,4 @@
-import { type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import type { PlaybackReport } from "../../../src/lib/playbackReportApi";
 import { playbackReportResultFixture } from "./playback-reports";
 import type {
@@ -1252,4 +1252,17 @@ export function mediaFixture(id: number, title: string, path: string, kind: "aud
       }),
     ],
   });
+}
+
+/** Switches the Library source through the phone source menu or the wide-layout source tabs. */
+export async function selectLibrarySource(page: Page, name: string) {
+  const menu = page.getByRole("button", { name: /^Source: / });
+  const tab = page.getByRole("button", { name, exact: true });
+  await expect(menu.or(tab).first()).toBeVisible();
+  if (await menu.isVisible()) {
+    await menu.click();
+    await page.getByRole("menu", { name: "Source" }).getByRole("menuitemradio", { name, exact: true }).click();
+  } else {
+    await tab.click();
+  }
 }

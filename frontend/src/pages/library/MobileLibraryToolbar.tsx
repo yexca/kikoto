@@ -1,25 +1,27 @@
-import { Plus, Search, X } from "lucide-react";
-import type { ReactNode } from "react";
+import { History, ListFilter, Plus, Search, X } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { quickMarkMeta } from "@/components/work-card/WorkCardShell";
 import { listeningStatusOptions } from "@/features/work-detail/workDetailShared";
 import { numberFormat } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
-import type { ListeningStatus } from "@/lib/api";
+import type { ListeningStatus, Work } from "@/lib/api";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
 import { cn } from "@/lib/tailwindClassNames";
 
+import { ContinueListeningRail } from "./ContinueListeningRail";
 import { LibrarySortButton, type LibrarySortProps } from "./LibrarySortButton";
 
 /**
- * The phone Library header: an always-visible search field, the source rail,
- * sort and view controls, quick-mark filter chips, and a result caption. It
- * replaces the desktop toolbar's row of icon buttons, which on a phone hid
- * search behind a toggle and filters behind an unlabeled popover.
+ * The phone Library header: an always-visible search field with the source
+ * menu beside it, then sort and view controls with two row toggles, one for
+ * the Continue listening rail and one for the quick-mark filter chips, and a
+ * result caption. Both rows start collapsed; the mark toggle shows an active
+ * filter so a collapsed row never hides why results narrowed.
  */
 export function MobileLibraryToolbar({
-  sourceTabs,
+  sourceMenu,
   searchQuery,
   onSearchChange,
   onAddClause,
@@ -30,9 +32,9 @@ export function MobileLibraryToolbar({
   actions,
   statusFilter,
   onStatusFilterChange,
-  children,
+  onOpenRecent,
 }: {
-  sourceTabs: ReactNode;
+  sourceMenu: ReactNode;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   onAddClause: (anchor: HTMLElement) => void;
@@ -45,58 +47,79 @@ export function MobileLibraryToolbar({
   /** Null when the active view cannot filter by quick mark. */
   statusFilter: ListeningStatus | "all" | null;
   onStatusFilterChange: (value: ListeningStatus | "all") => void;
-  /** Rendered between the source rail and the result line. */
-  children?: ReactNode;
+  onOpenRecent: (work: Work) => void;
 }) {
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
+  const [markFilterOpen, setMarkFilterOpen] = useState(false);
+  const markFilterId = useId();
+  const [continueOpen, setContinueOpen] = useState(false);
+  const continueId = useId();
   return (
     <div className="space-y-3" data-toast-avoid>
-      <div className="search-field flex h-11 min-w-0 items-center gap-2 rounded-full border bg-card pl-4 pr-1.5 text-sm shadow-sm transition-colors focus-within:border-primary/50">
-        <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <input
-          className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
-          type="search"
-          enterKeyHint="search"
-          value={searchQuery}
-          onKeyDown={dismissKeyboardOnEnter}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder={t("library.mobileSearchPlaceholder")}
-          aria-label={t("library.searchLibrary")}
-        />
-        {searchQuery.trim() && (
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="search-field flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full border bg-card pl-4 pr-1.5 text-sm shadow-sm transition-colors focus-within:border-primary/50">
+          <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <input
+            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+            type="search"
+            enterKeyHint="search"
+            value={searchQuery}
+            onKeyDown={dismissKeyboardOnEnter}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder={t("library.mobileSearchPlaceholder")}
+            aria-label={t("library.searchLibrary")}
+          />
+          {searchQuery.trim() && (
+            <button
+              type="button"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={() => onSearchChange("")}
+              aria-label={t("library.clearSearch")}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
           <button
             type="button"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
-            onClick={() => onSearchChange("")}
-            aria-label={t("library.clearSearch")}
+            className={cn(
+              "grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground hover:text-foreground",
+              addClauseOpen && "bg-primary/10 text-primary",
+            )}
+            onClick={(event) => onAddClause(event.currentTarget)}
+            aria-label={t("library.addSearchCondition")}
+            aria-haspopup="dialog"
+            aria-expanded={addClauseOpen}
           >
-            <X className="h-4 w-4" />
+            <Plus className="h-4 w-4" />
           </button>
-        )}
-        <button
-          type="button"
-          className={cn(
-            "grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground hover:text-foreground",
-            addClauseOpen && "bg-primary/10 text-primary",
-          )}
-          onClick={(event) => onAddClause(event.currentTarget)}
-          aria-label={t("library.addSearchCondition")}
-          aria-haspopup="dialog"
-          aria-expanded={addClauseOpen}
-        >
-          <Plus className="h-4 w-4" />
-        </button>
+        </div>
+        {sourceMenu}
       </div>
-      <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {sourceTabs}
-      </div>
-      {children}
       <div className="flex min-h-9 items-center gap-2">
         <LibrarySortButton {...sort} />
+        {statusFilter !== null && (
+          <MarkFilterToggle
+            value={statusFilter}
+            open={markFilterOpen}
+            controls={markFilterId}
+            onToggle={() => setMarkFilterOpen((open) => !open)}
+          />
+        )}
+        <RowToggle
+          label={t("library.continueListening")}
+          open={continueOpen}
+          controls={continueId}
+          onToggle={() => setContinueOpen((open) => !open)}
+        >
+          <History className="h-4 w-4" aria-hidden="true" />
+        </RowToggle>
         <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>
       </div>
-      {statusFilter !== null && <StatusChips value={statusFilter} onChange={onStatusFilterChange} />}
+      {continueOpen && <ContinueListeningRail id={continueId} onOpen={onOpenRecent} />}
+      {statusFilter !== null && markFilterOpen && (
+        <StatusChips id={markFilterId} value={statusFilter} onChange={onStatusFilterChange} />
+      )}
       <p className="flex min-h-5 min-w-0 items-center gap-2 text-xs text-muted-foreground">
         {resultCount !== null && (
           <>
@@ -121,10 +144,75 @@ export function MobileLibraryToolbar({
   );
 }
 
+function MarkFilterToggle({
+  value,
+  open,
+  controls,
+  onToggle,
+}: {
+  value: ListeningStatus | "all";
+  open: boolean;
+  controls: string;
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+  const active = value !== "all";
+  const meta = active ? quickMarkMeta(value) : null;
+  const Icon = meta?.icon ?? ListFilter;
+  const label = active
+    ? t("library.markFilterValue", { status: t(`library.status.${value}`) })
+    : t("library.markFilterToggle");
+  return (
+    <RowToggle label={label} open={open} controls={controls} active={active} onToggle={onToggle}>
+      <Icon className={cn("h-4 w-4", meta?.className)} aria-hidden="true" />
+    </RowToggle>
+  );
+}
+
+/** A sort-row button that shows or hides the row it controls; `active` marks a setting that applies while it is hidden. */
+function RowToggle({
+  label,
+  open,
+  controls,
+  active = false,
+  children,
+  onToggle,
+}: {
+  label: string;
+  open: boolean;
+  controls: string;
+  active?: boolean;
+  children: ReactNode;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "relative grid h-9 w-9 shrink-0 place-items-center rounded-full border bg-card text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        (open || active) && "border-primary/30 bg-primary/10",
+        open && !active && "text-primary",
+      )}
+      aria-expanded={open}
+      aria-controls={open ? controls : undefined}
+      aria-label={label}
+      title={label}
+      onClick={onToggle}
+    >
+      {children}
+      {active && !open && (
+        <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />
+      )}
+    </button>
+  );
+}
+
 function StatusChips({
+  id,
   value,
   onChange,
 }: {
+  id: string;
   value: ListeningStatus | "all";
   onChange: (value: ListeningStatus | "all") => void;
 }) {
@@ -138,6 +226,7 @@ function StatusChips({
     );
   return (
     <div
+      id={id}
       className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       role="group"
       aria-label={t("library.markFilter")}

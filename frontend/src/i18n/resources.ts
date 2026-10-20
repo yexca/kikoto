@@ -33,6 +33,10 @@ export const libraryEnglish = {
   showRecommendationBadges: "Show recommendation badges",
   markFilter: "Mark",
   clearMarkFilter: "Clear mark filter",
+  markFilterToggle: "Mark filter",
+  markFilterValue: "Mark filter: {{status}}",
+  sourceMenu: "Source",
+  sourceMenuLabel: "Source: {{source}}",
   local: "Local",
   tracked: "Tracked",
   sourceVisibility: {

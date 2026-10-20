@@ -34,6 +34,10 @@ const libraryJapanese = {
   showRecommendationBadges: "おすすめバッジを表示",
   markFilter: "マーク",
   clearMarkFilter: "マークフィルターをクリア",
+  markFilterToggle: "マークフィルター",
+  markFilterValue: "マークフィルター：{{status}}",
+  sourceMenu: "ソース",
+  sourceMenuLabel: "ソース：{{source}}",
   local: "ローカル",
   tracked: "追跡済み",
   sourceVisibility: {

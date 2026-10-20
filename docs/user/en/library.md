@@ -99,13 +99,15 @@ The Library is the main browsing surface for works.
 - Offers recently played works, ordered per user from the one cursor owned by
   each logical work family, with the latest track position. On wide screens a
   history button in the toolbar opens the list. On phones a Continue listening
-  strip sits below the source chips on the first page of Local or Tracked when
-  no search or mark filter is set. The strip scrolls horizontally, starts
-  collapsed, and keeps its open state in the browser.
-- On phones the Library leads with an always-visible search field, a
-  scrollable row of source chips, a sort button that names the current order
-  and opens the orders and direction in a popover, and a row of Quick mark
-  filter chips. Selecting the active chip clears the filter.
+  button in the sort row opens a horizontally scrolling strip of recently
+  played covers below it, on any page and source.
+- On phones the Library leads with an always-visible search field and,
+  beside it, a source button that names the current source and opens every
+  source in a menu. Below them, a sort button names the current order and
+  opens the orders and direction in a popover, and two buttons beside it show
+  or hide a row below: Continue listening and Mark filter, which holds the
+  Quick mark filter chips. Both rows start hidden. While a mark filter is set,
+  its button shows that mark. Selecting the active chip clears the filter.
 - On wide screens the toolbar's sort button also names the current order and
   opens the orders and direction in a popover. The Recommended and Random
   orders add a refresh button beside it.

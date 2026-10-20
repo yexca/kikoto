@@ -60,7 +60,6 @@ import {
   formatSearchClause,
   type SearchClause,
 } from "@/lib/librarySearchClauses";
-import { ContinueListeningRail } from "@/pages/library/ContinueListeningRail";
 import {
   activeLibraryBrowseState,
   activeRemoteSourceViewState,
@@ -77,7 +76,7 @@ import {
   writeLibraryHistoryBrowseState,
 } from "@/pages/library/libraryBrowseModel";
 import { LibraryDesktopToolbar } from "@/pages/library/LibraryDesktopToolbar";
-import { LibraryPrimaryTabs } from "@/pages/library/LibraryPrimaryTabs";
+import { LibraryPrimaryTabs, LibrarySourceMenu } from "@/pages/library/LibraryPrimaryTabs";
 import {
   knownLibraryRoute,
   libraryBrowseKey,
@@ -750,8 +749,6 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
         <ListChecks className={`h-4 w-4 ${remoteSelectionMode ? "text-primary" : ""}`} />
       </IconButton>
     ) : null;
-  const showContinueListening =
-    activeTab.kind !== "source" && searchClauses.length === 0 && statusFilter === "all" && currentWorkPage === 1;
   const cardLayout = workCardLayout(
     mobileNavigationLayout ? mobileCardMode : desktopCardMode,
     !mobileNavigationLayout,
@@ -768,7 +765,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
       <MetadataOnboardingNotice active={active && showBrowse} />
       {mobileNavigationLayout ? (
         <MobileLibraryToolbar
-          sourceTabs={<LibraryPrimaryTabs variant="chips" {...primaryTabs} />}
+          sourceMenu={<LibrarySourceMenu {...primaryTabs} />}
           searchQuery={searchQuery}
           onSearchChange={changeSearchQuery}
           onAddClause={clauseEditor.openAdd}
@@ -795,9 +792,8 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
           }
           statusFilter={activeTab.kind === "source" ? null : statusFilter}
           onStatusFilterChange={changeStatusFilter}
-        >
-          {showContinueListening && <ContinueListeningRail active={active && showBrowse} onOpen={openRecentWork} />}
-        </MobileLibraryToolbar>
+          onOpenRecent={openRecentWork}
+        />
       ) : (
         <LibraryDesktopToolbar
           sourceTabs={<LibraryPrimaryTabs {...primaryTabs} />}

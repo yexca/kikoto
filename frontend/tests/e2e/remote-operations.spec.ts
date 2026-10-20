@@ -10,7 +10,13 @@ import type {
   WorkFolderLocation,
 } from "../../src/lib/api";
 import { remoteWorkDetailFixture, rolePermissions, type ApiErrorBody } from "./fixtures/api";
-import { work, type RemoteTrackControl, mockApplication, mockRemoteSource } from "./fixtures/player-library";
+import {
+  work,
+  type RemoteTrackControl,
+  mockApplication,
+  mockRemoteSource,
+  selectLibrarySource,
+} from "./fixtures/player-library";
 
 test("remote source reuses the library grid, source sorting, localized tags, and bottom pagination", async ({
   page,
@@ -18,7 +24,7 @@ test("remote source reuses the library grid, source sorting, localized tags, and
   const requests: URL[] = [];
   await mockRemoteSource(page, (url) => requests.push(url));
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
 
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "退廃/背徳/インモラル", exact: true })).toBeVisible();
@@ -64,19 +70,40 @@ test("remote source reloads after switching through the local library", async ({
   await mockRemoteSource(page, (url) => requests.push(url));
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   const initialRequestCount = requests.length;
 
-  await page.getByRole("button", { name: "Local", exact: true }).click();
+  await selectLibrarySource(page, "Local");
   await expect(page.getByText("Tagged mobile work", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   await expect.poll(() => requests.length).toBeGreaterThan(initialRequestCount);
 });
 
-test("remote source renders disabled and unavailable failures inside the works area", async ({ page }) => {
+test("the phone source menu lists a disabled source and renders its failure inside the works area", async ({
+  page,
+}) => {
+  await mockRemoteSource(page, () => undefined, { remoteStatus: "disabled" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Source: Local", exact: true }).click();
+  const remoteItem = page
+    .getByRole("menu", { name: "Source" })
+    .getByRole("menuitemradio", { name: "Example Remote", exact: true });
+  await expect(remoteItem).toHaveAccessibleDescription("Disabled");
+  await remoteItem.click();
+  await expect(page.getByRole("button", { name: "Source: Example Remote", exact: true })).toBeVisible();
+
+  await expect(page.getByText("Remote source is disabled", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again", exact: true })).toHaveCount(0);
+  await expect(page.getByText("Remote Japanese work", { exact: true })).toHaveCount(0);
+});
+
+test("@desktop a disabled source stays out of the wide source tabs until source visibility shows it", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await mockRemoteSource(page, () => undefined, { remoteStatus: "disabled" });
   await page.goto("/");
   const remoteTab = page.getByRole("button", { name: "Example Remote", exact: true });
@@ -89,10 +116,7 @@ test("remote source renders disabled and unavailable failures inside the works a
     .click();
   await page.keyboard.press("Escape");
   await remoteTab.click();
-
   await expect(page.getByText("Remote source is disabled", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Try again", exact: true })).toHaveCount(0);
-  await expect(page.getByText("Remote Japanese work", { exact: true })).toHaveCount(0);
 });
 
 test("remote source unavailable failure lets a reader retry without diagnostic details", async ({ page }) => {
@@ -101,7 +125,7 @@ test("remote source unavailable failure lets a reader retry without diagnostic d
     remoteStatus: "unavailable",
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
 
   await expect(page.getByText("Remote source is unavailable", { exact: true })).toBeVisible();
   await expect(page.getByRole("main").getByRole("link", { name: /^https?:\/\// })).toHaveCount(0);
@@ -117,7 +141,7 @@ test("remote source administrators can open the sanitized diagnostic URL", async
     remoteErrorURL: "https://source.example.invalid/api",
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
 
   await expect(page.getByRole("link", { name: "https://source.example.invalid/api", exact: true })).toHaveAttribute(
     "href",
@@ -130,7 +154,7 @@ test("remote source keeps alias matches returned by the backend", async ({ page 
   const requests: URL[] = [];
   await mockRemoteSource(page, (url) => requests.push(url));
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
 
   const search = page.getByRole("searchbox", { name: "Search library" });
   await search.fill(aliasWorkCode);
@@ -142,7 +166,7 @@ test("remote source remembers sorting after transient browse state is cleared", 
   const requests: URL[] = [];
   await mockRemoteSource(page, (url) => requests.push(url));
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await page.getByRole("button", { name: "Sort: Recently added" }).click();
   await page.getByRole("button", { name: "Code", exact: true }).click();
   await expect.poll(() => requests.some((url) => url.searchParams.get("sort") === "code")).toBe(true);
@@ -153,10 +177,7 @@ test("remote source remembers sorting after transient browse state is cleared", 
     window.history.replaceState({}, "");
   });
   await page.reload();
-  await expect(page.getByRole("button", { name: "Example Remote", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(page.getByRole("button", { name: "Source: Example Remote", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sort: Code" })).toBeVisible();
   await expect.poll(() => requests.some((url) => url.searchParams.get("sort") === "code")).toBe(true);
 });
@@ -171,7 +192,7 @@ test("remote card Fork queues in place and reports a terminal failure without na
   };
   await mockRemoteSource(page, () => undefined, { trackControl });
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   const sourceURL = page.url();
 
@@ -204,7 +225,7 @@ test("a User keeps remote actions visible and learns about the missing permissio
     },
   );
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   const denied = page.getByText("Your account does not have permission to use this feature.");
 
@@ -226,7 +247,7 @@ test("mobile Fetch prepares language editions and switches between local, remote
 }) => {
   await mockRemoteSource(page, () => undefined);
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await page.getByTitle("Fetch").click();
   await expect(page.getByText("Fetch selection", { exact: true })).toBeVisible();
   await expect(page.getByText("Language editions", { exact: false }).first()).toBeVisible();
@@ -289,7 +310,7 @@ test("mobile Fetch preserves reviewed choices after an unconfirmed submission an
     });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await page.getByTitle("Fetch").click();
   await page.getByRole("button", { name: "After Fetch", exact: true }).click();
   await expect(page.getByText("target exists with a different size", { exact: true })).toBeVisible();
@@ -326,7 +347,7 @@ test("mobile Fetch preserves reviewed choices after an unconfirmed submission an
 test("mobile Fetch reviews an unclaimed destination folder before publishing", async ({ page }) => {
   await mockRemoteSource(page, () => undefined, { fetchRootConflict: true });
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await page.getByTitle("Fetch").click();
 
   const warning = page.getByRole("alert");
@@ -1140,7 +1161,7 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect.poll(() => sourceChecks).toBe(1);
 
   await page.getByRole("main").getByRole("button", { name: "Library", exact: true }).click();
-  await page.getByRole("button", { name: "Tracked", exact: true }).click();
+  await selectLibrarySource(page, "Tracked");
   await page.getByText(work.title, { exact: true }).click();
   await expect(page).toHaveURL(/view=tracked/);
   await expect(page.locator('button[title^="Tracked:"]')).toHaveAttribute("aria-pressed", "true");
@@ -1180,7 +1201,7 @@ test("tracked library cards confirm Untrack in an anchored popover", async ({ pa
     onUntrack: (workId, sourceId) => untrackRequests.push({ workId, sourceId }),
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Tracked", exact: true }).click();
+  await selectLibrarySource(page, "Tracked");
 
   const untrackTrigger = page.getByRole("button", { name: "Untrack", exact: true });
   await untrackTrigger.click();
@@ -1200,7 +1221,7 @@ test("anonymous Fetch opens login before loading remote detail or a fetch plan",
   });
   await mockRemoteSource(page, () => undefined, { authenticated: false });
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await expect(page.getByText("Remote Japanese work", { exact: true })).toBeVisible();
   await page.getByTitle("Fetch").click();
 
@@ -1216,7 +1237,7 @@ test("remote-only work uses the shared mobile detail shell without becoming pers
   });
   await mockRemoteSource(page, () => undefined);
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await page.getByText("Remote Japanese work", { exact: true }).click();
 
   await expect.poll(() => new URL(page.url()).searchParams.get("source")).toBe("1");
@@ -1254,7 +1275,7 @@ test("remote detail Track completes in place and makes the forked Tracked source
   };
   await mockRemoteSource(page, () => undefined, { trackControl });
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await page.getByText("Remote Japanese work", { exact: true }).click();
   await expect(page).toHaveURL(/\/RJ00000051\?source=1/);
   const detailURL = page.url();
@@ -1297,7 +1318,7 @@ test("persisted remote result opens the canonical detail with its remote source 
   });
   await mockRemoteSource(page, () => undefined, { persisted: true });
   await page.goto("/");
-  await page.getByRole("button", { name: "Example Remote", exact: true }).click();
+  await selectLibrarySource(page, "Example Remote");
   await page.getByText("Remote Japanese work", { exact: true }).click();
 
   await expect(page).toHaveURL(new RegExp(`/${work.primaryCode}\\?`));

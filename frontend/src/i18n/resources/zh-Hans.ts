@@ -34,6 +34,10 @@ export const libraryHans = {
   showRecommendationBadges: "显示推荐标记",
   markFilter: "标记",
   clearMarkFilter: "清除标记筛选",
+  markFilterToggle: "标记筛选",
+  markFilterValue: "标记筛选：{{status}}",
+  sourceMenu: "来源",
+  sourceMenuLabel: "来源：{{source}}",
   local: "本地",
   tracked: "已跟踪",
   sourceVisibility: {
