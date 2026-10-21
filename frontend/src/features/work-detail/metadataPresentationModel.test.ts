@@ -66,6 +66,14 @@ describe("metadataVariantLabel", () => {
     expect(metadataVariantLabel(variants[0], labels)).toBe("Original · Japanese");
     expect(metadataVariantLabel(variants[1], labels)).toBe("Unknown language");
   });
+
+  it("leaves the original marker off a declared language in a compact label", () => {
+    const compact = { ...labels, omitOriginal: true };
+    const declared = { key: "RJ00000050", language: "ja-jp", title: "Origin", tags: [], origin: true };
+    const undeclared = { ...declared, language: "" };
+    expect(metadataVariantLabel(declared, compact)).toBe("Japanese");
+    expect(metadataVariantLabel(undeclared, compact)).toBe("Original");
+  });
 });
 
 describe("metadataLanguageChoices", () => {

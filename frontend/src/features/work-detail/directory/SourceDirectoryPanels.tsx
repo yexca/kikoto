@@ -1,7 +1,7 @@
 import i18n from "@/i18n";
 import { LibraryOfflineNotice } from "@/components/library-offline/LibraryOfflineNotice";
 import { Button } from "@/components/ui/button";
-import { Check, ChevronDown, Languages, MoreHorizontal, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, Languages, RefreshCw } from "lucide-react";
 import type { DirectoryRoutingRule, WorkDetail } from "@/lib/api";
 import {
   type RemoteSourceAvailability,
@@ -20,12 +20,18 @@ import { DirectoryExplorer } from "@/features/work-detail/directory/DirectoryExp
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { nodeAtPath, treeHasDisplayNames } from "@/features/work-detail/directory/directoryModel";
-import { DirectoryOriginalNamesContext } from "@/features/work-detail/directory/directoryNames";
+import {
+  DirectoryNameClampContext,
+  DirectoryOriginalNamesContext,
+} from "@/features/work-detail/directory/directoryNames";
 import { useOriginalFileNames } from "@/lib/originalFileNames";
 import { cn } from "@/lib/tailwindClassNames";
 import { IconButton } from "@/components/ui/icon-button";
 import { buttonVariants } from "@/components/ui/button";
+import { createPortal } from "react-dom";
+import { useDirectoryTabMenu } from "@/features/work-detail/directory/directoryTabMenu";
 import {
+  SourceVisibilityList,
   SourceVisibilityPicker,
   sourceVisibilityIcon,
   type SourceVisibilityRow,
@@ -250,6 +256,53 @@ function DisplayNamesToggle({ original, onToggle }: { original: boolean; onToggl
   );
 }
 
+/**
+ * Lets long file and folder names wrap in full instead of stopping at two
+ * lines. It is pressed while names show in full.
+ */
+function FullNamesToggle({ full, onToggle }: { full: boolean; onToggle: () => void }) {
+  return (
+    <Button
+      type="button"
+      variant="toolbar"
+      size="icon-sm"
+      className={cn(
+        "shrink-0",
+        full && "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
+      )}
+      aria-label={i18n.t("libraryDetail.fullNames")}
+      aria-pressed={full}
+      title={full ? i18n.t("libraryDetail.fullNamesOnHint") : i18n.t("libraryDetail.fullNamesOffHint")}
+      onClick={onToggle}
+    >
+      {full ? <ChevronsDownUp className="h-3.5 w-3.5" /> : <ChevronsUpDown className="h-3.5 w-3.5" />}
+    </Button>
+  );
+}
+
+const fullNamesStorageKey = "kikoto:work-directory-full-names";
+
+/** Whether this device shows long directory names in full; the choice stays on this device. */
+function useFullDirectoryNames() {
+  const [full, setFull] = useState(() => {
+    try {
+      return localStorage.getItem(fullNamesStorageKey) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () =>
+    setFull((current) => {
+      try {
+        localStorage.setItem(fullNamesStorageKey, String(!current));
+      } catch {
+        // The choice still applies to this page view.
+      }
+      return !current;
+    });
+  return [full, toggle] as const;
+}
+
 function directoryRouteRequestKey(routeStateKey: string | undefined, activeKey: string, trackedPresenceKey: string) {
   return [routeStateKey ?? "", activeKey, trackedPresenceKey].join("\u0000");
 }
@@ -314,19 +367,18 @@ export function SourceDirectoryPanel({
   routeStateKey?: string;
 }) {
   const [trackedMenuOpen, setTrackedMenuOpen] = useState(false);
-  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [requestedRoutePath, setRequestedRoutePath] = useState<string[] | null>(null);
   const [requestedRouteStateKey, setRequestedRouteStateKey] = useState(() =>
     directoryRouteRequestKey(routeStateKey, activeKey, selectedTrackedPresenceKey),
   );
   const trackedMenuRef = useRef<HTMLDivElement | null>(null);
-  const mobileActionsRef = useRef<HTMLButtonElement | null>(null);
   const mobileNavigationLayout = useMobileNavigationLayout();
   const sourceTabVisibility = useSourceTabVisibility();
+  const [fullNames, toggleFullNames] = useFullDirectoryNames();
+  const tabMenu = useDirectoryTabMenu();
   const routeRequestKey = directoryRouteRequestKey(routeStateKey, activeKey, selectedTrackedPresenceKey);
   useEffect(() => {
     setTrackedMenuOpen(false);
-    setMobileActionsOpen(false);
   }, [activeKey, selectedTrackedPresenceKey]);
   useEffect(() => {
     if (requestedRouteStateKey === routeRequestKey) return;
@@ -375,6 +427,72 @@ export function SourceDirectoryPanel({
     visible: entry.visible,
     note: entry.disabled ? i18n.t("library.sourceVisibility.disabled") : undefined,
   }));
+  // A phone stops long names at two lines unless asked for them in full.
+  const clampableNames = mobileNavigationLayout && !emptyState;
+  const visibilityTitle = i18n.t("libraryDetail.sourceTabVisibility");
+  const checkSourcesLabel = checkingSources
+    ? i18n.t("libraryDetail.checkingSources")
+    : checkedAt
+      ? i18n.t("libraryDetail.checkSourcesLastChecked", { time: formatDateTime(checkedAt) })
+      : i18n.t("libraryDetail.checkSources");
+  // A compact detail keeps the source controls in its Directory tab's menu,
+  // with Check sources below the visibility list; elsewhere the header has them.
+  const tabMenuControls =
+    tabMenu?.host &&
+    createPortal(
+      <>
+        <SourceVisibilityList title={visibilityTitle} rows={visibilityRows} onChange={sourceTabVisibility.changeMode} />
+        {onCheckSources && (
+          <div className="mt-1 border-t pt-1">
+            <button
+              type="button"
+              className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-muted focus:bg-muted focus:outline-none disabled:opacity-60"
+              disabled={checkingSources}
+              onClick={() => {
+                tabMenu.close();
+                onCheckSources();
+              }}
+            >
+              <RefreshCw className={cn("h-4 w-4 shrink-0", checkingSources && "animate-spin")} />
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium">
+                  {checkingSources ? i18n.t("libraryDetail.checkingSources") : i18n.t("libraryDetail.checkSources")}
+                </span>
+                {!checkingSources && checkedAt && (
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {i18n.t("libraryDetail.checkedAt", { time: formatDateTime(checkedAt) })}
+                  </span>
+                )}
+              </span>
+            </button>
+          </div>
+        )}
+      </>,
+      tabMenu.host,
+    );
+  const headerSourceControls = !tabMenu && (
+    <>
+      <SourceVisibilityPicker
+        title={visibilityTitle}
+        rows={visibilityRows}
+        align="end"
+        zIndex={70}
+        triggerClassName={(open) =>
+          buttonVariants({
+            variant: "toolbar",
+            size: "icon-sm",
+            className: open ? "shrink-0 bg-muted" : "shrink-0",
+          })
+        }
+        onChange={sourceTabVisibility.changeMode}
+      />
+      {onCheckSources && (
+        <IconButton title={checkSourcesLabel} onClick={onCheckSources} disabled={checkingSources}>
+          <RefreshCw className={`h-3.5 w-3.5 ${checkingSources ? "animate-spin" : ""}`} />
+        </IconButton>
+      )}
+    </>
+  );
   // A lone source has nothing to switch to: name it in the header instead of a
   // one-tab strip, and leave an unusable one to the empty state below.
   const singleSource =
@@ -420,82 +538,11 @@ export function SourceDirectoryPanel({
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {hasDisplayNames && <DisplayNamesToggle original={originalNamesPreferred} onToggle={toggleOriginalNames} />}
-            <SourceVisibilityPicker
-              title={i18n.t("libraryDetail.sourceTabVisibility")}
-              rows={visibilityRows}
-              align="end"
-              zIndex={70}
-              triggerClassName={(open) =>
-                buttonVariants({
-                  variant: "toolbar",
-                  size: "icon-sm",
-                  className: open ? "shrink-0 bg-muted" : "shrink-0",
-                })
-              }
-              onChange={sourceTabVisibility.changeMode}
-            />
-            <div className="hidden shrink-0 items-center gap-1 lg:flex">
-              {onCheckSources && (
-                <IconButton
-                  title={
-                    checkingSources
-                      ? i18n.t("libraryDetail.checkingSources")
-                      : checkedAt
-                        ? i18n.t("libraryDetail.checkSourcesLastChecked", { time: formatDateTime(checkedAt) })
-                        : i18n.t("libraryDetail.checkSources")
-                  }
-                  onClick={onCheckSources}
-                  disabled={checkingSources}
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${checkingSources ? "animate-spin" : ""}`} />
-                </IconButton>
-              )}
-            </div>
-            {mobileNavigationLayout && onCheckSources && (
-              <>
-                <button
-                  ref={mobileActionsRef}
-                  type="button"
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                  aria-label={i18n.t("libraryDetail.directoryActions")}
-                  aria-haspopup="menu"
-                  aria-expanded={mobileActionsOpen}
-                  title={i18n.t("libraryDetail.directoryActions")}
-                  onClick={() => setMobileActionsOpen((open) => !open)}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </button>
-                <AnchoredPopover
-                  open={mobileActionsOpen}
-                  anchorRef={mobileActionsRef}
-                  onOpenChange={setMobileActionsOpen}
-                  className="w-52 p-1 text-sm"
-                  bottomCollisionPadding={96}
-                  zIndex={70}
-                >
-                  <div role="menu" aria-label={i18n.t("libraryDetail.directoryActions")}>
-                    <button
-                      role="menuitem"
-                      className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-muted focus:bg-muted focus:outline-none"
-                      disabled={checkingSources}
-                      onClick={() => {
-                        setMobileActionsOpen(false);
-                        onCheckSources();
-                      }}
-                    >
-                      <RefreshCw className={`h-4 w-4 shrink-0 ${checkingSources ? "animate-spin" : ""}`} />
-                      <span>
-                        {checkingSources
-                          ? i18n.t("libraryDetail.checkingSources")
-                          : i18n.t("libraryDetail.checkSources")}
-                      </span>
-                    </button>
-                  </div>
-                </AnchoredPopover>
-              </>
-            )}
+            {clampableNames && <FullNamesToggle full={fullNames} onToggle={toggleFullNames} />}
+            {headerSourceControls}
           </div>
         </div>
+        {tabMenuControls}
 
         {showSourceTabs && (
           <div className="app-scrollbar mt-1 flex min-w-0 items-center overflow-x-auto overflow-y-hidden border-b px-2">
@@ -591,7 +638,9 @@ export function SourceDirectoryPanel({
           )}
           {selectionPanel}
           <DirectoryOriginalNamesContext.Provider value={originalNames}>
-            {content}
+            <DirectoryNameClampContext.Provider value={clampableNames && !fullNames}>
+              {content}
+            </DirectoryNameClampContext.Provider>
           </DirectoryOriginalNamesContext.Provider>
         </div>
       </div>

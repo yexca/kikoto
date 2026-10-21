@@ -21,7 +21,7 @@ import {
   type FilePreviewState,
 } from "@/features/work-detail/dialogs/FilePreviewDialog";
 import { fileIcon } from "@/features/work-detail/dialogs/mediaFilePresentation";
-import { useDirectoryOriginalNames } from "@/features/work-detail/directory/directoryNames";
+import { useDirectoryNameClamp, useDirectoryOriginalNames } from "@/features/work-detail/directory/directoryNames";
 import {
   fileDownloadable,
   fileKindLabel,
@@ -252,6 +252,7 @@ export function DirectoryFileRow({
   useDismissiblePopover(moreMenuOpen, moreMenuRef, () => setMoreMenuOpen(false));
   useDismissiblePopover(lyricsMenuOpen, actionAreaRef, () => setLyricsMenuOpen(false));
   const name = fileLabel(file, useDirectoryOriginalNames());
+  const clampName = useDirectoryNameClamp();
   const state = fileActionState(file, handlers, player.lyricsPreferenceOverrides);
   const open = () => openFile(file, tracks, state, handlers, previewSiblings);
   const isTrack = variant === "track";
@@ -311,9 +312,10 @@ export function DirectoryFileRow({
         <span
           className={cn(
             "block whitespace-normal break-words [overflow-wrap:anywhere]",
+            clampName && "line-clamp-2",
             isActive && "font-medium text-primary",
           )}
-          title={name === file.title ? undefined : file.title}
+          title={name === file.title ? (clampName ? name : undefined) : file.title}
         >
           {name}
         </span>

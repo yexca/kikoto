@@ -1163,10 +1163,10 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
     await expect(sourceMenu).toHaveCount(0);
   }
   await showWorkDetailTab(page, "Directory");
-  await page.getByRole("button", { name: "Directory actions", exact: true }).click();
+  await page.getByRole("button", { name: "Source tab visibility", exact: true }).click();
   await page
-    .getByRole("menu", { name: "Directory actions" })
-    .getByRole("menuitem", { name: "Check sources", exact: true })
+    .getByRole("dialog", { name: "Source tab visibility" })
+    .getByRole("button", { name: /^Check sources/ })
     .click();
   await expect.poll(() => sourceChecks).toBe(1);
 

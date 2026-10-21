@@ -14,11 +14,11 @@ import { getStoredServerURL } from "@/lib/serverConfig";
 import { cn } from "@/lib/tailwindClassNames";
 import { PERSONAL_TAB_PERMISSION, personalTabPath, personalTabs } from "@/pages/personalTabs";
 
-// Subscriptions, Insights, and the personal Settings tabs are one tap away on a
-// phone, which has no sidebar.
+// Subscriptions, Insights, and Tags are one tap away on a phone, which has no
+// sidebar. Your data stays in Settings and Quick actions.
 const personalDestinations = [
   ...navItems.filter((item) => item.id === "subscriptions" || item.path === INSIGHTS_PATH),
-  ...personalTabs.map((tab) => ({ ...tab, path: personalTabPath(tab.id) })),
+  ...personalTabs.filter((tab) => tab.id !== "data").map((tab) => ({ ...tab, path: personalTabPath(tab.id) })),
 ];
 
 /**

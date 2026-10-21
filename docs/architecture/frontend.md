@@ -14,9 +14,9 @@ anchored to their triggers.
 Appearance owns only mode, style, and color choices.
 
 The account panel (`app/header/AccountPanel`) opens from the avatar, or from
-Sign in for anonymous visitors, on every screen size. It shows the profile, the
-personal Settings tabs as shortcuts, the UI language, Settings and Users, and
-sign-in or sign-out; on phones it also holds the native connection actions. A
+Sign in for anonymous visitors, on every screen size. It shows the profile,
+Subscriptions, Insights, and Tags as shortcuts, the UI language, Settings and
+Users, and sign-in or sign-out; on phones it also holds the native connection actions. A
 signed-in user also chooses the personal preferred metadata language there:
 **Origin** is shown when the user has no preference and choosing it clears the
 stored preference, and a saved change refreshes the routed page through the

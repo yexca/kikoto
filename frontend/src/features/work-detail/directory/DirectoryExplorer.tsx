@@ -41,7 +41,7 @@ import {
   sortedFolders,
   treeHasFolders,
 } from "@/features/work-detail/directory/directoryModel";
-import { useDirectoryOriginalNames } from "@/features/work-detail/directory/directoryNames";
+import { useDirectoryNameClamp, useDirectoryOriginalNames } from "@/features/work-detail/directory/directoryNames";
 import {
   FolderPickerButton,
   FolderRail,
@@ -259,6 +259,7 @@ function FolderTile({
 }) {
   const tracks = useMemo(() => playableFiles(sortedFiles(folder)), [folder]);
   const name = folderLabel(folder, useDirectoryOriginalNames());
+  const clampName = useDirectoryNameClamp();
   return (
     <div className="flex min-h-14 items-stretch rounded-lg border bg-background/60 transition-colors hover:bg-muted/70">
       <button
@@ -276,8 +277,11 @@ function FolderTile({
         </span>
         <span className="min-w-0 flex-1">
           <span
-            className="block whitespace-normal break-words font-medium [overflow-wrap:anywhere]"
-            title={name === folder.name ? undefined : folder.name}
+            className={cn(
+              "block whitespace-normal break-words font-medium [overflow-wrap:anywhere]",
+              clampName && "line-clamp-2",
+            )}
+            title={name === folder.name ? (clampName ? name : undefined) : folder.name}
           >
             {name}
           </span>
