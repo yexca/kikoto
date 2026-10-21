@@ -1,12 +1,33 @@
-import { playbackURL, remoteMediaPlaybackURL } from "./mediaPlayback";
+import { audioHlsPlayback, mediaHlsPlaylistURL, playbackURL, remoteMediaPlaybackURL } from "./mediaPlayback";
+import { audioNeedsConversion } from "./nextTrackPreload";
 import { playbackKeyForLocation, remotePlaybackKey } from "./playbackIdentity";
 import type { PlayerTrack } from "./playerTypes";
 
-export function playerTrackAudioURL(track: PlayerTrack, compatibilityMode = false) {
+/**
+ * Where the player element loads a track from. "direct" is the original file,
+ * "hls" a playlist whose segments the server converts as they are needed, and
+ * "prepared" one complete conversion for a browser without HLS playback.
+ */
+export type PlayerAudioSource = {
+  delivery: "direct" | "hls" | "prepared";
+  url: string;
+};
+
+export function playerTrackAudioSource(track: PlayerTrack, compatibilityMode = false): PlayerAudioSource {
   if (track.locationType === "remote_stream" && track.remoteSourceId && track.remoteWorkCode && track.remotePath) {
-    return remoteMediaPlaybackURL(track.remoteSourceId, track.remoteWorkCode, track.remotePath, "audio");
+    return {
+      delivery: "direct",
+      url: remoteMediaPlaybackURL(track.remoteSourceId, track.remoteWorkCode, track.remotePath, "audio"),
+    };
   }
-  return playbackURL(track.streamUrl, "audio", compatibilityMode, !compatibilityMode);
+  if (!supportsCompatibilityPlayback(track) || !audioNeedsConversion(track.title, compatibilityMode)) {
+    return { delivery: "direct", url: playbackURL(track.streamUrl, "audio", false, true) };
+  }
+  // Video files keep an audio-only conversion instead of video segments.
+  if (track.kind === "audio" && track.locationId > 0 && audioHlsPlayback()) {
+    return { delivery: "hls", url: mediaHlsPlaylistURL(track.locationId) };
+  }
+  return { delivery: "prepared", url: playbackURL(track.streamUrl, "audio", true, false) };
 }
 
 export function trackPlaybackKey(track: PlayerTrack | null) {

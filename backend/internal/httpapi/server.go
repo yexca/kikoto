@@ -66,6 +66,7 @@ type Server struct {
 	remoteImageTokens              remoteImageTokenSealer
 	cachePathLocks                 cachePathLocker
 	audioTranscodeLocks            cachePathLocker
+	audioHLS                       audioHLSSessions
 	mediaPreparationFailures       mediaPreparationFailures
 	loudnessMeasurements           loudnessMeasurementSlot
 	metadataSyncMu                 sync.Mutex
@@ -348,7 +349,7 @@ func (s *Server) Routes() http.Handler {
 	handleSlowFirstResponse("GET /api/media/{id}/stream", s.streamMedia)
 	mux.HandleFunc("GET /api/media/{id}/playback", s.getVideoPlaybackInfo)
 	mux.HandleFunc("GET /api/media/{id}/loudness", s.getMediaLoudness)
-	handleSlowFirstResponse("GET /api/media/{id}/hls/{file}", s.serveVideoHLS)
+	handleSlowFirstResponse("GET /api/media/{id}/hls/{file}", s.serveMediaHLS)
 	mux.HandleFunc("POST /api/media/{id}/cache", s.cacheMediaLocation)
 	mux.HandleFunc("DELETE /api/media/{id}/cache", s.deleteMediaCacheLocation)
 	mux.HandleFunc("DELETE /api/media/{id}/local", s.deleteMediaLocalLocation)

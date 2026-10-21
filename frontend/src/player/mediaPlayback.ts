@@ -47,6 +47,50 @@ export function playbackCapabilities(profile: PlaybackProfile): string[] {
     .map(({ key }) => key);
 }
 
+export type AudioHlsPlayback = "native" | "mse";
+
+/**
+ * How this browser plays an audio HLS playlist, or null when it cannot. iOS
+ * and iPadOS use their native player, which keeps playing on the lock screen;
+ * other browsers use Media Source Extensions through hls.js.
+ */
+export function audioHlsPlayback(): AudioHlsPlayback | null {
+  if (typeof document === "undefined") return null;
+  let native = false;
+  try {
+    const element = document.createElement("audio");
+    native = typeof element.canPlayType === "function" && element.canPlayType("application/vnd.apple.mpegurl") !== "";
+  } catch {
+    native = false;
+  }
+  if (native && appleMobileWebKit()) return "native";
+  if (mediaSourcePlaysAAC()) return "mse";
+  return native ? "native" : null;
+}
+
+function appleMobileWebKit() {
+  if (typeof navigator === "undefined") return false;
+  // iPadOS reports a desktop Mac, which has no touch points.
+  return (
+    /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function mediaSourcePlaysAAC() {
+  const source =
+    (globalThis as { ManagedMediaSource?: typeof MediaSource }).ManagedMediaSource ?? globalThis.MediaSource;
+  try {
+    return typeof source?.isTypeSupported === "function" && source.isTypeSupported('audio/mp4; codecs="mp4a.40.2"');
+  } catch {
+    return false;
+  }
+}
+
+/** The HLS VOD playlist of a local or cached location. */
+export function mediaHlsPlaylistURL(locationId: number) {
+  return `/api/media/${encodeURIComponent(String(locationId))}/hls/index.m3u8`;
+}
+
 function appendQuery(url: string, query: URLSearchParams) {
   const hashIndex = url.indexOf("#");
   const base = hashIndex >= 0 ? url.slice(0, hashIndex) : url;

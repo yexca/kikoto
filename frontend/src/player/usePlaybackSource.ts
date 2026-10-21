@@ -2,16 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { assetURL } from "@/lib/api";
 
-import {
-  bufferedEndAt,
-  nextTrackNeedsTranscoding,
-  nextTrackPreloadWindowSeconds,
-  shouldPreloadNextTrack,
-} from "./nextTrackPreload";
-import { playerTrackAudioURL, supportsCompatibilityPlayback } from "./playerTrackMedia";
+import { attachAudioHls } from "./audioHlsSource";
+import { audioHlsPlayback } from "./mediaPlayback";
+import { bufferedEndAt, nextTrackPreloadWindowSeconds, shouldPreloadNextTrack } from "./nextTrackPreload";
+import { playerTrackAudioSource, type PlayerAudioSource } from "./playerTrackMedia";
 import type { PlayerTrack } from "./playerTypes";
 import type { PlaybackEngine } from "./usePlaybackEngine";
 import { useNextTrackPreload } from "./useNextTrackPreload";
+
+function assetSource(source: PlayerAudioSource): PlayerAudioSource {
+  return { ...source, url: assetURL(source.url) };
+}
 
 /**
  * Drives the audio element from player state: loads each playback instance,
@@ -53,12 +54,14 @@ export function usePlaybackSource(
   const currentLocationId = currentTrack?.locationId ?? null;
   const currentMediaItemId = currentTrack?.mediaItemId;
   const currentQueueItemId = currentTrack?.queueItemId;
-  // Track objects are replaced by unrelated queue edits; the source string only
-  // changes when the element really has to load something else.
-  const currentSourceURL = useMemo(
-    () => (currentTrack ? assetURL(playerTrackAudioURL(currentTrack, compatibilityPlaybackEnabled)) : null),
+  // Track objects are replaced by unrelated queue edits; the source strings only
+  // change when the element really has to load something else.
+  const currentSource = useMemo(
+    () => (currentTrack ? assetSource(playerTrackAudioSource(currentTrack, compatibilityPlaybackEnabled)) : null),
     [compatibilityPlaybackEnabled, currentTrack],
   );
+  const currentSourceURL = currentSource?.url ?? null;
+  const currentSourceIsHls = currentSource?.delivery === "hls";
 
   useEffect(() => {
     const audio = refs.audioRef.current;
@@ -92,24 +95,45 @@ export function usePlaybackSource(
     }
     refs.sourceLoadingRef.current = true;
     audio.pause();
-    audio.src = currentSourceURL;
-    audio.load();
+    const hlsPlayback = currentSourceIsHls ? audioHlsPlayback() : null;
+    let detach = () => {};
+    if (hlsPlayback) {
+      const instanceKey = currentPlaybackInstanceKey;
+      const current = () =>
+        refs.audioRef.current === audio && refs.currentPlaybackInstanceKeyRef.current === instanceKey;
+      detach = attachAudioHls(audio, currentSourceURL, hlsPlayback, {
+        startPosition: () => {
+          const unapplied = refs.unappliedStartRef.current;
+          return unapplied && unapplied.instanceKey === instanceKey ? unapplied.positionSeconds : -1;
+        },
+        onAttached: () => {
+          if (current() && refs.isPlayingRef.current) requestAudioPlay(audio, instanceKey);
+        },
+        onFatalError: () => {
+          if (current()) refs.playbackErrorHandlerRef.current();
+        },
+      });
+    } else {
+      audio.src = currentSourceURL;
+      audio.load();
+    }
     refs.restoredMediaItemRef.current = null;
     // A replaced element loads the same instance again and resumes where the
     // previous element was, so the clock and duration stay.
     const loaded = loadedSourceRef.current;
     loadedSourceRef.current = { audio, instanceKey: currentPlaybackInstanceKey, sourceURL: currentSourceURL };
-    if (
+    if (!(
       loaded &&
       loaded.audio !== audio &&
       loaded.instanceKey === currentPlaybackInstanceKey &&
       loaded.sourceURL === currentSourceURL
-    )
-      return;
-    refs.lastPlayerTimeCommitRef.current = null;
-    setCurrentTime(0);
-    setDuration(0);
-    setDurationLocationId(currentLocationId);
+    )) {
+      refs.lastPlayerTimeCommitRef.current = null;
+      setCurrentTime(0);
+      setDuration(0);
+      setDurationLocationId(currentLocationId);
+    }
+    return detach;
   }, [
     audioElementKey,
     cancelPlaybackErrorCheck,
@@ -117,9 +141,11 @@ export function usePlaybackSource(
     compatibilityPlaybackEnabled,
     currentLocationId,
     currentPlaybackInstanceKey,
+    currentSourceIsHls,
     currentSourceURL,
     invalidatePlaybackRequests,
     refs,
+    requestAudioPlay,
     setCurrentTime,
     setDuration,
     setDurationLocationId,
@@ -201,8 +227,7 @@ export function usePlaybackSource(
     const windowSeconds = nextTrack
       ? nextTrackPreloadWindowSeconds(
           nextTrack.durationSeconds,
-          supportsCompatibilityPlayback(nextTrack) &&
-            nextTrackNeedsTranscoding(nextTrack.title, nextTrackCompatibility),
+          playerTrackAudioSource(nextTrack, nextTrackCompatibility).delivery === "prepared",
         )
       : undefined;
     if (
@@ -229,9 +254,9 @@ export function usePlaybackSource(
     refs,
   ]);
 
-  const nextSourceURL = useMemo(
-    () => (preloadArmed && nextTrack ? assetURL(playerTrackAudioURL(nextTrack, nextTrackCompatibility)) : null),
+  const nextSource = useMemo(
+    () => (preloadArmed && nextTrack ? assetSource(playerTrackAudioSource(nextTrack, nextTrackCompatibility)) : null),
     [nextTrack, nextTrackCompatibility, preloadArmed],
   );
-  useNextTrackPreload(nextSourceURL && nextSourceURL !== currentSourceURL ? nextSourceURL : null);
+  useNextTrackPreload(nextSource && nextSource.url !== currentSourceURL ? nextSource : null);
 }

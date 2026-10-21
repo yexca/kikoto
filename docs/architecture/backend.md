@@ -70,11 +70,15 @@ The backend is a Go HTTP API with SQLite persistence.
 - Serve library and detail APIs.
 - Browse and sync remote sources.
 - Stream local media with range support.
-- Prepare incompatible local or cached audio as complete, quota-bounded MP3
-  cache files with duration and HTTP Range support, preserving original media.
 - Publish complete-duration HLS VOD manifests for incompatible local or cached
-  video and generate independently seekable, quota-bounded segments under the
+  audio and video under one route, `GET /api/media/{id}/hls/{file}`, which
+  branches on the media kind. Video segments are generated independently;
+  audio segments come from one continuous encode per source revision, so
+  segment boundaries stay seamless. Both are quota-bounded and live under the
   disposable cache root.
+- Prepare incompatible local or cached audio as complete, quota-bounded MP3
+  cache files with duration and HTTP Range support for clients without HLS
+  playback, preserving original media.
 - Record workflow runs and activity state.
 - Claim durable workflow jobs by priority through one global executor, so only
   one workflow job runs at a time.
@@ -123,9 +127,23 @@ running FFmpeg again.
 
 Compatibility preparation starts only from a playback request for that file,
 including the player's single next-track preload, which requests the same
-playback URL. The backend never prepares an unplayed queue, work, or library in
-the background, because speculative preparation would spend the two transcode
-slots and the shared cache quota without a demonstrated benefit.
+playback URL or the first segment of the same playlist. The backend never
+prepares an unplayed queue, work, or library in the background, because
+speculative preparation would spend the two transcode slots and the shared
+cache quota without a demonstrated benefit.
+
+An audio HLS encode runs FFmpeg's HLS muxer from the requested segment, with
+the segment's start as both input seek and output timestamp offset, so every
+encode writes one shared timeline. Each segment is written beside its final
+name and renamed when complete, so a segment file that exists is complete. A
+missing segment within 20 segments of the running encode's output waits up to
+45 seconds for it; any other missing segment stops that encode and starts one
+there. An encode stops when it is 300 segments ahead of the furthest segment
+requested, after 400 segments, when it reaches a segment an earlier encode
+already produced, or after 20 minutes. Serving a segment while no encode runs
+starts the next one in the background when a segment within the following 100
+is missing. An encode takes one of the two transcode slots and a quota
+reservation of 256 KiB per segment it may write.
 
 Query planner statistics are refreshed by one bounded background worker after
 committed bulk changes; GET requests never run analysis. Its triggers and

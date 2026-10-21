@@ -4,9 +4,10 @@ import type { PlayMode } from "./playerTypes";
 export const NEXT_TRACK_PRELOAD_WINDOW_SECONDS = 45;
 
 /**
- * The server prepares a transcoded audio track completely before it serves it,
- * at a conservative 40 times real time. A long next track that needs this
- * starts warming early enough for that preparation to finish.
+ * A browser without HLS gets a converted track as one complete MP3, which the
+ * server prepares at a conservative 40 times real time before it serves it. A
+ * long next track that needs this starts warming early enough for that
+ * preparation to finish.
  */
 const TRANSCODE_PREPARATION_SPEED = 40;
 
@@ -14,7 +15,7 @@ const TRANSCODE_PREPARATION_SPEED = 40;
 const directAudioExtensions = new Set([".mp3", ".m4a", ".mp4", ".wav", ".flac", ".oga", ".ogg", ".opus", ".webm"]);
 
 /** Whether the server converts this file for playback: compatibility mode, or a format the browser cannot play. */
-export function nextTrackNeedsTranscoding(fileName: string, compatibility: boolean) {
+export function audioNeedsConversion(fileName: string, compatibility: boolean) {
   if (compatibility) return true;
   const dot = fileName.lastIndexOf(".");
   return dot < 0 || !directAudioExtensions.has(fileName.slice(dot).toLowerCase());
@@ -23,9 +24,9 @@ export function nextTrackNeedsTranscoding(fileName: string, compatibility: boole
 /** How many seconds before the current track ends the next track starts warming. */
 export function nextTrackPreloadWindowSeconds(
   nextDurationSeconds: number | null | undefined,
-  needsTranscoding: boolean,
+  needsPreparation: boolean,
 ) {
-  if (!needsTranscoding || !nextDurationSeconds || !Number.isFinite(nextDurationSeconds)) {
+  if (!needsPreparation || !nextDurationSeconds || !Number.isFinite(nextDurationSeconds)) {
     return NEXT_TRACK_PRELOAD_WINDOW_SECONDS;
   }
   return Math.max(NEXT_TRACK_PRELOAD_WINDOW_SECONDS, nextDurationSeconds / TRANSCODE_PREPARATION_SPEED);
