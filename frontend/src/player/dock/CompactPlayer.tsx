@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { OverflowMarqueeGroup } from "@/components/ui/overflow-marquee";
 import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
+import { usePlayerTrackTitle } from "@/player/playerTrackTitle";
 
 import { formatScrubTime, formatSignedSeconds, playbackProgressPercent } from "./playerFormat";
 import { CoverImage, GlyphButton, PlayPauseGlyph } from "./playerControls";
@@ -28,6 +29,7 @@ export function CompactPlayer({
   onDockModeChange: (mode: DockMode) => void;
 }) {
   const { t } = useTranslation();
+  const trackTitle = usePlayerTrackTitle();
   const [scrub, setScrub] = useState<CompactScrubState | null>(null);
   const scrubRef = useRef<CompactScrubState | null>(null);
   const suppressClickRef = useRef(false);
@@ -173,7 +175,7 @@ export function CompactPlayer({
             <CoverImage track={track} className="h-11 w-[3.625rem] rounded-lg shadow-sm" />
             <OverflowMarqueeGroup
               className="min-w-0 flex-1"
-              primaryText={track.title}
+              primaryText={trackTitle(track)}
               secondaryText={track.circle || track.workTitle}
               primaryClassName="text-sm font-semibold"
               secondaryClassName="text-xs text-muted-foreground"

@@ -1,7 +1,7 @@
 import i18n from "@/i18n";
 import { LibraryOfflineNotice } from "@/components/library-offline/LibraryOfflineNotice";
 import { Button } from "@/components/ui/button";
-import { Check, ChevronDown, MoreHorizontal, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, Languages, MoreHorizontal, RefreshCw } from "lucide-react";
 import type { DirectoryRoutingRule, WorkDetail } from "@/lib/api";
 import {
   type RemoteSourceAvailability,
@@ -13,13 +13,16 @@ import {
 } from "@/features/work-detail/source/sourceContextModel";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/features/work-detail/workDetailHelpers";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { TreeNode, TreeTrack } from "@/features/work-detail/media/mediaTreeModel";
 import type { FilePreviewRequest } from "@/features/work-detail/dialogs/FilePreviewDialog";
 import { DirectoryExplorer } from "@/features/work-detail/directory/DirectoryExplorer";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
-import { nodeAtPath } from "@/features/work-detail/directory/directoryModel";
+import { nodeAtPath, treeHasDisplayNames } from "@/features/work-detail/directory/directoryModel";
+import { DirectoryOriginalNamesContext } from "@/features/work-detail/directory/directoryNames";
+import { useOriginalFileNames } from "@/lib/originalFileNames";
+import { cn } from "@/lib/tailwindClassNames";
 import { IconButton } from "@/components/ui/icon-button";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -223,6 +226,30 @@ function SourceDirectoryContent({
   );
 }
 
+/**
+ * Switches the directory between display names and the files' real names. It
+ * is pressed while display names show; its hint says which names are shown.
+ */
+function DisplayNamesToggle({ original, onToggle }: { original: boolean; onToggle: () => void }) {
+  return (
+    <Button
+      type="button"
+      variant="toolbar"
+      size="icon-sm"
+      className={cn(
+        "shrink-0",
+        !original && "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
+      )}
+      aria-label={i18n.t("libraryDetail.displayNames")}
+      aria-pressed={!original}
+      title={original ? i18n.t("libraryDetail.displayNamesOffHint") : i18n.t("libraryDetail.displayNamesOnHint")}
+      onClick={onToggle}
+    >
+      <Languages className="h-3.5 w-3.5" />
+    </Button>
+  );
+}
+
 function directoryRouteRequestKey(routeStateKey: string | undefined, activeKey: string, trackedPresenceKey: string) {
   return [routeStateKey ?? "", activeKey, trackedPresenceKey].join("\u0000");
 }
@@ -317,6 +344,9 @@ export function SourceDirectoryPanel({
     if (nodeAtPath(root, autoRoutePath)) setRequestedRoutePath([...autoRoutePath]);
   }, [autoRoutePath, requestedRoutePath, requestedRouteStateKey, root, routeRequestKey]);
   const effectiveRequestedRoutePath = requestedRouteStateKey === routeRequestKey ? requestedRoutePath : null;
+  const hasDisplayNames = useMemo(() => !emptyState && treeHasDisplayNames(root), [emptyState, root]);
+  const [originalNamesPreferred, toggleOriginalNames] = useOriginalFileNames();
+  const originalNames = hasDisplayNames && originalNamesPreferred;
   const content = (
     <SourceDirectoryContent
       emptyState={emptyState}
@@ -389,6 +419,7 @@ export function SourceDirectoryPanel({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {hasDisplayNames && <DisplayNamesToggle original={originalNamesPreferred} onToggle={toggleOriginalNames} />}
             <SourceVisibilityPicker
               title={i18n.t("libraryDetail.sourceTabVisibility")}
               rows={visibilityRows}
@@ -559,7 +590,9 @@ export function SourceDirectoryPanel({
             </div>
           )}
           {selectionPanel}
-          {content}
+          <DirectoryOriginalNamesContext.Provider value={originalNames}>
+            {content}
+          </DirectoryOriginalNamesContext.Provider>
         </div>
       </div>
       {selectionModal}

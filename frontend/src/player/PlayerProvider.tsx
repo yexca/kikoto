@@ -30,6 +30,7 @@ import { usePlaybackSource } from "./usePlaybackSource";
 import { usePlayerKeyboardShortcuts } from "./usePlayerKeyboardShortcuts";
 import { usePlayerQueueActions } from "./usePlayerQueueActions";
 import { usePersistPlayerQueue, useRestoredPlayerQueue, useRestoredQueueRevalidation } from "./usePlayerQueueStorage";
+import { useQueueDisplayNameRefresh } from "./useQueueDisplayNameRefresh";
 import { usePlaybackSeekPreferences, usePlayerSeeking } from "./usePlayerSeeking";
 import { useRemoteStreamCaching } from "./useRemoteStreamCaching";
 import { useSleepRewindPreference, useSleepTimer } from "./useSleepTimer";
@@ -183,6 +184,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     checkpointProgress,
   });
   useRestoredQueueRevalidation(restoredQueue, engine, setQueue, setCurrentIndex);
+  useQueueDisplayNameRefresh(engine.refs.queueRef, setQueue);
   usePersistPlayerQueue({
     storageKey: playerQueueStorageKey,
     queue,

@@ -140,6 +140,49 @@ describe("mediaTreeModel", () => {
     expect(treePathForTrack(tree, { playbackKey: track?.playbackKey })).toEqual(["Folder", "Inner/Sub"]);
   });
 
+  it("shows display names beside real names without changing paths or playback order", () => {
+    const withDisplayPath = (item: MediaItem, displayPath: string): MediaItem => ({
+      ...item,
+      locations: item.locations.map((location) => ({ ...location, displayPath })),
+    });
+    const tree = buildTree(
+      [
+        withDisplayPath(
+          localMediaItem(1, "audio", "library/RJ00000000/Main/01 b.mp3"),
+          "library/RJ00000000/本篇/甲.mp3",
+        ),
+        withDisplayPath(
+          localMediaItem(2, "audio", "library/RJ00000000/Main/02 a.mp3"),
+          "library/RJ00000000/本篇/02 a.mp3",
+        ),
+        // A file without names may come first; its folder still takes the name a later file carries.
+        localMediaItem(4, "audio", "library/RJ00000000/Bonus/Inner/Deep/04.mp3"),
+        withDisplayPath(
+          localMediaItem(3, "audio", "library/RJ00000000/Bonus/Inner/Deep/03.mp3"),
+          "library/RJ00000000/特典/内层/Deep/03.mp3",
+        ),
+      ],
+      1,
+      "RJ00000000",
+    );
+    const main = tree.children.get("Main");
+    expect(main?.displayName).toBe("本篇");
+    expect(main?.files.map((file) => [file.title, file.displayTitle])).toEqual([
+      ["01 b.mp3", "甲.mp3"],
+      ["02 a.mp3", undefined],
+    ]);
+    const bonus = tree.children.get("Bonus");
+    expect(bonus?.displayName).toBe("特典");
+    // A collapsed chain keeps each folder's own name.
+    expect(bonus?.children.get("Inner/Deep")?.displayName).toBe("内层/Deep");
+    expect(flattenTracks(tree).map((track) => track.sourcePath)).toEqual([
+      "Bonus/Inner/Deep/03.mp3",
+      "Bonus/Inner/Deep/04.mp3",
+      "Main/01 b.mp3",
+      "Main/02 a.mp3",
+    ]);
+  });
+
   it("returns the root path for a root file and falls back to its location id", () => {
     const tree = buildTree([localMediaItem(1, "audio", "library/RJ00000000/root.mp3")], 1, "RJ00000000");
 

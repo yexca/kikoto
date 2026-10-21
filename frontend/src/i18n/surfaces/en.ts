@@ -2041,6 +2041,10 @@ export const surfaceEnglish = {
     folders: "Folders",
     showFolders: "Show folders",
     hideFolderRail: "Hide folder panel",
+    displayNames: "Display names",
+    displayNamesOnHint:
+      "Showing names in your metadata language, not the real file names. Select to show the real names.",
+    displayNamesOffHint: "Showing the real file names. Select to show names in your metadata language.",
     showFolderRail: "Show folder panel",
     tracks: "Tracks",
     images: "Images",
@@ -2377,6 +2381,7 @@ export const surfaceEnglish = {
     noCachedFiles: "No cached files",
     manageFiles: "Manage files",
     manageLyrics: "Manage lyrics",
+    editFileNames: "Edit display names",
     retryMetadata: "Retry metadata",
     firstPull: "First pull",
     catalogNotPulledHint: "Only works this library already knows are listed. First pull reads the full DLsite catalog.",
@@ -2482,6 +2487,26 @@ export const surfaceEnglish = {
     existingResultsShown: "Existing results are still shown.",
   },
 
+  fileDisplayNames: {
+    title: "Display names",
+    description:
+      "Names the directory shows to viewers whose metadata language is this one. Files and folders on disk keep their real names, and an empty field shows the real name.",
+    language: "Language",
+    copyRealNames: "Copy real names",
+    realNamesCopied: "Real names copied ({{count}})",
+    copyFailed: "Could not copy to the clipboard.",
+    pasteNames: "Paste names",
+    pasteHint: "One name per line, in the order listed here ({{count}} rows). A blank line leaves its row unchanged.",
+    applyPaste: "Fill in names",
+    loading: "Loading files…",
+    loadFailed: "Could not load the files.",
+    noLocalFiles: "This work has no available local files.",
+    nameFor: "Display name of {{name}}",
+    invalidName: "A name cannot contain / or \\ and has at most 255 characters.",
+    save: "Save",
+    saved: "Display names saved",
+    saveFailed: "Could not save display names",
+  },
   folderEdit: {
     targetBlock: {
       not_a_file:

@@ -712,6 +712,8 @@ Important tables:
 - `media_item`
 - `media_file_location`
 - `media_lyrics_assignment`
+- `media_item_display_name`
+- `work_folder_display_name`
 
 Presence can describe that a source knows about a work. Concrete playback,
 download, local, and cache paths belong in media file locations.
@@ -790,6 +792,23 @@ identical-file detection, and `content_hash_version` holds the size and
 modification time it was computed for. A file observed with another version has
 no usable hash until it is hashed again. Only files that share a size with
 another local file of the same work family are ever hashed.
+
+`media_item_display_name` and `work_folder_display_name` hold the names the
+work detail directory shows for local files and folders, one row per
+[metadata language](#metadata-language) other than `origin`, shared by every
+viewer like manual metadata. A file's name belongs to its media item, so it
+follows the item through rescans and folder edits, and has no extension: the
+file keeps its own. A folder's name belongs to its path below the work folder,
+so copies of a work in several folders share it as their files share media
+items. A media read gives each local location whose file or folders have a
+name in the viewer's languages before `origin` a `displayPath`: its path with
+those names in place of the real segments. The real path still decides order,
+track numbers, folder recommendation and lyrics matching. A folder edit moves a
+folder's names with it when every file it moved out of the folder keeps its
+path below the folder, lands below one other folder, and leaves no available
+local file of the work behind; a folder that already has a name in a language
+keeps it. A file or folder renamed outside Kikoto loses its names, as a file
+loses its media item.
 
 `media_lyrics_assignment` holds the library-level lyrics files of an audio
 media item, one per `language`: `ja-jp`, `zh-cn`, `zh-tw`, `en-us`, `ko-kr`,

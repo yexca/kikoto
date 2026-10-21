@@ -55,6 +55,8 @@ export type PersistedDetailActionsProps = {
   onFetch: () => void;
   onManage: () => void;
   onManageLyrics?: () => void;
+  /** Absent when the viewer cannot edit display names or the work has no local files. */
+  onEditFileNames?: () => void;
   onRefreshLocalFiles: () => void;
 };
 
@@ -90,6 +92,7 @@ function persistedMediaActionBindings(props: PersistedDetailActionsProps) {
     manageCacheDisabled: Boolean(props.selectedTrackedPresence) && !props.trackedCacheAvailable,
     onManageFiles: props.actionMode === "local" ? props.onManage : undefined,
     onManageLyrics: props.actionMode === "local" ? props.onManageLyrics : undefined,
+    onEditFileNames: props.actionMode === "local" ? props.onEditFileNames : undefined,
     onRefreshLocalFiles:
       props.actionMode === "local" && props.selectedSource?.kind === "local" ? props.onRefreshLocalFiles : undefined,
   };

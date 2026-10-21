@@ -162,6 +162,39 @@ export function sortedFiles(node: TreeNode) {
   return sortedTreeFiles(node);
 }
 
+/**
+ * The name a folder shows: its display name, or its real name when it has
+ * none or the viewer asked for real names.
+ */
+export function folderLabel(node: Pick<TreeNode, "name" | "displayName">, original: boolean) {
+  return (!original && node.displayName) || node.name;
+}
+
+/** The name a file shows, as `folderLabel` decides it for a folder. */
+export function fileLabel(file: Pick<TreeTrack, "title" | "displayTitle">, original: boolean) {
+  return (!original && file.displayTitle) || file.title;
+}
+
+/** The names the folders along `path` show. */
+export function folderPathLabels(root: TreeNode, path: string[], original: boolean) {
+  const labels: string[] = [];
+  let cursor: TreeNode | undefined = root;
+  for (const part of path) {
+    cursor = cursor?.children.get(part);
+    labels.push(cursor ? folderLabel(cursor, original) : part);
+  }
+  return labels;
+}
+
+/** Whether any file or folder of the tree has a display name. */
+export function treeHasDisplayNames(node: TreeNode): boolean {
+  if (node.files.some((file) => file.displayTitle)) return true;
+  for (const child of node.children.values()) {
+    if (child.displayName || treeHasDisplayNames(child)) return true;
+  }
+  return false;
+}
+
 export type FolderContentCounts = {
   playable: number;
   images: number;
@@ -174,6 +207,8 @@ export type FolderNavigatorRow = {
   path: string[];
   /** Folder names merged into this row. Empty for the work root. */
   labelParts: string[];
+  /** The display names of `labelParts`, each falling back to the real name. */
+  displayLabelParts: string[];
   depth: number;
   node: TreeNode;
   isRoot: boolean;
@@ -257,11 +292,13 @@ export function folderNavigatorRows(root: TreeNode, expandedKeys: ReadonlySet<st
     let cursor = node;
     let cursorPath = path;
     const labelParts = isRoot ? [] : [node.name];
+    const displayLabelParts = isRoot ? [] : [folderLabel(node, false)];
     while (cursor.files.length === 0 && cursor.children.size === 1) {
       const only = cursor.children.values().next().value as TreeNode;
       cursor = only;
       cursorPath = [...cursorPath, only.name];
       labelParts.push(only.name);
+      displayLabelParts.push(folderLabel(only, false));
     }
     const children = sortedFolders(cursor);
     const expanded = isRoot || expandedKeys.has(cursor.path);
@@ -269,6 +306,7 @@ export function folderNavigatorRows(root: TreeNode, expandedKeys: ReadonlySet<st
       key: cursor.path,
       path: cursorPath,
       labelParts,
+      displayLabelParts,
       depth,
       node: cursor,
       isRoot,

@@ -6,6 +6,7 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { OverflowMarquee } from "@/components/ui/overflow-marquee";
 import { cn } from "@/lib/tailwindClassNames";
 import type { PlayerTrack } from "@/player/playerTypes";
+import { usePlayerTrackTitle } from "@/player/playerTrackTitle";
 
 import { CoverImage, NowPlayingBars } from "./playerControls";
 import { queueDragShift, resolveQueueDrag, type QueueRowLayout } from "./queueDrag";
@@ -328,6 +329,7 @@ const PlayerQueueRow = memo(function PlayerQueueRow({
   const optionsRef = useRef<HTMLButtonElement | null>(null);
   const queueItemId = item.queueItemId;
   const subtitle = item.circle || item.workTitle;
+  const title = usePlayerTrackTitle()(item);
   const runAction = (action: () => void) => {
     action();
     setOptionsOpen(false);
@@ -363,7 +365,7 @@ const PlayerQueueRow = memo(function PlayerQueueRow({
         </span>
         <span className="min-w-0 flex-1">
           <OverflowMarquee
-            text={item.title}
+            text={title}
             interactionOnly={!active}
             className={cn("text-sm leading-snug", active ? "font-semibold text-primary" : "font-medium")}
           />
@@ -375,7 +377,7 @@ const PlayerQueueRow = memo(function PlayerQueueRow({
         type="button"
         className="touch-target relative grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-foreground/10"
         onClick={() => setOptionsOpen((value) => !value)}
-        aria-label={t("player.optionsFor", { title: item.title })}
+        aria-label={t("player.optionsFor", { title })}
         aria-haspopup="menu"
         aria-expanded={optionsOpen}
       >
@@ -386,7 +388,7 @@ const PlayerQueueRow = memo(function PlayerQueueRow({
           ref={(element) => registerHandle(queueItemId, element)}
           type="button"
           className="touch-target relative grid h-9 w-9 shrink-0 cursor-grab touch-none place-items-center rounded-full text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
-          aria-label={t("player.reorderItem", { title: item.title })}
+          aria-label={t("player.reorderItem", { title })}
           title={t("player.reorderHint")}
           onPointerDown={(event) => onDragStart(queueItemId, event)}
           onPointerMove={onDragMove}
@@ -411,7 +413,7 @@ const PlayerQueueRow = memo(function PlayerQueueRow({
         zIndex={70}
         className="w-48 rounded-2xl p-1.5 text-sm"
       >
-        <div role="menu" aria-label={t("player.queueOptionsFor", { title: item.title })}>
+        <div role="menu" aria-label={t("player.queueOptionsFor", { title })}>
           <button
             role="menuitem"
             className="flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 hover:bg-muted disabled:opacity-40"

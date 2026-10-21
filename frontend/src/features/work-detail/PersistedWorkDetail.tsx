@@ -24,6 +24,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useEffect, useMemo, useState } from "react";
 import type { FilePreviewRequest } from "@/features/work-detail/dialogs/FilePreviewDialog";
+import { FileDisplayNamesDialog } from "@/features/work-detail/dialogs/FileDisplayNamesDialog";
 import { UserTagRow } from "@/components/UserTagRow";
 import { resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -243,6 +244,9 @@ export function PersistedWorkDetailController({
   const autoRoutePath = usePlaybackRoutePath(playbackRouting, tree);
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
   const canEditFolders = !auth.demoMode && auth.hasPermission("downloads:manage");
+  // Display names are shared metadata, edited by whoever edits the library's metadata.
+  const canEditFileNames = !auth.demoMode && auth.hasPermission("library:write");
+  const [fileNamesOpen, setFileNamesOpen] = useState(false);
   const files = usePersistedFileManagement({
     localDirectoryWork,
     selectedSource,
@@ -427,7 +431,8 @@ export function PersistedWorkDetailController({
     }
   };
 
-  const lyricsAssignmentsSaved = async () => {
+  /** Reloads the shown edition's media after a change to how it presents its files. */
+  const localMediaSaved = async () => {
     const target = localDirectoryWork ?? work;
     if (!target) return;
     invalidateCachedWorkMedia(target.id, principalID);
@@ -608,6 +613,13 @@ export function PersistedWorkDetailController({
     onManageLyrics: localDirectoryWork?.mediaItems.some((item) => item.kind === "audio")
       ? () => files.openLyricsManager({ tab: "assign" })
       : undefined,
+    onEditFileNames:
+      canEditFileNames &&
+      localDirectoryWork?.mediaItems.some((item) =>
+        item.locations.some((location) => location.locationType === "local" && location.availability === "available"),
+      )
+        ? () => setFileNamesOpen(true)
+        : undefined,
     onRefreshLocalFiles: () => void refreshLocalFiles(),
   };
   const heroActions = <PersistedIdentityActions {...detailActionProps} />;
@@ -741,8 +753,15 @@ export function PersistedWorkDetailController({
         request={files.lyricsManagerRequest}
         work={localDirectoryWork}
         onClose={files.closeLyricsManager}
-        onSaved={lyricsAssignmentsSaved}
+        onSaved={localMediaSaved}
       />
+      {fileNamesOpen && localDirectoryWork && (
+        <FileDisplayNamesDialog
+          workId={localDirectoryWork.id}
+          onClose={() => setFileNamesOpen(false)}
+          onSaved={localMediaSaved}
+        />
+      )}
       <PersistedMetadataEditorOverlay
         section={metadataEditorSection}
         work={work}

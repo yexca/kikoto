@@ -21,9 +21,11 @@ import {
   type FilePreviewState,
 } from "@/features/work-detail/dialogs/FilePreviewDialog";
 import { fileIcon } from "@/features/work-detail/dialogs/mediaFilePresentation";
+import { useDirectoryOriginalNames } from "@/features/work-detail/directory/directoryNames";
 import {
   fileDownloadable,
   fileKindLabel,
+  fileLabel,
   imageThumbnailURL,
   previewForFile,
   trackListeningState,
@@ -249,6 +251,7 @@ export function DirectoryFileRow({
   const actionAreaRef = useRef<HTMLSpanElement | null>(null);
   useDismissiblePopover(moreMenuOpen, moreMenuRef, () => setMoreMenuOpen(false));
   useDismissiblePopover(lyricsMenuOpen, actionAreaRef, () => setLyricsMenuOpen(false));
+  const name = fileLabel(file, useDirectoryOriginalNames());
   const state = fileActionState(file, handlers, player.lyricsPreferenceOverrides);
   const open = () => openFile(file, tracks, state, handlers, previewSiblings);
   const isTrack = variant === "track";
@@ -310,8 +313,9 @@ export function DirectoryFileRow({
             "block whitespace-normal break-words [overflow-wrap:anywhere]",
             isActive && "font-medium text-primary",
           )}
+          title={name === file.title ? undefined : file.title}
         >
-          {file.title}
+          {name}
         </span>
         <MetaList items={meta} lastItemCompactOnly={isTrack && state.lyricsChoices.length > 0} />
       </span>
@@ -374,6 +378,7 @@ export function DirectoryImageTile({
   onPreview?: (request: FilePreviewRequest) => void;
 }) {
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const name = fileLabel(file, useDirectoryOriginalNames());
   const preview = previewForFile(file);
   const thumbnail = thumbnailFailed ? "" : imageThumbnailURL(file);
   const canPreview = Boolean(preview && onPreview);
@@ -383,7 +388,7 @@ export function DirectoryImageTile({
       data-testid="directory-file-row"
       data-file-kind={file.kind}
       className="group flex min-w-0 flex-col gap-1.5 rounded-lg p-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-transparent"
-      title={file.title}
+      title={name === file.title ? name : `${name}\n${file.title}`}
       disabled={!canPreview}
       onClick={() => {
         if (preview) onPreview?.(filePreviewRequest(preview, previewSiblings));
@@ -407,7 +412,7 @@ export function DirectoryImageTile({
       </span>
       <span className="block min-w-0 px-0.5">
         <span className="line-clamp-2 break-words text-xs font-medium leading-snug [overflow-wrap:anywhere]">
-          {file.title}
+          {name}
         </span>
         <span className="mt-0.5 block text-2xs text-muted-foreground">{fileSizeLabel(file)}</span>
       </span>
@@ -451,6 +456,7 @@ function LyricsActions({
   onRevealLyricsAttachment?: (locationId: number) => void;
 }) {
   const player = useLibraryPlayer();
+  const name = fileLabel(file, useDirectoryOriginalNames());
   return (
     <div className="hidden lg:block" onClick={(event) => event.stopPropagation()}>
       <button
@@ -462,7 +468,7 @@ function LyricsActions({
           onCloseMore();
           onOpenChange(!open);
         }}
-        aria-label={i18n.t("libraryDetail.lyricsFor", { title: file.title })}
+        aria-label={i18n.t("libraryDetail.lyricsFor", { title: name })}
         aria-haspopup="dialog"
         aria-expanded={open}
         title={i18n.t("libraryDetail.lyrics")}
@@ -476,11 +482,11 @@ function LyricsActions({
         className="w-[min(22rem,calc(100vw-1.5rem))] rounded-lg border bg-card p-2 text-card-foreground shadow-xl"
         bottomCollisionPadding={96}
       >
-        <div role="dialog" aria-label={i18n.t("libraryDetail.lyricsFor", { title: file.title })} className="space-y-2">
+        <div role="dialog" aria-label={i18n.t("libraryDetail.lyricsFor", { title: name })} className="space-y-2">
           <div className="px-1 py-0.5">
             <div className="text-sm font-semibold">{i18n.t("libraryDetail.lyrics")}</div>
             <div className="mt-0.5 truncate text-xs text-muted-foreground" title={file.title}>
-              {file.title}
+              {name}
             </div>
           </div>
           <div role="radiogroup" aria-label={i18n.t("libraryDetail.lyricsSource")} className="space-y-1">
@@ -586,6 +592,7 @@ function MoreActions({
   handlers: DirectoryFileHandlers;
 }) {
   const { onPlayFolder, onPlayNext, onAppendQueue } = handlers;
+  const name = fileLabel(file, useDirectoryOriginalNames());
   return (
     <div ref={anchorRef} className={hasQueueActions ? "" : "lg:hidden"} onClick={(event) => event.stopPropagation()}>
       <button
@@ -594,7 +601,7 @@ function MoreActions({
           onCloseLyrics();
           onOpenChange(!open);
         }}
-        aria-label={i18n.t("libraryDetail.moreActionsFor", { title: file.title })}
+        aria-label={i18n.t("libraryDetail.moreActionsFor", { title: name })}
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -605,7 +612,7 @@ function MoreActions({
         anchorRef={anchorRef}
         className={`w-52 rounded-lg border bg-card p-1 text-sm text-card-foreground shadow-xl ${hasQueueActions ? "" : "lg:hidden"}`}
       >
-        <div role="menu" aria-label={i18n.t("libraryDetail.moreActionsFor", { title: file.title })}>
+        <div role="menu" aria-label={i18n.t("libraryDetail.moreActionsFor", { title: name })}>
           {choices.length > 0 && (
             <button
               role="menuitem"

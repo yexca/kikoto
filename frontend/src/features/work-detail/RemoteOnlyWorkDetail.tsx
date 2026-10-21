@@ -314,7 +314,7 @@ export function RemoteOnlyWorkDetailController({
 
   const queueRemoteTrack = (track: TreeTrack, next: boolean) => {
     if (!detail) return;
-    queuePlayerTrack(player, toast, toRemotePreviewPlayerTrack(track, detail, remoteFiles), track.title, next);
+    queuePlayerTrack(player, toast, toRemotePreviewPlayerTrack(track, detail, remoteFiles), next);
   };
 
   const playMaterializedTracks = (tracks: TreeTrack[], locationId: number) => {
@@ -327,7 +327,7 @@ export function RemoteOnlyWorkDetailController({
 
   const queueMaterializedTrack = (track: TreeTrack, next: boolean) => {
     if (!trackedWork) return;
-    queuePlayerTrack(player, toast, toPlayerTrack(track, trackedWork), track.title, next);
+    queuePlayerTrack(player, toast, toPlayerTrack(track, trackedWork), next);
   };
 
   if (notFound) {

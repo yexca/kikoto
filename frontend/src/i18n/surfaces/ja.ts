@@ -1992,6 +1992,10 @@ export const surfaceJapanese = {
     folders: "フォルダー",
     showFolders: "フォルダーを表示",
     hideFolderRail: "フォルダーパネルを隠す",
+    displayNames: "表示名",
+    displayNamesOnHint:
+      "メタデータ言語の名前で表示中です。実際のファイル名ではありません。選択すると実際の名前を表示します。",
+    displayNamesOffHint: "実際のファイル名で表示中です。選択するとメタデータ言語の名前を表示します。",
     showFolderRail: "フォルダーパネルを表示",
     tracks: "トラック",
     images: "画像",
@@ -2381,6 +2385,7 @@ export const surfaceJapanese = {
     noCachedFiles: "キャッシュされたファイルはありません",
     manageFiles: "ファイルを管理",
     manageLyrics: "歌詞を管理",
+    editFileNames: "表示名を編集",
     retryMetadata: "メタデータを再試行",
     firstPull: "初回取得",
     catalogNotPulledHint:
@@ -2432,6 +2437,26 @@ export const surfaceJapanese = {
     sourcesFailedShort: "{{count}} 件のソースが失敗",
   },
 
+  fileDisplayNames: {
+    title: "表示名",
+    description:
+      "この言語をメタデータ言語にしている閲覧者に、ディレクトリで表示する名前です。ディスク上のファイルとフォルダーの名前は変わりません。空欄なら実際の名前を表示します。",
+    language: "言語",
+    copyRealNames: "実際の名前をコピー",
+    realNamesCopied: "実際の名前をコピーしました（{{count}}）",
+    copyFailed: "クリップボードにコピーできませんでした。",
+    pasteNames: "名前を貼り付け",
+    pasteHint: "1 行に 1 つ、ここに並ぶ順に入力します（{{count}} 行）。空行の行は変更しません。",
+    applyPaste: "名前を入力",
+    loading: "ファイルを読み込み中…",
+    loadFailed: "ファイルを読み込めませんでした。",
+    noLocalFiles: "この作品には利用できるローカルファイルがありません。",
+    nameFor: "{{name}} の表示名",
+    invalidName: "名前には / と \\ を使えず、255 文字までです。",
+    save: "保存",
+    saved: "表示名を保存しました",
+    saveFailed: "表示名を保存できませんでした",
+  },
   folderEdit: {
     targetBlock: {
       not_a_file:

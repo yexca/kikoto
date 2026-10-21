@@ -36,6 +36,9 @@ func (s *Server) loadWorkMediaItems(ctx context.Context, userID int64, mediaWork
 	}
 	inferMediaItemKinds(mediaItems)
 	s.presentRemoteMediaLocations(ctx, mediaItems)
+	if err := s.attachLocalDisplayPaths(ctx, mediaWorkID, mediaItems); err != nil {
+		return nil, err
+	}
 	return mediaItems, nil
 }
 

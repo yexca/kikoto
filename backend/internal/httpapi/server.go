@@ -211,6 +211,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/recommendation-events", s.recordRecommendationEvents)
 	mux.HandleFunc("GET /api/recommendation-telemetry", s.getRecommendationTelemetry)
 	mux.HandleFunc("GET /api/works/{id}/media", s.getWorkMedia)
+	mux.HandleFunc("GET /api/works/{id}/file-display-names", s.getWorkFileDisplayNames)
+	mux.HandleFunc("PUT /api/works/{id}/file-display-names", s.setWorkFileDisplayNames)
 	handleSlowFirstResponse("POST /api/works/{id}/local-files/refresh", s.refreshWorkLocalFiles)
 	handleSlowFirstResponse("POST /api/works/{id}/local-files/duplicates", s.findWorkDuplicateFiles)
 	mux.HandleFunc("POST /api/works/{id}/metadata-sync", s.createWorkMetadataSyncRun)

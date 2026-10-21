@@ -6,13 +6,26 @@ import i18n from "@/i18n";
 
 /**
  * Current folder path with an up control. Compact layouts fold intermediate
- * ancestors into a menu; wide layouts show every bounded segment.
+ * ancestors into a menu; wide layouts show every bounded segment. `labels`
+ * are the names the segments show, when they differ from the real ones.
  */
-export function DirectoryBreadcrumb({ path, onChange }: { path: string[]; onChange: (path: string[]) => void }) {
+export function DirectoryBreadcrumb({
+  path,
+  labels = path,
+  onChange,
+}: {
+  path: string[];
+  labels?: string[];
+  onChange: (path: string[]) => void;
+}) {
   const [ancestorMenuOpen, setAncestorMenuOpen] = useState(false);
   const ancestorMenuRef = useRef<HTMLButtonElement | null>(null);
   const segmentsRef = useRef<HTMLDivElement | null>(null);
-  const current = path[path.length - 1] ?? "";
+  const label = (index: number) => labels[index] ?? path[index];
+  // A segment showing another name keeps its real one in the hint.
+  const hint = (index: number) => (label(index) === path[index] ? path[index] : `${label(index)}\n${path[index]}`);
+  const currentIndex = path.length - 1;
+  const current = path.length > 0 ? label(currentIndex) : "";
   const ancestors = path.slice(0, -1);
 
   useEffect(() => {
@@ -69,11 +82,11 @@ export function DirectoryBreadcrumb({ path, onChange }: { path: string[]; onChan
                     key={`${part}:${index}`}
                     role="menuitem"
                     className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted focus:bg-muted focus:outline-none"
-                    title={part}
+                    title={hint(index)}
                     onClick={() => onChange(path.slice(0, index + 1))}
                   >
                     <Folder className="h-4 w-4 shrink-0 text-primary" />
-                    <span className="min-w-0 flex-1 truncate">{part}</span>
+                    <span className="min-w-0 flex-1 truncate">{label(index)}</span>
                   </button>
                 ))}
               </div>
@@ -84,7 +97,7 @@ export function DirectoryBreadcrumb({ path, onChange }: { path: string[]; onChan
           <span
             data-testid="directory-breadcrumb-current"
             className="min-w-0 max-w-[55vw] truncate rounded px-2 py-1 font-semibold sm:max-w-[20rem]"
-            title={current}
+            title={hint(currentIndex)}
             aria-current="page"
           >
             {current}
@@ -107,18 +120,18 @@ export function DirectoryBreadcrumb({ path, onChange }: { path: string[]; onChan
               {isCurrent ? (
                 <span
                   className="block max-w-[20rem] truncate rounded px-2 py-1 font-semibold"
-                  title={part}
+                  title={hint(index)}
                   aria-current="page"
                 >
-                  {part}
+                  {label(index)}
                 </span>
               ) : (
                 <button
                   className="block max-w-[18rem] truncate rounded px-2 py-1 text-left font-medium text-muted-foreground hover:bg-background hover:text-foreground"
-                  title={part}
+                  title={hint(index)}
                   onClick={() => onChange(path.slice(0, index + 1))}
                 >
-                  {part}
+                  {label(index)}
                 </button>
               )}
             </span>

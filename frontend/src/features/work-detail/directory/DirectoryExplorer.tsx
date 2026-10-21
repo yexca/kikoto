@@ -25,7 +25,9 @@ import {
   type DirectoryRouteMatch,
   directoryRouteSummary,
   folderAncestorKeys,
+  folderLabel,
   folderNavigatorRows,
+  folderPathLabels,
   folderSections,
   folderSummary,
   initialFolderNavigatorExpansion,
@@ -39,6 +41,7 @@ import {
   sortedFolders,
   treeHasFolders,
 } from "@/features/work-detail/directory/directoryModel";
+import { useDirectoryOriginalNames } from "@/features/work-detail/directory/directoryNames";
 import {
   FolderPickerButton,
   FolderRail,
@@ -255,6 +258,7 @@ function FolderTile({
   onPlayFolder?: DirectoryPlayFolder;
 }) {
   const tracks = useMemo(() => playableFiles(sortedFiles(folder)), [folder]);
+  const name = folderLabel(folder, useDirectoryOriginalNames());
   return (
     <div className="flex min-h-14 items-stretch rounded-lg border bg-background/60 transition-colors hover:bg-muted/70">
       <button
@@ -271,8 +275,11 @@ function FolderTile({
           {playing ? <AudioLines className="h-4 w-4 motion-safe:animate-pulse" /> : <Folder className="h-4 w-4" />}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block whitespace-normal break-words font-medium [overflow-wrap:anywhere]">
-            {folder.name}
+          <span
+            className="block whitespace-normal break-words font-medium [overflow-wrap:anywhere]"
+            title={name === folder.name ? undefined : folder.name}
+          >
+            {name}
           </span>
           <span className="mt-0.5 block text-xs text-muted-foreground">{folderSummary(folder)}</span>
         </span>
@@ -282,8 +289,8 @@ function FolderTile({
         <button
           type="button"
           className="grid w-11 shrink-0 place-items-center rounded-r-lg border-l text-muted-foreground hover:bg-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={i18n.t("libraryDetail.playFolder", { name: folder.name })}
-          title={i18n.t("libraryDetail.playFolder", { name: folder.name })}
+          aria-label={i18n.t("libraryDetail.playFolder", { name })}
+          title={i18n.t("libraryDetail.playFolder", { name })}
           onClick={() => onPlayFolder(tracks, tracks[0].locationId)}
         >
           <Play className="h-4 w-4 fill-current" />
@@ -352,6 +359,7 @@ export function DirectoryExplorer({
   const [railHidden, toggleRailHidden] = useFolderRailHidden();
   const [trackLimit, setTrackLimit] = useState(trackPageSize);
   const [imageLimit, setImageLimit] = useState(imagePageSize);
+  const originalNames = useDirectoryOriginalNames();
 
   useEffect(() => {
     if (!nodeAtPath(root, path)) {
@@ -560,7 +568,11 @@ export function DirectoryExplorer({
               <div className="flex min-w-0 items-center gap-1.5">
                 {!showRail && wide && <FolderRailToggle expanded={false} onToggle={toggleRailHidden} />}
                 {!showRail && <FolderPickerButton {...navigatorProps} />}
-                <DirectoryBreadcrumb path={path} onChange={setPath} />
+                <DirectoryBreadcrumb
+                  path={path}
+                  labels={folderPathLabels(root, path, originalNames)}
+                  onChange={setPath}
+                />
               </div>
             )}
             {showToolbar && (

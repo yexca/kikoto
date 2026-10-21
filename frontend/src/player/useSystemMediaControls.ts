@@ -3,10 +3,12 @@ import { useCallback, useEffect, type RefObject } from "react";
 import { assetURL } from "@/lib/api";
 import { addNativeMediaListeners, stopNativeMedia, supportsNativeMedia, updateNativeMedia } from "@/lib/nativeMedia";
 import { addNativeOutputLostListener } from "@/lib/nativePrivacy";
+import { useOriginalFileNames } from "@/lib/originalFileNames";
 
 import type { PlaybackSeekPreferences } from "./playbackPreferences";
 import { NATIVE_MEDIA_POSITION_INTERVAL_MS } from "./playerProgress";
 import { bindMediaSessionActions, type PlayerRemoteControls } from "./playerRemoteControls";
+import { playerTrackTitle } from "./playerTrackTitle";
 import type { PlayerTrack } from "./playerTypes";
 import { systemMediaDetails, useMediaSessionContent } from "./systemMediaPrivacy";
 import type { PlaybackRefs } from "./usePlaybackEngine";
@@ -88,6 +90,7 @@ export function useNativeMediaBridge({
   }, [controlsRef]);
 
   const { seekBackwardSeconds, seekForwardSeconds } = seekPreferences;
+  const [originalNames] = useOriginalFileNames();
   const syncNativeMedia = useCallback(() => {
     if (!supportsNativeMedia() || !currentTrack) return;
     const currentMediaDuration = durationLocationId === currentTrack.locationId ? duration : 0;
@@ -100,7 +103,7 @@ export function useNativeMediaBridge({
     const positionSeconds = refs.audioRef.current?.currentTime ?? 0;
     const positionMs = Math.min(Math.max(0, Math.floor(positionSeconds * 1000)), durationMs || Number.MAX_SAFE_INTEGER);
     void updateNativeMedia({
-      title: currentTrack.title || currentTrack.workTitle || "Kikoto",
+      title: playerTrackTitle(currentTrack, originalNames) || currentTrack.workTitle || "Kikoto",
       artist: currentTrack.circle || currentTrack.workTitle || "Kikoto",
       album: currentTrack.workTitle || currentTrack.workCode || "Kikoto",
       coverUrl: currentTrack.coverUrl ? absoluteAssetURL(currentTrack.coverUrl) : "",
@@ -120,6 +123,7 @@ export function useNativeMediaBridge({
     duration,
     durationLocationId,
     isPlaying,
+    originalNames,
     playbackRate,
     refs,
     seekBackwardSeconds,
@@ -172,7 +176,8 @@ export function useBrowserMediaSession({
   playbackRate: number;
 }) {
   const content = useMediaSessionContent();
-  const details = currentTrack ? systemMediaDetails(currentTrack, content) : null;
+  const [originalNames] = useOriginalFileNames();
+  const details = currentTrack ? systemMediaDetails(currentTrack, content, originalNames) : null;
   const title = details?.title ?? "";
   const artist = details?.artist ?? "";
   const album = details?.album ?? "";

@@ -16,6 +16,7 @@ import {
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { MobileSheet, MobileSheetBody, MobileSheetHeader } from "@/components/ui/mobile-sheet";
 import { type FolderNavigatorRow, pathWithin, samePath } from "@/features/work-detail/directory/directoryModel";
+import { useDirectoryOriginalNames } from "@/features/work-detail/directory/directoryNames";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import i18n from "@/i18n";
 import { cn } from "@/lib/tailwindClassNames";
@@ -30,8 +31,9 @@ export type FolderNavigatorProps = {
   onToggle: (key: string) => void;
 };
 
-function rowLabel(row: FolderNavigatorRow) {
-  return row.labelParts.length > 0 ? row.labelParts.join(" / ") : i18n.t("libraryDetail.workRoot");
+function rowLabel(row: FolderNavigatorRow, original: boolean) {
+  const parts = original ? row.labelParts : row.displayLabelParts;
+  return parts.length > 0 ? parts.join(" / ") : i18n.t("libraryDetail.workRoot");
 }
 
 /** A compacted row stands for every folder in its chain, so any of them selects it. */
@@ -64,11 +66,14 @@ export function FolderNavigatorList({
   onSelect,
   onToggle,
 }: FolderNavigatorProps) {
+  const original = useDirectoryOriginalNames();
   return (
     <nav aria-label={i18n.t("libraryDetail.folders")}>
       <ul className="space-y-px">
         {rows.map((row) => {
-          const label = rowLabel(row);
+          const label = rowLabel(row, original);
+          const realLabel = rowLabel(row, true);
+          const hint = label === realLabel ? label : `${label}\n${realLabel}`;
           const selected = rowSelected(row, currentPath);
           // A collapsed folder hiding the current one stays recognizable without claiming to be it.
           const holdsSelection = !selected && row.hasChildren && !row.expanded && pathWithin(currentPath, row.path);
@@ -105,7 +110,7 @@ export function FolderNavigatorList({
                   type="button"
                   className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded py-1.5 pr-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   aria-current={selected ? "location" : undefined}
-                  title={playing ? `${label} · ${i18n.t("libraryDetail.nowPlaying")}` : label}
+                  title={playing ? `${hint} · ${i18n.t("libraryDetail.nowPlaying")}` : hint}
                   onClick={() => onSelect(row.path)}
                 >
                   <Icon

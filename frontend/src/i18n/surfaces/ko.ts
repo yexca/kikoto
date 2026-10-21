@@ -2019,6 +2019,10 @@ export const surfaceKorean = {
     folders: "폴더",
     showFolders: "폴더 표시",
     hideFolderRail: "폴더 패널 숨기기",
+    displayNames: "표시 이름",
+    displayNamesOnHint:
+      "메타데이터 언어의 이름을 표시하는 중입니다. 실제 파일 이름이 아닙니다. 선택하면 실제 이름을 표시합니다.",
+    displayNamesOffHint: "실제 파일 이름을 표시하는 중입니다. 선택하면 메타데이터 언어의 이름을 표시합니다.",
     showFolderRail: "폴더 패널 표시",
     tracks: "트랙",
     images: "이미지",
@@ -2374,6 +2378,7 @@ export const surfaceKorean = {
     noCachedFiles: "캐시된 파일 없음",
     manageFiles: "파일 관리",
     manageLyrics: "가사 관리",
+    editFileNames: "표시 이름 편집",
     retryMetadata: "메타데이터 다시 시도",
     firstPull: "처음 가져오기",
     catalogNotPulledHint:
@@ -2425,6 +2430,26 @@ export const surfaceKorean = {
     sourcesFailedShort: "소스 {{count}}개 실패",
   },
 
+  fileDisplayNames: {
+    title: "표시 이름",
+    description:
+      "이 언어를 메타데이터 언어로 선택한 사용자에게 디렉터리에서 보여 줄 이름입니다. 디스크의 파일과 폴더 이름은 바뀌지 않으며, 비워 두면 실제 이름을 표시합니다.",
+    language: "언어",
+    copyRealNames: "실제 이름 복사",
+    realNamesCopied: "실제 이름을 복사했습니다 ({{count}})",
+    copyFailed: "클립보드에 복사할 수 없습니다.",
+    pasteNames: "이름 붙여넣기",
+    pasteHint: "한 줄에 하나씩, 여기에 나열된 순서대로 입력합니다 ({{count}}줄). 빈 줄은 해당 행을 바꾸지 않습니다.",
+    applyPaste: "이름 채우기",
+    loading: "파일을 불러오는 중…",
+    loadFailed: "파일을 불러올 수 없습니다.",
+    noLocalFiles: "이 작품에는 사용할 수 있는 로컬 파일이 없습니다.",
+    nameFor: "{{name}}의 표시 이름",
+    invalidName: "이름에는 / 또는 \\를 쓸 수 없으며 최대 255자입니다.",
+    save: "저장",
+    saved: "표시 이름을 저장했습니다",
+    saveFailed: "표시 이름을 저장할 수 없습니다",
+  },
   folderEdit: {
     targetBlock: {
       not_a_file:

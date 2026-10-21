@@ -187,6 +187,16 @@ choice. Both answer with the item's current choice and offset. How clients
 rank preferences, assignments, and name matching is in
 [Data model](data-model.md).
 
+`GET /api/works/{id}/file-display-names` requires `library:read` and lists the
+local files and folders of the work whose media the detail shows, by their path
+below the work folder, with their [display names](data-model.md#file-availability)
+by language. `PUT` requires `library:write` and sets, in one transaction, up to
+5,000 names of one supported metadata language: each file names a media item
+with an available local file of that work and each folder one of the listed
+folders, and an empty name removes that language's name. A name is at most 255
+characters and holds no path separator or control character. Both answer with
+the current list.
+
 `GET /api/custom-works/folders`, `POST /api/custom-works`, and
 `POST /api/custom-works/notice-acceptance` require both `library:write` and
 `downloads:manage` and are unavailable in Demo. The list walks the folders a

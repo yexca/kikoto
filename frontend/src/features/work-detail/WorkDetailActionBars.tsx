@@ -11,6 +11,7 @@ import {
   GitFork,
   HardDrive,
   HardDriveDownload,
+  Languages,
   Loader2,
   RefreshCw,
   Unlink,
@@ -128,6 +129,7 @@ export function MediaContextActionBar({
   manageCacheDisabled = false,
   onManageFiles,
   onManageLyrics,
+  onEditFileNames,
   onRefreshLocalFiles,
 }: {
   busy: boolean;
@@ -153,6 +155,8 @@ export function MediaContextActionBar({
   manageCacheDisabled?: boolean;
   onManageFiles?: () => void;
   onManageLyrics?: () => void;
+  /** Opens the editor of the names the directory shows for local files. */
+  onEditFileNames?: () => void;
   onRefreshLocalFiles?: () => void;
   /** `list` renders the actions inline, for a panel that already names the source. */
   layout?: SourceActionLayout;
@@ -174,6 +178,7 @@ export function MediaContextActionBar({
     onManageCache ||
     onManageFiles ||
     onManageLyrics ||
+    onEditFileNames ||
     onRefreshLocalFiles ||
     sourceDetailsLoading,
   );
@@ -325,7 +330,7 @@ export function MediaContextActionBar({
           <span className="min-w-0 flex-1 truncate">{t("detailActions.openOrigin")}</span>
         </a>
       )}
-      {(onManageCache || onManageFiles || onManageLyrics || onRefreshLocalFiles) && (
+      {(onManageCache || onManageFiles || onManageLyrics || onEditFileNames || onRefreshLocalFiles) && (
         <div className="my-1 border-t first:hidden" />
       )}
       {onRefreshLocalFiles && (
@@ -363,6 +368,15 @@ export function MediaContextActionBar({
           label={t("detailActions.manageLyrics")}
           disabled={busy}
           onClick={() => runOption(onManageLyrics)}
+        />
+      )}
+      {onEditFileNames && (
+        <SourceOptionButton
+          layout={layout}
+          icon={<Languages className="h-4 w-4" />}
+          label={t("detailActions.editFileNames")}
+          disabled={busy}
+          onClick={() => runOption(onEditFileNames)}
         />
       )}
     </>
