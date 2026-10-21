@@ -19,9 +19,10 @@ import (
 
 // Display names change only what the directory shows for local files and
 // folders. Each is stored per metadata language: a file's by its media item,
-// so it follows the item through rescans and folder edits, and a folder's by
-// its path below the work folder. A viewer sees the name of the first of
-// their own languages that has one, and the real name when the original
+// so it follows the item through rescans and folder edits and goes with it,
+// and a folder's by its path below the work folder, kept while a local media
+// item of the work lies below that path. A viewer sees the name of the first
+// of their own languages that has one, and the real name when the original
 // language comes first. Names are shared by every viewer, like manual
 // metadata.
 
@@ -504,6 +505,30 @@ func (s *Server) attachLocalDisplayPaths(ctx context.Context, mediaWorkID int64,
 		}
 	}
 	return nil
+}
+
+// pruneWorkFolderDisplayNames removes the names of folders that no local media
+// item of their work lies below any more, by the work-relative path in the
+// item's `local:<code>:<path>` fingerprint, and returns how many it removed.
+// An item outlives its files until disk-verified cleanup removes its last
+// location, so a folder on an unmounted pool or outside the scan keeps its
+// names. A workID of 0 prunes every work.
+func pruneWorkFolderDisplayNames(ctx context.Context, tx *sql.Tx, workID int64) (int, error) {
+	query := `
+		DELETE FROM work_folder_display_name
+		WHERE NOT EXISTS (
+			SELECT 1 FROM media_item AS item
+			WHERE item.work_id = work_folder_display_name.work_id
+				AND substr(item.fingerprint, 1, 6) = 'local:'
+				AND substr(item.fingerprint, instr(substr(item.fingerprint, 7), ':') + 7,
+					length(work_folder_display_name.path) + 1) = work_folder_display_name.path || '/'
+		)`
+	args := []any{}
+	if workID > 0 {
+		query += " AND work_id = ?"
+		args = append(args, workID)
+	}
+	return execRowsAffected(ctx, tx, query, args...)
 }
 
 // followWorkFolderDisplayNames moves the names of the folders a folder edit

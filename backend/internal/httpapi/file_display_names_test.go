@@ -195,3 +195,84 @@ func TestFolderEditMovesFolderDisplayNames(t *testing.T) {
 		t.Fatalf("folder names after the edit = %v", names)
 	}
 }
+
+func workFolderDisplayNamePaths(t *testing.T, db *sql.DB) []string {
+	t.Helper()
+	rows, err := db.Query("SELECT path FROM work_folder_display_name WHERE work_id = 11 ORDER BY path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	paths := []string{}
+	for rows.Next() {
+		var folder string
+		if err := rows.Scan(&folder); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, folder)
+	}
+	return paths
+}
+
+// A folder renamed outside Kikoto keeps its names while its old file is only
+// recorded missing, and loses them once disk-verified cleanup removes that
+// file's last record. A name never matches a folder that only shares a prefix.
+func TestFolderDisplayNamesLastWhileAFileBelowIsTracked(t *testing.T) {
+	db := seedDisplayNameWork(t)
+	if _, err := db.Exec(`
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES
+			(26, 11, 'audio', 'renamed', 'local:RJ00000001:old/renamed.mp3'),
+			(27, 11, 'audio', 'wide', 'local:RJ00000001:音频/wide.mp3');
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES
+			(46, 26, 1, 'local', 'library/RJ00000001/old/renamed.mp3', 'missing'),
+			(47, 27, 1, 'local', 'library/RJ00000001/音频/wide.mp3', 'available');
+		INSERT INTO work_folder_display_name (work_id, path, language, name) VALUES
+			(11, 'mp3', 'zh-cn', '音频'), (11, 'mp', 'zh-cn', '前缀'), (11, 'old', 'zh-cn', '旧'),
+			(11, '音频', 'en-us', 'Audio'), (11, 'gone', 'zh-cn', '没了');
+		INSERT INTO work_folder_display_name (work_id, path, language, name) VALUES (12, 'mp3', 'zh-cn', '其他');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	ctx := context.Background()
+	if _, err := server.deleteEmptyMediaItems(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(workFolderDisplayNamePaths(t, db), ","); got != "mp3,old,音频" {
+		t.Fatalf("names after cleanup with the old file recorded = %s", got)
+	}
+	var otherWork int
+	if err := db.QueryRow("SELECT COUNT(*) FROM work_folder_display_name WHERE work_id = 12").Scan(&otherWork); err != nil || otherWork != 0 {
+		t.Fatalf("a name for a path no file of its own work lies below = %d, %v", otherWork, err)
+	}
+
+	if _, err := db.Exec("DELETE FROM media_file_location WHERE id = 46"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.deleteEmptyMediaItems(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(workFolderDisplayNamePaths(t, db), ","); got != "mp3,音频" {
+		t.Fatalf("names after the old file's last record is removed = %s", got)
+	}
+}
+
+// A folder edit that spreads a folder's files over several folders keeps no
+// name for the emptied folder.
+func TestFolderEditDropsNamesOfAFolderItEmpties(t *testing.T) {
+	db := seedDisplayNameWork(t)
+	if _, err := db.Exec(`INSERT INTO work_folder_display_name (work_id, path, language, name) VALUES (11, 'mp3', 'zh-cn', '音频')`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	payload := workFolderEditJobPayload{WorkID: 11, WorkCode: "RJ00000001", TargetRoot: "library/RJ00000001", Moves: []workFolderEditMove{
+		{LocationID: 41, MediaItemID: 21, Path: "library/RJ00000001/mp3/01 track.mp3", TargetPath: "library/RJ00000001/audio/01 track.mp3"},
+		{LocationID: 42, MediaItemID: 22, Path: "library/RJ00000001/mp3/notes.txt", TargetPath: "library/RJ00000001/text/notes.txt"},
+	}}
+	if err := server.keepWorkFolderEditMovedItems(context.Background(), payload); err != nil {
+		t.Fatal(err)
+	}
+	if got := workFolderDisplayNamePaths(t, db); len(got) != 0 {
+		t.Fatalf("names after the edit emptied mp3 = %v", got)
+	}
+}

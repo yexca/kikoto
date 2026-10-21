@@ -246,8 +246,9 @@ sections and `sources:write` for database sections.
   two-step destructive action queued as a workflow run.
 - **Database records** lists record types that can be removed, each with a
   current count: missing work folders and local files confirmed absent on disk
-  (with the empty track entries and local availability they leave behind),
-  orphaned metadata snapshots, unused source tags, expired sessions, dismissed
+  (with the empty track entries, local availability, and folder display names
+  they leave behind), orphaned metadata snapshots, unused source tags, expired
+  sessions, dismissed
   notifications, finished workflow runs older than 90 days, recommendation
   signals older than 90 days, and unused recommendation snapshots. Personal
   tags, runs with reviews, Fetch records, or metadata issues, and the latest run

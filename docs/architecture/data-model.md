@@ -808,7 +808,11 @@ folder's names with it when every file it moved out of the folder keeps its
 path below the folder, lands below one other folder, and leaves no available
 local file of the work behind; a folder that already has a name in a language
 keeps it. A file or folder renamed outside Kikoto loses its names, as a file
-loses its media item.
+loses its media item. A folder's names stay stored while a local media item of
+the work has a fingerprint path below the folder, so a folder on an unmounted
+pool or one that is only recorded missing keeps them. They are removed when a
+folder edit leaves no such item, and by the empty track entry cleanup once the
+disk-verified missing-file cleanup has removed the last file below the folder.
 
 `media_lyrics_assignment` holds the library-level lyrics files of an audio
 media item, one per `language`: `ja-jp`, `zh-cn`, `zh-tw`, `en-us`, `ko-kr`,
