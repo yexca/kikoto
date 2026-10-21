@@ -76,7 +76,7 @@ export function PlayerDock() {
       {!track ? null : dockMode === "mini" ? (
         <MiniPlayer player={player} track={track} isMobile={isMobile} onDockModeChange={setDockMode} />
       ) : dockMode === "compact" ? (
-        <CompactPlayer player={player} track={track} onDockModeChange={setDockMode} />
+        <CompactPlayer player={player} track={track} isMobile={isMobile} onDockModeChange={setDockMode} />
       ) : (
         <FullPlayer
           player={player}

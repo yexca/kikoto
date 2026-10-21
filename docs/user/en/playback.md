@@ -126,6 +126,9 @@ Playback is handled by a global browser audio player.
 - Compact relative drag seeking maps a full-width drag to 20% of the track,
   bounded between 20 seconds and 10 minutes, then clamps the result to the
   playable duration.
+- On a phone, swiping the Compact bar up opens the full view and swiping it
+  down shrinks it to Mini; a sideways drag still seeks. Tapping Mini restores
+  the Compact bar, and dragging Mini moves it to the nearer screen side.
 - Queue rows can be reordered by dragging their handle; the list scrolls near
   its edges and Escape cancels the drag. A focused handle also moves its row
   with the Up and Down arrow keys. Move-up, move-down, and remove remain in an

@@ -468,9 +468,7 @@ test("@desktop compact player supports relative drag seeking and global playback
     element.dispatchEvent(new Event("timeupdate"));
   });
   await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime)).toBeGreaterThan(39);
-  const compact = page
-    .getByText("Test track", { exact: true })
-    .locator("xpath=ancestor::div[contains(@class, 'touch-pan-y')]");
+  const compact = page.locator('[data-player-surface="compact"]');
   const box = await compact.boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.move(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5);
@@ -537,9 +535,7 @@ test("@desktop compact player reserves the final directory action area", async (
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("compact");
   await expect(page.getByTestId("directory-file-row")).toHaveCount(mediaItems.length);
 
-  const compact = page
-    .getByText("Test track", { exact: true })
-    .locator("xpath=ancestor::div[contains(@class, 'touch-pan-y')]");
+  const compact = page.locator('[data-player-surface="compact"]');
   const lastRow = page.getByTestId("directory-file-row").last();
   await expect
     .poll(async () => {
@@ -565,7 +561,36 @@ test("@desktop compact player reserves the final directory action area", async (
   await expect(lastRow.getByRole("button", { name: /More actions for track-24\.mp3/ })).toBeVisible();
 });
 
-test("mini player reveals actions on tap, persists its snapped edge, and compact mode reserves page space", async ({
+test("compact player swipes up to full and down to mini on phones", async ({ page }) => {
+  await mockApplication(page);
+  await seedPlayer(page);
+  await page.goto("/");
+  const playerMode = () => page.evaluate(() => document.documentElement.dataset.playerMode);
+  const swipeCompact = async (deltaY: number) => {
+    const box = await page.locator('[data-player-surface="compact"]').boundingBox();
+    expect(box).not.toBeNull();
+    const x = box!.x + box!.width * 0.3;
+    const y = box!.y + box!.height * 0.5;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + deltaY, { steps: 4 });
+    await page.mouse.up();
+  };
+
+  await expect.poll(playerMode).toBe("compact");
+  // A short swipe springs back and does not count as a tap on the track title.
+  await swipeCompact(-12);
+  await page.waitForTimeout(300);
+  expect(await playerMode()).toBe("compact");
+
+  await swipeCompact(-80);
+  await expect.poll(playerMode).toBe("full");
+  await page.getByRole("button", { name: "Collapse player" }).click();
+  await swipeCompact(40);
+  await expect.poll(playerMode).toBe("mini");
+});
+
+test("mini player opens compact on tap, persists its snapped edge, and compact mode reserves page space", async ({
   page,
 }) => {
   await mockApplication(page);
@@ -580,11 +605,9 @@ test("mini player reveals actions on tap, persists its snapped edge, and compact
   const mini = page.locator(".mini-player");
   await expect(mini).toBeVisible();
   await mini.tap({ position: { x: 8, y: 46 } });
-  await expect(mini).toHaveClass(/actions-open/);
-  await expect(page.getByRole("button", { name: "Open compact player" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("compact");
+  await page.getByRole("button", { name: "Mini player" }).click();
 
-  await page.waitForTimeout(3100);
-  await expect(mini).not.toHaveClass(/actions-open/);
   const box = await mini.boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.move(box!.x + 8, box!.y + 46);
