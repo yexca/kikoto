@@ -25,6 +25,8 @@ export function resolveMetadataVariant(
 export type MetadataVariantLabels = {
   original: string;
   language: (value: string) => string;
+  /** Leaves the original marker off a declared language, for a compact chip. */
+  omitOriginal?: boolean;
 };
 
 /**
@@ -36,7 +38,8 @@ export function metadataVariantLabel(variant: WorkMetadataVariant, labels: Metad
   const label = labels.language(variant.language);
   if (variant.key.startsWith("llm:")) return `${label} · LLM`;
   if (!variant.origin) return label;
-  return variant.language.trim() ? `${labels.original} · ${label}` : labels.original;
+  if (!variant.language.trim()) return labels.original;
+  return labels.omitOriginal ? label : `${labels.original} · ${label}`;
 }
 
 export type MetadataLanguageChoice = {

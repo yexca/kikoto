@@ -1,15 +1,21 @@
 import { useLayoutEffect } from "react";
 
 import { historyStateForNavigation } from "@/app/appRoutes";
+import { replacesWorkspaceList } from "@/app/workspaceNavigation";
 import {
   HISTORY_ENTRY_UPDATED_EVENT,
   NAVIGATION_EVENT,
   SCROLL_RESTORATION_EVENT,
+  browserPushHistoryState,
   historyEntryKey,
   historyPushStateWithScroll,
   historyScrollY,
+  historyStateKeepingBackStack,
   historyStateWithEntryKey,
   historyStateWithScroll,
+  inAppPushHistoryState,
+  setHistoryEntryWriter,
+  usesInAppBackStack,
 } from "@/lib/browserHistory";
 
 export function useScrollRestoration() {
@@ -90,13 +96,30 @@ export function useScrollRestoration() {
       rememberCurrentEntry();
       cancelRestore();
       const entryState = historyStateForNavigation(historyPushStateWithScroll(state), url);
-      originalPushState(historyStateWithEntryKey(entryState, newEntryKey()), unused, url);
+      if (usesInAppBackStack()) {
+        // A push replaces the single entry and stacks the one it leaves.
+        const nextState = inAppPushHistoryState(entryState, { replacesList: replacesWorkspaceList(url, entryState) });
+        originalReplaceState(historyStateWithEntryKey(nextState, newEntryKey()), unused, url);
+        return;
+      }
+      originalPushState(historyStateWithEntryKey(browserPushHistoryState(entryState), newEntryKey()), unused, url);
     }) as History["pushState"];
     history.replaceState = ((state: unknown, unused: string, url?: string | URL | null) => {
       const key = ensureEntryKey();
-      originalReplaceState(historyStateWithEntryKey(historyStateForNavigation(state, url), key), unused, url);
+      const entryState = usesInAppBackStack() ? historyStateKeepingBackStack(state, history.state) : state;
+      originalReplaceState(historyStateWithEntryKey(historyStateForNavigation(entryState, url), key), unused, url);
       announceEntryUpdate();
     }) as History["replaceState"];
+    setHistoryEntryWriter((state, location) => {
+      cancelWrite();
+      cancelRestore();
+      originalReplaceState(
+        historyEntryKey(state) ? state : historyStateWithEntryKey(state, newEntryKey()),
+        "",
+        location,
+      );
+      announceEntryUpdate();
+    });
 
     const handleNavigation = () => restore();
     const handleReady = () => restore(true);
@@ -138,6 +161,7 @@ export function useScrollRestoration() {
       cancelRestore();
       history.pushState = originalPushState;
       history.replaceState = originalReplaceState;
+      setHistoryEntryWriter(null);
       history.scrollRestoration = previousRestoration;
       window.removeEventListener(NAVIGATION_EVENT, handleNavigation);
       window.removeEventListener("popstate", handleNavigation);

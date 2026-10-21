@@ -69,6 +69,7 @@ import { formatBytes, formatDuration } from "@/features/work-detail/media/mediaT
 import { sourceTabStatusClass } from "@/features/work-detail/source/sourceContextModel";
 import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
 import type { MetadataActionPlacement, SourceActionLayout } from "@/features/work-detail/WorkDetailActionBars";
+import { CompactDetailTabs } from "@/features/work-detail/CompactDetailTabs";
 import { DetailBundleLine } from "@/features/work-detail/DetailBundleLine";
 import { DetailPurchaseBonusLine } from "@/features/work-detail/DetailPurchaseBonusLine";
 
@@ -835,36 +836,24 @@ function MobileWorkDetailLayout({
         {actions}
       </div>
 
-      <div className="grid grid-cols-2 rounded-lg border bg-card p-1 text-sm">
-        <button
-          className={`min-h-10 rounded-md px-3 font-medium ${activeTab === "info" ? "bg-muted text-foreground" : "text-muted-foreground"}`}
-          onClick={() => onActiveTabChange("info")}
-        >
-          {i18n.t("libraryDetail.info")}
-        </button>
-        <button
-          className={`min-h-10 rounded-md px-3 font-medium ${activeTab === "directory" ? "bg-muted text-foreground" : "text-muted-foreground"}`}
-          onClick={() => onActiveTabChange("directory")}
-        >
-          {i18n.t("libraryDetail.directory")}
-        </button>
-      </div>
-
-      {activeTab === "info" ? (
-        <div className="space-y-4">
-          <WorkDescription description={description} />
-          <DetailInfoPanel
-            sourceInfo={sourceInfo}
-            dlsiteFetchedAt={dlsiteFetchedAt}
-            actions={sourceActions}
-            metadataAction={metadataAction}
-            className=""
-          />
-          <DetailStaffCredits credits={staffCredits} />
-        </div>
-      ) : (
-        directory
-      )}
+      <CompactDetailTabs
+        activeTab={activeTab}
+        onActiveTabChange={onActiveTabChange}
+        info={
+          <div className="space-y-4">
+            <WorkDescription description={description} />
+            <DetailInfoPanel
+              sourceInfo={sourceInfo}
+              dlsiteFetchedAt={dlsiteFetchedAt}
+              actions={sourceActions}
+              metadataAction={metadataAction}
+              className=""
+            />
+            <DetailStaffCredits credits={staffCredits} />
+          </div>
+        }
+        directory={directory}
+      />
     </section>
   );
 }
@@ -1638,6 +1627,7 @@ function metadataVariantLabel(variant: WorkMetadataPresentation["variants"][numb
   return metadataVariantLabelFor(variant, {
     original: i18n.t("libraryDetail.original"),
     language: short ? languageShortLabel : languageLabel,
+    omitOriginal: short,
   });
 }
 

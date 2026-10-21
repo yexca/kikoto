@@ -2095,6 +2095,9 @@ export const surfaceJapanese = {
     displayNamesOnHint:
       "メタデータ言語の名前で表示中です。実際のファイル名ではありません。選択すると実際の名前を表示します。",
     displayNamesOffHint: "実際のファイル名で表示中です。選択するとメタデータ言語の名前を表示します。",
+    fullNames: "全文表示",
+    fullNamesOffHint: "長い名前は2行までで表示しています。選択すると全文を表示します。",
+    fullNamesOnHint: "名前を全文表示中です。選択すると長い名前を2行までにします。",
     showFolderRail: "フォルダーパネルを表示",
     tracks: "トラック",
     images: "画像",
@@ -2152,7 +2155,6 @@ export const surfaceJapanese = {
     temporaryPreview: "このリモートプレビューの選択は一時的です。",
     filesLabel: "ファイル",
     copyWorkCode: "作品コードをコピー",
-    directoryActions: "ディレクトリ操作",
     directory: "ディレクトリ",
     workCodeActions: "作品コード操作",
     trackedSources: "追跡済みソース",

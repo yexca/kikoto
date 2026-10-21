@@ -119,8 +119,9 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   opens its own list; an Origin directory edition reads `Origin · <language>`.
   On a phone the code and both chips stay on one line: a chip names a language
   by its code (`JA`, `EN`, `SC` for Simplified Chinese, `TC` for Traditional
-  Chinese, `KO`), and an Origin directory edition reads `Origin`. The lists
-  keep full language names.
+  Chinese, `KO`), the metadata chip leaves out the original-language marker,
+  and an Origin directory edition reads `Origin`. The lists keep full language
+  names.
   The metadata chip becomes a read-only label when there is only one variant.
   Metadata defaults to your preferred metadata language for local works; for
   remote-only works it defaults to the first of your languages the source
@@ -196,8 +197,8 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   detail was opened from, which finds the name in any staff role.
   On compact screens, the Hero keeps the same credit line, tag row, stat
   strip, and the Resume, Mark, rating, and List actions above the Info and
-  Directory tabs; a phone shows Resume as its icon and labels Mark and List. Info shows the source panel, which lists the selected
-  source's actions and offers Edit metadata beside the metadata update time,
+  Directory tabs; a phone shows Resume as its icon and labels Mark and List.
+  Info shows the source panel, which lists the selected source's actions and offers Edit metadata beside the metadata update time,
   and the Credits card. A phone shows at most three lines of the title; tapping a
   shortened title shows all of it. The button at the end of the work code row
   hides the work details and leaves the work code, any metadata notice, and
@@ -205,6 +206,10 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   work opened there.
 - Presents Directory as one panel: a header with the file summary and source
   checking, underline source tabs with status dots, and a folder explorer.
+  On a phone, the arrow on the selected Directory tab opens the source tab
+  visibility list with **Check sources** below it, and file and folder names
+  stop at two lines; **Full names** at the top right of Directory shows them
+  in full, and the choice is remembered on that device.
   When the directory is wide enough and the work has folders, a sticky folder
   column sits beside the selected folder's contents; otherwise a Folders button
   opens the same navigator as a bottom sheet on phones or a popover elsewhere.
@@ -225,7 +230,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   an image gallery, documents, and other files, labelling the groups when more
   than one is present. Subfolder tiles summarize what they contain and offer a
   direct play command when they hold playable files. Tracks are numbered in
-  folder playback order with the complete name above size and the work's
+  folder playback order with the name above size and the work's
   resume position, and precise duration in a trailing column; they show a play
   cue on hover and mark the current track with an accent row and a live icon.
   The resume marker follows playback saves without reloading. Local and cached
