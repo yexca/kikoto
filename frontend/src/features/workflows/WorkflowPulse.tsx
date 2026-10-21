@@ -57,6 +57,7 @@ export function WorkflowPulse({
     <section
       aria-label={t("workflowPage.console.statusStrip")}
       className="flex min-w-0 items-stretch overflow-hidden rounded-lg border bg-card"
+      data-toast-avoid
     >
       <PulseCell
         className="min-w-0 flex-[1.6]"

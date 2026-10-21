@@ -191,7 +191,7 @@ export function SubscriptionsPage({
     <div className="w-full space-y-5">
       {readOnly && <DemoReadOnlyNotice />}
       <section ref={feedRef} className="min-w-0 scroll-mt-4 space-y-4" aria-labelledby="subscriptions-feed-heading">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3" data-toast-avoid>
           <div className="flex min-w-0 items-baseline gap-2">
             <h2 id="subscriptions-feed-heading" className="text-lg font-semibold">
               {t("subscriptions.feed.label")}

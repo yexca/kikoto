@@ -17,6 +17,13 @@
 </details>
 
 <details>
+<summary><strong>Interface</strong></summary>
+
+- Notifications appear at the top right, just below the header, and move below a page's toolbar only when that toolbar sits right at the top. On circle and voice actor detail pages and in Favorites they no longer drop below the work toolbar further down the page. On Metadata, Subscriptions, Workflows, and Insights they no longer cover the toolbar, the status strip, or the range picker.
+
+</details>
+
+<details>
 <summary><strong>Operations and reliability</strong></summary>
 
 - The Docker image is published for `linux/arm64` as well as `linux/amd64` under the same tags, so Kikoto runs on ARM NAS devices and 64-bit Raspberry Pi OS with the usual `docker compose up -d`.

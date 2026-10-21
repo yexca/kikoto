@@ -275,7 +275,7 @@ export function WorkManagementPage({
           }
         />
         <div className="min-w-0 flex-1 space-y-3">
-          <div ref={headerRef} className="flex min-h-10 items-center gap-2">
+          <div ref={headerRef} className="flex min-h-10 items-center gap-2" data-toast-avoid>
             <div
               ref={titleRef}
               className={`flex shrink-0 items-center gap-2 ${view === "custom" ? "" : "max-lg:hidden"}`}
@@ -338,7 +338,7 @@ export function WorkManagementPage({
               )}
             </div>
           </div>
-          <div ref={setSearchRowSlot} className="empty:hidden" />
+          <div ref={setSearchRowSlot} className="empty:hidden" data-toast-avoid />
           {view === "custom" ? (
             <CustomWorkMaintenance canCreate={canCreateCustomWorks} toolbar={toolbar} />
           ) : view === "aliases" ? (

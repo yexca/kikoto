@@ -212,12 +212,12 @@ function useToastTopOffset(active: boolean) {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
         const avoid = Array.from(document.querySelectorAll<HTMLElement>("[data-toast-avoid]"));
-        const bottom = avoid.reduce((current, element) => {
-          const rect = element.getBoundingClientRect();
-          if (rect.bottom <= 0 || rect.top >= window.innerHeight) return current;
-          return Math.max(current, rect.bottom);
-        }, 64);
-        setTop(Math.min(Math.max(12, window.innerHeight - 96), Math.ceil(bottom + 12)));
+        setTop(
+          toastTopOffset(
+            avoid.map((element) => element.getBoundingClientRect()),
+            { width: window.innerWidth, height: window.innerHeight },
+          ),
+        );
         resizeObserver?.disconnect();
         resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
         avoid.forEach((element) => resizeObserver?.observe(element));
@@ -238,6 +238,40 @@ function useToastTopOffset(active: boolean) {
   }, [active]);
 
   return top;
+}
+
+type ToastAvoidRect = Pick<DOMRect, "top" | "bottom" | "left" | "right">;
+
+const TOAST_GAP = 12;
+const TOAST_MIN_TOP = 64 + TOAST_GAP;
+// One notice with its progress bar; stacked notices may extend past it.
+const TOAST_BAND_HEIGHT = 72;
+
+/**
+ * Toasts sit at the top of their column and step below a marked control only
+ * when that control occupies the band where the first notice would land.
+ * Controls lower on the page leave the empty space above them usable.
+ */
+export function toastTopOffset(avoid: readonly ToastAvoidRect[], viewport: { width: number; height: number }) {
+  const column =
+    viewport.width >= 640
+      ? { left: viewport.width - 16 - Math.min(360, viewport.width - 32), right: viewport.width - 16 }
+      : { left: 12, right: viewport.width - 12 };
+  const overlaps = (start: number, end: number, from: number, to: number) => start < to && from < end;
+  const obstacles = avoid
+    .filter(
+      (rect) =>
+        overlaps(rect.top, rect.bottom, 0, viewport.height) &&
+        overlaps(rect.left, rect.right, column.left, column.right),
+    )
+    .sort((a, b) => a.top - b.top);
+  let top = TOAST_MIN_TOP;
+  for (const rect of obstacles) {
+    if (overlaps(rect.top, rect.bottom + TOAST_GAP, top, top + TOAST_BAND_HEIGHT)) {
+      top = Math.max(top, rect.bottom + TOAST_GAP);
+    }
+  }
+  return Math.min(Math.max(TOAST_GAP, viewport.height - 96), Math.ceil(top));
 }
 
 function toastDuration(kind: ToastKind) {
