@@ -369,6 +369,15 @@ executed the same jobs, so runs with different plans are never compared. It is
 an observation: no threshold fails a check. `scripts/ci-metrics.mjs` owns the
 calculation and its tests run in Style through `make ci-metrics-test`.
 
+The separate `Dependency Audit` workflow runs every day and on request from
+the Actions page. It runs `make dependency-audit`, which is `govulncheck` over
+the backend plus `npm audit --audit-level=moderate` and `npm audit signatures`
+over the frontend lockfile, so an advisory published for a dependency that no
+pull request has touched still fails a run. The same checks run in
+`Backend (static)` and `Frontend` whenever those jobs are planned. A failed
+scheduled run does not block merging; it is a prompt to update or replace the
+affected dependency.
+
 ## Frontend Coverage
 
 Vitest covers pure state and model logic. User-visible React interaction

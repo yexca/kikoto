@@ -22,5 +22,8 @@
   reply drafts, and doc translation sync, with an admission rule that keeps
   only repository-wide workflows.
 - Contributing describes the AI-assisted contribution policy.
+- A daily `Dependency Audit` workflow runs `govulncheck`, `npm audit`, and
+  `npm audit signatures` against `main` through the new
+  `make dependency-audit` target.
 
 </details>

@@ -1,0 +1,43 @@
+name: Dependency Audit
+
+# Checks the Go and npm dependencies of main against the advisory databases
+# every day, so an advisory published for an unchanged dependency fails a run
+# without waiting for a pull request that touches it.
+on:
+  schedule:
+    - cron: "47 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Dependency Audit
+    if: github.repository == 'yexca/kikoto'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: ./.github/actions/setup-node
+      - name: Set up Go
+        id: go
+        uses: ./.github/actions/setup-go
+      # Reuse the module cache that Full saves on main; this job never saves one.
+      - name: Restore Go modules and tool dependencies
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('backend/go.mod', 'backend/go.sum', 'Makefile') }}
+          restore-keys: go-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
+      # -k reports every failing check instead of stopping at the first.
+      - name: Audit Go and npm dependencies
+        run: make -k dependency-audit

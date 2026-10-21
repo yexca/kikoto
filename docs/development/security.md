@@ -520,6 +520,10 @@ anonymous user.
   above. It deliberately skips the Go and Node toolchain versions, which must
   be upgraded by hand everywhere they appear, and Gradle dependencies, which
   need a reviewed verification-metadata update.
+- The daily `Dependency Audit` workflow runs `make dependency-audit` against
+  `main`, as described in
+  [Continuous Integration](testing.md#continuous-integration). Treat a failed
+  run like a newly reported advisory and update the affected dependency.
 - Do not add a JAR or AAR to a Capacitor `flatDir` directory without an
   explicit source review and checksum. Those directories do not carry normal
   repository metadata or transitive dependency information.
