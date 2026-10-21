@@ -669,7 +669,7 @@ test("@desktop Metadata voice aliases view lists people and opens alias review",
   await expect(page.getByRole("region", { name: "Metadata records", exact: true })).toBeVisible();
 });
 
-test("@desktop Metadata Custom works lists custom works apart from catalog views and opens folder creation", async ({
+test("@desktop Metadata Custom works lists custom works apart from catalog views and opens Add custom work", async ({
   page,
 }) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
@@ -695,11 +695,14 @@ test("@desktop Metadata Custom works lists custom works apart from catalog views
   await page.route("**/api/custom-works/folders?*", (route) =>
     route.fulfill({
       json: {
-        folders: [{ path: "Example Folder", name: "Example Folder" }],
+        folders: [{ path: "Example Folder", name: "Example Folder", inUse: false }],
         truncated: false,
         noticeAccepted: true,
       },
     }),
+  );
+  await page.route("**/api/custom-works/notice-acceptance", (route) =>
+    route.fulfill({ json: { noticeAccepted: true } }),
   );
 
   await page.goto("/metadata?reason=catalog");
@@ -714,13 +717,14 @@ test("@desktop Metadata Custom works lists custom works apart from catalog views
   await expect(page.getByRole("button", { name: /^Check sources/ })).toHaveCount(0);
   await expect(row.getByRole("button", { name: "Delete local information for KT00000001", exact: true })).toBeEnabled();
 
-  await page.getByRole("button", { name: "Create from folder", exact: true }).click();
-  await expect(page).toHaveURL(/\/metadata\?view=custom$/);
-  await expect(page.getByRole("region", { name: "Folders without a work code", exact: true })).toContainText(
+  await page.getByRole("button", { name: "Add custom work", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Add custom work", exact: true });
+  // The dialog walks the library only when asked.
+  await dialog.getByRole("button", { name: "Scan library folders", exact: true }).click();
+  await expect(dialog.getByRole("region", { name: "Folders without a work code", exact: true })).toContainText(
     "Example Folder",
   );
-  await expect(page.getByRole("tab", { name: "Custom works", exact: true })).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("button", { name: "Back to custom works", exact: true }).click();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page).toHaveURL(/\/metadata\?reason=custom$/);
   await expect(row).toBeVisible();
 });
