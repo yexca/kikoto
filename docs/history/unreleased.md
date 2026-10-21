@@ -49,6 +49,9 @@
   is not a Back step either, and returning from a resumed detail no longer
   leaves an extra entry behind. The Android back button goes from another
   tab's root to Library, then asks for a second press before leaving the app.
+- Changing the page on the circle and voice actor lists and on circle and
+  voice actor detail returns to the top of the new results, as the Library
+  does, instead of staying at the bottom of the page.
 
 </details>
 

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 
-import { startResultsScroll, type PendingResultsScroll } from "@/components/collection/collectionResultsScroll";
+import { useCollectionResultsScroll } from "@/components/collection/useCollectionResultsScroll";
 import { restoreCurrentHistoryScroll } from "@/lib/browserHistory";
 
 /**
@@ -10,21 +10,8 @@ import { restoreCurrentHistoryScroll } from "@/lib/browserHistory";
  * screen.
  */
 export function useLibraryResultsScroll(visible: boolean) {
-  const anchorRef = useRef<HTMLDivElement | null>(null);
-  const pendingResultsScroll = useRef<PendingResultsScroll | null>(null);
+  const { anchorRef, queue: queueResults, complete, cancel } = useCollectionResultsScroll();
   const pendingScrollRestore = useRef<number | null>(null);
-
-  const cancel = useCallback(() => {
-    pendingResultsScroll.current?.cancel();
-    pendingResultsScroll.current = null;
-  }, []);
-  useEffect(() => () => pendingResultsScroll.current?.cancel(), []);
-
-  const complete = useCallback(() => {
-    const pending = pendingResultsScroll.current;
-    pendingResultsScroll.current = null;
-    pending?.complete(() => anchorRef.current);
-  }, []);
 
   useLayoutEffect(() => {
     if (!visible) return;
@@ -38,9 +25,8 @@ export function useLibraryResultsScroll(visible: boolean) {
   /** Scrolls to the start of the results when the next ones render. */
   const queue = useCallback(() => {
     pendingScrollRestore.current = null;
-    cancel();
-    pendingResultsScroll.current = startResultsScroll();
-  }, [cancel]);
+    queueResults();
+  }, [queueResults]);
 
   /** Reapplies a saved offset once the list renders. */
   const restore = useCallback(

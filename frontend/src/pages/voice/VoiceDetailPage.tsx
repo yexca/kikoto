@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
+import { useCollectionResultsScroll } from "@/components/collection/useCollectionResultsScroll";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
@@ -204,6 +205,13 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
   const [filter, setFilter] = useState<VoiceWorkFilter>("all");
   const [workOptionsOpen, setWorkOptionsOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const resultsScroll = useCollectionResultsScroll<HTMLElement>();
+  const completeResultsScroll = resultsScroll.complete;
+  const cancelResultsScroll = resultsScroll.cancel;
+  const changePage = (value: number) => {
+    resultsScroll.queue();
+    setPage(value);
+  };
   // The order and page size are one stored choice shared by every voice actor.
   const {
     sort: workSort,
@@ -295,7 +303,10 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
         worksReloadToken,
       ]);
     // A re-run for a new `t` finds the page already loaded.
-    if (loadedWorksKey.current === requestKey(page)) return;
+    if (loadedWorksKey.current === requestKey(page)) {
+      completeResultsScroll();
+      return;
+    }
     const controller = new AbortController();
     setIsWorksLoading(true);
     api
@@ -315,9 +326,12 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
         setWorks(result.works);
         setTotalWorks(result.total);
         if (result.page !== page) setPage(result.page);
+        completeResultsScroll();
       })
       .catch((error) => {
-        if (!controller.signal.aborted) toast.notify(toastFromError(error, t("errors.unavailable")));
+        if (controller.signal.aborted) return;
+        cancelResultsScroll();
+        toast.notify(toastFromError(error, t("errors.unavailable")));
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsWorksLoading(false);
@@ -325,6 +339,8 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
     return () => controller.abort();
   }, [
     active,
+    cancelResultsScroll,
+    completeResultsScroll,
     detailPersonID,
     filter,
     page,
@@ -814,7 +830,7 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
         }
       ></CreatorDetailHeader>
 
-      <section className="space-y-3">
+      <section ref={resultsScroll.anchorRef} className="scroll-mt-24 space-y-3">
         <CatalogWorkToolbar
           query={query}
           searchLabel={t("sheets.searchVoiceWorks")}
@@ -869,7 +885,7 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
                 )}
               </Button>
             }
-            onPageChange={setPage}
+            onPageChange={changePage}
           />
         </div>
         <VoiceWorkOptionsSheet
@@ -943,7 +959,7 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
           pageSize={pageSize}
           totalItems={totalWorks}
           totalPages={totalPages}
-          onPageChange={setPage}
+          onPageChange={changePage}
         />
       </section>
       <CreatorWorkFetchConfirm selection={selection} />
