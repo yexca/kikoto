@@ -833,6 +833,8 @@ export const koreanResource = {
           comfy:
             "이전 워크플로 캔버스의 상호작용 설계. Kikoto는 소스 코드를 포함하거나 수정한 적이 없으며, 해당 캔버스는 @xyflow/react로 독립 구현했으나 현재는 더 이상 사용하지 않습니다.",
           cherry: "AGENTS.md 구성 방식, 프로그램 버전 관리, LLM 제공자 및 모델 연결, GitHub Actions 설계.",
+          firefox:
+            "변경 영역에 따라 필요한 문서만 읽는 Agent 가이드, 도구와 검증의 함정을 저장소에 기록하는 방식, AI 지원 기여 정책.",
           uv: "GitHub Actions의 plan 작업, 재사용 가능한 워크플로, 단일 병합 게이트.",
           tailscale: "race 테스트 스위트를 개별 테스트 단위로 샤드에 나누는 방식.",
           grafana: "패키지 단위로 테스트를 샤드에 나누는 방식. 테스트 단위 분할과 비교할 대안으로 검토했습니다.",

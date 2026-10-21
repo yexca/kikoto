@@ -5,13 +5,22 @@ Read these first:
 - `README.md`
 - `docs/overview.md`
 - `docs/architecture/core-boundaries.md`
-- `docs/architecture/data-model.md`
-- `docs/architecture/workflows.md`
-- `docs/architecture/backend.md`
-- `docs/architecture/frontend.md`
-- `docs/development/design.md`
-- `SECURITY.md`
-- `docs/development/security.md`
+
+Before changing an area, read its docs:
+
+| Area | Docs |
+| --- | --- |
+| Data model, schema, migrations | `docs/architecture/data-model.md`, `docs/development/migrations.md` |
+| Scan, fetch, background workflows | `docs/architecture/workflows.md` |
+| Backend | `docs/architecture/backend.md`, `docs/development/backend-guidelines.md` |
+| Frontend and UI | `docs/architecture/frontend.md`, `docs/development/frontend-guidelines.md`, `docs/development/design.md` |
+| Outbound HTTP, auth, secrets, privacy | `SECURITY.md`, `docs/development/security.md` |
+| Tests | `docs/development/testing.md` |
+| Commits and releases | `docs/development/commit-and-release.md` |
+
+Recurring repository procedures are agent skills in
+[`.claude/skills/`](.claude/skills/README.md); follow a skill's `SKILL.md` when
+its description matches the task.
 
 ## Product Boundaries
 
@@ -172,6 +181,12 @@ the Makefile has no target for the required check.
   available.
 - Keep validation proportional: do not run the full aggregate target for a
   narrow change when its affected target is sufficient.
+- Redirect the output of slow targets (`make ci-*`, `make frontend-e2e`,
+  `make smoke`) to a log file outside tracked paths and read that file, rather
+  than piping it through `tail` or `grep` and re-running the target to see
+  another part.
+- Known local tool and verification traps are in
+  [Local Pitfalls](docs/development/testing.md#local-pitfalls).
 - Before every commit, run `make sensitive-check` and review any findings. It
   scans tracked changes against `HEAD` plus untracked files, so run it before
   committing rather than after. This privacy check is intentionally
@@ -215,6 +230,18 @@ Release and migration boundaries are derived from repository state:
 
 Before handoff, run the smallest sufficient targets from
 [Validation Commands](#validation-commands), then `make sensitive-check`.
+
+Do not invent identifiers. Issue and PR numbers, versions, migration numbers,
+release tags, and catalog codes come from the repository, the user, or the
+referenced issue, as `VERSION`, the migration chain, and
+[Synthetic Fixture Data](docs/development/testing.md#synthetic-fixture-data)
+define; ask when none applies. Commit messages, issue text, and PR text
+reference functions, files, settings, and make targets by name, not by line
+number or position, because the text outlives the code.
+
+Do not push, open or update a pull request, or post on issues, discussions, or
+reviews without the user's explicit approval for that action. Draft the text
+first and let the user review it.
 
 Public tracked code and docs must use generic remote-source examples, reserved
 domains, and obviously synthetic identifiers. Never commit real configured

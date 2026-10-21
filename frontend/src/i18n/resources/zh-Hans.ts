@@ -810,6 +810,7 @@ export const zhHansResource = {
           comfy:
             "曾经的工作流画布的交互设计。Kikoto 从未包含或改编其源代码，该画布当时使用 @xyflow/react 独立实现，现已停用。",
           cherry: "AGENTS.md 配置方式、程序版本管理、LLM 服务商与模型接入和 GitHub Actions 设计。",
+          firefox: "按改动区域按需加载文档的 Agent 指南、在仓库中记录工具与验证陷阱的做法，以及 AI 辅助贡献政策。",
           uv: "GitHub Actions 的 plan 作业、可复用 workflow 和单一合并门禁。",
           tailscale: "将 race 测试套件按单个测试分片的做法。",
           grafana: "按包分片测试的做法，作为按测试分片的对照方案。",

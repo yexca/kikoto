@@ -815,6 +815,7 @@ export const zhHantResource = {
           comfy:
             "過去的工作流程畫布的互動設計。Kikoto 從未包含或改編其原始碼，該畫布當時使用 @xyflow/react 獨立實作，現已停用。",
           cherry: "AGENTS.md 設定方式、程式版本管理、LLM 服務商與模型接入和 GitHub Actions 設計。",
+          firefox: "依改動區域按需載入文件的 Agent 指南、在儲存庫中記錄工具與驗證陷阱的做法，以及 AI 輔助貢獻政策。",
           uv: "GitHub Actions 的 plan 作業、可重複使用的 workflow 和單一合併門檻。",
           tailscale: "將 race 測試套件依單一測試分片的做法。",
           grafana: "依套件分片測試的做法，作為依測試分片的對照方案。",
