@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/auth/AuthProvider";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
 import { CollectionPagination } from "@/components/collection/CollectionPagination";
+import { useCollectionResultsScroll } from "@/components/collection/useCollectionResultsScroll";
 import {
   CreatorCollectionSkeleton,
   creatorCardMinHeightClassName,
@@ -104,6 +105,9 @@ export function CreatorListPage<Item extends CreatorListItem, Filter extends str
   const [total, setTotal] = useState(0);
   const [reloadToken, setReloadToken] = useState(0);
   const loadedRequestKey = useRef("");
+  const resultsScroll = useCollectionResultsScroll();
+  const completeResultsScroll = resultsScroll.complete;
+  const cancelResultsScroll = resultsScroll.cancel;
   const loadItems = useStableCallback(load);
   const emptyMessage = useStableCallback(() => unfilteredEmptyMessage ?? "");
   const notifyLoadFailure = useStableCallback((error: unknown) => {
@@ -153,6 +157,7 @@ export function CreatorListPage<Item extends CreatorListItem, Filter extends str
     const requestKey = JSON.stringify([page, pageSize, requestQuery, filter, reloadToken]);
     if (loadedRequestKey.current === requestKey) {
       setIsLoading(false);
+      completeResultsScroll();
       return;
     }
     const controller = new AbortController();
@@ -167,9 +172,11 @@ export function CreatorListPage<Item extends CreatorListItem, Filter extends str
         setHasLoaded(true);
         setMessage(result.total === 0 && !requestQuery.trim() && filter === "all" ? emptyMessage() : "");
         if (result.page !== page) setPage(result.page);
+        completeResultsScroll();
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
+        cancelResultsScroll();
         notifyLoadFailure(error);
       })
       .finally(() => {
@@ -178,6 +185,8 @@ export function CreatorListPage<Item extends CreatorListItem, Filter extends str
     return () => controller.abort();
   }, [
     active,
+    cancelResultsScroll,
+    completeResultsScroll,
     emptyMessage,
     filter,
     hasPendingRestoration,
@@ -198,6 +207,10 @@ export function CreatorListPage<Item extends CreatorListItem, Filter extends str
     setPageSize(value);
     setPage(1);
   };
+  const changePage = (value: number) => {
+    resultsScroll.queue();
+    setPage(value);
+  };
   const paginationProps = {
     page,
     pageSize,
@@ -209,7 +222,7 @@ export function CreatorListPage<Item extends CreatorListItem, Filter extends str
     compactTop: true,
     refreshing: isLoading && hasLoaded,
     refreshingLabel: copy.refreshing,
-    onPageChange: setPage,
+    onPageChange: changePage,
   };
 
   const updateItem = (item: Item, patch: Partial<Item>) => {
@@ -235,7 +248,7 @@ export function CreatorListPage<Item extends CreatorListItem, Filter extends str
   const handlers = useMemo(() => ({ onFavoriteToggle, onTagsSave }), [onFavoriteToggle, onTagsSave]);
 
   return (
-    <div className="relative space-y-5">
+    <div ref={resultsScroll.anchorRef} className="relative scroll-mt-24 space-y-5">
       {message && <div className="rounded-md border bg-card px-3 py-2 text-sm text-muted-foreground">{message}</div>}
 
       <section className="space-y-3">

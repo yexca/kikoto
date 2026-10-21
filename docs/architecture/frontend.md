@@ -540,8 +540,20 @@ volatile queue with a diagnostic and a normal network loss window of up to
   activity resize behavior.
 - Treat each mobile bottom-navigation destination as a resumable workspace.
   Switching destinations restores that destination's last stable list or detail
-  route, history state, and scroll position for the current server and user;
-  dialogs, pending mutations, and other transient overlays are not resumed.
+  route, history state, back stack, and scroll position for the current server
+  and user; dialogs, pending mutations, and other transient overlays are not
+  resumed.
+- The native shells navigate like a tabbed app rather than a browser
+  (`enableInAppBackStack` in `lib/browserHistory`). The WebView keeps a single
+  history entry, and that entry's state carries an in-app back stack of bounded
+  entries. A push stacks the entry it leaves and replaces the current one; a
+  change of tab, scope, filter, or page within one browse list replaces the list
+  entry without stacking it (`replacesWorkspaceList` in
+  `app/workspaceNavigation`); a destination switch resumes the destination's own
+  stack and is never a Back step. Returning to a stacked entry restores its state
+  and scroll and dispatches `popstate`, so pages restore it the way they restore
+  browser Back. Browsers keep browser history, whose Back button the app cannot
+  remove.
 - Retain every visited primary browse workspace (Library, Favorites, Circles,
   and Voice Actors) on both layouts so returning to a destination never reloads
   its rendered list. Each workspace has its own loading boundary. The current
@@ -594,12 +606,18 @@ volatile queue with a diagnostic and a normal network loss window of up to
 - Detail-page Back returns to the entry that opened the detail on both layouts,
   including Favorites and nested creator routes. A resumed mobile detail uses
   its captured return entry; a direct link falls back to its workspace list.
-  Tapping the active bottom-navigation destination remains workspace Up.
+  With an in-app back stack, Back with nothing stacked replaces the detail with
+  that return rather than adding an entry. Tapping the active bottom-navigation
+  destination remains workspace Up, which pops the destination's back stack to
+  its nearest list entry, or replaces the detail with the list and clears the
+  stack when none is stacked.
 - The Android back button and the iOS left-edge swipe share one back order
   (`app/nativeBack`): command palette, sign-in, the topmost dialog, sheet, or
-  popover, the player's own panels and full view, then browser history. At the
-  Library root the Android button asks for a second press before leaving the
-  app; the iOS swipe does nothing and never leaves the app. The swipe comes
+  popover, the player's own panels and full view, then the in-app back stack.
+  With nothing stacked, a detail goes up to its destination's list. At any other
+  destination's root the Android button opens Library, and at the Library root
+  it asks for a second press before leaving the app; the iOS swipe stops at a
+  destination's root and never leaves it or the app. The swipe comes
   from an app-local native edge recognizer, offered only where that plugin is
   registered, and yields when it starts on the Compact or Mini player, a
   slider, or a horizontally scrollable region.
@@ -636,9 +654,9 @@ volatile queue with a diagnostic and a normal network loss window of up to
   WebKit abandons a long programmatic smooth scroll when the list is replaced
   or touch momentum continues; desktop smoothly brings the results anchor into
   view. The shared `collectionResultsScroll` owns this rule.
-- Keep scroll state per browser history entry. A push navigation starts at the
-  top, while browser back/forward restores the originating entry after its
-  content has rendered. The shell observes content height for up to ten seconds
+- Keep scroll state per history entry and per in-app back stack entry. A push
+  navigation starts at the top, while browser back/forward or an in-app Back
+  restores the originating entry after its content has rendered. The shell observes content height for up to ten seconds
   for deep restoration and cancels all pending frames and observers on user
   scroll intent or navigation. Scroll writes belong to a unique history entry;
   delayed writes and page-level cleanup must not overwrite another entry's
@@ -650,6 +668,9 @@ volatile queue with a diagnostic and a normal network loss window of up to
 - Reserve a directory-shaped skeleton with stable height while media is being
   indexed or loaded, then replace it in place without a separate loading card.
 - Build Tree rows and playback queues from one folder-first natural ordering.
+  Every list of file and folder names sorts with `naturalNameCompare`
+  (`lib/naturalNameOrder.ts`), which compares digit runs by value and reads a
+  kanji numeral after 第 as its number.
 - Apply a persisted position only through Resume or the restored current queue
   item. After a reload, that item continues the work cursor when it still points
   at the same media item and is unfinished, unless the listener has already

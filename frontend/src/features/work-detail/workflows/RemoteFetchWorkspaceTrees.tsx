@@ -20,6 +20,7 @@ import {
   type TreeTrack,
 } from "@/features/work-detail/media/mediaTreeModel";
 import { type RemoteFetchFileDecision, type RemoteFetchResolution, type RemoteWorkSavePlan } from "@/lib/api";
+import { naturalNameCompare } from "@/lib/naturalNameOrder";
 
 type RemoteFetchDecisions = Record<string, RemoteFetchFileDecision>;
 
@@ -77,8 +78,8 @@ function RemoteFetchResultNodeView({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(true);
-  const folders = Array.from(node.children.values()).sort((left, right) => naturalCompare(left.name, right.name));
-  const items = [...node.items].sort((left, right) => naturalCompare(left.path, right.path));
+  const folders = Array.from(node.children.values()).sort((left, right) => naturalNameCompare(left.name, right.name));
+  const items = [...node.items].sort((left, right) => naturalNameCompare(left.path, right.path));
   return (
     <div className="space-y-1">
       {!isRoot && (
@@ -232,8 +233,8 @@ export function RemoteFetchLocalTreeNode({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(isRoot);
-  const folders = Array.from(node.children.values()).sort((left, right) => naturalCompare(left.name, right.name));
-  const items = [...node.items].sort((left, right) => naturalCompare(left.name, right.name));
+  const folders = Array.from(node.children.values()).sort((left, right) => naturalNameCompare(left.name, right.name));
+  const items = [...node.items].sort((left, right) => naturalNameCompare(left.name, right.name));
   const descendantItems = remoteFetchLocalTreeItems(node);
   const selectedCount = descendantItems.filter((item) => selectedLocalPaths.has(item.fullPath)).length;
   const checked = descendantItems.length > 0 && selectedCount === descendantItems.length;
@@ -340,8 +341,8 @@ export function RemoteSelectionNode({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(isRoot);
-  const folders = Array.from(node.children.values()).sort((left, right) => naturalCompare(left.name, right.name));
-  const files = [...node.files].sort((left, right) => naturalCompare(left.title, right.title));
+  const folders = Array.from(node.children.values()).sort((left, right) => naturalNameCompare(left.name, right.name));
+  const files = [...node.files].sort((left, right) => naturalNameCompare(left.title, right.title));
   const hasChildren = folders.length > 0 || files.length > 0;
   const nodePaths = remoteSelectablePaths(node);
   const checkedCount = nodePaths.filter((path) => selectedPaths.has(path)).length;
@@ -649,8 +650,4 @@ export function FetchPaneEmpty({ label }: { label: string }) {
       {label}
     </div>
   );
-}
-
-export function naturalCompare(left: string, right: string) {
-  return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
 }

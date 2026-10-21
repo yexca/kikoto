@@ -261,6 +261,12 @@ export const workCardEnglish = {
   loadingSeries: "Loading series information...",
   couldNotOpenEntity: "Could not open this {{kind}}.",
   mark: "Mark: {{status}}",
+  userRating: "Your rating",
+  rateStars_one: "Rate {{count}} star",
+  rateStars_other: "Rate {{count}} stars",
+  clearUserRating: "Clear your rating",
+  userRatingValue: "Your rating: {{value}} of 5",
+  rateWork: "Rate this work",
   status: {
     none: "Unmarked",
     want_to_listen: "Want",

@@ -20,6 +20,7 @@ import { api, type RemoteFetchFileDecision, type RemoteWorkSaveResult } from "@/
 import { fetchDestinationCode, fetchSubmissionFailure, librarySettingsPath } from "@/lib/fetchDestination";
 import { formatRemoteFetchPlanConflict, hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 import { filterRemoteFetchPaths } from "@/lib/remoteFetchFilters";
+import { naturalNameCompare } from "@/lib/naturalNameOrder";
 
 export type { FetchIntent, RemoteFetchDraft } from "@/features/work-detail/workflows/remoteFetchWorkspaceModel";
 
@@ -307,9 +308,7 @@ export function useRemoteFetchWorkspace({
 export type RemoteFetchWorkspace = ReturnType<typeof useRemoteFetchWorkspace>;
 
 function sortedValues(values: Set<string> | undefined) {
-  return Array.from(values ?? []).sort((left, right) =>
-    left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }),
-  );
+  return Array.from(values ?? []).sort(naturalNameCompare);
 }
 
 function decisionList(decisions: Record<string, RemoteFetchFileDecision>) {

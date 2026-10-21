@@ -47,7 +47,7 @@
 
 ## Kikoeru
 
-Kikoeru JSON 文件接受评价数组、`reviews` 数组或 API 的 `works` 数组。请使用单个账户的数据，并包含你想要的每一页。编号使用 `primaryCode` 或 `source_id`；数字形式的 `work_id`/`id` 是商品编号。把商品类型编码进 ID 的分支版本（类型 × 10¹² + 数字，RJ、BJ、VJ 和 CC 对应类型 0–3）会被解码。与商品编号无关的 ID 必须先转换。支持个人的 `userRating`/`user_rating` 和 `review_text`；不会导入提供方的评分。
+Kikoeru JSON 文件接受评价数组、`reviews` 数组或 API 的 `works` 数组。请使用单个账户的数据，并包含你想要的每一页。编号使用 `primaryCode` 或 `source_id`；数字形式的 `work_id`/`id` 是商品编号。把商品类型编码进 ID 的分支版本（类型 × 10¹² + 数字，RJ、BJ、VJ 和 CC 对应类型 0–3）会被解码。与商品编号无关的 ID 必须先转换。支持个人的 `userRating`/`user_rating` 和 `review_text`，评分为 0 时导入为未评分；不会导入提供方的评分。
 
 **Kikoeru 账户**会替你读取数据。选择一个已配置的兼容 Kikoeru 的来源，或输入服务器的 API 地址，然后以无凭据（适用于关闭了登录的服务器）、令牌，或用户名和密码登录。服务器通过 `POST /api/auth/me` 登录，通过 `GET /api/review` 分页读取，并且在 Kikoeru 服务器提供时，读取你拥有的播放列表，包括它的“喜欢”和“标记”列表。没有播放列表的服务器只会导入评价。结果会经过与文件相同的预览和导入流程。
 

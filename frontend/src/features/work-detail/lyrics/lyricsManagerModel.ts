@@ -1,5 +1,6 @@
 import type { LyricsAssignmentChange, MediaItem } from "@/lib/api";
 import { allLyricsLanguages, lyricsLanguages, mediaItemLyricsAssignments } from "@/lib/lyricsLanguage";
+import { naturalNameCompare } from "@/lib/naturalNameOrder";
 import { parseTimedLyrics } from "@/lib/timedLyrics";
 import { findLyricsMatches, isLyricsPath } from "@/player/lyricsMatching";
 
@@ -40,8 +41,6 @@ export type LyricsAssignmentDraft = ReadonlyMap<number, number | null>;
 
 /** One draft per lyrics language. */
 export type LyricsAssignmentDrafts = ReadonlyMap<string, LyricsAssignmentDraft>;
-
-const naturalCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 /** Lyrics whose last line starts this long after the audio ends probably belong to another track. */
 export const lyricsTimingToleranceSeconds = 5;
@@ -188,7 +187,7 @@ export function lyricsFolders(lyrics: LyricsManagerFile[]) {
   for (const file of lyrics) counts.set(file.folder, (counts.get(file.folder) ?? 0) + 1);
   return [...counts.entries()]
     .map(([folder, count]) => ({ folder, count }))
-    .sort((left, right) => right.count - left.count || naturalCollator.compare(left.folder, right.folder));
+    .sort((left, right) => right.count - left.count || naturalNameCompare(left.folder, right.folder));
 }
 
 /**
@@ -262,7 +261,7 @@ export function leadingTrackNumber(name: string): number | null {
 }
 
 function comparePaths(left: { path: string }, right: { path: string }) {
-  return naturalCollator.compare(left.path, right.path);
+  return naturalNameCompare(left.path, right.path);
 }
 
 function commonDirectory(paths: string[]) {

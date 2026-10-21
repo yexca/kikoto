@@ -117,6 +117,14 @@ export function WorkDetailPage({
       toast.notify(toastFromError(error, t("errors.unavailable")));
     }
   };
+  const updateWorkRating = async (workID: number, rating: number | null) => {
+    try {
+      const result = await api.updateWorkUserState(workID, { userRating: rating });
+      detail.patchWork(workID, { userRating: result.userRating });
+    } catch (error) {
+      toast.notify(toastFromError(error, t("errors.unavailable")));
+    }
+  };
 
   if (remoteOnly) {
     if (remoteTarget === null) {
@@ -165,6 +173,7 @@ export function WorkDetailPage({
         canSyncMetadata={auth.hasPermission("metadata:sync") && !auth.demoMode}
         onBack={back}
         onStatusChange={updateWorkStatus}
+        onRatingChange={updateWorkRating}
         onPlay={() => {
           if (detail.work) announceWorkDetailPlay({ ownerPage, workID: detail.work.id });
         }}

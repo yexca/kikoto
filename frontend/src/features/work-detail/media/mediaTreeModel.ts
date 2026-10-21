@@ -1,5 +1,6 @@
 import type { MediaItem, RemoteTrack, RemoteWorkDetail, WorkDetail, WorkProgressSummary } from "../../../lib/api";
 import { mediaItemLyricsAssignments } from "../../../lib/lyricsLanguage";
+import { naturalNameCompare } from "../../../lib/naturalNameOrder";
 import type { PlayerTrack, PlayerTrackLocation } from "../../../player/playerTypes";
 import {
   audioExtensions,
@@ -300,11 +301,11 @@ export function playableFiles(files: TreeTrack[]) {
 }
 
 export function sortedTreeChildren(node: TreeNode) {
-  return Array.from(node.children.values()).sort((left, right) => naturalTreeNameCompare(left.name, right.name));
+  return Array.from(node.children.values()).sort((left, right) => naturalNameCompare(left.name, right.name));
 }
 
 export function sortedTreeFiles(node: TreeNode) {
-  return [...node.files].sort((left, right) => naturalTreeNameCompare(left.title, right.title));
+  return [...node.files].sort((left, right) => naturalNameCompare(left.title, right.title));
 }
 
 export function folderPlaybackTracks(node: TreeNode) {
@@ -319,13 +320,6 @@ export function flattenTracks(root: TreeNode) {
   };
   visit(root);
   return tracks;
-}
-
-// localeCompare with options builds a collator per call; sorting is hot enough to share one.
-const naturalTreeNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
-
-function naturalTreeNameCompare(left: string, right: string) {
-  return naturalTreeNameCollator.compare(left, right);
 }
 
 export function flattenTreeFiles(root: TreeNode) {

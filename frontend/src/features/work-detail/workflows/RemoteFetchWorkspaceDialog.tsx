@@ -22,7 +22,6 @@ import {
   buildRemoteFetchLocalTree,
   FetchPaneEmpty,
   languageLabel,
-  naturalCompare,
   RemoteFetchLocalTreeNode,
   RemoteFetchResultTree,
   RemoteSelectionNode,
@@ -31,6 +30,7 @@ import {
 } from "@/features/work-detail/workflows/RemoteFetchWorkspaceTrees";
 import type { RemoteFetchWorkspace } from "@/features/work-detail/workflows/useRemoteFetchWorkspace";
 import { type RemoteFetchFileDecision, type RemoteFetchPreparation, type RemoteWorkSavePlan } from "@/lib/api";
+import { naturalNameCompare } from "@/lib/naturalNameOrder";
 import { cn } from "@/lib/tailwindClassNames";
 import { hasRemoteFetchConflicts } from "@/lib/remoteFetchPlan";
 
@@ -142,8 +142,8 @@ function RemoteFetchSelectionPanel({
     () =>
       JSON.stringify({
         edition: selectedEditionCode,
-        remote: Array.from(selectedPaths).sort(naturalCompare),
-        local: Array.from(selectedLocalPaths).sort(naturalCompare),
+        remote: Array.from(selectedPaths).sort(naturalNameCompare),
+        local: Array.from(selectedLocalPaths).sort(naturalNameCompare),
         targetRoot,
         decisions: Object.values(decisions).sort((left, right) => left.itemKey.localeCompare(right.itemKey)),
       }),

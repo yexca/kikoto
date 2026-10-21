@@ -60,8 +60,9 @@ password is reset from the server host; see
   work on a gauge beside the highlight threshold and shows its composition;
   ordering variety shows how variation and discovery boost can move that
   example's ranking. Advanced scoring shows the mix slots as one proportional
-  bar, the possible score range, and each tag, voice, and circle weight as a
-  meter of per-match steps up to its cap. Saving creates a new
+  bar, the possible score range, how much evidence each rating and unrated
+  Favorite, Relisten, or Shelved work carries, and each tag, voice, and circle
+  weight as a meter of per-match steps up to its cap. Saving creates a new
   recommendation session for the current tab; other open tabs keep their
   snapshots until a new session is created.
 

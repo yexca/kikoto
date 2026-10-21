@@ -268,6 +268,12 @@ const workCardKorean = {
   loadingSeries: "시리즈 정보 로드 중...",
   couldNotOpenEntity: "이 {{kind}}을(를) 열 수 없습니다.",
   mark: "표시: {{status}}",
+  userRating: "내 평점",
+  rateStars_one: "별 {{count}}개로 평가",
+  rateStars_other: "별 {{count}}개로 평가",
+  clearUserRating: "평점 지우기",
+  userRatingValue: "내 평점: 5점 중 {{value}}점",
+  rateWork: "이 작품 평가하기",
   status: {
     ...workCardEnglish.status,
     none: "표시 없음",

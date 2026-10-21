@@ -102,7 +102,7 @@ func TestRecommendationCatalogFollowsTagMergeVisibilityUndoAndFrozenAliases(t *t
 		}
 		return nil
 	})
-	exec("INSERT INTO user_work_state(user_id,work_id,listening_status) VALUES(1,1,'relisten')")
+	exec("INSERT INTO user_work_state(user_id,work_id,listening_status,rating) VALUES(1,1,'relisten',4)")
 	store := library.NewStore(db)
 	publishRecommendationMetadata(t, db, store)
 	prepare := func(session string) library.RecommendationSessionSnapshot {

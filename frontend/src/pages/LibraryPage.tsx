@@ -39,7 +39,12 @@ import {
   type SourcePresenceItem,
   type Work,
 } from "@/lib/api";
-import { historyScrollY, isMobileTabResumeHistoryState, requestHistoryScrollRestoration } from "@/lib/browserHistory";
+import {
+  historyScrollY,
+  isMobileTabResumeHistoryState,
+  navigateBackOr,
+  requestHistoryScrollRestoration,
+} from "@/lib/browserHistory";
 import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import {
   defaultLibraryBrowseState,
@@ -615,12 +620,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   // A hidden retained workspace sees another destination's location; keep its
   // last rendered list instead of replacing it with a route-not-found view.
   if (active && sourceRoutesReady && !knownLibraryRoute(window.location.pathname, window.location.search, sources)) {
-    return (
-      <NotFoundPage
-        onBack={() => (window.history.length > 1 ? window.history.back() : openLibraryHome())}
-        onOpenLibrary={openLibraryHome}
-      />
-    );
+    return <NotFoundPage onBack={() => navigateBackOr(openLibraryHome)} onOpenLibrary={openLibraryHome} />;
   }
 
   const { visibleWorks, totalWorkPages, currentWorkPage, activePageSize, activePageSizeOptions } =

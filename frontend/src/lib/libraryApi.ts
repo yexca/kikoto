@@ -63,6 +63,13 @@ export type RecommendationConfig = {
   negativeTotalCap: number;
   jitterAmplitude: number;
   explorationAmplitude: number;
+  /** Feedback weights, as percentages of one favorite work's evidence. */
+  ratingFiveWeight: number;
+  ratingFourWeight: number;
+  ratingTwoWeight: number;
+  ratingOneWeight: number;
+  relistenWeight: number;
+  shelvedWeight: number;
 };
 
 export type RecommendationAffinityBreakdown = {

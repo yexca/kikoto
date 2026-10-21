@@ -1,4 +1,5 @@
 import type { MediaItem, MediaLyricsAssignment } from "@/lib/api";
+import { naturalNameCompare } from "@/lib/naturalNameOrder";
 
 // The server reports a work's lyrics status with a copy of this name matching in
 // backend/internal/httpapi/lyrics_match.go. Both must accept the same track and
@@ -73,11 +74,7 @@ export function findLyricsMatches(audioPath: string, items: MediaItem[]): Lyrics
         ),
     )
     .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
-    .sort(
-      (left, right) =>
-        right.score - left.score ||
-        left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" }),
-    );
+    .sort((left, right) => right.score - left.score || naturalNameCompare(left.path, right.path));
   return candidates.map((candidate) => ({
     mediaItemId: candidate.mediaItemId,
     locationId: candidate.locationId,
@@ -147,11 +144,7 @@ export function findRemoteLyricsMatches(audioPath: string, candidates: RemoteLyr
     return match ? [{ ...match, url: candidate.url }] : [];
   });
   return scored
-    .sort(
-      (left, right) =>
-        right.score - left.score ||
-        left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" }),
-    )
+    .sort((left, right) => right.score - left.score || naturalNameCompare(left.path, right.path))
     .map(({ mediaItemId, locationId, path, reason, url }) => ({
       mediaItemId,
       locationId,

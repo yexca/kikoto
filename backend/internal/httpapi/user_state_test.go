@@ -363,6 +363,50 @@ func TestFavoriteListEndpointsProtectMarkedAndPreserveListSummaries(t *testing.T
 	}
 }
 
+func TestWorkUserStateRatingIsKeptUntilClearedAndValidated(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO user_account (id, username, display_name, role) VALUES
+			(1, 'synthetic-user', 'Synthetic User', 'user');
+		INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Example Work');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	user := currentUser{ID: 1, Permissions: []string{"library:read", "favorites:write"}}
+	patch := func(body string) (int, workUserStateResponse) {
+		t.Helper()
+		response := httptest.NewRecorder()
+		server.updateWorkUserState(response, favoriteStateRequest(http.MethodPatch, "/api/works/1/user-state", body, user))
+		var state workUserStateResponse
+		if response.Code == http.StatusOK {
+			if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return response.Code, state
+	}
+
+	if code, state := patch(`{"userRating":4}`); code != http.StatusOK || state.UserRating == nil || *state.UserRating != 4 || state.ListeningStatus != "none" {
+		t.Fatalf("rate = %d %+v", code, state)
+	}
+	if code, state := patch(`{"listeningStatus":"finished"}`); code != http.StatusOK || state.UserRating == nil || *state.UserRating != 4 || state.ListeningStatus != "finished" {
+		t.Fatalf("mark kept rating = %d %+v", code, state)
+	}
+	for _, body := range []string{`{"userRating":0}`, `{"userRating":6}`, `{"userRating":3.5}`, `{"userRating":"5"}`} {
+		if code, _ := patch(body); code != http.StatusBadRequest {
+			t.Fatalf("%s status = %d", body, code)
+		}
+	}
+	if code, state := patch(`{"userRating":null}`); code != http.StatusOK || state.UserRating != nil || state.ListeningStatus != "finished" {
+		t.Fatalf("clear = %d %+v", code, state)
+	}
+	var stored any
+	if err := db.QueryRow("SELECT rating FROM user_work_state WHERE user_id = 1 AND work_id = 1").Scan(&stored); err != nil || stored != nil {
+		t.Fatalf("stored rating = %v, %v", stored, err)
+	}
+}
+
 func TestListFavoriteWorksRejectsInvalidSourceID(t *testing.T) {
 	server := NewServer(openMigratedTestDB(t), config.Config{})
 	request := favoriteWorksRequest("/api/favorite-works?sourceId=invalid")

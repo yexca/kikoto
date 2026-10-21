@@ -140,11 +140,11 @@ export function RecommendationPreviewPanel({
 }) {
   const breakdown = recommendationExampleBreakdown(config, example);
   const highlighted = breakdown.score >= threshold;
-  const counters: Array<{ key: "tags" | "voices" | "circles" | "shelvedTags"; label: string; max: number }> = [
+  const counters: Array<{ key: "tags" | "voices" | "circles" | "dislikedTags"; label: string; max: number }> = [
     { key: "tags", label: copy("exampleTags"), max: 10 },
     { key: "voices", label: copy("exampleVoices"), max: 5 },
     { key: "circles", label: copy("exampleCircles"), max: 3 },
-    { key: "shelvedTags", label: copy("exampleShelvedTags"), max: 10 },
+    { key: "dislikedTags", label: copy("exampleDislikedTags"), max: 10 },
   ];
   return (
     <section className="rounded-md border bg-background p-4">

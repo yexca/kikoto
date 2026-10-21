@@ -22,8 +22,8 @@ import {
   type FolderEditTreeNode,
 } from "@/features/work-detail/folder-edit/folderEditModel";
 import { formatBytes } from "@/features/work-detail/media/mediaTreeModel";
-import { naturalCompare } from "@/features/work-detail/workflows/RemoteFetchWorkspaceTrees";
 import type { RemoteFetchFileDecision, RemoteFetchResolution } from "@/lib/api";
+import { naturalNameCompare } from "@/lib/naturalNameOrder";
 import { cn } from "@/lib/tailwindClassNames";
 
 /**
@@ -172,7 +172,7 @@ export function KindIcon({ kind }: { kind: string }) {
 }
 
 export function sortedFolders<T>(node: FolderEditTreeNode<T>) {
-  return Array.from(node.children.values()).sort((left, right) => naturalCompare(left.name, right.name));
+  return Array.from(node.children.values()).sort((left, right) => naturalNameCompare(left.name, right.name));
 }
 
 /**
@@ -209,7 +209,7 @@ export function SelectionNode({
   const paths = useMemo(() => folderEditTreeFiles(node).map((file) => file.path), [node]);
   const count = paths.filter((path) => selected.has(path)).length;
   const checked = paths.length > 0 && count === paths.length;
-  const files = [...node.files].sort((left, right) => naturalCompare(left.name, right.name));
+  const files = [...node.files].sort((left, right) => naturalNameCompare(left.name, right.name));
   return (
     <div className="space-y-px">
       {!isRoot && (
@@ -358,7 +358,7 @@ export function ResultNode({
   onDecisionChange: (decision: RemoteFetchFileDecision) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const entries = [...node.files].sort((left, right) => naturalCompare(left.name, right.name));
+  const entries = [...node.files].sort((left, right) => naturalNameCompare(left.name, right.name));
   return (
     <div className="space-y-px">
       {!isRoot && (

@@ -1,5 +1,33 @@
 # Unreleased
 
+> [!NOTE]
+> Personal ratings, including those imported from Kikoeru, now shape
+> recommendations, and a stored rating of 0 becomes unrated. Existing
+> recommendation sessions are renewed on the next visit.
+
+<details>
+<summary><strong>Library and work detail</strong></summary>
+
+- Work detail shows your rating beside its Quick mark as a star with its
+  number, which opens a popover to rate the work from one to five stars or
+  clear the rating.
+- On a phone, work detail shows Resume as its icon, so the Resume, Mark,
+  rating, and List actions stay on one row.
+- Recommendations take your rating as the main taste evidence: four and five
+  stars count as liking a work, one and two stars as disliking it, and three
+  stars as neutral. Quick marks count only for unrated works and weigh less:
+  Relisten counts half a favorite, and Shelved counts lightly against similar
+  works. One disliked work is enough to lower similar works.
+- Recommendation settings set how much evidence each rating and unrated
+  Favorite, Relisten, or Shelved work carries. The Avoid shelved preset is
+  now Avoid dislikes, and the shelved penalty now applies to disliked
+  similarity.
+- The work directory, playback order, and the fetch, folder edit, delete,
+  display name, and lyrics lists order names numbered with kanji after 第 by
+  their number, so 第二話 comes before 第十話 in every interface language.
+
+</details>
+
 <details>
 <summary><strong>Interface</strong></summary>
 
@@ -18,6 +46,15 @@
   sources** below it, so the source tab row holds only the sources; and long
   file and folder names stop at two lines until **Full names** shows them in
   full.
+- The Android and iOS apps navigate like a tabbed app. Each bottom tab keeps
+  its own back stack, so switching tabs is no longer a Back step and Back no
+  longer jumps into another tab's pages. Changing a list's tab, filter, or page
+  is not a Back step either, and returning from a resumed detail no longer
+  leaves an extra entry behind. The Android back button goes from another
+  tab's root to Library, then asks for a second press before leaving the app.
+- Changing the page on the circle and voice actor lists and on circle and
+  voice actor detail returns to the top of the new results, as the Library
+  does, instead of staying at the bottom of the page.
 
 </details>
 

@@ -11,8 +11,8 @@ export type NativeBackTargets = {
   closeTopLayer(): boolean;
   /** Lets the player close its own panels or collapse; false when it did not. */
   closePlayerLayer(): boolean;
-  canNavigateBack(): boolean;
-  navigateBack(): void;
+  /** Returns through the in-app back stack; false when there is nowhere to go. */
+  navigateBack(): boolean;
 };
 
 /**
@@ -32,10 +32,7 @@ export function handleNativeBack(targets: NativeBackTargets): NativeBackStep {
   }
   if (targets.closeTopLayer()) return "dialog";
   if (targets.closePlayerLayer()) return "player";
-  if (targets.canNavigateBack()) {
-    targets.navigateBack();
-    return "history";
-  }
+  if (targets.navigateBack()) return "history";
   return "root";
 }
 
@@ -51,11 +48,6 @@ export function closePlayerLayer() {
   const event = new CustomEvent(NATIVE_BACK_EVENT, { cancelable: true });
   window.dispatchEvent(event);
   return event.defaultPrevented;
-}
-
-/** The Library root has no in-app entry to return to. */
-export function canNavigateHistoryBack() {
-  return window.history.length > 1 && window.location.pathname !== "/";
 }
 
 type GestureElement = {

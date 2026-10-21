@@ -204,7 +204,12 @@ func importTag(ctx context.Context, tx *sql.Tx, user int64, tag BackupTag, overw
 }
 
 func importWork(ctx context.Context, tx *sql.Tx, user, id, media int64, w BackupWork, overwrite bool) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO user_work_state (user_id,work_id,listening_status,rating,note) VALUES (?,?,?,?,?) ON CONFLICT(user_id,work_id) DO UPDATE SET listening_status=excluded.listening_status,rating=excluded.rating,note=excluded.note,updated_at=CURRENT_TIMESTAMP`, user, id, w.ListeningStatus, w.Rating, w.Note)
+	// A document's 0 means unrated, which the account stores as no rating.
+	rating := w.Rating
+	if rating != nil && *rating < 1 {
+		rating = nil
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO user_work_state (user_id,work_id,listening_status,rating,note) VALUES (?,?,?,?,?) ON CONFLICT(user_id,work_id) DO UPDATE SET listening_status=excluded.listening_status,rating=excluded.rating,note=excluded.note,updated_at=CURRENT_TIMESTAMP`, user, id, w.ListeningStatus, rating, w.Note)
 	if err != nil {
 		return err
 	}

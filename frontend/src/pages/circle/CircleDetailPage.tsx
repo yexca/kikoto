@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
+import { useCollectionResultsScroll } from "@/components/collection/useCollectionResultsScroll";
 import { CatalogStatStrip } from "@/components/creator/CatalogStatStrip";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
 import { CreatorActionMenu } from "@/components/creator/CreatorActionMenu";
@@ -133,6 +134,9 @@ export function CircleDetailPage({
   const [workQuery, setWorkQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<CircleAvailabilityFilter>("all");
   const [workPage, setWorkPage] = useState(1);
+  const resultsScroll = useCollectionResultsScroll<HTMLElement>();
+  const completeResultsScroll = resultsScroll.complete;
+  const cancelResultsScroll = resultsScroll.cancel;
   // The order and page size are one stored choice shared by every circle catalog.
   const {
     sort: workSort,
@@ -229,9 +233,13 @@ export function CircleDetailPage({
   useEffect(() => {
     if (!active) return;
     const controller = new AbortController();
-    void loadCircleDetail(true, controller.signal);
+    void loadCircleDetail(true, controller.signal).then((next) => {
+      if (controller.signal.aborted) return;
+      if (next) completeResultsScroll();
+      else cancelResultsScroll();
+    });
     return () => controller.abort();
-  }, [active, externalId, loadCircleDetail]);
+  }, [active, cancelResultsScroll, completeResultsScroll, externalId, loadCircleDetail]);
 
   // The fallback must keep its identity across renders: works-derived memos
   // feed the selection sync effect below.
@@ -268,6 +276,10 @@ export function CircleDetailPage({
   const changeWorkQuery = (value: string) => {
     setWorkQuery(value);
     setWorkPage(1);
+  };
+  const changeWorkPage = (page: number) => {
+    resultsScroll.queue();
+    setWorkPage(page);
   };
   const cardModes = {
     mobile: mobileCardMode,
@@ -680,7 +692,7 @@ export function CircleDetailPage({
         />
       </CreatorDetailHeader>
 
-      <section className="space-y-3">
+      <section ref={resultsScroll.anchorRef} className="scroll-mt-24 space-y-3">
         <CatalogWorkToolbar
           leading={
             <div className={segmentedListClassName("shrink-0")} role="group">
@@ -782,7 +794,7 @@ export function CircleDetailPage({
                   )}
                 </Button>
               }
-              onPageChange={setWorkPage}
+              onPageChange={changeWorkPage}
             />
           </div>
         )}
@@ -935,7 +947,7 @@ export function CircleDetailPage({
                     pageSize={workPageSize}
                     totalItems={circle.worksMeta.total}
                     totalPages={totalWorkPages}
-                    onPageChange={setWorkPage}
+                    onPageChange={changeWorkPage}
                   />
                 </>
               ) : (
@@ -1018,7 +1030,7 @@ export function CircleDetailPage({
               pageSize={workPageSize}
               totalItems={circle.worksMeta.total}
               totalPages={totalWorkPages}
-              onPageChange={setWorkPage}
+              onPageChange={changeWorkPage}
             />
           </>
         )}
