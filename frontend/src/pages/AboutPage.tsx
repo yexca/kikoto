@@ -48,6 +48,7 @@ const referenceGroups = [
     area: "engineering",
     projects: [
       { name: "cherryhq/cherry-studio", url: "https://github.com/cherryhq/cherry-studio", note: "cherry" },
+      { name: "mozilla-firefox/firefox", url: "https://github.com/mozilla-firefox/firefox", note: "firefox" },
       { name: "astral-sh/uv", url: "https://github.com/astral-sh/uv", note: "uv" },
       { name: "tailscale/tailscale", url: "https://github.com/tailscale/tailscale", note: "tailscale" },
       { name: "grafana/grafana", url: "https://github.com/grafana/grafana", note: "grafana" },

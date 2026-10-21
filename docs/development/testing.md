@@ -451,6 +451,27 @@ port, and temporary fixture files outside the repository. Success, failure, and
 handled cancellation remove those resources. It never mounts deployment data.
 HTTP bodies, request timeouts, polling, and Docker commands are bounded.
 
+## Local Pitfalls
+
+- Unless `PLAYWRIGHT_BASE_URL` is set, `frontend/playwright.config.ts` reuses
+  any server already listening on `127.0.0.1:3100`
+  (`reuseExistingServer: true`). `make frontend-e2e` then tests whatever that
+  server serves, including a stale Vite dev server from another checkout. Stop
+  such a server first, or the run passes or fails on code other than the code
+  under test.
+- `npm run format:check` runs Prettier with `--end-of-line auto`. Prettier's
+  default `lf` rewrites CRLF files in a checkout with `core.autocrlf=true`, so
+  they show as modified without content changes. Pass `--end-of-line auto` and
+  format the specific files you changed, not whole directories.
+- `scripts/check-ui-copy.mjs`, run by `make ci-style`, reports new
+  English-looking JSX text after `>` and new literal `aria-label`, `title`,
+  `placeholder`, `alt`, `label`, or `description` attribute strings as
+  untranslated UI copy. Use i18n keys.
+- With the `modernc.org/sqlite` driver, each statement of a multi-statement
+  `db.Exec` binds its placeholders from the start of the argument list, so a
+  later statement silently receives an earlier statement's values. Issue one
+  statement per `Exec` when passing arguments.
+
 ## Before Committing
 
 - Run relevant tests.

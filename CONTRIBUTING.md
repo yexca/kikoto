@@ -24,6 +24,15 @@ Read the public docs that match the area you are changing:
 - Update public documentation when behavior changes.
 - Keep changes scoped to the feature or fix being implemented.
 
+## AI-Assisted Contributions
+
+You may use AI tools, and you remain accountable for every change you submit,
+whatever produced it. Understand each change well enough to explain it and
+answer review questions about it. Review your own diff before requesting
+review. Never put credentials, private source details, real databases, or
+personal media into prompts to external AI tools. Keep AI-assisted changes as
+small and focused as any other change.
+
 ## Commit Messages
 
 Use:

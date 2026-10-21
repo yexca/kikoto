@@ -507,6 +507,8 @@ export const englishResource = {
             "Interaction design of the former workflow canvas. Kikoto never included or adapted its source code; the canvas was an independent implementation built with @xyflow/react and has since been retired.",
           cherry:
             "AGENTS.md configuration, application version management, LLM provider and model integration, and GitHub Actions design.",
+          firefox:
+            "Agent guidance that loads area docs only when relevant, records tool and verification pitfalls in the repository, and an AI-assisted contribution policy.",
           uv: "A GitHub Actions plan job, reusable workflows, and a single merge gate.",
           tailscale: "Splitting the race test suite into shards by individual test.",
           grafana: "Sharding tests by package, weighed as the alternative to splitting by test.",
