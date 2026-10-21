@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
   parseApprovedEndpointAllowlist,
   scanLine,
+  sensitivePaths,
 } from "./check-sensitive.mjs";
 
 const ownerFile = "backend/internal/dlsite/endpoints.go";
@@ -390,4 +395,58 @@ test("allows the well-known private networks only as exact CIDR blocks", () => {
   ]) {
     assert.deepEqual(scan(text), ["non-loopback IPv4 address"], text);
   }
+});
+
+function temporaryRepository(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kikoto-sensitive-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const init = spawnSync("git", ["init", "--quiet"], { cwd: root });
+  assert.equal(init.status, 0, String(init.stderr));
+  return root;
+}
+
+test("reports changed files that the repository's ignore rules match", (t) => {
+  const root = temporaryRepository(t);
+  fs.writeFileSync(
+    path.join(root, ".gitignore"),
+    "runtime/*\n!runtime/.gitkeep\n*.pem\n",
+  );
+  fs.mkdirSync(path.join(root, "nested"));
+  fs.writeFileSync(path.join(root, "nested", ".gitignore"), "local.txt\n");
+
+  assert.deepEqual(
+    sensitivePaths(
+      [
+        "runtime/library.db",
+        "runtime/.gitkeep",
+        "nested/local.txt",
+        "nested/shared.txt",
+        "certs/server.pem",
+        "data/notes.txt",
+        "src/main.js",
+      ],
+      root,
+    ),
+    ["runtime/library.db", "nested/local.txt", "certs/server.pem"],
+  );
+});
+
+test("falls back to the built-in path rules without a root .gitignore", (t) => {
+  const root = temporaryRepository(t);
+
+  assert.deepEqual(
+    sensitivePaths(
+      [
+        "data/notes.txt",
+        "config/app.example.yml",
+        "config/app.yml",
+        ".env",
+        ".env.example",
+        "certs/server.pem",
+        "src/main.js",
+      ],
+      root,
+    ),
+    ["data/notes.txt", "config/app.yml", ".env", "certs/server.pem"],
+  );
 });

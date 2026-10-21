@@ -17,9 +17,22 @@ config/*
 
 demo/
 
+# Databases, logs, captures, and key material anywhere in the tree. The
+# sensitive-change scan reports any changed file these rules match.
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.log
+*.har
+*.pcap
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+
 backend/bin/
-backend/*.db
-backend/*.db-*
 backend/coverage
 backend/coverage*.out
 

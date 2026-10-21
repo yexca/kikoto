@@ -519,6 +519,38 @@ function isSensitivePath(file) {
   );
 }
 
+// gitIgnoredPaths returns the files that the repository's ignore rules match,
+// including files that are already tracked, such as one added with --force.
+function gitIgnoredPaths(files, root) {
+  if (files.length === 0) return new Set();
+  const result = spawnSync(
+    "git",
+    ["check-ignore", "--no-index", "--stdin", "-z"],
+    { cwd: root, input: Buffer.from(files.join("\0") + "\0", "utf8") },
+  );
+  if (result.error) {
+    throw new Error(`could not run git: ${result.error.message}`);
+  }
+  // check-ignore exits 1 when no file is ignored.
+  if (result.status !== 0 && result.status !== 1) {
+    throw new Error(
+      `git check-ignore failed: ${result.stderr.toString("utf8").trim()}`,
+    );
+  }
+  return new Set(result.stdout.toString("utf8").split("\0").filter(Boolean));
+}
+
+// sensitivePaths returns the files that must not be committed. A repository
+// with a root .gitignore defines them by its ignore rules; without one, the
+// built-in runtime and credential path rules apply.
+export function sensitivePaths(files, root = repositoryRoot) {
+  if (!fs.existsSync(path.join(root, ".gitignore"))) {
+    return files.filter(isSensitivePath);
+  }
+  const ignored = gitIgnoredPaths(files, root);
+  return files.filter((file) => ignored.has(file));
+}
+
 function containsPrivatePath(text) {
   return /(?:[A-Za-z]:[\\/](?:Users|home)[\\/]|\/(?:home|Users)\/)/u.test(text);
 }
@@ -619,17 +651,15 @@ export function runSensitiveCheck() {
     (file) => normalizeRepositoryPath(file) === approvedEndpointAllowlistFile,
   );
 
-  for (const file of [...trackedFiles, ...untracked]) {
-    if (
-      fs.existsSync(path.resolve(repositoryRoot, file)) &&
-      isSensitivePath(file)
-    ) {
-      findings.push({
-        file,
-        line: null,
-        kind: "sensitive runtime or credential file",
-      });
-    }
+  const presentFiles = [...trackedFiles, ...untracked].filter((file) =>
+    fs.existsSync(path.resolve(repositoryRoot, file)),
+  );
+  for (const file of sensitivePaths(presentFiles)) {
+    findings.push({
+      file,
+      line: null,
+      kind: "sensitive runtime or credential file",
+    });
   }
   for (const entry of entries) scanLine(entry, findings, approvedEndpoints);
 

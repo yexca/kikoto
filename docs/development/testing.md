@@ -506,7 +506,11 @@ HTTP bodies, request timeouts, polling, and Docker commands are bounded.
 - Run `make frontend-docs` for public documentation changes.
 - Run `make sensitive-check` to scan the working-tree diff and prospective
   untracked files for secrets, private paths, runtime data, and non-reserved
-  service URLs. A narrowly scoped, built-in public product endpoint must be
+  service URLs. A changed file that the repository's ignore rules match, such
+  as one added with `--force`, is reported as a sensitive runtime or
+  credential file, so `.gitignore` is where those paths are declared; without
+  a root `.gitignore`, the scanner applies its built-in runtime, database, log,
+  and key-file path rules. A narrowly scoped, built-in public product endpoint must be
   recorded with its owner files and reason in
   [`scripts/privacy-allowlist.json`](../../scripts/privacy-allowlist.json).
   The scanner continues checking credentials, private paths, and other URLs on
