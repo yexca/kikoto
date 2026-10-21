@@ -17,6 +17,13 @@
 </details>
 
 <details>
+<summary><strong>Playback</strong></summary>
+
+- On a phone, swipe the Compact player up to open the full view or down to shrink it to Mini, and tap Mini to bring the Compact player back. Mini on a phone no longer opens its ring of buttons; pause and other controls are on the Compact player.
+
+</details>
+
+<details>
 <summary><strong>Subscriptions</strong></summary>
 
 - The **Subscribe** confirmation on a circle, series, or voice actor page opens above the works list, so its buttons can be pressed when works fill the page.
