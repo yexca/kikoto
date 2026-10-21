@@ -13,6 +13,7 @@
 <summary><strong>Metadata and scans</strong></summary>
 
 - **Custom works** in Metadata lists the custom works themselves, with search, editing, and status like the other work tables, and deletes the local information of one whose folder is missing. The rename notice covers the view until an administrator accepts it. **Add** in its header opens **Add custom work**, which chooses the folder from the folders a scan finds on request, a folder tree without work folders, or a typed path. All, Needs attention, Metadata issues, and No available source list only works with a catalog code.
+- **Translation** in Metadata shows, for one target language, where each work's title and description come from and how many of its tag names, local file names, and track lyrics the language has, with filters for each missing part. Selected works queue a background LLM translation of their title, description, and tag names, reviewed in each work's metadata editor.
 
 </details>
 
