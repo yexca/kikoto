@@ -5,7 +5,7 @@
 
 - Docker と Docker Compose。
 - ローカルで開発する場合は任意:
-  - Go 1.26.9。
+  - Go 1.26.10。
   - Node.js 24.19.0 と npm 11.17.0。
 
 ## Docker で実行する

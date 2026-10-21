@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.hoisted(() => {
+  (globalThis as typeof globalThis & { __APP_VERSION__: string }).__APP_VERSION__ = "test";
+});
 
 import type { MediaItem } from "@/lib/api";
 import { createQueueDisplayNameLoader } from "./useQueueDisplayNameRefresh";
