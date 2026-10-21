@@ -264,7 +264,7 @@ export function ListeningHistoryPage({
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5">
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2" data-toast-avoid>
         <div className={segmentedListClassName()} role="group" aria-label={t("personal.history.rangeLabel")}>
           {LISTENING_REPORT_RANGES.map((option) => (
             <button

@@ -299,7 +299,7 @@ export function WorkManagementPage({
           }
         />
         <div className="min-w-0 flex-1 space-y-3">
-          <div ref={headerRef} className="flex min-h-10 items-center gap-2">
+          <div ref={headerRef} className="flex min-h-10 items-center gap-2" data-toast-avoid>
             {/* Wide layouts name the current view here; the compact rail already labels it. */}
             <h2 ref={titleRef} className="shrink-0 whitespace-nowrap text-base font-semibold max-lg:hidden">
               {railItems.find((item) => item.value === railSelected)?.label}
@@ -350,7 +350,7 @@ export function WorkManagementPage({
               )}
             </div>
           </div>
-          <div ref={setSearchRowSlot} className="empty:hidden" />
+          <div ref={setSearchRowSlot} className="empty:hidden" data-toast-avoid />
           {view === "aliases" ? (
             <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} readOnly={readOnly} toolbar={toolbar} />
           ) : view === "tags" || view === "circles" ? (
