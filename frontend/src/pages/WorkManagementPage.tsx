@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   Building2,
   Tags,
   CircleAlert,
@@ -46,7 +47,14 @@ function reasonFromLocation() {
   const params = new URLSearchParams(window.location.search);
   if (metadataIssueRunFromLocation()) return "metadata";
   const reason = params.get("reason");
-  if (reason === "catalog" || reason === "all" || reason === "metadata" || reason === "no_source") return reason;
+  if (
+    reason === "catalog" ||
+    reason === "all" ||
+    reason === "metadata" ||
+    reason === "no_source" ||
+    reason === "custom"
+  )
+    return reason;
   return params.get("tab") === "unlinked" ? "no_source" : "catalog";
 }
 
@@ -143,7 +151,7 @@ export function WorkManagementPage({
   const [editor, setEditor] = useState<{ work: WorkDetail; onSaved: () => void } | null>(null);
   const [editingWorkId, setEditingWorkId] = useState<number | null>(null);
   const headerRef = useRef<HTMLDivElement>(null);
-  const titleRef = useRef<HTMLHeadingElement>(null);
+  const titleRef = useRef<HTMLDivElement>(null);
   const headerActionsRef = useRef<HTMLDivElement>(null);
   const settingsAnchorRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
@@ -218,7 +226,7 @@ export function WorkManagementPage({
     ["all", t("workMaintenance.all"), true],
     ["metadata", t("workMaintenance.metadata"), canSyncMetadata],
     ["no_source", t("workMaintenance.noSource"), canManageSources],
-    ["custom", t("customWorks.rail"), canCreateCustomWorks],
+    ["custom", t("customWorks.rail"), true],
     ["tags", t("metadataEntries.tags"), true],
     ["circles", t("metadataEntries.circles"), true],
     ["aliases", t("workManagement.voiceAliases"), canSyncMetadata],
@@ -233,7 +241,7 @@ export function WorkManagementPage({
       controls:
         value === "aliases"
           ? "metadata-aliases"
-          : value === "custom" || value === "tags" || value === "circles"
+          : value === "tags" || value === "circles" || (value === "custom" && view === "custom")
             ? `metadata-${value}`
             : "metadata-records",
       separated: value === "tags",
@@ -248,7 +256,10 @@ export function WorkManagementPage({
           : "metadataEntries.worksGroup",
       ),
     }));
+  // Custom works list under their own reason; creating one opens the folder view beneath it.
   const railSelected = (view === "works" ? reason : view) as MetadataRailValue;
+  const title =
+    view === "custom" ? t("customWorks.dialogTitle") : railItems.find((item) => item.value === railSelected)?.label;
 
   return (
     <div className="min-w-0 space-y-3">
@@ -260,20 +271,43 @@ export function WorkManagementPage({
           items={railItems}
           selected={railSelected}
           onSelect={(value) =>
-            value === "custom" || value === "aliases" || value === "tags" || value === "circles"
-              ? showEntries(value)
-              : showWorks(value)
+            value === "aliases" || value === "tags" || value === "circles" ? showEntries(value) : showWorks(value)
           }
         />
         <div className="min-w-0 flex-1 space-y-3">
           <div ref={headerRef} className="flex min-h-10 items-center gap-2">
-            {/* Wide layouts name the current view here; the compact rail already labels it. */}
-            <h2 ref={titleRef} className="shrink-0 whitespace-nowrap text-base font-semibold max-lg:hidden">
-              {railItems.find((item) => item.value === railSelected)?.label}
-            </h2>
+            <div
+              ref={titleRef}
+              className={`flex shrink-0 items-center gap-2 ${view === "custom" ? "" : "max-lg:hidden"}`}
+            >
+              {view === "custom" && (
+                <Button
+                  variant="toolbar"
+                  size="icon-sm"
+                  aria-label={t("customWorks.backToWorks")}
+                  title={t("customWorks.backToWorks")}
+                  onClick={() => showWorks("custom")}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              )}
+              {/* Wide layouts name the current view here; the compact rail already labels it. */}
+              <h2 className="whitespace-nowrap text-base font-semibold max-lg:hidden">{title}</h2>
+            </div>
             <div ref={setInlineSearchSlot} className="contents" />
             <div ref={headerActionsRef} className="ml-auto flex shrink-0 items-center gap-2">
               <div ref={setActionsSlot} className="contents" />
+              {view === "works" && reason === "custom" && canCreateCustomWorks && (
+                <Button
+                  variant="toolbar"
+                  size="sm"
+                  title={t("customWorks.createFromFolder")}
+                  onClick={() => showEntries("custom")}
+                >
+                  <FolderPlus className="h-4 w-4" />
+                  <span className="max-sm:sr-only">{t("customWorks.createFromFolder")}</span>
+                </Button>
+              )}
               {canManageSources && (
                 <div ref={settingsAnchorRef} className="relative">
                   <Button

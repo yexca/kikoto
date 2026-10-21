@@ -3,6 +3,8 @@ package library
 import (
 	"context"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/workcode"
 )
 
 // MaintenanceOptions composes a trusted metadata predicate with the Library's
@@ -29,8 +31,15 @@ func (s *Store) ListMaintenance(ctx context.Context, options MaintenanceOptions)
 		(SELECT MIN(sibling.work_id) FROM work_edition AS sibling WHERE sibling.logical_work_id = logical.id))
 		FROM work_edition AS edition JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		WHERE edition.work_id = work.id), work.id)`
-	// Catalog lists persisted families, including those without pending issues.
-	if options.Reason != "catalog" {
+	// Custom works have their own view; every other view lists catalog works.
+	customWork := "work.primary_code LIKE '" + workcode.CustomPrefix + "%'"
+	if options.Reason == "custom" {
+		where += " AND " + customWork
+	} else {
+		where += " AND NOT " + customWork
+	}
+	// Catalog and custom list persisted families, including those without pending issues.
+	if options.Reason != "catalog" && options.Reason != "custom" {
 		reasons := []string{}
 		if options.IncludeNoSource && options.Reason != "metadata" {
 			reasons = append(reasons, "("+noSourceWhereClause()+")")

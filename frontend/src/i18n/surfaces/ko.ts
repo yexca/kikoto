@@ -215,6 +215,11 @@ export const surfaceKorean = {
   },
   customWorks: {
     rail: "사용자 지정 작품",
+    createFromFolder: "폴더에서 만들기",
+    backToWorks: "사용자 지정 작품으로 돌아가기",
+    worksEmpty: "아직 사용자 지정 작품이 없습니다.",
+    worksDescription:
+      "사용자 지정 작품은 작품 코드가 없는 라이브러리 폴더를 작품으로 만든 것입니다. 제공자 메타데이터나 원격 소스가 없습니다.",
     search: "폴더 검색",
     searchPlaceholder: "폴더 이름 또는 경로",
     folders: "작품 코드가 없는 폴더",

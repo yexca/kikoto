@@ -185,3 +185,40 @@ func TestWorkMaintenanceCatalogDemoKeepsEligibilityWithoutPendingIssues(t *testi
 		t.Fatalf("demo catalog=%d %s %v", response.Code, response.Body, err)
 	}
 }
+
+// Custom works have their own view; the catalog and attention views list only
+// catalog works, even for a custom work without an available source.
+func TestWorkMaintenanceSeparatesCustomWorks(t *testing.T) {
+	db := openMigratedTestDB(t)
+	s := NewServer(db, config.Config{})
+	seedMetadataIssue(t, db, 0)
+	custom := testfixture.WorkCode(testfixture.PrefixKT, 1)
+	if _, err := db.Exec(`INSERT INTO work(primary_code,title) VALUES (?, 'Synthetic custom work')`, custom); err != nil {
+		t.Fatal(err)
+	}
+	read := func(query string) []maintenanceWork {
+		t.Helper()
+		response := metadataRequest(s.listWorkMaintenance, http.MethodGet, "/api/maintenance/works?"+query, "", "sources:write", "metadata:sync")
+		var page struct {
+			Works []maintenanceWork `json:"works"`
+			Total int               `json:"total"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || response.Code != 200 || page.Total != len(page.Works) {
+			t.Fatalf("%s: %d %s %v", query, response.Code, response.Body, err)
+		}
+		return page.Works
+	}
+	for _, reason := range []string{"catalog", "all", "no_source", "metadata"} {
+		works := read("reason=" + reason)
+		if len(works) != 1 || works[0].PrimaryCode != testfixture.WorkCode(testfixture.PrefixRJ, 0) {
+			t.Fatalf("%s lists %+v", reason, works)
+		}
+	}
+	works := read("reason=custom")
+	if len(works) != 1 || works[0].PrimaryCode != custom || !works[0].NoSource {
+		t.Fatalf("custom lists %+v", works)
+	}
+	if works := read("reason=custom&q=" + testfixture.WorkCode(testfixture.PrefixRJ, 0)); len(works) != 0 {
+		t.Fatalf("custom search lists %+v", works)
+	}
+}

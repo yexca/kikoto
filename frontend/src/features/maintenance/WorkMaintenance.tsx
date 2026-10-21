@@ -92,6 +92,11 @@ export function WorkMaintenance({
 
   const [retrying, setRetrying] = useState(false);
   const [notice, setNotice] = useState("");
+  // A custom work has no provider metadata or remote source to retry or check.
+  // It never appears in the No available source view, so its own view offers
+  // the confirmed deletion when its folder is gone.
+  const customView = reason === "custom";
+  const deleteView = reason === "no_source" || customView;
 
   useEffect(() => {
     setPage(1);
@@ -210,16 +215,7 @@ export function WorkMaintenance({
   };
 
   const requestDelete = (works: Work[]) => {
-    if (
-      works.length === 0 ||
-      !canManageSources ||
-      readOnly ||
-      loading ||
-      reason !== "no_source" ||
-      checking ||
-      deleting
-    )
-      return;
+    if (works.length === 0 || !canManageSources || readOnly || loading || !deleteView || checking || deleting) return;
     setPendingDelete({
       workIds: works.map((work) => work.id),
       labels: works.map((work) => `${work.primaryCode} · ${work.title}`),
@@ -265,7 +261,7 @@ export function WorkMaintenance({
 
   const selectionActions = (
     <>
-      {canSyncMetadata && (
+      {canSyncMetadata && !customView && (
         <Button
           size="sm"
           variant={retryIds.length > 0 ? "default" : "toolbar"}
@@ -277,7 +273,7 @@ export function WorkMaintenance({
           <BulkLabel label={t("workMaintenance.retrySelected", { count: retryIds.length })} count={retryIds.length} />
         </Button>
       )}
-      {canManageSources && (
+      {canManageSources && !customView && (
         <Button
           size="sm"
           variant="toolbar"
@@ -392,7 +388,7 @@ export function WorkMaintenance({
                   </>
                 )}
                 <th scope="col" className="pr-1 text-right align-middle font-medium sm:pr-3">
-                  {canManageSources && reason === "no_source" ? (
+                  {canManageSources && deleteView ? (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -441,13 +437,17 @@ export function WorkMaintenance({
                             ? t("workMaintenance.noMatching")
                             : reason === "catalog"
                               ? t("workManagement.catalogEmpty")
-                              : t("workMaintenance.empty")}
+                              : customView
+                                ? t("customWorks.worksEmpty")
+                                : t("workMaintenance.empty")}
                         </p>
                         {!query && (
                           <p className="mt-1 text-xs text-muted-foreground">
                             {reason === "catalog"
                               ? t("workManagement.catalogDescription")
-                              : t("workMaintenance.description")}
+                              : customView
+                                ? t("customWorks.worksDescription")
+                                : t("workMaintenance.description")}
                           </p>
                         )}
                         {query && (
@@ -567,7 +567,7 @@ export function WorkMaintenance({
                               )}
                             </Button>
                           )}
-                          {canManageSources && work.noSource && (
+                          {canManageSources && !customView && work.noSource && (
                             <Button
                               size="icon-sm"
                               variant="ghost"
@@ -580,7 +580,7 @@ export function WorkMaintenance({
                               <SearchCheck className={`h-4 w-4 ${rowChecking ? "animate-pulse" : ""}`} />
                             </Button>
                           )}
-                          {canManageSources && reason === "no_source" && work.noSource && (
+                          {canManageSources && deleteView && work.noSource && (
                             <Button
                               size="icon-sm"
                               variant="ghost"
