@@ -129,32 +129,52 @@ func (c translationCoverageSQL) tagNamed() (string, []any) {
 // tags counts the row work's active shared tags, or those of them without a
 // name in the language.
 func (c translationCoverageSQL) tags(unnamedOnly bool) (string, []any) {
-	query := `(SELECT COUNT(DISTINCT link.tag_id) FROM work_tag AS link
+	from, args := c.tagRows(unnamedOnly)
+	return "(SELECT COUNT(DISTINCT link.tag_id) FROM " + from + ")", args
+}
+
+func (c translationCoverageSQL) tagRows(unnamedOnly bool) (string, []any) {
+	query := `work_tag AS link
 		INNER JOIN metadata_tag AS concept ON concept.tag_id = link.tag_id
 		WHERE link.work_id = work.id AND concept.hidden = 0 AND concept.merged_into_tag_id IS NULL`
 	if !unnamedOnly {
-		return query + ")", nil
+		return query, nil
 	}
 	named, args := c.tagNamed()
-	return query + " AND NOT " + named + ")", args
+	return query + " AND NOT " + named, args
 }
 
 func (c translationCoverageSQL) files(unnamedOnly bool) (string, []any) {
-	query := "(SELECT COUNT(*) FROM " + translationCoverageLocalItems
+	from, args := c.fileRows(unnamedOnly)
+	return "(SELECT COUNT(*) FROM " + from + ")", args
+}
+
+func (c translationCoverageSQL) fileRows(unnamedOnly bool) (string, []any) {
 	if !unnamedOnly {
-		return query + ")", nil
+		return translationCoverageLocalItems, nil
 	}
-	return query + ` AND NOT EXISTS (SELECT 1 FROM media_item_display_name AS name
-		WHERE name.media_item_id = item.id AND name.language = ?))`, []any{c.language}
+	return translationCoverageLocalItems + ` AND NOT EXISTS (SELECT 1 FROM media_item_display_name AS name
+		WHERE name.media_item_id = item.id AND name.language = ?)`, []any{c.language}
 }
 
 func (c translationCoverageSQL) lyrics(missingOnly bool) (string, []any) {
-	query := "(SELECT COUNT(*) FROM " + translationCoverageLocalItems + " AND item.kind = 'audio'"
+	from, args := c.trackRows(missingOnly)
+	return "(SELECT COUNT(*) FROM " + from + ")", args
+}
+
+func (c translationCoverageSQL) trackRows(missingOnly bool) (string, []any) {
+	query := translationCoverageLocalItems + " AND item.kind = 'audio'"
 	if !missingOnly {
-		return query + ")", nil
+		return query, nil
 	}
 	return query + ` AND NOT EXISTS (SELECT 1 FROM media_lyrics_assignment AS assignment
-		WHERE assignment.audio_media_item_id = item.id AND assignment.language = ?))`, []any{c.language}
+		WHERE assignment.audio_media_item_id = item.id AND assignment.language = ?)`, []any{c.language}
+}
+
+// exists turns rows from a FROM clause into a predicate, which stops at the
+// first row where a count would read them all.
+func exists(from string, args []any) (string, []any) {
+	return "EXISTS (SELECT 1 FROM " + from + ")", args
 }
 
 // missing is the predicate of a filter that lists works lacking the language
@@ -167,11 +187,11 @@ func (c translationCoverageSQL) missing(filter string) (string, []any) {
 	case "description":
 		sql.not(c.edition()).and().not(c.llm("description"))
 	case "tags":
-		sql.add(c.tags(true)).text(" > 0")
+		sql.add(exists(c.tagRows(true)))
 	case "files":
-		sql.not(c.origin()).and().add(c.files(true)).text(" > 0")
+		sql.not(c.origin()).and().add(exists(c.fileRows(true)))
 	case "lyrics":
-		sql.add(c.lyrics(true)).text(" > 0")
+		sql.add(exists(c.trackRows(true)))
 	case "any", "complete":
 		for index, part := range []string{"title", "description", "tags", "files", "lyrics"} {
 			if index > 0 {

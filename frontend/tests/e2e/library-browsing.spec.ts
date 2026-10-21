@@ -525,12 +525,23 @@ test("continue listening opens from a collapsed sort-row toggle and returns to t
   const rail = page.getByRole("region", { name: "Continue listening" });
   await expect(rail).toHaveCount(0);
 
+  let historyReads = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/recently-played-works") historyReads += 1;
+  });
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   const tile = rail.getByRole("button", { name: "Open Short title" });
   await expect(tile.getByText("Track one", { exact: true })).toBeVisible();
   await tile.click();
   await expect(page).toHaveURL(/\/RJ00000060(?:\?|$)/);
+
+  // Playing elsewhere moves the history, so the open rail reads it again when
+  // the retained Library comes back.
+  const readsBeforeReturn = historyReads;
+  await page.goBack();
+  await expect(tile).toBeVisible();
+  await expect.poll(() => historyReads).toBeGreaterThan(readsBeforeReturn);
 });
 
 test("phone mark filter chips open from a collapsed toggle, filter the library, and clear when tapped again", async ({

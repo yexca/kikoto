@@ -780,11 +780,18 @@ func (s *Server) keepWorkFolderEditMovedItems(ctx context.Context, payload workF
 			folderMoves = append(folderMoves, [2]string{entry.source, strings.TrimPrefix(entry.fingerprint, prefix)})
 		}
 	}
-	if len(folderMoves) > 0 {
+	if len(follows) > 0 {
 		if err := tx.QueryRowContext(ctx, "SELECT work_id FROM media_item WHERE id = ?", follows[0].move.MediaItemID).Scan(&workID); err != nil {
 			return err
 		}
-		if err := followWorkFolderDisplayNames(ctx, tx, workID, code, folderMoves); err != nil {
+		if len(folderMoves) > 0 {
+			if err := followWorkFolderDisplayNames(ctx, tx, workID, code, folderMoves); err != nil {
+				return err
+			}
+		}
+		// A folder the edit emptied without one other folder taking its files
+		// leaves its names behind.
+		if _, err := pruneWorkFolderDisplayNames(ctx, tx, workID); err != nil {
 			return err
 		}
 	}

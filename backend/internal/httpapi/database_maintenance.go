@@ -489,6 +489,7 @@ func (s *Server) deleteStaleDiskRecords(ctx context.Context, records []staleDisk
 
 // deleteEmptyMediaItems repeats so that a folder item emptied by the previous
 // pass is removed too, bounded by the deepest plausible directory nesting.
+// Folder display names left without a media item below them go too.
 func (s *Server) deleteEmptyMediaItems(ctx context.Context) (int, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -508,6 +509,9 @@ func (s *Server) deleteEmptyMediaItems(ctx context.Context) (int, error) {
 			break
 		}
 		removed += affected
+	}
+	if _, err := pruneWorkFolderDisplayNames(ctx, tx, 0); err != nil {
+		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err

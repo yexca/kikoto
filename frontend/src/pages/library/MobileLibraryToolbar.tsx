@@ -37,6 +37,7 @@ export function MobileLibraryToolbar({
   statusFilter,
   onStatusFilterChange,
   onOpenRecent,
+  active,
 }: {
   sourceMenu: ReactNode;
   searchQuery: string;
@@ -55,6 +56,8 @@ export function MobileLibraryToolbar({
   statusFilter: ListeningStatus | "all" | null;
   onStatusFilterChange: (value: ListeningStatus | "all") => void;
   onOpenRecent: (work: Work) => void;
+  /** False while the retained Library page is hidden behind another page. */
+  active: boolean;
 }) {
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
@@ -129,7 +132,7 @@ export function MobileLibraryToolbar({
       {statusFilter !== null && markFilterOpen && (
         <StatusChips id={markFilterId} value={statusFilter} onChange={onStatusFilterChange} />
       )}
-      {continueOpen && <ContinueListeningRail id={continueId} onOpen={onOpenRecent} />}
+      {continueOpen && <ContinueListeningRail id={continueId} active={active} onOpen={onOpenRecent} />}
       <p className="flex min-h-5 min-w-0 items-center gap-2 text-xs text-muted-foreground">
         {resultCount !== null && (
           <>

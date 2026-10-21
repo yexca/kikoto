@@ -44,7 +44,7 @@ try {
         "./internal/library",
         "./internal/httpapi",
         "-run",
-        "^(TestLibraryPagePerformance|TestBrowseMatrixPerformance|TestWorkCodeHTTPPerformance)$",
+        "^(TestLibraryPagePerformance|TestBrowseMatrixPerformance|TestWorkCodeHTTPPerformance|TestTranslationCoveragePerformance)$",
         "-count=1",
         "-v",
       ],

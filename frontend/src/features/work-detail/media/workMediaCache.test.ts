@@ -7,6 +7,7 @@ const currentClientStorageScope = vi.hoisted(() =>
 vi.mock("@/lib/clientStorageScope", () => ({ currentClientStorageScope }));
 
 import type { MediaItem } from "@/lib/api";
+import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 import {
   applyCachedWorkMediaProgress,
   getCachedWorkMedia,
@@ -86,6 +87,22 @@ describe("work media cache", () => {
 
     expect(getCachedWorkMedia(5, 105)?.map((item) => item.progress?.positionSeconds ?? null)).toEqual([null, 30]);
     expect(getCachedWorkMedia(5, 106)?.map((item) => item.progress?.positionSeconds ?? null)).toEqual([120, null]);
+  });
+
+  it("drops an account's media when its preferences change, so display names follow its metadata language", () => {
+    const events = new EventTarget();
+    vi.stubGlobal("window", events);
+    try {
+      setCachedWorkMedia(7, 107, mediaItems());
+      setCachedWorkMedia(7, 108, mediaItems());
+
+      events.dispatchEvent(new CustomEvent(USER_PREFERENCES_CHANGED, { detail: "scope:107" }));
+
+      expect(getCachedWorkMedia(7, 107)).toBeNull();
+      expect(getCachedWorkMedia(7, 108)).not.toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("drops an entry that alone exceeds the media item budget", () => {

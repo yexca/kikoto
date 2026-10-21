@@ -67,7 +67,7 @@ make recommendation-performance RECOMMENDATION_PERF_ARGS="--baseline <git-ref>"
 
 | Target | Runs |
 | --- | --- |
-| `make browse-performance` | `TestLibraryPagePerformance` (`internal/library`), then `TestBrowseMatrixPerformance` and `TestWorkCodeHTTPPerformance` (`internal/httpapi`), one package at a time with `KIKOTO_BROWSE_PERF=1`. |
+| `make browse-performance` | `TestLibraryPagePerformance` (`internal/library`), then `TestBrowseMatrixPerformance`, `TestWorkCodeHTTPPerformance`, and `TestTranslationCoveragePerformance` (`internal/httpapi`), one package at a time with `KIKOTO_BROWSE_PERF=1`. |
 | `make browse-production-performance` | Builds the frontend, starts a production `vite preview` on `127.0.0.1:3102` unless `PLAYWRIGHT_BASE_URL` names an existing preview, and runs `browse-production-performance.spec.ts` on desktop Chromium with one worker. |
 | `make playback-performance` | Builds the frontend and runs `TestPlaybackStartupPerformance` with `KIKOTO_PLAYBACK_PERF=1`. The test serves the built assets itself and starts `playback-production-performance.spec.ts`. |
 | `make recommendation-performance` | Runs the opt-in recommendation scale experiment over 50,000 and 100,000 synthetic works, 100 users, and 20 concurrent cold requests. |
@@ -114,6 +114,16 @@ long. Each delay takes 20 samples with cleared browser storage, blocked service
 workers, and route interception that bypasses the HTTP cache. It records
 summary and directory visibility, the first animation frame in which each
 appears, per-request durations, detail request count, and click to `playing`.
+
+### Translation coverage
+
+`TestTranslationCoveragePerformance` seeds 10,000 synthetic works by default
+(`KIKOTO_TRANSLATION_PERF_WORKS` accepts 1,000 to 100,000): one family of an
+original and a translated edition per eight works, five of 300 shared tags per
+work, ten local tracks and two lyrics files per work, display names and lyrics
+for some works, and a translation task history twice the size of the library.
+With refreshed statistics it times the first and a late 50-work page of
+`GET /api/metadata/translation-coverage` for every filter, five samples each.
 
 ### Playback startup
 
