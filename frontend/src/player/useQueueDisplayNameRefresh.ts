@@ -10,12 +10,50 @@ import { withQueueDisplayTitles } from "./queueDisplayNames";
 const concurrentWorkLoads = 4;
 
 /**
+ * Loads works' media for queued track names, a few works at a time, and hands
+ * each finished batch to `apply`. A newer load for a work can start while an
+ * older batch still waits on other works, so the older batch drops that work
+ * when it is applied rather than when its media arrived. A work whose media
+ * fails to load is left out, so its tracks keep their names.
+ */
+export function createQueueDisplayNameLoader(
+  getWorkMedia: (workId: number) => Promise<MediaItem[]>,
+  apply: (mediaByWork: Map<number, MediaItem[]>) => void,
+) {
+  let sequence = 0;
+  const latestLoad = new Map<number, number>();
+  return async (workIds: number[]) => {
+    const pending = workIds.map((workId) => {
+      sequence += 1;
+      latestLoad.set(workId, sequence);
+      return { workId, load: sequence };
+    });
+    const loaded = new Map<number, { load: number; mediaItems: MediaItem[] }>();
+    let cursor = 0;
+    const workers = Array.from({ length: Math.min(concurrentWorkLoads, pending.length) }, async () => {
+      while (cursor < pending.length) {
+        const { workId, load } = pending[cursor++];
+        try {
+          loaded.set(workId, { load, mediaItems: await getWorkMedia(workId) });
+        } catch {
+          // The work keeps the names its tracks were queued with.
+        }
+      }
+    });
+    await Promise.all(workers);
+    const media = new Map<number, MediaItem[]>();
+    for (const [workId, { load, mediaItems }] of loaded) {
+      if (latestLoad.get(workId) === load) media.set(workId, mediaItems);
+    }
+    if (media.size > 0) apply(media);
+  };
+}
+
+/**
  * Keeps the names of queued tracks current while the queue plays: after the
  * listener changes a preference, such as the metadata language, every queued
  * work's names load again, and after a work's names are saved, that work's do.
- * Only the names change, so the current track keeps playing where it is. A
- * work whose media fails to load keeps its names, and a load that a newer one
- * for the same work overtook is dropped.
+ * Only the names change, so the current track keeps playing where it is.
  */
 export function useQueueDisplayNameRefresh(
   queueRef: RefObject<PlayerTrack[]>,
@@ -23,31 +61,12 @@ export function useQueueDisplayNameRefresh(
 ) {
   useEffect(() => {
     let disposed = false;
-    let sequence = 0;
-    const latestLoad = new Map<number, number>();
-
-    const refresh = async (workIds: number[]) => {
-      const pending = workIds.map((workId) => {
-        sequence += 1;
-        latestLoad.set(workId, sequence);
-        return { workId, load: sequence };
-      });
-      const media = new Map<number, MediaItem[]>();
-      let cursor = 0;
-      const workers = Array.from({ length: Math.min(concurrentWorkLoads, pending.length) }, async () => {
-        while (cursor < pending.length) {
-          const { workId, load } = pending[cursor++];
-          try {
-            const { mediaItems } = await api.getWorkMedia(workId);
-            if (latestLoad.get(workId) === load) media.set(workId, mediaItems);
-          } catch {
-            // The work keeps the names its tracks were queued with.
-          }
-        }
-      });
-      await Promise.all(workers);
-      if (!disposed && media.size > 0) setQueue((items) => withQueueDisplayTitles(items, media));
-    };
+    const refresh = createQueueDisplayNameLoader(
+      async (workId) => (await api.getWorkMedia(workId)).mediaItems,
+      (media) => {
+        if (!disposed) setQueue((items) => withQueueDisplayTitles(items, media));
+      },
+    );
 
     const queuedWorkIds = () =>
       Array.from(new Set(queueRef.current.map((track) => track.workId).filter((workId) => workId > 0)));
