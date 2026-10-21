@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import {
   authenticatedStateFixture,
+  circleCatalogWorkFixture,
   circleDetailFixture,
   circleSummaryFixture,
   creatorSubscriptionFixture,
@@ -14,6 +15,7 @@ import {
   type ApiErrorBody,
 } from "./fixtures/api";
 import type { CreatorSubscriptionLookup, ReleaseFeedPage } from "../../src/lib/api";
+import { syntheticWorkCode } from "../../src/test-support/workCode";
 
 type SubscriptionServer = {
   feed?: ReleaseFeedPage;
@@ -86,6 +88,17 @@ async function mockSubscriptions(page: Page, server: SubscriptionServer) {
       await route.fulfill({
         json: circleDetailFixture(
           circleSummaryFixture({ externalId: "RG00001", displayName: "Example Circle 1", syncState: "never" }),
+          {
+            // A full grid sits under the centered dialog, so a dialog trapped
+            // in the header's stacking context would be covered by the cards.
+            works: Array.from({ length: 12 }, (_, index) =>
+              circleCatalogWorkFixture({
+                primaryCode: syntheticWorkCode("RJ", index),
+                title: `Example Work ${index + 1}`,
+                circleExternalId: "RG00001",
+              }),
+            ),
+          },
         ),
       });
       return;
@@ -189,6 +202,7 @@ test("@desktop subscribing to a circle confirms replacing its series and pulls t
   };
   await mockSubscriptions(page, server);
   await page.goto("/circles/RG00001");
+  await expect(page.getByText("Example Work 1", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Subscribe", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Subscribe to Example Circle 1" });
