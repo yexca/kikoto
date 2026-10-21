@@ -123,3 +123,13 @@ test("About lists reference projects compactly until details are requested", asy
   await references.getByRole("button", { name: "Hide details", exact: true }).click();
   await expect(note).toHaveCount(0);
 });
+
+test("About project links keep their touch area on their own button", async ({ page }) => {
+  await mockAppShell(page);
+  await page.goto("/about");
+
+  // A touch area that escapes its link would take every tap and scroll on the page.
+  const references = page.getByRole("region", { name: "Reference projects", exact: true });
+  await references.getByRole("link", { name: "advplyr/audiobookshelf" }).tap({ trial: true, timeout: 2_000 });
+  await page.getByText("Software overview", { exact: true }).tap({ trial: true, timeout: 2_000 });
+});

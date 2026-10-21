@@ -612,7 +612,14 @@
   }
 
   /* Extends a compact control's hit area to the 44px touch floor without
-     changing its visible size; larger controls keep their own bounds. */
+     changing its visible size; larger controls keep their own bounds. The
+     control anchors its own hit area, so a caller that leaves out `relative`
+     cannot stretch it over the nearest positioned ancestor; a positioning
+     utility such as `absolute` still wins over this layer. */
+  .touch-target {
+    position: relative;
+  }
+
   @media (pointer: coarse) {
     .touch-target::after {
       content: "";

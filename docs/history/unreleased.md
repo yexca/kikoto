@@ -1,6 +1,16 @@
 # Unreleased
 
 <details>
+<summary><strong>Interface</strong></summary>
+
+- On touch screens, About's License link no longer takes taps and scrolls
+  across the page, so it stops highlighting during a scroll and the reference
+  project links open their own pages. The library sort button keeps its
+  touch area on the button the same way.
+
+</details>
+
+<details>
 <summary><strong>Development and docs</strong></summary>
 
 - About lists mozilla-firefox/firefox under **Engineering & CI**, as a
