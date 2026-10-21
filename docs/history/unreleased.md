@@ -17,6 +17,13 @@
 </details>
 
 <details>
+<summary><strong>Subscriptions</strong></summary>
+
+- The **Subscribe** confirmation on a circle, series, or voice actor page opens above the works list, so its buttons can be pressed when works fill the page.
+
+</details>
+
+<details>
 <summary><strong>Operations and reliability</strong></summary>
 
 - The Docker image is published for `linux/arm64` as well as `linux/amd64` under the same tags, so Kikoto runs on ARM NAS devices and 64-bit Raspberry Pi OS with the usual `docker compose up -d`.

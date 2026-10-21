@@ -1,5 +1,6 @@
 import { Bell, BellRing, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -250,7 +251,9 @@ function SubscribeDialog({
 }) {
   const { t } = useTranslation();
   const { replacedSeries, needsBaseline } = subscribeConfirmation(lookup);
-  return (
+  // The button sits inside headers that form their own stacking context, so the
+  // dialog renders at the document root to stay above the page content.
+  return createPortal(
     <Dialog onClose={onClose} size="sm" dismissible={!busy}>
       <DialogHeader title={t("subscriptions.dialog.title", { name: subjectName })} />
       <DialogBody className="space-y-3 text-sm">
@@ -284,6 +287,7 @@ function SubscribeDialog({
           {needsBaseline && canPullNow ? t("subscriptions.dialog.pullNow") : t("subscriptions.button.subscribe")}
         </Button>
       </DialogFooter>
-    </Dialog>
+    </Dialog>,
+    document.body,
   );
 }
