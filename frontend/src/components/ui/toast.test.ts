@@ -37,3 +37,35 @@ describe("toast error localization", () => {
     await i18n.changeLanguage("en");
   });
 });
+
+describe("toast placement", () => {
+  const desktop = { width: 1440, height: 900 };
+  const phone = { width: 412, height: 915 };
+  const header = { top: 0, bottom: 65, left: 208, right: 1440 };
+
+  it("steps below a toolbar that starts right under the header", async () => {
+    const { toastTopOffset } = await import("@/components/ui/toast");
+    expect(toastTopOffset([header, { top: 85, bottom: 125, left: 232, right: 1416 }], desktop)).toBe(137);
+  });
+
+  it("keeps the top band when the only toolbar sits lower on the page", async () => {
+    const { toastTopOffset } = await import("@/components/ui/toast");
+    expect(toastTopOffset([header, { top: 325, bottom: 365, left: 232, right: 1416 }], desktop)).toBe(77);
+    expect(
+      toastTopOffset(
+        [
+          { top: 0, bottom: 57, left: 0, right: 412 },
+          { top: 77, bottom: 121, left: 16, right: 396 },
+          { top: 257, bottom: 385, left: 16, right: 396 },
+        ],
+        phone,
+      ),
+    ).toBe(133);
+  });
+
+  it("ignores toolbars outside the toast column or the viewport", async () => {
+    const { toastTopOffset } = await import("@/components/ui/toast");
+    expect(toastTopOffset([{ top: 85, bottom: 125, left: 232, right: 900 }], desktop)).toBe(76);
+    expect(toastTopOffset([{ top: -200, bottom: -10, left: 232, right: 1416 }], desktop)).toBe(76);
+  });
+});
