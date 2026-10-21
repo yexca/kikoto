@@ -32,6 +32,7 @@ import type { TimedLyricLine } from "@/lib/timedLyrics";
 import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { useScreenLyrics } from "@/player/screenLyrics";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
+import { usePlayerTrackTitle } from "@/player/playerTrackTitle";
 import { orderedTrackLocations } from "@/player/trackLocations";
 
 import { formatRemaining, formatTime } from "./playerFormat";
@@ -81,6 +82,9 @@ export function FullPlayer({
   const { parsedLyrics, activeLyricsLocationId } = lyrics;
   const busy = player.isPlaying && player.isBuffering;
   const subtitle = track.circle || track.workTitle;
+  const title = usePlayerTrackTitle()(track);
+  // A display name keeps the file's real name in its hint.
+  const titleHint = title === track.title ? title : `${title}\n${track.title}`;
   const availableLocations = orderedTrackLocations(track);
   const currentLocation =
     availableLocations.find((location) => location.locationId === track.locationId) ?? availableLocations[0];
@@ -317,8 +321,8 @@ export function FullPlayer({
                 <div data-player-drag-zone className="flex min-h-[60px] shrink-0 touch-none items-center gap-3">
                   <CoverImage track={track} className="h-12 w-16 rounded-lg shadow-md" />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[15px] font-semibold" title={track.title}>
-                      {track.title}
+                    <div className="truncate text-[15px] font-semibold" title={titleHint}>
+                      {title}
                     </div>
                     <div className="truncate text-sm text-muted-foreground" title={subtitle}>
                       {subtitle}
@@ -374,8 +378,8 @@ export function FullPlayer({
               <>
                 <div data-player-title-block className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-xl font-semibold leading-tight tracking-tight" title={track.title}>
-                      {track.title}
+                    <div className="truncate text-xl font-semibold leading-tight tracking-tight" title={titleHint}>
+                      {title}
                     </div>
                     <div className="truncate text-base leading-snug text-muted-foreground" title={subtitle}>
                       {subtitle}

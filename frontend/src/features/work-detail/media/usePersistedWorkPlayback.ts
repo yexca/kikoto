@@ -121,7 +121,7 @@ export function usePersistedWorkPlayback({
         ? titled(toPlayerTrack(track, localDirectoryWork, coverUrl))
         : null;
     if (!queuedTrack) return;
-    queuePlayerTrack(player, toast, queuedTrack, track.title, next);
+    queuePlayerTrack(player, toast, queuedTrack, next);
   };
 
   return { isResuming, playTracks, resumePlayback, playRemoteTracks, queueTrack };

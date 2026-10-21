@@ -32,5 +32,12 @@ describe("system media details", () => {
 
   it("shows only the app name when details are hidden", () => {
     expect(systemMediaDetails(track, "hidden")).toEqual({ title: "Kikoto", artist: "", album: "", coverUrl: "" });
+    expect(systemMediaDetails({ ...track, displayTitle: "第一首.mp3" }, "hidden").title).toBe("Kikoto");
+  });
+
+  it("names a track by its display name unless the listener asked for real names", () => {
+    const named = { ...track, displayTitle: "第一首.mp3" };
+    expect(systemMediaDetails(named, "full").title).toBe("第一首.mp3");
+    expect(systemMediaDetails(named, "full", true).title).toBe("Track 01");
   });
 });

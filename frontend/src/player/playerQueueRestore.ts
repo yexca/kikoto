@@ -1,5 +1,6 @@
 import type { MediaItem } from "../lib/api";
 import type { PlayerTrack, PlayerTrackLocation } from "./playerTypes";
+import { mediaItemDisplayTitle } from "./queueDisplayNames";
 import { applyTrackLocation, preferredTrackLocation } from "./trackLocations";
 
 type WorkMediaResult = { kind: "loaded"; mediaItems: MediaItem[] } | { kind: "missing" } | { kind: "unavailable" };
@@ -75,6 +76,7 @@ export async function revalidatePersistedQueue(
       workTitle: presentation?.title || track.workTitle,
       coverUrl: presentation?.coverUrl || track.coverUrl,
       circle: presentation?.circle || track.circle,
+      displayTitle: mediaItemDisplayTitle(mediaItem, track.locationId),
     };
     const selected =
       locations.find((location) => location.locationId === track.locationId) ?? preferredTrackLocation(updated);

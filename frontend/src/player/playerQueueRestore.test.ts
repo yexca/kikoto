@@ -62,7 +62,8 @@ describe("revalidatePersistedQueue", () => {
     ] satisfies MediaItem[];
 
     const result = await revalidatePersistedQueue(
-      [persistedTrack],
+      // A name the file no longer has in the listener's languages is dropped.
+      [{ ...persistedTrack, displayTitle: "旧名.mp3" }],
       async () => mediaItems,
       async () => ({
         primaryCode: "RJ00000000",
@@ -78,6 +79,7 @@ describe("revalidatePersistedQueue", () => {
       workTitle: "Refreshed work",
       coverUrl: "/api/assets/covers/RJ/000/RJ00000000.jpg",
       circle: "Refreshed circle",
+      displayTitle: undefined,
     });
   });
 

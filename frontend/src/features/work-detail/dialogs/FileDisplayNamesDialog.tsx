@@ -17,6 +17,7 @@ import {
   realNamesText,
 } from "@/features/work-detail/dialogs/fileDisplayNamesModel";
 import { api, type FileDisplayNames } from "@/lib/api";
+import { FILE_DISPLAY_NAMES_CHANGED_EVENT } from "@/lib/appEvents";
 import { metadataTagNameLanguages } from "@/lib/metadataTagModel";
 import { interfaceLyricsLanguage } from "@/lib/translationTargets";
 import { cn } from "@/lib/tailwindClassNames";
@@ -100,6 +101,8 @@ export function FileDisplayNamesDialog({
       for (const change of changes) saved = await api.setWorkFileDisplayNames(workId, change);
       if (saved) setEntries(saved);
       setDrafts({});
+      // Queued tracks of this work take the new names.
+      window.dispatchEvent(new CustomEvent(FILE_DISPLAY_NAMES_CHANGED_EVENT, { detail: { workId } }));
       toast.success(t("fileDisplayNames.saved"));
       await onSaved();
       onClose();

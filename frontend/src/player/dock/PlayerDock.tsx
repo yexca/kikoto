@@ -4,6 +4,7 @@ import type { TimedLyricLine } from "@/lib/timedLyrics";
 import { usePlayer, usePlayerTime } from "@/player/PlayerProvider";
 import { persistDockMode, restoreDockMode } from "@/player/playerPersistence";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
+import { usePlayerTrackTitle } from "@/player/playerTrackTitle";
 import { useScreenLyrics, useScreenLyricsSync, type ScreenLyricsController } from "@/player/screenLyrics";
 
 import { CompactPlayer } from "./CompactPlayer";
@@ -118,12 +119,13 @@ function ScreenLyricsSync({
 }) {
   const { currentTime } = usePlayerTime();
   const activeIndex = useActiveLyricIndex(lines);
+  const trackTitle = usePlayerTrackTitle();
   const portal = useScreenLyricsSync(
     screenLyrics,
     {
       // The offset is part of the key, so a native surface receives the moved lines.
       trackKey: `${track?.queueItemId ?? track?.locationId ?? ""}:${activeLyricsLocationId ?? ""}:${track?.lyricsOffsetMs ?? 0}`,
-      title: track?.title ?? "",
+      title: track ? trackTitle(track) : "",
       subtitle: track?.circle || track?.workTitle || "",
       lines,
       activeIndex,

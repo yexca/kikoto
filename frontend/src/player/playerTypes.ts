@@ -9,7 +9,10 @@ export type PlayerTrack = {
   queueItemId?: string;
   mediaItemId: number;
   locationId: number;
+  /** The file's real name, which also decides lyrics matching. */
   title: string;
+  /** The name the directory showed for the file when it was queued, when that differs from the real one. */
+  displayTitle?: string;
   kind: "audio" | "video";
   folderPath: string;
   locationType: string;

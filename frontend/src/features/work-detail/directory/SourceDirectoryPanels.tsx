@@ -20,10 +20,8 @@ import { DirectoryExplorer } from "@/features/work-detail/directory/DirectoryExp
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { nodeAtPath, treeHasDisplayNames } from "@/features/work-detail/directory/directoryModel";
-import {
-  DirectoryOriginalNamesContext,
-  useOriginalNamesPreference,
-} from "@/features/work-detail/directory/directoryNames";
+import { DirectoryOriginalNamesContext } from "@/features/work-detail/directory/directoryNames";
+import { useOriginalFileNames } from "@/lib/originalFileNames";
 import { cn } from "@/lib/tailwindClassNames";
 import { IconButton } from "@/components/ui/icon-button";
 import { buttonVariants } from "@/components/ui/button";
@@ -347,7 +345,7 @@ export function SourceDirectoryPanel({
   }, [autoRoutePath, requestedRoutePath, requestedRouteStateKey, root, routeRequestKey]);
   const effectiveRequestedRoutePath = requestedRouteStateKey === routeRequestKey ? requestedRoutePath : null;
   const hasDisplayNames = useMemo(() => !emptyState && treeHasDisplayNames(root), [emptyState, root]);
-  const [originalNamesPreferred, toggleOriginalNames] = useOriginalNamesPreference();
+  const [originalNamesPreferred, toggleOriginalNames] = useOriginalFileNames();
   const originalNames = hasDisplayNames && originalNamesPreferred;
   const content = (
     <SourceDirectoryContent

@@ -3,8 +3,10 @@ import { useTranslation } from "react-i18next";
 
 import { useToast } from "@/components/ui/toast";
 import { assetURL } from "@/lib/api";
+import { originalFileNamesShown } from "@/lib/originalFileNames";
 
 import { playerTrackAudioURL, supportsCompatibilityPlayback } from "./playerTrackMedia";
+import { playerTrackTitle } from "./playerTrackTitle";
 import type { PlaybackCompatibilityScope, PlayerTrack } from "./playerTypes";
 import {
   applyTrackLocation,
@@ -70,7 +72,7 @@ export function usePlaybackRecovery(
         const failureSequence = refs.playbackErrorSequenceRef.current;
         toast.notify({
           kind: "error",
-          message: t("player.playbackFailed", { title: activeTrack.title }),
+          message: t("player.playbackFailed", { title: playerTrackTitle(activeTrack, originalFileNamesShown()) }),
           actionLabel: t("common.retry"),
           onAction: () => {
             if (
@@ -179,7 +181,7 @@ export function usePlaybackRecovery(
       ) {
         toast.notify({
           kind: "error",
-          message: t("player.trackFailed", { title: failedTrack.title }),
+          message: t("player.trackFailed", { title: playerTrackTitle(failedTrack, originalFileNamesShown()) }),
           actionLabel: t("player.compatibility"),
           onAction: () => {
             if (refs.currentPlaybackInstanceKeyRef.current !== instanceKey) return;

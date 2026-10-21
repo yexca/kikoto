@@ -229,7 +229,10 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   of Directory, highlighted while they show; its tooltip says that they are
   not the real file names, and turning it off shows the real names. The choice
   is remembered on that device, and a renamed entry keeps its real name in its
-  tooltip. The real
+  tooltip. The player, its queue, screen lyrics, and the system media controls
+  name tracks the same way and follow the same choice. Queued tracks take the
+  new names when you change your metadata language or names are saved, without
+  interrupting playback. The real
   names still decide the order, track numbers, the recommended folder, and
   lyrics matching, and file management, Fetch, previews, and downloads use
   them. A user with library write access edits the names from the local
