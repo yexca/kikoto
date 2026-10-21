@@ -144,9 +144,7 @@ adult, paid, and temporary-free candidates are discarded. Provider-declared
 language editions are fetched with their own locale and are stored only after
 passing that policy independently; they do not receive local media unless their
 own folder is discovered. The Demo workflow does not follow origin/base links
-or recurse through language-edition responses. Compatible remote sources are
-authoritative for the mandatory
-`$age:general$ $-price:1$` query contract.
+or recurse through language-edition responses.
 
 ## Source Control Boundary
 

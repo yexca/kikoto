@@ -6,7 +6,8 @@ subscribe to, and works that Availability Watch finds on a remote source.
 
 ## Subscribing
 
-- Circle, series, and voice actor pages have a bell beside **Favorite**.
+- Circle and voice actor pages have a bell beside **Favorite**; a series has
+  one beside its DLsite link.
   Subscribing is separate from Favorite: a favorite records a preference, a
   subscription adds new works to the Subscriptions feed. Subscriptions are
   personal.
@@ -48,7 +49,8 @@ subscribe to, and works that Availability Watch finds on a remote source.
   **Automatic**.
 - A card shows the work once metadata knows it, or the catalog's title,
   circle, and code until then. Open it to go to the work, add it to a favorite
-  list, open DLsite, or add it to Availability Watch.
+  list, or open DLsite. Accounts that can run workflows and sync metadata can
+  also add it to Availability Watch.
 - Cards added since you last opened the feed are marked with a dot. The
   navigation shows how many there are, and opening the feed clears the count.
   A refresh that adds entries to your feed also sends one notification.

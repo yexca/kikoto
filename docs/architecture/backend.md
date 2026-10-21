@@ -256,9 +256,9 @@ may retain protected diagnostics when they are necessary to operate the
 instance.
 
 The access-policy middleware runs after authentication has resolved a session
-and before Demo content or handlers. Health, login/logout, current-auth state,
-minimal mode/access runtime settings, and CORS preflight remain available for
-bootstrap. Operational runtime settings are omitted while production sign-in is
+and before Demo content or handlers. Health, login/logout, initial setup, current-auth
+state, minimal mode/access runtime settings, the public library migration
+status, and CORS preflight remain available for bootstrap. Operational runtime settings are omitted while production sign-in is
 required. Every other unauthenticated request is rejected unless the stored
 anonymous-access policy is enabled, in which case only `GET` and `HEAD` continue.
 The cached effective value is loaded before the server starts and updated only
@@ -430,7 +430,9 @@ does not wait for the active response to finish.
 
 `POST /api/works/{id}/lyrics-edit/plan` and `POST /api/works/{id}/lyrics-edit`
 preview and apply an edit of the lyrics Kikoto manages in one local work
-folder. An addition is a lyrics file of that folder, which moves, a file of
+folder. An addition is a lyrics file of that folder, which is copied, or moved
+when the request or the administrator's lyrics folder setting chooses move, a
+file of
 another local folder of the family, which is copied, or a file a configured
 source offers for a family edition, which is downloaded through that source's
 download lane; each declares its language and lands in that language's lyrics
@@ -575,8 +577,8 @@ revalidated.
 
 ## Current Limits
 
-- Some operations remain synchronous even though the major Fetch, cache,
-  cleanup, scan, metadata, and preset workflow paths use persisted jobs.
+- Fetch, cache, cleanup, scan, metadata, and preset workflow paths run as
+  persisted jobs; other operations run synchronously in their request.
 - The embedded job runner is single-instance and SQLite-backed; it is not a
   distributed worker system.
 - Retry, cancellation, and restart recovery are defined per job family rather

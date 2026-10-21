@@ -37,7 +37,7 @@ Docker pulls the one that matches the host. Override `KIKOTO_IMAGE` with a revie
 when reproducible deployment is required:
 
 ```sh
-KIKOTO_IMAGE=yexca/kikoto:0.1.1 docker compose up -d
+KIKOTO_IMAGE=yexca/kikoto:X.Y.Z docker compose up -d
 KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bcef7b03c229d89953ca docker compose up -d
 ```
 

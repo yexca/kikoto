@@ -27,7 +27,7 @@ Voice pages present persisted person and credit data.
   the current view. On a phone the search field keeps its own row with page
   size beside it, and the chips scroll sideways below. User tags remain
   visible and searchable, but the list does not expose a tag filter.
-- Shows favorite, rating, note, and user tag state.
+- Shows favorite and user tag state.
 - Shows confirmed aliases under the detail title. Alias review, duplicate
   merge, and merge undo live in the Metadata page's **Voice actors** view;
   the detail **More** menu links there for users with `metadata:sync`.

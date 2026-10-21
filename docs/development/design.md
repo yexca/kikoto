@@ -2,12 +2,11 @@
 
 Kikoto should feel like a quiet personal media library and player.
 
-This repository-wide contract governs new and changed UI across the browser and
-Android shells.
+This repository-wide contract governs new and changed UI across the browser,
+Android, and iOS shells.
 
-Sections explicitly labeled as current describe the implementation. The other
-rules are constraints for new and changed surfaces and a direction for gradual
-convergence; they do not claim that every legacy surface already complies.
+Sections labeled as current describe the implementation. The other rules
+govern every new and changed surface.
 
 ## Design Principles
 

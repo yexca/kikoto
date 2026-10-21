@@ -131,4 +131,4 @@ Good-faith research is welcome when it:
   degradation, and third-party systems.
 - Keeps the issue private during coordinated remediation.
 
-Kikoto does not currently operate a paid bug-bounty program.
+Kikoto does not operate a paid bug-bounty program.

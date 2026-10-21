@@ -6,6 +6,7 @@ These pages describe installation and user-visible behavior. If a change affects
 what users see, what actions are available, or how a workflow is named, update
 the English page first, then mark translations for review.
 
+- [Getting started](getting-started.md)
 - [Library](library.md)
 - [Work detail](work-detail.md)
 - [Sources](sources.md)
@@ -14,6 +15,7 @@ the English page first, then mark translations for review.
 - [Subscriptions](subscriptions.md)
 - [Playback](playback.md)
 - [Settings](settings.md)
+- [Personal data](personal-data.md)
 - [Workflows](workflows.md)
 
 ## Product Principles
@@ -31,5 +33,3 @@ the English page first, then mark translations for review.
 - [Core boundaries](../../architecture/core-boundaries.md)
 - [Source presence](../../architecture/source-presence.md)
 - [Frontend guidelines](../../development/frontend-guidelines.md)
-
-- [Personal data](personal-data.md)

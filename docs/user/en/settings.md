@@ -294,9 +294,10 @@ Each role has a fixed set of permissions:
   tracked, works for every account. Playing a remote work that is not in the
   Library creates no work, so its progress and listening history are not
   saved. Caching while playing is skipped without a message.
- Anonymous Library browsing and playback
-default to disabled; changing the switch applies to the production access
-boundary and creates an audit entry. Development authenticates every request
+
+In **Instance access**, **Anonymous access** (off by default) allows Library
+browsing and playback without an account. **Save access policy** applies it to
+the production access boundary and creates an audit entry. Development authenticates every request
 as root, so the setting is visible and editable there without creating an
 anonymous development session.
 

@@ -139,7 +139,7 @@ the entry already loads there, because everything in that chunk loads eagerly.
 
 Explicit local Library routes restore their saved filters, sort and page before
 starting the list read, while source configuration loads independently. Source
-routes still wait for configuration to identify their target. After work-code
+routes wait for configuration to identify their target. After work-code
 resolution, summary and media-directory reads start together. The summary can
 render first; a directory error preserves it. Edition redirects cancel the
 speculative directory before loading the canonical work. Both reads preserve
@@ -201,14 +201,16 @@ the work its route selects. The local and remote
 loaders share one set of browse controls, so tab, search, sort, and page state
 stay with the page instead of being divided between them.
 
-Work detail metadata editing exposes one entry from
+Work detail metadata editing exposes its public entry from
 `features/work-detail/metadata`. Its modal owns interaction and save actions,
 suggestion hooks own asynchronous lookup, and a pure model maps editor state
-to metadata overrides. Library composes that entry instead of owning its internals.
+to metadata overrides. Work detail and the Metadata page compose that entry
+instead of owning its internals.
 
 The global player keeps its public track and state types in `playerTypes` so
 media-tree and queue models do not depend on the React provider. `playerPersistence`
-owns browser preference access and queue parsing, including legacy migration.
+owns browser preference access and queue parsing; it discards obsolete stored
+queue and progress keys and reads the older sleep-timer shape.
 `PlayerProvider` builds the player contexts from focused hooks: playback engine
 and source loading, progress saving, recovery, sleep timer, queue actions and
 storage, seeking, system media controls, and keyboard shortcuts. It uses
@@ -248,10 +250,10 @@ seeking, and screen lyrics share one timeline.
 - Circles.
 - Voice actors.
 - Settings: one shared `IconRail` with the personal tabs (Account, which opens
-  with the profile and ends with data transfer; Playback; History;
+  with the profile and ends with data transfer; Playback;
   Recommendations, which shows recommendation activity above recommendation
   tuning; and personal tags) followed, after a divider, by the Library,
-  Cache & Fetch, Proxy, Cleanup, and Users administration tabs, which share an
+  Cache & Fetch, Proxy, LLM & ASR, Cleanup, and Users administration tabs, which share an
   Administration accessible description. Wide layouts show a sticky vertical
   rail of icons; compact layouts show one row of icons that scrolls only
   sideways, with only the active tab labelled, and keep the active tab in
@@ -284,12 +286,13 @@ seeking, and screen lyrics share one timeline.
   failed request leaves the others on screen. The app shell composes each
   work, tag, voice, and circle link. Demo shows a notice above the dashboard
   that its listening history is simulated.
-- Metadata: a Works group for saved metadata and attention categories, and an
-  Entries group for Tags, Circles, and Voice actors. Each entry view owns a
+- Metadata: a Works group for saved metadata, attention categories, Custom
+  works, and Translation, and an Entries group for Tags, Circles, and Voice
+  actors. Each entry view owns a
   searchable table and management dialog. Tag and circle edits require
   `library:write`; voice aliases retain `metadata:sync`. The URLs
-  `?view=tags`, `?view=circles`, and `?view=aliases&voice=<id>` select
-  those views. The shared icon rail shows group headings when expanded and
+  `?view=custom`, `?view=translation`, `?view=tags`, `?view=circles`, and
+  `?view=aliases&voice=<id>` select those views. The shared icon rail shows group headings when expanded and
   accessible group descriptions at all sizes. The page's Metadata settings
   popover holds the DLsite proxy shortcut and
   links to Settings → Library (creator catalog freshness) and to the
@@ -344,8 +347,8 @@ state and drafts on request failure.
 The personal Settings destinations open at `/settings?tab=tags` and
 `?tab=data`; `data` is an alias that opens the Account data section,
 `?tab=time-zone` opens the Account time zone section, and
-`?tab=recommendation` opens Recommendations. The former `/tags` and
-`/user-data` links redirect there, and `/history` and `/settings?tab=history`
+`?tab=recommendation` opens Recommendations. `/tags` and `/user-data` redirect
+there, and `/history` and `/settings?tab=history`
 redirect to `/insights`. Insights and the personal destinations require
 `library:read`, are reachable from mobile account actions and Quick actions,
 and load their own chunks independently of the global player. The administration tabs appear only for administrators and Demo,
@@ -684,8 +687,8 @@ A local-directory refresh or source untracking can interrupt that work's shared
 read. A still-current caller waits for the write to settle and automatically
 retries, at most twice, preserving the detail shell and global player. Session
 changes, caller cancellation, and ordinary network or API failures do not
-trigger this recovery. Background workflow completion still uses the existing
-explicit refresh paths; in-flight sharing does not cache settled responses.
+trigger this recovery. Background workflow completion uses the explicit refresh
+paths; in-flight sharing does not cache settled responses.
 
 ## Multilingual title presentation
 
@@ -718,8 +721,10 @@ change is a draft until Save: credit reverts become explicit `null` or empty
 PATCH fields (`MetadataEditorReverts`), a cover revert deletes the cover
 override, and a staged metadata link and purchase bonus link are written last,
 so the refresh they queue reaches `onLinkChanged`. The Metadata source tab holds
-both: `MetadataEditorSourceSection` for the metadata link and
-`MetadataEditorPurchaseBonusSection` for the parent of a purchase bonus. Work
+`MetadataEditorSourceSection` for the metadata link,
+`MetadataEditorPurchaseBonusSection` for the parent of a purchase bonus, and
+`MetadataEditorBundleSection` and `MetadataEditorFamilySection` for bundle and
+edition-family membership. Work
 detail renders the relation with `DetailPurchaseBonusLine`: Bonus for on a
 bonus, and Bonuses on a work whose family has linked bonuses in the library. A failure after a partial save reloads the caller and
 keeps the editor open. Cancel with drafts asks before discarding them. Credit

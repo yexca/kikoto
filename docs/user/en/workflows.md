@@ -25,7 +25,9 @@ Workflows make backend actions inspectable.
 Workflows opens for accounts with `workflows:run`: contributors and
 administrators (see [Users](settings.md#users)). Every such account sees the
 same definitions, presets, triggers, and runs, including runs other accounts
-started, and can follow their status, events, and file progress.
+started, and can follow their status, events, and file progress. A run of a
+custom definition stays visible only to the account that started it and to
+administrators.
 
 - Starting, configuring, or scheduling a workflow needs every permission its
   steps use: Track and the popular collection's Track need `remote:track`,
@@ -67,16 +69,13 @@ started, and can follow their status, events, and file progress.
   folders keeps all of them, and its detail page offers to tidy them up.
 - Node runs expose step-level progress.
 - Candidates expose reviewable outcomes.
-- Needs attention contains terminal runs with unresolved candidates that need a user
-  decision. Routine partial or skipped outcomes remain in History and keep
-  their warning status, summary, and events for inspection.
 - The header notification center shows **Updates** (your completed or failed
   workflow results, such as Fetch) and, for workflow operators, the runs that
   **Need attention**, with the newest running job above both. Fetch
   notifications open the local work detail and can be dismissed independently
   for the signed-in user; **Open Activity** opens the full panel.
 - The workflow list groups every workflow by category: Basic (local scan, local
-  files, and metadata sync), Collect (popular collections), Catalog sync (the
+  files, metadata sync, and Learn tag names), Collect (popular collections), Catalog sync (the
   subscription refresh and the catalog sync presets), and Remote (Availability
   Watch, Fetch, and Check works on a source), each in
   a fixed order. Every entry shows its latest run's status and time, and small
@@ -229,10 +228,9 @@ started, and can follow their status, events, and file progress.
   top with its own progress bar, and the full list marks each file as done,
   waiting, or where the run failed or paused.
 - Each Fetch run is named after its work, such as `Fetch RJ00000001`, and
-  Activity search finds a Fetch by its work code. The **Fetch** tab lists Fetch
-  history and steps but has no Run form: a Fetch always starts from a work.
-  Fetches queued by Availability Watch, bulk actions, popular collections, or
-  preset workflows record that origin as their trigger reason.
+  Activity search finds a Fetch by its work code. Fetches queued by
+  Availability Watch, bulk actions, or popular collections record that origin
+  as their trigger reason.
 - A scan never marks works missing in a place it cannot see: an unmounted data
   folder or offline storage pool, folders deeper than the scan depth, folders
   it has no permission to read, and the recycle bins and snapshots that NAS
@@ -271,8 +269,8 @@ started, and can follow their status, events, and file progress.
   that process is running. Distributed or multi-instance execution is not
   supported.
 - A normal service stop returns a running recoverable job to the queue without
-  spending its retry budget. Recovery after a crash, forced kill, or expired
-  lease is bounded by each job's retry budget. Manual stale-run recovery marks interrupted non-recoverable work failed for
+  spending its retry budget. Recovery after a crash or forced kill is bounded
+  by each job's retry budget. Manual stale-run recovery marks interrupted non-recoverable work failed for
   inspection.
 
 ## Related Docs
