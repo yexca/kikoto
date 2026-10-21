@@ -625,6 +625,57 @@ test("restores cached mobile detail workspaces through bottom navigation history
   await expect(page.getByRole("heading", { name: "Example Work", exact: true })).toBeVisible();
 });
 
+// The native shells turn on the in-app back stack at startup; the Vite dev
+// server serves the same module instance, so a test can turn it on in a browser.
+async function useInAppBackStack(page: Page) {
+  await page.evaluate(async () => {
+    const history = (await import("/src/lib/browserHistory.ts")) as { enableInAppBackStack(enabled: boolean): void };
+    history.enableInAppBackStack(true);
+  });
+}
+
+async function inAppBack(page: Page) {
+  return page.evaluate(async () => {
+    const history = (await import("/src/lib/browserHistory.ts")) as { navigateInAppBack(): boolean };
+    return history.navigateInAppBack();
+  });
+}
+
+test("the in-app back stack keeps bottom-navigation switches out of Back", async ({ page }) => {
+  const requests: Record<string, number> = {};
+  await mockBrowsePages(page, requests);
+  await page.goto("/?q=Example");
+  await expect(page.getByTestId("work-card").first()).toBeVisible();
+  await useInAppBackStack(page);
+  const historyLength = await page.evaluate(() => window.history.length);
+
+  const libraryTab = page.locator("footer").getByRole("button", { name: "Library", exact: true });
+  const circlesTab = page.locator("footer").getByRole("button", { name: "Circles", exact: true });
+
+  await page.getByTestId("work-card").first().click();
+  await expect(page).toHaveURL(/\/RJ00000000(?:\?view=local)?$/);
+  await circlesTab.click();
+  await page.getByRole("button", { name: "Open Example Circle", exact: true }).click();
+  await expect(page).toHaveURL(/\/circles\/RG012345$/);
+  await libraryTab.click();
+  await expect(page.getByRole("heading", { name: "Example Work", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
+
+  // Back returns through Library's own entries, never into Circles.
+  expect(await inAppBack(page)).toBe(true);
+  await expect(page).toHaveURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Example");
+  await expect(page.getByTestId("work-card").first()).toBeVisible();
+  expect(await inAppBack(page)).toBe(false);
+
+  // Circles resumes its detail with its own stack below it.
+  await circlesTab.click();
+  await expect(page).toHaveURL(/\/circles\/RG012345$/);
+  expect(await inAppBack(page)).toBe(true);
+  await expect(page).toHaveURL(/\/circles(?:\?|$)/);
+  await expect(page.getByRole("button", { name: "Open Example Circle", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
+});
+
 test("active mobile tabs return entity details to their browse lists", async ({ page }) => {
   const requests: Record<string, number> = {};
   await mockBrowsePages(page, requests);

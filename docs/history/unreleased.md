@@ -18,6 +18,12 @@
   sources** below it, so the source tab row holds only the sources; and long
   file and folder names stop at two lines until **Full names** shows them in
   full.
+- The Android and iOS apps navigate like a tabbed app. Each bottom tab keeps
+  its own back stack, so switching tabs is no longer a Back step and Back no
+  longer jumps into another tab's pages. Changing a list's tab, filter, or page
+  is not a Back step either, and returning from a resumed detail no longer
+  leaves an extra entry behind. The Android back button goes from another
+  tab's root to Library, then asks for a second press before leaving the app.
 
 </details>
 

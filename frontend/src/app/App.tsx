@@ -77,26 +77,28 @@ import {
   currentInternalLocation,
   historyScrollY,
   historyStateWithReturn,
+  enableInAppBackStack,
   mobileTabResumeHistoryState,
-  navigateToWorkspaceUp,
+  navigateBackOr,
+  navigateInAppBack,
   requestHistoryScrollRestoration,
   restoreCurrentHistoryScroll,
+  workspaceSwitchHistoryState,
 } from "@/lib/browserHistory";
 import { api, type RemoteTrackRunStatus } from "@/lib/api";
-import { normalizeLibraryBrowseLocation, readLastLibraryLocation } from "@/lib/libraryBrowseState";
+import { readLastLibraryLocation } from "@/lib/libraryBrowseState";
 import { libraryTagSearchLocation } from "@/lib/libraryTagSearch";
-import { isCircleListLocation, readLastCircleListLocation } from "@/lib/circleNavigationState";
-import { isVoiceListLocation, readLastVoiceListLocation } from "@/lib/voiceNavigationState";
-import { isVoiceDetailPath, voiceDetailPath } from "@/lib/voiceRoute";
+import { voiceDetailPath } from "@/lib/voiceRoute";
 import { legacyLibraryRedirect } from "@/app/legacyLibraryRoutes";
 import {
-  canNavigateHistoryBack,
   closePlayerLayer,
   closeTopDocumentLayer,
   edgeSwipeStartsOnHorizontalGesture,
   handleNativeBack,
 } from "@/app/nativeBack";
 import { readMobileTabSnapshot, writeMobileTabSnapshot } from "@/app/mobileTabState";
+import { isMobileTabDetailLocation, navigateToMobileTabHome, pageHomeLocation } from "@/app/workspaceNavigation";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { isChunkLoadError, reloadApp } from "@/lib/chunkLoadError";
 import { preloadableComponent } from "@/lib/preloadableComponent";
 import {
@@ -149,6 +151,8 @@ const CommandPalette = commandPalette.Component;
 
 const preferredMobileTabs: PageID[] = ["library", "favorites", "circles", "voice-actors"];
 const SIDEBAR_COLLAPSED_KEY = "kikoto:sidebar-collapsed";
+
+enableInAppBackStack(isNativeApp());
 
 export function App() {
   return (
@@ -368,7 +372,9 @@ function AuthenticatedApp() {
     setRouteRenderKey(resolveRouteRenderKey());
   };
 
-  const openMobilePage = (id: PageID) => {
+  // A destination switch resumes the destination's entry together with its own
+  // back stack; with an in-app back stack the switch is never a Back step.
+  const openMobilePage = useStableCallback((id: PageID) => {
     const item = navItems.find((navItem) => navItem.id === id);
     if (!item) return;
     if (page === id && (workDetailOpen || isMobileTabDetailLocation(id, currentInternalLocation()))) {
@@ -379,11 +385,35 @@ function AuthenticatedApp() {
     const snapshot = readMobileTabSnapshot(clientStorageScope, id);
     if (snapshot) {
       if (page === id && currentInternalLocation() === snapshot.location) return;
-      openPath(snapshot.location, mobileTabResumeHistoryState(snapshot.state), snapshot.scrollY);
+      openPath(
+        snapshot.location,
+        workspaceSwitchHistoryState(mobileTabResumeHistoryState(snapshot.state)),
+        snapshot.scrollY,
+      );
       return;
     }
-    openPage(id);
-  };
+    if (page === id) return;
+    openPath(pageHomeLocation(id, clientStorageScope), workspaceSwitchHistoryState({}));
+  });
+
+  // Back after every layer is closed: the destination's back stack, then its
+  // list from a detail it has no stacked entry for, then Library. Only the
+  // Android button takes the last step; a swipe never leaves the destination.
+  const navigateNativeBack = useStableCallback((leaveDestination: boolean) => {
+    if (navigateInAppBack()) return true;
+    const current = currentAppPage();
+    if (current === "not-found") {
+      openPath("/", workspaceSwitchHistoryState({}));
+      return true;
+    }
+    if (isWorkDetailLocationOpen() || isMobileTabDetailLocation(current, currentInternalLocation())) {
+      navigateToMobileTabHome(current, clientStorageScope);
+      return true;
+    }
+    if (!leaveDestination || current === "library") return false;
+    openMobilePage("library");
+    return true;
+  });
 
   const toggleSidebar = () => {
     setSidebarCollapsed((collapsed) => {
@@ -413,7 +443,7 @@ function AuthenticatedApp() {
   useEffect(() => {
     if (!isNativeApp()) return;
     let disposed = false;
-    const goBack = () => {
+    const goBack = (leaveDestination: boolean) => {
       const step = handleNativeBack({
         commandPalette: {
           open: commandPaletteOpen,
@@ -423,15 +453,14 @@ function AuthenticatedApp() {
         login: { open: loginOpen, close: () => setLoginOpen(false) },
         closeTopLayer: closeTopDocumentLayer,
         closePlayerLayer,
-        canNavigateBack: canNavigateHistoryBack,
-        navigateBack: () => window.history.back(),
+        navigateBack: () => navigateNativeBack(leaveDestination),
       });
       if (step === "commandPaletteBusy") toast.info(t("app.workflowSubmitting"));
       return step;
     };
     CapacitorApp.addListener("backButton", async () => {
       if (disposed) return;
-      const step = goBack();
+      const step = goBack(true);
       if (step === "history") exitBackDeadlineRef.current = 0;
       if (step !== "root") return;
       const now = Date.now();
@@ -445,8 +474,8 @@ function AuthenticatedApp() {
         if (Date.now() >= exitBackDeadlineRef.current) exitBackDeadlineRef.current = 0;
       }, 2100);
     }).catch(() => {});
-    // An edge swipe follows the same order but never leaves the app: at the
-    // Library root it does nothing.
+    // An edge swipe follows the same order but never leaves the destination or
+    // the app: at a destination's root it does nothing.
     let removeEdgeBack: (() => void) | null = null;
     void addNativeEdgeBackListener((swipe) => {
       if (disposed) return;
@@ -454,7 +483,7 @@ function AuthenticatedApp() {
       if (edgeSwipeStartsOnHorizontalGesture(start, (element) => getComputedStyle(element as Element).overflowX)) {
         return;
       }
-      goBack();
+      goBack(false);
     })
       .then((remove) => {
         if (disposed) remove();
@@ -466,7 +495,7 @@ function AuthenticatedApp() {
       removeEdgeBack?.();
       void CapacitorApp.removeAllListeners();
     };
-  }, [commandPaletteBusy, commandPaletteOpen, loginOpen, t, toast]);
+  }, [commandPaletteBusy, commandPaletteOpen, loginOpen, navigateNativeBack, t, toast]);
 
   if (auth.isLoading) {
     return (
@@ -637,7 +666,7 @@ function AuthenticatedApp() {
                 )}
                 {page === "not-found" && (
                   <NotFoundPage
-                    onBack={() => (window.history.length > 1 ? window.history.back() : openPath("/"))}
+                    onBack={() => navigateBackOr(() => openPath("/"))}
                     onOpenLibrary={() => openPath("/")}
                   />
                 )}
@@ -1185,46 +1214,6 @@ function PageLoading() {
       </section>
     </div>
   );
-}
-
-function isMobileTabDetailLocation(id: PageID, location: string) {
-  try {
-    const parsed = new URL(location, "https://kikoto.invalid");
-    const pathname = parsed.pathname.length > 1 ? parsed.pathname.replace(/\/+$/, "") : parsed.pathname;
-    const listLocation = `${pathname}${parsed.search}`;
-    if (id === "library") {
-      return pageFromPath(pathname) === "library" && normalizeLibraryBrowseLocation(listLocation) === null;
-    }
-    if (id === "circles") return /^\/circles\/[^/]+(?:\/series(?:\/[^/]+)?)?$/i.test(pathname);
-    if (id === "voice-actors") return isVoiceDetailPath(pathname);
-  } catch {
-    return false;
-  }
-  return false;
-}
-
-function navigateToMobileTabHome(id: PageID, storageScope: string) {
-  const fallbackLocation = pageHomeLocation(id, storageScope);
-  navigateToWorkspaceUp({
-    mobile: true,
-    fallbackLocation,
-    isWorkspaceListLocation:
-      id === "library"
-        ? (location) => normalizeLibraryBrowseLocation(location) !== null
-        : id === "circles"
-          ? isCircleListLocation
-          : id === "voice-actors"
-            ? isVoiceListLocation
-            : (location) => pageFromPath(new URL(location, "https://kikoto.invalid").pathname) === id,
-  });
-}
-
-/** Where a page's own list or landing view is: the last list state it recorded, or its root. */
-function pageHomeLocation(id: PageID, storageScope: string) {
-  if (id === "library") return readLastLibraryLocation(storageScope) ?? "/";
-  if (id === "circles") return readLastCircleListLocation(storageScope) ?? "/circles";
-  if (id === "voice-actors") return readLastVoiceListLocation(storageScope) ?? "/voices";
-  return navItems.find((item) => item.id === id)?.path ?? "/";
 }
 
 function resolveAppPageFromLocation() {

@@ -9,6 +9,7 @@ import {
   mobileTabResumeHistoryState,
   normalizeInternalLocation,
   requestHistoryScrollRestoration,
+  workspaceSwitchHistoryState,
 } from "../lib/browserHistory";
 
 /** Where a track was queued from, recorded so the player can lead back to it. */
@@ -63,7 +64,10 @@ export function openPlayingWorkDetail({
     const snapshot = readMobileTabSnapshot(storageScope, owner);
     if (snapshot && workCodeAt(snapshot.location) === targetCode) {
       window.history.pushState(
-        requestHistoryScrollRestoration(mobileTabResumeHistoryState(snapshot.state), snapshot.scrollY),
+        requestHistoryScrollRestoration(
+          workspaceSwitchHistoryState(mobileTabResumeHistoryState(snapshot.state)),
+          snapshot.scrollY,
+        ),
         "",
         snapshot.location,
       );
