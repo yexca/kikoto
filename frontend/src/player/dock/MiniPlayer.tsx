@@ -2,7 +2,6 @@ import { Maximize2, PanelBottom } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-import { NATIVE_BACK_EVENT } from "@/lib/appEvents";
 import { cn } from "@/lib/tailwindClassNames";
 import { usePlayerTime, type usePlayer } from "@/player/PlayerProvider";
 import type { DockMode, PlayerTrack } from "@/player/playerTypes";
@@ -47,13 +46,6 @@ export function MiniPlayer({
     actionsTimerRef.current = null;
   };
 
-  useEffect(() => {
-    if (!actionsOpen || !isMobile) return;
-    clearActionsTimer();
-    actionsTimerRef.current = window.setTimeout(() => setActionsOpen(false), 3000);
-    return clearActionsTimer;
-  }, [isMobile, actionsOpen]);
-
   useEffect(() => clearActionsTimer, []);
 
   useEffect(() => {
@@ -65,16 +57,6 @@ export function MiniPlayer({
       window.visualViewport?.removeEventListener("resize", handleResize);
     };
   }, []);
-
-  useEffect(() => {
-    if (!isMobile || !actionsOpen) return;
-    const handleBack = (event: Event) => {
-      setActionsOpen(false);
-      event.preventDefault();
-    };
-    window.addEventListener(NATIVE_BACK_EVENT, handleBack);
-    return () => window.removeEventListener(NATIVE_BACK_EVENT, handleBack);
-  }, [actionsOpen, isMobile]);
 
   const showDesktopActions = () => {
     if (isMobile) return;
@@ -151,7 +133,8 @@ export function MiniPlayer({
         }
         if (!drag) return;
         if (!drag.moved) {
-          if (isMobile) setActionsOpen((value) => !value);
+          // A phone tap restores the Compact bar, which holds the playback controls.
+          if (isMobile) onDockModeChange("compact");
           else showDesktopActions();
           return;
         }
