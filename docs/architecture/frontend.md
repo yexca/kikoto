@@ -217,10 +217,19 @@ storage, seeking, system media controls, and keyboard shortcuts. It uses
 account-scoped storage keys and remains mounted across navigation. System media
 controls (Media Session and the Android notification) stay registered and read
 the latest actions through a ref, so they never act on a stale queue or mode.
-Source loading also warms the next auto-advance track in one detached audio
-element (`useNextTrackPreload`) so the player element can reuse the buffered
-bytes for the identical URL; `nextTrackPreload` widens the window for a track
-the server converts. The element volume is the product of the sleep timer's
+`playerTrackAudioSource` picks each track's delivery: the original file, an
+HLS playlist when the server converts the track and the browser plays HLS
+(`audioHlsPlayback`), or a complete MP3 conversion otherwise. Source loading
+attaches an HLS playlist natively on iOS and iPadOS and through a lazily
+loaded hls.js elsewhere (`audioHlsSource`); hls.js starts loading at the
+pending start position, asks the element to play again once it has attached
+its source, and reports fatal errors to playback recovery, which checks the
+playlist URL rather than the element's `blob:` source. Source loading also
+warms the next auto-advance track (`useNextTrackPreload`): a file or MP3
+conversion in one detached audio element, so the player element can reuse the
+buffered bytes for the identical URL, and an HLS playlist by requesting its
+first segment; `nextTrackPreload` widens the window for an MP3 conversion.
+The element volume is the product of the sleep timer's
 fade and the loudness normalization cut (`applyElementVolume`).
 `useLoudnessNormalization` measures the current track, then the next one, and
 moves a level that changes mid-track gradually. In full normalization it routes

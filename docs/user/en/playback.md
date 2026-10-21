@@ -12,10 +12,20 @@ Playback is handled by a global browser audio player.
   compatibility playback for only the current track, the current queue, or all
   future local and cached playback. Compatibility playback and audio with an
   extension the browser does not play, such as `.wma`, `.aiff`, `.aif`, or
-  `.mka`, are converted by FFmpeg to a complete MP3 cache file
-  with duration and seeking information. First playback waits for preparation;
-  later requests reuse the result and support HTTP Range, seeking, Resume, and
-  normal end-of-track queue advancement. A confirmed missing file does not
+  `.mka`, stream as an HLS VOD playlist with the file's complete duration and
+  six-second 192 kbit/s AAC segments. One continuous FFmpeg encode produces
+  the segments in order from where playback starts or seeks to, so even a
+  multi-hour file starts within about a second and segment boundaries stay
+  seamless; seeking outside what the encode has produced restarts it there.
+  An encode stops 30 minutes ahead of the furthest segment played, and the
+  next one starts once playback is within 10 minutes of a segment not yet
+  produced. iOS and iPadOS play the playlist natively, which keeps playing on
+  the lock screen; other browsers use hls.js. A browser with neither instead
+  gets a complete MP3 conversion with duration and seeking information: first
+  playback waits for it, and later requests reuse it with HTTP Range. Either
+  way, seeking, Resume, and normal end-of-track queue advancement work. Video
+  files played through the audio player always use the MP3 conversion. A
+  confirmed missing file does not
   offer conversion: with **Switch sources on failure** enabled in Settings it
   continues through the normal source fallback order, and otherwise playback
   stops with a Retry action.
@@ -29,15 +39,21 @@ Playback is handled by a global browser audio player.
   failure keeps an inline Retry action; direct-to-HLS recovery and explicit
   retries retain the playback position and whether the video was paused.
 - Generated video segments are rebuildable cache data under
-  `/cache/transcodes/hls`. The shared audio/video transcode LRU quota defaults to
+  `/cache/transcodes/hls`, and audio segments under
+  `/cache/transcodes/hls-audio`. The shared audio/video transcode LRU quota defaults to
   5 GiB. Segments are invalidated by the source path, size, modification time, or
-  transcode profile changing. A segment is capped at 16 MiB and a generation attempt at
-  two minutes. Stale partial files left by an interrupted process are reclaimed.
-- Prepared audio is rebuildable data under `/cache/transcodes/audio` and shares
+  transcode profile changing. A segment is capped at 16 MiB and a video segment
+  generation attempt at two minutes. An audio encode holds one transcode slot
+  and a 100 MiB quota reservation while it runs, for at most 20 minutes, and
+  publishes each segment only once it is complete. Clearing the transcode
+  cache stops running audio encodes first. Stale partial files left by an
+  interrupted process are reclaimed.
+- Prepared MP3 audio is rebuildable data under `/cache/transcodes/audio` and shares
   the transcode cache quota with video. Preparation is limited to four minutes
   and 512 MiB per file; incomplete or failed output is never published. Source
   changes invalidate the cached result. Originals remain unchanged.
-- When FFmpeg cannot prepare a file, audio preparation and realtime video
+- When FFmpeg cannot prepare a file, audio preparation, an audio encode that
+  produces no segment, and realtime video
   conversion remember the failure for 30 seconds for that file revision.
   Requests in that time fail at once instead of occupying one of the encode
   slots; a changed file is tried again immediately.
@@ -50,8 +66,8 @@ Playback is handled by a global browser audio player.
   cache location before realtime conversion is available. Remote playback is
   streamed and is not written to `/cache`; the separate remote-source cache
   workflow remains independent.
-- Prepared audio responses support random byte ranges and include their complete
-  length. HLS video segments are immutable for their source revision and are
+- Prepared MP3 audio responses support random byte ranges and include their complete
+  length. HLS video and audio segments are immutable for their source revision and are
   seekable through the complete VOD timeline. Video output is bounded to 720p,
   padded to even dimensions before `yuv420p` encoding, and produced with a
   conservative two-thread profile. FFmpeg and FFprobe each have a small fixed
@@ -96,12 +112,12 @@ Playback is handled by a global browser audio player.
   adds a Next control.
 - While a track plays, the next track that end-of-track advancement would
   select is preloaded once the current track is within 45 seconds of its end
-  or already fully buffered. When the next track is converted before it plays,
-  through compatibility playback or because its format needs conversion, the
-  window grows with its length to a fortieth of its duration, so a two-hour
-  file starts warming three minutes ahead. Only that one track is warmed,
-  through the same playback URL the player will request, so a prepared
-  compatibility conversion is also ready. Preloading is skipped for repeat-one, the end of an ordered
+  or already fully buffered. Only that one track is warmed, through the same
+  playback URL the player will request. A next track streamed as HLS has its
+  playlist and first segment requested, which starts its encode. When the next
+  track gets a complete MP3 conversion instead, the window grows with its
+  length to a fortieth of its duration, so a two-hour file starts warming three
+  minutes ahead and the conversion is ready. Preloading is skipped for repeat-one, the end of an ordered
   queue, a finishing sleep timer, and when the browser requests reduced data
   usage.
 - Backward and forward seeking default to 10 and 30 seconds. Settings accepts

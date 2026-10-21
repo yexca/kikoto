@@ -48,9 +48,11 @@ type videoPlaybackInfoResponse struct {
 type hlsPlaybackSource struct {
 	LocationID int64
 	Path       string
-	Revision   string
-	Duration   float64
-	Probe      playbackProbe
+	// Profile is playbackProfileVideo or playbackProfileAudio, from the media kind.
+	Profile  string
+	Revision string
+	Duration float64
+	Probe    playbackProbe
 }
 
 func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
@@ -60,8 +62,11 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	source, err := s.loadHLSPlaybackSource(r.Context(), locationID)
+	if err == nil && source.Profile != playbackProfileVideo {
+		err = errHLSMediaNotFound
+	}
 	if err != nil {
-		s.writeHLSPlaybackError(w, err)
+		s.writeHLSPlaybackError(w, err, playbackProfileVideo)
 		return
 	}
 	if !forcePlaybackTranscode(r) {
@@ -97,7 +102,10 @@ func sortedPlaybackCapabilities(capabilities map[string]bool) []string {
 	return values
 }
 
-func (s *Server) serveVideoHLS(w http.ResponseWriter, r *http.Request) {
+// serveMediaHLS serves the HLS VOD playlist and segments of a local or cached
+// video or audio file. Video segments are generated one at a time; audio
+// segments come from a continuous encoding session (see media_audio_hls.go).
+func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 	file := strings.TrimSpace(r.PathValue("file"))
 	segmentMatch := hlsSegmentPattern.FindStringSubmatch(file)
 	if file != "index.m3u8" && segmentMatch == nil {
@@ -111,11 +119,11 @@ func (s *Server) serveVideoHLS(w http.ResponseWriter, r *http.Request) {
 	}
 	source, err := s.loadHLSPlaybackSource(r.Context(), locationID)
 	if err != nil {
-		s.writeHLSPlaybackError(w, err)
+		s.writeHLSPlaybackError(w, err, "media")
 		return
 	}
 	if revision := strings.TrimSpace(r.URL.Query().Get("v")); revision != "" && revision != source.Revision {
-		s.writeHLSPlaybackError(w, errHLSPlaybackSourceChanged)
+		s.writeHLSPlaybackError(w, errHLSPlaybackSourceChanged, source.Profile)
 		return
 	}
 	if file == "index.m3u8" {
@@ -123,6 +131,8 @@ func (s *Server) serveVideoHLS(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "private, no-cache")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		// The player's failure check reads this to know the stream is already converted.
+		w.Header().Set("X-Kikoto-Playback-Delivery", "transcoded")
 		_, _ = w.Write([]byte(playlist))
 		return
 	}
@@ -131,9 +141,14 @@ func (s *Server) serveVideoHLS(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "hls_segment_not_found", "playback segment was not found", false)
 		return
 	}
-	if err := s.serveHLSSegment(w, r, source, segmentIndex); err != nil {
+	if source.Profile == playbackProfileAudio {
+		err = s.serveAudioHLSSegment(w, r, source, segmentIndex)
+	} else {
+		err = s.serveHLSSegment(w, r, source, segmentIndex)
+	}
+	if err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			slog.Warn("video playback segment preparation failed", "location_id", source.LocationID, "segment", segmentIndex, "error", err)
+			slog.Warn("playback segment preparation failed", "location_id", source.LocationID, "profile", source.Profile, "segment", segmentIndex, "error", err)
 		}
 		if errors.Is(err, errRealtimeResourceBusy) {
 			w.Header().Set("Retry-After", "1")
@@ -143,15 +158,21 @@ func (s *Server) serveVideoHLS(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
-		if errors.Is(err, errHLSTranscodeUnavailable) {
-			writeAPIError(w, http.StatusServiceUnavailable, "media_transcode_unavailable", "video playback preparation failed", true)
+		if errors.Is(err, errHLSSegmentNotFound) {
+			writeAPIError(w, http.StatusNotFound, "hls_segment_not_found", "playback segment was not found", false)
 			return
 		}
-		writeAPIError(w, http.StatusInsufficientStorage, "transcode_cache_unavailable", "video playback cache is unavailable", true)
+		if errors.Is(err, errHLSTranscodeUnavailable) {
+			writeAPIError(w, http.StatusServiceUnavailable, "media_transcode_unavailable", source.Profile+" playback preparation failed", true)
+			return
+		}
+		writeAPIError(w, http.StatusInsufficientStorage, "transcode_cache_unavailable", source.Profile+" playback cache is unavailable", true)
 	}
 }
 
-func (s *Server) writeHLSPlaybackError(w http.ResponseWriter, err error) {
+// writeHLSPlaybackError names the media in messages as noun: "video", "audio",
+// or "media" before the kind is known.
+func (s *Server) writeHLSPlaybackError(w http.ResponseWriter, err error, noun string) {
 	if writeLibraryStorageError(w, err) {
 		return
 	}
@@ -159,14 +180,14 @@ func (s *Server) writeHLSPlaybackError(w http.ResponseWriter, err error) {
 	case errors.Is(err, errHLSMediaNotFound):
 		writeAPIError(w, http.StatusNotFound, "media_not_found", "media file was not found", false)
 	case errors.Is(err, errHLSMediaUnsupported):
-		writeAPIError(w, http.StatusUnprocessableEntity, "media_hls_unsupported", "video cannot be prepared for seekable playback", false)
+		writeAPIError(w, http.StatusUnprocessableEntity, "media_hls_unsupported", noun+" cannot be prepared for seekable playback", false)
 	case errors.Is(err, errHLSPlaybackSourceChanged):
-		writeAPIError(w, http.StatusConflict, "playback_source_changed", "video source changed; reload playback", true)
+		writeAPIError(w, http.StatusConflict, "playback_source_changed", noun+" source changed; reload playback", true)
 	case errors.Is(err, errRealtimeResourceBusy):
 		w.Header().Set("Retry-After", "1")
 		writeAPIError(w, http.StatusServiceUnavailable, "media_probe_busy", "media playback inspection is temporarily busy", true)
 	default:
-		writeAPIError(w, http.StatusServiceUnavailable, "media_playback_unavailable", "video playback preparation is unavailable", true)
+		writeAPIError(w, http.StatusServiceUnavailable, "media_playback_unavailable", noun+" playback preparation is unavailable", true)
 	}
 }
 
@@ -178,7 +199,8 @@ func (s *Server) loadHLSPlaybackSource(ctx context.Context, locationID int64) (h
 		}
 		return hlsPlaybackSource{}, err
 	}
-	if (target.LocationType != "local" && target.LocationType != "cache") || target.Availability != "available" || effectiveMediaKind(target.Kind, target.RelativePath) != "video" {
+	kind := effectiveMediaKind(target.Kind, target.RelativePath)
+	if (target.LocationType != "local" && target.LocationType != "cache") || target.Availability != "available" || (kind != "video" && kind != "audio") {
 		return hlsPlaybackSource{}, errHLSMediaNotFound
 	}
 	if err := s.ensureMediaLocationReadable(ctx, target.LocationType, target.RelativePath); err != nil {
@@ -200,18 +222,23 @@ func (s *Server) loadHLSPlaybackSource(ctx context.Context, locationID int64) (h
 	if err != nil {
 		return hlsPlaybackSource{}, err
 	}
-	if firstPlaybackStream(probe, "video") == nil {
+	profile, profileVersion := playbackProfileVideo, hlsProfileVersion
+	if kind == "audio" {
+		profile, profileVersion = playbackProfileAudio, audioHLSProfileVersion
+	}
+	if firstPlaybackStream(probe, profile) == nil {
 		return hlsPlaybackSource{}, errHLSMediaUnsupported
 	}
 	duration := playbackDurationSeconds(target, probe)
 	if duration <= 0 || duration > hlsMaximumDurationSeconds || math.IsNaN(duration) || math.IsInf(duration, 0) {
 		return hlsPlaybackSource{}, errHLSMediaUnsupported
 	}
-	revisionInput := fmt.Sprintf("%s\x00%d\x00%s\x00%d\x00%d", hlsProfileVersion, locationID, filepath.ToSlash(target.RelativePath), info.Size(), info.ModTime().UnixNano())
+	revisionInput := fmt.Sprintf("%s\x00%d\x00%s\x00%d\x00%d", profileVersion, locationID, filepath.ToSlash(target.RelativePath), info.Size(), info.ModTime().UnixNano())
 	revision := sha256.Sum256([]byte(revisionInput))
 	return hlsPlaybackSource{
 		LocationID: locationID,
 		Path:       mediaPath,
+		Profile:    profile,
 		Revision:   fmt.Sprintf("%x", revision[:12]),
 		Duration:   duration,
 		Probe:      probe,

@@ -22,6 +22,19 @@
 </details>
 
 <details>
+<summary><strong>Playback</strong></summary>
+
+- Compatibility playback and audio formats the browser cannot play, such as
+  `.wma`, stream as HLS segments that one continuous encode produces from
+  where playback starts or seeks to, instead of waiting for the whole file to
+  be converted to MP3. A multi-hour file starts within about a second, a file
+  too long for the four-minute MP3 preparation limit plays, and segment
+  boundaries stay seamless. Browsers without HLS playback keep the complete
+  MP3 conversion.
+
+</details>
+
+<details>
 <summary><strong>Development and docs</strong></summary>
 
 - About lists mozilla-firefox/firefox under **Engineering & CI**, as a

@@ -132,7 +132,7 @@ func TestVideoHLSCanGenerateLaterSegmentFirstAndReuseIt(t *testing.T) {
 	firstRequest.SetPathValue("id", "804")
 	firstRequest.SetPathValue("file", "segment-000002.ts")
 	firstResponse := httptest.NewRecorder()
-	server.serveVideoHLS(firstResponse, firstRequest)
+	server.serveMediaHLS(firstResponse, firstRequest)
 	if firstResponse.Code != http.StatusOK || firstResponse.Body.Len() == 0 || firstResponse.Body.Bytes()[0] != 0x47 {
 		t.Fatalf("later segment response = %d, %d bytes", firstResponse.Code, firstResponse.Body.Len())
 	}
@@ -152,7 +152,7 @@ func TestVideoHLSCanGenerateLaterSegmentFirstAndReuseIt(t *testing.T) {
 	secondRequest.SetPathValue("id", "804")
 	secondRequest.SetPathValue("file", "segment-000002.ts")
 	secondResponse := httptest.NewRecorder()
-	server.serveVideoHLS(secondResponse, secondRequest)
+	server.serveMediaHLS(secondResponse, secondRequest)
 	secondStat, err := os.Stat(segmentPath)
 	if err != nil {
 		t.Fatal(err)
@@ -172,7 +172,7 @@ func TestVideoHLSCanGenerateLaterSegmentFirstAndReuseIt(t *testing.T) {
 	staleRequest.SetPathValue("id", "804")
 	staleRequest.SetPathValue("file", "segment-000002.ts")
 	staleResponse := httptest.NewRecorder()
-	server.serveVideoHLS(staleResponse, staleRequest)
+	server.serveMediaHLS(staleResponse, staleRequest)
 	if staleResponse.Code != http.StatusConflict || !strings.Contains(staleResponse.Body.String(), `"code":"playback_source_changed"`) {
 		t.Fatalf("stale segment response = %d, %s", staleResponse.Code, staleResponse.Body.String())
 	}

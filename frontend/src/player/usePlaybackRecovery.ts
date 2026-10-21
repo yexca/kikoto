@@ -5,7 +5,7 @@ import { useToast } from "@/components/ui/toast";
 import { assetURL } from "@/lib/api";
 import { originalFileNamesShown } from "@/lib/originalFileNames";
 
-import { playerTrackAudioURL, supportsCompatibilityPlayback } from "./playerTrackMedia";
+import { playerTrackAudioSource, supportsCompatibilityPlayback } from "./playerTrackMedia";
 import { playerTrackTitle } from "./playerTrackTitle";
 import type { PlaybackCompatibilityScope, PlayerTrack } from "./playerTypes";
 import {
@@ -138,8 +138,10 @@ export function usePlaybackRecovery(
       timedOut = true;
       controller.abort();
     }, 3_000);
+    // An HLS playlist played through Media Source Extensions has a blob: source.
+    const elementSource = audio.currentSrc.startsWith("blob:") ? "" : audio.currentSrc;
     const sourceURL =
-      audio.currentSrc || assetURL(playerTrackAudioURL(failedTrack, refs.compatibilityPlaybackEnabledRef.current));
+      elementSource || assetURL(playerTrackAudioSource(failedTrack, refs.compatibilityPlaybackEnabledRef.current).url);
     refs.sourceLoadingRef.current = false;
     setIsBuffering(false);
     updatePlayingState(false);
