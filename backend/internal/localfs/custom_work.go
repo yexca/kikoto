@@ -22,6 +22,9 @@ type CustomWorkCandidate struct {
 // work codes folder names within the scan depth already carry.
 type CustomWorkDiscovery struct {
 	Candidates []CustomWorkCandidate
+	// Containers are the folders a candidate would be if they held no work
+	// folder or unreadable folder.
+	Containers []CustomWorkCandidate
 	Codes      map[string]bool
 }
 
@@ -56,63 +59,12 @@ func CustomWorkCandidateAt(root, rel string, options Options) (CustomWorkCandida
 	if options.ScanDepth <= 0 {
 		options.ScanDepth = 3
 	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return CustomWorkCandidate{}, false, err
-	}
-	parts := strings.Split(rel, "/")
-	if rel == "" || len(parts) > options.ScanDepth {
+	if rel == "" || len(strings.Split(rel, "/")) > options.ScanDepth {
 		return CustomWorkCandidate{}, false, nil
 	}
-	starts, err := discoveryStarts(absRoot, options.SubRoots)
-	if err != nil {
+	absRoot, visible, err := customWorkFolderVisible(root, rel, options)
+	if err != nil || !visible {
 		return CustomWorkCandidate{}, false, err
-	}
-	// visitFrom indexes the first name the walk visits, the walk start's own or
-	// the first below the data root; listFrom the first name it finds by
-	// listing a folder rather than as a configured start.
-	visitFrom, listFrom := -1, -1
-	for _, start := range starts {
-		startRel, err := filepath.Rel(absRoot, start)
-		if err != nil {
-			return CustomWorkCandidate{}, false, err
-		}
-		startRel = filepath.ToSlash(startRel)
-		if startRel == "." {
-			visitFrom, listFrom = 0, 0
-			break
-		}
-		if rel == startRel || strings.HasPrefix(rel, startRel+"/") {
-			visitFrom = strings.Count(startRel, "/")
-			listFrom = visitFrom + 1
-			if info, err := os.Lstat(start); err != nil {
-				return CustomWorkCandidate{}, false, err
-			} else if !info.IsDir() {
-				return CustomWorkCandidate{}, false, nil
-			}
-			break
-		}
-	}
-	if visitFrom < 0 {
-		return CustomWorkCandidate{}, false, nil
-	}
-	for index, part := range parts {
-		if strings.HasPrefix(part, ".") {
-			return CustomWorkCandidate{}, false, nil
-		}
-		if index < visitFrom {
-			continue
-		}
-		if code, _ := ExtractWorkCode(part); code != "" || IsIgnoredDirectoryName(part) {
-			return CustomWorkCandidate{}, false, nil
-		}
-		if index < listFrom {
-			continue
-		}
-		listed, err := listsDirectory(filepath.Join(absRoot, filepath.Join(parts[:index]...)), part)
-		if err != nil || !listed {
-			return CustomWorkCandidate{}, false, err
-		}
 	}
 	discovery, err := discoverCustomWork(absRoot, []string{filepath.Join(absRoot, filepath.FromSlash(rel))}, options.ScanDepth)
 	if err != nil {
@@ -124,6 +76,151 @@ func CustomWorkCandidateAt(root, rel string, options Options) (CustomWorkCandida
 		}
 	}
 	return CustomWorkCandidate{}, false, nil
+}
+
+// CustomWorkFolderNode is a folder the custom work folder tree shows: a
+// candidate, or a folder that holds a work folder and is shown only so the
+// candidates beside or below that work folder can be reached.
+type CustomWorkFolderNode struct {
+	Name string
+	// RelPath is slash-separated and relative to the scanned root.
+	RelPath string
+	// Candidate reports whether DiscoverCustomWorkCandidates returns the folder.
+	Candidate bool
+	// HasChildren reports whether the tree shows folders inside it.
+	HasChildren bool
+}
+
+// CustomWorkFolderChildren returns the folders directly inside rel that the
+// custom work folder tree shows, by the rules of DiscoverCustomWorkCandidates:
+// every candidate and every folder on the way to one. A folder that carries a
+// work code or lies inside one, and a hidden, ignored, or unreadable folder,
+// is left out. An empty rel lists the top level of the walk starts. It reads
+// the folders above rel like CustomWorkCandidateAt and walks only rel's own
+// subtree. It reports false when the tree does not show rel.
+func CustomWorkFolderChildren(root, rel string, options Options) ([]CustomWorkFolderNode, bool, error) {
+	if options.ScanDepth <= 0 {
+		options.ScanDepth = 3
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, false, err
+	}
+	var starts []string
+	parent := "."
+	if rel == "" {
+		if starts, err = discoveryStarts(absRoot, options.SubRoots); err != nil {
+			return nil, false, err
+		}
+	} else {
+		var visible bool
+		if absRoot, visible, err = customWorkFolderVisible(root, rel, options); err != nil || !visible {
+			return nil, false, err
+		}
+		if len(strings.Split(rel, "/")) >= options.ScanDepth {
+			return []CustomWorkFolderNode{}, true, nil
+		}
+		starts, parent = []string{filepath.Join(absRoot, filepath.FromSlash(rel))}, rel
+	}
+	discovery, err := discoverCustomWork(absRoot, starts, options.ScanDepth)
+	if err != nil {
+		return nil, false, err
+	}
+	// Every folder the tree shows has its parent shown too, so a folder has
+	// children exactly when some shown folder names it as its parent.
+	hasChildren := map[string]bool{}
+	for _, folders := range [][]CustomWorkCandidate{discovery.Candidates, discovery.Containers} {
+		for _, folder := range folders {
+			hasChildren[path.Dir(folder.RelPath)] = true
+		}
+	}
+	nodes := []CustomWorkFolderNode{}
+	for index, folders := range [][]CustomWorkCandidate{discovery.Candidates, discovery.Containers} {
+		for _, folder := range folders {
+			if path.Dir(folder.RelPath) != parent {
+				continue
+			}
+			nodes = append(nodes, CustomWorkFolderNode{
+				Name:        folder.Name,
+				RelPath:     folder.RelPath,
+				Candidate:   index == 0,
+				HasChildren: hasChildren[folder.RelPath],
+			})
+		}
+	}
+	sort.Slice(nodes, func(i, j int) bool {
+		left, right := strings.ToLower(nodes[i].Name), strings.ToLower(nodes[j].Name)
+		if left != right {
+			return left < right
+		}
+		return nodes[i].Name < nodes[j].Name
+	})
+	return nodes, true, nil
+}
+
+// customWorkFolderVisible reports whether the full candidate walk with the
+// same options would visit the folder at rel and could list it as a candidate
+// or as a folder on the way to one: it lies under a walk start, no name on its
+// path is hidden, ignored, or carries a work code, and every folder above it
+// lists the next one as a directory rather than a link. It returns the
+// absolute data root.
+func customWorkFolderVisible(root, rel string, options Options) (string, bool, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", false, err
+	}
+	parts := strings.Split(rel, "/")
+	starts, err := discoveryStarts(absRoot, options.SubRoots)
+	if err != nil {
+		return "", false, err
+	}
+	// visitFrom indexes the first name the walk visits, the walk start's own or
+	// the first below the data root; listFrom the first name it finds by
+	// listing a folder rather than as a configured start.
+	visitFrom, listFrom := -1, -1
+	for _, start := range starts {
+		startRel, err := filepath.Rel(absRoot, start)
+		if err != nil {
+			return "", false, err
+		}
+		startRel = filepath.ToSlash(startRel)
+		if startRel == "." {
+			visitFrom, listFrom = 0, 0
+			break
+		}
+		if rel == startRel || strings.HasPrefix(rel, startRel+"/") {
+			visitFrom = strings.Count(startRel, "/")
+			listFrom = visitFrom + 1
+			if info, err := os.Lstat(start); err != nil {
+				return "", false, err
+			} else if !info.IsDir() {
+				return "", false, nil
+			}
+			break
+		}
+	}
+	if visitFrom < 0 {
+		return "", false, nil
+	}
+	for index, part := range parts {
+		if strings.HasPrefix(part, ".") {
+			return "", false, nil
+		}
+		if index < visitFrom {
+			continue
+		}
+		if code, _ := ExtractWorkCode(part); code != "" || IsIgnoredDirectoryName(part) {
+			return "", false, nil
+		}
+		if index < listFrom {
+			continue
+		}
+		listed, err := listsDirectory(filepath.Join(absRoot, filepath.Join(parts[:index]...)), part)
+		if err != nil || !listed {
+			return "", false, err
+		}
+	}
+	return absRoot, true, nil
 }
 
 // listsDirectory reports whether the folder at parent can be read and lists a
@@ -205,15 +302,20 @@ func discoverCustomWork(absRoot string, starts []string, scanDepth int) (CustomW
 			holdsWork[parent] = true
 		}
 	}
-	candidates := folders[:0]
+	candidates, containers := []CustomWorkCandidate{}, []CustomWorkCandidate{}
 	for _, folder := range folders {
-		if unreadable[folder.RelPath] || holdsWork[folder.RelPath] || insideCodedOrHidden(folder.RelPath, coded) {
+		if unreadable[folder.RelPath] || insideCodedOrHidden(folder.RelPath, coded) {
+			continue
+		}
+		if holdsWork[folder.RelPath] {
+			containers = append(containers, folder)
 			continue
 		}
 		candidates = append(candidates, folder)
 	}
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].RelPath < candidates[j].RelPath })
-	return CustomWorkDiscovery{Candidates: candidates, Codes: codes}, nil
+	sort.Slice(containers, func(i, j int) bool { return containers[i].RelPath < containers[j].RelPath })
+	return CustomWorkDiscovery{Candidates: candidates, Containers: containers, Codes: codes}, nil
 }
 
 func insideCodedOrHidden(rel string, coded map[string]bool) bool {

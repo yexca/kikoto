@@ -48,6 +48,7 @@ type PendingDelete = {
  */
 export function WorkMaintenance({
   preferenceRevision = 0,
+  listRevision = 0,
   canManageSources,
   canSyncMetadata,
   readOnly = false,
@@ -60,6 +61,8 @@ export function WorkMaintenance({
 }: {
   /** Reload presentation after a personal preference changes, keeping list state. */
   preferenceRevision?: number;
+  /** Reload the list after its works change elsewhere, keeping list state. */
+  listRevision?: number;
   canManageSources: boolean;
   canSyncMetadata: boolean;
   readOnly?: boolean;
@@ -135,7 +138,7 @@ export function WorkMaintenance({
     };
     void load();
     return () => controller.abort();
-  }, [page, pageSize, query, reason, runId, refreshKey, preferenceRevision, canManageSources, t]);
+  }, [page, pageSize, query, reason, runId, refreshKey, preferenceRevision, listRevision, canManageSources, t]);
 
   const pageWorkIds = useMemo(
     () =>

@@ -50,6 +50,8 @@ var (
 type customWorkFolder struct {
 	Path string `json:"path"`
 	Name string `json:"name"`
+	// InUse marks a folder Fetch writes into; creation refuses it until then.
+	InUse bool `json:"inUse"`
 }
 
 type customWorkFoldersResponse struct {
@@ -57,6 +59,28 @@ type customWorkFoldersResponse struct {
 	Truncated      bool               `json:"truncated"`
 	NoticeAccepted bool               `json:"noticeAccepted"`
 }
+
+// customWorkTreeFolder is one folder of the folder tree. A folder that cannot
+// become a custom work is still shown when candidates lie below it.
+type customWorkTreeFolder struct {
+	Path        string `json:"path"`
+	Name        string `json:"name"`
+	Selectable  bool   `json:"selectable"`
+	HasChildren bool   `json:"hasChildren"`
+	// Reason says why a folder is not selectable: "holds_works" for a folder
+	// that holds a work folder, "in_use" for a folder Fetch writes into, and
+	// "storage_pool" for a storage pool's own folder.
+	Reason string `json:"reason,omitempty"`
+}
+
+type customWorkTreeResponse struct {
+	Path      string                 `json:"path"`
+	Folders   []customWorkTreeFolder `json:"folders"`
+	Truncated bool                   `json:"truncated"`
+}
+
+// customWorkTreeLimit bounds the folders one tree level returns.
+const customWorkTreeLimit = 500
 
 type createCustomWorkResponse struct {
 	WorkID    int64  `json:"workId"`
@@ -81,6 +105,11 @@ func (s *Server) listCustomWorkFolders(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	busy, err := s.customWorkBusyRoots(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	response := customWorkFoldersResponse{Folders: []customWorkFolder{}, NoticeAccepted: accepted}
 	for _, candidate := range discovery.Candidates {
@@ -91,9 +120,104 @@ func (s *Server) listCustomWorkFolders(w http.ResponseWriter, r *http.Request) {
 			response.Truncated = true
 			break
 		}
-		response.Folders = append(response.Folders, customWorkFolder{Path: candidate.RelPath, Name: candidate.Name})
+		response.Folders = append(response.Folders, customWorkFolder{
+			Path: candidate.RelPath, Name: candidate.Name, InUse: customWorkFolderBusy(busy, candidate.RelPath),
+		})
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+// listCustomWorkTree lists the folders directly inside one folder of the custom
+// work scope, or the scope's top level for an empty path: every folder that
+// can become a custom work, and every folder on the way to one. Folders that
+// carry a work code, and the folders inside them, are left out.
+func (s *Server) listCustomWorkTree(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireCustomWorkAccess(w, r); !ok {
+		return
+	}
+	rel := s.customWorkRequestPath(r.URL.Query().Get("path"))
+	scope, options, err := s.customWorkScope(r.Context())
+	if err != nil {
+		writeCustomWorkError(w, err)
+		return
+	}
+	if rel != "" && localfs.IsIgnoredPath(rel) {
+		writeCustomWorkError(w, errCustomWorkFolderUnavailable)
+		return
+	}
+	nodes, ok, err := localfs.CustomWorkFolderChildren(s.cfg.DataRoot, rel, options)
+	if err != nil {
+		writeCustomWorkError(w, err)
+		return
+	}
+	if !ok {
+		writeCustomWorkError(w, errCustomWorkFolderUnavailable)
+		return
+	}
+	busy, err := s.customWorkBusyRoots(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	response := customWorkTreeResponse{Path: rel, Folders: []customWorkTreeFolder{}}
+	for _, node := range nodes {
+		if len(response.Folders) == customWorkTreeLimit {
+			response.Truncated = true
+			break
+		}
+		folder := customWorkTreeFolder{Path: node.RelPath, Name: node.Name, HasChildren: node.HasChildren}
+		switch {
+		case !scope.contains(node.RelPath):
+			// Only a storage pool's own folder is shown outside the scope.
+			folder.Reason = "storage_pool"
+		case !node.Candidate:
+			folder.Reason = "holds_works"
+		case customWorkFolderBusy(busy, node.RelPath):
+			folder.Reason = "in_use"
+		default:
+			folder.Selectable = true
+		}
+		response.Folders = append(response.Folders, folder)
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+// getCustomWorkFolder checks a typed folder path: it returns the folder when
+// it can become a custom work, by the same rules creation applies.
+func (s *Server) getCustomWorkFolder(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireCustomWorkAccess(w, r); !ok {
+		return
+	}
+	rel := s.customWorkRequestPath(r.URL.Query().Get("path"))
+	if rel == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "folder is required"})
+		return
+	}
+	folder, err := s.customWorkCandidate(r.Context(), rel)
+	if err != nil {
+		writeCustomWorkError(w, err)
+		return
+	}
+	busy, err := s.customWorkBusyRoots(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, customWorkFolder{Path: folder.RelPath, Name: folder.Name, InUse: customWorkFolderBusy(busy, folder.RelPath)})
+}
+
+// customWorkRequestPath reads a requested folder as a path relative to the
+// data root. A path that starts with the data root's own absolute path, as a
+// file manager on the server shows it, is made relative to it.
+func (s *Server) customWorkRequestPath(raw string) string {
+	value := strings.ReplaceAll(strings.TrimSpace(raw), "\\", "/")
+	if root := strings.TrimRight(filepath.ToSlash(filepath.Clean(s.cfg.DataRoot)), "/"); root != "" && root != "." {
+		if value == root {
+			return ""
+		}
+		value = strings.TrimPrefix(value, root+"/")
+	}
+	return normalizeFolderRootPath(value)
 }
 
 // createCustomWork assigns the next custom work code to a library folder,
@@ -111,7 +235,7 @@ func (s *Server) createCustomWork(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
 		return
 	}
-	rel := normalizeFolderRootPath(payload.Path)
+	rel := s.customWorkRequestPath(payload.Path)
 	title := strings.TrimSpace(payload.Title)
 	if rel == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "folder is required"})
@@ -183,6 +307,20 @@ func (s *Server) acceptCustomWorkNotice(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"noticeAccepted": true})
+}
+
+// getCustomWorkNotice reports whether the rename notice is accepted, without
+// reading the library.
+func (s *Server) getCustomWorkNotice(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireCustomWorkAccess(w, r); !ok {
+		return
+	}
+	accepted, err := s.customWorkNoticeAccepted(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"noticeAccepted": accepted})
 }
 
 func (s *Server) customWorkNoticeAccepted(ctx context.Context) (bool, error) {
@@ -375,9 +513,31 @@ func (s *Server) insertCustomWork(ctx context.Context, code, title string) (int6
 // folder Fetch writes into: a configured Fetch root, or the target of an
 // active Fetch or Edit files run, including a folder that run merges away.
 func (s *Server) customWorkFolderInUse(ctx context.Context, absolute string) (bool, error) {
-	fetchRoots, err := s.configuredRemoteFetchWatchRoots(ctx)
+	roots, err := s.customWorkBusyRoots(ctx)
 	if err != nil {
 		return false, err
+	}
+	return customWorkFolderBusy(roots, relativeDataPath(s.cfg.DataRoot, absolute)), nil
+}
+
+// customWorkFolderBusy reports whether a folder, relative to the data root,
+// is, holds, or lies inside one of roots.
+func customWorkFolderBusy(roots []string, folder string) bool {
+	for _, root := range roots {
+		if fetchPathWithinRoot(root, folder) || fetchPathWithinRoot(folder, root) {
+			return true
+		}
+	}
+	return false
+}
+
+// customWorkBusyRoots lists, relative to the data root, the folders Fetch
+// writes into: every configured Fetch root and the target of every active
+// Fetch or Edit files run, including a folder that run merges away.
+func (s *Server) customWorkBusyRoots(ctx context.Context) ([]string, error) {
+	fetchRoots, err := s.configuredRemoteFetchWatchRoots(ctx)
+	if err != nil {
+		return nil, err
 	}
 	roots := []string{}
 	for _, root := range fetchRoots {
@@ -401,30 +561,24 @@ func (s *Server) customWorkFolderInUse(ctx context.Context, absolute string) (bo
 		WHERE job.worker_type = ? AND run.status IN ('queued', 'running')
 	`, workFolderEditWorkerType, workFolderEditWorkerType)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	for rows.Next() {
 		var root string
 		if err := rows.Scan(&root); err != nil {
 			_ = rows.Close()
-			return false, err
+			return nil, err
 		}
 		roots = append(roots, root)
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		return false, err
+		return nil, err
 	}
 	if err := rows.Close(); err != nil {
-		return false, err
+		return nil, err
 	}
-	folder := relativeDataPath(s.cfg.DataRoot, absolute)
-	for _, root := range roots {
-		if fetchPathWithinRoot(root, folder) || fetchPathWithinRoot(folder, root) {
-			return true, nil
-		}
-	}
-	return false, nil
+	return roots, nil
 }
 
 // customWorkFolderName keeps the folder's own name first and appends the code

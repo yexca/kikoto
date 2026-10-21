@@ -7,7 +7,7 @@ vi.hoisted(() => {
 
 import "@/i18n";
 import { ToastProvider } from "@/components/ui/toast";
-import { CustomWorkDialog, CustomWorkNotice } from "./CustomWorkMaintenance";
+import { CustomWorkAddDialog, CustomWorkNotice } from "./CustomWorkMaintenance";
 
 describe("CustomWorkNotice", () => {
   it("asks for agreement to the folder rename before custom works unlock", () => {
@@ -24,19 +24,15 @@ describe("CustomWorkNotice", () => {
   });
 });
 
-describe("CustomWorkDialog", () => {
-  it("shows the folder and its new name before renaming", () => {
+describe("CustomWorkAddDialog", () => {
+  it("offers the folder scan instead of walking the library when it opens", () => {
     const rendered = renderToStaticMarkup(
-      <CustomWorkDialog
-        folder={{ path: "Shelf/Example Work 1", name: "Example Work 1" }}
-        onClose={() => undefined}
-        onCreated={() => undefined}
-      />,
+      <CustomWorkAddDialog onClose={() => undefined} onCreated={() => undefined} />,
     );
 
-    expect(rendered).toContain("Shelf/Example Work 1");
-    expect(rendered).toContain("Example Work 1 [KT code]");
-    expect(rendered).toContain("Kikoto renames this folder on disk.");
-    expect(rendered).toContain("Rename and create");
+    expect(rendered).toContain("Found folders");
+    expect(rendered).toContain("Scan library folders");
+    expect(rendered).not.toContain("Before you create custom works");
+    expect(rendered).toMatch(/<button[^>]*disabled=""[^>]*>Next/);
   });
 });
