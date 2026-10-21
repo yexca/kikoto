@@ -268,6 +268,12 @@ export const workCardHans = {
   loadingSeries: "正在加载系列信息...",
   couldNotOpenEntity: "无法打开此{{kind}}。",
   mark: "标记：{{status}}",
+  userRating: "我的评分",
+  rateStars_one: "评为 {{count}} 星",
+  rateStars_other: "评为 {{count}} 星",
+  clearUserRating: "清除我的评分",
+  userRatingValue: "我的评分：{{value}} / 5",
+  rateWork: "为这部作品评分",
   status: {
     ...workCardEnglish.status,
     none: "未标记",

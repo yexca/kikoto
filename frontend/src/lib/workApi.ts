@@ -75,6 +75,8 @@ export type WorkDetail = {
   staffCredits?: StaffCredit[] | null;
   listeningStatus: ListeningStatus;
   favorite: boolean;
+  /** The viewer's own one-to-five-star rating; null when unrated. */
+  userRating: number | null;
   metadataPresentation: WorkMetadataPresentation;
   metadataSync: WorkMetadataSyncStatus;
   translations: WorkTranslation[];
@@ -187,8 +189,9 @@ export const workApi = {
     }),
   setWorkUserTags: (id: number, tags: string[]) =>
     putJSONBody<{ workId: number; userTags: UserTag[] }>(`/api/works/${id}/tags`, { tags }),
-  updateWorkUserState: (id: number, payload: { listeningStatus?: ListeningStatus }) =>
-    patchJSONBody<{ workId: number; listeningStatus: ListeningStatus; favorite: boolean }>(
+  /** userRating null clears the rating; leaving it out keeps it. */
+  updateWorkUserState: (id: number, payload: { listeningStatus?: ListeningStatus; userRating?: number | null }) =>
+    patchJSONBody<{ workId: number; listeningStatus: ListeningStatus; favorite: boolean; userRating: number | null }>(
       `/api/works/${id}/user-state`,
       payload,
     ),

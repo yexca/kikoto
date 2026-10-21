@@ -11,7 +11,9 @@ import (
 	"github.com/yexca/kikoto/backend/internal/storage"
 )
 
-func TestFrozenAffinityMatchesV5SignalsAndComponents(t *testing.T) {
+// The default weights in hundredths of a favorite: 5★ 150, 4★ 100, 2★ −75,
+// 1★ −125, unrated Relisten 50, unrated Shelved −35.
+func TestFrozenAffinityWeighsRatingsBeforeMarks(t *testing.T) {
 	store, userID := seedPaginationLibrary(t, 9, 0, 0)
 	exec := func(query string, args ...any) {
 		t.Helper()
@@ -20,47 +22,67 @@ func TestFrozenAffinityMatchesV5SignalsAndComponents(t *testing.T) {
 		}
 	}
 	exec("DELETE FROM user_work_state")
-	exec("INSERT INTO tag(id,namespace,normalized_name,display_name) VALUES (1,'metadata','example-common','Example Common'),(2,'metadata','example-positive','Example Positive'),(3,'metadata','example-negative','Example Negative'),(4,'manual','example-manual','Example Manual')")
-	exec("INSERT INTO person(id,display_name) VALUES (1,'Example Voice'),(2,'Example Negative Voice')")
-	exec("INSERT INTO party(id,display_name) VALUES (1,'Example Circle'),(2,'Example Negative Circle')")
-	exec("INSERT INTO work_tag(work_id,tag_id,source) SELECT id,1,'test' FROM work")
-	for _, id := range []int{1, 2, 3, 5} {
-		exec("INSERT INTO work_tag(work_id,tag_id,source) VALUES (?,2,'test'),(?,2,'example-other-source'),(?,4,'test')", id, id, id)
-		exec("INSERT INTO work_credit(work_id,person_id,role,source) VALUES (?,1,'voice_actor','test')", id)
-		exec("INSERT INTO work_party(work_id,party_id,role,source) VALUES (?,1,'circle','test')", id)
+	exec("INSERT INTO person(id,display_name) VALUES (1,'Example Loved Voice'),(2,'Example Mixed Voice'),(3,'Example Neutral Voice'),(4,'Example Relisten Voice')")
+	exec("INSERT INTO party(id,display_name) VALUES (1,'Example Shelved Circle')")
+	voices := map[int][]int{1: {1}, 2: {1}, 3: {2}, 4: {2}, 7: {3}, 8: {4}, 9: {1, 2, 3, 4}}
+	for work, people := range voices {
+		for _, person := range people {
+			exec("INSERT INTO work_credit(work_id,person_id,role,source) VALUES (?,?,'voice_actor','test')", work, person)
+		}
 	}
-	for _, id := range []int{3, 4, 6} {
-		exec("INSERT INTO work_tag(work_id,tag_id,source) VALUES (?,3,'test')", id)
-		exec("INSERT INTO work_credit(work_id,person_id,role,source) VALUES (?,2,'voice_actor','test')", id)
-		exec("INSERT INTO work_party(work_id,party_id,role,source) VALUES (?,2,'circle','test')", id)
+	for _, work := range []int{5, 6, 9} {
+		exec("INSERT INTO work_party(work_id,party_id,role,source) VALUES (?,1,'circle','test')", work)
 	}
-	exec("INSERT INTO user_work_state(user_id,work_id,listening_status,favorite) VALUES (?,1,'relisten',0),(?,2,'paused',1),(?,3,'paused',0),(?,4,'paused',0),(?,7,'listening',0)", userID, userID, userID, userID, userID)
+	// A rating outranks the work's marks: work 2 is a favorite rated four
+	// stars, and work 7 is a Relisten rated a neutral three.
+	exec(`INSERT INTO user_work_state(user_id,work_id,listening_status,favorite,rating) VALUES
+		(?,1,'none',0,5),(?,2,'finished',1,4),(?,3,'finished',0,1),(?,4,'none',1,NULL),
+		(?,5,'paused',0,NULL),(?,6,'paused',0,NULL),(?,7,'relisten',0,3),(?,8,'relisten',0,NULL)`,
+		userID, userID, userID, userID, userID, userID, userID, userID)
 	scaleDrainCatalog(t, store)
 	ctx := context.Background()
-	snapshot, err := store.PrepareRecommendationSession(ctx, userID, "synthetic-v5-equivalence")
+	snapshot, err := store.PrepareRecommendationSession(ctx, userID, "synthetic-rating-weights")
 	if err != nil {
 		t.Fatal(err)
 	}
-	configs := []RecommendationConfig{DefaultRecommendationConfig(), DefaultRecommendationConfig()}
-	configs[1].NegativeMinEvidence = 1
-	configs[1].TagWeight = 7
-	configs[1].VoiceCap = 9
-	configs[1].NegativeTotalCap = 6
-	for _, config := range configs {
-		snapshot.Config = config
-		for id := int64(1); id <= 9; id++ {
-			legacy, err := store.legacyRecommendationBreakdownWithConfig(ctx, userID, id, config)
-			if err != nil {
-				t.Fatal(err)
-			}
-			frozen, err := store.RecommendationSnapshotBreakdown(ctx, snapshot, id)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(legacy, frozen) {
-				t.Fatalf("work %d affinity differs: legacy=%+v frozen=%+v", id, legacy, frozen)
+	breakdown := func(id int64) RecommendationBreakdown {
+		t.Helper()
+		result, err := store.RecommendationSnapshotBreakdown(ctx, snapshot, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	contribution := func(result RecommendationBreakdown, key string) int {
+		for _, component := range result.Components {
+			if component.Key == key {
+				return component.Contribution
 			}
 		}
+		t.Fatalf("component %s missing from %+v", key, result.Components)
+		return 0
+	}
+
+	// Voices: the loved voice nets 250 (strength 1.375) and the relisten voice
+	// 50 (0.5), so 1.875 × 10 rounds to 19; the neutral voice adds nothing.
+	// The mixed voice nets −25 with one disliked work (0.25 × 3 → 1), and the
+	// shelved circle nets −70 from two shelved works (0.7 × 5 → 4).
+	candidate := breakdown(9)
+	if candidate.Signals.PositiveVoiceMatches != 2 || contribution(candidate, "voices") != 19 ||
+		candidate.Signals.NegativeVoiceMatches != 1 || candidate.Signals.NegativeCircleMatches != 1 ||
+		contribution(candidate, "disliked_similarity") != -5 || candidate.Score != 49 {
+		t.Fatalf("candidate=%+v", candidate)
+	}
+	// A work's own rating never supports it, while Favorite still adds its bonus.
+	if self := breakdown(1); contribution(self, "voices") != 10 || self.Score != 45 {
+		t.Fatalf("self-excluded rating=%+v", self)
+	}
+	if favorite := breakdown(2); contribution(favorite, "voices") != 11 || contribution(favorite, "favorite") != 10 || favorite.Score != 56 {
+		t.Fatalf("rated favorite=%+v", favorite)
+	}
+	// One remaining shelved work is below the default two-work threshold.
+	if shelved := breakdown(6); shelved.Signals.NegativeCircleMatches != 0 || shelved.Score != 35 {
+		t.Fatalf("single shelved work=%+v", shelved)
 	}
 	var scores, states int
 	if err := store.db.QueryRow("SELECT COUNT(*) FROM recommendation_snapshot WHERE generation_id=?", snapshot.GenerationID).Scan(&scores); err != nil {
@@ -69,8 +91,47 @@ func TestFrozenAffinityMatchesV5SignalsAndComponents(t *testing.T) {
 	if err := store.db.QueryRow("SELECT COUNT(*) FROM recommendation_generation_state WHERE generation_id=?", snapshot.GenerationID).Scan(&states); err != nil {
 		t.Fatal(err)
 	}
-	if scores != 0 || states != 5 {
+	if scores != 0 || states != 8 {
 		t.Fatalf("generation dense scores/sparse state=%d/%d", scores, states)
+	}
+}
+
+func TestRatingChangeStartsNewRecommendationGeneration(t *testing.T) {
+	store, userID := seedPaginationLibrary(t, 2, 0, 0)
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := store.db.Exec(query, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec("DELETE FROM user_work_state")
+	exec("INSERT INTO person(id,display_name) VALUES (1,'Example Voice')")
+	exec("INSERT INTO work_credit(work_id,person_id,role,source) VALUES (1,1,'voice_actor','test'),(2,1,'voice_actor','test')")
+	exec("INSERT INTO user_work_state(user_id,work_id,listening_status) VALUES (?,1,'finished')", userID)
+	scaleDrainCatalog(t, store)
+	ctx := context.Background()
+	before, err := store.PrepareRecommendationSession(ctx, userID, "synthetic-before-rating")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec("UPDATE user_work_state SET rating = 5 WHERE user_id = ? AND work_id = 1", userID)
+	after, err := store.PrepareRecommendationSession(ctx, userID, "synthetic-after-rating")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.GenerationID == before.GenerationID {
+		t.Fatal("a new rating reused the generation prepared before it")
+	}
+	unrated, err := store.RecommendationSnapshotBreakdown(ctx, before, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rated, err := store.RecommendationSnapshotBreakdown(ctx, after, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unrated.Score != 35 || rated.Score != 46 {
+		t.Fatalf("unrated=%d rated=%d", unrated.Score, rated.Score)
 	}
 }
 
@@ -151,7 +212,7 @@ func TestCatalogCancellationRollbackAndReferencedHistoryRetention(t *testing.T) 
 		}
 	}
 	exec("DELETE FROM user_work_state; INSERT INTO person(id,display_name) VALUES(1,'Example Voice'); INSERT INTO work_credit(work_id,person_id,role,source) VALUES(1,1,'voice_actor','test'),(2,1,'voice_actor','test')")
-	exec("INSERT INTO user_work_state(user_id,work_id,listening_status) VALUES(?,1,'relisten')", userID)
+	exec("INSERT INTO user_work_state(user_id,work_id,listening_status,rating) VALUES(?,1,'relisten',4)", userID)
 	scaleDrainCatalog(t, store)
 	ctx := context.Background()
 	snapshot, err := store.PrepareRecommendationSession(ctx, userID, "synthetic-retained")

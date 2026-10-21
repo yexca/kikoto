@@ -26,7 +26,7 @@ func TestRemoteRecommendationsScoreTransientWorksWithoutFetchingOrMaterializing(
 	likedID := metadataReviewExec(t, s.db, "INSERT INTO work (primary_code, title) VALUES (?, 'Example Work 1')", testfixture.WorkCode(testfixture.PrefixRJ, 1))
 	knownCode := testfixture.WorkCode(testfixture.PrefixRJ, 2)
 	knownID := metadataReviewExec(t, s.db, "INSERT INTO work (primary_code, title) VALUES (?, 'Example Work 2')", knownCode)
-	metadataReviewExec(t, s.db, "INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, ?, 'relisten')", userID, likedID)
+	metadataReviewExec(t, s.db, "INSERT INTO user_work_state (user_id, work_id, listening_status, rating) VALUES (?, ?, 'relisten', 4)", userID, likedID)
 	voiceID := metadataReviewExec(t, s.db, "INSERT INTO person (display_name) VALUES ('Example Voice')")
 	circleID := metadataReviewExec(t, s.db, "INSERT INTO party (display_name) VALUES ('Example Circle')")
 	for _, workID := range []int64{likedID, knownID} {
@@ -67,7 +67,7 @@ func TestRemoteRecommendationsScoreTransientWorksWithoutFetchingOrMaterializing(
 	if len(result.Scores) != 2 || result.Scores[0].Score != 60 || result.Scores[1].Score != 60 {
 		t.Fatalf("scores=%+v", result.Scores)
 	}
-	metadataReviewExec(t, s.db, "UPDATE user_work_state SET listening_status = 'finished' WHERE user_id = ?", userID)
+	metadataReviewExec(t, s.db, "UPDATE user_work_state SET listening_status = 'finished', rating = NULL WHERE user_id = ?", userID)
 	if frozen := request(candidates, "synthetic-session", true); frozen.Body.String() != response.Body.String() {
 		t.Fatalf("session changed: %s", frozen.Body.String())
 	}

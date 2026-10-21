@@ -33,16 +33,22 @@ const config: RecommendationConfig = {
   negativeTotalCap: 15,
   jitterAmplitude: 3,
   explorationAmplitude: 18,
+  ratingFiveWeight: 150,
+  ratingFourWeight: 100,
+  ratingTwoWeight: 75,
+  ratingOneWeight: 125,
+  relistenWeight: 50,
+  shelvedWeight: 35,
 };
 
 describe("recommendation tuning preview", () => {
-  it("applies per-match weights, caps, the favorite bonus, and shelved deductions like the server", () => {
+  it("applies per-match weights, caps, the favorite bonus, and disliked deductions like the server", () => {
     const breakdown = recommendationExampleBreakdown(config, {
       tags: 7,
       voices: 1,
       circles: 0,
       favorite: true,
-      shelvedTags: 5,
+      dislikedTags: 5,
     });
     expect(breakdown.components.map(({ key, contribution }) => [key, contribution])).toEqual([
       ["base", 35],
@@ -50,7 +56,7 @@ describe("recommendation tuning preview", () => {
       ["voices", 10],
       ["circles", 0],
       ["favorite", 10],
-      ["paused_similarity", -6],
+      ["disliked_similarity", -6],
     ]);
     expect(breakdown.rawScore).toBe(74);
     expect(breakdown.score).toBe(74);
@@ -59,7 +65,7 @@ describe("recommendation tuning preview", () => {
   it("bounds the displayed score while keeping the raw total", () => {
     const breakdown = recommendationExampleBreakdown(
       { ...config, affinityBase: 90 },
-      { tags: 5, voices: 2, circles: 1, favorite: false, shelvedTags: 0 },
+      { tags: 5, voices: 2, circles: 1, favorite: false, dislikedTags: 0 },
     );
     expect(breakdown.rawScore).toBe(150);
     expect(breakdown.score).toBe(100);

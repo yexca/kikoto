@@ -5,7 +5,7 @@ export type RecommendationExample = {
   voices: number;
   circles: number;
   favorite: boolean;
-  shelvedTags: number;
+  dislikedTags: number;
 };
 
 export const defaultRecommendationExample: RecommendationExample = {
@@ -13,15 +13,16 @@ export const defaultRecommendationExample: RecommendationExample = {
   voices: 1,
   circles: 1,
   favorite: false,
-  shelvedTags: 0,
+  dislikedTags: 0,
 };
 
 type Components = RecommendationAffinityBreakdown["components"];
 
 /**
  * Mirrors the server's affinity formula for a settings preview. Each example
- * match stands for one supporting work; the server additionally discounts
- * common tags and strengthens repeated evidence, so real scores can differ.
+ * match stands for one supporting work with a favorite's evidence; the server
+ * additionally weighs ratings and marks, discounts common tags, and strengthens
+ * repeated evidence, so real scores can differ.
  */
 export function recommendationExampleBreakdown(
   config: RecommendationConfig,
@@ -31,10 +32,9 @@ export function recommendationExampleBreakdown(
   const voices = Math.min(config.voiceCap, example.voices * config.voiceWeight);
   const circles = Math.min(config.circleCap, example.circles * config.circleWeight);
   const favorite = example.favorite ? config.favoriteBonus : 0;
-  // A shelved tag counts once enough shelved works share it (negativeMinEvidence).
   const deduction = Math.min(
     config.negativeTotalCap,
-    Math.min(config.negativeTagCap, example.shelvedTags * config.negativeTagWeight),
+    Math.min(config.negativeTagCap, example.dislikedTags * config.negativeTagWeight),
   );
   const rawScore = config.affinityBase + tags + voices + circles + favorite - deduction;
   return {
@@ -53,9 +53,9 @@ export function recommendationExampleBreakdown(
         cap: config.favoriteBonus,
       },
       {
-        key: "paused_similarity",
+        key: "disliked_similarity",
         label: "",
-        matchCount: example.shelvedTags,
+        matchCount: example.dislikedTags,
         contribution: -deduction,
         cap: config.negativeTotalCap,
       },

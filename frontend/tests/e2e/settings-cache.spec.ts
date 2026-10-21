@@ -72,6 +72,12 @@ const recommendationDefaults: RecommendationConfig = {
   negativeTotalCap: 15,
   jitterAmplitude: 3,
   explorationAmplitude: 18,
+  ratingFiveWeight: 150,
+  ratingFourWeight: 100,
+  ratingTwoWeight: 75,
+  ratingOneWeight: 125,
+  relistenWeight: 50,
+  shelvedWeight: 35,
 };
 
 async function mockCacheSettings(

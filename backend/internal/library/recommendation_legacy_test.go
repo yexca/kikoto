@@ -17,7 +17,7 @@ func loadRecommendationProfile(ctx context.Context, queryer recommendationProfil
 	}
 	rows, err := queryer.QueryContext(ctx, `WITH entities AS MATERIALIZED (`+recommendationEntitiesSQL+`)
 		SELECT kind, entity_id,
-		 SUM(CASE WHEN state.listening_status = 'relisten' OR state.favorite = 1 THEN 1 ELSE 0 END),
+		 SUM(CASE WHEN state.listening_status = 'relisten' OR state.favorite = 1 THEN 100 ELSE 0 END),
 		 SUM(CASE WHEN state.listening_status = 'paused' AND state.favorite = 0 THEN 1 ELSE 0 END),
 		 COUNT(*), (SELECT COUNT(*) FROM work)
 		FROM entities LEFT JOIN user_work_state AS state ON state.work_id = entities.work_id AND state.user_id = ?
@@ -31,7 +31,7 @@ func loadRecommendationProfile(ctx context.Context, queryer recommendationProfil
 		var id int64
 		var entity recommendationProfileEntity
 		var frequency, total int
-		if err := rows.Scan(&kind, &id, &entity.Positive, &entity.Paused, &frequency, &total); err != nil {
+		if err := rows.Scan(&kind, &id, &entity.Positive, &entity.Shelved, &frequency, &total); err != nil {
 			_ = rows.Close()
 			return profile, err
 		}
@@ -265,29 +265,26 @@ func recommendationGenerationInsertSQL(config RecommendationConfig) string {
 	`, config.NegativeMinEvidence, config.NegativeMinEvidence, config.NegativeMinEvidence, scoreExpression)
 }
 
-func (s *Store) legacyRecommendationBreakdownWithConfig(ctx context.Context, userID, workID int64, config RecommendationConfig) (RecommendationBreakdown, error) {
-	if workID <= 0 {
-		return buildRecommendationBreakdown(config, RecommendationSignals{ListeningStatus: "none"}), nil
-	}
-	query := fmt.Sprintf(`SELECT COALESCE(user_work_state.listening_status, 'none'), COALESCE(user_work_state.favorite, 0),
-		%s, %s, %s, %s, %s, %s, %s, %s, %s
-		FROM work
-		LEFT JOIN user_work_state ON user_work_state.work_id = work.id AND user_work_state.user_id = ?
-		WHERE work.id = ?`, positiveTagMatchCountExpression, positiveVoiceMatchCountExpression, positiveCircleMatchCountExpression,
-		negativeTagMatchCountExpression(config.NegativeMinEvidence), negativeVoiceMatchCountExpression(config.NegativeMinEvidence), negativeCircleMatchCountExpression(config.NegativeMinEvidence), positiveAffinityExpression("tag"), positiveAffinityExpression("voice"), positiveAffinityExpression("circle"))
-	args := append(recommendationUserArgs(userID), userID, userID, userID, userID, workID)
-	var signals RecommendationSignals
-	signals.Affinity = &RecommendationAffinity{}
-	var favorite int
-	err := s.db.QueryRowContext(ctx, query, args...).Scan(
-		&signals.ListeningStatus, &favorite,
-		&signals.PositiveTagMatches, &signals.PositiveVoiceMatches, &signals.PositiveCircleMatches,
-		&signals.NegativeTagMatches, &signals.NegativeVoiceMatches, &signals.NegativeCircleMatches,
-		&signals.Affinity.Tags, &signals.Affinity.Voices, &signals.Affinity.Circles,
-	)
-	if err != nil {
-		return RecommendationBreakdown{}, err
-	}
-	signals.Favorite = favorite != 0
-	return buildRecommendationBreakdown(config, signals), nil
+// recommendationScoreFromSignalExpressions is the v5 score over SQL signal
+// columns, kept for the experimental generation baseline above.
+func recommendationScoreFromSignalExpressions(
+	config RecommendationConfig,
+	favoriteExpression string,
+	positiveTagExpression string,
+	positiveVoiceExpression string,
+	positiveCircleExpression string,
+	negativeTagExpression string,
+	negativeVoiceExpression string,
+	negativeCircleExpression string,
+) string {
+	positiveTag := fmt.Sprintf("MIN(%d, ROUND(COALESCE(%s, 0) * %d))", config.TagCap, positiveTagExpression, config.TagWeight)
+	positiveVoice := fmt.Sprintf("MIN(%d, ROUND(COALESCE(%s, 0) * %d))", config.VoiceCap, positiveVoiceExpression, config.VoiceWeight)
+	positiveCircle := fmt.Sprintf("MIN(%d, ROUND(COALESCE(%s, 0) * %d))", config.CircleCap, positiveCircleExpression, config.CircleWeight)
+	negativeTag := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeTagCap, negativeTagExpression, config.NegativeTagWeight)
+	negativeVoice := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeVoiceCap, negativeVoiceExpression, config.NegativeVoiceWeight)
+	negativeCircle := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeCircleCap, negativeCircleExpression, config.NegativeCircleWeight)
+	return fmt.Sprintf(`MAX(0, MIN(100, %d + %s + %s + %s
+		+ CASE WHEN COALESCE(%s, 0) = 1 THEN %d ELSE 0 END
+		- MIN(%d, %s + %s + %s)))`, config.AffinityBase, positiveTag, positiveVoice, positiveCircle,
+		favoriteExpression, config.FavoriteBonus, config.NegativeTotalCap, negativeTag, negativeVoice, negativeCircle)
 }

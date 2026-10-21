@@ -444,10 +444,10 @@ func (s *Store) recallRecommendationWorks(ctx context.Context, snapshot Recommen
 			weight, negative = snapshot.Config.CircleWeight, snapshot.Config.NegativeCircleWeight
 		}
 		contribution := 0.0
-		if entity.Positive > 0 {
-			contribution = float64(weight) * recommendationEvidenceStrength(entity.Positive) * entity.Specificity
-		} else if entity.Paused >= snapshot.Config.NegativeMinEvidence {
-			contribution = -float64(negative)
+		if positive, deduction := entity.affinity(snapshot.Config); positive > 0 {
+			contribution = float64(weight) * positive * entity.Specificity
+		} else if deduction > 0 {
+			contribution = -float64(negative) * deduction
 		}
 		if contribution != 0 {
 			entities = append(entities, recommendationRecallEntity{kind, id, contribution})

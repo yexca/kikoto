@@ -124,7 +124,8 @@ array. Use one account's data and include every desired page. Codes use
 Forks that encode the product type in the id (type × 10¹² + digits, with RJ, BJ,
 VJ, and CC as types 0–3) are decoded. Ids unrelated to product codes must first
 be converted. Personal `userRating`/`user_rating` and `review_text` are
-supported; provider ratings are not imported.
+supported, and a rating of 0 imports as unrated; provider ratings are not
+imported.
 
 **Kikoeru account** reads the data for you. Pick a configured Kikoeru-compatible
 source or enter the server's API address, then sign in with nothing (for a

@@ -307,7 +307,7 @@ func TestStoreListPageRecommendSortUsesPositiveHistory(t *testing.T) {
 		}
 		workIDs[item.code], _ = result.LastInsertId()
 	}
-	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, ?, 'relisten')", userID, workIDs["RJ00000011"]); err != nil {
+	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status, rating) VALUES (?, ?, 'relisten', 4)", userID, workIDs["RJ00000011"]); err != nil {
 		t.Fatal(err)
 	}
 	tagResult, err := db.Exec("INSERT INTO tag (namespace, normalized_name, display_name) VALUES ('dlsite', 'sleep', 'Sleep')")
@@ -364,7 +364,7 @@ func TestRecommendationSessionSnapshotRefreshesOnlyForNewSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	tagID, _ := tagResult.LastInsertId()
-	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, ?, 'relisten')", userID, likedID); err != nil {
+	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status, rating) VALUES (?, ?, 'relisten', 4)", userID, likedID); err != nil {
 		t.Fatal(err)
 	}
 	for _, workID := range []int64{likedID, candidateID} {
@@ -416,7 +416,7 @@ func TestRecommendationSessionSnapshotRefreshesOnlyForNewSession(t *testing.T) {
 		t.Fatalf("unchanged new session generation = %d, want reused generation %d", reusedSnapshot.GenerationID, firstSnapshot.GenerationID)
 	}
 
-	if _, err := db.Exec("UPDATE user_work_state SET listening_status = 'none' WHERE user_id = ? AND work_id = ?", userID, likedID); err != nil {
+	if _, err := db.Exec("UPDATE user_work_state SET listening_status = 'none', rating = NULL WHERE user_id = ? AND work_id = ?", userID, likedID); err != nil {
 		t.Fatal(err)
 	}
 	if got := listCandidateScore("session-a"); got != firstScore {

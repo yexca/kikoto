@@ -7,7 +7,7 @@ import { cn } from "@/lib/tailwindClassNames";
 type AffinityComponent = RecommendationAffinityBreakdown["components"][number];
 type AffinityOrdering = NonNullable<RecommendationAffinityBreakdown["ordering"]>;
 
-// Deductions read as a texture rather than a status color: a shelved
+// Deductions read as a texture rather than a status color: a disliked
 // similarity lowers affinity but is not an error.
 export const recommendationDeductionStyle: CSSProperties = {
   backgroundImage: "repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 5px)",
@@ -27,7 +27,7 @@ const componentLabelKeys: Record<string, string> = {
   voices: "libraryDetail.componentVoices",
   circles: "libraryDetail.componentCircles",
   favorite: "libraryDetail.componentFavorite",
-  paused_similarity: "libraryDetail.componentShelved",
+  disliked_similarity: "libraryDetail.componentDisliked",
 };
 
 export function clampRecommendationPercent(value: number) {
@@ -146,10 +146,10 @@ export function RecommendationComposition({
   threshold?: number;
   rankingScore?: number;
 }) {
-  const positives = components.filter((component) => component.key !== "paused_similarity");
+  const positives = components.filter((component) => component.key !== "disliked_similarity");
   const deduction = Math.max(
     0,
-    -(components.find((component) => component.key === "paused_similarity")?.contribution ?? 0),
+    -(components.find((component) => component.key === "disliked_similarity")?.contribution ?? 0),
   );
   const segments: CompositionSegment[] = [];
   let cursor = 0;
@@ -227,7 +227,7 @@ export function RecommendationComposition({
       <div className="flex flex-wrap gap-x-4 gap-y-2">
         {legend.map((component) => (
           <div key={component.key} className="flex min-w-0 items-center gap-1.5">
-            {component.key === "paused_similarity" ? (
+            {component.key === "disliked_similarity" ? (
               <span
                 className="h-2.5 w-2.5 shrink-0 rounded-sm bg-muted text-foreground/45"
                 style={recommendationDeductionStyle}

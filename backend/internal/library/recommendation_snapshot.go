@@ -190,7 +190,7 @@ func (s *Store) prepareRecommendationGeneration(ctx context.Context, userID, epo
 	case <-ctx.Done():
 		return snapshot, ctx.Err()
 	}
-	profile, err := s.prepareRecommendationProfile(ctx, userID, epoch)
+	profile, err := s.prepareRecommendationProfile(ctx, userID, epoch, config)
 	if err != nil {
 		return snapshot, err
 	}

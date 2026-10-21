@@ -109,6 +109,10 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
 - Loads by work code and resolves translated DLsite-family routes.
 - Shows cover, title, code, circle, tags, rating, voice metadata, and DLsite
   link.
+- Shows your own rating beside the Mark action as a star with its number, or
+  an empty star while the work is unrated. Choosing it opens five stars that
+  rate the work from one to five, and **Clear your rating** when it has one. Your rating is personal, separate from the DLsite rating, and is
+  the main evidence for your [recommendations](library.md).
 - Shows known language editions for a logical work family.
 - Keeps the metadata-language and directory-edition selectors as two separate
   compact chips beside the work code. Each chip names its current choice and
@@ -191,8 +195,8 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   staff. Selecting a name adds a `staff:` clause to the library search the
   detail was opened from, which finds the name in any staff role.
   On compact screens, the Hero keeps the same credit line, tag row, stat
-  strip, and the labeled Resume, Mark, and List actions above the Info and
-  Directory tabs. Info shows the source panel, which lists the selected
+  strip, and the Resume, Mark, rating, and List actions above the Info and
+  Directory tabs; a phone shows Resume as its icon and labels Mark and List. Info shows the source panel, which lists the selected
   source's actions and offers Edit metadata beside the metadata update time,
   and the Credits card. A phone shows at most three lines of the title; tapping a
   shortened title shows all of it. The button at the end of the work code row

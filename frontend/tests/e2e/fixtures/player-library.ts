@@ -270,6 +270,7 @@ export async function mockApplication(
       return;
     }
     if (url.pathname === "/api/works/1/user-state" && route.request().method() === "PATCH") {
+      const body = route.request().postDataJSON() as { userRating?: number | null };
       await route.fulfill(
         fixture.authenticated
           ? {
@@ -277,6 +278,7 @@ export async function mockApplication(
                 workId: 1,
                 listeningStatus: "want_to_listen",
                 favorite: false,
+                userRating: body.userRating ?? null,
               } satisfies ApiResponse<"updateWorkUserState">,
             }
           : { status: 401, json: { error: "login required" } satisfies ApiErrorBody },

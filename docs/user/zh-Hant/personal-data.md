@@ -47,7 +47,7 @@
 
 ## Kikoeru
 
-Kikoeru JSON 檔案可接受評價陣列、`reviews` 陣列，或 API 的 `works` 陣列。請只使用單一帳戶的資料，並包含所有需要的頁面。代碼使用 `primaryCode` 或 `source_id`；數字的 `work_id`／`id` 是商品編號。把商品類型編碼進 ID 的分支版本（類型 × 10¹² + 數字，其中 RJ、BJ、VJ 與 CC 分別是類型 0–3）會被解碼。與商品代碼無關的 ID 必須先轉換。支援個人的 `userRating`／`user_rating` 與 `review_text`；不會匯入提供方的評分。
+Kikoeru JSON 檔案可接受評價陣列、`reviews` 陣列，或 API 的 `works` 陣列。請只使用單一帳戶的資料，並包含所有需要的頁面。代碼使用 `primaryCode` 或 `source_id`；數字的 `work_id`／`id` 是商品編號。把商品類型編碼進 ID 的分支版本（類型 × 10¹² + 數字，其中 RJ、BJ、VJ 與 CC 分別是類型 0–3）會被解碼。與商品代碼無關的 ID 必須先轉換。支援個人的 `userRating`／`user_rating` 與 `review_text`，評分為 0 時匯入為未評分；不會匯入提供方的評分。
 
 **Kikoeru 帳戶** 會替你讀取資料。選擇一個已設定的相容 Kikoeru 來源，或輸入伺服器的 API 位址，然後以無（適用於關閉登入的伺服器）、權杖，或使用者名稱與密碼登入。伺服器會透過 `POST /api/auth/me` 登入，透過 `GET /api/review` 逐頁讀取，並且在 Kikoeru 伺服器提供時，讀取你擁有的播放清單，包括其喜歡與已標記清單。沒有播放清單的伺服器只會匯入評價。結果會和檔案一樣，經過相同的預覽與匯入。
 

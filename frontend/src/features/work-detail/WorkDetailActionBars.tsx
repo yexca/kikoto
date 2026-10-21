@@ -19,6 +19,7 @@ import {
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { WorkCardListButton, WorkCardQuickMarkButton } from "@/components/work-card/WorkCardShell";
+import { WorkRatingControl } from "@/components/work-card/WorkRatingControl";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import type { RemoteSourceAvailability } from "@/features/work-detail/source/sourceContextModel";
@@ -38,6 +39,8 @@ export function WorkIdentityActionBar({
   onResume,
   onMark,
   canMark,
+  userRating,
+  onRate,
 }: {
   busy: boolean;
   listeningStatus: ListeningStatus;
@@ -51,23 +54,29 @@ export function WorkIdentityActionBar({
   onMark: (status: ListeningStatus) => void;
   /** Checked before the mark menu opens. */
   canMark?: () => boolean;
+  /** The viewer's rating; the rating control shows only with onRate. */
+  userRating?: number | null;
+  onRate?: (rating: number | null) => void;
 }) {
   const { t } = useTranslation();
 
   return (
     <>
+      {/* Phones show Resume as its icon so the identity actions keep one row. */}
       <Button
         variant="outline"
         size="sm"
-        className="h-8"
+        className="h-8 w-8 px-0 sm:w-auto sm:px-3"
         disabled={busy || !onResume}
         onClick={onResume}
         title={onResume ? t("detailActions.resumeSavedPlayback") : t("detailActions.noUnfinishedPlayback")}
+        aria-label={t("detailActions.resume")}
       >
         <Clock3 className="h-4 w-4" />
-        {t("detailActions.resume")}
+        <span className="hidden sm:inline">{t("detailActions.resume")}</span>
       </Button>
       <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} showLabel canOpen={canMark} onChange={onMark} />
+      {onRate && <WorkRatingControl value={userRating ?? null} disabled={busy} onChange={onRate} />}
       <WorkCardListButton
         workId={listWorkId}
         active={favorite}
