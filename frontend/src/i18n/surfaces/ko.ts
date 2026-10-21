@@ -2113,6 +2113,9 @@ export const surfaceKorean = {
     displayNamesOnHint:
       "메타데이터 언어의 이름을 표시하는 중입니다. 실제 파일 이름이 아닙니다. 선택하면 실제 이름을 표시합니다.",
     displayNamesOffHint: "실제 파일 이름을 표시하는 중입니다. 선택하면 메타데이터 언어의 이름을 표시합니다.",
+    fullNames: "전체 이름",
+    fullNamesOffHint: "긴 이름은 두 줄까지만 표시합니다. 선택하면 전체를 표시합니다.",
+    fullNamesOnHint: "이름을 전체 표시하는 중입니다. 선택하면 긴 이름을 두 줄까지만 표시합니다.",
     showFolderRail: "폴더 패널 표시",
     tracks: "트랙",
     images: "이미지",
@@ -2170,7 +2173,6 @@ export const surfaceKorean = {
     temporaryPreview: "이 원격 미리보기 선택은 임시입니다.",
     filesLabel: "파일",
     copyWorkCode: "작품 코드 복사",
-    directoryActions: "디렉터리 작업",
     directory: "디렉터리",
     workCodeActions: "작품 코드 작업",
     trackedSources: "추적된 소스",

@@ -2135,6 +2135,9 @@ export const surfaceEnglish = {
     displayNamesOnHint:
       "Showing names in your metadata language, not the real file names. Select to show the real names.",
     displayNamesOffHint: "Showing the real file names. Select to show names in your metadata language.",
+    fullNames: "Full names",
+    fullNamesOffHint: "Long names stop at two lines. Select to show them in full.",
+    fullNamesOnHint: "Showing names in full. Select to stop long names at two lines.",
     showFolderRail: "Show folder panel",
     tracks: "Tracks",
     images: "Images",
@@ -2203,7 +2206,6 @@ export const surfaceEnglish = {
     size: "Size",
     filesLabel: "Files",
     copyWorkCode: "Copy work code",
-    directoryActions: "Directory actions",
     directory: "Directory",
     workCodeActions: "Work code actions",
     trackedSources: "Tracked sources",

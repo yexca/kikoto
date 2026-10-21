@@ -212,7 +212,8 @@ test("a lone local source is named in the directory header until the viewer alwa
   await expect(directory.getByRole("button", { name: /^(Local|Tracked)/ })).toHaveCount(0);
 
   // The viewer can always show the lone tab, or show the hidden Tracked placeholder.
-  await directory.getByRole("button", { name: "Source tab visibility", exact: true }).click();
+  // A compact detail keeps the source controls in its Directory tab menu.
+  await page.getByRole("button", { name: "Source tab visibility", exact: true }).click();
   await page.getByRole("radiogroup", { name: "Local visibility" }).getByRole("radio", { name: "Always show" }).click();
   await expect(directory.locator('button[title="Local: Local files available"]')).toHaveAttribute(
     "aria-pressed",
@@ -297,6 +298,17 @@ test("directory rows wrap long unbroken file names without horizontal overflow",
   expect(audioTitleBox).not.toBeNull();
   expect(audioMetaBox).not.toBeNull();
   expect(audioMetaBox!.y).toBeGreaterThan(audioTitleBox!.y);
+
+  // A phone stops a long name at two lines until the viewer asks for full names.
+  const cutShort = () => fileName.evaluate((element) => element.scrollHeight > element.clientHeight + 1);
+  expect(await cutShort()).toBe(true);
+  const fullNames = page.getByTestId("directory-panel").getByRole("button", { name: "Full names", exact: true });
+  await fullNames.click();
+  await expect(fullNames).toHaveAttribute("aria-pressed", "true");
+  expect(await cutShort()).toBe(false);
+  await page.reload();
+  await expect(fileName).toBeVisible();
+  expect(await cutShort()).toBe(false);
 });
 
 test("directory folds matched lyrics into the audio row while preserving text preview", async ({ page }) => {

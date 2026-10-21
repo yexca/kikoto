@@ -12,6 +12,12 @@
 - The account menu behind the avatar drops its **Your data** shortcut;
   **Your data** stays at the end of **Settings → Account** and in Quick
   actions.
+- On a phone, work detail is tidier: the metadata language chip shows only
+  the language code, such as `JA`, without the original marker; an arrow on
+  the selected Directory tab opens source tab visibility with **Check
+  sources** below it, so the source tab row holds only the sources; and long
+  file and folder names stop at two lines until **Full names** shows them in
+  full.
 
 </details>
 
