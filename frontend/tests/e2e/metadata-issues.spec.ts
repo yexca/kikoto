@@ -461,6 +461,7 @@ for (const viewport of ["mobile", "@desktop"]) {
       "Metadata issues",
       "No available source",
       "Custom works",
+      "Translation",
       "Tags",
       "Circles",
       "Voice actors",
