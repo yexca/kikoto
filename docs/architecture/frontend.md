@@ -659,6 +659,9 @@ volatile queue with a diagnostic and a normal network loss window of up to
 - Reserve a directory-shaped skeleton with stable height while media is being
   indexed or loaded, then replace it in place without a separate loading card.
 - Build Tree rows and playback queues from one folder-first natural ordering.
+  Every list of file and folder names sorts with `naturalNameCompare`
+  (`lib/naturalNameOrder.ts`), which compares digit runs by value and reads a
+  kanji numeral after 第 as its number.
 - Apply a persisted position only through Resume or the restored current queue
   item. After a reload, that item continues the work cursor when it still points
   at the same media item and is unfinished, unless the listener has already

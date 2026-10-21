@@ -34,8 +34,8 @@ import {
 } from "@/features/work-detail/folder-edit/folderEditModel";
 import { ResultRow, sortedFolders } from "@/features/work-detail/folder-edit/FolderEditPanes";
 import type { FolderWorkspaceArrange } from "@/features/work-detail/folder-edit/folderWorkspace";
-import { naturalCompare } from "@/features/work-detail/workflows/RemoteFetchWorkspaceTrees";
 import type { RemoteFetchFileDecision } from "@/lib/api";
+import { naturalNameCompare } from "@/lib/naturalNameOrder";
 import { cn } from "@/lib/tailwindClassNames";
 
 /** What is being dragged into or within the final folder. */
@@ -416,7 +416,7 @@ function ArrangeNode({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const locked = inLyricsFolder(node.path);
   const drop = dropTarget(arrange, node.path, context.over, context.setOver, disabled || locked || isRoot);
-  const entries = [...node.files].sort((left, right) => naturalCompare(left.name, right.name));
+  const entries = [...node.files].sort((left, right) => naturalNameCompare(left.name, right.name));
   const count = useMemo(
     () => folderEditTreeFiles(node).filter((entry) => entry.state !== "remove" && entry.state !== "excluded").length,
     [node],

@@ -1,5 +1,6 @@
 import type { TreeNode, TreeTrack } from "@/features/work-detail/media/mediaTreeModel";
 import type { MediaDeleteTarget } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
+import { naturalNameCompare } from "@/lib/naturalNameOrder";
 
 export function directoryManageTargets(
   root: TreeNode,
@@ -57,7 +58,5 @@ export function sortedFilesDeep(node: TreeNode) {
   for (const child of node.children.values()) {
     files.push(...sortedFilesDeep(child));
   }
-  return files.sort((a, b) =>
-    (a.sourcePath || a.title).localeCompare(b.sourcePath || b.title, undefined, { numeric: true, sensitivity: "base" }),
-  );
+  return files.sort((a, b) => naturalNameCompare(a.sourcePath || a.title, b.sourcePath || b.title));
 }

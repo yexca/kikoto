@@ -22,6 +22,9 @@
   Favorite, Relisten, or Shelved work carries. The Avoid shelved preset is
   now Avoid dislikes, and the shelved penalty now applies to disliked
   similarity.
+- The work directory, playback order, and the fetch, folder edit, delete,
+  display name, and lyrics lists order names numbered with kanji after 第 by
+  their number, so 第二話 comes before 第十話 in every interface language.
 
 </details>
 

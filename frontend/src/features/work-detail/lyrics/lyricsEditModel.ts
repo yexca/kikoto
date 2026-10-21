@@ -21,6 +21,7 @@ import type {
   WorkFolderEditSources,
 } from "@/lib/api";
 import { editionLyricsLanguage, mediaItemLyricsAssignments } from "@/lib/lyricsLanguage";
+import { naturalNameCompare } from "@/lib/naturalNameOrder";
 
 /** The resource that is the lyrics Kikoto manages in the edited folder. */
 export const MANAGED_LYRICS_RESOURCE = "current";
@@ -57,8 +58,6 @@ export type LyricsEditResource = {
 
 /** The declared lyrics language per resource; null is not declared yet. */
 export type LyricsEditLanguages = Readonly<Record<string, string | null | undefined>>;
-
-const naturalCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 /**
  * Lists the managed lyrics first, then the edited folder's other lyrics, then
@@ -128,7 +127,7 @@ export function folderAudio(items: MediaItem[], rootPath: string): LyricsManager
       break;
     }
   }
-  return audio.sort((left, right) => naturalCollator.compare(left.path, right.path));
+  return audio.sort((left, right) => naturalNameCompare(left.path, right.path));
 }
 
 /** The key the server gives the plan item of an addition. */

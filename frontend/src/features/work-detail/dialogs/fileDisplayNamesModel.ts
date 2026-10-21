@@ -1,4 +1,5 @@
 import type { FileDisplayNames, FileDisplayNamesChange } from "@/lib/api";
+import { naturalNameCompare } from "@/lib/naturalNameOrder";
 
 /** One file or folder of the name editor, in directory order. */
 export type DisplayNameRow = {
@@ -17,8 +18,6 @@ export type DisplayNameRow = {
 
 /** Drafts by row key; a row without a draft keeps its stored name. */
 export type DisplayNameDrafts = Record<string, string>;
-
-const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 export function splitFileExtension(name: string) {
   const index = name.lastIndexOf(".");
@@ -71,12 +70,12 @@ export function displayNameRows(entries: Pick<FileDisplayNames, "folders" | "fil
   }
   const rows: DisplayNameRow[] = [];
   const visit = (branch: Branch) => {
-    for (const name of [...branch.folders.keys()].sort(collator.compare)) {
+    for (const name of [...branch.folders.keys()].sort(naturalNameCompare)) {
       const child = branch.folders.get(name)!;
       if (child.row) rows.push(child.row);
       visit(child);
     }
-    rows.push(...branch.files.sort((left, right) => collator.compare(left.path, right.path)));
+    rows.push(...branch.files.sort((left, right) => naturalNameCompare(left.path, right.path)));
   };
   visit(root);
   return rows;
