@@ -1128,7 +1128,7 @@ export function WorkCardQuickMarkButton({
         disabled={disabled}
         showLabel={showLabel}
         responsiveLabel={responsiveLabel}
-        label={t("workCard.mark", { status: currentLabel })}
+        label={currentLabel}
         onClick={(event) => {
           event.stopPropagation();
           if (!open && canOpen && !canOpen()) return;

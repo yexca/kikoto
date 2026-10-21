@@ -2439,7 +2439,7 @@ export const surfaceJapanese = {
     origin: "原版",
   },
   detailActions: {
-    resume: "再生を再開",
+    resume: "再開",
     resumeSavedPlayback: "保存した再生位置から再開",
     noUnfinishedPlayback: "未完了の再生はありません",
     manageMetadata: "メタデータを管理",

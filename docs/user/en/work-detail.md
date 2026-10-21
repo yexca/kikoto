@@ -160,9 +160,11 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   ancestors into a menu while desktop bounds each visible segment and keeps the
   current folder scrolled into view; complete names remain available through
   rows, ancestor commands, titles, and accessible labels.
-- Keeps one Source menu in the Hero action bar. Its icon changes for Local,
-  Tracked, and remote contexts, its header names the selected source, and it
-  closes on outside interaction, Escape, or a source change.
+- Offers the selected source's actions in one place: inline in Source info on
+  wide pages and in the Info tab on compact screens, and as a Source menu in
+  the Hero action bar in between. The menu's icon changes for Local, Tracked,
+  and remote contexts, its header names the selected source, and it closes on
+  outside interaction, Escape, or a source change.
 - Aggregates tracked presences into one Tracked tab. When a work is tracked by
   more than one file source, the tab exposes a dropdown that switches the
   active tracked directory without adding source names to the tab row.
@@ -189,9 +191,10 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   staff. Selecting a name adds a `staff:` clause to the library search the
   detail was opened from, which finds the name in any staff role.
   On compact screens, the Hero keeps the same credit line, tag row, stat
-  strip, and actions above the Info and Directory tabs, Info shows the source
-  panel and the Credits card, and Mark, List, DLsite, Metadata, and Source
-  collapse to icons. A phone shows at most three lines of the title; tapping a
+  strip, and the labeled Resume, Mark, and List actions above the Info and
+  Directory tabs. Info shows the source panel, which lists the selected
+  source's actions and offers Edit metadata beside the metadata update time,
+  and the Credits card. A phone shows at most three lines of the title; tapping a
   shortened title shows all of it. The button at the end of the work code row
   hides the work details and leaves the work code, any metadata notice, and
   the actions. The choice is remembered on that device and holds for every

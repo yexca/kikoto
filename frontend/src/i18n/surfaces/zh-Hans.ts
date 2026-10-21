@@ -2322,7 +2322,7 @@ export const surfaceHans = {
     origin: "原版",
   },
   detailActions: {
-    resume: "继续播放",
+    resume: "继续",
     resumeSavedPlayback: "继续已保存的播放进度",
     noUnfinishedPlayback: "没有未完成的播放",
     manageMetadata: "管理元数据",

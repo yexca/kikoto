@@ -38,7 +38,6 @@ export function WorkIdentityActionBar({
   onResume,
   onMark,
   canMark,
-  onEditMetadata,
 }: {
   busy: boolean;
   listeningStatus: ListeningStatus;
@@ -52,7 +51,6 @@ export function WorkIdentityActionBar({
   onMark: (status: ListeningStatus) => void;
   /** Checked before the mark menu opens. */
   canMark?: () => boolean;
-  onEditMetadata?: () => void;
 }) {
   const { t } = useTranslation();
 
@@ -69,39 +67,48 @@ export function WorkIdentityActionBar({
         <Clock3 className="h-4 w-4" />
         {t("detailActions.resume")}
       </Button>
-      <WorkCardQuickMarkButton
-        value={listeningStatus}
-        disabled={busy}
-        showLabel
-        responsiveLabel
-        canOpen={canMark}
-        onChange={onMark}
-      />
+      <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} showLabel canOpen={canMark} onChange={onMark} />
       <WorkCardListButton
         workId={listWorkId}
         active={favorite}
         memberLists={memberLists}
         disabled={busy}
         showLabel
-        responsiveLabel
         ensureWorkId={onEnsureListWork}
         onSaved={onListSaved}
       />
-      {onEditMetadata && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 w-8 px-0 sm:w-auto sm:px-3"
-          title={t("detailActions.editMetadata")}
-          aria-label={t("detailActions.editMetadata")}
-          disabled={busy}
-          onClick={onEditMetadata}
-        >
-          <Database className="h-4 w-4" />
-          <span className="hidden sm:inline">{t("detailActions.metadata")}</span>
-        </Button>
-      )}
     </>
+  );
+}
+
+/** `hero` sits among the Hero actions; `info` labels it in full beside the metadata update time. */
+export type MetadataActionPlacement = "hero" | "info";
+
+export function EditMetadataButton({
+  placement,
+  disabled,
+  onClick,
+}: {
+  placement: MetadataActionPlacement;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className={placement === "hero" ? "h-8 w-8 px-0 sm:w-auto sm:px-3" : "h-8"}
+      title={t("detailActions.editMetadata")}
+      aria-label={t("detailActions.editMetadata")}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <Database className="h-4 w-4" />
+      <span className={placement === "hero" ? "hidden sm:inline" : undefined}>
+        {placement === "hero" ? t("detailActions.metadata") : t("detailActions.editMetadata")}
+      </span>
+    </Button>
   );
 }
 

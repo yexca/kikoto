@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type { LibrarySource } from "../../src/lib/api";
 import { favoriteListFixture, librarySourceFixture, type ApiResponse } from "./fixtures/api";
 import { mockApplication } from "./fixtures/player-library";
+import { openWorkMetadataEditor } from "./fixtures/work-detail";
 
 async function metadataActions(page: Page, sources: LibrarySource[] = [], canEdit = true) {
   const control = { runId: 610, status: "queued" as const, postRequests: 0, statusRequests: 0, detailRequests: 0 };
@@ -96,7 +97,7 @@ test("Metadata opens the editor directly with the default refresh and no unconfi
     return route.fallback();
   });
   await page.goto("/RJ00000000");
-  await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+  await openWorkMetadataEditor(page);
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "More metadata sources" })).toHaveCount(0);
@@ -130,7 +131,7 @@ test("a custom work edits its metadata and age rating without provider refreshes
   await expect(stats.getByText("Sales", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("metadata-sync-notice")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+  await openWorkMetadataEditor(page);
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
   await expect(dialog.getByRole("tab", { name: "Metadata source" })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Fetch for edit", exact: true })).toHaveCount(0);
@@ -156,7 +157,7 @@ test("remote metadata choices use declared capabilities and preserve drafts afte
     return route.fallback();
   });
   await page.goto("/RJ00000000");
-  await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+  await openWorkMetadataEditor(page);
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
   const title = dialog.getByRole("textbox", { name: "Japanese", exact: true });
   await title.fill("Synthetic title draft");
@@ -224,7 +225,7 @@ test("@desktop Fetch for edit opens at its own size above the editor", async ({ 
   await metadataActions(page, [librarySourceFixture()]);
   await page.route(/\/api\/works\/1\/metadata-preview$/, (route) => route.fulfill({ json: syntheticMetadataPreview }));
   await page.goto("/RJ00000000");
-  await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+  await openWorkMetadataEditor(page);
   const editor = page.getByRole("dialog", { name: "Edit metadata", exact: true });
   await editor.getByRole("button", { name: "Fetch for edit", exact: true }).click();
   const preview = page.getByRole("dialog", { name: "Compare fetched metadata", exact: true });
@@ -251,7 +252,7 @@ test("Fetch for edit compares a selected source and applies an authored value", 
     await route.fulfill({ json: { ok: true, updatedAt: "2026-10-11T00:01:00Z" } });
   });
   await page.goto("/RJ00000000");
-  await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+  await openWorkMetadataEditor(page);
   const editor = page.getByRole("dialog", { name: "Edit metadata", exact: true });
   await editor.getByRole("button", { name: "Fetch for edit", exact: true }).click();
   const preview = page.getByRole("dialog", { name: "Compare fetched metadata", exact: true });
@@ -271,7 +272,7 @@ test("Fetch for edit compares a selected source and applies an authored value", 
 test("metadata operators can refresh without permission to change manual values", async ({ page }) => {
   await metadataActions(page, [librarySourceFixture({ metadataCapable: false })], false);
   await page.goto("/RJ00000000");
-  await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+  await openWorkMetadataEditor(page);
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
   await expect(dialog.getByRole("textbox", { name: "Japanese", exact: true })).toBeDisabled();
   await expect(dialog.getByRole("button", { name: "Refresh metadata", exact: true })).toBeEnabled();
@@ -283,7 +284,7 @@ for (const layout of ["phone", "desktop @desktop"]) {
     if (layout === "phone") await page.setViewportSize({ width: 320, height: 720 });
     await metadataActions(page, [librarySourceFixture()]);
     await page.goto("/RJ00000000");
-    await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+    await openWorkMetadataEditor(page);
     const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
     const refresh = dialog.getByRole("button", { name: "Refresh metadata", exact: true });
     const save = dialog.getByRole("button", { name: "Save", exact: true });

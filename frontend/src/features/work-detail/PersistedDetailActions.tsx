@@ -9,7 +9,9 @@ import type { FavoriteList, ListeningStatus, RemoteWorkDetail, SourcePresenceIte
 import { safeExternalHTTPURL } from "@/features/work-detail/workDetailShared";
 import {
   type DetailActionMode,
+  EditMetadataButton,
   MediaContextActionBar,
+  type MetadataActionPlacement,
   type SourceActionLayout,
   WorkIdentityActionBar,
 } from "@/features/work-detail/WorkDetailActionBars";
@@ -60,10 +62,15 @@ export type PersistedDetailActionsProps = {
   onRefreshLocalFiles: () => void;
 };
 
+function identityActionsBusy(props: PersistedDetailActionsProps) {
+  return (
+    props.isSyncingDetail || props.fetchBusy || props.isRefreshingLocalFiles || props.cleanupBusy || props.isResuming
+  );
+}
+
 export function PersistedIdentityActions(props: PersistedDetailActionsProps) {
   if (!props.work) return <DetailSkeletonActions />;
-  const busy =
-    props.isSyncingDetail || props.fetchBusy || props.isRefreshingLocalFiles || props.cleanupBusy || props.isResuming;
+  const busy = identityActionsBusy(props);
   return (
     <WorkIdentityActionBar
       busy={busy}
@@ -75,8 +82,17 @@ export function PersistedIdentityActions(props: PersistedDetailActionsProps) {
       onListSaved={props.onListSaved}
       onResume={!props.playbackCursorLoading && props.hasResumableCursor ? props.onResume : undefined}
       onMark={props.onMark}
-      onEditMetadata={props.onEditMetadata}
     />
+  );
+}
+
+export function PersistedMetadataAction({
+  placement,
+  ...props
+}: PersistedDetailActionsProps & { placement: MetadataActionPlacement }) {
+  if (!props.work) return null;
+  return (
+    <EditMetadataButton placement={placement} disabled={identityActionsBusy(props)} onClick={props.onEditMetadata} />
   );
 }
 
