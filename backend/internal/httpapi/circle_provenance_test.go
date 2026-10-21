@@ -67,11 +67,34 @@ func TestDLsitePartyProjectionSkipsUnchangedSnapshots(t *testing.T) {
 	if partyUpdatedAt != sentinel || catalogLastSeenAt != sentinel || relationUpdatedAt != sentinel {
 		t.Fatalf("unchanged projection timestamps = %q/%q/%q, want sentinel", partyUpdatedAt, catalogLastSeenAt, relationUpdatedAt)
 	}
-	blocker, err := db.BeginTx(ctx, nil)
+	// The pass reads on another pooled connection while the blocker holds the
+	// write lock. Both connections load the schema first, so the timed pass
+	// does not include opening one, which the race detector slows down. A pass
+	// that waited for the writer would wait the 30 s busy timeout, far beyond
+	// the deadline.
+	writerConn, err := db.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	readCtx, cancelRead := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer func() { _ = writerConn.Close() }()
+	readerConn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, conn := range []*sql.Conn{writerConn, readerConn} {
+		var works int
+		if err := conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM work").Scan(&works); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := readerConn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	blocker, err := writerConn.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readCtx, cancelRead := context.WithTimeout(ctx, 5*time.Second)
 	defer cancelRead()
 	if err := server.projectChangedDLsiteParties(readCtx); err != nil {
 		_ = blocker.Rollback()
