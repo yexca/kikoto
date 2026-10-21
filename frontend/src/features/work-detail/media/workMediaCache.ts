@@ -1,6 +1,7 @@
 import { PLAYBACK_CURSOR_UPDATED_EVENT, type PlaybackCursorUpdatedDetail } from "@/lib/appEvents";
 import type { MediaItem } from "@/lib/api";
 import { currentClientStorageScope, type ClientPrincipalID } from "@/lib/clientStorageScope";
+import { USER_PREFERENCES_CHANGED } from "@/lib/recommendationSession";
 
 const MAX_CACHED_WORKS = 20;
 const MAX_CACHED_MEDIA_ITEMS = 20_000;
@@ -26,7 +27,7 @@ export function getCachedWorkMedia(workId: number, principalID: ClientPrincipalI
 }
 
 export function setCachedWorkMedia(workId: number, principalID: ClientPrincipalID, mediaItems: MediaItem[]) {
-  listenForProgressUpdates();
+  listenForCacheUpdates();
   const key = workMediaCacheKey(workId, principalID);
   workMediaCache.delete(key);
   if (mediaItems.length === 0) return;
@@ -68,16 +69,29 @@ export function applyCachedWorkMediaProgress(update: PlaybackCursorUpdatedDetail
   }
 }
 
-let listeningForProgressUpdates = false;
+// File and folder display names follow the account's metadata languages, so a
+// preference change drops that storage scope's cached media.
+function clearCachedWorkMediaForScope(scope: string) {
+  const prefix = `${scope}:`;
+  for (const key of Array.from(workMediaCache.keys())) {
+    if (key.startsWith(prefix)) workMediaCache.delete(key);
+  }
+}
+
+let listeningForCacheUpdates = false;
 
 // Playback continues while no detail is open, so the cache follows saves itself
 // once it holds anything to update.
-function listenForProgressUpdates() {
-  if (listeningForProgressUpdates || typeof window === "undefined") return;
-  listeningForProgressUpdates = true;
+function listenForCacheUpdates() {
+  if (listeningForCacheUpdates || typeof window === "undefined") return;
+  listeningForCacheUpdates = true;
   window.addEventListener(PLAYBACK_CURSOR_UPDATED_EVENT, (event) => {
     const update = (event as CustomEvent<PlaybackCursorUpdatedDetail>).detail;
     if (update) applyCachedWorkMediaProgress(update);
+  });
+  window.addEventListener(USER_PREFERENCES_CHANGED, (event) => {
+    const scope = (event as CustomEvent<string>).detail;
+    if (typeof scope === "string") clearCachedWorkMediaForScope(scope);
   });
 }
 
