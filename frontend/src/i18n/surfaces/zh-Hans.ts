@@ -206,6 +206,10 @@ export const surfaceHans = {
   },
   customWorks: {
     rail: "自定义作品",
+    createFromFolder: "从文件夹创建",
+    backToWorks: "返回自定义作品",
+    worksEmpty: "还没有自定义作品。",
+    worksDescription: "自定义作品由不含作品编号的媒体库文件夹创建，没有提供方元数据或远程来源。",
     search: "搜索文件夹",
     searchPlaceholder: "文件夹名称或路径",
     folders: "没有作品编号的文件夹",

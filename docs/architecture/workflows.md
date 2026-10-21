@@ -239,14 +239,17 @@ family on the server. Edition/provider component details are attached only for
 the selected page. Multiple reasons share one family row; resolving metadata
 never removes a remaining no-source reason. Search reuses Library semantics.
 `reason=metadata` and `reason=no_source` narrow the union. A run filter always
-restricts it to unresolved metadata issues associated with that run.
+restricts it to unresolved metadata issues associated with that run. Every
+reason except `reason=custom` leaves out custom works; `reason=custom` lists
+every custom work family, with its no-source state, and nothing else.
 
 Metadata reasons and retries require `metadata:sync`. No-source reasons, source
 checks, and confirmed deletion require `sources:write`; the UI exposes deletion
-only in the no-source view and the server still revalidates family availability.
-Each permission grants only its corresponding maintenance actions, without
-exposing settings to metadata-only operators. Metadata management chooses the
-Works group (All and attention categories) and the Entries group (Tags,
+only in the no-source view and, for custom works, the custom view, and the
+server still revalidates family availability. Each permission grants only its
+corresponding maintenance actions, without exposing settings to metadata-only
+operators. Metadata management chooses the Works group (All, attention
+categories, and Custom works) and the Entries group (Tags,
 Circles, and Voice actors) from the shared page icon rail. Work records use a
 management table (code and title, circle, status, actions); the action column
 opens the work metadata editor, gated by `library:write`. The list loads on

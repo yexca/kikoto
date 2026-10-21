@@ -215,6 +215,11 @@ export const surfaceJapanese = {
   },
   customWorks: {
     rail: "カスタム作品",
+    createFromFolder: "フォルダーから作成",
+    backToWorks: "カスタム作品に戻る",
+    worksEmpty: "カスタム作品はまだありません。",
+    worksDescription:
+      "カスタム作品は、作品番号のないライブラリフォルダーを作品にしたものです。プロバイダーのメタデータやリモートソースはありません。",
     search: "フォルダーを検索",
     searchPlaceholder: "フォルダー名またはパス",
     folders: "作品番号のないフォルダー",

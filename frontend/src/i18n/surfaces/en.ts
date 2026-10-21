@@ -261,6 +261,11 @@ export const surfaceEnglish = {
   },
   customWorks: {
     rail: "Custom works",
+    createFromFolder: "Create from folder",
+    backToWorks: "Back to custom works",
+    worksEmpty: "No custom works yet.",
+    worksDescription:
+      "A custom work turns a library folder without a work code into a work. It has no provider metadata or remote source.",
     search: "Search folders",
     searchPlaceholder: "Folder name or path",
     folders: "Folders without a work code",

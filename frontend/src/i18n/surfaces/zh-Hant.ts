@@ -206,6 +206,10 @@ export const surfaceHant = {
   },
   customWorks: {
     rail: "自訂作品",
+    createFromFolder: "從資料夾建立",
+    backToWorks: "返回自訂作品",
+    worksEmpty: "還沒有自訂作品。",
+    worksDescription: "自訂作品由不含作品編號的媒體庫資料夾建立，沒有提供者中繼資料或遠端來源。",
     search: "搜尋資料夾",
     searchPlaceholder: "資料夾名稱或路徑",
     folders: "沒有作品編號的資料夾",

@@ -9,6 +9,13 @@
 </details>
 
 <details>
+<summary><strong>Metadata and scans</strong></summary>
+
+- **Custom works** in Metadata lists the custom works themselves, with search, editing, and status like the other work tables, and deletes the local information of one whose folder is missing. **Create from folder** in its header opens the folder list that creates a custom work. All, Needs attention, Metadata issues, and No available source list only works with a catalog code.
+
+</details>
+
+<details>
 <summary><strong>Operations and reliability</strong></summary>
 
 - The Docker image is published for `linux/arm64` as well as `linux/amd64` under the same tags, so Kikoto runs on ARM NAS devices and 64-bit Raspberry Pi OS with the usual `docker compose up -d`.

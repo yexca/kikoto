@@ -460,6 +460,7 @@ for (const viewport of ["mobile", "@desktop"]) {
       "Needs attention",
       "Metadata issues",
       "No available source",
+      "Custom works",
       "Tags",
       "Circles",
       "Voice actors",
@@ -666,4 +667,60 @@ test("@desktop Metadata voice aliases view lists people and opens alias review",
   await tabs.getByRole("tab", { name: "All", exact: true }).click();
   await expect(page).toHaveURL(/\/metadata\?reason=catalog$/);
   await expect(page.getByRole("region", { name: "Metadata records", exact: true })).toBeVisible();
+});
+
+test("@desktop Metadata Custom works lists custom works apart from catalog views and opens folder creation", async ({
+  page,
+}) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "library:write", "downloads:manage", "sources:write", "metadata:sync"],
+  });
+  const custom: MaintenanceWork = {
+    ...work,
+    id: 7,
+    primaryCode: "KT00000001",
+    title: "Example custom work",
+    dlsiteUrl: "",
+    noSource: true,
+    metadataIssues: [],
+  };
+  const reasons: string[] = [];
+  await page.route("**/api/maintenance/works?*", async (route) => {
+    const reason = new URL(route.request().url()).searchParams.get("reason") ?? "";
+    reasons.push(reason);
+    const works = reason === "custom" ? [custom] : [];
+    await route.fulfill({ json: { works, page: 1, pageSize: 25, total: works.length } satisfies MaintenanceWorkPage });
+  });
+  await page.route("**/api/custom-works/folders?*", (route) =>
+    route.fulfill({
+      json: {
+        folders: [{ path: "Example Folder", name: "Example Folder" }],
+        truncated: false,
+        noticeAccepted: true,
+      },
+    }),
+  );
+
+  await page.goto("/metadata?reason=catalog");
+  await page.getByRole("tab", { name: "Custom works", exact: true }).click();
+  await expect(page).toHaveURL(/\/metadata\?reason=custom$/);
+  const list = page.getByRole("region", { name: "Metadata records", exact: true });
+  const row = list.getByRole("row").filter({ hasText: "Example custom work" });
+  await expect(row.getByText("No available source", { exact: true })).toBeVisible();
+  expect(reasons.at(-1)).toBe("custom");
+  // A custom work has nothing to retry or check, but a missing folder can still be cleaned up here.
+  await expect(page.getByRole("button", { name: /^Retry metadata/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Check sources/ })).toHaveCount(0);
+  await expect(row.getByRole("button", { name: "Delete local information for KT00000001", exact: true })).toBeEnabled();
+
+  await page.getByRole("button", { name: "Create from folder", exact: true }).click();
+  await expect(page).toHaveURL(/\/metadata\?view=custom$/);
+  await expect(page.getByRole("region", { name: "Folders without a work code", exact: true })).toContainText(
+    "Example Folder",
+  );
+  await expect(page.getByRole("tab", { name: "Custom works", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("button", { name: "Back to custom works", exact: true }).click();
+  await expect(page).toHaveURL(/\/metadata\?reason=custom$/);
+  await expect(row).toBeVisible();
 });
