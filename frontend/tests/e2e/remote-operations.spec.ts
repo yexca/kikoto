@@ -17,6 +17,7 @@ import {
   mockRemoteSource,
   selectLibrarySource,
 } from "./fixtures/player-library";
+import { isCompactWorkDetail, openSourceActions, runSourceAction, showWorkDetailTab } from "./fixtures/work-detail";
 
 test("remote source reuses the library grid, source sorting, localized tags, and bottom pagination", async ({
   page,
@@ -441,11 +442,9 @@ test("local Delete selects by location, summarizes the selection, and requires t
   });
   await page.goto("/");
   await page.getByText("Tagged mobile work", { exact: true }).click();
-  await page.getByRole("button", { name: /Source actions for/ }).click();
-  await page.getByRole("menuitem", { name: "Refresh local files", exact: true }).click();
+  await runSourceAction(page, "Refresh local files");
   await expect.poll(() => localRefreshes).toBe(1);
-  await page.getByRole("button", { name: /Source actions for/ }).click();
-  await page.getByRole("menuitem", { name: "Manage files", exact: true }).click();
+  await runSourceAction(page, "Manage files");
 
   const workRoot = page.getByRole("checkbox", { name: `Select work root ${work.primaryCode}`, exact: true });
   await expect(workRoot).toBeVisible();
@@ -904,8 +903,7 @@ test("local Delete enables work forgetting only for a complete root and confirms
 
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
-  await page.getByRole("button", { name: /Source actions for/ }).click();
-  await page.getByRole("menuitem", { name: "Manage files", exact: true }).click();
+  await runSourceAction(page, "Manage files");
 
   // Forgetting a work deletes its complete folder, so it is offered only once everything is selected.
   const forgetButton = page.getByRole("button", { name: "Review deletion and forget work" });
@@ -1117,21 +1115,30 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(remoteTab).toBeVisible();
   const missingRemoteTab = page.locator('button[title="Remote B: Not found"]');
   await expect(missingRemoteTab).toBeVisible();
-  const sourceOptions = page.getByRole("button", { name: /Source actions for/ });
-  await expect(page.getByTestId("hero-actions").getByRole("button", { name: /Source actions for/ })).toBeVisible();
-  await sourceOptions.click();
-  await expect(page.getByRole("menu", { name: "Selected source options" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Refresh local files", exact: true })).toBeFocused();
-  await expect(page.getByRole("menuitem", { name: "Manage files", exact: true })).toBeVisible();
-  // Dismiss on a non-interactive surface; a screen corner can fall inside a control's touch target.
-  await page.getByRole("heading", { name: work.title, exact: true }).click();
-  await expect(page.getByRole("menu", { name: "Selected source options" })).toHaveCount(0);
+  // A compact detail lists the source actions in its Info tab instead of a Hero menu.
+  const compact = isCompactWorkDetail(page);
+  const sourceMenu = page.getByRole("menu", { name: "Selected source options" });
+  if (!compact) {
+    await expect(page.getByTestId("hero-actions").getByRole("button", { name: /Source actions for/ })).toBeVisible();
+  }
+  let actions = await openSourceActions(page);
+  await expect(actions.scope.getByRole(actions.role, { name: "Refresh local files", exact: true })).toBeVisible();
+  await expect(actions.scope.getByRole(actions.role, { name: "Manage files", exact: true })).toBeVisible();
+  if (!compact) {
+    await expect(sourceMenu).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Refresh local files", exact: true })).toBeFocused();
+    // Dismiss on a non-interactive surface; a screen corner can fall inside a control's touch target.
+    await page.getByRole("heading", { name: work.title, exact: true }).click();
+    await expect(sourceMenu).toHaveCount(0);
+  }
 
+  await showWorkDetailTab(page, "Directory");
   await remoteTab.click();
-  await sourceOptions.click();
-  await expect(page.getByRole("menuitem", { name: /^Track/ })).toBeDisabled();
-  await expect(page.getByRole("menuitem", { name: /^Untrack/ })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Fetch", exact: true })).toBeVisible();
+  actions = await openSourceActions(page);
+  await expect(actions.scope.getByRole(actions.role, { name: /^Track/ })).toBeDisabled();
+  await expect(actions.scope.getByRole(actions.role, { name: /^Untrack/ })).toBeVisible();
+  await expect(actions.scope.getByRole(actions.role, { name: "Fetch", exact: true })).toBeVisible();
+  await showWorkDetailTab(page, "Directory");
   await trackedTab.click();
   await expect(page.getByRole("menu", { name: "Selected source options" })).toHaveCount(0);
   await expect(page.getByText("Browsing the tracked directory forked from Remote A.", { exact: true })).toBeVisible();
@@ -1147,12 +1154,15 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await page.getByRole("button", { name: "Switch fork", exact: true }).click();
   await page.getByRole("menuitemradio", { name: /Remote A/ }).click();
   await expect(page).toHaveURL(/view=tracked&trackedSource=7/);
-  await sourceOptions.click();
-  await expect(page.getByText("Switch fork", { exact: true })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: /^Untrack/ })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: /Manage cache/ })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("menu", { name: "Selected source options" })).toHaveCount(0);
+  actions = await openSourceActions(page);
+  await expect(actions.scope.getByText("Switch fork", { exact: true })).toBeVisible();
+  await expect(actions.scope.getByRole(actions.role, { name: /^Untrack/ })).toBeVisible();
+  await expect(actions.scope.getByRole(actions.role, { name: /Manage cache/ })).toBeVisible();
+  if (!compact) {
+    await page.keyboard.press("Escape");
+    await expect(sourceMenu).toHaveCount(0);
+  }
+  await showWorkDetailTab(page, "Directory");
   await page.getByRole("button", { name: "Directory actions", exact: true }).click();
   await page
     .getByRole("menu", { name: "Directory actions" })
@@ -1166,8 +1176,7 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
   await expect(page).toHaveURL(/view=tracked/);
   await expect(page.locator('button[title^="Tracked:"]')).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator('button[title="Remote A: Available"]')).toBeVisible();
-  await page.getByRole("button", { name: /Source actions for/ }).click();
-  await page.getByRole("menuitem", { name: /Manage cache/ }).click();
+  await runSourceAction(page, /Manage cache/);
   await page.getByRole("checkbox", { name: "Select all", exact: true }).click();
   await expect(page.getByText(/^1 selected \/ 1 deletable/)).toBeVisible();
   await page.getByRole("button", { name: "Review file deletion" }).click();
@@ -1284,30 +1293,31 @@ test("remote detail Track completes in place and makes the forked Tracked source
   await expect(page.locator('button[title="Example Remote: Available"]')).toBeVisible();
   await expect(trackedTab).toHaveCount(0);
 
-  await page.getByRole("button", { name: /Source actions for/ }).click();
-  await page.getByRole("menuitem", { name: "Track", exact: true }).click();
+  await runSourceAction(page, "Track");
 
   await expect.poll(() => trackControl.trackRequests).toHaveLength(1);
   await expect(page.getByText("Track workflow #91 queued.", { exact: true })).toBeVisible();
   expect(page.url()).toBe(detailURL);
+  await showWorkDetailTab(page, "Directory");
   await expect(trackedTab).toHaveCount(0);
 
   trackControl.status = "succeeded";
   await expect(page.getByText("Track workflow #91 completed for RJ00000051.", { exact: true })).toBeVisible();
   expect(page.url()).toBe(detailURL);
   await expect(trackedTab).toHaveAttribute("title", "Tracked: Forked directory available");
-  await page.getByRole("button", { name: /Source actions for/ }).click();
-  await expect(page.getByRole("menuitem", { name: /^Track/ })).toBeDisabled();
-  await page.getByRole("menuitem", { name: /^Untrack/ }).click();
-  await expect(page.getByRole("menuitem", { name: /^Confirm untrack/ })).toBeVisible();
+  let actions = await openSourceActions(page);
+  await expect(actions.scope.getByRole(actions.role, { name: /^Track/ })).toBeDisabled();
+  await actions.scope.getByRole(actions.role, { name: /^Untrack/ }).click();
+  await expect(actions.scope.getByRole(actions.role, { name: /^Confirm untrack/ })).toBeVisible();
   expect(trackControl.untrackRequests).toHaveLength(0);
-  await page.getByRole("menuitem", { name: /^Confirm untrack/ }).click();
+  await actions.scope.getByRole(actions.role, { name: /^Confirm untrack/ }).click();
   await expect.poll(() => trackControl.untrackRequests).toHaveLength(1);
   await expect(page.getByText("Untracked RJ00000051 from Example Remote.", { exact: true })).toBeVisible();
+  await showWorkDetailTab(page, "Directory");
   await expect(trackedTab).toHaveCount(0);
-  await page.getByRole("button", { name: /Source actions for/ }).click();
-  await expect(page.getByRole("menuitem", { name: /^Track/ })).toBeEnabled();
-  await expect(page.getByRole("menuitem", { name: /^Untrack/ })).toHaveCount(0);
+  actions = await openSourceActions(page);
+  await expect(actions.scope.getByRole(actions.role, { name: /^Track/ })).toBeEnabled();
+  await expect(actions.scope.getByRole(actions.role, { name: /^Untrack/ })).toHaveCount(0);
 });
 
 test("persisted remote result opens the canonical detail with its remote source selected", async ({ page }) => {

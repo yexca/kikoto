@@ -12,6 +12,7 @@ import {
   type ApiResponse,
 } from "./fixtures/api";
 import { mockApplication, work } from "./fixtures/player-library";
+import { openWorkMetadataEditor } from "./fixtures/work-detail";
 
 const provider: LLMProvider = {
   id: "synthetic-provider",
@@ -96,7 +97,7 @@ async function openTranslation(page: Page, detailOverrides: Partial<WorkDetail> 
     route.fulfill({ json: { current: [], history: [] } satisfies ApiResponse<"listTranslations"> }),
   );
   await page.goto("/RJ00000000");
-  await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+  await openWorkMetadataEditor(page);
   await page
     .getByRole("dialog", { name: "Edit metadata", exact: true })
     .getByRole("button", { name: "Translate", exact: true })

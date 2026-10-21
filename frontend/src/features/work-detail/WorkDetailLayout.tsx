@@ -68,7 +68,7 @@ import { openLibraryAgeRatingSearch } from "@/lib/libraryAgeRatingSearch";
 import { formatBytes, formatDuration } from "@/features/work-detail/media/mediaTreeModel";
 import { sourceTabStatusClass } from "@/features/work-detail/source/sourceContextModel";
 import { historyStateWithReturn, NAVIGATION_EVENT } from "@/lib/browserHistory";
-import type { SourceActionLayout } from "@/features/work-detail/WorkDetailActionBars";
+import type { MetadataActionPlacement, SourceActionLayout } from "@/features/work-detail/WorkDetailActionBars";
 import { DetailBundleLine } from "@/features/work-detail/DetailBundleLine";
 import { DetailPurchaseBonusLine } from "@/features/work-detail/DetailPurchaseBonusLine";
 
@@ -128,6 +128,7 @@ export function UnifiedWorkDetailPage({
   onMobileTabChange,
   actions,
   renderSourceActions,
+  renderMetadataAction,
   directory,
   onBack,
   children,
@@ -137,8 +138,10 @@ export function UnifiedWorkDetailPage({
   mobileTab: "info" | "directory";
   onMobileTabChange: (tab: "info" | "directory") => void;
   actions: ReactNode;
-  /** Actions for the selected source: a menu with the Hero actions, or an inline list in wide Source info. */
+  /** Actions for the selected source: a menu with the Hero actions, or an inline list in Source info. */
   renderSourceActions?: (layout: SourceActionLayout) => ReactNode;
+  /** The metadata editor entry: among the Hero actions, or beside the metadata update time in Source info. */
+  renderMetadataAction?: (placement: MetadataActionPlacement) => ReactNode;
   directory: ReactNode;
   onBack: () => void;
   children?: ReactNode;
@@ -156,18 +159,20 @@ export function UnifiedWorkDetailPage({
           {...presentation}
           activeTab={mobileTab}
           onActiveTabChange={onMobileTabChange}
-          actions={
-            <>
-              {actions}
-              {renderSourceActions?.("menu")}
-            </>
-          }
+          actions={actions}
+          sourceActions={renderSourceActions?.("list")}
+          metadataAction={renderMetadataAction?.("info")}
           directory={directory}
         />
       ) : (
         <DesktopWorkDetailLayout
           {...presentation}
-          actions={actions}
+          actions={
+            <>
+              {actions}
+              {renderMetadataAction?.("hero")}
+            </>
+          }
           renderSourceActions={renderSourceActions}
           directory={directory}
         />
@@ -311,9 +316,12 @@ function DetailInfoPanel({
   sourceInfo,
   dlsiteFetchedAt,
   actions,
+  metadataAction,
   className,
 }: Pick<UnifiedWorkDetailPresentation, "sourceInfo" | "dlsiteFetchedAt"> & {
   actions?: ReactNode;
+  /** Shown at the end of the metadata update time row. */
+  metadataAction?: ReactNode;
   className: string;
 }) {
   return (
@@ -324,12 +332,22 @@ function DetailInfoPanel({
     >
       <ActiveSourceInfo info={sourceInfo} />
       {actions && <div className="p-2 empty:hidden">{actions}</div>}
-      {dlsiteFetchedAt && (
-        <div className="flex items-center gap-2 px-4 py-3 text-2xs text-muted-foreground">
-          <Clock3 className="h-3.5 w-3.5 shrink-0" />
-          <span className="min-w-0 truncate tabular-nums">
-            {i18n.t("libraryDetail.metadataUpdatedAt", { time: dlsiteFetchedAt })}
-          </span>
+      {(dlsiteFetchedAt || metadataAction) && (
+        <div
+          className={cn(
+            "flex items-center gap-2 px-4 text-2xs text-muted-foreground",
+            metadataAction ? "py-2" : "py-3",
+          )}
+        >
+          {dlsiteFetchedAt && (
+            <>
+              <Clock3 className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 truncate tabular-nums">
+                {i18n.t("libraryDetail.metadataUpdatedAt", { time: dlsiteFetchedAt })}
+              </span>
+            </>
+          )}
+          {metadataAction && <div className="ml-auto shrink-0 empty:hidden">{metadataAction}</div>}
         </div>
       )}
     </aside>
@@ -659,6 +677,8 @@ function MobileWorkDetailLayout({
   activeTab,
   onActiveTabChange,
   actions,
+  sourceActions,
+  metadataAction,
   directory,
 }: {
   coverUrl: string;
@@ -708,6 +728,10 @@ function MobileWorkDetailLayout({
   activeTab: "info" | "directory";
   onActiveTabChange: (tab: "info" | "directory") => void;
   actions: ReactNode;
+  /** The selected source's actions, listed in the Info tab's Source info. */
+  sourceActions?: ReactNode;
+  /** The metadata editor entry, in the Info tab's Source info. */
+  metadataAction?: ReactNode;
   directory: ReactNode;
 }) {
   const entityResolver = useDetailEntityResolver(code);
@@ -829,7 +853,13 @@ function MobileWorkDetailLayout({
       {activeTab === "info" ? (
         <div className="space-y-4">
           <WorkDescription description={description} />
-          <DetailInfoPanel sourceInfo={sourceInfo} dlsiteFetchedAt={dlsiteFetchedAt} className="" />
+          <DetailInfoPanel
+            sourceInfo={sourceInfo}
+            dlsiteFetchedAt={dlsiteFetchedAt}
+            actions={sourceActions}
+            metadataAction={metadataAction}
+            className=""
+          />
           <DetailStaffCredits credits={staffCredits} />
         </div>
       ) : (

@@ -2432,7 +2432,7 @@ export const surfaceKorean = {
     origin: "원본",
   },
   detailActions: {
-    resume: "재생 재개",
+    resume: "재개",
     resumeSavedPlayback: "저장된 재생 위치에서 재개",
     noUnfinishedPlayback: "완료되지 않은 재생이 없습니다",
     manageMetadata: "메타데이터 관리",

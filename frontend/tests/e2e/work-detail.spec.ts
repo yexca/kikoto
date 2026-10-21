@@ -21,6 +21,7 @@ import {
   workflowRunFixture,
 } from "./fixtures/api";
 import { playbackReportResultFixture } from "./fixtures/playback-reports";
+import { openWorkMetadataEditor } from "./fixtures/work-detail";
 
 test("selected metadata title and introduction follow playback without changing directory edition", async ({
   page,
@@ -100,7 +101,7 @@ test("title editor current marker follows the selected metadata language", async
   await page.goto("/RJ00000000");
   await page.getByRole("button", { name: "Metadata language", exact: true }).click();
   await page.getByRole("menuitemradio", { name: "Original · Japanese", exact: true }).click();
-  await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+  await openWorkMetadataEditor(page);
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
   const japanese = dialog.getByRole("group", { name: "Japanese", exact: true });
   await expect(japanese.getByText("origin", { exact: true })).toBeVisible();
@@ -785,7 +786,7 @@ test("local work detail lists Origin first and expands from local to all edition
   await page.keyboard.press("Escape");
 
   await page.route("**/api/works/1/cover-candidates", (route) => route.fulfill({ json: { candidates: [] } }));
-  await page.getByRole("button", { name: "Edit metadata", exact: true }).click();
+  await openWorkMetadataEditor(page);
   const editor = page.getByRole("dialog", { name: "Edit metadata", exact: true });
   await editor.getByRole("tab", { name: "Metadata source" }).click();
   const family = editor.getByRole("list", { name: "Editions in this family", exact: true }).getByRole("listitem");

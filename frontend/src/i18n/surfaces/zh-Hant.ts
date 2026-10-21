@@ -2324,7 +2324,7 @@ export const surfaceHant = {
     origin: "原版",
   },
   detailActions: {
-    resume: "繼續播放",
+    resume: "繼續",
     resumeSavedPlayback: "繼續已儲存的播放進度",
     noUnfinishedPlayback: "沒有未完成的播放",
     manageMetadata: "管理中繼資料",

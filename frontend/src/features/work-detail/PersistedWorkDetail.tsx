@@ -15,7 +15,7 @@ import { useWorkPlaybackCursor } from "@/features/work-detail/media/useWorkPlayb
 import { buildTree, emptyTree, treeStats } from "@/features/work-detail/media/mediaTreeModel";
 import i18n from "@/i18n";
 import { openActivityRun, openDetailTagSearch, workHasNoSource } from "@/features/work-detail/workDetailHelpers";
-import type { SourceActionLayout } from "@/features/work-detail/WorkDetailActionBars";
+import type { MetadataActionPlacement, SourceActionLayout } from "@/features/work-detail/WorkDetailActionBars";
 import {
   detailHeroModel,
   UnifiedWorkDetailPage,
@@ -74,6 +74,7 @@ import {
   type PersistedDetailActionsProps,
   PersistedIdentityActions,
   PersistedMediaActions,
+  PersistedMetadataAction,
 } from "@/features/work-detail/PersistedDetailActions";
 import { PersistedDirectoryPanel } from "@/features/work-detail/PersistedDirectoryPanel";
 import {
@@ -626,6 +627,9 @@ export function PersistedWorkDetailController({
   const renderSourceActions = (layout: SourceActionLayout) => (
     <PersistedMediaActions {...detailActionProps} layout={layout} />
   );
+  const renderMetadataAction = (placement: MetadataActionPlacement) => (
+    <PersistedMetadataAction {...detailActionProps} placement={placement} />
+  );
   const directoryPanel = (
     <PersistedDirectoryPanel
       activeEdition={activeEdition}
@@ -709,6 +713,7 @@ export function PersistedWorkDetailController({
       onMobileTabChange={setMobileDetailTab}
       actions={heroActions}
       renderSourceActions={renderSourceActions}
+      renderMetadataAction={renderMetadataAction}
       directory={directoryPanel}
       onBack={onBack}
     >
