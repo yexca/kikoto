@@ -4,9 +4,9 @@
 
 Sign in and open **Insights** in the sidebar for your listening calendar,
 report, and history. Personal tags are in **Settings → Tags**, and **Your
-data** is the last section of **Settings → Account**. The account menu behind
-your avatar and Quick actions open each one directly. They show only your
-account's data.
+data** is the last section of **Settings → Account**. Quick actions opens
+each one directly, and the account menu behind your avatar opens Insights and
+Tags. They show only your account's data.
 
 ## Personal tags
 

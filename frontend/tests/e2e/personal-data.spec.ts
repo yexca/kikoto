@@ -229,11 +229,10 @@ test("mobile reaches personal pages from the account menu without adding bottom 
   await expect(page).toHaveURL(/\/settings\?tab=tags$/);
   await expect(page.getByRole("list", { name: "Personal tags" }).getByText("Unused")).toBeVisible();
 
+  // Your data is reached through Settings and Quick actions, not the account menu.
   await page.getByRole("button", { name: "Account menu" }).click();
-  await account.getByRole("button", { name: "Your data", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings\?tab=data$/);
-  await expect(page.getByRole("tab", { name: "Account", selected: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Download export" })).toBeInViewport();
+  await expect(account.getByRole("button", { name: "Tags", exact: true })).toBeVisible();
+  await expect(account.getByRole("button", { name: "Your data", exact: true })).toHaveCount(0);
 });
 
 test("@desktop personal pages are Settings tabs instead of sidebar entries", async ({ page }) => {

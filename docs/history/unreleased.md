@@ -9,6 +9,9 @@
   touch area on the button the same way.
 - The phone Favorites shelf strip and the circle and voice filter chips follow
   the theme style's corner radius instead of always drawing pills.
+- The account menu behind the avatar drops its **Your data** shortcut;
+  **Your data** stays at the end of **Settings → Account** and in Quick
+  actions.
 
 </details>
 
