@@ -58,8 +58,8 @@ Kikoto는 상품 코드를 키로 작품당 하나의 항목을 유지하고, �
   <tr>
     <td width="50%" valign="top">
       <h3>🏷️ 내 언어로 보는 메타데이터</h3>
-      제목, 태그, 서클, 성우에는 언어별 이름이 있으며, 사용자마다 자신의 언어를
-      고릅니다. 편집자는 제목, 표지, 태그, 크레딧, 묶음 구성을 바로잡습니다.
+      제목, 태그, 서클, 성우, 로컬 파일에는 언어별 이름이 있으며, 사용자마다
+      자신의 언어를 고릅니다. 편집자는 제목, 표지, 태그, 크레딧, 묶음 구성을 바로잡습니다.
     </td>
     <td width="50%" valign="top">
       <h3>💬 전사와 번역을 거치는 가사</h3>
@@ -104,8 +104,9 @@ flowchart LR
 
 ## 빠른 시작
 
-Docker Compose를 사용한다면 빈 디렉터리에 [`docker-compose.yml`](../../docker-compose.yml)을
-두고, 작품 폴더를 `data/` 아래에 추가한 다음 Kikoto를 시작하세요.
+이미지는 ARM NAS 기기와 64비트 Raspberry Pi OS를 포함한 `linux/amd64` 및
+`linux/arm64` 호스트에서 실행됩니다. Docker Compose를 사용한다면 빈 디렉터리에
+[`docker-compose.yml`](../../docker-compose.yml)을 두고, 작품 폴더를 `data/` 아래에 추가한 다음 Kikoto를 시작하세요.
 
 ```sh
 mkdir config cache data

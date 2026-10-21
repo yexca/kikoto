@@ -49,7 +49,7 @@ Kikoto は作品ごとに商品コードをキーとする 1 つの項目を保�
   <tr>
     <td width="50%" valign="top">
       <h3>🏷️ 使用言語に合わせたメタデータ</h3>
-      タイトル、タグ、サークル、声優は言語ごとの名前を持ち、ユーザーごとに言語を選べます。編集者は、タイトル、カバー、タグ、クレジット、バンドルの内容を修正できます。
+      タイトル、タグ、サークル、声優、ローカルファイルは言語ごとの名前を持ち、ユーザーごとに言語を選べます。編集者は、タイトル、カバー、タグ、クレジット、バンドルの内容を修正できます。
     </td>
     <td width="50%" valign="top">
       <h3>💬 文字起こしと翻訳をした歌詞</h3>
@@ -85,7 +85,7 @@ flowchart LR
 
 ## クイックスタート
 
-Docker Compose を使う場合は、空のディレクトリに [`docker-compose.yml`](../../docker-compose.yml) を置き、作品のフォルダーを `data/` の下に追加して、Kikoto を起動します。
+イメージは `linux/amd64` と `linux/arm64` のホストで動作し、ARM 版の NAS や 64 ビット版 Raspberry Pi OS でも使えます。Docker Compose を使う場合は、空のディレクトリに [`docker-compose.yml`](../../docker-compose.yml) を置き、作品のフォルダーを `data/` の下に追加して、Kikoto を起動します。
 
 ```sh
 mkdir config cache data

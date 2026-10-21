@@ -49,7 +49,7 @@ Kikoto 为每部作品只保留一个条目，以商品编号为键，并把 DLs
   <tr>
     <td width="50%" valign="top">
       <h3>🏷️ 用你的语言呈现元数据</h3>
-      标题、标签、社团和声优都按语言保存名称，每位用户可以选择自己的语言。编辑者可以更正标题、封面、标签、署名信息和合集内容。
+      标题、标签、社团、声优和本地文件都按语言保存名称，每位用户可以选择自己的语言。编辑者可以更正标题、封面、标签、署名信息和合集内容。
     </td>
     <td width="50%" valign="top">
       <h3>💬 歌词，转写与翻译</h3>
@@ -85,7 +85,7 @@ flowchart LR
 
 ## 快速开始
 
-使用 Docker Compose：把 [`docker-compose.yml`](../../docker-compose.yml) 放到一个空目录中，把作品文件夹添加到 `data/` 下，然后启动 Kikoto：
+镜像可在 `linux/amd64` 和 `linux/arm64` 主机上运行，包括 ARM NAS 设备和 64 位 Raspberry Pi OS。使用 Docker Compose：把 [`docker-compose.yml`](../../docker-compose.yml) 放到一个空目录中，把作品文件夹添加到 `data/` 下，然后启动 Kikoto：
 
 ```sh
 mkdir config cache data

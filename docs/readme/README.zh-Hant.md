@@ -49,7 +49,7 @@ Kikoto 為每個作品只保留一筆項目，以商品代碼為索引，並把 
   <tr>
     <td width="50%" valign="top">
       <h3>🏷️ 以你的語言呈現中繼資料</h3>
-      標題、標籤、社團與聲優都依語言各自記錄名稱，每位使用者可以選擇自己的語言。編輯者可以修正標題、封面、標籤、製作名單與合集內容。
+      標題、標籤、社團、聲優與本機檔案都依語言各自記錄名稱，每位使用者可以選擇自己的語言。編輯者可以修正標題、封面、標籤、製作名單與合集內容。
     </td>
     <td width="50%" valign="top">
       <h3>💬 歌詞，可轉寫也可翻譯</h3>
@@ -85,7 +85,7 @@ flowchart LR
 
 ## 快速開始
 
-使用 Docker Compose 時，將 [`docker-compose.yml`](../../docker-compose.yml) 放進一個空目錄，把你的作品資料夾加入 `data/`，然後啟動 Kikoto：
+映像檔可在 `linux/amd64` 與 `linux/arm64` 主機上執行，包括 ARM NAS 裝置與 64 位元 Raspberry Pi OS。使用 Docker Compose 時，將 [`docker-compose.yml`](../../docker-compose.yml) 放進一個空目錄，把你的作品資料夾加入 `data/`，然後啟動 Kikoto：
 
 ```sh
 mkdir config cache data

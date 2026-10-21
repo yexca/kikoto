@@ -57,9 +57,9 @@ in any browser and in the Android and iOS apps.
   <tr>
     <td width="50%" valign="top">
       <h3>🏷️ Metadata in your language</h3>
-      Titles, tags, circles, and voice actors carry names per language, and
-      each user picks theirs. Editors fix titles, covers, tags, credits, and
-      bundle contents.
+      Titles, tags, circles, voice actors, and local files carry names per
+      language, and each user picks theirs. Editors fix titles, covers, tags,
+      credits, and bundle contents.
     </td>
     <td width="50%" valign="top">
       <h3>💬 Lyrics, transcribed and translated</h3>
@@ -105,8 +105,10 @@ flowchart LR
 
 ## Quick Start
 
-With Docker Compose, put [`docker-compose.yml`](docker-compose.yml) in an
-empty directory, add your work folders under `data/`, and start Kikoto:
+The image runs on `linux/amd64` and `linux/arm64` hosts, including ARM NAS
+devices and 64-bit Raspberry Pi OS. With Docker Compose, put
+[`docker-compose.yml`](docker-compose.yml) in an empty directory, add your
+work folders under `data/`, and start Kikoto:
 
 ```sh
 mkdir config cache data
