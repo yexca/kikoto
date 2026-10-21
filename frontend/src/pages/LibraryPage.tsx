@@ -787,6 +787,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
           statusFilter={activeTab.kind === "source" ? null : statusFilter}
           onStatusFilterChange={changeStatusFilter}
           onOpenRecent={openRecentWork}
+          active={active}
         />
       ) : (
         <LibraryDesktopToolbar

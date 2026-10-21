@@ -11,24 +11,37 @@ const continueListeningLimit = 12;
 /**
  * Recently played works as a horizontal rail below the phone Library's sort
  * row, so resuming takes one tap once the rail is open. The toolbar's toggle
- * mounts it, and each mount loads the current history, since playback
- * elsewhere keeps moving the list.
+ * mounts it. It loads the current history on mount and whenever the retained
+ * Library page becomes active again, since playback elsewhere keeps moving the
+ * list; the covers it shows stay until the new list arrives.
  */
-export function ContinueListeningRail({ id, onOpen }: { id: string; onOpen: (work: Work) => void }) {
+export function ContinueListeningRail({
+  id,
+  active,
+  onOpen,
+}: {
+  id: string;
+  active: boolean;
+  onOpen: (work: Work) => void;
+}) {
   const { t } = useTranslation();
   const [works, setWorks] = useState<Work[] | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    if (!active) return;
     const controller = new AbortController();
     api
       .listRecentlyPlayedWorks(continueListeningLimit, controller.signal)
-      .then((result) => setWorks(result.works))
+      .then((result) => {
+        setWorks(result.works);
+        setFailed(false);
+      })
       .catch(() => {
         if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
-  }, []);
+  }, [active]);
 
   const message = (text: string) => <p className="py-3 text-sm text-muted-foreground">{text}</p>;
   return (
