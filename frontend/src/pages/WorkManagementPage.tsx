@@ -1,5 +1,4 @@
 import {
-  ArrowLeft,
   Building2,
   Tags,
   CircleAlert,
@@ -20,7 +19,7 @@ import { IconRail, type IconRailItem } from "@/components/ui/icon-rail";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import type { MaintenanceToolbarSlots } from "@/features/maintenance/MaintenanceControls";
 import { WorkMaintenance } from "@/features/maintenance/WorkMaintenance";
-import { CustomWorkMaintenance } from "@/features/maintenance/CustomWorkMaintenance";
+import { CustomWorkAddDialog, CustomWorkNotice } from "@/features/maintenance/CustomWorkMaintenance";
 import { MetadataSettingsPanel } from "@/features/maintenance/MetadataSettingsPanel";
 import { MetadataEntryMaintenance } from "@/features/maintenance/MetadataEntryMaintenance";
 import { VoiceAliasMaintenance } from "@/features/maintenance/VoiceAliasMaintenance";
@@ -29,7 +28,7 @@ import { api, type MaintenanceWork, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { metadataIssueRunFromLocation } from "@/lib/metadataMaintenance";
 
-type MetadataView = "works" | "custom" | "aliases" | "tags" | "circles";
+type MetadataView = "works" | "aliases" | "tags" | "circles";
 type MetadataRailValue = "catalog" | "all" | "metadata" | "no_source" | "custom" | "aliases" | "tags" | "circles";
 
 const railIcons: Record<MetadataRailValue, LucideIcon> = {
@@ -46,6 +45,8 @@ const railIcons: Record<MetadataRailValue, LucideIcon> = {
 function reasonFromLocation() {
   const params = new URLSearchParams(window.location.search);
   if (metadataIssueRunFromLocation()) return "metadata";
+  // `view=custom` opens Add custom work over the custom works list.
+  if (params.get("view") === "custom") return "custom";
   const reason = params.get("reason");
   if (
     reason === "catalog" ||
@@ -60,7 +61,11 @@ function reasonFromLocation() {
 
 function viewFromLocation(): MetadataView {
   const view = new URLSearchParams(window.location.search).get("view");
-  return view === "custom" || view === "aliases" || view === "tags" || view === "circles" ? view : "works";
+  return view === "aliases" || view === "tags" || view === "circles" ? view : "works";
+}
+
+function addCustomWorkFromLocation(canCreateCustomWorks: boolean) {
+  return canCreateCustomWorks && new URLSearchParams(window.location.search).get("view") === "custom";
 }
 
 // The requested reason and view fall back to what the viewer may open.
@@ -71,9 +76,8 @@ function availableReasonFromLocation(canSyncMetadata: boolean, canManageSources:
   return requested;
 }
 
-function availableViewFromLocation(canSyncMetadata: boolean, canCreateCustomWorks: boolean): MetadataView {
+function availableViewFromLocation(canSyncMetadata: boolean): MetadataView {
   const view = viewFromLocation();
-  if (view === "custom" && !canCreateCustomWorks) return "works";
   return view === "aliases" && !canSyncMetadata ? "works" : view;
 }
 
@@ -141,9 +145,11 @@ export function WorkManagementPage({
   const toast = useToast();
   const [reason, setReason] = useState(() => availableReasonFromLocation(canSyncMetadata, canManageSources));
   const [runId, setRunId] = useState<number | null>(metadataIssueRunFromLocation);
-  const [view, setView] = useState<MetadataView>(() =>
-    availableViewFromLocation(canSyncMetadata, canCreateCustomWorks),
-  );
+  const [view, setView] = useState<MetadataView>(() => availableViewFromLocation(canSyncMetadata));
+  const [addingCustomWork, setAddingCustomWork] = useState(() => addCustomWorkFromLocation(canCreateCustomWorks));
+  const [listRevision, setListRevision] = useState(0);
+  // Whether the rename notice is accepted; null until the custom works view asks.
+  const [customNotice, setCustomNotice] = useState<boolean | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(settingsFromLocation);
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
   const [inlineSearchSlot, setInlineSearchSlot] = useState<HTMLDivElement | null>(null);
@@ -151,7 +157,7 @@ export function WorkManagementPage({
   const [editor, setEditor] = useState<{ work: WorkDetail; onSaved: () => void } | null>(null);
   const [editingWorkId, setEditingWorkId] = useState<number | null>(null);
   const headerRef = useRef<HTMLDivElement>(null);
-  const titleRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const headerActionsRef = useRef<HTMLDivElement>(null);
   const settingsAnchorRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
@@ -161,7 +167,8 @@ export function WorkManagementPage({
     const sync = () => {
       setReason(availableReasonFromLocation(canSyncMetadata, canManageSources));
       setRunId(metadataIssueRunFromLocation());
-      setView(availableViewFromLocation(canSyncMetadata, canCreateCustomWorks));
+      setView(availableViewFromLocation(canSyncMetadata));
+      setAddingCustomWork(addCustomWorkFromLocation(canCreateCustomWorks));
       setSettingsOpen(settingsFromLocation());
     };
     window.addEventListener("popstate", sync);
@@ -171,6 +178,18 @@ export function WorkManagementPage({
       window.removeEventListener(NAVIGATION_EVENT, sync);
     };
   }, [canCreateCustomWorks, canManageSources, canSyncMetadata]);
+
+  const needsCustomNotice = view === "works" && reason === "custom" && canCreateCustomWorks && customNotice === null;
+  useEffect(() => {
+    if (!needsCustomNotice) return;
+    const controller = new AbortController();
+    api.getCustomWorkNotice(controller.signal).then(
+      (result) => setCustomNotice(result.noticeAccepted),
+      // Without an answer the list stays usable and Add stays disabled.
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [needsCustomNotice]);
 
   const inlineSearch = useInlineSearchFits(headerRef, titleRef, headerActionsRef);
   const toolbar: MaintenanceToolbarSlots = {
@@ -187,7 +206,7 @@ export function WorkManagementPage({
     setRunId(nextRun);
     setView("works");
   };
-  const showEntries = (nextView: "custom" | "tags" | "circles" | "aliases") => {
+  const showEntries = (nextView: "tags" | "circles" | "aliases") => {
     window.history.replaceState(window.history.state, "", `/metadata?view=${nextView}`);
     setView(nextView);
   };
@@ -241,7 +260,7 @@ export function WorkManagementPage({
       controls:
         value === "aliases"
           ? "metadata-aliases"
-          : value === "tags" || value === "circles" || (value === "custom" && view === "custom")
+          : value === "tags" || value === "circles"
             ? `metadata-${value}`
             : "metadata-records",
       separated: value === "tags",
@@ -256,10 +275,15 @@ export function WorkManagementPage({
           : "metadataEntries.worksGroup",
       ),
     }));
-  // Custom works list under their own reason; creating one opens the folder view beneath it.
   const railSelected = (view === "works" ? reason : view) as MetadataRailValue;
-  const title =
-    view === "custom" ? t("customWorks.dialogTitle") : railItems.find((item) => item.value === railSelected)?.label;
+  const customView = view === "works" && reason === "custom" && canCreateCustomWorks;
+  // Administrators accept the rename notice when they first open the custom works view.
+  const customNoticeLocked = customView && customNotice === false;
+  const closeAddCustomWork = () => {
+    // A `view=custom` link that opened the dialog settles on the custom works list.
+    if (new URLSearchParams(window.location.search).get("view") === "custom") showWorks("custom");
+    setAddingCustomWork(false);
+  };
 
   return (
     <div className="min-w-0 space-y-3">
@@ -276,36 +300,24 @@ export function WorkManagementPage({
         />
         <div className="min-w-0 flex-1 space-y-3">
           <div ref={headerRef} className="flex min-h-10 items-center gap-2" data-toast-avoid>
-            <div
-              ref={titleRef}
-              className={`flex shrink-0 items-center gap-2 ${view === "custom" ? "" : "max-lg:hidden"}`}
-            >
-              {view === "custom" && (
-                <Button
-                  variant="toolbar"
-                  size="icon-sm"
-                  aria-label={t("customWorks.backToWorks")}
-                  title={t("customWorks.backToWorks")}
-                  onClick={() => showWorks("custom")}
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              )}
-              {/* Wide layouts name the current view here; the compact rail already labels it. */}
-              <h2 className="whitespace-nowrap text-base font-semibold max-lg:hidden">{title}</h2>
-            </div>
+            {/* Wide layouts name the current view here; the compact rail already labels it. */}
+            <h2 ref={titleRef} className="shrink-0 whitespace-nowrap text-base font-semibold max-lg:hidden">
+              {railItems.find((item) => item.value === railSelected)?.label}
+            </h2>
             <div ref={setInlineSearchSlot} className="contents" />
             <div ref={headerActionsRef} className="ml-auto flex shrink-0 items-center gap-2">
               <div ref={setActionsSlot} className="contents" />
-              {view === "works" && reason === "custom" && canCreateCustomWorks && (
+              {customView && (
                 <Button
                   variant="toolbar"
                   size="sm"
-                  title={t("customWorks.createFromFolder")}
-                  onClick={() => showEntries("custom")}
+                  disabled={customNotice !== true}
+                  aria-label={t("customWorks.addTitle")}
+                  title={t("customWorks.addTitle")}
+                  onClick={() => setAddingCustomWork(true)}
                 >
                   <FolderPlus className="h-4 w-4" />
-                  <span className="max-sm:sr-only">{t("customWorks.createFromFolder")}</span>
+                  <span className="max-sm:sr-only">{t("customWorks.add")}</span>
                 </Button>
               )}
               {canManageSources && (
@@ -339,9 +351,7 @@ export function WorkManagementPage({
             </div>
           </div>
           <div ref={setSearchRowSlot} className="empty:hidden" data-toast-avoid />
-          {view === "custom" ? (
-            <CustomWorkMaintenance canCreate={canCreateCustomWorks} toolbar={toolbar} />
-          ) : view === "aliases" ? (
+          {view === "aliases" ? (
             <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} readOnly={readOnly} toolbar={toolbar} />
           ) : view === "tags" || view === "circles" ? (
             <MetadataEntryMaintenance
@@ -351,21 +361,34 @@ export function WorkManagementPage({
               toolbar={toolbar}
             />
           ) : (
-            <WorkMaintenance
-              preferenceRevision={preferenceRevision}
-              canManageSources={canManageSources}
-              canSyncMetadata={canSyncMetadata}
-              readOnly={readOnly}
-              reason={reason}
-              runId={runId}
-              toolbar={toolbar}
-              onFilterChange={showWorks}
-              editingWorkId={editingWorkId}
-              onEditWork={canEditMetadata ? (work, onSaved) => void editWork(work, onSaved) : undefined}
-            />
+            <div className="relative">
+              <div inert={customNoticeLocked} aria-hidden={customNoticeLocked || undefined}>
+                <WorkMaintenance
+                  preferenceRevision={preferenceRevision}
+                  listRevision={listRevision}
+                  canManageSources={canManageSources}
+                  canSyncMetadata={canSyncMetadata}
+                  readOnly={readOnly}
+                  reason={reason}
+                  runId={runId}
+                  toolbar={toolbar}
+                  onFilterChange={showWorks}
+                  editingWorkId={editingWorkId}
+                  onEditWork={canEditMetadata ? (work, onSaved) => void editWork(work, onSaved) : undefined}
+                />
+              </div>
+              {customNoticeLocked && (
+                <div className="absolute inset-0 z-10 bg-background/70 px-4 pt-6 backdrop-blur-[2px]">
+                  <CustomWorkNotice onAccepted={() => setCustomNotice(true)} />
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
+      {addingCustomWork && customNotice === true && (
+        <CustomWorkAddDialog onClose={closeAddCustomWork} onCreated={() => setListRevision((value) => value + 1)} />
+      )}
       {editor && (
         <WorkMetadataEditorModal
           work={editor.work}

@@ -197,13 +197,23 @@ folders, and an empty name removes that language's name. A name is at most 255
 characters and holds no path separator or control character. Both answer with
 the current list.
 
-`GET /api/custom-works/folders`, `POST /api/custom-works`, and
-`POST /api/custom-works/notice-acceptance` require both `library:write` and
-`downloads:manage` and are unavailable in Demo. The list walks the folders a
+`GET /api/custom-works/folders`, `GET /api/custom-works/folder`,
+`GET /api/custom-works/tree`, `POST /api/custom-works`, and
+`GET`/`POST /api/custom-works/notice-acceptance` require both `library:write`
+and `downloads:manage` and are unavailable in Demo. The list walks the folders a
 local scan can observe and returns at most 200 folders that can become a
 [custom work](data-model.md#custom-works), as paths relative to the data root,
-with `noticeAccepted`; `q` narrows it by path. The notice acceptance records
-the current rename notice version. The create request names one listed path
+with `inUse` for a folder Fetch writes into and `noticeAccepted`; `q` narrows it
+by path. `folder?path=` checks one path, relative to the data root or starting
+with the data root's absolute path, and answers the folder or 409. `tree?path=`
+lists at most 500 folders directly inside one folder, or the top level of the
+scan scope for an empty path: every folder that can become a custom work and
+every folder on the way to one, each with `selectable`, `hasChildren`, and a
+`reason` (`holds_works`, `in_use`, or `storage_pool`) when it is not
+selectable. It walks only that folder's subtree and leaves out folders that
+carry a work code and the folders inside them. `GET` on the notice acceptance
+reports whether the current rename notice version is accepted, without reading
+the library, and `POST` records it. The create request names one path
 and an optional title, which defaults to the folder name. It answers 201 with
 the work id, the assigned code, the renamed path, and the queued scan run; 409
 `custom_work_notice_required` before the notice is accepted; and 409 when the

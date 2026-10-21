@@ -12,7 +12,14 @@
 <details>
 <summary><strong>Metadata and scans</strong></summary>
 
-- **Custom works** in Metadata lists the custom works themselves, with search, editing, and status like the other work tables, and deletes the local information of one whose folder is missing. **Create from folder** in its header opens the folder list that creates a custom work. All, Needs attention, Metadata issues, and No available source list only works with a catalog code.
+- **Custom works** in Metadata lists the custom works themselves, with search, editing, and status like the other work tables, and deletes the local information of one whose folder is missing. The rename notice covers the view until an administrator accepts it. **Add** in its header opens **Add custom work**, which chooses the folder from the folders a scan finds on request, a folder tree without work folders, or a typed path. All, Needs attention, Metadata issues, and No available source list only works with a catalog code.
+
+</details>
+
+<details>
+<summary><strong>Subscriptions</strong></summary>
+
+- The **Subscribe** confirmation on a circle, series, or voice actor page opens above the works list, so its buttons can be pressed when works fill the page.
 
 </details>
 
