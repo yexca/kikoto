@@ -5,7 +5,7 @@
 
 - Docker 與 Docker Compose。
 - 本機開發時另需（選用）：
-  - Go 1.26.9。
+  - Go 1.26.10。
   - Node.js 24.19.0 與 npm 11.17.0。
 
 ## 使用 Docker 執行

@@ -43,6 +43,7 @@
 <summary><strong>Operations and reliability</strong></summary>
 
 - The Docker image is published for `linux/arm64` as well as `linux/amd64` under the same tags, so Kikoto runs on ARM NAS devices and 64-bit Raspberry Pi OS with the usual `docker compose up -d`.
+- The Go toolchain is updated to 1.26.10, which distrusts compromised intermediate certificates when verifying TLS connections.
 
 </details>
 
