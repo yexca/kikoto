@@ -23,6 +23,8 @@ import i18n from "@/i18n";
 import {
   Check,
   ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
   CircleUserRound,
   Clock3,
   Cloud,
@@ -43,6 +45,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/tailwindClassNames";
 import { openCircleRoute, openCircleSeriesRoute } from "@/lib/circleNavigationState";
 import {
   groupWorkVersions,
@@ -708,6 +711,7 @@ function MobileWorkDetailLayout({
   directory: ReactNode;
 }) {
   const entityResolver = useDetailEntityResolver(code);
+  const [infoCollapsed, toggleInfoCollapsed] = useDetailInfoCollapsed();
   return (
     <section className="space-y-4">
       <div className="relative isolate">
@@ -742,6 +746,21 @@ function MobileWorkDetailLayout({
         seriesCircleExternalId={seriesCircleExternalId}
         loading={loading}
         entityResolver={entityResolver}
+        compact
+        infoCollapsed={infoCollapsed}
+        codeRowEnd={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="ml-auto h-7 w-7 shrink-0 text-muted-foreground"
+            aria-expanded={!infoCollapsed}
+            aria-label={i18n.t(infoCollapsed ? "libraryDetail.expandWorkInfo" : "libraryDetail.collapseWorkInfo")}
+            title={i18n.t(infoCollapsed ? "libraryDetail.expandWorkInfo" : "libraryDetail.collapseWorkInfo")}
+            onClick={toggleInfoCollapsed}
+          >
+            {infoCollapsed ? <ChevronsUpDown className="h-4 w-4" /> : <ChevronsDownUp className="h-4 w-4" />}
+          </Button>
+        }
         versionMenu={detailVersionMenu({
           code,
           baseCode,
@@ -756,25 +775,29 @@ function MobileWorkDetailLayout({
         })}
       />
 
-      <DetailCreditLine voiceActors={voiceActors} voiceCredits={voiceCredits} entityResolver={entityResolver} />
+      {!infoCollapsed && (
+        <>
+          <DetailCreditLine voiceActors={voiceActors} voiceCredits={voiceCredits} entityResolver={entityResolver} />
 
-      <DetailPurchaseBonusLine purchaseBonus={purchaseBonus} purchaseBonuses={purchaseBonuses} />
+          <DetailPurchaseBonusLine purchaseBonus={purchaseBonus} purchaseBonuses={purchaseBonuses} />
 
-      <DetailBundleLine bundleMembers={bundleMembers} includedInBundles={includedInBundles} />
+          <DetailBundleLine bundleMembers={bundleMembers} includedInBundles={includedInBundles} />
 
-      <DetailTagLine tags={tags} personalTags={personalTags} />
+          <DetailTagLine tags={tags} personalTags={personalTags} />
 
-      <DetailStatStrip
-        ratingLabel={ratingLabel}
-        rating={rating}
-        ratingCount={ratingCount}
-        sales={sales}
-        customWork={customWork}
-        releaseDate={releaseDate}
-        ageRating={ageRating}
-        sourceInfo={sourceInfo}
-        compact
-      />
+          <DetailStatStrip
+            ratingLabel={ratingLabel}
+            rating={rating}
+            ratingCount={ratingCount}
+            sales={sales}
+            customWork={customWork}
+            releaseDate={releaseDate}
+            ageRating={ageRating}
+            sourceInfo={sourceInfo}
+            compact
+          />
+        </>
+      )}
 
       <MetadataSyncNotice
         sync={metadataSync}
@@ -864,6 +887,9 @@ function DetailTitleBlock({
   loading,
   entityResolver,
   versionMenu,
+  compact = false,
+  infoCollapsed = false,
+  codeRowEnd,
 }: {
   fallbackCode: string;
   code: string;
@@ -877,6 +903,12 @@ function DetailTitleBlock({
   loading?: boolean;
   entityResolver: DetailEntityResolver;
   versionMenu?: ReactNode;
+  /** The phone layout limits a long title to a few lines until the viewer expands it. */
+  compact?: boolean;
+  /** Leaves only the work code row, for a viewer who hid the work details. */
+  infoCollapsed?: boolean;
+  /** A control at the trailing end of the work code row. */
+  codeRowEnd?: ReactNode;
 }) {
   const toast = useToast();
   const workCode = code || fallbackCode;
@@ -890,7 +922,7 @@ function DetailTitleBlock({
   };
 
   return (
-    <div className="space-y-2">
+    <div className={infoCollapsed ? undefined : "space-y-2"}>
       <div className="space-y-1.5">
         {/* A narrow header keeps the code and its language chips on one line; a chip truncates instead of wrapping. */}
         <div className="flex min-w-0 items-center gap-1.5 md:flex-wrap">
@@ -934,11 +966,16 @@ function DetailTitleBlock({
             )}
           </div>
           {versionMenu}
+          {codeRowEnd}
         </div>
-        <h2 className="min-w-0 text-2xl font-semibold leading-tight xl:text-3xl">{title}</h2>
+        {infoCollapsed ? null : compact ? (
+          <CollapsibleDetailTitle title={title} />
+        ) : (
+          <h2 className="min-w-0 text-2xl font-semibold leading-tight xl:text-3xl">{title}</h2>
+        )}
         {loading && <div className="h-2 w-40 animate-pulse rounded bg-muted" />}
       </div>
-      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+      <div className={cn("flex flex-wrap items-center gap-2 text-sm text-muted-foreground", infoCollapsed && "hidden")}>
         {circle ? (
           <button
             className="inline-flex max-w-full items-center gap-1 truncate hover:text-primary"
@@ -971,6 +1008,82 @@ function DetailTitleBlock({
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+const detailInfoCollapsedKey = "kikoto:work-detail-info-collapsed";
+
+/** Remembers whether this viewer hid the work details above the phone layout's actions. */
+function useDetailInfoCollapsed() {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(detailInfoCollapsedKey) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () => {
+    setCollapsed((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem(detailInfoCollapsedKey, String(next));
+      } catch {
+        // The choice still applies to this page view.
+      }
+      return next;
+    });
+  };
+  return [collapsed, toggle] as const;
+}
+
+/**
+ * A long title shows three lines; tapping it reveals the rest. A title that
+ * fits shows no toggle. The heading keeps the full text for assistive
+ * technology either way.
+ */
+function CollapsibleDetailTitle({ title }: { title: string }) {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+
+  useEffect(() => setExpanded(false), [title]);
+  useEffect(() => {
+    const heading = headingRef.current;
+    // An expanded title is unclamped, so it keeps the measurement taken while collapsed.
+    if (!heading || expanded) return;
+    const measure = () => setOverflowing(heading.scrollHeight > heading.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(heading);
+    return () => observer.disconnect();
+  }, [expanded, title]);
+
+  const toggleable = overflowing || expanded;
+  return (
+    <div className="relative flex min-w-0 items-end gap-1">
+      <h2
+        ref={headingRef}
+        className={cn("min-w-0 flex-1 break-words text-xl font-semibold leading-snug", !expanded && "line-clamp-3")}
+      >
+        {title}
+      </h2>
+      {toggleable && (
+        <button
+          type="button"
+          className="absolute inset-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-expanded={expanded}
+          aria-label={i18n.t(expanded ? "libraryDetail.collapseTitle" : "libraryDetail.expandTitle")}
+          onClick={() => setExpanded((value) => !value)}
+        />
+      )}
+      {toggleable && (
+        <ChevronDown
+          className={cn("mb-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")}
+          aria-hidden="true"
+        />
+      )}
     </div>
   );
 }
