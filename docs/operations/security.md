@@ -3,8 +3,8 @@
 Kikoto is a personal media server that requires sign-in by default. A super
 administrator can deliberately expose read-only Library browsing and playback
 to anonymous clients. Authentication always protects personal state,
-configuration, and mutating operations; once anonymous access is enabled, it no
-longer makes the complete Library or its media private. Use network access
+configuration, and mutating operations; while anonymous access is enabled, it does
+not make the Library or its media private. Use network access
 controls when an instance must be private.
 
 For privately reporting a vulnerability, see the repository
@@ -140,7 +140,8 @@ A super administrator can change **Anonymous access** under
 `Settings -> Users -> Instance access` in production or development. The setting is stored in
 SQLite and recorded in the audit log. In production it takes effect without a
 restart. When disabled, unauthenticated clients can reach only health,
-authentication bootstrap, and runtime-setting endpoints before the frontend
+authentication bootstrap and initial setup, library migration status, and
+runtime-setting endpoints before the frontend
 presents the sign-in page. That unauthenticated runtime response contains only
 the deployment mode and access-policy state, not operational settings. When enabled,
 unauthenticated `GET` and `HEAD` requests may browse and play Library content;
@@ -216,8 +217,9 @@ signs in again.
 ## Runtime Secrets and Private Data
 
 Keep credentials and real source details outside the repository. Use local
-environment variables or mounted configuration files. Kikoto does not yet
-provide a dedicated encrypted credential store for remote-source secrets.
+environment variables or mounted configuration files. Kikoto stores
+remote-source and proxy secrets in its database without application-level
+encryption.
 
 Do not commit:
 

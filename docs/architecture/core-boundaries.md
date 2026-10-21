@@ -6,10 +6,10 @@ A work exists once in the database. Local folders, remote sources, cache files,
 and tracked state describe availability for that work; they do not create new
 work identities.
 
-The primary identity key is currently a normalized DLsite-style `primary_code`,
-such as the synthetic example `RJ00000000`. A local folder without a catalog
-code becomes a custom work with a Kikoto-assigned `KT` code that its folder
-name carries; see [ADR-0005](../decisions/ADR-0005-custom-work-codes.md).
+The primary identity key is a normalized DLsite-style `primary_code`, such as
+the synthetic example `RJ00000000`. A local folder without a catalog code can
+be made a custom work with a Kikoto-assigned `KT` code that its folder name
+then carries; see [ADR-0005](../decisions/ADR-0005-custom-work-codes.md).
 
 ## Metadata Sources
 
@@ -23,7 +23,6 @@ Examples:
 
 - DLsite metadata.
 - Manual user overrides.
-- Future metadata importers.
 
 Metadata belongs in work, metadata snapshot, tag, party, person, credit, and
 edition tables.

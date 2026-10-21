@@ -367,7 +367,8 @@ distributed request lock between separate application processes.
 
 The Workflows page lists the manually runnable built-in workflows and the
 preset workflows in one workflow list, grouped by a frontend-owned category
-keyed by workflow code: Basic (local scan, local files, metadata sync), Collect
+keyed by workflow code: Basic (local scan, local files, metadata sync, Learn
+tag names), Collect
 (popular collections), Catalog sync (the subscription refresh and the catalog
 sync presets), and Remote (Availability Watch, Fetch, and works on a source). A linked run of any other workflow adds a
 read-only entry for it, which stays with Basic. Each entry shows
@@ -411,7 +412,8 @@ the backend.
 
 - Visibility: every holder sees system-scoped definitions, presets, triggers,
   runs, events, candidates, and Fetch file lists. A run of a user-scoped
-  definition stays visible only to its owner or requester, and `system:admin`
+  definition, or of a custom definition that no longer exists, stays visible
+  only to its owner or requester, and `system:admin`
   sees every run.
 - Starting, configuring, and scheduling: a kind of run requires every
   permission its steps use. Track steps (`track_works`, a remote popular
@@ -581,7 +583,7 @@ after the end is rejected. `maxWorks` is optional (1 to 500); an omitted limit
 runs at the 5000-work catalog bound, which is still explicit in the composed
 graph.
 
-The catalog sync presets reject the retired inputs `newWorks`, `existing`,
+The catalog sync presets reject the unsupported inputs `newWorks`, `existing`,
 `action`, `sourceId`, `metadataRefresh`, and the Fetch limits with a
 reconfiguration message rather than reinterpret them. Preset runs are
 system-scope runs and share the visibility, cancel, retry, and Activity

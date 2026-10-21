@@ -77,6 +77,14 @@ to one destination and reads that user's reviews and playlists:
   to 3 minutes, and page and item counts to the transfer limits. At most two
   account or database reads run at once.
 
+`POST /api/user-data/kikoeru/database` streams an uploaded Kikoeru SQLite file,
+up to 512 MiB, to a temporary file that is deleted when the request ends. The
+upload is read under its own 15-minute deadline in place of the server's
+request read timeout. The
+file is opened read-only and immutable with `trusted_schema` off, only the base
+`t_review` table is queried (a view of that name is rejected), and text length
+and row count are bounded. The user table's password hashes are never read.
+
 ### Remote metadata fallback
 
 Explicit detail-editor refreshes and Fetch for edit previews from a selected
@@ -93,7 +101,8 @@ fallback orders are limited to 16 enabled, capable sources. Submission and
 execution validate capability, and the single executor requests one work at a
 time through the same bounded transport. Source selection, fallback order and
 bonus detection are persisted with the run and retained by retries. The run
-does not mutate the legacy stored projection policy or file availability.
+does not change the stored `remote_metadata_fallback` setting or file
+availability.
 
 The opt-in fallback asks administrator-configured remote sources for one work
 after DLsite reports it as not found:
@@ -181,7 +190,8 @@ assigns tracks. The preview never changes a file.
 
 Speech recognition requests go only to the administrator-configured service
 origin, with its private-address exception, through the shared outbound
-transport and the `other` proxy route.
+transport and the LLM and speech recognition (`ai`) proxy route; a service on
+Kikoto's own machine connects directly.
 
 LLM and ASR configuration requires an accepted external service notice. The
 server refuses provider, service and policy saves and model discovery until
@@ -329,8 +339,8 @@ current tree the same way.
 - The source must be enabled and compatible. The listed URL is untrusted: it
   must be HTTP(S) without credentials and pass the source's outbound policy
   before any request, and the shared source transport validates every redirect
-  hop. A URL outside the source's configured origins is refused without a
-  request.
+  hop. A URL the source's outbound policy rejects is refused without a
+  request; only the configured origins keep the private-address exception.
 - A read has a 20-second bound and a 512 KiB limit; local and cached files
   share the size limit.
 - Both endpoints accept the same files: one the source lists as text, or one
@@ -378,14 +388,6 @@ Metadata sync may look up a purchase bonus's parent product (see
   stored as works, editions or aliases. A failed lookup records nothing and
   keeps detailed errors in protected logs; job output names only the detected
   parent code.
-
-`POST /api/user-data/kikoeru/database` streams an uploaded Kikoeru SQLite file,
-up to 512 MiB, to a temporary file that is deleted when the request ends. The
-upload is read under its own 15-minute deadline in place of the server's
-request read timeout. The
-file is opened read-only and immutable with `trusted_schema` off, only the base
-`t_review` table is queried (a view of that name is rejected), and text length
-and row count are bounded. The user table's password hashes are never read.
 
 ## Authentication and Mutations
 

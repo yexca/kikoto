@@ -70,9 +70,8 @@ Playback is handled by a global browser audio player.
   unrelated playing work, and later playback started after the page opens keep
   the normal recommended directory. Manual source or edition changes also
   return directory navigation to the user's control.
-- Desktop keeps the four primary browse workspaces mounted after first use.
-  Mobile keeps only the two most recent workspaces mounted, preserving quick
-  return while bounding hidden DOM and request work on older devices.
+- The four primary browse workspaces stay mounted after first use on every
+  device.
 - Browser queue persistence is isolated by server identity and authenticated
   user (or the anonymous principal when instance access is enabled). Unscoped
   v1 queue/progress state is discarded because it has no reliable owner; Dock
@@ -240,13 +239,13 @@ A track saves progress only after it has started playing or you have sought in
 it. Hiding the page, locking the device, pausing, or switching tracks before
 that leaves the saved cursor unchanged.
 
-Remote preview playback should not persist a cursor until the remote work has
+Remote preview playback does not persist a cursor until the remote work has
 been synced into local media records.
 
 ## Preferred Locations
 
-Playback should prefer durable local files, then cache files, then remote stream
-locations when available. Source outages should not disrupt already available
+Playback prefers durable local files, then cache files, then remote stream
+locations when available. Source outages do not disrupt already available
 local or cached playback.
 
 ## Related Docs
@@ -264,7 +263,7 @@ In the Android and iOS apps, **Privacy on this device** in Settings → Playback
 - **Hide content in recent apps** (**Blur in the background**; on by default) keeps the current page out of the task preview. Android 13 and later leave the recent apps preview blank without affecting screenshots, recording, or casting. Android 12 and earlier also block screenshots, screen recording, and casting; this applies in split-screen and freeform windows. iOS blurs Kikoto in the app switcher and whenever Control Center, Notification Center, or another system screen covers it.
 - **Media controls while locked** (**Now Playing details**; default **Hide cover**) sets what the media controls show: **Everything**, the text without the cover, or **App name only**. On Android it applies to the media notification, the lock screen, and connected Bluetooth or car displays while the device is locked, and unlocking restores the full controls. iOS cannot tell its media controls whether the device is locked, so the choice applies to the lock screen, Control Center, and connected displays at all times.
 - **Confirm speaker playback** (on by default) asks before playback starts through the device speaker when no headphones or other audio output are connected. One confirmation lasts until an audio output connects or disconnects. Play from the notification, the lock screen, Control Center, or a media key waits for this confirmation in the app.
-- **Block screenshots and recording** (**Hide from screenshots and recordings**; off by default) keeps Kikoto and its floating lyrics out of screenshots, screen recordings, and casting on Android, and blocks your own screenshots as well. iOS cannot stop a screenshot from being taken; the screenshot shows a blank page in place of Kikoto, though an open screen lyrics window still appears in it. During a screen recording, AirPlay mirroring, or another capture, iOS covers Kikoto and closes screen lyrics, and Kikoto stays covered until the capture ends.
+- **Block screenshots and recording** (**Hide from screenshots and recordings**; off by default) keeps Kikoto and its floating lyrics out of screenshots, screen recordings, and casting on Android, and blocks your own screenshots as well. iOS cannot stop a screenshot from being taken; the screenshot shows a blank page in place of Kikoto, though an open screen lyrics window still appears in it. Where iOS cannot blank the page, the setting reads **Hide while the screen is recorded or mirrored** and screenshots are not blocked. During a screen recording, AirPlay mirroring, or another capture, iOS covers Kikoto and closes screen lyrics, and Kikoto stays covered until the capture ends.
 - **App lock** (Android only; off by default) covers Kikoto when you return to it until you unlock with a fingerprint, face, or the device screen lock; Kikoto stores no password of its own. **Lock after** sets how long Kikoto can stay in the background first: **Immediately** (the default), 1, 5, or 15 minutes. Starting the app always asks. The app lock needs a screen lock set up in Android settings. Playback and the media notification keep working while Kikoto is locked.
 
 See [Personal data](personal-data.md) for durable listening history and transfer.

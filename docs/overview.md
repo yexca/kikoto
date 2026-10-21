@@ -14,21 +14,22 @@ unified work model.
 - Support mobile-friendly playback while keeping desktop library management
   efficient.
 
-## Current Status
+## Capabilities
 
-Kikoto currently includes:
+Kikoto includes:
 
 - Docker-first backend and frontend.
 - SQLite-backed work, media, source, workflow, metadata, and user-state tables.
 - Local folder scanning by product code.
 - DLsite metadata sync and cover caching.
-- Library, work detail, circle, voice actor, settings, workflow, and activity
-  pages.
+- Library, work detail, favorites, circle, voice actor, subscription, metadata,
+  insights, settings, and workflow pages, with Activity inside Workflows.
 - Kikoeru-compatible remote source browsing, availability checks, sync, cache,
   and fetch flows.
 - User authentication, roles, a default-on sign-in boundary with optional
   read-only anonymous access, favorite/listening state, and playback progress.
-- A persistent browser player plus Android media-session integration.
+- A persistent browser player, Android and iOS app shells, and Android
+  media-session integration.
 - SQLite-backed priority jobs with a single durable executor, retry state,
   notifications, and restart recovery for the supported workflow families.
 - Fetch Activity with byte-level remote-transfer progress that distinguishes
@@ -40,7 +41,7 @@ Kikoto currently includes:
   per-hop redirect checks, credential stripping, DNS-pinned connections, and
   separate private-origin rules for administrator-configured LAN sources.
 
-## Current Limits And Remaining Hardening
+## Limits
 
 - The SQLite deployment model is single-instance; distributed worker execution
   is outside the current personal-deployment scope.

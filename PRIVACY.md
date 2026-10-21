@@ -7,7 +7,7 @@ source, metadata provider, reverse proxy, hosting provider, or network operator.
 
 ## Project-Operated Services
 
-The current Kikoto repository does not include a project-operated cloud sync,
+Kikoto includes no project-operated cloud sync,
 analytics upload, advertising, or crash-report upload service. Application data
 is stored by the Kikoto instance and its clients unless an operator configures an
 external source or a user deliberately opens or shares an external link.
@@ -45,7 +45,7 @@ media plus durable Fetch staging, rollback, and review directories. Treat all
 three mounts as private even when an operator enables anonymous access to a
 subset of Library data through the application.
 
-Kikoto does not currently provide application-level encryption at rest. Host
+Kikoto does not provide application-level encryption at rest. Host
 filesystem permissions, disk encryption, backup controls, and container access
 protect stored data.
 

@@ -15,9 +15,8 @@ assignments. Merge moves assignments to an existing tag, removes duplicates,
 and deletes the old tag. Delete removes the tag and its assignments, without
 deleting works or provider metadata.
 
-New workflow tag defaults omit the date so repeated runs reuse a tag. Existing
-saved templates are preserved; remove `{date}` in Workflows if an older schedule
-should stop creating dated tags. Explicit date templates remain supported.
+A workflow tag template without `{date}` reuses one tag across runs; a template
+with `{date}` creates one tag per day.
 
 ## Insights
 
@@ -48,8 +47,7 @@ For the chosen range the listening report shows:
   day, then the average per weekday. A 12-month or all-time report reads the
   calendar's days for this, so an all-time report describes the past year.
   **By hour of day** adds the listening per hour, midnight first, with the
-  busiest hour. Hours are recorded as you listen, so listening from before
-  the server counted hours is not part of it.
+  busiest hour. It counts only listening recorded with its hour.
 - **Taste profile**: what you listen to, compared with the Library. The radar
   draws up to eight tags by how far each one's share of your listening time
   exceeds its share of the Library's works. A marker places your works among
@@ -87,9 +85,7 @@ speed changes do not multiply it. Concurrent players count independently.
 Client interruptions or disconnection may leave some time unreported.
 
 History stays on your server until cleared or its account/work is deleted.
-Recommendation event cleanup after 90 days does not remove it. Upgrade preserves
-remaining old play events and resume timestamps without inventing durations;
-previously deleted events cannot be recovered. Clearing history keeps marks,
+Recommendation event cleanup after 90 days does not remove it. Clearing history keeps marks,
 playlists and resume progress. An account counter rejects
 delayed reports from before the clear.
 
@@ -98,7 +94,7 @@ delayed reports from before the clear.
 Version 1 Kikoto personal JSON contains per-work listening marks, personal
 ratings/notes, resume information, lifetime listening totals, work tag
 assignments, custom tag definitions, and ordered favorite playlists with their
-icons. System
+icons. Smart lists are not included. System
 Marked membership is derived from marks. Circle/voice tag definitions are
 included; their entity assignments and other state are outside this format.
 
@@ -106,7 +102,8 @@ Media, source settings, endpoints, credentials, provider metadata, raw sessions,
 and daily statistics are excluded. Track titles and track/disc numbers identify
 resume targets; local paths and source-local ids are not exported.
 
-Choose a source (a JSON file, a Kikoeru account, or a Kikoeru database), then
+Choose a source (a Kikoto export file, a Kikoeru JSON file, a Kikoeru account,
+or a Kikoeru database file), then
 Preview before Import. Keep existing skips
 works with personal state and preserves existing playlists. Overwrite replaces
 marks, notes, work tags, matching progress and same-name playlists from the file.

@@ -122,11 +122,12 @@ image, APK, or IPA is missing:
    tag moves yet. Its build stages run natively and cross-compile; only the
    arm64 runtime stage runs under QEMU. Because the validation tiers exercise
    only the amd64 image, a native arm64 runner builds the arm64 image and runs
-   `make production-smoke` against it in the same step.
+   `make production-smoke` against it in the same job.
 2. After all builds succeed, the APK and IPA are attached to a draft GitHub
    Release.
-3. The image is then pushed for both platforms under one multi-platform tag
-   for each version tag and `latest`, reusing the build cache from step 1.
+3. The image is then pushed for both platforms to Docker Hub and GHCR under
+   multi-platform tags for the full version, its `major.minor` series, and
+   `latest`, reusing the build cache from step 1.
 4. The draft is published last.
 
 A failure in any build leaves registry tags, including `latest`, unchanged. The

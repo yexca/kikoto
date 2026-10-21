@@ -64,7 +64,7 @@ and keep the names generic.
 
 Fixture constructors are deterministic builders, not random generators. Pass an
 explicit ordinal so failures remain reproducible and parallel test order cannot
-change identities. Use the high-cardinality constructor only when one isolated
+change identities. Use `WorkCodeAt` only when one isolated
 fixture genuinely needs more than 100 unique works; its later ranges use the
 equivalent reserved BJ, VJ, and CC forms. `WorkCodeAt` accepts ordinals 0–399;
 isolated recommendation scale experiments use `HighCardinalityWorkCodeAt` for
@@ -175,7 +175,7 @@ go tool cover -func coverage.out
 ```
 
 `coverage.out` is a local report artifact and is ignored by Git. Coverage is a
-diagnostic baseline at this stage; the project does not enforce a single global
+diagnostic baseline; the project does not enforce a single global
 threshold because the browser and unit suites cover different boundaries.
 
 ## Frontend
@@ -229,7 +229,7 @@ make android-test
 ```
 
 Android device tests belong under `frontend/android/app/src/androidTest` and need
-an emulator-backed `connectedDebugAndroidTest` run. The repository currently has
+an emulator-backed `connectedDebugAndroidTest` run. The repository has
 no device-test suite or emulator CI job. Build the debug APK separately with
 `make android-build`.
 To run JVM tests and build the APK together, use `make android-test android-build`.
@@ -371,9 +371,8 @@ calculation and its tests run in Style through `make ci-metrics-test`.
 
 ## Frontend Coverage
 
-Current Vitest coverage is primarily pure state and model logic. User-visible
-React interaction belongs in Playwright until a real component-test environment
-is introduced; do not build a large fake component runtime inside a unit test.
+Vitest covers pure state and model logic. User-visible React interaction
+belongs in Playwright; do not build a large fake component runtime inside a unit test.
 
 To produce the frontend coverage report:
 
@@ -454,7 +453,7 @@ HTTP bodies, request timeouts, polling, and Docker commands are bounded.
 ## Before Committing
 
 - Run relevant tests.
-- Run `cd frontend && npm run docs:check-links` for public documentation changes.
+- Run `make frontend-docs` for public documentation changes.
 - Run `make sensitive-check` to scan the working-tree diff and prospective
   untracked files for secrets, private paths, runtime data, and non-reserved
   service URLs. A narrowly scoped, built-in public product endpoint must be

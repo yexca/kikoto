@@ -18,14 +18,14 @@ Sources describe where files come from.
 - Remote cache materializes selected remote files under the cache root.
 - Remote fetch promotes selected remote files into the local data tree. The
   default layout is `/data/<source_code>/<code_prefix>_<code_group>/<work_code>`;
-  the legacy `<source_name>` template token remains accepted as an alias for
-  the stable source code.
+  the `<source_name>` template token is accepted as an alias for the stable
+  source code.
 - A compatible source using a source-separated save template claims its Fetch
   root with a machine marker and a multilingual `README.md`. Its file changes
   do not trigger the local folder watcher because Fetch registers publication
   directly. A pre-existing non-empty root without a matching marker is shown as
   a blocking Fetch review conflict and is never adopted automatically.
-- Markerless roots created by older Kikoto versions can be recognized from an
+- A root without a marker is recognized from an
   active `managed_fetch` folder location for the same origin source or a
   succeeded `remote_work_fetch` run whose succeeded plan records the same
   source and target root. Kikoto verifies the complete root against those exact
@@ -37,25 +37,26 @@ Sources describe where files come from.
 - Cache and local deletion target concrete file locations, not the unified work.
   Mixed selections are submitted as one recoverable workflow; local deletion
   preserves work progress and listening marks.
-- Remote source list and detail pages should remain source-scoped views; they do
-  not replace the unified local work detail model.
+- Remote source list and detail pages are source-scoped views; they do not
+  replace the unified local work detail model.
 - Compatible remote work responses map the source's current `price`. The value
   is not persisted as price history or treated as an authoritative regular
   price.
 - Demo mode never contacts a remote server. Its only remote source, Remote
   Kikoeru, is simulated in process from a random selection of the admitted
   local works, and the Library shows a notice above it saying so.
-- `kikoeru_compatible_number178` retains its adapter for migrated sources but is
-  rejected by new source and configuration-seed inputs. The historical
-  `kikoeru_compilable_number178` spelling is migrated automatically.
+- `kikoeru_compatible_number178` keeps its adapter for existing sources and is
+  rejected by new source and configuration-seed inputs. A stored
+  `kikoeru_compilable_number178` type is converted to
+  `kikoeru_compatible_number178`.
 
 ## Permissions
 
 Browsing a remote source, searching, sorting, recommendations, work detail,
 the file tree, text previews, covers, and playback through this server are open
 to every account that can read the Library. Tracking, forking, untracking,
-checking a work's sources now, and caching need `remote:track` or
-`remote:fetch`; Fetch also refreshes DLsite family metadata and requires both
+and checking a work's sources now need `remote:track`; caching needs
+`remote:fetch`, plus `remote:track` for a work that is not in the Library yet; Fetch also refreshes DLsite family metadata and requires both
 `remote:fetch` and `metadata:sync`. [Users](settings.md#users) lists which
 role holds each. An
 administrator can hide every source address from accounts that do not manage

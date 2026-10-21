@@ -1,42 +1,24 @@
 # Database
 
-Kikoto uses SQLite for the current product stage.
+Kikoto uses SQLite.
 
 ## Migration Model
 
-The current schema is stored under `backend/migrations/`. Numbered migrations
-are immutable after release and are applied in a contiguous order. The backend
-embeds the numbered catalog and the generated baselines into the executable;
-production containers do not depend on a migrations directory being mounted
-beside the binary.
-
-On an empty database, startup uses the highest-version released baseline (the
-release suffix may belong to an earlier application release when no numbered
-SQL changed) and then applies any newer numbered files. Only
-`KIKOTO_MODE=development` also reads the development baselines of the
-unreleased chain, and the other modes refuse a database created from one. On an existing
-database, startup validates
-`schema_migration` and applies only the next numbered files so user data and
-backfills are preserved. The `schema_state` row records the schema version
-separately from the application version. It also records a SHA-256 baseline
-checksum, a dirty migration after an interrupted attempt, and the last
-application version that completed startup.
-
-The manager refuses to continue when an applied migration's checksum differs,
-when the database contains a future schema, or when application tables exist
-without migration history. A failed migration leaves a dirty marker and is
-retryable after the underlying SQL or environment is repaired. See
-[Migrations](../development/migrations.md) for the chain and release rules.
+The schema lives under `backend/migrations/` and is embedded in the executable,
+so production containers do not need a migrations directory. An empty database
+starts from the highest released baseline; an existing database applies only
+the next numbered migrations, so user data and backfills are preserved.
+Startup refuses a changed migration checksum, a future schema, or application
+tables without migration history, and a failed migration leaves a dirty marker
+that is retryable once the cause is repaired.
+[Migrations](../development/migrations.md) defines the chain, the baselines,
+the `schema_state` row, and the release rules.
 
 ## Runtime Location
 
-The default database path is:
-
-```text
-config/kikoto.db
-```
-
-In Docker, it is mounted at:
+A direct backend run uses `KIKOTO_DB_PATH`; see
+[Configuration](configuration.md) for its default. In Docker, the database is
+mounted at:
 
 ```text
 /config/kikoto.db
@@ -109,8 +91,7 @@ A refresh
 runs `PRAGMA optimize=0x10002` with `analysis_limit=400`, which analyzes only
 tables whose statistics are missing or whose size changed substantially, so it
 is short on an unchanged library. Without statistics SQLite can pick a full
-table scan over an index, which made a new install's Library slow until it was
-compacted by hand.
+table scan over an index.
 
 `VACUUM` still holds the write lock while it rewrites the file. Other writes
 wait for the busy timeout and may fail during a long compaction, so run it
@@ -145,7 +126,8 @@ backups run as `database_backup` workflow runs and appear in Activity; a
 manual backup also writes a `database.backup` audit entry. Only one backup can
 be queued or running. Settings lists backup names, kinds, sizes, and times
 without revealing the backup directory. An in-memory or URI-configured
-database has no backup directory and is not backed up.
+database has no default backup directory and is backed up only when
+`KIKOTO_DB_BACKUP_DIR` is set.
 
 Backups contain password hashes and session digests; protect them like the
 database.

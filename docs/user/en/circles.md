@@ -7,8 +7,8 @@ Circles represent makers, circles, and related party catalog state.
 
 - Lists known parties in server-paged results with per-card catalog and
   availability state.
-- Provides search, filters, URL-backed pagination, favorite state, user tags,
-  rating, and notes.
+- Provides search, filters, URL-backed pagination, favorite state, and user
+  tags.
 - Keeps search, one-tap view chips, and the page-size action on one wrapping
   toolbar row. The chips are `All circles`, `Favorite`, `Tagged`,
   `Available`, `Local`, `Remote`, `Missing`, and `Attention`, and the
@@ -78,8 +78,9 @@ Circles represent makers, circles, and related party catalog state.
   [preset](library.md#current-behavior). The shared collection pagination sits
   above and below the grid.
 - Keeps mobile work controls to the Works/Series switch with the sort button
-  beside it, search, and one Catalog options action. Availability, the card
-  mode, mobile columns, page size, and selection mode live in that sheet;
+  beside it and one Catalog options action. Search, availability, the card
+  mode, mobile columns, page size, and selection mode live in that sheet, and
+  the series view keeps its search inline;
   wide layouts retain inline controls. The series overview lists series and
   offers no order.
 - Treats the mobile detail back control as Up to the last server-and-user-scoped
