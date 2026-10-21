@@ -18,9 +18,13 @@ const recommendationEntitiesSQL = `SELECT 'tag' AS kind, work_tag.work_id, work_
  UNION ALL SELECT 'voice', work_id, person_id FROM work_credit WHERE role = 'voice_actor' GROUP BY work_id, person_id
  UNION ALL SELECT 'circle', work_id, party_id FROM work_party WHERE role = 'circle' GROUP BY work_id, party_id`
 
+// recommendationProfileEntity sums the feedback of the works carrying one tag,
+// voice actor, or circle, in hundredths of a favorite work's evidence.
 type recommendationProfileEntity struct {
 	Positive    int     `json:"positive"`
-	Paused      int     `json:"paused"`
+	Negative    int     `json:"negative"`
+	Disliked    int     `json:"disliked"`
+	Shelved     int     `json:"shelved"`
 	Specificity float64 `json:"specificity"`
 }
 
@@ -28,6 +32,7 @@ type recommendationFrozenState struct {
 	PrimaryCode     string `json:"primaryCode"`
 	ListeningStatus string `json:"listeningStatus"`
 	Favorite        bool   `json:"favorite"`
+	Rating          int    `json:"rating,omitempty"`
 }
 
 type RecommendationProfile struct {
@@ -45,14 +50,16 @@ type recommendationProfileQueryer interface {
 }
 
 // Feedback is the root of a profile read. No catalog relation scan discovers
-// evidence, and no valid feedback is truncated to meet recall budgets.
-func (s *Store) prepareRecommendationProfile(ctx context.Context, userID, epoch int64) (RecommendationProfile, error) {
+// evidence, and no valid feedback is truncated to meet recall budgets. The
+// generation's configuration weighs the feedback, so the frozen evidence and
+// the scores derived from it always use the same settings.
+func (s *Store) prepareRecommendationProfile(ctx context.Context, userID, epoch int64, config RecommendationConfig) (RecommendationProfile, error) {
 	profile := emptyRecommendationProfile()
 	profile.States = map[int64]recommendationFrozenState{}
 	var after int64
 	for {
-		rows, err := s.db.QueryContext(ctx, `SELECT u.work_id,w.primary_code,u.listening_status,u.favorite FROM user_work_state u JOIN work w ON w.id = u.work_id
-   WHERE u.user_id = ? AND u.work_id > ? AND (u.listening_status <> 'none' OR u.favorite = 1)
+		rows, err := s.db.QueryContext(ctx, `SELECT u.work_id,w.primary_code,u.listening_status,u.favorite,COALESCE(u.rating,0) FROM user_work_state u JOIN work w ON w.id = u.work_id
+   WHERE u.user_id = ? AND u.work_id > ? AND (u.listening_status <> 'none' OR u.favorite = 1 OR u.rating IS NOT NULL)
    ORDER BY u.work_id LIMIT 256`, userID, after)
 		if err != nil {
 			return profile, err
@@ -61,9 +68,12 @@ func (s *Store) prepareRecommendationProfile(ctx context.Context, userID, epoch 
 		for rows.Next() {
 			var id int64
 			var state recommendationFrozenState
-			if err := rows.Scan(&id, &state.PrimaryCode, &state.ListeningStatus, &state.Favorite); err != nil {
+			if err := rows.Scan(&id, &state.PrimaryCode, &state.ListeningStatus, &state.Favorite, &state.Rating); err != nil {
 				_ = rows.Close()
 				return profile, err
+			}
+			if state.Rating < 1 || state.Rating > 5 {
+				state.Rating = 0
 			}
 			profile.States[id] = state
 			s.recommendationDiagnostics.stateRows.Add(1)
@@ -80,8 +90,7 @@ func (s *Store) prepareRecommendationProfile(ctx context.Context, userID, epoch 
 		}
 		feedback := []int64{}
 		for _, id := range ids {
-			state := profile.States[id]
-			if state.Favorite || state.ListeningStatus == "relisten" || state.ListeningStatus == "paused" {
+			if recommendationFeedbackFor(profile.States[id], config).informative() {
 				feedback = append(feedback, id)
 			}
 		}
@@ -90,14 +99,10 @@ func (s *Store) prepareRecommendationProfile(ctx context.Context, userID, epoch 
 			return profile, err
 		}
 		for _, id := range feedback {
-			state := profile.States[id]
+			work := recommendationFeedbackFor(profile.States[id], config)
 			for _, f := range features[id] {
 				evidence := profile.Entities[f.key()]
-				if state.Favorite || state.ListeningStatus == "relisten" {
-					evidence.Positive++
-				} else if state.ListeningStatus == "paused" {
-					evidence.Paused++
-				}
+				evidence.add(work)
 				profile.Entities[f.key()] = evidence
 			}
 		}
@@ -203,49 +208,47 @@ func containsProfileKey(keys []string, key string) bool {
 	return false
 }
 
-// workSignals is the shared pure v5 affinity policy. Removing the candidate's
-// own evidence precedes positive-over-negative precedence and thresholding.
+// workSignals is the shared pure affinity policy. Removing the candidate's own
+// feedback precedes netting and thresholding.
 func (profile RecommendationProfile) workSignals(features []recommendationFeature, state recommendationFrozenState, config RecommendationConfig) RecommendationSignals {
-	signals := RecommendationSignals{ListeningStatus: state.ListeningStatus, Favorite: state.Favorite, Affinity: &RecommendationAffinity{}}
+	signals := RecommendationSignals{
+		ListeningStatus: state.ListeningStatus, Favorite: state.Favorite,
+		Affinity: &RecommendationAffinity{}, NegativeAffinity: &RecommendationAffinity{},
+	}
 	if signals.ListeningStatus == "" {
 		signals.ListeningStatus = "none"
 	}
-	positiveSelf := 0
-	pausedSelf := 0
-	if state.Favorite || state.ListeningStatus == "relisten" {
-		positiveSelf = 1
-	} else if state.ListeningStatus == "paused" {
-		pausedSelf = 1
-	}
+	self := recommendationFeedbackFor(state, config)
 	for _, f := range features {
-		evidence := profile.Entities[f.key()]
-		positive := max(0, evidence.Positive-positiveSelf)
-		paused := max(0, evidence.Paused-pausedSelf)
-		strength := recommendationEvidenceStrength(positive)
+		evidence := profile.Entities[f.key()].without(self)
+		positive, negative := evidence.affinity(config)
 		if f.Kind == "tag" {
-			strength *= evidence.Specificity
+			positive *= evidence.Specificity
 		}
 		switch f.Kind {
 		case "tag":
 			if positive > 0 {
 				signals.PositiveTagMatches++
-				signals.Affinity.Tags += strength
-			} else if paused >= config.NegativeMinEvidence {
+				signals.Affinity.Tags += positive
+			} else if negative > 0 {
 				signals.NegativeTagMatches++
+				signals.NegativeAffinity.Tags += negative
 			}
 		case "voice":
 			if positive > 0 {
 				signals.PositiveVoiceMatches++
-				signals.Affinity.Voices += strength
-			} else if paused >= config.NegativeMinEvidence {
+				signals.Affinity.Voices += positive
+			} else if negative > 0 {
 				signals.NegativeVoiceMatches++
+				signals.NegativeAffinity.Voices += negative
 			}
 		case "circle":
 			if positive > 0 {
 				signals.PositiveCircleMatches++
-				signals.Affinity.Circles += strength
-			} else if paused >= config.NegativeMinEvidence {
+				signals.Affinity.Circles += positive
+			} else if negative > 0 {
 				signals.NegativeCircleMatches++
+				signals.NegativeAffinity.Circles += negative
 			}
 		}
 	}

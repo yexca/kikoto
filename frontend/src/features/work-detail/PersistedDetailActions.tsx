@@ -48,6 +48,7 @@ export type PersistedDetailActionsProps = {
   onListSaved: (favorite: boolean, workID: number) => void;
   onResume: () => void;
   onMark: (status: ListeningStatus) => void;
+  onRate: (rating: number | null) => void;
   onEditMetadata: () => void;
   onTrack: () => void;
   onUntrack: () => void;
@@ -82,6 +83,8 @@ export function PersistedIdentityActions(props: PersistedDetailActionsProps) {
       onListSaved={props.onListSaved}
       onResume={!props.playbackCursorLoading && props.hasResumableCursor ? props.onResume : undefined}
       onMark={props.onMark}
+      userRating={props.work.userRating}
+      onRate={props.onRate}
     />
   );
 }

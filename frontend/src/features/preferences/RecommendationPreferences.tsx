@@ -58,42 +58,56 @@ const positiveDimensions: RecommendationDimension[] = [
   },
 ];
 
-const shelvedTone = "bg-foreground/10 text-foreground/50";
+const dislikedTone = "bg-foreground/10 text-foreground/50";
 
-const shelvedDimensions: RecommendationDimension[] = [
+const dislikedDimensions: RecommendationDimension[] = [
   {
     title: "libraryDetail.componentTags",
     weightKey: "negativeTagWeight",
     capKey: "negativeTagCap",
-    weightLabel: "recommendation.shelvedTagWeight",
-    capLabel: "recommendation.shelvedTagCap",
-    tone: shelvedTone,
+    weightLabel: "recommendation.dislikedTagWeight",
+    capLabel: "recommendation.dislikedTagCap",
+    tone: dislikedTone,
   },
   {
     title: "libraryDetail.componentVoices",
     weightKey: "negativeVoiceWeight",
     capKey: "negativeVoiceCap",
-    weightLabel: "recommendation.shelvedVoiceWeight",
-    capLabel: "recommendation.shelvedVoiceCap",
-    tone: shelvedTone,
+    weightLabel: "recommendation.dislikedVoiceWeight",
+    capLabel: "recommendation.dislikedVoiceCap",
+    tone: dislikedTone,
   },
   {
     title: "libraryDetail.componentCircles",
     weightKey: "negativeCircleWeight",
     capKey: "negativeCircleCap",
-    weightLabel: "recommendation.shelvedCircleWeight",
-    capLabel: "recommendation.shelvedCircleCap",
-    tone: shelvedTone,
+    weightLabel: "recommendation.dislikedCircleWeight",
+    capLabel: "recommendation.dislikedCircleCap",
+    tone: dislikedTone,
   },
 ];
 
-type RecommendationPreset = "balanced" | "familiar" | "exploratory" | "avoid_shelved";
+// Positive weights first, then the negative ones, as the stars read.
+const feedbackWeights = [
+  "ratingFiveWeight",
+  "ratingFourWeight",
+  "relistenWeight",
+  "ratingTwoWeight",
+  "ratingOneWeight",
+  "shelvedWeight",
+] as const satisfies readonly RecommendationConfigKey[];
+
+type RecommendationPreset = "balanced" | "familiar" | "exploratory" | "avoid_disliked";
 
 const recommendationPresetOptions: Array<{ key: RecommendationPreset; label: string; description: string }> = [
   { key: "balanced", label: "recommendation.balanced", description: "recommendation.balancedDescription" },
   { key: "familiar", label: "recommendation.familiar", description: "recommendation.familiarDescription" },
   { key: "exploratory", label: "recommendation.exploratory", description: "recommendation.exploratoryDescription" },
-  { key: "avoid_shelved", label: "recommendation.avoidShelved", description: "recommendation.avoidShelvedDescription" },
+  {
+    key: "avoid_disliked",
+    label: "recommendation.avoidDisliked",
+    description: "recommendation.avoidDislikedDescription",
+  },
 ];
 
 export function RecommendationPreferences({
@@ -122,7 +136,7 @@ export function RecommendationPreferences({
     : "custom";
   const exampleScore = recommendationExampleBreakdown(config, example).score;
   const positiveScale = Math.max(50, ...positiveDimensions.map((dimension) => config[dimension.capKey]));
-  const shelvedScale = Math.max(20, ...shelvedDimensions.map((dimension) => config[dimension.capKey]));
+  const dislikedScale = Math.max(20, ...dislikedDimensions.map((dimension) => config[dimension.capKey]));
   const dimensionRows = (dimensions: RecommendationDimension[], scaleMax: number, deduction: boolean) =>
     dimensions.map((dimension) => (
       <RecommendationDimensionRow
@@ -259,7 +273,26 @@ export function RecommendationPreferences({
               {dimensionRows(positiveDimensions, positiveScale, false)}
             </RecommendationGroup>
 
-            <RecommendationGroup title={maintenanceCopy("recommendation.shelvedPenalty")}>
+            <RecommendationGroup title={maintenanceCopy("recommendation.feedbackWeights")}>
+              <p className="text-xs text-muted-foreground">
+                {maintenanceCopy("recommendation.feedbackWeightsDescription")}
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {feedbackWeights.map((key) => (
+                  <RecommendationSliderField
+                    key={key}
+                    label={maintenanceCopy(`recommendation.${key}`)}
+                    value={config[key]}
+                    min={0}
+                    max={200}
+                    defaultValue={defaults?.[key]}
+                    onChange={(value) => updateField(key, value)}
+                  />
+                ))}
+              </div>
+            </RecommendationGroup>
+
+            <RecommendationGroup title={maintenanceCopy("recommendation.dislikedPenalty")}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <RecommendationSliderField
                   label={maintenanceCopy("recommendation.shelvedEvidenceWorks")}
@@ -270,7 +303,7 @@ export function RecommendationPreferences({
                   onChange={(value) => updateField("negativeMinEvidence", value)}
                 />
                 <RecommendationSliderField
-                  label={maintenanceCopy("recommendation.shelvedTotalCap")}
+                  label={maintenanceCopy("recommendation.dislikedTotalCap")}
                   value={config.negativeTotalCap}
                   min={0}
                   max={100}
@@ -278,7 +311,7 @@ export function RecommendationPreferences({
                   onChange={(value) => updateField("negativeTotalCap", value)}
                 />
               </div>
-              {dimensionRows(shelvedDimensions, shelvedScale, true)}
+              {dimensionRows(dislikedDimensions, dislikedScale, true)}
             </RecommendationGroup>
           </div>
         </details>
@@ -330,10 +363,13 @@ function recommendationPresetConfig(
         jitterAmplitude: 8,
         explorationAmplitude: 30,
       };
-    case "avoid_shelved":
+    case "avoid_disliked":
       return {
         ...defaults,
         shelvedSlots: 0,
+        ratingTwoWeight: 100,
+        ratingOneWeight: 175,
+        shelvedWeight: 60,
         negativeTagWeight: 4,
         negativeTagCap: 10,
         negativeVoiceWeight: 5,

@@ -1008,10 +1008,10 @@ func listRecommendationProjection(includeRecommendation bool, config Recommendat
 			recommendationSortColumn = fmt.Sprintf(", COALESCE(recommendation_snapshot.score, %d) AS recommend_score", config.AffinityBase)
 			recommendationSnapshotJoin = fmt.Sprintf(`
 	LEFT JOIN recommendation_snapshot ON recommendation_snapshot.work_id = work.id AND recommendation_snapshot.generation_id = %d`, recommendationGenerationID)
-		case recommendationGenerationID < 0:
-			recommendationSortColumn = fmt.Sprintf(", %d AS recommend_score", config.AffinityBase)
 		default:
-			recommendationSortColumn = `, ` + recommendationScoreExpression(config) + ` AS recommend_score`
+			// Affinity comes only from a generation's frozen profile; without one
+			// every work keeps the neutral baseline.
+			recommendationSortColumn = fmt.Sprintf(", %d AS recommend_score", config.AffinityBase)
 		}
 	}
 	return recommendationSortColumn, recommendationSnapshotJoin

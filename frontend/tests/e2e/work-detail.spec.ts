@@ -194,6 +194,30 @@ test("detail quick marks preserve the cached directory tree", async ({ page }) =
   expect(mediaRequests).toBe(1);
 });
 
+test("detail rating button shows the rating and its popover rates or clears it", async ({ page }) => {
+  const ratings: unknown[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "PATCH" && new URL(request.url()).pathname === "/api/works/1/user-state") {
+      ratings.push((request.postDataJSON() as { userRating?: unknown }).userRating);
+    }
+  });
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true });
+  await page.goto("/");
+  await page.getByText("Tagged mobile work", { exact: true }).click();
+
+  await page.getByRole("button", { name: "Rate this work" }).click();
+  await page.getByRole("group", { name: "Your rating" }).getByRole("button", { name: "Rate 4 stars" }).click();
+  const rated = page.getByRole("button", { name: "Your rating: 4 of 5" });
+  await expect(rated).toHaveText("4");
+  await expect(page.getByRole("group", { name: "Your rating" })).toBeHidden();
+
+  await rated.click();
+  await expect(page.getByRole("button", { name: "Rate 4 stars" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Clear your rating" }).click();
+  await expect(page.getByRole("button", { name: "Rate this work" })).toBeVisible();
+  expect(ratings).toEqual([4, null]);
+});
+
 test("a lone local source is named in the directory header until the viewer always shows its tab", async ({ page }) => {
   const mediaItems = [
     mediaItemFixture({

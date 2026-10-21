@@ -9,9 +9,7 @@ import (
 	"strings"
 )
 
-const RecommendationAlgorithmVersion = "heuristic-v6"
-
-const recommendationScoreUserArgumentCount = 9
+const RecommendationAlgorithmVersion = "heuristic-v7"
 
 type RecommendationConfig struct {
 	AffinityBase         int `json:"affinityBase"`
@@ -38,11 +36,21 @@ type RecommendationConfig struct {
 	NegativeTotalCap     int `json:"negativeTotalCap"`
 	JitterAmplitude      int `json:"jitterAmplitude"`
 	ExplorationAmplitude int `json:"explorationAmplitude"`
+	// Feedback weights are percentages of one favorite work's evidence. A
+	// rated work contributes only through its rating; Favorite, Relisten, and
+	// Shelved stand in for a rating the work does not have.
+	RatingFiveWeight int `json:"ratingFiveWeight"`
+	RatingFourWeight int `json:"ratingFourWeight"`
+	RatingTwoWeight  int `json:"ratingTwoWeight"`
+	RatingOneWeight  int `json:"ratingOneWeight"`
+	RelistenWeight   int `json:"relistenWeight"`
+	ShelvedWeight    int `json:"shelvedWeight"`
 }
 
 type RecommendationSignals struct {
 	DiversityPenalty      int                     `json:"diversityPenalty,omitempty"`
 	Affinity              *RecommendationAffinity `json:"affinity,omitempty"`
+	NegativeAffinity      *RecommendationAffinity `json:"negativeAffinity,omitempty"`
 	ListeningStatus       string                  `json:"listeningStatus"`
 	Favorite              bool                    `json:"favorite"`
 	PositiveTagMatches    int                     `json:"positiveTagMatches"`
@@ -88,6 +96,7 @@ func DefaultRecommendationConfig() RecommendationConfig {
 		TagWeight: 5, TagCap: 25, VoiceWeight: 10, VoiceCap: 20, CircleWeight: 15, CircleCap: 15, FavoriteBonus: 10,
 		NegativeMinEvidence: 2, NegativeTagWeight: 2, NegativeTagCap: 6, NegativeVoiceWeight: 3, NegativeVoiceCap: 6,
 		NegativeCircleWeight: 5, NegativeCircleCap: 5, NegativeTotalCap: 15, JitterAmplitude: 3, ExplorationAmplitude: 18,
+		RatingFiveWeight: 150, RatingFourWeight: 100, RatingTwoWeight: 75, RatingOneWeight: 125, RelistenWeight: 50, ShelvedWeight: 35,
 	}
 }
 
@@ -102,6 +111,9 @@ func ValidateRecommendationConfig(config RecommendationConfig) error {
 		return err
 	}
 	if err := validateRecommendationRange([]int{config.TagCap, config.VoiceCap, config.CircleCap, config.NegativeTagCap, config.NegativeVoiceCap, config.NegativeCircleCap, config.NegativeTotalCap}, 0, 100, "recommendation caps must be between 0 and 100"); err != nil {
+		return err
+	}
+	if err := validateRecommendationRange([]int{config.RatingFiveWeight, config.RatingFourWeight, config.RatingTwoWeight, config.RatingOneWeight, config.RelistenWeight, config.ShelvedWeight}, 0, 200, "recommendation feedback weights must be between 0 and 200"); err != nil {
 		return err
 	}
 	if config.NegativeMinEvidence < 1 || config.NegativeMinEvidence > 10 {
@@ -198,149 +210,6 @@ func decodeRecommendationConfig(raw string) (RecommendationConfig, error) {
 	return config, nil
 }
 
-const positiveTagMatchCountExpression = `(SELECT COUNT(DISTINCT candidate_tag.tag_id)
-	FROM work_tag AS candidate_tag
-	INNER JOIN tag AS candidate_tag_value ON candidate_tag_value.id = candidate_tag.tag_id
-	WHERE candidate_tag.work_id = work.id
-		AND candidate_tag_value.namespace IN ('dlsite', 'metadata')
-		AND EXISTS (
-			SELECT 1
-			FROM work_tag AS liked_tag
-			INNER JOIN user_work_state AS liked_state
-				ON liked_state.work_id = liked_tag.work_id AND liked_state.user_id = ?
-			WHERE liked_tag.tag_id = candidate_tag.tag_id
-				AND liked_tag.work_id <> work.id
-				AND (liked_state.listening_status = 'relisten' OR liked_state.favorite = 1)
-		))`
-
-const positiveVoiceMatchCountExpression = `(SELECT COUNT(DISTINCT candidate_credit.person_id)
-	FROM work_credit AS candidate_credit
-	WHERE candidate_credit.work_id = work.id
-		AND candidate_credit.role = 'voice_actor'
-		AND EXISTS (
-			SELECT 1
-			FROM work_credit AS liked_credit
-			INNER JOIN user_work_state AS liked_state
-				ON liked_state.work_id = liked_credit.work_id AND liked_state.user_id = ?
-			WHERE liked_credit.person_id = candidate_credit.person_id
-				AND liked_credit.role = 'voice_actor'
-				AND liked_credit.work_id <> work.id
-				AND (liked_state.listening_status = 'relisten' OR liked_state.favorite = 1)
-		))`
-
-const positiveCircleMatchCountExpression = `(SELECT COUNT(DISTINCT candidate_party.party_id)
-	FROM work_party AS candidate_party
-	WHERE candidate_party.work_id = work.id
-		AND candidate_party.role = 'circle'
-		AND EXISTS (
-			SELECT 1
-			FROM work_party AS liked_party
-			INNER JOIN user_work_state AS liked_state
-				ON liked_state.work_id = liked_party.work_id AND liked_state.user_id = ?
-			WHERE liked_party.party_id = candidate_party.party_id
-				AND liked_party.role = 'circle'
-				AND liked_party.work_id <> work.id
-				AND (liked_state.listening_status = 'relisten' OR liked_state.favorite = 1)
-		))`
-
-func negativeTagMatchCountExpression(minEvidence int) string {
-	return fmt.Sprintf(`(SELECT COUNT(DISTINCT candidate_tag.tag_id)
-		FROM work_tag AS candidate_tag
-		INNER JOIN tag AS candidate_tag_value ON candidate_tag_value.id = candidate_tag.tag_id
-		WHERE candidate_tag.work_id = work.id
-			AND candidate_tag_value.namespace IN ('dlsite', 'metadata')
-			AND (SELECT COUNT(DISTINCT paused_tag.work_id)
-				FROM work_tag AS paused_tag
-				INNER JOIN user_work_state AS paused_state ON paused_state.work_id = paused_tag.work_id AND paused_state.user_id = ?
-				WHERE paused_tag.tag_id = candidate_tag.tag_id AND paused_tag.work_id <> work.id
-					AND paused_state.listening_status = 'paused' AND paused_state.favorite = 0) >= %d
-			AND NOT EXISTS (
-				SELECT 1 FROM work_tag AS liked_tag
-				INNER JOIN user_work_state AS liked_state ON liked_state.work_id = liked_tag.work_id AND liked_state.user_id = ?
-				WHERE liked_tag.tag_id = candidate_tag.tag_id AND liked_tag.work_id <> work.id
-					AND (liked_state.listening_status = 'relisten' OR liked_state.favorite = 1)
-			))`, minEvidence)
-}
-
-func negativeVoiceMatchCountExpression(minEvidence int) string {
-	return fmt.Sprintf(`(SELECT COUNT(DISTINCT candidate_credit.person_id)
-		FROM work_credit AS candidate_credit
-		WHERE candidate_credit.work_id = work.id AND candidate_credit.role = 'voice_actor'
-			AND (SELECT COUNT(DISTINCT paused_credit.work_id)
-				FROM work_credit AS paused_credit
-				INNER JOIN user_work_state AS paused_state ON paused_state.work_id = paused_credit.work_id AND paused_state.user_id = ?
-				WHERE paused_credit.person_id = candidate_credit.person_id AND paused_credit.role = 'voice_actor'
-					AND paused_credit.work_id <> work.id AND paused_state.listening_status = 'paused' AND paused_state.favorite = 0) >= %d
-			AND NOT EXISTS (
-				SELECT 1 FROM work_credit AS liked_credit
-				INNER JOIN user_work_state AS liked_state ON liked_state.work_id = liked_credit.work_id AND liked_state.user_id = ?
-				WHERE liked_credit.person_id = candidate_credit.person_id AND liked_credit.role = 'voice_actor'
-					AND liked_credit.work_id <> work.id
-					AND (liked_state.listening_status = 'relisten' OR liked_state.favorite = 1)
-			))`, minEvidence)
-}
-
-func negativeCircleMatchCountExpression(minEvidence int) string {
-	return fmt.Sprintf(`(SELECT COUNT(DISTINCT candidate_party.party_id)
-		FROM work_party AS candidate_party
-		WHERE candidate_party.work_id = work.id AND candidate_party.role = 'circle'
-			AND (SELECT COUNT(DISTINCT paused_party.work_id)
-				FROM work_party AS paused_party
-				INNER JOIN user_work_state AS paused_state ON paused_state.work_id = paused_party.work_id AND paused_state.user_id = ?
-				WHERE paused_party.party_id = candidate_party.party_id AND paused_party.role = 'circle'
-					AND paused_party.work_id <> work.id AND paused_state.listening_status = 'paused' AND paused_state.favorite = 0) >= %d
-			AND NOT EXISTS (
-				SELECT 1 FROM work_party AS liked_party
-				INNER JOIN user_work_state AS liked_state ON liked_state.work_id = liked_party.work_id AND liked_state.user_id = ?
-				WHERE liked_party.party_id = candidate_party.party_id AND liked_party.role = 'circle'
-					AND liked_party.work_id <> work.id
-					AND (liked_state.listening_status = 'relisten' OR liked_state.favorite = 1)
-			))`, minEvidence)
-}
-
-func recommendationScoreExpression(config RecommendationConfig) string {
-	return recommendationScoreFromSignalExpressions(
-		config,
-		"COALESCE(user_work_state.favorite, 0)",
-		positiveAffinityExpression("tag"),
-		positiveAffinityExpression("voice"),
-		positiveAffinityExpression("circle"),
-		negativeTagMatchCountExpression(config.NegativeMinEvidence),
-		negativeVoiceMatchCountExpression(config.NegativeMinEvidence),
-		negativeCircleMatchCountExpression(config.NegativeMinEvidence),
-	)
-}
-
-func recommendationScoreFromSignalExpressions(
-	config RecommendationConfig,
-	favoriteExpression string,
-	positiveTagExpression string,
-	positiveVoiceExpression string,
-	positiveCircleExpression string,
-	negativeTagExpression string,
-	negativeVoiceExpression string,
-	negativeCircleExpression string,
-) string {
-	positiveTag := fmt.Sprintf("MIN(%d, ROUND(COALESCE(%s, 0) * %d))", config.TagCap, positiveTagExpression, config.TagWeight)
-	positiveVoice := fmt.Sprintf("MIN(%d, ROUND(COALESCE(%s, 0) * %d))", config.VoiceCap, positiveVoiceExpression, config.VoiceWeight)
-	positiveCircle := fmt.Sprintf("MIN(%d, ROUND(COALESCE(%s, 0) * %d))", config.CircleCap, positiveCircleExpression, config.CircleWeight)
-	negativeTag := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeTagCap, negativeTagExpression, config.NegativeTagWeight)
-	negativeVoice := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeVoiceCap, negativeVoiceExpression, config.NegativeVoiceWeight)
-	negativeCircle := fmt.Sprintf("MIN(%d, COALESCE(%s, 0) * %d)", config.NegativeCircleCap, negativeCircleExpression, config.NegativeCircleWeight)
-	return fmt.Sprintf(`MAX(0, MIN(100, %d + %s + %s + %s
-		+ CASE WHEN COALESCE(%s, 0) = 1 THEN %d ELSE 0 END
-		- MIN(%d, %s + %s + %s)))`, config.AffinityBase, positiveTag, positiveVoice, positiveCircle,
-		favoriteExpression, config.FavoriteBonus, config.NegativeTotalCap, negativeTag, negativeVoice, negativeCircle)
-}
-
-func recommendationUserArgs(userID int64) []any {
-	args := make([]any, recommendationScoreUserArgumentCount)
-	for index := range args {
-		args[index] = userID
-	}
-	return args
-}
-
 func (s *Store) RecommendationBreakdown(ctx context.Context, userID, workID int64) (RecommendationBreakdown, error) {
 	config := s.LoadUserRecommendationConfig(ctx, userID)
 	return s.RecommendationBreakdownWithConfig(ctx, userID, workID, config)
@@ -384,9 +253,13 @@ func buildRecommendationBreakdown(config RecommendationConfig, signals Recommend
 	if signals.Favorite {
 		favorite = config.FavoriteBonus
 	}
-	negativeTags := minInt(config.NegativeTagCap, signals.NegativeTagMatches*config.NegativeTagWeight)
-	negativeVoices := minInt(config.NegativeVoiceCap, signals.NegativeVoiceMatches*config.NegativeVoiceWeight)
-	negativeCircles := minInt(config.NegativeCircleCap, signals.NegativeCircleMatches*config.NegativeCircleWeight)
+	disliked := RecommendationAffinity{Tags: float64(signals.NegativeTagMatches), Voices: float64(signals.NegativeVoiceMatches), Circles: float64(signals.NegativeCircleMatches)}
+	if signals.NegativeAffinity != nil {
+		disliked = *signals.NegativeAffinity
+	}
+	negativeTags := minInt(config.NegativeTagCap, int(math.Round(disliked.Tags*float64(config.NegativeTagWeight))))
+	negativeVoices := minInt(config.NegativeVoiceCap, int(math.Round(disliked.Voices*float64(config.NegativeVoiceWeight))))
+	negativeCircles := minInt(config.NegativeCircleCap, int(math.Round(disliked.Circles*float64(config.NegativeCircleWeight))))
 	negative := minInt(config.NegativeTotalCap, negativeTags+negativeVoices+negativeCircles)
 	raw := config.AffinityBase + tags + voices + circles + favorite - negative
 	score := minInt(100, maxInt(0, raw))
@@ -402,7 +275,7 @@ func buildRecommendationBreakdown(config RecommendationConfig, signals Recommend
 			{Key: "voices", Label: "Matching voice actors", MatchCount: signals.PositiveVoiceMatches, Contribution: voices, Cap: config.VoiceCap},
 			{Key: "circles", Label: "Matching circles", MatchCount: signals.PositiveCircleMatches, Contribution: circles, Cap: config.CircleCap},
 			{Key: "favorite", Label: "Favorite", MatchCount: boolInt(signals.Favorite), Contribution: favorite, Cap: config.FavoriteBonus},
-			{Key: "paused_similarity", Label: "Shelved similarity", MatchCount: signals.NegativeTagMatches + signals.NegativeVoiceMatches + signals.NegativeCircleMatches, Contribution: -negative, Cap: config.NegativeTotalCap},
+			{Key: "disliked_similarity", Label: "Disliked similarity", MatchCount: signals.NegativeTagMatches + signals.NegativeVoiceMatches + signals.NegativeCircleMatches, Contribution: -negative, Cap: config.NegativeTotalCap},
 		},
 	}
 }

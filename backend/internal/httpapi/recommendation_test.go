@@ -33,7 +33,7 @@ func TestWorkRecommendationScoreUsesPositiveTagHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	tagID, _ := tag.LastInsertId()
-	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, ?, 'relisten')", userID, likedID); err != nil {
+	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status, rating) VALUES (?, ?, 'relisten', 4)", userID, likedID); err != nil {
 		t.Fatal(err)
 	}
 	for _, workID := range []int64{likedID, candidateID} {
@@ -76,12 +76,13 @@ func TestPausedSimilarityNeedsRepeatedEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if breakdown.Score != 33 || breakdown.Signals.NegativeTagMatches != 1 {
+	// Two unrated shelved works carry 0.7 of one favorite: 0.7 × 2 rounds to 1.
+	if breakdown.Score != 34 || breakdown.Signals.NegativeTagMatches != 1 {
 		t.Fatalf("repeated paused signal breakdown = %+v", breakdown)
 	}
 }
 
-func TestPositiveHistoryBlocksPausedSimilarity(t *testing.T) {
+func TestSimilarityNetsPositiveAgainstShelvedEvidence(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	userID, candidateID, tagID := seedRecommendationUserCandidateAndTag(t, db)
@@ -94,13 +95,26 @@ func TestPositiveHistoryBlocksPausedSimilarity(t *testing.T) {
 	linkRecommendationTag(t, db, likedID, tagID)
 	setRecommendationState(t, db, userID, likedID, "relisten", false)
 
+	// An unrated Relisten (0.5) is outweighed by two shelved works (0.7).
 	publishRecommendationTestCatalog(t, server)
 	breakdown, err := server.libraryStore.RecommendationBreakdown(context.Background(), userID, candidateID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if breakdown.Score != 38 || breakdown.Signals.PositiveTagMatches != 1 || breakdown.Signals.NegativeTagMatches != 0 {
-		t.Fatalf("positive override breakdown = %+v", breakdown)
+	if breakdown.Signals.PositiveTagMatches != 0 || breakdown.Signals.NegativeTagMatches != 1 {
+		t.Fatalf("outweighed relisten breakdown = %+v", breakdown)
+	}
+
+	// Rating it four stars (1.0) outweighs them, leaving a positive match.
+	if _, err := db.Exec("UPDATE user_work_state SET rating = 4 WHERE user_id = ? AND work_id = ?", userID, likedID); err != nil {
+		t.Fatal(err)
+	}
+	breakdown, err = server.libraryStore.RecommendationBreakdown(context.Background(), userID, candidateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if breakdown.Score <= 35 || breakdown.Signals.PositiveTagMatches != 1 || breakdown.Signals.NegativeTagMatches != 0 {
+		t.Fatalf("outweighing rating breakdown = %+v", breakdown)
 	}
 }
 
@@ -288,7 +302,7 @@ func TestWorkRecommendationWithoutContextReportsAffinityOnly(t *testing.T) {
 	userID, candidateID, tagID := seedRecommendationUserCandidateAndTag(t, db)
 	likedID := insertRecommendationWork(t, db, "RJ00000002", "Example Liked Work")
 	linkRecommendationTag(t, db, likedID, tagID)
-	setRecommendationState(t, db, userID, likedID, "relisten", false)
+	rateRecommendationWork(t, db, userID, likedID, "relisten", 4)
 	publishRecommendationTestCatalog(t, server)
 	for _, suffix := range []string{"", "?seed=71", "?recommendationSession=affinity-only&seed=71"} {
 		request := httptest.NewRequest(http.MethodGet, "/api/works/1/recommendation"+suffix, nil)
@@ -422,6 +436,13 @@ func linkRecommendationTag(t *testing.T, db recommendationTestDB, workID int64, 
 func setRecommendationState(t *testing.T, db recommendationTestDB, userID int64, workID int64, status string, favorite bool) {
 	t.Helper()
 	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status, favorite) VALUES (?, ?, ?, ?)", userID, workID, status, favorite); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func rateRecommendationWork(t *testing.T, db recommendationTestDB, userID int64, workID int64, status string, rating int) {
+	t.Helper()
+	if _, err := db.Exec("INSERT INTO user_work_state (user_id, work_id, listening_status, rating) VALUES (?, ?, ?, ?)", userID, workID, status, rating); err != nil {
 		t.Fatal(err)
 	}
 }

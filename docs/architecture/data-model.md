@@ -1122,7 +1122,7 @@ worker, so a newly created work remains browsable before projection completes.
 
 A generation freezes the algorithm, effective configuration, user revision,
 published catalog epoch, entity preference evidence, and sparse personal states
-(non-default listening status or favorite). Profile preparation reads all the
+(non-default listening status, favorite, or rating). Profile preparation reads all the
 user's feedback works, not every work's relations. Its cost grows with feedback
 volume, and scoring does not truncate that evidence. Preparation happens outside
 the publication transaction; revision validation and bounded retries prevent a
@@ -1139,9 +1139,21 @@ Catalog records, frozen states, and stored candidate prefixes also retain
 `primary_code`; reads verify it against the current work. Reusing a deleted
 SQLite row id cannot transfer that work's recommendation inputs to another work.
 
-`heuristic-v6` aggregates supporting works once per entity, excludes the
-candidate's own feedback, and scales positive evidence from 1 to 2 over the
-first five supporting works. Tag specificity is `1 - 0.5 * frequency / work_count`;
+`heuristic-v7` weighs each feedback work rating first.
+`user_work_state.rating` is the account's own one-to-five-star rating; NULL is
+unrated, and the API, imports, and scoring treat any other value as unrated. A
+rated work contributes only its rating: five and four stars add positive
+evidence, two and one stars add negative evidence and count as disliked, and
+three stars add none. An unrated work falls back to its marks: a favorite adds
+one favorite's evidence, Relisten and Shelved add their configured shares.
+The weights are percentages of one favorite in the recommendation
+configuration, and the generation's configuration weighs the frozen evidence.
+Each entity sums positive and negative evidence once, excluding the
+candidate's own feedback, and nets them. Positive net evidence is a match
+whose strength grows linearly to one favorite, then from 1 to 2 by five
+favorites' worth. Negative net evidence is a deduction of the same strength
+when one disliked work, or at least `negativeMinEvidence` unrated shelved
+works, support it. Lanes still follow the listening status. Tag specificity is `1 - 0.5 * frequency / work_count`;
 contributions are rounded after summation and retain the configured caps.
 Exploration is proportional to the remaining affinity headroom, while jitter
 uses a separate seeded hash. Creator diversity subtracts 0–8 ordering points
@@ -1186,7 +1198,7 @@ listening lanes, and ranking adjustments. Demo starts no real recommendation
 catalog worker, and its requests do not prepare profiles, generations, query
 contexts, candidate recall, or real recommendation scores.
 
-`recommendation_generation_profile` stores each generation's evidence counts and
+`recommendation_generation_profile` stores each generation's weighted evidence and
 name mappings. In production and development, the authenticated remote
 recommendations endpoint accepts at most 100 candidates from the displayed
 page, validates known work identities,

@@ -268,6 +268,12 @@ const workCardJapanese = {
   loadingSeries: "シリーズ情報を読み込み中...",
   couldNotOpenEntity: "この{{kind}}を開けませんでした。",
   mark: "マーク：{{status}}",
+  userRating: "あなたの評価",
+  rateStars_one: "星 {{count}} つで評価",
+  rateStars_other: "星 {{count}} つで評価",
+  clearUserRating: "評価を取り消す",
+  userRatingValue: "あなたの評価：5 段階中 {{value}}",
+  rateWork: "この作品を評価",
   status: {
     ...workCardEnglish.status,
     none: "未マーク",

@@ -67,8 +67,14 @@ The Library is the main browsing surface for works.
   not rank the complete result set by personal affinity.
 - Affinity uses favorite, tag, voice, and circle evidence, excludes the
   candidate's own feedback, strengthens repeated positive evidence up to five
-  supporting works, and discounts common tags. Favorite and Relisten history
-  are positive; Finished alone is neutral. Seeded discovery, variation, and
+  favorites' worth, and discounts common tags. Your
+  [rating](work-detail.md#current-behavior) is the main evidence: four and five
+  stars count as liking a work, one and two stars as disliking it, and three
+  stars as neutral. A rated work counts only by its rating. For an unrated
+  work, a favorite counts fully, Relisten counts half, Shelved counts lightly
+  against its tags and creators, and Finished alone is neutral. One disliked
+  work is enough to lower similar works; shelved works lower them only once
+  enough of them agree. Seeded discovery, variation, and
   creator diversity affect candidate ordering, while badges retain affinity.
   Ordinary-sort badges score only the current page. Explanations show real
   affinity even outside the candidate set; query-specific ranking adjustments

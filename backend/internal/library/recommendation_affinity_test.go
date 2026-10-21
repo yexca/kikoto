@@ -29,7 +29,7 @@ func TestRecommendationRepeatedEvidenceAndCommonTags(t *testing.T) {
 	for _, id := range []int{1, 6} {
 		exec("INSERT INTO work_tag (work_id, tag_id, source) VALUES (?, 2, 'test')", id)
 	}
-	exec("INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, 1, 'relisten')", userID)
+	exec("INSERT INTO user_work_state (user_id, work_id, listening_status, rating) VALUES (?, 1, 'relisten', 4)", userID)
 	ctx := context.Background()
 	scaleDrainCatalog(t, store)
 	first, err := store.RecommendationBreakdown(ctx, userID, 6)
@@ -85,7 +85,7 @@ func TestRemoteRecommendationAliasesDeduplicateAndFreeze(t *testing.T) {
 	exec("INSERT INTO metadata_tag_provider_name (tag_id, language, name, provider_id) SELECT 10, 'en-us', 'Example Provider Tag', id FROM metadata_provider WHERE code = 'dlsite'")
 	exec("INSERT INTO work_tag (work_id, tag_id, source) VALUES (1, 10, 'test')")
 	exec("INSERT INTO work_credit (work_id, person_id, role, source) VALUES (1, 1, 'voice_actor', 'test')")
-	exec("INSERT INTO user_work_state (user_id, work_id, listening_status) VALUES (?, 1, 'relisten')", userID)
+	exec("INSERT INTO user_work_state (user_id, work_id, listening_status, rating) VALUES (?, 1, 'relisten', 4)", userID)
 	candidates := []RecommendationCandidate{
 		{PrimaryCode: testfixture.WorkCode(testfixture.PrefixRJ, 90), VoiceActors: []string{"Example Voice", "example alias", "Example Alias"}},
 		{PrimaryCode: testfixture.WorkCode(testfixture.PrefixRJ, 91), VoiceActors: []string{"Example Ambiguous"}},

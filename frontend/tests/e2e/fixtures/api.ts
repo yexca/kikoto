@@ -159,6 +159,7 @@ export function workDetailFixture(work: Work = workFixture(), overrides: Partial
     voiceCredits: work.voiceCredits,
     listeningStatus: work.listeningStatus,
     favorite: work.favorite,
+    userRating: null,
     metadataPresentation: { defaultVariantKey: "", variants: [] },
     metadataSync: { status: "available", checkedAt: "" },
     translations: [],
@@ -340,6 +341,12 @@ export function recommendationConfigFixture(overrides: Partial<RecommendationCon
     negativeTotalCap: 15,
     jitterAmplitude: 3,
     explorationAmplitude: 18,
+    ratingFiveWeight: 150,
+    ratingFourWeight: 100,
+    ratingTwoWeight: 75,
+    ratingOneWeight: 125,
+    relistenWeight: 50,
+    shelvedWeight: 35,
     ...overrides,
   };
 }

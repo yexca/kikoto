@@ -269,6 +269,12 @@ const workCardHant = {
   loadingSeries: "正在載入系列資訊...",
   couldNotOpenEntity: "無法開啟此{{kind}}。",
   mark: "標記：{{status}}",
+  userRating: "我的評分",
+  rateStars_one: "評為 {{count}} 星",
+  rateStars_other: "評為 {{count}} 星",
+  clearUserRating: "清除我的評分",
+  userRatingValue: "我的評分：{{value}} / 5",
+  rateWork: "為這部作品評分",
   status: {
     ...workCardHans.status,
     none: "未標記",

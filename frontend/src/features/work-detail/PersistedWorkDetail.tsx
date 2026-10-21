@@ -119,6 +119,7 @@ export function PersistedWorkDetailController({
   canSyncMetadata,
   onBack,
   onStatusChange,
+  onRatingChange,
   onPlay,
   onWorkReload,
   onWorksChanged,
@@ -137,6 +138,7 @@ export function PersistedWorkDetailController({
   canSyncMetadata: boolean;
   onBack: () => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
+  onRatingChange: (workID: number, rating: number | null) => Promise<void>;
   onPlay: () => void;
   onWorkReload: (workID: number, includeMedia?: boolean) => Promise<void>;
   onWorksChanged: () => Promise<void>;
@@ -451,6 +453,11 @@ export function PersistedWorkDetailController({
     await onStatusChange(work.id, status);
   };
 
+  const rateDetailWork = async (rating: number | null) => {
+    if (!work) return;
+    await onRatingChange(work.id, rating);
+  };
+
   const ensureDetailListWork = async () => {
     if (!work) return null;
     return work.id;
@@ -604,6 +611,7 @@ export function PersistedWorkDetailController({
     onListSaved: favoriteSaved,
     onResume: () => void playback.resumePlayback(),
     onMark: (status) => void markDetailWork(status),
+    onRate: (rating) => void rateDetailWork(rating),
     onEditMetadata: () => setMetadataEditorSection("title"),
     onTrack: () => void tracking.track(),
     onUntrack: () => void tracking.untrack(),
