@@ -3,8 +3,9 @@ sample/
 # CodeGraph
 .codegraph/
 
-# claude
-.claude/
+# claude: local state stays ignored; repository agent skills are tracked
+.claude/*
+!.claude/skills/
 
 data/*
 !data/.gitkeep

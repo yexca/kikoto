@@ -18,6 +18,10 @@ Before changing an area, read its docs:
 | Tests | `docs/development/testing.md` |
 | Commits and releases | `docs/development/commit-and-release.md` |
 
+Recurring repository procedures are agent skills in
+[`.claude/skills/`](.claude/skills/README.md); follow a skill's `SKILL.md` when
+its description matches the task.
+
 ## Product Boundaries
 
 Critical rule:

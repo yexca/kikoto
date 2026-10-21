@@ -459,14 +459,43 @@ HTTP bodies, request timeouts, polling, and Docker commands are bounded.
   server serves, including a stale Vite dev server from another checkout. Stop
   such a server first, or the run passes or fails on code other than the code
   under test.
+- Every frontend make target, including `make ci-style`, `make ci-frontend`,
+  `make frontend-docs`, and `make frontend-e2e`, runs `npm ci` through
+  `frontend-install`. A running Vite dev or preview server holds the esbuild
+  binary open, so on Windows `npm ci` fails with `EPERM`, and a make target run
+  beside another run's Vite server replaces `node_modules` under it and spoils
+  that run. Stop the dev server first, or call the npm scripts directly while
+  it runs.
+- In a checkout without `frontend/node_modules`, `npx prettier` downloads the
+  latest Prettier instead of the pinned one and `npx tsc` resolves to an
+  unrelated package. Run `npm ci` in `frontend/` first.
 - `npm run format:check` runs Prettier with `--end-of-line auto`. Prettier's
   default `lf` rewrites CRLF files in a checkout with `core.autocrlf=true`, so
   they show as modified without content changes. Pass `--end-of-line auto` and
   format the specific files you changed, not whole directories.
+- In the same CRLF checkout, plain `gofmt -l` lists nearly every Go file and
+  hides real formatting problems. Use `make backend-format`, described under
+  [Backend](#backend).
 - `scripts/check-ui-copy.mjs`, run by `make ci-style`, reports new
   English-looking JSX text after `>` and new literal `aria-label`, `title`,
   `placeholder`, `alt`, `label`, or `description` attribute strings as
   untranslated UI copy. Use i18n keys.
+- E2E specs outside a feature can locate elements by their visible English
+  text. When you rename UI copy, search `frontend/tests` for the old string and
+  run every matching spec.
+- `make sensitive-check` reports "literal value assigned to a sensitive key" for
+  a changed line that assigns a quoted literal, or an unquoted value of eight or
+  more token characters, to a key containing `password`, `token`, `secret`,
+  `apiKey`, `accessKey`, or `privateKey` in any case and with an optional `-`
+  or `_` between the words, i18n keys included. Bare
+  identifiers in JavaScript and TypeScript and placeholder values pass. An
+  `apiKey` or `apiKeyDescription` string in `frontend/src/i18n/surfaces/` passes
+  only when it is one of the approved sentences in `credentialControlCopy` in
+  `scripts/check-sensitive.mjs`. Name UI props and keys without the credential
+  word instead of suppressing the check. URLs in tests use the reserved hosts
+  from [Synthetic Fixture Data](#synthetic-fixture-data); other hosts, such as
+  `host.docker.internal`, are reported unless
+  [allowlisted](#before-committing).
 - With the `modernc.org/sqlite` driver, each statement of a multi-statement
   `db.Exec` binds its placeholders from the start of the argument list, so a
   later statement silently receives an earlier statement's values. Issue one
