@@ -16,6 +16,9 @@ type MaintenanceOptions struct {
 	MetadataArgs    []any
 	IncludeNoSource bool
 	Reason          string
+	// FilterWhere narrows any view by a further trusted predicate over `work`.
+	FilterWhere string
+	FilterArgs  []any
 }
 
 type MaintenancePage struct {
@@ -31,15 +34,18 @@ func (s *Store) ListMaintenance(ctx context.Context, options MaintenanceOptions)
 		(SELECT MIN(sibling.work_id) FROM work_edition AS sibling WHERE sibling.logical_work_id = logical.id))
 		FROM work_edition AS edition JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		WHERE edition.work_id = work.id), work.id)`
-	// Custom works have their own view; every other view lists catalog works.
+	// Custom works have their own view; the translation view lists every
+	// family, and every other view lists catalog works.
 	customWork := "work.primary_code LIKE '" + workcode.CustomPrefix + "%'"
-	if options.Reason == "custom" {
+	switch options.Reason {
+	case "custom":
 		where += " AND " + customWork
-	} else {
+	case "translation":
+	default:
 		where += " AND NOT " + customWork
 	}
-	// Catalog and custom list persisted families, including those without pending issues.
-	if options.Reason != "catalog" && options.Reason != "custom" {
+	// Catalog, custom, and translation list persisted families, including those without pending issues.
+	if options.Reason != "catalog" && options.Reason != "custom" && options.Reason != "translation" {
 		reasons := []string{}
 		if options.IncludeNoSource && options.Reason != "metadata" {
 			reasons = append(reasons, "("+noSourceWhereClause()+")")
@@ -52,6 +58,10 @@ func (s *Store) ListMaintenance(ctx context.Context, options MaintenanceOptions)
 			reasons = append(reasons, "0")
 		}
 		where += " AND (" + strings.Join(reasons, " OR ") + ")"
+	}
+	if options.FilterWhere != "" {
+		where += " AND (" + options.FilterWhere + ")"
+		args = append(args, options.FilterArgs...)
 	}
 	page := MaintenancePage{RawPage: RawPage{Page: options.Page, PageSize: options.PageSize}, NoSource: map[int64]bool{}}
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM work WHERE "+where, args...).Scan(&page.Total); err != nil {

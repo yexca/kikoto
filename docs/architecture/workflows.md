@@ -242,6 +242,12 @@ never removes a remaining no-source reason. Search reuses Library semantics.
 restricts it to unresolved metadata issues associated with that run. Every
 reason except `reason=custom` leaves out custom works; `reason=custom` lists
 every custom work family, with its no-source state, and nothing else.
+`/api/metadata/translation-coverage` pages every family, catalog and custom,
+with the same search and narrows it to the parts missing in one target
+language. It reads stored editions, manual titles, accepted LLM translations,
+shared tag names, file display names, and lyrics assignments, and never
+contacts a provider; selected works queue the existing background LLM
+translation.
 
 Metadata reasons and retries require `metadata:sync`. No-source reasons, source
 checks, and confirmed deletion require `sources:write`; the UI exposes deletion
@@ -249,7 +255,7 @@ only in the no-source view and, for custom works, the custom view, and the
 server still revalidates family availability. Each permission grants only its
 corresponding maintenance actions, without exposing settings to metadata-only
 operators. Metadata management chooses the Works group (All, attention
-categories, and Custom works) and the Entries group (Tags,
+categories, Custom works, and Translation) and the Entries group (Tags,
 Circles, and Voice actors) from the shared page icon rail. Work records use a
 management table (code and title, circle, status, actions); the action column
 opens the work metadata editor, gated by `library:write`. The list loads on
