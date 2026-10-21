@@ -191,7 +191,11 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   On compact screens, the Hero keeps the same credit line, tag row, stat
   strip, and actions above the Info and Directory tabs, Info shows the source
   panel and the Credits card, and Mark, List, DLsite, Metadata, and Source
-  collapse to icons.
+  collapse to icons. A phone shows at most three lines of the title; tapping a
+  shortened title shows all of it. The button at the end of the work code row
+  hides the work details and leaves the work code, any metadata notice, and
+  the actions. The choice is remembered on that device and holds for every
+  work opened there.
 - Presents Directory as one panel: a header with the file summary and source
   checking, underline source tabs with status dots, and a folder explorer.
   When the directory is wide enough and the work has folders, a sticky folder

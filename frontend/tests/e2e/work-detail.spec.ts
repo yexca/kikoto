@@ -1080,6 +1080,43 @@ test("mobile work detail keeps tags in the hero and work-code utilities together
   await expect(detail.getByTestId("active-source-info")).toBeVisible();
 });
 
+test("mobile work detail folds a long title and hides work details until the viewer shows them", async ({ page }) => {
+  const longTitle = Array.from({ length: 12 }, (_, index) => `Example long title part ${index + 1}`).join(" ");
+  const detailWork: Work = {
+    ...work,
+    title: longTitle,
+    voiceActors: ["Example Voice"],
+    voiceCredits: [{ personId: 7, routeKey: "00000001", displayName: "Example Voice" }],
+  };
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true, work: detailWork });
+  await page.goto(`/${detailWork.primaryCode}`);
+
+  const detail = page.getByRole("main");
+  const title = detail.getByRole("heading", { name: longTitle });
+  const expandTitle = detail.getByRole("button", { name: "Show full title" });
+  await expect(expandTitle).toHaveAttribute("aria-expanded", "false");
+  const foldedHeight = (await title.boundingBox())!.height;
+  await expandTitle.click();
+  await expect(detail.getByRole("button", { name: "Collapse title" })).toHaveAttribute("aria-expanded", "true");
+  expect((await title.boundingBox())!.height).toBeGreaterThan(foldedHeight);
+
+  const voice = detail.getByRole("button", { name: "Example Voice", exact: true });
+  await detail.getByRole("button", { name: "Hide work details" }).click();
+  await expect(title).toHaveCount(0);
+  await expect(voice).toHaveCount(0);
+  await expect(detail.getByTestId("dlsite-info")).toHaveCount(0);
+  await expect(detail.getByTestId("hero-actions")).toBeVisible();
+
+  // The choice holds for the next detail page this viewer opens.
+  await page.reload();
+  const showDetails = detail.getByRole("button", { name: "Show work details" });
+  await expect(showDetails).toHaveAttribute("aria-expanded", "false");
+  await expect(title).toHaveCount(0);
+  await showDetails.click();
+  await expect(title).toBeVisible();
+  await expect(voice).toBeVisible();
+});
+
 test("work detail copies the work code over plain HTTP without the Clipboard API", async ({ page }) => {
   // A LAN address over HTTP is not a secure context, so browsers expose no navigator.clipboard.
   await page.addInitScript(() => {
