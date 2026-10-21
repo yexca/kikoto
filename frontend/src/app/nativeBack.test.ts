@@ -28,8 +28,10 @@ function backTargets(layers: Layers) {
       if (layers.player) closed.push("player");
       return Boolean(layers.player);
     },
-    canNavigateBack: () => Boolean(layers.history),
-    navigateBack: () => closed.push("history"),
+    navigateBack: () => {
+      if (layers.history) closed.push("history");
+      return Boolean(layers.history);
+    },
   };
   return { targets, closed };
 }

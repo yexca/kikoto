@@ -9,6 +9,12 @@
   touch area on the button the same way.
 - The phone Favorites shelf strip and the circle and voice filter chips follow
   the theme style's corner radius instead of always drawing pills.
+- The Android and iOS apps navigate like a tabbed app. Each bottom tab keeps
+  its own back stack, so switching tabs is no longer a Back step and Back no
+  longer jumps into another tab's pages. Changing a list's tab, filter, or page
+  is not a Back step either, and returning from a resumed detail no longer
+  leaves an extra entry behind. The Android back button goes from another
+  tab's root to Library, then asks for a second press before leaving the app.
 
 </details>
 

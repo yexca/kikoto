@@ -138,7 +138,7 @@ describe("mobile tab state", () => {
   it("drops oversized state and tolerates unavailable session storage", () => {
     const sessionStorage = memoryStorage();
     vi.stubGlobal("window", { sessionStorage });
-    writeMobileTabSnapshot("example-server:user-1", "library", "/", { payload: "x".repeat(200 * 1024) }, 1);
+    writeMobileTabSnapshot("example-server:user-1", "library", "/", { payload: "x".repeat(400 * 1024) }, 1);
     expect(readMobileTabSnapshot("example-server:user-1", "library")?.state).toEqual({});
 
     const unavailable = {

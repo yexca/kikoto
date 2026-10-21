@@ -6,7 +6,8 @@ import { normalizeInternalLocation } from "../lib/browserHistory";
 // The version names the location form a snapshot holds; a snapshot under
 // another version is not resumed, so its tab opens at its root.
 const storagePrefix = "kikoto:mobile-tab-state:v3:";
-const maxSnapshotLength = 192 * 1024;
+// Room for the entry's own state plus its bounded back stack.
+const maxSnapshotLength = 320 * 1024;
 
 export type MobileTabSnapshot = {
   page: PageID;

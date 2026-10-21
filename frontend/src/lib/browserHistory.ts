@@ -7,7 +7,11 @@ const requestedScrollStateKey = "__kikotoRequestedScrollY";
 const returnEntryStateKey = "__kikotoReturnEntry";
 const mobileTabResumeStateKey = "__kikotoMobileTabResume";
 const entryKeyStateKey = "__kikotoEntryKey";
+const backStackStateKey = "__kikotoBackStack";
+const workspaceSwitchStateKey = "__kikotoWorkspaceSwitch";
 const maxHistoryStateLength = 128 * 1024;
+const maxBackStackEntries = 30;
+const maxBackStackLength = 128 * 1024;
 
 type HistoryStateRecord = Record<string, unknown>;
 
@@ -16,6 +20,133 @@ export type HistoryEntrySnapshot = {
   state: HistoryStateRecord;
   scrollY: number;
 };
+
+let inAppBackStack = false;
+type HistoryEntryWriter = (state: HistoryStateRecord, location: string) => void;
+const replaceHistoryEntry: HistoryEntryWriter = (state, location) => window.history.replaceState(state, "", location);
+let writeHistoryEntry = replaceHistoryEntry;
+
+/**
+ * Native shells keep one browser history entry. The entry's state carries the
+ * in-app back stack of the workspace that shows it, so a bottom-navigation
+ * switch is never a Back step and Back never crosses into another workspace's
+ * entries. Browsers keep browser history, whose own Back button the app cannot
+ * remove.
+ */
+export function enableInAppBackStack(enabled: boolean) {
+  inAppBackStack = enabled;
+}
+
+export function usesInAppBackStack() {
+  return inAppBackStack;
+}
+
+/** Installs the writer that restores a popped entry with its own entry key. */
+export function setHistoryEntryWriter(writer: HistoryEntryWriter | null) {
+  writeHistoryEntry = writer ?? replaceHistoryEntry;
+}
+
+/** The entries Back returns through from this entry, oldest first. */
+export function historyBackStack(state: unknown): HistoryEntrySnapshot[] {
+  const value = historyStateRecord(state)[backStackStateKey];
+  if (!Array.isArray(value)) return [];
+  return value.map(historyEntrySnapshotFromValue).filter((entry): entry is HistoryEntrySnapshot => entry !== null);
+}
+
+export function historyStateWithBackStack(state: unknown, stack: readonly HistoryEntrySnapshot[]): HistoryStateRecord {
+  return { ...historyStateRecord(state), [backStackStateKey]: boundedBackStack(stack) };
+}
+
+/** Keeps the current entry's back stack on a replacement that does not set its own. */
+export function historyStateKeepingBackStack(state: unknown, current: unknown): HistoryStateRecord {
+  const next = historyStateRecord(state);
+  if (backStackStateKey in next) return next;
+  const stack = historyStateRecord(current)[backStackStateKey];
+  return stack === undefined ? next : { ...next, [backStackStateKey]: stack };
+}
+
+/**
+ * Marks a push as a bottom-navigation switch: the entry keeps the back stack
+ * its state carries, or none, instead of stacking the entry it leaves.
+ */
+export function workspaceSwitchHistoryState(state: unknown): HistoryStateRecord {
+  const record = historyStateRecord(state);
+  return {
+    ...record,
+    [backStackStateKey]: historyBackStack(record),
+    [workspaceSwitchStateKey]: true,
+  };
+}
+
+/**
+ * The state of an entry pushed from the current one. A workspace switch keeps
+ * its own stack; a push that only replaces the current workspace list keeps the
+ * current stack; any other push stacks the current entry. State copied from the
+ * current entry never brings its stack along.
+ */
+export function inAppPushHistoryState(state: unknown, { replacesList }: { replacesList: boolean }): HistoryStateRecord {
+  const next = { ...historyStateRecord(state) };
+  if (next[workspaceSwitchStateKey] === true) {
+    delete next[workspaceSwitchStateKey];
+    return historyStateWithBackStack(next, historyBackStack(next));
+  }
+  delete next[backStackStateKey];
+  const stack = historyBackStack(window.history.state);
+  return historyStateWithBackStack(next, replacesList ? stack : [...stack, currentBackStackEntry()]);
+}
+
+/** Drops the in-app stack and switch marker where browser history keeps every push. */
+export function browserPushHistoryState(state: unknown): unknown {
+  const record = historyStateRecord(state);
+  if (!(workspaceSwitchStateKey in record) && !(backStackStateKey in record)) return state;
+  const next = { ...record };
+  delete next[workspaceSwitchStateKey];
+  delete next[backStackStateKey];
+  return next;
+}
+
+/** Returns to the entry below the current one in the in-app back stack; false when the stack is empty. */
+export function navigateInAppBack() {
+  const stack = historyBackStack(window.history.state);
+  const entry = stack[stack.length - 1];
+  if (!entry) return false;
+  restoreBackStackEntry(entry, stack.slice(0, -1));
+  return true;
+}
+
+/** Back from a page control: the in-app back stack or browser history, else the fallback. */
+export function navigateBackOr(fallback: () => void) {
+  if (inAppBackStack) {
+    if (!navigateInAppBack()) fallback();
+    return;
+  }
+  if (window.history.length > 1) window.history.back();
+  else fallback();
+}
+
+function restoreBackStackEntry(entry: HistoryEntrySnapshot, stack: readonly HistoryEntrySnapshot[]) {
+  writeHistoryEntry(
+    historyStateWithBackStack(historyStateWithScroll(entry.state, entry.scrollY), stack),
+    entry.location,
+  );
+  // Pages restore a returned-to entry the way they do after browser Back.
+  window.dispatchEvent(new PopStateEvent("popstate", { state: window.history.state }));
+}
+
+function currentBackStackEntry(): HistoryEntrySnapshot {
+  return {
+    location: currentInternalLocation(),
+    state: cloneHistoryState(window.history.state),
+    scrollY: historyScrollY(window.history.state, window.scrollY),
+  };
+}
+
+/** Keeps the newest entries within the entry count and serialized size bounds. */
+function boundedBackStack(stack: readonly HistoryEntrySnapshot[]) {
+  const bounded = stack.slice(-maxBackStackEntries);
+  while (bounded.length > 0 && JSON.stringify(bounded).length > maxBackStackLength) bounded.shift();
+  return bounded;
+}
 
 export function normalizeInternalLocation(location: string): string | null {
   const value = location.trim();
@@ -114,6 +245,19 @@ export function navigateToHistoryReturn({
   const declaredReturn = historyReturnLocation(currentState);
   const fallback = normalizeInternalLocation(fallbackLocation) ?? "/";
 
+  if (inAppBackStack) {
+    if (navigateInAppBack()) return;
+    // With nothing stacked, the return replaces this entry rather than adding one.
+    const returnEntry = historyReturnEntry(currentState);
+    if (declaredReturn && returnEntry?.location === declaredReturn) {
+      restoreBackStackEntry(returnEntry, []);
+      return;
+    }
+    window.history.replaceState(historyStateWithBackStack(fallbackState, []), "", declaredReturn ?? fallback);
+    window.dispatchEvent(new Event(NAVIGATION_EVENT));
+    return;
+  }
+
   if (declaredReturn && currentState[mobileTabResumeStateKey] !== true) {
     window.history.back();
     return;
@@ -145,6 +289,20 @@ export function navigateToWorkspaceUp({
 }) {
   if (!mobile) {
     navigateToHistoryReturn({ fallbackLocation, fallbackState });
+    return;
+  }
+
+  if (inAppBackStack) {
+    // Up pops the workspace's own stack to its nearest list entry.
+    const stack = historyBackStack(window.history.state);
+    for (let index = stack.length - 1; index >= 0; index -= 1) {
+      if (!isWorkspaceListLocation(stack[index].location)) continue;
+      restoreBackStackEntry(stack[index], stack.slice(0, index));
+      return;
+    }
+    const fallback = normalizeInternalLocation(fallbackLocation) ?? "/";
+    window.history.replaceState(historyStateWithBackStack(fallbackState, []), "", fallback);
+    window.dispatchEvent(new Event(NAVIGATION_EVENT));
     return;
   }
 
@@ -185,8 +343,11 @@ function historyStateRecord(value: unknown): HistoryStateRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as HistoryStateRecord) : {};
 }
 
+/** Copies an entry's state for a snapshot, which never nests another back stack. */
 function cloneHistoryState(value: unknown): HistoryStateRecord {
-  const state = historyStateRecord(value);
+  const state = { ...historyStateRecord(value) };
+  delete state[backStackStateKey];
+  delete state[workspaceSwitchStateKey];
   try {
     const serialized = JSON.stringify(state);
     if (serialized.length > maxHistoryStateLength) return {};
