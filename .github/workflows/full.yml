@@ -12,7 +12,8 @@ permissions:
   contents: read
 
 # No concurrency group: every commit runs to completion beside any other run,
-# so main keeps a concluded result for each of them.
+# so main keeps a concluded result for each of them, which a release of that
+# commit requires.
 jobs:
   full:
     name: Full
