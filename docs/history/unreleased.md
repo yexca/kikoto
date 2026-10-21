@@ -7,6 +7,8 @@
   across the page, so it stops highlighting during a scroll and the reference
   project links open their own pages. The library sort button keeps its
   touch area on the button the same way.
+- The phone Favorites shelf strip and the circle and voice filter chips follow
+  the theme style's corner radius instead of always drawing pills.
 
 </details>
 

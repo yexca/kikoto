@@ -436,7 +436,7 @@ export function FavoriteShelfStrip({ navigation }: { navigation: FavoriteShelfNa
         <div className="flex w-max min-w-full items-center gap-1.5 py-1" role="group" aria-label={t("favorites.lists")}>
           {navigation.listsLoading ? (
             Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="h-9 w-24 shrink-0 animate-pulse rounded-full bg-muted" />
+              <div key={index} className="h-9 w-24 shrink-0 animate-pulse rounded-[var(--badge-radius)] bg-muted" />
             ))
           ) : (
             <>
@@ -460,7 +460,7 @@ export function FavoriteShelfStrip({ navigation }: { navigation: FavoriteShelfNa
         aria-label={t("favorites.editLists")}
         title={t("favorites.editLists")}
       >
-        <span className="grid h-9 w-9 place-items-center rounded-full border border-input bg-card transition-colors group-hover:bg-muted">
+        <span className="grid h-9 w-9 place-items-center rounded-[var(--badge-radius)] border border-input bg-card transition-colors group-hover:bg-muted">
           <Pencil className="h-4 w-4" />
         </span>
       </Button>
@@ -473,14 +473,14 @@ function ShelfChip({ item }: { item: ShelfItem }) {
   return (
     <button
       type="button"
-      className="group -my-1 inline-flex h-11 shrink-0 items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100"
+      className="group -my-1 inline-flex h-11 shrink-0 items-center rounded-[var(--badge-radius)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[var(--press-scale)] motion-reduce:active:scale-100"
       aria-pressed={item.active}
       title={item.title}
       onClick={item.onSelect}
     >
       <span
         className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors",
+          "inline-flex h-9 items-center gap-1.5 rounded-[var(--badge-radius)] border px-3 text-sm font-medium transition-colors",
           item.active
             ? "border-primary bg-primary text-primary-foreground"
             : "bg-card text-foreground/80 group-hover:bg-muted group-hover:text-foreground",
@@ -492,7 +492,7 @@ function ShelfChip({ item }: { item: ShelfItem }) {
         {Boolean(item.newCount) && (
           <span
             className={cn(
-              "rounded-full px-1.5 text-2xs font-semibold leading-4 tabular-nums",
+              "rounded-[calc(var(--badge-radius)-2px)] px-1.5 text-2xs font-semibold leading-4 tabular-nums",
               item.active ? "bg-primary-foreground text-primary" : "bg-primary text-primary-foreground",
             )}
           >

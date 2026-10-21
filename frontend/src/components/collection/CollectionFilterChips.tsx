@@ -35,7 +35,7 @@ export function CollectionFilterChips<Value extends string>({
             key={option.value}
             type="button"
             className={cn(
-              "inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-muted",
+              "inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-[var(--badge-radius)] border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-muted",
               active
                 ? "border-primary/30 bg-primary/10 text-primary"
                 : "border-border bg-card text-muted-foreground hover:text-foreground",
