@@ -595,6 +595,18 @@ test("mobile favorites stacks shelves, search, labeled sort, and status chips ab
   await expect(circleSearch).toHaveValue("Example");
 });
 
+test("mobile favorites pagination returns to the page top", async ({ page }) => {
+  await mockFavorites(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/favorites");
+  const nextPage = page.getByRole("button", { name: "Next page" }).last();
+  await nextPage.scrollIntoViewIfNeeded();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(300);
+  await nextPage.click();
+  await expect(page.getByText(/Page 2 of 2/).first()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(10);
+});
+
 test("favorites detail Back and mobile tab switches preserve filters, selection, and scroll", async ({ page }) => {
   await mockFavorites(page);
   await page.goto(

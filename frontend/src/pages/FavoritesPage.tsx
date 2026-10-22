@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoContentNotice } from "@/components/DemoReadOnlyNotice";
 import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingIndicator";
+import { useCollectionResultsScroll } from "@/components/collection/useCollectionResultsScroll";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -123,6 +124,9 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const [activeList, setActiveList] = useState<"all" | number>(initialBrowseState.list);
   const [page, setPage] = useState(initialBrowseState.page);
   const [pageSize, setPageSize] = useState<FavoritePageSize>(initialBrowseState.pageSize);
+  const resultsScroll = useCollectionResultsScroll();
+  const completeResultsScroll = resultsScroll.complete;
+  const cancelResultsScroll = resultsScroll.cancel;
   const [sort, setSort] = useState<FavoriteSort>(initialBrowseState.sort);
   const [sortDirection, setSortDirection] = useState<SortDirection>(initialBrowseState.direction);
   const [randomSeed, setRandomSeed] = useState(initialBrowseState.randomSeed);
@@ -286,6 +290,17 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   useEffect(() => {
     if (active && !isLoading && worksAreCurrent && page > totalPages) setPage(totalPages);
   }, [active, isLoading, page, totalPages, worksAreCurrent]);
+
+  useEffect(() => {
+    if (!active || isLoading) return;
+    if (worksAreCurrent) completeResultsScroll();
+    else if (worksLoadError) cancelResultsScroll();
+  }, [active, cancelResultsScroll, completeResultsScroll, isLoading, worksAreCurrent, worksLoadError]);
+
+  const changePage = (value: number) => {
+    resultsScroll.queue();
+    setPage(value);
+  };
 
   const openWork = (work: Work) => {
     const browseState = {
@@ -642,7 +657,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
       <div className={mobileNavigationLayout ? "" : "flex items-start gap-6"}>
         {!mobileNavigationLayout && <FavoriteShelfSidebar navigation={navigation} />}
 
-        <div className="@container min-w-0 flex-1 space-y-5">
+        <div ref={resultsScroll.anchorRef} className="@container min-w-0 flex-1 scroll-mt-24 space-y-5">
           {mobileNavigationLayout ? (
             <div className="space-y-3">
               <div data-toast-avoid>
@@ -715,7 +730,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                         compactTop
                         refreshing={isLoading && hasWorksSnapshot}
                         refreshingLabel={t("favorites.refreshing")}
-                        onPageChange={setPage}
+                        onPageChange={changePage}
                       />
                     </div>
                   </div>
@@ -825,7 +840,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
                     pageSize={pageSize}
                     totalItems={totalWorks}
                     totalPages={totalPages}
-                    onPageChange={setPage}
+                    onPageChange={changePage}
                   />
                 </>
               ) : (

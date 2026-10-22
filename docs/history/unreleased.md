@@ -104,9 +104,9 @@
   to that tab's list and the tab it came from keeps its place. The Android
   back button goes from another tab's root to Library, then asks for a second
   press before leaving the app.
-- Changing the page on the circle and voice actor lists and on circle and
-  voice actor detail returns to the top of the new results, as the Library
-  does, instead of staying at the bottom of the page.
+- Changing the page on Favorites, on the circle and voice actor lists, and on
+  circle and voice actor detail returns to the top of the new results, as the
+  Library does, instead of staying at the bottom of the page.
 
 </details>
 
