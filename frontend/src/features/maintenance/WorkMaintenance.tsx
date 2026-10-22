@@ -398,7 +398,7 @@ export function WorkMaintenance({
                 </Button>
               </div>
             )}
-            <div className="min-h-64">
+            <div className="min-h-72">
               <table
                 className="w-full table-fixed text-left text-sm"
                 aria-busy={loading}
