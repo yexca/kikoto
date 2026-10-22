@@ -45,8 +45,8 @@ export type WorkflowRun = {
   reviewedByUserId: number | null;
   definitionId: number | null;
   triggerId: number | null;
-  /** The work a Fetch run downloads; empty for other runs. */
-  workCode?: string;
+  /** The one work, circle, series, voice actor, or remote source the run acts on; empty for runs over many. */
+  subject?: string;
 };
 
 export type WorkflowRunsPage = {

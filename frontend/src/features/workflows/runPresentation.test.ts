@@ -12,17 +12,26 @@ import {
 } from "./runPresentation";
 
 describe("workflow run titles", () => {
-  const t = (key: string, options?: Record<string, unknown>) =>
-    key === "workflowPage.fetchRunTitle" ? `Fetch ${String(options?.code)}` : String(options?.defaultValue ?? key);
+  const t = (key: string, options?: Record<string, unknown>) => {
+    if (key === "workflowPage.fetchRunTitle") return `Fetch ${String(options?.code)}`;
+    if (key === "workflowPage.runSubjectTitle") return `${String(options?.name)} · ${String(options?.subject)}`;
+    return String(options?.defaultValue ?? key);
+  };
 
   it("names a Fetch after the work it downloads", () => {
     expect(
-      runTitle({ workflowCode: "remote_work_fetch", displayName: "Fetch remote work", workCode: "RJ00000001" }, t),
+      runTitle({ workflowCode: "remote_work_fetch", displayName: "Fetch remote work", subject: "RJ00000001" }, t),
     ).toBe("Fetch RJ00000001");
   });
 
-  it("keeps the workflow name for other runs and for Fetches recorded without a code", () => {
-    expect(runTitle({ workflowCode: "remote_work_fetch", displayName: "Fetch remote work", workCode: "" }, t)).toBe(
+  it("names other runs after the subject they act on", () => {
+    expect(
+      runTitle({ workflowCode: "circle_catalog_sync", displayName: "Sync a circle catalog", subject: "RG00000000" }, t),
+    ).toBe("Sync a circle catalog · RG00000000");
+  });
+
+  it("keeps the workflow name for runs without a subject", () => {
+    expect(runTitle({ workflowCode: "remote_work_fetch", displayName: "Fetch remote work", subject: "" }, t)).toBe(
       "Fetch remote work",
     );
     expect(runTitle({ workflowCode: "local_library_scan", displayName: "Scan local library" }, t)).toBe(

@@ -113,6 +113,12 @@ export function RecentRunList({
               </span>
               <span className="min-w-0 flex-1 truncate text-sm">
                 <span className="tabular-nums text-muted-foreground">#{run.id}</span>{" "}
+                {run.subject && (
+                  <>
+                    <span className="font-medium">{run.subject}</span>
+                    <span className="text-muted-foreground"> · </span>
+                  </>
+                )}
                 <span>{labels.trigger(run.triggerType)}</span>
                 {run.triggerReason && <span className="text-muted-foreground"> · {run.triggerReason}</span>}
               </span>

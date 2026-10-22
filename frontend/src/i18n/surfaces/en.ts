@@ -1716,6 +1716,7 @@ export const surfaceEnglish = {
       searching: "Searching",
     },
     fetchRunTitle: "Fetch {{code}}",
+    runSubjectTitle: "{{name}} · {{subject}}",
     builtInDefinitions: {
       circle_catalog_sync: {
         name: "Sync a circle catalog",
@@ -1849,6 +1850,8 @@ export const surfaceEnglish = {
         name: "Refresh work metadata",
         description: "Refresh one work and its bounded language-edition family.",
       },
+      work_folder_edit: { name: "Edit work files" },
+      llm_translation: { name: "LLM translation" },
     },
     running: "Running",
     noRecentRuns: "No recent runs.",

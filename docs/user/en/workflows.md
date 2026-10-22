@@ -231,6 +231,9 @@ administrators.
   Activity search finds a Fetch by its work code. Fetches queued by
   Availability Watch, bulk actions, or popular collections record that origin
   as their trigger reason.
+- Runs that act on one work, circle, series, voice actor, or remote source add
+  it to their title, such as `Sync a circle catalog · RG00000000`, and Activity
+  search finds them by it.
 - A scan never marks works missing in a place it cannot see: an unmounted data
   folder or offline storage pool, folders deeper than the scan depth, folders
   it has no permission to read, and the recycle bins and snapshots that NAS

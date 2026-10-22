@@ -495,6 +495,17 @@ context for workflows without a configurable definition. The header
 notification panel and Quick actions open this same surface. Events,
 candidates, progress, retries, and cancellation are available within the panel.
 
+A run record's `subject` names the one target the run acts on, read from its
+input: a work code for Fetch, Track, ASR, LLM translation, Edit files, media
+cache, local media delete, single-work metadata refresh, and a metadata sync
+of one work; the circle code for a circle catalog sync or a circle-scoped
+metadata sync; the series id for a series catalog sync; the voice actor's name
+for a voice catalog sync or a voice-scoped metadata sync; and the remote
+source's name for a source presence check, a popular collection, or a
+per-source cache cleanup. Runs over many targets have an empty subject. Run
+titles append the subject to the workflow name, and Activity search matches
+it.
+
 The active list contains running and queued jobs; Needs attention contains
 terminal runs with unresolved candidates, pending metadata issues, or
 unacknowledged failures. A dedicated metadata-sync failure with recorded issue
@@ -878,9 +889,8 @@ a root on an offline pool in place, opening a work does not index a folder on
 one, cover candidates omit its images, and the duplicate-file check leaves its
 files out.
 
-`remote_work_fetch` runs are named `Fetch <code>`, expose `workCode` in run
-records, match Activity search by code, and record the queuing workflow as
-their trigger reason. The Workflows page's Fetch run form accepts one work code
+`remote_work_fetch` runs are named `Fetch <code>` and record the queuing
+workflow as their trigger reason. The Workflows page's Fetch run form accepts one work code
 and an enabled compatible remote file source. Its Filter group excludes selected
 file extensions from the initial remote selection, with no exclusions by default;
 the same exclusions apply when choosing another language edition. Run opens the

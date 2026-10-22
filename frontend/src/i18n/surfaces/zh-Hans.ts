@@ -1239,6 +1239,7 @@ export const surfaceHans = {
       searching: "正在搜索",
     },
     fetchRunTitle: "获取 {{code}}",
+    runSubjectTitle: "{{name}}：{{subject}}",
     builtInDefinitions: {
       circle_catalog_sync: {
         name: "同步社团目录",
@@ -1320,6 +1321,8 @@ export const surfaceHans = {
         description: "学习首选元数据语言的 DLsite 类型名称，每组缺失名称的类型只请求一次。",
       },
       metadata_family_sync: { name: "刷新作品元数据", description: "刷新一个作品及其有限的语言版本系列。" },
+      work_folder_edit: { name: "编辑作品文件" },
+      llm_translation: { name: "LLM 翻译" },
     },
     metadataLoadFailed: "工作流数据加载失败。",
     activityLoadFailed: "活动加载失败。",

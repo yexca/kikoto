@@ -1240,6 +1240,7 @@ export const surfaceHant = {
       searching: "正在搜尋",
     },
     fetchRunTitle: "取得 {{code}}",
+    runSubjectTitle: "{{name}}：{{subject}}",
     builtInDefinitions: {
       circle_catalog_sync: {
         name: "同步社團目錄",
@@ -1321,6 +1322,8 @@ export const surfaceHant = {
         description: "學習偏好中繼資料語言的 DLsite 類型名稱，每組缺少名稱的類型只請求一次。",
       },
       metadata_family_sync: { name: "重新整理作品中繼資料", description: "重新整理一個作品及其有限的語言版本系列。" },
+      work_folder_edit: { name: "編輯作品檔案" },
+      llm_translation: { name: "LLM 翻譯" },
     },
     metadataLoadFailed: "工作流程資料載入失敗。",
     activityLoadFailed: "活動載入失敗。",

@@ -1284,6 +1284,7 @@ export const surfaceJapanese = {
       searching: "検索中",
     },
     fetchRunTitle: "{{code}} を取得",
+    runSubjectTitle: "{{name}} · {{subject}}",
     builtInDefinitions: {
       circle_catalog_sync: {
         name: "サークルのカタログを同期",
@@ -1415,6 +1416,8 @@ export const surfaceJapanese = {
         name: "作品メタデータを更新",
         description: "1つの作品と限定された言語版ファミリーを更新します。",
       },
+      work_folder_edit: { name: "作品ファイルを編集" },
+      llm_translation: { name: "LLM 翻訳" },
     },
     metadataLoadFailed: "ワークフローデータを読み込めませんでした。",
     activityLoadFailed: "アクティビティを読み込めませんでした。",

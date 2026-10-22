@@ -113,6 +113,7 @@ describe("translation resources", () => {
       "collection.filterValue",
       "workCard.moreLists",
       "maintenance.library.apiUrl",
+      "workflowPage.runSubjectTitle",
       // Product name.
       "maintenance.proxy.scopes.dlsite",
       "workflowPage.metadataSyncScope.dlsite",

@@ -86,7 +86,7 @@ func buildRunListConditions(options ListRunsOptions) (string, string, []any) {
 		args = append(args, options.WorkflowCode)
 	}
 	if query := strings.ToLower(strings.TrimSpace(options.Query)); query != "" {
-		conditions = append(conditions, "(LOWER(run.workflow_code) LIKE ? OR LOWER(run.display_name) LIKE ? OR LOWER(run.trigger_reason) LIKE ? OR LOWER("+runWorkCodeSQL+") LIKE ?)")
+		conditions = append(conditions, "(LOWER(run.workflow_code) LIKE ? OR LOWER(run.display_name) LIKE ? OR LOWER(run.trigger_reason) LIKE ? OR LOWER("+runSubjectSQL+") LIKE ?)")
 		like := "%" + query + "%"
 		args = append(args, like, like, like, like)
 	}
@@ -314,7 +314,7 @@ func scanRun(row rowScanner) (RunRecord, error) {
 		&item.JobCount, &item.CompletedJobs, &item.FailedJobs, &item.SkippedJobs,
 		&item.ProgressBytesCurrent, &item.ProgressBytesTotal, &item.ProgressBytesUnknownItems,
 		&item.CandidateCount, &item.PendingCandidates, &item.AcceptedCandidates, &item.RejectedCandidates,
-		&item.ReviewedAt, &reviewedByUserID, &definitionID, &triggerID, &item.PendingMetadata, &item.WorkCode,
+		&item.ReviewedAt, &reviewedByUserID, &definitionID, &triggerID, &item.PendingMetadata, &item.Subject,
 	)
 	item.ReviewedByUserID, item.DefinitionID, item.TriggerID = sqlutil.Int64(reviewedByUserID), sqlutil.Int64(definitionID), sqlutil.Int64(triggerID)
 	return item, err
@@ -363,9 +363,30 @@ func runSelectSQL(reviewFilter string) string {
 		(SELECT COUNT(*) FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id AND workflow_candidate.status = 'rejected'),
 		COALESCE((SELECT review.reviewed_at FROM workflow_run_review AS review WHERE review.workflow_run_id = run.id AND review.status = 'reviewed'` + reviewFilter + ` ORDER BY review.reviewed_at DESC, review.id DESC LIMIT 1), ''),
 		(SELECT review.user_id FROM workflow_run_review AS review WHERE review.workflow_run_id = run.id AND review.status = 'reviewed'` + reviewFilter + ` ORDER BY review.reviewed_at DESC, review.id DESC LIMIT 1),
-		run.workflow_definition_id, run.trigger_id, ` + pendingMetadataSQL + `, ` + runWorkCodeSQL
+		run.workflow_definition_id, run.trigger_id, ` + pendingMetadataSQL + `, ` + runSubjectSQL
 }
 
-// runWorkCodeSQL is the work a Fetch run downloads, so Activity can name it.
-const runWorkCodeSQL = `CASE WHEN run.workflow_code = 'remote_work_fetch' AND json_valid(run.input_json)
-		THEN UPPER(COALESCE(json_extract(run.input_json, '$.work_code'), '')) ELSE '' END`
+// runSubjectSQL names the one work, circle, series, voice actor, or remote
+// source a run acts on, so Activity can tell runs of one workflow apart and
+// search finds a run by it. Runs over many subjects have none.
+const runSubjectSQL = `CASE WHEN NOT json_valid(run.input_json) THEN '' ELSE COALESCE(CASE
+		WHEN run.workflow_code IN ('remote_work_fetch', 'remote_source_sync', 'asr_transcription', 'work_folder_edit', 'media_cache')
+			THEN UPPER(json_extract(run.input_json, '$.work_code'))
+		WHEN run.workflow_code = 'metadata_family_sync' THEN UPPER(json_extract(run.input_json, '$.primaryCode'))
+		WHEN run.workflow_code IN ('llm_translation', 'local_media_delete')
+			THEN (SELECT work.primary_code FROM work WHERE work.id = json_extract(run.input_json, '$.work_id'))
+		WHEN run.workflow_code = 'circle_catalog_sync' THEN UPPER(json_extract(run.input_json, '$.inputs.circleId'))
+		WHEN run.workflow_code = 'series_catalog_sync' THEN UPPER(json_extract(run.input_json, '$.inputs.seriesId'))
+		WHEN run.workflow_code = 'voice_catalog_sync'
+			THEN (SELECT person.display_name FROM person WHERE person.id = json_extract(run.input_json, '$.inputs.personId'))
+		WHEN run.workflow_code = 'metadata_sync' THEN CASE json_extract(run.input_json, '$.scope')
+			WHEN 'circle' THEN UPPER(json_extract(run.input_json, '$.circleId'))
+			WHEN 'voice' THEN (SELECT person.display_name FROM person WHERE person.id = json_extract(run.input_json, '$.personId'))
+			WHEN 'works' THEN CASE WHEN json_array_length(run.input_json, '$.workCodes') = 1
+				THEN UPPER(json_extract(run.input_json, '$.workCodes[0]')) END
+			END
+		WHEN run.workflow_code = 'source_presence_check'
+			THEN (SELECT source.display_name FROM file_source AS source WHERE source.id = json_extract(run.input_json, '$.sourceId'))
+		WHEN run.workflow_code IN ('remote_popular_collection', 'media_cache_cleanup')
+			THEN (SELECT source.display_name FROM file_source AS source WHERE source.id = json_extract(run.input_json, '$.source_id'))
+	END, '') END`

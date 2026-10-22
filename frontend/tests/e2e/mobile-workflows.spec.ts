@@ -1893,7 +1893,7 @@ test("run retry shows progress while pending and reports a failure", async ({ pa
 
   await page.goto("/activity?run=99");
   const activity = page.getByRole("dialog", { name: "Activity", exact: true });
-  await expect(activity.getByText("Failed library scan", { exact: true })).toBeVisible();
+  await expect(activity.getByRole("heading", { name: "Scan local library", exact: true })).toBeVisible();
   const retry = activity.getByRole("button", { name: "Retry", exact: true });
   await retry.click();
   await expect(retry).toBeDisabled();
@@ -2034,7 +2034,7 @@ test("activity deep links load a run outside the visible list page", async ({ pa
   await page.goto("/activity?run=99");
 
   await expect(page).toHaveURL(/\/workflows\?.*run=99/);
-  await expect(page.getByText("Detached cleanup run", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Activity", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open full Activity", exact: true })).toHaveCount(0);
 });
@@ -2691,6 +2691,7 @@ for (const viewport of ["mobile", "@desktop"]) {
       definitionId: 1,
       workflowCode: "metadata_sync",
       displayName: "Example metadata run",
+      subject: "RG00000000",
     };
     await page.route("**/api/workflow-runs?*", async (route) => {
       const params = new URL(route.request().url()).searchParams;
@@ -2725,8 +2726,8 @@ for (const viewport of ["mobile", "@desktop"]) {
     expect(scopes.length).toBeGreaterThan(0);
     expect(scopes).toContain("all");
     await panel.getByRole("button", { name: "Close Activity", exact: true }).click();
-    await page.getByRole("button", { name: /^#72 / }).click();
-    await expect(panel.getByRole("heading", { name: "Example metadata run", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /^#72 RG00000000 · / }).click();
+    await expect(panel.getByRole("heading", { name: "Sync work metadata · RG00000000", exact: true })).toBeVisible();
     await expect(page).toHaveURL(/\/workflows\?.*run=72/);
     await expect(panel.getByRole("button", { name: "Open full Activity", exact: true })).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("workflow-run-panel.png") });

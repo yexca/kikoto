@@ -31,8 +31,9 @@ type RunRecord struct {
 	ReviewedByUserID          *int64 `json:"reviewedByUserId"`
 	DefinitionID              *int64 `json:"definitionId"`
 	TriggerID                 *int64 `json:"triggerId"`
-	// WorkCode names the work a Fetch run downloads; empty for other runs.
-	WorkCode string `json:"workCode"`
+	// Subject names the one work, circle, series, voice actor, or remote
+	// source a run acts on; empty for runs over many subjects.
+	Subject string `json:"subject"`
 }
 
 type RunsPage struct {

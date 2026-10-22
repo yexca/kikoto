@@ -142,17 +142,19 @@ export function transferProgress(
 }
 
 /**
- * A run's title. A Fetch names the work it downloads so several Fetches can
- * be told apart in Activity; other runs use their workflow's translated name.
+ * A run's title: its workflow's translated name and the subject it acts on, so
+ * runs of one workflow can be told apart in Activity. A Fetch reads as
+ * fetching its work.
  */
 export function runTitle(
-  run: Pick<WorkflowRun, "workflowCode" | "displayName" | "workCode">,
+  run: Pick<WorkflowRun, "workflowCode" | "displayName" | "subject">,
   t: (key: string, options?: Record<string, unknown>) => string,
 ) {
-  if (run.workflowCode === "remote_work_fetch" && run.workCode) {
-    return t("workflowPage.fetchRunTitle", { code: run.workCode });
+  if (run.workflowCode === "remote_work_fetch" && run.subject) {
+    return t("workflowPage.fetchRunTitle", { code: run.subject });
   }
-  return t(`workflowPage.builtInDefinitions.${run.workflowCode}.name`, { defaultValue: run.displayName });
+  const name = t(`workflowPage.builtInDefinitions.${run.workflowCode}.name`, { defaultValue: run.displayName });
+  return run.subject ? t("workflowPage.runSubjectTitle", { name, subject: run.subject }) : name;
 }
 
 export function hasTransferProgress(

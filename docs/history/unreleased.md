@@ -58,6 +58,18 @@
 </details>
 
 <details>
+<summary><strong>Workflows</strong></summary>
+
+- Activity and run details name what a run acts on, so a failed circle,
+  series, or voice actor catalog sync shows which one failed, such as
+  `Sync a circle catalog · RG00000000`. Runs for one work, a circle- or
+  voice-scoped metadata sync, and runs for one remote source show it the same
+  way, workflow run lists show it beside the run number, and Activity search
+  finds runs by it.
+
+</details>
+
+<details>
 <summary><strong>Interface</strong></summary>
 
 - On touch screens, About's License link no longer takes taps and scrolls

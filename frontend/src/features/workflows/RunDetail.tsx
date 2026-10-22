@@ -53,9 +53,7 @@ export function RunDetail({
     <div className="min-w-0 space-y-4">
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-1">
-          <h3 className="min-w-0 break-words text-base font-semibold leading-6">
-            {run.workflowCode === "remote_work_fetch" ? runTitle(run, t) : run.displayName}
-          </h3>
+          <h3 className="min-w-0 break-words text-base font-semibold leading-6">{runTitle(run, t)}</h3>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <RunStatusBadge status={run.status} />
             <span className="tabular-nums">#{run.id}</span>

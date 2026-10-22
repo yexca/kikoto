@@ -1283,6 +1283,7 @@ export const surfaceKorean = {
       searching: "검색 중",
     },
     fetchRunTitle: "{{code}} 가져오기",
+    runSubjectTitle: "{{name}} · {{subject}}",
     builtInDefinitions: {
       circle_catalog_sync: {
         name: "서클 카탈로그 동기화",
@@ -1411,6 +1412,8 @@ export const surfaceKorean = {
         name: "작품 메타데이터 새로 고침",
         description: "작품 하나와 제한된 언어 버전 묶음을 새로 고칩니다.",
       },
+      work_folder_edit: { name: "작품 파일 편집" },
+      llm_translation: { name: "LLM 번역" },
     },
     metadataLoadFailed: "워크플로 데이터를 불러오지 못했습니다.",
     activityLoadFailed: "활동을 불러오지 못했습니다.",
