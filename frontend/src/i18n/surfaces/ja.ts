@@ -3196,6 +3196,7 @@ export const surfaceJapanese = {
     voiceCount_other: "{{count}} 人の声優",
     listened: "聴了",
     listenedOf: "{{total}} 作品中 {{listened}} 作品を聴了",
+    listenedPercent: "{{percent}}% 聴了",
     listeningCount_one: "{{count}} 作品を視聴中",
     listeningCount_other: "{{count}} 作品を視聴中",
     allStatuses: "すべて",
