@@ -26,7 +26,8 @@ export const AUDIO_HLS_CONFIG: Partial<HlsConfig> = {
  * hls.js cannot recover from is reported through onFatalError, since it does
  * not always reach the element as an error event. hls.js gives the element its
  * source only after it loads, which aborts a play request made before; the
- * caller asks again in onAttached. Returns the detach function.
+ * caller asks again in onAttached. The element is emptied at once, so nothing
+ * reads or plays the previous track meanwhile. Returns the detach function.
  */
 export function attachAudioHls(
   audio: HTMLAudioElement,
@@ -43,6 +44,8 @@ export function attachAudioHls(
     audio.load();
     return () => {};
   }
+  audio.removeAttribute("src");
+  audio.load();
   let active = true;
   let instance: Hls | null = null;
   void import("hls.js")
