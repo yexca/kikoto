@@ -121,7 +121,7 @@ export const persistedTrack: PersistedPlayerTrack = {
   queueItemId: "e2e-track-1",
   mediaItemId: 1,
   locationId: 1,
-  title: "Test track",
+  title: "Test track.wav",
   folderPath: "Main",
   locationType: "local",
   streamUrl: "/api/media/1/stream",

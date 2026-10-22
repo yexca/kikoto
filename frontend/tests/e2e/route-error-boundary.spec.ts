@@ -7,7 +7,7 @@ const persistedTrack = {
   queueItemId: "route-boundary-track",
   mediaItemId: 1,
   locationId: 1,
-  title: "Boundary test track",
+  title: "Boundary test track.wav",
   kind: "audio",
   folderPath: "Main",
   locationType: "local",
@@ -133,7 +133,7 @@ test("route render failures preserve the app shell and player", async ({ page })
   await expect(fallback.getByRole("button", { name: "Retry page" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "About", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Library", exact: true })).toBeVisible();
-  await expect(page.getByText("Boundary test track", { exact: true })).toBeVisible();
+  await expect(page.getByText("Boundary test track.wav", { exact: true })).toBeVisible();
   expect(await audio.evaluate((element, previous) => element === previous, playingElement)).toBe(true);
   await expect(audio).toHaveJSProperty("paused", false);
   await expect
@@ -146,7 +146,7 @@ test("route render failures preserve the app shell and player", async ({ page })
   await expect(page).toHaveURL("/");
   await expect(fallback).toHaveCount(0);
   await expect(page.locator("footer").getByRole("button", { name: "Library", exact: true })).toBeVisible();
-  await expect(page.getByText("Boundary test track", { exact: true })).toBeVisible();
+  await expect(page.getByText("Boundary test track.wav", { exact: true })).toBeVisible();
   expect(await audio.evaluate((element, previous) => element === previous, playingElement)).toBe(true);
   await expect(audio).toHaveJSProperty("paused", false);
   await expect

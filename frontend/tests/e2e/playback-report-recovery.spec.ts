@@ -21,7 +21,7 @@ test("refresh restores unconfirmed listening and progress, confirms once, and ke
   });
   await page.goto("/");
   await expect.poll(async () => (await readOutbox(page))?.generation).toBe(0);
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.locator("audio")).toHaveJSProperty("paused", false);
   await expect

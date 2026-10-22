@@ -40,7 +40,7 @@ async function openRestoredQueue(
 ) {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true });
   const first = {
-    ...queuedTrackFixture(0, "Test track"),
+    ...queuedTrackFixture(0, "Test track.wav"),
     progress: {
       positionSeconds: options.cursorSeconds,
       durationSeconds: trackSeconds,
@@ -48,7 +48,7 @@ async function openRestoredQueue(
       lastPlayedAt: "2026-01-01 00:00:00",
     },
   };
-  await seedPlayerQueue(page, [first, queuedTrackFixture(1, "Second queued track")], 1);
+  await seedPlayerQueue(page, [first, queuedTrackFixture(1, "Second queued track.wav")], 1);
   await page.addInitScript((minutes) => {
     const key = `kikoto:player-sleep-rewind:v1:${encodeURIComponent(window.location.origin)}:user-1`;
     localStorage.setItem(key, JSON.stringify({ version: 1, minutes }));
@@ -85,7 +85,7 @@ async function startPlayback(page: Page, cursorSeconds: number) {
 }
 
 async function setSleepTimer(page: Page, options: { finishCurrentTrack?: boolean } = {}) {
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   await page.getByRole("button", { name: "Sleep timer" }).click();
   if (options.finishCurrentTrack) await page.getByRole("switch", { name: "Finish current track" }).check();
   await page.getByRole("button", { name: "30 min" }).click();
@@ -139,7 +139,7 @@ test("a finish-current-track sleep timer rewinds at the track end instead of adv
   await expect.poll(() => lastSave(saves)?.positionSeconds).toBeCloseTo(trackSeconds - 60, 0);
   expect(saves.filter((save) => save.mediaItemId === 1 && save.completed)).toEqual([]);
   expect(saves.filter((save) => save.mediaItemId === 2)).toEqual([]);
-  await expect(page.getByText("Second queued track", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Second queued track.wav", { exact: true })).toHaveCount(0);
 });
 
 test("a pause from outside the player, such as a headphone disconnect, becomes the listener's pause", async ({
@@ -154,7 +154,7 @@ test("a pause from outside the player, such as a headphone disconnect, becomes t
   const paused = await audioState(page);
   await expect.poll(() => lastSave(saves)?.positionSeconds).toBeCloseTo(paused.currentTime, 0);
   // Re-rendering the player does not resume the element.
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Play", exact: true }).first()).toBeVisible();
   expect((await audioState(page)).paused).toBe(true);
 });

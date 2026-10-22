@@ -44,7 +44,7 @@ for (const mode of ["Order", "Loop", "Repeat one"] as const) {
     const audio = silentWav(4);
     await page.route(/\/api\/media\/1\/stream(?:\?.*)?$/, (route) => serveSeekableAudio(route, audio));
     await page.goto("/");
-    await page.getByText("Test track", { exact: true }).click();
+    await page.getByText("Test track.wav", { exact: true }).click();
     if (mode !== "Order") {
       await page.getByRole("button", { name: "Order. Change playback mode", exact: true }).click();
     }
@@ -84,7 +84,7 @@ test("full player collapses from the upper content area and double-tapping its c
   await seedPlayer(page);
   await page.goto("/");
 
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   let fullPlayer = page.locator("section.fixed.inset-0");
   await expect(fullPlayer).toBeVisible();
   await expect(fullPlayer.getByText("Test circle", { exact: true })).toBeVisible();
@@ -96,7 +96,7 @@ test("full player collapses from the upper content area and double-tapping its c
   await page.mouse.up();
   await expect(fullPlayer).toBeHidden();
 
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   fullPlayer = page.locator("section.fixed.inset-0");
   await expect(fullPlayer).toBeVisible();
   const cover = fullPlayer.getByRole("button", { name: "Open work detail" });
@@ -112,7 +112,7 @@ test("double-tapping the cover opens the work in the destination its playback st
   await seedPlayer(page, { ...persistedTrack, originPage: "circles" });
   await page.goto("/");
 
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   const fullPlayer = page.locator("section.fixed.inset-0");
   const cover = fullPlayer.getByRole("button", { name: "Open work detail" });
   await cover.tap();
@@ -189,7 +189,7 @@ test("mobile full player gives artwork room and does not latch transport feedbac
   await seedPlayer(page);
   await page.goto("/");
 
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   const fullPlayer = page.locator("section.fixed.inset-0");
   const cover = fullPlayer.getByRole("button", { name: "Open work detail" });
   const forward = fullPlayer.getByRole("button", { name: "Forward 30 seconds" });
@@ -240,7 +240,7 @@ test("current lyric line follows playback and opens the lyrics panel", async ({ 
   await mockApplication(page);
   await seedPlayer(page, lyricsTrack);
   await page.goto("/");
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
 
   const preview = page.getByRole("button", { name: "Open lyrics" });
   await expect(preview).toBeVisible();
@@ -281,7 +281,7 @@ test("@desktop player keeps speed and compatibility playback under More", async 
   const mediaRequests: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
-    if (url.pathname === "/api/media/1/stream" && request.method() === "GET") mediaRequests.push(request.url());
+    if (url.pathname.startsWith("/api/media/1/") && request.method() === "GET") mediaRequests.push(request.url());
   });
   await page.goto("/");
 
@@ -310,7 +310,7 @@ test("@desktop player keeps speed and compatibility playback under More", async 
   await page.getByRole("option", { name: "Only current track", exact: true }).click();
   await expect(compatibility).toHaveText("Only current track");
   await expect
-    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).searchParams.get("forceTranscode") === "1"))
+    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).pathname === "/api/media/1/hls/index.m3u8"))
     .toBe(true);
 
   await compatibility.click();
@@ -331,7 +331,7 @@ test("@desktop player keeps speed and compatibility playback under More", async 
   mediaRequests.length = 0;
   await page.reload();
   await expect
-    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).searchParams.get("forceTranscode") === "1"))
+    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).pathname === "/api/media/1/hls/index.m3u8"))
     .toBe(true);
   await page.getByRole("button", { name: "More player options" }).click();
   await expect(page.getByRole("combobox", { name: "Compatibility playback scope" })).toHaveText("Always enabled");
@@ -342,7 +342,10 @@ test("@desktop player keeps speed and compatibility playback under More", async 
 test("@desktop playback speed carries over to the next track", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);
-  await seedPlayerQueue(page, [queuedTrackFixture(0, "Test track"), queuedTrackFixture(1, "Second queued track")]);
+  await seedPlayerQueue(page, [
+    queuedTrackFixture(0, "Test track.wav"),
+    queuedTrackFixture(1, "Second queued track.wav"),
+  ]);
   await page.goto("/");
 
   const audio = page.locator("audio");
@@ -368,7 +371,12 @@ test("@desktop player scrolls overflowing metadata and closes queue options outs
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);
   const longTitle = "A deliberately long track title that cannot fit inside the compact player or queue row";
-  const secondTrack = { ...persistedTrack, queueItemId: "e2e-track-2", locationId: 2, title: "Second queued track" };
+  const secondTrack = {
+    ...persistedTrack,
+    queueItemId: "e2e-track-2",
+    locationId: 2,
+    title: "Second queued track.wav",
+  };
   persistedPlayerTracks.set(page, [
     { ...persistedTrack, title: longTitle, workTitle: `${persistedTrack.workTitle} with an extended display name` },
     secondTrack,
@@ -638,7 +646,7 @@ test("audio preparation shows a busy control and can be paused before it complet
   });
   try {
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await page.getByText("Test track", { exact: true }).click();
+    await page.getByText("Test track.wav", { exact: true }).click();
     await page.getByRole("button", { name: "Play", exact: true }).click();
     const pause = page.getByRole("button", { name: "Pause", exact: true });
     await expect(pause).toHaveAttribute("aria-busy", "true");
@@ -726,7 +734,7 @@ test("replaying the same audio cancels stale failure diagnostics", async ({ page
   });
   try {
     await page.goto("/");
-    await page.getByText("Test track", { exact: true }).click();
+    await page.getByText("Test track.wav", { exact: true }).click();
     await page.getByRole("button", { name: "Play", exact: true }).click();
     await expect(page.locator("audio")).toHaveJSProperty("paused", false);
     await page.locator("audio").evaluate((audio) => audio.dispatchEvent(new Event("error")));
@@ -761,11 +769,11 @@ test("source switching and fallback stay off until the listener enables them", a
   });
   await page.goto("/");
 
-  await expect(page.getByText("Playback failed for Test track.")).toBeVisible();
+  await expect(page.getByText("Playback failed for Test track.wav.")).toBeVisible();
   await page.getByRole("button", { name: "Compatibility playback", exact: true }).click();
   await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
   await expect(page.getByText("Playback source failed. Switched to Remote.")).toHaveCount(0);
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   await expect(page.getByTitle("Playback source", { exact: true })).not.toHaveText("Remote");
   await expect(page.getByRole("button", { name: "Choose playback source" })).toHaveCount(0);
 });
@@ -776,7 +784,7 @@ test("failed direct playback offers compatibility before source fallback and the
   const mediaRequests: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
-    if (url.pathname === "/api/media/1/stream") mediaRequests.push(request.url());
+    if (url.pathname.startsWith("/api/media/1/")) mediaRequests.push(request.url());
   });
   await mockApplication(page, undefined, true);
   await seedPlaybackSourcePreferences(page, { sourceSwitching: true, sourceFallback: true });
@@ -796,16 +804,16 @@ test("failed direct playback offers compatibility before source fallback and the
   });
   await page.goto("/");
 
-  await expect(page.getByText("Playback failed for Test track.")).toBeVisible();
+  await expect(page.getByText("Playback failed for Test track.wav.")).toBeVisible();
   await expect
     .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).searchParams.get("forceDirect") === "1"))
     .toBe(true);
   await page.getByRole("button", { name: "Compatibility playback", exact: true }).click();
   await expect
-    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).searchParams.get("forceTranscode") === "1"))
+    .poll(() => mediaRequests.some((requestURL) => new URL(requestURL).pathname === "/api/media/1/hls/index.m3u8"))
     .toBe(true);
   await expect(page.getByText("Playback source failed. Switched to Remote.")).toBeVisible();
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Choose playback source" })).toContainText("Remote");
   await page.getByRole("button", { name: "Sleep timer" }).click();
   await expect(page.getByRole("button", { name: "30 min" })).toBeVisible();
@@ -887,19 +895,19 @@ test("player restores only the current server and authenticated owner's queue", 
   );
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeVisible();
-  await expect(page.getByText("Test track", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Test track.wav", { exact: true })).toHaveCount(0);
   await seedPlayer(page, persistedTrack, 1);
   await page.reload();
-  await expect(page.getByText("Test track", { exact: true })).toBeVisible();
+  await expect(page.getByText("Test track.wav", { exact: true })).toBeVisible();
 });
 
 test("a restored queue resumes its cursor without overwriting it before the listener plays", async ({ page }) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true });
   const cursorTrack = {
-    ...queuedTrackFixture(0, "Test track"),
+    ...queuedTrackFixture(0, "Test track.wav"),
     progress: { positionSeconds: 42, durationSeconds: 180, completed: false, lastPlayedAt: "2026-01-01 00:00:00" },
   };
-  await seedPlayerQueue(page, [cursorTrack, queuedTrackFixture(1, "Second queued track")], 1);
+  await seedPlayerQueue(page, [cursorTrack, queuedTrackFixture(1, "Second queued track.wav")], 1);
   const media = silentWav(180);
   await page.route(/\/api\/media\/1\/stream(?:\?.*)?$/, (route) => serveSeekableAudio(route, media));
   const saves: { mediaItemId: number; positionSeconds: number }[] = [];
@@ -923,7 +931,7 @@ test("a restored queue resumes its cursor without overwriting it before the list
     window.dispatchEvent(new Event("pagehide"));
     delete (document as { visibilityState?: DocumentVisibilityState }).visibilityState;
   });
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   await page.getByRole("button", { name: "Next", exact: true }).click();
 
   await expect.poll(() => saves.some((save) => save.mediaItemId === 2)).toBe(true);
@@ -934,9 +942,9 @@ test("@desktop queue rows reorder by dragging the handle or with the arrow keys"
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApplication(page);
   await seedPlayerQueue(page, [
-    queuedTrackFixture(0, "Test track"),
-    queuedTrackFixture(1, "Second queued track"),
-    queuedTrackFixture(2, "Third queued track"),
+    queuedTrackFixture(0, "Test track.wav"),
+    queuedTrackFixture(1, "Second queued track.wav"),
+    queuedTrackFixture(2, "Third queued track.wav"),
   ]);
   const queuedIds = async () =>
     ((await readScopedPlayerState(page, playerQueueStorageBaseKey))?.queue ?? []).map(
@@ -948,7 +956,7 @@ test("@desktop queue rows reorder by dragging the handle or with the arrow keys"
   const queue = page.getByRole("list", { name: "Playback queue" });
   const rows = queue.getByRole("listitem");
   await expect(rows).toHaveCount(3);
-  const handle = queue.getByRole("button", { name: "Reorder Test track" });
+  const handle = queue.getByRole("button", { name: "Reorder Test track.wav" });
   const [handleBox, rowBox] = await Promise.all([handle.boundingBox(), rows.first().boundingBox()]);
   expect(handleBox).not.toBeNull();
   expect(rowBox).not.toBeNull();
@@ -959,11 +967,11 @@ test("@desktop queue rows reorder by dragging the handle or with the arrow keys"
   await page.mouse.move(startX, startY + rowBox!.height, { steps: 8 });
   await page.mouse.up();
 
-  await expect(rows.nth(1)).toContainText("Test track");
+  await expect(rows.nth(1)).toContainText("Test track.wav");
   await expect.poll(queuedIds).toEqual(["e2e-track-2", "e2e-track-1", "e2e-track-3"]);
   await expect.poll(async () => (await readScopedPlayerState(page, playerQueueStorageBaseKey))?.currentIndex).toBe(1);
 
-  const thirdHandle = queue.getByRole("button", { name: "Reorder Third queued track" });
+  const thirdHandle = queue.getByRole("button", { name: "Reorder Third queued track.wav" });
   await thirdHandle.focus();
   await page.keyboard.press("ArrowUp");
   await expect.poll(queuedIds).toEqual(["e2e-track-2", "e2e-track-3", "e2e-track-1"]);
@@ -973,7 +981,10 @@ test("@desktop queue rows reorder by dragging the handle or with the arrow keys"
 
 test("the next queued track is preloaded while the current track plays", async ({ page }) => {
   await mockApplication(page);
-  await seedPlayerQueue(page, [queuedTrackFixture(0, "Test track"), queuedTrackFixture(1, "Second queued track")]);
+  await seedPlayerQueue(page, [
+    queuedTrackFixture(0, "Test track.wav"),
+    queuedTrackFixture(1, "Second queued track.wav"),
+  ]);
   await page.route(/\/api\/media\/1\/stream(?:\?.*)?$/, (route) =>
     route.fulfill({ status: 200, contentType: "audio/wav", body: silentWav(30) }),
   );
@@ -990,7 +1001,7 @@ test("the next queued track is preloaded while the current track plays", async (
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect.poll(() => nextTrackRequests.length).toBeGreaterThan(0);
   expect(new URL(nextTrackRequests[0]).searchParams.get("forceDirect")).toBe("1");
-  await expect(page.getByText("Test track", { exact: true })).toBeVisible();
+  await expect(page.getByText("Test track.wav", { exact: true })).toBeVisible();
   expect(await audio.evaluate((element: HTMLAudioElement) => new URL(element.src).pathname)).toBe(
     "/api/media/1/stream",
   );

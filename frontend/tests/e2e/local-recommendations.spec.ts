@@ -41,7 +41,7 @@ test("optional local badge failure preserves cards and playback while scoring re
   );
   await page.goto("/?sort=recent");
   await expect(page.getByText(work.title, { exact: true })).toBeVisible();
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   const audio = page.locator("audio").first();
   await expect(audio).toHaveJSProperty("paused", false);
@@ -90,7 +90,7 @@ test("recommendation preparation failure retains loaded cards and retries withou
   );
   await page.goto("/?sort=recent");
   await expect(page.getByTestId("work-card")).toHaveCount(1);
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   const audio = page.locator("audio").first();
   await expect(audio).toHaveJSProperty("paused", false);

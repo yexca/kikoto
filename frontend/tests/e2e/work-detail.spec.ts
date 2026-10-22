@@ -992,7 +992,7 @@ for (const update of ["progress save", "directory refresh", "cancelled directory
     let refreshing: Promise<unknown> | undefined;
     try {
       await page.goto("/");
-      await page.getByText("Test track", { exact: true }).click();
+      await page.getByText("Test track.wav", { exact: true }).click();
       await page.getByRole("button", { name: "Play", exact: true }).click();
       await expect(page.locator("audio")).toHaveJSProperty("paused", false);
       await page.getByRole("button", { name: "Collapse player", exact: true }).click();
@@ -1005,7 +1005,7 @@ for (const update of ["progress save", "directory refresh", "cancelled directory
 
       if (update === "progress save") {
         const before = saves;
-        await page.getByText("Test track", { exact: true }).click();
+        await page.getByText("Test track.wav", { exact: true }).click();
         await page.getByRole("slider", { name: "Seek", exact: true }).fill("5");
         await expect
           .poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.currentTime))

@@ -8,7 +8,7 @@ test("mobile collapse button responds to a tap", async ({ page }) => {
   await mockApplication(page);
   await seedPlayer(page);
   await page.goto("/");
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   await expect(page.getByRole("region", { name: "Now playing", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Collapse player", exact: true }).tap();
   await expect(page.getByRole("region", { name: "Now playing", exact: true })).toHaveCount(0);
@@ -19,7 +19,7 @@ test("compact layout collapse button responds to a mouse click @desktop", async 
   await mockApplication(page);
   await seedPlayer(page);
   await page.goto("/");
-  await page.getByText("Test track", { exact: true }).click();
+  await page.getByText("Test track.wav", { exact: true }).click();
   await page.getByRole("button", { name: "Collapse player", exact: true }).click();
   await expect(page.getByRole("region", { name: "Now playing", exact: true })).toHaveCount(0);
 });
@@ -34,7 +34,7 @@ for (const result of ["success", "database_busy", "logout_failure"] as const) {
       authenticated: true,
     });
     await seedPlayer(page, persistedTrack, 1);
-    await seedPlayer(page, { ...persistedTrack, title: "Example B track" }, 2);
+    await seedPlayer(page, { ...persistedTrack, title: "Example B track.wav" }, 2);
     let owner: number | null = 1;
     let authReads = 0;
     let historyLookups = 0;
@@ -127,7 +127,7 @@ for (const result of ["success", "database_busy", "logout_failure"] as const) {
     });
     try {
       await page.goto("/");
-      await page.getByText("Test track", { exact: true }).click();
+      await page.getByText("Test track.wav", { exact: true }).click();
       await page.getByRole("button", { name: "Play", exact: true }).click();
       await expect(page.locator("audio")).toHaveJSProperty("paused", false);
       const checkpoint = async (position: number) => {
@@ -167,7 +167,7 @@ for (const result of ["success", "database_busy", "logout_failure"] as const) {
       await page.getByLabel("Password", { exact: true }).fill("synthetic-password");
       await page.getByLabel("Password", { exact: true }).press("Enter");
       await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeVisible();
-      await expect(page.getByText("Test track", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Test track.wav", { exact: true })).toHaveCount(0);
       releaseFirst();
       const sentUnderNewOwner = await Promise.race([
         leaked,
@@ -179,7 +179,7 @@ for (const result of ["success", "database_busy", "logout_failure"] as const) {
         { owner: 1, position: saves[0].position },
       ]);
       expect(sentUnderNewOwner).toBe(false);
-      await page.getByText("Example B track", { exact: true }).click();
+      await page.getByText("Example B track.wav", { exact: true }).click();
       await page.getByRole("button", { name: "Play", exact: true }).click();
       await expect(page.locator("audio")).toHaveJSProperty("paused", false);
       await checkpoint(40);

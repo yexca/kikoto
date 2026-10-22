@@ -212,7 +212,7 @@ function statisticsFixture(range: string) {
 async function openPlayableQueue(page: Page) {
   await page.clock.install();
   await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true });
-  await seedPlayerQueue(page, [queuedTrackFixture(0, "Test track")], 1);
+  await seedPlayerQueue(page, [queuedTrackFixture(0, "Test track.wav")], 1);
   const media = silentWav(180);
   await page.route(/\/api\/media\/1\/stream(?:\?.*)?$/, (route) => serveSeekableAudio(route, media));
 }
@@ -302,7 +302,7 @@ test("a stale report after another device clears history restarts counting under
 
 test("an earlier account's late generation lookup never applies to the next account", async ({ page }) => {
   await openPlayableQueue(page);
-  await seedPlayerQueue(page, [queuedTrackFixture(0, "Test track")], 2);
+  await seedPlayerQueue(page, [queuedTrackFixture(0, "Test track.wav")], 2);
   let signedIn: 1 | 2 | null = 1;
   const account = (id: 1 | 2) =>
     authenticatedStateFixture({
