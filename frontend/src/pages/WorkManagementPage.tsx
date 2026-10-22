@@ -17,6 +17,8 @@ import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { IconRail, type IconRailItem } from "@/components/ui/icon-rail";
+import { useRailOrientation } from "@/components/ui/rail-labels";
+import { cx } from "@/lib/classNames";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import type { MaintenanceToolbarSlots } from "@/features/maintenance/MaintenanceControls";
 import { WorkMaintenance } from "@/features/maintenance/WorkMaintenance";
@@ -26,13 +28,16 @@ import { MetadataEntryMaintenance } from "@/features/maintenance/MetadataEntryMa
 import { TranslationCoverage } from "@/features/maintenance/TranslationCoverage";
 import { VoiceAliasMaintenance } from "@/features/maintenance/VoiceAliasMaintenance";
 import { WorkMetadataEditorModal } from "@/features/work-detail/metadata";
-import { api, type WorkDetail } from "@/lib/api";
+import { api, type MaintenanceCounts, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { metadataIssueRunFromLocation } from "@/lib/metadataMaintenance";
 
 type MetadataView = "works" | "translation" | "aliases" | "tags" | "circles";
 type MetadataRailValue =
   "catalog" | "all" | "metadata" | "no_source" | "custom" | "translation" | "aliases" | "tags" | "circles";
+
+// Works in these views need an operator; their counts take the attention color.
+const attentionViews = new Set<MetadataRailValue>(["all", "metadata", "no_source"]);
 
 const railIcons: Record<MetadataRailValue, LucideIcon> = {
   catalog: LayoutGrid,
@@ -159,6 +164,10 @@ export function WorkManagementPage({
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
   const [inlineSearchSlot, setInlineSearchSlot] = useState<HTMLDivElement | null>(null);
   const [searchRowSlot, setSearchRowSlot] = useState<HTMLDivElement | null>(null);
+  // The row leaves the work table its full width; the column rail remains a choice.
+  const [railOrientation, toggleRailOrientation] = useRailOrientation("kikoto:metadata-rail-orientation", "horizontal");
+  const [counts, setCounts] = useState<MaintenanceCounts | null>(null);
+  const [countsRevision, setCountsRevision] = useState(0);
   const [editor, setEditor] = useState<{ work: WorkDetail; onSaved: () => void } | null>(null);
   const [editingWorkId, setEditingWorkId] = useState<number | null>(null);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -195,6 +204,17 @@ export function WorkManagementPage({
     );
     return () => controller.abort();
   }, [needsCustomNotice]);
+
+  // Counts are a guide beside the views; without them the rail simply shows none.
+  useEffect(() => {
+    const controller = new AbortController();
+    api.getMaintenanceCounts(controller.signal).then(
+      (next) => setCounts(next),
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [countsRevision, listRevision]);
+  const refreshCounts = () => setCountsRevision((value) => value + 1);
 
   const inlineSearch = useInlineSearchFits(headerRef, titleRef, headerActionsRef);
   const toolbar: MaintenanceToolbarSlots = {
@@ -256,11 +276,33 @@ export function WorkManagementPage({
     ["circles", t("metadataEntries.circles"), true],
     ["aliases", t("workManagement.voiceAliases"), canSyncMetadata],
   ];
+  const railCount = (value: MetadataRailValue) => {
+    if (!counts) return undefined;
+    const count =
+      value === "catalog"
+        ? counts.catalog
+        : value === "all"
+          ? counts.all
+          : value === "metadata"
+            ? counts.metadata
+            : value === "no_source"
+              ? counts.noSource
+              : value === "custom"
+                ? counts.custom
+                : undefined;
+    if (count === undefined) return undefined;
+    return {
+      count,
+      attention: attentionViews.has(value),
+      description: t("workManagement.workCount", { count }),
+    };
+  };
   const railItems: IconRailItem<MetadataRailValue>[] = railEntries
     .filter(([, , available]) => available)
     .map(([value, label]) => ({
       value,
       label,
+      badge: railCount(value),
       icon: railIcons[value],
       id: `metadata-tab-${value}`,
       controls:
@@ -296,12 +338,14 @@ export function WorkManagementPage({
   return (
     <div className="min-w-0 space-y-3">
       {readOnly && <DemoReadOnlyNotice />}
-      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:gap-4">
+      <div className={cx("flex min-w-0 flex-col gap-3", railOrientation === "vertical" && "lg:flex-row lg:gap-4")}>
         <IconRail
           label={t("workMaintenance.reason")}
           labelsStorageKey="kikoto:metadata-rail-labels-shown"
           items={railItems}
           selected={railSelected}
+          orientation={railOrientation}
+          onToggleOrientation={toggleRailOrientation}
           onSelect={(value) =>
             value === "translation" || value === "aliases" || value === "tags" || value === "circles"
               ? showEntries(value)
@@ -310,8 +354,14 @@ export function WorkManagementPage({
         />
         <div className="min-w-0 flex-1 space-y-3">
           <div ref={headerRef} className="flex min-h-10 items-center gap-2" data-toast-avoid>
-            {/* Wide layouts name the current view here; the compact rail already labels it. */}
-            <h2 ref={titleRef} className="shrink-0 whitespace-nowrap text-base font-semibold max-lg:hidden">
+            {/* A wide column rail leaves the current view unnamed here; every row rail names it. */}
+            <h2
+              ref={titleRef}
+              className={cx(
+                "shrink-0 whitespace-nowrap text-base font-semibold max-lg:hidden",
+                railOrientation === "horizontal" && "hidden",
+              )}
+            >
               {railItems.find((item) => item.value === railSelected)?.label}
             </h2>
             <div ref={setInlineSearchSlot} className="contents" />
@@ -360,6 +410,7 @@ export function WorkManagementPage({
               )}
             </div>
           </div>
+          <p className="-mt-1 text-xs text-muted-foreground">{t(`workManagement.viewDescriptions.${railSelected}`)}</p>
           <div ref={setSearchRowSlot} className="empty:hidden" data-toast-avoid />
           {view === "translation" ? (
             <TranslationCoverage
@@ -392,6 +443,7 @@ export function WorkManagementPage({
                   runId={runId}
                   toolbar={toolbar}
                   onFilterChange={showWorks}
+                  onChanged={refreshCounts}
                   editingWorkId={editingWorkId}
                   onEditWork={canEditMetadata ? (work, onSaved) => void editWork(work, onSaved) : undefined}
                 />

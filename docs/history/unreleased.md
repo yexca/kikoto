@@ -32,10 +32,25 @@
 <summary><strong>Metadata and scans</strong></summary>
 
 - Metadata's work tables split the status column into **Metadata** and
-  **Source**. A work DLsite was never asked about shows **Not synced** instead
-  of OK, appears under Needs attention and Metadata issues, and **Retry
-  metadata** queues its first sync. **Source** shows **Local** or **Remote**,
-  both normal, and **No available source** in the attention color.
+  **Source**. Healthy states read as quiet text: **Complete** replaces OK,
+  and **Source** shows **Local** or **Remote**. A work DLsite was never asked
+  about shows **Not synced**, appears under Needs attention and Metadata
+  issues, and **Retry metadata** queues its first sync. **No available
+  source** takes the attention color.
+- On wide screens Metadata's views start as a row above the list, so the
+  tables keep the full width; **Show tabs beside** returns them to the
+  column, and Metadata remembers the choice.
+- Metadata's rail shows how many works each works view lists, with the
+  attention views in the attention color, and a line under the header says
+  what the current view lists. Rows show the title first with the code and
+  circle below it.
+- Pressing a Metadata work row opens a work inspector beside the table, or in
+  a sheet on smaller screens, with the work's metadata and source state, its
+  recovery actions, release date, age rating, series, voice actors, rating,
+  sales, and tags, and buttons to edit the metadata or open the work.
+- Selected Metadata works get a selection bar with **Retry metadata**,
+  **Check sources**, and **Delete local information** and their counts,
+  instead of count buttons in the header.
 - A work DLsite does not have and a remote source filled shows **Metadata
   from** its source and no longer counts as a metadata issue, in Metadata,
   run results, or Activity's Needs attention.

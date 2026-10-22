@@ -75,12 +75,7 @@ func (s *Server) listWorkMaintenance(w http.ResponseWriter, r *http.Request) {
 		runID, options.Reason = id, "metadata"
 	}
 	if canMetadata {
-		options.MetadataWhere, options.MetadataArgs = metasync.PendingFamilyPredicate(runID)
-		// A run filter narrows to that run's issues; otherwise a family DLsite
-		// was never asked about also needs metadata attention.
-		if runID == 0 {
-			options.MetadataWhere = "(" + options.MetadataWhere + ") OR " + metasync.NotSyncedFamilyPredicate()
-		}
+		options.MetadataWhere, options.MetadataArgs = maintenanceMetadataPredicate(runID)
 	}
 	page, err := s.libraryStore.ListMaintenance(r.Context(), options)
 	if err != nil {
@@ -132,4 +127,80 @@ func (s *Server) listWorkMaintenance(w http.ResponseWriter, r *http.Request) {
 		Page     int               `json:"page"`
 		PageSize int               `json:"pageSize"`
 	}{items, page.Total, page.Page, page.PageSize})
+}
+
+// maintenanceMetadataPredicate selects the families needing metadata attention.
+// A run filter narrows to that run's issues; otherwise a family DLsite was
+// never asked about also needs attention.
+func maintenanceMetadataPredicate(runID int64) (string, []any) {
+	where, args := metasync.PendingFamilyPredicate(runID)
+	if runID == 0 {
+		where = "(" + where + ") OR " + metasync.NotSyncedFamilyPredicate()
+	}
+	return where, args
+}
+
+// maintenanceCounts counts the families each Metadata work view lists. A view
+// the caller may not open is left out.
+type maintenanceCounts struct {
+	Catalog  int  `json:"catalog"`
+	All      int  `json:"all"`
+	Metadata *int `json:"metadata,omitempty"`
+	NoSource *int `json:"noSource,omitempty"`
+	Custom   int  `json:"custom"`
+}
+
+func (s *Server) countWorkMaintenance(w http.ResponseWriter, r *http.Request) {
+	actor, ok := userFromContext(r.Context())
+	if !ok {
+		writeAPIError(w, http.StatusUnauthorized, "login_required", "login required", false)
+		return
+	}
+	canSources := s.cfg.IsDemo() || userHasPermission(actor, "sources:write")
+	canMetadata := s.cfg.IsDemo() || userHasPermission(actor, "metadata:sync")
+	if !canSources && !canMetadata {
+		writeAPIError(w, http.StatusForbidden, "permission_denied", "permission denied", false)
+		return
+	}
+	base := library.MaintenanceOptions{ListOptions: library.ListOptions{UserID: actor.ID, DemoOnly: s.cfg.IsDemo()},
+		IncludeNoSource: canSources}
+	if canMetadata {
+		base.MetadataWhere, base.MetadataArgs = maintenanceMetadataPredicate(0)
+	}
+	count := func(reason string) (int, error) {
+		options := base
+		options.Reason = reason
+		return s.libraryStore.CountMaintenance(r.Context(), options)
+	}
+	var counts maintenanceCounts
+	var err error
+	if counts.Catalog, err = count("catalog"); err != nil {
+		writeError(w, err)
+		return
+	}
+	if counts.All, err = count("all"); err != nil {
+		writeError(w, err)
+		return
+	}
+	if counts.Custom, err = count("custom"); err != nil {
+		writeError(w, err)
+		return
+	}
+	if canMetadata {
+		metadata, err := count("metadata")
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		counts.Metadata = &metadata
+	}
+	if canSources {
+		noSource, err := count("no_source")
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		counts.NoSource = &noSource
+	}
+	writeJSON(w, http.StatusOK, counts)
 }

@@ -25,6 +25,12 @@ export type IconRailItem<T extends string> = {
   groupLabel?: string;
   /** Accessible description, such as the elevated scope that a separated group shares. */
   description?: string;
+  /**
+   * A count beside the label, such as the works a view lists. An attention
+   * count also marks an unnamed icon with a dot while it is above zero. The
+   * description is read after the item's name, which stays the label alone.
+   */
+  badge?: { count: number; attention?: boolean; description: string };
 };
 
 /**
@@ -173,7 +179,11 @@ export function IconRail<T extends string>({
                 role="tab"
                 aria-selected={active}
                 aria-controls={item.controls}
-                aria-describedby={item.description ? descriptionId(item.description) : undefined}
+                aria-describedby={
+                  [item.description ? descriptionId(item.description) : "", item.badge ? `${item.id}-badge` : ""]
+                    .filter(Boolean)
+                    .join(" ") || undefined
+                }
                 tabIndex={active ? 0 : -1}
                 title={named ? undefined : item.label}
                 variant="ghost"
@@ -213,12 +223,41 @@ export function IconRail<T extends string>({
                   />
                 )}
                 <Icon className="h-5 w-5" />
+                {item.badge?.attention && item.badge.count > 0 && !named && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute right-2 top-2 h-2 w-2 rounded-full bg-warning-foreground ring-2 ring-background"
+                  />
+                )}
                 {/* An unnamed item keeps its label as the accessible name and tooltip. */}
                 <span
                   className={cx("whitespace-nowrap text-sm", !named && "sr-only", named && active && "font-medium")}
                 >
                   {item.label}
                 </span>
+                {item.badge && (
+                  <>
+                    {/* Hidden from the name; aria-describedby still reads it. */}
+                    <span id={`${item.id}-badge`} hidden>
+                      {item.badge.description}
+                    </span>
+                    {named && (
+                      <span
+                        aria-hidden="true"
+                        className={cx(
+                          "rounded-full text-xs tabular-nums leading-5",
+                          // A row keeps the count close to its label so more items stay named.
+                          row ? "-ml-1 px-1" : "ml-auto px-1.5",
+                          item.badge.attention && item.badge.count > 0
+                            ? "bg-warning-surface text-warning-foreground"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {item.badge.count}
+                      </span>
+                    )}
+                  </>
+                )}
               </Button>
             </Fragment>
           );
@@ -249,6 +288,7 @@ export function IconRail<T extends string>({
                     <span data-measure-tab="">
                       <Icon className="h-5 w-5" />
                       <span className="whitespace-nowrap text-sm font-medium">{item.label}</span>
+                      {item.badge && <span className="-ml-1 px-1 text-xs tabular-nums">{item.badge.count}</span>}
                     </span>
                   </Button>
                 </Fragment>

@@ -302,6 +302,14 @@ export type MaintenanceWork = Work & {
   remoteMetadataSource?: string;
 };
 
+export type MaintenanceCounts = {
+  catalog: number;
+  all: number;
+  metadata?: number;
+  noSource?: number;
+  custom: number;
+};
+
 export type MaintenanceWorkPage = Omit<WorksPage, "works"> & { works: MaintenanceWork[] };
 
 export type UserTag = {
@@ -425,4 +433,6 @@ export const libraryApi = {
     if (runId) params.set("runId", String(runId));
     return getJSON<MaintenanceWorkPage>(`/api/maintenance/works?${params}`, signal);
   },
+  /** Family counts of the Metadata work views; a view the caller may not open is left out. */
+  getMaintenanceCounts: (signal?: AbortSignal) => getJSON<MaintenanceCounts>("/api/maintenance/works/counts", signal),
 };

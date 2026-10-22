@@ -151,8 +151,8 @@ test("metadata rows show metadata completeness apart from the best available sou
     list.getByRole("checkbox", { name: `Select ${syntheticWorkCode("RJ", index)}`, exact: true });
   await expect(rowFor(0)).toContainText("Not synced");
   await expect(rowFor(1)).toContainText("Metadata from Example Remote");
-  await expect(rowFor(1)).not.toContainText("OK");
-  await expect(rowFor(2)).toContainText("OK");
+  await expect(rowFor(1)).not.toContainText("Complete");
+  await expect(rowFor(2)).toContainText("Complete");
   // Local and remote sources are both healthy; only a family with no source takes the attention color.
   await expect(rowFor(0).getByText("Local", { exact: true })).toBeVisible();
   await expect(rowFor(1).getByText("Remote", { exact: true })).toBeVisible();
@@ -208,13 +208,14 @@ test("@desktop metadata page selection resets when searching or changing pages",
   await expect(page.getByRole("button", { name: "Retry metadata (25)", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Next page", exact: true }).first().click();
   await expect(list.getByRole("link", { name: /Synthetic work 25/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Retry metadata (0)", exact: true })).toBeDisabled();
+  // Without a selection the selection bar gives way to the pagination.
+  await expect(page.getByRole("button", { name: /^Retry metadata/ })).toHaveCount(0);
   await list.getByRole("checkbox", { name: `Select ${syntheticWorkCode("RJ", 25)}`, exact: true }).click();
   await page.getByRole("searchbox", { name: "Search metadata", exact: true }).fill(syntheticWorkCode("RJ", 0));
   await page.getByRole("searchbox", { name: "Search metadata", exact: true }).press("Enter");
   await expect(list.getByRole("checkbox", { name: /^Select RJ/ })).toHaveCount(1);
   await expect(list.getByRole("link", { name: /Synthetic work 0/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Retry metadata (0)", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Retry metadata/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Previous page", exact: true }).first()).toBeDisabled();
 });
 
@@ -446,7 +447,7 @@ test("work maintenance keeps source actions scoped and metadata settings separat
   await page.getByRole("button", { name: "Check sources (2)", exact: true }).click();
   expect(checked).toEqual([1, 3]);
   await page.getByRole("tab", { name: "Metadata issues", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Retry metadata (0)", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Retry metadata/ })).toHaveCount(0);
   const row = list.getByRole("row").filter({ hasText: "Example mixed work" });
   await expect(row.getByText("No available source", { exact: true })).toBeVisible();
   await expect(row.getByText("Metadata issues", { exact: true })).toBeVisible();
@@ -454,7 +455,7 @@ test("work maintenance keeps source actions scoped and metadata settings separat
   await expect(row.getByRole("button", { name: `Retry ${syntheticWorkCode("RJ", 1)}`, exact: true })).toBeEnabled();
   await page.getByRole("tab", { name: "No available source", exact: true }).click();
   await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
-  await list.getByRole("button", { name: "Delete local information", exact: true }).click();
+  await page.getByRole("button", { name: "Delete local information (2)", exact: true }).click();
   const dialog = page.getByRole("alertdialog", { name: "Delete local work information?" });
   await expect(dialog).toBeVisible();
   expect(deleted).toEqual([]);
@@ -551,16 +552,24 @@ for (const viewport of ["mobile", "@desktop"]) {
     );
     await expect(list.getByRole("link", { name: "Example healthy work", exact: true })).toHaveCount(0);
     await expect(list.getByRole("link", { name: "Example missing-source work", exact: true })).toBeVisible();
-    // The view rail sits beside the header, so wide layouts keep search inline; phones start behind its icon.
+    // The view rail sits beside the header, so wide layouts keep search inline; the narrowest
+    // phones start behind its icon.
     if (viewport === "mobile") {
+      await page.setViewportSize({ width: 320, height: 760 });
       const searchToggle = page.getByRole("button", { name: "Search metadata", exact: true });
       await expect(searchToggle).toHaveAttribute("aria-expanded", "false");
       await searchToggle.click();
       await expect(page.getByRole("searchbox", { name: "Search metadata", exact: true })).toBeFocused();
     } else {
       await expect(page.getByRole("button", { name: "Search metadata", exact: true })).toHaveCount(0);
-      // Wide layouts name the current view beside the search field.
-      await expect(page.getByRole("heading", { level: 2, name: "Needs attention", exact: true })).toBeVisible();
+      // Wide layouts start with the views in a row that names the open one; the column
+      // rail leaves it unnamed, so the header names it beside the search field.
+      const heading = page.getByRole("heading", { level: 2, name: "Needs attention", exact: true });
+      await expect(heading).toBeHidden();
+      await page.getByRole("button", { name: "Show tabs beside", exact: true }).click();
+      await expect(heading).toBeVisible();
+      await page.getByRole("button", { name: "Show tabs above", exact: true }).click();
+      await expect(heading).toBeHidden();
     }
     await page.getByRole("searchbox", { name: "Search metadata", exact: true }).fill("Example");
     await page.getByRole("searchbox", { name: "Search metadata", exact: true }).press("Enter");
@@ -620,13 +629,12 @@ test("@desktop Metadata table shows management columns, edits a work in place, a
 
   await page.goto("/metadata");
   const list = page.getByRole("region", { name: "Metadata records", exact: true });
-  await expect(list.getByRole("columnheader")).toHaveText(["", "Work", "Circle", "Metadata", "Source", "Actions"]);
+  await expect(list.getByRole("columnheader")).toHaveText(["", "Work", "Metadata", "Source", "Actions"]);
   const row = list.getByRole("row").filter({ hasText: "Example healthy work" });
   await expect(row.getByRole("cell")).toHaveText([
     /^$/,
-    new RegExp(`${code}Example healthy work`),
-    "Example Circle",
-    "OK",
+    `Example healthy work${code}·Example Circle`,
+    "Complete",
     "Local",
     "",
   ]);
@@ -810,3 +818,73 @@ test("@desktop Metadata Custom works lists custom works apart from catalog views
   await expect(page).toHaveURL(/\/metadata\?reason=custom$/);
   await expect(row).toBeVisible();
 });
+
+for (const viewport of ["mobile", "@desktop"]) {
+  test(`${viewport} Metadata rail counts the views and the inspector recovers one work`, async ({ page }) => {
+    await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+      authenticated: true,
+      permissions: ["library:read", "sources:write", "metadata:sync"],
+    });
+    const code = syntheticWorkCode("RJ", 0);
+    let record: MaintenanceWork = {
+      ...work,
+      id: 1,
+      primaryCode: code,
+      title: "Example inspected work",
+      circle: "Example Circle",
+      releaseDate: "2026-01-02",
+      series: "Example Series",
+      voiceActors: ["Example Voice"],
+      tags: ["Example Tag"],
+      noSource: false,
+      sourceTier: "remote",
+      metadataIssues: [],
+      metadataNotSynced: true,
+      metadataSyncing: false,
+    };
+    let countRequests = 0;
+    await page.route("**/api/maintenance/works/counts", (route) => {
+      countRequests++;
+      return route.fulfill({
+        json: { catalog: 4, all: 3, metadata: 2, noSource: 1, custom: 0 } satisfies ApiResponse<"getMaintenanceCounts">,
+      });
+    });
+    await page.route("**/api/maintenance/works?*", (route) =>
+      route.fulfill({ json: { works: [record], page: 1, pageSize: 25, total: 1 } satisfies MaintenanceWorkPage }),
+    );
+    const retries: number[][] = [];
+    await page.route("**/api/metadata/issues/retry", async (route) => {
+      const { workIds } = route.request().postDataJSON() as { workIds: number[] };
+      retries.push(workIds);
+      record = { ...record, metadataSyncing: true };
+      await route.fulfill({
+        status: 202,
+        json: { queued: workIds.length, skipped: 0, failed: 0 } satisfies ApiResponse<"retryMetadataIssues">,
+      });
+    });
+    await page.goto("/metadata?reason=all");
+    const tabs = page.getByRole("tablist", { name: "Metadata views" });
+    // Counts describe the views without changing their names.
+    await expect(tabs.getByRole("tab", { name: "Metadata issues", exact: true })).toHaveAccessibleDescription(
+      /2 works/,
+    );
+    await expect(tabs.getByRole("tab", { name: "Custom works", exact: true })).toHaveAccessibleDescription(/0 works/);
+
+    const list = page.getByRole("region", { name: "Metadata records", exact: true });
+    await list.getByRole("button", { name: `Inspect ${code}`, exact: true }).click();
+    // Wide screens keep the inspector beside the table; phones open it as a sheet.
+    const inspector = page.getByRole(viewport === "mobile" ? "dialog" : "complementary", {
+      name: "Example inspected work",
+    });
+    for (const fact of ["2026-01-02", "Example Series", "Example Voice", "Example Tag", "Not synced", "Remote"])
+      await expect(inspector).toContainText(fact);
+    await inspector.getByRole("button", { name: "Retry metadata", exact: true }).click();
+    expect(retries).toEqual([[1]]);
+    await expect(inspector).toContainText("Sync queued or running");
+    await expect(inspector.getByRole("button", { name: "Retry metadata", exact: true })).toHaveCount(0);
+    // A recovery may move works between views, so the counts reload.
+    await expect.poll(() => countRequests).toBeGreaterThan(1);
+    await inspector.getByRole("button", { name: "Close inspector", exact: true }).click();
+    await expect(inspector).toHaveCount(0);
+  });
+}

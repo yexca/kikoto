@@ -24,10 +24,11 @@ export function useRailLabelsShown(storageKey: string, fallback: boolean) {
 export type RailOrientation = "vertical" | "horizontal";
 
 /** Remembers whether a wide page rail stands beside its page or runs as a row above it. */
-export function useRailOrientation(storageKey: string) {
-  const [orientation, setOrientation] = useState<RailOrientation>(() =>
-    localStorage.getItem(storageKey) === "horizontal" ? "horizontal" : "vertical",
-  );
+export function useRailOrientation(storageKey: string, fallback: RailOrientation = "vertical") {
+  const [orientation, setOrientation] = useState<RailOrientation>(() => {
+    const stored = localStorage.getItem(storageKey);
+    return stored === "horizontal" || stored === "vertical" ? stored : fallback;
+  });
   const toggle = () => {
     setOrientation((current) => {
       const next = current === "vertical" ? "horizontal" : "vertical";
