@@ -657,9 +657,10 @@ test("administrators see administration tabs after the personal tabs in one list
   await expect(page).toHaveURL(/\/settings$/);
 });
 
-test("@desktop the Settings rail names every tab by default and remembers hiding them", async ({ page }) => {
+test("@desktop the Settings column rail names every tab and remembers hiding them", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings");
+  await page.getByRole("button", { name: "Show tabs beside", exact: true }).click();
   const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
   const name = tabs.getByRole("tab", { name: "Recommendations", exact: true }).getByText("Recommendations");
   const nameWidth = async () => (await name.boundingBox())?.width ?? 0;
@@ -676,15 +677,10 @@ test("@desktop the Settings rail names every tab by default and remembers hiding
   await expect(page.getByRole("button", { name: "Hide tab names", exact: true })).toBeVisible();
 });
 
-test("@desktop the Settings tabs can move into a row above the content and back", async ({ page }) => {
+test("@desktop the Settings tabs start in a row above the content and can move beside it", async ({ page }) => {
   await mockCacheSettings(page, () => undefined);
   await page.goto("/settings?tab=library");
   const tabs = page.getByRole("tablist", { name: "Settings", exact: true });
-  await expect(tabs).toHaveAttribute("aria-orientation", "vertical");
-
-  await page.getByRole("button", { name: "Show tabs above", exact: true }).click();
-  await expect(tabs).toHaveAttribute("aria-orientation", "horizontal");
-  await page.reload();
   await expect(tabs).toHaveAttribute("aria-orientation", "horizontal");
   await expect(page.getByRole("button", { name: "Hide tab names", exact: true })).toHaveCount(0);
 
@@ -719,6 +715,10 @@ test("@desktop the Settings tabs can move into a row above the content and back"
 
   await page.getByRole("button", { name: "Show tabs beside", exact: true }).click();
   await expect(tabs).toHaveAttribute("aria-orientation", "vertical");
+  await page.reload();
+  await expect(tabs).toHaveAttribute("aria-orientation", "vertical");
+  await page.getByRole("button", { name: "Show tabs above", exact: true }).click();
+  await expect(tabs).toHaveAttribute("aria-orientation", "horizontal");
 });
 
 test("personal playback seek intervals use the requested defaults and persist locally", async ({ page }) => {
@@ -871,11 +871,12 @@ test("users mounts before settings and a one-user result does not collapse the p
 });
 
 for (const layout of ["mobile", "@desktop"]) {
-  // Compact layouts keep every section in one scrollable row; wide layouts stack them in a column.
+  // Compact layouts keep every section in one scrollable row; the wide column stacks them.
   const orientation = layout === "mobile" ? "horizontal" : "vertical";
   test(`${layout} Settings sections stay in one ${orientation} list`, async ({ page }) => {
     await mockCacheSettings(page, () => undefined);
     await page.goto("/settings?tab=library");
+    if (orientation === "vertical") await page.getByRole("button", { name: "Show tabs beside", exact: true }).click();
     const navigation = page.getByRole("tablist", { name: "Settings", exact: true });
     await expect(navigation.getByRole("tab", { name: "Library", exact: true })).toHaveAttribute(
       "aria-selected",

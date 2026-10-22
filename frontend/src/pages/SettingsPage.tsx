@@ -125,7 +125,7 @@ export function SettingsPage({
     backward: String(seekPreferences.seekBackwardSeconds),
   }));
   const [seekError, setSeekError] = useState<string | null>(null);
-  const [railOrientation, toggleRailOrientation] = useRailOrientation("kikoto:settings-rail-orientation");
+  const [railOrientation, toggleRailOrientation] = useRailOrientation("kikoto:settings-rail-orientation", "horizontal");
   // Demo shows every administration surface read-only even though its identity
   // is not an administrator; the server rejects every write.
   const canViewAdministration = readOnly || user.role === "admin" || user.role === "super_admin";

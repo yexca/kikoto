@@ -72,6 +72,9 @@
 <details>
 <summary><strong>Interface</strong></summary>
 
+- On wide screens Settings starts with its tabs as a row above the settings,
+  as Metadata does; **Show tabs beside** returns them to the column, and
+  Settings remembers the choice.
 - On touch screens, About's License link no longer takes taps and scrolls
   across the page, so it stops highlighting during a scroll and the reference
   project links open their own pages. The library sort button keeps its

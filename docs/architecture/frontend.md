@@ -263,17 +263,17 @@ seeking, and screen lyrics share one timeline.
   Recommendations, which shows recommendation activity above recommendation
   tuning; and personal tags) followed, after a divider, by the Library,
   Cache & Fetch, Proxy, LLM & ASR, Cleanup, and Users administration tabs, which share an
-  Administration accessible description. Wide layouts show a sticky vertical
-  rail of icons; compact layouts show one row of icons that scrolls only
-  sideways, with only the active tab labelled, and keep the active tab in
-  view. Every tab keeps its label as the accessible name and tooltip. A toggle
-  below the wide rail shows or hides the labels beside the icons; labels show
-  by default, and Settings, Metadata, Favorites, and the Workflows list each
-  store their own choice locally. Settings also offers a wide-layout row above
+  Administration accessible description. Wide layouts start with a row above
   the content that names as much as fits on one line (every tab, then the
   selected tab's divider-bounded group beside the other group's icons, then
-  only the selected tab) and wraps instead of scrolling; the
-  orientation is stored locally as well. Section headings are plain text,
+  only the selected tab) and wraps instead of scrolling; a toggle at its end
+  switches to a sticky vertical rail of icons, and the orientation is stored
+  locally. Compact layouts show one row of icons that scrolls only sideways,
+  with only the active tab labelled, and keep the active tab in view. Every
+  tab keeps its label as the accessible name and tooltip. A toggle below the
+  wide vertical rail shows or hides the labels beside the icons; labels show
+  by default, and Settings, Metadata, Favorites, and the Workflows list each
+  store their own choice locally. Section headings are plain text,
   and a switch or number field stays beside its label even on a phone.
   Personal tags manage account-owned work, circle, and voice tags; data
   transfer offers personal JSON export and previewed import from a Kikoto or
@@ -303,7 +303,7 @@ seeking, and screen lyrics share one timeline.
   `?view=custom`, `?view=translation`, `?view=tags`, `?view=circles`, and
   `?view=aliases&voice=<id>` select those views. The shared icon rail shows group headings when expanded and
   accessible group descriptions at all sizes. Wide layouts start with the
-  rail as the same row above the content that Settings offers
+  rail as the same row above the content that Settings uses
   (`useRailOrientation` takes each page's default), and the view heading
   beside the search shows only with the column rail, since the row names the
   open view. Rail items for the work views
