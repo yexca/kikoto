@@ -251,7 +251,9 @@ never removes a remaining no-source reason. Search reuses Library semantics.
 restricts it to unresolved metadata issues associated with that run. Recovery
 queues a family sync for a selected not-synced family as for a pending issue. Every
 reason except `reason=custom` leaves out custom works; `reason=custom` lists
-every custom work family, with its no-source state, and nothing else.
+every custom work family, with its no-source state, and nothing else. `/api/maintenance/works/counts` counts the families of the catalog, attention,
+metadata, no-source, and custom views under the same permissions, leaving out
+a view the caller may not open.
 `/api/metadata/translation-coverage` pages every family, catalog and custom,
 with the same search and narrows it to the parts missing in one target
 language. It reads stored editions, manual titles, accepted LLM translations,

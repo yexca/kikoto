@@ -92,7 +92,7 @@ export function WorkSelectionBar({
         <X className="h-4 w-4" />
       </Button>
       {children && (
-        <div className="order-3 flex w-full items-center gap-1.5 px-1 pb-1 sm:order-2 sm:ml-auto sm:w-auto sm:p-0 [&>*]:flex-1 sm:[&>*]:flex-none">
+        <div className="order-3 flex w-full flex-wrap items-center gap-1.5 px-1 pb-1 sm:order-2 sm:ml-auto sm:w-auto sm:p-0 [&>*]:flex-1 sm:[&>*]:flex-none">
           {children}
         </div>
       )}

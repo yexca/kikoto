@@ -302,7 +302,19 @@ seeking, and screen lyrics share one timeline.
   `library:write`; voice aliases retain `metadata:sync`. The URLs
   `?view=custom`, `?view=translation`, `?view=tags`, `?view=circles`, and
   `?view=aliases&voice=<id>` select those views. The shared icon rail shows group headings when expanded and
-  accessible group descriptions at all sizes. The page's Metadata settings
+  accessible group descriptions at all sizes. Wide layouts start with the
+  rail as the same row above the content that Settings offers
+  (`useRailOrientation` takes each page's default), and the view heading
+  beside the search shows only with the column rail, since the row names the
+  open view. Rail items for the work views
+  carry counts from `/api/maintenance/works/counts` as `IconRail` badges,
+  read as descriptions so the tab names stay the labels; the page reloads
+  them after the work table reports a change. `WorkMaintenance` keeps
+  selection actions in the shared `WorkSelectionBar`, which replaces the upper
+  pagination while works are selected, and opens `WorkInspector` for a
+  pressed row from the loaded row alone: an `aside` beside the table from
+  1280px, where the rows fold their states under the title, and a sheet
+  below it. The page's Metadata settings
   popover holds the DLsite proxy shortcut and
   links to Settings → Library (creator catalog freshness) and to the
   Metadata sync Run options (remote metadata fallback). The Tags table is

@@ -8,16 +8,18 @@ import type { MetadataIssueWork } from "@/lib/api";
 export function MetadataIssueDetails({
   items,
   disabled,
+  defaultOpen = false,
   onRetry,
 }: {
   items: MetadataIssueWork[];
   disabled: boolean;
+  defaultOpen?: boolean;
   onRetry: (ids: number[]) => void;
 }) {
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
   return (
-    <details className="group mt-1.5 text-xs">
+    <details className="group mt-1.5 text-xs" open={defaultOpen || undefined}>
       <summary className="-ml-0.5 inline-flex min-h-11 cursor-pointer list-none items-center gap-1 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-6 [&::-webkit-details-marker]:hidden">
         <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" aria-hidden="true" />
         {t("workMaintenance.details", { count: items.length })}

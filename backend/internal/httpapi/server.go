@@ -431,6 +431,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/workflow-runs", s.listWorkflowRuns)
 	mux.HandleFunc("GET /api/metadata/issues", s.listMetadataIssues)
 	mux.HandleFunc("GET /api/maintenance/works", s.listWorkMaintenance)
+	mux.HandleFunc("GET /api/maintenance/works/counts", s.countWorkMaintenance)
 	mux.HandleFunc("GET /api/metadata/translation-coverage", s.listTranslationCoverage)
 	mux.HandleFunc("POST /api/metadata/issues/retry", s.retryMetadataIssues)
 	mux.HandleFunc("GET /api/workflow-runs/{id}", s.getWorkflowRun)

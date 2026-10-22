@@ -327,3 +327,34 @@ func TestWorkMaintenanceRanksSourceTiers(t *testing.T) {
 		}
 	}
 }
+
+// The view counts match the lists each view returns and leave out a view the
+// caller may not open.
+func TestWorkMaintenanceCountsFollowViewPermissions(t *testing.T) {
+	db := openMigratedTestDB(t)
+	s := NewServer(db, config.Config{})
+	seedMetadataIssue(t, db, 0)
+	if _, err := db.Exec(`INSERT INTO work(primary_code,title) VALUES (?, 'Source-only work'), (?, 'Synthetic custom work');
+ INSERT INTO work_metadata_provider_state(work_id,provider_id,status) SELECT 2,id,'available' FROM metadata_provider WHERE code='dlsite'`,
+		testfixture.WorkCode(testfixture.PrefixRJ, 1), testfixture.WorkCode(testfixture.PrefixKT, 1)); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		permissions []string
+		status      int
+		want        string
+	}{
+		{[]string{"library:read"}, 403, ""},
+		{[]string{"metadata:sync"}, 200, `{"catalog":2,"all":1,"metadata":1,"custom":1}`},
+		{[]string{"sources:write"}, 200, `{"catalog":2,"all":2,"noSource":2,"custom":1}`},
+		{[]string{"metadata:sync", "sources:write"}, 200, `{"catalog":2,"all":2,"metadata":1,"noSource":2,"custom":1}`},
+	} {
+		response := metadataRequest(s.countWorkMaintenance, http.MethodGet, "/api/maintenance/works/counts", "", tc.permissions...)
+		if response.Code != tc.status {
+			t.Fatalf("%v: %d %s", tc.permissions, response.Code, response.Body)
+		}
+		if tc.status == 200 && strings.TrimSpace(response.Body.String()) != tc.want {
+			t.Fatalf("%v: counts=%s want %s", tc.permissions, response.Body, tc.want)
+		}
+	}
+}
