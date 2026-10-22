@@ -629,14 +629,16 @@ test("restores cached mobile detail workspaces through bottom navigation history
 // server serves the same module instance, so a test can turn it on in a browser.
 async function useInAppBackStack(page: Page) {
   await page.evaluate(async () => {
-    const history = (await import("/src/lib/browserHistory.ts")) as { enableInAppBackStack(enabled: boolean): void };
+    const historyModule = "/src/lib/browserHistory.ts";
+    const history = (await import(historyModule)) as { enableInAppBackStack(enabled: boolean): void };
     history.enableInAppBackStack(true);
   });
 }
 
 async function inAppBack(page: Page) {
   return page.evaluate(async () => {
-    const history = (await import("/src/lib/browserHistory.ts")) as { navigateInAppBack(): boolean };
+    const historyModule = "/src/lib/browserHistory.ts";
+    const history = (await import(historyModule)) as { navigateInAppBack(): boolean };
     return history.navigateInAppBack();
   });
 }
