@@ -66,9 +66,22 @@ export async function verifyProductionBrowser(baseURL, fixtures, signal) {
     await expect(audio).toHaveJSProperty("error", null);
 
     // Raw AAC must provide a finite timeline, real seeks and natural queue
-    // advancement through the production compatibility response.
+    // advancement through the production HLS conversion. Chromium plays it
+    // through hls.js, so the element's source is a blob: URL; the converted
+    // playlist and segment responses identify the delivery instead.
+    const aacHLSResponse = (file) =>
+      page.waitForResponse((response) => {
+        const { pathname } = new URL(response.url());
+        return (
+          pathname.startsWith(`/api/media/${aacLocationId}/hls/`) &&
+          file.test(pathname.slice(pathname.lastIndexOf("/") + 1))
+        );
+      });
+    const aacPlaylist = aacHLSResponse(/^index\.m3u8$/);
+    const aacSegment = aacHLSResponse(/^segment-\d{6}\.ts$/);
     await page.getByText("01-example.aac", { exact: true }).click();
-    await expect.poll(audioPath).toBe(`/api/media/${aacLocationId}/stream`);
+    expect((await aacPlaylist).status()).toBe(200);
+    expect((await aacSegment).status()).toBe(200);
     await expect
       .poll(
         () =>
@@ -229,7 +242,7 @@ export async function verifyProductionBrowser(baseURL, fixtures, signal) {
     ).toBe(false);
     await download.delete();
     console.log(
-      "Production browser smoke passed: login, WAV playback, AAC duration/seeks/ended queue advancement, and AVI HLS decoding/seeking/reopening.",
+      "Production browser smoke passed: login, WAV playback, AAC HLS duration/seeks/ended queue advancement, and AVI HLS decoding/seeking/reopening.",
     );
   } finally {
     clearTimeout(timeout);
