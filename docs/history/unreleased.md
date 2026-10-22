@@ -137,5 +137,8 @@
 - A daily `Dependency Audit` workflow runs `govulncheck`, `npm audit`, and
   `npm audit signatures` against `main` through the new
   `make dependency-audit` target.
+- The build toolchain is updated to Node.js 24.22.1 with npm 11.19.1, which
+  carry the October Node.js security fixes and distrust a compromised
+  intermediate certificate authority.
 
 </details>

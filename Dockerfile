@@ -1,7 +1,7 @@
 # Both build stages run on the builder's own platform: the web assets are
 # platform-independent and Go cross-compiles, so a multi-platform build
 # emulates only the runtime stage.
-FROM --platform=$BUILDPLATFORM node:24.19.0@sha256:934240a162082fd8b8a2f90cd5114446443f1eba1c5378f6687167ca405e6584 AS frontend-build
+FROM --platform=$BUILDPLATFORM node:24.22.1@sha256:6449e19d8184d84062525b6a7524def03146c2cb04a7f08b076680d0e8e4240a AS frontend-build
 
 WORKDIR /src/frontend
 COPY frontend/package*.json frontend/.npmrc ./
