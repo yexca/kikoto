@@ -2034,8 +2034,11 @@ test("activity deep links load a run outside the visible list page", async ({ pa
   await page.goto("/activity?run=99");
 
   await expect(page).toHaveURL(/\/workflows\?.*run=99/);
-  await expect(page.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true })).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "Activity", exact: true })).toBeVisible();
+  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  await expect(
+    activity.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true }),
+  ).toBeVisible();
+  await expect(activity.getByText("#99", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open full Activity", exact: true })).toHaveCount(0);
 });
 
