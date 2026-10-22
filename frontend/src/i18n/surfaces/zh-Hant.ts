@@ -3062,6 +3062,7 @@ export const surfaceHant = {
     voiceCount_other: "{{count}} 位聲優",
     listened: "已聽完",
     listenedOf: "已聽完 {{listened}} / {{total}}",
+    listenedPercent: "已聽完 {{percent}}%",
     listeningCount_one: "{{count}} 部在聽",
     listeningCount_other: "{{count}} 部在聽",
     allStatuses: "全部",

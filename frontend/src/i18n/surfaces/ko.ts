@@ -3183,6 +3183,7 @@ export const surfaceKorean = {
     voiceCount_other: "성우 {{count}}명",
     listened: "다 들음",
     listenedOf: "{{total}}개 중 {{listened}}개 다 들음",
+    listenedPercent: "{{percent}}% 다 들음",
     listeningCount_one: "{{count}}개 듣는 중",
     listeningCount_other: "{{count}}개 듣는 중",
     allStatuses: "전체",

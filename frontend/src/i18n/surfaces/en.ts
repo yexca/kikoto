@@ -3246,6 +3246,7 @@ export const surfaceEnglish = {
     voiceCount_other: "{{count}} voice actors",
     listened: "Listened",
     listenedOf: "{{listened}} of {{total}} listened",
+    listenedPercent: "{{percent}}% listened",
     listeningCount_one: "{{count}} in progress",
     listeningCount_other: "{{count}} in progress",
     allStatuses: "All",

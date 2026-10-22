@@ -149,7 +149,6 @@ export function FavoriteSortControls({
   value,
   direction,
   disabled,
-  compact = false,
   onChange,
   onDirectionChange,
   onReshuffle,
@@ -157,7 +156,6 @@ export function FavoriteSortControls({
   value: FavoriteSort;
   direction: SortDirection;
   disabled: boolean;
-  compact?: boolean;
   onChange: (value: FavoriteSort) => void;
   onDirectionChange: (value: SortDirection) => void;
   onReshuffle: () => void;
@@ -183,10 +181,7 @@ export function FavoriteSortControls({
       <div className="inline-flex h-8 shrink-0 items-center rounded-[var(--control-radius)] border bg-background">
         <button
           type="button"
-          className={cn(
-            "inline-flex h-full items-center gap-1.5 rounded-l-[var(--control-radius)] px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
-            compact ? "w-8 justify-center px-0" : "min-w-0 max-w-44",
-          )}
+          className="inline-flex h-full min-w-0 max-w-44 items-center gap-1.5 rounded-l-[var(--control-radius)] px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
           disabled={disabled}
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}
@@ -194,7 +189,7 @@ export function FavoriteSortControls({
           title={t("library.sortLabel", { label })}
         >
           <ArrowUpDown className="h-3.5 w-3.5 shrink-0" />
-          {!compact && <span className="truncate text-foreground">{label}</span>}
+          <span className="truncate text-foreground">{label}</span>
         </button>
         <Button
           variant="ghost"

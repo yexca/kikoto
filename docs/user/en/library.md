@@ -215,9 +215,13 @@ your lists, and followed circles and voice actors with their counts. Like the
 Workflows and Settings rails, it can hide its names and keep only icons, and the
 choice is remembered on that device. Each user list can show an icon chosen in
 its editor, which is what tells the lists apart in the icon rail; the list icon
-also appears in the add-to-list menus. Phones show the same shelves as one
-scrollable row. The open shelf has a header with a cover mosaic, its count, how
-many works are finished, and the works you are listening to. Display options
+also appears in the add-to-list menus. The open shelf has a header with a cover
+mosaic, its count, how many works are finished, and the works you are
+listening to. Phones show the same shelves as one scrollable row above a
+one-line header that states the finished share as a percentage. Below it come
+the search field, the named sort beside the resource, display, and selection
+buttons, the listening-status filters as a scrollable chip row, and a caption
+with the result count and page in place of a top page bar. Display options
 switch works between cards and a denser list with each work's resume point.
 
 **Add list** in the shelves and **Edit list** on a list's shelf open one list's

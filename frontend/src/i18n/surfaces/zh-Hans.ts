@@ -3057,6 +3057,7 @@ export const surfaceHans = {
     voiceCount_other: "{{count}} 位声优",
     listened: "已听完",
     listenedOf: "已听完 {{listened}} / {{total}}",
+    listenedPercent: "已听完 {{percent}}%",
     listeningCount_one: "{{count}} 部在听",
     listeningCount_other: "{{count}} 部在听",
     allStatuses: "全部",

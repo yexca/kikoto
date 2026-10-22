@@ -514,7 +514,9 @@ test("the shelf artwork stays while quick mark filters change the works below", 
   expect(await covers()).toEqual(initial);
 });
 
-test("mobile favorites shows shelves as one row above search and icon controls", async ({ page }) => {
+test("mobile favorites stacks shelves, search, labeled sort, and status chips above a result caption", async ({
+  page,
+}) => {
   await mockFavorites(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/favorites");
@@ -565,8 +567,17 @@ test("mobile favorites shows shelves as one row above search and icon controls",
   await mobileListDialog.getByRole("button", { name: "Back", exact: true }).click();
   await mobileListManager.getByRole("button", { name: "Done", exact: true }).click();
 
-  const topPreviousPage = page.getByRole("button", { name: "Previous page" }).first();
-  await expect(topPreviousPage).toBeVisible();
+  // A caption states the result page in place of a top pager, and the status filters scroll as one row.
+  await expect(page.getByText("Page 1 of 2", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Previous page" })).toHaveCount(1);
+  await expect
+    .poll(() =>
+      page.getByRole("group", { name: "Listening status filters" }).evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { overflowX: style.overflowX, overflowY: style.overflowY };
+      }),
+    )
+    .toEqual({ overflowX: "auto", overflowY: "hidden" });
 
   const toolbar = page.locator("[data-toast-avoid]:visible").filter({ has: search }).first();
   const toolbarBox = await toolbar.boundingBox();

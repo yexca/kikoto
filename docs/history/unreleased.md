@@ -78,6 +78,11 @@
   touch area on the button the same way.
 - The phone Favorites shelf strip and the circle and voice filter chips follow
   the theme style's corner radius instead of always drawing pills.
+- On a phone, Favorites reaches its works sooner and reads like the Library:
+  the shelf header fits on one row with the finished share as a percentage,
+  search gets its own row, the sort button names the current order, the
+  listening-status filters scroll as one chip row instead of being cut off,
+  and a caption with the result count and page replaces the top page bar.
 - The account menu behind the avatar drops its **Your data** shortcut;
   **Your data** stays at the end of **Settings → Account** and in Quick
   actions.

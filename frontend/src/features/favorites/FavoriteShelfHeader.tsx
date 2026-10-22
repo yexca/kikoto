@@ -26,6 +26,7 @@ export function FavoriteShelfHeader({
   covers,
   progress,
   actions,
+  compact = false,
 }: {
   kind: FavoriteHeaderKind;
   /** A user list's chosen icon, in place of the default list icon. */
@@ -39,9 +40,43 @@ export function FavoriteShelfHeader({
   covers: string[];
   progress?: FavoriteShelfProgress | null;
   actions?: ReactNode;
+  /**
+   * The phone header: a single row beside small artwork. The shelf strip above
+   * already names the shelf kind, so the eyebrow folds into the stats line.
+   */
+  compact?: boolean;
 }) {
   const { t } = useTranslation();
   const Icon = listIcon ?? kindIcons[kind];
+  if (compact) {
+    return (
+      <header className="flex items-center gap-3">
+        <ShelfArtwork kind={kind} icon={Icon} covers={covers} compact />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1">
+            <h2 className="min-w-0 truncate text-lg font-semibold leading-7 tracking-tight" title={title}>
+              {title}
+            </h2>
+            {actions}
+          </div>
+          {/* One line is always reserved, so switching shelves never moves the results below. */}
+          <p className="min-h-4 truncate text-xs leading-4 text-muted-foreground" title={description || undefined}>
+            {eyebrowOverride && <span className="font-medium text-primary">{eyebrowOverride}</span>}
+            {eyebrowOverride && description && " · "}
+            {description}
+          </p>
+          <div className="mt-1.5 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+            {countLabel === null ? (
+              <span className="h-3 w-16 animate-pulse rounded bg-muted" aria-hidden="true" />
+            ) : (
+              <span className="shrink-0 font-medium text-foreground">{countLabel}</span>
+            )}
+            {progress && progress.total > 0 && <ShelfListenedMeter progress={progress} compact />}
+          </div>
+        </div>
+      </header>
+    );
+  }
   const eyebrow =
     eyebrowOverride ??
     (kind === "all"
@@ -86,11 +121,12 @@ export function FavoriteShelfHeader({
   );
 }
 
-function ShelfListenedMeter({ progress }: { progress: FavoriteShelfProgress }) {
+/** Compact fills the rest of its row and states the share listened as a percentage. */
+function ShelfListenedMeter({ progress, compact = false }: { progress: FavoriteShelfProgress; compact?: boolean }) {
   const { t } = useTranslation();
   const label = t("favorites.listenedOf", { listened: progress.listened, total: progress.total });
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className={cn("inline-flex items-center gap-2", compact && "min-w-0 flex-1")} title={label}>
       <span
         role="meter"
         aria-label={t("favorites.listened")}
@@ -98,25 +134,43 @@ function ShelfListenedMeter({ progress }: { progress: FavoriteShelfProgress }) {
         aria-valuemax={progress.total}
         aria-valuenow={progress.listened}
         aria-valuetext={label}
-        className="relative h-1.5 w-20 overflow-hidden rounded-full bg-muted sm:w-28"
+        className={cn(
+          "relative h-1.5 overflow-hidden rounded-full bg-muted",
+          compact ? "min-w-8 flex-1" : "w-20 sm:w-28",
+        )}
       >
         <span
           className="absolute inset-y-0 left-0 rounded-full bg-success transition-[width] duration-500 motion-reduce:transition-none"
           style={{ width: `${progress.percent}%` }}
         />
       </span>
-      <span className="tabular-nums">{label}</span>
+      <span className="shrink-0 tabular-nums">
+        {compact ? t("favorites.listenedPercent", { percent: progress.percent }) : label}
+      </span>
     </span>
   );
 }
 
 /** Shelf artwork: a cover mosaic for works shelves, a quiet icon tile otherwise. */
-function ShelfArtwork({ kind, icon: Icon, covers }: { kind: FavoriteHeaderKind; icon: LucideIcon; covers: string[] }) {
-  const tile = "h-20 w-20 shrink-0 overflow-hidden rounded-[var(--radius)] sm:h-28 sm:w-28";
+function ShelfArtwork({
+  kind,
+  icon: Icon,
+  covers,
+  compact = false,
+}: {
+  kind: FavoriteHeaderKind;
+  icon: LucideIcon;
+  covers: string[];
+  compact?: boolean;
+}) {
+  const tile = cn(
+    "shrink-0 overflow-hidden",
+    compact ? "h-16 w-16 rounded-[calc(var(--radius)-2px)]" : "h-20 w-20 rounded-[var(--radius)] sm:h-28 sm:w-28",
+  );
   if (kind === "circles" || kind === "voices" || covers.length === 0) {
     return (
       <div className={cn(tile, "grid place-items-center border bg-primary/5 text-primary")} aria-hidden="true">
-        <Icon className="h-8 w-8 sm:h-10 sm:w-10" strokeWidth={1.5} />
+        <Icon className={compact ? "h-7 w-7" : "h-8 w-8 sm:h-10 sm:w-10"} strokeWidth={1.5} />
       </div>
     );
   }

@@ -228,6 +228,10 @@ Mobile:
   mark filters in horizontally scrollable chip rows, labels the sort control
   with the current order, and states the result count and page as a caption
   above the works instead of a top pager.
+- The phone Favorites shelf follows the same order below its shelf row and a
+  one-line shelf header: search, the labeled sort with the view utilities at
+  the row's end, listening-status chips in a horizontally scrollable row, and
+  the result caption.
 - Large touch targets.
 - Text inputs, textareas, and selects use at least 16px text on coarse
   pointers so iOS WebKit never zooms into a focused control. The viewport keeps
