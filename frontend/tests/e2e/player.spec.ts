@@ -1,4 +1,4 @@
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import type { PlaybackReport } from "../../src/lib/playbackReportApi";
 import { playbackReportResultFixture } from "./fixtures/playback-reports";
 import {
@@ -31,6 +31,19 @@ function serveSeekableAudio(route: Route, media: Buffer, headers: Record<string,
     },
     body: media.subarray(start, end + 1),
   });
+}
+
+// Each locator tap waits for actionability first, which on a slow runner can
+// push two taps outside the cover's 360 ms double-tap window. Wait for the
+// target once, then tap the same point twice.
+async function doubleTap(page: Page, target: Locator) {
+  await target.tap({ trial: true });
+  const box = await target.boundingBox();
+  expect(box).not.toBeNull();
+  const x = box!.x + box!.width / 2;
+  const y = box!.y + box!.height / 2;
+  await page.touchscreen.tap(x, y);
+  await page.touchscreen.tap(x, y);
 }
 
 function servePreparedAudio(route: Route, media: Buffer) {
@@ -100,9 +113,7 @@ test("full player collapses from the upper content area and double-tapping its c
   fullPlayer = page.locator("section.fixed.inset-0");
   await expect(fullPlayer).toBeVisible();
   const cover = fullPlayer.getByRole("button", { name: "Open work detail" });
-  await cover.tap();
-  await page.waitForTimeout(100);
-  await cover.tap();
+  await doubleTap(page, cover);
   await expect(page).toHaveURL(/\/RJ00000000$/);
   await expect(fullPlayer).toBeHidden();
 });
@@ -115,9 +126,7 @@ test("double-tapping the cover opens the work in the destination its playback st
   await page.getByText("Test track.wav", { exact: true }).click();
   const fullPlayer = page.locator("section.fixed.inset-0");
   const cover = fullPlayer.getByRole("button", { name: "Open work detail" });
-  await cover.tap();
-  await page.waitForTimeout(100);
-  await cover.tap();
+  await doubleTap(page, cover);
 
   await expect(page).toHaveURL(/\/RJ00000000$/);
   await expect(page.getByTestId("directory-file-row").first()).toBeVisible();
@@ -170,8 +179,7 @@ test("entering a playing work opens the current track folder", async ({ page }) 
   await expect(fullPlayer.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   const cover = fullPlayer.getByRole("button", { name: "Open work detail" });
   holdRuntimeSettings = true;
-  await cover.tap();
-  await cover.tap();
+  await doubleTap(page, cover);
 
   await expect(page).toHaveURL(/\/RJ00000000$/);
   const breadcrumb = page.getByTestId("directory-breadcrumb-current");

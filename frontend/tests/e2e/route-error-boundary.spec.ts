@@ -120,6 +120,11 @@ test("route render failures preserve the app shell and player", async ({ page })
   await expect
     .poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime))
     .toBeGreaterThanOrEqual(20);
+  // The compact player repeats an overflowing title in an aria-hidden marquee
+  // copy, so find the track through the accessible button name.
+  const compactTrack = page
+    .locator('[data-player-surface="compact"]')
+    .getByRole("button", { name: /Boundary test track\.wav/ });
   const playingElement = await audio.elementHandle();
   expect(playingElement).not.toBeNull();
   const beforeNavigation = await audio.evaluate((element: HTMLAudioElement) => element.currentTime);
@@ -133,7 +138,7 @@ test("route render failures preserve the app shell and player", async ({ page })
   await expect(fallback.getByRole("button", { name: "Retry page" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "About", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Library", exact: true })).toBeVisible();
-  await expect(page.getByText("Boundary test track.wav", { exact: true })).toBeVisible();
+  await expect(compactTrack).toBeVisible();
   expect(await audio.evaluate((element, previous) => element === previous, playingElement)).toBe(true);
   await expect(audio).toHaveJSProperty("paused", false);
   await expect
@@ -146,7 +151,7 @@ test("route render failures preserve the app shell and player", async ({ page })
   await expect(page).toHaveURL("/");
   await expect(fallback).toHaveCount(0);
   await expect(page.locator("footer").getByRole("button", { name: "Library", exact: true })).toBeVisible();
-  await expect(page.getByText("Boundary test track.wav", { exact: true })).toBeVisible();
+  await expect(compactTrack).toBeVisible();
   expect(await audio.evaluate((element, previous) => element === previous, playingElement)).toBe(true);
   await expect(audio).toHaveJSProperty("paused", false);
   await expect

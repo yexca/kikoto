@@ -179,7 +179,10 @@ for (const result of ["success", "database_busy", "logout_failure"] as const) {
         { owner: 1, position: saves[0].position },
       ]);
       expect(sentUnderNewOwner).toBe(false);
-      await page.getByText("Example B track.wav", { exact: true }).click();
+      await page
+        .locator('[data-player-surface="compact"]')
+        .getByRole("button", { name: /Example B track\.wav/ })
+        .click();
       await page.getByRole("button", { name: "Play", exact: true }).click();
       await expect(page.locator("audio")).toHaveJSProperty("paused", false);
       await checkpoint(40);
