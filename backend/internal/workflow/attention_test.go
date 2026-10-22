@@ -99,3 +99,56 @@ func TestAttentionTracksMetadataRecoveryAndViewerReviews(t *testing.T) {
 		t.Fatalf("attention pagination: %#v %v", page, err)
 	}
 }
+
+// A product DLsite reports as not found stops needing attention once a remote
+// source fills the work, while a retryable failure still needs it.
+func TestAttentionSettlesNotFoundFilledByRemoteSource(t *testing.T) {
+	db := openWorkflowTestDB(t)
+	ctx := context.Background()
+	for _, statement := range []string{
+		`INSERT INTO user_account(id,username,role) VALUES(1,'example_admin_a','admin')`,
+		`INSERT INTO workflow_run(id,workflow_code,display_name,status,trigger_type) VALUES(21,'metadata_sync','Example metadata','partial','manual')`,
+		`INSERT INTO metadata_sync_attempt(id) VALUES(2)`,
+		`INSERT INTO metadata_sync_attempt_run(attempt_id,workflow_run_id) VALUES(2,21)`,
+		`INSERT INTO metadata_provider(code,display_name) VALUES('kikoeru_source_example_remote','Example Remote')`,
+	} {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO work(id,primary_code,title) VALUES(1,?,'Example work')`, testfixture.WorkCode(testfixture.PrefixRJ, 0)); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO metadata_sync_attempt_work(attempt_id,work_id,provider_id,component,status) SELECT 2,1,id,'metadata','unavailable' FROM metadata_provider WHERE code='dlsite'`,
+		`INSERT INTO work_metadata_sync_state(work_id,provider_id,component,attempt_id,status) SELECT 1,id,'metadata',2,'unavailable' FROM metadata_provider WHERE code='dlsite'`,
+	} {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := NewStore(db)
+	pending := func() int64 {
+		t.Helper()
+		result, err := store.ListRuns(ctx, ListRunsOptions{View: "attention", Page: 1, PageSize: 10, ViewerUserID: 1, CanViewAll: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result.Total
+	}
+	if got := pending(); got != 1 {
+		t.Fatalf("not found without metadata: %d", got)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO work_metadata_field_source(work_id,field_name,provider_id) SELECT 1,'title',id FROM metadata_provider WHERE code='kikoeru_source_example_remote'`); err != nil {
+		t.Fatal(err)
+	}
+	if got := pending(); got != 0 {
+		t.Fatalf("remote-filled work still needs attention: %d", got)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE work_metadata_sync_state SET status='failed'`); err != nil {
+		t.Fatal(err)
+	}
+	if got := pending(); got != 1 {
+		t.Fatalf("retryable failure settled: %d", got)
+	}
+}

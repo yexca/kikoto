@@ -194,18 +194,35 @@ func TestRemoteFallbackFillsWorkDLsiteReportsNotFound(t *testing.T) {
 	if len(detail.MetadataView.Variants) != 0 || !strings.Contains(strings.Join(detail.Tags, ","), "Example Tag") || detail.Circle != "Example Circle 20" {
 		t.Fatalf("detail presentation: variants=%+v tags=%v circle=%q", detail.MetadataView.Variants, detail.Tags, detail.Circle)
 	}
-	page, err := metasync.NewIssueStore(f.db).List(context.Background(), metasync.IssueQuery{Page: 1, PageSize: 50})
+	// A work a remote source filled is complete: it leaves the issue list and
+	// the run's pending count, and the catalog names its source.
+	store := metasync.NewIssueStore(f.db)
+	page, err := store.List(context.Background(), metasync.IssueQuery{Page: 1, PageSize: 50})
 	if err != nil {
 		t.Fatal(err)
 	}
-	marked := false
-	for _, item := range page.Items {
-		if item.ProviderCode == "dlsite" && item.WorkID == f.workID {
-			marked = item.FallbackSource == "Example Remote B"
-		}
+	if page.Total != 0 {
+		t.Fatalf("filled work still pending: %+v", page.Items)
 	}
-	if !marked {
-		t.Fatalf("issue list does not name the fallback source: %+v", page.Items)
+	if summary, err := store.ForRun(context.Background(), runID); err != nil || summary.Encountered != 1 || summary.Pending != 0 {
+		t.Fatalf("run issues: %+v %v", summary, err)
+	}
+	readMaintenance := func(reason string) []maintenanceWork {
+		t.Helper()
+		response := metadataRequest(f.server.listWorkMaintenance, http.MethodGet, "/api/maintenance/works?reason="+reason, "", "metadata:sync")
+		var result struct {
+			Works []maintenanceWork `json:"works"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || response.Code != http.StatusOK {
+			t.Fatalf("maintenance %s: %d %s %v", reason, response.Code, response.Body, err)
+		}
+		return result.Works
+	}
+	if works := readMaintenance("metadata"); len(works) != 0 {
+		t.Fatalf("filled work needs attention: %+v", works)
+	}
+	if works := readMaintenance("catalog"); len(works) != 1 || works[0].RemoteMetadataSource != "Example Remote B" || works[0].MetadataNotSynced || len(works[0].MetadataIssues) != 0 {
+		t.Fatalf("catalog row: %+v", works)
 	}
 }
 

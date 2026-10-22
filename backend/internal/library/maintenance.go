@@ -23,8 +23,21 @@ type MaintenanceOptions struct {
 
 type MaintenancePage struct {
 	RawPage
+	// NoSource marks the page's no-source families, only when the options
+	// include the no-source reason.
 	NoSource map[int64]bool
+	// SourceTiers ranks every family on the page: "local" when the Library
+	// counts it as local, "remote" when only another source or location is
+	// available, and "none" when nothing is.
+	SourceTiers map[int64]string
 }
+
+// Source tiers in display order: local and remote are healthy, none is not.
+const (
+	SourceTierLocal  = "local"
+	SourceTierRemote = "remote"
+	SourceTierNone   = "none"
+)
 
 func (s *Store) ListMaintenance(ctx context.Context, options MaintenanceOptions) (MaintenancePage, error) {
 	s.PrepareSearch(ctx, options.Query)
@@ -63,7 +76,7 @@ func (s *Store) ListMaintenance(ctx context.Context, options MaintenanceOptions)
 		where += " AND (" + options.FilterWhere + ")"
 		args = append(args, options.FilterArgs...)
 	}
-	page := MaintenancePage{RawPage: RawPage{Page: options.Page, PageSize: options.PageSize}, NoSource: map[int64]bool{}}
+	page := MaintenancePage{RawPage: RawPage{Page: options.Page, PageSize: options.PageSize}, NoSource: map[int64]bool{}, SourceTiers: map[int64]string{}}
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM work WHERE "+where, args...).Scan(&page.Total); err != nil {
 		return page, err
 	}
@@ -72,7 +85,7 @@ func (s *Store) ListMaintenance(ctx context.Context, options MaintenanceOptions)
 		return page, err
 	}
 	page.Works = works
-	if len(works) == 0 || !options.IncludeNoSource {
+	if len(works) == 0 {
 		return page, nil
 	}
 	ids := make([]any, len(works))
@@ -80,17 +93,27 @@ func (s *Store) ListMaintenance(ctx context.Context, options MaintenanceOptions)
 	for i, work := range works {
 		ids[i], marks[i] = work.ID, "?"
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT work.id FROM work WHERE work.id IN ("+strings.Join(marks, ",")+") AND "+noSourceWhereClause(), ids...)
+	rows, err := s.db.QueryContext(ctx, "SELECT work.id, "+localPresenceWhereClause()+", ("+noSourceWhereClause()+")"+
+		" FROM work WHERE work.id IN ("+strings.Join(marks, ",")+")", ids...)
 	if err != nil {
 		return page, err
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var local, none bool
+		if err := rows.Scan(&id, &local, &none); err != nil {
 			return page, err
 		}
-		page.NoSource[id] = true
+		switch {
+		case local:
+			page.SourceTiers[id] = SourceTierLocal
+		case none:
+			page.SourceTiers[id] = SourceTierNone
+		default:
+			page.SourceTiers[id] = SourceTierRemote
+		}
+		page.NoSource[id] = none && options.IncludeNoSource
 	}
 	return page, rows.Err()
 }

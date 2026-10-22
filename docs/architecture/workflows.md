@@ -233,13 +233,23 @@ DLsite records `not_found` only when every candidate site and locale returned
 an empty product list. If any request failed, the attempt is recorded as a
 retryable failure.
 
-The unified `/api/maintenance/works` read composes current metadata failures
-with the Library's live no-source predicate, then deduplicates and pages by
-family on the server. Edition/provider component details are attached only for
+A pending metadata issue is a failed attempt, or a not-found outcome for a work
+that no remote source has filled. A work a
+[remote metadata fallback](#remote-metadata-fallback) filled is complete: its
+DLsite not-found outcome stays recorded, but it leaves the issue list, run
+pending counts, and Activity attention. A catalog family is not synced while
+none of its editions has a DLsite attempt outcome, provider state, or snapshot.
+
+The unified `/api/maintenance/works` read composes pending metadata issues and
+not-synced catalog families with the Library's live no-source predicate, then
+deduplicates and pages by family on the server. Edition/provider component
+details, the not-synced state with whether its family sync is queued or
+running, and the remote source that filled the family are attached only for
 the selected page. Multiple reasons share one family row; resolving metadata
 never removes a remaining no-source reason. Search reuses Library semantics.
 `reason=metadata` and `reason=no_source` narrow the union. A run filter always
-restricts it to unresolved metadata issues associated with that run. Every
+restricts it to unresolved metadata issues associated with that run. Recovery
+queues a family sync for a selected not-synced family as for a pending issue. Every
 reason except `reason=custom` leaves out custom works; `reason=custom` lists
 every custom work family, with its no-source state, and nothing else.
 `/api/metadata/translation-coverage` pages every family, catalog and custom,
@@ -257,7 +267,13 @@ corresponding maintenance actions, without exposing settings to metadata-only
 operators. Metadata management chooses the Works group (All, attention
 categories, Custom works, and Translation) and the Entries group (Tags,
 Circles, and Voice actors) from the shared page icon rail. Work records use a
-management table (code and title, circle, status, actions); the action column
+management table (code and title, circle, metadata, source, actions). The
+metadata cell reads OK, names the remote source that filled the metadata in
+the same neutral style, or flags not synced and metadata issues. The source
+cell ranks the family's best available source, `sourceTier`: local when the
+Library counts the family as local, then remote for any other available
+source or location, both neutral, and no source in the attention color. The
+action column
 opens the work metadata editor, gated by `library:write`. The list loads on
 navigation, filter changes, recovery actions, saves, and manual refresh, never
 on a timer. Metadata settings open in a popover anchored to the header, with

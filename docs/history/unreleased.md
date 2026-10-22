@@ -29,6 +29,20 @@
 </details>
 
 <details>
+<summary><strong>Metadata and scans</strong></summary>
+
+- Metadata's work tables split the status column into **Metadata** and
+  **Source**. A work DLsite was never asked about shows **Not synced** instead
+  of OK, appears under Needs attention and Metadata issues, and **Retry
+  metadata** queues its first sync. **Source** shows **Local** or **Remote**,
+  both normal, and **No available source** in the attention color.
+- A work DLsite does not have and a remote source filled shows **Metadata
+  from** its source and no longer counts as a metadata issue, in Metadata,
+  run results, or Activity's Needs attention.
+
+</details>
+
+<details>
 <summary><strong>Interface</strong></summary>
 
 - On touch screens, About's License link no longer takes taps and scrolls

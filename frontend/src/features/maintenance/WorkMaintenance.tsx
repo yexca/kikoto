@@ -38,6 +38,18 @@ type PendingDelete = {
   labels: string[];
 };
 
+/** Whether a metadata retry can be queued for a row: an issue not already retrying, or a first sync. */
+function canRetryMetadata(work: MaintenanceWork) {
+  return work.metadataIssues.some((issue) => !issue.retrying) || (work.metadataNotSynced && !work.metadataSyncing);
+}
+
+/** The work a metadata retry queues: the edition with a DLsite issue, or the never-synced family itself. */
+function metadataRetryWorkId(work: MaintenanceWork) {
+  const item = work.metadataIssues.find((issue) => issue.providerCode === "dlsite" && !issue.retrying);
+  if (item) return item.workId;
+  return work.metadataNotSynced && !work.metadataSyncing ? work.id : null;
+}
+
 /**
  * Saved work metadata and attention records for one reason, as a management
  * table: code and title, circle, status, then row actions. The page owns the
@@ -78,7 +90,7 @@ export function WorkMaintenance({
   const toast = useToast();
   const { t } = useTranslation();
   const wide = !useMobileNavigationLayout();
-  const columnCount = wide ? 5 : 3;
+  const columnCount = wide ? 6 : 3;
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(25);
   const search = useMaintenanceSearch(() => setPage(1));
@@ -125,9 +137,7 @@ export function WorkMaintenance({
         setHasLoaded(true);
         setLoadError("");
         const present = new Set(
-          next.works
-            .filter((work) => canManageSources || work.metadataIssues.some((issue) => !issue.retrying))
-            .map((work) => work.id),
+          next.works.filter((work) => canManageSources || canRetryMetadata(work)).map((work) => work.id),
         );
         setSelectedWorkIds((current) => new Set([...current].filter((id) => present.has(id))));
       } catch {
@@ -141,10 +151,7 @@ export function WorkMaintenance({
   }, [page, pageSize, query, reason, runId, refreshKey, preferenceRevision, listRevision, canManageSources, t]);
 
   const pageWorkIds = useMemo(
-    () =>
-      result.works
-        .filter((work) => canManageSources || work.metadataIssues.some((issue) => !issue.retrying))
-        .map((work) => work.id),
+    () => result.works.filter((work) => canManageSources || canRetryMetadata(work)).map((work) => work.id),
     [result.works, canManageSources],
   );
   const selection = currentPageSelection(pageWorkIds, selectedWorkIds);
@@ -154,8 +161,8 @@ export function WorkMaintenance({
   );
   const sourceWorks = selectedWorks.filter((work) => work.noSource);
   const retryIds = selectedWorks.flatMap((work) => {
-    const item = work.metadataIssues.find((issue) => issue.providerCode === "dlsite" && !issue.retrying);
-    return item ? [item.workId] : [];
+    const id = metadataRetryWorkId(work);
+    return id === null ? [] : [id];
   });
   const retryMetadata = async (ids: number[]) => {
     if (!canSyncMetadata || readOnly || retrying || loading || ids.length === 0) return;
@@ -386,7 +393,10 @@ export function WorkMaintenance({
                       {t("workMaintenance.circleColumn")}
                     </th>
                     <th scope="col" className="px-3 align-middle font-medium">
-                      {t("workMaintenance.statusColumn")}
+                      {t("workMaintenance.metadataColumn")}
+                    </th>
+                    <th scope="col" className="px-3 align-middle font-medium">
+                      {t("workMaintenance.sourceColumn")}
                     </th>
                   </>
                 )}
@@ -482,10 +492,7 @@ export function WorkMaintenance({
                           checked={selected}
                           onCheckedChange={(checked) => toggleWork(work.id, checked)}
                           disabled={
-                            controlsDisabled ||
-                            checking ||
-                            deleting ||
-                            (!canManageSources && work.metadataIssues.every((issue) => issue.retrying))
+                            controlsDisabled || checking || deleting || (!canManageSources && !canRetryMetadata(work))
                           }
                           aria-label={t("metadataIssues.selectWork", { code: work.primaryCode })}
                         />
@@ -520,13 +527,16 @@ export function WorkMaintenance({
                             >
                               {work.title}
                             </a>
-                            {/* Narrow layouts fold the circle and status columns under the title. */}
+                            {/* Narrow layouts fold the circle, metadata, and source columns under the title. */}
                             {!wide && (
                               <>
                                 <span className="block truncate text-xs text-muted-foreground" title={circle}>
                                   {circle}
                                 </span>
-                                <WorkStatus work={work} className="mt-1" />
+                                <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+                                  <MetadataStatus work={work} known={canSyncMetadata} />
+                                  <SourceStatus tier={work.sourceTier} />
+                                </div>
                               </>
                             )}
                             {work.metadataIssues.length > 0 && (
@@ -547,7 +557,14 @@ export function WorkMaintenance({
                             </span>
                           </td>
                           <td className="px-3 py-2 align-top">
-                            <WorkStatus work={work} className="pt-2" />
+                            <div className="flex min-w-0 flex-wrap items-center gap-1 pt-2">
+                              <MetadataStatus work={work} known={canSyncMetadata} />
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 align-top">
+                            <div className="pt-2">
+                              <SourceStatus tier={work.sourceTier} />
+                            </div>
                           </td>
                         </>
                       )}
@@ -638,35 +655,62 @@ export function WorkMaintenance({
   );
 }
 
-/** Availability and metadata state for one row; a work with neither problem reads as OK. */
-function WorkStatus({ work, className = "" }: { work: MaintenanceWork; className?: string }) {
+const neutralBadgeClassName = "px-1.5 py-0 text-[11px] text-muted-foreground";
+
+/**
+ * Whether the row's metadata is complete. Metadata a remote source filled is
+ * complete and reads as neutral; a missing or failed sync takes the attention
+ * color. Without metadata access the state is unknown and shows a dash.
+ */
+function MetadataStatus({ work, known }: { work: MaintenanceWork; known: boolean }) {
   const { t } = useTranslation();
+  if (!known) return <span className="text-muted-foreground">—</span>;
   const retrying = work.metadataIssues.some((issue) => issue.retrying);
-  const healthy = !work.noSource && work.metadataIssues.length === 0;
+  const remoteMetadata = work.remoteMetadataSource
+    ? t("workMaintenance.remoteMetadata", { source: work.remoteMetadataSource })
+    : "";
   return (
-    <div className={`flex min-w-0 flex-wrap items-center gap-1 ${className}`}>
-      {healthy && (
-        <Badge variant="outline" className="px-1.5 py-0 text-[11px] text-muted-foreground">
-          {t("workMaintenance.statusOk")}
-        </Badge>
-      )}
-      {work.noSource && (
-        <Badge variant="outline" className="px-1.5 py-0 text-[11px] text-muted-foreground">
-          {t("workMaintenance.noSource")}
-        </Badge>
-      )}
-      {work.metadataIssues.length > 0 && (
+    <>
+      {work.metadataIssues.length > 0 ? (
         <Badge variant="warning" className="px-1.5 py-0 text-[11px]">
           {t("workMaintenance.metadata")}
         </Badge>
+      ) : work.metadataNotSynced ? (
+        <Badge variant="warning" className="px-1.5 py-0 text-[11px]">
+          {t("workMaintenance.notSynced")}
+        </Badge>
+      ) : remoteMetadata ? (
+        <Badge variant="outline" className={`min-w-0 max-w-full ${neutralBadgeClassName}`} title={remoteMetadata}>
+          <span className="truncate">{remoteMetadata}</span>
+        </Badge>
+      ) : (
+        <Badge variant="outline" className={neutralBadgeClassName}>
+          {t("workMaintenance.statusOk")}
+        </Badge>
       )}
-      {retrying && (
+      {(retrying || work.metadataSyncing) && (
         <span role="status" className="flex items-center gap-1.5 text-xs text-primary">
           <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" />
-          {t("metadataIssues.retrying")}
+          {t(retrying ? "metadataIssues.retrying" : "workMaintenance.syncing")}
         </span>
       )}
-    </div>
+    </>
+  );
+}
+
+/** The best source the family is available from: local before remote, both healthy; none needs attention. */
+function SourceStatus({ tier }: { tier: MaintenanceWork["sourceTier"] }) {
+  const { t } = useTranslation();
+  if (tier === "none")
+    return (
+      <Badge variant="warning" className="px-1.5 py-0 text-[11px]">
+        {t("workMaintenance.noSource")}
+      </Badge>
+    );
+  return (
+    <Badge variant="outline" className={neutralBadgeClassName}>
+      {t(tier === "local" ? "workMaintenance.sourceLocal" : "workMaintenance.sourceRemote")}
+    </Badge>
   );
 }
 
@@ -747,6 +791,9 @@ function WorkTableSkeletonRows({ wide }: { wide: boolean }) {
               <td className="px-3 py-2">
                 <div className="mt-2 h-4 w-14 animate-pulse rounded bg-muted" />
               </td>
+              <td className="px-3 py-2">
+                <div className="mt-2 h-4 w-12 animate-pulse rounded bg-muted" />
+              </td>
             </>
           )}
           <td className="py-2 pr-3">
@@ -758,7 +805,7 @@ function WorkTableSkeletonRows({ wide }: { wide: boolean }) {
   );
 }
 
-/** Wide layouts give the circle and status their own columns; narrow ones fold them under the title. */
+/** Wide layouts give the circle, metadata, and source their own columns; narrow ones fold them under the title. */
 function WorkTableColumns({ wide }: { wide: boolean }) {
   return (
     <colgroup>
@@ -768,6 +815,7 @@ function WorkTableColumns({ wide }: { wide: boolean }) {
         <>
           <col className="w-48 xl:w-60" />
           <col className="w-40" />
+          <col className="w-36" />
         </>
       )}
       <col className="w-12 sm:w-40" />

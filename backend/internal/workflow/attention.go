@@ -2,6 +2,13 @@ package workflow
 
 import "strconv"
 
+// PendingMetadataState is the trusted condition under which a
+// work_metadata_sync_state row aliased as state still needs recovery. A
+// product a provider reports as not found is settled once a remote source has
+// filled the work, because the work's metadata is then complete.
+const PendingMetadataState = `(state.status = 'failed' OR (state.status = 'unavailable'
+   AND NOT EXISTS (SELECT 1 FROM work_metadata_field_source AS filled WHERE filled.work_id = state.work_id)))`
+
 // These correlated projections describe current issues without rewriting run
 // results. The success-attempt boundary matches metasync.IssueStore.ForRun:
 // a later failure must not reopen an already resolved historical association.
@@ -11,7 +18,7 @@ const pendingMetadataSQL = `(SELECT COUNT(DISTINCT tried.work_id)
  JOIN work_metadata_sync_state AS state ON state.work_id = tried.work_id
    AND state.provider_id = tried.provider_id AND state.component = tried.component
  WHERE linked.workflow_run_id = run.id AND tried.status != 'succeeded'
-   AND state.status IN ('failed', 'unavailable') AND state.last_success_attempt_id <= tried.attempt_id)`
+   AND ` + PendingMetadataState + ` AND state.last_success_attempt_id <= tried.attempt_id)`
 
 const encounteredMetadataSQL = `EXISTS (SELECT 1 FROM metadata_sync_attempt_run AS linked
  JOIN metadata_sync_attempt_work AS tried ON tried.attempt_id = linked.attempt_id

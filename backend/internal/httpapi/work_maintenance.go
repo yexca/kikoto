@@ -11,8 +11,17 @@ import (
 
 type maintenanceWork struct {
 	libraryWorkSummary
-	NoSource       bool                 `json:"noSource"`
+	NoSource bool `json:"noSource"`
+	// SourceTier ranks the family's best available source: local, remote, or none.
+	SourceTier     string               `json:"sourceTier"`
 	MetadataIssues []metasync.IssueWork `json:"metadataIssues"`
+	// MetadataNotSynced marks a catalog family DLsite was never asked about;
+	// MetadataSyncing marks its sync as queued or running.
+	MetadataNotSynced bool `json:"metadataNotSynced"`
+	MetadataSyncing   bool `json:"metadataSyncing"`
+	// RemoteMetadataSource names the remote source that filled a family
+	// without DLsite metadata. Such a family is complete, not an issue.
+	RemoteMetadataSource string `json:"remoteMetadataSource,omitempty"`
 }
 
 func (s *Server) listWorkMaintenance(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +76,11 @@ func (s *Server) listWorkMaintenance(w http.ResponseWriter, r *http.Request) {
 	}
 	if canMetadata {
 		options.MetadataWhere, options.MetadataArgs = metasync.PendingFamilyPredicate(runID)
+		// A run filter narrows to that run's issues; otherwise a family DLsite
+		// was never asked about also needs metadata attention.
+		if runID == 0 {
+			options.MetadataWhere = "(" + options.MetadataWhere + ") OR " + metasync.NotSyncedFamilyPredicate()
+		}
 	}
 	page, err := s.libraryStore.ListMaintenance(r.Context(), options)
 	if err != nil {
@@ -83,8 +97,10 @@ func (s *Server) listWorkMaintenance(w http.ResponseWriter, r *http.Request) {
 		ids[i] = work.ID
 	}
 	issuesByFamily := map[int64][]metasync.IssueWork{}
+	familyStates := map[int64]metasync.FamilyState{}
 	if canMetadata {
-		issues, err := metasync.NewIssueStore(s.db).ListForFamilies(r.Context(), ids)
+		store := metasync.NewIssueStore(s.db)
+		issues, err := store.ListForFamilies(r.Context(), ids)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -93,6 +109,10 @@ func (s *Server) listWorkMaintenance(w http.ResponseWriter, r *http.Request) {
 			issue.Retrying = issue.Retrying || s.metadataCoordinator.IsRunning(issue.FamilyCode)
 			issuesByFamily[issue.FamilyWorkID] = append(issuesByFamily[issue.FamilyWorkID], issue)
 		}
+		if familyStates, err = store.FamilyStates(r.Context(), ids); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	items := make([]maintenanceWork, 0, len(works))
 	for _, work := range works {
@@ -100,7 +120,11 @@ func (s *Server) listWorkMaintenance(w http.ResponseWriter, r *http.Request) {
 		if issues == nil {
 			issues = []metasync.IssueWork{}
 		}
-		items = append(items, maintenanceWork{libraryWorkSummary: work, NoSource: page.NoSource[work.ID], MetadataIssues: issues})
+		state := familyStates[work.ID]
+		items = append(items, maintenanceWork{libraryWorkSummary: work, NoSource: page.NoSource[work.ID],
+			SourceTier: page.SourceTiers[work.ID], MetadataIssues: issues,
+			MetadataNotSynced: state.NotSynced, RemoteMetadataSource: state.RemoteSource,
+			MetadataSyncing: state.NotSynced && (state.Syncing || s.metadataCoordinator.IsRunning(state.FamilyCode))})
 	}
 	writeJSON(w, http.StatusOK, struct {
 		Works    []maintenanceWork `json:"works"`

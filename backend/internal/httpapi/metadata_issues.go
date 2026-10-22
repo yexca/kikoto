@@ -96,8 +96,8 @@ func (s *Server) retryMetadataIssues(w http.ResponseWriter, r *http.Request) {
 	}{}
 	store := metasync.NewIssueStore(s.db)
 	for _, id := range payload.WorkIDs {
-		pending, err := store.HasPendingDLsite(r.Context(), id)
-		if err == nil && !pending {
+		needed, err := store.NeedsDLsiteRecovery(r.Context(), id)
+		if err == nil && !needed {
 			result.Skipped++
 			continue
 		}

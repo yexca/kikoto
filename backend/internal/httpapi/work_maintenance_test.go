@@ -98,7 +98,8 @@ func TestWorkMaintenancePermissionsAndRunScope(t *testing.T) {
  INSERT INTO workflow_run(id,workflow_code,display_name,status,trigger_type,trigger_reason,input_json) VALUES (81,'custom','Private workflow','failed','manual','custom_definition','{"requested_by_user_id":2}');
  INSERT INTO workflow_run(id,workflow_code,display_name,status,trigger_type) VALUES (82,'metadata_sync','Example sync','failed','manual');
  INSERT INTO metadata_sync_attempt_run(attempt_id,workflow_run_id) VALUES (1,82);
- INSERT INTO metadata_sync_attempt_work(attempt_id,work_id,provider_id,component,status) SELECT 1,1,id,'metadata','unavailable' FROM metadata_provider WHERE code='dlsite'`, testfixture.WorkCode(testfixture.PrefixRJ, 1)); err != nil {
+ INSERT INTO metadata_sync_attempt_work(attempt_id,work_id,provider_id,component,status) SELECT 1,1,id,'metadata','unavailable' FROM metadata_provider WHERE code='dlsite';
+ INSERT INTO work_metadata_provider_state(work_id,provider_id,status) SELECT 2,id,'available' FROM metadata_provider WHERE code='dlsite'`, testfixture.WorkCode(testfixture.PrefixRJ, 1)); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
@@ -220,5 +221,109 @@ func TestWorkMaintenanceSeparatesCustomWorks(t *testing.T) {
 	}
 	if works := read("reason=custom&q=" + testfixture.WorkCode(testfixture.PrefixRJ, 0)); len(works) != 0 {
 		t.Fatalf("custom search lists %+v", works)
+	}
+}
+
+// A catalog family DLsite was never asked about needs metadata attention until
+// any edition has an outcome, and recovery queues its first sync.
+func TestWorkMaintenanceListsUnsyncedFamilies(t *testing.T) {
+	db := openMigratedTestDB(t)
+	s := NewServer(db, config.Config{CacheRoot: t.TempDir()})
+	unsynced, canonical, edition := testfixture.WorkCode(testfixture.PrefixRJ, 0), testfixture.WorkCode(testfixture.PrefixRJ, 1), testfixture.WorkCode(testfixture.PrefixRJ, 2)
+	for _, statement := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO work(id,primary_code,title) VALUES (1,?,'Unsynced work'),(2,?,'Synced family'),(3,?,'Synced edition')`, []any{unsynced, canonical, edition}},
+		{`INSERT INTO logical_work(id,canonical_work_id,canonical_code) VALUES (1,2,?)`, []any{canonical}},
+		{`INSERT INTO work_edition(work_id,logical_work_id,primary_code,is_canonical) VALUES (2,1,?,1),(3,1,?,0)`, []any{canonical, edition}},
+		{`INSERT INTO metadata_snapshot(work_id,provider_id,external_id,snapshot_json) SELECT 3,id,?,'{}' FROM metadata_provider WHERE code='dlsite'`, []any{edition}},
+	} {
+		if _, err := db.Exec(statement.sql, statement.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read := func(reason string) map[string]maintenanceWork {
+		t.Helper()
+		response := metadataRequest(s.listWorkMaintenance, http.MethodGet, "/api/maintenance/works?reason="+reason, "", "metadata:sync")
+		var page struct {
+			Works []maintenanceWork `json:"works"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || response.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s %v", reason, response.Code, response.Body, err)
+		}
+		works := map[string]maintenanceWork{}
+		for _, work := range page.Works {
+			works[work.PrimaryCode] = work
+		}
+		return works
+	}
+	for _, reason := range []string{"all", "metadata"} {
+		works := read(reason)
+		if len(works) != 1 || !works[unsynced].MetadataNotSynced || works[unsynced].MetadataSyncing {
+			t.Fatalf("%s lists %+v", reason, works)
+		}
+	}
+	if works := read("catalog"); len(works) != 2 || works[canonical].MetadataNotSynced {
+		t.Fatalf("catalog lists %+v", works)
+	}
+	if _, err := db.Exec(`INSERT INTO app_setting(key,value_json) VALUES ('remote_request_delay_base_seconds','0')`); err != nil {
+		t.Fatal(err)
+	}
+	response := metadataRequest(s.retryMetadataIssues, http.MethodPost, "/api/metadata/issues/retry", `{"workIds":[1,2]}`, "metadata:sync")
+	if response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"queued":1`) || !strings.Contains(response.Body.String(), `"skipped":1`) {
+		t.Fatalf("retry=%d %s", response.Code, response.Body)
+	}
+	if work := read("metadata")[unsynced]; !work.MetadataNotSynced || !work.MetadataSyncing {
+		t.Fatalf("queued sync: %+v", work)
+	}
+	if _, err := db.Exec(`INSERT INTO work_metadata_provider_state(work_id,provider_id,status) SELECT 1,id,'available' FROM metadata_provider WHERE code='dlsite'`); err != nil {
+		t.Fatal(err)
+	}
+	if works := read("metadata"); len(works) != 0 {
+		t.Fatalf("synced family still listed: %+v", works)
+	}
+}
+
+// Every row ranks its family's best source: a local folder on any edition,
+// then any other available source, then none. Only sources:write receives the
+// no-source reason, while every viewer sees the tier.
+func TestWorkMaintenanceRanksSourceTiers(t *testing.T) {
+	db := openMigratedTestDB(t)
+	s := NewServer(db, config.Config{})
+	local, edition, remote, none := testfixture.WorkCode(testfixture.PrefixRJ, 0), testfixture.WorkCode(testfixture.PrefixRJ, 1),
+		testfixture.WorkCode(testfixture.PrefixRJ, 2), testfixture.WorkCode(testfixture.PrefixRJ, 3)
+	for _, statement := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO work(id,primary_code,title) VALUES (1,?,'Local family'),(2,?,'Local edition'),(3,?,'Remote work'),(4,?,'Unavailable work')`, []any{local, edition, remote, none}},
+		{`INSERT INTO logical_work(id,canonical_work_id,canonical_code) VALUES (1,1,?)`, []any{local}},
+		{`INSERT INTO work_edition(work_id,logical_work_id,primary_code,is_canonical) VALUES (1,1,?,1),(2,1,?,0)`, []any{local, edition}},
+		{`INSERT INTO file_source(id,code,display_name,source_type) VALUES (91,'example_local','Example Local','local'),(92,'example_remote','Example Remote','kikoeru_compatible')`, nil},
+		{`INSERT INTO work_source_presence(work_id,file_source_id,presence_type,availability) VALUES (2,91,'local','available'),(3,92,'source','available'),(4,92,'source','missing')`, nil},
+	} {
+		if _, err := db.Exec(statement.sql, statement.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, permissions := range [][]string{{"sources:write"}, {"metadata:sync"}} {
+		response := metadataRequest(s.listWorkMaintenance, http.MethodGet, "/api/maintenance/works?reason=catalog", "", permissions...)
+		var page struct {
+			Works []maintenanceWork `json:"works"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || response.Code != http.StatusOK {
+			t.Fatalf("%v: %d %s %v", permissions, response.Code, response.Body, err)
+		}
+		tiers, noSource := map[string]string{}, map[string]bool{}
+		for _, work := range page.Works {
+			tiers[work.PrimaryCode], noSource[work.PrimaryCode] = work.SourceTier, work.NoSource
+		}
+		if len(tiers) != 3 || tiers[local] != "local" || tiers[remote] != "remote" || tiers[none] != "none" {
+			t.Fatalf("%v tiers: %v", permissions, tiers)
+		}
+		if noSource[none] != (permissions[0] == "sources:write") || noSource[remote] || noSource[local] {
+			t.Fatalf("%v no-source: %v", permissions, noSource)
+		}
 	}
 }

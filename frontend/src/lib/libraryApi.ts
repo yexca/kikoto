@@ -289,7 +289,18 @@ export type LibrarySource = {
   metadataCapable?: boolean;
 };
 
-export type MaintenanceWork = Work & { noSource: boolean; metadataIssues: MetadataIssueWork[] };
+export type MaintenanceWork = Work & {
+  noSource: boolean;
+  /** The family's best available source; local and remote are healthy, none needs attention. */
+  sourceTier: "local" | "remote" | "none";
+  metadataIssues: MetadataIssueWork[];
+  /** DLsite was never asked about this catalog family. */
+  metadataNotSynced: boolean;
+  /** The never-synced family's sync is queued or running. */
+  metadataSyncing: boolean;
+  /** The remote source that filled a family without DLsite metadata; such a family is complete. */
+  remoteMetadataSource?: string;
+};
 
 export type MaintenanceWorkPage = Omit<WorksPage, "works"> & { works: MaintenanceWork[] };
 

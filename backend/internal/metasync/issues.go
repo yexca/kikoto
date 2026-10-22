@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+
+	"github.com/yexca/kikoto/backend/internal/workcode"
+	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 type Issue struct {
@@ -15,18 +18,15 @@ type Issue struct {
 }
 
 type IssueWork struct {
-	WorkID       int64  `json:"workId"`
-	PrimaryCode  string `json:"primaryCode"`
-	Title        string `json:"title"`
-	ProviderCode string `json:"providerCode"`
-	ProviderName string `json:"providerName"`
-	FamilyCode   string `json:"-"`
-	FamilyWorkID int64  `json:"-"`
-	Retrying     bool   `json:"retrying"`
-	// FallbackSource names the remote source that filled a work DLsite does
-	// not have, so the list can say so instead of a bare "unavailable".
-	FallbackSource string  `json:"fallbackSource,omitempty"`
-	Issues         []Issue `json:"issues"`
+	WorkID       int64   `json:"workId"`
+	PrimaryCode  string  `json:"primaryCode"`
+	Title        string  `json:"title"`
+	ProviderCode string  `json:"providerCode"`
+	ProviderName string  `json:"providerName"`
+	FamilyCode   string  `json:"-"`
+	FamilyWorkID int64   `json:"-"`
+	Retrying     bool    `json:"retrying"`
+	Issues       []Issue `json:"issues"`
 }
 
 type IssueQuery struct {
@@ -50,7 +50,7 @@ type IssueStore struct{ db *sql.DB }
 func NewIssueStore(db *sql.DB) *IssueStore { return &IssueStore{db: db} }
 
 func issueFilter(query IssueQuery) (string, []any) {
-	where := "state.status IN ('failed', 'unavailable')"
+	where := workflow.PendingMetadataState
 	args := []any{}
 	if query.Status != "" {
 		where += " AND state.status = ?"
@@ -129,7 +129,7 @@ func (s *IssueStore) List(ctx context.Context, query IssueQuery) (IssuePage, err
 		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
 		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
 		INNER JOIN work_metadata_sync_state AS state ON state.work_id = selected.work_id AND state.provider_id = selected.provider_id
-		WHERE state.status IN ('failed', 'unavailable')
+		WHERE `+workflow.PendingMetadataState+`
 		ORDER BY selected.checked_at DESC, work.id, provider.id, state.component`,
 		append(args, query.PageSize, (query.Page-1)*query.PageSize)...)
 	if err != nil {
@@ -157,58 +157,93 @@ func (s *IssueStore) List(ctx context.Context, query IssueQuery) (IssuePage, err
 	if err := rows.Close(); err != nil {
 		return page, err
 	}
-	return page, s.attachFallbackSources(ctx, page.Items)
+	return page, nil
 }
 
-// attachFallbackSources reads the remote provenance of the page's DLsite rows,
-// preferring the title's source, in one bounded query.
-func (s *IssueStore) attachFallbackSources(ctx context.Context, items []IssueWork) error {
-	ids := []any{}
-	for _, item := range items {
-		if item.ProviderCode == "dlsite" {
-			ids = append(ids, item.WorkID)
-		}
-	}
+// familyMemberCondition matches member against the family of the
+// representative work aliased as work: the work itself and every edition.
+const familyMemberCondition = `(member.id = work.id OR member.id IN (
+	SELECT sibling.work_id FROM work_edition AS current_edition
+	JOIN work_edition AS sibling ON sibling.logical_work_id = current_edition.logical_work_id
+	WHERE current_edition.work_id = work.id))`
+
+// familyCodeExpression is the code a family sync job is keyed by, for a
+// representative work joined to its optional logical family as logical.
+const familyCodeExpression = `COALESCE(NULLIF(logical.canonical_code, ''), work.primary_code)`
+
+// NotSyncedFamilyPredicate is a trusted SQL predicate for a projection whose
+// representative work is aliased as work. It holds for a catalog family whose
+// editions have no DLsite attempt outcome, provider state, or stored snapshot,
+// so the family has no catalog metadata yet. Custom works are never synced.
+func NotSyncedFamilyPredicate() string {
+	return `(work.primary_code NOT LIKE '` + workcode.CustomPrefix + `%' AND NOT EXISTS (SELECT 1 FROM work AS member
+		JOIN metadata_provider AS dlsite ON dlsite.code = 'dlsite'
+		WHERE ` + familyMemberCondition + ` AND (
+			EXISTS (SELECT 1 FROM work_metadata_sync_state AS synced WHERE synced.work_id = member.id AND synced.provider_id = dlsite.id)
+			OR EXISTS (SELECT 1 FROM work_metadata_provider_state AS checked WHERE checked.work_id = member.id AND checked.provider_id = dlsite.id)
+			OR EXISTS (SELECT 1 FROM metadata_snapshot AS snapshot WHERE snapshot.work_id = member.id AND snapshot.provider_id = dlsite.id))))`
+}
+
+// FamilyState is a listed family's catalog metadata state beyond its pending
+// issues.
+type FamilyState struct {
+	NotSynced bool
+	// Syncing holds while the family's sync job is queued or running.
+	Syncing    bool
+	FamilyCode string
+	// RemoteSource names the remote source that filled the family's metadata,
+	// preferring the representative work and its title.
+	RemoteSource string
+}
+
+// FamilyStates reads the state of a bounded page of family representatives.
+func (s *IssueStore) FamilyStates(ctx context.Context, ids []int64) (map[int64]FamilyState, error) {
+	states := map[int64]FamilyState{}
 	if len(ids) == 0 {
-		return nil
+		return states, nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT source.work_id, provider.display_name
-		FROM work_metadata_field_source AS source
-		JOIN metadata_provider AS provider ON provider.id = source.provider_id
-		WHERE source.work_id IN (`+strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")+`)
-		ORDER BY source.work_id, CASE source.field_name WHEN 'title' THEN 0 ELSE 1 END, source.field_name`, ids...)
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT work.id, `+familyCodeExpression+`, `+NotSyncedFamilyPredicate()+`,
+			EXISTS (SELECT 1 FROM workflow_job AS job
+				WHERE job.worker_type = 'metadata_family_sync' AND job.status IN ('queued', 'running')
+				AND json_extract(job.payload_json, '$.familyCode') = `+familyCodeExpression+`),
+			COALESCE((SELECT provider.display_name FROM work AS member
+				JOIN work_metadata_field_source AS source ON source.work_id = member.id
+				JOIN metadata_provider AS provider ON provider.id = source.provider_id
+				WHERE `+familyMemberCondition+`
+				ORDER BY member.id = work.id DESC, CASE source.field_name WHEN 'title' THEN 0 ELSE 1 END, source.field_name, member.id
+				LIMIT 1), '')
+		FROM work
+		LEFT JOIN work_edition AS edition ON edition.work_id = work.id
+		LEFT JOIN logical_work AS logical ON logical.id = edition.logical_work_id
+		WHERE work.id IN (`+strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")+`)`, args...)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	names := map[int64]string{}
 	for rows.Next() {
-		var workID int64
-		var name string
-		if err := rows.Scan(&workID, &name); err != nil {
-			return err
+		var id int64
+		var state FamilyState
+		if err := rows.Scan(&id, &state.FamilyCode, &state.NotSynced, &state.Syncing, &state.RemoteSource); err != nil {
+			return nil, err
 		}
-		if _, exists := names[workID]; !exists {
-			names[workID] = name
-		}
+		states[id] = state
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	for index := range items {
-		if items[index].ProviderCode == "dlsite" {
-			items[index].FallbackSource = names[items[index].WorkID]
-		}
-	}
-	return nil
+	return states, rows.Err()
 }
 
-func (s *IssueStore) HasPendingDLsite(ctx context.Context, workID int64) (bool, error) {
-	var pending bool
+// NeedsDLsiteRecovery reports whether explicit recovery may queue the work's
+// family: the work has a pending DLsite issue, or its family was never synced.
+func (s *IssueStore) NeedsDLsiteRecovery(ctx context.Context, workID int64) (bool, error) {
+	var needed bool
 	err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM work_metadata_sync_state AS state
 		INNER JOIN metadata_provider AS provider ON provider.id = state.provider_id
-		WHERE state.work_id = ? AND provider.code = 'dlsite' AND state.status IN ('failed', 'unavailable'))`, workID).Scan(&pending)
-	return pending, err
+		WHERE state.work_id = ? AND provider.code = 'dlsite' AND `+workflow.PendingMetadataState+`)
+		OR EXISTS (SELECT 1 FROM work WHERE work.id = ? AND `+NotSyncedFamilyPredicate()+`)`, workID, workID).Scan(&needed)
+	return needed, err
 }
 
 type RunIssueSummary struct {
@@ -219,7 +254,7 @@ type RunIssueSummary struct {
 func (s *IssueStore) ForRun(ctx context.Context, runID int64) (RunIssueSummary, error) {
 	var summary RunIssueSummary
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT tried.work_id),
-		COUNT(DISTINCT CASE WHEN state.status IN ('failed', 'unavailable') AND state.last_success_attempt_id <= tried.attempt_id THEN tried.work_id END)
+		COUNT(DISTINCT CASE WHEN `+workflow.PendingMetadataState+` AND state.last_success_attempt_id <= tried.attempt_id THEN tried.work_id END)
 		FROM metadata_sync_attempt_run AS run
 		INNER JOIN metadata_sync_attempt_work AS tried ON tried.attempt_id = run.attempt_id
 		LEFT JOIN work_metadata_sync_state AS state ON state.work_id = tried.work_id AND state.provider_id = tried.provider_id AND state.component = tried.component

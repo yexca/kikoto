@@ -251,8 +251,6 @@ export type MetadataIssueWork = {
   providerCode: string;
   providerName: string;
   retrying: boolean;
-  /** Remote source that filled a work DLsite does not have. */
-  fallbackSource?: string;
   issues: {
     component: "metadata" | "cover";
     status: "failed" | "unavailable";

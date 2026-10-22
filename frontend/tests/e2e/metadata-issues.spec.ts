@@ -108,6 +108,65 @@ test("metadata operators retry selected issues without source settings access", 
   expect(await audio!.evaluate((element) => element.isConnected)).toBe(true);
 });
 
+test("metadata rows show metadata completeness apart from the best available source", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "metadata:sync"],
+  });
+  const row = (index: number, patch: Partial<MaintenanceWork>): MaintenanceWork => ({
+    ...work,
+    id: index + 1,
+    primaryCode: syntheticWorkCode("RJ", index),
+    title: `Synthetic work ${index}`,
+    noSource: false,
+    sourceTier: "local",
+    metadataIssues: [],
+    metadataNotSynced: false,
+    metadataSyncing: false,
+    ...patch,
+  });
+  let items = [
+    row(0, { metadataNotSynced: true }),
+    row(1, { remoteMetadataSource: "Example Remote", sourceTier: "remote" }),
+    row(2, {}),
+    row(3, { noSource: true, sourceTier: "none" }),
+  ];
+  await page.route("**/api/maintenance/works?*", (route) =>
+    route.fulfill({ json: { works: items, page: 1, pageSize: 25, total: items.length } satisfies MaintenanceWorkPage }),
+  );
+  const retries: number[][] = [];
+  await page.route("**/api/metadata/issues/retry", async (route) => {
+    const { workIds } = route.request().postDataJSON() as { workIds: number[] };
+    retries.push(workIds);
+    items = items.map((item) => (workIds.includes(item.id) ? { ...item, metadataSyncing: true } : item));
+    await route.fulfill({
+      status: 202,
+      json: { queued: workIds.length, skipped: 0, failed: 0 } satisfies ApiResponse<"retryMetadataIssues">,
+    });
+  });
+  await page.goto("/maintenance?tab=works&reason=catalog");
+  const list = page.getByRole("region", { name: "Metadata records" });
+  const rowFor = (index: number) => list.getByRole("row").filter({ hasText: syntheticWorkCode("RJ", index) });
+  const select = (index: number) =>
+    list.getByRole("checkbox", { name: `Select ${syntheticWorkCode("RJ", index)}`, exact: true });
+  await expect(rowFor(0)).toContainText("Not synced");
+  await expect(rowFor(1)).toContainText("Metadata from Example Remote");
+  await expect(rowFor(1)).not.toContainText("OK");
+  await expect(rowFor(2)).toContainText("OK");
+  // Local and remote sources are both healthy; only a family with no source takes the attention color.
+  await expect(rowFor(0).getByText("Local", { exact: true })).toBeVisible();
+  await expect(rowFor(1).getByText("Remote", { exact: true })).toBeVisible();
+  await expect(rowFor(3).getByText("No available source", { exact: true })).toBeVisible();
+  // Complete metadata leaves a metadata-only operator nothing to retry.
+  await expect(select(1)).toBeDisabled();
+  await expect(select(2)).toBeDisabled();
+  await select(0).click();
+  await page.getByRole("button", { name: "Retry metadata (1)", exact: true }).click();
+  expect(retries).toEqual([[1]]);
+  await expect(rowFor(0)).toContainText("Sync queued or running");
+  await expect(select(0)).toBeDisabled();
+});
+
 test("@desktop metadata page selection resets when searching or changing pages", async ({ page }) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
     authenticated: true,
@@ -272,7 +331,10 @@ function asMaintenanceWork(item: MetadataIssueWork): MaintenanceWork {
     primaryCode: item.primaryCode,
     title: item.title,
     noSource: false,
+    sourceTier: "local",
     metadataIssues: [item],
+    metadataNotSynced: false,
+    metadataSyncing: false,
   };
 }
 
@@ -311,7 +373,10 @@ test("work maintenance keeps source actions scoped and metadata settings separat
       primaryCode: syntheticWorkCode("RJ", 0),
       title: "Example mixed work",
       noSource: true,
+      sourceTier: "none",
       metadataIssues: [issue],
+      metadataNotSynced: false,
+      metadataSyncing: false,
     },
     {
       ...work,
@@ -319,7 +384,10 @@ test("work maintenance keeps source actions scoped and metadata settings separat
       primaryCode: syntheticWorkCode("RJ", 2),
       title: "Example source-only work",
       noSource: true,
+      sourceTier: "none",
       metadataIssues: [],
+      metadataNotSynced: false,
+      metadataSyncing: false,
     },
   ];
   await page.route("**/api/maintenance/works?*", async (route) => {
@@ -421,7 +489,10 @@ for (const viewport of ["mobile", "@desktop"]) {
         primaryCode: syntheticWorkCode("RJ", 0),
         title: "Example healthy work",
         noSource: false,
+        sourceTier: "local",
         metadataIssues: [],
+        metadataNotSynced: false,
+        metadataSyncing: false,
       },
       {
         ...work,
@@ -429,7 +500,10 @@ for (const viewport of ["mobile", "@desktop"]) {
         primaryCode: syntheticWorkCode("RJ", 1),
         title: "Example missing-source work",
         noSource: true,
+        sourceTier: "none",
         metadataIssues: [],
+        metadataNotSynced: false,
+        metadataSyncing: false,
       },
     ];
     const requests: string[] = [];
@@ -524,7 +598,10 @@ test("@desktop Metadata table shows management columns, edits a work in place, a
     title: "Example healthy work",
     circle: "Example Circle",
     noSource: false,
+    sourceTier: "local",
     metadataIssues: [],
+    metadataNotSynced: false,
+    metadataSyncing: false,
   };
   let listRequests = 0;
   await page.route("**/api/maintenance/works?*", async (route) => {
@@ -543,13 +620,14 @@ test("@desktop Metadata table shows management columns, edits a work in place, a
 
   await page.goto("/metadata");
   const list = page.getByRole("region", { name: "Metadata records", exact: true });
-  await expect(list.getByRole("columnheader")).toHaveText(["", "Work", "Circle", "Status", "Actions"]);
+  await expect(list.getByRole("columnheader")).toHaveText(["", "Work", "Circle", "Metadata", "Source", "Actions"]);
   const row = list.getByRole("row").filter({ hasText: "Example healthy work" });
   await expect(row.getByRole("cell")).toHaveText([
     /^$/,
     new RegExp(`${code}Example healthy work`),
     "Example Circle",
     "OK",
+    "Local",
     "",
   ]);
   // The list loads on demand; time passing alone must not refetch it, so only the save below adds a request.
@@ -684,7 +762,10 @@ test("@desktop Metadata Custom works lists custom works apart from catalog views
     title: "Example custom work",
     dlsiteUrl: "",
     noSource: true,
+    sourceTier: "none",
     metadataIssues: [],
+    metadataNotSynced: false,
+    metadataSyncing: false,
   };
   const reasons: string[] = [];
   await page.route("**/api/maintenance/works?*", async (route) => {
