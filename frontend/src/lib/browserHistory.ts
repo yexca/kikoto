@@ -30,7 +30,7 @@ let writeHistoryEntry = replaceHistoryEntry;
  * Native shells keep one browser history entry. The entry's state carries the
  * in-app back stack of the workspace that shows it, so a bottom-navigation
  * switch is never a Back step and Back never crosses into another workspace's
- * entries. Browsers keep browser history, whose own Back button the app cannot
+ * entries, even after a link opens a page of another workspace. Browsers keep browser history, whose own Back button the app cannot
  * remove.
  */
 export function enableInAppBackStack(enabled: boolean) {
@@ -80,17 +80,28 @@ export function workspaceSwitchHistoryState(state: unknown): HistoryStateRecord 
 
 /**
  * The state of an entry pushed from the current one. A workspace switch keeps
- * its own stack; a push that only replaces the current workspace list keeps the
- * current stack; any other push stacks the current entry. State copied from the
- * current entry never brings its stack along.
+ * its own stack; a push into another workspace starts that workspace with no
+ * stack and no return to the entry it leaves; a push that only replaces the
+ * current workspace list keeps the current stack; any other push stacks the
+ * current entry. State copied from the current entry never brings its stack
+ * along.
  */
-export function inAppPushHistoryState(state: unknown, { replacesList }: { replacesList: boolean }): HistoryStateRecord {
+export function inAppPushHistoryState(
+  state: unknown,
+  { replacesList, changesWorkspace }: { replacesList: boolean; changesWorkspace: boolean },
+): HistoryStateRecord {
   const next = { ...historyStateRecord(state) };
   if (next[workspaceSwitchStateKey] === true) {
     delete next[workspaceSwitchStateKey];
     return historyStateWithBackStack(next, historyBackStack(next));
   }
   delete next[backStackStateKey];
+  if (changesWorkspace) {
+    delete next.returnTo;
+    delete next.returnLabel;
+    delete next[returnEntryStateKey];
+    return historyStateWithBackStack(next, []);
+  }
   const stack = historyBackStack(window.history.state);
   return historyStateWithBackStack(next, replacesList ? stack : [...stack, currentBackStackEntry()]);
 }

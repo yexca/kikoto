@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { replacesWorkspaceList } from "./workspaceNavigation";
+import { changesWorkspace, replacesWorkspaceList } from "./workspaceNavigation";
 
 describe("replacesWorkspaceList", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -32,6 +32,34 @@ describe("replacesWorkspaceList", () => {
     stubLocation("/workflows", "");
 
     expect(replacesWorkspaceList("/workflows?activity=1", {})).toBe(false);
+  });
+});
+
+describe("changesWorkspace", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("names a page of another browse workspace, as a circle link from a Library work opens", () => {
+    stubLocation("/RJ00000000", "");
+
+    expect(changesWorkspace("/circles/example", {})).toBe(true);
+    expect(changesWorkspace("/voices/00000001", {})).toBe(true);
+  });
+
+  it("keeps pages of the same workspace, including a work the workspace owns", () => {
+    stubLocation("/circles/example", "");
+    expect(changesWorkspace("/circles", {})).toBe(false);
+    expect(changesWorkspace("/RJ00000000", { __kikotoWorkDetailOwner: "circles" })).toBe(false);
+
+    stubLocation("/RJ00000000", "");
+    expect(changesWorkspace("/?tag=example", {})).toBe(false);
+  });
+
+  it("leaves pages outside the browse workspaces to ordinary pushes", () => {
+    stubLocation("/insights", "");
+    expect(changesWorkspace("/circles/example", {})).toBe(false);
+
+    stubLocation("/", "");
+    expect(changesWorkspace("/settings", {})).toBe(false);
   });
 });
 

@@ -562,10 +562,13 @@ volatile queue with a diagnostic and a normal network loss window of up to
   change of tab, scope, filter, or page within one browse list replaces the list
   entry without stacking it (`replacesWorkspaceList` in
   `app/workspaceNavigation`); a destination switch resumes the destination's own
-  stack and is never a Back step. Returning to a stacked entry restores its state
-  and scroll and dispatches `popstate`, so pages restore it the way they restore
-  browser Back. Browsers keep browser history, whose Back button the app cannot
-  remove.
+  stack and is never a Back step; a push that opens a page of another browse
+  workspace, such as a circle link in a Library work, starts that workspace
+  with no stack and no return to the entry it leaves (`changesWorkspace`), so
+  Back never restores another workspace's entry over its saved place.
+  Returning to a stacked entry restores its state and scroll and dispatches
+  `popstate`, so pages restore it the way they restore browser Back. Browsers
+  keep browser history, whose Back button the app cannot remove.
 - Retain every visited primary browse workspace (Library, Favorites, Circles,
   and Voice Actors) on both layouts so returning to a destination never reloads
   its rendered list. Each workspace has its own loading boundary. The current
@@ -590,9 +593,11 @@ volatile queue with a diagnostic and a normal network loss window of up to
   edition's code rather than the work the listener opened. On the
   bottom-navigation layout the Full player's cover leads back there
   (`app/playingWorkNavigation`): the origin destination resumes its own entry
-  when it still shows the work and otherwise opens the work as its own, with
-  Back returning to where the cover was tapped. On wide layouts, and for a
-  track with no recorded origin, the work opens in the current page.
+  when it still shows the work and otherwise opens the work as its own. In a
+  browser Back returns to where the cover was tapped; with an in-app back
+  stack the work starts its destination's stack, so Back goes up to that
+  destination's list. On wide layouts, and for a track with no recorded
+  origin, the work opens in the current page.
 - Keep destination switches proportional to the workspaces that change. A
   workspace that stays hidden skips shell-driven renders, and browse list items
   are memoized with stable item handlers (`useStableCallback`) so a page render

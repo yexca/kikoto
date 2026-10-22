@@ -99,8 +99,11 @@
   its own back stack, so switching tabs is no longer a Back step and Back no
   longer jumps into another tab's pages. Changing a list's tab, filter, or page
   is not a Back step either, and returning from a resumed detail no longer
-  leaves an extra entry behind. The Android back button goes from another
-  tab's root to Library, then asks for a second press before leaving the app.
+  leaves an extra entry behind. A link into another tab, such as a work's
+  circle or voice actor, starts that tab's own stack, so Back from it goes up
+  to that tab's list and the tab it came from keeps its place. The Android
+  back button goes from another tab's root to Library, then asks for a second
+  press before leaving the app.
 - Changing the page on the circle and voice actor lists and on circle and
   voice actor detail returns to the top of the new results, as the Library
   does, instead of staying at the bottom of the page.

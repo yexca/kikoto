@@ -57,16 +57,35 @@ export function navigateToMobileTabHome(id: PageID, storageScope: string) {
 export function replacesWorkspaceList(url: string | URL | null | undefined, state: unknown) {
   const page = currentAppPage();
   if (page === "not-found" || !browseWorkspaces.includes(page)) return false;
-  let target: string;
-  try {
-    const parsed = new URL(url == null ? window.location.href : String(url), window.location.href);
-    target = `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  } catch {
-    return false;
-  }
+  const target = navigationTarget(url);
+  if (target === null) return false;
   return (
     appPageForLocation(target, state) === page &&
     isWorkspaceListLocation(page, currentInternalLocation()) &&
     isWorkspaceListLocation(page, target)
   );
+}
+
+/**
+ * Whether a navigation opens a page of another browse workspace than the
+ * current one, as a circle link from a Library work does. With an in-app back
+ * stack such a page starts its workspace without the entries of the one it
+ * leaves. Other pages keep stacking the entry they leave.
+ */
+export function changesWorkspace(url: string | URL | null | undefined, state: unknown) {
+  const page = currentAppPage();
+  if (page === "not-found" || !browseWorkspaces.includes(page)) return false;
+  const target = navigationTarget(url);
+  if (target === null) return false;
+  const targetPage = appPageForLocation(target, state);
+  return targetPage !== "not-found" && targetPage !== page && browseWorkspaces.includes(targetPage);
+}
+
+function navigationTarget(url: string | URL | null | undefined) {
+  try {
+    const parsed = new URL(url == null ? window.location.href : String(url), window.location.href);
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
 }

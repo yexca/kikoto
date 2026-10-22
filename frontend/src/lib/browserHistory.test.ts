@@ -111,7 +111,10 @@ describe("in-app back stack", () => {
   it("stacks the entry a push leaves, without the stack its copied state carries", () => {
     stubWindow({ detail: true, __kikotoScrollY: 120, __kikotoBackStack: [listEntry] });
 
-    const state = inAppPushHistoryState({ copied: true, __kikotoBackStack: [listEntry] }, { replacesList: false });
+    const state = inAppPushHistoryState(
+      { copied: true, __kikotoBackStack: [listEntry] },
+      { replacesList: false, changesWorkspace: false },
+    );
 
     expect(historyBackStack(state)).toEqual([
       listEntry,
@@ -123,7 +126,21 @@ describe("in-app back stack", () => {
   it("keeps the current stack when a push only replaces the workspace list", () => {
     stubWindow({ __kikotoBackStack: [circleEntry] });
 
-    expect(historyBackStack(inAppPushHistoryState({}, { replacesList: true }))).toEqual([circleEntry]);
+    expect(historyBackStack(inAppPushHistoryState({}, { replacesList: true, changesWorkspace: false }))).toEqual([
+      circleEntry,
+    ]);
+  });
+
+  it("starts a page of another workspace without the stack or return of the entry it leaves", () => {
+    stubWindow({ detail: true, __kikotoBackStack: [listEntry] });
+
+    const state = inAppPushHistoryState(historyStateWithReturn("/RJ00000000", "Back", { circle: true }), {
+      replacesList: false,
+      changesWorkspace: true,
+    });
+
+    expect(historyBackStack(state)).toEqual([]);
+    expect(state).toEqual({ circle: true, __kikotoBackStack: [] });
   });
 
   it("gives a destination switch its own stack instead of the one it leaves", () => {
@@ -131,9 +148,12 @@ describe("in-app back stack", () => {
 
     const resumed = inAppPushHistoryState(
       workspaceSwitchHistoryState({ favorites: true, __kikotoBackStack: [listEntry] }),
-      { replacesList: false },
+      { replacesList: false, changesWorkspace: false },
     );
-    const opened = inAppPushHistoryState(workspaceSwitchHistoryState({}), { replacesList: false });
+    const opened = inAppPushHistoryState(workspaceSwitchHistoryState({}), {
+      replacesList: false,
+      changesWorkspace: false,
+    });
 
     expect(historyBackStack(resumed)).toEqual([listEntry]);
     expect(resumed).not.toHaveProperty("__kikotoWorkspaceSwitch");

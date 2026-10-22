@@ -678,6 +678,33 @@ test("the in-app back stack keeps bottom-navigation switches out of Back", async
   expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
 });
 
+test("the in-app back stack keeps a link into another tab out of the tab it leaves", async ({ page }) => {
+  const requests: Record<string, number> = {};
+  await mockBrowsePages(page, requests);
+  await page.goto("/?q=Example");
+  await expect(page.getByTestId("work-card").first()).toBeVisible();
+  await useInAppBackStack(page);
+
+  const libraryTab = page.locator("footer").getByRole("button", { name: "Library", exact: true });
+  const circlesTab = page.locator("footer").getByRole("button", { name: "Circles", exact: true });
+
+  await page.getByTestId("work-card").first().click();
+  await expect(page).toHaveURL(/\/RJ00000000(?:\?view=local)?$/);
+  await page.getByRole("main").getByRole("button", { name: "Example Circle", exact: true }).click();
+  await expect(page).toHaveURL(/\/circles\/RG012345$/);
+  await expect(circlesTab).toHaveAttribute("aria-current", "page");
+  // The circle starts Circles' own stack, and its Back leads to the circle list.
+  await expect(page.getByRole("main").getByRole("button", { name: "Back to circles", exact: true })).toBeVisible();
+  expect(await inAppBack(page)).toBe(false);
+
+  // Library keeps its own place and stack.
+  await libraryTab.click();
+  await expect(page).toHaveURL(/\/RJ00000000(?:\?view=local)?$/);
+  await expect(libraryTab).toHaveAttribute("aria-current", "page");
+  expect(await inAppBack(page)).toBe(true);
+  await expect(page).toHaveURL((url) => url.pathname === "/" && url.searchParams.get("q") === "Example");
+});
+
 test("active mobile tabs return entity details to their browse lists", async ({ page }) => {
   const requests: Record<string, number> = {};
   await mockBrowsePages(page, requests);

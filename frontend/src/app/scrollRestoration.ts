@@ -1,7 +1,7 @@
 import { useLayoutEffect } from "react";
 
 import { historyStateForNavigation } from "@/app/appRoutes";
-import { replacesWorkspaceList } from "@/app/workspaceNavigation";
+import { changesWorkspace, replacesWorkspaceList } from "@/app/workspaceNavigation";
 import {
   HISTORY_ENTRY_UPDATED_EVENT,
   NAVIGATION_EVENT,
@@ -98,7 +98,10 @@ export function useScrollRestoration() {
       const entryState = historyStateForNavigation(historyPushStateWithScroll(state), url);
       if (usesInAppBackStack()) {
         // A push replaces the single entry and stacks the one it leaves.
-        const nextState = inAppPushHistoryState(entryState, { replacesList: replacesWorkspaceList(url, entryState) });
+        const nextState = inAppPushHistoryState(entryState, {
+          replacesList: replacesWorkspaceList(url, entryState),
+          changesWorkspace: changesWorkspace(url, entryState),
+        });
         originalReplaceState(historyStateWithEntryKey(nextState, newEntryKey()), unused, url);
         return;
       }
