@@ -21,8 +21,8 @@ const latestNumberedMigrationVersion = 89
 // latestReleasedBaseline is the newest file in migrations/baseline/, which
 // production uses for a fresh database.
 const (
-	latestReleasedBaselineVersion  = 88
-	latestReleasedBaselineFilename = "baseline/088_v0.9.2.sql"
+	latestReleasedBaselineVersion  = 89
+	latestReleasedBaselineFilename = "baseline/089_v0.9.3.sql"
 )
 
 func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
@@ -35,7 +35,7 @@ func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 
 func TestMigrateFreshDatabaseUsesLatestReleasedBaseline(t *testing.T) {
 	db := openMigrationManagerDB(t)
-	if err := MigrateFS(db, migrations.Files, "v0.9.2"); err != nil {
+	if err := MigrateFS(db, migrations.Files, "v0.9.3"); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 
