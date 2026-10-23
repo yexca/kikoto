@@ -124,9 +124,16 @@ func referenceRecommendationOrder(t testing.TB, store *Store, snapshot Recommend
 func TestRecommendationPagingCoversPrefixAndTailWithStableLanes(t *testing.T) {
 	store, userID := seedPaginationLibrary(t, 720, 0, 0)
 	ctx := context.Background()
+	// A second seed only repeats this ordering matrix, which the race detector
+	// slows many times over. Under it each direction keeps one seed; the
+	// uninstrumented run checks both seeds in both directions.
+	seeds := map[string][]int64{"asc": {43, 811}, "desc": {43, 811}}
+	if raceEnabled {
+		seeds = map[string][]int64{"asc": {43}, "desc": {811}}
+	}
 	for _, direction := range []string{"asc", "desc"} {
 		for _, query := range []string{"", `"Example Work 1"`, "tag:absent-synthetic-tag"} {
-			for _, seed := range []int64{43, 811} {
+			for _, seed := range seeds[direction] {
 				options := ListOptions{UserID: userID, Page: 1, PageSize: 31, Sort: "recommend", Direction: direction, RandomSeed: seed, Query: query, RecommendationSessionID: "example-paging"}
 				first, err := store.ListPage(ctx, options)
 				if err != nil {

@@ -16,10 +16,12 @@ permissions:
   contents: read
 
 jobs:
-  style:
-    name: Style
+  # Planning needs only Node and the diff, so every planned job starts without
+  # waiting for Style, which runs beside them.
+  plan:
+    name: Plan
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     outputs:
       plan: ${{ steps.plan.outputs.plan }}
       backend: ${{ steps.plan.outputs.backend }}
@@ -37,6 +39,26 @@ jobs:
           fetch-depth: 0
       - name: Set up Node
         uses: ./.github/actions/setup-node
+        with:
+          cache: "false"
+      - name: Select required validation
+        id: plan
+        env:
+          CI_TIER: ${{ inputs.tier }}
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: make ci-plan
+
+  style:
+    name: Style
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: ./.github/actions/setup-node
       - name: Set up Go
         id: go
         uses: ./.github/actions/setup-go
@@ -50,17 +72,11 @@ jobs:
           restore-keys: actionlint-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
       - name: Run style and CI policy checks
         run: make ci-style
-      - name: Select required validation
-        id: plan
-        env:
-          CI_TIER: ${{ inputs.tier }}
-          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: make ci-plan
 
   backend:
     name: Backend (${{ matrix.check }})
-    needs: style
-    if: needs.style.outputs.backend == 'true'
+    needs: plan
+    if: needs.plan.outputs.backend == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     strategy:
@@ -78,18 +94,24 @@ jobs:
             target: ci-backend-coverage
             cache: coverage
             save-cache: true
-          - check: race 1/4
-            target: RACE_SHARD=1/4 backend-race-shard
+          - check: race 1/6
+            target: RACE_SHARD=1/6 backend-race-shard
             cache: race
             save-cache: true
-          - check: race 2/4
-            target: RACE_SHARD=2/4 backend-race-shard
+          - check: race 2/6
+            target: RACE_SHARD=2/6 backend-race-shard
             cache: race
-          - check: race 3/4
-            target: RACE_SHARD=3/4 backend-race-shard
+          - check: race 3/6
+            target: RACE_SHARD=3/6 backend-race-shard
             cache: race
-          - check: race 4/4
-            target: RACE_SHARD=4/4 backend-race-shard
+          - check: race 4/6
+            target: RACE_SHARD=4/6 backend-race-shard
+            cache: race
+          - check: race 5/6
+            target: RACE_SHARD=5/6 backend-race-shard
+            cache: race
+          - check: race 6/6
+            target: RACE_SHARD=6/6 backend-race-shard
             cache: race
     steps:
       - name: Checkout
@@ -147,8 +169,8 @@ jobs:
 
   frontend:
     name: Frontend
-    needs: style
-    if: needs.style.outputs.frontend == 'true'
+    needs: plan
+    if: needs.plan.outputs.frontend == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -170,8 +192,8 @@ jobs:
 
   e2e:
     name: E2E (${{ matrix.shard }}/4)
-    needs: style
-    if: needs.style.outputs.e2e == 'true'
+    needs: plan
+    if: needs.plan.outputs.e2e == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -199,8 +221,8 @@ jobs:
 
   smoke:
     name: Smoke
-    needs: style
-    if: needs.style.outputs.production == 'true'
+    needs: plan
+    if: needs.plan.outputs.production == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -232,8 +254,8 @@ jobs:
 
   dev-smoke:
     name: Development Compose
-    needs: style
-    if: needs.style.outputs.dev_smoke == 'true'
+    needs: plan
+    if: needs.plan.outputs.dev_smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -255,8 +277,8 @@ jobs:
 
   android:
     name: Android build
-    needs: style
-    if: needs.style.outputs.android == 'true'
+    needs: plan
+    if: needs.plan.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -273,8 +295,8 @@ jobs:
 
   ios:
     name: iOS build
-    needs: style
-    if: needs.style.outputs.ios == 'true'
+    needs: plan
+    if: needs.plan.outputs.ios == 'true'
     runs-on: macos-26
     timeout-minutes: 45
     steps:
@@ -294,7 +316,7 @@ jobs:
   gate:
     name: Gate
     if: always()
-    needs: [style, backend, frontend, e2e, smoke, dev-smoke, android, ios]
+    needs: [plan, style, backend, frontend, e2e, smoke, dev-smoke, android, ios]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -308,6 +330,6 @@ jobs:
           cache: "false"
       - name: Verify all planned validation results
         env:
-          CI_PLAN: ${{ needs.style.outputs.plan }}
+          CI_PLAN: ${{ needs.plan.outputs.plan }}
           CI_RESULTS: ${{ toJSON(needs) }}
         run: make ci-results

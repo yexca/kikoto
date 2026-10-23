@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  parseDurations,
   parseShard,
   parseTestList,
   runPattern,
@@ -41,7 +42,7 @@ test("the listing keeps tests, examples and fuzz targets per package and ignores
   );
 });
 
-test("shards partition every listed test and spread each package", () => {
+test("shards partition every listed test and, without recordings, spread each package", () => {
   const tests = new Map([
     ["example/b", new Set(["TestB1", "TestB2", "TestB3", "TestShared"])],
     [
@@ -51,22 +52,27 @@ test("shards partition every listed test and spread each package", () => {
     ["example/c", new Set(["TestShared", "TestC1"])],
   ]);
   const all = new Set([...tests.values()].flatMap((names) => [...names]));
-  for (const total of [1, 2, 3, 4, 7, 20]) {
-    const seen = [];
-    for (let index = 1; index <= total; index++) {
-      const selection = selectShard(tests, { index, total });
-      assert.equal(selection.count, all.size);
-      seen.push(...selection.names);
-      for (const pkg of selection.packages)
-        assert.ok(selection.names.some((name) => tests.get(pkg).has(name)));
-      for (const [pkg, names] of tests) {
-        const selected = selection.names.some((name) => names.has(name));
-        assert.equal(selection.packages.includes(pkg), selected);
+  const durations = {
+    "example/a": { TestA0: 9, TestA3: 0.5 },
+    "example/c": { TestShared: 4 },
+  };
+  for (const recorded of [{}, durations])
+    for (const total of [1, 2, 3, 4, 7, 20]) {
+      const seen = [];
+      for (let index = 1; index <= total; index++) {
+        const selection = selectShard(tests, { index, total }, recorded);
+        assert.equal(selection.count, all.size);
+        seen.push(...selection.names);
+        for (const pkg of selection.packages)
+          assert.ok(selection.names.some((name) => tests.get(pkg).has(name)));
+        for (const [pkg, names] of tests) {
+          const selected = selection.names.some((name) => names.has(name));
+          assert.equal(selection.packages.includes(pkg), selected);
+        }
       }
+      assert.equal(seen.length, all.size, `total ${total}`);
+      assert.deepEqual(new Set(seen), all, `total ${total}`);
     }
-    assert.equal(seen.length, all.size, `total ${total}`);
-    assert.deepEqual(new Set(seen), all, `total ${total}`);
-  }
   const shares = [1, 2, 3].map(
     (index) =>
       selectShard(tests, { index, total: 3 }).names.filter((name) =>
@@ -74,6 +80,65 @@ test("shards partition every listed test and spread each package", () => {
       ).length,
   );
   assert.deepEqual(shares, [3, 3, 3]);
+});
+
+test("recorded durations give a slow test's package room on its own shard", () => {
+  const tests = new Map([
+    [
+      "example/a",
+      new Set([
+        "TestSlow",
+        ...Array.from({ length: 6 }, (_, i) => `TestA${i}`),
+      ]),
+    ],
+    ["example/b", new Set(["TestB1", "TestB2"])],
+  ]);
+  const durations = {
+    "example/a": { TestSlow: 10, TestA0: 1, TestA1: 1, TestA2: 1, TestA3: 1 },
+    "example/b": { TestB1: 5, TestB2: 5 },
+  };
+  const first = selectShard(tests, { index: 1, total: 2 }, durations);
+  const second = selectShard(tests, { index: 2, total: 2 }, durations);
+  assert.deepEqual(first.names, ["TestSlow"]);
+  assert.equal(first.seconds, 10);
+  assert.equal(second.names.length, 8);
+  assert.equal(second.seconds, 10);
+  // TestA4 and TestA5 have no recording and cost their package's median.
+  assert.equal(first.unrecorded, 2);
+});
+
+test("durations come from passed top-level tests of a run that did not fail", () => {
+  const run = (action, pkg, name, elapsed) =>
+    JSON.stringify({
+      Action: action,
+      Package: pkg,
+      Test: name,
+      Elapsed: elapsed,
+    });
+  assert.deepEqual(
+    parseDurations(
+      [
+        run("run", "example/b", "TestTwo"),
+        run("pass", "example/b", "TestTwo", 2.345),
+        run("pass", "example/b", "TestTwo/case", 1.2),
+        run("skip", "example/b", "TestSkipped", 0),
+        run("pass", "example/a", "TestOne", 0.004),
+        JSON.stringify({ Action: "pass", Package: "example/a", Elapsed: 3 }),
+        "not json",
+      ].join("\n"),
+    ),
+    { "example/a": { TestOne: 0 }, "example/b": { TestTwo: 2.35 } },
+  );
+  assert.throws(
+    () =>
+      parseDurations(
+        [
+          run("pass", "example/a", "TestOne", 1),
+          run("fail", "example/a", "TestTwo", 1),
+        ].join("\n"),
+      ),
+    /failed run/,
+  );
 });
 
 test("the run pattern anchors the names and refuses an oversized argument", () => {

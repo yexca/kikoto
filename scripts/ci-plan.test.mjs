@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import test from "node:test";
 import {
+  alwaysRun,
   createPlan,
   jobs,
   planKeys,
@@ -13,6 +14,7 @@ const pr = (paths) => createPlan({ tier: "pr", paths });
 // The plan keys a PR selects, in plan order.
 const selected = (...paths) => planKeys.filter((key) => pr(paths)[key]);
 const resultsFor = (plan) => ({
+  plan: { result: "success" },
   style: { result: "success" },
   ...Object.fromEntries(
     Object.entries(jobs).map(([job, key]) => [
@@ -196,13 +198,13 @@ test("the gate accepts only planned skips and rejects failures, cancellations an
     createPlan({ tier: "full" }),
   ]) {
     assert.doesNotThrow(() => validateResults(plan, resultsFor(plan)));
-    for (const job of ["style", ...Object.keys(jobs)]) {
+    for (const job of [...alwaysRun, ...Object.keys(jobs)]) {
       for (const result of ["failure", "cancelled", undefined]) {
         const results = resultsFor(plan);
         results[job] = { result };
         assert.throws(() => validateResults(plan, results), job);
       }
-      if (job === "style" || plan[jobs[job]]) {
+      if (alwaysRun.includes(job) || plan[jobs[job]]) {
         const results = resultsFor(plan);
         results[job] = { result: "skipped" };
         assert.throws(() => validateResults(plan, results), job);

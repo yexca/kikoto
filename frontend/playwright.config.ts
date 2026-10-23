@@ -7,7 +7,7 @@ export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
   expect: { timeout: 15_000 },
-  workers: process.env.CI ? 2 : process.platform === "win32" ? 4 : undefined,
+  workers: process.env.CI ? 3 : process.platform === "win32" ? 4 : undefined,
   // Fixtures belong to each page; test-level scheduling balances CI shards.
   fullyParallel: true,
   reporter: [["list"]],

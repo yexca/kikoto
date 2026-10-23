@@ -21,6 +21,9 @@ export const jobs = {
 
 export const planKeys = Object.values(jobs);
 
+// The jobs every tier runs unconditionally, beside the planned ones.
+export const alwaysRun = ["plan", "style"];
+
 // The scripts under scripts/ and the planned jobs that run them. Style always
 // runs, and it formats and tests every script, so one that only Style or no
 // job uses selects nothing. An unlisted script selects every job.
@@ -28,6 +31,7 @@ export const scriptJobs = {
   "check-go-format.go": ["backend"],
   "golangci-lint.yml": ["backend"],
   "go-test-shard.mjs": ["backend"],
+  "go-test-durations.json": ["backend"],
   "production-smoke.mjs": ["production"],
   "production-browser-smoke.mjs": ["production"],
   "smoke.mjs": ["dev_smoke"],
@@ -98,8 +102,11 @@ export function createPlan({ tier, paths = null }) {
 export function validateResults(plan, results) {
   if (!plan || planKeys.some((key) => typeof plan[key] !== "boolean"))
     throw new Error("Missing or invalid CI plan");
-  if (results.style?.result !== "success")
-    throw new Error("Style and CI planning must succeed");
+  for (const job of alwaysRun)
+    if (results[job]?.result !== "success")
+      throw new Error(
+        `CI job ${job} must succeed: ${results[job]?.result ?? "missing"}`,
+      );
   for (const [job, key] of Object.entries(jobs)) {
     const result = results[job]?.result;
     if (

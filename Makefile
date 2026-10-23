@@ -1,6 +1,6 @@
 .PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures dependency-audit frontend-playwright-install frontend-e2e-smoke frontend-e2e android-sync android-test android-build ios-sync ios-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
 .PHONY: ci-plan ci-plan-test ci-results ci-backend-static ci-backend-coverage ci-backend-race ci-production production-smoke production-e2e
-.PHONY: backend-race-shard go-test-shard-test
+.PHONY: backend-race-shard backend-race-durations go-test-shard-test
 .PHONY: pr-description-check pr-description-test
 .PHONY: actionlint ci-metrics ci-metrics-test
 .PHONY: browse-performance browse-production-performance playback-performance recommendation-performance
@@ -292,6 +292,14 @@ ci-backend-race: backend-race
 # of a total together run every test once: make RACE_SHARD=1/4 backend-race-shard
 backend-race-shard:
 	cd backend && $(NODE) ../scripts/go-test-shard.mjs $(RACE_SHARD) -race -timeout=20m
+
+# Records each test's race-detector duration, which the slices balance by, in
+# the pinned Go image limited to the CPUs of a CI runner. Refresh it when the
+# slices report many unrecorded tests or finish far apart. Git Bash would
+# otherwise rewrite the container paths into Windows paths.
+backend-race-durations: export MSYS_NO_PATHCONV := 1
+backend-race-durations:
+	$(DOCKER) run --rm --cpus 4 -v "$(CURDIR)/backend:/src" -w /src $(GO_IMAGE) $(GO) test -race -count=1 -json -timeout=40m ./... | $(NODE) scripts/go-test-shard.mjs record scripts/go-test-durations.json
 
 ci-backend: ci-backend-static ci-backend-coverage ci-backend-race
 

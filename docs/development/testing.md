@@ -120,15 +120,27 @@ CI runs `ci-backend-static`, `ci-backend-coverage`, and the race suite as
 independent matrix jobs. The local `ci-backend` target composes the same checks.
 
 Tests inside a package run one after another, and the race detector slows the
-SQLite-heavy packages many times over, so CI runs the race suite as four
-slices on separate runners. `make RACE_SHARD=1/4 backend-race-shard` runs one
+SQLite-heavy packages many times over, so CI runs the race suite as six
+slices on separate runners. `make RACE_SHARD=1/6 backend-race-shard` runs one
 slice; `make backend-race` still runs the whole suite in one process.
-`scripts/go-test-shard.mjs` lists every test, example, and fuzz target, deals
-the names out in package order so each package spreads over all slices, and
-runs its slice with a single `go test -run` pattern. Every slice computes the
-same list, so each test runs in exactly one of them and a new test needs no
-registration. The slice count lives in the `backend` matrix of
-`.github/workflows/validate.yml`.
+`scripts/go-test-shard.mjs` lists every test, example, and fuzz target, places
+them on slices by their recorded race-detector durations, and runs its slice
+with a single `go test -run` pattern. Because a slice takes as long as its
+slowest package, placement balances each package's serial time as well as the
+slice total. Every slice computes the same placement from the same list and
+`scripts/go-test-durations.json`, so each test runs in exactly one of them. A
+new test needs no registration: until it is recorded, it costs the median of
+its package, and each slice reports how many tests have no recording.
+`make backend-race-durations` refreshes the file from a race run in the pinned
+Go image, limited to the CPUs of a CI runner; refresh it when that count grows
+or the slices finish far apart. The slice count lives in the `backend` matrix
+of `.github/workflows/validate.yml`.
+
+No slice finishes before its slowest single test. A test that repeats the
+same checks over a matrix of inputs may run a smaller part of it when its
+package's `raceEnabled` test constant is set, as the recommendation paging
+test in `internal/library` does, because the coverage job runs the whole
+matrix without the race detector.
 
 Module downloads are cached separately from compilation and lint results. The
 compilation key includes source, migrations, tool configuration, and the check
@@ -264,21 +276,23 @@ Validation runs in two tiers that share one set of job definitions:
 depends on the event or branch that started a run.
 
 ```text
-Style + plan -> Backend (static / coverage / race 1-4), Frontend,
-                E2E (1-4), Smoke (production build + runtime),
-                Development Compose, Android, iOS
-All planned jobs -> Gate
+Style
+Plan -> Backend (static / coverage / race 1-6), Frontend,
+        E2E (1-4), Smoke (production build + runtime),
+        Development Compose, Android, iOS
+Plan, Style, and all planned jobs -> Gate
 ```
 
-`Style` always checks formatting, lint, documentation, workflow definitions,
-and the CI selection and gate policy, then plans the remaining jobs.
+`Plan` selects the remaining jobs, so they start without waiting for `Style`.
+`Style` runs beside them and always checks formatting, lint, documentation,
+workflow definitions, and the CI selection and gate policy.
 `scripts/ci-plan.mjs` owns the plan; its tests guard against accidental
 validation skips. In the `pr` tier it compares the PR base with the
 checked-out merge result, including both sides of renames and deleted paths:
 
 | PR changes | Additional planned jobs |
 | --- | --- |
-| Only public documentation | None beyond Style and the Gate |
+| Only public documentation | None beyond Plan, Style, and the Gate |
 | Backend source or tests | All backend checks, production Smoke |
 | Go module files | All backend checks, production Smoke, Development Compose |
 | Frontend application or configuration | Frontend, E2E, production Smoke |
