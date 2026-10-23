@@ -269,6 +269,7 @@ const workCardJapanese = {
   couldNotOpenEntity: "この{{kind}}を開けませんでした。",
   mark: "マーク：{{status}}",
   userRating: "あなたの評価",
+  userRatingShort: "自分",
   rateStars_one: "星 {{count}} つで評価",
   rateStars_other: "星 {{count}} つで評価",
   clearUserRating: "評価を取り消す",

@@ -269,6 +269,7 @@ const workCardKorean = {
   couldNotOpenEntity: "이 {{kind}}을(를) 열 수 없습니다.",
   mark: "표시: {{status}}",
   userRating: "내 평점",
+  userRatingShort: "내 평점",
   rateStars_one: "별 {{count}}개로 평가",
   rateStars_other: "별 {{count}}개로 평가",
   clearUserRating: "평점 지우기",

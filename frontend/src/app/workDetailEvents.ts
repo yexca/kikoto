@@ -15,6 +15,7 @@ export type WorkDetailUserStateDetail = {
   workID: number;
   listeningStatus: ListeningStatus;
   favorite: boolean;
+  userRating: number | null;
 };
 
 export type WorkDetailPlayDetail = {

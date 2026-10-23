@@ -270,6 +270,7 @@ const workCardHant = {
   couldNotOpenEntity: "無法開啟此{{kind}}。",
   mark: "標記：{{status}}",
   userRating: "我的評分",
+  userRatingShort: "我的",
   rateStars_one: "評為 {{count}} 星",
   rateStars_other: "評為 {{count}} 星",
   clearUserRating: "清除我的評分",

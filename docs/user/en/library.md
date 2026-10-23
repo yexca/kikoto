@@ -31,6 +31,9 @@ The Library is the main browsing surface for works.
 - Shows cover, title, code, Circle / Series on one ellipsized line, voice
   metadata, local availability, source tags, and quick listening marks when
   available.
+- Library and Favorites cards carry your own rating beside the Quick mark, the
+  same control as in [work detail](work-detail.md#current-behavior): a star
+  with its number, or an empty star while the work is unrated.
 - Measures provider tags into at most two card rows. A `+N` badge opens hidden
   tags in a popover; personal tags remain a separate user-owned row.
 - Shows compact DL sales and a five-segment non-numeric rating comparison in one

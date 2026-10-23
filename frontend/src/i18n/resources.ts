@@ -262,6 +262,7 @@ export const workCardEnglish = {
   couldNotOpenEntity: "Could not open this {{kind}}.",
   mark: "Mark: {{status}}",
   userRating: "Your rating",
+  userRatingShort: "Yours",
   rateStars_one: "Rate {{count}} star",
   rateStars_other: "Rate {{count}} stars",
   clearUserRating: "Clear your rating",

@@ -369,6 +369,7 @@ export function persistedWorkDetailPresentation({
     ratingLabel: i18n.t("libraryDetail.dlRating"),
     rating: hero.rating,
     ratingCount: hero.ratingCount,
+    userRating: work?.userRating ?? null,
     sales: hero.sales,
     baseCode: fields.baseCode,
     metadataLanguage: fields.metadataLanguage,

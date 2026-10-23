@@ -210,12 +210,39 @@ test("detail rating button shows the rating and its popover rates or clears it",
   const rated = page.getByRole("button", { name: "Your rating: 4 of 5" });
   await expect(rated).toHaveText("4");
   await expect(page.getByRole("group", { name: "Your rating" })).toBeHidden();
+  const stats = page.getByTestId("dlsite-info").filter({ visible: true });
+  await expect(stats.getByLabel("Your rating: 4 of 5")).toHaveText("4");
 
   await rated.click();
   await expect(page.getByRole("button", { name: "Rate 4 stars" })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Clear your rating" }).click();
   await expect(page.getByRole("button", { name: "Rate this work" })).toBeVisible();
   expect(ratings).toEqual([4, null]);
+  await expect(stats.getByLabel(/Your rating: \d of 5/)).toHaveCount(0);
+});
+
+test("a library card rates its work and follows a rating set in work detail", async ({ page }) => {
+  const ratings: unknown[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "PATCH" && new URL(request.url()).pathname === "/api/works/1/user-state") {
+      ratings.push((request.postDataJSON() as { userRating?: unknown }).userRating);
+    }
+  });
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, { authenticated: true });
+  await page.goto("/");
+  const card = page.getByTestId("work-card").filter({ hasText: "Tagged mobile work" });
+
+  await card.getByRole("button", { name: "Rate this work" }).click();
+  await page.getByRole("group", { name: "Your rating" }).getByRole("button", { name: "Rate 2 stars" }).click();
+  await expect(card.getByRole("button", { name: "Your rating: 2 of 5" })).toHaveText("2");
+
+  await page.getByText("Tagged mobile work", { exact: true }).click();
+  await page.getByRole("button", { name: "Rate this work" }).click();
+  await page.getByRole("group", { name: "Your rating" }).getByRole("button", { name: "Rate 5 stars" }).click();
+  await expect(page.getByRole("button", { name: "Your rating: 5 of 5" })).toBeVisible();
+  await page.getByRole("main").getByRole("button", { name: "Library", exact: true }).click();
+  await expect(card.getByRole("button", { name: "Your rating: 5 of 5" })).toHaveText("5");
+  expect(ratings).toEqual([2, 5]);
 });
 
 test("a lone local source is named in the directory header until the viewer always shows its tab", async ({ page }) => {

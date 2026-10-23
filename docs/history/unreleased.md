@@ -1,6 +1,16 @@
 # Unreleased
 
 <details>
+<summary><strong>Library and work detail</strong></summary>
+
+- Library and Favorites cards show your rating beside the Quick mark and rate
+  a work, or clear its rating, without opening it.
+- The work detail stat strip shows your rating beside the DLsite rating, also
+  for custom works.
+
+</details>
+
+<details>
 <summary><strong>Subscriptions</strong></summary>
 
 - Subscriptions gains a **Rankings** view beside **New releases**. It follows

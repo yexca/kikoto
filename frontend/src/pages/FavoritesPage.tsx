@@ -347,6 +347,17 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
     reloadWorks();
   };
 
+  const updateWorkRating = async (workID: number, rating: number | null) => {
+    try {
+      const result = await api.updateWorkUserState(workID, { userRating: rating });
+      setWorks((items) =>
+        items.map((item) => (item.id === workID ? { ...item, userRating: result.userRating } : item)),
+      );
+    } catch (error) {
+      toast.notify(toastFromError(error, t("errors.unavailable")));
+    }
+  };
+
   // Clearing filters keeps the open shelf; switching shelves is navigation, not a filter.
   const clearFilters = () => {
     setQuery("");
@@ -514,6 +525,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const openItemWork = useStableCallback(openWork);
   const openCardUserTag = useStableCallback(openShelfUserTag);
   const changeItemStatus = useStableCallback(updateWorkStatus);
+  const changeItemRating = useStableCallback(updateWorkRating);
   const changeItemSelection = useStableCallback(toggleWorkSelection);
   const refreshItemLists = useStableCallback(async (work: Work) => {
     await reloadFavoriteLists();
@@ -522,6 +534,7 @@ export function FavoritesPage({ active = true }: { active?: boolean }) {
   const itemHandlers = useRef<FavoriteWorkItemHandlers>({
     onOpen: openItemWork,
     onStatusChange: changeItemStatus,
+    onRatingChange: changeItemRating,
     onSelectedChange: changeItemSelection,
     onListsChanged: refreshItemLists,
   }).current;

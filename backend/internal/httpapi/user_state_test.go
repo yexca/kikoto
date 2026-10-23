@@ -393,6 +393,10 @@ func TestWorkUserStateRatingIsKeptUntilClearedAndValidated(t *testing.T) {
 	if code, state := patch(`{"listeningStatus":"finished"}`); code != http.StatusOK || state.UserRating == nil || *state.UserRating != 4 || state.ListeningStatus != "finished" {
 		t.Fatalf("mark kept rating = %d %+v", code, state)
 	}
+	// Work cards read the rating from the list page.
+	if page := requestFavoriteWorksPage(t, server, "/api/favorite-works?page=1&pageSize=10"); len(page.Works) != 1 || page.Works[0].UserRating == nil || *page.Works[0].UserRating != 4 {
+		t.Fatalf("listed rating = %#v", page.Works)
+	}
 	for _, body := range []string{`{"userRating":0}`, `{"userRating":6}`, `{"userRating":3.5}`, `{"userRating":"5"}`} {
 		if code, _ := patch(body); code != http.StatusBadRequest {
 			t.Fatalf("%s status = %d", body, code)

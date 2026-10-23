@@ -37,6 +37,7 @@ export function LocalLibraryPanel({
   onOpen,
   onRecommendationOpen,
   onStatusChange,
+  onRatingChange,
   onFavoriteSaved,
   onTagOpen,
   onUserTagOpen,
@@ -71,6 +72,7 @@ export function LocalLibraryPanel({
   onOpen: (work: Work) => void;
   onRecommendationOpen: (work: Work) => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
+  onRatingChange: (workID: number, rating: number | null) => Promise<void>;
   onFavoriteSaved: (work: Work, favorite: boolean) => void;
   onTagOpen: (tag: string) => void;
   onUserTagOpen: (tag: string) => void;
@@ -112,6 +114,7 @@ export function LocalLibraryPanel({
               onRecommendationOpen={onRecommendationOpen}
               onOpen={onOpen}
               onStatusChange={onStatusChange}
+              onRatingChange={onRatingChange}
               onFavoriteSaved={onFavoriteSaved}
               onTagOpen={onTagOpen}
               onUserTagOpen={onUserTagOpen}

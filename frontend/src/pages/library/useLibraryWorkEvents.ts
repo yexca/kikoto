@@ -50,8 +50,10 @@ export function useLibraryWorkEvents({
   }, [active, refreshAfterTrack]);
 
   const followDetailUserState = useStableCallback((event: Event) => {
-    const { ownerPage, workID, listeningStatus, favorite } = (event as CustomEvent<WorkDetailUserStateDetail>).detail;
-    localWorks.patchWork(workID, { listeningStatus, favorite });
+    const { ownerPage, workID, listeningStatus, favorite, userRating } = (
+      event as CustomEvent<WorkDetailUserStateDetail>
+    ).detail;
+    localWorks.patchWork(workID, { listeningStatus, favorite, userRating });
     const work = localWorks.worksRef.current.find((item) => item.id === workID);
     if (ownerPage === "library" && work && ["relisten", "paused"].includes(listeningStatus)) {
       recordWorkEvent(work, listeningStatus === "paused" ? "paused_mark" : "positive_mark");

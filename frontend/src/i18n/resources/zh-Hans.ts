@@ -269,6 +269,7 @@ export const workCardHans = {
   couldNotOpenEntity: "无法打开此{{kind}}。",
   mark: "标记：{{status}}",
   userRating: "我的评分",
+  userRatingShort: "我的",
   rateStars_one: "评为 {{count}} 星",
   rateStars_other: "评为 {{count}} 星",
   clearUserRating: "清除我的评分",

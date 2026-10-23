@@ -14,6 +14,7 @@ import {
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
+import { WorkRatingControl } from "@/components/work-card/WorkRatingControl";
 import {
   workCollectionClassName,
   workCollectionStyle,
@@ -115,6 +116,11 @@ const FavoriteWorkCard = memo(function FavoriteWorkCard({
                 active={work.favorite}
                 disabled={isListSaving}
                 onSaved={() => void handlers.onListsChanged(work)}
+              />
+              <WorkRatingControl
+                variant="card"
+                value={work.userRating ?? null}
+                onChange={(rating) => void handlers.onRatingChange(work.id, rating)}
               />
               <WorkCardQuickMarkButton
                 value={work.listeningStatus}

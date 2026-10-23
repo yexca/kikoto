@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { WorkCardListButton, WorkCardQuickMarkButton } from "@/components/work-card/WorkCardShell";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
+import { WorkRatingControl } from "@/components/work-card/WorkRatingControl";
 import { assetURL, type ListeningStatus, type Work } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
 import { formatTime } from "@/player/dock/playerFormat";
@@ -15,6 +16,7 @@ export type FavoriteWorkItemHandlers = {
   onListsChanged: (work: Work) => Promise<void>;
   onOpen: (work: Work) => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
+  onRatingChange: (workID: number, rating: number | null) => Promise<void>;
 };
 
 /** Dense list view: one row per work with its status, resume point, and file availability. */
@@ -155,6 +157,11 @@ const FavoriteWorkRow = memo(function FavoriteWorkRow({
           showLabel
           responsiveLabel
           onChange={(status) => void handlers.onStatusChange(work.id, status)}
+        />
+        <WorkRatingControl
+          variant="card"
+          value={work.userRating ?? null}
+          onChange={(rating) => void handlers.onRatingChange(work.id, rating)}
         />
         <WorkCardListButton
           workId={work.id}

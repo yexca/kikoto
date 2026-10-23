@@ -105,6 +105,43 @@ func validUserRating(value sql.NullInt64) *int {
 	return &rating
 }
 
+// loadWorkUserRatingsBatch reads the viewer's ratings of a page of works; an
+// unrated work has no entry.
+func (s *Server) loadWorkUserRatingsBatch(ctx context.Context, userID int64, workIDs []int64) (map[int64]*int, error) {
+	result := make(map[int64]*int, len(workIDs))
+	if userID <= 0 || len(workIDs) == 0 {
+		return result, nil
+	}
+	placeholders := make([]string, len(workIDs))
+	args := make([]any, 0, len(workIDs)+1)
+	args = append(args, userID)
+	for index, workID := range workIDs {
+		placeholders[index] = "?"
+		args = append(args, workID)
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT work_id, rating
+		FROM user_work_state
+		WHERE user_id = ? AND rating IS NOT NULL
+			AND work_id IN (`+strings.Join(placeholders, ",")+`)
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var workID int64
+		var rating sql.NullInt64
+		if err := rows.Scan(&workID, &rating); err != nil {
+			return nil, err
+		}
+		if value := validUserRating(rating); value != nil {
+			result[workID] = value
+		}
+	}
+	return result, rows.Err()
+}
+
 func parseUserRating(raw json.RawMessage) (*int, bool) {
 	if string(raw) == "null" {
 		return nil, true

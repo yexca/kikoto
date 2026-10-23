@@ -502,6 +502,15 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
     }
   };
 
+  const updateWorkRating = async (workID: number, rating: number | null) => {
+    try {
+      const result = await api.updateWorkUserState(workID, { userRating: rating });
+      localWorks.patchWork(workID, { userRating: result.userRating });
+    } catch (error) {
+      toast.notify(toastFromError(error, t("errors.unavailable")));
+    }
+  };
+
   const untrackWorkSource = async (work: Work, source: SourcePresenceItem) => {
     const sourceID = source.fileSourceId;
     const ownerWorkID = source.workId || work.id;
@@ -606,6 +615,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
   const openCardWork = useStableCallback((work: Work) => openWork(work));
   const openCardRecommendation = useStableCallback((work: Work) => recommendations.openExplanation(work, randomSeed));
   const changeCardStatus = useStableCallback(updateWorkStatus);
+  const changeCardRating = useStableCallback(updateWorkRating);
   const saveCardFavorite = useStableCallback((work: Work, favorite: boolean) => {
     localWorks.patchWork(work.id, { favorite });
     if (favorite) recordWorkRecommendationEvent(work, "positive_mark");
@@ -885,6 +895,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
           onOpen={openCardWork}
           onRecommendationOpen={openCardRecommendation}
           onStatusChange={changeCardStatus}
+          onRatingChange={changeCardRating}
           onFavoriteSaved={saveCardFavorite}
           onTagOpen={openCardTag}
           onUserTagOpen={openCardUserTag}

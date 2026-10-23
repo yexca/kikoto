@@ -110,7 +110,11 @@ export function WorkDetailPage({
   const updateWorkStatus = async (workID: number, status: ListeningStatus) => {
     try {
       const result = await api.updateWorkUserState(workID, { listeningStatus: status });
-      const patch = { listeningStatus: result.listeningStatus, favorite: result.favorite };
+      const patch = {
+        listeningStatus: result.listeningStatus,
+        favorite: result.favorite,
+        userRating: result.userRating,
+      };
       detail.patchWork(workID, patch);
       announceWorkDetailUserState({ ownerPage, workID, ...patch });
     } catch (error) {
@@ -120,7 +124,13 @@ export function WorkDetailPage({
   const updateWorkRating = async (workID: number, rating: number | null) => {
     try {
       const result = await api.updateWorkUserState(workID, { userRating: rating });
-      detail.patchWork(workID, { userRating: result.userRating });
+      const patch = {
+        listeningStatus: result.listeningStatus,
+        favorite: result.favorite,
+        userRating: result.userRating,
+      };
+      detail.patchWork(workID, patch);
+      announceWorkDetailUserState({ ownerPage, workID, ...patch });
     } catch (error) {
       toast.notify(toastFromError(error, t("errors.unavailable")));
     }

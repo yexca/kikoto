@@ -7,6 +7,7 @@ import type { SourceVisibilityMode } from "@/components/source-visibility/source
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { CompactWorkCardShell, type CompactWorkCardLayout } from "@/components/work-card/CompactWorkCard";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
+import { WorkRatingControl } from "@/components/work-card/WorkRatingControl";
 import {
   dlsiteTagBadges,
   userTagBadges,
@@ -33,6 +34,7 @@ export const LibraryWorkCard = memo(function LibraryWorkCard({
   onRecommendationOpen,
   onOpen,
   onStatusChange,
+  onRatingChange,
   onFavoriteSaved,
   onTagOpen,
   onUserTagOpen,
@@ -50,6 +52,7 @@ export const LibraryWorkCard = memo(function LibraryWorkCard({
   onRecommendationOpen: (work: Work) => void;
   onOpen: (work: Work) => void;
   onStatusChange: (workID: number, status: ListeningStatus) => Promise<void>;
+  onRatingChange: (workID: number, rating: number | null) => Promise<void>;
   onFavoriteSaved: (work: Work, favorite: boolean) => void;
   onTagOpen: (tag: string) => void;
   onUserTagOpen: (tag: string) => void;
@@ -161,6 +164,11 @@ export const LibraryWorkCard = memo(function LibraryWorkCard({
                 workId={work.id}
                 active={work.favorite}
                 onSaved={(favorite) => onFavoriteSaved(work, favorite)}
+              />
+              <WorkRatingControl
+                variant="card"
+                value={work.userRating ?? null}
+                onChange={(rating) => void onRatingChange(work.id, rating)}
               />
               <WorkCardQuickMarkButton
                 value={work.listeningStatus}

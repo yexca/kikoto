@@ -10,15 +10,18 @@ const stars = [1, 2, 3, 4, 5] as const;
 
 /**
  * The viewer's own one-to-five-star rating: a star showing the current number,
- * which opens a popover of stars to rate the work or clear the rating.
+ * which opens a popover of stars to rate the work or clear the rating. The
+ * card variant matches the icon actions of a work card footer.
  */
 export function WorkRatingControl({
   value,
   disabled,
+  variant = "outline",
   onChange,
 }: {
   value: number | null;
   disabled?: boolean;
+  variant?: "outline" | "card";
   onChange: (rating: number | null) => void;
 }) {
   const { t } = useTranslation();
@@ -38,9 +41,9 @@ export function WorkRatingControl({
     <div className="relative" ref={ref}>
       <Button
         type="button"
-        variant="outline"
+        variant={variant === "card" ? "ghost" : "outline"}
         size="sm"
-        className={cn("h-8", rated ? "gap-1.5 px-2.5" : "w-8 px-0")}
+        className={cn("h-8", rated ? (variant === "card" ? "gap-1 px-1.5" : "gap-1.5 px-2.5") : "w-8 px-0")}
         title={title}
         aria-label={title}
         aria-haspopup="dialog"
@@ -62,6 +65,7 @@ export function WorkRatingControl({
           if (!next) setPreview(null);
         }}
         ariaLabel={t("workCard.userRating")}
+        bottomCollisionPadding={isMobileViewport() ? 168 : 12}
         className="p-2 text-sm"
       >
         <div className="mb-1 px-1 text-xs font-medium text-muted-foreground">{t("workCard.userRating")}</div>
@@ -109,4 +113,9 @@ export function WorkRatingControl({
       </AnchoredPopover>
     </div>
   );
+}
+
+/** Phones keep the popover above the bottom navigation and player. */
+function isMobileViewport() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
 }

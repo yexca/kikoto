@@ -94,7 +94,7 @@ Until a background update finishes, the work keeps its last saved tag set, inclu
 
 ## Custom works
 
-A [custom work](settings.md#metadata) has no provider metadata and no remote source. Its detail shows no DLsite link, rating, sales, or metadata notice, and offers no metadata refresh, remote source tabs, or source checks; the directory lists only its local folders. The metadata editor has no **Fetch for edit** and no Links section, so a custom work takes no metadata link, purchase bonus parent, or bundle contents; its title, description, age rating, cover, tags, and credits are edited by hand. **Edit files** and the **Lyrics files** tab of **Manage lyrics** list only local folders and editions. When its folder is missing, the directory explains that a scan finds the work again once a folder's name carries its KT code in brackets, such as `[KT00000001]`. Its cover is one of its local images; resetting the cover shows the work code in its place.
+A [custom work](settings.md#metadata) has no provider metadata and no remote source. Its detail shows no DLsite link, DLsite rating, sales, or metadata notice, and offers no metadata refresh, remote source tabs, or source checks; the directory lists only its local folders. The metadata editor has no **Fetch for edit** and no Links section, so a custom work takes no metadata link, purchase bonus parent, or bundle contents; its title, description, age rating, cover, tags, and credits are edited by hand. **Edit files** and the **Lyrics files** tab of **Manage lyrics** list only local folders and editions. When its folder is missing, the directory explains that a scan finds the work again once a folder's name carries its KT code in brackets, such as `[KT00000001]`. Its cover is one of its local images; resetting the cover shows the work code in its place.
 
 ## Purchase bonuses
 
@@ -111,8 +111,10 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   link.
 - Shows your own rating beside the Mark action as a star with its number, or
   an empty star while the work is unrated. Choosing it opens five stars that
-  rate the work from one to five, and **Clear your rating** when it has one. Your rating is personal, separate from the DLsite rating, and is
-  the main evidence for your [recommendations](library.md).
+  rate the work from one to five, and **Clear your rating** when it has one.
+  The same control is on [work cards](library.md#current-behavior). Your
+  rating is personal, separate from the DLsite rating, and is the main
+  evidence for your [recommendations](library.md).
 - Shows known language editions for a logical work family.
 - Keeps the metadata-language and directory-edition selectors as two separate
   compact chips beside the work code. Each chip names its current choice and
@@ -178,8 +180,8 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
 - Opens with a Hero whose background is tinted from the cover. Beside the
   cover it shows the work code with the DLsite link and language chips, the
   title, circle, and series, a CV credit line, one tag row, a compact stat
-  strip (rating, age rating, sales, release date, and playable duration; one
-  row on phones), any metadata notice, and bottom-aligned Hero actions. The
+  strip (DLsite rating, your rating, age rating, sales, release date, and
+  playable duration; one row on phones), any metadata notice, and bottom-aligned Hero actions. The
   tag row lists provider tags first and then the user's personal tags in a
   distinct accent style, ending with the add or edit icon; long provider tag
   lists collapse behind a `+N` control. Selecting a provider tag or a personal

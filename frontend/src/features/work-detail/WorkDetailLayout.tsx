@@ -90,6 +90,8 @@ export type UnifiedWorkDetailPresentation = {
   ratingLabel: string;
   rating: number | null;
   ratingCount: number | null;
+  /** The viewer's own rating of a persisted work, null when unrated; absent for a remote-only work. */
+  userRating?: number | null;
   sales: number | null;
   baseCode?: string;
   metadataLanguage?: string;
@@ -533,6 +535,7 @@ function DetailStatStrip({
   ratingLabel,
   rating,
   ratingCount,
+  userRating,
   sales,
   customWork = false,
   releaseDate,
@@ -541,7 +544,15 @@ function DetailStatStrip({
   compact = false,
 }: Pick<
   UnifiedWorkDetailPresentation,
-  "ratingLabel" | "rating" | "ratingCount" | "sales" | "customWork" | "releaseDate" | "ageRating" | "sourceInfo"
+  | "ratingLabel"
+  | "rating"
+  | "ratingCount"
+  | "userRating"
+  | "sales"
+  | "customWork"
+  | "releaseDate"
+  | "ageRating"
+  | "sourceInfo"
 > & { compact?: boolean }) {
   const normalizedRatingLabel = ratingLabel.toLowerCase().includes("dl") ? i18n.t("workCard.ratingShort") : ratingLabel;
   const age = ageRatingPresentation(ageRating);
@@ -562,6 +573,21 @@ function DetailStatStrip({
           </span>
         ),
       detail: ratingCount ? ratingCount.toLocaleString() : undefined,
+    },
+    {
+      key: "userRating",
+      label: compact ? i18n.t("workCard.userRatingShort") : i18n.t("workCard.userRating"),
+      value: userRating ? (
+        <span
+          className="inline-flex items-baseline gap-1"
+          aria-label={i18n.t("workCard.userRatingValue", { value: userRating })}
+        >
+          <Star className="h-3 w-3 self-center fill-current text-primary" aria-hidden="true" />
+          {userRating}
+        </span>
+      ) : (
+        "—"
+      ),
     },
     {
       key: "age",
@@ -599,7 +625,11 @@ function DetailStatStrip({
           : i18n.t("libraryDetail.metadataDuration"),
       value: durationSeconds ? formatDuration(durationSeconds) : sourceInfo.loading ? "…" : "—",
     },
-  ].filter((stat) => !customWork || (stat.key !== "rating" && stat.key !== "sales"));
+  ].filter(
+    (stat) =>
+      (!customWork || (stat.key !== "rating" && stat.key !== "sales")) &&
+      (stat.key !== "userRating" || userRating !== undefined),
+  );
   return (
     <dl
       data-testid="dlsite-info"
@@ -644,6 +674,7 @@ function MobileWorkDetailLayout({
   seriesCircleExternalId,
   ratingLabel,
   rating,
+  userRating,
   ratingCount,
   sales,
   customWork,
@@ -695,6 +726,7 @@ function MobileWorkDetailLayout({
   seriesCircleExternalId: string;
   ratingLabel: string;
   rating: number | null;
+  userRating?: number | null;
   ratingCount: number | null;
   sales: number | null;
   customWork?: boolean;
@@ -813,6 +845,7 @@ function MobileWorkDetailLayout({
           <DetailStatStrip
             ratingLabel={ratingLabel}
             rating={rating}
+            userRating={userRating}
             ratingCount={ratingCount}
             sales={sales}
             customWork={customWork}

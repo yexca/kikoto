@@ -35,6 +35,8 @@ export type Work = {
   progress: WorkProgressSummary;
   listeningStatus: ListeningStatus;
   favorite: boolean;
+  /** The viewer's own one-to-five-star rating; null or absent when unrated. */
+  userRating?: number | null;
   recommendScore: number;
 };
 
