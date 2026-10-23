@@ -1425,6 +1425,8 @@ export const surfaceEnglish = {
       "Availability Watch is configured on the Subscriptions page, and the subscription refresh runs it on its schedule. Its run history stays here.",
     subscriptionRefreshManagedOnSubscriptions:
       "The subscription refresh is scheduled on the Subscriptions page. Its run history stays here.",
+    rankingRefreshManagedOnSubscriptions:
+      "The ranking refresh is scheduled in the Rankings settings on the Subscriptions page. Its run history stays here.",
     openSubscriptions: "Open Subscriptions",
     presetScheduledBySubscriptions:
       "This workflow runs on demand. To follow new works on a schedule, subscribe to the circle, series, or voice actor; subscriptions refresh on the schedule set on the Subscriptions page.",
@@ -1496,6 +1498,7 @@ export const surfaceEnglish = {
       series_catalog_sync: "Series catalog",
       voice_catalog_sync: "VA catalog",
       creator_subscription_refresh: "Subscriptions",
+      ranking_refresh: "Rankings",
     },
     console: {
       statusStrip: "Workflow status",
@@ -1739,6 +1742,11 @@ export const surfaceEnglish = {
         name: "Refresh subscriptions",
         description:
           "Refresh subscribed circle and voice actor catalogs, sync the metadata of new works, add them to subscribers' feeds, and check Availability Watch.",
+      },
+      ranking_refresh: {
+        name: "Refresh rankings",
+        description:
+          "Pull the tracked DLsite and remote source rankings and record how they changed. Works are not added to the library.",
       },
       availability_watch: {
         name: "Availability Watch",

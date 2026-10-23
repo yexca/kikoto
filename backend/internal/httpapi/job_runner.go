@@ -266,6 +266,7 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		"custom_workflow":             s.executeWorkflowGraphJob,
 		"availability_watch":          s.executeAvailabilityWatchJob,
 		creatorSubscriptionWorkerType: s.executeCreatorSubscriptionRefreshJob,
+		rankingWorkerType:             s.executeRankingRefreshJob,
 		databaseOptimizeWorkerType:    s.executeDatabaseOptimizeJob,
 		databaseBackupWorkerType:      s.executeDatabaseBackupJob,
 	}

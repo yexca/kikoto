@@ -64,6 +64,7 @@ Remote sources:
   selected remote works.
 - `remote_popular_collection` and `dlsite_popular_collection`: see
   [Popular Collections](#popular-collections).
+- `ranking_refresh`: see [Rankings](#rankings).
 - Preset catalog sync workflows `circle_catalog_sync`, `series_catalog_sync`,
   and `voice_catalog_sync`. Circle and voice actor detail refreshes run as
   catalog sync runs.
@@ -387,7 +388,7 @@ The Workflows page lists the manually runnable built-in workflows and the
 preset workflows in one workflow list, grouped by a frontend-owned category
 keyed by workflow code: Basic (local scan, local files, metadata sync, Learn
 tag names), Collect
-(popular collections), Catalog sync (the subscription refresh and the catalog
+(popular collections and the ranking refresh), Catalog sync (the subscription refresh and the catalog
 sync presets), and Remote (Availability Watch, Fetch, and works on a source). A linked run of any other workflow adds a
 read-only entry for it, which stays with Basic. Each entry shows
 its latest run's status and time and the enabled automation that starts it
@@ -439,8 +440,8 @@ the backend.
   Fetch steps (`fetch_works`, Fetch, a popular collection's Fetch, a bulk
   Fetch, a watch's Fetch) require both `remote:fetch` and `metadata:sync`;
   scans, the local file index,
-  metadata sync, presets, and the DLsite popular collection require
-  `metadata:sync`; the source presence check requires `sources:write`; tags
+  metadata sync, presets, the DLsite popular collection, and the ranking
+  refresh require `metadata:sync`; the source presence check requires `sources:write`; tags
   require `tags:write`. Scheduled dispatch re-checks the trigger owner's
   current permissions.
 - Triggers: editing, switching off, or deleting a trigger requires the
@@ -538,6 +539,61 @@ uses its default ranking tag.
 Configurable built-in triggers keep the configuring user for user-owned tag
 effects and revalidate that user's permissions when dispatching. Triggered runs
 store both their trigger reference and the final resolved input.
+
+## Rankings
+
+A ranking list (`ranking_list`) is one tracked ranking shared by every
+account: the DLsite voice ranking for 24 hours, 7 days, or 30 days, optionally
+limited to works released within 30 days, or the popular list of one enabled
+compatible remote source. Annual rankings stay with the
+[DLsite popular collection](#popular-collections). A list keeps its depth (10
+to 100 places), whether it is tracked, and its position among the lists.
+
+One system workflow, `ranking_refresh`, pulls the lists:
+
+```text
+pull   (each enabled list, or the lists a manual run names, in position order)
+  -> record (a snapshot when the order changed, then entry statistics)
+```
+
+A DLsite list reads the provider ranking page through the DLsite client, which
+also returns the title and circle each entry shows; either may be empty, and no
+image address is taken from the page. A remote list reads the source's popular
+works through the shared outbound transport on its configured origin; works
+without a stable catalog code are skipped and counted. A disabled, removed, or
+incompatible source records the list as `source_unavailable`, and a failing
+list never stops the others; the run is partial when some lists failed and
+failed when all did. Detailed errors stay in the run and the list's protected
+`last_error`.
+
+Recording compares the pulled codes, in order, with the list's latest
+snapshot. An identical order only refreshes the entries' display text and the
+list's pull time. Any other order adds a `ranking_snapshot` with its ranked
+codes and updates each `ranking_entry`: first appearance, the start of the
+current continuous presence, best rank, and number of appearances. Entries are
+codes. A refresh never creates a work, syncs metadata, tracks, fetches, or
+tags, and reading a ranking resolves library works by code.
+
+A ranking page compares the latest snapshot with a baseline: the snapshot the
+account last displayed (`user_ranking_state`), the previous snapshot, or a
+retained snapshot of the list. Without a stored or retained seen snapshot it
+uses the previous one. A code missing from the baseline is new when the list
+first held it after the baseline and re-entered otherwise; codes of the
+baseline missing from the latest snapshot are dropped. An account records the
+snapshot it displayed, never moving its seen snapshot back. A remote list's
+covers go through the image proxy, never as the source's address.
+
+The workflow has one fixed interval trigger, configured only in the Rankings
+settings of the Subscriptions page by a user with `metadata:sync`: on or off
+and an interval from 1 to 168 hours (24 by default). Startup plans its first
+run, and a dispatch while no list is enabled creates no run. Adding a list
+queues its first pull. One refresh is queued or running at a time; a request
+while one is active returns it. Database cleanup removes snapshots older than
+90 days except the two newest of each list, and a refresh removes entries that
+left the list longer ago than that.
+
+Demo serves two fixed sample rankings built from obviously synthetic names and
+reserved codes, and refuses every change.
 
 ## Preset Workflows
 

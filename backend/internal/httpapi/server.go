@@ -476,6 +476,14 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/subscriptions/feed", s.listReleaseFeed)
 	mux.HandleFunc("GET /api/subscriptions/feed/unread", s.releaseFeedUnread)
 	mux.HandleFunc("POST /api/subscriptions/feed/seen", s.markReleaseFeedSeen)
+	mux.HandleFunc("GET /api/rankings", s.listRankings)
+	mux.HandleFunc("POST /api/rankings", s.createRanking)
+	mux.HandleFunc("PUT /api/rankings/schedule", s.updateRankingSchedule)
+	mux.HandleFunc("POST /api/rankings/refresh", s.runRankingRefresh)
+	mux.HandleFunc("GET /api/rankings/{id}", s.getRanking)
+	mux.HandleFunc("PATCH /api/rankings/{id}", s.updateRanking)
+	mux.HandleFunc("DELETE /api/rankings/{id}", s.deleteRanking)
+	mux.HandleFunc("POST /api/rankings/{id}/seen", s.markRankingSeen)
 	apiHandler := s.withCORS(withFirstResponseDeadline(
 		limitRequestBody(s.authMiddleware(s.anonymousAccessMiddleware(s.demoReadOnlyMiddleware(s.demoContentMiddleware(s.libraryMigrationMiddleware(mux))))), maxJSONRequestBytes),
 		mux, apiFirstResponseBudget, slowFirstResponsePatterns,
@@ -575,6 +583,9 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 		return err
 	}
 	if err := s.ensureCreatorSubscriptionSchedule(ctx); err != nil {
+		return err
+	}
+	if err := s.ensureRankingSchedule(ctx); err != nil {
 		return err
 	}
 	if err := s.dispatchStartupSystemWorkflowTriggers(ctx); err != nil {

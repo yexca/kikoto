@@ -39,6 +39,7 @@ export const databaseCleanupGroups: Array<{ key: DatabaseCleanupGroupKey; tasks:
       "old_runs",
       "old_recommendation_events",
       "stale_recommendation_generations",
+      "old_ranking_snapshots",
     ],
   },
 ];

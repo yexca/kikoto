@@ -358,7 +358,7 @@ export const englishResource = {
         insights: "Insights",
         insightsDescription: "Your listening calendar, statistics, and history",
         subscriptions: "Subscriptions",
-        subscriptionsDescription: "New works from the circles, series, and voice actors you subscribe to",
+        subscriptionsDescription: "New works from your subscriptions and how the tracked rankings change",
         about: "About",
         libraryDescription: "Browse, filter, and play works from every configured source",
         favoritesDescription: "Browse your favorite works, circles, voices, and lists",

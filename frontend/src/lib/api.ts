@@ -12,6 +12,7 @@ import { asrApi } from "@/lib/asrApi";
 import { workFolderEditApi } from "@/lib/workFolderEditApi";
 import { lyricsEditApi } from "@/lib/lyricsEditApi";
 import { subscriptionApi } from "@/lib/subscriptionApi";
+import { rankingApi } from "@/lib/rankingApi";
 import { customWorkApi } from "@/lib/customWorkApi";
 
 export type { CatalogSyncState } from "@/lib/catalogSyncState";
@@ -31,6 +32,7 @@ export type * from "@/lib/asrApi";
 export type * from "@/lib/workFolderEditApi";
 export type * from "@/lib/lyricsEditApi";
 export type * from "@/lib/subscriptionApi";
+export type * from "@/lib/rankingApi";
 export type * from "@/lib/customWorkApi";
 
 /**
@@ -52,5 +54,6 @@ export const api = {
   ...workFolderEditApi,
   ...lyricsEditApi,
   ...subscriptionApi,
+  ...rankingApi,
   ...customWorkApi,
 };

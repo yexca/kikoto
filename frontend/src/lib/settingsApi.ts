@@ -29,7 +29,8 @@ export type DatabaseCleanupTaskKey =
   | "dismissed_notifications"
   | "old_runs"
   | "old_recommendation_events"
-  | "stale_recommendation_generations";
+  | "stale_recommendation_generations"
+  | "old_ranking_snapshots";
 
 export type DatabaseMaintenanceOverview = {
   scannedAt: string;

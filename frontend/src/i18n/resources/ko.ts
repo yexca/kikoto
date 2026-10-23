@@ -457,6 +457,10 @@ const adminToolsKorean = {
         title: "오래된 추천 스냅샷",
         description: "어떤 사용자나 열린 세션도 사용하지 않는 순위 스냅샷입니다.",
       },
+      old_ranking_snapshots: {
+        title: "오래된 순위 기록",
+        description: "90일이 지난 순위 업데이트입니다. 각 순위의 최신 업데이트 2개는 유지됩니다.",
+      },
     },
     optimize: {
       title: "유지 관리",
@@ -693,7 +697,7 @@ export const koreanResource = {
         insights: "인사이트",
         insightsDescription: "청취 달력, 통계, 기록을 확인합니다",
         subscriptions: "구독",
-        subscriptionsDescription: "구독한 서클, 시리즈, 성우의 신작",
+        subscriptionsDescription: "구독한 서클, 시리즈, 성우의 신작과 순위 변동",
         about: "정보",
         libraryDescription: "설정된 모든 소스의 작품을 탐색하고 필터링하고 재생합니다",
         favoritesDescription: "즐겨찾기 작품, 서클, 성우와 목록을 탐색합니다",

@@ -8,7 +8,7 @@ import (
 )
 
 func TestAutomaticDatabaseCleanupRunsOnlyRetentionTasks(t *testing.T) {
-	want := []string{databaseCleanupTaskExpiredSessions, databaseCleanupTaskOldRuns}
+	want := []string{databaseCleanupTaskExpiredSessions, databaseCleanupTaskOldRuns, databaseCleanupTaskOldRankings}
 	if !reflect.DeepEqual(databaseAutoCleanupTasks, want) {
 		t.Fatalf("automatic tasks = %v, want %v", databaseAutoCleanupTasks, want)
 	}
@@ -31,7 +31,7 @@ func TestDatabaseCleanupTasksContinueAfterAFailure(t *testing.T) {
 	if !reflect.DeepEqual(called, databaseAutoCleanupTasks) {
 		t.Fatalf("called = %v, want %v", called, databaseAutoCleanupTasks)
 	}
-	if len(results) != 1 || results[0] != (databaseCleanupTaskResult{Key: databaseCleanupTaskOldRuns, Removed: 3}) {
+	if len(results) != 2 || results[0] != (databaseCleanupTaskResult{Key: databaseCleanupTaskOldRuns, Removed: 3}) {
 		t.Fatalf("results = %+v", results)
 	}
 

@@ -1306,6 +1306,11 @@ export const surfaceKorean = {
         description:
           "구독 중인 서클과 성우 카탈로그를 새로 고치고 신작 메타데이터를 동기화해 구독자의 신작 목록에 추가한 뒤 가용성 모니터링을 확인합니다.",
       },
+      ranking_refresh: {
+        name: "순위 새로 고침",
+        description:
+          "추적 중인 DLsite와 원격 소스 순위를 가져와 변화를 기록합니다. 작품은 라이브러리에 추가되지 않습니다.",
+      },
       availability_watch: {
         name: "가용성 감시",
         description: "작품 코드를 감시하고 원격 소스를 사용할 수 있게 되면 구성된 작업을 실행합니다.",
@@ -1516,6 +1521,8 @@ export const surfaceKorean = {
       "가용성 모니터링은 구독 페이지에서 설정하며, 구독 새로 고침이 일정에 따라 실행합니다. 실행 기록은 여기에 남습니다.",
     subscriptionRefreshManagedOnSubscriptions:
       "구독 새로 고침 일정은 구독 페이지에서 설정합니다. 실행 기록은 여기에 남습니다.",
+    rankingRefreshManagedOnSubscriptions:
+      "순위 새로 고침 일정은 구독 페이지의 순위 설정에서 정합니다. 실행 기록은 여기에 남습니다.",
     openSubscriptions: "구독 열기",
     presetScheduledBySubscriptions:
       "이 워크플로는 수동으로 실행합니다. 신작을 정기적으로 확인하려면 서클, 시리즈, 성우를 구독하세요. 구독은 구독 페이지에서 정한 일정에 따라 새로 고쳐집니다.",
@@ -1587,6 +1594,7 @@ export const surfaceKorean = {
       series_catalog_sync: "시리즈 카탈로그",
       voice_catalog_sync: "성우 카탈로그",
       creator_subscription_refresh: "구독",
+      ranking_refresh: "순위",
     },
     console: {
       statusStrip: "워크플로 상태",

@@ -102,6 +102,7 @@ export type CurrentTriggerRunOptions = {
 export const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = {
   availability_watch: [],
   creator_subscription_refresh: [],
+  ranking_refresh: [],
   local_library_scan: ["local_scan"],
   local_media_index: ["local_media_index"],
   metadata_sync: ["metadata_sync"],

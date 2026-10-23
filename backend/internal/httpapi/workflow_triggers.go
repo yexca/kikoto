@@ -76,6 +76,12 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		Nodes:       creatorSubscriptionNodes(),
 	},
 	{
+		Code:        rankingWorkflowCode,
+		Name:        rankingDisplayName,
+		Description: rankingDescription,
+		Nodes:       rankingNodes(),
+	},
+	{
 		Code:        "local_library_scan",
 		Name:        "Scan local library",
 		Description: "Discover local works and synchronize local source presence.",
@@ -375,6 +381,9 @@ func (s *Server) prepareWorkflowTriggerUpdate(ctx context.Context, actor current
 	if currentDefinition.Code == creatorSubscriptionWorkflowCode {
 		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "the subscription refresh schedule is configured on the Subscriptions page")
 	}
+	if currentDefinition.Code == rankingWorkflowCode {
+		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "the ranking refresh schedule is configured on the Subscriptions page")
+	}
 	if current.TriggerType == "filesystem_event" && !isFixedFilesystemTriggerUpdate(currentDefinition, current, payload) {
 		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "the local library filesystem trigger only supports pause and scan-mode changes")
 	}
@@ -516,6 +525,10 @@ func (s *Server) deleteWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 	}
 	if definition.Code == creatorSubscriptionWorkflowCode {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "the subscription refresh schedule cannot be deleted"})
+		return
+	}
+	if definition.Code == rankingWorkflowCode {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "the ranking refresh schedule cannot be deleted"})
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), "DELETE FROM workflow_trigger WHERE id = ?", id)

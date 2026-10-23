@@ -63,7 +63,11 @@ type TriggerEditorState =
 const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v3";
 
 // Workflows configured and run from the Subscriptions page.
-const subscriptionsManagedWorkflows = new Set(["availability_watch", "creator_subscription_refresh"]);
+const subscriptionsManagedWorkflows = new Set([
+  "availability_watch",
+  "creator_subscription_refresh",
+  "ranking_refresh",
+]);
 
 export function WorkflowsPage({
   canRun,
@@ -623,14 +627,18 @@ export function WorkflowsPage({
                     message={workflowCopy(
                       selectedDefinition.code === "availability_watch"
                         ? "availabilityWatchManagedOnSubscriptions"
-                        : "subscriptionRefreshManagedOnSubscriptions",
+                        : selectedDefinition.code === "ranking_refresh"
+                          ? "rankingRefreshManagedOnSubscriptions"
+                          : "subscriptionRefreshManagedOnSubscriptions",
                     )}
                     onOpenRun={openActivityRun}
                     onOpenSubscriptions={() =>
                       openWorkflowPath(
                         selectedDefinition.code === "availability_watch"
                           ? "/subscriptions?panel=watch"
-                          : "/subscriptions?panel=subscriptions",
+                          : selectedDefinition.code === "ranking_refresh"
+                            ? "/subscriptions?view=rankings&panel=rankings"
+                            : "/subscriptions?panel=subscriptions",
                       )
                     }
                   />

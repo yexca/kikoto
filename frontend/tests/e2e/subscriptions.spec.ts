@@ -14,16 +14,93 @@ import {
   subscriptionViewFixture,
   type ApiErrorBody,
 } from "./fixtures/api";
-import type { CreatorSubscriptionLookup, ReleaseFeedPage } from "../../src/lib/api";
+import type {
+  CreatorSubscriptionLookup,
+  RankingItem,
+  RankingList,
+  RankingOverview,
+  RankingPage,
+  ReleaseFeedPage,
+} from "../../src/lib/api";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
 
 type SubscriptionServer = {
   feed?: ReleaseFeedPage;
   lookup?: CreatorSubscriptionLookup;
   demo?: boolean;
+  rankings?: RankingOverview;
+  /** Ranking pages by `<list id>:<compare>`; an empty compare is the last visit. */
+  rankingPages?: Record<string, RankingPage>;
   requests: Array<{ method: string; path: string; body: unknown }>;
   feedQueries: string[];
 };
+
+function rankingListFixture(patch: Partial<RankingList> = {}): RankingList {
+  return {
+    id: 1,
+    provider: "dlsite",
+    sourceId: null,
+    sourceName: "",
+    period: "day",
+    releaseWindow: "30d",
+    depth: 100,
+    enabled: true,
+    position: 0,
+    lastPulledAt: "2026-10-14 09:00:00",
+    lastChangedAt: "2026-10-14 09:00:00",
+    lastStatus: "succeeded",
+    unseen: true,
+    ...patch,
+  };
+}
+
+function rankingItemFixture(ordinal: number, rank: number, change: RankingItem["change"]): RankingItem {
+  const code = syntheticWorkCode("RJ", ordinal);
+  return {
+    rank,
+    code,
+    change,
+    firstSeenAt: "2026-10-12 09:00:00",
+    streakStartedAt: "2026-10-12 09:00:00",
+    bestRank: rank,
+    appearances: 2,
+    work: null,
+    fallback: { code, title: `Example Work ${ordinal}`, circle: "Example Circle 1", coverUrl: "", dlsiteUrl: "" },
+  };
+}
+
+function rankingPageFixture(list: RankingList, baseline: RankingPage["baseline"], items: RankingItem[]): RankingPage {
+  const dropped = [
+    {
+      code: syntheticWorkCode("RJ", 9),
+      previousRank: 3,
+      work: null,
+      fallback: { code: syntheticWorkCode("RJ", 9), title: "Example Work 9", circle: "", coverUrl: "", dlsiteUrl: "" },
+    },
+  ];
+  const count = (kind: string) => items.filter((item) => item.change.kind === kind).length;
+  return {
+    list,
+    snapshot: { id: 30, pulledAt: "2026-10-14 09:00:00" },
+    baseline,
+    counts: {
+      new: count("new"),
+      reentered: count("reentered"),
+      up: count("up"),
+      down: count("down"),
+      dropped: dropped.length,
+      notInLibrary: items.length,
+    },
+    items,
+    dropped,
+    snapshots: [
+      { id: 30, pulledAt: "2026-10-14 09:00:00" },
+      { id: 20, pulledAt: "2026-10-13 09:00:00" },
+      { id: 10, pulledAt: "2026-10-12 09:00:00" },
+    ],
+    demo: false,
+  };
+}
 
 async function mockSubscriptions(page: Page, server: SubscriptionServer) {
   if (server.demo) {
@@ -35,8 +112,36 @@ async function mockSubscriptions(page: Page, server: SubscriptionServer) {
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    if (url.pathname.startsWith("/api/subscriptions")) {
+    if (url.pathname.startsWith("/api/subscriptions") || url.pathname.startsWith("/api/rankings")) {
       server.requests.push({ method: request.method(), path: url.pathname, body: request.postDataJSON() });
+    }
+    if (url.pathname === "/api/rankings") {
+      await route.fulfill({
+        json: server.rankings ?? {
+          lists: [],
+          schedule: {
+            enabled: true,
+            intervalHours: 24,
+            nextRunAt: null,
+            lastRunAt: null,
+            lastSuccessAt: null,
+            lastError: "",
+            latestRun: null,
+          },
+          demo: Boolean(server.demo),
+        },
+      });
+      return;
+    }
+    const rankingPage = /^\/api\/rankings\/(\d+)$/.exec(url.pathname);
+    if (rankingPage) {
+      const page = server.rankingPages?.[`${rankingPage[1]}:${url.searchParams.get("compare") ?? ""}`];
+      await route.fulfill(page ? { json: page } : { status: 404, json: { error: "ranking not found" } });
+      return;
+    }
+    if (/^\/api\/rankings\/\d+\/seen$/.test(url.pathname)) {
+      await route.fulfill({ json: { ok: true } });
+      return;
     }
     if (url.pathname === "/api/auth/me") {
       await route.fulfill({
@@ -218,6 +323,78 @@ test("@desktop subscribing to a circle confirms replacing its series and pulls t
     "aria-pressed",
     "true",
   );
+});
+
+test("@desktop rankings mark changes since the last visit and compare with the previous update", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const day = rankingListFixture();
+  const week = rankingListFixture({ id: 2, period: "week", releaseWindow: "", position: 1, unseen: false });
+  const server: SubscriptionServer = {
+    requests: [],
+    feedQueries: [],
+    rankings: {
+      lists: [day, week],
+      schedule: {
+        enabled: true,
+        intervalHours: 24,
+        nextRunAt: "2026-10-15 09:00:00",
+        lastRunAt: "2026-10-14 09:00:00",
+        lastSuccessAt: "2026-10-14 09:00:00",
+        lastError: "",
+        latestRun: { id: 7, status: "succeeded" },
+      },
+      demo: false,
+    },
+    rankingPages: {
+      "1:": rankingPageFixture(day, { id: 10, pulledAt: "2026-10-12 09:00:00", kind: "seen" }, [
+        rankingItemFixture(1, 1, { kind: "new", from: null, delta: 0 }),
+        rankingItemFixture(2, 2, { kind: "up", from: 5, delta: 3 }),
+        rankingItemFixture(3, 3, { kind: "same", from: 3, delta: 0 }),
+      ]),
+      "1:previous": rankingPageFixture(day, { id: 20, pulledAt: "2026-10-13 09:00:00", kind: "previous" }, [
+        rankingItemFixture(1, 1, { kind: "reentered", from: null, delta: 0 }),
+        rankingItemFixture(2, 2, { kind: "down", from: 1, delta: -1 }),
+        rankingItemFixture(3, 3, { kind: "same", from: 3, delta: 0 }),
+      ]),
+    },
+  };
+  await mockSubscriptions(page, server);
+  await page.goto("/subscriptions?view=rankings");
+
+  await expect(page.getByRole("tab", { name: /^Rankings/, selected: true })).toBeVisible();
+  const ranking = page.getByRole("region", { name: "Rankings", exact: true });
+  await expect(ranking.getByRole("tab", { name: "DLsite · 24 hours · New releases", selected: true })).toBeVisible();
+  await expect(ranking).toContainText("Compared with your last visit");
+  const items = ranking.getByRole("list").first().getByRole("listitem");
+  await expect(items).toHaveCount(3);
+  await expect(items.nth(0)).toContainText("New");
+  await expect(items.nth(0)).toContainText("Not in library");
+  await expect(items.nth(1).getByText("Up 3")).toBeAttached();
+
+  // Opening the ranking records the displayed update as seen.
+  await expect
+    .poll(() => server.requests.find((request) => request.path === "/api/rankings/1/seen")?.body)
+    .toEqual({ snapshotId: 30 });
+
+  await ranking.getByRole("button", { name: /^Moved/ }).click();
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toHaveAccessibleName("Example Work 2");
+  await ranking.getByRole("button", { name: /^All/ }).click();
+
+  await ranking.getByRole("combobox", { name: "Compare with" }).click();
+  await page.getByRole("option", { name: "Previous update" }).click();
+  await expect(page).toHaveURL(/compare=previous/);
+  await expect(ranking).toContainText("Compared with the previous update");
+  await expect(items.nth(0)).toContainText("Back");
+
+  await ranking.getByRole("button", { name: "Dropped out (1)" }).click();
+  await expect(ranking.getByRole("listitem", { name: "Example Work 9" })).toContainText("Was #3");
+
+  // The settings icon opens the ranking settings from this view.
+  await page.getByRole("button", { name: "Subscription settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Subscription settings" });
+  await expect(settings.getByRole("tab", { name: "Rankings", selected: true })).toBeVisible();
+  await expect(settings.getByText("DLsite · 7 days")).toBeVisible();
 });
 
 test("Demo shows a sample feed without actions", async ({ page }) => {

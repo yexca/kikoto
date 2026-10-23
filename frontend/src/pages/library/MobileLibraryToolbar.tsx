@@ -6,6 +6,7 @@ import { quickMarkMeta } from "@/components/work-card/WorkCardShell";
 import { listeningStatusOptions } from "@/features/work-detail/workDetailShared";
 import { numberFormat } from "@/i18n/format";
 import { Button } from "@/components/ui/button";
+import { filterChipClassName } from "@/components/ui/segmented";
 import { useLocale } from "@/i18n/LocaleProvider";
 import type { ListeningStatus, Work } from "@/lib/api";
 import { dismissKeyboardOnEnter } from "@/lib/keyboard";
@@ -228,13 +229,7 @@ function StatusChips({
   onChange: (value: ListeningStatus | "all") => void;
 }) {
   const { t } = useTranslation();
-  const chip = (active: boolean) =>
-    cn(
-      "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[var(--badge-radius)] border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-      active
-        ? "border-primary/30 bg-primary/10 text-primary"
-        : "border-border bg-card text-muted-foreground hover:text-foreground",
-    );
+  const chip = filterChipClassName;
   return (
     <div
       id={id}

@@ -251,12 +251,14 @@ sections and `sources:write` for database sections.
   they leave behind), orphaned metadata snapshots, unused source tags, expired
   sessions, dismissed
   notifications, finished workflow runs older than 90 days, recommendation
-  signals older than 90 days, and unused recommendation snapshots. Personal
-  tags, runs with reviews, Fetch records, or metadata issues, and the latest run
-  of each workflow are kept. Selected tasks are removed after confirmation and
-  recorded in the audit log; media files are never deleted. Expired sessions
-  and eligible old workflow runs are also removed automatically once a day
-  with the same rules.
+  signals older than 90 days, unused recommendation snapshots, and
+  [ranking](subscriptions.md#rankings) updates older than 90 days. Personal
+  tags, runs with reviews, Fetch records, or metadata issues, the latest run
+  of each workflow, and the two newest updates of each ranking are kept.
+  Selected tasks are removed after confirmation and recorded in the audit log;
+  media files are never deleted. Expired sessions, eligible old workflow runs,
+  and old ranking updates are also removed automatically once a day with the
+  same rules.
 - Path checks pause when the data folder is missing or empty, so an unmounted
   library is never treated as deleted.
 - **Works without any source** links to the **No available source** filter of

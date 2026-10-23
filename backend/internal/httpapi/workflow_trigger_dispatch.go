@@ -175,7 +175,7 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 func (s *Server) storedWorkflowTriggerPermissions(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord) []string {
 	permissions := []string{"workflows:run"}
 	switch definition.Code {
-	case "local_library_scan", localMediaIndexWorkflowCode, "metadata_sync", creatorSubscriptionWorkflowCode:
+	case "local_library_scan", localMediaIndexWorkflowCode, "metadata_sync", creatorSubscriptionWorkflowCode, rankingWorkflowCode:
 		return append(permissions, "metadata:sync")
 	case sourcePresenceCheckWorkflowCode:
 		return append(permissions, "sources:write")
@@ -221,7 +221,7 @@ func systemWorkflowSupportsConfigurableTriggers(code string) bool {
 // triggers the coordinator dispatches.
 func scheduledSystemWorkflowCodes() []string {
 	return []string{
-		creatorSubscriptionWorkflowCode, "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode,
+		creatorSubscriptionWorkflowCode, rankingWorkflowCode, "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode,
 		"metadata_sync", "remote_popular_collection", "dlsite_popular_collection",
 	}
 }
@@ -449,7 +449,7 @@ func (s *Server) dispatchDueSystemWorkflowTrigger(ctx context.Context, definitio
 	if paused {
 		return nil
 	}
-	if !systemWorkflowSupportsConfigurableTriggers(definition.Code) && definition.Code != creatorSubscriptionWorkflowCode {
+	if !systemWorkflowSupportsConfigurableTriggers(definition.Code) && definition.Code != creatorSubscriptionWorkflowCode && definition.Code != rankingWorkflowCode {
 		return s.disableInvalidWorkflowTrigger(ctx, trigger.ID, "system workflow schedule is not supported")
 	}
 	schedule, err := validateWorkflowIntervalSchedule(trigger.ScheduleJSON)
@@ -515,6 +515,8 @@ func (s *Server) dispatchSystemWorkflowTrigger(ctx context.Context, definition w
 	switch definition.Code {
 	case creatorSubscriptionWorkflowCode:
 		return s.executeCreatorSubscriptionSystemTrigger(ctx, trigger, triggerType, triggerReason)
+	case rankingWorkflowCode:
+		return s.executeRankingSystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case "local_library_scan":
 		return s.executeLocalLibrarySystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case localMediaIndexWorkflowCode:
@@ -606,7 +608,7 @@ func (s *Server) executeDLsitePopularSystemTrigger(ctx context.Context, trigger 
 
 func systemWorkflowTriggerIsAsync(code string) bool {
 	switch code {
-	case creatorSubscriptionWorkflowCode, "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode,
+	case creatorSubscriptionWorkflowCode, rankingWorkflowCode, "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode,
 		"metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
 		return true
 	default:

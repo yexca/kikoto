@@ -895,6 +895,11 @@ Important tables:
 - `person_release_seen`
 - `user_release_feed_item`
 - `user_release_feed_state`
+- `ranking_list`
+- `ranking_snapshot`
+- `ranking_snapshot_item`
+- `ranking_entry`
+- `user_ranking_state`
 
 Workflow records make scans, metadata sync, source checks, remote fetches, and
 review actions inspectable. `workflow_job.priority` is durable queue-ordering
@@ -937,6 +942,19 @@ code, and event with the subscription it came through, and
 `user_release_feed_state` the time each account last opened the feed. Feed
 entries are catalog codes, not works; a merge moves subscriptions, seen codes,
 and feed references to the target.
+
+`ranking_list` holds one tracked [ranking](workflows.md#rankings): a DLsite
+period and release window, or a remote source (`file_source_id`, removed with
+the source), with its depth, tracking switch, position, and last pull status.
+`ranking_snapshot` is one pulled order that differed from the one before it,
+with the run that pulled it and a hash of its codes, and
+`ranking_snapshot_item` its codes by rank. `ranking_entry` holds per list and
+code the title and circle the ranking showed, a remote list's source-local id
+and cover address, and statistics derived from the snapshots: first seen,
+start of the current presence, last seen, best rank, and appearances.
+`user_ranking_state` holds the snapshot each account last displayed per list.
+Rankings store codes, never work ids, so work merges and deletions need no
+ranking changes.
 
 `filesystem_trigger_state` stores the fixed local-scan trigger's watched
 directory count and most recent event time. It is compact orchestration state,

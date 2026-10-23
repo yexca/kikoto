@@ -31,6 +31,7 @@ const (
 	databaseCleanupTaskOldRuns          = "old_runs"
 	databaseCleanupTaskOldRecommendEvts = "old_recommendation_events"
 	databaseCleanupTaskStaleGenerations = "stale_recommendation_generations"
+	databaseCleanupTaskOldRankings      = "old_ranking_snapshots"
 )
 
 // databaseCleanupTaskOrder is also the public list of accepted task keys.
@@ -48,6 +49,7 @@ var databaseCleanupTaskOrder = []string{
 	databaseCleanupTaskOldRuns,
 	databaseCleanupTaskOldRecommendEvts,
 	databaseCleanupTaskStaleGenerations,
+	databaseCleanupTaskOldRankings,
 }
 
 // Removing path records leaves their dependents behind, so a path task also
@@ -355,6 +357,18 @@ const staleRecommendationGenerationCondition = `
 	)
 `
 
+// Old ranking snapshots go after the retention, except the two newest of each
+// list, which keep the latest order comparable with the one before it.
+const oldRankingSnapshotCondition = `
+	snapshot.pulled_at < datetime('now', '` + rankingRetention + `')
+	AND snapshot.id NOT IN (
+		SELECT newest.id FROM ranking_snapshot AS newest
+		WHERE newest.ranking_list_id = snapshot.ranking_list_id
+		ORDER BY newest.pulled_at DESC, newest.id DESC
+		LIMIT 2
+	)
+`
+
 var databaseCleanupCountQueries = map[string]string{
 	databaseCleanupTaskEmptyMediaItems:  `SELECT COUNT(*) FROM media_item AS item WHERE ` + emptyMediaItemCondition,
 	databaseCleanupTaskMissingPresence:  `SELECT COUNT(*) FROM work_source_presence AS presence WHERE ` + missingLocalPresenceCondition,
@@ -365,9 +379,11 @@ var databaseCleanupCountQueries = map[string]string{
 	databaseCleanupTaskOldRuns:          `SELECT COUNT(*) FROM workflow_run AS run WHERE ` + oldWorkflowRunCondition,
 	databaseCleanupTaskOldRecommendEvts: `SELECT COUNT(*) FROM recommendation_event WHERE created_at < datetime('now', '` + databaseCleanupEventRetention + `')`,
 	databaseCleanupTaskStaleGenerations: `SELECT COUNT(*) FROM recommendation_generation AS generation WHERE ` + staleRecommendationGenerationCondition,
+	databaseCleanupTaskOldRankings:      `SELECT COUNT(*) FROM ranking_snapshot AS snapshot WHERE ` + oldRankingSnapshotCondition,
 }
 
 var databaseCleanupDeleteQueries = map[string]string{
+	databaseCleanupTaskOldRankings: `DELETE FROM ranking_snapshot WHERE id IN (SELECT snapshot.id FROM ranking_snapshot AS snapshot WHERE ` + oldRankingSnapshotCondition + `)`,
 	databaseCleanupTaskMissingPresence: `
 		DELETE FROM work_source_presence
 		WHERE rowid IN (SELECT presence.rowid FROM work_source_presence AS presence WHERE ` + missingLocalPresenceCondition + `)`,

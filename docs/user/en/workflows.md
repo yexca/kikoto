@@ -75,7 +75,8 @@ administrators.
   notifications open the local work detail and can be dismissed independently
   for the signed-in user; **Open Activity** opens the full panel.
 - The workflow list groups every workflow by category: Basic (local scan, local
-  files, metadata sync, and Learn tag names), Collect (popular collections), Catalog sync (the
+  files, metadata sync, and Learn tag names), Collect (popular collections and
+  **Refresh rankings**), Catalog sync (the
   subscription refresh and the catalog sync presets), and Remote (Availability
   Watch, Fetch, and Check works on a source), each in
   a fixed order. Every entry shows its latest run's status and time, and small
@@ -164,11 +165,11 @@ administrators.
   While a run is active, new log lines stream in and the log follows the latest
   output unless you scroll up. Select a stage to show only its lines, and
   select the run summary to open that run in Activity.
-- Availability Watch and **Refresh subscriptions** are configured on the
-  [Subscriptions](subscriptions.md) page, where the watch keeps its saved
-  configuration and watch pool and the subscription refresh its schedule. Here
-  they show their latest runs and run history, link to that page, and have no
-  triggers of their own.
+- Availability Watch, **Refresh subscriptions**, and **Refresh rankings** are
+  configured on the [Subscriptions](subscriptions.md) page, where the watch
+  keeps its saved configuration and watch pool and the two refreshes their
+  schedules. Here they show their latest runs and run history, link to that
+  page, and have no triggers of their own.
 - Sync a circle catalog, Sync a series catalog, and Sync a voice actor catalog
   (tabs **Circle catalog**, **Series catalog**, and **VA catalog**) are preset
   workflows that run on demand. Their Run options have three sections:

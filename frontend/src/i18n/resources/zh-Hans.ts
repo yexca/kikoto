@@ -454,6 +454,10 @@ const adminToolsHans = {
         title: "过期的推荐快照",
         description: "不再被任何用户或打开的会话使用的排序快照。",
       },
+      old_ranking_snapshots: {
+        title: "旧的排行榜历史",
+        description: "超过 90 天的排行榜更新。每个排行榜最新的两次更新会保留。",
+      },
     },
     optimize: {
       title: "维护",
@@ -671,7 +675,7 @@ export const zhHansResource = {
         insights: "数据面板",
         insightsDescription: "查看收听日历、统计和历史",
         subscriptions: "订阅",
-        subscriptionsDescription: "已订阅的社团、系列和声优的新作",
+        subscriptionsDescription: "已订阅的社团、系列和声优的新作，以及排行榜的变化",
         about: "关于",
         libraryDescription: "浏览、筛选并播放所有已配置来源中的作品",
         favoritesDescription: "浏览收藏的作品、社团、声优和列表",

@@ -456,6 +456,10 @@ const adminToolsHant = {
         title: "過期的推薦快照",
         description: "不再被任何使用者或開啟中的工作階段使用的排序快照。",
       },
+      old_ranking_snapshots: {
+        title: "舊的排行榜歷史",
+        description: "超過 90 天的排行榜更新。每個排行榜最新的兩次更新會保留。",
+      },
     },
     optimize: {
       title: "維護",
@@ -676,7 +680,7 @@ export const zhHantResource = {
         insights: "資料面板",
         insightsDescription: "查看收聽日曆、統計和歷史",
         subscriptions: "訂閱",
-        subscriptionsDescription: "已訂閱的社團、系列和聲優的新作",
+        subscriptionsDescription: "已訂閱的社團、系列和聲優的新作，以及排行榜的變化",
         about: "關於",
         libraryDescription: "瀏覽、篩選並播放所有已設定來源中的作品",
         favoritesDescription: "瀏覽收藏的作品、社團、聲優和清單",

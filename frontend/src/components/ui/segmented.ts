@@ -20,3 +20,17 @@ export function segmentedItemClassName(active: boolean, className?: string) {
     className,
   );
 }
+
+/**
+ * A filter chip in a horizontally scrolling row: a bordered pill that turns
+ * primary while pressed.
+ */
+export function filterChipClassName(active: boolean, className?: string) {
+  return cn(
+    "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[var(--badge-radius)] border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    active
+      ? "border-primary/30 bg-primary/10 text-primary"
+      : "border-border bg-card text-muted-foreground hover:text-foreground",
+    className,
+  );
+}

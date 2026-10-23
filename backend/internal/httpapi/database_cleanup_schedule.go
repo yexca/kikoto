@@ -20,6 +20,7 @@ const (
 var databaseAutoCleanupTasks = []string{
 	databaseCleanupTaskExpiredSessions,
 	databaseCleanupTaskOldRuns,
+	databaseCleanupTaskOldRankings,
 }
 
 type databaseCleanupTaskRunner func(ctx context.Context, key string) (int, error)

@@ -460,6 +460,10 @@ const adminToolsJapanese = {
         title: "古いおすすめスナップショット",
         description: "どのユーザーや開いているセッションにも使われていないランキングスナップショット。",
       },
+      old_ranking_snapshots: {
+        title: "古いランキング履歴",
+        description: "90 日より前のランキング更新。各ランキングの最新 2 件の更新は保持されます。",
+      },
     },
     optimize: {
       title: "メンテナンス",
@@ -701,7 +705,7 @@ export const japaneseResource = {
         insights: "インサイト",
         insightsDescription: "聴取カレンダー、統計、履歴を確認",
         subscriptions: "購読",
-        subscriptionsDescription: "購読しているサークル、シリーズ、声優の新作",
+        subscriptionsDescription: "購読しているサークル、シリーズ、声優の新作とランキングの変動",
         about: "情報",
         libraryDescription: "すべての設定済みソースから作品を閲覧、絞り込み、再生",
         favoritesDescription: "お気に入りの作品、サークル、声優、リストを閲覧",

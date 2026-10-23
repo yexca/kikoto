@@ -10,9 +10,18 @@ import type {
 import { metadataTagLanguages } from "@/lib/metadataTagModel";
 import { voiceDetailPath } from "@/lib/voiceRoute";
 
-/** The settings panel beside the feed: subscriptions with their schedule, or Availability Watch. */
-export const SUBSCRIPTION_PANELS = ["subscriptions", "watch"] as const;
+/** The settings panel beside the page: subscriptions with their schedule, Availability Watch, or rankings. */
+export const SUBSCRIPTION_PANELS = ["subscriptions", "watch", "rankings"] as const;
 export type SubscriptionPanel = (typeof SUBSCRIPTION_PANELS)[number];
+
+/** The page shows new releases from subscriptions or the tracked rankings. */
+export const SUBSCRIPTION_VIEWS = ["releases", "rankings"] as const;
+export type SubscriptionView = (typeof SUBSCRIPTION_VIEWS)[number];
+
+/** The view named by `view` in the location; New releases when it names none. */
+export function subscriptionViewFromSearch(search: string): SubscriptionView {
+  return new URLSearchParams(search).get("view") === "rankings" ? "rankings" : "releases";
+}
 
 export const SUBSCRIPTION_INTERVAL_HOURS = [1, 6, 12, 24, 48, 168] as const;
 

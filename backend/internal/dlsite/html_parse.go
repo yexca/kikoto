@@ -8,21 +8,49 @@ import (
 )
 
 var (
-	titlePattern          = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
-	workLinkPattern       = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["'][^"']*/work/=/product_id/((?:RJ|BJ|VJ)[0-9]{5,8})\.html[^"']*["'][^>]*>`)
-	rankingWorkPattern    = regexp.MustCompile(`(?is)<(?:dl|li|div)\b[^>]*\bclass=["'][^"']*\bwork_1col\b[^"']*["'][^>]*>.*?<a\b[^>]*\bhref=["'][^"']*/work/=/product_id/((?:RJ|BJ|VJ)[0-9]{5,8})\.html[^"']*["']`)
-	seriesLinkPattern     = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["']([^"']*/fsr/=/title_id/(SRI[0-9]+)/[^"']*)["'][^>]*>(.*?)</a>`)
-	pageTotalPattern      = regexp.MustCompile(`(?is)class=["'][^"']*\bpage_total\b[^"']*["'][^>]*>(.*?)</div>`)
-	numberTextPattern     = regexp.MustCompile(`[0-9][0-9,]*`)
-	pagePathPattern       = regexp.MustCompile(`(?i)/page/([0-9]+)/maker_id/`)
-	defaultMakerLanguages = []string{"JPN", "ENG", "CHI_HANS", "CHI_HANT", "KO_KR", "SPA", "GER", "FRE", "IND", "ITA", "POR", "SWE", "THA", "VIE", "OTL", "NM"}
+	titlePattern              = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
+	workLinkPattern           = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["'][^"']*/work/=/product_id/((?:RJ|BJ|VJ)[0-9]{5,8})\.html[^"']*["'][^>]*>`)
+	rankingEntryPattern       = regexp.MustCompile(`(?is)<(?:dl|li|div)\b[^>]*\bclass=["'][^"']*\bwork_1col\b[^"']*["'][^>]*>`)
+	rankingProductLinkPattern = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["'][^"']*/work/=/product_id/((?:RJ|BJ|VJ)[0-9]{5,8})\.html[^"']*["'][^>]*>(.*?)</a>`)
+	rankingMakerPattern       = regexp.MustCompile(`(?is)<dd\b[^>]*\bclass=["'][^"']*\bmaker_name\b[^"']*["'][^>]*>(.*?)</dd>`)
+	anchorTextPattern         = regexp.MustCompile(`(?is)<a\b[^>]*>(.*?)</a>`)
+	seriesLinkPattern         = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=["']([^"']*/fsr/=/title_id/(SRI[0-9]+)/[^"']*)["'][^>]*>(.*?)</a>`)
+	pageTotalPattern          = regexp.MustCompile(`(?is)class=["'][^"']*\bpage_total\b[^"']*["'][^>]*>(.*?)</div>`)
+	numberTextPattern         = regexp.MustCompile(`[0-9][0-9,]*`)
+	pagePathPattern           = regexp.MustCompile(`(?i)/page/([0-9]+)/maker_id/`)
+	defaultMakerLanguages     = []string{"JPN", "ENG", "CHI_HANS", "CHI_HANT", "KO_KR", "SPA", "GER", "FRE", "IND", "ITA", "POR", "SWE", "THA", "VIE", "OTL", "NM"}
 )
 
 func parseRankingWorkCodes(rawHTML string) []string {
-	codes := make([]string, 0, 100)
+	items := parseRankingItems(rawHTML)
+	codes := make([]string, 0, len(items))
+	for _, item := range items {
+		codes = append(codes, item.Code)
+	}
+	return codes
+}
+
+const (
+	maxRankingTitleRunes = 300
+	maxRankingMakerRunes = 200
+)
+
+// parseRankingItems reads the ranked works in page order. Each entry spans
+// from its work_1col element to the next one; its first product link names the
+// work and carries the title, and its maker_name element the circle. The title
+// and maker are best effort and may be empty.
+func parseRankingItems(rawHTML string) []RankingItem {
+	starts := rankingEntryPattern.FindAllStringIndex(rawHTML, -1)
+	items := make([]RankingItem, 0, len(starts))
 	seen := map[string]bool{}
-	for _, match := range rankingWorkPattern.FindAllStringSubmatch(rawHTML, -1) {
-		if len(match) < 2 {
+	for index, start := range starts {
+		end := len(rawHTML)
+		if index+1 < len(starts) {
+			end = starts[index+1][0]
+		}
+		entry := rawHTML[start[0]:end]
+		match := rankingProductLinkPattern.FindStringSubmatch(entry)
+		if len(match) < 3 {
 			continue
 		}
 		code := strings.ToUpper(strings.TrimSpace(match[1]))
@@ -30,9 +58,23 @@ func parseRankingWorkCodes(rawHTML string) []string {
 			continue
 		}
 		seen[code] = true
-		codes = append(codes, code)
+		item := RankingItem{Code: code, Title: rankingText(match[2], maxRankingTitleRunes)}
+		if maker := rankingMakerPattern.FindStringSubmatch(entry); len(maker) >= 2 {
+			if circle := anchorTextPattern.FindStringSubmatch(maker[1]); len(circle) >= 2 {
+				item.Maker = rankingText(circle[1], maxRankingMakerRunes)
+			}
+		}
+		items = append(items, item)
 	}
-	return codes
+	return items
+}
+
+func rankingText(raw string, limit int) string {
+	text := strings.Join(strings.Fields(html.UnescapeString(stripTags(raw))), " ")
+	if runes := []rune(text); len(runes) > limit {
+		text = string(runes[:limit])
+	}
+	return text
 }
 
 func parseMakerName(rawHTML string) string {

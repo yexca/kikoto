@@ -1260,6 +1260,10 @@ export const surfaceHant = {
         name: "重新整理訂閱",
         description: "重新整理已訂閱的社團和聲優目錄，同步新作中繼資料並加入訂閱者的新作清單，然後檢查可用性監視。",
       },
+      ranking_refresh: {
+        name: "重新整理排行榜",
+        description: "擷取已追蹤的 DLsite 與遠端來源排行榜並記錄其變化，不會把作品加入媒體庫。",
+      },
       availability_watch: { name: "可用性監視", description: "監視作品代碼，並在遠端來源可用時執行設定的操作。" },
       asr_transcription: {
         name: "轉寫語音",
@@ -1423,6 +1427,7 @@ export const surfaceHant = {
     availabilityWatchManagedOnSubscriptions:
       "可用性監視在訂閱頁面設定，並由訂閱重新整理依排程執行。執行歷史保留在這裡。",
     subscriptionRefreshManagedOnSubscriptions: "訂閱重新整理排程在訂閱頁面設定。執行歷史保留在這裡。",
+    rankingRefreshManagedOnSubscriptions: "排行榜重新整理排程在訂閱頁面的排行榜設定中設定。執行歷史保留在這裡。",
     openSubscriptions: "開啟訂閱",
     presetScheduledBySubscriptions:
       "此工作流程依需求執行。要定期追蹤新作，請訂閱社團、系列或聲優；訂閱會依訂閱頁面設定的排程重新整理。",
@@ -1494,6 +1499,7 @@ export const surfaceHant = {
       series_catalog_sync: "系列目錄",
       voice_catalog_sync: "聲優目錄",
       creator_subscription_refresh: "訂閱",
+      ranking_refresh: "排行榜",
     },
     console: {
       statusStrip: "工作流程狀態",

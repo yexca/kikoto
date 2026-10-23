@@ -147,6 +147,27 @@ func TestFetchVoiceRankingBuildsOptionsAndParsesOrderedWorks(t *testing.T) {
 	}
 }
 
+func TestRankingItemsCarryTitleAndCircleFromEachEntry(t *testing.T) {
+	longTitle := strings.Repeat("あ", maxRankingTitleRunes+20)
+	items := parseRankingItems(`
+		<dl class="work_1col"><dt class="work_name"><span class="period_date">Date</span>
+			<a href="https://www.example.com/maniax/work/=/product_id/RJ00000001.html">Example &amp; <b>Work</b>  One</a></dt>
+			<dd class="maker_name"><a href="https://www.example.com/maniax/circle/profile/=/maker_id/RG00001.html">Example Circle</a>
+			<span class="separator">/</span><span class="author"><a href="https://www.example.com/fsr">Example Voice</a></span></dd>
+			<dd class="search_tag"><a href="https://www.example.com/genre">Example tag</a></dd></dl>
+		<dl class="work_1col"><dt class="work_name"><a href="https://www.example.com/maniax/work/=/product_id/RJ00000002.html">` + longTitle + `</a></dt>
+			<dd class="search_tag"><a href="https://www.example.com/genre">Not a circle</a></dd></dl>`)
+	if len(items) != 2 {
+		t.Fatalf("items = %+v", items)
+	}
+	if items[0] != (RankingItem{Code: "RJ00000001", Title: "Example & Work One", Maker: "Example Circle"}) {
+		t.Fatalf("first item = %+v", items[0])
+	}
+	if items[1].Maker != "" || len([]rune(items[1].Title)) != maxRankingTitleRunes {
+		t.Fatalf("second item maker = %q, title runes = %d", items[1].Maker, len([]rune(items[1].Title)))
+	}
+}
+
 func TestFetchVoiceRankingAnnualUsesYearAndDropsReleaseWindow(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/maniax/ranking/year" || r.URL.Query().Get("year") != "2025" {

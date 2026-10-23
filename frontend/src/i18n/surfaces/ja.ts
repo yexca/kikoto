@@ -1307,6 +1307,11 @@ export const surfaceJapanese = {
         description:
           "購読中のサークルと声優のカタログを更新し、新作のメタデータを同期して購読者の新着に追加し、配信状況の監視をチェックします。",
       },
+      ranking_refresh: {
+        name: "ランキングを更新",
+        description:
+          "追跡中の DLsite とリモートソースのランキングを取得し、その変化を記録します。作品はライブラリに追加されません。",
+      },
       availability_watch: {
         name: "可用性ウォッチ",
         description: "作品コードを監視し、リモートソースが利用可能になったら設定済みの操作を実行します。",
@@ -1520,6 +1525,8 @@ export const surfaceJapanese = {
       "配信状況の監視は購読ページで設定し、購読の更新がそのスケジュールで実行します。実行履歴はここに残ります。",
     subscriptionRefreshManagedOnSubscriptions:
       "購読の更新スケジュールは購読ページで設定します。実行履歴はここに残ります。",
+    rankingRefreshManagedOnSubscriptions:
+      "ランキングの更新スケジュールは購読ページのランキング設定で行います。実行履歴はここに残ります。",
     openSubscriptions: "購読を開く",
     presetScheduledBySubscriptions:
       "このワークフローは手動で実行します。新作を定期的に追うには、サークル、シリーズ、声優を購読してください。購読は購読ページで設定したスケジュールで更新されます。",
@@ -1591,6 +1598,7 @@ export const surfaceJapanese = {
       series_catalog_sync: "シリーズカタログ",
       voice_catalog_sync: "声優カタログ",
       creator_subscription_refresh: "購読",
+      ranking_refresh: "ランキング",
     },
     console: {
       statusStrip: "ワークフローの状態",

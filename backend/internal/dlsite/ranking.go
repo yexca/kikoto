@@ -22,6 +22,16 @@ type RankingResult struct {
 	ReleaseWindow string   `json:"releaseWindow"`
 	Year          int      `json:"year"`
 	WorkCodes     []string `json:"workCodes"`
+	// Items holds the same works in rank order with the title and circle the
+	// ranking page shows; either text may be empty.
+	Items []RankingItem `json:"items"`
+}
+
+// RankingItem is one ranked work as the ranking page lists it.
+type RankingItem struct {
+	Code  string `json:"code"`
+	Title string `json:"title"`
+	Maker string `json:"maker"`
 }
 
 type rankingQuery struct {
@@ -35,14 +45,18 @@ func (c *Client) FetchVoiceRanking(ctx context.Context, options RankingOptions) 
 	if err != nil {
 		return RankingResult{}, err
 	}
-	codes, err := c.fetchRankingCodes(ctx, query)
+	items, err := c.fetchRankingItems(ctx, query)
 	if err != nil {
 		return RankingResult{}, err
 	}
-	if len(codes) == 0 {
+	if len(items) == 0 {
 		return RankingResult{}, fmt.Errorf("DLsite ranking returned no voice works")
 	}
-	return RankingResult{Period: query.period, ReleaseWindow: query.releaseWindow, Year: query.year, WorkCodes: codes}, nil
+	codes := make([]string, 0, len(items))
+	for _, item := range items {
+		codes = append(codes, item.Code)
+	}
+	return RankingResult{Period: query.period, ReleaseWindow: query.releaseWindow, Year: query.year, WorkCodes: codes, Items: items}, nil
 }
 
 func normalizeRankingQuery(options RankingOptions) (rankingQuery, error) {
@@ -73,7 +87,7 @@ func normalizeRankingQuery(options RankingOptions) (rankingQuery, error) {
 	return query, nil
 }
 
-func (c *Client) fetchRankingCodes(ctx context.Context, query rankingQuery) ([]string, error) {
+func (c *Client) fetchRankingItems(ctx context.Context, query rankingQuery) ([]RankingItem, error) {
 	params := url.Values{"category": []string{"voice"}}
 	if query.releaseWindow != "" {
 		params.Set("date", query.releaseWindow)
@@ -101,5 +115,5 @@ func (c *Client) fetchRankingCodes(ctx context.Context, query rankingQuery) ([]s
 	if err != nil {
 		return nil, err
 	}
-	return parseRankingWorkCodes(string(body)), nil
+	return parseRankingItems(string(body)), nil
 }

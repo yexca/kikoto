@@ -1,6 +1,20 @@
 # Unreleased
 
 <details>
+<summary><strong>Subscriptions</strong></summary>
+
+- Subscriptions gains a **Rankings** view beside **New releases**. It follows
+  DLsite voice rankings (24 hours, 7 days, or 30 days, optionally only new
+  releases) and remote sources' popular lists, and marks what entered,
+  returned, moved, or dropped out since your last visit, the previous update,
+  or a chosen earlier update. Rankings are added and scheduled in the new
+  **Rankings** tab of the subscription settings; a refresh records each
+  ranking's order and never adds works to the library. Ranking history older
+  than 90 days is removed with the database cleanup.
+
+</details>
+
+<details>
 <summary><strong>Metadata and scans</strong></summary>
 
 - Metadata groups All, Needs attention, Metadata issues, and No available

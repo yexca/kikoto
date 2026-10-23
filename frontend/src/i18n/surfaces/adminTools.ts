@@ -139,6 +139,10 @@ export const adminToolsEnglish = {
         title: "Stale recommendation snapshots",
         description: "Ranking snapshots that no user or open session still uses.",
       },
+      old_ranking_snapshots: {
+        title: "Old ranking history",
+        description: "Ranking updates older than 90 days. The two newest updates of each ranking are kept.",
+      },
     },
     optimize: {
       title: "Maintenance",

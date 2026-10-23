@@ -81,7 +81,7 @@ export const navItems = [
     id: "subscriptions",
     label: "Subscriptions",
     labelKey: "nav.subscriptions",
-    description: "New works from the circles, series, and voice actors you subscribe to",
+    description: "New works from your subscriptions and how the tracked rankings change",
     descriptionKey: "nav.subscriptionsDescription",
     path: "/subscriptions",
     icon: BellRing,

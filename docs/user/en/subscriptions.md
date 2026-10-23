@@ -2,7 +2,10 @@
 [English](../en/subscriptions.md) · [简体中文](../zh-Hans/subscriptions.md) · [繁體中文](../zh-Hant/subscriptions.md) · [日本語](../ja/subscriptions.md) · [한국어](../ko/subscriptions.md)
 
 Subscriptions collects new works from the circles, series, and voice actors you
-subscribe to, and works that Availability Watch finds on a remote source.
+subscribe to, and works that Availability Watch finds on a remote source. Its
+**Rankings** view follows popular rankings and shows how they change. The
+switch at the top chooses **New releases** or **Rankings**; a dot on
+**Rankings** means a ranking changed since you last looked at it.
 
 ## Subscribing
 
@@ -57,12 +60,38 @@ subscribe to, and works that Availability Watch finds on a remote source.
 - A work released more than 30 days before your subscription started is not
   shown, so pulling an old part of a catalog later adds nothing to the feed.
 
+## Rankings
+
+- **Rankings** follows DLsite voice rankings and the popular lists of
+  compatible remote sources. Each tracked ranking is a chip above the list,
+  such as **DLsite · 24 hours · New releases** or a source's **Popular** list;
+  a dot on a chip means it changed since you last opened it. Every account
+  sees the same tracked rankings.
+- A ranking shows when it was last updated and lists its works in rank order.
+  Beside each rank, **New** marks a work that was not in the ranking before,
+  **Back** a work that returns after leaving it, and an arrow how many places a
+  work moved. Above each card are the days the work has stayed in the ranking
+  and its best rank. **Dropped out** at the end lists the works that left,
+  with their former rank.
+- Changes are measured against your last visit. **Compare with** chooses the
+  previous update or an earlier update instead. Opening a ranking records it
+  as seen.
+- **All**, **New**, **Moved**, and **Not in library** narrow the list.
+  **Not in library** keeps works with no entry in your library.
+- A work in your library shows its card as in the Library. Any other work
+  shows the title and circle the ranking lists, and the cover when Kikoto
+  already has it. Rankings never add works to the library, sync their
+  metadata, or tag them; open a work to look it up, open DLsite, or add it to
+  Availability Watch. A work from a remote source's list opens on that source.
+- When the latest update failed or a remote source is unavailable, the
+  ranking keeps showing its last successful update and says so.
+
 ## Subscription Settings
 
 The settings icon at the top right, **Subscription settings**, opens a drawer
-from the right edge, or a sheet on a phone, with two tabs: **Subscriptions** and
-**Availability Watch**. Close it with the `×`, Escape, or by selecting outside
-it.
+from the right edge, or a sheet on a phone, with three tabs: **Subscriptions**,
+**Availability Watch**, and **Rankings**. It opens on **Rankings** from the
+Rankings view. Close it with the `×`, Escape, or by selecting outside it.
 
 - **Subscriptions** lists your circle, series, and voice actor subscriptions
   with their state (**Active** or **Waiting for first pull**), when the catalog
@@ -87,7 +116,27 @@ it.
 - The subscription refresh runs the watch on its schedule; **Run** checks the
   pool now. Workflows keeps the watch's run history and links here.
 
+## Ranking Settings
+
+The **Rankings** tab lists the tracked rankings with when each was last
+checked. Accounts that may sync metadata manage them; others can only read
+them.
+
+- **Add a ranking** adds a DLsite ranking for 24 hours, 7 days, or 30 days,
+  optionally **Only works released within 30 days**, or the popular list of an
+  enabled compatible remote source, with how many places to keep (**Top 10**
+  to **Top 100**). The new ranking's first update is queued at once.
+- Each ranking can be switched off, moved up or down to reorder the chips, or
+  removed with its history.
+- **Ranking refresh** is shared by every account: **Refresh automatically**,
+  **Refresh every** (1 hour to 7 days; 24 hours by default), and **Refresh
+  now**. A refresh pulls every tracked ranking; one that fails does not stop
+  the others. A ranking whose order did not change adds no new update.
+  **View the latest run** opens the refresh in Activity.
+- History is kept for 90 days; see [Database records](settings.md).
+
 ## Demo
 
-Demo shows a sample feed and subscription list with obviously fictional names
-and codes. Nothing can be subscribed, refreshed, or opened.
+Demo shows a sample feed, subscription list, and two sample rankings with
+obviously fictional names and codes. Nothing can be subscribed, refreshed, or
+opened.

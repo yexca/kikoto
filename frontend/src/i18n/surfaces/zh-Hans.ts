@@ -1259,6 +1259,10 @@ export const surfaceHans = {
         name: "刷新订阅",
         description: "刷新已订阅的社团和声优目录，同步新作元数据并加入订阅者的新作列表，然后检查可用性监视。",
       },
+      ranking_refresh: {
+        name: "刷新排行榜",
+        description: "拉取已追踪的 DLsite 和远端源排行榜并记录其变化，不会把作品加入媒体库。",
+      },
       availability_watch: { name: "可用性监视", description: "监视作品代码，并在远程来源可用时执行配置的操作。" },
       asr_transcription: {
         name: "转写语音",
@@ -1421,6 +1425,7 @@ export const surfaceHans = {
     workflowTabs: "工作流",
     availabilityWatchManagedOnSubscriptions: "可用性监视在订阅页面配置，并由订阅刷新按计划运行。运行历史保留在这里。",
     subscriptionRefreshManagedOnSubscriptions: "订阅刷新计划在订阅页面设置。运行历史保留在这里。",
+    rankingRefreshManagedOnSubscriptions: "排行榜刷新计划在订阅页面的排行榜设置中设置。运行历史保留在这里。",
     openSubscriptions: "打开订阅",
     presetScheduledBySubscriptions:
       "此工作流按需运行。要定期追踪新作，请订阅社团、系列或声优；订阅会按订阅页面设置的计划刷新。",
@@ -1492,6 +1497,7 @@ export const surfaceHans = {
       series_catalog_sync: "系列目录",
       voice_catalog_sync: "声优目录",
       creator_subscription_refresh: "订阅",
+      ranking_refresh: "排行榜",
     },
     console: {
       statusStrip: "工作流状态",
