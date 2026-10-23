@@ -16,7 +16,7 @@ const variant = (key: string, language: string, origin = false) => ({
 const label = (key: string) => key;
 
 describe("metadata editor language scopes", () => {
-  it("offers every language and each supported language whatever editions the work has", () => {
+  it("offers every language, each supported language whatever editions the work has, and the fallback", () => {
     const scopes = metadataLanguageScopes({
       metadataPresentation: { defaultVariantKey: "origin", variants: [variant("origin", "", true)] },
     });
@@ -27,6 +27,7 @@ describe("metadata editor language scopes", () => {
       "language:zh-tw",
       "language:en-us",
       "language:ko-kr",
+      "fallback",
     ]);
     expect(scopes.primary.every((scope) => scope.variant === null)).toBe(true);
   });
@@ -72,5 +73,9 @@ describe("metadata editor language scopes", () => {
     expect(scopeMatchesLanguage(original, "JPN", true)).toBe(true);
     expect(scopeMatchesLanguage(original, "", false)).toBe(false);
     expect(scopeMatchesLanguage(scopes.primary[0], "THA")).toBe(true);
+    // The fallback stands for a work's own fallback title and tag names, never for an edition.
+    const fallback = scopes.primary.find((scope) => scope.kind === "fallback")!;
+    expect(scopeMatchesLanguage(fallback, "", false)).toBe(false);
+    expect(scopeMatchesLanguage(fallback, "JPN", true)).toBe(false);
   });
 });

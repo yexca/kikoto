@@ -652,13 +652,10 @@ test("@desktop Metadata table shows management columns, edits a work in place, a
 
   await row.getByRole("button", { name: `Edit metadata for ${code}`, exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Edit metadata" });
-  await dialog.getByRole("button", { name: "Advanced title options", exact: true }).click();
-  await dialog.getByRole("textbox", { name: "Universal title", exact: true }).fill("Example edited title");
+  await dialog.getByRole("textbox", { name: "Fallback", exact: true }).fill("Example edited title");
   await dialog.getByRole("tab", { name: /^Credits/ }).click();
   await dialog.getByRole("tab", { name: /^Title/ }).click();
-  await expect(dialog.getByRole("textbox", { name: "Universal title", exact: true })).toHaveValue(
-    "Example edited title",
-  );
+  await expect(dialog.getByRole("textbox", { name: "Fallback", exact: true })).toHaveValue("Example edited title");
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(saves).toEqual([{ titles: { "": "Example edited title" } }]);

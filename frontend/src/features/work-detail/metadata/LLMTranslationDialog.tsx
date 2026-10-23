@@ -115,7 +115,7 @@ export function LLMTranslationDialog({
             </div>
             {preview.translation.title && (
               <PreviewField
-                label={t("metadataEditor.sections.title")}
+                label={t("metadataEditor.previewFields.title")}
                 source={preview.source.title}
                 result={preview.translation.title}
               />
@@ -165,7 +165,7 @@ export function LLMTranslationDialog({
               {t("llmTranslation.targetLanguage")}
               <select
                 aria-label={t("llmTranslation.targetLanguage")}
-                className="mt-1 w-full rounded border bg-background p-2 text-sm"
+                className="mt-1 h-[var(--control-height)] w-full rounded-[var(--control-radius)] border border-input bg-background px-3 text-sm"
                 value={targetLanguage}
                 disabled={loading}
                 onChange={(event) => setChosenLanguage(event.target.value)}
@@ -191,7 +191,7 @@ export function LLMTranslationDialog({
                   disabled={loading}
                   onChange={(event) => setFields((current) => ({ ...current, title: event.target.checked }))}
                 />
-                {t("metadataEditor.sections.title")}
+                {t("metadataEditor.previewFields.title")}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -202,16 +202,16 @@ export function LLMTranslationDialog({
                 />
                 {t("llmTranslation.description")}
               </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={fields.tags}
+                  disabled={loading}
+                  onChange={(event) => setFields((current) => ({ ...current, tags: event.target.checked }))}
+                />
+                {t("llmTranslation.sharedTags")}
+              </label>
             </fieldset>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={fields.tags}
-                disabled={loading}
-                onChange={(event) => setFields((current) => ({ ...current, tags: event.target.checked }))}
-              />
-              {t("llmTranslation.sharedTags")}
-            </label>
             <LLMTranslationReviews
               workId={work.id}
               onSelect={(review) => {
@@ -356,10 +356,13 @@ function PreviewField({
   result?: string;
   multiline?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       <div>
-        <div className="mb-1 text-xs font-medium text-muted-foreground">{label} · original</div>
+        <div className="mb-1 text-xs font-medium text-muted-foreground">
+          {t("llmTranslation.previewOriginal", { field: label })}
+        </div>
         <div
           className={
             multiline
@@ -371,7 +374,9 @@ function PreviewField({
         </div>
       </div>
       <div>
-        <div className="mb-1 text-xs font-medium text-muted-foreground">{label} · translation</div>
+        <div className="mb-1 text-xs font-medium text-muted-foreground">
+          {t("llmTranslation.previewTranslated", { field: label })}
+        </div>
         <div
           className={
             multiline

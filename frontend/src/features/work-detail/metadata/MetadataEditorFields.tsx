@@ -17,15 +17,17 @@ export function MetadataFieldStatusBadge({ status }: { status: MetadataFieldStat
 }
 
 /**
- * One editable field: a label row with its override status and a revert
- * action, the control, and an optional hint. When the field offers an undo,
- * a staged revert replaces the control with a note and that undo action.
+ * One editable field: a single label row with its override status, where the
+ * shown value comes from, and a revert action, then the control and an
+ * optional hint. When the field offers an undo, a staged revert replaces the
+ * control with a note and that undo action.
  */
 export function MetadataEditorField({
   label,
   labelFor,
   labelBadges,
   status,
+  source,
   revertLabel,
   onRevert,
   onUndoRevert,
@@ -36,6 +38,8 @@ export function MetadataEditorField({
   labelFor?: string;
   labelBadges?: ReactNode;
   status: MetadataFieldStatus;
+  /** Where an inherited value comes from, shown at the end of the label row. */
+  source?: string;
   revertLabel?: string;
   onRevert?: () => void;
   onUndoRevert?: () => void;
@@ -54,6 +58,11 @@ export function MetadataEditorField({
         {labelBadges}
         <MetadataFieldStatusBadge status={status} />
         <span className="flex-1" />
+        {source && (
+          <span className="min-w-0 shrink-[100] truncate text-xs text-muted-foreground" title={source}>
+            {source}
+          </span>
+        )}
         {status === "manual" && onRevert && (
           <Button
             variant="ghost"

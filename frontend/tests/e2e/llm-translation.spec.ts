@@ -100,8 +100,9 @@ async function openTranslation(page: Page, detailOverrides: Partial<WorkDetail> 
   await openWorkMetadataEditor(page);
   await page
     .getByRole("dialog", { name: "Edit metadata", exact: true })
-    .getByRole("button", { name: "Translate", exact: true })
+    .getByRole("button", { name: "More metadata actions", exact: true })
     .click();
+  await page.getByRole("menuitem", { name: "Translate with LLM", exact: true }).click();
   return page.getByRole("dialog", { name: "Translate with LLM", exact: true });
 }
 

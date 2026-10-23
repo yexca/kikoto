@@ -12,7 +12,7 @@ import { BrowseLoadingIndicator } from "@/components/collection/BrowseLoadingInd
 import { useCollectionResultsScroll } from "@/components/collection/useCollectionResultsScroll";
 import { CatalogStatStrip } from "@/components/creator/CatalogStatStrip";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
-import { CreatorActionMenu } from "@/components/creator/CreatorActionMenu";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { CreatorCoverDialog, type CreatorCoverWorksRequest } from "@/components/creator/CreatorCoverDialog";
 import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
 import { CatalogWorkToolbar } from "@/components/creator/CatalogWorkToolbar";
@@ -666,7 +666,7 @@ export function CircleDetailPage({
                 )}
               </Button>
             )}
-            <CreatorActionMenu
+            <ActionMenu
               label={t("detailActions.moreCircleActions")}
               buttonLabel={t("detailActions.more")}
               items={moreMenuItems}

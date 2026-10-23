@@ -747,35 +747,42 @@ paths; in-flight sharing does not cache settled responses.
 
 ## Multilingual title presentation
 
-`WorkTitleEditor` lists per-language titles first in a single column, with independent drafts.
+`WorkTitleEditor` lists per-language titles in a single column, then the
+fallback row for the universal manual title, with independent drafts.
 The declared original language carries an `origin` badge and the selected metadata
 language a `current` badge; one row can carry both. The detail editor follows the
 detail page's temporary selection, while Metadata uses the default variant.
 An undeclared original language stays unmarked.
-The universal title appears under Advanced title options, collapsed by default
-and expanded when a saved universal title or a nonempty draft exists. Its hint
-explains that it overrides provider titles while language-specific manual titles
-take precedence, without changing the selected edition or description.
+The fallback row's hint says that every language without a manual title of its
+own shows it in place of the provider title, without changing the selected
+edition or description.
 A row's own manual title is editable text; provider and inherited values are grey
-hints. Source labels distinguish scope-specific and universal manual titles.
+hints. `MetadataEditorField` keeps a field's status badge, the source of an
+inherited value, and its Revert action on one label line. Source labels
+distinguish scope-specific and universal manual titles.
 `titleEditorModel` compares only touched scopes with
 manual values so unchanged provider text never freezes. Clearing an owned
 manual title, or its row's Revert, removes it on Save; clearing an inherited
 hint changes nothing.
 
-`WorkDescriptionEditor` sits between the language titles and the advanced
-options and edits the universal manual description, independent of the
-language scope. It starts from the manual description or the selected
-edition's introduction. `changedDescription` applies the title draft rules: an
-unchanged or cleared inherited introduction stays out of the PATCH, and
-clearing an owned description sends `description: null`.
+`WorkDescriptionEditor` is the Description tab. Like the titles, it lists a
+row per language in the selected scope and a Fallback row for the universal
+manual description. A language row starts from its manual description or the
+introduction its title choice shows, and the Fallback row from the universal
+description or the original introduction. `changedDescriptions` applies the
+title draft rules: an unchanged or cleared inherited introduction stays out of
+the PATCH, and clearing an owned description sends `null` for that language
+in `descriptions`.
 
-`WorkMetadataEditorModal` splits the editor into Title, Cover, Tags, Credits,
-and Metadata source tabs, each marked while it holds unsaved changes. Every
+`WorkMetadataEditorModal` splits the editor into Title, Description, Cover,
+Tags, Credits, Age rating, and Links tabs, each marked while it holds unsaved
+changes. The footer keeps the caller's refresh control visible
+and puts Fetch for edit and Translate with LLM in the shared `ActionMenu`
+overflow menu; translation stays unavailable while drafts exist. Every
 change is a draft until Save: credit reverts become explicit `null` or empty
 PATCH fields (`MetadataEditorReverts`), a cover revert deletes the cover
 override, and a staged metadata link and purchase bonus link are written last,
-so the refresh they queue reaches `onLinkChanged`. The Metadata source tab holds
+so the refresh they queue reaches `onLinkChanged`. The Links tab holds
 `MetadataEditorSourceSection` for the metadata link,
 `MetadataEditorPurchaseBonusSection` for the parent of a purchase bonus, and
 `MetadataEditorBundleSection` and `MetadataEditorFamilySection` for bundle and
@@ -785,14 +792,16 @@ bonus, and Bonuses on a work whose family has linked bonuses in the library. A f
 keeps the editor open. Cancel with drafts asks before discarding them. Credit
 and tag inputs share `SuggestionCombobox`, an in-flow listbox with arrow-key and
 Enter selection. The work detail's metadata-unavailable notice opens the editor
-on its Metadata source tab.
+on its Links tab.
 
 The metadata language label of an original edition whose language was never
 declared reads only Original; other editions keep their language or the
 unknown-language label.
 
-`MetadataLanguageScopeTabs` is the metadata editor's language strip, drawn with
-the shared segmented control: All languages, a fixed tab for each language titles and tag names are saved in, and
+`MetadataLanguageScopeTabs` is the language strip of the metadata editor's
+Title, Description and Tags tabs, the only values saved per language, drawn with
+the shared segmented control: All languages, a fixed tab for each language titles and tag names are saved in,
+Fallback for the universal manual title and description and all-language tag names, and
 a More tab whose menu lists the work's editions in other languages, including
 an original edition with no declared language. Choosing one selects More and
 names that language on the tab; the menu says so when the work has no such
@@ -801,13 +810,15 @@ spellings onto the supported tokens, so an edition's raw language and a
 metadata variant's language match the same scope. An original edition never
 implies a language.
 
-A supported scope shows its own title row, the family editions in that
-language, and each tag by its name in that language through
-`metadataTagNameIn`, with unsaved name drafts applied. A tag with no name in
-that language shows its fallback name muted, and `MetadataTagNamesPanel` lists
-only that language's name and the all-language name. The scope of another
-edition shows its provider title read-only and the tags' default names. Tag
-membership, cover, and credits remain work-wide.
+`WorkMetadataTagTable` shows the work's tags with a column per language and a
+Fallback column for All languages, and only the selected column for one
+language or Fallback; names come from `metadataTagNameIn` with unsaved name
+drafts applied, and a name a language inherits is muted. A supported scope
+shows its own title and description rows, and `MetadataTagNamesPanel` lists
+only that language's name and the fallback name. The scope of another edition
+shows its provider title and introduction read-only and the tags' fallback
+names in one column. Tag membership, cover, credits, age rating, and links
+remain work-wide.
 
 Effective titles and descriptions arrive together in metadata variants. Detail
 language selection updates both; descriptions render stored plain text verbatim

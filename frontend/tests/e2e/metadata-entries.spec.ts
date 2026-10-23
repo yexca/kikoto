@@ -77,11 +77,10 @@ test("language title rows prefill current titles and stage reverts beside other 
   const open = () => page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
   await open();
   let dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
-  const universalTitle = dialog.getByRole("textbox", { name: "Universal title", exact: true });
+  const fallbackTitle = dialog.getByRole("textbox", { name: "Fallback", exact: true });
   const chinese = dialog.getByRole("textbox", { name: "Simplified Chinese", exact: true });
   const english = dialog.getByRole("textbox", { name: "English", exact: true });
   const japanese = dialog.getByRole("textbox", { name: "Japanese", exact: true });
-  await expect(universalTitle).not.toBeVisible();
   await expect(japanese).toBeVisible();
   await expect(
     dialog.getByRole("group", { name: "Japanese", exact: true }).getByText("origin", { exact: true }),
@@ -89,18 +88,19 @@ test("language title rows prefill current titles and stage reverts beside other 
   await expect(
     dialog.getByRole("group", { name: "Simplified Chinese", exact: true }).getByText("current", { exact: true }),
   ).toBeVisible();
-  const advanced = dialog.getByRole("button", { name: "Advanced title options", exact: true });
-  await expect(advanced).toHaveAttribute("aria-expanded", "false");
-  await advanced.focus();
-  await advanced.press("Enter");
-  await expect(advanced).toHaveAttribute("aria-expanded", "true");
-  await expect(universalTitle).toHaveValue("Example original");
-  await expect(universalTitle).toHaveAccessibleDescription(
-    "Overrides provider titles in every language. Per-language manual titles take precedence; the edition and description stay the same.",
+  // Every language lists the fallback title after the languages; Fallback shows it alone.
+  await expect(fallbackTitle).toHaveValue("Example original");
+  await expect(fallbackTitle).toHaveAccessibleDescription(
+    "Shown in every language without a manual title of its own, in place of the provider title.",
   );
   await expect(
-    dialog.getByRole("group", { name: "Universal title" }).getByText("Current source: Original title", { exact: true }),
+    dialog.getByRole("group", { name: "Fallback" }).getByText("Current source: Original title", { exact: true }),
   ).toBeVisible();
+  const languages = dialog.getByRole("tablist", { name: "Metadata language", exact: true });
+  await languages.getByRole("tab", { name: "Fallback", exact: true }).click();
+  await expect(fallbackTitle).toBeVisible();
+  await expect(japanese).toHaveCount(0);
+  await languages.getByRole("tab", { name: "All languages", exact: true }).click();
   await expect(chinese).toHaveValue("Example Chinese");
   await expect(
     dialog
@@ -194,11 +194,10 @@ test("inherited titles prefill without becoming overrides and clearing matches v
   const englishTitle = dialog.getByRole("textbox", { name: "English", exact: true });
   const japaneseTitle = dialog.getByRole("textbox", { name: "Japanese", exact: true });
   const save = dialog.getByRole("button", { name: "Save", exact: true });
-  const universalTitle = dialog.getByRole("textbox", { name: "Universal title", exact: true });
-  await expect(universalTitle).toBeVisible();
-  await expect(universalTitle).toHaveValue("Example universal");
+  const fallbackTitle = dialog.getByRole("textbox", { name: "Fallback", exact: true });
+  await expect(fallbackTitle).toHaveValue("Example universal");
   await expect(englishTitle).toHaveValue("Example universal");
-  await expect(english.getByText("Current source: Manual title (all languages)", { exact: true })).toBeVisible();
+  await expect(english.getByText("Current source: Fallback title", { exact: true })).toBeVisible();
   await expect(english.getByRole("button", { name: /Revert/ })).toHaveCount(0);
   await englishTitle.fill("Example temporary inherited edit");
   await expect(save).toBeEnabled();
@@ -230,20 +229,20 @@ test("inherited titles prefill without becoming overrides and clearing matches v
   await expect(dialog).toHaveCount(0);
   expect(writes[1]).toEqual({ titles: { "ja-jp": null } });
   await open();
-  await dialog.getByRole("button", { name: "Revert the universal title", exact: true }).click();
-  await expect(universalTitle).toHaveValue("");
-  await expect(dialog.getByRole("group", { name: "Universal title" }).getByText("Reverts on save")).toBeVisible();
+  await dialog.getByRole("button", { name: "Revert the fallback title", exact: true }).click();
+  await expect(fallbackTitle).toHaveValue("");
+  await expect(dialog.getByRole("group", { name: "Fallback", exact: true }).getByText("Reverts on save")).toBeVisible();
+  await expect(dialog.getByText("Unsaved: Title", { exact: true })).toBeVisible();
   await dialog.getByRole("tab", { name: /^Cover/ }).click();
   await dialog.getByRole("tab", { name: /^Title/ }).click();
-  await expect(universalTitle).toBeVisible();
-  await expect(universalTitle).toHaveValue("");
+  await expect(fallbackTitle).toHaveValue("");
   await englishTitle.fill("Example authored English");
   await save.click();
   await expect(dialog).toHaveCount(0);
   expect(writes[2]).toEqual({ titles: { "": null, "en-us": "Example authored English" } });
 });
 
-test("the title section saves and resets a universal description without fetching", async ({ page }) => {
+test("descriptions save and reset per language and as the fallback without fetching", async ({ page }) => {
   await metadataWorkEditor(page);
   let detail = workDetailFixture(work, { description: "Example provider introduction", manualOverrides: {} });
   await page.route("**/api/works/1?includeMedia=false", (route) => route.fulfill({ json: detail }));
@@ -251,34 +250,54 @@ test("the title section saves and resets a universal description without fetchin
   await page.route("**/api/works/1/manual-overrides", (route) => {
     const payload = route.request().postDataJSON();
     writes.push(payload);
-    const description = payload.description ?? undefined;
-    detail = { ...detail, description: description ?? "", manualOverrides: description ? { description } : {} };
+    const descriptions = Object.fromEntries(
+      Object.entries({ ...detail.manualOverrides.descriptions, ...payload.descriptions }).filter(([, text]) => text),
+    ) as Record<string, string>;
+    detail = {
+      ...detail,
+      description: descriptions[""] ?? "Example provider introduction",
+      manualOverrides: { ...(descriptions[""] ? { description: descriptions[""] } : {}), descriptions },
+    };
     return route.fulfill({ json: detail.manualOverrides });
   });
   await page.goto("/metadata");
   const open = () => page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
   await open();
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
-  const description = dialog.getByRole("textbox", { name: "Description", exact: true });
+  const fallback = dialog.getByRole("textbox", { name: "Fallback", exact: true });
+  const korean = dialog.getByRole("textbox", { name: "Korean", exact: true });
   const save = dialog.getByRole("button", { name: "Save", exact: true });
-  await expect(dialog.getByRole("button", { name: "Fetch for edit" })).toHaveCount(0);
-  await expect(description).toHaveValue("Example provider introduction");
-  await description.clear();
+  const descriptionTab = dialog.getByRole("tab", { name: /^Description/ });
+  await descriptionTab.click();
+  // Every language inherits the provider introduction until it has its own.
+  await expect(fallback).toHaveValue("Example provider introduction");
+  await expect(korean).toHaveValue("Example provider introduction");
+  await fallback.clear();
   await expect(save).toBeDisabled();
-  await description.fill("Example authored introduction\nSecond line");
-  await expect(dialog.getByRole("group", { name: "Description" }).getByText("Edited", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("Unsaved: Title", { exact: true })).toBeVisible();
+  await fallback.fill("Example authored introduction\nSecond line");
+  await korean.fill("Example Korean introduction");
+  await expect(dialog.getByRole("group", { name: "Fallback" }).getByText("Edited", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Unsaved: Description", { exact: true })).toBeVisible();
   await save.click();
   await expect(dialog).toHaveCount(0);
-  expect(writes).toEqual([{ description: "Example authored introduction\nSecond line" }]);
+  expect(writes).toEqual([
+    { descriptions: { "": "Example authored introduction\nSecond line", "ko-kr": "Example Korean introduction" } },
+  ]);
 
   await open();
-  await expect(description).toHaveValue("Example authored introduction\nSecond line");
-  await dialog.getByRole("button", { name: "Revert the description", exact: true }).click();
-  await expect(dialog.getByRole("group", { name: "Description" }).getByText("Reverts on save")).toBeVisible();
+  await descriptionTab.click();
+  const languages = dialog.getByRole("tablist", { name: "Metadata language", exact: true });
+  await languages.getByRole("tab", { name: "Korean", exact: true }).click();
+  await expect(fallback).toHaveCount(0);
+  await expect(korean).toHaveValue("Example Korean introduction");
+  await dialog.getByRole("button", { name: "Revert the Korean description", exact: true }).click();
+  await expect(dialog.getByRole("group", { name: "Korean" }).getByText("Reverts on save")).toBeVisible();
+  await languages.getByRole("tab", { name: "Fallback", exact: true }).click();
+  await expect(fallback).toHaveValue("Example authored introduction\nSecond line");
+  await dialog.getByRole("button", { name: "Revert the fallback description", exact: true }).click();
   await save.click();
   await expect(dialog).toHaveCount(0);
-  expect(writes[1]).toEqual({ description: null });
+  expect(writes[1]).toEqual({ descriptions: { "ko-kr": null, "": null } });
 });
 
 test("@desktop cover-only metadata saves do not freeze any displayed scalar fields", async ({ page }) => {
@@ -410,11 +429,11 @@ test("@desktop override reverts and a metadata link wait for Save", async ({ pag
   await expect(dialog.getByRole("group", { name: "Circle" }).getByText("Reverts on save")).toBeVisible();
   await dialog.getByRole("tab", { name: "Cover" }).click();
   await dialog.getByRole("button", { name: "Reset cover", exact: true }).click();
-  await dialog.getByRole("tab", { name: "Metadata source" }).click();
+  await dialog.getByRole("tab", { name: /^Links/ }).click();
   await dialog.getByLabel("DLsite code to use", { exact: true }).fill("rj00000001");
   await dialog.getByRole("button", { name: "Use this code", exact: true }).click();
   await expect(dialog.getByText("Metadata will come from RJ00000001 after you save.", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("Unsaved: Cover · Credits · Metadata source", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Unsaved: Cover · Credits · Links", { exact: true })).toBeVisible();
   expect(requests).toEqual([]);
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toHaveCount(0);
@@ -449,7 +468,7 @@ test("@desktop a purchase bonus link shows the detected parent and waits for Sav
   await page.goto("/metadata");
   await page.getByRole("button", { name: `Edit metadata for ${work.primaryCode}` }).click();
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
-  await dialog.getByRole("tab", { name: "Metadata source" }).click();
+  await dialog.getByRole("tab", { name: /^Links/ }).click();
   const bonus = dialog.getByRole("region", { name: "Purchase bonus", exact: true });
   await expect(bonus.getByText("Bonus for Example Work 1 (RJ00000001)", { exact: true })).toBeVisible();
   await expect(bonus.getByText("Found by metadata sync", { exact: true })).toBeVisible();
@@ -583,7 +602,7 @@ test("tag names are edited by language and saved with the work's tag draft", asy
   await dialog.getByRole("button", { name: "Edit names of Synthetic shared tag by language" }).click();
   const names = dialog.getByRole("region", { name: "Names of Synthetic shared tag" });
   await expect(names.getByText(/Shared by 3 works/)).toBeVisible();
-  await expect(names.getByRole("textbox", { name: "All languages", exact: true })).toHaveValue("Synthetic shared tag");
+  await expect(names.getByRole("textbox", { name: "Fallback", exact: true })).toHaveValue("Synthetic shared tag");
   const chinese = names.getByRole("textbox", { name: "Simplified Chinese", exact: true });
   await expect(chinese).toHaveValue("");
   await expect(chinese).toHaveAttribute("placeholder", "Synthetic provider Chinese");
@@ -613,7 +632,9 @@ test("tag names are edited by language and saved with the work's tag draft", asy
   ]);
 });
 
-test("language tabs name the edition chosen under More and show tags in the selected language", async ({ page }) => {
+test("language tabs name the edition chosen under More and choose the tag table's language columns", async ({
+  page,
+}) => {
   await metadataWorkEditor(page);
   await page.route("**/api/works/1?includeMedia=false", (route) =>
     route.fulfill({
@@ -658,6 +679,7 @@ test("language tabs name the edition chosen under More and show tags in the sele
     "Traditional Chinese",
     "English",
     "Korean",
+    "Fallback",
     "More",
   ]);
 
@@ -669,22 +691,39 @@ test("language tabs name the edition chosen under More and show tags in the sele
   await expect(dialog.getByRole("textbox", { name: "Japanese", exact: true })).toHaveCount(0);
 
   await dialog.getByRole("tab", { name: /^Tags/ }).click();
-  const tags = dialog.getByRole("list", { name: "Tags", exact: true });
-  // Each row leads with the name in the selected language and lists the tag's other names.
-  await expect(tags.getByRole("listitem")).toHaveText([/^Synthetic shared tag\s*Synthetic Chinese tag$/]);
+  const tags = dialog.getByRole("table", { name: "Tags", exact: true });
+  // Another edition has no saved tag names, so its one column shows the fallback names.
+  await expect(tags.getByRole("columnheader")).toHaveText(["German", "Actions"]);
+  await expect(tags.getByRole("rowheader")).toHaveText(["Synthetic shared tag"]);
+  await languages.getByRole("tab", { name: "All languages", exact: true }).click();
+  await expect(tags.getByRole("columnheader")).toHaveText([
+    "Japanese",
+    "Simplified Chinese",
+    "Traditional Chinese",
+    "English",
+    "Korean",
+    "Fallback",
+    "Actions",
+  ]);
+  const cells = tags.getByRole("row").nth(1).getByRole("cell");
+  await expect(cells.nth(0)).toHaveText("Synthetic Chinese tag");
+  // A language without a name of its own shows the fallback muted and says so.
+  await expect(cells.nth(1)).toHaveAttribute("title", "No Traditional Chinese name");
+  await languages.getByRole("tab", { name: "Fallback", exact: true }).click();
+  await expect(tags.getByRole("columnheader")).toHaveText(["Fallback", "Actions"]);
   await languages.getByRole("tab", { name: "Simplified Chinese", exact: true }).click();
   await expect(more).toHaveCount(0);
-  await expect(tags.getByRole("listitem")).toHaveText([/^Synthetic Chinese tag\s*Synthetic shared tag$/]);
+  await expect(tags.getByRole("columnheader")).toHaveText(["Simplified Chinese", "Actions"]);
+  await expect(tags.getByRole("rowheader")).toHaveText(["Synthetic Chinese tag"]);
 
   await dialog.getByRole("button", { name: "Edit names of Synthetic Chinese tag by language" }).click();
   const panel = dialog.getByRole("region", { name: "Names of Synthetic Chinese tag" });
   await expect(panel.getByRole("textbox")).toHaveCount(2);
   await panel.getByRole("textbox", { name: "Simplified Chinese", exact: true }).fill("Synthetic authored tag");
-  await expect(tags.getByRole("listitem")).toHaveText([/^Synthetic authored tag\s*Synthetic shared tag/]);
+  await expect(tags.getByRole("rowheader")).toHaveText(["Synthetic authored tag"]);
   await languages.getByRole("tab", { name: "Korean", exact: true }).click();
-  await expect(tags.getByRole("listitem")).toHaveText([
-    /^Synthetic shared tag\s*No Korean name\s*Synthetic authored tag/,
-  ]);
+  await expect(tags.getByRole("rowheader")).toHaveText(["Synthetic shared tag"]);
+  await expect(tags.getByRole("rowheader")).toHaveAttribute("title", "No Korean name");
 });
 
 test("canceling staged tags writes nothing and exact names reuse autocomplete entries", async ({ page }) => {

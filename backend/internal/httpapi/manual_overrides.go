@@ -17,19 +17,23 @@ import (
 	"github.com/yexca/kikoto/backend/internal/agerating"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/download"
+	"github.com/yexca/kikoto/backend/internal/metadatatitles"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type workManualOverrides struct {
-	Title       *string                `json:"title,omitempty"`
-	Titles      map[string]string      `json:"titles,omitempty"`
-	Description *string                `json:"description,omitempty"`
-	ReleaseDate *string                `json:"releaseDate,omitempty"`
-	AgeRating   *string                `json:"ageRating,omitempty"`
-	Circle      *manualOverrideEntity  `json:"circle,omitempty"`
-	Series      *manualOverrideSeries  `json:"series,omitempty"`
-	VoiceActors []manualOverridePerson `json:"voiceActors,omitempty"`
-	Cover       *manualOverrideCover   `json:"cover,omitempty"`
+	Title       *string           `json:"title,omitempty"`
+	Titles      map[string]string `json:"titles,omitempty"`
+	Description *string           `json:"description,omitempty"`
+	// Descriptions holds the universal description under "" and each
+	// language-specific description under its language, like Titles.
+	Descriptions map[string]string      `json:"descriptions,omitempty"`
+	ReleaseDate  *string                `json:"releaseDate,omitempty"`
+	AgeRating    *string                `json:"ageRating,omitempty"`
+	Circle       *manualOverrideEntity  `json:"circle,omitempty"`
+	Series       *manualOverrideSeries  `json:"series,omitempty"`
+	VoiceActors  []manualOverridePerson `json:"voiceActors,omitempty"`
+	Cover        *manualOverrideCover   `json:"cover,omitempty"`
 }
 
 type manualOverrideEntity struct {
@@ -71,14 +75,15 @@ type workCoverCandidate struct {
 }
 
 type workManualOverridePayload struct {
-	Titles      map[string]*string     `json:"titles"`
-	Title       *string                `json:"title"`
-	Description *string                `json:"description"`
-	ReleaseDate *string                `json:"releaseDate"`
-	AgeRating   *string                `json:"ageRating"`
-	Circle      *manualOverrideEntity  `json:"circle"`
-	Series      *manualOverrideSeries  `json:"series"`
-	VoiceActors []manualOverridePerson `json:"voiceActors"`
+	Titles       map[string]*string     `json:"titles"`
+	Title        *string                `json:"title"`
+	Description  *string                `json:"description"`
+	Descriptions map[string]*string     `json:"descriptions"`
+	ReleaseDate  *string                `json:"releaseDate"`
+	AgeRating    *string                `json:"ageRating"`
+	Circle       *manualOverrideEntity  `json:"circle"`
+	Series       *manualOverrideSeries  `json:"series"`
+	VoiceActors  []manualOverridePerson `json:"voiceActors"`
 }
 
 func (s *Server) getWorkManualOverrides(w http.ResponseWriter, r *http.Request) {
@@ -143,6 +148,22 @@ func (s *Server) updateWorkManualOverrides(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
+	if _, single := fields["description"]; single {
+		if _, scoped := fields["descriptions"]; scoped {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "use description or descriptions, not both"})
+			return
+		}
+	}
+	if _, present := fields["descriptions"]; present && payload.Descriptions == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "descriptions must be a language map"})
+		return
+	}
+	for language := range payload.Descriptions {
+		if !validTitleLanguage(language) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid description language"})
+			return
+		}
+	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, err)
@@ -173,7 +194,14 @@ func patchManualOverride(ctx context.Context, tx *sql.Tx, workID int64, field st
 	switch field {
 	case "titles":
 		for language, value := range payload.Titles {
-			if err := upsertManualTitle(ctx, tx, workID, language, value, userID); err != nil {
+			if err := upsertManualLanguageText(ctx, tx, workID, "title", language, value, userID); err != nil {
+				return err
+			}
+		}
+		return nil
+	case "descriptions":
+		for language, value := range payload.Descriptions {
+			if err := upsertManualLanguageText(ctx, tx, workID, "description", language, value, userID); err != nil {
 				return err
 			}
 		}
@@ -246,7 +274,7 @@ func (s *Server) deleteWorkManualOverride(w http.ResponseWriter, r *http.Request
 		defer s.manualCoverMu.Unlock()
 	}
 	language := r.URL.Query().Get("language")
-	if !validTitleLanguage(language) || (field != "title" && language != "") {
+	if !validTitleLanguage(language) || (field != "title" && field != "description" && language != "") {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid override language"})
 		return
 	}
@@ -442,8 +470,15 @@ func (s *Server) applyManualOverrideRow(overrides *workManualOverrides, row manu
 		}
 	case "description":
 		var value string
-		if err := json.Unmarshal([]byte(row.ValueJSON), &value); err == nil {
-			overrides.Description = stringPointer(strings.TrimSpace(value))
+		if err := json.Unmarshal([]byte(row.ValueJSON), &value); err == nil && strings.TrimSpace(value) != "" {
+			value = strings.TrimSpace(value)
+			if overrides.Descriptions == nil {
+				overrides.Descriptions = map[string]string{}
+			}
+			overrides.Descriptions[row.Language] = value
+			if row.Language == "" {
+				overrides.Description = &value
+			}
 		}
 	case "release_date":
 		var value string
@@ -532,9 +567,11 @@ func (s *Server) applyManualOverridesToDetail(ctx context.Context, work *workDet
 	work.Title = selectedTitle.Title
 	work.Description = selectedTitle.Description
 	work.TitleChoices = choices
+	descriptionLanguage := selectedTitle.Language
 	for _, variant := range work.MetadataView.Variants {
 		if variant.Key == work.MetadataView.DefaultVariantKey {
 			work.Title, work.Description = variant.Title, variant.Description
+			descriptionLanguage = variant.Language
 			work.MetadataLanguage = variant.Language
 			if variant.Origin {
 				work.MetadataLanguage = dlsite.OriginMetadataLanguage
@@ -545,17 +582,39 @@ func (s *Server) applyManualOverridesToDetail(ctx context.Context, work *workDet
 	if selectedTitle.Source == "llm" {
 		work.Title, work.Description = selectedTitle.Title, selectedTitle.Description
 		work.MetadataLanguage = selectedTitle.Language
+		descriptionLanguage = selectedTitle.Language
 	}
-	if overrides.Description != nil {
-		work.Description = *overrides.Description
-		for i := range work.MetadataView.Variants {
-			work.MetadataView.Variants[i].Description = *overrides.Description
+	// A language's own manual description precedes the universal one, which
+	// replaces every other introduction.
+	manualDescription := func(language string) (string, bool) {
+		if language = metadatatitles.EditionLanguage(language); language != "" {
+			if text, ok := overrides.Descriptions[language]; ok {
+				return text, true
+			}
+		}
+		if overrides.Description != nil {
+			return *overrides.Description, true
+		}
+		return "", false
+	}
+	if text, ok := manualDescription(descriptionLanguage); ok {
+		work.Description = text
+	}
+	for i, variant := range work.MetadataView.Variants {
+		if text, ok := manualDescription(variant.Language); ok {
+			work.MetadataView.Variants[i].Description = text
 			work.MetadataView.Variants[i].DescriptionSource = "manual"
 		}
-		for language, choice := range work.TitleChoices {
-			choice.Description = *overrides.Description
+	}
+	for key, choice := range work.TitleChoices {
+		language := key
+		if key == dlsite.OriginMetadataLanguage {
+			language = choice.Language
+		}
+		if text, ok := manualDescription(language); ok {
+			choice.Description = text
 			choice.DescriptionSource = "manual"
-			work.TitleChoices[language] = choice
+			work.TitleChoices[key] = choice
 		}
 	}
 	if overrides.ReleaseDate != nil {
@@ -937,13 +996,15 @@ func validTitleLanguage(language string) bool {
 	return false
 }
 
-func upsertManualTitle(ctx context.Context, tx *sql.Tx, workID int64, language string, value *string, userID int64) error {
+// upsertManualLanguageText writes a title or description in one language
+// scope; an empty value removes only that scope.
+func upsertManualLanguageText(ctx context.Context, tx *sql.Tx, workID int64, field, language string, value *string, userID int64) error {
 	if value == nil || strings.TrimSpace(*value) == "" {
-		_, err := tx.ExecContext(ctx, "DELETE FROM work_manual_override WHERE work_id=? AND field_name='title' AND language=?", workID, language)
+		_, err := tx.ExecContext(ctx, "DELETE FROM work_manual_override WHERE work_id=? AND field_name=? AND language=?", workID, field, language)
 		return err
 	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO work_manual_override(work_id,field_name,language,value_json,updated_by_user_id)
- VALUES (?, 'title', ?, ?, ?) ON CONFLICT(work_id,field_name,language) DO UPDATE SET
- value_json=excluded.value_json,updated_by_user_id=excluded.updated_by_user_id,updated_at=CURRENT_TIMESTAMP`, workID, language, mustJSON(strings.TrimSpace(*value)), userID)
+ VALUES (?, ?, ?, ?, ?) ON CONFLICT(work_id,field_name,language) DO UPDATE SET
+ value_json=excluded.value_json,updated_by_user_id=excluded.updated_by_user_id,updated_at=CURRENT_TIMESTAMP`, workID, field, language, mustJSON(strings.TrimSpace(*value)), userID)
 	return err
 }

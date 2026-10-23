@@ -8,8 +8,9 @@ import (
 )
 
 // Inputs holds everything title selection reads for one work: the family's
-// DLsite editions or declared remote titles, the work's manual titles by
-// language, and the canonical work row as the languageless fallback.
+// DLsite editions or declared remote titles, accepted machine fields and
+// language-specific manual descriptions as variants, the work's manual titles
+// by language, and the canonical work row as the languageless fallback.
 type Inputs struct {
 	Variants []Variant
 	Manual   map[string]string
@@ -129,12 +130,15 @@ func LoadInputs(ctx context.Context, db Querier, ids []int64, descriptions bool)
 		if descriptions {
 			machineValue, machineSource = "value_text", "source_text"
 		}
-		rows, err = db.QueryContext(ctx, `SELECT work_id,language,field_name,value_json,'manual','' FROM work_manual_override WHERE field_name='title' AND work_id IN (`+placeholders+`)
+		// A language-specific manual description lets a language win selection,
+		// so lists read it too; the universal description stays a detail overlay.
+		rows, err = db.QueryContext(ctx, `SELECT work_id,language,field_name,value_json,'manual','' FROM work_manual_override WHERE (field_name='title' OR field_name='description' AND language<>'') AND work_id IN (`+placeholders+`)
  UNION ALL SELECT work_id,language,field_name,`+machineValue+`,'llm',`+machineSource+` FROM work_llm_translation WHERE status='accepted' AND work_id IN (`+placeholders+`) ORDER BY work_id,language`, append(append([]any{}, args...), args...)...)
 		if err != nil {
 			return nil, err
 		}
 		machines := map[int64]map[string]Variant{}
+		manualDescriptions := map[int64]map[string]Variant{}
 		for rows.Next() {
 			var id int64
 			var language, field, value, kind, source string
@@ -147,9 +151,17 @@ func LoadInputs(ctx context.Context, db Querier, ids []int64, descriptions bool)
 				continue
 			}
 			if kind == "manual" {
-				var title string
-				if json.Unmarshal([]byte(value), &title) == nil {
-					input.Manual[language] = title
+				var text string
+				if json.Unmarshal([]byte(value), &text) != nil || strings.TrimSpace(text) == "" {
+					continue
+				}
+				if field == "title" {
+					input.Manual[language] = text
+				} else {
+					if manualDescriptions[id] == nil {
+						manualDescriptions[id] = map[string]Variant{}
+					}
+					manualDescriptions[id][language] = Variant{Language: language, Description: strings.TrimSpace(text), ManualDescription: true}
 				}
 				continue
 			}
@@ -175,14 +187,16 @@ func LoadInputs(ctx context.Context, db Querier, ids []int64, descriptions bool)
 			return nil, err
 		}
 		_ = rows.Close()
-		for id, languages := range machines {
-			input := result[id]
-			for _, language := range []string{"ja-jp", "zh-cn", "zh-tw", "en-us", "ko-kr"} {
-				if v, exists := languages[language]; exists {
-					input.Variants = append(input.Variants, v)
+		for _, group := range []map[int64]map[string]Variant{machines, manualDescriptions} {
+			for id, languages := range group {
+				input := result[id]
+				for _, language := range []string{"ja-jp", "zh-cn", "zh-tw", "en-us", "ko-kr"} {
+					if v, exists := languages[language]; exists {
+						input.Variants = append(input.Variants, v)
+					}
 				}
+				result[id] = input
 			}
-			result[id] = input
 		}
 
 	}

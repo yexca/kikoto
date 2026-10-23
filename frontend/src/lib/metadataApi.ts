@@ -134,6 +134,8 @@ export type WorkManualOverrides = {
   titles?: Record<string, string>;
   title?: string;
   description?: string;
+  /** The universal description under "" and each language-specific description, like titles. */
+  descriptions?: Record<string, string>;
   releaseDate?: string;
   ageRating?: string;
   circle?: ManualOverrideEntity;
@@ -146,6 +148,7 @@ export type WorkManualOverridePayload = {
   titles?: Record<string, string | null>;
   title?: string | null;
   description?: string | null;
+  descriptions?: Record<string, string | null>;
   releaseDate?: string | null;
   ageRating?: string | null;
   circle?: ManualOverrideEntity | null;

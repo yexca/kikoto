@@ -5,10 +5,11 @@ import { metadataLanguageChoices, metadataVariantLabel } from "../metadataPresen
 export type MetadataLanguageScope = {
   key: string;
   /**
-   * `supported` is a language titles and tag names can be saved in. `other` is
-   * an edition of this work in any other language, or with none declared.
+   * `supported` is a language titles and tag names can be saved in.
+   * `fallback` is the title and tag name shown in a language without its own.
+   * `other` is an edition of this work in any other language, or with none declared.
    */
-  kind: "all" | "supported" | "other";
+  kind: "all" | "supported" | "fallback" | "other";
   /** Normalized language; empty for every language and for an undeclared one. */
   language: string;
   /** The scope's edition is the original one. It never implies a language. */
@@ -18,7 +19,7 @@ export type MetadataLanguageScope = {
 };
 
 export type MetadataLanguageScopes = {
-  /** Every language, then each supported language, whether or not this work has it. */
+  /** Every language, each supported language whether or not this work has it, then the fallback. */
   primary: MetadataLanguageScope[];
   /** The work's editions outside the supported languages, original first. */
   more: MetadataLanguageScope[];
@@ -27,6 +28,14 @@ export type MetadataLanguageScopes = {
 export const allMetadataLanguagesScope: MetadataLanguageScope = {
   key: "all",
   kind: "all",
+  language: "",
+  origin: false,
+  variant: null,
+};
+
+export const fallbackMetadataScope: MetadataLanguageScope = {
+  key: "fallback",
+  kind: "fallback",
   language: "",
   origin: false,
   variant: null,
@@ -89,7 +98,7 @@ export function metadataLanguageScopes(
       origin: choice.variant.origin,
       variant: choice.variant,
     }));
-  return { primary: [allMetadataLanguagesScope, ...primary], more };
+  return { primary: [allMetadataLanguagesScope, ...primary, fallbackMetadataScope], more };
 }
 
 export function findMetadataLanguageScope(scopes: MetadataLanguageScopes, key: string) {
@@ -132,6 +141,7 @@ export function metadataLanguageScopeLabel(
   locale: string,
 ): string {
   if (scope.kind === "all") return t("metadataEditor.allLanguages");
+  if (scope.kind === "fallback") return t("metadataEditor.fallback");
   const supported = metadataTagNameLanguages.find(([language]) => language === scope.language);
   if (supported) return t(supported[1]);
   if (!scope.variant) return otherLanguageName(scope.language, locale);
@@ -144,10 +154,12 @@ export function metadataLanguageScopeLabel(
 
 /**
  * Whether an edition or title language belongs to a scope. An original edition
- * without a declared language matches only its own scope.
+ * without a declared language matches only its own scope, and the fallback
+ * matches no language.
  */
 export function scopeMatchesLanguage(scope: MetadataLanguageScope, language: string, origin = false) {
   if (scope.kind === "all") return true;
+  if (scope.kind === "fallback") return false;
   const normalized = normalizeMetadataLanguage(language);
   if (!scope.language) return scope.origin ? origin : !origin && normalized === "";
   return scope.language === normalized;

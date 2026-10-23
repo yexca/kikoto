@@ -257,7 +257,7 @@ metadata, no-source, and custom views under the same permissions, leaving out
 a view the caller may not open.
 `/api/metadata/translation-coverage` pages every family, catalog and custom,
 with the same search and narrows it to the parts missing in one target
-language. It reads stored editions, manual titles, accepted LLM translations,
+language. It reads stored editions, manual titles and descriptions, accepted LLM translations,
 shared tag names, file display names, and lyrics assignments, and never
 contacts a provider; selected works queue the existing background LLM
 translation.

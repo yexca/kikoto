@@ -105,9 +105,10 @@ func (c translationCoverageSQL) edition() (string, []any) {
 		AND edition.metadata_language IN ` + c.editionList() + `)`, c.editionLanguages
 }
 
-func (c translationCoverageSQL) manualTitle() (string, []any) {
+// manual matches a manual title or description saved for the language.
+func (c translationCoverageSQL) manual(field string) (string, []any) {
 	return `EXISTS (SELECT 1 FROM work_manual_override AS override WHERE override.work_id IN ` + translationCoverageFamily + `
-		AND override.field_name = 'title' AND override.language = ? AND override.value_json NOT IN ('null', '""'))`, []any{c.language}
+		AND override.field_name = ? AND override.language = ? AND override.value_json NOT IN ('null', '""'))`, []any{field, c.language}
 }
 
 func (c translationCoverageSQL) llm(field string) (string, []any) {
@@ -183,9 +184,9 @@ func (c translationCoverageSQL) missing(filter string) (string, []any) {
 	sql := &sqlBuilder{}
 	switch filter {
 	case "title":
-		sql.not(c.edition()).and().not(c.manualTitle()).and().not(c.llm("title"))
+		sql.not(c.edition()).and().not(c.manual("title")).and().not(c.llm("title"))
 	case "description":
-		sql.not(c.edition()).and().not(c.llm("description"))
+		sql.not(c.edition()).and().not(c.manual("description")).and().not(c.llm("description"))
 	case "tags":
 		sql.add(exists(c.tagRows(true)))
 	case "files":
@@ -306,7 +307,7 @@ func (s *Server) loadTranslationCoverage(ctx context.Context, c translationCover
 	sql.text(`SELECT work.id, COALESCE((SELECT canonical.metadata_language FROM work_edition AS edition
 		INNER JOIN work_edition AS canonical ON canonical.logical_work_id = edition.logical_work_id AND canonical.is_canonical = 1
 		WHERE edition.work_id = work.id ORDER BY canonical.work_id LIMIT 1), ''), `)
-	sql.add(c.edition()).text(", ").add(c.manualTitle()).text(", ").add(c.llm("title")).text(", ").add(c.llm("description")).text(", ")
+	sql.add(c.edition()).text(", ").add(c.manual("title")).text(", ").add(c.manual("description")).text(", ").add(c.llm("title")).text(", ").add(c.llm("description")).text(", ")
 	sql.add(c.tags(false)).text(", ").add(c.tags(true)).text(", ")
 	sql.add(c.files(false)).text(", ").add(c.files(true)).text(", ")
 	sql.add(c.lyrics(false)).text(", ").add(c.lyrics(true)).text(", ")
@@ -330,17 +331,17 @@ func (s *Server) loadTranslationCoverage(ctx context.Context, c translationCover
 	for rows.Next() {
 		var id int64
 		var originRaw string
-		var edition, manualTitle, llmTitle, llmDescription bool
+		var edition, manualTitle, manualDescription, llmTitle, llmDescription bool
 		var tags, unnamedTags, files, unnamedFiles, tracks, tracksWithout int
 		var state translationCoverage
-		if err := rows.Scan(&id, &originRaw, &edition, &manualTitle, &llmTitle, &llmDescription,
+		if err := rows.Scan(&id, &originRaw, &edition, &manualTitle, &manualDescription, &llmTitle, &llmDescription,
 			&tags, &unnamedTags, &files, &unnamedFiles, &tracks, &tracksWithout, &state.Running, &state.Review); err != nil {
 			return nil, err
 		}
 		state.OriginLanguage = dlsite.EditionMetadataLanguage(originRaw)
 		origin := state.OriginLanguage == c.language
 		state.Title = translationSource(origin, edition, manualTitle, llmTitle)
-		state.Description = translationSource(origin, edition, false, llmDescription)
+		state.Description = translationSource(origin, edition, manualDescription, llmDescription)
 		state.Tags = translationCount{Done: tags - unnamedTags, Total: tags}
 		state.Files = translationCount{Done: files - unnamedFiles, Total: files}
 		if origin {

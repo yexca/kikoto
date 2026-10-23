@@ -171,3 +171,90 @@ func TestTitlePresentationSharesEditionDescriptionWithoutRewritingProvider(t *te
 		t.Fatalf("provider projection changed: %q %v", raw, err)
 	}
 }
+
+func TestScopedDescriptionsFollowTheirLanguageOverTheUniversalDescription(t *testing.T) {
+	fixture := newManualOverrideFixture(t, config.Config{})
+	ctx := metadataLanguageViewer(fixture.userID)
+	translatedCode := testfixture.WorkCode("RJ", 1)
+	result, err := fixture.db.Exec("INSERT INTO work(primary_code,title,description) VALUES (?, 'Example Chinese','Chinese introduction')", translatedCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	translatedID, _ := result.LastInsertId()
+	result, err = fixture.db.Exec("INSERT INTO logical_work(canonical_work_id,canonical_code) VALUES (?,?)", fixture.workID, testfixture.WorkCode("RJ", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logicalID, _ := result.LastInsertId()
+	for _, q := range []struct {
+		query string
+		args  []any
+	}{
+		{"UPDATE work SET description='Japanese introduction' WHERE id=?", []any{fixture.workID}},
+		{`INSERT INTO work_edition(work_id,logical_work_id,primary_code,metadata_language,is_canonical,translation_kind) VALUES (?,?,?,'JPN',1,'origin'),(?,?,?,'CHI_HANS',0,'official')`, []any{fixture.workID, logicalID, testfixture.WorkCode("RJ", 0), translatedID, logicalID, translatedCode}},
+		{`INSERT INTO dlsite_metadata_variant(logical_work_id,work_id,provider_id,external_id,edition_language,title) VALUES (?,?,?,?,'JPN','Example Japanese'),(?,?,?,?,'CHI_HANS','Example Chinese')`, []any{logicalID, fixture.workID, fixture.providerID, testfixture.WorkCode("RJ", 0), logicalID, translatedID, fixture.providerID, translatedCode}},
+	} {
+		if _, err := fixture.db.Exec(q.query, q.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	response := updateManualOverridesRequest(t, fixture, `{"descriptions":{"":"Universal introduction","zh-cn":"Authored Chinese introduction","ko-kr":"Authored Korean introduction"}}`)
+	if response.Code != http.StatusOK {
+		t.Fatal(response.Body.String())
+	}
+	var wire workManualOverrides
+	if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
+		t.Fatal(err)
+	}
+	if wire.Description == nil || *wire.Description != "Universal introduction" || wire.Descriptions["zh-cn"] != "Authored Chinese introduction" {
+		t.Fatalf("overrides: %+v", wire)
+	}
+
+	setUserMetadataLanguages(t, fixture.db, fixture.userID, `["zh-cn","origin"]`)
+	detail, err := fixture.server.loadWorkDetail(ctx, fixture.userID, fixture.workID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Title != "Example Chinese" || detail.Description != "Authored Chinese introduction" {
+		t.Fatalf("language description: %q %q", detail.Title, detail.Description)
+	}
+	for _, variant := range detail.MetadataView.Variants {
+		// The original edition has no Japanese description of its own, so it shows the universal one.
+		if variant.Origin && variant.Description != "Universal introduction" {
+			t.Fatalf("origin variant: %+v", variant)
+		}
+	}
+
+	// A description alone gives Korean a choice, with the original title.
+	setUserMetadataLanguages(t, fixture.db, fixture.userID, `["ko-kr","zh-cn","origin"]`)
+	detail, err = fixture.server.loadWorkDetail(ctx, fixture.userID, fixture.workID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.MetadataView.DefaultVariantKey != "manual:ko-kr" || detail.Title != "Example Japanese" || detail.Description != "Authored Korean introduction" {
+		t.Fatalf("description-only language: %q %q %q", detail.MetadataView.DefaultVariantKey, detail.Title, detail.Description)
+	}
+
+	request := httptest.NewRequest(http.MethodDelete, "/api/works/1/manual-overrides/description?language=ko-kr", nil)
+	request.SetPathValue("id", strconv.FormatInt(fixture.workID, 10))
+	request.SetPathValue("field", "description")
+	request = request.WithContext(context.WithValue(request.Context(), currentUserKey, manualOverrideActor(t, fixture)))
+	deleted := httptest.NewRecorder()
+	fixture.server.deleteWorkManualOverride(deleted, request)
+	if deleted.Code != http.StatusOK {
+		t.Fatalf("DELETE: %d %s", deleted.Code, deleted.Body.String())
+	}
+	got, err := fixture.server.loadWorkManualOverrides(context.Background(), fixture.workID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Descriptions["ko-kr"] != "" || got.Descriptions["zh-cn"] != "Authored Chinese introduction" || got.Description == nil {
+		t.Fatalf("scoped reset: %+v", got)
+	}
+	for _, payload := range []string{`{"descriptions":{"unknown":"Bad"}}`, `{"descriptions":null}`, `{"description":"Ambiguous","descriptions":{"":"Also universal"}}`} {
+		response = updateManualOverridesRequest(t, fixture, payload)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("invalid PATCH accepted: %s", payload)
+		}
+	}
+}

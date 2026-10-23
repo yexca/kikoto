@@ -36,6 +36,8 @@ export function MetadataTagNamesPanel({
   const shownLanguages = language
     ? [...metadataTagLanguages].filter(([value]) => value === language || value === "").reverse()
     : metadataTagLanguages;
+  // The all-language name is the fallback a language without its own name shows.
+  const nameLabel = (language: string, label: string) => (language ? t(label) : t("metadataEditor.fallback"));
   const detail = editor.detail(tag.id);
   const loadDetail = useStableCallback(editor.loadDetail);
   // Load once per opened tag; a failed load offers its own retry.
@@ -50,7 +52,7 @@ export function MetadataTagNamesPanel({
           <NameRow
             key={language}
             id={`tag-name-${tag.id}-${language}`}
-            label={t(label)}
+            label={nameLabel(language, label)}
             value={editor.nameValue(tag.id, language)}
             status={manualValueStatus(editor.nameValue(tag.id, language), undefined)}
             placeholder={tag.displayName}
@@ -58,7 +60,7 @@ export function MetadataTagNamesPanel({
           />
         ) : (
           <div key="all" className="min-w-0 space-y-1.5">
-            <div className="flex min-h-7 items-center text-sm font-medium">{t(label)}</div>
+            <div className="flex min-h-7 items-center text-sm font-medium">{nameLabel(language, label)}</div>
             <p className="flex h-9 items-center truncate rounded-md border border-dashed px-3 text-sm">
               {tag.displayName}
             </p>
@@ -82,11 +84,11 @@ export function MetadataTagNamesPanel({
         <NameRow
           key={language}
           id={`tag-name-${tag.id}-${language || "all"}`}
-          label={t(label)}
+          label={nameLabel(language, label)}
           value={editor.nameValue(tag.id, language)}
           status={manualValueStatus(editor.draftName(tag.id, language), own)}
           placeholder={providerMetadataTagName(detail.tag, language) ?? (language ? "" : detail.tag.displayName)}
-          revertLabel={t("metadataEditor.revertTagName", { language: t(label) })}
+          revertLabel={t("metadataEditor.revertTagName", { language: nameLabel(language, label) })}
           onChange={(value) => editor.setName(tag.id, language, value)}
         />
       );

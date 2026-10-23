@@ -133,9 +133,14 @@ test("a custom work edits its metadata and age rating without provider refreshes
 
   await openWorkMetadataEditor(page);
   const dialog = page.getByRole("dialog", { name: "Edit metadata", exact: true });
-  await expect(dialog.getByRole("tab", { name: "Metadata source" })).toHaveCount(0);
-  await expect(dialog.getByRole("button", { name: "Fetch for edit", exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("tab", { name: /^Links/ })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Refresh metadata", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "More metadata actions", exact: true }).click();
+  const more = page.getByRole("menu", { name: "More metadata actions", exact: true });
+  await expect(more.getByRole("menuitem", { name: "Translate with LLM", exact: true })).toBeVisible();
+  await expect(more.getByRole("menuitem", { name: "Fetch for edit", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await dialog.getByRole("tab", { name: /^Age rating/ }).click();
   const rating = dialog.getByRole("radiogroup", { name: "Age rating", exact: true });
   await expect(dialog).toContainText("The provider gives no rating.");
   await rating.getByRole("radio", { name: "全年齢", exact: true }).click();
@@ -175,7 +180,7 @@ test("remote metadata choices use declared capabilities and preserve drafts afte
   await expect(menu.getByRole("menuitem", { name: "From Example Remote A", exact: true })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(menu).toHaveCount(0);
-  await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+  await expect(dialog.getByRole("button", { name: "More metadata actions", exact: true })).toBeFocused();
   await options.click();
   await menu.getByRole("menuitem", { name: "From Synthetic Remote B", exact: true }).click();
   await expect.poll(() => control.postRequests).toBe(1);
@@ -227,7 +232,8 @@ test("@desktop Fetch for edit opens at its own size above the editor", async ({ 
   await page.goto("/RJ00000000");
   await openWorkMetadataEditor(page);
   const editor = page.getByRole("dialog", { name: "Edit metadata", exact: true });
-  await editor.getByRole("button", { name: "Fetch for edit", exact: true }).click();
+  await editor.getByRole("button", { name: "More metadata actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Fetch for edit", exact: true }).click();
   const preview = page.getByRole("dialog", { name: "Compare fetched metadata", exact: true });
   await expect(preview.getByRole("button", { name: "Save selection", exact: true })).toBeVisible();
   // The comparison is wider than the editor, so it cannot be laid out inside the editor's panel.
@@ -254,7 +260,8 @@ test("Fetch for edit compares a selected source and applies an authored value", 
   await page.goto("/RJ00000000");
   await openWorkMetadataEditor(page);
   const editor = page.getByRole("dialog", { name: "Edit metadata", exact: true });
-  await editor.getByRole("button", { name: "Fetch for edit", exact: true }).click();
+  await editor.getByRole("button", { name: "More metadata actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Fetch for edit", exact: true }).click();
   const preview = page.getByRole("dialog", { name: "Compare fetched metadata", exact: true });
   await expect(preview).toBeVisible();
   await expect.poll(() => previews.length).toBe(1);

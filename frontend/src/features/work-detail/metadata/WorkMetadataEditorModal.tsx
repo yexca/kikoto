@@ -1,6 +1,18 @@
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Image, Link2, Sparkles, Tags, Type, Users, type LucideIcon } from "lucide-react";
+import {
+  AlignLeft,
+  CloudDownload,
+  Image,
+  Link2,
+  ShieldCheck,
+  Sparkles,
+  Tags,
+  Type,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+import { ActionMenu, type ActionMenuItem } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -32,22 +44,27 @@ import {
   providerCoverSource,
   type CoverChoice,
 } from "./metadataEditorModel";
-import { changedDescription, changedTitles, currentDescription, currentTitles } from "./titleEditorModel";
+import { changedDescriptions, changedTitles, currentDescriptions, currentTitles } from "./titleEditorModel";
 import { WorkDescriptionEditor } from "./WorkDescriptionEditor";
 import { WorkAgeRatingEditor } from "./WorkAgeRatingEditor";
 import { changedAgeRating, type AgeRatingDraft } from "./ageRatingEditorModel";
 import { useWorkCoverCandidates } from "./useMetadataSuggestions";
 import { useWorkMetadataTagsEditor } from "./useWorkMetadataTagsEditor";
 
-export type MetadataEditorSection = "title" | "cover" | "tags" | "credits" | "source";
+export type MetadataEditorSection = "title" | "description" | "cover" | "tags" | "credits" | "ageRating" | "source";
 
 const allSections: { id: MetadataEditorSection; icon: LucideIcon }[] = [
   { id: "title", icon: Type },
+  { id: "description", icon: AlignLeft },
   { id: "cover", icon: Image },
   { id: "tags", icon: Tags },
   { id: "credits", icon: Users },
+  { id: "ageRating", icon: ShieldCheck },
   { id: "source", icon: Link2 },
 ];
+
+// Only titles, descriptions and tag names are saved per language, so only these sections choose one.
+const languageScopedSections: ReadonlySet<MetadataEditorSection> = new Set(["title", "description", "tags"]);
 
 /**
  * Edits one work's manual metadata. Every change, including reverts and the
@@ -97,7 +114,7 @@ export function WorkMetadataEditorModal({
   const [initialState] = useState(() => metadataEditorInitialState(work));
   const manual = initialState.manual;
   const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
-  const [descriptionDraft, setDescriptionDraft] = useState<string>();
+  const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({});
   const [ageRatingDraft, setAgeRatingDraft] = useState<AgeRatingDraft>();
   const credits = useMetadataCreditsEditor(initialState);
   const tagEditor = useWorkMetadataTagsEditor(work.id);
@@ -113,8 +130,11 @@ export function WorkMetadataEditorModal({
   const tabRefs = useRef<Partial<Record<MetadataEditorSection, HTMLButtonElement | null>>>({});
 
   const titles = changedTitles(titleDrafts, manual, currentTitles(work));
-  const shownDescription = currentDescription(work, selectedMetadataVariantKey ?? "");
-  const description = changedDescription(descriptionDraft, manual.description, shownDescription);
+  const descriptions = changedDescriptions(
+    descriptionDrafts,
+    manual,
+    currentDescriptions(work, selectedMetadataVariantKey ?? ""),
+  );
   const providerAgeRating = work.providerAgeRating;
   const ageRating = changedAgeRating(ageRatingDraft, manual.ageRating, providerAgeRating);
   const coverChanged = coverState.selectedCoverId !== coverState.initialCoverId;
@@ -127,7 +147,9 @@ export function WorkMetadataEditorModal({
     setCoverReverted(choice === "provider" && Boolean(manual.cover));
   };
   const changed: Record<MetadataEditorSection, boolean> = {
-    title: Object.keys(titles).length > 0 || description !== undefined || ageRating !== undefined,
+    title: Object.keys(titles).length > 0,
+    description: Object.keys(descriptions).length > 0,
+    ageRating: ageRating !== undefined,
     cover: coverChanged || coverReverted,
     tags: tagEditor.changed,
     credits: payloadChangesCredits(credits.payload),
@@ -151,7 +173,7 @@ export function WorkMetadataEditorModal({
     try {
       const payload = { ...credits.payload };
       if (Object.keys(titles).length) payload.titles = titles;
-      if (description !== undefined) payload.description = description;
+      if (Object.keys(descriptions).length) payload.descriptions = descriptions;
       if (ageRating !== undefined) payload.ageRating = ageRating;
       if (Object.keys(payload).length) {
         await api.updateWorkManualOverrides(work.id, payload);
@@ -274,6 +296,25 @@ export function WorkMetadataEditorModal({
 
   const sectionLabel = (id: MetadataEditorSection) => t(`metadataEditor.sections.${id}`);
 
+  const moreActions: ActionMenuItem[] = [];
+  if (canSyncMetadata && !readOnly && !work.customWork)
+    moreActions.push({
+      key: "fetch",
+      label: t("metadataEditor.fetchForEdit"),
+      icon: <CloudDownload className="h-4 w-4" />,
+      onSelect: () => setPreviewOpen(true),
+    });
+  if (canSyncMetadata && !readOnly)
+    moreActions.push({
+      key: "translate",
+      label: t("llmTranslation.title"),
+      icon: <Sparkles className="h-4 w-4" />,
+      // A translation saves on its own, so it starts from saved values.
+      disabled: dirty || saving,
+      hint: dirty ? t("metadataEditor.translateNeedsSave") : undefined,
+      onSelect: () => setTranslationOpen(true),
+    });
+
   return (
     <>
       <Dialog
@@ -281,7 +322,7 @@ export function WorkMetadataEditorModal({
         size="2xl"
         dismissible={false}
         marker="work-metadata-editor"
-        className="h-[var(--dialog-max-height)] sm:h-[min(42rem,var(--dialog-max-height))]"
+        className="h-[var(--dialog-max-height)] max-w-5xl sm:h-[min(48rem,var(--dialog-max-height))]"
       >
         <DialogHeader
           title={t("libraryDetail.editMetadata")}
@@ -348,7 +389,9 @@ export function WorkMetadataEditorModal({
             aria-labelledby={`metadata-editor-tab-${section}`}
             className="sm:px-6 sm:py-5"
           >
-            <MetadataLanguageScopeTabs scopes={scopes} selected={languageScope.key} onSelect={setLanguageScopeKey} />
+            {languageScopedSections.has(section) && (
+              <MetadataLanguageScopeTabs scopes={scopes} selected={languageScope.key} onSelect={setLanguageScopeKey} />
+            )}
             {/* Demo opens the editor for inspection; every field stays visible but cannot be changed. */}
             <fieldset disabled={readOnly || saving} className="m-0 min-w-0 space-y-5 border-0 p-0">
               <p className="text-sm text-muted-foreground">
@@ -363,17 +406,18 @@ export function WorkMetadataEditorModal({
                   languageScope={languageScope}
                   drafts={titleDrafts}
                   onDraft={(language, title) => setTitleDrafts((current) => ({ ...current, [language]: title }))}
-                  description={
-                    <WorkDescriptionEditor
-                      own={manual.description}
-                      current={shownDescription}
-                      draft={descriptionDraft}
-                      onDraft={setDescriptionDraft}
-                    />
-                  }
                 />
               )}
-              {section === "title" && (
+              {section === "description" && (
+                <WorkDescriptionEditor
+                  work={work}
+                  selectedMetadataVariantKey={selectedMetadataVariantKey}
+                  languageScope={languageScope}
+                  drafts={descriptionDrafts}
+                  onDraft={(language, text) => setDescriptionDrafts((current) => ({ ...current, [language]: text }))}
+                />
+              )}
+              {section === "ageRating" && (
                 <WorkAgeRatingEditor
                   own={manual.ageRating}
                   provider={providerAgeRating}
@@ -423,7 +467,7 @@ export function WorkMetadataEditorModal({
                     readOnly={readOnly}
                     onStage={setStagedBundle}
                   />
-                  <MetadataEditorFamilySection work={work} languageScope={languageScope} />
+                  <MetadataEditorFamilySection work={work} />
                 </div>
               )}
             </fieldset>
@@ -447,28 +491,21 @@ export function WorkMetadataEditorModal({
           ) : (
             <>
               <div className="flex min-w-0 flex-wrap items-center gap-2">
-                {canSyncMetadata && !readOnly && !work.customWork && (
-                  <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)}>
-                    {t("metadataEditor.fetchForEdit")}
-                  </Button>
-                )}
-                {canSyncMetadata && !readOnly && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={dirty || saving}
-                    onClick={() => setTranslationOpen(true)}
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    {t("llmTranslation.translate")}
-                  </Button>
-                )}
                 {refreshActions}
+                <ActionMenu
+                  label={t("metadataEditor.moreActions")}
+                  buttonLabel={t("metadataEditor.more")}
+                  items={moreActions}
+                  triggerClassName="h-11 w-11 sm:h-[var(--control-height-sm)] sm:w-auto sm:px-[var(--control-padding-sm-x)] sm:text-xs"
+                  buttonLabelClassName="hidden sm:inline"
+                  align="start"
+                />
               </div>
               <span
                 className={cn(
                   "min-w-0 truncate text-xs text-muted-foreground",
-                  refreshActions && "order-last basis-full sm:order-none sm:basis-auto sm:flex-1",
+                  (refreshActions || moreActions.length > 0) &&
+                    "order-last basis-full sm:order-none sm:basis-auto sm:flex-1",
                 )}
                 aria-live="polite"
               >

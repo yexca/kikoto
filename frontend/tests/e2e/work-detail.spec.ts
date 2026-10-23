@@ -824,7 +824,7 @@ test("local work detail lists Origin first and expands from local to all edition
   await page.route("**/api/works/1/cover-candidates", (route) => route.fulfill({ json: { candidates: [] } }));
   await openWorkMetadataEditor(page);
   const editor = page.getByRole("dialog", { name: "Edit metadata", exact: true });
-  await editor.getByRole("tab", { name: "Metadata source" }).click();
+  await editor.getByRole("tab", { name: /^Links/ }).click();
   const family = editor.getByRole("list", { name: "Editions in this family", exact: true }).getByRole("listitem");
   await expect(family).toHaveCount(4);
   await expect(family.first()).toContainText("RJ00000000");

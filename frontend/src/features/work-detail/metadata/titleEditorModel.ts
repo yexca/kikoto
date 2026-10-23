@@ -63,28 +63,49 @@ export function titleFieldStatus(draft: string | undefined, own: string | undefi
   return manualValueStatus(draft, own);
 }
 
-/**
- * The introduction the universal description field starts from: the manual
- * description, or the one the selected edition currently shows.
- */
-export function currentDescription(
-  work: Pick<WorkDetail, "description" | "manualOverrides" | "metadataPresentation">,
-  selectedMetadataVariantKey: string,
-) {
-  const shown =
-    resolveMetadataVariant(work.metadataPresentation, selectedMetadataVariantKey)?.description ?? work.description;
-  return (work.manualOverrides?.description || shown || "").trim();
+export function manualDescriptions(manual: WorkManualOverrides): Record<string, string> {
+  return { ...(manual.description ? { "": manual.description } : {}), ...manual.descriptions };
 }
 
 /**
- * The universal description a draft saves, following the title rules: the
- * trimmed text, null to remove the manual description, or undefined when
- * the draft keeps the current text or clears an inherited introduction.
+ * The introduction each scope shows before editing: its own manual
+ * description, or the one it inherits. The fallback inherits the original
+ * introduction; a language inherits its edition's, a machine translation, or
+ * the fallback.
  */
-export function changedDescription(draft: string | undefined, own: string | undefined, current: string) {
-  if (draft === undefined) return undefined;
-  const next = draft.trim();
-  return titleDraftChanges(next, own, current) ? next || null : undefined;
+export function currentDescriptions(
+  work: Pick<WorkDetail, "description" | "manualOverrides" | "metadataPresentation" | "titleChoices">,
+  selectedMetadataVariantKey: string,
+): Record<string, string> {
+  const manual = manualDescriptions(work.manualOverrides ?? {});
+  const shown =
+    resolveMetadataVariant(work.metadataPresentation, selectedMetadataVariantKey)?.description ?? work.description;
+  const fallback = (manual[""] || work.titleChoices?.[""]?.description || shown || "").trim();
+  return Object.fromEntries(
+    metadataTagLanguages.map(([language]) => [
+      language,
+      language ? (manual[language] || work.titleChoices?.[language]?.description || fallback).trim() : fallback,
+    ]),
+  );
+}
+
+/**
+ * The descriptions a draft saves, following the title rules: the trimmed text,
+ * null to remove a manual description, and no entry when the draft keeps the
+ * current text or clears an inherited introduction.
+ */
+export function changedDescriptions(
+  drafts: Record<string, string>,
+  manual: WorkManualOverrides,
+  current: Record<string, string> = {},
+) {
+  const previous = manualDescriptions(manual);
+  return Object.fromEntries(
+    Object.entries(drafts)
+      .map(([language, text]) => [language, text.trim()] as const)
+      .filter(([language, text]) => titleDraftChanges(text, previous[language], current[language]))
+      .map(([language, text]) => [language, text || null]),
+  );
 }
 
 export type TitleSourceLabel = { key: string; values?: Record<string, string> };

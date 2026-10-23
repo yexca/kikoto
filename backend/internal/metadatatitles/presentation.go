@@ -20,6 +20,9 @@ type Variant struct {
 	RemoteSource   string
 	LLM            bool
 	LLMDescription bool
+	// ManualDescription is a work's own description for one supported
+	// language. It carries no title and never stands for an edition.
+	ManualDescription bool
 }
 
 type Selection struct {
@@ -70,10 +73,12 @@ func Original(variants []Variant, fallback Variant) Variant {
 
 // ForLanguage applies locale manual > global manual > matching edition.
 // Missing editions use the original description; a manual title is never
-// interpreted as a translation of the description. The result reports whether
-// this language has its own edition or language-specific manual title. A
-// global manual title replaces only the title text: it never lets a language
-// without an edition win the priority order.
+// interpreted as a translation of the description. A language-specific manual
+// description replaces the description in its language. The result reports
+// whether this language has its own edition, language-specific manual title or
+// description, or accepted machine field. A global manual title replaces only
+// the title text: it never lets a language without an edition win the
+// priority order.
 func ForLanguage(variants []Variant, manual map[string]string, language string, fallback Variant) (Selection, bool) {
 	origin := Original(variants, fallback)
 	selected := origin
@@ -88,10 +93,16 @@ func ForLanguage(variants []Variant, manual map[string]string, language string, 
 			break
 		}
 	}
-	var machine Variant
+	var machine, manualDescription Variant
 	for _, variant := range variants {
 		if !originalRequested && variant.LLM && variant.Language == language {
 			machine = variant
+			break
+		}
+	}
+	for _, variant := range variants {
+		if variant.ManualDescription && language != "" && variant.Language == language {
+			manualDescription = variant
 			break
 		}
 	}
@@ -103,6 +114,9 @@ func ForLanguage(variants []Variant, manual map[string]string, language string, 
 	// edition or suppresses the original introduction.
 	if strings.TrimSpace(machine.Description) != "" && (!found || strings.TrimSpace(selected.Description) == "") {
 		result.Description, result.DescriptionSource = machine.Description, "llm"
+	}
+	if strings.TrimSpace(manualDescription.Description) != "" {
+		result.Description, result.DescriptionSource = manualDescription.Description, "manual"
 	}
 	if title := strings.TrimSpace(manual[language]); language != "" && title != "" {
 		result.Title, result.Source, result.Language = title, "manual", language
@@ -119,7 +133,7 @@ func ForLanguage(variants []Variant, manual map[string]string, language string, 
 		result.Title, result.Source, result.Language = machine.Title, "llm", language
 		result.SourceName = ""
 		found = true
-	} else if !found && (machine.LLMDescription || strings.TrimSpace(machine.Description) != "") {
+	} else if !found && (machine.LLMDescription || strings.TrimSpace(machine.Description) != "" || manualDescription.ManualDescription) {
 		result.Language = language
 		found = true
 	}
@@ -151,8 +165,8 @@ func Select(variants []Variant, manual map[string]string, priorities []string, f
 }
 
 // LanguageTitles returns, for each language Select can stop at, the title it
-// would show: every supported language with its own edition or
-// language-specific manual title, and always `origin`. Select over a priority
+// would show: every supported language with its own edition, language-specific
+// manual title or description, or accepted machine field, and always `origin`. Select over a priority
 // list therefore equals the first present entry in that list's order, which
 // lets a list sort follow a viewer's priority without a stored preference.
 func LanguageTitles(input Inputs) map[string]string {

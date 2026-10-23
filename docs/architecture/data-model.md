@@ -184,7 +184,7 @@ titles and tag names again in the original language.
 
 `work_title_language` holds each work's title for every language that title
 selection can stop at: each supported language with its own edition, language-specific manual title or
-accepted translation field, and always `origin`. Selection over a priority
+description, or accepted translation field, and always `origin`. Selection over a priority
 therefore equals the first present row in that priority, so a title sort reads
 `COALESCE` over the viewer's languages and falls back to `work.title` while a
 work is queued. Triggers on editions, variants, title overrides and work titles
@@ -400,21 +400,23 @@ status. Voice actor merge behavior is described under
 ### Manual Overrides and Titles
 
 `work_manual_override` has primary key `(work_id, field_name, language)`. Only
-`title` allows a nonempty language (`ja-jp`, `zh-cn`, `zh-tw`, `en-us`,
-`ko-kr`); every other field uses the universal `language = ''`. Search
+`title` and `description` allow a nonempty language (`ja-jp`, `zh-cn`, `zh-tw`,
+`en-us`, `ko-kr`); every other field uses the universal `language = ''`. Search
 invalidation triggers on title, circle, series, and voice actor overrides also
 fire on a language-only update.
 
 Display title selection picks the first preferred language with its own manual
-title, provider edition or accepted translation, then shows its language manual title, the universal
+title or description, provider edition or accepted translation, then shows its language manual title, the universal
 manual title, the matching provider edition title, an accepted machine title, or
 the original title. A universal manual title replaces only
 the text: it never selects an edition, so the default edition, description, and
 tags match the presentation without it. `origin` matches the canonical
 edition's declared language and never infers a language from text or request
 locale. Unknown origin languages use the universal manual title or original
-title. Descriptions use a separate priority: the universal manual description, the
-matching provider introduction, then an accepted machine introduction. A title-only
+title. Descriptions use a separate priority: the language's manual description, the
+universal manual description, the matching provider introduction, then an
+accepted machine introduction. A language's manual description replaces only
+the introduction; the title keeps its own priority. A title-only
 translation without a matching edition retains the original introduction. A
 matching edition without either introduction remains empty.
 
@@ -428,7 +430,7 @@ cards, search results, circle and voice actor lists without reading introduction
 Each edition list entry uses its own provider title, never a sibling's title.
 Detail variants carry their effective title and
 plain-text introduction, including manual-only language choices. Universal manual
-titles overlay existing choices without creating a language; a specific manual language or accepted machine field may add a choice, and
+titles and descriptions overlay existing choices without creating a language; a language-specific manual title or description, or an accepted machine field, may add a choice, and
 machine choices carry an LLM marker without adding a media edition. Unknown original languages stay unknown in
 the menu, selection and editor sources. All manual languages are
 indexed and scoped writes/reset invalidate search. A work without DLsite data
@@ -445,9 +447,11 @@ of a successful DLsite synchronization.
 explicit null or empty values reset that field. Omitted relations remain
 unchanged. The optional `titles` map updates only supplied language keys;
 `null` or empty values remove that language. The compatible `title` field is
-the universal value; using both forms in one request is rejected. GET returns
-`titles` plus the universal `title`. DELETE
-`.../manual-overrides/title?language=zh-cn` resets only that title scope; an
+the universal value; using both forms in one request is rejected. The
+`descriptions` map and the compatible `description` field follow the same
+rules. GET returns `titles` and `descriptions` plus the universal `title` and
+`description`. DELETE `.../manual-overrides/title?language=zh-cn` or
+`.../manual-overrides/description?language=zh-cn` resets only that scope; an
 omitted language resets only the universal scope.
 
 An `ageRating` override stores a known rating under its canonical name,

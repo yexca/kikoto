@@ -120,3 +120,28 @@ func TestMachineFieldsFillIndependentGapsBelowOfficialAndManual(t *testing.T) {
 		t.Fatal("machine translation replaced origin")
 	}
 }
+
+func TestLanguageManualDescriptionReplacesItsLanguageAndAddsAChoice(t *testing.T) {
+	variants := []Variant{
+		{Code: testfixture.WorkCode(testfixture.PrefixRJ, 1), Language: "zh-cn", Title: "Example translation", Description: "Translated introduction"},
+		{Code: testfixture.WorkCode(testfixture.PrefixRJ, 0), Language: "ja-jp", Title: "Example original", Description: "Original introduction", Origin: true},
+		{Language: "zh-cn", Description: "Authored Chinese introduction", ManualDescription: true},
+		{Language: "ko-kr", Description: "Authored Korean introduction", ManualDescription: true},
+	}
+	chinese := Select(variants, nil, []string{"zh-cn"}, Variant{})
+	if chinese.Title != "Example translation" || chinese.Description != "Authored Chinese introduction" || chinese.DescriptionSource != "manual" {
+		t.Fatalf("edition language: %+v", chinese)
+	}
+	// A description alone gives a language without an edition its own choice; the title stays the original.
+	korean := Select(variants, nil, []string{"ko-kr", "zh-cn"}, Variant{})
+	if korean.Language != "ko-kr" || korean.Title != "Example original" || korean.Description != "Authored Korean introduction" {
+		t.Fatalf("description-only language: %+v", korean)
+	}
+	english := Select(variants, nil, []string{"en-us", "origin"}, Variant{})
+	if english.Language != "ja-jp" || english.Description != "Original introduction" {
+		t.Fatalf("other languages keep their introduction: %+v", english)
+	}
+	if _, ok := LanguageTitles(Inputs{Variants: variants})["ko-kr"]; !ok {
+		t.Fatal("title sort projection misses the description-only language")
+	}
+}

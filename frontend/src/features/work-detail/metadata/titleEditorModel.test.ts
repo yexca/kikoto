@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  changedDescription,
+  changedDescriptions,
   changedTitles,
-  currentDescription,
+  currentDescriptions,
   currentTitles,
   titleFieldStatus,
   titleLanguageMarkers,
@@ -84,7 +84,7 @@ describe("current titles", () => {
   });
 });
 
-describe("universal description drafts", () => {
+describe("description drafts", () => {
   const presentation = {
     defaultVariantKey: "chinese",
     variants: [
@@ -106,37 +106,64 @@ describe("universal description drafts", () => {
       },
     ],
   };
+  const choice = (language: string, description: string) => ({
+    title: "Example",
+    language,
+    source: "dlsite" as const,
+    code: "RJ00000000",
+    description,
+  });
+  const work = {
+    description: "Chinese intro",
+    manualOverrides: {},
+    metadataPresentation: presentation,
+    titleChoices: {
+      "": choice("ja-jp", "Original intro"),
+      "ja-jp": choice("ja-jp", "Original intro"),
+      "zh-cn": choice("zh-cn", "Chinese intro"),
+    },
+  };
 
-  it("starts from the manual description or the selected edition's introduction", () => {
-    const work = { description: "Chinese intro", manualOverrides: {}, metadataPresentation: presentation };
-    expect(currentDescription(work, "")).toBe("Chinese intro");
-    expect(currentDescription(work, "original")).toBe("Original intro");
-    expect(currentDescription({ ...work, manualOverrides: { description: "Authored intro" } }, "original")).toBe(
-      "Authored intro",
-    );
+  it("starts each language from what it shows and the fallback from the original introduction", () => {
+    expect(currentDescriptions(work, "")).toMatchObject({
+      "": "Original intro",
+      "ja-jp": "Original intro",
+      "zh-cn": "Chinese intro",
+      // A language without a choice of its own inherits the fallback.
+      "ko-kr": "Original intro",
+    });
+    const authored = {
+      ...work,
+      manualOverrides: {
+        description: "Authored fallback",
+        descriptions: { "": "Authored fallback", "ko-kr": "Korean" },
+      },
+    };
+    expect(currentDescriptions(authored, "")).toMatchObject({ "": "Authored fallback", "ko-kr": "Korean" });
     // A work without provider metadata starts empty.
     expect(
-      currentDescription(
+      currentDescriptions(
         { description: "", manualOverrides: {}, metadataPresentation: { defaultVariantKey: "", variants: [] } },
         "",
-      ),
+      )[""],
     ).toBe("");
   });
 
-  it("saves an edited introduction as a manual description", () => {
-    expect(changedDescription(undefined, undefined, "Chinese intro")).toBeUndefined();
-    expect(changedDescription(" Chinese intro ", undefined, "Chinese intro")).toBeUndefined();
-    expect(changedDescription("Line one\nLine two \n", undefined, "Chinese intro")).toBe("Line one\nLine two");
-    expect(changedDescription("Written intro", undefined, "")).toBe("Written intro");
-    expect(changedDescription("Authored intro revised", "Authored intro", "Authored intro")).toBe(
-      "Authored intro revised",
-    );
+  it("saves edited introductions per language and keeps inherited ones out", () => {
+    const current = currentDescriptions(work, "");
+    expect(changedDescriptions({}, {}, current)).toEqual({});
+    expect(changedDescriptions({ "zh-cn": " Chinese intro " }, {}, current)).toEqual({});
+    expect(changedDescriptions({ "zh-cn": "Line one\nLine two \n", "": "Written" }, {}, current)).toEqual({
+      "zh-cn": "Line one\nLine two",
+      "": "Written",
+    });
   });
 
   it("resets only an owned manual description", () => {
-    expect(changedDescription("", "Authored intro", "Authored intro")).toBeNull();
-    expect(titleFieldStatus("", "Authored intro", "Authored intro")).toBe("reverting");
-    expect(changedDescription("", undefined, "Chinese intro")).toBeUndefined();
+    const manual = { descriptions: { "ko-kr": "Korean" } };
+    expect(changedDescriptions({ "ko-kr": "" }, manual, { "ko-kr": "Korean" })).toEqual({ "ko-kr": null });
+    expect(titleFieldStatus("", "Korean", "Korean")).toBe("reverting");
+    expect(changedDescriptions({ "zh-cn": "" }, manual, { "zh-cn": "Chinese intro" })).toEqual({});
     expect(titleFieldStatus("", undefined, "Chinese intro")).toBe("source");
   });
 });

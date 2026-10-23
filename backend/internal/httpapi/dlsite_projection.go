@@ -113,7 +113,7 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 	for _, choice := range choices {
 		hasMachine = hasMachine || choice.Source == "llm" || choice.DescriptionSource == "llm"
 	}
-	if len(result.Variants) == 0 && (len(overrides.Titles) > 0 || hasMachine) {
+	if len(result.Variants) == 0 && (len(overrides.Titles) > 0 || hasLanguageDescription(overrides) || hasMachine) {
 		shared, projected, err := s.loadProjectedDLsiteTags(ctx, workID)
 		if err != nil {
 			return result, err
@@ -155,7 +155,7 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 			break
 		}
 	}
-	if !matched && overrides.Titles[selectedTitle.Language] != "" && selectedTitle.Language != "" && len(result.Variants) > 0 {
+	if !matched && (overrides.Titles[selectedTitle.Language] != "" || overrides.Descriptions[selectedTitle.Language] != "") && selectedTitle.Language != "" && len(result.Variants) > 0 {
 		tags := result.Variants[0].Tags
 		for _, variant := range result.Variants {
 			if variant.Key == result.DefaultVariantKey {
@@ -169,7 +169,7 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 	orderWorkMetadataVariants(result.Variants, viewerLanguages)
 	for _, language := range []string{"ja-jp", "zh-cn", "zh-tw", "en-us", "ko-kr"} {
 		choice := choices[language]
-		if overrides.Titles[language] == "" {
+		if overrides.Titles[language] == "" && overrides.Descriptions[language] == "" {
 			continue
 		}
 		exists := false
@@ -190,6 +190,17 @@ func (s *Server) loadWorkMetadataPresentation(ctx context.Context, workID int64)
 		result.DefaultVariantKey = result.Variants[0].Key
 	}
 	return result, nil
+}
+
+// hasLanguageDescription reports a manual description saved for one language,
+// which, like a language's manual title, gives the work a choice in it.
+func hasLanguageDescription(overrides workManualOverrides) bool {
+	for language := range overrides.Descriptions {
+		if language != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func orderWorkMetadataVariants(variants []workMetadataVariant, priorities []string) {

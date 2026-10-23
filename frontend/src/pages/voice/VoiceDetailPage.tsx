@@ -11,7 +11,7 @@ import { useCollectionResultsScroll } from "@/components/collection/useCollectio
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { UserTagRow } from "@/components/UserTagRow";
 import { CatalogSyncBadge } from "@/components/creator/CatalogSyncBadge";
-import { CreatorActionMenu } from "@/components/creator/CreatorActionMenu";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { CreatorCoverDialog, type CreatorCoverWorksRequest } from "@/components/creator/CreatorCoverDialog";
 import { CreatorDetailHeader } from "@/components/creator/CreatorDetailHeader";
 import { CatalogWorkToolbar } from "@/components/creator/CatalogWorkToolbar";
@@ -787,7 +787,7 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
                 <span>{firstPull ? t("detailActions.firstPull") : t("detailActions.refreshVoice")}</span>
               </Button>
             )}
-            <CreatorActionMenu
+            <ActionMenu
               label={t("detailActions.moreVoiceActions")}
               buttonLabel={t("detailActions.more")}
               items={[
