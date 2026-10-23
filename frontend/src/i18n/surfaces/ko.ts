@@ -199,6 +199,8 @@ export const surfaceKorean = {
   },
   workManagement: {
     all: "전체",
+    dlsiteWorks: "DLsite 작품",
+    dlsiteFilter: "DLsite 작품 필터",
     workCount_one: "작품 {{count}}개",
     workCount_other: "작품 {{count}}개",
     viewDescriptions: {

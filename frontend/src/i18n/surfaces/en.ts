@@ -244,6 +244,8 @@ export const surfaceEnglish = {
   },
   workManagement: {
     all: "All",
+    dlsiteWorks: "DLsite works",
+    dlsiteFilter: "Filter DLsite works",
     workCount_one: "{{count}} work",
     workCount_other: "{{count}} works",
     viewDescriptions: {

@@ -295,9 +295,12 @@ seeking, and screen lyrics share one timeline.
   failed request leaves the others on screen. The app shell composes each
   work, tag, voice, and circle link. Demo shows a notice above the dashboard
   that its listening history is simulated.
-- Metadata: a Works group for saved metadata, attention categories, Custom
-  works, and Translation, and an Entries group for Tags, Circles, and Voice
-  actors. Each entry view owns a
+- Metadata: a Works group for DLsite works, Custom works, and Translation,
+  and an Entries group for Tags, Circles, and Voice actors. DLsite works holds
+  the catalog and attention categories behind `WorkReasonFilter`, a segmented
+  row of pressed buttons whose options are the `reason` values `catalog`,
+  `all`, `metadata`, and `no_source`, so `?reason=` links, including the run-scoped
+  `?reason=metadata&metadataRun=<id>`, select the tab and the filter together. Each entry view owns a
   searchable table and management dialog. Tag and circle edits require
   `library:write`; voice aliases retain `metadata:sync`. The URLs
   `?view=custom`, `?view=translation`, `?view=tags`, `?view=circles`, and
@@ -306,9 +309,9 @@ seeking, and screen lyrics share one timeline.
   rail as the same row above the content that Settings uses
   (`useRailOrientation` takes each page's default), and the view heading
   beside the search shows only with the column rail, since the row names the
-  open view. Rail items for the work views
-  carry counts from `/api/maintenance/works/counts` as `IconRail` badges,
-  read as descriptions so the tab names stay the labels; the page reloads
+  open view. The DLsite works and Custom works rail items and the filter
+  options carry counts from `/api/maintenance/works/counts`, read as
+  descriptions so the tab and filter names stay the labels; the page reloads
   them after the work table reports a change. `WorkMaintenance` keeps
   selection actions in the shared `WorkSelectionBar`, which replaces the upper
   pagination while works are selected, and opens `WorkInspector` for a

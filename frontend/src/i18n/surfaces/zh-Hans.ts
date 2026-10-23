@@ -190,6 +190,8 @@ export const surfaceHans = {
   },
   workManagement: {
     all: "全部",
+    dlsiteWorks: "DLsite 作品",
+    dlsiteFilter: "筛选 DLsite 作品",
     workCount_one: "{{count}} 部作品",
     workCount_other: "{{count}} 部作品",
     viewDescriptions: {

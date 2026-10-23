@@ -199,6 +199,8 @@ export const surfaceJapanese = {
   },
   workManagement: {
     all: "すべて",
+    dlsiteWorks: "DLsite 作品",
+    dlsiteFilter: "DLsite 作品の絞り込み",
     workCount_one: "{{count}} 作品",
     workCount_other: "{{count}} 作品",
     viewDescriptions: {

@@ -1,16 +1,4 @@
-import {
-  Building2,
-  Tags,
-  CircleAlert,
-  FileWarning,
-  FolderPlus,
-  Languages,
-  LayoutGrid,
-  MicVocal,
-  Settings,
-  Unlink,
-  type LucideIcon,
-} from "lucide-react";
+import { Building2, Tags, FolderPlus, Languages, LayoutGrid, MicVocal, Settings, type LucideIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
@@ -27,23 +15,18 @@ import { MetadataSettingsPanel } from "@/features/maintenance/MetadataSettingsPa
 import { MetadataEntryMaintenance } from "@/features/maintenance/MetadataEntryMaintenance";
 import { TranslationCoverage } from "@/features/maintenance/TranslationCoverage";
 import { VoiceAliasMaintenance } from "@/features/maintenance/VoiceAliasMaintenance";
+import { WorkReasonFilter, catalogWorkReasons, type CatalogWorkReason } from "@/features/maintenance/WorkReasonFilter";
 import { WorkMetadataEditorModal } from "@/features/work-detail/metadata";
 import { api, type MaintenanceCounts, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { metadataIssueRunFromLocation } from "@/lib/metadataMaintenance";
 
 type MetadataView = "works" | "translation" | "aliases" | "tags" | "circles";
-type MetadataRailValue =
-  "catalog" | "all" | "metadata" | "no_source" | "custom" | "translation" | "aliases" | "tags" | "circles";
-
-// Works in these views need an operator; their counts take the attention color.
-const attentionViews = new Set<MetadataRailValue>(["all", "metadata", "no_source"]);
+// DLsite works holds every catalog `reason` behind its own filter; custom works keep theirs.
+type MetadataRailValue = "dlsite" | "custom" | "translation" | "aliases" | "tags" | "circles";
 
 const railIcons: Record<MetadataRailValue, LucideIcon> = {
-  catalog: LayoutGrid,
-  all: CircleAlert,
-  metadata: FileWarning,
-  no_source: Unlink,
+  dlsite: LayoutGrid,
   custom: FolderPlus,
   translation: Languages,
   aliases: MicVocal,
@@ -266,10 +249,7 @@ export function WorkManagementPage({
   };
 
   const railEntries: Array<[MetadataRailValue, string, boolean]> = [
-    ["catalog", t("workManagement.all"), true],
-    ["all", t("workMaintenance.all"), true],
-    ["metadata", t("workMaintenance.metadata"), canSyncMetadata],
-    ["no_source", t("workMaintenance.noSource"), canManageSources],
+    ["dlsite", t("workManagement.dlsiteWorks"), true],
     ["custom", t("customWorks.rail"), true],
     ["translation", t("translationCoverage.rail"), canSyncMetadata || canEditMetadata],
     ["tags", t("metadataEntries.tags"), true],
@@ -278,25 +258,16 @@ export function WorkManagementPage({
   ];
   const railCount = (value: MetadataRailValue) => {
     if (!counts) return undefined;
-    const count =
-      value === "catalog"
-        ? counts.catalog
-        : value === "all"
-          ? counts.all
-          : value === "metadata"
-            ? counts.metadata
-            : value === "no_source"
-              ? counts.noSource
-              : value === "custom"
-                ? counts.custom
-                : undefined;
+    const count = value === "dlsite" ? counts.catalog : value === "custom" ? counts.custom : undefined;
     if (count === undefined) return undefined;
-    return {
-      count,
-      attention: attentionViews.has(value),
-      description: t("workManagement.workCount", { count }),
-    };
+    return { count, description: t("workManagement.workCount", { count }) };
   };
+  const filterReasons = catalogWorkReasons.filter(
+    (value) => (value !== "metadata" || canSyncMetadata) && (value !== "no_source" || canManageSources),
+  );
+  const filterCounts: Partial<Record<CatalogWorkReason, number>> = counts
+    ? { catalog: counts.catalog, all: counts.all, metadata: counts.metadata, no_source: counts.noSource }
+    : {};
   const railItems: IconRailItem<MetadataRailValue>[] = railEntries
     .filter(([, , available]) => available)
     .map(([value, label]) => ({
@@ -325,7 +296,8 @@ export function WorkManagementPage({
           : "metadataEntries.worksGroup",
       ),
     }));
-  const railSelected = (view === "works" ? reason : view) as MetadataRailValue;
+  const catalogReason = view === "works" && reason !== "custom" ? (reason as CatalogWorkReason) : null;
+  const railSelected: MetadataRailValue = view === "works" ? (catalogReason ? "dlsite" : "custom") : view;
   const customView = view === "works" && reason === "custom" && canCreateCustomWorks;
   // Administrators accept the rename notice when they first open the custom works view.
   const customNoticeLocked = customView && customNotice === false;
@@ -349,7 +321,7 @@ export function WorkManagementPage({
           onSelect={(value) =>
             value === "translation" || value === "aliases" || value === "tags" || value === "circles"
               ? showEntries(value)
-              : showWorks(value)
+              : showWorks(value === "dlsite" ? "catalog" : value)
           }
         />
         <div className="min-w-0 flex-1 space-y-3">
@@ -410,8 +382,18 @@ export function WorkManagementPage({
               )}
             </div>
           </div>
-          <p className="-mt-1 text-xs text-muted-foreground">{t(`workManagement.viewDescriptions.${railSelected}`)}</p>
           <div ref={setSearchRowSlot} className="empty:hidden" data-toast-avoid />
+          {catalogReason && (
+            <WorkReasonFilter
+              reasons={filterReasons}
+              selected={catalogReason}
+              counts={filterCounts}
+              onSelect={(next) => showWorks(next)}
+            />
+          )}
+          <p className="-mt-1 text-xs text-muted-foreground">
+            {t(`workManagement.viewDescriptions.${catalogReason ?? railSelected}`)}
+          </p>
           {view === "translation" ? (
             <TranslationCoverage
               preferenceRevision={preferenceRevision}

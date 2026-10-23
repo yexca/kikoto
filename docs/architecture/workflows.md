@@ -1158,7 +1158,7 @@ automatically retried, and Activity records only the normalized origin rather
 than the media path or query. After an administrator changes the source policy,
 a manual Retry resolves that candidate and resumes the same run.
 
-The Metadata All category sends `reason=catalog` to the bounded maintenance read.
+The **All** filter of Metadata's DLsite works sends `reason=catalog` to the bounded maintenance read.
 It lists already persisted work families, including those without pending issues,
 using the same search, pagination, permission, and demo eligibility boundaries.
 It does not discover providers or materialize catalog results. `reason=all`

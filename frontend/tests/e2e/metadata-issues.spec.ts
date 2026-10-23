@@ -434,8 +434,9 @@ test("work maintenance keeps source actions scoped and metadata settings separat
   });
   await page.goto("/maintenance?tab=works");
   const list = page.getByRole("region", { name: "Metadata records", exact: true });
-  await expect(page.getByRole("tab", { name: "Needs attention", exact: true })).toHaveAttribute(
-    "aria-selected",
+  const filter = page.getByRole("group", { name: "Filter DLsite works", exact: true });
+  await expect(filter.getByRole("button", { name: "Needs attention", exact: true })).toHaveAttribute(
+    "aria-pressed",
     "true",
   );
   await expect(list.getByRole("button", { name: /Delete local information/ })).toHaveCount(0);
@@ -446,14 +447,14 @@ test("work maintenance keeps source actions scoped and metadata settings separat
   await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
   await page.getByRole("button", { name: "Check sources (2)", exact: true }).click();
   expect(checked).toEqual([1, 3]);
-  await page.getByRole("tab", { name: "Metadata issues", exact: true }).click();
+  await filter.getByRole("button", { name: "Metadata issues", exact: true }).click();
   await expect(page.getByRole("button", { name: /^Retry metadata/ })).toHaveCount(0);
   const row = list.getByRole("row").filter({ hasText: "Example mixed work" });
   await expect(row.getByText("No available source", { exact: true })).toBeVisible();
   await expect(row.getByText("Metadata issues", { exact: true })).toBeVisible();
   await row.getByText("Affected editions and providers (1)").click();
   await expect(row.getByRole("button", { name: `Retry ${syntheticWorkCode("RJ", 1)}`, exact: true })).toBeEnabled();
-  await page.getByRole("tab", { name: "No available source", exact: true }).click();
+  await filter.getByRole("button", { name: "No available source", exact: true }).click();
   await list.getByRole("checkbox", { name: "Select current page", exact: true }).click();
   await page.getByRole("button", { name: "Delete local information (2)", exact: true }).click();
   const dialog = page.getByRole("alertdialog", { name: "Delete local work information?" });
@@ -468,8 +469,8 @@ test("work maintenance keeps source actions scoped and metadata settings separat
     .getByRole("dialog", { name: "Metadata settings", exact: true })
     .getByRole("button", { name: "Close", exact: true })
     .click();
-  await expect(page.getByRole("tab", { name: "No available source", exact: true })).toHaveAttribute(
-    "aria-selected",
+  await expect(filter.getByRole("button", { name: "No available source", exact: true })).toHaveAttribute(
+    "aria-pressed",
     "true",
   );
   await expect(list).toBeVisible();
@@ -531,25 +532,32 @@ for (const viewport of ["mobile", "@desktop"]) {
     await expect(page.getByRole("heading", { name: "Metadata", exact: true })).toBeVisible();
     const tabs = page.getByRole("tablist", { name: "Metadata views" });
     await expect(tabs.getByRole("tab")).toHaveText([
-      "All",
-      "Needs attention",
-      "Metadata issues",
-      "No available source",
+      "DLsite works",
       "Custom works",
       "Translation",
       "Tags",
       "Circles",
       "Voice actors",
     ]);
-    await expect(tabs.getByRole("tab", { name: "All", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(tabs.getByRole("tab", { name: "DLsite works", exact: true })).toHaveAttribute("aria-selected", "true");
+    const filter = page.getByRole("group", { name: "Filter DLsite works", exact: true });
+    await expect(filter.getByRole("button")).toHaveText([
+      /^All/,
+      /^Needs attention/,
+      /^Metadata issues/,
+      /^No available source/,
+    ]);
+    await expect(filter.getByRole("button", { name: "All", exact: true })).toHaveAttribute("aria-pressed", "true");
     const list = page.getByRole("region", { name: "Metadata records", exact: true });
     await expect(list.getByRole("link", { name: "Example healthy work", exact: true })).toBeVisible();
     expect(requests).toContain("catalog");
-    await tabs.getByRole("tab", { name: "All", exact: true }).press("ArrowRight");
-    await expect(tabs.getByRole("tab", { name: "Needs attention", exact: true })).toHaveAttribute(
-      "aria-selected",
+    await filter.getByRole("button", { name: "Needs attention", exact: true }).click();
+    await expect(page).toHaveURL(/\/metadata\?reason=all$/);
+    await expect(filter.getByRole("button", { name: "Needs attention", exact: true })).toHaveAttribute(
+      "aria-pressed",
       "true",
     );
+    await expect(tabs.getByRole("tab", { name: "DLsite works", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(list.getByRole("link", { name: "Example healthy work", exact: true })).toHaveCount(0);
     await expect(list.getByRole("link", { name: "Example missing-source work", exact: true })).toBeVisible();
     // The view rail sits beside the header, so wide layouts keep search inline; the narrowest
@@ -564,7 +572,7 @@ for (const viewport of ["mobile", "@desktop"]) {
       await expect(page.getByRole("button", { name: "Search metadata", exact: true })).toHaveCount(0);
       // Wide layouts start with the views in a row that names the open one; the column
       // rail leaves it unnamed, so the header names it beside the search field.
-      const heading = page.getByRole("heading", { level: 2, name: "Needs attention", exact: true });
+      const heading = page.getByRole("heading", { level: 2, name: "DLsite works", exact: true });
       await expect(heading).toBeHidden();
       await page.getByRole("button", { name: "Show tabs beside", exact: true }).click();
       await expect(heading).toBeVisible();
@@ -583,8 +591,8 @@ for (const viewport of ["mobile", "@desktop"]) {
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(page.viewportSize()!.height);
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible();
-    await expect(tabs.getByRole("tab", { name: "Needs attention", exact: true })).toHaveAttribute(
-      "aria-selected",
+    await expect(filter.getByRole("button", { name: "Needs attention", exact: true })).toHaveAttribute(
+      "aria-pressed",
       "true",
     );
     await expect(page.getByRole("searchbox", { name: "Search metadata", exact: true })).toHaveValue("Example");
@@ -751,7 +759,7 @@ test("@desktop Metadata voice aliases view lists people and opens alias review",
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/metadata\?view=aliases$/);
 
-  await tabs.getByRole("tab", { name: "All", exact: true }).click();
+  await tabs.getByRole("tab", { name: "DLsite works", exact: true }).click();
   await expect(page).toHaveURL(/\/metadata\?reason=catalog$/);
   await expect(page.getByRole("region", { name: "Metadata records", exact: true })).toBeVisible();
 });
@@ -864,10 +872,12 @@ for (const viewport of ["mobile", "@desktop"]) {
     });
     await page.goto("/metadata?reason=all");
     const tabs = page.getByRole("tablist", { name: "Metadata views" });
-    // Counts describe the views without changing their names.
-    await expect(tabs.getByRole("tab", { name: "Metadata issues", exact: true })).toHaveAccessibleDescription(
-      /2 works/,
-    );
+    // Counts describe the views and filters without changing their names.
+    await expect(
+      page
+        .getByRole("group", { name: "Filter DLsite works", exact: true })
+        .getByRole("button", { name: "Metadata issues", exact: true }),
+    ).toHaveAccessibleDescription(/2 works/);
     await expect(tabs.getByRole("tab", { name: "Custom works", exact: true })).toHaveAccessibleDescription(/0 works/);
 
     const list = page.getByRole("region", { name: "Metadata records", exact: true });
