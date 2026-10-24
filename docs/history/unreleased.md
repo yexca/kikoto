@@ -38,9 +38,9 @@
   **Links**. The universal title is the **Fallback** row of the Title section,
   shown in every language without a manual title of its own. Tags form a table
   with a column for each language and the fallback name. The **Metadata
-  language** strip appears only in the Title and Tags sections, where its
-  **Fallback** option and each language show only that title and tag name
-  column. Each field shows its status, current source, and Revert on one line.
+  language** strip appears only in the Title, Description, and Tags sections,
+  where its **Fallback** option and each language show only that title,
+  description, and tag name column. Each field shows its status, current source, and Revert on one line.
   The footer keeps **Refresh metadata** and moves **Fetch for edit** and
   **Translate with LLM** under **More**.
 - A work's description can be written for each language, like its title. The
