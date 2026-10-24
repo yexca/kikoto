@@ -2441,7 +2441,7 @@ test("demo settings keeps account and workflows read-only while allowing appeara
     "Library",
     "Cache & Fetch",
     "Proxy",
-    "LLM & ASR",
+    "ASR & LLM",
     "Cleanup",
     "Users",
   ]);

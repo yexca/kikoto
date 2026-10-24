@@ -18,15 +18,18 @@ import { createPayload, emptyPolicy, policiesEqual, updatePayload, type Provider
 /**
  * Administrator LLM settings: the providers offered for translation, each
  * added and edited in a dialog, and the content safety policy that decides
- * what may be sent to them. `otherServices` sits between the providers and the
- * policy, for services that the same policy governs.
+ * what may be sent to them. `otherServices` comes first, for the speech
+ * services that run before translation under the same policy, and
+ * `afterPolicy` last.
  */
 export function LLMSettingsSection({
   readOnly = false,
   otherServices,
+  afterPolicy,
 }: {
   readOnly?: boolean;
   otherServices?: ReactNode;
+  afterPolicy?: ReactNode;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -172,6 +175,8 @@ export function LLMSettingsSection({
   return (
     <div className="relative">
       <div className="space-y-6" inert={locked} aria-hidden={locked || undefined}>
+        {otherServices}
+
         <SettingsSection
           title={t("maintenance.llm.title")}
           description={t("maintenance.llm.description")}
@@ -284,8 +289,6 @@ export function LLMSettingsSection({
           )}
         </SettingsSection>
 
-        {otherServices}
-
         {ready && (
           <SettingsSection
             title={t("maintenance.llm.policyTitle")}
@@ -313,6 +316,8 @@ export function LLMSettingsSection({
             <LLMPolicyEditor policy={policy} onChange={setPolicy} disabled={readOnly || savingPolicy} />
           </SettingsSection>
         )}
+
+        {afterPolicy}
       </div>
       {locked && (
         <div className="absolute inset-0 z-10 bg-background/70 px-4 pt-6 backdrop-blur-[2px]">

@@ -60,6 +60,8 @@ export type PersistedDetailActionsProps = {
   onManageLyrics?: () => void;
   /** Absent when the viewer cannot edit display names or the work has no local files. */
   onEditFileNames?: () => void;
+  /** Absent when the viewer cannot translate. */
+  onTranslateWithAI?: () => void;
   onRefreshLocalFiles: () => void;
 };
 
@@ -112,6 +114,7 @@ function persistedMediaActionBindings(props: PersistedDetailActionsProps) {
     onManageFiles: props.actionMode === "local" ? props.onManage : undefined,
     onManageLyrics: props.actionMode === "local" ? props.onManageLyrics : undefined,
     onEditFileNames: props.actionMode === "local" ? props.onEditFileNames : undefined,
+    onTranslateWithAI: props.actionMode === "local" ? props.onTranslateWithAI : undefined,
     onRefreshLocalFiles:
       props.actionMode === "local" && props.selectedSource?.kind === "local" ? props.onRefreshLocalFiles : undefined,
   };

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
@@ -35,7 +34,6 @@ func TestTranslationCoverageReportsSourcesAndFiltersMissingParts(t *testing.T) {
 	s := NewServer(db, config.Config{})
 	original, translated := testfixture.WorkCode(testfixture.PrefixRJ, 0), testfixture.WorkCode(testfixture.PrefixRJ, 1)
 	lone, bare := testfixture.WorkCode(testfixture.PrefixRJ, 2), testfixture.WorkCode(testfixture.PrefixRJ, 3)
-	expires := time.Now().Add(time.Hour).Unix()
 	for _, statement := range []struct {
 		query string
 		args  []any
@@ -54,7 +52,8 @@ func TestTranslationCoverageReportsSourcesAndFiltersMissingParts(t *testing.T) {
 		{"INSERT INTO media_file_location(media_item_id,file_source_id,location_type,path,availability) VALUES (20,1,'local','a/1.mp3','available'),(21,1,'local','a/2.mp3','available'),(22,1,'local','a/1.vtt','available')", nil},
 		{"INSERT INTO media_item_display_name(media_item_id,language,name) VALUES (20,'zh-cn','第一轨')", nil},
 		{"INSERT INTO media_lyrics_assignment(audio_media_item_id,language,lyrics_media_item_id) VALUES (20,'zh-cn',22)", nil},
-		{"INSERT INTO llm_translation_preview(id,work_id,user_id,payload_json,expires_at) VALUES ('synthetic-preview',3,1,'{\"Target\":\"zh-cn\"}',?)", []any{expires}},
+		{"INSERT INTO workflow_run(id,workflow_code,display_name,status,trigger_type) VALUES (30,'ai_translation','Translate','succeeded','manual')", nil},
+		{"INSERT INTO translation_item(workflow_run_id,work_id,language,category,dedup_key,state) VALUES (30,3,'zh-cn','description','zh-cn|description|3|','ready')", nil},
 	} {
 		if _, err := db.Exec(statement.query, statement.args...); err != nil {
 			t.Fatalf("%s: %v", statement.query, err)

@@ -635,7 +635,7 @@ test("administrators see administration tabs after the personal tabs in one list
     "Library",
     "Cache & Fetch",
     "Proxy",
-    "LLM & ASR",
+    "ASR & LLM",
     "Cleanup",
     "Users",
   ]);
@@ -702,7 +702,7 @@ test("@desktop the Settings tabs start in a row above the content and can move b
         pageFits: document.documentElement.scrollWidth <= window.innerWidth,
       };
     });
-  const administration = ["Library", "Cache & Fetch", "Proxy", "LLM & ASR", "Cleanup", "Users"];
+  const administration = ["Library", "Cache & Fetch", "Proxy", "ASR & LLM", "Cleanup", "Users"];
   for (const [width, named] of [
     [1920, ["Account", "Playback", "Recommendations", "Tags", ...administration]],
     [1280, administration],

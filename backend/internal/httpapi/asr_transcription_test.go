@@ -227,7 +227,10 @@ func TestASRTranscriptionIsReviewedThenPublishedAsAssignedLyrics(t *testing.T) {
 		t.Fatalf("accept = %d %s", accepted.Code, accepted.Body.String())
 	}
 	published, err := os.ReadFile(filepath.Join(fixture.dataRoot, filepath.FromSlash(fixture.root), "lyrics_kikoto", "ja", "mp3", "Track1.vtt"))
-	if err != nil || string(published) != text.Body.String() {
+	// The published file opens with a cue naming the speech model, in the
+	// lyrics' own language.
+	attributed := "WEBVTT\n\n00:00:00.000 --> 00:00:00.500\nこの歌詞は example-model によって生成されました\n\n00:00:00.500 --> 00:00:01.500\nSynthetic line\n"
+	if err != nil || string(published) != attributed {
 		t.Fatalf("published = %q, %v", published, err)
 	}
 	var origin, assignedPath string

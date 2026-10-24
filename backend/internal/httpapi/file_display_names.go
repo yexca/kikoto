@@ -39,6 +39,9 @@ type fileDisplayNameEntry struct {
 	// Path is the file or folder below the work folder.
 	Path  string            `json:"path"`
 	Names map[string]string `json:"names"`
+	// LLMLanguages are the languages whose name was accepted from an LLM
+	// translation.
+	LLMLanguages []string `json:"llmLanguages,omitempty"`
 }
 
 type fileDisplayNamesResponse struct {
@@ -229,6 +232,7 @@ func (s *Server) applyFileDisplayNames(ctx context.Context, userID, mediaWorkID 
 				ON CONFLICT(media_item_id, language) DO UPDATE SET
 					name = excluded.name,
 					updated_by_user_id = excluded.updated_by_user_id,
+					origin = 'manual', model = '', source_text = '',
 					updated_at = CURRENT_TIMESTAMP
 				WHERE name IS NOT excluded.name
 			`, file.MediaItemID, change.Language, file.Name, nullableUserID(userID))
@@ -251,6 +255,7 @@ func (s *Server) applyFileDisplayNames(ctx context.Context, userID, mediaWorkID 
 				ON CONFLICT(work_id, path, language) DO UPDATE SET
 					name = excluded.name,
 					updated_by_user_id = excluded.updated_by_user_id,
+					origin = 'manual', model = '', source_text = '',
 					updated_at = CURRENT_TIMESTAMP
 				WHERE name IS NOT excluded.name
 			`, mediaWorkID, folder.Path, change.Language, folder.Name, nullableUserID(userID))
@@ -276,14 +281,50 @@ func (s *Server) loadFileDisplayNames(ctx context.Context, workID, mediaWorkID i
 	if err != nil {
 		return response, err
 	}
+	fileLLM, folderLLM, err := s.llmDisplayNameLanguages(ctx, mediaWorkID)
+	if err != nil {
+		return response, err
+	}
 	for _, folder := range folders {
-		response.Folders = append(response.Folders, fileDisplayNameEntry{Path: folder, Names: nonNilNames(folderNames[folder])})
+		response.Folders = append(response.Folders, fileDisplayNameEntry{Path: folder, Names: nonNilNames(folderNames[folder]), LLMLanguages: folderLLM[folder]})
 	}
 	for _, file := range files {
 		file.Names = nonNilNames(fileNames[file.MediaItemID])
+		file.LLMLanguages = fileLLM[file.MediaItemID]
 		response.Files = append(response.Files, file)
 	}
 	return response, nil
+}
+
+// llmDisplayNameLanguages lists, per file and folder of a work, the languages
+// whose display name was accepted from an LLM translation.
+func (s *Server) llmDisplayNameLanguages(ctx context.Context, mediaWorkID int64) (map[int64][]string, map[string][]string, error) {
+	files, folders := map[int64][]string{}, map[string][]string{}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT name.media_item_id, '', name.language FROM media_item_display_name AS name
+		INNER JOIN media_item AS item ON item.id = name.media_item_id
+		WHERE item.work_id = ? AND name.origin = 'llm'
+		UNION ALL
+		SELECT 0, path, language FROM work_folder_display_name WHERE work_id = ? AND origin = 'llm'
+		ORDER BY 3
+	`, mediaWorkID, mediaWorkID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var itemID int64
+		var folder, language string
+		if err := rows.Scan(&itemID, &folder, &language); err != nil {
+			return nil, nil, err
+		}
+		if itemID > 0 {
+			files[itemID] = append(files[itemID], language)
+		} else {
+			folders[folder] = append(folders[folder], language)
+		}
+	}
+	return files, folders, rows.Err()
 }
 
 func nonNilNames(names map[string]string) map[string]string {
@@ -557,9 +598,10 @@ func followWorkFolderDisplayNames(ctx context.Context, tx *sql.Tx, workID int64,
 		}
 	}
 	type folderName struct {
-		language, name string
-		updatedBy      sql.NullInt64
-		updatedAt      string
+		language, name            string
+		updatedBy                 sql.NullInt64
+		updatedAt                 string
+		origin, model, sourceText string
 	}
 	moved := map[string][]folderName{}
 	sources := []string{}
@@ -583,7 +625,7 @@ func followWorkFolderDisplayNames(ctx context.Context, tx *sql.Tx, workID int64,
 			continue
 		}
 		rows, err := tx.QueryContext(ctx, `
-			SELECT language, name, updated_by_user_id, updated_at
+			SELECT language, name, updated_by_user_id, updated_at, origin, model, source_text
 			FROM work_folder_display_name WHERE work_id = ? AND path = ?
 		`, workID, folder)
 		if err != nil {
@@ -592,7 +634,7 @@ func followWorkFolderDisplayNames(ctx context.Context, tx *sql.Tx, workID int64,
 		names := []folderName{}
 		for rows.Next() {
 			var name folderName
-			if err := rows.Scan(&name.language, &name.name, &name.updatedBy, &name.updatedAt); err != nil {
+			if err := rows.Scan(&name.language, &name.name, &name.updatedBy, &name.updatedAt, &name.origin, &name.model, &name.sourceText); err != nil {
 				_ = rows.Close()
 				return err
 			}
@@ -616,9 +658,9 @@ func followWorkFolderDisplayNames(ctx context.Context, tx *sql.Tx, workID int64,
 	for _, folder := range sources {
 		for _, name := range moved[folder] {
 			if _, err := tx.ExecContext(ctx, `
-				INSERT OR IGNORE INTO work_folder_display_name (work_id, path, language, name, updated_by_user_id, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?)
-			`, workID, targets[folder], name.language, name.name, name.updatedBy, name.updatedAt); err != nil {
+				INSERT OR IGNORE INTO work_folder_display_name (work_id, path, language, name, updated_by_user_id, updated_at, origin, model, source_text)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`, workID, targets[folder], name.language, name.name, name.updatedBy, name.updatedAt, name.origin, name.model, name.sourceText); err != nil {
 				return err
 			}
 		}

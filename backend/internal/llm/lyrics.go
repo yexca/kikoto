@@ -33,6 +33,9 @@ func ParseLyrics(name, text string) (LyricsDocument, error) {
 	if len(text) > LyricsLimit {
 		return d, errors.New("lyrics exceed the text limit")
 	}
+	// A line naming the models that wrote the file is never sent; a
+	// translation of the file gets a line of its own.
+	text = StripAttribution(name, text)
 	if strings.Contains(text, "\r\n") {
 		d.Newline = "\r\n"
 	}

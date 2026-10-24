@@ -1,5 +1,14 @@
 export function legacyLibraryRedirect(pathname: string, search = "") {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  // Translation coverage lives on the Translation page.
+  if (
+    (path === "/metadata" || path === "/work-management") &&
+    new URLSearchParams(search).get("view") === "translation"
+  ) {
+    const params = new URLSearchParams(search);
+    params.set("view", "coverage");
+    return `/translation?${params}`;
+  }
   if (path === "/work-management" || (path === "/metadata" && pathname !== path)) {
     return `/metadata${normalizedSearch(search)}`;
   }

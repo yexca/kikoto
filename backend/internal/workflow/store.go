@@ -370,7 +370,7 @@ func runSelectSQL(reviewFilter string) string {
 // source a run acts on, so Activity can tell runs of one workflow apart and
 // search finds a run by it. Runs over many subjects have none.
 const runSubjectSQL = `CASE WHEN NOT json_valid(run.input_json) THEN '' ELSE COALESCE(CASE
-		WHEN run.workflow_code IN ('remote_work_fetch', 'remote_source_sync', 'asr_transcription', 'work_folder_edit', 'media_cache')
+		WHEN run.workflow_code IN ('remote_work_fetch', 'remote_source_sync', 'asr_transcription', 'work_folder_edit', 'media_cache', 'ai_translation')
 			THEN UPPER(json_extract(run.input_json, '$.work_code'))
 		WHEN run.workflow_code = 'metadata_family_sync' THEN UPPER(json_extract(run.input_json, '$.primaryCode'))
 		WHEN run.workflow_code IN ('llm_translation', 'local_media_delete')

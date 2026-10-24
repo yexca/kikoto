@@ -171,6 +171,14 @@ type mediaItemDetail struct {
 	AssignedLyricsMediaItemID *int64                        `json:"assignedLyricsMediaItemId"`
 	LyricsAssignments         []mediaLyricsAssignmentDetail `json:"lyricsAssignments,omitempty"`
 	Locations                 []fileLocationDetail          `json:"locations"`
+	// AILyrics names the models that wrote a lyrics file Kikoto published
+	// from speech recognition or translation.
+	AILyrics *lyricsAIModels `json:"aiLyrics,omitempty"`
+}
+
+type lyricsAIModels struct {
+	ASRModel string `json:"asrModel,omitempty"`
+	LLMModel string `json:"llmModel,omitempty"`
 }
 
 type fileLocationDetail struct {

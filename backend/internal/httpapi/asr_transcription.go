@@ -16,6 +16,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/asr"
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
+	"github.com/yexca/kikoto/backend/internal/llm"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -377,14 +378,14 @@ func (s *Server) acceptASRTranscription(w http.ResponseWriter, r *http.Request) 
 	}
 	id := r.PathValue("transcription")
 	var workID, audioID, folderID int64
-	var language, text, audioPath, state string
+	var language, text, audioPath, state, model string
 	err := s.db.QueryRowContext(r.Context(), `
 		SELECT transcription.work_id, transcription.audio_media_item_id, transcription.folder_id, transcription.language,
-			transcription.value_text, transcription.state, COALESCE(location.path, '')
+			transcription.value_text, transcription.state, COALESCE(location.path, ''), transcription.model
 		FROM asr_transcription AS transcription
 		LEFT JOIN media_file_location AS location ON location.id = transcription.audio_location_id
 		WHERE transcription.id = ?
-	`, id).Scan(&workID, &audioID, &folderID, &language, &text, &state, &audioPath)
+	`, id).Scan(&workID, &audioID, &folderID, &language, &text, &state, &audioPath, &model)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeAPIError(w, 404, "asr_transcription_not_found", "Transcription not found.", false)
 		return
@@ -405,6 +406,16 @@ func (s *Server) acceptASRTranscription(w http.ResponseWriter, r *http.Request) 
 		writeError(w, err)
 		return
 	}
+	attribute, err := s.lyricsAttributionEnabled(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if attribute {
+		if attributed, err := llm.AddAttribution(".vtt", text, llm.Attribution(language, model, "")); err == nil {
+			text = attributed
+		}
+	}
 	lyricsPath, lyricsID, err := s.publishTrackLyrics(r.Context(), actor.ID, workID, audioID, folderID, language, audioPath, ".vtt", text, "transcription")
 	if err != nil {
 		var requestErr lyricsFetchRequestError
@@ -422,6 +433,13 @@ func (s *Server) acceptASRTranscription(w http.ResponseWriter, r *http.Request) 
 	if _, err := s.db.ExecContext(r.Context(), "UPDATE asr_transcription SET state='accepted',lyrics_path=?,lyrics_media_item_id=?,cues_json='[]',updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='publishing'", lyricsPath, nullableInt64(lyricsID), id); err != nil {
 		writeError(w, err)
 		return
+	}
+	if lyricsID > 0 {
+		if _, err := s.db.ExecContext(r.Context(), `INSERT INTO media_lyrics_ai_source(lyrics_media_item_id, asr_model) VALUES(?, ?)
+			ON CONFLICT(lyrics_media_item_id) DO UPDATE SET asr_model = excluded.asr_model, llm_model = ''`, lyricsID, model); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }

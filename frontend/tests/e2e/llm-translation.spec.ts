@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { LLMLyricsTranslation, LLMPolicy, LLMProvider, LLMTranslation, WorkDetail } from "../../src/lib/api";
+import type { LLMPolicy, LLMProvider, TranslationItem, TranslationPlan } from "../../src/lib/api";
 import {
   appSettingsFixture,
   authenticatedStateFixture,
@@ -8,11 +8,9 @@ import {
   mediaLocationFixture,
   rolePermissions,
   runtimeSettingsFixture,
-  workDetailFixture,
   type ApiResponse,
 } from "./fixtures/api";
 import { mockApplication, work } from "./fixtures/player-library";
-import { openWorkMetadataEditor } from "./fixtures/work-detail";
 
 const provider: LLMProvider = {
   id: "synthetic-provider",
@@ -29,17 +27,6 @@ const provider: LLMProvider = {
   models: [],
   requestTimeoutSeconds: 600,
 };
-const translation: LLMTranslation = {
-  previewId: "synthetic-preview",
-  providerId: provider.id,
-  providerName: provider.name,
-  model: "example-model",
-  targetLanguage: "zh-cn",
-  assessment: { class: "safe", reason: "no configured rule matched", matches: [] },
-  source: { title: "Example original", description: "Original description" },
-  translation: { title: "Example translation", description: "Translated description" },
-};
-
 async function application(page: Page) {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
     authenticated: true,
@@ -56,56 +43,6 @@ async function application(page: Page) {
     }),
   );
 }
-async function openTranslation(page: Page, detailOverrides: Partial<WorkDetail> = {}) {
-  await application(page);
-  await page.route(/\/api\/works\/(?:1|RJ00000000)(?:\?includeMedia=false)?$/, (route) =>
-    route.fulfill({
-      json: workDetailFixture(
-        { ...work, title: "Example original", ageRating: "general" },
-        { description: "Original description", manualOverrides: {}, ...detailOverrides },
-      ),
-    }),
-  );
-  await page.route("**/api/works/1/cover-candidates", (route) =>
-    route.fulfill({ json: { candidates: [], providerCoverUrl: "" } satisfies ApiResponse<"listWorkCoverCandidates"> }),
-  );
-  await page.route("**/api/works/1/metadata-tags", (route) =>
-    route.fulfill({
-      json: { tags: [], inheritedTags: [], overrides: [] } satisfies ApiResponse<"getWorkMetadataTags">,
-    }),
-  );
-  await page.route("**/api/llm/translation-models?*", (route) =>
-    route.fulfill({
-      json: [
-        {
-          id: provider.id,
-          name: provider.name,
-          defaultModel: provider.defaultModel,
-          models: ["example-model", "second-model"],
-          // The second model translates only into Simplified Chinese.
-          modelTargets: { "second-model": ["zh-cn"] },
-          boundary: provider.boundary,
-          maxContentClass: "safe",
-        },
-      ] satisfies ApiResponse<"listTranslationModels">,
-    }),
-  );
-  await page.route("**/api/works/1/llm-reviews", (route) =>
-    route.fulfill({ json: [] satisfies ApiResponse<"listTranslationReviews"> }),
-  );
-  await page.route("**/api/works/1/llm-translations", (route) =>
-    route.fulfill({ json: { current: [], history: [] } satisfies ApiResponse<"listTranslations"> }),
-  );
-  await page.goto("/RJ00000000");
-  await openWorkMetadataEditor(page);
-  await page
-    .getByRole("dialog", { name: "Edit metadata", exact: true })
-    .getByRole("button", { name: "More metadata actions", exact: true })
-    .click();
-  await page.getByRole("menuitem", { name: "Translate with LLM", exact: true }).click();
-  return page.getByRole("dialog", { name: "Translate with LLM", exact: true });
-}
-
 test("LLM settings save connection drafts before discovery and edit structured content rules", async ({ page }) => {
   await application(page);
   let current = { ...provider };
@@ -293,8 +230,18 @@ test("LLM settings add a provider in a dialog and confirm before deleting it", a
   await expect(list.getByText("No LLM providers configured.", { exact: true })).toBeVisible();
 });
 
-test("LLM & ASR settings list both services above their shared content safety policy", async ({ page }) => {
+test("ASR & LLM settings list speech services before LLM providers, then the shared policy and AI lyrics", async ({
+  page,
+}) => {
   await application(page);
+  const attribution: unknown[] = [];
+  await page.route("**/api/llm/lyrics-attribution", (route) => {
+    if (route.request().method() === "PUT") {
+      attribution.push(route.request().postDataJSON());
+      return route.fulfill({ json: { enabled: false } });
+    }
+    return route.fulfill({ json: { enabled: true } });
+  });
   await page.route("**/api/llm/providers", (route) =>
     route.fulfill({
       json: {
@@ -309,16 +256,18 @@ test("LLM & ASR settings list both services above their shared content safety po
 
   // The former ASR tab id opens the shared tab.
   await page.goto("/settings?tab=asr");
-  await expect(page.getByRole("tab", { name: "LLM & ASR", exact: true })).toHaveAttribute("aria-selected", "true");
-  const sections = ["LLM providers", "ASR services", "Content safety policy"].map((name) =>
+  await expect(page.getByRole("tab", { name: "ASR & LLM", exact: true })).toHaveAttribute("aria-selected", "true");
+  const sections = ["ASR services", "LLM providers", "Content safety policy", "AI lyrics"].map((name) =>
     page.getByRole("region", { name, exact: true }),
   );
   for (const section of sections) await expect(section).toBeVisible();
   const tops = await Promise.all(sections.map(async (section) => (await section.boundingBox())?.y ?? 0));
   expect(tops).toEqual([...tops].sort((a, b) => a - b));
+  await page.getByRole("switch", { name: "Name the models in AI-made lyrics", exact: true }).click();
+  await expect.poll(() => attribution).toEqual([{ enabled: false }]);
 });
 
-test("LLM & ASR settings stay locked until the external service notice is accepted", async ({ page }) => {
+test("ASR & LLM settings stay locked until the external service notice is accepted", async ({ page }) => {
   await application(page);
   let accepted = 0;
   await page.route("**/api/llm/providers", (route) =>
@@ -361,100 +310,35 @@ test("LLM & ASR settings stay locked until the external service notice is accept
   await expect(page.getByRole("button", { name: "Add provider", exact: true })).toBeEnabled();
 });
 
-test("LLM dialog prechecks without translation, uses minimal models and confirms the preview", async ({ page }) => {
-  let administratorReads = 0;
-  let requests = 0;
-  let applied: unknown;
-  await page.route("**/api/llm/providers", (route) => {
-    administratorReads++;
-    return route.fulfill({ status: 403, json: { error: "permission denied" } });
-  });
-  const dialog = await openTranslation(page);
-  await page.route("**/api/works/1/llm-precheck", (route) =>
-    route.fulfill({
-      json: {
-        assessment: { ...translation.assessment, mode: "translation_text", checkedFields: ["title", "description"] },
-        checkedFields: ["title", "description"],
-        sentFields: [],
-      } satisfies ApiResponse<"precheckWork">,
-    }),
-  );
-  await page.route("**/api/works/1/llm-translate", (route) => {
-    requests++;
-    expect(route.request().postDataJSON()).toMatchObject({
-      providerId: provider.id,
-      model: "second-model",
-      targetLanguage: "zh-cn",
-      fields: ["title", "description"],
-    });
-    return route.fulfill({ json: translation });
-  });
-  await page.route("**/api/works/1/llm-translation", (route) => {
-    applied = route.request().postDataJSON();
-    return route.fulfill({ json: { ok: true } });
-  });
-  // Each enabled model is its own choice; the default comes first.
-  const target = dialog.getByLabel("Target language", { exact: true });
-  await expect(target).toHaveValue("en-us");
-  await dialog.getByLabel("LLM provider", { exact: true }).selectOption({ label: "Example LLM · second-model" });
-  // A model limited to declared directions defaults to its supported target.
-  await expect(target).toHaveValue("zh-cn");
-  await expect(target.getByRole("option", { name: "English · Not supported by this model" })).toHaveJSProperty(
-    "disabled",
-    true,
-  );
-  await dialog.getByRole("button", { name: "Check content without sending", exact: true }).click();
-  await expect(dialog.getByRole("status")).toContainText("General");
-  await expect(dialog.getByRole("status")).toContainText("Assessment: selected translation text only");
-  await expect(dialog.getByRole("status")).toContainText("No keyword rules apply to the selected text.");
-  await dialog.getByRole("checkbox", { name: "Description", exact: true }).uncheck();
-  await expect(dialog.getByText("Assessment: selected translation text only", { exact: true })).toHaveCount(0);
-  await dialog.getByRole("checkbox", { name: "Description", exact: true }).check();
-  expect(requests).toBe(0);
-  await dialog.getByRole("button", { name: "Translate", exact: true }).click();
-  await expect(dialog.getByText("Example translation", { exact: true })).toBeVisible();
-  await dialog.getByRole("button", { name: "Use translation", exact: true }).click();
-  await expect.poll(() => applied).toEqual({ previewId: "synthetic-preview" });
-  await expect(dialog).toHaveCount(0);
-  expect(administratorReads).toBe(0);
-});
+function translationPlanCategory(missing: number, extra: Partial<TranslationPlan["languages"][number]["title"]> = {}) {
+  return { missing, active: 0, characters: missing * 10, ...extra };
+}
 
-test("LLM background review recovers a durable preview and rejects it explicitly", async ({ page }) => {
-  const dialog = await openTranslation(page);
-  let queued: unknown;
-  let rejected = 0;
-  await page.route("**/api/llm/translation-runs", (route) => {
-    queued = route.request().postDataJSON();
-    return route.fulfill({
-      json: {
-        runs: [{ workId: 1, runId: 1, state: "ready", deduplicated: false }],
-      } satisfies ApiResponse<"queueTranslations">,
-    });
-  });
-  await dialog.getByRole("button", { name: "Queue background translation", exact: true }).click();
-  await expect.poll(() => queued).toMatchObject({ workCodes: ["RJ00000000"], fields: ["title", "description"] });
-  await expect(dialog.getByRole("link", { name: "Activity #1" })).toBeVisible();
-  await page.route("**/api/works/1/llm-reviews", (route) =>
-    route.fulfill({
-      json: [
-        { ...translation, status: "proposed", fields: ["title", "description"], expiresAt: 1791907200 },
-      ] satisfies ApiResponse<"listTranslationReviews">,
-    }),
-  );
-  await page.route("**/api/works/1/llm-previews/synthetic-preview", (route) => {
-    rejected++;
-    return route.fulfill({ json: { ok: true } });
-  });
-  await dialog.getByRole("button", { name: "Refresh", exact: true }).click();
-  await dialog.getByRole("button", { name: "Review", exact: true }).click();
-  await expect(dialog.getByText("Translated description", { exact: true })).toBeVisible();
-  await dialog.getByRole("button", { name: "Back", exact: true }).click();
-  await expect.poll(() => rejected).toBe(1);
-});
+function reviewItem(overrides: Partial<TranslationItem>): TranslationItem {
+  return {
+    id: 1,
+    runId: 41,
+    workId: work.id,
+    workCode: work.primaryCode,
+    workTitle: work.title,
+    language: "en-us",
+    category: "title",
+    subject: "",
+    engine: "llm",
+    state: "ready",
+    label: "",
+    source: "Example original",
+    result: "Example translation",
+    model: "example-model",
+    progress: 0,
+    chunks: 0,
+    requestedBy: "synthetic-admin",
+    updatedAt: "2026-01-01 00:00:00",
+    ...overrides,
+  };
+}
 
-test("Manage lyrics translates a track into a missing language and adds the reviewed result @desktop", async ({
-  page,
-}) => {
+test("Translate with AI sends only what each language lacks and shows what it wrote @desktop", async ({ page }) => {
   const localFile = (id: number, kind: string, name: string) =>
     mediaItemFixture({
       id,
@@ -485,18 +369,6 @@ test("Manage lyrics translates a track into a missing language and adds the revi
           },
         ],
       },
-      detailLocalFolders: [
-        {
-          id: 104,
-          workId: work.id,
-          fileSourceId: 1,
-          rootPath: work.primaryCode,
-          role: "external",
-          state: "active",
-          availability: "available",
-          primary: true,
-        },
-      ],
       authenticated: true,
       permissions: rolePermissions.admin,
     },
@@ -515,102 +387,178 @@ test("Manage lyrics translates a track into a missing language and adds the revi
       ] satisfies ApiResponse<"listTranslationModels">,
     }),
   );
-  let translations: LLMLyricsTranslation[] = [];
-  await page.route(`**/api/works/${work.id}/llm-lyrics-translations`, (route) =>
-    route.fulfill({ json: translations satisfies ApiResponse<"listLyricsTranslations"> }),
+  await page.route("**/api/asr/services", (route) =>
+    route.fulfill({ json: [] satisfies ApiResponse<"listASRServices"> }),
   );
-  const queued: Record<string, unknown>[] = [];
-  await page.route("**/api/llm/translation-runs", (route) => {
-    queued.push(route.request().postDataJSON() as Record<string, unknown>);
-    translations = [
-      {
-        taskId: 7,
-        runId: 41,
-        audioMediaItemId: 1,
-        lyricsLocationId: 2,
-        targetLanguage: "en-us",
-        providerName: provider.name,
-        model: "example-model",
-        state: "ready",
-        previewId: "synthetic-preview",
-        updatedAt: "2026-01-01 00:00:00",
-      },
-    ];
-    return route.fulfill({
-      status: 202,
-      json: { runs: [{ workId: work.id, runId: 41, state: "pending", deduplicated: false }] },
-    });
-  });
-  await page.route(`**/api/works/${work.id}/llm-previews/synthetic-preview/lyrics`, (route) =>
-    route.fulfill({ body: "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nFirst translated line\n" }),
-  );
-  const prechecks: unknown[] = [];
-  await page.route(`**/api/works/${work.id}/llm-precheck`, (route) => {
-    prechecks.push(route.request().postDataJSON());
+  const requests: unknown[] = [];
+  await page.route(`**/api/works/${work.id}/ai-translation*`, (route) => {
+    if (route.request().method() === "POST") {
+      requests.push(route.request().postDataJSON());
+      return route.fulfill({ status: 202, json: { runId: 41, items: 5, skipped: [] } });
+    }
+    const languages = new URL(route.request().url()).searchParams.get("languages")!.split(",");
     return route.fulfill({
       json: {
-        assessment: {
-          class: "restricted",
-          reason: "a configured high-sensitivity rule matched",
-          matches: [{ kind: "keyword", rule: "synthetic-high-rule", field: "lyrics", action: "restricted" }],
-        },
-        checkedFields: ["title", "description", "tags", "lyrics"],
-        sentFields: [],
-      } satisfies ApiResponse<"precheckWork">,
+        workId: work.id,
+        originLanguage: "ja-jp",
+        permissions: { metadata: true, files: true, lyrics: true },
+        languages: languages.map((language) => ({
+          language,
+          title: translationPlanCategory(1),
+          description: translationPlanCategory(0, { active: 1 }),
+          tags: translationPlanCategory(2, { affectedWorks: 3 }),
+          files: translationPlanCategory(1),
+          lyrics: [],
+        })),
+        transcribing: [],
+        attributionEnabled: true,
+        autoAccept: true,
+      } satisfies ApiResponse<"translationPlan">,
     });
   });
-  const applied: unknown[] = [];
-  await page.route(`**/api/works/${work.id}/llm-translation`, (route) => {
-    applied.push(route.request().postDataJSON());
-    translations = [{ ...translations[0], state: "accepted", previewId: undefined }];
-    return route.fulfill({ json: { ok: true } });
+  let applied: TranslationItem[] = [];
+  await page.route("**/api/translation/items?*", (route) => {
+    const view = new URL(route.request().url()).searchParams.get("view");
+    return route.fulfill({ json: { items: view === "history" ? applied : [] } });
   });
 
   await page.goto("/");
   await page.getByText(work.title, { exact: true }).click();
   await page
     .getByRole("complementary", { name: "Source info", exact: true })
-    .getByRole("button", { name: "Manage lyrics", exact: true })
+    .getByRole("button", { name: "Translate with AI", exact: true })
     .click();
-  const lyrics = page.getByRole("dialog", { name: "Manage lyrics" });
-  await lyrics.getByRole("tab", { name: "Translate" }).click();
+  const dialog = page.getByRole("dialog", { name: "Translate with AI" });
 
-  // The name-matched file is the track's fallback lyrics, which a missing language translates from.
-  await expect(lyrics.getByRole("button", { name: "track.mp3 has Fallback lyrics" })).toBeVisible();
-  const english = lyrics.getByRole("button", { name: "Translate track.mp3 into English" });
-  await english.click();
-  await expect(english).toHaveAttribute("aria-pressed", "true");
-  await expect(lyrics.getByRole("button", { name: "track.mp3 is translated from Fallback" })).toBeVisible();
-
-  // Ratings are checked only when asked, once per lyrics file and track.
-  expect(prechecks).toHaveLength(0);
-  await lyrics.getByRole("button", { name: "Check rating" }).click();
-  await expect(lyrics.getByText("High sensitivity 1", { exact: true })).toBeVisible();
-  expect(prechecks).toEqual([{ fields: ["lyrics"], lyricsLocationId: 2, audioMediaItemId: 1 }]);
-  await expect(lyrics.getByText("1 exceeds the receive maximum of Example LLM")).toBeVisible();
-  await lyrics.getByRole("combobox", { name: "LLM provider" }).click();
-  const option = page.getByRole("option", { name: /Example LLM/ });
-  await expect(option).toContainText("Not for this content");
-  await option.click();
-
-  await lyrics.getByRole("button", { name: "Translate 1", exact: true }).click();
-  await expect.poll(() => queued).toHaveLength(1);
-  expect(queued[0]).toEqual({
-    workCodes: [work.primaryCode],
+  // Each category counts what the chosen language lacks; the shared tag names name the works they affect.
+  await expect(dialog.getByText("Affects 3 works", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("1 in progress", { exact: true })).toBeVisible();
+  // The track's name-matched fallback lyrics are translated into the missing language.
+  await dialog.getByRole("button", { name: "Translate 5 items", exact: true }).click();
+  await expect.poll(() => requests).toHaveLength(1);
+  expect(requests[0]).toEqual({
+    languages: ["en-us"],
+    categories: ["title", "description", "tags", "files"],
     providerId: provider.id,
     model: "example-model",
-    targetLanguage: "en-us",
-    fields: ["lyrics"],
-    lyricsLocationId: 2,
-    audioMediaItemId: 1,
+    lyrics: [{ audioMediaItemId: 1, targetLanguage: "en-us", lyricsLocationId: 2 }],
+    asrProviderId: "",
+    directAsr: false,
   });
 
-  await expect(lyrics.getByText("Awaiting review", { exact: true })).toBeVisible();
-  await lyrics.getByRole("button", { name: "Preview the translation for track.mp3" }).click();
-  await expect(lyrics.getByText("First translated line")).toBeVisible();
-  await lyrics.getByRole("button", { name: "Add to lyrics" }).click();
-  await expect.poll(() => applied).toEqual([{ previewId: "synthetic-preview" }]);
-  await expect(lyrics.getByText("Added to lyrics", { exact: true })).toBeVisible();
+  // Each finished item applies at once; the results name what it wrote.
+  applied = [
+    reviewItem({
+      id: 11,
+      state: "accepted",
+      category: "lyrics",
+      subject: "1",
+      label: "track.mp3",
+      appliedPath: `${work.primaryCode}/lyrics_kikoto/en/track.mp3.vtt`,
+    }),
+  ];
+  await dialog.getByRole("tab", { name: "Results" }).click();
+  await dialog.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    dialog.getByText(`Written to ${work.primaryCode}/lyrics_kikoto/en/track.mp3.vtt`, { exact: true }),
+  ).toBeVisible();
+  await expect(dialog.getByText("Applied", { exact: true }).first()).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
+});
+
+test("The Translation page leaves out review while auto-accept is on and lists what was written", async ({ page }) => {
+  await application(page);
+  await page.route("**/api/translation/runs?*", (route) =>
+    route.fulfill({
+      json: {
+        runs: [],
+        counts: { active: 0, queued: 0, review: 0, attention: 0 },
+        autoAccept: true,
+      } satisfies ApiResponse<"listTranslationRuns">,
+    }),
+  );
+  await page.route("**/api/translation/items?*", (route) => {
+    const view = new URL(route.request().url()).searchParams.get("view");
+    const items = view === "history" ? [reviewItem({ id: 4, state: "accepted", language: "ko-kr" })] : [];
+    return route.fulfill({ json: { items } satisfies ApiResponse<"listTranslationItems"> });
+  });
+
+  await page.goto("/translation");
+  const views = page.getByRole("tablist", { name: "Translation views", exact: true });
+  await expect(views.getByRole("tab")).toHaveText(["In progress", "Stopped", "History", "Coverage"]);
+  await expect(views.getByRole("tab", { name: "In progress" })).toHaveAttribute("aria-selected", "true");
+  await views.getByRole("tab", { name: "History" }).click();
+  await expect(page.getByText("Example translation", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: work.primaryCode, exact: true })).toHaveAttribute(
+    "href",
+    `/${work.primaryCode}`,
+  );
+});
+
+test("With auto-accept off, the Translation page reviews items across works and resends an uncertain one", async ({
+  page,
+}) => {
+  await application(page);
+  await page.route("**/api/translation/runs?*", (route) =>
+    route.fulfill({
+      json: {
+        runs: [],
+        counts: { active: 0, queued: 0, review: 2, attention: 1 },
+        autoAccept: false,
+      } satisfies ApiResponse<"listTranslationRuns">,
+    }),
+  );
+  await page.route("**/api/translation/items?*", (route) => {
+    const view = new URL(route.request().url()).searchParams.get("view");
+    const items =
+      view === "review"
+        ? [
+            reviewItem({ id: 1, language: "zh-cn" }),
+            reviewItem({
+              id: 2,
+              language: "zh-cn",
+              category: "tag",
+              subject: "7",
+              source: "Example tag",
+              result: "示例标签",
+              affectedWorks: 3,
+            }),
+          ]
+        : view === "attention"
+          ? [reviewItem({ id: 3, state: "uncertain", failureCode: "upstream_result_unknown", category: "description" })]
+          : [];
+    return route.fulfill({ json: { items } satisfies ApiResponse<"listTranslationItems"> });
+  });
+  const accepted: unknown[] = [];
+  await page.route("**/api/translation/items/accept", (route) => {
+    accepted.push(route.request().postDataJSON());
+    return route.fulfill({
+      json: {
+        results: [
+          { id: 1, ok: true },
+          { id: 2, ok: true },
+        ],
+      },
+    });
+  });
+  const resent: unknown[] = [];
+  await page.route("**/api/translation/items/resend", (route) => {
+    resent.push(route.request().postDataJSON());
+    return route.fulfill({ json: { results: [{ id: 3, ok: true }] } });
+  });
+
+  await page.goto("/translation");
+  await expect(page.getByText("Shown on 3 works", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Accept all 2", exact: true }).click();
+  await expect.poll(() => accepted).toEqual([{ ids: [1, 2] }]);
+
+  await page.getByRole("tab", { name: /^Stopped/ }).click();
+  await expect(page.getByText("The request was sent but its result is unknown.", { exact: true })).toBeVisible();
+  // An uncertain request may already have been charged, so sending it again asks first.
+  await page.getByRole("button", { name: "Send again", exact: true }).click();
+  expect(resent).toHaveLength(0);
+  await page.getByRole("button", { name: "Send again anyway", exact: true }).click();
+  await expect.poll(() => resent).toEqual([{ ids: [3], acknowledgeUncertain: true }]);
 });
 
 test("Manage lyrics transcribes the selected tracks without lyrics in the original language @desktop", async ({
@@ -720,9 +668,7 @@ test("Manage lyrics transcribes the selected tracks without lyrics in the origin
   await expect(lyrics.getByRole("checkbox", { name: "Select 03.mp3" })).toBeVisible();
 });
 
-test("Demo shows sample transcriptions and translations in Manage lyrics with every action off @desktop", async ({
-  page,
-}) => {
+test("Demo shows sample transcriptions in Manage lyrics with every action off @desktop", async ({ page }) => {
   const localFile = (id: number, kind: string, name: string) =>
     mediaItemFixture({
       id,
@@ -782,13 +728,7 @@ test("Demo shows sample transcriptions and translations in Manage lyrics with ev
   await lyrics.getByRole("checkbox", { name: "Select 02.mp3" }).click();
   await expect(lyrics.getByRole("combobox", { name: "Service" })).toContainText("Example speech service");
   await expect(lyrics.getByRole("button", { name: "Transcribe 1", exact: true })).toBeDisabled();
-
-  await lyrics.getByRole("tab", { name: "Translate" }).click();
-  await expect(lyrics.getByText(/these translations are samples/)).toBeVisible();
-  await lyrics.getByRole("button", { name: "Preview the translation for 03.mp3" }).click();
-  await expect(lyrics.getByText("Sample translated line 1. Demo did not translate these lyrics.")).toBeVisible();
-  await expect(lyrics.getByRole("button", { name: "Add to lyrics" })).toBeDisabled();
-  await expect(lyrics.getByRole("button", { name: "Check rating" })).toBeDisabled();
+  await expect(lyrics.getByRole("tab", { name: "Translate" })).toHaveCount(0);
 
   expect(serviceRequests).toEqual([]);
 });

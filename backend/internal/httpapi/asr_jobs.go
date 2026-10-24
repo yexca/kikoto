@@ -59,14 +59,17 @@ type asrTask struct {
 	State         string
 	OffsetMS      int64
 	Cues          []asr.Cue
+	// RunCode is the workflow of the run the task belongs to.
+	RunCode string
 }
 
 func (s *Server) loadASRTask(ctx context.Context, id string) (asrTask, error) {
 	var task asrTask
 	var userID sql.NullInt64
 	var cues string
-	err := s.db.QueryRowContext(ctx, `SELECT id,workflow_run_id,user_id,work_id,audio_media_item_id,audio_location_id,provider_id,model,audio_language,language,config_hash,source_version,state,offset_ms,cues_json FROM asr_transcription WHERE id=?`, id).Scan(
-		&task.ID, &task.RunID, &userID, &task.WorkID, &task.AudioID, &task.LocationID, &task.ProviderID, &task.Model, &task.AudioLanguage, &task.Language, &task.ConfigHash, &task.SourceVersion, &task.State, &task.OffsetMS, &cues)
+	err := s.db.QueryRowContext(ctx, `SELECT task.id,task.workflow_run_id,task.user_id,task.work_id,task.audio_media_item_id,task.audio_location_id,task.provider_id,task.model,task.audio_language,task.language,task.config_hash,task.source_version,task.state,task.offset_ms,task.cues_json,COALESCE(run.workflow_code,'')
+		FROM asr_transcription AS task LEFT JOIN workflow_run AS run ON run.id=task.workflow_run_id WHERE task.id=?`, id).Scan(
+		&task.ID, &task.RunID, &userID, &task.WorkID, &task.AudioID, &task.LocationID, &task.ProviderID, &task.Model, &task.AudioLanguage, &task.Language, &task.ConfigHash, &task.SourceVersion, &task.State, &task.OffsetMS, &cues, &task.RunCode)
 	if err != nil {
 		return task, err
 	}
@@ -74,13 +77,23 @@ func (s *Server) loadASRTask(ctx context.Context, id string) (asrTask, error) {
 	return task, json.Unmarshal([]byte(cues), &task.Cues)
 }
 
-// failASRTask records a fixed failure code; diagnostics never carry the
+// asrYield is what transcribeTrack returns when the job should give the
+// executor to other queued work.
+const asrYield = "yield"
+
+type asrDecoder func(context.Context, string, string, int64, int) ([]byte, error)
+
+// markASRTaskFailed records a fixed failure code; diagnostics never carry the
 // endpoint, key, file path or transcript.
-func (s *Server) failASRTask(ctx context.Context, job workflowJobRecord, task asrTask, code string) error {
+func (s *Server) markASRTaskFailed(ctx context.Context, task asrTask, code string) error {
+	_, err := s.db.ExecContext(context.WithoutCancel(ctx), "UPDATE asr_transcription SET state='failed',failure_code=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state IN ('pending','requesting','failed')", code, task.ID)
+	return err
+}
+
+// failASRJob fails a transcription's own job with the code its task failed
+// with.
+func (s *Server) failASRJob(ctx context.Context, job workflowJobRecord, code string) error {
 	ctx = context.WithoutCancel(ctx)
-	if _, err := s.db.ExecContext(ctx, "UPDATE asr_transcription SET state='failed',failure_code=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state IN ('pending','requesting','failed')", code, task.ID); err != nil {
-		return err
-	}
 	message := "Transcription stopped: " + code
 	if err := s.failClaimedWorkflowJob(ctx, job, message); err != nil {
 		return err
@@ -96,7 +109,7 @@ func (s *Server) executeASRTranscriptionJob(ctx context.Context, job workflowJob
 	return s.executeASRTranscriptionWithDecoder(ctx, job, extractASRChunk)
 }
 
-func (s *Server) executeASRTranscriptionWithDecoder(ctx context.Context, job workflowJobRecord, decode func(context.Context, string, string, int64, int) ([]byte, error)) error {
+func (s *Server) executeASRTranscriptionWithDecoder(ctx context.Context, job workflowJobRecord, decode asrDecoder) error {
 	var payload asrJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
 		return errors.New("invalid transcription job")
@@ -109,66 +122,89 @@ func (s *Server) executeASRTranscriptionWithDecoder(ctx context.Context, job wor
 		return errors.New("transcription job scope mismatch")
 	}
 	switch task.State {
+	case "ready", "publishing", "accepted", "rejected":
+		return s.finishASRTranscriptionJob(ctx, job, task.ID)
+	}
+	code, err := s.transcribeTrack(ctx, job, &task, decode)
+	switch {
+	case err != nil:
+		return err
+	case code == asrYield:
+		return s.deferWorkflowJob(ctx, job, asrYieldDelay, "Transcription yields to other queued work between chunks")
+	case code != "":
+		return s.failASRJob(ctx, job, code)
+	}
+	return s.finishASRTranscriptionJob(ctx, job, task.ID)
+}
+
+// transcribeTrack transcribes one track one chunk at a time and returns an
+// empty code once its transcript is ready, asrYield when the job should give
+// the executor to other queued work, or the code the task failed with. Each
+// chunk's cues commit before the next request, so a restart or retry
+// continues after the last finished chunk.
+func (s *Server) transcribeTrack(ctx context.Context, job workflowJobRecord, task *asrTask, decode asrDecoder) (string, error) {
+	fail := func(code string) (string, error) {
+		return code, s.markASRTaskFailed(ctx, *task, code)
+	}
+	switch task.State {
 	case "pending", "failed":
 	case "requesting":
 		// A request was in flight when the process stopped. Sending it again
 		// may be billed twice, so only an explicit retry resends it.
-		return s.failASRTask(ctx, job, task, asrResultUnknown)
-	case "ready", "publishing", "accepted", "rejected":
-		return s.finishASRTranscriptionJob(ctx, job, task.ID)
+		return fail(asrResultUnknown)
 	default:
-		return s.failASRTask(ctx, job, task, asrFailureCancelled)
+		return fail(asrFailureCancelled)
 	}
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
-		return s.failASRTask(ctx, job, task, "ffmpeg_unavailable")
+		return fail("ffmpeg_unavailable")
 	}
-	provider, code := s.checkASRSend(ctx, task)
+	provider, code := s.checkASRSend(ctx, *task)
 	if code != "" {
-		return s.failASRTask(ctx, job, task, code)
+		return fail(code)
 	}
 	client, closeClient, err := s.asrClient(ctx, provider, asrRequestTimeout)
 	if err != nil {
-		return s.failASRTask(ctx, job, task, "endpoint_unavailable")
+		return fail("endpoint_unavailable")
 	}
 	defer closeClient()
 	for {
 		if err := ctx.Err(); err != nil {
-			return err
+			return "", err
 		}
-		if _, code := s.checkASRSend(ctx, task); code != "" {
+		if _, code := s.checkASRSend(ctx, *task); code != "" {
 			if ctx.Err() != nil {
-				return ctx.Err()
+				return "", ctx.Err()
 			}
-			return s.failASRTask(ctx, job, task, code)
+			return fail(code)
 		}
 		source, err := s.loadLocalTrack(ctx, task.AudioID)
 		if err != nil || source.LocationID != task.LocationID || source.Version != task.SourceVersion {
 			if ctx.Err() != nil {
-				return ctx.Err()
+				return "", ctx.Err()
 			}
-			return s.failASRTask(ctx, job, task, "source_changed")
+			return fail("source_changed")
 		}
 		if task.OffsetMS >= asrMaxAudioSeconds*1000 {
-			return s.failASRTask(ctx, job, task, "audio_too_long")
+			return fail("audio_too_long")
 		}
 		input, err := safeResolvedPath(s.cfg.DataRoot, source.Path)
 		if err != nil {
-			return s.failASRTask(ctx, job, task, "source_changed")
+			return fail("source_changed")
 		}
 		if err := s.ensureLibraryPathOnline(ctx, source.Path); err != nil {
-			return s.failASRTask(ctx, job, task, "source_unavailable")
+			return fail("source_unavailable")
 		}
 		if info, err := os.Stat(input); err != nil || !info.Mode().IsRegular() {
-			return s.failASRTask(ctx, job, task, "source_unavailable")
+			return fail("source_unavailable")
 		}
 		pcm, err := decode(ctx, ffmpeg, input, task.OffsetMS, asrChunkSeconds)
 		if err != nil {
 			if ctx.Err() != nil {
-				return ctx.Err()
+				return "", ctx.Err()
 			}
 			slog.Warn("speech transcription audio preparation failed", "run_id", job.RunID, "audio_media_item_id", task.AudioID, "error", err)
-			return s.failASRTask(ctx, job, task, "audio_decode_failed")
+			return fail("audio_decode_failed")
 		}
 		if len(pcm) < asr.BytesPerSecond/10 {
 			break
@@ -181,19 +217,19 @@ func (s *Server) executeASRTranscriptionWithDecoder(ctx context.Context, job wor
 		durationMS := int64(len(send)) * 1000 / asr.BytesPerSecond
 		// Decoding can take minutes. Recheck the send boundary after it, while
 		// no audio has left the server and the request is still safe to refuse.
-		if _, code := s.checkASRSend(ctx, task); code != "" {
+		if _, code := s.checkASRSend(ctx, *task); code != "" {
 			if ctx.Err() != nil {
-				return ctx.Err()
+				return "", ctx.Err()
 			}
-			return s.failASRTask(ctx, job, task, code)
+			return fail(code)
 		}
 		// The cancellation check and the in-flight marker commit together.
 		result, err := s.db.ExecContext(ctx, `UPDATE asr_transcription SET state='requesting',updated_at=CURRENT_TIMESTAMP WHERE id=? AND state IN ('pending','failed') AND NOT EXISTS(SELECT 1 FROM workflow_run WHERE id=? AND status='cancelled')`, task.ID, job.RunID)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if count, err := result.RowsAffected(); err != nil || count != 1 {
-			return errors.New("transcription task cannot send a request")
+			return "", errors.New("transcription task cannot send a request")
 		}
 		// A translating model is asked for the lyrics language it writes.
 		target := ""
@@ -203,7 +239,7 @@ func (s *Server) executeASRTranscriptionWithDecoder(ctx context.Context, job wor
 		transcript, requestErr := client.Transcribe(ctx, task.Model, asr.RequestLanguage(task.AudioLanguage), target, send)
 		if requestErr != nil {
 			if ctx.Err() != nil {
-				return ctx.Err()
+				return "", ctx.Err()
 			}
 			code := "upstream_failed"
 			var rejected asr.UpstreamError
@@ -216,49 +252,50 @@ func (s *Server) executeASRTranscriptionWithDecoder(ctx context.Context, job wor
 				code = "no_timestamps"
 			}
 			slog.Warn("speech transcription request failed", "run_id", job.RunID, "provider", task.ProviderID, "error", requestErr)
-			return s.failASRTask(ctx, job, task, code)
+			return fail(code)
 		}
 		task.Cues = append(task.Cues, asr.ChunkCues(transcript.Segments, task.OffsetMS, durationMS)...)
 		cues, err := json.Marshal(task.Cues)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if len(cues) > asrCuesLimit {
-			return s.failASRTask(ctx, job, task, "transcript_too_large")
+			return fail("transcript_too_large")
 		}
 		task.OffsetMS += durationMS
 		result, err = s.db.ExecContext(ctx, "UPDATE asr_transcription SET state='pending',offset_ms=?,cues_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND state='requesting'", task.OffsetMS, string(cues), task.ID)
 		if err != nil {
-			return s.failASRTask(ctx, job, task, asrResultUnknown)
+			return fail(asrResultUnknown)
 		}
 		if count, err := result.RowsAffected(); err != nil || count != 1 {
-			return errors.New("transcription task changed during a request")
+			return "", errors.New("transcription task changed during a request")
 		}
 		if err := s.updateWorkflowJobCheckpoint(ctx, job.ID, "transcribing", map[string]any{"work_id": task.WorkID, "audio_media_item_id": task.AudioID}, int(task.OffsetMS/1000), int(source.DurationSeconds)); err != nil {
-			return err
+			return "", err
 		}
 		if last {
 			break
 		}
 		if s.asrShouldYield(ctx, job.ID) {
-			return s.deferWorkflowJob(ctx, job, asrYieldDelay, "Transcription yields to other queued work between chunks")
+			return asrYield, nil
 		}
 	}
 	if len(task.Cues) == 0 {
-		return s.failASRTask(ctx, job, task, "no_speech")
+		return fail("no_speech")
 	}
 	text := asr.RenderVTT(task.Cues)
 	if len(text) > asrTranscriptLimit {
-		return s.failASRTask(ctx, job, task, "transcript_too_large")
+		return fail("transcript_too_large")
 	}
 	result, err := s.db.ExecContext(ctx, "UPDATE asr_transcription SET state='ready',value_text=?,cues_json='[]',failure_code='',updated_at=CURRENT_TIMESTAMP WHERE id=? AND state IN ('pending','failed') AND NOT EXISTS(SELECT 1 FROM workflow_run WHERE id=? AND status='cancelled')", text, task.ID, job.RunID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if count, err := result.RowsAffected(); err != nil || count != 1 {
-		return errors.New("transcription run was cancelled")
+		return "", errors.New("transcription run was cancelled")
 	}
-	return s.finishASRTranscriptionJob(ctx, job, task.ID)
+	task.State = "ready"
+	return "", nil
 }
 
 // checkASRSend rechecks, before every request, that the requester may still
@@ -269,7 +306,8 @@ func (s *Server) checkASRSend(ctx context.Context, task asrTask) (asr.Provider, 
 		return asr.Provider{}, "permission_changed"
 	}
 	actor, err := s.accountStore.LoadByID(ctx, task.UserID)
-	if err != nil || !userHasPermission(actor, "library:write") || !userHasPermission(actor, "workflows:run") {
+	// A Translate with AI run needs only the translation permission.
+	if err != nil || !userHasPermission(actor, "library:write") || task.RunCode != aiTranslationWorkflowCode && !userHasPermission(actor, "workflows:run") {
 		return asr.Provider{}, "permission_changed"
 	}
 	provider, err := s.asrStore.Get(ctx, task.ProviderID)

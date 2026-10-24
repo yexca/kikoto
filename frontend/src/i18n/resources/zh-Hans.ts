@@ -2,6 +2,7 @@ import { libraryEnglish, collectionEnglish, workCardEnglish } from "../resources
 import { surfaceHans } from "../surfaces/zh-Hans";
 import { personalHans } from "../surfaces/personal/zh-Hans";
 import { subscriptionsHans } from "../surfaces/subscriptions/zh-Hans";
+import { translationHans } from "../surfaces/translation/zh-Hans";
 
 export const libraryHans = {
   ...libraryEnglish,
@@ -677,6 +678,8 @@ export const zhHansResource = {
         insightsDescription: "查看收听日历、统计和历史",
         subscriptions: "订阅",
         subscriptionsDescription: "已订阅的社团、系列和声优的新作，以及排行榜的变化",
+        translation: "翻译",
+        translationDescription: "审核 AI 翻译，并跟进正在进行的翻译",
         about: "关于",
         libraryDescription: "浏览、筛选并播放所有已配置来源中的作品",
         favoritesDescription: "浏览收藏的作品、社团、声优和列表",
@@ -697,6 +700,7 @@ export const zhHansResource = {
       ...adminToolsHans,
       ...personalHans,
       ...subscriptionsHans,
+      ...translationHans,
       appearance: {
         title: "外观",
         subtitle: "模式、样式和颜色",

@@ -137,7 +137,7 @@ test("a custom work edits its metadata and age rating without provider refreshes
   await expect(dialog.getByRole("button", { name: "Refresh metadata", exact: true })).toHaveCount(0);
   await dialog.getByRole("button", { name: "More metadata actions", exact: true }).click();
   const more = page.getByRole("menu", { name: "More metadata actions", exact: true });
-  await expect(more.getByRole("menuitem", { name: "Translate with LLM", exact: true })).toBeVisible();
+  await expect(more.getByRole("menuitem", { name: "Translate with AI", exact: true })).toBeVisible();
   await expect(more.getByRole("menuitem", { name: "Fetch for edit", exact: true })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await dialog.getByRole("tab", { name: /^Age rating/ }).click();

@@ -1,4 +1,4 @@
-import { Building2, Tags, FolderPlus, Languages, LayoutGrid, MicVocal, Settings, type LucideIcon } from "lucide-react";
+import { Building2, Tags, FolderPlus, LayoutGrid, MicVocal, Settings, type LucideIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
@@ -13,7 +13,6 @@ import { WorkMaintenance } from "@/features/maintenance/WorkMaintenance";
 import { CustomWorkAddDialog, CustomWorkNotice } from "@/features/maintenance/CustomWorkMaintenance";
 import { MetadataSettingsPanel } from "@/features/maintenance/MetadataSettingsPanel";
 import { MetadataEntryMaintenance } from "@/features/maintenance/MetadataEntryMaintenance";
-import { TranslationCoverage } from "@/features/maintenance/TranslationCoverage";
 import { VoiceAliasMaintenance } from "@/features/maintenance/VoiceAliasMaintenance";
 import { WorkReasonFilter, catalogWorkReasons, type CatalogWorkReason } from "@/features/maintenance/WorkReasonFilter";
 import { WorkMetadataEditorModal } from "@/features/work-detail/metadata";
@@ -21,14 +20,13 @@ import { api, type MaintenanceCounts, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { metadataIssueRunFromLocation } from "@/lib/metadataMaintenance";
 
-type MetadataView = "works" | "translation" | "aliases" | "tags" | "circles";
+type MetadataView = "works" | "aliases" | "tags" | "circles";
 // DLsite works holds every catalog `reason` behind its own filter; custom works keep theirs.
-type MetadataRailValue = "dlsite" | "custom" | "translation" | "aliases" | "tags" | "circles";
+type MetadataRailValue = "dlsite" | "custom" | "aliases" | "tags" | "circles";
 
 const railIcons: Record<MetadataRailValue, LucideIcon> = {
   dlsite: LayoutGrid,
   custom: FolderPlus,
-  translation: Languages,
   aliases: MicVocal,
   tags: Tags,
   circles: Building2,
@@ -53,7 +51,7 @@ function reasonFromLocation() {
 
 function viewFromLocation(): MetadataView {
   const view = new URLSearchParams(window.location.search).get("view");
-  return view === "translation" || view === "aliases" || view === "tags" || view === "circles" ? view : "works";
+  return view === "aliases" || view === "tags" || view === "circles" ? view : "works";
 }
 
 function addCustomWorkFromLocation(canCreateCustomWorks: boolean) {
@@ -68,9 +66,8 @@ function availableReasonFromLocation(canSyncMetadata: boolean, canManageSources:
   return requested;
 }
 
-function availableViewFromLocation(canSyncMetadata: boolean, canEditMetadata: boolean): MetadataView {
+function availableViewFromLocation(canSyncMetadata: boolean): MetadataView {
   const view = viewFromLocation();
-  if (view === "translation" && !canSyncMetadata && !canEditMetadata) return "works";
   return view === "aliases" && !canSyncMetadata ? "works" : view;
 }
 
@@ -138,7 +135,7 @@ export function WorkManagementPage({
   const toast = useToast();
   const [reason, setReason] = useState(() => availableReasonFromLocation(canSyncMetadata, canManageSources));
   const [runId, setRunId] = useState<number | null>(metadataIssueRunFromLocation);
-  const [view, setView] = useState<MetadataView>(() => availableViewFromLocation(canSyncMetadata, canEditMetadata));
+  const [view, setView] = useState<MetadataView>(() => availableViewFromLocation(canSyncMetadata));
   const [addingCustomWork, setAddingCustomWork] = useState(() => addCustomWorkFromLocation(canCreateCustomWorks));
   const [listRevision, setListRevision] = useState(0);
   // Whether the rename notice is accepted; null until the custom works view asks.
@@ -164,7 +161,7 @@ export function WorkManagementPage({
     const sync = () => {
       setReason(availableReasonFromLocation(canSyncMetadata, canManageSources));
       setRunId(metadataIssueRunFromLocation());
-      setView(availableViewFromLocation(canSyncMetadata, canEditMetadata));
+      setView(availableViewFromLocation(canSyncMetadata));
       setAddingCustomWork(addCustomWorkFromLocation(canCreateCustomWorks));
       setSettingsOpen(settingsFromLocation());
     };
@@ -214,7 +211,7 @@ export function WorkManagementPage({
     setRunId(nextRun);
     setView("works");
   };
-  const showEntries = (nextView: "translation" | "tags" | "circles" | "aliases") => {
+  const showEntries = (nextView: "tags" | "circles" | "aliases") => {
     window.history.replaceState(window.history.state, "", `/metadata?view=${nextView}`);
     setView(nextView);
   };
@@ -251,7 +248,6 @@ export function WorkManagementPage({
   const railEntries: Array<[MetadataRailValue, string, boolean]> = [
     ["dlsite", t("workManagement.dlsiteWorks"), true],
     ["custom", t("customWorks.rail"), true],
-    ["translation", t("translationCoverage.rail"), canSyncMetadata || canEditMetadata],
     ["tags", t("metadataEntries.tags"), true],
     ["circles", t("metadataEntries.circles"), true],
     ["aliases", t("workManagement.voiceAliases"), canSyncMetadata],
@@ -279,11 +275,9 @@ export function WorkManagementPage({
       controls:
         value === "aliases"
           ? "metadata-aliases"
-          : value === "translation"
-            ? "metadata-translation"
-            : value === "tags" || value === "circles"
-              ? `metadata-${value}`
-              : "metadata-records",
+          : value === "tags" || value === "circles"
+            ? `metadata-${value}`
+            : "metadata-records",
       separated: value === "tags",
       groupLabel: t(
         value === "aliases" || value === "tags" || value === "circles"
@@ -319,7 +313,7 @@ export function WorkManagementPage({
           orientation={railOrientation}
           onToggleOrientation={toggleRailOrientation}
           onSelect={(value) =>
-            value === "translation" || value === "aliases" || value === "tags" || value === "circles"
+            value === "aliases" || value === "tags" || value === "circles"
               ? showEntries(value)
               : showWorks(value === "dlsite" ? "catalog" : value)
           }
@@ -394,16 +388,7 @@ export function WorkManagementPage({
           <p className="-mt-1 text-xs text-muted-foreground">
             {t(`workManagement.viewDescriptions.${catalogReason ?? railSelected}`)}
           </p>
-          {view === "translation" ? (
-            <TranslationCoverage
-              preferenceRevision={preferenceRevision}
-              readOnly={readOnly}
-              canTranslate={canSyncMetadata && canEditMetadata && !readOnly}
-              toolbar={toolbar}
-              editingWorkId={editingWorkId}
-              onEditWork={canEditMetadata ? (work, onSaved) => void editWork(work, onSaved) : undefined}
-            />
-          ) : view === "aliases" ? (
+          {view === "aliases" ? (
             <VoiceAliasMaintenance canManage={canSyncMetadata && !readOnly} readOnly={readOnly} toolbar={toolbar} />
           ) : view === "tags" || view === "circles" ? (
             <MetadataEntryMaintenance

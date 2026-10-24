@@ -3,6 +3,7 @@ import { collectionHans, libraryHans, workCardHans } from "./zh-Hans";
 import { surfaceHant } from "../surfaces/zh-Hant";
 import { personalHant } from "../surfaces/personal/zh-Hant";
 import { subscriptionsHant } from "../surfaces/subscriptions/zh-Hant";
+import { translationHant } from "../surfaces/translation/zh-Hant";
 
 const libraryHant = {
   ...libraryHans,
@@ -682,6 +683,8 @@ export const zhHantResource = {
         insightsDescription: "查看收聽日曆、統計和歷史",
         subscriptions: "訂閱",
         subscriptionsDescription: "已訂閱的社團、系列和聲優的新作，以及排行榜的變化",
+        translation: "翻譯",
+        translationDescription: "審核 AI 翻譯，並追蹤正在進行的翻譯",
         about: "關於",
         libraryDescription: "瀏覽、篩選並播放所有已設定來源中的作品",
         favoritesDescription: "瀏覽收藏的作品、社團、聲優和清單",
@@ -702,6 +705,7 @@ export const zhHantResource = {
       ...adminToolsHant,
       ...personalHant,
       ...subscriptionsHant,
+      ...translationHant,
       appearance: {
         title: "外觀",
         subtitle: "模式、樣式和色彩",

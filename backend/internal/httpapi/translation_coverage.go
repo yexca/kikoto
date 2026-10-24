@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/library"
@@ -278,7 +277,7 @@ func (s *Server) listTranslationCoverage(w http.ResponseWriter, r *http.Request)
 		writeError(w, err)
 		return
 	}
-	states, err := s.loadTranslationCoverage(r.Context(), coverage, actor.ID, works)
+	states, err := s.loadTranslationCoverage(r.Context(), coverage, works)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -298,7 +297,7 @@ func (s *Server) listTranslationCoverage(w http.ResponseWriter, r *http.Request)
 
 // loadTranslationCoverage reads the coverage of one page of works in a single
 // query.
-func (s *Server) loadTranslationCoverage(ctx context.Context, c translationCoverageSQL, userID int64, works []libraryWorkSummary) (map[int64]translationCoverage, error) {
+func (s *Server) loadTranslationCoverage(ctx context.Context, c translationCoverageSQL, works []libraryWorkSummary) (map[int64]translationCoverage, error) {
 	result := map[int64]translationCoverage{}
 	if len(works) == 0 {
 		return result, nil
@@ -311,12 +310,12 @@ func (s *Server) loadTranslationCoverage(ctx context.Context, c translationCover
 	sql.add(c.tags(false)).text(", ").add(c.tags(true)).text(", ")
 	sql.add(c.files(false)).text(", ").add(c.files(true)).text(", ")
 	sql.add(c.lyrics(false)).text(", ").add(c.lyrics(true)).text(", ")
-	sql.text(`(SELECT COUNT(*) FROM llm_translation_task AS task WHERE task.user_id = ? AND task.work_id IN ` + translationCoverageFamily + `
-		AND task.state IN ('pending', 'requesting') AND json_extract(task.request_json, '$.targetLanguage') = ?), `)
-	sql.args = append(sql.args, userID, c.language)
-	sql.text(`(SELECT COUNT(*) FROM llm_translation_preview AS preview WHERE preview.user_id = ? AND preview.work_id IN ` + translationCoverageFamily + `
-		AND preview.status = 'proposed' AND preview.expires_at > ? AND json_extract(preview.payload_json, '$.Target') = ?)`)
-	sql.args = append(sql.args, userID, time.Now().Unix(), c.language)
+	sql.text(`(SELECT COUNT(*) FROM translation_item AS item WHERE item.work_id IN ` + translationCoverageFamily + `
+		AND item.language = ? AND item.state IN ('queued', 'waiting_transcription', 'requesting', 'uncertain')), `)
+	sql.args = append(sql.args, c.language)
+	sql.text(`(SELECT COUNT(*) FROM translation_item AS item WHERE item.work_id IN ` + translationCoverageFamily + `
+		AND item.language = ? AND item.state = 'ready')`)
+	sql.args = append(sql.args, c.language)
 	marks := make([]string, len(works))
 	for index, work := range works {
 		marks[index] = "?"

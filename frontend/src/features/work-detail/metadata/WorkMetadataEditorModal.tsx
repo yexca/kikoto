@@ -26,7 +26,7 @@ import { MetadataEditorPurchaseBonusSection, type StagedPurchaseBonus } from "./
 import { MetadataEditorBundleSection } from "./MetadataEditorBundleSection";
 import { bundleMembersChanged, noStagedBundleMembers, type StagedBundleMembers } from "./bundleMembersModel";
 import { WorkMetadataTagsSection } from "./WorkMetadataTagsSection";
-import { LLMTranslationDialog } from "./LLMTranslationDialog";
+import { LLMTranslationHistoryPanel } from "./LLMTranslationHistoryPanel";
 import { WorkTitleEditor } from "./WorkTitleEditor";
 import { MetadataLanguageScopeTabs } from "./MetadataLanguageScopeTabs";
 import {
@@ -82,6 +82,7 @@ export function WorkMetadataEditorModal({
   onClose,
   onSaved,
   onLinkChanged,
+  onTranslateWithAI,
 }: {
   work: WorkDetail;
   sources?: LibrarySource[];
@@ -94,6 +95,8 @@ export function WorkMetadataEditorModal({
   onSaved: () => void;
   /** A metadata link or purchase bonus change, with the refresh it queued. */
   onLinkChanged: (result: { sync?: WorkMetadataSyncRunResult }) => void;
+  /** Closes the editor and opens Translate with AI; absent where translation is unavailable. */
+  onTranslateWithAI?: () => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -125,7 +128,6 @@ export function WorkMetadataEditorModal({
   const [stagedBundle, setStagedBundle] = useState<StagedBundleMembers>(noStagedBundleMembers);
   const [saving, setSaving] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [translationOpen, setTranslationOpen] = useState(false);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const tabRefs = useRef<Partial<Record<MetadataEditorSection, HTMLButtonElement | null>>>({});
 
@@ -268,21 +270,6 @@ export function WorkMetadataEditorModal({
     onSaved();
   };
 
-  const applyTranslation = async (translation: import("@/lib/api").LLMTranslation) => {
-    setSaving(true);
-    try {
-      await api.applyTranslation(work.id, translation.previewId);
-      toast.success(t("llmTranslation.saved"));
-      setTranslationOpen(false);
-      onSaved();
-      onClose();
-    } catch (error) {
-      toast.notify(toastFromError(error, t("llmTranslation.saveFailed")));
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[event.key];
     const edge = { Home: 0, End: sections.length - 1 }[event.key];
@@ -304,15 +291,18 @@ export function WorkMetadataEditorModal({
       icon: <CloudDownload className="h-4 w-4" />,
       onSelect: () => setPreviewOpen(true),
     });
-  if (canSyncMetadata && !readOnly)
+  if (onTranslateWithAI && !readOnly)
     moreActions.push({
       key: "translate",
-      label: t("llmTranslation.title"),
+      label: t("aiTranslation.title"),
       icon: <Sparkles className="h-4 w-4" />,
-      // A translation saves on its own, so it starts from saved values.
+      // Translations are reviewed against saved values, so unsaved edits come first.
       disabled: dirty || saving,
       hint: dirty ? t("metadataEditor.translateNeedsSave") : undefined,
-      onSelect: () => setTranslationOpen(true),
+      onSelect: () => {
+        onClose();
+        onTranslateWithAI();
+      },
     });
 
   return (
@@ -408,6 +398,9 @@ export function WorkMetadataEditorModal({
                   onDraft={(language, title) => setTitleDrafts((current) => ({ ...current, [language]: title }))}
                 />
               )}
+              {section === "title" && (
+                <LLMTranslationHistoryPanel workId={work.id} field="title" readOnly={readOnly} onChanged={onSaved} />
+              )}
               {section === "description" && (
                 <WorkDescriptionEditor
                   work={work}
@@ -415,6 +408,14 @@ export function WorkMetadataEditorModal({
                   languageScope={languageScope}
                   drafts={descriptionDrafts}
                   onDraft={(language, text) => setDescriptionDrafts((current) => ({ ...current, [language]: text }))}
+                />
+              )}
+              {section === "description" && (
+                <LLMTranslationHistoryPanel
+                  workId={work.id}
+                  field="description"
+                  readOnly={readOnly}
+                  onChanged={onSaved}
                 />
               )}
               {section === "ageRating" && (
@@ -541,14 +542,6 @@ export function WorkMetadataEditorModal({
         onClose={() => setPreviewOpen(false)}
         onApply={applyPreview}
       />
-      {translationOpen && (
-        <LLMTranslationDialog
-          work={work}
-          applying={saving}
-          onClose={() => setTranslationOpen(false)}
-          onApply={(translation) => void applyTranslation(translation)}
-        />
-      )}
     </>
   );
 }

@@ -182,7 +182,7 @@ export const surfaceKorean = {
       credits:
         "제안을 선택하면 기존 서클, 시리즈, 성우와 연결됩니다. 편집한 크레디트는 메타데이터를 새로 고쳐도 유지됩니다.",
       ageRating:
-        "작품에 표시되고 라이브러리 필터에도 쓰이는 연령 등급입니다. LLM 및 음성 인식 서비스의 콘텐츠 안전 판정에도 쓰입니다.",
+        "작품에 표시되고 라이브러리 필터에도 쓰이는 연령 등급입니다. 음성 인식 및 LLM 서비스의 콘텐츠 안전 판정에도 쓰입니다.",
       source:
         "이 작품에 다른 DLsite 작품의 메타데이터를 사용하거나, 구매 특전으로 연결하거나, 세트 구성을 등록하고 언어 패밀리를 확인합니다.",
     },
@@ -281,14 +281,16 @@ export const surfaceKorean = {
     batch: {
       title_one: "작품 {{count}}개 번역",
       title_other: "작품 {{count}}개 번역",
-      description: "작품마다 {{language}}(으)로 번역하는 백그라운드 작업을 대기열에 추가합니다.",
-      queued_one: "번역 {{count}}개를 대기열에 추가했습니다.",
-      queued_other: "번역 {{count}}개를 대기열에 추가했습니다.",
-      reviewHint: "결과는 작품 메타데이터 편집기의 번역 검토에서 24시간 동안 검토를 기다립니다.",
+      description: "각 작품에서 부족한 부분을 AI로 {{language}}(으)로 번역합니다.",
+      queued_one: "작품 {{count}}개의 번역을 대기열에 추가했습니다.",
+      queued_other: "작품 {{count}}개의 번역을 대기열에 추가했습니다.",
+      skipped_one: "작품 {{count}}개는 빠진 항목이 없었습니다.",
+      skipped_other: "작품 {{count}}개는 빠진 항목이 없었습니다.",
+      reviewHint: "결과는 이 페이지에서 검토를 기다립니다.",
       unsupported: "선택한 모델은 {{language}}(으)로 번역할 수 없습니다.",
-      scopeHint: "가사는 각 작품의 가사 관리에서 번역하고, 파일 이름은 디렉터리에서 편집합니다.",
-      queue_one: "번역 {{count}}개 대기열에 추가",
-      queue_other: "번역 {{count}}개 대기열에 추가",
+      scopeHint: "가사는 각 작품의 AI로 번역에서 트랙별로 선택합니다.",
+      queue_one: "작품 {{count}}개 번역",
+      queue_other: "작품 {{count}}개 번역",
     },
   },
   customWorks: {
@@ -795,6 +797,10 @@ export const surfaceKorean = {
         "LLM 제공업체와 ASR 서비스에 적용됩니다. 아래에서 LLM 번역 분류 방식을 선택하며 ASR은 작품 메타데이터를 사용합니다. 각 서비스에는 수신 상한이 있으며 알 수 없음과 차단 분류는 전송하지 않습니다.",
       policySaved: "콘텐츠 안전 정책을 저장했습니다.",
       policySaveFailed: "콘텐츠 안전 정책을 저장할 수 없습니다.",
+      attributionTitle: "AI 가사",
+      attribution: "AI가 만든 가사에 모델 이름 표시",
+      attributionDescription:
+        "음성 인식이나 번역으로 작성한 가사 파일은 작성한 모델 이름을 가사 언어로 적은 줄로 시작합니다. 설정을 바꾼 뒤 작성되는 파일부터 적용됩니다.",
       alwaysScanAllAges: "전체 연령 작품도 스캔",
       alwaysScanAllAgesDescription:
         "전체 연령 작품에도 추가 민감 키워드 검사를 합니다. 고민감 및 차단 규칙은 항상 검사합니다. LLM 텍스트 전용 모드에서는 적용 가능한 모든 키워드를 검사하며 이 옵션은 ASR에도 적용됩니다.",
@@ -975,7 +981,7 @@ export const surfaceKorean = {
       unlinked: "작품 유지 관리",
       cache: "캐시 및 가져오기",
       proxy: "프록시",
-      llm: "LLM 및 음성 인식",
+      llm: "음성 인식 및 LLM",
       users: "사용자",
       access: "접근",
       paths: "경로",
@@ -1237,12 +1243,12 @@ export const surfaceKorean = {
       scopeNeedsProxy: "적용 범위를 선택하기 전에 프록시를 추가하세요.",
       scopes: {
         all: "전체",
-        allDescription: "DLsite, 원격 소스, LLM 및 음성 인식, 기타 요청",
+        allDescription: "DLsite, 원격 소스, 음성 인식 및 LLM, 기타 요청",
         dlsite: "DLsite",
         dlsiteDescription: "메타데이터, 커버, 크리에이터 카탈로그",
         remote: "원격 소스",
         remoteDescription: "탐색, 재생, 다운로드. 아래에서 소스별로 재정의할 수 있습니다.",
-        ai: "LLM 및 음성 인식",
+        ai: "음성 인식 및 LLM",
         aiDescription:
           "다른 주소에 있는 LLM 제공자와 음성 인식 서비스. 이 서버와 같은 머신의 서비스는 항상 직접 연결합니다.",
         other: "기타",
@@ -1440,6 +1446,10 @@ export const surfaceKorean = {
       },
       work_folder_edit: { name: "작품 파일 편집" },
       llm_translation: { name: "LLM 번역" },
+      ai_translation: {
+        name: "AI로 번역",
+        description: "한 작품에 없는 부분을 전사하고 번역해 번역 페이지에서 검토하도록 합니다.",
+      },
     },
     metadataLoadFailed: "워크플로 데이터를 불러오지 못했습니다.",
     activityLoadFailed: "활동을 불러오지 못했습니다.",
@@ -2382,6 +2392,8 @@ export const surfaceKorean = {
     library: "라이브러리 열기",
   },
   player: {
+    aiLyrics: "AI",
+    aiLyricsBy: "{{models}}이(가) 작성한 가사",
     play: "재생",
     pause: "일시정지",
     openCompact: "컴팩트 플레이어 열기",
@@ -2548,6 +2560,7 @@ export const surfaceKorean = {
     manageFiles: "파일 관리",
     manageLyrics: "가사 관리",
     editFileNames: "표시 이름 편집",
+    translateWithAI: "AI로 번역",
     retryMetadata: "메타데이터 다시 시도",
     firstPull: "처음 가져오기",
     catalogNotPulledHint:
@@ -2600,6 +2613,7 @@ export const surfaceKorean = {
   },
 
   fileDisplayNames: {
+    llmName: "LLM 번역에서 승인됨. 수정하거나 지우면 바뀝니다.",
     title: "표시 이름",
     description:
       "이 언어를 메타데이터 언어로 선택한 사용자에게 디렉터리에서 보여 줄 이름입니다. 디스크의 파일과 폴더 이름은 바뀌지 않으며, 비워 두면 실제 이름을 표시합니다.",
@@ -3307,7 +3321,7 @@ export const surfaceKorean = {
     demoCue: "예시 {{number}}번째 줄. 데모는 이 오디오를 전사하지 않았습니다.",
     service: "서비스",
     detect: "자동 감지",
-    noService: "사용할 수 있는 음성 인식 서비스가 없습니다. 관리자가 설정 → LLM 및 음성 인식에서 추가할 수 있습니다.",
+    noService: "사용할 수 있는 음성 인식 서비스가 없습니다. 관리자가 설정 → 음성 인식 및 LLM에서 추가할 수 있습니다.",
     noServiceShort: "사용 가능한 서비스 없음",
     loading: "불러오는 중…",
     servicesFailed: "음성 인식 서비스를 불러올 수 없습니다.",
@@ -3347,7 +3361,7 @@ export const surfaceKorean = {
       service_out_of_memory:
         "메모리가 부족해 서비스가 모델을 불러오지 못했습니다. GPU 메모리를 확보하거나 헬퍼의 GPU 공유를 번갈아 불러오기로 설정한 뒤 다시 전사하세요.",
       unsupported_language_pair:
-        "모델이 이 오디오 언어에서 이 언어의 가사를 작성하지 못합니다. 관리자가 설정 → LLM 및 음성 인식에서 서비스의 모델을 다시 가져온 뒤 다시 전사하세요.",
+        "모델이 이 오디오 언어에서 이 언어의 가사를 작성하지 못합니다. 관리자가 설정 → 음성 인식 및 LLM에서 서비스의 모델을 다시 가져온 뒤 다시 전사하세요.",
       ffmpeg_unavailable: "이 서버에서 오디오를 준비할 수 없습니다.",
       endpoint_unavailable: "서비스 연결을 준비할 수 없습니다.",
       cancelled: "전사가 취소되었습니다.",

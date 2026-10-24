@@ -138,6 +138,9 @@ const WorkManagementPage = lazy(() =>
   import("@/pages/WorkManagementPage").then((module) => ({ default: module.WorkManagementPage })),
 );
 const WorkflowsPage = lazy(() => import("@/pages/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })));
+const TranslationPage = lazy(() =>
+  import("@/pages/TranslationPage").then((module) => ({ default: module.TranslationPage })),
+);
 const AboutPage = lazy(() => import("@/pages/AboutPage").then((module) => ({ default: module.AboutPage })));
 const InsightsPage = lazy(() => import("@/pages/InsightsPage").then((module) => ({ default: module.InsightsPage })));
 const SubscriptionsPage = lazy(() =>
@@ -723,6 +726,13 @@ function AuthenticatedApp() {
                     readOnly={auth.demoMode}
                   />
                 )}
+                {showRoutePage && page === "translation" && auth.user && (
+                  <TranslationPage
+                    canTranslateMetadata={auth.hasPermission("metadata:sync") && auth.hasPermission("library:write")}
+                    canTranslateFiles={auth.hasPermission("library:write")}
+                    canOpenActivity={auth.hasPermission("workflows:run")}
+                  />
+                )}
                 {showRoutePage && page === "insights" && auth.user && (
                   <InsightsPage
                     listening={{
@@ -754,6 +764,7 @@ function AuthenticatedApp() {
                   "subscriptions",
                   "settings",
                   "metadata",
+                  "translation",
                   "workflows",
                   "insights",
                   "about",

@@ -1,5 +1,10 @@
 # Unreleased
 
+> [!NOTE]
+> LLM translation previews still waiting for review are discarded during the
+> upgrade. Translate those works again with **Translate with AI**, whose
+> results take effect as soon as they finish.
+
 <details>
 <summary><strong>Library and work detail</strong></summary>
 
@@ -45,14 +50,12 @@
   where its **Fallback** option and each language show only that title,
   description, and tag name column. Each field shows its status, current source, and Revert on one line.
   The footer keeps **Refresh metadata** and moves **Fetch for edit** and
-  **Translate with LLM** under **More**.
+  **Translate with AI** under **More**.
 - A work's description can be written for each language, like its title. The
   editor's **Description** section lists every language and a **Fallback**
   description, which is the former all-language description. A language with
   only its own description gets a choice in the metadata language menu, and
-  Metadata → Translation counts it as **Manual**.
-- **Translate with LLM** labels its original and translated text in the
-  interface language.
+  translation coverage counts it as **Manual**.
 - A product DLsite reports unavailable, such as a delisted work, can be
   dismissed from Metadata issues: **Dismiss** on the affected edition, or
   **Dismiss unavailable** for selected works. It then leaves the issue list
@@ -63,6 +66,37 @@
   provides metadata, for an affected edition or the selected works, without
   turning on automatic remote fallback.
 - Metadata view counts load faster on large libraries.
+
+</details>
+
+<details>
+<summary><strong>Translation</strong></summary>
+
+- **Translate with AI** replaces Translate with LLM and the lyrics manager's
+  Translate tab. One dialog translates a work's title, description, shared tag
+  names, file and folder display names, and lyrics into several languages at
+  once, and sends only what each language lacks. Each result takes effect as
+  soon as it finishes, after its source, the content policy, the requester's
+  permission and the provider are checked again. Tag names show how many works
+  they affect. Lyrics of tracks without any are transcribed first, once per
+  track, and every language is translated from that transcription; a speech
+  model that writes the one chosen language directly writes it without an LLM
+  step.
+- Display names of local files and folders can be translated with AI. Names in
+  the original language and names without words, such as `Track01`, are left
+  as they are.
+- A new **Translation** page in the sidebar follows running and queued
+  translations by work and language, resends stopped ones, lists what each
+  translation wrote with a link to its work, and holds the translation
+  coverage that was under Metadata. Everyone who can translate sees every
+  account's translations.
+- Lyrics written by speech recognition or translation start with a line naming
+  the models, in the lyrics' language, and the player marks them as AI-made.
+  **Settings → ASR & LLM → AI lyrics** turns the line off.
+- Settings → **LLM & ASR** is renamed **ASR & LLM** and lists speech services
+  before LLM providers.
+- Notifications about translation and transcription runs open the Translation
+  page or the work instead of Activity.
 
 </details>
 
