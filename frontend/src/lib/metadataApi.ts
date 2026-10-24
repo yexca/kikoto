@@ -457,6 +457,8 @@ export const metadataApi = {
   },
   retryMetadataIssues: (workIds: number[]) =>
     postJSONBody<{ queued: number; skipped: number; failed: number }>("/api/metadata/issues/retry", { workIds }),
+  dismissMetadataIssues: (workIds: number[]) =>
+    postJSONBody<{ dismissed: number; skipped: number }>("/api/metadata/issues/dismiss", { workIds }),
   getMetadataOnboarding: (signal?: AbortSignal) => getJSON<MetadataOnboarding>("/api/metadata/onboarding", signal),
   startMetadataOnboarding: () => postJSONBody<MetadataOnboarding>("/api/metadata/onboarding/start", {}),
   dismissMetadataOnboarding: () => postJSONBody<MetadataOnboarding>("/api/metadata/onboarding/dismiss", {}),

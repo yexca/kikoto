@@ -139,7 +139,9 @@ unavailable components form the metadata reasons in Work maintenance. State
 remains per edition/provider/component; the maintenance read combines these
 with live missing-source reasons and pages one selectable row per work family.
 Repeated failures update the component state; a newer success clears only
-that component's pending state. Failed requests retain existing metadata,
+that component's pending state. `dismissed_at` marks an unavailable component
+an operator dismissed, which is then no longer pending; a newer outcome with
+another status clears it. Failed requests retain existing metadata,
 and provider updates do not change `work_manual_override`.
 
 Attempts receive a durable increasing id before family requests start. The

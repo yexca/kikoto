@@ -16,6 +16,8 @@ import type { RemoteMetadataFallbackSettings } from "@/lib/settingsApi";
 
 export type WorkflowRun = {
   pendingMetadata?: number;
+  /** Pending works with a retryable failure; the rest are products reported as not found. */
+  pendingFailedMetadata?: number;
   id: number;
   workflowCode: string;
   displayName: string;

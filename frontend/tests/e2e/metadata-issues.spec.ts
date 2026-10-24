@@ -108,6 +108,60 @@ test("metadata operators retry selected issues without source settings access", 
   expect(await audio!.evaluate((element) => element.isConnected)).toBe(true);
 });
 
+test("metadata operators dismiss products reported as not found", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "metadata:sync"],
+  });
+  let items: MetadataIssueWork[] = [0, 1].map((index) =>
+    metadataIssueWorkFixture({
+      workId: index + 1,
+      primaryCode: syntheticWorkCode("RJ", index),
+      title: `Synthetic work ${index}`,
+      issues: [
+        {
+          component: "metadata",
+          status: index === 0 ? "unavailable" : "failed",
+          failureCount: 1,
+          firstFailedAt: "2026-01-01 00:00:00",
+          checkedAt: "2026-01-02 00:00:00",
+        },
+      ],
+    }),
+  );
+  await page.route("**/api/maintenance/works?*", (route) =>
+    route.fulfill({
+      json: {
+        works: items.map(asMaintenanceWork),
+        page: 1,
+        pageSize: 25,
+        total: items.length,
+      } satisfies MaintenanceWorkPage,
+    }),
+  );
+  const dismissals: number[][] = [];
+  await page.route("**/api/metadata/issues/dismiss", async (route) => {
+    const { workIds } = route.request().postDataJSON() as { workIds: number[] };
+    dismissals.push(workIds);
+    items = items.filter((item) => !workIds.includes(item.workId) || item.issues[0].status !== "unavailable");
+    await route.fulfill({
+      json: { dismissed: 1, skipped: workIds.length - 1 } satisfies ApiResponse<"dismissMetadataIssues">,
+    });
+  });
+  await page.goto("/maintenance?tab=works&reason=metadata");
+  const list = page.getByRole("region", { name: "Metadata records" });
+  for (const index of [0, 1]) await list.getByText("Affected editions and providers (1)").nth(index).click();
+  await expect(list.getByRole("button", { name: `Dismiss ${syntheticWorkCode("RJ", 0)}`, exact: true })).toBeVisible();
+  await expect(list.getByRole("button", { name: `Dismiss ${syntheticWorkCode("RJ", 1)}`, exact: true })).toHaveCount(0);
+  for (const index of [0, 1])
+    await list.getByRole("checkbox", { name: `Select ${syntheticWorkCode("RJ", index)}`, exact: true }).click();
+  await page.getByRole("button", { name: "Dismiss unavailable (1)", exact: true }).click();
+  expect(dismissals).toEqual([[1]]);
+  await expect(list.getByText("Dismissed: 1 · Not dismissible: 0", { exact: true })).toBeVisible();
+  await expect(list.getByRole("link", { name: /Synthetic work 0/ })).toHaveCount(0);
+  await expect(list.getByRole("link", { name: /Synthetic work 1/ })).toBeVisible();
+});
+
 test("metadata rows show metadata completeness apart from the best available source", async ({ page }) => {
   await mockApplication(page, undefined, false, 1, 0, [], undefined, {
     authenticated: true,

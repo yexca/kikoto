@@ -846,6 +846,10 @@ names the filling source and, per source, which values it filled; a not-synced
 work with remote values shows the same per-source lines. The title editor names
 a remote title's source. Metadata issue rows say a DLsite-unavailable work was
 filled by a named remote source instead of showing a bare unavailable status.
+An edition with an unavailable outcome offers a dismiss action beside its
+retry, and the selection bar dismisses the selected works' unavailable
+editions; Activity offers **Mark reviewed** for a run once its pending
+metadata has no retryable failure (`pendingFailedMetadata`).
 
 The metadata editor's **Fetch for edit** action opens a three-column comparison
 of current, fetched, and expected values. Choosing a fetched value keeps it as

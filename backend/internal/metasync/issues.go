@@ -246,6 +246,19 @@ func (s *IssueStore) NeedsDLsiteRecovery(ctx context.Context, workID int64) (boo
 	return needed, err
 }
 
+// DismissNotFound settles the work's pending not-found outcomes, such as a
+// delisted product, and reports whether it had one. Retryable failures stay
+// pending, and a later outcome with another status clears the dismissal.
+func (s *IssueStore) DismissNotFound(ctx context.Context, workID int64) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `UPDATE work_metadata_sync_state AS state SET dismissed_at = CURRENT_TIMESTAMP
+		WHERE state.work_id = ? AND state.status = 'unavailable' AND `+workflow.PendingMetadataState, workID)
+	if err != nil {
+		return false, err
+	}
+	changed, err := result.RowsAffected()
+	return changed > 0, err
+}
+
 type RunIssueSummary struct {
 	Encountered int `json:"encountered"`
 	Pending     int `json:"pending"`

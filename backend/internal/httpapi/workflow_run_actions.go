@@ -556,7 +556,9 @@ func (s *Server) reviewWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	if !s.requireWorkflowRunAccess(w, r, user, id) {
 		return
 	}
-	if run.PendingCandidates > 0 || run.PendingMetadata > 0 || run.Status == "queued" || run.Status == "running" {
+	// Products a provider reports as not found may stay pending; candidates and
+	// retryable metadata failures must be resolved first.
+	if run.PendingCandidates > 0 || run.PendingFailedMetadata > 0 || run.Status == "queued" || run.Status == "running" {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "resolve pending issues and wait for completion before marking the run reviewed"})
 		return
 	}

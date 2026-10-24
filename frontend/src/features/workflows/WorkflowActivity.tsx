@@ -129,12 +129,14 @@ export function WorkflowActivity({
     }
   };
   const runRow = (run: WorkflowRun, running = false) => {
+    // Products reported as not found may stay pending, as for a delisted work;
+    // candidates and retryable metadata failures must be resolved first.
     const needsAcknowledge =
       !running &&
       view === "attention" &&
-      (run.status === "failed" || run.status === "partial") &&
+      (run.status === "failed" || run.status === "partial" || (run.pendingMetadata ?? 0) > 0) &&
       run.pendingCandidates === 0 &&
-      !(run.pendingMetadata ?? 0) &&
+      !(run.pendingFailedMetadata ?? 0) &&
       !readOnly;
     const openMetadata = (run.pendingMetadata ?? 0) > 0 && canSyncMetadata;
     return (

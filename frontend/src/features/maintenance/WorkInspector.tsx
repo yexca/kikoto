@@ -40,6 +40,8 @@ export function WorkInspector({
   editing,
   onEdit,
   onRetry,
+  onDismiss,
+  dismissing = false,
   onCheckSources,
   onOpenWork,
   onClose,
@@ -56,6 +58,9 @@ export function WorkInspector({
   editing: boolean;
   onEdit?: () => void;
   onRetry: (ids: number[]) => void;
+  /** Dismisses editions' not-found outcomes; absent without permission. */
+  onDismiss?: (ids: number[]) => void;
+  dismissing?: boolean;
   /** Present only where checking sources applies to this work. */
   onCheckSources?: () => void;
   onOpenWork: MouseEventHandler<HTMLAnchorElement>;
@@ -165,9 +170,10 @@ export function WorkInspector({
         <div className="mx-4">
           <MetadataIssueDetails
             items={work.metadataIssues}
-            disabled={disabled || retrying}
+            disabled={disabled || retrying || dismissing}
             defaultOpen
             onRetry={onRetry}
+            onDismiss={onDismiss}
           />
         </div>
       )}

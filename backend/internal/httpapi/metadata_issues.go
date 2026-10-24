@@ -60,34 +60,9 @@ func (s *Server) retryMetadataIssues(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
 		return
 	}
-	if s.cfg.IsDemo() {
-		writeAPIError(w, http.StatusForbidden, "demo_read_only", "demo is read only", false)
+	workIDs, ok := s.metadataIssueSelection(w, r, "retry")
+	if !ok {
 		return
-	}
-	var payload struct {
-		WorkIDs []int64 `json:"workIds"`
-	}
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&payload); err != nil {
-		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid metadata retry request", false)
-		return
-	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
-		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid metadata retry request", false)
-		return
-	}
-	if len(payload.WorkIDs) == 0 || len(payload.WorkIDs) > 100 {
-		writeAPIError(w, http.StatusBadRequest, "invalid_selection", "select between 1 and 100 works", false)
-		return
-	}
-	seen := map[int64]bool{}
-	for _, id := range payload.WorkIDs {
-		if id <= 0 || seen[id] {
-			writeAPIError(w, http.StatusBadRequest, "invalid_selection", "invalid work selection", false)
-			return
-		}
-		seen[id] = true
 	}
 	result := struct {
 		Queued  int `json:"queued"`
@@ -95,7 +70,7 @@ func (s *Server) retryMetadataIssues(w http.ResponseWriter, r *http.Request) {
 		Failed  int `json:"failed"`
 	}{}
 	store := metasync.NewIssueStore(s.db)
-	for _, id := range payload.WorkIDs {
+	for _, id := range workIDs {
 		needed, err := store.NeedsDLsiteRecovery(r.Context(), id)
 		if err == nil && !needed {
 			result.Skipped++
@@ -118,4 +93,70 @@ func (s *Server) retryMetadataIssues(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusAccepted, result)
+}
+
+// dismissMetadataIssues settles the selected works' not-found outcomes, such
+// as delisted products, so they leave the issue list and run attention.
+// Retryable failures are skipped.
+func (s *Server) dismissMetadataIssues(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
+		return
+	}
+	workIDs, ok := s.metadataIssueSelection(w, r, "dismiss")
+	if !ok {
+		return
+	}
+	result := struct {
+		Dismissed int `json:"dismissed"`
+		Skipped   int `json:"skipped"`
+	}{}
+	store := metasync.NewIssueStore(s.db)
+	for _, id := range workIDs {
+		dismissed, err := store.DismissNotFound(r.Context(), id)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if dismissed {
+			result.Dismissed++
+		} else {
+			result.Skipped++
+		}
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// metadataIssueSelection decodes a bounded selection of distinct work ids for
+// an issue action, refusing the action in the read-only demo.
+func (s *Server) metadataIssueSelection(w http.ResponseWriter, r *http.Request, action string) ([]int64, bool) {
+	if s.cfg.IsDemo() {
+		writeAPIError(w, http.StatusForbidden, "demo_read_only", "demo is read only", false)
+		return nil, false
+	}
+	var payload struct {
+		WorkIDs []int64 `json:"workIds"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid metadata "+action+" request", false)
+		return nil, false
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid metadata "+action+" request", false)
+		return nil, false
+	}
+	if len(payload.WorkIDs) == 0 || len(payload.WorkIDs) > 100 {
+		writeAPIError(w, http.StatusBadRequest, "invalid_selection", "select between 1 and 100 works", false)
+		return nil, false
+	}
+	seen := map[int64]bool{}
+	for _, id := range payload.WorkIDs {
+		if id <= 0 || seen[id] {
+			writeAPIError(w, http.StatusBadRequest, "invalid_selection", "invalid work selection", false)
+			return nil, false
+		}
+		seen[id] = true
+	}
+	return payload.WorkIDs, true
 }

@@ -50,6 +50,12 @@
   Metadata → Translation counts it as **Manual**.
 - **Translate with LLM** labels its original and translated text in the
   interface language.
+- A product DLsite reports unavailable, such as a delisted work, can be
+  dismissed from Metadata issues: **Dismiss** on the affected edition, or
+  **Dismiss unavailable** for selected works. It then leaves the issue list
+  and the metadata run's Needs attention notice until a later sync fails.
+- Activity offers **Mark reviewed** for a run whose remaining metadata issues
+  are only unavailable products, instead of keeping it in Needs attention.
 
 </details>
 

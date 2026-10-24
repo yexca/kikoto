@@ -94,10 +94,13 @@ administrators.
   ordinary successes neutral so failures and partial runs stand out; hover a
   bar for its details and select it to open the run.
 - Needs attention collects unresolved candidates, metadata issues, and
-  unacknowledged failures. Resolving recorded issues clears the corresponding
-  dedicated metadata-run notice. Other failures can be marked reviewed once
-  outstanding issues are resolved. This acknowledgement is per user. History
-  keeps the original outcome, including failed, partial, and cancelled runs.
+  unacknowledged failures. Resolving or dismissing recorded issues clears the
+  corresponding dedicated metadata-run notice. Other failures can be marked
+  reviewed once outstanding candidates and retryable metadata failures are
+  resolved; a run whose remaining metadata issues are only products reported
+  unavailable, such as delisted works, can be marked reviewed while those
+  issues stay in Metadata. This acknowledgement is per user. History keeps the
+  original outcome, including failed, partial, and cancelled runs.
 - Metadata owns pending-work recovery and the DLsite proxy shortcut. Its
   metadata sync shortcut selects the existing workflow here.
 - Built-in local scan, metadata sync, remote popular, and DLsite popular

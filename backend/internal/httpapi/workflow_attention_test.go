@@ -11,7 +11,9 @@ import (
 	"github.com/yexca/kikoto/backend/internal/config"
 )
 
-func TestWorkflowAcknowledgementRequiresResolvedTerminalRun(t *testing.T) {
+// A run can be acknowledged once it is terminal and nothing retryable is left:
+// a product reported as not found, such as a delisted work, may stay pending.
+func TestWorkflowAcknowledgementRequiresTerminalRunWithoutRetryableIssues(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{})
 	userID := insertWorkflowGraphAPIUser(t, db, "example_reviewer")
@@ -23,7 +25,7 @@ func TestWorkflowAcknowledgementRequiresResolvedTerminalRun(t *testing.T) {
  (83,'local_library_scan','Example candidates','partial','manual')`,
 		`INSERT INTO workflow_candidate(workflow_run_id,candidate_type,status) VALUES(83,'example_review','pending')`,
 		`INSERT INTO metadata_sync_attempt(id) VALUES(2)`,
-		`UPDATE work_metadata_sync_state SET attempt_id=2`,
+		`UPDATE work_metadata_sync_state SET attempt_id=2,status='failed'`,
 		`INSERT INTO metadata_sync_attempt_run(attempt_id,workflow_run_id) VALUES(2,81)`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
@@ -31,7 +33,7 @@ func TestWorkflowAcknowledgementRequiresResolvedTerminalRun(t *testing.T) {
 		}
 	}
 	if _, err := db.Exec(`INSERT INTO metadata_sync_attempt_work(attempt_id,work_id,provider_id,component,status)
- SELECT 2,?,id,'metadata','unavailable' FROM metadata_provider WHERE code='dlsite'`, workID); err != nil {
+ SELECT 2,?,id,'metadata','failed' FROM metadata_provider WHERE code='dlsite'`, workID); err != nil {
 		t.Fatal(err)
 	}
 	actor := currentUser{ID: userID, Role: "contributor", Permissions: account.PermissionsForRole("contributor")}
@@ -45,11 +47,12 @@ func TestWorkflowAcknowledgementRequiresResolvedTerminalRun(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM workflow_run_review`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("blocked reviews persisted: %d, %v", count, err)
 	}
-	if _, err := db.Exec(`UPDATE work_metadata_sync_state SET status='succeeded'`); err != nil {
+	if _, err := db.Exec(`UPDATE work_metadata_sync_state SET status='unavailable'`); err != nil {
 		t.Fatal(err)
 	}
-	if response := requestWorkflowResource(t, server.reviewWorkflowRun, http.MethodPost, 81, actor, ""); response.Code != http.StatusOK {
-		t.Fatalf("resolved run review = %d: %s", response.Code, response.Body)
+	response := requestWorkflowResource(t, server.reviewWorkflowRun, http.MethodPost, 81, actor, "")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"pendingMetadata":1`) {
+		t.Fatalf("not-found run review = %d: %s", response.Code, response.Body)
 	}
 }
 

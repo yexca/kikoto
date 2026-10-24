@@ -1,20 +1,25 @@
-import { ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronRight, EyeOff, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import type { MetadataIssueWork } from "@/lib/api";
 
+import { isNotFoundIssue } from "./WorkMaintenanceStatus";
+
 export function MetadataIssueDetails({
   items,
   disabled,
   defaultOpen = false,
   onRetry,
+  onDismiss,
 }: {
   items: MetadataIssueWork[];
   disabled: boolean;
   defaultOpen?: boolean;
   onRetry: (ids: number[]) => void;
+  /** Dismisses an edition's not-found outcome; absent without permission. */
+  onDismiss?: (ids: number[]) => void;
 }) {
   const { t } = useTranslation();
   const { resolvedLocale } = useLocale();
@@ -61,17 +66,32 @@ export function MetadataIssueDetails({
                 </p>
               ))}
             </div>
-            {item.providerCode === "dlsite" && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="shrink-0"
-                disabled={disabled || item.retrying}
-                onClick={() => onRetry([item.workId])}
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                {t("workMaintenance.retryEdition", { code: item.primaryCode })}
-              </Button>
+            {(item.providerCode === "dlsite" || (onDismiss && isNotFoundIssue(item))) && (
+              <div className="flex shrink-0 flex-wrap gap-2">
+                {item.providerCode === "dlsite" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={disabled || item.retrying}
+                    onClick={() => onRetry([item.workId])}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    {t("workMaintenance.retryEdition", { code: item.primaryCode })}
+                  </Button>
+                )}
+                {onDismiss && isNotFoundIssue(item) && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={disabled || item.retrying}
+                    title={t("workMaintenance.dismissHint")}
+                    onClick={() => onDismiss([item.workId])}
+                  >
+                    <EyeOff className="h-3.5 w-3.5" />
+                    {t("workMaintenance.dismissEdition", { code: item.primaryCode })}
+                  </Button>
+                )}
+              </div>
             )}
           </li>
         ))}

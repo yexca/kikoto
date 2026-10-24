@@ -2613,6 +2613,7 @@ for (const viewport of ["mobile", "@desktop"]) {
       workflowCode: "local_library_scan",
       status: "partial",
       pendingMetadata: 2,
+      pendingFailedMetadata: 2,
     };
     const running: WorkflowRun = {
       ...sampleRun,
@@ -2674,6 +2675,36 @@ for (const viewport of ["mobile", "@desktop"]) {
     await expect(page.getByRole("heading", { name: "Metadata", exact: true })).toBeVisible();
   });
 }
+
+test("Activity marks a run reviewed when only not-found products remain", async ({ page }) => {
+  await mockWorkflows(page);
+  const notFound: WorkflowRun = {
+    ...sampleRun,
+    id: 64,
+    workflowCode: "metadata_sync",
+    status: "succeeded",
+    pendingMetadata: 1,
+    pendingFailedMetadata: 0,
+  };
+  const retryable: WorkflowRun = { ...notFound, id: 65, status: "partial", pendingFailedMetadata: 1 };
+  const reviews: string[] = [];
+  await page.route("**/api/workflow-runs?*", async (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const runs = params.get("view") === "attention" ? [notFound, retryable] : [];
+    await route.fulfill({ json: workflowRunsPageFixture(runs, { pageSize: Number(params.get("pageSize")) }) });
+  });
+  await page.route("**/api/workflow-runs/*/review", async (route) => {
+    reviews.push(new URL(route.request().url()).pathname);
+    await route.fulfill({ json: { ...notFound, reviewedAt: "2026-01-01 00:00:00" } satisfies WorkflowRun });
+  });
+  await page.goto("/workflows?activity=1");
+  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  const row = (id: number) => activity.getByRole("listitem").filter({ hasText: `#${id}` });
+  await expect(row(65).getByRole("button", { name: "Open metadata issues", exact: true })).toBeVisible();
+  await expect(row(65).getByRole("button", { name: "Mark reviewed", exact: true })).toHaveCount(0);
+  await row(64).getByRole("button", { name: "Mark reviewed", exact: true }).click();
+  await expect.poll(() => reviews).toEqual(["/api/workflow-runs/64/review"]);
+});
 
 for (const viewport of ["mobile", "@desktop"]) {
   test(`${viewport} Activity is global across workflows and Recent runs opens its detail`, async ({

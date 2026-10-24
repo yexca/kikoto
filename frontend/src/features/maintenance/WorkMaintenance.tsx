@@ -1,4 +1,15 @@
-import { ImageOff, Inbox, Loader2, PanelRightOpen, Pencil, RotateCcw, Search, SearchCheck, Trash2 } from "lucide-react";
+import {
+  EyeOff,
+  ImageOff,
+  Inbox,
+  Loader2,
+  PanelRightOpen,
+  Pencil,
+  RotateCcw,
+  Search,
+  SearchCheck,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useId, useMemo, useState, type MouseEvent, type MouseEventHandler } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -18,7 +29,13 @@ import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { MaintenanceToolbar, useMaintenanceSearch, type MaintenanceToolbarSlots } from "./MaintenanceControls";
 import { MetadataIssueDetails } from "./MetadataIssueDetails";
 import { WorkInspector } from "./WorkInspector";
-import { MetadataStatus, SourceStatus, canRetryMetadata, metadataRetryWorkId } from "./WorkMaintenanceStatus";
+import {
+  MetadataStatus,
+  SourceStatus,
+  canRetryMetadata,
+  metadataDismissWorkIds,
+  metadataRetryWorkId,
+} from "./WorkMaintenanceStatus";
 
 const PAGE_SIZES = [25, 50] as const;
 
@@ -104,6 +121,7 @@ export function WorkMaintenance({
   const [deleting, setDeleting] = useState(false);
 
   const [retrying, setRetrying] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
   const [notice, setNotice] = useState("");
   // A custom work has no provider metadata or remote source to retry or check.
   // It never appears in the No available source view, so its own view offers
@@ -169,6 +187,7 @@ export function WorkMaintenance({
     const id = metadataRetryWorkId(work);
     return id === null ? [] : [id];
   });
+  const dismissIds = [...new Set(selectedWorks.flatMap(metadataDismissWorkIds))];
   const reload = () => {
     setRefreshKey((current) => current + 1);
     onChanged?.();
@@ -188,6 +207,22 @@ export function WorkMaintenance({
       setRetrying(false);
     }
   };
+  const dismissMetadata = async (ids: number[]) => {
+    if (!canSyncMetadata || readOnly || dismissing || loading || ids.length === 0) return;
+    setDismissing(true);
+    setNotice("");
+    try {
+      const response = await api.dismissMetadataIssues(ids);
+      setNotice(t("metadataIssues.dismissResult", response));
+      setSelectedWorkIds(new Set());
+      reload();
+    } catch {
+      setNotice(t("metadataIssues.dismissFailed"));
+    } finally {
+      setDismissing(false);
+    }
+  };
+  const onDismiss = canSyncMetadata && !readOnly ? (ids: number[]) => void dismissMetadata(ids) : undefined;
   const navigateWork: MouseEventHandler<HTMLAnchorElement> = (event) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
@@ -292,6 +327,8 @@ export function WorkMaintenance({
       editing={editingWorkId === inspectedWork.id}
       onEdit={onEditWork ? () => editWork(inspectedWork) : undefined}
       onRetry={(ids) => void retryMetadata(ids)}
+      onDismiss={onDismiss}
+      dismissing={dismissing}
       onCheckSources={!customView && inspectedWork.noSource ? () => void checkSources([inspectedWork.id]) : undefined}
       onOpenWork={navigateWork}
       onClose={() => setInspectedWorkId(null)}
@@ -340,6 +377,15 @@ export function WorkMaintenance({
                   count={retryIds.length}
                   disabled={controlsDisabled || retrying}
                   onClick={() => void retryMetadata(retryIds)}
+                />
+              )}
+              {canSyncMetadata && !customView && dismissIds.length > 0 && (
+                <WorkSelectionAction
+                  icon={<EyeOff className="h-4 w-4" />}
+                  label={t("workMaintenance.dismiss")}
+                  count={dismissIds.length}
+                  disabled={controlsDisabled || dismissing}
+                  onClick={() => void dismissMetadata(dismissIds)}
                 />
               )}
               {canManageSources && !customView && (
@@ -570,8 +616,9 @@ export function WorkMaintenance({
                                 {work.metadataIssues.length > 0 && !inspected && (
                                   <MetadataIssueDetails
                                     items={work.metadataIssues}
-                                    disabled={controlsDisabled || retrying}
+                                    disabled={controlsDisabled || retrying || dismissing}
                                     onRetry={(ids) => void retryMetadata(ids)}
+                                    onDismiss={onDismiss}
                                   />
                                 )}
                               </div>

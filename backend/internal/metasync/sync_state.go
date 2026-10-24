@@ -173,6 +173,8 @@ func recordSyncOutcome(ctx context.Context, tx *sql.Tx, workID, providerID int64
 			first_failed_at = CASE WHEN excluded.attempt_id < work_metadata_sync_state.attempt_id THEN work_metadata_sync_state.first_failed_at
 				WHEN excluded.status = 'succeeded' THEN NULL ELSE COALESCE(work_metadata_sync_state.first_failed_at, CURRENT_TIMESTAMP) END,
 			checked_at = CASE WHEN excluded.attempt_id >= work_metadata_sync_state.attempt_id THEN CURRENT_TIMESTAMP ELSE work_metadata_sync_state.checked_at END,
+			dismissed_at = CASE WHEN excluded.attempt_id >= work_metadata_sync_state.attempt_id AND excluded.status != work_metadata_sync_state.status
+				THEN NULL ELSE work_metadata_sync_state.dismissed_at END,
 			attempt_id = MAX(work_metadata_sync_state.attempt_id, excluded.attempt_id)
 	`, workID, providerID, component, id, lastSuccess, status, status, status)
 	if err != nil || component != "metadata" || status == "failed" {

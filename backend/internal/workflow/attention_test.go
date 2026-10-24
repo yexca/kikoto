@@ -152,3 +152,61 @@ func TestAttentionSettlesNotFoundFilledByRemoteSource(t *testing.T) {
 		t.Fatalf("retryable failure settled: %d", got)
 	}
 }
+
+// A not-found product, such as a delisted work, leaves a viewer's attention
+// once that viewer reviews the run, and everyone's once it is dismissed. A
+// retryable failure needs attention despite a review.
+func TestAttentionLetsReviewsAndDismissalsSettleNotFound(t *testing.T) {
+	db := openWorkflowTestDB(t)
+	ctx := context.Background()
+	for _, statement := range []string{
+		`INSERT INTO user_account(id,username,role) VALUES(1,'example_admin_a','admin'),(2,'example_admin_b','admin')`,
+		`INSERT INTO workflow_run(id,workflow_code,display_name,status,trigger_type) VALUES(31,'metadata_sync','Example metadata','succeeded','manual')`,
+		`INSERT INTO metadata_sync_attempt(id) VALUES(2)`,
+		`INSERT INTO metadata_sync_attempt_run(attempt_id,workflow_run_id) VALUES(2,31)`,
+	} {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO work(id,primary_code,title) VALUES(1,?,'Example work')`, testfixture.WorkCode(testfixture.PrefixRJ, 0)); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO metadata_sync_attempt_work(attempt_id,work_id,provider_id,component,status) SELECT 2,1,id,'metadata','unavailable' FROM metadata_provider WHERE code='dlsite'`,
+		`INSERT INTO work_metadata_sync_state(work_id,provider_id,component,attempt_id,status) SELECT 1,id,'metadata',2,'unavailable' FROM metadata_provider WHERE code='dlsite'`,
+		`INSERT INTO workflow_run_review(workflow_run_id,user_id,status,reviewed_at) VALUES(31,1,'reviewed',CURRENT_TIMESTAMP)`,
+	} {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := NewStore(db)
+	attention := func(viewer int64) RunsPage {
+		t.Helper()
+		result, err := store.ListRuns(ctx, ListRunsOptions{View: "attention", Page: 1, PageSize: 10, ViewerUserID: viewer, CanViewAll: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	if got := attention(1).Total; got != 0 {
+		t.Fatalf("reviewed not-found run needs attention: %d", got)
+	}
+	unreviewed := attention(2)
+	if unreviewed.Total != 1 || unreviewed.Runs[0].PendingMetadata != 1 || unreviewed.Runs[0].PendingFailedMetadata != 0 {
+		t.Fatalf("another viewer's not-found run: %#v", unreviewed)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE work_metadata_sync_state SET status='failed'`); err != nil {
+		t.Fatal(err)
+	}
+	if got := attention(1); got.Total != 1 || got.Runs[0].PendingFailedMetadata != 1 {
+		t.Fatalf("review hid a retryable failure: %#v", got)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE work_metadata_sync_state SET status='unavailable',dismissed_at=CURRENT_TIMESTAMP`); err != nil {
+		t.Fatal(err)
+	}
+	if got := attention(2).Total; got != 0 {
+		t.Fatalf("dismissed not-found run needs attention: %d", got)
+	}
+}

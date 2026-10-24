@@ -16,6 +16,16 @@ export function metadataRetryWorkId(work: MaintenanceWork) {
   return work.metadataNotSynced && !work.metadataSyncing ? work.id : null;
 }
 
+/** Whether an edition's provider reports the product as not found, an outcome a user may dismiss. */
+export function isNotFoundIssue(item: MaintenanceWork["metadataIssues"][number]) {
+  return item.issues.some((issue) => issue.status === "unavailable");
+}
+
+/** The editions whose not-found outcome a dismissal settles, once each. */
+export function metadataDismissWorkIds(work: MaintenanceWork) {
+  return [...new Set(work.metadataIssues.filter(isNotFoundIssue).map((item) => item.workId))];
+}
+
 /** Whether the row needs any attention: a metadata issue, a first sync, or no available source. */
 export function workNeedsAttention(work: MaintenanceWork) {
   return work.metadataIssues.length > 0 || work.metadataNotSynced || work.sourceTier === "none";

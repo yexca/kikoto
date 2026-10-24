@@ -314,7 +314,7 @@ func scanRun(row rowScanner) (RunRecord, error) {
 		&item.JobCount, &item.CompletedJobs, &item.FailedJobs, &item.SkippedJobs,
 		&item.ProgressBytesCurrent, &item.ProgressBytesTotal, &item.ProgressBytesUnknownItems,
 		&item.CandidateCount, &item.PendingCandidates, &item.AcceptedCandidates, &item.RejectedCandidates,
-		&item.ReviewedAt, &reviewedByUserID, &definitionID, &triggerID, &item.PendingMetadata, &item.Subject,
+		&item.ReviewedAt, &reviewedByUserID, &definitionID, &triggerID, &item.PendingMetadata, &item.PendingFailedMetadata, &item.Subject,
 	)
 	item.ReviewedByUserID, item.DefinitionID, item.TriggerID = sqlutil.Int64(reviewedByUserID), sqlutil.Int64(definitionID), sqlutil.Int64(triggerID)
 	return item, err
@@ -363,7 +363,7 @@ func runSelectSQL(reviewFilter string) string {
 		(SELECT COUNT(*) FROM workflow_candidate WHERE workflow_candidate.workflow_run_id = run.id AND workflow_candidate.status = 'rejected'),
 		COALESCE((SELECT review.reviewed_at FROM workflow_run_review AS review WHERE review.workflow_run_id = run.id AND review.status = 'reviewed'` + reviewFilter + ` ORDER BY review.reviewed_at DESC, review.id DESC LIMIT 1), ''),
 		(SELECT review.user_id FROM workflow_run_review AS review WHERE review.workflow_run_id = run.id AND review.status = 'reviewed'` + reviewFilter + ` ORDER BY review.reviewed_at DESC, review.id DESC LIMIT 1),
-		run.workflow_definition_id, run.trigger_id, ` + pendingMetadataSQL + `, ` + runSubjectSQL
+		run.workflow_definition_id, run.trigger_id, ` + pendingMetadataSQL + `, ` + pendingFailedMetadataSQL + `, ` + runSubjectSQL
 }
 
 // runSubjectSQL names the one work, circle, series, voice actor, or remote

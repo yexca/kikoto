@@ -1,7 +1,10 @@
 package workflow
 
 type RunRecord struct {
-	PendingMetadata           int64  `json:"pendingMetadata"`
+	PendingMetadata int64 `json:"pendingMetadata"`
+	// PendingFailedMetadata counts the pending works with a retryable failure;
+	// the rest are products a provider reports as not found.
+	PendingFailedMetadata     int64  `json:"pendingFailedMetadata"`
 	ID                        int64  `json:"id"`
 	WorkflowCode              string `json:"workflowCode"`
 	DisplayName               string `json:"displayName"`

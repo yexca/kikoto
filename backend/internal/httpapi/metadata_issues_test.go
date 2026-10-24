@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -175,6 +176,69 @@ func TestMetadataJobFailuresExposeRunRecoverySummary(t *testing.T) {
 	var page metasync.IssuePage
 	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || response.Code != http.StatusOK || page.Total != 1 {
 		t.Fatalf("filtered recovery=%d %s %v", response.Code, response.Body, err)
+	}
+}
+
+// Dismissal settles a not-found product, such as a delisted work, through a
+// repeated not-found result; a retryable failure is never dismissed and lists
+// the work again.
+func TestMetadataIssueDismissalSettlesNotFoundUntilOutcomeChanges(t *testing.T) {
+	db := openMigratedTestDB(t)
+	s := NewServer(db, config.Config{CacheRoot: t.TempDir()})
+	notFoundID := seedMetadataIssue(t, db, 0)
+	failedID := seedMetadataIssue(t, db, 1)
+	if _, err := db.Exec(`UPDATE work_metadata_sync_state SET status='failed' WHERE work_id=?`, failedID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO app_setting(key,value_json) VALUES ('remote_request_delay_base_seconds','0')`); err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"workIds":[%d,%d]}`, notFoundID, failedID)
+	if response := metadataRequest(s.dismissMetadataIssues, http.MethodPost, "/api/metadata/issues/dismiss", body, "sources:write"); response.Code != http.StatusForbidden {
+		t.Fatalf("sources-only dismissal=%d", response.Code)
+	}
+	if response := metadataRequest(s.dismissMetadataIssues, http.MethodPost, "/api/metadata/issues/dismiss", `{"workIds":[]}`, "metadata:sync"); response.Code != http.StatusBadRequest {
+		t.Fatalf("empty dismissal=%d", response.Code)
+	}
+	response := metadataRequest(s.dismissMetadataIssues, http.MethodPost, "/api/metadata/issues/dismiss", body, "metadata:sync")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"dismissed":1,"skipped":1`) {
+		t.Fatalf("dismissal=%d %s", response.Code, response.Body)
+	}
+	pendingIDs := func() []int64 {
+		t.Helper()
+		response := metadataRequest(s.listMetadataIssues, http.MethodGet, "/api/metadata/issues", "", "metadata:sync")
+		var page metasync.IssuePage
+		if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || response.Code != http.StatusOK {
+			t.Fatalf("issues=%d %s %v", response.Code, response.Body, err)
+		}
+		ids := []int64{}
+		for _, item := range page.Items {
+			ids = append(ids, item.WorkID)
+		}
+		return ids
+	}
+	if got := pendingIDs(); len(got) != 1 || got[0] != failedID {
+		t.Fatalf("pending after dismissal=%v", got)
+	}
+	recheck := func(failure error) {
+		t.Helper()
+		s.dlsiteClient = &recoveryMetadataClient{failure: failure}
+		if _, err := s.enqueueWorkMetadataSyncWithOptions(context.Background(), notFoundID, true); err != nil {
+			t.Fatal(err)
+		}
+		_ = s.runNextQueuedWorkflowJob(context.Background())
+	}
+	recheck(dlsite.ErrNoProduct)
+	var attempts int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM metadata_sync_attempt_work WHERE work_id=? AND status='unavailable'`, notFoundID).Scan(&attempts); err != nil || attempts != 1 {
+		t.Fatalf("not-found recheck attempts=%d %v", attempts, err)
+	}
+	if got := pendingIDs(); len(got) != 1 || got[0] != failedID {
+		t.Fatalf("repeated not found reopened the dismissal: %v", got)
+	}
+	recheck(errors.New("synthetic upstream timeout"))
+	if got := pendingIDs(); len(got) != 2 {
+		t.Fatalf("retryable failure stayed dismissed: %v", got)
 	}
 }
 

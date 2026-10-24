@@ -235,11 +235,16 @@ an empty product list. If any request failed, the attempt is recorded as a
 retryable failure.
 
 A pending metadata issue is a failed attempt, or a not-found outcome for a work
-that no remote source has filled. A work a
+that no remote source has filled and no operator has dismissed. A work a
 [remote metadata fallback](#remote-metadata-fallback) filled is complete: its
 DLsite not-found outcome stays recorded, but it leaves the issue list, run
-pending counts, and Activity attention. A catalog family is not synced while
-none of its editions has a DLsite attempt outcome, provider state, or snapshot.
+pending counts, and Activity attention. `POST /api/metadata/issues/dismiss`
+(`metadata:sync`, refused in Demo) dismisses the selected works' not-found
+outcomes, such as delisted products, with the same effect; it skips works
+without one and never dismisses a retryable failure. A dismissal survives a
+repeated not-found result, and an outcome with another status clears it. A
+catalog family is not synced while none of its editions has a DLsite attempt
+outcome, provider state, or snapshot.
 
 The unified `/api/maintenance/works` read composes pending metadata issues and
 not-synced catalog families with the Library's live no-source predicate, then
@@ -515,8 +520,12 @@ require acknowledgement. The successful-attempt boundary prevents a later
 failure from reopening an older resolved association. History contains
 successful runs and runs that were cancelled or manually acknowledged, while
 unresolved failures stay in Needs attention. Acknowledgements belong to the
-viewer; they cannot dismiss an active run or unresolved candidate/metadata
-issue. Demo keeps these actions read-only.
+viewer; they cannot dismiss an active run, an unresolved candidate, or a
+retryable metadata failure. A run whose remaining metadata issues are all
+not-found outcomes can be acknowledged, which removes it from that viewer's
+Needs attention while the issues stay in the Metadata issue list. Run records
+expose `pendingMetadata` and its retryable share, `pendingFailedMetadata`.
+Demo keeps these actions read-only.
 
 ## Popular Collections
 
