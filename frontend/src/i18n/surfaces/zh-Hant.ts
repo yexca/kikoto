@@ -507,6 +507,8 @@ export const surfaceHant = {
     dismissEdition: "忽略 {{code}}",
     dismiss: "忽略無法使用的作品",
     dismissHint: "不再將此無法使用的作品列為問題，例如作品已下架。之後同步出現不同結果時會重新列出。",
+    fetchFrom: "從 {{source}} 取得",
+    fetchEditionFrom: "從 {{source}} 取得 {{code}}",
     retrySelected: "重試中繼資料（{{count}}）",
     empty: "沒有需要關注的作品。",
     noMatching: "沒有符合的作品",

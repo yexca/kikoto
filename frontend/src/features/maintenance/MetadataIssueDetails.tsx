@@ -1,9 +1,9 @@
-import { ChevronRight, EyeOff, RefreshCw } from "lucide-react";
+import { ChevronRight, CloudDownload, EyeOff, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
-import type { MetadataIssueWork } from "@/lib/api";
+import type { LibrarySource, MetadataIssueWork } from "@/lib/api";
 
 import { isNotFoundIssue } from "./WorkMaintenanceStatus";
 
@@ -11,13 +11,17 @@ export function MetadataIssueDetails({
   items,
   disabled,
   defaultOpen = false,
+  remoteSources = [],
   onRetry,
   onDismiss,
 }: {
   items: MetadataIssueWork[];
   disabled: boolean;
   defaultOpen?: boolean;
-  onRetry: (ids: number[]) => void;
+  /** Enabled remote sources that provide metadata; each can be asked instead of DLsite. */
+  remoteSources?: LibrarySource[];
+  /** Retries from DLsite, or from the given remote source. */
+  onRetry: (ids: number[], sourceId?: number) => void;
   /** Dismisses an edition's not-found outcome; absent without permission. */
   onDismiss?: (ids: number[]) => void;
 }) {
@@ -79,6 +83,19 @@ export function MetadataIssueDetails({
                     {t("workMaintenance.retryEdition", { code: item.primaryCode })}
                   </Button>
                 )}
+                {item.providerCode === "dlsite" &&
+                  remoteSources.map((source) => (
+                    <Button
+                      key={source.id}
+                      size="sm"
+                      variant="outline"
+                      disabled={disabled || item.retrying}
+                      onClick={() => onRetry([item.workId], source.id)}
+                    >
+                      <CloudDownload className="h-3.5 w-3.5" />
+                      {t("workMaintenance.fetchEditionFrom", { code: item.primaryCode, source: source.displayName })}
+                    </Button>
+                  ))}
                 {onDismiss && isNotFoundIssue(item) && (
                   <Button
                     size="sm"

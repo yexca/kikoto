@@ -227,7 +227,9 @@ fallback configuration live in Workflows, and creator catalog freshness in
 Settings → Library.
 Activity run detail links to the unresolved
 issues encountered by that run. Selecting works queues recoverable family-sync
-jobs, reusing an already queued/running job for that family. Explicit recovery
+jobs, reusing an already queued/running job for that family, or asks one
+selected remote source instead (see
+[Remote Metadata Fallback](#remote-metadata-fallback)). Explicit recovery
 can recheck a provider's `not_found` observation without erasing it first.
 Normal bulk and work-detail refreshes skip unavailable products.
 DLsite records `not_found` only when every candidate site and locale returned
@@ -259,7 +261,8 @@ queues a family sync for a selected not-synced family as for a pending issue. Ev
 reason except `reason=custom` leaves out custom works; `reason=custom` lists
 every custom work family, with its no-source state, and nothing else. `/api/maintenance/works/counts` counts the families of the catalog, attention,
 metadata, no-source, and custom views under the same permissions, leaving out
-a view the caller may not open.
+a view the caller may not open. It reads every family once and evaluates its
+metadata and source predicates once for all views.
 `/api/metadata/translation-coverage` pages every family, catalog and custom,
 with the same search and narrows it to the parts missing in one target
 language. It reads stored editions, manual titles and descriptions, accepted LLM translations,
@@ -1276,9 +1279,12 @@ sibling editions.
 ## Remote Metadata Fallback
 
 The detail metadata editor also offers an explicit `From <source name>`
-refresh for each enabled source with declared metadata capability.
-`POST /api/works/{id}/metadata-sync` accepts an optional `sourceId`; without
-one it queues the DLsite family refresh. A source refresh requests only
+refresh for each enabled source with declared metadata capability, and
+Metadata issue recovery offers the same per source.
+`POST /api/works/{id}/metadata-sync` and `POST /api/metadata/issues/retry`
+accept an optional `sourceId`; without one they queue the DLsite family
+refresh. Issue recovery with a source still queues only works with a pending
+DLsite issue or a family that was never synced. A source refresh requests only
 the current work, bypasses cached descriptions, and operates independently of
 automatic fallback settings and DLsite availability. It preserves manual and
 DLsite precedence and uses the same bounded request policy described below.

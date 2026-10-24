@@ -1,4 +1,5 @@
 import {
+  CloudDownload,
   EyeOff,
   ImageOff,
   Inbox,
@@ -20,8 +21,10 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
 import { WorkSelectionAction, WorkSelectionBar } from "@/components/work-collection/WorkSelectionBar";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useMetadataSyncSources } from "@/hooks/useMetadataSyncSources";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { api, assetURL, type MaintenanceWork, type MaintenanceWorkPage, type Work } from "@/lib/api";
+import { librarySourceProvidesMetadata } from "@/lib/remoteSourceCapabilities";
 import { cn } from "@/lib/tailwindClassNames";
 import { currentPageSelection, pageAfterUnlinkedDelete, setCurrentPageSelected } from "./unlinkedWorksModel";
 
@@ -128,6 +131,15 @@ export function WorkMaintenance({
   // the confirmed deletion when its folder is gone.
   const customView = reason === "custom";
   const deleteView = reason === "no_source" || customView;
+  // Enabled remote sources that provide metadata can each be asked instead of DLsite.
+  const metadataSources = useMetadataSyncSources(canSyncMetadata && !readOnly && !customView);
+  const remoteSources = useMemo(
+    () =>
+      canSyncMetadata && !readOnly && !customView
+        ? (metadataSources.sources ?? []).filter((source) => source.enabled && librarySourceProvidesMetadata(source))
+        : [],
+    [canSyncMetadata, customView, metadataSources.sources, readOnly],
+  );
 
   useEffect(() => {
     setPage(1);
@@ -192,12 +204,12 @@ export function WorkMaintenance({
     setRefreshKey((current) => current + 1);
     onChanged?.();
   };
-  const retryMetadata = async (ids: number[]) => {
+  const retryMetadata = async (ids: number[], sourceId?: number) => {
     if (!canSyncMetadata || readOnly || retrying || loading || ids.length === 0) return;
     setRetrying(true);
     setNotice("");
     try {
-      const response = await api.retryMetadataIssues(ids);
+      const response = await api.retryMetadataIssues(ids, sourceId);
       setNotice(t("metadataIssues.retryResult", response));
       setSelectedWorkIds(new Set());
       reload();
@@ -326,7 +338,8 @@ export function WorkMaintenance({
       checking={checkingWorkIds.has(inspectedWork.id)}
       editing={editingWorkId === inspectedWork.id}
       onEdit={onEditWork ? () => editWork(inspectedWork) : undefined}
-      onRetry={(ids) => void retryMetadata(ids)}
+      remoteSources={remoteSources}
+      onRetry={(ids, sourceId) => void retryMetadata(ids, sourceId)}
       onDismiss={onDismiss}
       dismissing={dismissing}
       onCheckSources={!customView && inspectedWork.noSource ? () => void checkSources([inspectedWork.id]) : undefined}
@@ -379,6 +392,17 @@ export function WorkMaintenance({
                   onClick={() => void retryMetadata(retryIds)}
                 />
               )}
+              {canSyncMetadata &&
+                remoteSources.map((source) => (
+                  <WorkSelectionAction
+                    key={source.id}
+                    icon={<CloudDownload className="h-4 w-4" />}
+                    label={t("workMaintenance.fetchFrom", { source: source.displayName })}
+                    count={retryIds.length}
+                    disabled={controlsDisabled || retrying}
+                    onClick={() => void retryMetadata(retryIds, source.id)}
+                  />
+                ))}
               {canSyncMetadata && !customView && dismissIds.length > 0 && (
                 <WorkSelectionAction
                   icon={<EyeOff className="h-4 w-4" />}
@@ -617,7 +641,8 @@ export function WorkMaintenance({
                                   <MetadataIssueDetails
                                     items={work.metadataIssues}
                                     disabled={controlsDisabled || retrying || dismissing}
-                                    onRetry={(ids) => void retryMetadata(ids)}
+                                    remoteSources={remoteSources}
+                                    onRetry={(ids, sourceId) => void retryMetadata(ids, sourceId)}
                                     onDismiss={onDismiss}
                                   />
                                 )}

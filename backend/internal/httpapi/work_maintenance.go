@@ -167,40 +167,17 @@ func (s *Server) countWorkMaintenance(w http.ResponseWriter, r *http.Request) {
 	if canMetadata {
 		base.MetadataWhere, base.MetadataArgs = maintenanceMetadataPredicate(0)
 	}
-	count := func(reason string) (int, error) {
-		options := base
-		options.Reason = reason
-		return s.libraryStore.CountMaintenance(r.Context(), options)
-	}
-	var counts maintenanceCounts
-	var err error
-	if counts.Catalog, err = count("catalog"); err != nil {
+	views, err := s.libraryStore.CountMaintenanceViews(r.Context(), base)
+	if err != nil {
 		writeError(w, err)
 		return
 	}
-	if counts.All, err = count("all"); err != nil {
-		writeError(w, err)
-		return
-	}
-	if counts.Custom, err = count("custom"); err != nil {
-		writeError(w, err)
-		return
-	}
+	counts := maintenanceCounts{Catalog: views.Catalog, All: views.All, Custom: views.Custom}
 	if canMetadata {
-		metadata, err := count("metadata")
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		counts.Metadata = &metadata
+		counts.Metadata = &views.Metadata
 	}
 	if canSources {
-		noSource, err := count("no_source")
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		counts.NoSource = &noSource
+		counts.NoSource = &views.NoSource
 	}
 	writeJSON(w, http.StatusOK, counts)
 }

@@ -572,6 +572,8 @@ export const surfaceEnglish = {
     dismiss: "Dismiss unavailable",
     dismissHint:
       "Stop listing this unavailable product as an issue, for example after it was delisted. A later different result lists it again.",
+    fetchFrom: "Fetch from {{source}}",
+    fetchEditionFrom: "Fetch {{code}} from {{source}}",
     retrySelected: "Retry metadata ({{count}})",
     empty: "No works need attention.",
     noMatching: "No matching works",

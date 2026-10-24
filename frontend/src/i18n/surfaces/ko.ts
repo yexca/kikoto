@@ -525,6 +525,8 @@ export const surfaceKorean = {
     dismiss: "사용할 수 없는 작품 무시",
     dismissHint:
       "판매 중지 등으로 사용할 수 없는 작품을 더 이상 문제로 표시하지 않습니다. 이후 다른 결과가 나오면 다시 표시됩니다.",
+    fetchFrom: "{{source}}에서 가져오기",
+    fetchEditionFrom: "{{source}}에서 {{code}} 가져오기",
     retrySelected: "메타데이터 재시도 ({{count}})",
     empty: "확인이 필요한 작품이 없습니다.",
     noMatching: "일치하는 작품이 없습니다",

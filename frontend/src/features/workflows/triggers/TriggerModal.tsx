@@ -29,7 +29,7 @@ import {
 import { PresetParameterFields, presetBlockerText } from "@/features/workflows/run-forms/PresetRunPanel";
 import { SourcePresenceFields } from "@/features/workflows/run-forms/SourcePresenceRunPanel";
 import { TagTemplateField } from "@/features/workflows/run-forms/TagTemplateField";
-import { useMetadataSyncSources } from "@/features/workflows/useMetadataSyncSources";
+import { useMetadataSyncSources } from "@/hooks/useMetadataSyncSources";
 import {
   REMOTE_POPULAR_TAG_TEMPLATE,
   dlsitePopularDefaultTagTemplate,
