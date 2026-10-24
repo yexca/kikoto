@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ClipboardCopy, ClipboardPaste, FileText, Folder, Languages, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input, Textarea } from "@/components/ui/input";
@@ -238,6 +239,16 @@ export function FileDisplayNamesDialog({
                     <span className="w-10 shrink-0 truncate text-xs text-muted-foreground" aria-hidden="true">
                       {row.extension}
                     </span>
+                    {/* A stored name an LLM wrote keeps its mark until someone edits or clears it. */}
+                    {row.llmLanguages.includes(language) && value === (row.names[language] ?? "") && value !== "" && (
+                      <Badge
+                        variant="info"
+                        className="shrink-0 px-1.5 py-0 text-2xs"
+                        title={t("fileDisplayNames.llmName")}
+                      >
+                        {t("workTitles.llmBadge")}
+                      </Badge>
+                    )}
                   </span>
                 </li>
               );

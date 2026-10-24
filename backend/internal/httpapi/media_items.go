@@ -172,7 +172,35 @@ func (s *Server) loadMediaItemRows(ctx context.Context, userID int64, mediaWorkI
 	if err := s.attachLyricsAssignments(ctx, mediaWorkID, mediaItems, itemIndexes); err != nil {
 		return nil, nil, err
 	}
+	if err := s.attachLyricsAISources(ctx, mediaWorkID, mediaItems, itemIndexes); err != nil {
+		return nil, nil, err
+	}
 	return mediaItems, itemIndexes, nil
+}
+
+// attachLyricsAISources names the models behind each AI-made lyrics file.
+func (s *Server) attachLyricsAISources(ctx context.Context, mediaWorkID int64, mediaItems []mediaItemDetail, itemIndexes map[int64]int) error {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT source.lyrics_media_item_id, source.asr_model, source.llm_model
+		FROM media_lyrics_ai_source AS source
+		INNER JOIN media_item AS item ON item.id = source.lyrics_media_item_id
+		WHERE item.work_id = ?
+	`, mediaWorkID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int64
+		var models lyricsAIModels
+		if err := rows.Scan(&id, &models.ASRModel, &models.LLMModel); err != nil {
+			return err
+		}
+		if index, ok := itemIndexes[id]; ok {
+			mediaItems[index].AILyrics = &models
+		}
+	}
+	return rows.Err()
 }
 
 func (s *Server) loadMediaLocationRows(ctx context.Context, mediaWorkID int64, mediaItems []mediaItemDetail, itemIndexes map[int64]int) error {

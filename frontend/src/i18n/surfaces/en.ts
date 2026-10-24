@@ -327,14 +327,16 @@ export const surfaceEnglish = {
     batch: {
       title_one: "Translate {{count}} work",
       title_other: "Translate {{count}} works",
-      description: "Queue a background translation into {{language}} for each work.",
-      queued_one: "Queued {{count}} translation.",
-      queued_other: "Queued {{count}} translations.",
-      reviewHint: "Each result waits 24 hours for review under Translation reviews in the work's metadata editor.",
+      description: "Translate what each work lacks into {{language}} with AI.",
+      queued_one: "Queued translation of {{count}} work.",
+      queued_other: "Queued translation of {{count}} works.",
+      skipped_one: "{{count}} work had nothing missing.",
+      skipped_other: "{{count}} works had nothing missing.",
+      reviewHint: "Results wait for review on this page.",
       unsupported: "The chosen model does not translate into {{language}}.",
-      scopeHint: "Lyrics are translated from each work's Manage lyrics. File names are edited in its directory.",
-      queue_one: "Queue {{count}} translation",
-      queue_other: "Queue {{count}} translations",
+      scopeHint: "Lyrics are chosen track by track in each work's Translate with AI.",
+      queue_one: "Translate {{count}} work",
+      queue_other: "Translate {{count}} works",
     },
   },
   customWorks: {
@@ -844,6 +846,10 @@ export const surfaceEnglish = {
         "Applies to LLM providers and ASR services. Choose how LLM translation is assessed below; ASR uses work metadata. Each service has its own receive maximum. Unknown and blocked assessments are refused.",
       policySaved: "Content safety policy saved.",
       policySaveFailed: "Content safety policy could not be saved.",
+      attributionTitle: "AI lyrics",
+      attribution: "Name the models in AI-made lyrics",
+      attributionDescription:
+        "Lyrics files written by speech recognition or translation start with a line, in the lyrics' language, naming the models that wrote them. The choice applies to files written after it changes.",
       alwaysScanAllAges: "Scan all-ages works too",
       alwaysScanAllAgesDescription:
         "Run additional sensitive keyword checks on all-ages works too. High-sensitivity and blocking rules always apply. LLM text-only mode always checks every applicable keyword rule; this option still applies to ASR.",
@@ -915,7 +921,7 @@ export const surfaceEnglish = {
       unlinked: "Work maintenance",
       cache: "Cache & Fetch",
       proxy: "Proxy",
-      llm: "LLM & ASR",
+      llm: "ASR & LLM",
       users: "Users",
       access: "Access",
       paths: "Paths",
@@ -1195,12 +1201,12 @@ export const surfaceEnglish = {
       scopeNeedsProxy: "Add a proxy before choosing where proxies apply.",
       scopes: {
         all: "All",
-        allDescription: "DLsite, remote sources, LLM & ASR, and other requests",
+        allDescription: "DLsite, remote sources, ASR & LLM, and other requests",
         dlsite: "DLsite",
         dlsiteDescription: "Metadata, covers, and creator catalogs",
         remote: "Remote sources",
         remoteDescription: "Browsing, playback, and downloads. Each source can override this below.",
-        ai: "LLM & ASR",
+        ai: "ASR & LLM",
         aiDescription:
           "LLM providers and speech recognition services at another address. Services on this server's machine always connect directly.",
         other: "Other",
@@ -1881,6 +1887,10 @@ export const surfaceEnglish = {
       },
       work_folder_edit: { name: "Edit work files" },
       llm_translation: { name: "LLM translation" },
+      ai_translation: {
+        name: "Translate with AI",
+        description: "Transcribe and translate what one work lacks, for review on the Translation page.",
+      },
     },
     running: "Running",
     noRecentRuns: "No recent runs.",
@@ -2385,6 +2395,8 @@ export const surfaceEnglish = {
     library: "Open Library",
   },
   player: {
+    aiLyrics: "AI",
+    aiLyricsBy: "Lyrics written by {{models}}",
     play: "Play",
     pause: "Pause",
     openCompact: "Open compact player",
@@ -2551,6 +2563,7 @@ export const surfaceEnglish = {
     manageFiles: "Manage files",
     manageLyrics: "Manage lyrics",
     editFileNames: "Edit display names",
+    translateWithAI: "Translate with AI",
     retryMetadata: "Retry metadata",
     firstPull: "First pull",
     catalogNotPulledHint: "Only works this library already knows are listed. First pull reads the full DLsite catalog.",
@@ -2657,6 +2670,7 @@ export const surfaceEnglish = {
   },
 
   fileDisplayNames: {
+    llmName: "Accepted from an LLM translation. Edit or clear it to replace it.",
     title: "Display names",
     description:
       "Names the directory shows to viewers whose metadata language is this one. Files and folders on disk keep their real names, and an empty field shows the real name.",
@@ -3370,7 +3384,7 @@ export const surfaceEnglish = {
     demoCue: "Sample line {{number}}. Demo did not transcribe this audio.",
     service: "Service",
     detect: "Detect automatically",
-    noService: "No speech recognition service is ready. An administrator can add one under Settings → LLM & ASR.",
+    noService: "No speech recognition service is ready. An administrator can add one under Settings → ASR & LLM.",
     noServiceShort: "No service available",
     loading: "Loading…",
     servicesFailed: "Speech recognition services could not be loaded.",
@@ -3409,7 +3423,7 @@ export const surfaceEnglish = {
       service_out_of_memory:
         "The service could not load its model because memory ran out. Free GPU memory or set the helper's GPU sharing to take turns, then transcribe again.",
       unsupported_language_pair:
-        "The model does not write lyrics in this language from this audio language. An administrator can fetch the service's models again under Settings → LLM & ASR, then transcribe again.",
+        "The model does not write lyrics in this language from this audio language. An administrator can fetch the service's models again under Settings → ASR & LLM, then transcribe again.",
       ffmpeg_unavailable: "Audio preparation is unavailable on this server.",
       endpoint_unavailable: "The service connection could not be prepared.",
       cancelled: "The transcription was cancelled.",

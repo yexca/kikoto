@@ -1,18 +1,9 @@
 import type { LyricsManagerAudio } from "@/features/work-detail/lyrics/lyricsManagerModel";
-import type { TranslationSourceFile } from "@/features/work-detail/lyrics/lyricsTaskModel";
-import type {
-  ASRService,
-  ASRTranscription,
-  ASRTranscriptionState,
-  LLMLyricsTranslation,
-  LLMLyricsTranslationState,
-  LLMTranslationModel,
-} from "@/lib/api";
-import { allLyricsLanguages, lyricsLanguages } from "@/lib/lyricsLanguage";
+import type { ASRService, ASRTranscription, ASRTranscriptionState } from "@/lib/api";
 
 // Demo contacts no transcription or translation service and saves nothing.
-// These samples show the Transcribe and Translate tabs in each of their
-// states over the work's own tracks. Every name is an obvious example.
+// These samples show the Transcribe tab in each of its states over the
+// work's own tracks. Every name is an obvious example.
 
 export const demoASRServices: ASRService[] = [
   {
@@ -20,17 +11,6 @@ export const demoASRServices: ASRService[] = [
     name: "Example speech service",
     defaultModel: "example-small",
     models: ["example-small", "example-large"],
-    boundary: "private",
-    maxContentClass: "sensitive",
-  },
-];
-
-export const demoTranslationModels: LLMTranslationModel[] = [
-  {
-    id: "demo-llm",
-    name: "Example LLM provider",
-    defaultModel: "example-model",
-    models: ["example-model"],
     boundary: "private",
     maxContentClass: "sensitive",
   },
@@ -65,53 +45,6 @@ export function demoTranscriptions(audio: readonly LyricsManagerAudio[], languag
       createdAt: "",
     };
   });
-}
-
-const demoTranslationStates: { state: LLMLyricsTranslationState; failureCode?: string }[] = [
-  { state: "ready" },
-  { state: "requesting" },
-  { state: "failed", failureCode: "endpoint_unavailable" },
-];
-
-/** A track the matrix shows: its readable lyrics file per language. */
-export type DemoTranslationTrack = { audioId: number; lyrics: ReadonlyMap<string, number> };
-
-/**
- * One sample translation in each state, over the first tracks that have
- * lyrics, each into a language the track lacks other than the original.
- */
-export function demoLyricsTranslations(
-  tracks: readonly DemoTranslationTrack[],
-  sourceFiles: ReadonlyMap<number, TranslationSourceFile>,
-  origin: string,
-): LLMLyricsTranslation[] {
-  const provider = demoTranslationModels[0];
-  const result: LLMLyricsTranslation[] = [];
-  for (const track of tracks) {
-    if (result.length === demoTranslationStates.length) break;
-    const sourceID = track.lyrics.get(origin) ?? track.lyrics.values().next().value;
-    const file = sourceID === undefined ? undefined : sourceFiles.get(sourceID);
-    const targets = lyricsLanguages
-      .map(([language]) => language)
-      .filter((language) => language !== allLyricsLanguages && language !== origin && !track.lyrics.has(language));
-    if (!file || targets.length === 0) continue;
-    const { state, failureCode } = demoTranslationStates[result.length];
-    result.push({
-      taskId: result.length + 1,
-      runId: 0,
-      audioMediaItemId: track.audioId,
-      lyricsLocationId: file.locationId,
-      // Successive samples go to successive languages where the track lacks several.
-      targetLanguage: targets[result.length % targets.length],
-      providerName: provider.name,
-      model: provider.models[0],
-      state,
-      ...(failureCode ? { failureCode } : {}),
-      ...(state === "ready" ? { previewId: `demo-${track.audioId}` } : {}),
-      updatedAt: "",
-    });
-  }
-  return result;
 }
 
 const demoCueCount = 6;

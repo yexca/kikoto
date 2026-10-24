@@ -14,6 +14,7 @@ import {
   Languages,
   Loader2,
   RefreshCw,
+  Sparkles,
   Unlink,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
@@ -146,6 +147,7 @@ export function MediaContextActionBar({
   onManageFiles,
   onManageLyrics,
   onEditFileNames,
+  onTranslateWithAI,
   onRefreshLocalFiles,
 }: {
   busy: boolean;
@@ -173,6 +175,8 @@ export function MediaContextActionBar({
   onManageLyrics?: () => void;
   /** Opens the editor of the names the directory shows for local files. */
   onEditFileNames?: () => void;
+  /** Opens Translate with AI for the work's text, display names and lyrics. */
+  onTranslateWithAI?: () => void;
   onRefreshLocalFiles?: () => void;
   /** `list` renders the actions inline, for a panel that already names the source. */
   layout?: SourceActionLayout;
@@ -195,6 +199,7 @@ export function MediaContextActionBar({
     onManageFiles ||
     onManageLyrics ||
     onEditFileNames ||
+    onTranslateWithAI ||
     onRefreshLocalFiles ||
     sourceDetailsLoading,
   );
@@ -346,9 +351,12 @@ export function MediaContextActionBar({
           <span className="min-w-0 flex-1 truncate">{t("detailActions.openOrigin")}</span>
         </a>
       )}
-      {(onManageCache || onManageFiles || onManageLyrics || onEditFileNames || onRefreshLocalFiles) && (
-        <div className="my-1 border-t first:hidden" />
-      )}
+      {(onManageCache ||
+        onManageFiles ||
+        onManageLyrics ||
+        onEditFileNames ||
+        onTranslateWithAI ||
+        onRefreshLocalFiles) && <div className="my-1 border-t first:hidden" />}
       {onRefreshLocalFiles && (
         <SourceOptionButton
           layout={layout}
@@ -393,6 +401,15 @@ export function MediaContextActionBar({
           label={t("detailActions.editFileNames")}
           disabled={busy}
           onClick={() => runOption(onEditFileNames)}
+        />
+      )}
+      {onTranslateWithAI && (
+        <SourceOptionButton
+          layout={layout}
+          icon={<Sparkles className="h-4 w-4" />}
+          label={t("detailActions.translateWithAI")}
+          disabled={busy}
+          onClick={() => runOption(onTranslateWithAI)}
         />
       )}
     </>

@@ -37,6 +37,7 @@ import { draftAfterSectionSave, sectionSettings } from "@/pages/settingsDraft";
 import { UsersPage } from "@/pages/UsersPage";
 import { ASRSettingsSection } from "@/features/asr-settings/ASRSettingsSection";
 import { LLMSettingsSection } from "@/features/llm-settings/LLMSettingsSection";
+import { LyricsAttributionSection } from "@/features/llm-settings/LyricsAttributionSection";
 
 type MaintenanceTab = "library" | "cache" | "proxy" | "llm" | "users";
 
@@ -501,8 +502,12 @@ export function MaintenancePage({
             />
           </div>
         ) : activeTab === "llm" ? (
-          // ASR services follow the LLM providers because the same content safety policy governs both.
-          <LLMSettingsSection readOnly={readOnly} otherServices={<ASRSettingsSection readOnly={readOnly} />} />
+          // Speech recognition runs before translation, and one content safety policy governs both.
+          <LLMSettingsSection
+            readOnly={readOnly}
+            otherServices={<ASRSettingsSection readOnly={readOnly} />}
+            afterPolicy={<LyricsAttributionSection readOnly={readOnly} />}
+          />
         ) : activeTab === "users" ? (
           <div className="space-y-6">
             {canManageUsers && (

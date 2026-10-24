@@ -25,6 +25,7 @@ import { useTranslation } from "react-i18next";
 import { useEffect, useMemo, useState } from "react";
 import type { FilePreviewRequest } from "@/features/work-detail/dialogs/FilePreviewDialog";
 import { FileDisplayNamesDialog } from "@/features/work-detail/dialogs/FileDisplayNamesDialog";
+import { TranslateWithAIDialog } from "@/features/work-detail/translation/TranslateWithAIDialog";
 import { UserTagRow } from "@/components/UserTagRow";
 import { resolveMetadataVariant } from "@/features/work-detail/metadataPresentationModel";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -250,6 +251,9 @@ export function PersistedWorkDetailController({
   // Display names are shared metadata, edited by whoever edits the library's metadata.
   const canEditFileNames = !auth.demoMode && auth.hasPermission("library:write");
   const [fileNamesOpen, setFileNamesOpen] = useState(false);
+  // Translate with AI asks for a translation permission; Demo never translates.
+  const canTranslate = !auth.demoMode && auth.hasPermission("library:write");
+  const [translateOpen, setTranslateOpen] = useState(false);
   const files = usePersistedFileManagement({
     localDirectoryWork,
     selectedSource,
@@ -629,6 +633,7 @@ export function PersistedWorkDetailController({
       )
         ? () => setFileNamesOpen(true)
         : undefined,
+    onTranslateWithAI: canTranslate ? () => setTranslateOpen(true) : undefined,
     onRefreshLocalFiles: () => void refreshLocalFiles(),
   };
   const heroActions = <PersistedIdentityActions {...detailActionProps} />;
@@ -794,7 +799,18 @@ export function PersistedWorkDetailController({
         onClose={() => setMetadataEditorSection(null)}
         onSaved={() => void metadataSaved()}
         onLinkChanged={(result) => void metadataLinkChanged(result)}
+        onTranslateWithAI={canTranslate ? () => setTranslateOpen(true) : undefined}
       />
+      {translateOpen && work && (
+        <TranslateWithAIDialog
+          work={work}
+          mediaWork={localDirectoryWork}
+          onClose={() => setTranslateOpen(false)}
+          onChanged={async () => {
+            await Promise.all([metadataSaved(), localMediaSaved()]);
+          }}
+        />
+      )}
       <PersistedReforkOverlay
         target={tracking.reforkTarget}
         busy={isSyncingDetail}

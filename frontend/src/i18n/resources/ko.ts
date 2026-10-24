@@ -2,6 +2,7 @@ import { libraryEnglish, collectionEnglish, workCardEnglish } from "../resources
 import { surfaceKorean } from "../surfaces/ko";
 import { personalKorean } from "../surfaces/personal/ko";
 import { subscriptionsKorean } from "../surfaces/subscriptions/ko";
+import { translationKorean } from "../surfaces/translation/ko";
 
 const libraryKorean = {
   ...libraryEnglish,
@@ -699,6 +700,8 @@ export const koreanResource = {
         insightsDescription: "청취 달력, 통계, 기록을 확인합니다",
         subscriptions: "구독",
         subscriptionsDescription: "구독한 서클, 시리즈, 성우의 신작과 순위 변동",
+        translation: "번역",
+        translationDescription: "AI 번역을 검토하고 진행 중인 번역을 확인",
         about: "정보",
         libraryDescription: "설정된 모든 소스의 작품을 탐색하고 필터링하고 재생합니다",
         favoritesDescription: "즐겨찾기 작품, 서클, 성우와 목록을 탐색합니다",
@@ -719,6 +722,7 @@ export const koreanResource = {
       ...adminToolsKorean,
       ...personalKorean,
       ...subscriptionsKorean,
+      ...translationKorean,
       appearance: {
         title: "외관",
         subtitle: "모드, 스타일 및 색상",

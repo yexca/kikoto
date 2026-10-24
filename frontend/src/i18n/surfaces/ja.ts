@@ -182,7 +182,7 @@ export const surfaceJapanese = {
       credits:
         "候補を選ぶと既存のサークル、シリーズ、声優にリンクされます。編集したクレジットはメタデータを更新しても固定されます。",
       ageRating:
-        "作品に表示され、ライブラリの絞り込みにも使われる年齢区分です。LLM・音声認識サービス向けのコンテンツ安全性の判定にも使われます。",
+        "作品に表示され、ライブラリの絞り込みにも使われる年齢区分です。音声認識・LLMサービス向けのコンテンツ安全性の判定にも使われます。",
       source:
         "この作品に別の DLsite 作品のメタデータを使う、購入特典としてリンクする、セットの内容を登録するほか、言語ファミリーを確認できます。",
     },
@@ -281,14 +281,16 @@ export const surfaceJapanese = {
     batch: {
       title_one: "{{count}} 作品を翻訳",
       title_other: "{{count}} 作品を翻訳",
-      description: "作品ごとに{{language}}へのバックグラウンド翻訳をキューに追加します。",
-      queued_one: "{{count}} 件の翻訳をキューに追加しました。",
-      queued_other: "{{count}} 件の翻訳をキューに追加しました。",
-      reviewHint: "結果は作品のメタデータ編集の翻訳レビューで 24 時間レビューを待ちます。",
+      description: "各作品に足りないものを AI で{{language}}に翻訳します。",
+      queued_one: "{{count}} 作品の翻訳をキューに追加しました。",
+      queued_other: "{{count}} 作品の翻訳をキューに追加しました。",
+      skipped_one: "{{count}} 作品は足りないものがありませんでした。",
+      skipped_other: "{{count}} 作品は足りないものがありませんでした。",
+      reviewHint: "結果はこのページでレビューを待ちます。",
       unsupported: "選択したモデルは{{language}}に翻訳できません。",
-      scopeHint: "歌詞は各作品の歌詞を管理で翻訳し、ファイル名はディレクトリで編集します。",
-      queue_one: "{{count}} 件の翻訳をキューに追加",
-      queue_other: "{{count}} 件の翻訳をキューに追加",
+      scopeHint: "歌詞は各作品の「AIで翻訳」でトラックごとに選びます。",
+      queue_one: "{{count}} 作品を翻訳",
+      queue_other: "{{count}} 作品を翻訳",
     },
   },
   customWorks: {
@@ -796,6 +798,10 @@ export const surfaceJapanese = {
         "LLM プロバイダーと ASR サービスに適用します。LLM 翻訳の判定方法は以下で選択し、ASR は作品のメタデータを使用します。各サービスに受信上限があり、不明・禁止の判定結果は送信しません。",
       policySaved: "コンテンツ安全ポリシーを保存しました。",
       policySaveFailed: "コンテンツ安全ポリシーを保存できませんでした。",
+      attributionTitle: "AI 歌詞",
+      attribution: "AI が作成した歌詞にモデル名を記載",
+      attributionDescription:
+        "音声認識または翻訳で作成した歌詞ファイルの先頭に、作成したモデル名を歌詞の言語で記した行を入れます。変更後に作成するファイルに適用されます。",
       alwaysScanAllAges: "全年齢作品もスキャン",
       alwaysScanAllAgesDescription:
         "全年齢作品にも追加のセンシティブなキーワードチェックを行います。高センシティブ・禁止ルールは常に確認します。LLM のテキストのみのモードでは適用可能な全キーワードを確認し、この設定は ASR にも適用されます。",
@@ -975,7 +981,7 @@ export const surfaceJapanese = {
       unlinked: "作品メンテナンス",
       cache: "キャッシュと取得",
       proxy: "プロキシ",
-      llm: "LLM・音声認識",
+      llm: "音声認識・LLM",
       users: "ユーザー",
       access: "アクセス",
       paths: "パス",
@@ -1238,12 +1244,12 @@ export const surfaceJapanese = {
       scopeNeedsProxy: "適用範囲を選ぶ前にプロキシを追加してください。",
       scopes: {
         all: "すべて",
-        allDescription: "DLsite、リモートソース、LLM・音声認識、その他のリクエスト",
+        allDescription: "DLsite、リモートソース、音声認識・LLM、その他のリクエスト",
         dlsite: "DLsite",
         dlsiteDescription: "メタデータ、カバー画像、クリエイターカタログ",
         remote: "リモートソース",
         remoteDescription: "閲覧、再生、ダウンロード。ソースごとに下で上書きできます。",
-        ai: "LLM・音声認識",
+        ai: "音声認識・LLM",
         aiDescription:
           "別のアドレスにある LLM プロバイダーと音声認識サービス。このサーバーと同じマシン上のサービスは常に直接接続します。",
         other: "その他",
@@ -1444,6 +1450,10 @@ export const surfaceJapanese = {
       },
       work_folder_edit: { name: "作品ファイルを編集" },
       llm_translation: { name: "LLM 翻訳" },
+      ai_translation: {
+        name: "AIで翻訳",
+        description: "1 作品に足りない部分を文字起こし・翻訳し、翻訳ページでのレビューに回します。",
+      },
     },
     metadataLoadFailed: "ワークフローデータを読み込めませんでした。",
     activityLoadFailed: "アクティビティを読み込めませんでした。",
@@ -2388,6 +2398,8 @@ export const surfaceJapanese = {
     library: "ライブラリを開く",
   },
   player: {
+    aiLyrics: "AI",
+    aiLyricsBy: "{{models}}が作成した歌詞",
     play: "再生",
     pause: "一時停止",
     openCompact: "コンパクトプレイヤーを開く",
@@ -2554,6 +2566,7 @@ export const surfaceJapanese = {
     manageFiles: "ファイルを管理",
     manageLyrics: "歌詞を管理",
     editFileNames: "表示名を編集",
+    translateWithAI: "AIで翻訳",
     retryMetadata: "メタデータを再試行",
     firstPull: "初回取得",
     catalogNotPulledHint:
@@ -2606,6 +2619,7 @@ export const surfaceJapanese = {
   },
 
   fileDisplayNames: {
+    llmName: "LLM 翻訳から承認されました。編集または消去すると置き換わります。",
     title: "表示名",
     description:
       "この言語をメタデータ言語にしている閲覧者に、ディレクトリで表示する名前です。ディスク上のファイルとフォルダーの名前は変わりません。空欄なら実際の名前を表示します。",
@@ -3319,7 +3333,7 @@ export const surfaceJapanese = {
     demoCue: "サンプル {{number}} 行目。デモはこの音声を文字起こししていません。",
     service: "サービス",
     detect: "自動検出",
-    noService: "利用できる音声認識サービスがありません。管理者が「設定 → LLM・音声認識」で追加できます。",
+    noService: "利用できる音声認識サービスがありません。管理者が「設定 → 音声認識・LLM」で追加できます。",
     noServiceShort: "利用できるサービスなし",
     loading: "読み込み中…",
     servicesFailed: "音声認識サービスを読み込めませんでした。",
@@ -3361,7 +3375,7 @@ export const surfaceJapanese = {
       service_out_of_memory:
         "メモリ不足のため、サービスがモデルを読み込めませんでした。GPU メモリを空けるか、ヘルパーの GPU 共有を交互に読み込む設定にしてから、もう一度文字起こししてください。",
       unsupported_language_pair:
-        "モデルはこの音声の言語からこの言語の歌詞を書き出せません。管理者が「設定 → LLM・音声認識」でサービスのモデルを取得し直してから、もう一度文字起こししてください。",
+        "モデルはこの音声の言語からこの言語の歌詞を書き出せません。管理者が「設定 → 音声認識・LLM」でサービスのモデルを取得し直してから、もう一度文字起こししてください。",
       ffmpeg_unavailable: "このサーバーでは音声を準備できません。",
       endpoint_unavailable: "サービスへの接続を準備できませんでした。",
       cancelled: "文字起こしはキャンセルされました。",

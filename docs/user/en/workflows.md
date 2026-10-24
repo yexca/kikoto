@@ -19,6 +19,10 @@ Workflows make backend actions inspectable.
   collapsed **Diagnostic log** of run events. **Back to runs** returns to the
   list. Activity has no page of its own: `/activity` and `/runs` links open
   Workflows with the Activity panel and select the linked run.
+- Activity lists every run, including those of features with their own pages:
+  translations are followed on the [Translation](translation.md) page, and
+  transcriptions in a work's **Manage lyrics → Transcribe**. A notification
+  about such a run opens that page.
 
 ## Who Can Use Workflows
 
@@ -73,7 +77,9 @@ administrators.
   workflow results, such as Fetch) and, for workflow operators, the runs that
   **Need attention**, with the newest running job above both. Fetch
   notifications open the local work detail and can be dismissed independently
-  for the signed-in user; **Open Activity** opens the full panel.
+  for the signed-in user; a translation that needs attention opens the
+  Translation page's **Stopped** view, and a transcription its work;
+  **Open Activity** opens the full panel.
 - The workflow list groups every workflow by category: Basic (local scan, local
   files, metadata sync, and Learn tag names), Collect (popular collections and
   **Refresh rankings**), Catalog sync (the

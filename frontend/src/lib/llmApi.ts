@@ -1,5 +1,5 @@
 import type { ContentMaximum, ContentClass, ContentAction } from "@/lib/contentPolicy";
-import { deleteJSON, getJSON, getText, postJSONBody, putJSONBody } from "@/lib/apiTransport";
+import { deleteJSON, getJSON, postJSONBody, putJSONBody } from "@/lib/apiTransport";
 
 export type LLMModel = {
   id: string;
@@ -115,90 +115,19 @@ export type LLMAssessment = {
   checkedFields?: string[];
   keywordRuleCount?: number;
 };
-export type LLMTranslation = {
-  previewId: string;
-  providerId: string;
-  providerName: string;
-  model: string;
-  targetLanguage: string;
-  assessment: LLMAssessment;
-  source: { title?: string; description?: string; tags?: string[]; lyrics?: string[] };
-  translation: { title?: string; description?: string; tags?: string[]; lyrics?: string[] };
-};
-export type LLMTranslationRequest = {
-  providerId: string;
-  /** One of the provider's enabled models; omitted uses its default. */
-  model?: string;
-  targetLanguage: string;
-  fields: string[];
-  lyricsLocationId?: number;
-  audioMediaItemId?: number;
-  folderId?: number;
-};
-export type LLMReview = LLMTranslation & { status: string; fields: string[]; expiresAt: number };
 export type LLMTranslationHistory = {
   current: { language: string; field: string; value: string; status: string }[];
   history: { id: number; language: string; field: string; action: string; createdAt: string }[];
 };
-export type LLMLyricsTranslationState =
-  | "pending"
-  | "requesting"
-  | "failed"
-  | "uncertain"
-  | "invalid"
-  | "cancelled"
-  | "ready"
-  | "expired"
-  | "rejected"
-  | "publishing"
-  | "accepted";
-/** A background translation of one lyrics file, with its review and publication. */
-export type LLMLyricsTranslation = {
-  taskId: number;
-  runId: number;
-  audioMediaItemId: number;
-  lyricsLocationId: number;
-  targetLanguage: string;
-  providerName: string;
-  model: string;
-  state: LLMLyricsTranslationState;
-  failureCode?: string;
-  /** The preview to review while the translation awaits review or publication. */
-  previewId?: string;
-  updatedAt: string;
-};
-
 export const llmApi = {
   /** With a work, each model's targets follow the language of the work's original edition. */
   listTranslationModels: (workId?: number) =>
     getJSON<LLMTranslationModel[]>(
       workId === undefined ? "/api/llm/translation-models" : `/api/llm/translation-models?workId=${workId}`,
     ),
-  precheckWork: (id: number, payload: Partial<LLMTranslationRequest> = {}) =>
-    postJSONBody<{ assessment: LLMAssessment; checkedFields: string[]; sentFields: string[] }>(
-      `/api/works/${id}/llm-precheck`,
-      payload,
-    ),
-  listTranslationReviews: (id: number) => getJSON<LLMReview[]>(`/api/works/${id}/llm-reviews`),
   listTranslations: (id: number) => getJSON<LLMTranslationHistory>(`/api/works/${id}/llm-translations`),
   restoreTranslation: (id: number, reviewId: number) =>
     postJSONBody<{ ok: boolean }>(`/api/works/${id}/llm-reviews/${reviewId}/restore`, {}),
-  listLyricsTranslations: (id: number) => getJSON<LLMLyricsTranslation[]>(`/api/works/${id}/llm-lyrics-translations`),
-  lyricsTranslationText: (id: number, preview: string) =>
-    getText(`/api/works/${id}/llm-previews/${encodeURIComponent(preview)}/lyrics`),
-  publishTranslatedLyrics: (asset: string) =>
-    postJSONBody<{ ok: boolean }>(`/api/llm/lyrics-assets/${encodeURIComponent(asset)}/publish`, {}),
-  queueTranslations: (workCodes: string[], payload: LLMTranslationRequest) =>
-    postJSONBody<{ runs: { workId: number; runId: number; state: string; deduplicated: boolean }[] }>(
-      "/api/llm/translation-runs",
-      { workCodes, ...payload },
-    ),
-  resubmitUncertainTranslation: (runId: number) =>
-    postJSONBody<{ runId: number; status: string }>(`/api/workflow-runs/${runId}/llm-resubmit`, {
-      acknowledgeUncertain: true,
-    }),
-  rejectTranslation: (id: number, preview: string) =>
-    deleteJSON<{ ok: boolean }>(`/api/works/${id}/llm-previews/${encodeURIComponent(preview)}`),
   revokeTranslation: (id: number, language: string, field: string) =>
     deleteJSON<{ ok: boolean }>(
       `/api/works/${id}/llm-translations/${encodeURIComponent(language)}/${encodeURIComponent(field)}`,
@@ -212,8 +141,4 @@ export const llmApi = {
     postJSONBody<LLMProvider>(`/api/llm/providers/${encodeURIComponent(id)}/fetch-models`, {}),
   acceptServiceNotice: () => postJSONBody<{ noticeAccepted: boolean }>("/api/llm/notice-acceptance", {}),
   updatePolicy: (policy: LLMPolicy) => putJSONBody<LLMPolicy>("/api/llm/policy", policy),
-  translateWork: (id: number, payload: LLMTranslationRequest, signal?: AbortSignal) =>
-    postJSONBody<LLMTranslation>(`/api/works/${id}/llm-translate`, payload, signal),
-  applyTranslation: (id: number, previewId: string) =>
-    putJSONBody<{ ok: boolean }>(`/api/works/${id}/llm-translation`, { previewId }),
 };

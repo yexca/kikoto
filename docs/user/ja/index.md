@@ -12,6 +12,7 @@
 - [サークル](circles.md)
 - [声優](voices.md)
 - [購読](subscriptions.md)
+- [翻訳](translation.md)
 - [再生](playback.md)
 - [設定](settings.md)
 - [ワークフロー](workflows.md)

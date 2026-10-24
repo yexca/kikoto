@@ -2,6 +2,7 @@ import { surfaceEnglish } from "./surfaces/en";
 import { adminToolsEnglish } from "./surfaces/adminTools";
 import { personalEnglish } from "./surfaces/personal/en";
 import { subscriptionsEnglish } from "./surfaces/subscriptions/en";
+import { translationEnglish } from "./surfaces/translation/en";
 
 export const libraryEnglish = {
   workNotFound: "Work not found",
@@ -360,6 +361,8 @@ export const englishResource = {
         insightsDescription: "Your listening calendar, statistics, and history",
         subscriptions: "Subscriptions",
         subscriptionsDescription: "New works from your subscriptions and how the tracked rankings change",
+        translation: "Translation",
+        translationDescription: "Review AI translations and follow the ones that are running",
         about: "About",
         libraryDescription: "Browse, filter, and play works from every configured source",
         favoritesDescription: "Browse your favorite works, circles, voices, and lists",
@@ -380,6 +383,7 @@ export const englishResource = {
       ...adminToolsEnglish,
       ...personalEnglish,
       ...subscriptionsEnglish,
+      ...translationEnglish,
       appearance: {
         title: "Appearance",
         subtitle: "Mode, style, and color",

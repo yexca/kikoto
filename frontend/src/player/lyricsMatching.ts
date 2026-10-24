@@ -1,4 +1,4 @@
-import type { MediaItem, MediaLyricsAssignment } from "@/lib/api";
+import type { LyricsAIModels, MediaItem, MediaLyricsAssignment } from "@/lib/api";
 import { naturalNameCompare } from "@/lib/naturalNameOrder";
 
 // The server reports a work's lyrics status with a copy of this name matching in
@@ -31,6 +31,8 @@ export type LyricsMatch = {
   reason: "assigned" | "exact_sidecar" | "same_stem" | "normalized_name" | "shared_folder";
   /** The language an assigned file declares; empty or absent when it declares none. */
   language?: string;
+  /** The models that wrote the file, when speech recognition or translation made it. */
+  ai?: LyricsAIModels;
 };
 
 export type LyricsChoice = LyricsMatch & { url?: string };
@@ -122,6 +124,7 @@ function assignedLyricsChoice(items: MediaItem[], assignment: MediaLyricsAssignm
     path: location.path,
     reason: "assigned",
     language: assignment.language,
+    ...(item.aiLyrics ? { ai: item.aiLyrics } : {}),
   };
 }
 

@@ -38,6 +38,14 @@ Library and metadata:
   shared executor. [Translation task persistence](data-model.md#llm-translation)
   defines source/configuration invalidation, restart recovery and explicit
   resubmission of uncertain requests.
+- `ai_translation`: Translate with AI for one work: transcribe the tracks it
+  lists without lyrics, then translate the missing title, description, shared
+  tag names, display names and lyrics into each requested language, accepting
+  each item as it finishes while auto-accept is on, in one job that yields
+  between requests like a transcription. Each item
+  keeps its own state, so one item's failure leaves the others running.
+  [Translate with AI](data-model.md#translate-with-ai) defines the items,
+  rechecks, review and retry.
 - `asr_transcription`: transcribe one local audio track with a configured
   speech recognition service for review, one chunk per request. Between
   chunks the job defers itself for a few seconds whenever another job is
@@ -266,9 +274,10 @@ metadata and source predicates once for all views.
 `/api/metadata/translation-coverage` pages every family, catalog and custom,
 with the same search and narrows it to the parts missing in one target
 language. It reads stored editions, manual titles and descriptions, accepted LLM translations,
-shared tag names, file display names, and lyrics assignments, and never
-contacts a provider; selected works queue the existing background LLM
-translation.
+shared tag names, file display names, lyrics assignments, and the family's
+translation items in the language, and never contacts a provider. The
+Translation page shows it, and selected works request Translate with AI one
+work at a time. It requires `metadata:sync` or `library:write`.
 
 Metadata reasons and retries require `metadata:sync`. No-source reasons, source
 checks, and confirmed deletion require `sources:write`; the UI exposes deletion
@@ -276,7 +285,7 @@ only in the no-source view and, for custom works, the custom view, and the
 server still revalidates family availability. Each permission grants only its
 corresponding maintenance actions, without exposing settings to metadata-only
 operators. Metadata management chooses the Works group (All, attention
-categories, Custom works, and Translation) and the Entries group (Tags,
+categories, and Custom works) and the Entries group (Tags,
 Circles, and Voice actors) from the shared page icon rail. Work records use a
 management table (code and title, circle, metadata, source, actions). The
 metadata cell reads OK, names the remote source that filled the metadata in
@@ -481,7 +490,8 @@ the backend.
   requires `downloads:manage` plus
   `remote:fetch` when it downloads and `library:write` when it assigns lyrics,
   metadata jobs require `metadata:sync`, a
-  speech transcription requires `library:write`, and graph jobs require their
+  speech transcription requires `library:write`, Translate with AI requires
+  `library:write` and queues only the items the actor may translate, and graph jobs require their
   graph's permissions.
 - Local files: candidate decisions, local cleanup, and archived-root review
   for candidates that remove, archive, or mark unavailable local files
@@ -491,7 +501,14 @@ the backend.
 
 ## Activity Summary
 
-Workflows exposes Activity at the right end of its status strip.
+Workflows exposes Activity at the right end of its status strip. Activity
+lists every run as the administrators' diagnostic view; features with their
+own pages show their runs there too. The Translation page reads Translate with
+AI runs and items through `/api/translation/runs` and
+`/api/translation/items`, open to accounts with `library:write` without
+`workflows:run`, and a work's Manage lyrics lists its transcriptions.
+Notification Center attention rows for a Translate with AI run open the
+Translation page's Stopped view, and those for a transcription open its work.
 The desktop popover and mobile sheet show active runs above two server-paged
 views: Needs attention and History. The active list and both views are global
 across workflow definitions, so a job
@@ -505,7 +522,7 @@ notification panel and Quick actions open this same surface. Events,
 candidates, progress, retries, and cancellation are available within the panel.
 
 A run record's `subject` names the one target the run acts on, read from its
-input: a work code for Fetch, Track, ASR, LLM translation, Edit files, media
+input: a work code for Fetch, Track, ASR, LLM translation, Translate with AI, Edit files, media
 cache, local media delete, single-work metadata refresh, and a metadata sync
 of one work; the circle code for a circle catalog sync or a circle-scoped
 metadata sync; the series id for a series catalog sync; the voice actor's name

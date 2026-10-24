@@ -42,7 +42,6 @@ import { folderLyrics } from "@/features/work-detail/lyrics/lyricsEditModel";
 import { LyricsFilesWorkspace } from "@/features/work-detail/lyrics/LyricsFilesWorkspace";
 import { LyricsNote } from "@/features/work-detail/lyrics/LyricsNote";
 import { LyricsPreview, loadLocalLyricsText } from "@/features/work-detail/lyrics/LyricsPreview";
-import { LyricsTranslationPanel } from "@/features/work-detail/lyrics/LyricsTranslationPanel";
 import { TranscriptionPanel } from "@/features/work-detail/lyrics/TranscriptionPanel";
 import { formatTrackDuration } from "@/features/work-detail/media/mediaTreeModel";
 import { api, type WorkDetail } from "@/lib/api";
@@ -52,7 +51,7 @@ import { cn } from "@/lib/tailwindClassNames";
 
 const automaticValue = "auto";
 
-export type LyricsManagerTab = "assign" | "files" | "transcribe" | "translate";
+export type LyricsManagerTab = "assign" | "files" | "transcribe";
 
 /** What the lyrics manager opens on. */
 export type LyricsManagerRequest = {
@@ -76,7 +75,6 @@ export function LyricsManagerDialog({
   readOnly,
   canDownload = false,
   canTranscribe = false,
-  canTranslate = false,
   demo = false,
   request,
   onClose,
@@ -88,8 +86,6 @@ export function LyricsManagerDialog({
   canDownload?: boolean;
   /** Whether the viewer may start speech transcriptions and review their results. */
   canTranscribe?: boolean;
-  /** Whether the viewer may start LLM lyrics translations and review their results. */
-  canTranslate?: boolean;
   /** Shows the transcription and translation tabs with samples and every action off. */
   demo?: boolean;
   request: LyricsManagerRequest;
@@ -115,7 +111,6 @@ export function LyricsManagerDialog({
   );
   const filesAvailable = localFolders.length > 0;
   const transcribeAvailable = (canTranscribe || demo) && entries.audio.length > 0;
-  const translateAvailable = (canTranslate || demo) && entries.audio.length > 0;
   const [tab, setTab] = useState<LyricsManagerTab>(request.tab === "files" && filesAvailable ? "files" : "assign");
   const [folderId, setFolderId] = useState(request.folderId ?? 0);
   const folder = localFolders.find((candidate) => candidate.id === folderId) ?? localFolders[0];
@@ -204,9 +199,6 @@ export function LyricsManagerDialog({
     ...(transcribeAvailable
       ? [{ value: "transcribe" as const, icon: AudioLines, label: t("lyricsManager.tabTranscribe") }]
       : []),
-    ...(translateAvailable
-      ? [{ value: "translate" as const, icon: Languages, label: t("lyricsManager.tabTranslate") }]
-      : []),
   ];
 
   return (
@@ -236,16 +228,6 @@ export function LyricsManagerDialog({
         <TranscriptionPanel
           work={work}
           audio={entries.audio}
-          demo={demo}
-          closeDisabled={busy}
-          onClose={onClose}
-          onPublished={onSaved}
-        />
-      ) : tab === "translate" && translateAvailable ? (
-        <LyricsTranslationPanel
-          work={work}
-          audio={entries.audio}
-          lyrics={entries.lyrics}
           demo={demo}
           closeDisabled={busy}
           onClose={onClose}

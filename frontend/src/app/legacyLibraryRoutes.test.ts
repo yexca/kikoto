@@ -72,4 +72,10 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/maintenance", "?tab=metadata")).toBe("/metadata?tab=settings");
     expect(legacyLibraryRedirect("/maintenance", "?tab=unlinked")).toBe("/metadata?reason=no_source");
   });
+
+  it("sends translation coverage links to the Translation page", () => {
+    expect(legacyLibraryRedirect("/metadata", "?view=translation&language=zh-cn&missing=tags")).toBe(
+      "/translation?view=coverage&language=zh-cn&missing=tags",
+    );
+  });
 });

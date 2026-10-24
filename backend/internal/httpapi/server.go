@@ -109,6 +109,8 @@ type Server struct {
 	appUpdateEndpoints             appUpdateEndpoints
 	lifetime                       *serverLifetime
 	startupRepairsOnce             sync.Once
+	// translationReviewMu settles translation reviews one at a time.
+	translationReviewMu sync.Mutex
 }
 
 type localMediaIndexCall struct {
@@ -261,6 +263,16 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/works/{id}/llm-reviews/{review}/restore", s.restoreLLMTranslation)
 	mux.HandleFunc("DELETE /api/works/{id}/llm-previews/{preview}", s.rejectLLMPreview)
 	mux.HandleFunc("DELETE /api/works/{id}/llm-translations/{language}/{field}", s.revokeLLMTranslation)
+	mux.HandleFunc("GET /api/works/{id}/ai-translation", s.getAITranslationPlan)
+	mux.HandleFunc("POST /api/works/{id}/ai-translation", s.createAITranslation)
+	mux.HandleFunc("GET /api/translation/items", s.listTranslationItems)
+	mux.HandleFunc("GET /api/translation/items/{id}/text", s.translationItemText)
+	mux.HandleFunc("POST /api/translation/items/accept", s.acceptTranslationItems)
+	mux.HandleFunc("POST /api/translation/items/reject", s.rejectTranslationItems)
+	mux.HandleFunc("POST /api/translation/items/resend", s.resendTranslationItems)
+	mux.HandleFunc("GET /api/translation/runs", s.listTranslationRuns)
+	mux.HandleFunc("GET /api/translation/settings", s.getTranslationSettings)
+	mux.HandleFunc("PUT /api/translation/settings", s.updateTranslationSettings)
 	mux.HandleFunc("GET /api/works/{id}/asr-transcriptions", s.listASRTranscriptions)
 	mux.HandleFunc("POST /api/works/{id}/asr-transcriptions", s.createASRTranscription)
 	mux.HandleFunc("POST /api/works/{id}/asr-precheck", s.precheckASRTranscription)
@@ -389,6 +401,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/llm/translation-models", s.listLLMTranslationModels)
 	mux.HandleFunc("GET /api/llm/policy", s.getLLMPolicy)
 	mux.HandleFunc("PUT /api/llm/policy", s.updateLLMPolicy)
+	mux.HandleFunc("GET /api/llm/lyrics-attribution", s.getLyricsAttribution)
+	mux.HandleFunc("PUT /api/llm/lyrics-attribution", s.updateLyricsAttribution)
 	mux.HandleFunc("POST /api/llm/notice-acceptance", s.acceptServiceNotice)
 	mux.HandleFunc("POST /api/llm/providers", s.saveLLMProvider)
 	mux.HandleFunc("PUT /api/llm/providers/{id}", s.saveLLMProvider)

@@ -1,98 +1,105 @@
 import { Languages, Loader2 } from "lucide-react";
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { FloatingSelect } from "@/components/ui/floating-select";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { api } from "@/lib/api";
-import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { ApiError, api, type TranslationCategory } from "@/lib/api";
 import type { LLMTranslationModel } from "@/lib/llmApi";
 import { serviceModelChoices } from "@/lib/serviceModels";
 import { modelTranslationTargets } from "@/lib/translationTargets";
 import type { TranslationCoverageWork } from "./translationCoverageApi";
 
-type Field = "title" | "description" | "tags";
-
 /**
- * Queues one background LLM translation per selected work into the view's
- * language. Results wait for review in each work's metadata editor, as a
- * translation queued from the editor does.
+ * Requests Translate with AI for each selected work into the view's language:
+ * what each work lacks among its title, description, shared tag names and
+ * file and folder display names. Lyrics are chosen track by track in a work's
+ * own Translate with AI dialog. Results wait on the Translation page.
  */
 export function BatchTranslationDialog({
   works,
   language,
   languageLabel,
+  permissions,
   onClose,
   onQueued,
 }: {
   works: TranslationCoverageWork[];
   language: string;
   languageLabel: string;
+  permissions: { metadata: boolean; files: boolean };
   onClose: () => void;
   onQueued: () => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const [providers, setProviders] = useState<LLMTranslationModel[]>([]);
-  const [loadingProviders, setLoadingProviders] = useState(true);
+  const [providers, setProviders] = useState<LLMTranslationModel[] | null>(null);
   const [choiceKey, setChoiceKey] = useState("");
-  // Fields start on what some selected work still lacks.
-  const [fields, setFields] = useState<Record<Field, boolean>>(() => ({
-    title: works.some((work) => work.translation.title === "missing"),
-    description: works.some((work) => work.translation.description === "missing"),
-    tags: works.some((work) => work.translation.tags.done < work.translation.tags.total),
+  // Categories start on what some selected work still lacks.
+  const [categories, setCategories] = useState<Record<TranslationCategory, boolean>>(() => ({
+    title: permissions.metadata && works.some((work) => work.translation.title === "missing"),
+    description: permissions.metadata && works.some((work) => work.translation.description === "missing"),
+    tags: permissions.metadata && works.some((work) => work.translation.tags.done < work.translation.tags.total),
+    files: permissions.files && works.some((work) => work.translation.files.done < work.translation.files.total),
   }));
   const [queueing, setQueueing] = useState(false);
-  const [runs, setRuns] = useState<{ workId: number; runId: number; deduplicated: boolean }[] | null>(null);
+  const [result, setResult] = useState<{ queued: number; skipped: number } | null>(null);
 
   useEffect(() => {
     void api
       .listTranslationModels()
-      .then((result) => {
-        setProviders(result);
-        setChoiceKey(serviceModelChoices(result)[0]?.key ?? "");
+      .then((list) => {
+        setProviders(list);
+        setChoiceKey(serviceModelChoices(list)[0]?.key ?? "");
       })
-      .catch((error) => toast.notify(toastFromError(error, t("llmTranslation.providersFailed"))))
-      .finally(() => setLoadingProviders(false));
+      .catch((error) => {
+        setProviders([]);
+        toast.notify(toastFromError(error, t("aiTranslation.requestFailed")));
+      });
   }, [toast, t]);
 
-  const choices = serviceModelChoices(providers);
+  const choices = serviceModelChoices(providers ?? []);
   const choice = choices.find((candidate) => candidate.key === choiceKey) ?? null;
   const targets = modelTranslationTargets(choice?.service, choice?.model);
   const languageSupported = targets === null || targets.includes(language);
-  const selectedFields = (Object.keys(fields) as Field[]).filter((field) => fields[field]);
-  const canQueue = !!choice && languageSupported && selectedFields.length > 0 && !queueing && runs === null;
+  const selected = (Object.keys(categories) as TranslationCategory[]).filter((category) => categories[category]);
+  const canQueue = !!choice && languageSupported && selected.length > 0 && !queueing && result === null;
+  const allowed = (category: TranslationCategory) => (category === "files" ? permissions.files : permissions.metadata);
 
   const queue = async () => {
     if (!canQueue || !choice) return;
     setQueueing(true);
+    let queued = 0;
+    let skipped = 0;
     try {
-      const result = await api.queueTranslations(
-        works.map((work) => work.primaryCode),
-        { providerId: choice.service.id, model: choice.model, targetLanguage: language, fields: selectedFields },
-      );
-      setRuns(result.runs);
-      onQueued();
+      for (const work of works) {
+        try {
+          await api.requestTranslation(work.id, {
+            languages: [language],
+            categories: selected,
+            providerId: choice.service.id,
+            model: choice.model,
+            lyrics: [],
+            asrProviderId: "",
+            directAsr: false,
+          });
+          queued++;
+        } catch (error) {
+          // A work with nothing missing is skipped; any other refusal stops the batch.
+          if (error instanceof ApiError && error.code === "nothing_to_translate") skipped++;
+          else throw error;
+        }
+      }
     } catch (error) {
-      toast.notify(toastFromError(error, t("llmTranslation.failed")));
+      toast.notify(toastFromError(error, t("aiTranslation.requestFailed")));
     } finally {
       setQueueing(false);
+      setResult({ queued, skipped });
+      onQueued();
     }
-  };
-
-  const openActivity = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    window.history.pushState({}, "", event.currentTarget.getAttribute("href"));
-    window.dispatchEvent(new Event(NAVIGATION_EVENT));
-  };
-
-  const fieldLabels: Record<Field, string> = {
-    title: t("translationCoverage.columns.title"),
-    description: t("translationCoverage.columns.description"),
-    tags: t("translationCoverage.columns.tags"),
   };
 
   return (
@@ -102,26 +109,15 @@ export function BatchTranslationDialog({
         description={t("translationCoverage.batch.description", { language: languageLabel })}
       />
       <DialogBody>
-        {runs ? (
-          <div className="space-y-3 text-sm" role="status">
-            <p className="font-medium">{t("translationCoverage.batch.queued", { count: runs.length })}</p>
+        {result ? (
+          <div className="space-y-2 text-sm" role="status">
+            <p className="font-medium">{t("translationCoverage.batch.queued", { count: result.queued })}</p>
+            {result.skipped > 0 && (
+              <p className="text-muted-foreground">
+                {t("translationCoverage.batch.skipped", { count: result.skipped })}
+              </p>
+            )}
             <p className="text-muted-foreground">{t("translationCoverage.batch.reviewHint")}</p>
-            <ul className="max-h-48 space-y-1 overflow-y-auto rounded-md border bg-muted/25 px-3 py-2">
-              {runs.map((run) => {
-                const work = works.find((candidate) => candidate.id === run.workId);
-                const href = `/workflows?activity=1&run=${run.runId}`;
-                return (
-                  <li key={run.runId} className="flex min-w-0 items-center justify-between gap-3">
-                    <span className="truncate">
-                      <span className="font-mono text-xs text-muted-foreground">{work?.primaryCode}</span> {work?.title}
-                    </span>
-                    <a href={href} onClick={openActivity} className="shrink-0 text-primary hover:underline">
-                      {t("llmTranslation.activity")} #{run.runId}
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
           </div>
         ) : (
           <div className="space-y-4">
@@ -132,53 +128,53 @@ export function BatchTranslationDialog({
                 </li>
               ))}
             </ul>
-            <label className="block text-sm font-medium">
-              {t("llmTranslation.provider")}
-              <select
-                aria-label={t("llmTranslation.provider")}
+            <div>
+              <div className="mb-1 text-xs font-medium text-muted-foreground">{t("aiTranslation.llmModel")}</div>
+              <FloatingSelect
                 value={choiceKey}
-                disabled={loadingProviders || queueing}
-                onChange={(event) => setChoiceKey(event.target.value)}
-                className="mt-1 h-[var(--control-height)] w-full rounded-[var(--control-radius)] border border-input bg-background px-3 text-sm"
-              >
-                <option value="">
-                  {loadingProviders ? t("llmTranslation.loading") : t("llmTranslation.noProvider")}
-                </option>
-                {choices.map(({ key, service, model }) => (
-                  <option key={key} value={key}>
-                    {service.name} · {model}
-                  </option>
-                ))}
-              </select>
-            </label>
+                ariaLabel={t("aiTranslation.llmModel")}
+                options={choices.map(({ key, service, model }) => ({
+                  value: key,
+                  label: `${service.name} · ${model}`,
+                }))}
+                onValueChange={setChoiceKey}
+                triggerLabel={
+                  providers === null
+                    ? t("aiTranslation.loading")
+                    : choices.length === 0
+                      ? t("aiTranslation.noLLMService")
+                      : undefined
+                }
+                disabled={queueing || choices.length === 0}
+              />
+            </div>
             {!languageSupported && (
               <p className="text-xs text-warning-foreground">
                 {t("translationCoverage.batch.unsupported", { language: languageLabel })}
               </p>
             )}
             <fieldset className="space-y-2 rounded-lg border px-3 py-3">
-              <legend className="px-1 text-sm font-medium">{t("llmTranslation.fields")}</legend>
-              {(Object.keys(fieldLabels) as Field[]).map((field) => (
-                <label key={field} className="flex items-center gap-2 text-sm">
+              <legend className="px-1 text-sm font-medium">{t("aiTranslation.category")}</legend>
+              {(Object.keys(categories) as TranslationCategory[]).map((category) => (
+                <label key={category} className="flex items-center gap-2 text-sm">
                   <Checkbox
-                    checked={fields[field]}
-                    disabled={queueing}
-                    onCheckedChange={(checked) => setFields((current) => ({ ...current, [field]: checked }))}
+                    checked={categories[category]}
+                    disabled={queueing || !allowed(category)}
+                    onCheckedChange={(checked) => setCategories((current) => ({ ...current, [category]: checked }))}
                   />
-                  {fieldLabels[field]}
+                  {t(`aiTranslation.categories.${category}`)}
                 </label>
               ))}
             </fieldset>
             <p className="text-xs leading-5 text-muted-foreground">{t("translationCoverage.batch.scopeHint")}</p>
-            <p className="text-xs leading-5 text-muted-foreground">{t("llmTranslation.safetyHint")}</p>
           </div>
         )}
       </DialogBody>
       <DialogFooter>
         <Button variant="outline" size="sm" onClick={onClose} disabled={queueing}>
-          {runs ? t("common.close") : t("common.cancel")}
+          {result ? t("common.close") : t("common.cancel")}
         </Button>
-        {!runs && (
+        {!result && (
           <Button size="sm" disabled={!canQueue} onClick={() => void queue()}>
             {queueing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Languages className="h-4 w-4" />}
             {t("translationCoverage.batch.queue", { count: works.length })}

@@ -183,9 +183,6 @@ export function PersistedLyricsManagerOverlay({
       readOnly={demoMode || !hasPermission("library:write")}
       canDownload={!demoMode && hasPermission("downloads:manage")}
       canTranscribe={!demoMode && hasPermission("library:write") && hasPermission("workflows:run")}
-      canTranslate={
-        !demoMode && hasPermission("library:write") && hasPermission("workflows:run") && hasPermission("metadata:sync")
-      }
       demo={demoMode}
       request={request}
       onClose={onClose}
@@ -204,6 +201,7 @@ export function PersistedMetadataEditorOverlay({
   onClose,
   onSaved,
   onLinkChanged,
+  onTranslateWithAI,
 }: {
   section: MetadataEditorSection | null;
   work: WorkDetail | null;
@@ -214,6 +212,7 @@ export function PersistedMetadataEditorOverlay({
   onClose: () => void;
   onSaved: () => void;
   onLinkChanged: (result: { sync?: WorkMetadataSyncRunResult }) => void;
+  onTranslateWithAI?: () => void;
 }) {
   const { demoMode, hasPermission } = useAuth();
   if (!section || !work) return null;
@@ -229,6 +228,7 @@ export function PersistedMetadataEditorOverlay({
       onClose={onClose}
       onSaved={onSaved}
       onLinkChanged={onLinkChanged}
+      onTranslateWithAI={onTranslateWithAI}
     />
   );
 }

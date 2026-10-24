@@ -172,6 +172,12 @@ describe("lyricsTimingCheck", () => {
     expect(lyricsTimingCheck(vtt, null).exceedsAudio).toBe(false);
     expect(lyricsTimingCheck("plain text", 120)).toMatchObject({ timed: false, exceedsAudio: false });
   });
+
+  it("leaves out the line naming the models of AI-made lyrics", () => {
+    const vtt =
+      "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n当前歌词由 example-model 生成，example-llm 翻译\n\n00:00:01.000 --> 00:00:02.000\nHello\n";
+    expect(lyricsTimingCheck(vtt, 120)).toMatchObject({ timed: true, lineCount: 1, lastLineSeconds: 1 });
+  });
 });
 
 describe("findLocalLyricsChoices", () => {

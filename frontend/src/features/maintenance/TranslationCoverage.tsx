@@ -59,21 +59,21 @@ function stateFromLocation(fallbackLanguage: string) {
  * Translation coverage of every work family in one target language: where the
  * title and description come from, and how many shared tags, local file names
  * and local tracks' lyrics the language already has. Selected works can be
- * queued for background LLM translation of their metadata; results wait for
- * review in each work's metadata editor.
+ * sent to Translate with AI for what they lack; results wait for review on the
+ * Translation page.
  */
 export function TranslationCoverage({
   preferenceRevision = 0,
   readOnly = false,
-  canTranslate,
+  permissions,
   toolbar,
   editingWorkId = null,
   onEditWork,
 }: {
   preferenceRevision?: number;
   readOnly?: boolean;
-  /** Whether the viewer may queue LLM translations. */
-  canTranslate: boolean;
+  /** The categories the viewer may translate. */
+  permissions: { metadata: boolean; files: boolean };
   toolbar: MaintenanceToolbarSlots;
   editingWorkId?: number | null;
   onEditWork?: (work: TranslationCoverageWork, onSaved: () => void) => void;
@@ -103,7 +103,7 @@ export function TranslationCoverage({
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    url.searchParams.set("view", "translation");
+    url.searchParams.set("view", "coverage");
     url.searchParams.set("language", language);
     url.searchParams.set("missing", missing);
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
@@ -176,7 +176,7 @@ export function TranslationCoverage({
           setPage(1);
         }}
       >
-        {canTranslate && (
+        {!readOnly && (permissions.metadata || permissions.files) && (
           <Button
             size="sm"
             variant={selectedWorks.length > 0 ? "default" : "toolbar"}
@@ -489,6 +489,7 @@ export function TranslationCoverage({
           works={selectedWorks}
           language={language}
           languageLabel={languageLabel(language)}
+          permissions={permissions}
           onClose={() => setBatchOpen(false)}
           onQueued={() => {
             setSelectedWorkIds(new Set());

@@ -60,7 +60,7 @@ Administrators manage the instance from the administration tabs in Settings:
 - **Cache & Fetch**: playback and transcode cache limits, the remote per-file
   download limit, failed Fetch staging retention, and remote download pacing.
 - **Proxy**: outbound proxies and their scopes.
-- **LLM & ASR**: LLM providers, ASR services, and the content safety policy
+- **ASR & LLM**: ASR services, LLM providers, the content safety policy, and the AI lyrics attribution
   that governs both.
   - LLM providers are built-in or custom OpenAI-compatible,
     Anthropic-compatible, Ollama and Kikoto Helper endpoints with discovered
@@ -76,7 +76,7 @@ Administrators manage the instance from the administration tabs in Settings:
     helper; another machine or a custom service takes an origin. A Kikoto
     Helper requires the API token its web interface shows, for both services.
 
-  [Settings → LLM & ASR](../user/en/settings.md#llm--asr) defines credential
+  [Settings → ASR & LLM](../user/en/settings.md#asr--llm) defines credential
   clearing, model discovery, declared content boundaries and structured safety
   rules.
 - **Cleanup**: cache cleanup and database backups.

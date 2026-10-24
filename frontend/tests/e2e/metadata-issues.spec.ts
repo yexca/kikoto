@@ -652,14 +652,7 @@ for (const viewport of ["mobile", "@desktop"]) {
     await expect(page).toHaveURL(/\/metadata$/);
     await expect(page.getByRole("heading", { name: "Metadata", exact: true })).toBeVisible();
     const tabs = page.getByRole("tablist", { name: "Metadata views" });
-    await expect(tabs.getByRole("tab")).toHaveText([
-      "DLsite works",
-      "Custom works",
-      "Translation",
-      "Tags",
-      "Circles",
-      "Voice actors",
-    ]);
+    await expect(tabs.getByRole("tab")).toHaveText(["DLsite works", "Custom works", "Tags", "Circles", "Voice actors"]);
     await expect(tabs.getByRole("tab", { name: "DLsite works", exact: true })).toHaveAttribute("aria-selected", "true");
     const filter = page.getByRole("group", { name: "Filter DLsite works", exact: true });
     await expect(filter.getByRole("button")).toHaveText([

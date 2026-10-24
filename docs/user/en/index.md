@@ -13,6 +13,7 @@ the English page first, then mark translations for review.
 - [Circles](circles.md)
 - [Voices](voices.md)
 - [Subscriptions](subscriptions.md)
+- [Translation](translation.md)
 - [Playback](playback.md)
 - [Settings](settings.md)
 - [Personal data](personal-data.md)

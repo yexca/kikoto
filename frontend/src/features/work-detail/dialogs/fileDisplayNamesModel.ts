@@ -14,6 +14,8 @@ export type DisplayNameRow = {
   extension: string;
   mediaItemId?: number;
   names: Record<string, string>;
+  /** Languages whose stored name was accepted from an LLM translation. */
+  llmLanguages: readonly string[];
 };
 
 /** Drafts by row key; a row without a draft keeps its stored name. */
@@ -52,6 +54,7 @@ export function displayNameRows(entries: Pick<FileDisplayNames, "folders" | "fil
       baseName: parts[parts.length - 1],
       extension: "",
       names: folder.names,
+      llmLanguages: folder.llmLanguages ?? [],
     };
   }
   for (const file of entries.files) {
@@ -66,6 +69,7 @@ export function displayNameRows(entries: Pick<FileDisplayNames, "folders" | "fil
       ...splitFileExtension(parts[parts.length - 1]),
       mediaItemId: file.mediaItemId,
       names: file.names,
+      llmLanguages: file.llmLanguages ?? [],
     });
   }
   const rows: DisplayNameRow[] = [];

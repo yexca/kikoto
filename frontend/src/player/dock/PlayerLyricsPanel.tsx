@@ -2,6 +2,7 @@ import { Minus, Plus, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Badge } from "@/components/ui/badge";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { lyricsLanguageLabelKey } from "@/lib/lyricsLanguage";
 import { cn } from "@/lib/tailwindClassNames";
@@ -240,11 +241,25 @@ function LyricsSourceSelector({
     const key = lyricsLanguageLabelKey(language);
     return key ? t(key) : language;
   };
+  const active = choices.find((choice) => choice.locationId === activeLocationId);
+  const models = [active?.ai?.asrModel, active?.ai?.llmModel].filter(Boolean).join(", ");
+  // Lyrics written by speech recognition or translation carry a mark naming their models.
+  const aiMark = models ? (
+    <Badge variant="info" className="shrink-0 px-1.5 py-0 text-2xs" title={t("player.aiLyricsBy", { models })}>
+      {t("player.aiLyrics")}
+    </Badge>
+  ) : null;
   if (choices.length <= 1 && automatic)
-    return <div className="truncate text-xs font-medium text-muted-foreground">{title}</div>;
+    return (
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="truncate text-xs font-medium text-muted-foreground">{title}</div>
+        {aiMark}
+      </div>
+    );
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <span className="shrink-0 font-semibold">{t("player.lyrics")}</span>
+      {aiMark}
       <FloatingSelect
         value={automatic ? "auto" : String(activeLocationId)}
         onValueChange={(value) => onChoiceChange(value === "auto" ? null : Number(value))}

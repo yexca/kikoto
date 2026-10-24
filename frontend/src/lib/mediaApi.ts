@@ -36,7 +36,11 @@ export type MediaItem = {
    */
   lyricsAssignments?: MediaLyricsAssignment[];
   locations: MediaFileLocation[];
+  /** The models that wrote a lyrics file Kikoto published from speech recognition or translation. */
+  aiLyrics?: LyricsAIModels;
 };
+
+export type LyricsAIModels = { asrModel?: string; llmModel?: string };
 
 /** A track's library lyrics file in one language; the empty language applies to every language. */
 export type MediaLyricsAssignment = {
@@ -97,6 +101,8 @@ export type FileDisplayNameEntry = {
   /** The file or folder below the work folder. */
   path: string;
   names: Record<string, string>;
+  /** Languages whose name was accepted from an LLM translation. */
+  llmLanguages?: string[];
 };
 
 export type FileDisplayNames = {

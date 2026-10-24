@@ -267,7 +267,7 @@ seeking, and screen lyrics share one timeline.
   with the profile and ends with data transfer; Playback;
   Recommendations, which shows recommendation activity above recommendation
   tuning; and personal tags) followed, after a divider, by the Library,
-  Cache & Fetch, Proxy, LLM & ASR, Cleanup, and Users administration tabs, which share an
+  Cache & Fetch, Proxy, ASR & LLM, Cleanup, and Users administration tabs, which share an
   Administration accessible description. Wide layouts start with a row above
   the content that names as much as fits on one line (every tab, then the
   selected tab's divider-bounded group beside the other group's icons, then
@@ -300,7 +300,18 @@ seeking, and screen lyrics share one timeline.
   failed request leaves the others on screen. The app shell composes each
   work, tag, voice, and circle link. Demo shows a notice above the dashboard
   that its listening history is simulated.
-- Metadata: a Works group for DLsite works, Custom works, and Translation,
+- Translation (`/translation`, `library:write`): `TranslationPage` composes
+  `TranslationRunList` (`features/translation`) for running and queued
+  Translate with AI runs by work and language, the shared
+  `TranslationReviewList` (`components/translation`) for stopped items, the
+  items translations wrote (history) and, while items wait for review, the
+  review inbox, and the Metadata feature's `TranslationCoverage` for coverage
+  and batch requests. `visibleTranslationCenterViews` shows `review` only
+  while auto-accept is off or items wait; `?view=` selects `review`,
+  `running`, `attention`, `history` or `coverage`, and
+  `/metadata?view=translation` links redirect to coverage. The page polls
+  while a run is queued or running.
+- Metadata: a Works group for DLsite works and Custom works,
   and an Entries group for Tags, Circles, and Voice actors. DLsite works holds
   the catalog and attention categories behind `WorkReasonFilter`, a segmented
   row of pressed buttons whose options are the `reason` values `catalog`,
@@ -308,7 +319,7 @@ seeking, and screen lyrics share one timeline.
   `?reason=metadata&metadataRun=<id>`, select the tab and the filter together. Each entry view owns a
   searchable table and management dialog. Tag and circle edits require
   `library:write`; voice aliases retain `metadata:sync`. The URLs
-  `?view=custom`, `?view=translation`, `?view=tags`, `?view=circles`, and
+  `?view=custom`, `?view=tags`, `?view=circles`, and
   `?view=aliases&voice=<id>` select those views. The shared icon rail shows group headings when expanded and
   accessible group descriptions at all sizes. Wide layouts start with the
   rail as the same row above the content that Settings uses
@@ -777,8 +788,21 @@ in `descriptions`.
 `WorkMetadataEditorModal` splits the editor into Title, Description, Cover,
 Tags, Credits, Age rating, and Links tabs, each marked while it holds unsaved
 changes. The footer keeps the caller's refresh control visible
-and puts Fetch for edit and Translate with LLM in the shared `ActionMenu`
-overflow menu; translation stays unavailable while drafts exist. Every
+and puts Fetch for edit and Translate with AI in the shared `ActionMenu`
+overflow menu; Translate with AI closes the editor, opens
+`TranslateWithAIDialog` from work detail, and stays unavailable while drafts
+exist. The Title and Description tabs list accepted LLM values per language
+with Revoke and their history with Restore (`LLMTranslationHistoryPanel`).
+
+`TranslateWithAIDialog` (`features/work-detail/translation`) reads the
+server's plan for the chosen languages, which counts what each category
+lacks, and builds the lyrics request from the work's local tracks:
+`translateWithAIModel` selects every missing track and language, reads each
+track from its default source file or transcribes a track without lyrics, and
+offers direct speech output only for one language. `LyricsTranslationMatrix`
+edits that selection. The dialog's Results tab reuses `TranslationReviewList`
+with `LyricsPreview` for lyrics: items waiting for review when auto-accept is
+off, then running, stopped and applied items. Every
 change is a draft until Save: credit reverts become explicit `null` or empty
 PATCH fields (`MetadataEditorReverts`), a cover revert deletes the cover
 override, and a staged metadata link and purchase bonus link are written last,

@@ -212,10 +212,15 @@ export function NotificationCenter({
     return `${workPath}?view=local`;
   };
 
-  const attentionPath = (run: WorkflowRun) =>
-    canViewMetadataIssues && (run.pendingMetadata ?? 0) > 0
+  // A run opens the page of the feature it serves; Activity keeps every run's diagnostics.
+  const attentionPath = (run: WorkflowRun) => {
+    if (run.workflowCode === "ai_translation") return "/translation?view=attention";
+    if (run.workflowCode === "asr_transcription" && run.subject)
+      return `/${encodeURIComponent(run.subject)}?view=local`;
+    return canViewMetadataIssues && (run.pendingMetadata ?? 0) > 0
       ? metadataIssuesURL(run.id)
       : `/workflows?activity=1&run=${run.id}`;
+  };
 
   const showAttention = canViewWorkflows && tab === "attention";
 

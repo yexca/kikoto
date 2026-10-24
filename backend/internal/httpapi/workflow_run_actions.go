@@ -80,7 +80,13 @@ func (s *Server) cancelWorkflowRunTx(ctx context.Context, tx *sql.Tx, run workfl
 			return false, err
 		}
 	}
-	if run.WorkflowCode == asrWorkerType {
+	if run.WorkflowCode == aiTranslationWorkflowCode {
+		// A request in flight keeps an unknown result; everything not yet sent stops.
+		if _, err := tx.ExecContext(ctx, `UPDATE translation_item SET state=CASE WHEN state='requesting' THEN 'uncertain' ELSE 'cancelled' END,failure_code=CASE WHEN state='requesting' THEN 'cancelled_result_unknown' ELSE 'cancelled' END,updated_at=CURRENT_TIMESTAMP WHERE workflow_run_id=? AND state IN ('queued','waiting_transcription','requesting')`, runID); err != nil {
+			return false, err
+		}
+	}
+	if run.WorkflowCode == asrWorkerType || run.WorkflowCode == aiTranslationWorkflowCode {
 		if _, err := tx.ExecContext(ctx, `UPDATE asr_transcription SET state='cancelled',failure_code=?,updated_at=CURRENT_TIMESTAMP WHERE workflow_run_id=? AND state IN ('pending','requesting','failed')`, asrFailureCancelled, runID); err != nil {
 			return false, err
 		}
@@ -204,6 +210,8 @@ func (s *Server) dispatchWorkflowRetry(ctx context.Context, actor currentUser, r
 		return s.retryLLMTranslationRun(ctx, actor, runID)
 	case asrWorkerType:
 		return s.retryASRTranscriptionRun(ctx, actor, runID)
+	case aiTranslationWorkflowCode:
+		return s.retryAITranslationRun(ctx, actor, runID)
 	case "local_library_scan":
 		if !userHasPermission(actor, "metadata:sync") {
 			return workflowRetryDispatchResult{}, errWorkflowRetryPermission
@@ -512,6 +520,8 @@ func workflowJobRetryPermissions(job workflowJobRecord) []string {
 		return []string{"metadata:sync", "library:write", "workflows:run"}
 	case asrWorkerType:
 		return []string{"library:write", "workflows:run"}
+	case aiTranslationWorkerType:
+		return []string{"library:write"}
 	case "remote_work_fetch", "remote_media_cache":
 		if job.WorkerType == "remote_work_fetch" {
 			return []string{"remote:fetch", "metadata:sync"}
