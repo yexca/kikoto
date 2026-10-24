@@ -213,6 +213,8 @@ Desktop:
   keep those actions in a Source menu beside the Hero actions.
 - Persistent lower-right player dock with full, compact, and draggable mini
   modes.
+- The page always reserves the classic scrollbar gutter, so content width does
+  not depend on whether the page scrolls.
 
 Mobile:
 

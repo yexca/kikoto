@@ -7,6 +7,9 @@
   a work, or clear its rating, without opening it.
 - The work detail stat strip shows your rating beside the DLsite rating, also
   for custom works.
+- A desktop page about as tall as the window, such as a short last Library
+  page with the player open, no longer shakes endlessly as the scrollbar
+  appears and disappears.
 
 </details>
 

@@ -545,8 +545,11 @@
     filter: brightness(var(--press-brightness));
   }
 
+  /* A classic scrollbar must not change the content width: a page whose height
+     depends on its width would otherwise toggle the scrollbar on every frame. */
   html {
     scroll-padding-bottom: var(--app-content-bottom-clearance);
+    scrollbar-gutter: stable;
   }
 
   /* A retained browse workspace restarts this when its hidden attribute is removed.
