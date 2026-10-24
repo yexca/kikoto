@@ -243,6 +243,13 @@ track or sync a work before it has local files, but the resulting state attaches
 to the same unified work identity. Track also persists the selected source tree
 and opens that source in Tracked.
 
+A remote card for a work the library already holds shows the source marks and
+personal tags of its Library card beside the mark of the source being browsed,
+such as Local when the work has local files. Automatic cover source marks leave
+off the browsed source and other remote catalogs, so only the library's own
+marks remain. Selecting a personal tag on the card filters the source by that
+tag.
+
 A remote source can hold several language editions of one work. When the
 library already knows that work's edition family, a remote tab shows the
 editions it returns as one card. The card presents one edition: the code the

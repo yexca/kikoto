@@ -847,6 +847,7 @@ export function LibraryPage({ active = true }: { active?: boolean }) {
             }}
             onOpenPreview={(work) => openRemotePreview(activeTab.source, work)}
             onTagOpen={addTagSearchClause}
+            onUserTagOpen={addUserTagSearchClause}
             onWorkStateChanged={remoteWorks.patchWork}
             onSynced={async (workId, options) => {
               if (workId <= 0) {

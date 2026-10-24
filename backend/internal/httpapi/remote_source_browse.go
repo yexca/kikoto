@@ -66,8 +66,13 @@ type remoteWorkSummary struct {
 	Favorite        bool              `json:"favorite"`
 	ListeningStatus string            `json:"listeningStatus"`
 	RecommendScore  int               `json:"recommendScore"`
-	DurationSeconds *int64            `json:"-"`
-	SearchUserTags  []string          `json:"-"`
+	// SourcePresence, Availability, and UserTags describe the work in this
+	// library; they stay empty for a work the library does not hold.
+	SourcePresence  []sourcePresenceItem `json:"sourcePresence"`
+	Availability    []string             `json:"availability"`
+	UserTags        []workUserTag        `json:"userTags"`
+	DurationSeconds *int64               `json:"-"`
+	SearchUserTags  []string             `json:"-"`
 	// Editions lists every edition of the card's work family that the upstream
 	// returned, the presented one included.
 	Editions []remoteWorkEdition `json:"editions"`
@@ -168,7 +173,7 @@ func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Reque
 		if err == nil && request.IncludeRecommendation {
 			request.RecommendationUnavailable = s.scoreRemoteWorkSummaries(r, userID, works) != nil
 		}
-		return s.writeRemoteSourceWorksResult(w, ctx, source, diagnosticURL, request, works, total, sortApplied, err)
+		return s.writeRemoteSourceWorksResult(w, ctx, userID, source, diagnosticURL, request, works, total, sortApplied, err)
 	}
 	remotePage, err := client.ListWorksSortedSeeded(ctx, request.Page, request.PageSize, request.Plan.PushdownQuery, request.UpstreamOrder, request.Direction, request.Seed)
 	if err != nil {
@@ -185,6 +190,9 @@ func (s *Server) serveRemoteSourceWorksPage(w http.ResponseWriter, r *http.Reque
 		if err := s.scoreRemoteWorkSummaries(r, userID, works); err != nil {
 			request.RecommendationUnavailable = true
 		}
+	}
+	if works, err = s.attachRemoteWorkLibraryState(ctx, userID, works); err != nil {
+		return err
 	}
 	works = s.presentRemoteWorkSummaries(ctx, source.ID, works)
 	writeJSON(w, http.StatusOK, remoteWorksResponse{SourceID: source.ID, Works: works, Page: request.Page, PageSize: request.PageSize, Total: remoteFoldedPageTotal(remotePage, request.Page, request.PageSize, len(works)), Status: "ok", Sort: request.Sort, Direction: request.Direction, SortApplied: remotePage.SortApplied, RecommendationUnavailable: request.RecommendationUnavailable})
@@ -211,13 +219,16 @@ func remoteFoldedPageTotal(page kikoeru.WorksPage, pageNumber, pageSize, cards i
 	return total
 }
 
-func (s *Server) writeRemoteSourceWorksResult(w http.ResponseWriter, ctx context.Context, source remoteSourceForUse, diagnosticURL string, request remoteSourceWorksRequest, works []remoteWorkSummary, total int, sortApplied bool, err error) error {
+func (s *Server) writeRemoteSourceWorksResult(w http.ResponseWriter, ctx context.Context, userID int64, source remoteSourceForUse, diagnosticURL string, request remoteSourceWorksRequest, works []remoteWorkSummary, total int, sortApplied bool, err error) error {
 	if err != nil {
 		_ = s.updateSourceHealth(ctx, source.ID, "unavailable")
 		s.writeRemoteWorksUnavailable(w, source, request.Page, request.PageSize, request.Sort, request.Direction, diagnosticURL, err)
 		return nil
 	}
 	_ = s.updateSourceHealth(ctx, source.ID, "healthy")
+	if works, err = s.attachRemoteWorkLibraryState(ctx, userID, works); err != nil {
+		return err
+	}
 	works = s.presentRemoteWorkSummaries(ctx, source.ID, works)
 	writeJSON(w, http.StatusOK, remoteWorksResponse{SourceID: source.ID, Works: works, Page: request.Page, PageSize: request.PageSize, Total: total, Status: "ok", Sort: request.Sort, Direction: request.Direction, SortApplied: sortApplied, RecommendationUnavailable: request.RecommendationUnavailable})
 	return nil

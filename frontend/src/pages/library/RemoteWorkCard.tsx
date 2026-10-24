@@ -8,6 +8,7 @@ import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { CompactWorkCardShell, type CompactWorkCardLayout } from "@/components/work-card/CompactWorkCard";
 import {
   dlsiteTagBadges,
+  userTagBadges,
   WorkCardActionButton,
   WorkCardDLsiteAction,
   WorkCardFooter,
@@ -25,6 +26,7 @@ import { cn } from "@/lib/tailwindClassNames";
 
 import { libraryCoverSourceBadges } from "./libraryCoverSources";
 import { remoteWorkActionCode, remoteWorkEditionChoices, remoteWorkPresentsEdition } from "./remoteSourceBrowseModel";
+import { remoteWorkSourceBadges } from "./remoteWorkCardSources";
 
 export function RemoteWorkCard({
   work,
@@ -41,6 +43,7 @@ export function RemoteWorkCard({
   onOpenEdition,
   onFork,
   onTagOpen,
+  onUserTagOpen,
   onMark,
   canMark,
   onSave,
@@ -63,6 +66,7 @@ export function RemoteWorkCard({
   onOpenEdition: (edition: RemoteWorkEdition) => void;
   onFork: () => void;
   onTagOpen: (tag: string) => void;
+  onUserTagOpen: (tag: string) => void;
   onMark: (status: ListeningStatus) => void;
   /** Checked before the mark menu opens. */
   canMark: () => boolean;
@@ -72,7 +76,13 @@ export function RemoteWorkCard({
   layout: CompactWorkCardLayout | null;
 }) {
   const Shell = layout ? CompactWorkCardShell : WorkCardShell;
-  const baseView = remoteWorkCardView(work, source, recommendationScored, useAuth().recommendationThreshold);
+  const baseView = remoteWorkCardView(
+    work,
+    source,
+    recommendationScored,
+    useAuth().recommendationThreshold,
+    onUserTagOpen,
+  );
   const view: WorkCardViewModel = {
     ...baseView,
     ...libraryCoverSourceBadges(baseView.sourceBadges, { kind: "remote", sourceId: source.id }, coverSourceMode),
@@ -234,6 +244,7 @@ function remoteWorkCardView(
   source: LibrarySource,
   scored: boolean,
   threshold: number,
+  onUserTagOpen: (tag: string) => void,
 ): WorkCardViewModel {
   const sourceLabel = source.displayName || source.code || i18n.t("workCard.remoteSource");
   return {
@@ -252,18 +263,10 @@ function remoteWorkCardView(
     series: null,
     hasLyrics: work.hasLyrics,
     dlsiteTags: dlsiteTagBadges(work.tags),
-    userTags: [],
+    userTags: userTagBadges(work.userTags, onUserTagOpen),
     recommended: scored && Number.isFinite(work.recommendScore),
     recommendationHighlighted: work.recommendScore >= threshold,
     recommendationScore: work.recommendScore,
-    sourceBadges: work.remotePlayable
-      ? [{ key: `source:remote:${source.id}`, label: sourceLabel, variant: "outline" }]
-      : [
-          {
-            key: `source:remote:${source.id}:unavailable`,
-            label: i18n.t("workCard.namedSourceUnavailable", { name: sourceLabel }),
-            variant: "warning",
-          },
-        ],
+    sourceBadges: remoteWorkSourceBadges(work, source.id, sourceLabel),
   };
 }

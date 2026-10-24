@@ -110,6 +110,7 @@ function RemoteSourceResults({
   onClearSearch,
   onOpenPreview,
   onTagOpen,
+  onUserTagOpen,
   onWorkStateChanged,
   onSynced,
   onRetry,
@@ -134,6 +135,7 @@ function RemoteSourceResults({
   onClearSearch: () => void;
   onOpenPreview: (work: RemoteWork) => void;
   onTagOpen: (tag: string) => void;
+  onUserTagOpen: (tag: string) => void;
   onWorkStateChanged: (
     primaryCode: string,
     patch: Partial<Pick<RemoteWork, "workId" | "favorite" | "listeningStatus">>,
@@ -195,6 +197,7 @@ function RemoteSourceResults({
               onOpenEdition={(edition) => onOpenPreview(remoteWorkForEdition(work, edition))}
               onFork={() => void actions.forkWork(work, "manual_fork")}
               onTagOpen={onTagOpen}
+              onUserTagOpen={onUserTagOpen}
               onMark={(status) => void actions.markRemoteWork(work, status)}
               canMark={() => actions.canStateRemoteWork(work)}
               onSave={() =>
@@ -236,6 +239,7 @@ export function RemoteSourcePanel({
   onPageChange,
   onOpenPreview,
   onTagOpen,
+  onUserTagOpen,
   onWorkStateChanged,
   onSynced,
   onRetry,
@@ -257,6 +261,7 @@ export function RemoteSourcePanel({
   onPageChange: (page: number) => void;
   onOpenPreview: (work: RemoteWork) => void;
   onTagOpen: (tag: string) => void;
+  onUserTagOpen: (tag: string) => void;
   onWorkStateChanged: (
     primaryCode: string,
     patch: Partial<Pick<RemoteWork, "workId" | "favorite" | "listeningStatus">>,
@@ -366,6 +371,7 @@ export function RemoteSourcePanel({
         onClearSearch={onClearSearch}
         onOpenPreview={onOpenPreview}
         onTagOpen={onTagOpen}
+        onUserTagOpen={onUserTagOpen}
         onWorkStateChanged={onWorkStateChanged}
         onSynced={onSynced}
         onRetry={onRetry}
