@@ -316,7 +316,7 @@ func (s *Server) initializeRemoteFetchStaging(ctx context.Context, manifest remo
 
 func (s *Server) remoteFetchSourcePath(item remoteWorkSavePlanItem) (string, error) {
 	if item.Action == "copy_local" {
-		return safeDataPath(s.cfg.DataRoot, item.LocalSourcePath)
+		return safeResolvedPath(s.cfg.DataRoot, item.LocalSourcePath)
 	}
 	return safeCachePath(s.cfg.CacheRoot, item.CachePath)
 }

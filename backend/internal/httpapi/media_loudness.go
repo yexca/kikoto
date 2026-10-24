@@ -101,7 +101,7 @@ func (s *Server) getMediaLoudness(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	path, err := safeDataPath(s.cfg.DataRoot, target.RelativePath)
+	path, err := safeResolvedPath(s.cfg.DataRoot, target.RelativePath)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media path"})
 		return

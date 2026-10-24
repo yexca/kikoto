@@ -592,6 +592,11 @@ func collectFiles(root string, workPath string) ([]LocalFile, error) {
 			}
 			return nil
 		}
+		// Do not index links: playback and background workers open these paths
+		// later, and a lexical relative-path check cannot detect an outside link.
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
 		if IsIgnoredFileName(entry.Name()) {
 			return nil
 		}
