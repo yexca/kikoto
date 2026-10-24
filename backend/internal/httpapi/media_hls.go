@@ -210,7 +210,7 @@ func (s *Server) loadHLSPlaybackSource(ctx context.Context, locationID int64) (h
 	if target.LocationType == "cache" {
 		root = s.cfg.CacheRoot
 	}
-	mediaPath, err := safeDataPath(root, target.RelativePath)
+	mediaPath, err := safeResolvedPath(root, target.RelativePath)
 	if err != nil {
 		return hlsPlaybackSource{}, errHLSMediaNotFound
 	}

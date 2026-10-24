@@ -343,6 +343,9 @@ Do not mount a host root, home directory, Docker socket, or unrelated sensitive
 tree into those locations. Avoid symbolic links that leave the configured data
 or cache roots.
 
+Local scans ignore symbolic-link files, and media processing and Fetch source
+copies reject stored paths whose resolved target leaves the configured root.
+
 The production image runs as the container root user. Production and Demo
 Compose drop Linux capabilities, enable `no-new-privileges`, and use a read-only
 root filesystem. Limit the container's host access through narrow bind mounts:

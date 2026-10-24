@@ -63,7 +63,7 @@ func (s *Server) streamMedia(w http.ResponseWriter, r *http.Request) {
 	if target.LocationType == "cache" {
 		root = s.cfg.CacheRoot
 	}
-	path, err := safeDataPath(root, target.RelativePath)
+	path, err := safeResolvedPath(root, target.RelativePath)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media path"})
 		return
@@ -199,7 +199,7 @@ func (s *Server) readMediaLocationText(r *http.Request, target mediaStreamTarget
 		if target.LocationType == "cache" {
 			root = s.cfg.CacheRoot
 		}
-		path, err := safeDataPath(root, target.RelativePath)
+		path, err := safeResolvedPath(root, target.RelativePath)
 		if err != nil {
 			return nil, "", notFound
 		}
@@ -283,7 +283,7 @@ func (s *Server) storedMediaPath(r *http.Request, idValue string) (string, strin
 	if locationType == "cache" {
 		root = s.cfg.CacheRoot
 	}
-	path, err := safeDataPath(root, relPath)
+	path, err := safeResolvedPath(root, relPath)
 	if err != nil {
 		return "", "", fmt.Errorf("invalid media path")
 	}

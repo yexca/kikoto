@@ -152,7 +152,7 @@ func (s *Server) executeASRTranscriptionWithDecoder(ctx context.Context, job wor
 		if task.OffsetMS >= asrMaxAudioSeconds*1000 {
 			return s.failASRTask(ctx, job, task, "audio_too_long")
 		}
-		input, err := safeDataPath(s.cfg.DataRoot, source.Path)
+		input, err := safeResolvedPath(s.cfg.DataRoot, source.Path)
 		if err != nil {
 			return s.failASRTask(ctx, job, task, "source_changed")
 		}
