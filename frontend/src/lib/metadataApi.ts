@@ -455,8 +455,12 @@ export const metadataApi = {
     if (runId) params.set("runId", String(runId));
     return getJSON<MetadataIssuePage>(`/api/metadata/issues?${params}`, signal);
   },
-  retryMetadataIssues: (workIds: number[]) =>
-    postJSONBody<{ queued: number; skipped: number; failed: number }>("/api/metadata/issues/retry", { workIds }),
+  /** Retries from DLsite, or asks only the given metadata-capable remote source. */
+  retryMetadataIssues: (workIds: number[], sourceId?: number) =>
+    postJSONBody<{ queued: number; skipped: number; failed: number }>(
+      "/api/metadata/issues/retry",
+      sourceId === undefined ? { workIds } : { workIds, sourceId },
+    ),
   dismissMetadataIssues: (workIds: number[]) =>
     postJSONBody<{ dismissed: number; skipped: number }>("/api/metadata/issues/dismiss", { workIds }),
   getMetadataOnboarding: (signal?: AbortSignal) => getJSON<MetadataOnboarding>("/api/metadata/onboarding", signal),

@@ -60,9 +60,21 @@ func (s *Server) retryMetadataIssues(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
 		return
 	}
-	workIDs, ok := s.metadataIssueSelection(w, r, "retry")
+	workIDs, sourceID, ok := s.metadataIssueSelection(w, r, "retry", true)
 	if !ok {
 		return
+	}
+	// A selected source is asked instead of DLsite, as a work detail refresh
+	// from that source would be; it must provide metadata and be enabled.
+	if sourceID != 0 {
+		if _, err := s.loadMetadataRefreshSource(r.Context(), sourceID); err != nil {
+			if errors.Is(err, errMetadataSourceUnavailable) {
+				writeAPIError(w, http.StatusBadRequest, "metadata_source_unavailable", "metadata source is unavailable", false)
+				return
+			}
+			writeError(w, err)
+			return
+		}
 	}
 	result := struct {
 		Queued  int `json:"queued"`
@@ -79,7 +91,7 @@ func (s *Server) retryMetadataIssues(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			// Explicit recovery may recheck not_found without clearing that
 			// observation first. Only a successful new result changes it.
-			_, err = s.enqueueWorkMetadataSyncWithOptions(r.Context(), id, true)
+			_, err = s.enqueueWorkMetadataSyncForSource(r.Context(), id, true, sourceID)
 		}
 		if errors.Is(err, errCustomWorkUnsupported) {
 			result.Skipped++
@@ -102,7 +114,7 @@ func (s *Server) dismissMetadataIssues(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "metadata:sync"); !ok {
 		return
 	}
-	workIDs, ok := s.metadataIssueSelection(w, r, "dismiss")
+	workIDs, _, ok := s.metadataIssueSelection(w, r, "dismiss", false)
 	if !ok {
 		return
 	}
@@ -127,36 +139,46 @@ func (s *Server) dismissMetadataIssues(w http.ResponseWriter, r *http.Request) {
 }
 
 // metadataIssueSelection decodes a bounded selection of distinct work ids for
-// an issue action, refusing the action in the read-only demo.
-func (s *Server) metadataIssueSelection(w http.ResponseWriter, r *http.Request, action string) ([]int64, bool) {
+// an issue action, and the remote source an action that allows one names,
+// refusing the action in the read-only demo.
+func (s *Server) metadataIssueSelection(w http.ResponseWriter, r *http.Request, action string, allowSource bool) ([]int64, int64, bool) {
 	if s.cfg.IsDemo() {
 		writeAPIError(w, http.StatusForbidden, "demo_read_only", "demo is read only", false)
-		return nil, false
+		return nil, 0, false
 	}
 	var payload struct {
-		WorkIDs []int64 `json:"workIds"`
+		WorkIDs  []int64 `json:"workIds"`
+		SourceID *int64  `json:"sourceId"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&payload); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid metadata "+action+" request", false)
-		return nil, false
+		return nil, 0, false
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid metadata "+action+" request", false)
-		return nil, false
+		return nil, 0, false
+	}
+	if payload.SourceID != nil && (!allowSource || *payload.SourceID <= 0) {
+		writeAPIError(w, http.StatusBadRequest, "invalid_metadata_source", "invalid metadata source", false)
+		return nil, 0, false
 	}
 	if len(payload.WorkIDs) == 0 || len(payload.WorkIDs) > 100 {
 		writeAPIError(w, http.StatusBadRequest, "invalid_selection", "select between 1 and 100 works", false)
-		return nil, false
+		return nil, 0, false
 	}
 	seen := map[int64]bool{}
 	for _, id := range payload.WorkIDs {
 		if id <= 0 || seen[id] {
 			writeAPIError(w, http.StatusBadRequest, "invalid_selection", "invalid work selection", false)
-			return nil, false
+			return nil, 0, false
 		}
 		seen[id] = true
 	}
-	return payload.WorkIDs, true
+	var sourceID int64
+	if payload.SourceID != nil {
+		sourceID = *payload.SourceID
+	}
+	return payload.WorkIDs, sourceID, true
 }

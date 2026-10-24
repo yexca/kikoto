@@ -526,6 +526,8 @@ export const surfaceJapanese = {
     dismiss: "取得できない作品を無視",
     dismissHint:
       "販売終了などで取得できない作品を問題として表示しないようにします。後で別の結果になると再び表示されます。",
+    fetchFrom: "{{source}} から取得",
+    fetchEditionFrom: "{{code}} を {{source}} から取得",
     retrySelected: "メタデータを再試行（{{count}}）",
     empty: "確認が必要な作品はありません。",
     noMatching: "一致する作品はありません",

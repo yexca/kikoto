@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { ageRatingPresentation } from "@/lib/ageRating";
-import { assetURL, type MaintenanceWork } from "@/lib/api";
+import { assetURL, type LibrarySource, type MaintenanceWork } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
 import { MetadataIssueDetails } from "./MetadataIssueDetails";
 import { MetadataStatus, SourceStatus, canRetryMetadata, metadataRetryWorkId } from "./WorkMaintenanceStatus";
@@ -39,6 +39,7 @@ export function WorkInspector({
   checking,
   editing,
   onEdit,
+  remoteSources = [],
   onRetry,
   onDismiss,
   dismissing = false,
@@ -57,7 +58,10 @@ export function WorkInspector({
   checking: boolean;
   editing: boolean;
   onEdit?: () => void;
-  onRetry: (ids: number[]) => void;
+  /** Enabled remote sources that provide metadata; each can be asked instead of DLsite. */
+  remoteSources?: LibrarySource[];
+  /** Retries from DLsite, or from the given remote source. */
+  onRetry: (ids: number[], sourceId?: number) => void;
   /** Dismisses editions' not-found outcomes; absent without permission. */
   onDismiss?: (ids: number[]) => void;
   dismissing?: boolean;
@@ -172,6 +176,7 @@ export function WorkInspector({
             items={work.metadataIssues}
             disabled={disabled || retrying || dismissing}
             defaultOpen
+            remoteSources={remoteSources}
             onRetry={onRetry}
             onDismiss={onDismiss}
           />

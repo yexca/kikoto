@@ -507,6 +507,8 @@ export const surfaceHans = {
     dismissEdition: "忽略 {{code}}",
     dismiss: "忽略不可用作品",
     dismissHint: "不再将此不可用作品列为问题，例如作品已下架。之后同步出现不同结果时会重新列出。",
+    fetchFrom: "从 {{source}} 获取",
+    fetchEditionFrom: "从 {{source}} 获取 {{code}}",
     retrySelected: "重试元数据（{{count}}）",
     empty: "没有需要关注的作品。",
     noMatching: "没有匹配的作品",

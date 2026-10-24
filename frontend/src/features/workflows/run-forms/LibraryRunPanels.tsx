@@ -17,7 +17,7 @@ import {
 } from "@/features/workflows/metadataSyncModel";
 import { presetParameterLabel } from "@/features/workflows/run-forms/PresetRunPanel";
 import { MetadataSyncFallbackFields } from "@/features/workflows/run-forms/MetadataSyncFallbackFields";
-import { useMetadataSyncSources } from "@/features/workflows/useMetadataSyncSources";
+import { useMetadataSyncSources } from "@/hooks/useMetadataSyncSources";
 import {
   OptionField,
   RunBlockerNote,

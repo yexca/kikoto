@@ -56,6 +56,10 @@
   and the metadata run's Needs attention notice until a later sync fails.
 - Activity offers **Mark reviewed** for a run whose remaining metadata issues
   are only unavailable products, instead of keeping it in Needs attention.
+- Metadata issues offer **Fetch from** each enabled remote source that
+  provides metadata, for an affected edition or the selected works, without
+  turning on automatic remote fallback.
+- Metadata view counts load faster on large libraries.
 
 </details>
 

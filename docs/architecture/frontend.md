@@ -848,7 +848,9 @@ a remote title's source. Metadata issue rows say a DLsite-unavailable work was
 filled by a named remote source instead of showing a bare unavailable status.
 An edition with an unavailable outcome offers a dismiss action beside its
 retry, and the selection bar dismisses the selected works' unavailable
-editions; Activity offers **Mark reviewed** for a run once its pending
+editions. A DLsite issue also offers a fetch action per enabled source with
+declared metadata capability, read through `hooks/useMetadataSyncSources`, and
+the selection bar offers one per source for the retryable selection; Activity offers **Mark reviewed** for a run once its pending
 metadata has no retryable failure (`pendingFailedMetadata`).
 
 The metadata editor's **Fetch for edit** action opens a three-column comparison

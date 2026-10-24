@@ -12,6 +12,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/metasync"
 )
 
 func TestExplicitRemoteMetadataRefreshUsesFreshSnapshotWithoutTrackingFiles(t *testing.T) {
@@ -102,6 +103,56 @@ func TestExplicitRemoteMetadataRefreshPreservesDLsiteValues(t *testing.T) {
 	}
 	if title != "Synthetic DLsite title" {
 		t.Fatalf("remote refresh replaced DLsite title: %q", title)
+	}
+}
+
+// Metadata issue recovery can ask one selected remote source instead of DLsite
+// while the automatic fallback is off; its fill settles the not-found issue.
+func TestMetadataIssueRetryAsksSelectedRemoteSource(t *testing.T) {
+	f := newRemoteFallbackFixture(t, 63, dlsite.ErrNoProduct)
+	var hits atomic.Int32
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		_ = json.NewEncoder(w).Encode(map[string]any{"source_id": f.code, "title": "Synthetic remote title"})
+	}))
+	defer remote.Close()
+	sourceID := f.addSource(t, "A", 10, remote.URL)
+	for _, statement := range []string{
+		`INSERT INTO work_metadata_sync_state(work_id,provider_id,component,attempt_id,status,failure_count,first_failed_at)
+			SELECT ?,id,'metadata',1,'unavailable',1,CURRENT_TIMESTAMP FROM metadata_provider WHERE code='dlsite'`,
+		`INSERT INTO work_metadata_provider_state(work_id,provider_id,status) SELECT ?,id,'not_found' FROM metadata_provider WHERE code='dlsite'`,
+	} {
+		if _, err := f.db.Exec(statement, f.workID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	work := strconv.FormatInt(f.workID, 10)
+	for _, invalid := range []string{`{"workIds":[` + work + `],"sourceId":0}`, `{"workIds":[` + work + `],"sourceId":-1}`, `{"workIds":[` + work + `],"sourceId":99999}`} {
+		if response := metadataRequest(f.server.retryMetadataIssues, http.MethodPost, "/api/metadata/issues/retry", invalid, "metadata:sync"); response.Code != http.StatusBadRequest {
+			t.Fatalf("invalid source retry %s: %d %s", invalid, response.Code, response.Body)
+		}
+	}
+	body := `{"workIds":[` + work + `],"sourceId":` + strconv.FormatInt(sourceID, 10) + `}`
+	if response := metadataRequest(f.server.dismissMetadataIssues, http.MethodPost, "/api/metadata/issues/dismiss", body, "metadata:sync"); response.Code != http.StatusBadRequest {
+		t.Fatalf("dismissal accepted a source: %d", response.Code)
+	}
+	response := metadataRequest(f.server.retryMetadataIssues, http.MethodPost, "/api/metadata/issues/retry", body, "metadata:sync")
+	if response.Code != http.StatusAccepted || !strings.Contains(response.Body.String(), `"queued":1`) {
+		t.Fatalf("source retry: %d %s", response.Code, response.Body)
+	}
+	if err := f.server.runNextQueuedWorkflowJob(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var title string
+	if err := f.db.QueryRow("SELECT title FROM work WHERE id=?", f.workID).Scan(&title); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := metasync.NewIssueStore(f.db).List(context.Background(), metasync.IssueQuery{Page: 1, PageSize: 25})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hits.Load() != 1 || title != "Synthetic remote title" || pending.Total != 0 {
+		t.Fatalf("source retry result: hits=%d title=%q pending=%d", hits.Load(), title, pending.Total)
 	}
 }
 

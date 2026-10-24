@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { mockApplication, persistedTrack, seedPlayer, work } from "./fixtures/player-library";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
 import type {
+  LibrarySource,
   MaintenanceWork,
   MaintenanceWorkPage,
   MetadataIssueWork,
@@ -13,6 +14,7 @@ import type {
 } from "../../src/lib/api";
 import {
   appSettingsFixture,
+  librarySourceFixture,
   metadataIssueWorkFixture,
   workDetailFixture,
   voiceDetailFixture,
@@ -106,6 +108,71 @@ test("metadata operators retry selected issues without source settings access", 
   await list.getByRole("link", { name: /Synthetic work 1/ }).click();
   await expect(page).toHaveURL(new RegExp(`/${syntheticWorkCode("RJ", 1)}$`));
   expect(await audio!.evaluate((element) => element.isConnected)).toBe(true);
+});
+
+test("metadata operators fetch an issue from an enabled metadata source", async ({ page }) => {
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    authenticated: true,
+    permissions: ["library:read", "metadata:sync"],
+  });
+  await page.route("**/api/library-sources", (route) =>
+    route.fulfill({
+      json: [
+        librarySourceFixture({ id: 4, displayName: "Example Remote A" }),
+        librarySourceFixture({ id: 5, code: "example_remote_b", displayName: "Example Remote B", enabled: false }),
+        librarySourceFixture({
+          id: 6,
+          code: "example_remote_c",
+          displayName: "Example Remote C",
+          metadataCapable: false,
+        }),
+      ] satisfies LibrarySource[],
+    }),
+  );
+  const item = metadataIssueWorkFixture({
+    workId: 1,
+    primaryCode: syntheticWorkCode("RJ", 0),
+    title: "Synthetic work 0",
+    issues: [
+      {
+        component: "metadata",
+        status: "unavailable",
+        failureCount: 1,
+        firstFailedAt: "2026-01-01 00:00:00",
+        checkedAt: "2026-01-02 00:00:00",
+      },
+    ],
+  });
+  await page.route("**/api/maintenance/works?*", (route) =>
+    route.fulfill({
+      json: { works: [asMaintenanceWork(item)], page: 1, pageSize: 25, total: 1 } satisfies MaintenanceWorkPage,
+    }),
+  );
+  const retries: unknown[] = [];
+  await page.route("**/api/metadata/issues/retry", async (route) => {
+    retries.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 202,
+      json: { queued: 1, skipped: 0, failed: 0 } satisfies ApiResponse<"retryMetadataIssues">,
+    });
+  });
+  await page.goto("/maintenance?tab=works&reason=metadata");
+  const list = page.getByRole("region", { name: "Metadata records" });
+  await list.getByText("Affected editions and providers (1)").click();
+  const fetchEdition = (source: string) =>
+    list.getByRole("button", { name: `Fetch ${syntheticWorkCode("RJ", 0)} from ${source}`, exact: true });
+  await expect(fetchEdition("Example Remote B")).toHaveCount(0);
+  await expect(fetchEdition("Example Remote C")).toHaveCount(0);
+  await fetchEdition("Example Remote A").click();
+  await expect.poll(() => retries).toEqual([{ workIds: [1], sourceId: 4 }]);
+  await list.getByRole("checkbox", { name: `Select ${syntheticWorkCode("RJ", 0)}`, exact: true }).click();
+  await page.getByRole("button", { name: "Fetch from Example Remote A (1)", exact: true }).click();
+  await expect
+    .poll(() => retries)
+    .toEqual([
+      { workIds: [1], sourceId: 4 },
+      { workIds: [1], sourceId: 4 },
+    ]);
 });
 
 test("metadata operators dismiss products reported as not found", async ({ page }) => {
