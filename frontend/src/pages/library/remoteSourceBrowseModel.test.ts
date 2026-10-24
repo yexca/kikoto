@@ -49,6 +49,9 @@ function familyCard(editions: RemoteWorkEdition[]): RemoteWork {
     favorite: false,
     listeningStatus: "none",
     recommendScore: 0,
+    sourcePresence: [],
+    availability: [],
+    userTags: [],
     editions,
   };
 }

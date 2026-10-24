@@ -1,6 +1,6 @@
 import { apiSessionVersion, assertApiSession } from "@/lib/apiSession";
 import { deleteJSON, getJSON, postJSONBody } from "@/lib/apiTransport";
-import type { LibrarySort, ListeningStatus, SortDirection } from "@/lib/libraryApi";
+import type { LibrarySort, ListeningStatus, SortDirection, SourcePresenceItem, UserTag } from "@/lib/libraryApi";
 import type { LocalFolderAvailability } from "@/lib/localAvailability";
 import type { MediaCacheResult } from "@/lib/mediaApi";
 import type { WorkMetadataPresentation } from "@/lib/metadataApi";
@@ -49,6 +49,10 @@ export type RemoteWork = {
   favorite: boolean;
   listeningStatus: ListeningStatus;
   recommendScore: number;
+  /** The work's state in this library, as a Library card shows it; empty for a work the library does not hold. */
+  sourcePresence: SourcePresenceItem[];
+  availability: string[];
+  userTags: UserTag[];
   /** Every edition of the card's work family the source returned, the presented one included. */
   editions: RemoteWorkEdition[];
 };

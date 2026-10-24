@@ -148,7 +148,7 @@ function dedupeBadges(badges: WorkCardBadge[]) {
   });
 }
 
-function sortSourceBadges(badges: WorkCardBadge[]) {
+export function sortSourceBadges(badges: WorkCardBadge[]) {
   return [...badges].sort(
     (left, right) => sourceBadgeRank(left) - sourceBadgeRank(right) || left.label.localeCompare(right.label),
   );

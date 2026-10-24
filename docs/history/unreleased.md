@@ -10,6 +10,9 @@
 - A desktop page about as tall as the window, such as a short last Library
   page with the player open, no longer shakes endlessly as the scrollbar
   appears and disappears.
+- Remote source cards for works already in the library show the Local,
+  Tracked, or Cached marks and the personal tags of their Library card, so
+  **Always** cover source marks no longer show only the remote source.
 
 </details>
 

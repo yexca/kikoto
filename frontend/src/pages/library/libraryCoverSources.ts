@@ -6,12 +6,12 @@ export type LibraryCoverSourceScope = { kind: "local" } | { kind: "tracked" } | 
 const storagePrefix = "kikoto:library-cover-sources:";
 
 // A remote catalog presence (`source:<id>`) says another service lists the work;
-// it is not a state of the Local or Tracked library, so it is never an exception there.
+// it is not a state of the library, so it is never an exception on any scope.
 const remoteCatalogKey = /^source:\d+$/;
 
 function hiddenAutomatically(badge: WorkCardBadge, scope: LibraryCoverSourceScope) {
   const key = badge.key ?? "";
-  if (scope.kind !== "remote" && remoteCatalogKey.test(key)) return true;
+  if (remoteCatalogKey.test(key)) return true;
   if (badge.variant === "warning") return false;
   if (scope.kind === "local") return key === "source:local";
   if (scope.kind === "tracked") return key.startsWith("source:tracked");
@@ -21,7 +21,7 @@ function hiddenAutomatically(badge: WorkCardBadge, scope: LibraryCoverSourceScop
 /**
  * Cover source marks for a Library card. Automatic mode drops the healthy mark
  * the current Library scope already implies and remote catalog listings, so
- * only exceptions remain (a warning about the work's own files, or the other
+ * only exceptions remain (a warning about the work's own files, or another
  * Library scope also holding it); never shows none at all.
  * `sourceUnavailableFallback` is false when an empty result is intentional.
  */
