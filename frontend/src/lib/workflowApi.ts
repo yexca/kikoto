@@ -111,7 +111,7 @@ export type WorkflowRunGraph = {
 };
 
 /**
- * A run over the works a Subscriptions view shows. Without a run, no shown
+ * A run over the works a Discover view shows. Without a run, no shown
  * work needed it; an existing run is the one already queued for the same view.
  */
 export type ShownWorksActionResult = {

@@ -63,23 +63,23 @@ type TriggerEditorState =
 
 const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v3";
 
-/** Where the Subscriptions page configures a workflow it manages. */
+/** Where the Discover page configures a workflow it manages. */
 const subscriptionsManagedWorkflowPaths: Record<string, { message: string; path: string }> = {
   availability_watch: {
     message: "availabilityWatchManagedOnSubscriptions",
-    path: "/subscriptions?view=watch&panel=watch",
+    path: "/discover?view=watch&panel=watch",
   },
   creator_subscription_refresh: {
     message: "subscriptionRefreshManagedOnSubscriptions",
-    path: "/subscriptions?panel=subscriptions",
+    path: "/discover?panel=subscriptions",
   },
   dlsite_popular_collection: {
     message: "rankingsManagedOnSubscriptions",
-    path: "/subscriptions?view=rankings&panel=rankings",
+    path: "/discover?view=rankings&panel=rankings",
   },
   remote_popular_collection: {
     message: "rankingsManagedOnSubscriptions",
-    path: "/subscriptions?view=rankings&panel=rankings",
+    path: "/discover?view=rankings&panel=rankings",
   },
 };
 

@@ -1556,14 +1556,14 @@ export const surfaceKorean = {
     loadingWorkflowData: "워크플로 데이터 로드 중",
     workflowTabs: "워크플로",
     availabilityWatchManagedOnSubscriptions:
-      "가용성 모니터링은 구독 페이지에서 설정하며, 구독 새로 고침이 일정에 따라 실행합니다. 실행 기록은 여기에 남습니다.",
+      "가용성 모니터링은 둘러보기 페이지에서 설정하며, 구독 새로 고침이 일정에 따라 실행합니다. 실행 기록은 여기에 남습니다.",
     subscriptionRefreshManagedOnSubscriptions:
-      "구독 새로 고침 일정은 구독 페이지에서 설정합니다. 실행 기록은 여기에 남습니다.",
+      "구독 새로 고침 일정은 둘러보기 페이지에서 설정합니다. 실행 기록은 여기에 남습니다.",
     rankingsManagedOnSubscriptions:
-      "각 순위는 구독 페이지의 순위 설정에서 정한 일정에 따라 따로 가져옵니다. 실행 기록은 여기에 남습니다.",
-    openSubscriptions: "구독 열기",
+      "각 순위는 둘러보기 페이지의 순위 설정에서 정한 일정에 따라 따로 가져옵니다. 실행 기록은 여기에 남습니다.",
+    openSubscriptions: "둘러보기 열기",
     presetScheduledBySubscriptions:
-      "이 워크플로는 수동으로 실행합니다. 신작을 정기적으로 확인하려면 서클, 시리즈, 성우를 구독하세요. 구독은 구독 페이지에서 정한 일정에 따라 새로 고쳐집니다.",
+      "이 워크플로는 수동으로 실행합니다. 신작을 정기적으로 확인하려면 서클, 시리즈, 성우를 구독하세요. 구독은 둘러보기 페이지에서 정한 일정에 따라 새로 고쳐집니다.",
     categories: {
       basic: "기본",
       collect: "수집",

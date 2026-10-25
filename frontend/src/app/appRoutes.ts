@@ -19,6 +19,10 @@ export function pageFromPath(rawPath: string): AppPage {
   if (item) {
     return item.id;
   }
+  // A `/subscriptions` entry, such as a remembered tab, belongs to Discover, which it redirects to.
+  if (path === "/subscriptions") {
+    return "subscriptions";
+  }
   if (/^\/[^/]+$/.test(path)) {
     return "library";
   }

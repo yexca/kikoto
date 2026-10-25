@@ -951,7 +951,7 @@ test("demo Fetch run options remain inspectable without preparing or publishing 
   expect(submissions).toHaveLength(0);
 });
 
-test("definitions foreground runnable presets and send ranking pulls to the Subscriptions page", async ({ page }) => {
+test("definitions foreground runnable presets and send ranking pulls to the Discover page", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/workflows");
 
@@ -973,8 +973,8 @@ test("definitions foreground runnable presets and send ranking pulls to the Subs
   await expect(page).toHaveURL(/\/workflows\?.*run=51/);
   await page.getByRole("button", { name: "Close Activity", exact: true }).click();
 
-  await page.getByRole("button", { name: "Open Subscriptions", exact: true }).click();
-  await expect(page).toHaveURL(/\/subscriptions\?view=rankings&panel=rankings$/);
+  await page.getByRole("button", { name: "Open Discover", exact: true }).click();
+  await expect(page).toHaveURL(/\/discover\?view=rankings&panel=rankings$/);
 });
 
 // Only the wide layout keeps the workflow list beside an open trigger editor.
@@ -1417,11 +1417,11 @@ test("availability watch edits its configuration in place and manages the watch 
   await mockWorkflows(page, undefined, undefined, (payload) => updates.push(payload));
   await page.goto("/workflows?workflow=availability_watch");
 
-  // Workflows keeps the run history and links to the Subscriptions page,
+  // Workflows keeps the run history and links to the Discover page,
   // whose Watch view holds the pool and whose settings hold the configuration.
   await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Open Subscriptions", exact: true }).click();
-  await expect(page).toHaveURL(/\/subscriptions\?view=watch&panel=watch$/);
+  await page.getByRole("button", { name: "Open Discover", exact: true }).click();
+  await expect(page).toHaveURL(/\/discover\?view=watch&panel=watch$/);
   const settings = page.getByRole("dialog", { name: "Subscription settings", exact: true });
   await expect(settings.getByRole("tab")).toHaveText(["Subscriptions", "Rankings", "Availability Watch"]);
   await expect(settings.getByRole("tab", { name: "Availability Watch", selected: true })).toBeVisible();
@@ -1548,12 +1548,12 @@ test("availability notifications and earlier watch links open the Watch view", a
     name: /^Available/,
   });
   await expect(available.getByRole("button", { name: /^RJ00000001/ })).toBeInViewport();
-  await expect(page).toHaveURL(/\/subscriptions\?view=watch$/);
+  await expect(page).toHaveURL(/\/discover\?view=watch$/);
 
-  // A bookmark of the pool from the settings opens the Watch view and the target's family.
+  // A Subscriptions bookmark of the pool in the settings opens Discover's Watch view and the target's family.
   await page.goto("/subscriptions?panel=watch&target=2");
   await expect(page.getByRole("dialog", { name: "RJ00000001 work family" })).toBeVisible();
-  await expect(page).toHaveURL(/\/subscriptions\?view=watch$/);
+  await expect(page).toHaveURL(/\/discover\?view=watch$/);
 });
 
 test("activity links metadata failures to a run-filtered Maintenance list", async ({ page }) => {

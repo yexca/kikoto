@@ -1460,12 +1460,12 @@ export const surfaceHant = {
     loadingWorkflowData: "正在載入工作流程資料",
     workflowTabs: "工作流程",
     availabilityWatchManagedOnSubscriptions:
-      "可用性監視在訂閱頁面設定，並由訂閱重新整理依排程執行。執行歷史保留在這裡。",
-    subscriptionRefreshManagedOnSubscriptions: "訂閱重新整理排程在訂閱頁面設定。執行歷史保留在這裡。",
-    rankingsManagedOnSubscriptions: "每個排行榜依訂閱頁面排行榜設定中的排程各自拉取。執行歷史保留在這裡。",
-    openSubscriptions: "開啟訂閱",
+      "可用性監視在發現頁面設定，並由訂閱重新整理依排程執行。執行歷史保留在這裡。",
+    subscriptionRefreshManagedOnSubscriptions: "訂閱重新整理排程在發現頁面設定。執行歷史保留在這裡。",
+    rankingsManagedOnSubscriptions: "每個排行榜依發現頁面排行榜設定中的排程各自拉取。執行歷史保留在這裡。",
+    openSubscriptions: "開啟發現",
     presetScheduledBySubscriptions:
-      "此工作流程依需求執行。要定期追蹤新作，請訂閱社團、系列或聲優；訂閱會依訂閱頁面設定的排程重新整理。",
+      "此工作流程依需求執行。要定期追蹤新作，請訂閱社團、系列或聲優；訂閱會依發現頁面設定的排程重新整理。",
     categories: {
       basic: "基礎",
       collect: "收集",

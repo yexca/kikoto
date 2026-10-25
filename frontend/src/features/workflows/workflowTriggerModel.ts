@@ -21,7 +21,7 @@ export function supportedAutomationTriggerTypes(
 ): AutomationTriggerType[] {
   // Scheduled catalog sync is a subscription, the subscription refresh runs
   // Availability Watch, and each ranking list keeps its own schedule; all are
-  // configured on the Subscriptions page.
+  // configured on the Discover page.
   if (definition.scope === "system" && isPreset) return [];
   if (definition.scope === "system" && definition.code === "remote_work_fetch") return [];
   if (definition.scope === "system" && subscriptionsScheduledWorkflowCodes.has(definition.code)) return [];
@@ -33,7 +33,7 @@ export function supportedAutomationTriggerTypes(
   return [];
 }
 
-/** Workflows whose automation is configured on the Subscriptions page. */
+/** Workflows whose automation is configured on the Discover page. */
 export const subscriptionsScheduledWorkflowCodes = new Set([
   "availability_watch",
   "creator_subscription_refresh",

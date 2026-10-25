@@ -1450,14 +1450,14 @@ export const surfaceEnglish = {
     loadingWorkflowData: "Loading workflow data",
     workflowTabs: "Workflows",
     availabilityWatchManagedOnSubscriptions:
-      "Availability Watch is configured on the Subscriptions page, and the subscription refresh runs it on its schedule. Its run history stays here.",
+      "Availability Watch is configured on the Discover page, and the subscription refresh runs it on its schedule. Its run history stays here.",
     subscriptionRefreshManagedOnSubscriptions:
-      "The subscription refresh is scheduled on the Subscriptions page. Its run history stays here.",
+      "The subscription refresh is scheduled on the Discover page. Its run history stays here.",
     rankingsManagedOnSubscriptions:
-      "Each ranking is pulled on its own schedule, set in the Rankings settings on the Subscriptions page. Its run history stays here.",
-    openSubscriptions: "Open Subscriptions",
+      "Each ranking is pulled on its own schedule, set in the Rankings settings on the Discover page. Its run history stays here.",
+    openSubscriptions: "Open Discover",
     presetScheduledBySubscriptions:
-      "This workflow runs on demand. To follow new works on a schedule, subscribe to the circle, series, or voice actor; subscriptions refresh on the schedule set on the Subscriptions page.",
+      "This workflow runs on demand. To follow new works on a schedule, subscribe to the circle, series, or voice actor; subscriptions refresh on the schedule set on the Discover page.",
     categories: {
       basic: "Basic",
       collect: "Collect",

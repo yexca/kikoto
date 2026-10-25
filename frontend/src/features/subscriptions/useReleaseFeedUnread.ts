@@ -8,7 +8,7 @@ const refreshIntervalMs = 5 * 60 * 1000;
 
 /**
  * The number of feed entries added since the account last opened
- * Subscriptions, for the navigation badge. It refreshes when the window
+ * Discover's New releases, for the navigation badge. It refreshes when the window
  * returns and every few minutes while visible.
  */
 export function useReleaseFeedUnread(enabled: boolean) {

@@ -53,6 +53,8 @@ export function legacyLibraryRedirect(pathname: string, search = "") {
       return `/metadata${params.size ? `?${params}` : ""}`;
     }
   }
+  // Subscriptions is the Discover page; its query names the same view.
+  if (path === "/subscriptions") return `/discover${normalizedSearch(search)}`;
   if (path === "/history") return "/insights";
   if (path === "/tags") return "/settings?tab=tags";
   if (path === "/user-data") return "/settings?tab=data";

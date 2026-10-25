@@ -310,7 +310,7 @@ export function CircleDetailPage({
   const canOpenWorkflows = auth.hasPermission("workflows:run") && !auth.demoMode;
   const canChangeCover = auth.hasPermission("favorites:write");
   const canSubscribe = auth.hasPermission("favorites:write") && !auth.demoMode;
-  const openSubscriptions = () => openWorkflowPath("/subscriptions?panel=subscriptions");
+  const openSubscriptions = () => openWorkflowPath("/discover?panel=subscriptions");
   const openRefreshRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
   const refreshRun = useCircleRefreshRun({
     run: detail?.refresh,

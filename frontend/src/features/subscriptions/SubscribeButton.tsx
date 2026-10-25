@@ -27,7 +27,7 @@ function targetKey(target: CreatorSubscriptionTarget) {
 /**
  * Subscribes the account to new releases of a circle, series, or voice
  * actor. Subscribing is separate from Favorite: a favorite is a preference, a
- * subscription adds new works to the Subscriptions feed.
+ * subscription adds new works to the New releases of Discover.
  */
 export function SubscribeButton({
   target,

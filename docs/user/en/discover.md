@@ -1,21 +1,22 @@
-# Subscriptions
-[English](../en/subscriptions.md) · [简体中文](../zh-Hans/subscriptions.md) · [繁體中文](../zh-Hant/subscriptions.md) · [日本語](../ja/subscriptions.md) · [한국어](../ko/subscriptions.md)
+# Discover
+[English](../en/discover.md) · [简体中文](../zh-Hans/discover.md) · [繁體中文](../zh-Hant/discover.md) · [日本語](../ja/discover.md) · [한국어](../ko/discover.md)
 
-Subscriptions collects new works from the circles, series, and voice actors you
-subscribe to, and works that Availability Watch finds on a remote source. Its
-**Rankings** view follows popular rankings and shows how they change, and its
-**Watch** view holds the works Availability Watch waits for. The switch at the
-top chooses **New releases**, **Rankings**, or **Watch**; a dot on
-**Rankings** means a ranking changed since you last looked at it. **Watch** is
-shown to accounts that can open Workflows.
+Discover is where works from outside your library come in. **New releases**
+collects new works from the circles, series, and voice actors you subscribe
+to, and works that Availability Watch finds on a remote source; **Rankings**
+follows popular rankings and shows how they change; and **Watch** holds the
+works Availability Watch waits for. The switch at the top chooses the view; a
+dot on **Rankings** means a ranking changed since you last looked at it.
+**Watch** is shown to accounts that can open Workflows. Links to
+`/subscriptions` open Discover.
 
 ## Subscribing
 
 - Circle and voice actor pages have a bell beside **Favorite**; a series has
   one beside its DLsite link.
   Subscribing is separate from Favorite: a favorite records a preference, a
-  subscription adds new works to the Subscriptions feed. Subscriptions are
-  personal.
+  subscription adds new works to **New releases** in Discover. Subscriptions
+  are personal.
 - A subscription starts with the catalog as it is: works already in the
   catalog are never counted as new. When the catalog was pulled recently, the
   subscription starts at once. Otherwise subscribing asks first: an account

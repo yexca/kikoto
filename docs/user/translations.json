@@ -13,7 +13,7 @@
     { "id": "workflows", "source": "en/workflows.md" },
     { "id": "circles", "source": "en/circles.md" },
     { "id": "voices", "source": "en/voices.md" },
-    { "id": "subscriptions", "source": "en/subscriptions.md" },
+    { "id": "discover", "source": "en/discover.md" },
     { "id": "translation", "source": "en/translation.md" }
   ],
   "locales": ["en", "zh-Hans", "zh-Hant", "ja", "ko"]

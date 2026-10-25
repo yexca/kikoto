@@ -20,7 +20,7 @@ export type ShownWorksActionRun = { runId: number; queued: number };
 export type ShownWorksActions = ReturnType<typeof useShownWorksActions>;
 
 /**
- * The actions on the works a Subscriptions view shows: syncing their metadata
+ * The actions on the works a Discover view shows: syncing their metadata
  * and checking which remote sources have them. Each request queues a run for
  * the works that still need it and the hook follows the run; when it ends, the
  * view reloads and a toast reports the outcome. The source check's answers for

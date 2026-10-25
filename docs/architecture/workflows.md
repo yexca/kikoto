@@ -78,7 +78,7 @@ Remote sources:
 - `creator_subscription_refresh`: see
   [Creator Subscriptions](#creator-subscriptions).
 - `shown_works_metadata_sync` and `shown_works_source_check`: sync the metadata
-  of, or check the sources of, the works a Subscriptions view shows (see
+  of, or check the sources of, the works a Discover view shows (see
   [Shown Works Actions](#shown-works-actions)).
 
 Media, cleanup, and database:
@@ -410,7 +410,7 @@ tag names), Collect (the DLsite and remote source ranking pulls), Catalog sync
 (Availability Watch, Fetch, and works on a source). A linked run of any other
 workflow adds a read-only entry for it, which stays with Basic. Availability
 Watch, the subscription refresh, and the ranking pulls are configured on the
-Subscriptions page: their entries show the latest run, the health summary, and
+Discover page: their entries show the latest run, the health summary, and
 the run history with a link there, and have no Run options or triggers. Each entry shows
 its latest run's status and time and the enabled automation that starts it
 (Startup, schedule, or folder watch). The page reads each listed workflow's
@@ -710,7 +710,7 @@ from obviously synthetic names and reserved codes, and refuses every change.
 ## Shown Works Actions
 
 Two system workflows act on the works an account is looking at on the
-Subscriptions page, only when it asks; no schedule, ranking pull, or
+Discover page, only when it asks; no schedule, ranking pull, or
 subscription refresh starts them. Both are incremental: each takes only the
 shown works that still need it, at most 100 in the order shown, and with
 nothing to take queues no run. A request names what is shown:
@@ -1169,7 +1169,7 @@ execution.
 It has no trigger of its own. The [subscription refresh](#creator-subscriptions)
 queues it after each refresh while its Availability Watch option is on, using
 the account that last configured the watch, and it may also be run directly
-from the Subscriptions page, whose Watch view shows the pool and whose
+from the Discover page, whose Watch view shows the pool and whose
 settings hold the configuration.
 Workflows lists its runs and links to that page. Each execution snapshots the
 active pool and
@@ -1323,7 +1323,7 @@ new release. A series subscription receives the codes its series lists.
 The feed (`user_release_feed_item`) records one entry per account, code, and
 event (`released`, `edition`, or `available`). Availability Watch adds
 `available` entries for every account it notifies, and a target that becomes
-available again moves its entry to the top. The Subscriptions page groups
+available again moves its entry to the top. The Discover page groups
 entries by work family, newest event first, and shows each family through its
 canonical work, or through catalog details when no work exists yet, and, for
 an account with `workflows:run`, whether the Availability Watch pool watches
@@ -1336,11 +1336,11 @@ Availability Watch option is on also adds its new works to the shared watch
 pool, on behalf of a subscriber who may edit the pool.
 
 The workflow has one fixed interval trigger, configured only on the
-Subscriptions page by a user with `metadata:sync`: on or off, an interval from
+Discover page by a user with `metadata:sync`: on or off, an interval from
 1 to 168 hours (24 by default), and whether each refresh checks Availability
 Watch. Startup plans its first run. The trigger needs no owner: the run holds
 only refresh steps, and the Availability Watch run it queues uses the watch's
-configuring account. Workflows lists its runs and links to the Subscriptions
+configuring account. Workflows lists its runs and links to the Discover
 page; the trigger cannot be edited or deleted there. `POST
 /api/subscriptions/refresh` queues a run now; a run that is already queued or
 running is kept.

@@ -60,7 +60,7 @@ Circles represent makers, circles, and related party catalog state.
   **Refreshing** until the run settles, and the run is visible in Activity.
 - The bell beside **Favorite** subscribes to the circle's new works, and the
   bell beside a series' DLsite link to that series; see
-  [Subscriptions](subscriptions.md). A series of a subscribed circle is already
+  [Discover](discover.md#subscribing). A series of a subscribed circle is already
   included.
 - The **More** menu holds **Change cover…** and **Sync this circle's catalog…**,
   the Sync a circle catalog preset with this circle filled in, for every other

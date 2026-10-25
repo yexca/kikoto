@@ -41,7 +41,7 @@ import { normalizeFetchExtension } from "@/lib/remoteFetchFilters";
 import { WORD_TOKEN_SEPARATORS } from "@/lib/tokenDraft";
 
 /**
- * A workflow configured on the Subscriptions page, such as Availability Watch
+ * A workflow configured on the Discover page, such as Availability Watch
  * and the subscription refresh, keeps its run history on Workflows and links
  * to where it is managed.
  */

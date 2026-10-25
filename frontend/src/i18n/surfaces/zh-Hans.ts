@@ -1457,12 +1457,12 @@ export const surfaceHans = {
     activity: "活动",
     loadingWorkflowData: "正在加载工作流数据",
     workflowTabs: "工作流",
-    availabilityWatchManagedOnSubscriptions: "可用性监视在订阅页面配置，并由订阅刷新按计划运行。运行历史保留在这里。",
-    subscriptionRefreshManagedOnSubscriptions: "订阅刷新计划在订阅页面设置。运行历史保留在这里。",
-    rankingsManagedOnSubscriptions: "每个排行榜按订阅页面排行榜设置中的计划各自拉取。运行历史保留在这里。",
-    openSubscriptions: "打开订阅",
+    availabilityWatchManagedOnSubscriptions: "可用性监视在发现页面配置，并由订阅刷新按计划运行。运行历史保留在这里。",
+    subscriptionRefreshManagedOnSubscriptions: "订阅刷新计划在发现页面设置。运行历史保留在这里。",
+    rankingsManagedOnSubscriptions: "每个排行榜按发现页面排行榜设置中的计划各自拉取。运行历史保留在这里。",
+    openSubscriptions: "打开发现",
     presetScheduledBySubscriptions:
-      "此工作流按需运行。要定期追踪新作，请订阅社团、系列或声优；订阅会按订阅页面设置的计划刷新。",
+      "此工作流按需运行。要定期追踪新作，请订阅社团、系列或声优；订阅会按发现页面设置的计划刷新。",
     categories: {
       basic: "基础",
       collect: "收集",

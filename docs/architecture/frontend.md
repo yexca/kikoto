@@ -15,7 +15,7 @@ Appearance owns only mode, style, and color choices.
 
 The account panel (`app/header/AccountPanel`) opens from the avatar, or from
 Sign in for anonymous visitors, on every screen size. It shows the profile,
-Subscriptions, Insights, and Tags as shortcuts, the UI language, Settings and
+Discover, Insights, and Tags as shortcuts, the UI language, Settings and
 Users, and sign-in or sign-out; on phones it also holds the native connection actions. A
 signed-in user also chooses the personal preferred metadata language there:
 **Origin** is shown when the user has no preference and choosing it clears the
@@ -171,12 +171,14 @@ and the Library remote source panel record remote Fetch and Fork runs through
 
 The Workflows page keeps routing, selection, and run handlers. Definition
 detail, run forms, the trigger editor, the Availability Watch configuration
-and pool that the Subscriptions page composes, run detail, and candidate
+and pool that the Discover page composes, run detail, and candidate
 review live in `features/workflows`.
 
-The Subscriptions page switches between three views, the release feed,
-Rankings (`?view=rankings`), and Watch (`?view=watch`, for accounts that can
-run workflows; any other account sees the release feed), and composes its
+The Discover page (`/discover`, rendered by `pages/SubscriptionsPage`) is the
+way in to works from outside the library. A `/subscriptions` address
+redirects to it with its query. It switches between three views, the release
+feed, Rankings (`?view=rankings`), and Watch (`?view=watch`, for accounts that
+can run workflows; any other account sees the release feed), and composes its
 settings as a sticky panel
 beside the view from 1280px, where the view reflows to the remaining width, as
 a drawer over its right edge on narrower desktops, and as a sheet on phones.

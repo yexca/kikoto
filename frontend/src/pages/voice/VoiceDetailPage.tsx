@@ -743,7 +743,7 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
               subjectName={detail.displayName}
               canSubscribe={!auth.demoMode && auth.hasPermission("favorites:write")}
               canPullNow={!auth.demoMode && auth.hasPermission("metadata:sync")}
-              onOpenSubscriptions={() => openWorkflowPath("/subscriptions?panel=subscriptions")}
+              onOpenSubscriptions={() => openWorkflowPath("/discover?panel=subscriptions")}
               className="h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:px-[var(--control-padding-sm-x)] lg:text-xs"
             />
             {!firstPull && !catalogRefreshActive && (detail.metadataMissingWorks ?? 0) > 0 && (

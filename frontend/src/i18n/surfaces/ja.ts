@@ -1561,14 +1561,14 @@ export const surfaceJapanese = {
     loadingWorkflowData: "ワークフローデータを読み込み中",
     workflowTabs: "ワークフロー",
     availabilityWatchManagedOnSubscriptions:
-      "配信状況の監視は購読ページで設定し、購読の更新がそのスケジュールで実行します。実行履歴はここに残ります。",
+      "配信状況の監視は「見つける」ページで設定し、購読の更新がそのスケジュールで実行します。実行履歴はここに残ります。",
     subscriptionRefreshManagedOnSubscriptions:
-      "購読の更新スケジュールは購読ページで設定します。実行履歴はここに残ります。",
+      "購読の更新スケジュールは「見つける」ページで設定します。実行履歴はここに残ります。",
     rankingsManagedOnSubscriptions:
-      "各ランキングは、購読ページのランキング設定で決めたスケジュールでそれぞれ取得されます。実行履歴はここに残ります。",
-    openSubscriptions: "購読を開く",
+      "各ランキングは、「見つける」ページのランキング設定で決めたスケジュールでそれぞれ取得されます。実行履歴はここに残ります。",
+    openSubscriptions: "「見つける」を開く",
     presetScheduledBySubscriptions:
-      "このワークフローは手動で実行します。新作を定期的に追うには、サークル、シリーズ、声優を購読してください。購読は購読ページで設定したスケジュールで更新されます。",
+      "このワークフローは手動で実行します。新作を定期的に追うには、サークル、シリーズ、声優を購読してください。購読は「見つける」ページで設定したスケジュールで更新されます。",
     categories: {
       basic: "基本",
       collect: "収集",

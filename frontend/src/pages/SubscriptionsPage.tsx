@@ -115,6 +115,7 @@ function openRankedWork(code: string, remoteSourceId: number | null) {
 }
 
 /**
+ * Discover, the way in to works from outside the library (`/discover`).
  * New works from subscribed circles, series, and voice actors, grouped by day
  * in the Library's card grid; the tracked rankings with how they changed; or
  * the shared Availability Watch pool in the same card grid. The subscriptions
