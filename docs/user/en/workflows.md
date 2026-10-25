@@ -169,7 +169,8 @@ administrators.
 - Availability Watch, **Refresh subscriptions**, **Pull DLsite rankings**, and
   **Pull remote source rankings** are configured on the
   [Subscriptions](subscriptions.md) page, where the watch keeps its saved
-  configuration and watch pool, the subscription refresh its schedule, and
+  configuration and its pool is the **Watch** view, the subscription refresh
+  its schedule, and
   each ranking its own pull schedule. Here they show their latest runs, health
   summary, and run history, link to that page, and have no Run options or
   triggers of their own.

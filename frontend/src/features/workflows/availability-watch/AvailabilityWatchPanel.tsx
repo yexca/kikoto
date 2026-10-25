@@ -1,17 +1,18 @@
 import { ExternalLink, Loader2, RotateCcw, Save } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { TokenInput } from "@/components/ui/token-input";
-import { AvailabilityWatchPool } from "@/features/workflows/availability-watch/AvailabilityWatchPool";
 import {
+  availabilityWatchActionAllowed,
   availabilityWatchConfig,
   availabilityWatchConfigDirty,
   availabilityWatchConfigPayload,
   type AvailabilityWatchConfig,
 } from "@/features/workflows/availability-watch/availabilityWatchModel";
+import type { AvailabilityWatchState } from "@/features/workflows/availability-watch/useAvailabilityWatch";
 import {
   OptionField,
   SegmentedControl,
@@ -81,78 +82,9 @@ export function SubscriptionsManagedWorkflowPanel({
   );
 }
 
-/** The watch's configuration and shared pool, managed from the Subscriptions page. */
-export function AvailabilityWatchManager({
-  readOnly,
-  canSyncMetadata,
-  canTrackRemote,
-  canFetchRemote,
-  onRunQueued,
-}: {
-  readOnly: boolean;
-  /** Availability Watch refreshes DLsite family metadata on every run. */
-  canSyncMetadata: boolean;
-  /** `remote:track`: the watch may track ready works. */
-  canTrackRemote: boolean;
-  /** `remote:fetch`: the watch may fetch ready works. */
-  canFetchRemote: boolean;
-  onRunQueued: () => void;
-}) {
-  const toast = useToast();
-  const [watch, setWatch] = useState<AvailabilityWatch | null>(null);
-  const [sources, setSources] = useState<LibrarySource[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
-
-  const refreshWatch = useCallback(async () => {
-    const next = await api.getAvailabilityWatch();
-    setWatch(next);
-    setLoadError("");
-    return next;
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([api.getAvailabilityWatch(), api.listLibrarySources()])
-      .then(([next, nextSources]) => {
-        if (cancelled) return;
-        setWatch(next);
-        setSources(
-          nextSources.filter(
-            (source) =>
-              source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType),
-          ),
-        );
-        setLoadError("");
-      })
-      .catch((error) => {
-        if (!cancelled)
-          setLoadError(error instanceof Error ? error.message : workflowCopy("availabilityWatchLoadFailed"));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Polling starts once a watch has loaded; each poll's fresh object must not restart the timer.
-  const watchId = watch?.id;
-  useEffect(() => {
-    if (watchId === undefined) return;
-    const poll = () => {
-      if (!document.hidden) void refreshWatch().catch(() => undefined);
-    };
-    const timer = window.setInterval(poll, 5000);
-    document.addEventListener("visibilitychange", poll);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", poll);
-    };
-  }, [refreshWatch, watchId]);
-
-  if (loading) {
+/** A loading or failed shared watch, in place of the surface that needs it. */
+export function AvailabilityWatchLoadState({ state }: { state: AvailabilityWatchState }) {
+  if (state.loading) {
     return (
       <Card>
         <CardContent className="space-y-3 p-5">
@@ -162,47 +94,53 @@ export function AvailabilityWatchManager({
       </Card>
     );
   }
-  if (!watch || loadError) {
-    return (
-      <WorkflowMetadataErrorState
-        message={loadError || workflowCopy("availabilityWatchLoadFailed")}
-        onRetry={() => void refreshWatch()}
-      />
-    );
-  }
+  return (
+    <WorkflowMetadataErrorState
+      message={state.loadError || workflowCopy("availabilityWatchLoadFailed")}
+      onRetry={state.retry}
+    />
+  );
+}
 
+/**
+ * The watch's configuration and Run, in the page's settings. The pool is a
+ * view of the page, which shares this watch state and its poll.
+ */
+export function AvailabilityWatchSettings({
+  state,
+  readOnly,
+  canSyncMetadata,
+  canTrackRemote,
+  canFetchRemote,
+  onRunQueued,
+}: {
+  state: AvailabilityWatchState;
+  readOnly: boolean;
+  /** Availability Watch refreshes DLsite family metadata on every run. */
+  canSyncMetadata: boolean;
+  /** `remote:track`: the watch may track ready works. */
+  canTrackRemote: boolean;
+  /** `remote:fetch`: the watch may fetch ready works. */
+  canFetchRemote: boolean;
+  onRunQueued: () => void;
+}) {
+  const { watch } = state;
+  if (!watch) return <AvailabilityWatchLoadState state={state} />;
   const layout = runFormLayout({ optionsTitle: workflowCopy("configuration") });
-  // The targets decide what the configured action tracks or fetches, so
-  // editing them needs the same permissions as that action.
-  const manageReadOnly =
-    readOnly || !availabilityWatchActionAllowed(watch.action, canSyncMetadata, canTrackRemote, canFetchRemote);
-  const sourceName = (sourceId: number | null) =>
-    sourceId ? (sources.find((source) => source.id === sourceId)?.displayName ?? `#${sourceId}`) : "";
-
   return (
     <div className="workflow-detail grid min-w-0 gap-5">
       <AvailabilityWatchRunForm
         layout={layout}
         watch={watch}
-        sources={sources}
-        readOnly={manageReadOnly}
+        sources={state.sources}
+        readOnly={
+          readOnly || !availabilityWatchActionAllowed(watch.action, canSyncMetadata, canTrackRemote, canFetchRemote)
+        }
         canSyncMetadata={canSyncMetadata}
         canTrackRemote={canTrackRemote}
         canFetchRemote={canFetchRemote}
-        onSaved={setWatch}
+        onSaved={state.setWatch}
         onRunQueued={onRunQueued}
-      />
-
-      <AvailabilityWatchPool
-        watch={watch}
-        sourceName={sourceName}
-        readOnly={manageReadOnly}
-        onWatchChange={setWatch}
-        onRefresh={() =>
-          void refreshWatch().catch((error) =>
-            toast.notify(toastFromError(error, workflowCopy("readyPoolRefreshFailed"))),
-          )
-        }
       />
     </div>
   );
@@ -218,19 +156,6 @@ function availabilityWatchSourceOptions(sources: LibrarySource[], selectedId: nu
     options.push({ value: String(selectedId), label: `#${selectedId}` });
   }
   return options;
-}
-
-function availabilityWatchActionAllowed(
-  action: string,
-  canSyncMetadata: boolean,
-  canTrackRemote: boolean,
-  canFetchRemote: boolean,
-) {
-  if (!canSyncMetadata) return false;
-  if (action === "track") return canTrackRemote;
-  if (action === "fetch") return canFetchRemote;
-  if (action === "track_fetch") return canTrackRemote && canFetchRemote;
-  return true;
 }
 
 function availabilityWatchActionOptions(canSyncMetadata: boolean, canTrackRemote: boolean, canFetchRemote: boolean) {

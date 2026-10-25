@@ -414,6 +414,19 @@ async function mockWorkflows(
       await route.fulfill({ json: { ok: true } satisfies ApiResponse<"removeAvailabilityWatchTarget"> });
       return;
     }
+    if (url.pathname === "/api/availability-watch/targets/clear-completed" && route.request().method() === "POST") {
+      const { targetIds } = route.request().postDataJSON() as { targetIds: number[] };
+      onAvailabilityWatch?.({ clearCompletedTargetIds: targetIds });
+      availabilityWatch = {
+        ...availabilityWatch,
+        revision: availabilityWatch.revision + 1,
+        targets: availabilityWatch.targets.filter(
+          (target) => !(targetIds.includes(target.id) && target.state === "completed"),
+        ),
+      };
+      await route.fulfill({ json: availabilityWatch });
+      return;
+    }
     if (url.pathname.startsWith("/api/availability-watch/targets/") && route.request().method() === "POST") {
       const targetID = Number(url.pathname.split("/").at(-2));
       onAvailabilityWatch?.({ trackTargetId: targetID });
@@ -1405,16 +1418,14 @@ test("availability watch edits its configuration in place and manages the watch 
   await page.goto("/workflows?workflow=availability_watch");
 
   // Workflows keeps the run history and links to the Subscriptions page,
-  // where the watch is configured and its pool managed.
+  // whose Watch view holds the pool and whose settings hold the configuration.
   await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Open Subscriptions", exact: true }).click();
-  await expect(page).toHaveURL(/\/subscriptions\?panel=watch$/);
-  await expect(page.getByRole("tab", { name: "Availability Watch", selected: true })).toBeVisible();
-  const pool = page.getByRole("region", { name: "Watch pool", exact: true });
-  const unavailable = pool.getByRole("region", { name: /^Not available/ });
-  const available = pool.getByRole("region", { name: /^Available/ });
-  await expect(unavailable.getByRole("button", { name: /^RJ00000000/ })).toBeVisible();
-  await expect(available.getByRole("button", { name: /^RJ00000001/ })).toBeVisible();
+  await expect(page).toHaveURL(/\/subscriptions\?view=watch&panel=watch$/);
+  const settings = page.getByRole("dialog", { name: "Subscription settings", exact: true });
+  await expect(settings.getByRole("tab")).toHaveText(["Subscriptions", "Rankings", "Availability Watch"]);
+  await expect(settings.getByRole("tab", { name: "Availability Watch", selected: true })).toBeVisible();
+  await expect(settings.getByRole("region", { name: "Watch pool", exact: true })).toHaveCount(0);
 
   // The configuration is edited in place; Run waits until Save stores it.
   const configuration = page.getByRole("region", { name: "Configuration", exact: true });
@@ -1447,6 +1458,16 @@ test("availability watch edits its configuration in place and manages the watch 
   expect(updates).toContainEqual({ action: "track", sourceId: 8, excludeExtensions: ["wav", "flac"] });
   expect(updates).toContainEqual({ run: true });
 
+  // Behind the settings, the Watch view shows the available works above the waiting ones.
+  await settings.getByRole("button", { name: "Close settings", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Watch", selected: true })).toBeVisible();
+  const pool = page.getByRole("region", { name: "Watch pool", exact: true });
+  const unavailable = pool.getByRole("region", { name: /^Not available/ });
+  const available = pool.getByRole("region", { name: /^Available/ });
+  await expect(pool.getByRole("heading", { level: 3 })).toHaveText(["Available", "Not available"]);
+  await expect(unavailable.getByRole("button", { name: /^RJ00000000/ })).toBeVisible();
+  await expect(available.getByRole("button", { name: /^RJ00000001/ })).toBeVisible();
+
   // Quick entry adds only codes the pool does not watch yet.
   await pool
     .getByRole("textbox", { name: "Add work codes to the watch pool", exact: true })
@@ -1478,14 +1499,26 @@ test("availability watch edits its configuration in place and manages the watch 
   await expect(page.getByText("Track run #89 queued.", { exact: true })).toBeVisible();
   await expect.poll(() => updates).toHaveLength(5);
   expect(updates).toContainEqual({ trackTargetId: 2 });
-  await family.getByRole("button", { name: "Remove from watch", exact: true }).click();
-  await family.getByRole("button", { name: "Confirm removal", exact: true }).click();
-  await expect(family).toHaveCount(0);
+  await family.getByRole("button", { name: "Close", exact: true }).click();
+
+  // Clearing the completed works takes a second, confirming click and one request.
+  await available.getByRole("button", { name: "Clear completed (1)", exact: true }).click();
+  expect(updates).toHaveLength(5);
+  await available.getByRole("button", { name: "Remove 1 completed work", exact: true }).click();
   await expect(available.getByText("No available works.", { exact: true })).toBeVisible();
-  expect(updates).toContainEqual({ deleteTargetId: 2 });
+  expect(updates).toContainEqual({ clearCompletedTargetIds: [2] });
+
+  // The family dialog removes a work too.
+  await unavailable.getByRole("button", { name: /^RJ00000000/ }).click();
+  const waiting = page.getByRole("dialog", { name: "RJ00000000 work family" });
+  await waiting.getByRole("button", { name: "Remove from watch", exact: true }).click();
+  await waiting.getByRole("button", { name: "Confirm removal", exact: true }).click();
+  await expect(waiting).toHaveCount(0);
+  await expect(unavailable.getByText("No works are waiting for a source.", { exact: true })).toBeVisible();
+  expect(updates).toContainEqual({ deleteTargetId: 1 });
 });
 
-test("availability notifications open the watch pool's available works", async ({ page }) => {
+test("availability notifications and earlier watch links open the Watch view", async ({ page }) => {
   await mockWorkflows(page, undefined, {
     total: 1,
     notifications: [
@@ -1510,12 +1543,17 @@ test("availability notifications open the watch pool's available works", async (
       exact: true,
     })
     .click();
-  await expect(page.getByRole("tab", { name: "Availability Watch", selected: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Watch", selected: true })).toBeVisible();
   const available = page.getByRole("region", { name: "Watch pool", exact: true }).getByRole("region", {
     name: /^Available/,
   });
   await expect(available.getByRole("button", { name: /^RJ00000001/ })).toBeInViewport();
-  await expect(page).toHaveURL(/\/subscriptions\?panel=watch$/);
+  await expect(page).toHaveURL(/\/subscriptions\?view=watch$/);
+
+  // A bookmark of the pool from the settings opens the Watch view and the target's family.
+  await page.goto("/subscriptions?panel=watch&target=2");
+  await expect(page.getByRole("dialog", { name: "RJ00000001 work family" })).toBeVisible();
+  await expect(page).toHaveURL(/\/subscriptions\?view=watch$/);
 });
 
 test("activity links metadata failures to a run-filtered Maintenance list", async ({ page }) => {

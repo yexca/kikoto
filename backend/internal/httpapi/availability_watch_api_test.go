@@ -210,6 +210,63 @@ func TestAvailabilityWatchHandlersPersistConfigurationTargetsAndRunState(t *test
 	}
 }
 
+func TestAvailabilityWatchClearCompletedRemovesOnlyListedCompletedTargets(t *testing.T) {
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`INSERT INTO user_account (id, username, role) VALUES (1, 'watch-clear-user', 'admin')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO availability_watch (id, configured_by_user_id, action) VALUES (1, 1, 'monitor')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO availability_watch_target (id, watch_id, work_code, active, state) VALUES
+			(1, 1, 'RJ00000001', 1, 'completed'),
+			(2, 1, 'RJ00000002', 1, 'ready'),
+			(3, 1, 'RJ00000003', 1, 'completed'),
+			(4, 1, 'RJ00000004', 1, 'monitoring')
+	`); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{})
+	actor := account.User{ID: 1, Role: "admin", Permissions: account.PermissionsForRole("admin")}
+
+	invalid := httptest.NewRecorder()
+	server.clearCompletedAvailabilityWatchTargets(invalid, availabilityWatchAPIRequest(
+		http.MethodPost, "/api/availability-watch/targets/clear-completed", `{"targetIds":[0]}`, &actor,
+	))
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid id status = %d, body = %s", invalid.Code, invalid.Body.String())
+	}
+
+	// Target 3 completed after the list was shown, so it is not listed and stays.
+	cleared := httptest.NewRecorder()
+	server.clearCompletedAvailabilityWatchTargets(cleared, availabilityWatchAPIRequest(
+		http.MethodPost, "/api/availability-watch/targets/clear-completed", `{"targetIds":[1,2,4]}`, &actor,
+	))
+	if cleared.Code != http.StatusOK {
+		t.Fatalf("clear status = %d, body = %s", cleared.Code, cleared.Body.String())
+	}
+	var view availabilityWatchView
+	if err := json.NewDecoder(cleared.Body).Decode(&view); err != nil {
+		t.Fatal(err)
+	}
+	codes := make([]string, 0, len(view.Targets))
+	for _, target := range view.Targets {
+		codes = append(codes, target.WorkCode)
+	}
+	if strings.Join(codes, ",") != "RJ00000002,RJ00000003,RJ00000004" {
+		t.Fatalf("remaining targets = %v", codes)
+	}
+	var state string
+	var active int
+	if err := db.QueryRow(`SELECT active, state FROM availability_watch_target WHERE id = 1`).Scan(&active, &state); err != nil {
+		t.Fatal(err)
+	}
+	if active != 0 || state != "disabled" {
+		t.Fatalf("cleared target active = %d, state = %q", active, state)
+	}
+}
+
 func TestAvailabilityWatchMonitorRequiresMetadataSync(t *testing.T) {
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`INSERT INTO user_account (id, username, role) VALUES (1, 'watch-permission-user', 'contributor')`); err != nil {
@@ -227,6 +284,7 @@ func TestAvailabilityWatchMonitorRequiresMetadataSync(t *testing.T) {
 		{http.MethodPut, "/api/availability-watch", `{"action":"monitor"}`, server.updateAvailabilityWatch},
 		{http.MethodPost, "/api/availability-watch/run", `{}`, server.runAvailabilityWatch},
 		{http.MethodPost, "/api/availability-watch/targets", `{"targetCodes":["RJ00000001"]}`, server.addAvailabilityWatchTargets},
+		{http.MethodPost, "/api/availability-watch/targets/clear-completed", `{"targetIds":[1]}`, server.clearCompletedAvailabilityWatchTargets},
 	} {
 		response := httptest.NewRecorder()
 		test.handler(response, availabilityWatchAPIRequest(test.method, test.target, test.body, &actor))

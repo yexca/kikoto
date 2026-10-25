@@ -479,6 +479,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/availability-watch/targets", s.updateAvailabilityWatchTargets)
 	mux.HandleFunc("POST /api/availability-watch/targets", s.addAvailabilityWatchTargets)
 	mux.HandleFunc("DELETE /api/availability-watch/targets/{id}", s.deleteAvailabilityWatchTarget)
+	mux.HandleFunc("POST /api/availability-watch/targets/clear-completed", s.clearCompletedAvailabilityWatchTargets)
 	mux.HandleFunc("POST /api/availability-watch/targets/{id}/track", s.trackAvailabilityWatchTarget)
 	mux.HandleFunc("POST /api/availability-watch/run", s.runAvailabilityWatch)
 	mux.HandleFunc("GET /api/subscriptions", s.listCreatorSubscriptions)

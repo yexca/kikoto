@@ -4,13 +4,14 @@ export const subscriptionsHant = {
     closeSettings: "關閉設定",
     panels: {
       subscriptions: "訂閱",
-      watch: "可用性監視",
       rankings: "排行榜",
+      watch: "可用性監視",
     },
     views: {
       label: "訂閱檢視",
       releases: "新作",
       rankings: "排行榜",
+      watch: "監視",
       rankingsUnseen: "自上次查看後更新的排行榜",
     },
     watchAvailability: "監視可用性",

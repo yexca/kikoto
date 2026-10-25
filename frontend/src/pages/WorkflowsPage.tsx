@@ -65,7 +65,10 @@ const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v3";
 
 /** Where the Subscriptions page configures a workflow it manages. */
 const subscriptionsManagedWorkflowPaths: Record<string, { message: string; path: string }> = {
-  availability_watch: { message: "availabilityWatchManagedOnSubscriptions", path: "/subscriptions?panel=watch" },
+  availability_watch: {
+    message: "availabilityWatchManagedOnSubscriptions",
+    path: "/subscriptions?view=watch&panel=watch",
+  },
   creator_subscription_refresh: {
     message: "subscriptionRefreshManagedOnSubscriptions",
     path: "/subscriptions?panel=subscriptions",

@@ -89,6 +89,16 @@
   known to have.
 - New releases and Rankings cards label the Availability Watch action
   **Watch** and show **Watching** for a work already in the watch pool.
+- The Availability Watch pool becomes the **Watch** view of Subscriptions,
+  after New releases and Rankings and in the same card grid and display
+  options. **Available** comes first and shows every available work; **Not
+  available** follows with failed checks first and folds to whole rows.
+  **Clear completed** removes every work whose Track or Fetch has started in
+  one step. The **Availability Watch** settings tab moves after **Rankings**
+  and keeps the configuration and **Run**, and the settings open on the tab
+  of the current view. Availability notifications, Workflows, and the way back
+  from a watched work open the Watch view, and existing links to the pool in
+  the settings open it too.
 
 </details>
 

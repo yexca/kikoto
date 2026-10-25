@@ -4,13 +4,14 @@ export const subscriptionsJapanese = {
     closeSettings: "設定を閉じる",
     panels: {
       subscriptions: "購読",
-      watch: "配信状況の監視",
       rankings: "ランキング",
+      watch: "配信状況の監視",
     },
     views: {
       label: "購読の表示",
       releases: "新着",
       rankings: "ランキング",
+      watch: "監視",
       rankingsUnseen: "前回の表示以降に更新されたランキング",
     },
     watchAvailability: "配信状況を監視",

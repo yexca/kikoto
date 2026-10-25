@@ -23,7 +23,7 @@ export function availabilityWatchStateLabel(target: AvailabilityWatchTarget) {
     case "action_queued":
       return workflowCopy("availabilityState.actionQueued");
     case "completed":
-      return workflowCopy("dispatched");
+      return workflowCopy("availabilityState.completed");
     case "error":
       return workflowCopy("availabilityState.checkFailed");
     default:
@@ -74,10 +74,7 @@ export function AvailabilityWatchFamilyDialog({
     if (!target.availableSourceId) return;
     openWorkDetail(
       { kind: "remote-only", sourceId: target.availableSourceId, remoteCode: availableCode },
-      {
-        returnTo: `/subscriptions?panel=watch&target=${target.id}`,
-        returnLabel: workflowCopy("backToAvailabilityWatch"),
-      },
+      { returnTo: watchTargetLocation(target.id), returnLabel: workflowCopy("backToAvailabilityWatch") },
     );
   };
   const track = async () => {
@@ -243,6 +240,14 @@ export function AvailabilityWatchFamilyDialog({
       </div>
     </Modal>
   );
+}
+
+/** The Watch view of the page showing the pool, with this target's family open. */
+function watchTargetLocation(targetId: number) {
+  const params = new URLSearchParams(window.location.search);
+  params.set("view", "watch");
+  params.set("target", String(targetId));
+  return `${window.location.pathname}?${params}`;
 }
 
 function openActivityRunID(runID: number) {

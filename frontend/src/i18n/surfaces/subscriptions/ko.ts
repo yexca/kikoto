@@ -4,13 +4,14 @@ export const subscriptionsKorean = {
     closeSettings: "설정 닫기",
     panels: {
       subscriptions: "구독",
-      watch: "가용성 모니터링",
       rankings: "순위",
+      watch: "가용성 모니터링",
     },
     views: {
       label: "구독 보기",
       releases: "신작",
       rankings: "순위",
+      watch: "모니터링",
       rankingsUnseen: "마지막 방문 이후 업데이트된 순위",
     },
     watchAvailability: "가용성 모니터링",

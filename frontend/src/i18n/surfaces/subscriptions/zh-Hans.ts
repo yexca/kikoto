@@ -4,13 +4,14 @@ export const subscriptionsHans = {
     closeSettings: "关闭设置",
     panels: {
       subscriptions: "订阅",
-      watch: "可用性监视",
       rankings: "排行榜",
+      watch: "可用性监视",
     },
     views: {
       label: "订阅视图",
       releases: "新作",
       rankings: "排行榜",
+      watch: "监视",
       rankingsUnseen: "自上次查看后更新的排行榜",
     },
     watchAvailability: "监视可用性",

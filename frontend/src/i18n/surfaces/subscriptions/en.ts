@@ -4,13 +4,14 @@ export const subscriptionsEnglish = {
     closeSettings: "Close settings",
     panels: {
       subscriptions: "Subscriptions",
-      watch: "Availability Watch",
       rankings: "Rankings",
+      watch: "Availability Watch",
     },
     views: {
       label: "Subscriptions view",
       releases: "New releases",
       rankings: "Rankings",
+      watch: "Watch",
       rankingsUnseen: "Rankings updated since your last visit",
     },
     watchAvailability: "Watch availability",

@@ -2,8 +2,35 @@ import type { AvailabilityWatch, AvailabilityWatchTarget } from "@/lib/api";
 import { WORD_TOKEN_SEPARATORS } from "@/lib/tokenDraft";
 import { isWorkCode } from "@/lib/workCode";
 
-/** How many targets each pool column shows before it folds the rest. */
-export const POOL_COLUMN_PREVIEW = 12;
+/** The fewest targets the folded Not available section keeps on a narrow grid. */
+const FOLDED_MINIMUM = 6;
+
+/**
+ * How many grid slots the folded Not available section fills: whole rows,
+ * two of them on a grid with three or more columns and more on a narrower one,
+ * so a fold never ends in a partial row.
+ */
+export function foldedTargetSlots(columns: number): number {
+  const width = Math.max(1, Math.floor(columns));
+  return Math.max(2, Math.ceil(FOLDED_MINIMUM / width)) * width;
+}
+
+/**
+ * Whether the configured action lets this account change the watch: every
+ * action needs `metadata:sync`, and Track and Fetch their remote permissions.
+ */
+export function availabilityWatchActionAllowed(
+  action: string,
+  canSyncMetadata: boolean,
+  canTrackRemote: boolean,
+  canFetchRemote: boolean,
+) {
+  if (!canSyncMetadata) return false;
+  if (action === "track") return canTrackRemote;
+  if (action === "fetch") return canFetchRemote;
+  if (action === "track_fetch") return canTrackRemote && canFetchRemote;
+  return true;
+}
 
 export type AvailabilityWatchConfig = {
   action: AvailabilityWatch["action"];
@@ -42,14 +69,26 @@ export function isAvailableTarget(target: AvailabilityWatchTarget): boolean {
   return target.state === "ready" || target.state === "action_queued" || target.state === "completed";
 }
 
+/**
+ * Splits the active targets by whether a remote source offers their family,
+ * keeping the server's order except that failed checks lead the unavailable
+ * side, where they need attention.
+ */
 export function partitionAvailabilityWatchTargets(targets: readonly AvailabilityWatchTarget[]) {
-  const unavailable: AvailabilityWatchTarget[] = [];
+  const failed: AvailabilityWatchTarget[] = [];
+  const waiting: AvailabilityWatchTarget[] = [];
   const available: AvailabilityWatchTarget[] = [];
   for (const target of targets) {
     if (target.state === "disabled") continue;
-    (isAvailableTarget(target) ? available : unavailable).push(target);
+    if (isAvailableTarget(target)) available.push(target);
+    else (target.state === "error" ? failed : waiting).push(target);
   }
-  return { unavailable, available };
+  return { unavailable: [...failed, ...waiting], available };
+}
+
+/** The targets whose configured action, or a manual Track, has completed. */
+export function completedAvailabilityWatchTargets(targets: readonly AvailabilityWatchTarget[]) {
+  return targets.filter((target) => target.state === "completed");
 }
 
 export type QuickAddParseResult = {

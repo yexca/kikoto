@@ -1169,7 +1169,8 @@ execution.
 It has no trigger of its own. The [subscription refresh](#creator-subscriptions)
 queues it after each refresh while its Availability Watch option is on, using
 the account that last configured the watch, and it may also be run directly
-from the Subscriptions page, where its configuration and pool are managed.
+from the Subscriptions page, whose Watch view shows the pool and whose
+settings hold the configuration.
 Workflows lists its runs and links to that page. Each execution snapshots the
 active pool and
 records a normal workflow run, node runs, and durable job. Before checking a
@@ -1189,15 +1190,22 @@ target edits, and manual runs require `metadata:sync`; Track also requires
 require both remote permissions. A run the subscription refresh queues
 re-checks the configuring account's complete permission set.
 
-Available targets form the pool's Available side; configured Track and Fetch
-actions are child workflows with their own histories. A successful run that
+Available targets form the Watch view's Available section; configured Track
+and Fetch actions are child workflows with their own histories, and a target
+is `completed` once its action, or a manual Track, is queued. A successful run
+that
 finds new available works creates a notification for every enabled account
-that holds `workflows:run`, which opens the pool's Available side, and adds
-each newly available work to those accounts' release feeds.
+that holds `workflows:run`, which opens the Watch view at its available
+targets, and adds each newly available work to those accounts' release feeds.
 
 `PUT /api/availability-watch/targets` replaces the pool;
 `POST /api/availability-watch/targets` adds codes without deactivating
-targets added by someone else. The view returns each target's title and
+targets added by someone else. `DELETE /api/availability-watch/targets/{id}`
+removes one target, and `POST
+/api/availability-watch/targets/clear-completed` removes the listed targets
+that are still `completed` in one statement, so a target that completes after
+the caller listed it stays. Changing targets needs the permissions of the
+configured action. The view returns each target's title and
 cached cover (its own, or the family original's) and its known family editions
 with their titles and languages.
 

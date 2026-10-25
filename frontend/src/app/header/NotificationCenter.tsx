@@ -198,7 +198,7 @@ export function NotificationCenter({
       return canViewWorkflows ? `/workflows?activity=1&run=${notification.workflowRunId}` : "/";
     }
     if (notification.type === "availability_watch_ready") {
-      return `/subscriptions?panel=watch&dialog=ready&run=${notification.workflowRunId}`;
+      return `/subscriptions?view=watch&dialog=ready&run=${notification.workflowRunId}`;
     }
     if (notification.type === "subscription_release") return "/subscriptions";
     if (notification.type === "remote_track" && notification.status === "failed") {

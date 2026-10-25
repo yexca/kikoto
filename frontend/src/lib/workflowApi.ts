@@ -513,6 +513,9 @@ export const workflowApi = {
   addAvailabilityWatchTargets: (targetCodes: string[]) =>
     postJSONBody<AvailabilityWatch>("/api/availability-watch/targets", { targetCodes }),
   removeAvailabilityWatchTarget: (id: number) => deleteJSON<{ ok: boolean }>(`/api/availability-watch/targets/${id}`),
+  /** Removes the listed targets that are still completed; the others stay. */
+  clearCompletedAvailabilityWatchTargets: (targetIds: number[]) =>
+    postJSONBody<AvailabilityWatch>("/api/availability-watch/targets/clear-completed", { targetIds }),
   trackAvailabilityWatchTarget: (id: number) =>
     postJSON<RemoteWorkTrackResult>(`/api/availability-watch/targets/${id}/track`),
   runAvailabilityWatch: () => postJSON<AvailabilityWatchRunResult>("/api/availability-watch/run"),

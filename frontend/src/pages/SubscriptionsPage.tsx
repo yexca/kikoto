@@ -34,18 +34,24 @@ import { openWorkCodeRoute } from "@/features/work-detail/workDetailShared";
 import { ReleaseFeed } from "@/features/subscriptions/ReleaseFeed";
 import { SubscriptionManager } from "@/features/subscriptions/SubscriptionManager";
 import {
+  canonicalSubscriptionSearch,
   RELEASE_FEED_DAY_OPTIONS,
   releaseFeedDayCount,
   releaseFeedPageFromSearch,
   SUBSCRIPTION_PANELS,
   SUBSCRIPTION_VIEWS,
+  subscriptionPanelForView,
   subscriptionPanelFromSearch,
   subscriptionViewFromSearch,
+  watchLinkFromSearch,
+  withExplicitSubscriptionView,
   type ReleaseFeedDayCount,
   type SubscriptionPanel,
   type SubscriptionView,
 } from "@/features/subscriptions/subscriptionModel";
-import { AvailabilityWatchManager } from "@/features/workflows/availability-watch/AvailabilityWatchPanel";
+import { AvailabilityWatchSettings } from "@/features/workflows/availability-watch/AvailabilityWatchPanel";
+import { AvailabilityWatchPool } from "@/features/workflows/availability-watch/AvailabilityWatchPool";
+import { useAvailabilityWatch } from "@/features/workflows/availability-watch/useAvailabilityWatch";
 import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useShownWorksActions } from "@/hooks/useShownWorksActions";
@@ -74,6 +80,7 @@ function patchedLocation(patch: Record<string, string | null>) {
     if (value) params.set(key, value);
     else params.delete(key);
   }
+  withExplicitSubscriptionView(params);
   return `${window.location.pathname}${params.size ? `?${params}` : ""}`;
 }
 
@@ -109,9 +116,10 @@ function openRankedWork(code: string, remoteSourceId: number | null) {
 
 /**
  * New works from subscribed circles, series, and voice actors, grouped by day
- * in the Library's card grid, or the tracked rankings with how they changed.
- * The subscriptions, their refresh schedule, the shared Availability Watch,
- * and the tracked rankings live in a settings panel beside them.
+ * in the Library's card grid; the tracked rankings with how they changed; or
+ * the shared Availability Watch pool in the same card grid. The subscriptions
+ * with their refresh schedule, the tracked rankings, and the watch's
+ * configuration live in a settings panel beside them.
  */
 export function SubscriptionsPage({
   readOnly,
@@ -165,7 +173,33 @@ export function SubscriptionsPage({
   );
   const panels = SUBSCRIPTION_PANELS.filter((item) => item !== "watch" || canRunWorkflows);
   const activePanel = panel && panels.includes(panel) ? panel : panel ? "subscriptions" : null;
+  const views = SUBSCRIPTION_VIEWS.filter((item) => item !== "watch" || canRunWorkflows);
+  const activeView = views.includes(view) ? view : "releases";
   const settingsBeside = besideLayout && Boolean(activePanel);
+  // The Watch view and the watch's settings share one watch and its poll.
+  const watchState = useAvailabilityWatch(canRunWorkflows && (activeView === "watch" || activePanel === "watch"));
+  const [watchTargetId, setWatchTargetId] = useState<number | null>(null);
+  const [revealAvailable, setRevealAvailable] = useState(0);
+
+  // A Watch view link that names a target or the available works hands them
+  // to the view and leaves the address on the view itself.
+  const takeWatchLink = useCallback(() => {
+    const canonical = canonicalSubscriptionSearch(window.location.search);
+    if (canonical !== null) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${canonical}${window.location.hash}`,
+      );
+    }
+    if (subscriptionViewFromSearch(window.location.search) !== "watch") return;
+    const link = watchLinkFromSearch(window.location.search);
+    if (!link) return;
+    if (link.targetId !== null) setWatchTargetId(link.targetId);
+    if (link.revealAvailable) setRevealAvailable((value) => value + 1);
+    replaceSearch({ dialog: null, target: null, run: null });
+  }, []);
+  useEffect(takeWatchLink, [takeWatchLink]);
 
   // The panel beside the feed follows the whole feed in reading order, so it
   // takes focus when it opens, as the drawer does.
@@ -175,6 +209,7 @@ export function SubscriptionsPage({
 
   useEffect(() => {
     const sync = () => {
+      takeWatchLink();
       setPanel(subscriptionPanelFromSearch(window.location.search));
       setFeedPage(releaseFeedPageFromSearch(window.location.search));
       setView(subscriptionViewFromSearch(window.location.search));
@@ -189,7 +224,7 @@ export function SubscriptionsPage({
       window.removeEventListener(NAVIGATION_EVENT, sync);
       window.removeEventListener("popstate", sync);
     };
-  }, []);
+  }, [takeWatchLink]);
 
   const showPanel = (next: SubscriptionPanel | null) => {
     setPanel(next);
@@ -208,8 +243,9 @@ export function SubscriptionsPage({
     setRankingCompare("");
     setRankingAt(null);
     setRankingOrder(null);
+    setWatchTargetId(null);
     replaceSearch({
-      view: next === "rankings" ? next : null,
+      view: next === "releases" ? null : next,
       page: null,
       list: null,
       compare: null,
@@ -330,7 +366,8 @@ export function SubscriptionsPage({
         ) : activePanel === "rankings" ? (
           <RankingSettings rankings={rankings} readOnly={readOnly} canManage={canManageSchedule} onOpenRun={openRun} />
         ) : (
-          <AvailabilityWatchManager
+          <AvailabilityWatchSettings
+            state={watchState}
             readOnly={readOnly}
             canSyncMetadata={canManageSchedule}
             canTrackRemote={canTrackRemote}
@@ -354,15 +391,15 @@ export function SubscriptionsPage({
         <div ref={feedRef} className="min-w-0 scroll-mt-4 space-y-4">
           <div className="flex items-center justify-between gap-3" data-toast-avoid>
             <div role="tablist" aria-label={t("subscriptions.views.label")} className={segmentedListClassName()}>
-              {SUBSCRIPTION_VIEWS.map((item) => (
+              {views.map((item) => (
                 <button
                   key={item}
                   type="button"
                   role="tab"
                   id={`subscriptions-view-${item}`}
-                  aria-selected={view === item}
+                  aria-selected={activeView === item}
                   aria-controls="subscriptions-view-panel"
-                  className={segmentedItemClassName(view === item)}
+                  className={segmentedItemClassName(activeView === item)}
                   onClick={() => showView(item)}
                 >
                   {t(`subscriptions.views.${item}`)}
@@ -383,8 +420,11 @@ export function SubscriptionsPage({
               ))}
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {view === "releases" && <ShownWorksActionMenu actions={feedActions} requests={feedActionRequests} />}
-              {view === "releases" && (
+              {activeView === "releases" && (
+                <ShownWorksActionMenu actions={feedActions} requests={feedActionRequests} />
+              )}
+              {activeView !== "rankings" && (
+                // New releases and Watch share the Library's card grid; only the feed is paged.
                 <WorkCollectionDisplayPicker
                   mobileColumns={layout.mobileColumns}
                   desktopColumns={layout.desktopColumns}
@@ -396,13 +436,17 @@ export function SubscriptionsPage({
                     onMobileChange: layout.setMobileCardMode,
                     onDesktopChange: layout.setDesktopCardMode,
                   }}
-                  pageSize={feedDays}
-                  pageSizeOptions={RELEASE_FEED_DAY_OPTIONS}
-                  onPageSizeChange={changeFeedDays}
-                  pageSizeLabels={{
-                    heading: t("subscriptions.feed.daysPerPage"),
-                    value: (count) => t("subscriptions.feed.daysPerPageValue", { count }),
-                  }}
+                  {...(activeView === "releases"
+                    ? {
+                        pageSize: feedDays,
+                        pageSizeOptions: RELEASE_FEED_DAY_OPTIONS,
+                        onPageSizeChange: changeFeedDays,
+                        pageSizeLabels: {
+                          heading: t("subscriptions.feed.daysPerPage"),
+                          value: (count: number) => t("subscriptions.feed.daysPerPageValue", { count }),
+                        },
+                      }
+                    : {})}
                 />
               )}
               <Button
@@ -415,15 +459,29 @@ export function SubscriptionsPage({
                 aria-label={t("subscriptions.settings")}
                 title={t("subscriptions.settings")}
                 onClick={() =>
-                  settingsBeside ? closeBesideSettings() : showPanel(view === "rankings" ? "rankings" : "subscriptions")
+                  settingsBeside ? closeBesideSettings() : showPanel(subscriptionPanelForView(activeView))
                 }
               >
                 <Settings2 className="h-4 w-4" />
               </Button>
             </div>
           </div>
-          <div role="tabpanel" id="subscriptions-view-panel" aria-labelledby={`subscriptions-view-${view}`}>
-            {view === "releases" ? (
+          <div role="tabpanel" id="subscriptions-view-panel" aria-labelledby={`subscriptions-view-${activeView}`}>
+            {activeView === "watch" ? (
+              <AvailabilityWatchPool
+                state={watchState}
+                readOnly={readOnly}
+                canSyncMetadata={canManageSchedule}
+                canTrackRemote={canTrackRemote}
+                canFetchRemote={canFetchRemote}
+                cardLayout={cardLayout}
+                mobileColumns={layout.mobileColumns}
+                desktopColumns={layout.desktopColumns}
+                selectedTargetId={watchTargetId}
+                onSelectTarget={setWatchTargetId}
+                revealAvailable={revealAvailable}
+              />
+            ) : activeView === "releases" ? (
               <section className="min-w-0 space-y-4" aria-label={t("subscriptions.feed.label")}>
                 <ShownWorksActionStatus actions={feedActions} onOpenRun={openRun} />
                 <ReleaseFeed
