@@ -1441,6 +1441,15 @@ export const surfaceKorean = {
         name: "작품 메타데이터 새로 고침",
         description: "작품 하나와 제한된 언어 버전 묶음을 새로 고칩니다.",
       },
+      shown_works_metadata_sync: {
+        name: "표시된 작품의 메타데이터 동기화",
+        description:
+          "표시된 랭킹이나 신작 중 최신 메타데이터가 없는 작품의 DLsite 메타데이터를 동기화하고, 라이브러리에 없는 작품을 추가합니다.",
+      },
+      shown_works_source_check: {
+        name: "표시된 작품의 소스 확인",
+        description: "표시된 랭킹이나 신작 중 사용 가능한지 알 수 없는 작품이 원격 소스에 있는지 확인합니다.",
+      },
       work_folder_edit: { name: "작품 파일 편집" },
       llm_translation: { name: "LLM 번역" },
       ai_translation: {

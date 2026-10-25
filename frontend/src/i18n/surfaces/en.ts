@@ -1864,6 +1864,16 @@ export const surfaceEnglish = {
         name: "Refresh work metadata",
         description: "Refresh one work and its bounded language-edition family.",
       },
+      shown_works_metadata_sync: {
+        name: "Sync metadata of shown works",
+        description:
+          "Sync DLsite metadata for the shown ranking or release works that lack fresh metadata, adding works the library does not know yet.",
+      },
+      shown_works_source_check: {
+        name: "Check sources of shown works",
+        description:
+          "Ask the remote sources whether they have the shown ranking or release works that are not known to be available.",
+      },
       work_folder_edit: { name: "Edit work files" },
       llm_translation: { name: "LLM translation" },
       ai_translation: {

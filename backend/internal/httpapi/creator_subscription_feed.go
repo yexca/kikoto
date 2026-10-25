@@ -63,6 +63,10 @@ type releaseFeedFamily struct {
 	Events   []releaseFeedEvent  `json:"events"`
 	Work     *libraryWorkSummary `json:"work"`
 	Fallback releaseFeedFallback `json:"fallback"`
+	// Watched is true when the Availability Watch pool watches the family's
+	// shown code or another edition of it. It is stated only to accounts that
+	// may see the pool.
+	Watched bool `json:"watched"`
 }
 
 type releaseFeedPage struct {
@@ -114,9 +118,40 @@ func (s *Server) listReleaseFeed(w http.ResponseWriter, r *http.Request) {
 	} else if feed, err = s.loadReleaseFeed(r.Context(), user.ID, page, days, location); err != nil {
 		writeError(w, err)
 		return
+	} else if userHasPermission(user, "workflows:run") {
+		if err := s.markReleaseFeedWatched(r.Context(), feed.Families); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	feed.Today = time.Now().In(location).Format(time.DateOnly)
 	writeJSON(w, http.StatusOK, feed)
+}
+
+// releaseFeedShownCode is the code a family's card shows and watches: its
+// work's, or the fallback's.
+func releaseFeedShownCode(family releaseFeedFamily) string {
+	if family.Work != nil {
+		return strings.ToUpper(family.Work.PrimaryCode)
+	}
+	return strings.ToUpper(family.Fallback.Code)
+}
+
+// markReleaseFeedWatched states which families' shown codes the
+// Availability Watch pool watches.
+func (s *Server) markReleaseFeedWatched(ctx context.Context, families []releaseFeedFamily) error {
+	codes := make([]string, 0, len(families))
+	for _, family := range families {
+		codes = append(codes, releaseFeedShownCode(family))
+	}
+	watched, err := s.activeAvailabilityWatchCodes(ctx, codes)
+	if err != nil {
+		return err
+	}
+	for index := range families {
+		families[index].Watched = watched[releaseFeedShownCode(families[index])]
+	}
+	return nil
 }
 
 func releaseFeedDaysPerPage(days int) int {

@@ -8,6 +8,7 @@ import { Dialog, DialogBody, DialogHeader } from "@/components/ui/dialog";
 import { MobileSheet } from "@/components/ui/mobile-sheet";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { useToast } from "@/components/ui/toast";
+import { ShownWorksActionMenu, ShownWorksActionStatus } from "@/components/work-collection/ShownWorksActions";
 import {
   useWorkCollectionLayout,
   workCardLayout,
@@ -47,8 +48,10 @@ import {
 import { AvailabilityWatchManager } from "@/features/workflows/availability-watch/AvailabilityWatchPanel";
 import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useShownWorksActions } from "@/hooks/useShownWorksActions";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import i18n from "@/i18n";
+import { api } from "@/lib/api";
 import { NAVIGATION_EVENT, requestHistoryScrollRestoration } from "@/lib/browserHistory";
 import type { RankingOrder } from "@/lib/rankingApi";
 import { cn } from "@/lib/tailwindClassNames";
@@ -264,6 +267,21 @@ export function SubscriptionsPage({
     changeFeedPage(1);
   };
   const openRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
+  // The feed page's works can have their metadata synced and their sources
+  // checked; the feed reads itself again when a run ends.
+  const [feedReload, setFeedReload] = useState(0);
+  const feedActions = useShownWorksActions({
+    onSettled: () => setFeedReload((value) => value + 1),
+    onOpenRun: openRun,
+  });
+  const feedActionRequests = readOnly
+    ? {}
+    : {
+        ...(canManageSchedule ? { metadata: () => api.syncReleaseFeedMetadata(feedPage, feedDays) } : {}),
+        ...(canTrackRemote && canRunWorkflows
+          ? { sources: () => api.checkReleaseFeedSources(feedPage, feedDays) }
+          : {}),
+      };
 
   const settings = activePanel && (
     <div className="flex min-h-0 flex-col gap-4">
@@ -365,6 +383,7 @@ export function SubscriptionsPage({
               ))}
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {view === "releases" && <ShownWorksActionMenu actions={feedActions} requests={feedActionRequests} />}
               {view === "releases" && (
                 <WorkCollectionDisplayPicker
                   mobileColumns={layout.mobileColumns}
@@ -405,7 +424,8 @@ export function SubscriptionsPage({
           </div>
           <div role="tabpanel" id="subscriptions-view-panel" aria-labelledby={`subscriptions-view-${view}`}>
             {view === "releases" ? (
-              <section className="min-w-0" aria-label={t("subscriptions.feed.label")}>
+              <section className="min-w-0 space-y-4" aria-label={t("subscriptions.feed.label")}>
+                <ShownWorksActionStatus actions={feedActions} onOpenRun={openRun} />
                 <ReleaseFeed
                   page={feedPage}
                   days={feedDays}
@@ -414,6 +434,8 @@ export function SubscriptionsPage({
                   desktopColumns={layout.desktopColumns}
                   canMarkSeen={canSubscribe && !readOnly}
                   canWatch={!readOnly && canRunWorkflows && canManageSchedule}
+                  sourceCheck={feedActions.sourceCheck}
+                  reloadKey={feedReload}
                   onOpenWork={(code) => openWorkCodeRoute(code)}
                   onPageChange={changeFeedPage}
                   onLoaded={(page) => setUnread(page.unreadCount)}
@@ -432,6 +454,7 @@ export function SubscriptionsPage({
                   canManage={canManageSchedule}
                   canMarkSeen={canSubscribe && !readOnly}
                   canWatch={!readOnly && canRunWorkflows && canManageSchedule}
+                  canCheckSources={!readOnly && canRunWorkflows && canTrackRemote}
                   onListChange={changeRankingList}
                   onOrderChange={changeRankingOrder}
                   onAtChange={changeRankingAt}

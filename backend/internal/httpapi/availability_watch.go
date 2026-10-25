@@ -524,6 +524,46 @@ func (s *Server) loadAvailabilityWatch(ctx context.Context) (availabilityWatchVi
 	return view, nil
 }
 
+// activeAvailabilityWatchCodes returns which of the codes the shared pool
+// watches: an active target names the code or another edition of its family,
+// since a target is available when any edition of its family is.
+func (s *Server) activeAvailabilityWatchCodes(ctx context.Context, codes []string) (map[string]bool, error) {
+	watched := map[string]bool{}
+	if len(codes) == 0 {
+		return watched, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		WITH requested(code) AS (SELECT DISTINCT UPPER(value) FROM json_each(?)),
+		target(code) AS (
+			SELECT UPPER(work_code) FROM availability_watch_target WHERE watch_id = ? AND active = 1
+		),
+		member(logical_work_id, code) AS (
+			SELECT logical_work_id, UPPER(primary_code) FROM work_edition
+			UNION
+			SELECT logical_work_id, UPPER(primary_code) FROM work_code_alias
+		)
+		SELECT requested.code FROM requested
+		WHERE requested.code IN (SELECT code FROM target)
+			OR EXISTS (
+				SELECT 1 FROM member AS own
+				INNER JOIN member AS other ON other.logical_work_id = own.logical_work_id
+				WHERE own.code = requested.code AND other.code IN (SELECT code FROM target)
+			)
+	`, mustJSON(codes), availabilityWatchID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		watched[code] = true
+	}
+	return watched, rows.Err()
+}
+
 func userHasPermission(user currentUser, permission string) bool {
 	for _, item := range user.Permissions {
 		if item == permission || item == "system:admin" {

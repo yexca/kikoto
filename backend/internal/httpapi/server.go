@@ -490,6 +490,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/subscriptions/feed", s.listReleaseFeed)
 	mux.HandleFunc("GET /api/subscriptions/feed/unread", s.releaseFeedUnread)
 	mux.HandleFunc("POST /api/subscriptions/feed/seen", s.markReleaseFeedSeen)
+	mux.HandleFunc("POST /api/subscriptions/feed/metadata-sync", s.createReleaseFeedMetadataSyncRun)
+	mux.HandleFunc("POST /api/subscriptions/feed/source-check", s.createReleaseFeedSourceCheckRun)
 	mux.HandleFunc("GET /api/rankings", s.listRankings)
 	mux.HandleFunc("POST /api/rankings", s.createRanking)
 	mux.HandleFunc("PUT /api/rankings/retention", s.updateRankingRetention)
@@ -499,6 +501,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/rankings/{id}", s.updateRanking)
 	mux.HandleFunc("DELETE /api/rankings/{id}", s.deleteRanking)
 	mux.HandleFunc("POST /api/rankings/{id}/seen", s.markRankingSeen)
+	mux.HandleFunc("POST /api/rankings/{id}/metadata-sync", s.createRankingMetadataSyncRun)
+	mux.HandleFunc("POST /api/rankings/{id}/source-check", s.createRankingSourceCheckRun)
 	apiHandler := s.withCORS(withFirstResponseDeadline(
 		limitRequestBody(s.authMiddleware(s.anonymousAccessMiddleware(s.demoReadOnlyMiddleware(s.demoContentMiddleware(s.libraryMigrationMiddleware(mux))))), maxJSONRequestBytes),
 		mux, apiFirstResponseBudget, slowFirstResponsePatterns,

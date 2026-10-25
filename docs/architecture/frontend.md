@@ -178,16 +178,23 @@ Rankings (`?view=rankings`), and composes its settings as a sticky panel
 beside the view from 1280px, where the view reflows to the remaining width, as
 a drawer over its right edge on narrower desktops, and as a sheet on phones.
 The panel beside the view takes focus when it opens, closes with Escape or the
-settings icon, and returns focus to that icon. The release feed draws each
-day's families in the shared work collection grid and card modes. Rankings shows one tracked ranking
+settings icon, and returns focus to that icon. Both views offer the same
+actions on the works they show (`components/work-collection/ShownWorksActions`
+and `hooks/useShownWorksActions`): an actions menu syncs their metadata or
+checks their sources, a status line follows the queued run with a link to it,
+the view reloads when the run ends, and the source check's answers for codes
+without a work last for the visit. The release feed draws each day's families
+in the shared work collection grid and card modes, with the actions menu
+beside the display options. Rankings shows one tracked ranking
 (`?list=`) as compact row cards beside their rank, in one to three columns set
 by the view's own width, under a two-row toolbar that sticks below the app
 header. The first row holds segmented controls grouped by provider, in
 the fixed order of the lists, with the annual lists behind one segment and a
-year choice, and the History and refresh icons. The second row holds the order,
-the filters with their counts, and a status button that opens the update
-times and the comparison choice; on phones both rows scroll sideways and the
-status wraps below them. A 30-day switch and a popularity or sales choice pick
+year choice, the History and refresh icons, and the actions menu for the shown
+order. The second row holds the order, the
+filters with their counts, including the entries a remote source has, and a
+status button that opens the update times and the comparison choice; on phones
+both rows scroll sideways and the status wraps below them. A 30-day switch and a popularity or sales choice pick
 the shown order (`?release=30d`, `?sort=sale`); each choice pushes a history
 entry, and the last choice on each segment is a per-device preference that
 names the order when it opens. A segment's unseen mark follows the order it
@@ -197,8 +204,10 @@ shows. The latest order is compared with a baseline
 before it, chosen in the History popover by day and that day's updates in the
 account's time zone, with a banner under the toolbar leading back to the
 latest order; it does not record the ranking as seen. A card's footer states a
-stay or best rank only when they add something and marks library works instead
-of the others. A finished annual ranking shows its ranks without movement. The
+stay or best rank only when they add something and marks the entries whose
+work has files instead of the others. Ranking and release cards share a
+labeled Watch action that reads Watching for a code already in Availability
+Watch. A finished annual ranking shows its ranks without movement. The
 ranking settings show one line per ranking with its Show switch, relative pull
 times, and a schedule summary that expands the row in place to edit the
 interval and depth, pull it alone, or delete it after a confirmation; earlier

@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
+import { ShownWorksActionMenu, ShownWorksActionStatus } from "@/components/work-collection/ShownWorksActions";
+import { useShownWorksActions } from "@/hooks/useShownWorksActions";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type RankingOrder, type RankingPage } from "@/lib/api";
 
@@ -41,7 +43,9 @@ import type { RankingOverviewState } from "./useRankingOverview";
  * days, by popularity or by sales; each order keeps its own history and seen
  * state. History shows the order in effect at a chosen time, compared with the
  * update before it, and never records the ranking as seen. Entries are codes;
- * one without a library work shows the ranking's own text.
+ * one without a library work shows the ranking's own text. On request, the
+ * shown order's metadata is synced, which adds the works the library does not
+ * know yet, and the remote sources are asked which entries they have.
  */
 export function RankingsView({
   rankings,
@@ -54,6 +58,7 @@ export function RankingsView({
   canManage,
   canMarkSeen,
   canWatch,
+  canCheckSources,
   onListChange,
   onOrderChange,
   onAtChange,
@@ -80,6 +85,8 @@ export function RankingsView({
   canMarkSeen: boolean;
   /** The account may add works to Availability Watch. */
   canWatch: boolean;
+  /** `remote:track`: the remote sources may be asked about the shown entries. */
+  canCheckSources: boolean;
   onListChange: (listId: number) => void;
   onOrderChange: (chipKey: string, order: RankingOrder) => void;
   onAtChange: (at: string | null) => void;
@@ -112,6 +119,7 @@ export function RankingsView({
   const [droppedOpen, setDroppedOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [watched, setWatched] = useState<Set<string>>(() => new Set());
+  const [watching, setWatching] = useState<Set<string>>(() => new Set());
   const seenSnapshots = useRef(new Set<string>());
 
   const load = useCallback(
@@ -146,6 +154,8 @@ export function RankingsView({
     return () => controller.abort();
   }, [load]);
 
+  const actions = useShownWorksActions({ onSettled: () => void load(), onOpenRun });
+
   useEffect(() => {
     setFilter("all");
     setDroppedOpen(false);
@@ -163,12 +173,19 @@ export function RankingsView({
     }
   };
   const watch = async (code: string) => {
+    setWatching((current) => new Set(current).add(code));
     try {
       await api.addAvailabilityWatchTargets([code]);
       setWatched((current) => new Set(current).add(code));
       toast.success(t("subscriptions.feed.watchAdded", { code }));
     } catch (watchError) {
       toast.notify(toastFromError(watchError, t("subscriptions.feed.watchFailed")));
+    } finally {
+      setWatching((current) => {
+        const next = new Set(current);
+        next.delete(code);
+        return next;
+      });
     }
   };
 
@@ -258,6 +275,8 @@ export function RankingsView({
           demo={demo}
           canWatch={canWatch && !readOnly}
           watched={watched}
+          watching={watching}
+          sourceCheck={actions.sourceCheck}
           onDroppedOpenChange={setDroppedOpen}
           onWatch={(code) => void watch(code)}
           onOpenWork={(code) => onOpenWork(code, selected.provider === "remote_source" ? selected.sourceId : null)}
@@ -265,6 +284,17 @@ export function RankingsView({
       </div>
     );
   }
+
+  const shownSnapshot = recorded?.snapshot ?? null;
+  const editable = !readOnly && !demo && shownSnapshot !== null;
+  const actionRequests = shownSnapshot
+    ? {
+        ...(canManage && editable ? { metadata: () => api.syncRankingMetadata(selected.id, shownSnapshot.id) } : {}),
+        ...(canCheckSources && editable
+          ? { sources: () => api.checkRankingSources(selected.id, shownSnapshot.id) }
+          : {}),
+      }
+    : {};
 
   const lastStatus = current?.variant.lastStatus;
   const stale =
@@ -301,6 +331,7 @@ export function RankingsView({
               />
             )}
             {canRefresh && current?.snapshot && !at && refreshButton(false)}
+            <ShownWorksActionMenu actions={actions} requests={actionRequests} />
           </>
         }
         order={
@@ -318,7 +349,7 @@ export function RankingsView({
             <RankingFilterControl
               filters={filters}
               filter={filter}
-              counts={rankingFilterCounts(recorded)}
+              counts={rankingFilterCounts(recorded, actions.sourceCheck)}
               onFilterChange={setFilter}
             />
           )
@@ -359,6 +390,7 @@ export function RankingsView({
           )}
         </div>
       )}
+      <ShownWorksActionStatus actions={actions} onOpenRun={onOpenRun} />
       {body}
     </div>
   );

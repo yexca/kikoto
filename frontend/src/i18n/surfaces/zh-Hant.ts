@@ -1347,6 +1347,15 @@ export const surfaceHant = {
         description: "學習偏好中繼資料語言的 DLsite 類型名稱，每組缺少名稱的類型只請求一次。",
       },
       metadata_family_sync: { name: "重新整理作品中繼資料", description: "重新整理一個作品及其有限的語言版本系列。" },
+      shown_works_metadata_sync: {
+        name: "同步目前作品的中繼資料",
+        description:
+          "為目前顯示的排行榜或新作中缺少最新中繼資料的作品同步 DLsite 中繼資料，並加入媒體庫中尚沒有的作品。",
+      },
+      shown_works_source_check: {
+        name: "檢測目前作品的來源",
+        description: "詢問各遠端來源是否有目前顯示的排行榜或新作中尚不確定可用的作品。",
+      },
       work_folder_edit: { name: "編輯作品檔案" },
       llm_translation: { name: "LLM 翻譯" },
       ai_translation: {

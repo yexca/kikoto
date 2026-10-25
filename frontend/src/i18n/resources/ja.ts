@@ -323,6 +323,10 @@ const workCardJapanese = {
   namedSourceUnavailable: "{{name}}を利用できません",
   local: "ローカル",
   tracked: "追跡済み",
+  watch: "監視",
+  watchTitle: "配信状況の監視に追加",
+  watching: "監視中",
+  watchingTitle: "配信状況の監視に登録済み",
 } as const;
 
 const adminToolsJapanese = {

@@ -1,6 +1,7 @@
 import { deleteJSON, getJSON, patchJSONBody, postJSONBody, putJSONBody } from "@/lib/apiTransport";
 import type { Work } from "@/lib/libraryApi";
 import { deviceTimeZone } from "@/lib/timeZone";
+import type { ShownWorksActionResult } from "@/lib/workflowApi";
 
 export type RankingProvider = "dlsite" | "remote_source";
 export type RankingPeriod = "day" | "week" | "month" | "year" | "total";
@@ -116,8 +117,12 @@ export type RankingItem = {
   streakStartedAt: string;
   bestRank: number;
   appearances: number;
-  /** The library work with this code, or null when there is none. */
+  /** The work with this code, or null when there is none. */
   work: Work | null;
+  /** The work has files: local, cached, or tracked from a remote source. */
+  inLibrary: boolean;
+  /** Availability Watch watches the code or another edition of it; false for accounts that cannot see the pool. */
+  watched: boolean;
   fallback: RankingFallback;
 };
 
@@ -125,6 +130,8 @@ export type RankingDroppedItem = {
   code: string;
   previousRank: number;
   work: Work | null;
+  inLibrary: boolean;
+  watched: boolean;
   fallback: RankingFallback;
 };
 
@@ -228,4 +235,8 @@ export const rankingApi = {
     putJSONBody<RankingRetention>("/api/rankings/retention", retention),
   runRankingRefresh: (listIds?: number[]) =>
     postJSONBody<{ runs: RankingRefreshRun[] }>("/api/rankings/refresh", listIds?.length ? { listIds } : {}),
+  syncRankingMetadata: (id: number, snapshotId: number) =>
+    postJSONBody<ShownWorksActionResult>(`/api/rankings/${id}/metadata-sync`, { snapshotId }),
+  checkRankingSources: (id: number, snapshotId: number) =>
+    postJSONBody<ShownWorksActionResult>(`/api/rankings/${id}/source-check`, { snapshotId }),
 };

@@ -2,6 +2,7 @@ import { deleteJSON, getJSON, patchJSONBody, postJSON, postJSONBody, putJSONBody
 import type { CatalogSyncState } from "@/lib/catalogSyncState";
 import type { Work } from "@/lib/libraryApi";
 import { deviceTimeZone } from "@/lib/timeZone";
+import type { ShownWorksActionResult } from "@/lib/workflowApi";
 
 export type CreatorSubscriptionKind = "circle" | "series" | "voice";
 
@@ -110,6 +111,8 @@ export type ReleaseFeedFamily = {
   events: ReleaseFeedEvent[];
   work: Work | null;
   fallback: ReleaseFeedFallback;
+  /** Availability Watch watches the shown code or another edition of it; false for accounts that cannot see the pool. */
+  watched: boolean;
 };
 
 export type ReleaseFeedPage = {
@@ -155,4 +158,8 @@ export const subscriptionApi = {
   },
   getReleaseFeedUnread: (signal?: AbortSignal) => getJSON<{ count: number }>("/api/subscriptions/feed/unread", signal),
   markReleaseFeedSeen: () => postJSONBody<{ count: number }>("/api/subscriptions/feed/seen", {}),
+  syncReleaseFeedMetadata: (page: number, days: number) =>
+    postJSONBody<ShownWorksActionResult>("/api/subscriptions/feed/metadata-sync", { page, days }),
+  checkReleaseFeedSources: (page: number, days: number) =>
+    postJSONBody<ShownWorksActionResult>("/api/subscriptions/feed/source-check", { page, days }),
 };

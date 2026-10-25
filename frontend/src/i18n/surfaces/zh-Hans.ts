@@ -1346,6 +1346,14 @@ export const surfaceHans = {
         description: "学习首选元数据语言的 DLsite 类型名称，每组缺失名称的类型只请求一次。",
       },
       metadata_family_sync: { name: "刷新作品元数据", description: "刷新一个作品及其有限的语言版本系列。" },
+      shown_works_metadata_sync: {
+        name: "同步当前作品的元数据",
+        description: "为当前显示的排行榜或新作中缺少最新元数据的作品同步 DLsite 元数据，并添加媒体库中尚没有的作品。",
+      },
+      shown_works_source_check: {
+        name: "检测当前作品的来源",
+        description: "询问各远程来源是否有当前显示的排行榜或新作中尚不确定可用的作品。",
+      },
       work_folder_edit: { name: "编辑作品文件" },
       llm_translation: { name: "LLM 翻译" },
       ai_translation: {

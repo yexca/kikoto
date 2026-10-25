@@ -14,6 +14,8 @@ import {
   subscriptionLookupFixture,
   subscriptionViewFixture,
   workFixture,
+  workflowRunDetailFixture,
+  workflowRunFixture,
   type ApiErrorBody,
 } from "./fixtures/api";
 import type {
@@ -27,6 +29,8 @@ import type {
   RankingTimeline,
   RankingVariant,
   ReleaseFeedPage,
+  ShownWorksActionResult,
+  WorkflowRunDetail,
 } from "../../src/lib/api";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
 
@@ -42,6 +46,10 @@ type SubscriptionServer = {
   rankingPages?: Record<string, RankingPage>;
   /** Snapshot timelines by list id. */
   timelines?: Record<string, RankingSnapshotRef[]>;
+  /** What an action on the shown works answers, by path, such as `/api/rankings/1/metadata-sync`. */
+  pageActions?: Record<string, ShownWorksActionResult>;
+  /** Workflow runs by id, read again each time the page follows one. */
+  runs?: Record<string, WorkflowRunDetail>;
   requests: Array<{ method: string; path: string; body: unknown }>;
   feedQueries: string[];
 };
@@ -105,6 +113,8 @@ function rankingItemFixture(ordinal: number, rank: number, change: RankingItem["
     bestRank: rank,
     appearances: 2,
     work: null,
+    inLibrary: false,
+    watched: false,
     fallback: { code, title: `Example Work ${ordinal}`, circle: "Example Circle 1", coverUrl: "", dlsiteUrl: "" },
   };
 }
@@ -140,6 +150,8 @@ function rankingPageFixture(
       code: syntheticWorkCode("RJ", 9),
       previousRank: 3,
       work: null,
+      inLibrary: false,
+      watched: false,
       fallback: { code: syntheticWorkCode("RJ", 9), title: "Example Work 9", circle: "", coverUrl: "", dlsiteUrl: "" },
     },
   ];
@@ -189,7 +201,9 @@ async function mockSubscriptions(page: Page, server: SubscriptionServer) {
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    if (url.pathname.startsWith("/api/subscriptions") || url.pathname.startsWith("/api/rankings")) {
+    if (
+      ["/api/subscriptions", "/api/rankings", "/api/availability-watch"].some((path) => url.pathname.startsWith(path))
+    ) {
       server.requests.push({ method: request.method(), path: url.pathname, body: request.postDataJSON() });
     }
     if (url.pathname === "/api/rankings" && request.method() === "POST") {
@@ -226,6 +240,37 @@ async function mockSubscriptions(page: Page, server: SubscriptionServer) {
       const key = at ? `${list}@${at}` : `${list}:${url.searchParams.get("compare") ?? ""}`;
       const page = server.rankingPages?.[key];
       await route.fulfill(page ? { json: page } : { status: 404, json: { error: "ranking not found" } });
+      return;
+    }
+    if (/^\/api\/(rankings\/\d+|subscriptions\/feed)\/(metadata-sync|source-check)$/.test(url.pathname)) {
+      const result = server.pageActions?.[url.pathname];
+      await route.fulfill(
+        result
+          ? { status: result.runId > 0 ? 202 : 200, json: result }
+          : { status: 409, json: { error: "no remote source can be checked", code: "no_remote_source" } },
+      );
+      return;
+    }
+    const run = /^\/api\/workflow-runs\/(\d+)(\/events)?(\/stream)?$/.exec(url.pathname);
+    if (run) {
+      const detail = server.runs?.[run[1]];
+      if (run[3]) {
+        // Each stream reports the run's current status once and closes.
+        await route.fulfill({
+          contentType: "text/event-stream",
+          body: `event: tick\ndata: ${JSON.stringify({ status: detail?.status ?? "", lastEventId: 0 })}\n\n`,
+        });
+        return;
+      }
+      await route.fulfill(
+        run[2] ? { json: [] } : detail ? { json: detail } : { status: 404, json: { error: "run not found" } },
+      );
+      return;
+    }
+    if (url.pathname === "/api/availability-watch/targets" && request.method() === "POST") {
+      await route.fulfill({
+        json: { id: 1, action: "notify", sourceId: null, excludeExtensions: [], revision: 2, targets: [] },
+      });
       return;
     }
     const timeline = /^\/api\/rankings\/(\d+)\/snapshots$/.exec(url.pathname);
@@ -471,6 +516,7 @@ test("@desktop rankings mark changes since the last visit and compare with the p
   const owned = {
     ...rankingItemFixture(3, 3, { kind: "same", from: 3, delta: 0 }),
     work: workFixture({ id: 3, primaryCode: syntheticWorkCode("RJ", 3), title: "Example Work 3", rating: null }),
+    inLibrary: true,
   };
   const server: SubscriptionServer = {
     requests: [],
@@ -889,6 +935,223 @@ test("@desktop ranking settings show fixed rows and start a ranking when it is f
         .filter(Boolean),
     )
     .toEqual([2024, 2023]);
+});
+
+/** A page action's run as the page follows it. */
+function pageActionRun(id: number, workflowCode: string, status: string, summary: object = {}) {
+  return workflowRunDetailFixture(
+    workflowRunFixture({ id, workflowCode, displayName: workflowCode, status, summaryJson: JSON.stringify(summary) }),
+  );
+}
+
+function pageActionResult(runId: number, queued: number): ShownWorksActionResult {
+  return { runId, jobId: runId, status: "queued", queued, skipped: 0, existing: false };
+}
+
+test("@desktop syncing a ranking page's metadata follows its run and shows the works it added", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const day = rankingListFixture();
+  const unknown = [
+    rankingItemFixture(1, 1, { kind: "same", from: 1, delta: 0 }),
+    rankingItemFixture(2, 2, { kind: "same", from: 2, delta: 0 }),
+  ];
+  const server: SubscriptionServer = {
+    requests: [],
+    feedQueries: [],
+    rankings: rankingOverviewFixture({ lists: [day] }),
+    rankingPages: { "1:": rankingPageFixture(day, null, unknown) },
+    pageActions: { "/api/rankings/1/metadata-sync": pageActionResult(61, 2) },
+    runs: { "61": pageActionRun(61, "shown_works_metadata_sync", "running") },
+  };
+  await mockSubscriptions(page, server);
+  await page.goto("/subscriptions?view=rankings");
+  const ranking = page.getByRole("region", { name: "Rankings", exact: true });
+  const items = ranking.getByRole("list").first().getByRole("listitem");
+  await expect(items).toHaveCount(2);
+
+  await ranking.getByRole("button", { name: "Actions for the shown works" }).click();
+  await page.getByRole("menuitem", { name: /^Sync metadata/ }).click();
+  await expect(page.getByText("Metadata sync queued for 2 works.")).toBeVisible();
+  expect(server.requests.find((request) => request.path === "/api/rankings/1/metadata-sync")?.body).toEqual({
+    snapshotId: 30,
+  });
+  await expect(ranking.getByRole("status").filter({ hasText: "Syncing metadata for 2 works…" })).toBeVisible();
+
+  // The run added a work for the first entry: it shows the work's metadata,
+  // but without files it is still not in the library.
+  const synced = workFixture({
+    id: 1,
+    primaryCode: syntheticWorkCode("RJ", 1),
+    title: "Example Work 1 Synced",
+    sourcePresence: [],
+    availability: ["missing"],
+  });
+  server.rankingPages!["1:"] = rankingPageFixture(day, null, [{ ...unknown[0], work: synced }, unknown[1]]);
+  server.runs!["61"] = pageActionRun(61, "shown_works_metadata_sync", "succeeded");
+  await expect(page.getByText("Metadata synced.")).toBeVisible();
+  await expect(items.first()).toHaveAccessibleName("Example Work 1 Synced");
+  await expect(items.first()).not.toContainText("In library");
+  await expect(ranking.getByRole("status").filter({ hasText: "Syncing metadata" })).toHaveCount(0);
+  await ranking.getByRole("button", { name: /^Not in library/ }).click();
+  await expect(items).toHaveCount(2);
+});
+
+test("@desktop checking a ranking page's sources marks the entries a source has", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const day = rankingListFixture();
+  const server: SubscriptionServer = {
+    requests: [],
+    feedQueries: [],
+    rankings: rankingOverviewFixture({ lists: [day] }),
+    rankingPages: {
+      "1:": rankingPageFixture(day, null, [
+        rankingItemFixture(1, 1, { kind: "same", from: 1, delta: 0 }),
+        rankingItemFixture(2, 2, { kind: "same", from: 2, delta: 0 }),
+      ]),
+    },
+  };
+  await mockSubscriptions(page, server);
+  await page.goto("/subscriptions?view=rankings");
+  const ranking = page.getByRole("region", { name: "Rankings", exact: true });
+  const items = ranking.getByRole("list").first().getByRole("listitem");
+  await expect(ranking.getByRole("button", { name: /^On a source/ })).toContainText("0");
+
+  // Without a source to ask, the check explains what is missing.
+  await ranking.getByRole("button", { name: "Actions for the shown works" }).click();
+  await page.getByRole("menuitem", { name: /^Check sources/ }).click();
+  await expect(page.getByText("No remote source can be checked.", { exact: false })).toBeVisible();
+
+  server.pageActions = { "/api/rankings/1/source-check": pageActionResult(62, 2) };
+  server.runs = {
+    "62": pageActionRun(62, "shown_works_source_check", "succeeded", {
+      sources: [{ id: 7, name: "Example Remote" }],
+      results: [
+        { code: syntheticWorkCode("RJ", 1), available: [7], missing: [] },
+        { code: syntheticWorkCode("RJ", 2), available: [], missing: [7] },
+      ],
+    }),
+  };
+  await ranking.getByRole("button", { name: "Actions for the shown works" }).click();
+  await page.getByRole("menuitem", { name: /^Check sources/ }).click();
+  await expect(page.getByText("Source check finished.")).toBeVisible();
+  await expect(items.first().getByRole("img", { name: "Example Remote" })).toBeVisible();
+  await expect(items.nth(1).getByRole("img", { name: "Example Remote" })).toHaveCount(0);
+
+  await ranking.getByRole("button", { name: /^On a source/ }).click();
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toHaveAccessibleName("Example Work 1");
+});
+
+test("@desktop release cards label the watch action and say which works are watched", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const server: SubscriptionServer = {
+    requests: [],
+    feedQueries: [],
+    feed: releaseFeedPageFixture([
+      releaseFeedFamilyFixture(),
+      releaseFeedFamilyFixture({
+        key: "code:RJ00000002",
+        watched: true,
+        fallback: { ...releaseFeedFamilyFixture().fallback, code: syntheticWorkCode("RJ", 2), title: "Example Work 2" },
+      }),
+    ]),
+  };
+  await mockSubscriptions(page, server);
+  await page.goto("/subscriptions");
+  const feed = page.getByRole("region", { name: "New releases", exact: true });
+  const watched = feed.getByRole("listitem", { name: "Example Work 2" });
+  await expect(watched).toContainText("Watching");
+  await expect(watched.getByRole("button", { name: "Add to Availability Watch" })).toHaveCount(0);
+
+  const entry = feed.getByRole("listitem", { name: "Example Work 1" });
+  const watch = entry.getByRole("button", { name: "Add to Availability Watch" });
+  await expect(watch).toHaveText("Watch");
+  await watch.click();
+  await expect(page.getByText(`${syntheticWorkCode("RJ", 1)} is now in Availability Watch.`)).toBeVisible();
+  expect(server.requests.find((request) => request.path === "/api/availability-watch/targets")?.body).toEqual({
+    targetCodes: [syntheticWorkCode("RJ", 1)],
+  });
+  await expect(entry).toContainText("Watching");
+});
+
+test("@desktop the feed page's works can have their metadata synced and their sources checked", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const second = releaseFeedFamilyFixture({
+    key: "code:RJ00000002",
+    fallback: { ...releaseFeedFamilyFixture().fallback, code: syntheticWorkCode("RJ", 2), title: "Example Work 2" },
+  });
+  const server: SubscriptionServer = {
+    requests: [],
+    feedQueries: [],
+    feed: releaseFeedPageFixture([releaseFeedFamilyFixture(), second]),
+    pageActions: {
+      "/api/subscriptions/feed/metadata-sync": { ...pageActionResult(0, 0), status: "succeeded", skipped: 2 },
+      "/api/subscriptions/feed/source-check": pageActionResult(63, 2),
+    },
+    runs: {
+      "63": pageActionRun(63, "shown_works_source_check", "succeeded", {
+        sources: [{ id: 7, name: "Example Remote" }],
+        results: [
+          { code: syntheticWorkCode("RJ", 1), available: [7], missing: [] },
+          { code: syntheticWorkCode("RJ", 2), available: [], missing: [7] },
+        ],
+      }),
+    },
+  };
+  await mockSubscriptions(page, server);
+  await page.goto("/subscriptions");
+  const feed = page.getByRole("region", { name: "New releases", exact: true });
+  await expect(feed.getByRole("listitem")).toHaveCount(2);
+
+  // Works whose metadata is fresh are skipped, so nothing is queued.
+  await page.getByRole("button", { name: "Actions for the shown works" }).click();
+  await page.getByRole("menuitem", { name: /^Sync metadata/ }).click();
+  await expect(page.getByText("Every shown work's metadata is up to date.")).toBeVisible();
+  expect(server.requests.find((request) => request.path === "/api/subscriptions/feed/metadata-sync")?.body).toEqual({
+    page: 1,
+    days: 10,
+  });
+
+  const reads = server.feedQueries.length;
+  await page.getByRole("button", { name: "Actions for the shown works" }).click();
+  await page.getByRole("menuitem", { name: /^Check sources/ }).click();
+  await expect(page.getByText("Source check finished.")).toBeVisible();
+  await expect.poll(() => server.feedQueries.length).toBeGreaterThan(reads);
+  await expect(
+    feed.getByRole("listitem", { name: "Example Work 1" }).getByRole("img", { name: "Example Remote" }),
+  ).toBeVisible();
+  await expect(
+    feed.getByRole("listitem", { name: "Example Work 2" }).getByRole("img", { name: "Example Remote" }),
+  ).toHaveCount(0);
+});
+
+test("phones reach the ranking page actions and see the labeled watch action", async ({ page }) => {
+  const day = rankingListFixture();
+  await mockSubscriptions(page, {
+    requests: [],
+    feedQueries: [],
+    rankings: rankingOverviewFixture({ lists: [day] }),
+    rankingPages: {
+      "1:": rankingPageFixture(day, null, [rankingItemFixture(1, 1, { kind: "same", from: 1, delta: 0 })]),
+    },
+  });
+  await page.goto("/subscriptions?view=rankings");
+  const ranking = page.getByRole("region", { name: "Rankings", exact: true });
+  const entry = ranking.getByRole("listitem", { name: "Example Work 1" });
+  await expect(entry.getByRole("button", { name: "Add to Availability Watch" })).toHaveText("Watch");
+
+  await ranking.getByRole("button", { name: "Actions for the shown works" }).click();
+  await expect(page.getByRole("menuitem", { name: /^Sync metadata/ })).toBeInViewport();
+  await expect(page.getByRole("menuitem", { name: /^Check sources/ })).toBeInViewport();
+  await page.keyboard.press("Escape");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  // New releases offers the same actions beside its display options.
+  await page.getByRole("tab", { name: /^New releases/ }).click();
+  await page.getByRole("button", { name: "Actions for the shown works" }).click();
+  await expect(page.getByRole("menuitem", { name: /^Check sources/ })).toBeInViewport();
+  await page.keyboard.press("Escape");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 test("Demo shows a sample feed without actions", async ({ page }) => {

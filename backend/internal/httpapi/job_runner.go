@@ -266,6 +266,8 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		"availability_watch":          s.executeAvailabilityWatchJob,
 		creatorSubscriptionWorkerType: s.executeCreatorSubscriptionRefreshJob,
 		rankingPullWorkerType:         s.executeRankingPullJob,
+		"shown_works_metadata_sync":   s.executeShownWorksMetadataSyncJob,
+		"shown_works_source_check":    s.executeShownWorksSourceCheckJob,
 		databaseOptimizeWorkerType:    s.executeDatabaseOptimizeJob,
 		databaseBackupWorkerType:      s.executeDatabaseBackupJob,
 	}
@@ -323,7 +325,7 @@ func (s *Server) notifyWorkflowJobCompletion(ctx context.Context, job workflowJo
 		status = "failed"
 	}
 	switch job.WorkerType {
-	case "metadata_sync", "metadata_family_sync", "custom_workflow":
+	case "metadata_sync", "metadata_family_sync", "custom_workflow", shownWorksMetadataSyncWorkflowCode:
 		// A sync may have learned new genre ids; learn their preferred-language
 		// names in the background without delaying this job's settlement.
 		s.queueGenreNameLearning(ctx, "metadata_sync")

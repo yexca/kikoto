@@ -323,6 +323,10 @@ export const workCardHans = {
   namedSourceUnavailable: "{{name}}不可用",
   local: "本地",
   tracked: "已跟踪",
+  watch: "监视",
+  watchTitle: "加入可用性监视",
+  watching: "监视中",
+  watchingTitle: "已在可用性监视中",
 } as const;
 
 const adminToolsHans = {

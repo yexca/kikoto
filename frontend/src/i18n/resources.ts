@@ -315,6 +315,10 @@ export const workCardEnglish = {
   namedSourceUnavailable: "{{name}} unavailable",
   local: "Local",
   tracked: "Tracked",
+  watch: "Watch",
+  watchTitle: "Add to Availability Watch",
+  watching: "Watching",
+  watchingTitle: "In Availability Watch",
 } as const;
 
 export const englishResource = {
