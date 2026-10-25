@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -169,9 +169,8 @@ func (s *Server) completeRemoteFetchManifest(ctx context.Context, manifest remot
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	backupRoot, err := safeDataPath(s.cfg.DataRoot, manifest.BackupRoot)
-	if err == nil {
-		_ = os.RemoveAll(filepath.Dir(backupRoot))
+	if err := s.removeRemoteFetchBackup(manifest); err != nil {
+		slog.Warn("Fetch backup cleanup blocked", "run_id", manifest.WorkflowRunID, "error", err)
 	}
 	return nil
 }

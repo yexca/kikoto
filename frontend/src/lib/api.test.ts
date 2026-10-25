@@ -18,6 +18,7 @@ vi.mock("@/lib/mobileDiagnostics", () => ({ recordApiError }));
 
 import { api, ApiError, assetURL, mediaDownloadURL } from "./api";
 import { apiSessionVersion, changeApiSession, observeApiPrincipal } from "./apiSession";
+import { getText } from "./apiTransport";
 import { setDemoMetadataLanguageUser, writeDemoMetadataLanguages } from "./demoMetadataLanguages";
 
 function deferred<T>() {
@@ -149,6 +150,65 @@ describe("API client transport", () => {
     expect(loginInit.method).toBe("POST");
     expect(loginInit.body).toBe(JSON.stringify({ username: "synthetic-user", password: "synthetic-password" }));
     expect(setStoredSessionToken).toHaveBeenCalledWith("synthetic-new-token");
+  });
+
+  it.each([false, true])("authenticates plain-text previews when native=%s", async (native) => {
+    isNativeApp.mockReturnValue(native);
+    getStoredServerURL.mockReturnValue("https://mobile.example.invalid");
+    getStoredSessionToken.mockReturnValue("synthetic-token");
+    const fetchMock = vi.fn().mockImplementation(async () => new Response("Example lyrics"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.translationItemText(1, "result")).resolves.toBe("Example lyrics");
+    await expect(api.asrTranscriptionText("synthetic-transcription")).resolves.toBe("Example lyrics");
+
+    for (const [, init] of fetchMock.mock.calls as unknown as [string, RequestInit][]) {
+      expect(init.credentials).toBe(native ? "omit" : "include");
+      expect(new Headers(init.headers).get("Authorization")).toBe(native ? "Bearer synthetic-token" : null);
+    }
+  });
+
+  it.each([false, true])("fences a previous session's text body, including failure=%s", async (failure) => {
+    const body = deferred<string>();
+    const response = new Response();
+    const reading = vi.spyOn(response, "text").mockReturnValue(body.promise);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    const pending = getText("/api/translation/items/1/text?side=result");
+    await vi.waitFor(() => expect(reading).toHaveBeenCalledOnce());
+
+    changeApiSession();
+    if (failure) body.reject(new Error("Previous session's body failed"));
+    else body.resolve("Previous session's text");
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError", message: "The session has changed." });
+  });
+
+  it("cancels plain-text reads while the body is loading", async () => {
+    const body = deferred<string>();
+    const response = new Response();
+    const reading = vi.spyOn(response, "text").mockReturnValue(body.promise);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    const controller = new AbortController();
+    const pending = getText("/api/translation/items/1/text", controller.signal);
+    await vi.waitFor(() => expect(reading).toHaveBeenCalledOnce());
+
+    controller.abort();
+    body.resolve("Cancelled text");
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("preserves structured failures from plain-text endpoints", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ error: "Permission denied.", code: "permission_denied" }, 403)),
+    );
+
+    await expect(getText("/api/asr/transcriptions/synthetic/text")).rejects.toMatchObject({
+      name: "ApiError",
+      status: 403,
+      code: "permission_denied",
+    });
   });
 
   it("waits for native credential synchronization before completing login", async () => {

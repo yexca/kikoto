@@ -27,10 +27,21 @@ export function assetURL(path: string) {
 }
 
 /** Reads a plain-text resource, such as a lyrics file the server generated. */
-export async function getText(path: string) {
-  const response = await fetch(assetURL(path), { headers: { Accept: "text/plain,text/*" } });
-  if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}.`);
-  return response.text();
+export async function getText(path: string, signal?: AbortSignal) {
+  const version = apiSessionVersion();
+  let response: Response | undefined;
+  try {
+    response = await fetchAPI(path, { headers: { Accept: "text/plain,text/*" }, signal });
+    if (!response.ok) throw await responseError(response, `GET ${path} failed with ${response.status}`);
+    return await response.text();
+  } finally {
+    try {
+      assertApiSession(version);
+      signal?.throwIfAborted();
+    } finally {
+      if (response) completeResponse(response);
+    }
+  }
 }
 
 export class ApiError extends Error {

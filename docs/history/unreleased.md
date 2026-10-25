@@ -36,6 +36,15 @@
 </details>
 
 <details>
+<summary><strong>Sources and remote fetch</strong></summary>
+
+- Fetch rejects linked staging, target, and backup directories during copying,
+  publication, recovery, and cleanup, and keeps filesystem operations within
+  the data root when a directory changes after validation.
+
+</details>
+
+<details>
 <summary><strong>Metadata and scans</strong></summary>
 
 - Metadata groups All, Needs attention, Metadata issues, and No available
@@ -72,6 +81,9 @@
 <details>
 <summary><strong>Translation</strong></summary>
 
+- Transcription and translation text previews carry the signed-in session on
+  mobile and cross-origin web clients, and discard results after the session
+  changes or the caller cancels.
 - **Translate with AI** replaces Translate with LLM and the lyrics manager's
   Translate tab. One dialog translates a work's title, description, shared tag
   names, file and folder display names, and lyrics into several languages at

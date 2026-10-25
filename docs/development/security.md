@@ -457,8 +457,14 @@ cannot create an unchecked outbound path.
   root, a folder inside or holding one, and a folder an active Fetch or Edit
   files run writes into or merges away. The server refuses creation until an
   administrator accepts the rename notice.
-- Keep Fetch staging, rollback backup, and reviewable trash on `/data` so
-  publication and rollback use same-filesystem rename semantics.
+- Keep Fetch staging, rollback backup, and reviewable trash on the target's
+  filesystem: `/data` in standard mode or `/data/<pool>` in storage pool mode,
+  so publication and rollback use same-filesystem rename semantics.
+- Fetch checks every staging, target, and backup directory component for links
+  and reparse points. Staging copies, verification, publication, recovery, and
+  backup removal use an open data root, so replacing a directory after its
+  check cannot redirect these operations outside that root. A blocked backup
+  cleanup keeps the backup and logs the failure after completion commits.
 - Keep `/cache` disposable. It must not become the only owner of a transaction,
   review decision, or user-authored media.
 - Bound archive extraction, media probing, transcoding, and file-copy resource

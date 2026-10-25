@@ -225,6 +225,14 @@ func (s *Server) stageRemoteFetchItems(ctx context.Context, manifest remoteFetch
 			return err
 		}
 	}
+	root, scoped, err := s.openRemoteFetchPublishPaths(paths)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	if err := walkFetchDirectory(root, scoped.stageRoot, nil); err != nil {
+		return err
+	}
 	sources := distinctFetchFiles{}
 	for _, item := range plan.Items {
 		if item.Action == "skip" || item.Action == "exclude" {
@@ -234,30 +242,33 @@ func (s *Server) stageRemoteFetchItems(ctx context.Context, manifest remoteFetch
 		if err != nil {
 			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 		}
-		stagedPath := filepath.Join(paths.stageRoot, filepath.FromSlash(relativePath))
-		reusable, err := s.verifiedRemoteFetchItemMatches(ctx, manifest.ID, item, stagedPath)
+		stagedPath := filepath.Join(scoped.stageRoot, filepath.FromSlash(relativePath))
+		reusable, err := s.verifiedRemoteFetchItemMatches(ctx, manifest.ID, item, root, stagedPath)
 		if err != nil {
 			return err
 		}
 		if !reusable {
-			if err := os.MkdirAll(filepath.Dir(stagedPath), 0o755); err != nil {
-				return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
-			}
-			sourcePath, err := s.remoteFetchSourcePath(item)
+			source, err := s.openRemoteFetchSource(item)
 			if err != nil {
 				return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
+			}
+			info, err := source.Stat()
+			if err != nil || !info.Mode().IsRegular() {
+				_ = source.Close()
+				return s.recordRemoteFetchManifestError(ctx, manifest.ID, errors.New("fetch source is not a regular file"))
 			}
 			// Two downloads that the cache stores as one file would publish the
 			// same bytes under both names.
 			if item.Action != "copy_local" {
-				if other, err := sources.claim(sourcePath, relativePath); err != nil {
-					return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
-				} else if other != "" {
+				if other := sources.claim(info, relativePath); other != "" {
+					_ = source.Close()
 					err := fmt.Errorf("downloads for %s and %s are one file in the cache; fetch them one at a time", other, relativePath)
 					return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 				}
 			}
-			if err := copyFile(sourcePath, stagedPath); err != nil {
+			copyErr := copyFetchFile(root, stagedPath, source)
+			closeErr := source.Close()
+			if err := errors.Join(copyErr, closeErr); err != nil {
 				return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 			}
 		}
@@ -277,7 +288,7 @@ func (s *Server) stageRemoteFetchItems(ctx context.Context, manifest remoteFetch
 
 // A file copied from the old target is not a completed staging operation.
 // Only a prior verified manifest entry can authorize reuse after interruption.
-func (s *Server) verifiedRemoteFetchItemMatches(ctx context.Context, manifestID int64, item remoteWorkSavePlanItem, stagedPath string) (bool, error) {
+func (s *Server) verifiedRemoteFetchItemMatches(ctx context.Context, manifestID int64, item remoteWorkSavePlanItem, root *os.Root, stagedPath string) (bool, error) {
 	var expectedHash string
 	err := s.db.QueryRowContext(ctx, `
 		SELECT content_hash FROM remote_fetch_manifest_item
@@ -289,23 +300,29 @@ func (s *Server) verifiedRemoteFetchItemMatches(ctx context.Context, manifestID 
 	if err != nil {
 		return false, err
 	}
-	if !existingFileMatches(stagedPath, item.SizeBytes) {
+	info, err := root.Stat(stagedPath)
+	if err != nil || !info.Mode().IsRegular() || item.SizeBytes != nil && info.Size() != *item.SizeBytes {
 		return false, nil
 	}
-	actualHash, _, err := hashFile(stagedPath)
+	actualHash, _, err := hashFetchFile(root, stagedPath)
 	return actualHash == expectedHash && err == nil, err
 }
 
 func (s *Server) initializeRemoteFetchStaging(ctx context.Context, manifest remoteFetchManifestRecord, paths remoteFetchPublishPaths) error {
-	if err := os.RemoveAll(paths.stageRoot); err != nil && !errors.Is(err, os.ErrNotExist) {
+	root, scoped, err := s.openRemoteFetchPublishPaths(paths)
+	if err != nil {
 		return err
 	}
-	if info, err := os.Stat(paths.targetRoot); err == nil && info.IsDir() {
-		if err := copyDirectoryTree(paths.targetRoot, paths.stageRoot); err != nil {
+	defer func() { _ = root.Close() }()
+	if err := removeFetchDirectory(root, scoped.stageRoot); err != nil {
+		return err
+	}
+	if info, err := root.Stat(scoped.targetRoot); err == nil && info.IsDir() {
+		if err := copyFetchDirectory(root, scoped.targetRoot, scoped.stageRoot); err != nil {
 			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 		}
 	} else if errors.Is(err, os.ErrNotExist) {
-		if err := os.MkdirAll(paths.stageRoot, 0o755); err != nil {
+		if err := root.MkdirAll(scoped.stageRoot, 0o755); err != nil {
 			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 		}
 	} else if err != nil {
@@ -314,14 +331,15 @@ func (s *Server) initializeRemoteFetchStaging(ctx context.Context, manifest remo
 	return s.updateRemoteFetchManifestState(ctx, manifest.ID, "staging", "")
 }
 
-func (s *Server) remoteFetchSourcePath(item remoteWorkSavePlanItem) (string, error) {
-	if item.Action == "copy_local" {
-		return safeResolvedPath(s.cfg.DataRoot, item.LocalSourcePath)
-	}
-	return safeCachePath(s.cfg.CacheRoot, item.CachePath)
-}
-
 func (s *Server) verifyRemoteFetchItems(ctx context.Context, manifest remoteFetchManifestRecord, plan remoteWorkSavePlan, paths remoteFetchPublishPaths) error {
+	root, scoped, err := s.openRemoteFetchPublishPaths(paths)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	if err := walkFetchDirectory(root, scoped.stageRoot, nil); err != nil {
+		return err
+	}
 	_ = s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, "verify", "running", nil)
 	staged := distinctFetchFiles{}
 	for _, item := range plan.Items {
@@ -332,14 +350,16 @@ func (s *Server) verifyRemoteFetchItems(ctx context.Context, manifest remoteFetc
 		if err != nil {
 			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 		}
-		stagedPath := filepath.Join(paths.stageRoot, filepath.FromSlash(relativePath))
-		if other, err := staged.claim(stagedPath, relativePath); err != nil {
+		stagedPath := filepath.Join(scoped.stageRoot, filepath.FromSlash(relativePath))
+		info, err := root.Stat(stagedPath)
+		if err != nil {
 			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
-		} else if other != "" {
+		}
+		if other := staged.claim(info, relativePath); other != "" {
 			err := fmt.Errorf("staged files %s and %s are one file on this filesystem; the Fetch would publish fewer files than planned", other, relativePath)
 			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 		}
-		hash, size, err := hashFile(stagedPath)
+		hash, size, err := hashFetchFile(root, stagedPath)
 		if err != nil {
 			return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 		}
@@ -371,21 +391,17 @@ type distinctFetchFile struct {
 	relativePath string
 }
 
-// claim records the file at path for relativePath. It returns the relative
+// claim records the file described by info for relativePath. It returns the relative
 // path that already claimed the same file, or "" when the file is new.
-func (files distinctFetchFiles) claim(path string, relativePath string) (string, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", err
-	}
+func (files distinctFetchFiles) claim(info os.FileInfo, relativePath string) string {
 	// The same file has one size, so only same-sized files need comparing.
 	for _, other := range files[info.Size()] {
 		if os.SameFile(info, other.info) {
-			return other.relativePath, nil
+			return other.relativePath
 		}
 	}
 	files[info.Size()] = append(files[info.Size()], distinctFetchFile{info: info, relativePath: relativePath})
-	return "", nil
+	return ""
 }
 
 func (s *Server) publishRemoteFetchRoot(ctx context.Context, manifest remoteFetchManifestRecord, paths remoteFetchPublishPaths) error {
@@ -399,12 +415,20 @@ func (s *Server) publishRemoteFetchRoot(ctx context.Context, manifest remoteFetc
 		return err
 	}
 	defer s.mediaCleanupMu.Unlock()
+	root, scoped, err := s.openRemoteFetchPublishPaths(paths)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	if err := walkFetchDirectory(root, scoped.stageRoot, nil); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), remoteFetchPublishTimeout)
 	defer cancel()
 	_ = s.updateRemoteFetchPhaseNode(ctx, manifest.WorkflowRunID, "promote", "running", nil)
 	// Once a publication rename has happened, the backup is the only copy of
 	// the previous root. Never replace it; recovery must settle it first.
-	if _, err := os.Lstat(paths.backupRoot); err == nil {
+	if _, err := root.Lstat(scoped.backupRoot); err == nil {
 		return s.recordRemoteFetchManifestError(ctx, manifest.ID, errRemoteFetchBackupPending)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
@@ -412,31 +436,31 @@ func (s *Server) publishRemoteFetchRoot(ctx context.Context, manifest remoteFetc
 	if err := s.updateRemoteFetchManifestState(ctx, manifest.ID, "publishing", ""); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(paths.backupRoot), 0o755); err != nil {
+	if err := root.MkdirAll(filepath.Dir(scoped.backupRoot), 0o755); err != nil {
 		return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 	}
 	targetExisted := false
-	if _, err := os.Stat(paths.targetRoot); err == nil {
+	if _, err := root.Stat(scoped.targetRoot); err == nil {
 		targetExisted = true
-		if err := os.Rename(paths.targetRoot, paths.backupRoot); err != nil {
+		if err := root.Rename(scoped.targetRoot, scoped.backupRoot); err != nil {
 			return s.recordRemoteFetchManifestError(ctx, manifest.ID, fmt.Errorf("backup current fetch root: %w", err))
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 	}
-	if err := os.MkdirAll(filepath.Dir(paths.targetRoot), 0o755); err != nil {
+	if err := root.MkdirAll(filepath.Dir(scoped.targetRoot), 0o755); err != nil {
 		if targetExisted {
-			_ = os.Rename(paths.backupRoot, paths.targetRoot)
+			_ = root.Rename(scoped.backupRoot, scoped.targetRoot)
 		}
 		return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 	}
-	if err := os.Rename(paths.stageRoot, paths.targetRoot); err != nil {
+	if err := root.Rename(scoped.stageRoot, scoped.targetRoot); err != nil {
 		if targetExisted {
-			_ = os.Rename(paths.backupRoot, paths.targetRoot)
+			_ = root.Rename(scoped.backupRoot, scoped.targetRoot)
 		}
 		return s.recordRemoteFetchManifestError(ctx, manifest.ID, fmt.Errorf("publish staged fetch root: %w", err))
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err = s.db.ExecContext(ctx, `
 		UPDATE remote_fetch_manifest
 		SET state = 'published', error_message = '', published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
@@ -618,36 +642,44 @@ func (s *Server) settleInterruptedRemoteFetchPublication(ctx context.Context, ma
 }
 
 func (s *Server) reconcilePublishingRemoteFetch(ctx context.Context, manifest remoteFetchManifestRecord) error {
-	targetRoot, err := safeDataPath(s.cfg.DataRoot, manifest.TargetRoot)
+	paths, err := s.remoteFetchPublishPaths(manifest)
 	if err != nil {
 		return err
 	}
-	stageRoot, err := safeDataPath(s.cfg.DataRoot, manifest.StagingRoot)
+	root, scoped, err := s.openRemoteFetchPublishPaths(paths)
 	if err != nil {
 		return err
 	}
-	backupRoot, err := safeDataPath(s.cfg.DataRoot, manifest.BackupRoot)
-	if err != nil {
-		return err
+	defer func() { _ = root.Close() }()
+	exists := make(map[string]bool, 3)
+	for _, name := range []string{scoped.targetRoot, scoped.stageRoot, scoped.backupRoot} {
+		_, err := root.Stat(name)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		exists[name] = err == nil
+		if err == nil {
+			if err := walkFetchDirectory(root, name, nil); err != nil {
+				return err
+			}
+		}
 	}
-	targetExists := pathExists(targetRoot)
-	stageExists := pathExists(stageRoot)
-	backupExists := pathExists(backupRoot)
+	targetExists, stageExists, backupExists := exists[scoped.targetRoot], exists[scoped.stageRoot], exists[scoped.backupRoot]
 	switch {
 	case targetExists && !stageExists:
 		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'published', error_message = '', published_at = COALESCE(published_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
 		return err
 	case !targetExists && stageExists:
-		if err := os.MkdirAll(filepath.Dir(targetRoot), 0o755); err != nil {
+		if err := root.MkdirAll(filepath.Dir(scoped.targetRoot), 0o755); err != nil {
 			return err
 		}
-		if err := os.Rename(stageRoot, targetRoot); err != nil {
+		if err := root.Rename(scoped.stageRoot, scoped.targetRoot); err != nil {
 			return err
 		}
 		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'published', error_message = '', published_at = COALESCE(published_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)
 		return err
 	case !targetExists && !stageExists && backupExists:
-		if err := os.Rename(backupRoot, targetRoot); err != nil {
+		if err := root.Rename(scoped.backupRoot, scoped.targetRoot); err != nil {
 			return err
 		}
 		_, err = s.db.ExecContext(ctx, "UPDATE remote_fetch_manifest SET state = 'planned', error_message = 'publication rolled back during recovery', updated_at = CURRENT_TIMESTAMP WHERE id = ?", manifest.ID)

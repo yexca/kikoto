@@ -152,7 +152,8 @@ instead of keeping its hashed assets.
 
 The API client lives in `lib`. `lib/apiTransport` owns the authenticated request
 functions: base URL and asset URLs, credentials, session fencing, shared
-in-flight reads, and error mapping. Each domain module declares its response
+in-flight reads, and error mapping. JSON and plain-text API reads share browser
+cookie or native bearer authentication. Each domain module declares its response
 types beside its requests: `accountApi`, `libraryApi`, `workApi`, `mediaApi`,
 `metadataApi`, `creatorApi`, `remoteSourceApi`, `workflowApi`, and
 `settingsApi`. A domain module imports the transport and, for types only, a
@@ -744,9 +745,10 @@ stacks, upstream bodies, private endpoints, and local paths are diagnostic data,
 not anonymous UI. A page that already has useful local data should keep it
 visible while the failed remote or media stage renders an inline Retry state.
 
-Shared API reads belong to a server and session generation. Account, session,
-credential, and server changes reject their old results and errors, including
-response bodies still being decoded. Each caller can cancel independently.
+Shared API reads, including plain-text previews, belong to a server and session
+generation. Account, session, credential, and server changes reject their old
+results and errors, including response bodies still being decoded. Each caller
+can cancel independently.
 Writes fence reuse both when they start and when their response body settles;
 progress and other personal writes leave current directory reads running.
 A local-directory refresh or source untracking can interrupt that work's shared

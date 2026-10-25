@@ -26,7 +26,7 @@ func TestSafeResolvedPathRejectsSymlinkOutsideRoot(t *testing.T) {
 	}
 }
 
-func TestRemoteFetchSourcePathRejectsSymlinkOutsideRoot(t *testing.T) {
+func TestRemoteFetchSourceRejectsSymlinkOutsideRoot(t *testing.T) {
 	root := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "secret.mp3")
 	if err := os.WriteFile(outside, []byte("synthetic secret"), 0o600); err != nil {
@@ -40,11 +40,12 @@ func TestRemoteFetchSourcePathRejectsSymlinkOutsideRoot(t *testing.T) {
 		t.Skipf("symlink is not available on this system: %v", err)
 	}
 	server := &Server{cfg: config.Config{DataRoot: root}}
-	_, err := server.remoteFetchSourcePath(remoteWorkSavePlanItem{
+	source, err := server.openRemoteFetchSource(remoteWorkSavePlanItem{
 		Action:          "copy_local",
 		LocalSourcePath: filepath.ToSlash(filepath.Join("Library", "track.mp3")),
 	})
 	if err == nil {
-		t.Fatal("remoteFetchSourcePath accepted a symlink outside the root")
+		_ = source.Close()
+		t.Fatal("Fetch opened a source outside the root")
 	}
 }
