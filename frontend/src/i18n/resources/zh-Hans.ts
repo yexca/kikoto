@@ -276,6 +276,7 @@ export const workCardHans = {
   clearUserRating: "清除我的评分",
   userRatingValue: "我的评分：{{value}} / 5",
   rateWork: "为这部作品评分",
+  rateShort: "评分",
   status: {
     ...workCardEnglish.status,
     none: "未标记",
@@ -287,6 +288,7 @@ export const workCardHans = {
   },
   favoriteLists: "收藏列表",
   addToList: "添加到列表",
+  addToListShort: "列表",
   lists: "列表",
   inLists: "列表：{{names}}",
   moreLists: "+{{others}}",

@@ -865,8 +865,15 @@ function MobileWorkDetailLayout({
         onLink={onLinkMetadata}
       />
 
-      <div data-testid="hero-actions" className="flex flex-wrap gap-2">
-        {actions}
+      {/* One row that scrolls sideways into the page gutter. Its padding keeps the
+          44px touch targets and focus rings inside the clipped strip, and the
+          flow root keeps that padding out of the Hero spacing. */}
+      <div className="flow-root">
+        <div className="-mx-4 -my-1.5 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div data-testid="hero-actions" className="flex w-max gap-2">
+            {actions}
+          </div>
+        </div>
       </div>
 
       <CompactDetailTabs

@@ -276,6 +276,7 @@ const workCardJapanese = {
   clearUserRating: "評価を取り消す",
   userRatingValue: "あなたの評価：5 段階中 {{value}}",
   rateWork: "この作品を評価",
+  rateShort: "評価",
   status: {
     ...workCardEnglish.status,
     none: "未マーク",
@@ -287,6 +288,7 @@ const workCardJapanese = {
   },
   favoriteLists: "お気に入りリスト",
   addToList: "リストに追加",
+  addToListShort: "リスト",
   lists: "リスト",
   inLists: "リスト：{{names}}",
   moreLists: "+{{others}}",

@@ -32,8 +32,9 @@ The Library is the main browsing surface for works.
   metadata, local availability, source tags, and quick listening marks when
   available.
 - Library and Favorites cards carry your own rating beside the Quick mark, the
-  same control as in [work detail](work-detail.md#current-behavior): a star
-  with its number, or an empty star while the work is unrated.
+  same control as in [work detail](work-detail.md#current-behavior) without
+  its **Rate** label: a star with its number, or an empty star while the work
+  is unrated.
 - Measures provider tags into at most two card rows. A `+N` badge opens hidden
   tags in a popover; personal tags remain a separate user-owned row.
 - Shows compact DL sales and a five-segment non-numeric rating comparison in one
@@ -182,8 +183,9 @@ restored from the current history entry with user-scoped session fallback.
 `All Favorites` aggregates works with a Quick mark and works you added to any
 list. `Marked` is the fixed system list containing only works whose Quick mark
 is not Unmarked; its membership is derived and cannot be edited as a list.
-Other lists are user-created and keep explicit membership. **Add to list** on a
-work card or on work detail lists your lists with a search field; each list you
+Other lists are user-created and keep explicit membership. The list button on a
+work card or on work detail, a list icon with a plus while the work is in no
+list, opens **Add to list**: your lists with a search field. Each list you
 check or clear is saved at once, and typing a name no list has offers to create
 that list with the work in it. A smart list that holds the work through its
 rule says so, and clearing it keeps the work out of that list. **Change lists**

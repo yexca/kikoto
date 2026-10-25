@@ -77,7 +77,7 @@ export function WorkIdentityActionBar({
         <span className="hidden sm:inline">{t("detailActions.resume")}</span>
       </Button>
       <WorkCardQuickMarkButton value={listeningStatus} disabled={busy} showLabel canOpen={canMark} onChange={onMark} />
-      {onRate && <WorkRatingControl value={userRating ?? null} disabled={busy} onChange={onRate} />}
+      {onRate && <WorkRatingControl value={userRating ?? null} disabled={busy} showLabel onChange={onRate} />}
       <WorkCardListButton
         workId={listWorkId}
         active={favorite}

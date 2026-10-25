@@ -276,6 +276,7 @@ const workCardKorean = {
   clearUserRating: "평점 지우기",
   userRatingValue: "내 평점: 5점 중 {{value}}점",
   rateWork: "이 작품 평가하기",
+  rateShort: "평가",
   status: {
     ...workCardEnglish.status,
     none: "표시 없음",
@@ -287,6 +288,7 @@ const workCardKorean = {
   },
   favoriteLists: "즐겨찾기 목록",
   addToList: "목록에 추가",
+  addToListShort: "목록",
   lists: "목록",
   inLists: "목록: {{names}}",
   moreLists: "+{{others}}",

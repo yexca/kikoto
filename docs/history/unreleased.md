@@ -21,6 +21,10 @@
   a work, or clear its rating, without opening it.
 - The work detail stat strip shows your rating beside the DLsite rating, also
   for custom works.
+- Work detail labels the unrated star **Rate**, so it no longer reads as a
+  favorite toggle. The list button of a work in no list shows a list icon with
+  a plus, labeled **List** on work detail. On phones, the work detail actions
+  stay on one row that scrolls sideways instead of wrapping.
 - A desktop page about as tall as the window, such as a short last Library
   page with the player open, no longer shakes endlessly as the scrollbar
   appears and disappears.

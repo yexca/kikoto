@@ -269,6 +269,7 @@ export const workCardEnglish = {
   clearUserRating: "Clear your rating",
   userRatingValue: "Your rating: {{value}} of 5",
   rateWork: "Rate this work",
+  rateShort: "Rate",
   status: {
     none: "Unmarked",
     want_to_listen: "Want",
@@ -279,6 +280,7 @@ export const workCardEnglish = {
   },
   favoriteLists: "Favorite lists",
   addToList: "Add to list",
+  addToListShort: "List",
   lists: "Lists",
   inLists: "Lists: {{names}}",
   moreLists: "+{{others}}",

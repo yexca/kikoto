@@ -13,6 +13,7 @@ import {
   Headphones,
   History,
   ListMusic,
+  ListPlus,
   MicVocal,
   PauseCircle,
   Repeat2,
@@ -1252,7 +1253,7 @@ export function WorkCardListButton({
           ) : active ? (
             t("workCard.lists")
           ) : (
-            t("workCard.addToList")
+            t("workCard.addToListShort")
           )
         }
         labelClassName={
@@ -1278,7 +1279,12 @@ export function WorkCardListButton({
             .finally(() => setResolving(false));
         }}
       >
-        <ListMusic className={`h-4 w-4 ${active ? "fill-current text-primary" : "text-muted-foreground"}`} />
+        {/* The plus in the icon carries "add", so the visible label stays a short noun. */}
+        {active || firstMemberList ? (
+          <ListMusic className={`h-4 w-4 ${active ? "fill-current text-primary" : "text-muted-foreground"}`} />
+        ) : (
+          <ListPlus className="h-4 w-4 text-muted-foreground" />
+        )}
       </WorkCardActionButton>
       <FavoriteListPickerSurface
         open={open}

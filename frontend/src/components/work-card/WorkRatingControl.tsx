@@ -17,11 +17,14 @@ export function WorkRatingControl({
   value,
   disabled,
   variant = "outline",
+  showLabel = false,
   onChange,
 }: {
   value: number | null;
   disabled?: boolean;
   variant?: "outline" | "card";
+  /** Names the unrated control beside its star, so a lone star does not read as a favorite toggle. */
+  showLabel?: boolean;
   onChange: (rating: number | null) => void;
 }) {
   const { t } = useTranslation();
@@ -43,7 +46,10 @@ export function WorkRatingControl({
         type="button"
         variant={variant === "card" ? "ghost" : "outline"}
         size="sm"
-        className={cn("h-8", rated ? (variant === "card" ? "gap-1 px-1.5" : "gap-1.5 px-2.5") : "w-8 px-0")}
+        className={cn(
+          "h-8",
+          rated || showLabel ? (variant === "card" ? "gap-1 px-1.5" : "gap-1.5 px-2.5") : "w-8 px-0",
+        )}
         title={title}
         aria-label={title}
         aria-haspopup="dialog"
@@ -55,7 +61,11 @@ export function WorkRatingControl({
         }}
       >
         <Star className={cn("h-4 w-4", rated ? "fill-current text-primary" : "text-muted-foreground")} />
-        {rated && <span className="font-semibold tabular-nums">{value}</span>}
+        {rated ? (
+          <span className="font-semibold tabular-nums">{value}</span>
+        ) : (
+          showLabel && <span>{t("workCard.rateShort")}</span>
+        )}
       </Button>
       <AnchoredPopover
         open={open && !disabled}

@@ -126,9 +126,10 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
 - Shows cover, title, code, circle, tags, rating, voice metadata, and DLsite
   link.
 - Shows your own rating beside the Mark action as a star with its number, or
-  an empty star while the work is unrated. Choosing it opens five stars that
-  rate the work from one to five, and **Clear your rating** when it has one.
-  The same control is on [work cards](library.md#current-behavior). Your
+  an empty star labeled **Rate** while the work is unrated. Choosing it opens
+  five stars that rate the work from one to five, and **Clear your rating**
+  when it has one. [Work cards](library.md#current-behavior) carry the same
+  control without the **Rate** label. Your
   rating is personal, separate from the DLsite rating, and is the main
   evidence for your [recommendations](library.md).
 - Shows known language editions for a logical work family.
@@ -214,8 +215,9 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   staff. Selecting a name adds a `staff:` clause to the library search the
   detail was opened from, which finds the name in any staff role.
   On compact screens, the Hero keeps the same credit line, tag row, stat
-  strip, and the Resume, Mark, rating, and List actions above the Info and
-  Directory tabs; a phone shows Resume as its icon and labels Mark and List.
+  strip, and the Resume, Mark, rating, and List actions on one row above the
+  Info and Directory tabs, which scrolls sideways when the actions do not fit;
+  a phone shows Resume as its icon and labels Mark, rating, and List.
   Info shows the source panel, which lists the selected source's actions and offers Edit metadata beside the metadata update time,
   and the Credits card. A phone shows at most three lines of the title; tapping a
   shortened title shows all of it. The button at the end of the work code row
@@ -459,11 +461,11 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
 - Show one fixed Resume action. It is disabled without a positive unfinished
   work cursor; direct file activation starts from the beginning.
 - Update quick listening status.
-- Manage favorite-list membership. The List button names the list that holds
-  the work; when several do, it names the first in list order and counts the
-  rest, and its tooltip names them all. **Add list** creates a list inside the
-  List menu and selects it; **Save** applies membership alongside existing
-  choices.
+- Manage favorite-list membership. While the work is in no list, the List
+  button shows a list icon with a plus and the label **List**. Otherwise it
+  names the list that holds the work; when several do, it names the first in
+  list order and counts the rest, and its tooltip names them all. It opens
+  **Add to list**, described in [Library](library.md#current-behavior).
 - Edit personal work tags separately from provider metadata tags.
 - Sync metadata.
 - Sync/cache/fetch from compatible remote sources.

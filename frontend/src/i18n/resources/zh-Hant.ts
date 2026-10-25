@@ -277,6 +277,7 @@ const workCardHant = {
   clearUserRating: "清除我的評分",
   userRatingValue: "我的評分：{{value}} / 5",
   rateWork: "為這部作品評分",
+  rateShort: "評分",
   status: {
     ...workCardHans.status,
     none: "未標記",
@@ -288,6 +289,7 @@ const workCardHant = {
   },
   favoriteLists: "收藏清單",
   addToList: "新增至清單",
+  addToListShort: "清單",
   lists: "清單",
   inLists: "清單：{{names}}",
   moreLists: "+{{others}}",

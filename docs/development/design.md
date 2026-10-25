@@ -219,9 +219,9 @@ Desktop:
 Mobile:
 
 - Bottom navigation.
-- Work detail keeps the personal actions (Resume, Mark, List) in the Hero and
-  lists the selected source's actions and the metadata editor entry in the
-  Info tab's source panel.
+- Work detail keeps the personal actions (Resume, Mark, your rating, List) on
+  one horizontally scrollable Hero row and lists the selected source's actions
+  and the metadata editor entry in the Info tab's source panel.
 - The native server connection form keeps the address on its own full-width
   row, with protocol and port below. Controls remain inside a 320px viewport
   without horizontal scrolling and retain at least 44px touch targets.
