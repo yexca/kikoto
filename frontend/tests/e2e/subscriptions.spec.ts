@@ -390,14 +390,32 @@ test("@desktop the feed groups families by day, pages by days, and opening it cl
     .toBe(true);
   await expect(navigation.getByLabel("1 new release")).toHaveCount(0);
 
-  // Settings open in a drawer from the toolbar icon.
-  await page.getByRole("button", { name: "Subscription settings" }).click();
+  // From 1280px the settings open beside the feed, which stays usable: the
+  // toolbar icon closes them again.
+  const settingsButton = page.getByRole("button", { name: "Subscription settings" });
+  await settingsButton.click();
   await expect(page).toHaveURL(/\/subscriptions\?panel=subscriptions$/);
-  const settings = page.getByRole("dialog", { name: "Subscription settings" });
+  const settings = page.getByRole("complementary", { name: "Subscription settings" });
   await expect(settings.getByRole("tab", { name: "Subscriptions", selected: true })).toBeVisible();
   await expect(settings.getByText("Refresh schedule")).toBeVisible();
-  await settings.getByRole("button", { name: "Close settings" }).click();
+  await settingsButton.click();
   await expect(settings).toHaveCount(0);
+  await expect(page).toHaveURL(/\/subscriptions$/);
+
+  // Escape closes the panel and returns focus to the toolbar icon.
+  await settingsButton.click();
+  await expect(settings).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
+  await expect(settingsButton).toBeFocused();
+
+  // Narrower desktops open the settings in a drawer over the feed.
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await settingsButton.click();
+  const drawer = page.getByRole("dialog", { name: "Subscription settings" });
+  await expect(drawer.getByText("Refresh schedule")).toBeVisible();
+  await drawer.getByRole("button", { name: "Close settings" }).click();
+  await expect(drawer).toHaveCount(0);
   await expect(page).toHaveURL(/\/subscriptions$/);
 });
 
@@ -495,7 +513,7 @@ test("@desktop rankings mark changes since the last visit and compare with the p
 
   // The settings icon opens the ranking settings from this view.
   await page.getByRole("button", { name: "Subscription settings" }).click();
-  const settings = page.getByRole("dialog", { name: "Subscription settings" });
+  const settings = page.getByRole("complementary", { name: "Subscription settings" });
   await expect(settings.getByRole("tab", { name: "Rankings", selected: true })).toBeVisible();
   await expect(
     settings
@@ -709,7 +727,7 @@ test("@desktop ranking settings show fixed rows and start a ranking when it is f
   };
   await mockSubscriptions(page, server);
   await page.goto("/subscriptions?view=rankings&panel=rankings");
-  const settings = page.getByRole("dialog", { name: "Subscription settings" });
+  const settings = page.getByRole("complementary", { name: "Subscription settings" });
   const dlsite = settings.getByRole("region", { name: "DLsite voice rankings" });
   // The rows follow the fixed order of the chips.
   await expect
