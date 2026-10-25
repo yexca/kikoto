@@ -13,6 +13,7 @@ import {
   runtimeSettingsFixture,
   subscriptionLookupFixture,
   subscriptionViewFixture,
+  workFixture,
   type ApiErrorBody,
 } from "./fixtures/api";
 import type {
@@ -203,7 +204,15 @@ async function mockSubscriptions(page: Page, server: SubscriptionServer) {
       await route.fulfill({ json: server.rankings ?? rankingOverviewFixture({ demo: Boolean(server.demo) }) });
       return;
     }
+    if (url.pathname === "/api/rankings/refresh") {
+      await route.fulfill({ json: { runs: [] } });
+      return;
+    }
     const rankingPage = /^\/api\/rankings\/(\d+)$/.exec(url.pathname);
+    if (rankingPage && request.method() === "DELETE") {
+      await route.fulfill({ json: { ok: true } });
+      return;
+    }
     if (rankingPage && request.method() === "PATCH") {
       const current = server.rankings?.lists.find((list) => list.id === Number(rankingPage[1]));
       await route.fulfill({ json: { ...current, ...(request.postDataJSON() as object) } });
@@ -458,6 +467,11 @@ test("@desktop rankings mark changes since the last visit and compare with the p
   await page.setViewportSize({ width: 1280, height: 800 });
   const day = rankingListFixture();
   const week = rankingListFixture({ id: 2, period: "week", unseen: [] });
+  // A work in the library is marked; the others carry no badge.
+  const owned = {
+    ...rankingItemFixture(3, 3, { kind: "same", from: 3, delta: 0 }),
+    work: workFixture({ id: 3, primaryCode: syntheticWorkCode("RJ", 3), title: "Example Work 3", rating: null }),
+  };
   const server: SubscriptionServer = {
     requests: [],
     feedQueries: [],
@@ -466,7 +480,7 @@ test("@desktop rankings mark changes since the last visit and compare with the p
       "1:": rankingPageFixture(day, { ...rankingSnapshotFixture(10, "2026-10-12 09:00:00"), kind: "seen" }, [
         rankingItemFixture(1, 1, { kind: "new", from: null, delta: 0 }),
         rankingItemFixture(2, 2, { kind: "up", from: 5, delta: 3 }),
-        rankingItemFixture(3, 3, { kind: "same", from: 3, delta: 0 }),
+        owned,
       ]),
       "1:previous": rankingPageFixture(
         day,
@@ -485,12 +499,16 @@ test("@desktop rankings mark changes since the last visit and compare with the p
   await expect(page.getByRole("tab", { name: /^Rankings/, selected: true })).toBeVisible();
   const ranking = page.getByRole("region", { name: "Rankings", exact: true });
   await expect(ranking.getByRole("tab", { name: /^DLsite · 24 hours/, selected: true })).toBeVisible();
-  await expect(ranking).toContainText("Compared with your last visit");
+  const status = ranking.getByRole("button", { name: /^Updated .* · vs your last visit$/ });
+  await expect(status).toBeVisible();
   const items = ranking.getByRole("list").first().getByRole("listitem");
   await expect(items).toHaveCount(3);
   await expect(items.nth(0)).toContainText("New");
-  await expect(items.nth(0)).toContainText("Not in library");
   await expect(items.nth(1).getByText("Up 3")).toBeAttached();
+  await expect(items.nth(0)).not.toContainText("In library");
+  await expect(items.nth(2)).toContainText("In library");
+  // A best rank equal to the current rank says nothing.
+  await expect(items.nth(2)).not.toContainText("Best #");
 
   // Opening the ranking records the displayed update as seen.
   await expect
@@ -502,10 +520,16 @@ test("@desktop rankings mark changes since the last visit and compare with the p
   await expect(items.first()).toHaveAccessibleName("Example Work 2");
   await ranking.getByRole("button", { name: /^All/ }).click();
 
-  await ranking.getByRole("combobox", { name: "Compare with" }).click();
-  await page.getByRole("option", { name: "Previous update" }).click();
+  // The status opens the full update time and the comparison choice.
+  await status.click();
+  const details = page.getByRole("dialog", { name: "Update details" });
+  await expect(details).toContainText("Compared with your last visit");
+  await details
+    .getByRole("radiogroup", { name: "Compare with" })
+    .getByRole("radio", { name: "Previous update" })
+    .click();
   await expect(page).toHaveURL(/compare=previous/);
-  await expect(ranking).toContainText("Compared with the previous update");
+  await expect(ranking.getByRole("button", { name: /· vs the previous update$/ })).toBeVisible();
   await expect(items.nth(0)).toContainText("Back");
 
   await ranking.getByRole("button", { name: "Dropped out (1)" }).click();
@@ -520,6 +544,52 @@ test("@desktop rankings mark changes since the last visit and compare with the p
       .getByRole("region", { name: "DLsite voice rankings" })
       .getByRole("switch", { name: "Show 7 days", exact: true }),
   ).toBeChecked();
+});
+
+/** A long ranking whose second entry moved, so the toolbar has to stay in reach while it scrolls. */
+async function mockLongRanking(page: Page) {
+  const day = rankingListFixture();
+  const items = Array.from({ length: 40 }, (_, index) =>
+    rankingItemFixture(
+      index + 1,
+      index + 1,
+      index === 1 ? { kind: "up", from: 4, delta: 2 } : { kind: "same", from: index + 1, delta: 0 },
+    ),
+  );
+  await mockSubscriptions(page, {
+    requests: [],
+    feedQueries: [],
+    rankings: rankingOverviewFixture({ lists: [day] }),
+    rankingPages: { "1:": rankingPageFixture(day, null, items) },
+  });
+  await page.goto("/subscriptions?view=rankings");
+  const ranking = page.getByRole("region", { name: "Rankings", exact: true });
+  return { ranking, items: ranking.getByRole("list").first().getByRole("listitem") };
+}
+
+test("@desktop the ranking toolbar stays in reach while the entries scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const { ranking, items } = await mockLongRanking(page);
+  await expect(items).toHaveCount(40);
+
+  await items.last().scrollIntoViewIfNeeded();
+  await expect(items.first()).not.toBeInViewport();
+  await expect(ranking.getByRole("tab", { name: "DLsite · 24 hours" })).toBeInViewport();
+  // A filter chosen from the end of the list applies without scrolling back.
+  await ranking.getByRole("button", { name: /^Moved/ }).click();
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toHaveAccessibleName("Example Work 2");
+});
+
+test("phones show the first entry on the first screen and keep the toolbar in reach", async ({ page }) => {
+  const { ranking, items } = await mockLongRanking(page);
+  await expect(items.first()).toBeInViewport();
+  // The page never scrolls sideways; the control rows scroll on their own.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await items.last().scrollIntoViewIfNeeded();
+  await expect(ranking.getByRole("tab", { name: "DLsite · 24 hours" })).toBeInViewport();
+  await expect(ranking.getByRole("radio", { name: "Popularity" })).toBeInViewport();
 });
 
 test("@desktop ranking history shows the order at a chosen time without marking it seen", async ({ page }) => {
@@ -558,12 +628,14 @@ test("@desktop ranking history shows the order at a chosen time without marking 
   await mockSubscriptions(page, server);
   await page.goto("/subscriptions?view=rankings&list=1");
   const ranking = page.getByRole("region", { name: "Rankings", exact: true });
-  await expect(ranking).toContainText("Updated Oct 14, 2026, 9:00 AM");
+  // The status names the time briefly, leaving out the year only within the current one.
+  const latestStatus = ranking.getByRole("button", { name: /^Updated Oct 14,( 2026,)? 9:00 AM · / });
+  await expect(latestStatus).toBeVisible();
   await expect(ranking).toContainText(/days? in the ranking/);
   await expect.poll(() => server.requests.filter((request) => request.path === "/api/rankings/1/seen").length).toBe(1);
 
   await ranking.getByRole("button", { name: "History" }).click();
-  const history = ranking.getByRole("region", { name: "Ranking history" });
+  const history = page.getByRole("dialog", { name: "Ranking history" });
   await expect(history.getByLabel("Date", { exact: true })).toHaveValue("2026-10-14");
   const updates = history.getByRole("group", { name: "Updates on this day" });
   await expect(updates.getByRole("button")).toHaveCount(2);
@@ -571,7 +643,8 @@ test("@desktop ranking history shows the order at a chosen time without marking 
 
   await updates.getByRole("button", { name: "3:00 AM" }).click();
   await expect(page).toHaveURL(/at=2026-10-14T03%3A00%3A00\.000Z/);
-  await expect(ranking).toContainText("The ranking at Oct 14, 2026, 3:00 AM");
+  // A banner under the toolbar says which time is shown.
+  await expect(ranking.getByRole("status").filter({ hasText: "The ranking at Oct 14, 2026, 3:00 AM" })).toBeVisible();
   await expect(history).toContainText(
     "This order was pulled Oct 14, 2026, 3:00 AM and last confirmed Oct 14, 2026, 5:00 AM.",
   );
@@ -583,9 +656,13 @@ test("@desktop ranking history shows the order at a chosen time without marking 
   await expect(page).toHaveURL(/at=2026-10-13T23%3A59%3A59\.000Z/);
   await expect(history).toContainText("No pull ran between Oct 13, 2026, 10:00 AM and this time.");
 
-  await history.getByRole("button", { name: "Latest" }).click();
+  // The banner stays after the time travel closes and leads back to the latest order.
+  await page.keyboard.press("Escape");
+  await expect(history).toHaveCount(0);
+  await expect(ranking.getByRole("button", { name: "History" })).toBeFocused();
+  await ranking.getByRole("button", { name: "Back to latest" }).click();
   await expect(page).not.toHaveURL(/at=/);
-  await expect(ranking).toContainText("Updated Oct 14, 2026, 9:00 AM");
+  await expect(latestStatus).toBeVisible();
   // Looking at history never recorded it as seen.
   expect(server.requests.filter((request) => request.path === "/api/rankings/1/seen")).toHaveLength(1);
 });
@@ -712,7 +789,8 @@ test("@desktop annual rankings share one chip and finished years read as an arch
   await expect(ranking).toContainText("Final order of 2025, recorded Jan 3, 2026, 12:00 AM");
   await expect(ranking.getByRole("button", { name: /^Moved/ })).toHaveCount(0);
   await expect(ranking.getByRole("button", { name: /^Not in library/ })).toBeVisible();
-  await expect(ranking.getByRole("combobox", { name: "Compare with" })).toHaveCount(0);
+  // An archive has nothing to compare with, so its status is plain text.
+  await expect(ranking.getByRole("button", { name: /· vs / })).toHaveCount(0);
   await expect(ranking.getByRole("list").first().getByRole("listitem").first()).not.toContainText("New");
 });
 
@@ -736,18 +814,53 @@ test("@desktop ranking settings show fixed rows and start a ranking when it is f
         .getByRole("switch", { name: /^Show / })
         .evaluateAll((switches) => switches.map((element) => element.getAttribute("aria-label"))),
     )
-    .toEqual(["Show 24 hours", "Show 7 days", "Show 30 days", "Show 2026, in progress", "Show All time"]);
+    .toEqual(["Show 24 hours", "Show 7 days", "Show 30 days", "Show Annual 2026", "Show All time"]);
   await expect(dlsite.getByRole("switch", { name: "Show 24 hours" })).toBeChecked();
   await expect(settings.getByRole("region", { name: "Remote source popular lists" })).toContainText("Example Remote");
   await expect(settings.getByRole("button", { name: /^Move / })).toHaveCount(0);
 
-  await dlsite.getByRole("combobox", { name: "Pull interval · 24 hours" }).click();
+  // A shown ranking summarizes its schedule and depth, and the summary expands the row to edit them.
+  const dayRow = dlsite.getByRole("listitem", { name: "24 hours" });
+  await expect(dayRow.getByRole("combobox")).toHaveCount(0);
+  const summary = dayRow.getByRole("button", { name: "24 hours: Every hour · Top 100" });
+  await summary.click();
+  await expect(summary).toHaveAttribute("aria-expanded", "true");
+  await dayRow.getByRole("combobox", { name: "Pull interval · 24 hours" }).click();
   await page.getByRole("option", { name: "20 minutes" }).click();
+  await dayRow.getByRole("combobox", { name: "Depth · 24 hours" }).click();
+  await page.getByRole("option", { name: "Top 50" }).click();
+  const patches = () =>
+    server.requests
+      .filter((request) => request.method === "PATCH" && request.path === "/api/rankings/1")
+      .map((request) => request.body);
+  await expect.poll(patches).toEqual([{ refreshIntervalMinutes: 20 }, { depth: 50 }]);
+
+  // Pull now queues only this ranking.
+  await dayRow.getByRole("button", { name: "Pull now" }).click();
   await expect
-    .poll(
-      () => server.requests.find((request) => request.method === "PATCH" && request.path === "/api/rankings/1")?.body,
-    )
-    .toEqual({ refreshIntervalMinutes: 20 });
+    .poll(() => server.requests.find((request) => request.path === "/api/rankings/refresh")?.body)
+    .toEqual({ listIds: [1] });
+
+  // Deleting a ranking and its history asks first; cancelling deletes nothing.
+  const deleted = () =>
+    server.requests.filter((request) => request.method === "DELETE" && request.path === "/api/rankings/1");
+  await dayRow.getByRole("button", { name: "Delete with history…" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Delete 24 hours?" });
+  await expect(confirm).toContainText("This cannot be undone.");
+  expect(deleted()).toHaveLength(0);
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(confirm).toHaveCount(0);
+  expect(deleted()).toHaveLength(0);
+  await dayRow.getByRole("button", { name: "Delete with history…" }).click();
+  await confirm.getByRole("button", { name: "Delete ranking" }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect.poll(() => deleted().length).toBe(1);
+
+  // History retention reads as one line until it is opened.
+  const retention = settings.getByRole("region", { name: "History" });
+  await expect(retention.getByRole("combobox")).toHaveCount(0);
+  await retention.getByRole("button", { name: "Every change for 30 days, then daily for 1 year" }).click();
+  await expect(retention.getByRole("combobox", { name: "Keep every change for" })).toBeVisible();
 
   await dlsite.getByRole("switch", { name: "Show 30 days", exact: true }).click();
   await expect
@@ -762,8 +875,8 @@ test("@desktop ranking settings show fixed rows and start a ranking when it is f
     )
     .toContainEqual({ provider: "dlsite", period: "total" });
 
-  const annual = dlsite.getByRole("listitem", { name: "DLsite annual ranking" });
-  await annual.getByRole("button", { name: "Add years" }).click();
+  const earlier = dlsite.getByRole("listitem", { name: "Earlier years" });
+  await earlier.getByRole("button", { name: "Add years" }).click();
   const years = page.getByRole("dialog", { name: "Add years" });
   await years.getByRole("checkbox", { name: "2024" }).check();
   await years.getByRole("checkbox", { name: "2023" }).check();

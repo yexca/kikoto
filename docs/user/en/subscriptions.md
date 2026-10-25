@@ -63,55 +63,68 @@ switch at the top chooses **New releases** or **Rankings**; a dot on
 ## Rankings
 
 - **Rankings** follows DLsite voice rankings and the popular lists of
-  compatible remote sources. Each shown ranking is a chip above the list, in a
-  fixed order: **24 hours**, **7 days**, **30 days**, **Annual**, and **All
-  time**, then each remote source's **Popular** list in the sources' order. A
-  dot on a chip means the order it shows changed since you last opened it. The
-  annual rankings share one **DLsite · Annual** chip with a **Year** choice.
-  Every account sees the same rankings.
+  compatible remote sources. Every account sees the same rankings. The toolbar
+  above the list stays in reach while you scroll, so you can switch ranking,
+  order, or filter from anywhere in the list.
+- The toolbar's first row chooses the ranking, grouped by where it comes from:
+  **DLsite** with **24 hours**, **7 days**, **30 days**, **Annual**, and **All
+  time**, then each remote source with its **Popular** list, in the sources'
+  order. A dot on a ranking means the order it shows changed since you last
+  opened it. The annual rankings share **Annual**, with a **Year** choice
+  beside it. On a phone, the row scrolls sideways.
 - **Popularity** and **Sales** choose how a DLsite ranking is ordered, and
   **Released within 30 days**, on the 24-hour, 7-day, and 30-day rankings,
   keeps only works released within the last 30 days. Each choice is a ranking
   of its own, with its own updates, history, and seen state. The address keeps
   the choice, so a link opens the same order and Back returns to the previous
-  choice; each chip opens in the choice you last made on it on this device.
-- A ranking shows when it was last updated and lists its works in rank order.
-  Beside each rank, **New** marks a work that was not in the ranking before,
-  **Back** a work that returns after leaving it, and an arrow how many places a
-  work moved. Above each card are the days the work has stayed in the ranking
-  and its best rank. **Dropped out** at the end lists the works that left,
-  with their former rank.
-- Changes are measured against your last visit. **Compare with** chooses the
-  previous update or **Another time** instead. Opening the latest update
-  records it as seen.
-- **All**, **New**, **Moved**, and **Not in library** narrow the list.
-  **Not in library** keeps works with no entry in your library.
-- A work in your library shows its card as in the Library. Any other work
-  shows the title and circle the ranking lists, and the cover when Kikoto
-  already has it. Rankings never add works to the library, sync their
-  metadata, or tag them; open a work to look it up, open DLsite, or add it to
-  Availability Watch. A work from a remote source's list opens on that source.
+  choice; each ranking opens in the choice you last made on it on this device.
+- **All**, **New**, **Moved**, and **Not in library**, beside the order, narrow
+  the list and show how many works each keeps. **Not in library** keeps works
+  with no entry in your library. On a phone, the order and the filters share
+  one row that scrolls sideways.
+- The status at the end of the toolbar, such as **Updated 12:31 PM · vs your
+  last visit**, says when the ranking was last updated and what it is compared
+  with. Select it for the full times and **Compare with**: your last visit,
+  the **Previous update**, or **Another time**. Opening the latest update
+  records it as seen. Accounts that may sync metadata can pull the shown
+  ranking again with the refresh button.
+- Each work is a compact card beside its rank, in one to three columns
+  depending on the width. Beside the rank, **New** marks a work that was not
+  in the ranking before, **Back** a work that returns after leaving it, and an
+  arrow how many places a work moved; a work that did not move shows nothing
+  there. The bottom of the card holds its actions and states only what is
+  worth knowing: **In library** for a work your library has, how many days a
+  work has stayed in the ranking when that is more than one, and its best rank
+  when it once ranked higher. **Dropped out** at the end lists the works that
+  left, with their former rank.
+- A work in your library opens as in the Library. Any other work shows the
+  title and circle the ranking lists, and the cover when Kikoto already has it.
+  Rankings never add works to the library, sync their metadata, or tag them;
+  open a work to look it up, open DLsite, or add it to Availability Watch. A
+  work from a remote source's list opens on that source.
 - When the latest update failed or a remote source is unavailable, the
   ranking keeps showing its last successful update and says so.
 - A finished year of the annual ranking shows its final order: ranks without
   New, Back, or movement, the days in the ranking, or best ranks, with **All**
-  and **Not in library**.
+  and **Not in library**. The toolbar says when the final order was recorded.
 
 ### History
 
-- **History** shows a ranking as it was at an earlier time. Choose a **Date**,
-  then one of that day's updates, or step with **Previous update** and **Next
-  update**; **Latest** returns to the current order. The address keeps the
-  time, so a link opens the same view.
+- **History**, the clock beside the refresh button, shows a ranking as it was
+  at an earlier time. Choose a **Date**, then one of that day's updates, or
+  step with **Previous update** and **Next update**. While an earlier time is
+  shown, a banner under the toolbar says so, and **Back to latest** returns to
+  the current order. The address keeps the time, so a link opens the same
+  view.
 - A past order is compared with the update before it, and the days in the
   ranking and best ranks are hidden. Looking at history does not mark a
   ranking as seen.
 - Times and days follow the time zone chosen in **Settings → Account → Time
-  zone**, or the device's when that is **Automatic**, as in New releases. The
-  page shows when the order was pulled and last confirmed. When no pull ran
+  zone**, or the device's when that is **Automatic**, as in New releases.
+  History shows when the order was pulled and last confirmed. When no pull ran
   between that confirmation and the chosen time, it says so.
 - For dates before the full history, only the order at the end of each day is
-  kept, and the page says so.
+  kept, and History says so.
 
 ## Subscription Settings
 
@@ -152,15 +165,24 @@ sheet.
 The **Rankings** tab lists every ranking Kikoto can follow. Accounts that may
 sync metadata change them; others can only read them.
 
-- **DLsite voice rankings** has, in the order of the chips, a row for 24
-  hours, 7 days, and 30 days, the **DLsite annual ranking** of each year, and
-  **All time**. A pull of a DLsite ranking pulls each of its orders.
-  **Remote source popular lists** has a row for each enabled compatible remote
-  source.
-- Each row has **Show**, **Auto** with its pull interval, how many places to
-  keep (**Top 10** to **Top 100**), and when it was last and will next be
-  pulled. Showing a ranking for the first time starts it and queues its first
-  pull. The remove button deletes a ranking with its history.
+- The top line says that rankings are shared by every account and when one was
+  last pulled. **Refresh all** pulls every shown ranking now. **Latest DLsite
+  pull** and **Latest remote source pull** open those runs in Activity.
+- **DLsite voice rankings** has, in the order of the Rankings toolbar, a row
+  for 24 hours, 7 days, and 30 days, **Annual** for the year in progress,
+  **Earlier years**, and **All time**. A pull of a DLsite ranking pulls each
+  of its orders. **Remote source popular lists** has a row for each enabled
+  compatible remote source.
+- Each row starts with its **Show** switch, followed by when the ranking was
+  pulled and is next pulled, such as **Pulled 12 min. ago · next in 48 min.**,
+  and a warning when the last pull failed or the source is unavailable.
+  Showing a ranking for the first time starts it and queues its first pull. A
+  ranking that is not shown is dimmed and keeps only its switch.
+- The summary at the end of a shown row, such as **Every hour · Top 100**,
+  opens the row in place: **Pull automatically** with its interval, how many
+  places to keep (**Top 10** to **Top 100**), **Pull now** for this ranking
+  alone, and **Delete with history…**, which asks before it deletes the
+  ranking and every update recorded for it.
 - Each ranking is pulled on its own schedule:
 
   | Ranking | Default | Choices |
@@ -177,19 +199,19 @@ sync metadata change them; others can only read them.
   orders failed, is tried again after an hour, then two, and so on, never
   later than the ranking's interval; an order that failed keeps showing its
   last update. An order that did not change adds no new update.
-- **DLsite annual ranking** has a row for the year in progress. From 3 January
-  in Japan, its final order is pulled once, by popularity and by sales, and
-  kept. With **Continue with the next year**, on by default, the next year's
-  ranking then starts with the same settings. **Add years** adds earlier
-  years, which are pulled once and kept as their final order.
-- **Refresh all now** pulls every shown ranking now. **View the latest DLsite
-  pull** and **View the latest remote source pull** open those runs in
-  Activity.
-- **History** keeps every change for **Keep every change for** (30 days by
-  default), then the order at the end of each day in Japan for **Then keep
-  each day's order for** (1 year by default, or **Forever**). Finished annual
-  rankings, the latest order, and the update each account last viewed are
-  always kept. Older updates are removed by the
+- From 3 January in Japan, the final order of the annual ranking of the year
+  in progress is pulled once, by popularity and by sales, and kept. With
+  **Continue with the next year**, in its opened row and on by default, the
+  next year's ranking then starts with the same settings.
+- **Earlier years** lists the years already added on one line and opens their
+  rows. **Add years** adds earlier years, which are pulled once and kept as
+  their final order.
+- **History** states how long history is kept, such as **Every change for 30
+  days, then daily for 1 year**. Select it to choose **Keep every change for**
+  (30 days by default) and **Then keep each day's order for** (1 year by
+  default, or **Forever**). The daily order is the one at the end of each day
+  in Japan. Finished annual rankings, the latest order, and the update each
+  account last viewed are always kept. Older updates are removed by the
   [Database records](settings.md) cleanup.
 
 ## Demo

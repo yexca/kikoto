@@ -6,14 +6,21 @@ import type { RankingItem, RankingList, RankingOrder, RankingVariant } from "@/l
 import {
   decodeRankingOrder,
   encodeRankingOrder,
+  formatRankingRelative,
+  formatRankingStamp,
+  latestRankingPull,
   matchesRankingFilter,
   rankingAtFromSearch,
+  rankingChipGroups,
+  rankingChipLabel,
   rankingChipOrder,
   rankingChips,
+  rankingChipSegmentLabel,
   rankingChipUnseen,
   rankingCompareFromSearch,
   rankingDayAt,
   rankingDayIsDailyOnly,
+  rankingEntryFacts,
   rankingIntervalOptions,
   rankingListLabel,
   rankingOrderFor,
@@ -175,6 +182,60 @@ describe("rankingModel", () => {
       "list:7",
     ]);
     expect(chips[3].lists.map((entry) => entry.year)).toEqual([2026, 2024]);
+    // Each provider is named once, and each remote source is a group of its own.
+    expect(
+      rankingChipGroups(chips, t).map((group) => [
+        group.label,
+        group.chips.map((chip) => rankingChipSegmentLabel(chip, t)),
+      ]),
+    ).toEqual([
+      ["dlsite", ["day", "week", "month", "year", "total"]],
+      ["Example Remote B", ["popular"]],
+      ["Example Remote A", ["popular"]],
+    ]);
+    expect(rankingChipLabel(chips[3], t)).toBe("dlsite · year");
+  });
+
+  it("states an entry's stay and best rank only when they add something", () => {
+    const now = new Date("2026-10-12T10:00:00Z");
+    expect(rankingEntryFacts(item({ rank: 3, bestRank: 3, streakStartedAt: "2026-10-12 08:00:00" }), now)).toEqual({
+      streakDays: null,
+      bestRank: null,
+    });
+    expect(rankingEntryFacts(item({ rank: 5, bestRank: 2, streakStartedAt: "2026-10-10 09:00:00" }), now)).toEqual({
+      streakDays: 3,
+      bestRank: 2,
+    });
+  });
+
+  it("finds the latest pull of any list", () => {
+    expect(latestRankingPull([list({ id: 1 }), list({ id: 2 })])).toBeNull();
+    expect(
+      latestRankingPull([
+        list({ id: 1, lastPulledAt: "2026-10-24 09:00:00" }),
+        list({ id: 2, lastPulledAt: "2026-10-25 01:00:00" }),
+        list({ id: 3 }),
+      ]),
+    ).toBe("2026-10-25 01:00:00");
+  });
+
+  it("shortens a time to what the day and year leave unclear", () => {
+    const now = Date.parse("2026-10-25T03:00:00Z");
+    expect(formatRankingStamp("2026-10-25 01:30:00", "en", "UTC", now)).toBe("1:30 AM");
+    expect(formatRankingStamp("2026-10-14 09:00:00", "en", "UTC", now)).toBe("Oct 14, 9:00 AM");
+    expect(formatRankingStamp("2025-12-31 23:00:00", "en", "UTC", now)).toBe("Dec 31, 2025, 11:00 PM");
+    // The day follows the account's zone: 23:00 UTC on 24 October is 25 October in Japan.
+    expect(formatRankingStamp("2026-10-24 23:00:00", "en", "Asia/Tokyo", now)).toBe("8:00 AM");
+    expect(formatRankingStamp(null, "en", "UTC", now)).toBe("");
+  });
+
+  it("states pull times relative to now, and far times as a day", () => {
+    const now = Date.parse("2026-10-25T03:00:00Z");
+    expect(formatRankingRelative("2026-10-25 02:48:00", "en", "UTC", now)).toBe("12 min. ago");
+    expect(formatRankingRelative("2026-10-25 03:48:00", "en", "UTC", now)).toBe("in 48 min.");
+    expect(formatRankingRelative("2026-10-25 02:59:50", "en", "UTC", now)).toBe("now");
+    expect(formatRankingRelative("2026-10-28 03:00:00", "en", "UTC", now)).toBe("in 3 days");
+    expect(formatRankingRelative("2027-01-01 00:00:00", "en", "UTC", now)).toBe("Jan 1, 2027");
   });
 
   it("shows each list in the closest order it is pulled in", () => {

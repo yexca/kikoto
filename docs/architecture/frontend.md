@@ -180,20 +180,32 @@ a drawer over its right edge on narrower desktops, and as a sheet on phones.
 The panel beside the view takes focus when it opens, closes with Escape or the
 settings icon, and returns focus to that icon. The release feed draws each
 day's families in the shared work collection grid and card modes. Rankings shows one tracked ranking
-(`?list=`) as compact row cards beside their rank, its chips in the fixed
-order of the lists and the annual lists behind one chip with a year choice. A
-30-day switch and a popularity or sales choice pick the shown order
-(`?release=30d`, `?sort=sale`); each choice pushes a history entry, and the
-last choice on each chip is a per-device preference that names the order
-when the chip opens. A chip's unseen mark follows the order it shows. The
-latest order is compared with a baseline
+(`?list=`) as compact row cards beside their rank, in one to three columns set
+by the view's own width, under a two-row toolbar that sticks below the app
+header. The first row holds segmented controls grouped by provider, in
+the fixed order of the lists, with the annual lists behind one segment and a
+year choice, and the History and refresh icons. The second row holds the order,
+the filters with their counts, and a status button that opens the update
+times and the comparison choice; on phones both rows scroll sideways and the
+status wraps below them. A 30-day switch and a popularity or sales choice pick
+the shown order (`?release=30d`, `?sort=sale`); each choice pushes a history
+entry, and the last choice on each segment is a per-device preference that
+names the order when it opens. A segment's unseen mark follows the order it
+shows. The latest order is compared with a baseline
 (`?compare=previous`, a snapshot id, or a time; the last visit when absent).
 `?at=` shows the order in effect at a time instead, compared with the update
-before it, with a day picker and that day's updates in the account's time
-zone, and does not record the ranking as seen. A finished annual ranking shows
-its ranks without movement. The settings
-hold the subscription list with the refresh schedule, the Availability Watch
-manager, which they take from the workflows feature, and the ranking settings.
+before it, chosen in the History popover by day and that day's updates in the
+account's time zone, with a banner under the toolbar leading back to the
+latest order; it does not record the ranking as seen. A card's footer states a
+stay or best rank only when they add something and marks library works instead
+of the others. A finished annual ranking shows its ranks without movement. The
+ranking settings show one line per ranking with its Show switch, relative pull
+times, and a schedule summary that expands the row in place to edit the
+interval and depth, pull it alone, or delete it after a confirmation; earlier
+annual years and the history retention each collapse into one line. The
+settings hold the subscription list with the refresh schedule, the Availability
+Watch manager, which they take from the workflows feature, and the ranking
+settings.
 `?panel=subscriptions`, `?panel=watch`, or `?panel=rankings` opens the settings,
 and `?page=` names the feed page. The feed, subscription list, schedule panel,
 and the subscribe button that circle, series, and voice actor pages render
