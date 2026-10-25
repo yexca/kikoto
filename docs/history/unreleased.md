@@ -64,6 +64,12 @@
 - On a wide screen the subscription settings open in a panel beside the feed
   or the rankings, which narrow to make room and stay usable; narrower screens
   keep the drawer, and phones the sheet.
+- Rankings keeps its ranking, order, filter, and update controls in a compact
+  toolbar that stays in reach while scrolling, states beside each work's card
+  only the facts worth stating, and opens History and the comparison from the
+  toolbar. The Rankings settings show one line per ranking
+  with relative pull times and expand a row in place to edit it, and deleting
+  a ranking with its history asks first.
 
 </details>
 

@@ -198,9 +198,41 @@ export function rankingsUnseen(
 }
 
 export function rankingChipLabel(chip: RankingChip, t: TFunction): string {
-  if (chip.key === "annual")
-    return `${t("subscriptions.rankings.dlsite")} · ${t("subscriptions.rankings.periods.year")}`;
-  return rankingListLabel(chip.lists[0], t);
+  const group = rankingChipGroupLabel(chip, t);
+  return `${group} · ${rankingChipSegmentLabel(chip, t)}`;
+}
+
+function rankingChipGroupKey(chip: RankingChip): string {
+  const list = chip.lists[0];
+  return list.provider === "remote_source" ? `source:${list.sourceId ?? 0}` : "dlsite";
+}
+
+function rankingChipGroupLabel(chip: RankingChip, t: TFunction): string {
+  const list = chip.lists[0];
+  if (list.provider === "remote_source") return list.sourceName || t("subscriptions.rankings.remoteSource");
+  return t("subscriptions.rankings.dlsite");
+}
+
+/** A chip's name within its provider's group: the DLsite period, or a remote source's popular list. */
+export function rankingChipSegmentLabel(chip: RankingChip, t: TFunction): string {
+  const list = chip.lists[0];
+  if (list.provider === "remote_source" || !list.period) return t("subscriptions.rankings.popular");
+  return t(`subscriptions.rankings.periods.${list.period}`);
+}
+
+/** The chips of one provider, named once: DLsite's periods, or one remote source's popular list. */
+export type RankingChipGroup = { key: string; label: string; chips: RankingChip[] };
+
+/** The chips grouped by provider, keeping their fixed order. */
+export function rankingChipGroups(chips: RankingChip[], t: TFunction): RankingChipGroup[] {
+  const groups: RankingChipGroup[] = [];
+  for (const chip of chips) {
+    const key = rankingChipGroupKey(chip);
+    const group = groups.find((candidate) => candidate.key === key);
+    if (group) group.chips.push(chip);
+    else groups.push({ key, label: rankingChipGroupLabel(chip, t), chips: [chip] });
+  }
+  return groups;
 }
 
 export function matchesRankingFilter(item: RankingItem, filter: RankingFilter): boolean {
@@ -230,6 +262,32 @@ export function rankingStreakDays(item: Pick<RankingItem, "streakStartedAt">, no
   const started = parseServerTimestamp(item.streakStartedAt);
   if (!started) return 1;
   return Math.max(1, Math.floor((now.getTime() - started.getTime()) / 86_400_000) + 1);
+}
+
+/**
+ * The facts an entry states beside its title, only when they say something:
+ * a stay longer than the day it entered, and a best rank above the current one.
+ */
+export function rankingEntryFacts(
+  item: Pick<RankingItem, "rank" | "bestRank" | "streakStartedAt">,
+  now: Date,
+): { streakDays: number | null; bestRank: number | null } {
+  const days = rankingStreakDays(item, now);
+  return {
+    streakDays: days > 1 ? days : null,
+    bestRank: item.bestRank > 0 && item.bestRank < item.rank ? item.bestRank : null,
+  };
+}
+
+/** The most recent pull of any list, or null when none was pulled. */
+export function latestRankingPull(lists: RankingList[]): string | null {
+  let latest: { value: string; time: number } | null = null;
+  for (const list of lists) {
+    const time = parseServerTimestamp(list.lastPulledAt)?.getTime();
+    if (time !== undefined && list.lastPulledAt && (!latest || time > latest.time))
+      latest = { value: list.lastPulledAt, time };
+  }
+  return latest?.value ?? null;
 }
 
 /** The list named by `list` in the location, when it is one of lists, else the first list. */
@@ -265,6 +323,60 @@ export function formatRankingTime(
     return dateTimeFormat(locale, { ...options, timeZone }).format(date);
   } catch {
     return dateTimeFormat(locale, options).format(date);
+  }
+}
+
+/**
+ * A server timestamp in a time zone as briefly as it stays clear: the time of
+ * day when it falls on today, the day and time within this year, else the
+ * full date and time.
+ */
+export function formatRankingStamp(
+  value: string | null | undefined,
+  locale: ResolvedUiLocale,
+  timeZone: string,
+  now: number,
+): string {
+  const date = parseServerTimestamp(value);
+  if (!date) return "";
+  const day = zonedDay(date.getTime(), timeZone);
+  const today = zonedDay(now, timeZone);
+  const options: Intl.DateTimeFormatOptions =
+    day === today
+      ? { timeStyle: "short" }
+      : day.slice(0, 4) === today.slice(0, 4)
+        ? { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }
+        : { dateStyle: "medium", timeStyle: "short" };
+  try {
+    return dateTimeFormat(locale, { ...options, timeZone }).format(date);
+  } catch {
+    return dateTimeFormat(locale, options).format(date);
+  }
+}
+
+/**
+ * A server timestamp relative to now ("12 min. ago", "in 2 hr."), or the day
+ * in a time zone when it is more than 45 days away.
+ */
+export function formatRankingRelative(
+  value: string | null | undefined,
+  locale: ResolvedUiLocale,
+  timeZone: string,
+  now: number,
+): string {
+  const date = parseServerTimestamp(value);
+  if (!date) return "";
+  const seconds = Math.round((date.getTime() - now) / 1000);
+  const abs = Math.abs(seconds);
+  const format = new Intl.RelativeTimeFormat(locale, { numeric: "auto", style: "short" });
+  if (abs < 45) return format.format(0, "second");
+  if (abs < 90 * 60) return format.format(Math.round(seconds / 60), "minute");
+  if (abs < 36 * 3600) return format.format(Math.round(seconds / 3600), "hour");
+  if (abs < 45 * 86_400) return format.format(Math.round(seconds / 86_400), "day");
+  try {
+    return dateTimeFormat(locale, { dateStyle: "medium", timeZone }).format(date);
+  } catch {
+    return dateTimeFormat(locale, { dateStyle: "medium" }).format(date);
   }
 }
 

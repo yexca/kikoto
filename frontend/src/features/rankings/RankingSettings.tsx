@@ -1,45 +1,26 @@
-import { CalendarPlus, Loader2, RefreshCw, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ChevronDown, Loader2, RefreshCw } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { FloatingSelect } from "@/components/ui/floating-select";
-import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type LibrarySource, type RankingListPatch, type RankingOverview } from "@/lib/api";
+import { cn } from "@/lib/tailwindClassNames";
 
+import { EarlierYearsRow, RankingDeleteDialog, RankingSettingRowView } from "./RankingSettingRow";
 import {
-  formatRankingTime,
+  formatRankingRelative,
+  latestRankingPull,
   RANKING_DAILY_RETENTION_DAYS,
-  RANKING_DEPTHS,
   RANKING_FULL_RETENTION_DAYS,
-  rankingIntervalOptions,
   rankingSettingRows,
   type RankingSettingRow,
 } from "./rankingModel";
 import type { RankingOverviewState } from "./useRankingOverview";
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
-
-function intervalLabel(minutes: number, t: Translate) {
-  if (minutes % (24 * 60) === 0) return t("subscriptions.schedule.days", { count: minutes / (24 * 60) });
-  if (minutes % 60 === 0) return t("subscriptions.schedule.hours", { count: minutes / 60 });
-  return t("subscriptions.rankings.settings.minutes", { count: minutes });
-}
-
-function depthOptions(current: number, t: Translate) {
-  const values: number[] = [...RANKING_DEPTHS];
-  if (!values.includes(current)) values.push(current);
-  return values
-    .sort((left, right) => left - right)
-    .map((value) => ({
-      value: String(value),
-      label: t("subscriptions.rankings.settings.depthValue", { count: value }),
-    }));
-}
 
 function retentionLabel(days: number, t: Translate) {
   if (days === 0) return t("subscriptions.rankings.settings.retention.forever");
@@ -49,10 +30,10 @@ function retentionLabel(days: number, t: Translate) {
 
 /**
  * The shared rankings, in the fixed order of the chips: a row for each DLsite
- * ranking, the annual ranking of each year, and each compatible remote
- * source's popular list, with how often each is pulled and how long history is
- * kept. A row's list is created when it is first shown; one pull of a DLsite
- * row pulls each of its orders.
+ * ranking, the annual ranking of the year in progress with the earlier years
+ * on one line, and each compatible remote source's popular list, then how
+ * long history is kept. A row's list is created when it is first shown; one
+ * pull of a DLsite row pulls each of its orders.
  */
 export function RankingSettings({
   rankings,
@@ -71,6 +52,9 @@ export function RankingSettings({
   const { overview, error, reload, updateList } = rankings;
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [sources, setSources] = useState<LibrarySource[]>([]);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<RankingSettingRow | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     const controller = new AbortController();
@@ -79,6 +63,12 @@ export function RankingSettings({
       .then(setSources)
       .catch(() => setSources([]));
     return () => controller.abort();
+  }, []);
+
+  // Pull times read relative to now, so they follow the clock.
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   if (!overview) {
@@ -111,6 +101,7 @@ export function RankingSettings({
   };
   const show = (row: RankingSettingRow, enabled: boolean) =>
     run(row.key, async () => {
+      if (!enabled && expandedKey === row.key) setExpandedKey(null);
       if (row.list) {
         updateList(await api.updateRanking(row.list.id, { enabled }));
         return;
@@ -123,17 +114,43 @@ export function RankingSettings({
     run(row.key, async () => {
       if (row.list) updateList(await api.updateRanking(row.list.id, patch));
     });
-  const remove = (row: RankingSettingRow) =>
+  const pullNow = (row: RankingSettingRow) =>
+    run(row.key, async () => {
+      if (!row.list) return;
+      await api.runRankingRefresh([row.list.id]);
+      toast.success(t("subscriptions.rankings.refreshQueued"));
+      await reload();
+    });
+  const confirmDelete = (row: RankingSettingRow) =>
     run(row.key, async () => {
       if (!row.list) return;
       await api.deleteRanking(row.list.id);
+      setDeleting(null);
+      setExpandedKey(null);
+      toast.success(t("subscriptions.rankings.settings.deleted"));
       await reload();
     });
-  const rowProps = { editable, busyKey, timeZone: overview.timeZone, onShow: show, onChange: change, onRemove: remove };
+  const rowView = (row: RankingSettingRow, followYear = false) => (
+    <RankingSettingRowView
+      key={row.key}
+      row={row}
+      editable={editable}
+      busy={busyKey === row.key}
+      expanded={expandedKey === row.key}
+      timeZone={overview.timeZone}
+      now={now}
+      followYear={followYear}
+      onExpandedChange={(expanded) => setExpandedKey(expanded ? row.key : null)}
+      onShow={show}
+      onChange={change}
+      onPullNow={pullNow}
+      onDelete={setDeleting}
+    />
+  );
 
   return (
-    <div className="grid gap-6">
-      <RankingPullsPanel overview={overview} editable={editable} onOpenRun={onOpenRun} />
+    <div className="grid grid-cols-1 gap-5">
+      <RankingPullsHeader overview={overview} editable={editable} now={now} onOpenRun={onOpenRun} />
       {!editable && !overview.demo && (
         <p className="text-xs text-muted-foreground">{t("subscriptions.rankings.settings.readOnly")}</p>
       )}
@@ -141,42 +158,28 @@ export function RankingSettings({
         title={t("subscriptions.rankings.settings.dlsiteTitle")}
         description={t("subscriptions.rankings.settings.dlsiteDescription")}
       >
-        {rows.dlsite.map((row) => (
-          <RankingSettingRowView key={row.key} row={row} {...rowProps} />
-        ))}
-        <li aria-label={t("subscriptions.rankings.settings.annualTitle")}>
-          <div className="space-y-0.5 px-3 pt-2.5">
-            <p className="text-sm font-medium">{t("subscriptions.rankings.settings.annualTitle")}</p>
-            <p className="text-xs text-muted-foreground">{t("subscriptions.rankings.settings.annualDescription")}</p>
-          </div>
-          <ul className="divide-y pl-3">
-            <RankingSettingRowView
-              row={{
-                ...rows.currentYear,
-                label: t("subscriptions.rankings.settings.currentYear", { year: overview.currentYear }),
-              }}
-              {...rowProps}
-              followYear
-            />
-            {rows.pastYears.map((row) => (
-              <RankingSettingRowView key={row.key} row={row} {...rowProps} />
-            ))}
-            <li className="px-3 py-2.5">
-              <AddYearsPicker
-                years={rows.addableYears}
-                disabled={!editable || busyKey !== null}
-                onAdd={(years) =>
-                  run("years", async () => {
-                    for (const year of years) await api.createRanking({ provider: "dlsite", period: "year", year });
-                    toast.success(t("subscriptions.rankings.settings.added"));
-                    await reload();
-                  })
-                }
-              />
-            </li>
-          </ul>
-        </li>
-        <RankingSettingRowView row={rows.total} {...rowProps} />
+        {rows.dlsite.map((row) => rowView(row))}
+        {rowView(
+          {
+            ...rows.currentYear,
+            label: t("subscriptions.rankings.settings.annualYear", { year: overview.currentYear }),
+          },
+          true,
+        )}
+        <EarlierYearsRow
+          rows={rows.pastYears}
+          addableYears={rows.addableYears}
+          addDisabled={!editable || busyKey !== null}
+          onAddYears={(years) =>
+            void run("years", async () => {
+              for (const year of years) await api.createRanking({ provider: "dlsite", period: "year", year });
+              toast.success(t("subscriptions.rankings.settings.added"));
+              await reload();
+            })
+          }
+          renderRow={(row) => rowView(row)}
+        />
+        {rowView(rows.total)}
       </RankingRowSection>
       <RankingRowSection title={t("subscriptions.rankings.settings.remoteTitle")}>
         {rows.remote.length === 0 ? (
@@ -184,10 +187,18 @@ export function RankingSettings({
             {t("subscriptions.rankings.settings.remoteEmpty")}
           </li>
         ) : (
-          rows.remote.map((row) => <RankingSettingRowView key={row.key} row={row} {...rowProps} />)
+          rows.remote.map((row) => rowView(row))
         )}
       </RankingRowSection>
       <RankingRetentionPanel overview={overview} editable={editable} onSaved={() => void reload()} />
+      {deleting && (
+        <RankingDeleteDialog
+          name={deleting.label}
+          busy={busyKey === deleting.key}
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => void confirmDelete(deleting)}
+        />
+      )}
     </div>
   );
 }
@@ -199,11 +210,11 @@ function RankingRowSection({
 }: {
   title: string;
   description?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section className="space-y-2" aria-label={title}>
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         <h2 className="text-sm font-semibold">{title}</h2>
         {description && <p className="text-xs text-muted-foreground">{description}</p>}
       </div>
@@ -212,219 +223,24 @@ function RankingRowSection({
   );
 }
 
-function RankingSettingRowView({
-  row,
-  editable,
-  busyKey,
-  timeZone,
-  followYear = false,
-  onShow,
-  onChange,
-  onRemove,
-}: {
-  row: RankingSettingRow;
-  editable: boolean;
-  busyKey: string | null;
-  /** The account's zone for pull times. */
-  timeZone: string;
-  /** The annual ranking of the year in progress offers to continue with the next year. */
-  followYear?: boolean;
-  onShow: (row: RankingSettingRow, enabled: boolean) => void;
-  onChange: (row: RankingSettingRow, patch: RankingListPatch) => void;
-  onRemove: (row: RankingSettingRow) => void;
-}) {
-  const { t } = useTranslation();
-  const { resolvedLocale } = useLocale();
-  const list = row.list;
-  const busy = busyKey === row.key;
-  const finished = Boolean(list?.finalAt);
-  const pastYear = row.request.period === "year" && !followYear;
-  const scheduled = !finished && !pastYear;
-  const name = row.label;
-  const interval = list?.refreshIntervalMinutes ?? 0;
-  const time = (value: string | null | undefined) => formatRankingTime(value, resolvedLocale, timeZone);
-  const details: string[] = [];
-  if (list?.lastPulledAt)
-    details.push(t("subscriptions.rankings.settings.lastPulled", { time: time(list.lastPulledAt) }));
-  else if (list) details.push(t("subscriptions.rankings.settings.neverPulled"));
-  if (list?.finalAt) details.push(t("subscriptions.rankings.settings.final", { time: time(list.finalAt) }));
-  else if (list?.enabled && list.pullRequested) details.push(t("subscriptions.rankings.settings.pullQueued"));
-  else if (list?.enabled && list.nextPullAt)
-    details.push(t("subscriptions.rankings.settings.nextPull", { time: time(list.nextPullAt) }));
-  if (list && !list.sourceAvailable) details.push(t("subscriptions.rankings.settings.status.source_unavailable"));
-  else if (list?.lastStatus === "failed" || list?.lastStatus === "partial")
-    details.push(t(`subscriptions.rankings.settings.status.${list.lastStatus}`));
-  if (!list) details.push(t("subscriptions.rankings.settings.notShown"));
-  if (pastYear && !finished) details.push(t("subscriptions.rankings.settings.pastYearHint"));
-
-  return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
-      <div className="min-w-[10rem] flex-1">
-        <p className="truncate text-sm font-medium">{name}</p>
-        <p className="text-xs text-muted-foreground">{details.join(" · ")}</p>
-      </div>
-      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-        {/* A ranking that was never shown has no list to configure yet; it starts with the defaults. */}
-        {list && scheduled && (
-          <>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Switch
-                checked={list.autoRefresh}
-                disabled={!editable || busy}
-                aria-label={t("subscriptions.rankings.settings.autoRefresh", { name })}
-                onCheckedChange={(autoRefresh) => onChange(row, { autoRefresh })}
-              />
-              {t("subscriptions.rankings.settings.auto")}
-            </label>
-            <FloatingSelect
-              value={String(interval)}
-              options={rankingIntervalOptions(row.kind, interval).map((value) => ({
-                value: String(value),
-                label: intervalLabel(value, t),
-              }))}
-              ariaLabel={t("subscriptions.rankings.settings.interval", { name })}
-              disabled={!editable || !list.autoRefresh || busy}
-              onValueChange={(value) => onChange(row, { refreshIntervalMinutes: Number(value) })}
-              className="w-28"
-            />
-          </>
-        )}
-        {list && (
-          <FloatingSelect
-            value={String(list.depth)}
-            options={depthOptions(list.depth, t)}
-            ariaLabel={`${t("subscriptions.rankings.settings.depth")} · ${name}`}
-            disabled={!editable || busy}
-            onValueChange={(value) => onChange(row, { depth: Number(value) })}
-            className="w-28"
-          />
-        )}
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Switch
-            checked={list?.enabled ?? false}
-            disabled={!editable || busy}
-            aria-label={t("subscriptions.rankings.settings.show", { name })}
-            onCheckedChange={(enabled) => onShow(row, enabled)}
-          />
-          {t("subscriptions.rankings.settings.shown")}
-        </label>
-        {list && (
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={t("subscriptions.rankings.settings.remove", { name })}
-            title={t("subscriptions.rankings.settings.remove", { name })}
-            disabled={!editable || busy}
-            onClick={() => onRemove(row)}
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-          </Button>
-        )}
-      </div>
-      {followYear && list && !finished && (
-        <label className="flex w-full items-start gap-2 text-xs text-muted-foreground">
-          <Switch
-            checked={list.followCurrentYear}
-            disabled={!editable || busy}
-            aria-label={t("subscriptions.rankings.settings.followYear")}
-            onCheckedChange={(followCurrentYear) => onChange(row, { followCurrentYear })}
-          />
-          <span>
-            <span className="font-medium text-foreground">{t("subscriptions.rankings.settings.followYear")}</span>
-            {" · "}
-            {t("subscriptions.rankings.settings.followYearHint")}
-          </span>
-        </label>
-      )}
-    </li>
-  );
-}
-
-function AddYearsPicker({
-  years,
-  disabled,
-  onAdd,
-}: {
-  years: number[];
-  disabled: boolean;
-  onAdd: (years: number[]) => void;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<Set<number>>(() => new Set());
-  const anchorRef = useRef<HTMLDivElement | null>(null);
-  const toggle = (year: number, checked: boolean) =>
-    setSelected((current) => {
-      const next = new Set(current);
-      if (checked) next.add(year);
-      else next.delete(year);
-      return next;
-    });
-  return (
-    <div ref={anchorRef} className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-xs text-muted-foreground">
-        {years.length > 0
-          ? t("subscriptions.rankings.settings.addYearsHint")
-          : t("subscriptions.rankings.settings.addYearsEmpty")}
-      </p>
-      <Button
-        size="sm"
-        variant="outline"
-        aria-expanded={open}
-        disabled={disabled || years.length === 0}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <CalendarPlus className="h-4 w-4" />
-        {t("subscriptions.rankings.settings.addYears")}
-      </Button>
-      <AnchoredPopover
-        open={open}
-        anchorRef={anchorRef}
-        align="end"
-        onOpenChange={setOpen}
-        ariaLabel={t("subscriptions.rankings.settings.addYears")}
-        className="w-[min(14rem,calc(100vw-1.5rem))] p-2 text-sm"
-      >
-        <div className="app-scroll max-h-64 overflow-y-auto">
-          {years.map((year) => (
-            <label key={year} className="flex min-h-9 items-center gap-2 rounded-md px-2 hover:bg-muted">
-              <Checkbox checked={selected.has(year)} onCheckedChange={(checked) => toggle(year, checked === true)} />
-              {year}
-            </label>
-          ))}
-        </div>
-        <div className="flex justify-end pt-2">
-          <Button
-            size="sm"
-            disabled={selected.size === 0}
-            onClick={() => {
-              onAdd([...selected].sort((left, right) => right - left));
-              setSelected(new Set());
-              setOpen(false);
-            }}
-          >
-            {t("subscriptions.rankings.settings.addSelectedYears", { count: selected.size })}
-          </Button>
-        </div>
-      </AnchoredPopover>
-    </div>
-  );
-}
-
-/** Refresh every shown ranking now, and open each pulling workflow's latest run. */
-function RankingPullsPanel({
+/** Who shares the rankings and when they were last pulled, refresh every shown ranking, and the latest runs. */
+function RankingPullsHeader({
   overview,
   editable,
+  now,
   onOpenRun,
 }: {
   overview: RankingOverview;
   editable: boolean;
+  now: number;
   onOpenRun: (runId: number) => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const { resolvedLocale } = useLocale();
   const [running, setRunning] = useState(false);
   const canRun = editable && overview.lists.some((list) => list.enabled);
+  const latest = latestRankingPull(overview.lists);
   const runNow = async () => {
     setRunning(true);
     try {
@@ -437,40 +253,47 @@ function RankingPullsPanel({
     }
   };
   const runs = overview.workflows.filter((workflow) => workflow.latestRun);
+  const summary = [t("subscriptions.rankings.settings.shared")];
+  if (latest) {
+    summary.push(
+      t("subscriptions.rankings.settings.lastPull", {
+        time: formatRankingRelative(latest, resolvedLocale, overview.timeZone, now),
+      }),
+    );
+  }
   return (
-    <section className="grid gap-3 rounded-lg border bg-card p-4" aria-labelledby="ranking-pulls">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <h2 id="ranking-pulls" className="text-sm font-semibold">
-            {t("subscriptions.rankings.settings.title")}
-          </h2>
-          <p className="text-xs text-muted-foreground">{t("subscriptions.rankings.settings.description")}</p>
-        </div>
-        {editable && (
-          <Button size="sm" variant="outline" disabled={!canRun || running} onClick={() => void runNow()}>
-            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {t("subscriptions.rankings.settings.refreshAll")}
-          </Button>
+    <section className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2" aria-labelledby="ranking-pulls">
+      <div className="min-w-0 space-y-0.5">
+        <h2 id="ranking-pulls" className="sr-only">
+          {t("subscriptions.rankings.settings.title")}
+        </h2>
+        <p className="text-xs text-muted-foreground">{summary.join(" · ")}</p>
+        {editable && runs.length > 0 && (
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+            {runs.map((workflow) => (
+              <button
+                key={workflow.code}
+                type="button"
+                className="rounded-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => workflow.latestRun && onOpenRun(workflow.latestRun.id)}
+              >
+                {t(`subscriptions.rankings.settings.latestRun.${workflow.code}`)}
+              </button>
+            ))}
+          </div>
         )}
       </div>
-      {editable && runs.length > 0 && (
-        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-          {runs.map((workflow) => (
-            <button
-              key={workflow.code}
-              type="button"
-              className="underline-offset-2 hover:underline"
-              onClick={() => workflow.latestRun && onOpenRun(workflow.latestRun.id)}
-            >
-              {t(`subscriptions.rankings.settings.latestRun.${workflow.code}`)}
-            </button>
-          ))}
-        </div>
+      {editable && (
+        <Button size="sm" variant="outline" disabled={!canRun || running} onClick={() => void runNow()}>
+          {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          {t("subscriptions.rankings.settings.refreshAll")}
+        </Button>
       )}
     </section>
   );
 }
 
+/** How long history is kept, as one line that expands to its two choices. */
 function RankingRetentionPanel({
   overview,
   editable,
@@ -483,6 +306,7 @@ function RankingRetentionPanel({
   const { t } = useTranslation();
   const toast = useToast();
   const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(false);
   const retention = overview.retention;
   const save = async (next: typeof retention) => {
     setSaving(true);
@@ -499,41 +323,68 @@ function RankingRetentionPanel({
   const dailyOptions = [...new Set([...RANKING_DAILY_RETENTION_DAYS, retention.dailyDays])]
     .filter((days) => days === 0 || days >= retention.fullDays)
     .sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
+  const full = retentionLabel(retention.fullDays, t);
+  const summary =
+    retention.dailyDays === 0
+      ? t("subscriptions.rankings.settings.retention.summaryForever", { full })
+      : t("subscriptions.rankings.settings.retention.summary", {
+          full,
+          daily: retentionLabel(retention.dailyDays, t),
+        });
   return (
-    <section className="grid gap-3 rounded-lg border bg-card p-4" aria-labelledby="ranking-retention">
-      <div className="space-y-1">
-        <h2 id="ranking-retention" className="text-sm font-semibold">
-          {t("subscriptions.rankings.settings.retention.title")}
-        </h2>
-        <p className="text-xs text-muted-foreground">{t("subscriptions.rankings.settings.retention.description")}</p>
-      </div>
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <span>{t("subscriptions.rankings.settings.retention.full")}</span>
-        <FloatingSelect
-          value={String(retention.fullDays)}
-          options={fullOptions.map((days) => ({ value: String(days), label: retentionLabel(days, t) }))}
-          ariaLabel={t("subscriptions.rankings.settings.retention.full")}
-          disabled={!editable || saving}
-          onValueChange={(value) => {
-            const fullDays = Number(value);
-            void save({
-              fullDays,
-              dailyDays: retention.dailyDays !== 0 && retention.dailyDays < fullDays ? fullDays : retention.dailyDays,
-            });
-          }}
-          className="w-32"
-        />
-      </div>
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <span>{t("subscriptions.rankings.settings.retention.daily")}</span>
-        <FloatingSelect
-          value={String(retention.dailyDays)}
-          options={dailyOptions.map((days) => ({ value: String(days), label: retentionLabel(days, t) }))}
-          ariaLabel={t("subscriptions.rankings.settings.retention.daily")}
-          disabled={!editable || saving}
-          onValueChange={(value) => void save({ fullDays: retention.fullDays, dailyDays: Number(value) })}
-          className="w-32"
-        />
+    <section className="space-y-2" aria-labelledby="ranking-retention">
+      <h2 id="ranking-retention" className="text-sm font-semibold">
+        {t("subscriptions.rankings.settings.retention.title")}
+      </h2>
+      <div className="rounded-lg border bg-card">
+        <button
+          type="button"
+          aria-expanded={open}
+          className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => setOpen((current) => !current)}
+        >
+          <span className="min-w-0">{summary}</span>
+          <ChevronDown
+            className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+            aria-hidden="true"
+          />
+        </button>
+        {open && (
+          <div className="grid gap-2.5 border-t px-3 py-3 text-sm">
+            <p className="text-xs text-muted-foreground">
+              {t("subscriptions.rankings.settings.retention.description")}
+            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>{t("subscriptions.rankings.settings.retention.full")}</span>
+              <FloatingSelect
+                value={String(retention.fullDays)}
+                options={fullOptions.map((days) => ({ value: String(days), label: retentionLabel(days, t) }))}
+                ariaLabel={t("subscriptions.rankings.settings.retention.full")}
+                disabled={!editable || saving}
+                onValueChange={(value) => {
+                  const fullDays = Number(value);
+                  void save({
+                    fullDays,
+                    dailyDays:
+                      retention.dailyDays !== 0 && retention.dailyDays < fullDays ? fullDays : retention.dailyDays,
+                  });
+                }}
+                className="w-32"
+              />
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>{t("subscriptions.rankings.settings.retention.daily")}</span>
+              <FloatingSelect
+                value={String(retention.dailyDays)}
+                options={dailyOptions.map((days) => ({ value: String(days), label: retentionLabel(days, t) }))}
+                ariaLabel={t("subscriptions.rankings.settings.retention.daily")}
+                disabled={!editable || saving}
+                onValueChange={(value) => void save({ fullDays: retention.fullDays, dailyDays: Number(value) })}
+                className="w-32"
+              />
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
