@@ -464,7 +464,8 @@ const adminToolsJapanese = {
       },
       old_ranking_snapshots: {
         title: "古いランキング履歴",
-        description: "90 日より前のランキング更新。各ランキングの最新 2 件の更新は保持されます。",
+        description:
+          "ランキング設定で保持する履歴の期間を過ぎたランキング更新。最新の順位、確定した年間ランキング、各アカウントが最後に見た更新は保持されます。",
       },
     },
     optimize: {

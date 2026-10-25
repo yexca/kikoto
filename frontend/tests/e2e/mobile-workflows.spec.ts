@@ -3,12 +3,9 @@ import type {
   AuthState,
   AvailabilityWatch,
   AvailabilityWatchRunResult,
-  DLsitePopularRunResult,
-  LibrarySource,
   LocalMediaIndexResult,
   LocalScanResult,
   MaintenanceWorkPage,
-  RemoteCollectionRunResult,
   RemoteWorkTrackResult,
   RemoteWorkSavePlan,
   RemoteWorkSaveResult,
@@ -103,19 +100,18 @@ const systemDefinitions: WorkflowDefinition[] = [
   workflowDefinitionFixture({
     id: 3,
     code: "dlsite_popular_collection",
-    displayName: "Collect DLsite popular voice works",
-    description: "Discover ranking works, sync metadata, and add a user tag.",
+    displayName: "Pull DLsite rankings",
+    description: "Pull the due DLsite voice rankings in each of their orders and record how they changed.",
     definitionJson:
-      '{"nodes":[{"id":"configure","type":"select_ranking","displayName":"Configure ranking"},{"id":"discover","type":"discover_provider_ranking","displayName":"Discover ranking"},{"id":"metadata","type":"sync_metadata","displayName":"Sync metadata"},{"id":"tag","type":"assign_user_tags","displayName":"Add user tag"}]}',
+      '{"nodes":[{"id":"pull","type":"pull_rankings","displayName":"Pull rankings"},{"id":"record","type":"record_rankings","displayName":"Record changes"}]}',
   }),
   workflowDefinitionFixture({
     id: 4,
     code: "remote_popular_collection",
-    displayName: "Collect popular remote works",
-    description:
-      "Discover popular works from a selected compatible source, track or fetch them, and append a user tag.",
+    displayName: "Pull remote source rankings",
+    description: "Pull the due popular list of a compatible remote source and record how it changed.",
     definitionJson:
-      '{"nodes":[{"id":"configure","type":"select_remote_source","displayName":"Configure remote collection"},{"id":"discover","type":"discover_remote_collection","displayName":"Discover popular works"},{"id":"filter","type":"filter_candidates","displayName":"Filter collection candidates"},{"id":"dispatch","type":"dispatch_child_workflows","displayName":"Dispatch accepted works"},{"id":"tag","type":"assign_user_tags","displayName":"Add user tag"}]}',
+      '{"nodes":[{"id":"pull","type":"pull_rankings","displayName":"Pull rankings"},{"id":"record","type":"record_rankings","displayName":"Record changes"}]}',
   }),
   workflowDefinitionFixture({
     id: 6,
@@ -169,7 +165,7 @@ const workflowTriggers: WorkflowTrigger[] = [
 const sampleRun = workflowRunFixture({
   id: 51,
   workflowCode: "dlsite_popular_collection",
-  displayName: "Collect DLsite popular voice works",
+  displayName: "Pull DLsite rankings",
   status: "succeeded",
   triggerType: "manual",
   triggerReason: "day",
@@ -249,7 +245,6 @@ const sampleRunGraph = JSON.stringify({
 
 async function mockWorkflows(
   page: Page,
-  onRemotePopular?: (payload: unknown) => void,
   runsPage: WorkflowRunsPage = workflowRunsPageFixture([sampleRun], {
     viewTotals: { running: 0, review: 0, failed: 0, completed: 1 },
   }),
@@ -529,60 +524,9 @@ async function mockWorkflows(
       await route.fulfill({ json: [] satisfies WorkflowCandidate[] });
       return;
     }
-    if (url.pathname === "/api/workflow-runs/dlsite-popular") {
-      const payload = route.request().postDataJSON() as Pick<
-        DLsitePopularRunResult,
-        "period" | "releaseWindow" | "year"
-      > & { tagNameTemplate: string };
-      await route.fulfill({
-        json: {
-          runId: 31,
-          status: "queued",
-          period: payload.period,
-          releaseWindow: payload.releaseWindow,
-          year: payload.year,
-          tagName: "resolved-dlsite-popular",
-          discovered: 0,
-          synced: 0,
-          tagged: 0,
-          failed: 0,
-          failures: [],
-        } satisfies DLsitePopularRunResult,
-      });
-      return;
-    }
     if (url.pathname === "/api/library-sources") {
       await route.fulfill({
         json: [librarySourceFixture({ id: 8, code: "remote-test", displayName: "Remote Test" })],
-      });
-      return;
-    }
-    if (url.pathname === "/api/workflow-runs/remote-popular") {
-      const payload = route.request().postDataJSON() as Pick<RemoteCollectionRunResult, "sourceId" | "action"> & {
-        limit: number;
-        tagNameTemplate: string;
-      };
-      onRemotePopular?.(payload);
-      await route.fulfill({
-        json: {
-          runId: 41,
-          sourceId: payload.sourceId,
-          action: payload.action,
-          status: "queued",
-          collectionKind: "popular",
-          tagName: "resolved-remote-popular",
-          discovered: 0,
-          accepted: 0,
-          skipped: 0,
-          tracked: 0,
-          fetched: 0,
-          tagged: 0,
-          failed: 0,
-          childRuns: [],
-          failures: [],
-          expectedMaximum: payload.limit,
-          returnedCount: 0,
-        } satisfies RemoteCollectionRunResult,
       });
       return;
     }
@@ -595,7 +539,7 @@ async function mockWorkflows(
 }
 
 test("mobile notification center opens fetched works and dismisses individual results", async ({ page }) => {
-  await mockWorkflows(page, undefined, undefined, {
+  await mockWorkflows(page, undefined, {
     total: 2,
     notifications: [
       notificationFixture({
@@ -655,7 +599,6 @@ test("notification center paginates and clears only succeeded remote notificatio
   });
   await mockWorkflows(
     page,
-    undefined,
     undefined,
     (requestedPage) => {
       if (cleared) {
@@ -995,7 +938,7 @@ test("demo Fetch run options remain inspectable without preparing or publishing 
   expect(submissions).toHaveLength(0);
 });
 
-test("definitions foreground runnable presets and show DLsite popular run options inline", async ({ page }) => {
+test("definitions foreground runnable presets and send ranking pulls to the Subscriptions page", async ({ page }) => {
   await mockWorkflows(page);
   await page.goto("/workflows");
 
@@ -1008,120 +951,17 @@ test("definitions foreground runnable presets and show DLsite popular run option
   await expect(page.getByRole("button", { name: "System", exact: true })).toHaveCount(0);
   await expect(list.getByRole("button", { name: /Cache media/ })).toHaveCount(0);
 
-  await openWorkflow(page, "Collect DLsite popular voice works");
-  await expect(page.getByRole("button", { name: "Configure", exact: true })).toHaveCount(0);
-  const runOptions = page.getByRole("region", { name: "Run options", exact: true });
-  await expect(runOptions.getByText("Ranking period", { exact: true }).first()).toBeVisible();
-  await expect(runOptions.getByRole("switch", { name: "Only works released within 30 days" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
-  const dlsiteTagField = runOptions.getByTestId("dlsite-popular-tag-template-field");
-  await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue(
-    "DL_{period}_{release_window}_popular",
-  );
-  await expect(dlsiteTagField).toContainText(/Preview.*DL_24h_r30d_popular/);
-  await expect(dlsiteTagField.getByText("{release_window}", { exact: true })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Workflow run" })).toBeVisible();
+  await openWorkflow(page, "Pull DLsite rankings");
+  await expect(page.getByRole("region", { name: "Run options", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
+  await expect(page.getByText("Each ranking is pulled on its own schedule", { exact: false })).toBeVisible();
   await expect(page.getByText("Recent runs", { exact: true })).toBeVisible();
-
-  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
-  const scheduleDialog = page.getByRole("dialog", { name: "New schedule" });
-  await expect(scheduleDialog).toBeVisible();
-  await page.mouse.click(2, 2);
-  await expect(scheduleDialog).toHaveCount(0);
-  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
-  await expect(scheduleDialog).toBeVisible();
-  const customizeSchedule = scheduleDialog.getByRole("checkbox", { name: "Customize run options", exact: true });
-  await expect(customizeSchedule).toHaveAttribute("aria-checked", "false");
-  await expect(scheduleDialog.getByLabel("Ranking period")).toHaveCount(0);
-  await customizeSchedule.click();
-  await expect(scheduleDialog.getByLabel("Ranking period")).toHaveValue("day");
-  await expect(scheduleDialog.getByLabel("Release window")).toHaveValue("30d");
-  await expect(scheduleDialog.getByLabel("Tag template", { exact: true })).toHaveValue(
-    "DL_{period}_{release_window}_popular",
-  );
-  await expect(scheduleDialog.getByTestId("dlsite-trigger-tag-template-field")).toContainText(
-    /Preview.*DL_24h_r30d_popular/,
-  );
-  await page.mouse.click(2, 2);
-  await expect(scheduleDialog).toBeVisible();
-  await scheduleDialog.getByRole("button", { name: "Cancel", exact: true }).click();
-
-  await runOptions.getByRole("button", { name: "Annual", exact: true }).click();
-  await expect(runOptions.getByRole("switch", { name: "Only works released within 30 days" })).toHaveCount(0);
-  await runOptions.getByLabel("Ranking year").selectOption("2025");
-  await expect(dlsiteTagField.getByLabel("Tag template", { exact: true })).toHaveValue("DL_year_{year}_popular");
-  await expect(dlsiteTagField).toContainText(/Preview.*DL_year_2025_popular/);
-  const dlsiteRequest = page.waitForRequest((request) => request.url().endsWith("/api/workflow-runs/dlsite-popular"));
-  await page.getByRole("button", { name: "Run", exact: true }).click();
-  expect((await dlsiteRequest).postDataJSON()).toEqual({
-    period: "year",
-    releaseWindow: "",
-    year: 2025,
-    tagNameTemplate: "DL_year_{year}_popular",
-    skipTag: false,
-  });
-  const queuedActivity = page.getByRole("dialog", { name: "Activity", exact: true });
-  await expect(queuedActivity).toBeVisible();
-  await expect(page).toHaveURL(/activity=1/);
-  await expect(page).not.toHaveURL(/run=/);
-
-  await page.goto("/about");
-  await page.goto("/workflows");
-  await openWorkflow(page, "Collect DLsite popular voice works");
   await page.getByRole("button", { name: /^#51 Manual · day / }).click();
   await expect(page).toHaveURL(/\/workflows\?.*run=51/);
-});
+  await page.getByRole("button", { name: "Close Activity", exact: true }).click();
 
-test("popular trigger popovers save the run options shown above", async ({ page }) => {
-  await mockWorkflows(page);
-  await page.goto("/workflows");
-
-  await openWorkflow(page, "Collect DLsite popular voice works");
-  const dlsiteOptions = page.getByRole("region", { name: "Run options", exact: true });
-  await dlsiteOptions.getByRole("button", { name: "7 days", exact: true }).click();
-  const dlsiteTriggerRequest = page.waitForRequest(
-    (request) => request.method() === "POST" && request.url().endsWith("/api/workflow-triggers"),
-  );
-  await page.getByRole("button", { name: "Add schedule", exact: true }).click();
-  const dlsitePopover = page.getByRole("dialog", { name: "New schedule" });
-  await expect(dlsitePopover.getByRole("checkbox", { name: "Customize run options" })).toHaveAttribute(
-    "aria-checked",
-    "false",
-  );
-  await dlsitePopover.getByRole("button", { name: "Add", exact: true }).click();
-  const dlsitePayload = (await dlsiteTriggerRequest).postDataJSON();
-  expect(JSON.parse(dlsitePayload.configJson)).toMatchObject({
-    period: "week",
-    releaseWindow: "30d",
-    year: 0,
-    tagNameTemplate: "DL_{period}_{release_window}_popular",
-    skipTag: false,
-  });
-
-  await openWorkflow(page, "Collect popular remote works");
-  const remoteOptions = page.getByRole("region", { name: "Run options", exact: true });
-  await remoteOptions.getByRole("group", { name: "Work limit" }).getByRole("button", { name: "50" }).click();
-  await remoteOptions.getByRole("switch", { name: "Add a user tag to collected works" }).click();
-  const remoteTriggerRequest = page.waitForRequest(
-    (request) => request.method() === "POST" && request.url().endsWith("/api/workflow-triggers"),
-  );
-  await page.getByRole("button", { name: "Run at startup", exact: true }).click();
-  const remotePopover = page.getByRole("dialog", { name: "New startup trigger" });
-  await expect(remotePopover.getByRole("checkbox", { name: "Customize run options" })).toHaveAttribute(
-    "aria-checked",
-    "false",
-  );
-  await remotePopover.getByRole("button", { name: "Add", exact: true }).click();
-  const remotePayload = (await remoteTriggerRequest).postDataJSON();
-  expect(JSON.parse(remotePayload.configJson)).toMatchObject({
-    sourceId: 8,
-    action: "track",
-    limit: 50,
-    skipTag: true,
-  });
-  expect(remotePayload.triggerType).toBe("startup");
+  await page.getByRole("button", { name: "Open Subscriptions", exact: true }).click();
+  await expect(page).toHaveURL(/\/subscriptions\?view=rankings&panel=rankings$/);
 });
 
 // Only the wide layout keeps the workflow list beside an open trigger editor.
@@ -1129,22 +969,22 @@ test("@desktop an open trigger editor keeps its workflow when another workflow i
   await mockWorkflows(page);
   await page.goto("/workflows");
 
-  await openWorkflow(page, "Collect DLsite popular voice works");
+  await openWorkflow(page, "Sync work metadata");
   await page.getByRole("button", { name: "Add schedule", exact: true }).click();
   const popover = page.getByRole("dialog", { name: "New schedule" });
   // Customizing keeps the popover open through an outside pointer.
   await popover.getByRole("checkbox", { name: "Customize run options" }).click();
-  const remote = workflowList(page).getByRole("button", { name: "Collect popular remote works", exact: true });
-  await remote.click();
-  await expect(remote).toHaveAttribute("aria-current", "true");
+  const scan = workflowList(page).getByRole("button", { name: "Scan local library", exact: true });
+  await scan.click();
+  await expect(scan).toHaveAttribute("aria-current", "true");
 
   const triggerRequest = page.waitForRequest(
     (request) => request.method() === "POST" && request.url().endsWith("/api/workflow-triggers"),
   );
   await popover.getByRole("button", { name: "Add", exact: true }).click();
   const payload = (await triggerRequest).postDataJSON();
-  expect(payload.workflowDefinitionId).toBe(3);
-  expect(JSON.parse(payload.configJson)).toMatchObject({ period: expect.any(String) });
+  expect(payload.workflowDefinitionId).toBe(1);
+  expect(JSON.parse(payload.configJson)).toMatchObject({ scope: expect.any(String) });
 });
 
 test("workflow deep links do not override a later workflow selection", async ({ page }) => {
@@ -1561,7 +1401,7 @@ test("local work file refresh sends the chosen mode for manual and startup runs"
 
 test("availability watch edits its configuration in place and manages the watch pool on mobile", async ({ page }) => {
   const updates: unknown[] = [];
-  await mockWorkflows(page, undefined, undefined, undefined, (payload) => updates.push(payload));
+  await mockWorkflows(page, undefined, undefined, (payload) => updates.push(payload));
   await page.goto("/workflows?workflow=availability_watch");
 
   // Workflows keeps the run history and links to the Subscriptions page,
@@ -1646,7 +1486,7 @@ test("availability watch edits its configuration in place and manages the watch 
 });
 
 test("availability notifications open the watch pool's available works", async ({ page }) => {
-  await mockWorkflows(page, undefined, undefined, {
+  await mockWorkflows(page, undefined, {
     total: 1,
     notifications: [
       notificationFixture({
@@ -1743,7 +1583,6 @@ test("activity reports Fetch byte progress without guessing unknown totals", asy
   const knownRun: WorkflowRun = { ...unknownRun, id: 53, progressBytesUnknownItems: 0 };
   await mockWorkflows(
     page,
-    undefined,
     workflowRunsPageFixture([unknownRun, knownRun], {
       viewTotals: { running: 2, review: 0, failed: 0, completed: 0 },
     }),
@@ -1799,7 +1638,7 @@ test("@desktop blocked Fetch origins stay in Review with source recovery actions
   const runsPage = workflowRunsPageFixture([reviewRun], {
     viewTotals: { running: 0, review: 1, failed: 0, completed: 0 },
   });
-  await mockWorkflows(page, undefined, runsPage);
+  await mockWorkflows(page, runsPage);
   let retries = 0;
   await page.route("**/api/workflow-runs/51", async (route) => {
     await route.fulfill({
@@ -2035,9 +1874,7 @@ test("activity deep links load a run outside the visible list page", async ({ pa
 
   await expect(page).toHaveURL(/\/workflows\?.*run=99/);
   const activity = page.getByRole("dialog", { name: "Activity", exact: true });
-  await expect(
-    activity.getByRole("heading", { name: "Collect DLsite popular voice works", exact: true }),
-  ).toBeVisible();
+  await expect(activity.getByRole("heading", { name: "Pull DLsite rankings", exact: true })).toBeVisible();
   await expect(activity.getByText("#99", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open full Activity", exact: true })).toHaveCount(0);
 });
@@ -2045,7 +1882,6 @@ test("activity deep links load a run outside the visible list page", async ({ pa
 test("activity uses two scoped counted tabs and a single empty state", async ({ page }) => {
   await mockWorkflows(
     page,
-    undefined,
     workflowRunsPageFixture([], {
       viewTotals: { running: 0, review: 0, failed: 0, completed: 14, attention: 0, history: 14 },
     }),
@@ -2110,52 +1946,6 @@ test("workflow metadata loads as one snapshot without an interim empty panel", a
   releaseDefinitions();
   await expect(workflowList(page).getByRole("button", { name: "Sync work metadata", exact: true })).toBeVisible();
   await expect(page.getByRole("status", { name: "Loading workflow data" })).toHaveCount(0);
-});
-
-test("remote popular collection requires an explicit source and queues configured options", async ({ page }) => {
-  const payloads: unknown[] = [];
-  await mockWorkflows(page, (payload) => payloads.push(payload));
-  await page.goto("/workflows");
-  await openWorkflow(page, "Collect popular remote works");
-
-  const runOptions = page.getByRole("region", { name: "Run options", exact: true });
-  await expect(runOptions.getByLabel("Remote source")).toHaveValue("8");
-  await runOptions.getByRole("button", { name: "Fetch", exact: true }).click();
-  await runOptions.getByRole("group", { name: "Work limit" }).getByRole("button", { name: "50", exact: true }).click();
-  const remoteTagField = runOptions.getByTestId("remote-popular-tag-template-field");
-  await expect(remoteTagField.getByRole("button", { name: /\{remote_name\}.*Remote_Test/ })).toBeVisible();
-  await expect(remoteTagField.getByRole("button", { name: /\{source_code\}.*remote-test/ })).toBeVisible();
-  await expect(remoteTagField.getByRole("button", { name: /\{action\}.*fetch/ })).toBeVisible();
-  await remoteTagField.getByLabel("Tag template", { exact: true }).fill("weekly_{source_code}_{action}_popular");
-  await expect(remoteTagField).toContainText("weekly_remote-test_fetch_popular");
-  await page.getByRole("button", { name: "Run", exact: true }).click();
-
-  await expect.poll(() => payloads).toHaveLength(1);
-  expect(payloads[0]).toEqual({
-    sourceId: 8,
-    action: "fetch",
-    limit: 50,
-    tagNameTemplate: "weekly_{source_code}_{action}_popular",
-    skipTag: false,
-  });
-  const queuedActivity = page.getByRole("dialog", { name: "Activity", exact: true });
-  await expect(queuedActivity).toBeVisible();
-  await expect(page).toHaveURL(/activity=1/);
-  await expect(page).not.toHaveURL(/run=/);
-});
-
-test("remote popular shows an unavailable overlay without a compatible source", async ({ page }) => {
-  await mockWorkflows(page);
-  await page.route("**/api/library-sources", (route) => route.fulfill({ json: [] satisfies LibrarySource[] }));
-  await page.goto("/workflows");
-
-  await expect(
-    workflowList(page).getByRole("button", { name: "Collect popular remote works", exact: true }),
-  ).toBeEnabled();
-  await openWorkflow(page, "Collect popular remote works");
-  await expect(page.getByRole("status").filter({ hasText: "Configure a compatible remote source" })).toBeVisible();
-  await page.getByRole("button", { name: "Configure remote source" }).click();
-  await expect(page).toHaveURL(/\/settings\?tab=library#remote-sources$/);
 });
 
 test("mobile header orders actions and keeps languages in the account panel", async ({ page }) => {
@@ -2489,8 +2279,8 @@ test("the mobile workflow list opens one workflow at a time and Back returns to 
     /^Local scan/,
     /^Local files/,
     /^Metadata sync/,
-    /^Remote popular/,
-    /^DLsite popular/,
+    /^Remote rankings/,
+    /^DLsite rankings/,
     /^Availability Watch/,
   ]);
   // The list is the landing view; no workflow opens until one is chosen.
@@ -2795,10 +2585,8 @@ test("workflow run monitor lists stages and filters the run log by stage", async
         { ...sampleRun, status: "failed" },
         {
           nodeRuns: [
-            node(601, "configure", "Configure ranking", "succeeded"),
-            node(602, "discover", "Discover ranking", "succeeded"),
-            node(603, "metadata", "Sync metadata", "failed", "Provider timed out"),
-            node(604, "tag", "Add user tag", "skipped"),
+            node(601, "pull", "Pull rankings", "succeeded"),
+            node(602, "record", "Record changes", "failed", "Provider timed out"),
           ],
           graphJson: "",
         },
@@ -2809,20 +2597,19 @@ test("workflow run monitor lists stages and filters the run log by stage", async
 
   const monitor = page.getByRole("region", { name: "Workflow run" });
   const stages = monitor.getByRole("list", { name: "Workflow stages" }).getByRole("listitem");
-  await expect(stages).toHaveCount(4);
-  await expect(stages.nth(1)).toContainText("Discover ranking");
-  await expect(stages.nth(1)).toContainText("Succeeded");
-  await expect(stages.nth(2)).toContainText("Failed");
-  await expect(stages.nth(3)).toContainText("Skipped");
+  await expect(stages).toHaveCount(2);
+  await expect(stages.nth(0)).toContainText("Pull rankings");
+  await expect(stages.nth(0)).toContainText("Succeeded");
+  await expect(stages.nth(1)).toContainText("Failed");
 
   const log = monitor.getByRole("log", { name: "Run log" });
   await expect(log).toContainText("Tagging works");
-  await expect(log).toContainText("Sync metadata finished: Failed");
+  await expect(log).toContainText("Record changes finished: Failed");
   await expect(log).toContainText("Provider timed out");
 
-  await stages.nth(2).getByRole("button").click();
+  await stages.nth(1).getByRole("button").click();
   await expect(log).not.toContainText("Tagging works");
-  await expect(log).toContainText("Sync metadata finished: Failed");
+  await expect(log).toContainText("Record changes finished: Failed");
   await monitor.getByRole("button", { name: "Show all stages", exact: true }).click();
   await expect(log).toContainText("Tagging works");
 

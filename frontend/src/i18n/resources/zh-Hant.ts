@@ -460,7 +460,8 @@ const adminToolsHant = {
       },
       old_ranking_snapshots: {
         title: "舊的排行榜歷史",
-        description: "超過 90 天的排行榜更新。每個排行榜最新的兩次更新會保留。",
+        description:
+          "超出排行榜設定中歷史保留期限的排行榜更新。最新排名、已定稿的年度排行榜以及每個帳戶最後查看的更新會保留。",
       },
     },
     optimize: {

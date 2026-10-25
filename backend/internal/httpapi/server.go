@@ -472,8 +472,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/workflow-runs/local-media-index", s.createLocalMediaIndexRun)
 	mux.HandleFunc("POST /api/workflow-runs/source-presence-check", s.createSourcePresenceCheckRun)
 	mux.HandleFunc("POST /api/workflow-runs/remote-bulk", s.createRemoteBulkRun)
-	mux.HandleFunc("POST /api/workflow-runs/remote-popular", s.createRemotePopularCollectionRun)
-	mux.HandleFunc("POST /api/workflow-runs/dlsite-popular", s.createDLsitePopularCollectionRun)
 	mux.HandleFunc("POST /api/workflow-runs/dlsite-sync", s.createDLsiteSyncRun)
 	mux.HandleFunc("GET /api/availability-watch", s.getAvailabilityWatch)
 	mux.HandleFunc("PUT /api/availability-watch", s.updateAvailabilityWatch)
@@ -494,9 +492,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/subscriptions/feed/seen", s.markReleaseFeedSeen)
 	mux.HandleFunc("GET /api/rankings", s.listRankings)
 	mux.HandleFunc("POST /api/rankings", s.createRanking)
-	mux.HandleFunc("PUT /api/rankings/schedule", s.updateRankingSchedule)
+	mux.HandleFunc("PUT /api/rankings/retention", s.updateRankingRetention)
 	mux.HandleFunc("POST /api/rankings/refresh", s.runRankingRefresh)
 	mux.HandleFunc("GET /api/rankings/{id}", s.getRanking)
+	mux.HandleFunc("GET /api/rankings/{id}/snapshots", s.listRankingSnapshots)
 	mux.HandleFunc("PATCH /api/rankings/{id}", s.updateRanking)
 	mux.HandleFunc("DELETE /api/rankings/{id}", s.deleteRanking)
 	mux.HandleFunc("POST /api/rankings/{id}/seen", s.markRankingSeen)
@@ -601,7 +600,7 @@ func (s *Server) RunStartupWorkflows(ctx context.Context) error {
 	if err := s.ensureCreatorSubscriptionSchedule(ctx); err != nil {
 		return err
 	}
-	if err := s.ensureRankingSchedule(ctx); err != nil {
+	if err := s.ensureRankingDispatchers(ctx); err != nil {
 		return err
 	}
 	if err := s.dispatchStartupSystemWorkflowTriggers(ctx); err != nil {

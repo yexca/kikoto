@@ -15,7 +15,18 @@ import {
 } from "@/components/work-collection/WorkCollectionLayout";
 import { openWorkDetail } from "@/app/workDetailNavigation";
 import { RankingSettings } from "@/features/rankings/RankingSettings";
-import { rankingCompareFromSearch, rankingListFromSearch } from "@/features/rankings/rankingModel";
+import {
+  DEFAULT_RANKING_ORDER,
+  rankingAtFromSearch,
+  rankingChipKey,
+  rankingCompareFromSearch,
+  rankingListFromSearch,
+  rankingOrderFor,
+  rankingOrderFromSearch,
+  rankingOrderSearch,
+  rankingsUnseen as anyRankingUnseen,
+} from "@/features/rankings/rankingModel";
+import { readRankingOrderPreferences, writeRankingOrderPreference } from "@/features/rankings/rankingOrderPreference";
 import { RankingsView } from "@/features/rankings/RankingsView";
 import { useRankingOverview } from "@/features/rankings/useRankingOverview";
 import { openWorkCodeRoute } from "@/features/work-detail/workDetailShared";
@@ -37,7 +48,8 @@ import { AvailabilityWatchManager } from "@/features/workflows/availability-watc
 import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import i18n from "@/i18n";
-import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { NAVIGATION_EVENT, requestHistoryScrollRestoration } from "@/lib/browserHistory";
+import type { RankingOrder } from "@/lib/rankingApi";
 
 const feedDaysStorageKey = "kikoto:release-feed-days";
 
@@ -49,18 +61,28 @@ function readFeedDays(): ReleaseFeedDayCount {
   }
 }
 
-/** Replaces the location's query without a history entry; a null value removes the key. */
-function replaceSearch(patch: Record<string, string | null>) {
+function patchedLocation(patch: Record<string, string | null>) {
   const params = new URLSearchParams(window.location.search);
   for (const [key, value] of Object.entries(patch)) {
     if (value) params.set(key, value);
     else params.delete(key);
   }
-  window.history.replaceState(
-    window.history.state,
+  return `${window.location.pathname}${params.size ? `?${params}` : ""}`;
+}
+
+/** Replaces the location's query without a history entry; a null value removes the key. */
+function replaceSearch(patch: Record<string, string | null>) {
+  window.history.replaceState(window.history.state, "", patchedLocation(patch));
+}
+
+/** Changes the location's query in a new history entry, so Back returns to the current one at its scroll. */
+function pushSearch(patch: Record<string, string | null>) {
+  window.history.pushState(
+    requestHistoryScrollRestoration(window.history.state, window.scrollY),
     "",
-    `${window.location.pathname}${params.size ? `?${params}` : ""}`,
+    patchedLocation(patch),
   );
+  window.dispatchEvent(new Event(NAVIGATION_EVENT));
 }
 
 /** Opens a ranked code: its work, or a remote list's source page for a code the library lacks. */
@@ -111,8 +133,16 @@ export function SubscriptionsPage({
   const [view, setView] = useState<SubscriptionView>(() => subscriptionViewFromSearch(window.location.search));
   const [rankingListId, setRankingListId] = useState(() => rankingListFromSearch(window.location.search));
   const [rankingCompare, setRankingCompare] = useState(() => rankingCompareFromSearch(window.location.search));
+  const [rankingAt, setRankingAt] = useState(() => rankingAtFromSearch(window.location.search));
+  const [rankingOrder, setRankingOrder] = useState(() => rankingOrderFromSearch(window.location.search));
+  const [rankingOrderPreferences, setRankingOrderPreferences] = useState(readRankingOrderPreferences);
   const rankings = useRankingOverview();
-  const rankingsUnseen = rankings.overview?.lists.some((list) => list.enabled && list.unseen) ?? false;
+  const rankingsUnseen = anyRankingUnseen(
+    rankings.overview?.lists ?? [],
+    rankingListId,
+    rankingOrder,
+    rankingOrderPreferences,
+  );
   const [unread, setUnread] = useState(0);
   const [feedPage, setFeedPage] = useState(() => releaseFeedPageFromSearch(window.location.search));
   const [feedDays, setFeedDays] = useState(readFeedDays);
@@ -133,6 +163,8 @@ export function SubscriptionsPage({
       setView(subscriptionViewFromSearch(window.location.search));
       setRankingListId(rankingListFromSearch(window.location.search));
       setRankingCompare(rankingCompareFromSearch(window.location.search));
+      setRankingAt(rankingAtFromSearch(window.location.search));
+      setRankingOrder(rankingOrderFromSearch(window.location.search));
     };
     window.addEventListener(NAVIGATION_EVENT, sync);
     window.addEventListener("popstate", sync);
@@ -151,12 +183,46 @@ export function SubscriptionsPage({
     setFeedPage(1);
     setRankingListId(null);
     setRankingCompare("");
-    replaceSearch({ view: next === "rankings" ? next : null, page: null, list: null, compare: null });
+    setRankingAt(null);
+    setRankingOrder(null);
+    replaceSearch({
+      view: next === "rankings" ? next : null,
+      page: null,
+      list: null,
+      compare: null,
+      at: null,
+      release: null,
+      sort: null,
+    });
   };
+  // A chip opens in the order last chosen on it, named in the location.
   const changeRankingList = (next: number) => {
+    const list = rankings.overview?.lists.find((item) => item.id === next);
+    const preferred = list ? rankingOrderPreferences[rankingChipKey(list)] : undefined;
+    const nextOrder = list && preferred ? rankingOrderFor(list, preferred) : null;
     setRankingListId(next);
     setRankingCompare("");
-    replaceSearch({ list: String(next), compare: null });
+    setRankingAt(null);
+    setRankingOrder(nextOrder);
+    replaceSearch({
+      list: String(next),
+      compare: null,
+      at: null,
+      ...rankingOrderSearch(nextOrder ?? DEFAULT_RANKING_ORDER),
+    });
+  };
+  // The order is a history entry of its own and is remembered for the chip.
+  const changeRankingOrder = (chipKey: string, next: RankingOrder) => {
+    writeRankingOrderPreference(chipKey, next);
+    setRankingOrderPreferences((current) => ({ ...current, [chipKey]: next }));
+    setRankingOrder(next);
+    setRankingCompare("");
+    pushSearch({ ...rankingOrderSearch(next), compare: null });
+  };
+  const changeRankingAt = (next: string | null) => {
+    setRankingAt(next);
+    setRankingCompare("");
+    replaceSearch({ at: next, compare: null });
   };
   const changeRankingCompare = (next: string) => {
     setRankingCompare(next);
@@ -328,12 +394,17 @@ export function SubscriptionsPage({
               <RankingsView
                 rankings={rankings}
                 listId={rankingListId}
+                at={rankingAt}
                 compare={rankingCompare}
+                order={rankingOrder}
+                orderPreferences={rankingOrderPreferences}
                 readOnly={readOnly}
                 canManage={canManageSchedule}
                 canMarkSeen={canSubscribe && !readOnly}
                 canWatch={!readOnly && canRunWorkflows && canManageSchedule}
                 onListChange={changeRankingList}
+                onOrderChange={changeRankingOrder}
+                onAtChange={changeRankingAt}
                 onCompareChange={changeRankingCompare}
                 onOpenSettings={() => showPanel("rankings")}
                 onOpenRun={openRun}

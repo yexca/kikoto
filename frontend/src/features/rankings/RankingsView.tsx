@@ -1,11 +1,26 @@
-import { ArrowDown, ArrowUp, ChevronDown, Eye, ListOrdered, Loader2, RefreshCw, Settings2 } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  History,
+  ListOrdered,
+  Loader2,
+  RefreshCw,
+  Settings2,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FloatingSelect } from "@/components/ui/floating-select";
-import { filterChipClassName } from "@/components/ui/segmented";
+import { Input } from "@/components/ui/input";
+import { filterChipClassName, segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
+import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { CompactWorkCardShell } from "@/components/work-card/CompactWorkCard";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
@@ -18,19 +33,43 @@ import {
   WorkCardListButton,
   type WorkCardViewModel,
 } from "@/components/work-card/WorkCardShell";
-import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
-import { api, type RankingChange, type RankingDroppedItem, type RankingItem, type RankingPage } from "@/lib/api";
+import {
+  api,
+  type RankingChange,
+  type RankingDroppedItem,
+  type RankingItem,
+  type RankingList,
+  type RankingOrder,
+  type RankingPage,
+  type RankingSnapshotRef,
+  type RankingVariant,
+} from "@/lib/api";
 import { openCircleRoute } from "@/lib/circleNavigationState";
 import { parseServerTimestamp } from "@/lib/serverTimestamp";
 import { cn } from "@/lib/tailwindClassNames";
 
 import {
+  ARCHIVE_RANKING_FILTERS,
+  formatRankingTime,
   matchesRankingFilter,
   RANKING_FILTERS,
+  rankingChipLabel,
+  rankingChipOrder,
+  rankingChips,
+  rankingChipUnseen,
+  rankingDayAt,
+  rankingDayIsDailyOnly,
   rankingFilterCounts,
-  rankingListLabel,
+  rankingInstant,
+  rankingOffersReleaseWindow,
+  rankingOffersSalesOrder,
+  rankingOrderFor,
   rankingStreakDays,
+  rankingVariantFor,
+  zonedDay,
+  zonedDayRange,
+  zonedWallTime,
   type RankingFilter,
 } from "./rankingModel";
 import type { RankingOverviewState } from "./useRankingOverview";
@@ -76,18 +115,27 @@ function rankingCardView(item: RankingItem | RankingDroppedItem, unknownCircle: 
 
 /**
  * One tracked ranking's latest order compared with a baseline: the account's
- * last visit by default, the previous update, or a picked update. Entries are
- * codes; one without a library work shows the ranking's own text.
+ * last visit by default, the previous update, or another time. A DLsite
+ * ranking shows one of its orders: all works or those released within 30
+ * days, by popularity or by sales; each order keeps its own history and seen
+ * state. History shows the order in effect at a chosen time, compared with the
+ * update before it, and never records the ranking as seen. Entries are codes;
+ * one without a library work shows the ranking's own text.
  */
 export function RankingsView({
   rankings,
   listId,
+  at,
   compare,
+  order,
+  orderPreferences,
   readOnly,
   canManage,
   canMarkSeen,
   canWatch,
   onListChange,
+  onOrderChange,
+  onAtChange,
   onCompareChange,
   onOpenSettings,
   onOpenRun,
@@ -96,16 +144,24 @@ export function RankingsView({
   rankings: RankingOverviewState;
   /** The list named in the location, or null for the first one. */
   listId: number | null;
-  /** "" for the last visit, "previous", or a snapshot id. */
+  /** The history time named in the location, as an ISO instant, or null for the latest order. */
+  at: string | null;
+  /** "" for the default, "previous", a snapshot id, or an ISO time. */
   compare: string;
+  /** The order named in the location, or null for the one last chosen on the chip. */
+  order: RankingOrder | null;
+  /** The order last chosen on each chip. */
+  orderPreferences: Readonly<Record<string, RankingOrder>>;
   readOnly: boolean;
-  /** `metadata:sync`: rankings may be added and refreshed. */
+  /** `metadata:sync`: rankings may be configured and refreshed. */
   canManage: boolean;
-  /** Opening a ranking records it as seen; Demo keeps its sample state. */
+  /** Opening the latest order records it as seen; Demo keeps its sample state. */
   canMarkSeen: boolean;
   /** The account may add works to Availability Watch. */
   canWatch: boolean;
   onListChange: (listId: number) => void;
+  onOrderChange: (chipKey: string, order: RankingOrder) => void;
+  onAtChange: (at: string | null) => void;
   onCompareChange: (compare: string) => void;
   onOpenSettings: () => void;
   onOpenRun: (runId: number) => void;
@@ -117,13 +173,23 @@ export function RankingsView({
   const { resolvedLocale } = useLocale();
   const { overview, error: overviewError, reload, markSeen } = rankings;
   const lists = (overview?.lists ?? []).filter((list) => list.enabled);
-  const selected = lists.find((list) => list.id === listId) ?? lists[0] ?? null;
+  const chips = rankingChips(lists);
+  const selected = lists.find((list) => list.id === listId) ?? chips[0]?.lists[0] ?? null;
   const selectedId = selected?.id ?? null;
+  const selectedChip = chips.find((chip) => chip.lists.some((list) => list.id === selectedId)) ?? null;
+  const shown = { chipKey: selectedChip?.key ?? null, order };
+  const shownOrder =
+    selected && selectedChip
+      ? rankingOrderFor(selected, rankingChipOrder(selectedChip, shown, orderPreferences))
+      : null;
+  const releaseWindow = shownOrder?.releaseWindow ?? "";
+  const sort = shownOrder?.sort ?? "";
   const [page, setPage] = useState<RankingPage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<RankingFilter>("all");
   const [droppedOpen, setDroppedOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(at !== null);
   const [refreshing, setRefreshing] = useState(false);
   const [watched, setWatched] = useState<Set<string>>(() => new Set());
   const seenSnapshots = useRef(new Set<string>());
@@ -134,14 +200,15 @@ export function RankingsView({
       setLoading(true);
       setError("");
       try {
-        const next = await api.getRanking(selectedId, compare, signal);
+        const next = await api.getRanking(selectedId, { at: at ?? undefined, compare, releaseWindow, sort }, signal);
         setPage(next);
+        // Only the latest order counts as seen; looking at history does not.
         const snapshot = next.snapshot;
         const key = snapshot ? `${selectedId}:${snapshot.id}` : "";
-        if (canMarkSeen && !next.demo && snapshot && next.list.unseen && !seenSnapshots.current.has(key)) {
+        if (canMarkSeen && !next.demo && !at && snapshot && next.variant.unseen && !seenSnapshots.current.has(key)) {
           seenSnapshots.current.add(key);
           await api.markRankingSeen(selectedId, snapshot.id);
-          markSeen(selectedId);
+          markSeen(selectedId, next.variant.id);
         }
       } catch (loadError) {
         if (!signal?.aborted)
@@ -150,7 +217,7 @@ export function RankingsView({
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [canMarkSeen, compare, markSeen, selectedId, t],
+    [at, canMarkSeen, compare, markSeen, releaseWindow, selectedId, sort, t],
   );
 
   useEffect(() => {
@@ -162,7 +229,11 @@ export function RankingsView({
   useEffect(() => {
     setFilter("all");
     setDroppedOpen(false);
-  }, [selectedId]);
+  }, [releaseWindow, selectedId, sort]);
+
+  useEffect(() => {
+    if (at !== null) setHistoryOpen(true);
+  }, [at]);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -212,40 +283,66 @@ export function RankingsView({
   }
 
   const demo = overview.demo;
-  const current = page && page.list.id === selected.id ? page : null;
-  const time = (value: string | null | undefined) => {
-    const parsed = parseServerTimestamp(value);
-    return parsed ? formatDateTime(parsed, resolvedLocale) : "";
+  const timeZone = overview.timeZone || "UTC";
+  const variant = rankingVariantFor(selected, shownOrder ?? { releaseWindow, sort });
+  const current = page && page.list.id === selected.id && page.variant.id === variant?.id ? page : null;
+  const time = (value: string | null | undefined) => formatRankingTime(value, resolvedLocale, timeZone);
+  const canRefresh = canManage && !readOnly && !demo && selected.sourceAvailable;
+  const latestRunId = overview.workflows.find(
+    (workflow) =>
+      workflow.code ===
+      (selected.provider === "remote_source" ? "remote_popular_collection" : "dlsite_popular_collection"),
+  )?.latestRun?.id;
+  const closeHistory = () => {
+    setHistoryOpen(false);
+    if (at !== null) onAtChange(null);
   };
-  const canRefresh = canManage && !readOnly && !demo;
 
   const chooser = (
-    <div
-      role="tablist"
-      aria-label={t("subscriptions.rankings.listsLabel")}
-      className="-mx-4 flex gap-1.5 overflow-x-auto overflow-y-hidden px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden"
-    >
-      {lists.map((list) => {
-        const active = list.id === selected.id;
-        return (
-          <button
-            key={list.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            className={filterChipClassName(active)}
-            onClick={() => onListChange(list.id)}
-          >
-            {rankingListLabel(list, t)}
-            {list.unseen && (
-              <span className="h-2 w-2 shrink-0 rounded-full bg-primary" title={t("subscriptions.rankings.unseen")}>
-                <span className="sr-only">{t("subscriptions.rankings.unseen")}</span>
-              </span>
-            )}
-          </button>
-        );
-      })}
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div
+        role="tablist"
+        aria-label={t("subscriptions.rankings.listsLabel")}
+        className="-mx-4 flex gap-1.5 overflow-x-auto overflow-y-hidden px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden"
+      >
+        {chips.map((chip) => {
+          const active = chip === selectedChip;
+          return (
+            <button
+              key={chip.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className={filterChipClassName(active)}
+              onClick={() => onListChange(chip.lists[0].id)}
+            >
+              {rankingChipLabel(chip, t)}
+              {rankingChipUnseen(chip, rankingChipOrder(chip, shown, orderPreferences)) && (
+                <span className="h-2 w-2 shrink-0 rounded-full bg-primary" title={t("subscriptions.rankings.unseen")}>
+                  <span className="sr-only">{t("subscriptions.rankings.unseen")}</span>
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {selectedChip?.key === "annual" && selectedChip.lists.length > 1 && (
+        <FloatingSelect
+          value={String(selected.id)}
+          options={selectedChip.lists.map((list) => ({ value: String(list.id), label: String(list.year) }))}
+          ariaLabel={t("subscriptions.rankings.year")}
+          onValueChange={(value) => onListChange(Number(value))}
+          className="w-24"
+        />
+      )}
     </div>
+  );
+  const orderControls = selectedChip && (rankingOffersSalesOrder(selected) || rankingOffersReleaseWindow(selected)) && (
+    <RankingOrderControls
+      list={selected}
+      order={{ releaseWindow, sort }}
+      onOrderChange={(next) => onOrderChange(selectedChip.key, next)}
+    />
   );
 
   let body: ReactNode;
@@ -255,7 +352,7 @@ export function RankingsView({
     ) : (
       <Loading label={t("subscriptions.rankings.loading")} />
     );
-  } else if (!current.snapshot) {
+  } else if (!current.snapshot && !current.at) {
     body = (
       <EmptyState
         title={t("subscriptions.rankings.waiting")}
@@ -280,12 +377,14 @@ export function RankingsView({
         canWatch={canWatch && !readOnly}
         watched={watched}
         time={time}
+        timeZone={timeZone}
+        compare={compare}
         onFilterChange={setFilter}
         onDroppedOpenChange={setDroppedOpen}
         onCompareChange={onCompareChange}
         onWatch={(code) => void watch(code)}
         onOpenRun={canManage ? onOpenRun : undefined}
-        latestRunId={overview.schedule.latestRun?.id}
+        latestRunId={latestRunId}
         onOpenWork={(code) => onOpenWork(code, selected.provider === "remote_source" ? selected.sourceId : null)}
         loading={loading}
       />
@@ -296,15 +395,264 @@ export function RankingsView({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         {chooser}
-        {canRefresh && current?.snapshot && (
-          <Button size="sm" variant="ghost" disabled={refreshing} onClick={() => void refresh()}>
-            {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {t("subscriptions.rankings.refreshNow")}
+        <div className="flex items-center gap-1">
+          {current?.history.firstPulledAt && (
+            <Button
+              size="sm"
+              variant={historyOpen ? "secondary" : "ghost"}
+              aria-pressed={historyOpen}
+              onClick={() => (historyOpen ? closeHistory() : setHistoryOpen(true))}
+            >
+              <History className="h-4 w-4" />
+              {t("subscriptions.rankings.history.open")}
+            </Button>
+          )}
+          {canRefresh && current?.snapshot && !at && (
+            <Button size="sm" variant="ghost" disabled={refreshing} onClick={() => void refresh()}>
+              {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {t("subscriptions.rankings.refreshNow")}
+            </Button>
+          )}
+        </div>
+      </div>
+      {orderControls}
+      {historyOpen && current && variant && (
+        <RankingHistoryBar
+          key={`${selected.id}:${variant.id}`}
+          list={selected}
+          variant={variant}
+          page={current}
+          at={at}
+          timeZone={timeZone}
+          time={time}
+          onAtChange={onAtChange}
+          onClose={closeHistory}
+        />
+      )}
+      {body}
+    </div>
+  );
+}
+
+/**
+ * Chooses the order a DLsite ranking shows: the 30-day window where the
+ * period offers it, and popularity or sales. These choose the list itself;
+ * the filters below only narrow the shown order's items.
+ */
+function RankingOrderControls({
+  list,
+  order,
+  onOrderChange,
+}: {
+  list: RankingList;
+  order: RankingOrder;
+  onOrderChange: (order: RankingOrder) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      {rankingOffersSalesOrder(list) && (
+        <div
+          role="radiogroup"
+          aria-label={t("subscriptions.rankings.order.sortLabel")}
+          className={segmentedListClassName()}
+        >
+          {(["", "sale"] as const).map((value) => (
+            <button
+              key={value || "popularity"}
+              type="button"
+              role="radio"
+              aria-checked={order.sort === value}
+              className={segmentedItemClassName(order.sort === value, "h-7 px-2.5 text-xs")}
+              onClick={() => order.sort !== value && onOrderChange({ ...order, sort: value })}
+            >
+              {t(value ? "subscriptions.rankings.order.sales" : "subscriptions.rankings.order.popularity")}
+            </button>
+          ))}
+        </div>
+      )}
+      {rankingOffersReleaseWindow(list) && (
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Switch
+            checked={order.releaseWindow === "30d"}
+            aria-label={t("subscriptions.rankings.order.releaseWindow")}
+            onCheckedChange={(checked) => onOrderChange({ ...order, releaseWindow: checked ? "30d" : "" })}
+          />
+          {t("subscriptions.rankings.order.releaseWindow")}
+        </label>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Chooses a time in a ranking's history: a day in the account's time zone,
+ * that day's updates, and the update before or after the one shown.
+ */
+function RankingHistoryBar({
+  list,
+  variant,
+  page,
+  at,
+  timeZone,
+  time,
+  onAtChange,
+  onClose,
+}: {
+  list: RankingList;
+  variant: RankingVariant;
+  page: RankingPage;
+  at: string | null;
+  timeZone: string;
+  time: (value: string | null | undefined) => string;
+  onAtChange: (at: string | null) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const { resolvedLocale } = useLocale();
+  const now = Date.now();
+  const today = zonedDay(now, timeZone);
+  const shownTime = at ? Date.parse(at) : (parseServerTimestamp(page.snapshot?.pulledAt)?.getTime() ?? now);
+  const day = zonedDay(shownTime, timeZone);
+  const first = parseServerTimestamp(page.history.firstPulledAt);
+  const firstDay = first ? zonedDay(first.getTime(), timeZone) : today;
+  const [updates, setUpdates] = useState<RankingSnapshotRef[]>([]);
+  const [more, setMore] = useState<number | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const range = zonedDayRange(day, timeZone);
+    api
+      .listRankingSnapshots(
+        list.id,
+        {
+          from: new Date(range.start).toISOString(),
+          to: new Date(range.end).toISOString(),
+          releaseWindow: variant.releaseWindow,
+          sort: variant.sort,
+        },
+        controller.signal,
+      )
+      .then((timeline) => {
+        setUpdates(timeline.snapshots);
+        setMore(timeline.nextAfterId);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setUpdates([]);
+      });
+    return () => controller.abort();
+  }, [day, list.id, timeZone, variant.releaseWindow, variant.sort]);
+
+  const loadMore = async () => {
+    if (more === null) return;
+    const range = zonedDayRange(day, timeZone);
+    const timeline = await api.listRankingSnapshots(list.id, {
+      to: new Date(range.end).toISOString(),
+      afterId: more,
+      releaseWindow: variant.releaseWindow,
+      sort: variant.sort,
+    });
+    setUpdates((current) => [...current, ...timeline.snapshots]);
+    setMore(timeline.nextAfterId);
+  };
+  const go = (snapshot: RankingSnapshotRef | null) => snapshot && onAtChange(rankingInstant(snapshot.pulledAt));
+  const coverage = page.coverage;
+  const notes: string[] = [];
+  if (at && page.snapshot) {
+    notes.push(
+      t("subscriptions.rankings.history.pulled", {
+        pulled: time(page.snapshot.pulledAt),
+        confirmed: time(page.snapshot.confirmedUntil),
+      }),
+    );
+  }
+  if (coverage?.state === "unpulled") {
+    notes.push(t("subscriptions.rankings.history.unpulled", { confirmed: time(coverage.confirmedUntil) }));
+  }
+  if (coverage?.state === "before") {
+    notes.push(t("subscriptions.rankings.history.before", { time: time(page.history.firstPulledAt) }));
+  }
+  if (rankingDayIsDailyOnly(day, timeZone, page.history.fullFrom))
+    notes.push(t("subscriptions.rankings.history.dailyOnly"));
+
+  return (
+    <section
+      className="space-y-3 rounded-lg border bg-card p-3 text-sm"
+      aria-label={t("subscriptions.rankings.history.label")}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          {t("subscriptions.rankings.history.date")}
+          <Input
+            type="date"
+            value={day}
+            min={firstDay}
+            max={today}
+            className="h-8 w-40"
+            onChange={(event) => {
+              const next = event.target.value;
+              if (next) onAtChange(rankingDayAt(next, timeZone, Date.now()));
+            }}
+          />
+        </label>
+        <div className="ml-auto flex items-center gap-1">
+          <Button size="sm" variant="ghost" disabled={!page.previousSnapshot} onClick={() => go(page.previousSnapshot)}>
+            <ChevronLeft className="h-4 w-4" />
+            {t("subscriptions.rankings.history.previous")}
+          </Button>
+          <Button size="sm" variant="ghost" disabled={!page.nextSnapshot} onClick={() => go(page.nextSnapshot)}>
+            {t("subscriptions.rankings.history.next")}
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          {at && (
+            <Button size="sm" variant="ghost" onClick={() => onAtChange(null)}>
+              {t("subscriptions.rankings.history.latest")}
+            </Button>
+          )}
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={t("subscriptions.rankings.history.close")}
+            title={t("subscriptions.rankings.history.close")}
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      <div
+        role="group"
+        aria-label={t("subscriptions.rankings.history.updates")}
+        className="flex flex-wrap items-center gap-1.5"
+      >
+        {updates.length === 0 ? (
+          <span className="text-xs text-muted-foreground">{t("subscriptions.rankings.history.noUpdates")}</span>
+        ) : (
+          updates.map((update) => (
+            <button
+              key={update.id}
+              type="button"
+              aria-pressed={page.snapshot?.id === update.id}
+              className={filterChipClassName(page.snapshot?.id === update.id)}
+              onClick={() => go(update)}
+            >
+              {formatRankingTime(update.pulledAt, resolvedLocale, timeZone, "time")}
+            </button>
+          ))
+        )}
+        {more !== null && (
+          <Button size="sm" variant="ghost" onClick={() => void loadMore()}>
+            {t("subscriptions.rankings.history.more")}
           </Button>
         )}
       </div>
-      {body}
-    </div>
+      <div className="space-y-0.5 text-xs text-muted-foreground" role="status">
+        {notes.map((note) => (
+          <p key={note}>{note}</p>
+        ))}
+        <p>{t("subscriptions.rankings.history.timeZone", { zone: timeZone })}</p>
+      </div>
+    </section>
   );
 }
 
@@ -317,6 +665,8 @@ function RankingSnapshot({
   watched,
   loading,
   time,
+  timeZone,
+  compare,
   onFilterChange,
   onDroppedOpenChange,
   onCompareChange,
@@ -333,6 +683,8 @@ function RankingSnapshot({
   watched: Set<string>;
   loading: boolean;
   time: (value: string | null | undefined) => string;
+  timeZone: string;
+  compare: string;
   onFilterChange: (filter: RankingFilter) => void;
   onDroppedOpenChange: (open: boolean) => void;
   onCompareChange: (compare: string) => void;
@@ -343,21 +695,33 @@ function RankingSnapshot({
 }) {
   const { t } = useTranslation();
   const list = page.list;
+  // A finished annual ranking is an archive: ranks without movement.
+  const archive = list.finalAt !== null;
+  const history = page.at !== null;
   const counts = rankingFilterCounts(page);
-  const items = page.items.filter((item) => matchesRankingFilter(item, filter));
+  const filters: readonly RankingFilter[] = archive ? ARCHIVE_RANKING_FILTERS : RANKING_FILTERS;
+  const items = page.items.filter((item) => matchesRankingFilter(item, filters.includes(filter) ? filter : "all"));
   const now = new Date();
   const baseline = page.baseline;
-  const compareValue =
-    baseline?.kind === "snapshot" ? String(baseline.id) : baseline?.kind === "previous" ? "previous" : "";
+  const timedCompare = compare.includes("T");
+  const [choosingTime, setChoosingTime] = useState(timedCompare);
+  const compareValue = timedCompare || choosingTime ? "time" : compare === "previous" ? "previous" : "";
   const compareOptions = [
-    { value: "", label: t("subscriptions.rankings.compare.seen") },
-    { value: "previous", label: t("subscriptions.rankings.compare.previous") },
-    ...page.snapshots.slice(1).map((snapshot) => ({ value: String(snapshot.id), label: time(snapshot.pulledAt) })),
+    { value: "", label: t(history ? "subscriptions.rankings.compare.before" : "subscriptions.rankings.compare.seen") },
+    ...(history ? [] : [{ value: "previous", label: t("subscriptions.rankings.compare.previous") }]),
+    { value: "time", label: t("subscriptions.rankings.compare.time") },
   ];
   const comparedWith = baseline
     ? t(`subscriptions.rankings.comparedWith.${baseline.kind}`, { time: time(baseline.pulledAt) })
     : t("subscriptions.rankings.comparedWith.none");
-  const stale = list.lastStatus === "failed" || list.lastStatus === "source_unavailable" ? list.lastStatus : null;
+  const lastStatus = page.variant.lastStatus;
+  const stale = !history
+    ? !list.sourceAvailable
+      ? "source_unavailable"
+      : lastStatus === "failed" || lastStatus === "source_unavailable"
+        ? lastStatus
+        : null
+    : null;
 
   const row = (item: RankingItem | RankingDroppedItem, meta: ReactNode, rankColumn: ReactNode) => {
     const view = rankingCardView(item, t("workCard.unknownCircle"));
@@ -402,24 +766,54 @@ function RankingSnapshot({
     );
   };
 
+  if (!page.snapshot) {
+    return (
+      <p className="py-8 text-center text-sm text-muted-foreground" aria-busy={loading}>
+        {t("subscriptions.rankings.history.empty")}
+      </p>
+    );
+  }
+
   return (
     <div className="space-y-4" aria-busy={loading}>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="min-w-0 space-y-0.5 text-sm">
-          <p className="font-medium">{t("subscriptions.rankings.updated", { time: time(page.snapshot?.pulledAt) })}</p>
-          <p className="text-xs text-muted-foreground">{comparedWith}</p>
+          <p className="font-medium">
+            {archive
+              ? t("subscriptions.rankings.archive", { year: list.year, time: time(list.finalAt) })
+              : history
+                ? t("subscriptions.rankings.history.showing", { time: time(page.at) })
+                : t("subscriptions.rankings.updated", { time: time(page.snapshot.pulledAt) })}
+          </p>
+          {!archive && <p className="text-xs text-muted-foreground">{comparedWith}</p>}
         </div>
-        {page.snapshots.length > 1 && (
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            {t("subscriptions.rankings.compareWith")}
-            <FloatingSelect
-              value={compareValue}
-              options={compareOptions}
-              ariaLabel={t("subscriptions.rankings.compareWith")}
-              onValueChange={onCompareChange}
-              className="w-48"
-            />
-          </label>
+        {!archive && (page.previousSnapshot || baseline) && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <label className="flex items-center gap-2">
+              {t("subscriptions.rankings.compareWith")}
+              <FloatingSelect
+                value={compareValue}
+                options={compareOptions}
+                ariaLabel={t("subscriptions.rankings.compareWith")}
+                onValueChange={(value) => {
+                  setChoosingTime(value === "time");
+                  if (value !== "time") onCompareChange(value);
+                }}
+                className="w-44"
+              />
+            </label>
+            {compareValue === "time" && (
+              <Input
+                type="datetime-local"
+                aria-label={t("subscriptions.rankings.compareTime")}
+                className="h-8 w-52"
+                onChange={(event) => {
+                  const instant = zonedWallTime(event.target.value, timeZone);
+                  if (instant) onCompareChange(instant);
+                }}
+              />
+            )}
+          </div>
         )}
       </div>
       {stale && (
@@ -427,7 +821,7 @@ function RankingSnapshot({
           className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-foreground"
           role="status"
         >
-          <span>{t(`subscriptions.rankings.stale.${stale}`, { time: time(page.snapshot?.pulledAt) })}</span>
+          <span>{t(`subscriptions.rankings.stale.${stale}`, { time: time(page.snapshot.pulledAt) })}</span>
           {onOpenRun && latestRunId && (
             <button type="button" className="underline-offset-2 hover:underline" onClick={() => onOpenRun(latestRunId)}>
               {t("subscriptions.rankings.viewRun")}
@@ -440,7 +834,7 @@ function RankingSnapshot({
         aria-label={t("subscriptions.rankings.filtersLabel")}
         className="-mx-4 flex gap-1.5 overflow-x-auto overflow-y-hidden px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden"
       >
-        {RANKING_FILTERS.map((option) => (
+        {filters.map((option) => (
           <button
             key={option}
             type="button"
@@ -461,11 +855,13 @@ function RankingSnapshot({
             row(
               item,
               <>
-                <span className="truncate">
-                  {t("subscriptions.rankings.streak", { count: rankingStreakDays(item, now) })}
-                  {" · "}
-                  {t("subscriptions.rankings.bestRank", { rank: item.bestRank })}
-                </span>
+                {!archive && !history && (
+                  <span className="truncate">
+                    {t("subscriptions.rankings.streak", { count: rankingStreakDays(item, now) })}
+                    {" · "}
+                    {t("subscriptions.rankings.bestRank", { rank: item.bestRank })}
+                  </span>
+                )}
                 {!item.work && (
                   <Badge variant="outline" className="shrink-0 font-normal text-muted-foreground">
                     {t("subscriptions.rankings.notInLibrary")}
@@ -479,13 +875,13 @@ function RankingSnapshot({
                 >
                   {item.rank}
                 </span>
-                <RankingChangeMarker change={item.change} />
+                {!archive && <RankingChangeMarker change={item.change} />}
               </>,
             ),
           )}
         </ol>
       )}
-      {page.dropped.length > 0 && (
+      {!archive && page.dropped.length > 0 && (
         <section className="space-y-3">
           <button
             type="button"

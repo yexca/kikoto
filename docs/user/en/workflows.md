@@ -34,10 +34,10 @@ custom definition stays visible only to the account that started it and to
 administrators.
 
 - Starting, configuring, or scheduling a workflow needs every permission its
-  steps use: Track and the popular collection's Track need `remote:track`,
-  Fetch and every Fetch-based collection or bulk action need both
-  `remote:fetch` and `metadata:sync`, scans and metadata workflows need
-  `metadata:sync`, and the source check needs `sources:write`. Contributors
+  steps use: Track needs `remote:track`, Fetch and every Fetch-based bulk
+  action need both `remote:fetch` and `metadata:sync`, scans, metadata
+  workflows, and the ranking pulls need `metadata:sync`, and the source check
+  needs `sources:write`. Contributors
   without `metadata:sync` can still see these workflows, but cannot start or
   automate their Fetch paths.
 - Editing, switching off, or deleting a trigger needs the same permissions as
@@ -81,8 +81,8 @@ administrators.
   Translation page's **Stopped** view, and a transcription its work;
   **Open Activity** opens the full panel.
 - The workflow list groups every workflow by category: Basic (local scan, local
-  files, metadata sync, and Learn tag names), Collect (popular collections and
-  **Refresh rankings**), Catalog sync (the
+  files, metadata sync, and Learn tag names), Collect (**Pull DLsite
+  rankings** and **Pull remote source rankings**), Catalog sync (the
   subscription refresh and the catalog sync presets), and Remote (Availability
   Watch, Fetch, and Check works on a source), each in
   a fixed order. Every entry shows its latest run's status and time, and small
@@ -109,9 +109,8 @@ administrators.
   original outcome, including failed, partial, and cancelled runs.
 - Metadata owns pending-work recovery and the DLsite proxy shortcut. Its
   metadata sync shortcut selects the existing workflow here.
-- Built-in local scan, metadata sync, remote popular, and DLsite popular
-  workflows support editable interval triggers; local scan and the two popular
-  collectors also support Startup triggers. Local scan does not check remote
+- Built-in local scan and metadata sync support editable interval triggers;
+  local scan also supports a Startup trigger. Local scan does not check remote
   availability or synchronize metadata. Manual, Startup, and interval scans expose a
   disabled-by-default `Follow-up run`; enabling it queues an independent
   metadata run after the scan finishes. Metadata sync has no Startup trigger,
@@ -154,13 +153,6 @@ administrators.
   when some lookups failed. One run per source is active at a time. It
   supports Startup and interval triggers that store these options and ships
   without a default trigger. Running it requires permission to manage sources.
-- Remote and DLsite popular collection surfaces edit tag templates with a
-  current-value preview, the complete workflow-specific variable list, and an
-  explicit warning when the rendered tag exceeds 40 characters. Manual runs
-  expand the template on request; automatic triggers store it unchanged and
-  expand it at dispatch. A manual run can turn tagging off; its tag step is
-  then recorded as skipped. Remote automatic collection is Track-only so it
-  cannot bypass Fetch size and disk-reserve safeguards.
 - Workflows with run parameters show them in a **Run options** form below the
   summary. The form ends in a bar with `Run` and, when `Run` is unavailable,
   the reason, such as a missing required input. While a long form scrolls, the
@@ -174,11 +166,13 @@ administrators.
   While a run is active, new log lines stream in and the log follows the latest
   output unless you scroll up. Select a stage to show only its lines, and
   select the run summary to open that run in Activity.
-- Availability Watch, **Refresh subscriptions**, and **Refresh rankings** are
-  configured on the [Subscriptions](subscriptions.md) page, where the watch
-  keeps its saved configuration and watch pool and the two refreshes their
-  schedules. Here they show their latest runs and run history, link to that
-  page, and have no triggers of their own.
+- Availability Watch, **Refresh subscriptions**, **Pull DLsite rankings**, and
+  **Pull remote source rankings** are configured on the
+  [Subscriptions](subscriptions.md) page, where the watch keeps its saved
+  configuration and watch pool, the subscription refresh its schedule, and
+  each ranking its own pull schedule. Here they show their latest runs, health
+  summary, and run history, link to that page, and have no Run options or
+  triggers of their own.
 - Sync a circle catalog, Sync a series catalog, and Sync a voice actor catalog
   (tabs **Circle catalog**, **Series catalog**, and **VA catalog**) are preset
   workflows that run on demand. Their Run options have three sections:
@@ -197,8 +191,8 @@ administrators.
   every catalog work that lacks metadata. The tag template is also off by
   default; turn it on to tag the synced works. With Sync metadata off, a circle
   or voice actor catalog sync only refreshes the catalog (and checks sources).
-  Catalog sync does not Track or Fetch; use Remote popular, Availability Watch,
-  or a work's detail page for that.
+  Catalog sync does not Track or Fetch; use a remote source's works,
+  Availability Watch, or a work's detail page for that.
 - The catalog sync presets have no triggers. To follow new works on a schedule,
   subscribe to the circle, series, or voice actor instead; the preset's
   triggers section links to [Subscriptions](subscriptions.md).
@@ -222,11 +216,12 @@ administrators.
   where exact preset matches can become subscriptions of the reviewing
   administrator and others can be exported; see [Getting started](getting-started.md). Their earlier runs stay
   in Activity history.
-- DLsite popular collection supports 24-hour, 7-day, 30-day, and annual voice
-  rankings. Recent periods can be limited to works released within 30 days;
-  annual runs select an explicit year and default to a template containing
-  `{year}`. Runs synchronize metadata and append the previewed user tag without
-  replacing existing user tags.
+- **Pull DLsite rankings** pulls every DLsite ranking that is due, in each of
+  its orders, in one run, and **Pull remote source rankings** one remote
+  source's popular list per run; see [Rankings](subscriptions.md#rankings). Neither adds works to the library,
+  syncs their metadata, tracks, fetches, or tags them. Popular collection runs
+  that tagged, tracked, or fetched works stay readable in Activity and cannot
+  be retried.
 - A queued or running Fetch is unique per canonical work. Repeated Fetch
   requests reuse that run instead of downloading the same work twice, and every
   requesting user receives the shared run's terminal notification.
@@ -239,8 +234,8 @@ administrators.
   waiting, or where the run failed or paused.
 - Each Fetch run is named after its work, such as `Fetch RJ00000001`, and
   Activity search finds a Fetch by its work code. Fetches queued by
-  Availability Watch, bulk actions, or popular collections record that origin
-  as their trigger reason.
+  Availability Watch or bulk actions record that origin as their trigger
+  reason.
 - Runs that act on one work, circle, series, voice actor, or remote source add
   it to their title, such as `Sync a circle catalog · RG00000000`, and Activity
   search finds them by it.

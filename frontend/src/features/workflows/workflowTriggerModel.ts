@@ -1,15 +1,9 @@
 import {
-  REMOTE_POPULAR_TAG_TEMPLATE,
-  dlsitePopularDefaultTagTemplate,
-  workflowTagTemplateBlockers,
-} from "@/features/workflows/tagTemplateModel";
-import {
   SOURCE_PRESENCE_DEFAULT_LIMIT,
   SOURCE_PRESENCE_MAX_LIMIT,
   configurableSystemWorkflowCodes,
   parseJSONRecord,
   workflowCopy,
-  type DLsitePopularPeriod,
   type SystemWorkflowTriggerConfig,
 } from "@/features/workflows/workflowPageModel";
 import type { WorkflowDefinition, WorkflowTrigger } from "@/lib/api";
@@ -25,13 +19,12 @@ export function supportedAutomationTriggerTypes(
   definition: WorkflowDefinition,
   isPreset = false,
 ): AutomationTriggerType[] {
-  // Scheduled catalog sync is a subscription, and the subscription refresh
-  // runs Availability Watch; both are configured on the Subscriptions page.
+  // Scheduled catalog sync is a subscription, the subscription refresh runs
+  // Availability Watch, and each ranking list keeps its own schedule; all are
+  // configured on the Subscriptions page.
   if (definition.scope === "system" && isPreset) return [];
   if (definition.scope === "system" && definition.code === "remote_work_fetch") return [];
-  if (definition.scope === "system" && definition.code === "availability_watch") return [];
-  if (definition.scope === "system" && definition.code === "creator_subscription_refresh") return [];
-  if (definition.scope === "system" && definition.code === "ranking_refresh") return [];
+  if (definition.scope === "system" && subscriptionsScheduledWorkflowCodes.has(definition.code)) return [];
   if (definition.scope === "system" && definition.code === "local_library_scan")
     return ["startup", "filesystem_event", "schedule"];
   if (definition.scope === "system" && definition.code === "metadata_sync") return ["schedule"];
@@ -39,6 +32,14 @@ export function supportedAutomationTriggerTypes(
     return automationTriggerTypes;
   return [];
 }
+
+/** Workflows whose automation is configured on the Subscriptions page. */
+export const subscriptionsScheduledWorkflowCodes = new Set([
+  "availability_watch",
+  "creator_subscription_refresh",
+  "dlsite_popular_collection",
+  "remote_popular_collection",
+]);
 
 export function workflowTriggerCondition(trigger: WorkflowTrigger) {
   if (trigger.triggerType === "startup") return workflowCopy("whenServiceStarts");
@@ -63,36 +64,15 @@ export function workflowSystemTriggerConfig(
   trigger: WorkflowTrigger | null,
 ): SystemWorkflowTriggerConfig {
   const record = parseJSONRecord(trigger?.configJson ?? "");
-  const period = ["day", "week", "month", "year"].includes(String(record.period))
-    ? (record.period as DLsitePopularPeriod)
-    : "day";
-  const defaultTemplate =
-    definitionCode === "dlsite_popular_collection"
-      ? dlsitePopularDefaultTagTemplate(period)
-      : REMOTE_POPULAR_TAG_TEMPLATE;
   return {
     followUpRun: record.followUpRun === true,
     // The local media index trigger stores its mode as `mode`.
     scanMode:
       (definitionCode === "local_media_index" ? record.mode : record.scanMode) === "full" ? "full" : "incremental",
     sourceId: typeof record.sourceId === "number" ? record.sourceId : 0,
-    action: record.action === "fetch" ? "fetch" : "track",
-    limit:
-      typeof record.limit === "number"
-        ? record.limit
-        : definitionCode === "source_presence_check"
-          ? SOURCE_PRESENCE_DEFAULT_LIMIT
-          : 25,
+    limit: typeof record.limit === "number" ? record.limit : SOURCE_PRESENCE_DEFAULT_LIMIT,
     library: record.library === "all" ? "all" : "local",
     presenceFilter: record.filter === "all" ? "all" : "no_remote_source",
-    period,
-    releaseWindow: record.releaseWindow === "30d" ? "30d" : "",
-    year: typeof record.year === "number" ? record.year : new Date().getUTCFullYear(),
-    tagNameTemplate:
-      typeof record.tagNameTemplate === "string" && record.tagNameTemplate.trim()
-        ? record.tagNameTemplate
-        : defaultTemplate,
-    skipTag: record.skipTag === true,
   };
 }
 
@@ -107,56 +87,18 @@ export function workflowSystemTriggerConfigPayload(
       : { followUpRun: value.followUpRun };
   }
   if (definitionCode === "local_media_index") return { mode: value.scanMode };
-  if (definitionCode === "remote_popular_collection") {
-    return {
-      sourceId: value.sourceId,
-      action: value.action,
-      limit: value.limit,
-      tagNameTemplate: value.tagNameTemplate.trim(),
-      skipTag: value.skipTag,
-    };
-  }
   if (definitionCode === "source_presence_check") {
     return { sourceId: value.sourceId, library: value.library, filter: value.presenceFilter, limit: value.limit };
-  }
-  if (definitionCode === "dlsite_popular_collection") {
-    return {
-      period: value.period,
-      releaseWindow: value.period === "year" ? "" : value.releaseWindow,
-      year: value.period === "year" ? value.year : 0,
-      tagNameTemplate: value.tagNameTemplate.trim(),
-      skipTag: value.skipTag,
-    };
   }
   return {};
 }
 
 export function workflowSystemTriggerConfigBlockers(definitionCode: string, value: SystemWorkflowTriggerConfig) {
-  if (definitionCode === "remote_popular_collection") {
-    return [
-      ...(value.sourceId <= 0 ? [workflowCopy("selectRemoteSource")] : []),
-      ...(value.action === "fetch" ? [workflowCopy("automatedTrackOnly")] : []),
-      ...(value.limit <= 0 || value.limit > 100 ? [workflowCopy("workLimitRange")] : []),
-      ...(!value.skipTag
-        ? workflowTagTemplateBlockers(value.tagNameTemplate, ["date", "remote_name", "source_code", "action"])
-        : []),
-    ];
-  }
   if (definitionCode === "source_presence_check") {
     return [
       ...(value.sourceId <= 0 ? [workflowCopy("selectRemoteSource")] : []),
       ...(value.limit <= 0 || value.limit > SOURCE_PRESENCE_MAX_LIMIT
         ? [workflowCopy("sourcePresenceLimitRange", { count: SOURCE_PRESENCE_MAX_LIMIT })]
-        : []),
-    ];
-  }
-  if (definitionCode === "dlsite_popular_collection") {
-    return [
-      ...(value.period === "year" && (value.year < 2000 || value.year > new Date().getUTCFullYear())
-        ? [workflowCopy("yearRange", { year: new Date().getUTCFullYear() })]
-        : []),
-      ...(!value.skipTag
-        ? workflowTagTemplateBlockers(value.tagNameTemplate, ["date", "period", "release_window", "year"])
         : []),
     ];
   }

@@ -177,8 +177,18 @@ The Subscriptions page switches between two views, the release feed and
 Rankings (`?view=rankings`), and composes a settings drawer over its right edge
 (a sheet on phones). The release feed draws each day's families in the shared
 work collection grid and card modes. Rankings shows one tracked ranking
-(`?list=`) compared with a baseline (`?compare=previous` or a snapshot id; the
-last visit when absent) as compact row cards beside their rank. The drawer
+(`?list=`) as compact row cards beside their rank, its chips in the fixed
+order of the lists and the annual lists behind one chip with a year choice. A
+30-day switch and a popularity or sales choice pick the shown order
+(`?release=30d`, `?sort=sale`); each choice pushes a history entry, and the
+last choice on each chip is a per-device preference that names the order
+when the chip opens. A chip's unseen mark follows the order it shows. The
+latest order is compared with a baseline
+(`?compare=previous`, a snapshot id, or a time; the last visit when absent).
+`?at=` shows the order in effect at a time instead, compared with the update
+before it, with a day picker and that day's updates in the account's time
+zone, and does not record the ranking as seen. A finished annual ranking shows
+its ranks without movement. The drawer
 holds the subscription list with the refresh schedule, the Availability Watch
 manager, which it takes from the workflows feature, and the ranking settings.
 `?panel=subscriptions`, `?panel=watch`, or `?panel=rankings` opens the drawer,

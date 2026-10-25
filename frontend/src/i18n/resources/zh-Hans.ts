@@ -458,7 +458,8 @@ const adminToolsHans = {
       },
       old_ranking_snapshots: {
         title: "旧的排行榜历史",
-        description: "超过 90 天的排行榜更新。每个排行榜最新的两次更新会保留。",
+        description:
+          "超出排行榜设置中历史保留期限的排行榜更新。最新排名、已定稿的年度排行榜以及每个账户最后查看的更新会保留。",
       },
     },
     optimize: {

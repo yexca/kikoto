@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/outbound"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
@@ -127,7 +128,8 @@ func TestFetchVoiceRankingBuildsOptionsAndParsesOrderedWorks(t *testing.T) {
 		if r.URL.Path != "/maniax/ranking/day" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
-		if r.URL.Query().Get("category") != "voice" || r.URL.Query().Get("date") != "30d" {
+		query := r.URL.Query()
+		if query.Get("category") != "voice" || query.Get("sub") != "SOU" || query.Get("date") != "30d" || query.Get("sort") != "sale" {
 			t.Fatalf("query = %s", r.URL.RawQuery)
 		}
 		_, _ = io.WriteString(w, `<dl class="work_1col"><dt class="work_name"><span class="period_date">Date</span><div class="icon_wrap"></div><a href="/maniax/work/=/product_id/RJ00000000.html">One</a></dt></dl>
@@ -138,7 +140,7 @@ func TestFetchVoiceRankingBuildsOptionsAndParsesOrderedWorks(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(server)
-	result, err := client.FetchVoiceRanking(context.Background(), RankingOptions{Period: "day", ReleaseWindow: "30d"})
+	result, err := client.FetchVoiceRanking(context.Background(), RankingOptions{Period: "day", ReleaseWindow: "30d", Sort: "sale"})
 	if err != nil {
 		t.Fatalf("FetchVoiceRanking() error = %v", err)
 	}
@@ -597,5 +599,42 @@ func TestMakerProfileURLsIncludeLanguageOptionsForPages(t *testing.T) {
 		if !strings.Contains(got, part) {
 			t.Fatalf("url %q missing %q", got, part)
 		}
+	}
+}
+
+func TestAnnualRankingYearFollowsJapanTime(t *testing.T) {
+	// 00:30 on 1 January in Japan is still 31 December in UTC.
+	newYearInJapan := time.Date(2026, time.December, 31, 15, 30, 0, 0, time.UTC)
+	if got := CurrentRankingYear(newYearInJapan); got != 2027 {
+		t.Fatalf("CurrentRankingYear() = %d, want 2027", got)
+	}
+	if _, err := normalizeRankingQuery(RankingOptions{Period: "year", Year: 2027}, newYearInJapan); err != nil {
+		t.Fatalf("the new year in Japan was rejected: %v", err)
+	}
+	if _, err := normalizeRankingQuery(RankingOptions{Period: "year", Year: 2028}, newYearInJapan); err == nil {
+		t.Fatal("a future year was accepted")
+	}
+}
+
+func TestFetchVoiceRankingAllTimeTakesOnlyTheOrder(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		if r.URL.Path != "/maniax/ranking/total" || query.Get("sub") != "SOU" || query.Get("sort") != "sale" || query.Has("date") || query.Has("year") {
+			t.Fatalf("request = %s", r.URL.String())
+		}
+		_, _ = io.WriteString(w, `<div class="work_1col"><a href="/maniax/work/=/product_id/RJ00000001.html">One</a></div>`)
+	}))
+	defer server.Close()
+
+	client := newTestClient(server)
+	result, err := client.FetchVoiceRanking(context.Background(), RankingOptions{Period: "total", ReleaseWindow: "30d", Sort: "sale"})
+	if err != nil {
+		t.Fatalf("FetchVoiceRanking() error = %v", err)
+	}
+	if result.ReleaseWindow != "" || result.Sort != "sale" || strings.Join(result.WorkCodes, ",") != "RJ00000001" {
+		t.Fatalf("result = %+v", result)
+	}
+	if _, err := client.FetchVoiceRanking(context.Background(), RankingOptions{Period: "total", Sort: "price"}); err == nil {
+		t.Fatal("an unsupported order was accepted")
 	}
 }

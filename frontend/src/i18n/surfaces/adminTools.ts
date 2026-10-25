@@ -141,7 +141,8 @@ export const adminToolsEnglish = {
       },
       old_ranking_snapshots: {
         title: "Old ranking history",
-        description: "Ranking updates older than 90 days. The two newest updates of each ranking are kept.",
+        description:
+          "Ranking updates past the history kept in the Rankings settings. The latest order, finished annual rankings, and the update each account last viewed are kept.",
       },
     },
     optimize: {

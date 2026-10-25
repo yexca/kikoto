@@ -1,23 +1,59 @@
-import { ArrowDown, ArrowUp, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CalendarPlus, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { Switch } from "@/components/ui/switch";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { formatDateTime } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
-import { api, type LibrarySource, type RankingList, type RankingPeriod, type RankingSchedule } from "@/lib/api";
-import { parseServerTimestamp } from "@/lib/serverTimestamp";
+import { api, type LibrarySource, type RankingListPatch, type RankingOverview } from "@/lib/api";
 
-import { isRankingSource, RANKING_DEPTHS, RANKING_INTERVAL_HOURS, rankingListLabel } from "./rankingModel";
+import {
+  formatRankingTime,
+  RANKING_DAILY_RETENTION_DAYS,
+  RANKING_DEPTHS,
+  RANKING_FULL_RETENTION_DAYS,
+  rankingIntervalOptions,
+  rankingSettingRows,
+  type RankingSettingRow,
+} from "./rankingModel";
 import type { RankingOverviewState } from "./useRankingOverview";
 
-const periods: RankingPeriod[] = ["day", "week", "month"];
+type Translate = (key: string, options?: Record<string, unknown>) => string;
 
-/** The shared tracked rankings and their refresh schedule. */
+function intervalLabel(minutes: number, t: Translate) {
+  if (minutes % (24 * 60) === 0) return t("subscriptions.schedule.days", { count: minutes / (24 * 60) });
+  if (minutes % 60 === 0) return t("subscriptions.schedule.hours", { count: minutes / 60 });
+  return t("subscriptions.rankings.settings.minutes", { count: minutes });
+}
+
+function depthOptions(current: number, t: Translate) {
+  const values: number[] = [...RANKING_DEPTHS];
+  if (!values.includes(current)) values.push(current);
+  return values
+    .sort((left, right) => left - right)
+    .map((value) => ({
+      value: String(value),
+      label: t("subscriptions.rankings.settings.depthValue", { count: value }),
+    }));
+}
+
+function retentionLabel(days: number, t: Translate) {
+  if (days === 0) return t("subscriptions.rankings.settings.retention.forever");
+  if (days % 365 === 0) return t("subscriptions.rankings.settings.retention.years", { count: days / 365 });
+  return t("subscriptions.rankings.settings.retention.days", { count: days });
+}
+
+/**
+ * The shared rankings, in the fixed order of the chips: a row for each DLsite
+ * ranking, the annual ranking of each year, and each compatible remote
+ * source's popular list, with how often each is pulled and how long history is
+ * kept. A row's list is created when it is first shown; one pull of a DLsite
+ * row pulls each of its orders.
+ */
 export function RankingSettings({
   rankings,
   readOnly,
@@ -26,15 +62,24 @@ export function RankingSettings({
 }: {
   rankings: RankingOverviewState;
   readOnly: boolean;
-  /** `metadata:sync`: rankings and their schedule may be changed. */
+  /** `metadata:sync`: rankings, their schedules, and the history setting may be changed. */
   canManage: boolean;
   onOpenRun: (runId: number) => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const { resolvedLocale } = useLocale();
-  const { overview, error, reload, setOverview, updateList } = rankings;
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const { overview, error, reload, updateList } = rankings;
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [sources, setSources] = useState<LibrarySource[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api
+      .listLibrarySources(controller.signal)
+      .then(setSources)
+      .catch(() => setSources([]));
+    return () => controller.abort();
+  }, []);
 
   if (!overview) {
     return error ? (
@@ -53,283 +98,337 @@ export function RankingSettings({
   }
 
   const editable = canManage && !readOnly && !overview.demo;
-  const lists = overview.lists;
-  const change = async (list: RankingList, patch: Partial<Pick<RankingList, "enabled" | "depth" | "position">>) => {
-    setBusyId(list.id);
+  const rows = rankingSettingRows(overview.lists, sources, overview.currentYear, t);
+  const run = async (key: string, action: () => Promise<void>) => {
+    setBusyKey(key);
     try {
-      if (patch.position !== undefined) {
-        await api.updateRanking(list.id, patch);
-        await reload();
-      } else {
-        updateList(await api.updateRanking(list.id, patch));
+      await action();
+    } catch (actionError) {
+      toast.notify(toastFromError(actionError, t("subscriptions.rankings.settings.updateFailed")));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+  const show = (row: RankingSettingRow, enabled: boolean) =>
+    run(row.key, async () => {
+      if (row.list) {
+        updateList(await api.updateRanking(row.list.id, { enabled }));
+        return;
       }
-    } catch (updateError) {
-      toast.notify(toastFromError(updateError, t("subscriptions.rankings.settings.updateFailed")));
-    } finally {
-      setBusyId(null);
-    }
-  };
-  const remove = async (list: RankingList) => {
-    setBusyId(list.id);
-    try {
-      await api.deleteRanking(list.id);
-      setOverview((current) =>
-        current ? { ...current, lists: current.lists.filter((item) => item.id !== list.id) } : current,
-      );
-    } catch (removeError) {
-      toast.notify(toastFromError(removeError, t("subscriptions.rankings.settings.updateFailed")));
-    } finally {
-      setBusyId(null);
-    }
-  };
+      await api.createRanking(row.request);
+      toast.success(t("subscriptions.rankings.settings.added"));
+      await reload();
+    });
+  const change = (row: RankingSettingRow, patch: RankingListPatch) =>
+    run(row.key, async () => {
+      if (row.list) updateList(await api.updateRanking(row.list.id, patch));
+    });
+  const remove = (row: RankingSettingRow) =>
+    run(row.key, async () => {
+      if (!row.list) return;
+      await api.deleteRanking(row.list.id);
+      await reload();
+    });
+  const rowProps = { editable, busyKey, timeZone: overview.timeZone, onShow: show, onChange: change, onRemove: remove };
 
   return (
     <div className="grid gap-6">
-      <RankingSchedulePanel
-        schedule={overview.schedule}
-        editable={editable}
-        canRun={editable && lists.some((list) => list.enabled)}
-        onSaved={(schedule) => setOverview((current) => (current ? { ...current, schedule } : current))}
-        onOpenRun={onOpenRun}
-      />
-      <section className="space-y-2" aria-labelledby="ranking-lists-heading">
-        <div className="space-y-1">
-          <h2 id="ranking-lists-heading" className="text-sm font-semibold">
-            {t("subscriptions.rankings.settings.title")}
-          </h2>
-          <p className="text-xs text-muted-foreground">{t("subscriptions.rankings.settings.description")}</p>
-        </div>
-        {lists.length === 0 ? (
-          <p className="py-4 text-sm text-muted-foreground">{t("subscriptions.rankings.settings.empty")}</p>
-        ) : (
-          <ul className="divide-y rounded-lg border bg-card">
-            {lists.map((list, index) => {
-              const name = rankingListLabel(list, t);
-              const busy = busyId === list.id;
-              const pulled = parseServerTimestamp(list.lastPulledAt);
-              const status =
-                list.lastStatus === "failed" || list.lastStatus === "source_unavailable"
-                  ? t(`subscriptions.rankings.settings.status.${list.lastStatus}`)
-                  : null;
-              return (
-                <li key={list.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
-                  <div className="min-w-[12rem] flex-1">
-                    <p className="truncate text-sm font-medium">{name}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {pulled
-                        ? t("subscriptions.rankings.settings.lastPulled", {
-                            time: formatDateTime(pulled, resolvedLocale),
-                          })
-                        : t("subscriptions.rankings.settings.neverPulled")}
-                      {status && <span className="text-warning-foreground"> · {status}</span>}
-                    </p>
-                  </div>
-                  <div className="ml-auto flex items-center gap-1">
-                    <FloatingSelect
-                      value={String(list.depth)}
-                      options={depthOptions(list.depth, t)}
-                      ariaLabel={`${t("subscriptions.rankings.settings.depth")} · ${name}`}
-                      disabled={!editable || busy}
-                      onValueChange={(value) => void change(list, { depth: Number(value) })}
-                      className="w-28"
-                    />
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label={t("subscriptions.rankings.settings.moveUp", { name })}
-                      title={t("subscriptions.rankings.settings.moveUp", { name })}
-                      disabled={!editable || busy || index === 0}
-                      onClick={() => void change(list, { position: index - 1 })}
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label={t("subscriptions.rankings.settings.moveDown", { name })}
-                      title={t("subscriptions.rankings.settings.moveDown", { name })}
-                      disabled={!editable || busy || index === lists.length - 1}
-                      onClick={() => void change(list, { position: index + 1 })}
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </Button>
-                    <Switch
-                      checked={list.enabled}
-                      disabled={!editable || busy}
-                      aria-label={t("subscriptions.rankings.settings.track", { name })}
-                      onCheckedChange={(enabled) => void change(list, { enabled })}
-                    />
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label={t("subscriptions.rankings.settings.remove", { name })}
-                      title={t("subscriptions.rankings.settings.remove", { name })}
-                      disabled={!editable || busy}
-                      onClick={() => void remove(list)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
+      <RankingPullsPanel overview={overview} editable={editable} onOpenRun={onOpenRun} />
+      {!editable && !overview.demo && (
+        <p className="text-xs text-muted-foreground">{t("subscriptions.rankings.settings.readOnly")}</p>
+      )}
+      <RankingRowSection
+        title={t("subscriptions.rankings.settings.dlsiteTitle")}
+        description={t("subscriptions.rankings.settings.dlsiteDescription")}
+      >
+        {rows.dlsite.map((row) => (
+          <RankingSettingRowView key={row.key} row={row} {...rowProps} />
+        ))}
+        <li aria-label={t("subscriptions.rankings.settings.annualTitle")}>
+          <div className="space-y-0.5 px-3 pt-2.5">
+            <p className="text-sm font-medium">{t("subscriptions.rankings.settings.annualTitle")}</p>
+            <p className="text-xs text-muted-foreground">{t("subscriptions.rankings.settings.annualDescription")}</p>
+          </div>
+          <ul className="divide-y pl-3">
+            <RankingSettingRowView
+              row={{
+                ...rows.currentYear,
+                label: t("subscriptions.rankings.settings.currentYear", { year: overview.currentYear }),
+              }}
+              {...rowProps}
+              followYear
+            />
+            {rows.pastYears.map((row) => (
+              <RankingSettingRowView key={row.key} row={row} {...rowProps} />
+            ))}
+            <li className="px-3 py-2.5">
+              <AddYearsPicker
+                years={rows.addableYears}
+                disabled={!editable || busyKey !== null}
+                onAdd={(years) =>
+                  run("years", async () => {
+                    for (const year of years) await api.createRanking({ provider: "dlsite", period: "year", year });
+                    toast.success(t("subscriptions.rankings.settings.added"));
+                    await reload();
+                  })
+                }
+              />
+            </li>
           </ul>
+        </li>
+        <RankingSettingRowView row={rows.total} {...rowProps} />
+      </RankingRowSection>
+      <RankingRowSection title={t("subscriptions.rankings.settings.remoteTitle")}>
+        {rows.remote.length === 0 ? (
+          <li className="px-3 py-2.5 text-sm text-muted-foreground">
+            {t("subscriptions.rankings.settings.remoteEmpty")}
+          </li>
+        ) : (
+          rows.remote.map((row) => <RankingSettingRowView key={row.key} row={row} {...rowProps} />)
         )}
-        <p className="text-xs text-muted-foreground">{t("subscriptions.rankings.settings.retention")}</p>
-      </section>
-      {editable && <AddRankingForm lists={lists} onAdded={() => void reload()} />}
+      </RankingRowSection>
+      <RankingRetentionPanel overview={overview} editable={editable} onSaved={() => void reload()} />
     </div>
   );
 }
 
-function depthOptions(current: number, t: (key: string, options?: Record<string, unknown>) => string) {
-  const values: number[] = [...RANKING_DEPTHS];
-  if (!values.includes(current)) values.push(current);
-  return values
-    .sort((left, right) => left - right)
-    .map((value) => ({
-      value: String(value),
-      label: t("subscriptions.rankings.settings.depthValue", { count: value }),
-    }));
-}
-
-function AddRankingForm({ lists, onAdded }: { lists: RankingList[]; onAdded: () => void }) {
-  const { t } = useTranslation();
-  const toast = useToast();
-  const [sources, setSources] = useState<LibrarySource[]>([]);
-  const [provider, setProvider] = useState("dlsite");
-  const [period, setPeriod] = useState<RankingPeriod>("day");
-  const [newReleases, setNewReleases] = useState(false);
-  const [depth, setDepth] = useState(100);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    api
-      .listLibrarySources(controller.signal)
-      .then((next) => setSources(next.filter(isRankingSource)))
-      .catch(() => setSources([]));
-    return () => controller.abort();
-  }, []);
-
-  const remoteSourceId = provider.startsWith("source:") ? Number(provider.slice("source:".length)) : null;
-  const tracked = lists.some((list) =>
-    remoteSourceId === null
-      ? list.provider === "dlsite" && list.period === period && list.releaseWindow === (newReleases ? "30d" : "")
-      : list.provider === "remote_source" && list.sourceId === remoteSourceId,
-  );
-  const providerOptions = [
-    { value: "dlsite", label: t("subscriptions.rankings.dlsite") },
-    ...sources.map((source) => ({
-      value: `source:${source.id}`,
-      label: `${source.displayName} · ${t("subscriptions.rankings.popular")}`,
-    })),
-  ];
-
-  const add = async () => {
-    setSaving(true);
-    try {
-      await api.createRanking(
-        remoteSourceId === null
-          ? { provider: "dlsite", period, releaseWindow: newReleases ? "30d" : "", depth }
-          : { provider: "remote_source", sourceId: remoteSourceId, depth },
-      );
-      toast.success(t("subscriptions.rankings.settings.added"));
-      onAdded();
-    } catch (addError) {
-      toast.notify(toastFromError(addError, t("subscriptions.rankings.settings.addFailed")));
-    } finally {
-      setSaving(false);
-    }
-  };
-
+function RankingRowSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <section className="grid gap-3 rounded-lg border bg-card p-4" aria-labelledby="ranking-add-heading">
-      <h2 id="ranking-add-heading" className="text-sm font-semibold">
-        {t("subscriptions.rankings.settings.addTitle")}
-      </h2>
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <span>{t("subscriptions.rankings.settings.provider")}</span>
-        <FloatingSelect
-          value={provider}
-          options={providerOptions}
-          ariaLabel={t("subscriptions.rankings.settings.provider")}
-          onValueChange={setProvider}
-          className="w-56"
-        />
+    <section className="space-y-2" aria-label={title}>
+      <div className="space-y-1">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        {description && <p className="text-xs text-muted-foreground">{description}</p>}
       </div>
-      {remoteSourceId === null && (
-        <>
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <span>{t("subscriptions.rankings.settings.period")}</span>
-            <FloatingSelect
-              value={period}
-              options={periods.map((value) => ({ value, label: t(`subscriptions.rankings.periods.${value}`) }))}
-              ariaLabel={t("subscriptions.rankings.settings.period")}
-              onValueChange={(value) => setPeriod(value as RankingPeriod)}
-              className="w-56"
-            />
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={newReleases} onCheckedChange={(checked) => setNewReleases(checked === true)} />
-            {t("subscriptions.rankings.settings.newReleasesOnly")}
-          </label>
-        </>
-      )}
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <span>{t("subscriptions.rankings.settings.depth")}</span>
-        <FloatingSelect
-          value={String(depth)}
-          options={depthOptions(depth, t)}
-          ariaLabel={t("subscriptions.rankings.settings.depth")}
-          onValueChange={(value) => setDepth(Number(value))}
-          className="w-56"
-        />
-      </div>
-      <div className="flex justify-end">
-        <Button size="sm" disabled={saving || tracked} onClick={() => void add()}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          {t("subscriptions.rankings.settings.add")}
-        </Button>
-      </div>
+      <ul className="divide-y rounded-lg border bg-card">{children}</ul>
     </section>
   );
 }
 
-function RankingSchedulePanel({
-  schedule,
+function RankingSettingRowView({
+  row,
   editable,
-  canRun,
-  onSaved,
+  busyKey,
+  timeZone,
+  followYear = false,
+  onShow,
+  onChange,
+  onRemove,
+}: {
+  row: RankingSettingRow;
+  editable: boolean;
+  busyKey: string | null;
+  /** The account's zone for pull times. */
+  timeZone: string;
+  /** The annual ranking of the year in progress offers to continue with the next year. */
+  followYear?: boolean;
+  onShow: (row: RankingSettingRow, enabled: boolean) => void;
+  onChange: (row: RankingSettingRow, patch: RankingListPatch) => void;
+  onRemove: (row: RankingSettingRow) => void;
+}) {
+  const { t } = useTranslation();
+  const { resolvedLocale } = useLocale();
+  const list = row.list;
+  const busy = busyKey === row.key;
+  const finished = Boolean(list?.finalAt);
+  const pastYear = row.request.period === "year" && !followYear;
+  const scheduled = !finished && !pastYear;
+  const name = row.label;
+  const interval = list?.refreshIntervalMinutes ?? 0;
+  const time = (value: string | null | undefined) => formatRankingTime(value, resolvedLocale, timeZone);
+  const details: string[] = [];
+  if (list?.lastPulledAt)
+    details.push(t("subscriptions.rankings.settings.lastPulled", { time: time(list.lastPulledAt) }));
+  else if (list) details.push(t("subscriptions.rankings.settings.neverPulled"));
+  if (list?.finalAt) details.push(t("subscriptions.rankings.settings.final", { time: time(list.finalAt) }));
+  else if (list?.enabled && list.pullRequested) details.push(t("subscriptions.rankings.settings.pullQueued"));
+  else if (list?.enabled && list.nextPullAt)
+    details.push(t("subscriptions.rankings.settings.nextPull", { time: time(list.nextPullAt) }));
+  if (list && !list.sourceAvailable) details.push(t("subscriptions.rankings.settings.status.source_unavailable"));
+  else if (list?.lastStatus === "failed" || list?.lastStatus === "partial")
+    details.push(t(`subscriptions.rankings.settings.status.${list.lastStatus}`));
+  if (!list) details.push(t("subscriptions.rankings.settings.notShown"));
+  if (pastYear && !finished) details.push(t("subscriptions.rankings.settings.pastYearHint"));
+
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+      <div className="min-w-[10rem] flex-1">
+        <p className="truncate text-sm font-medium">{name}</p>
+        <p className="text-xs text-muted-foreground">{details.join(" · ")}</p>
+      </div>
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        {/* A ranking that was never shown has no list to configure yet; it starts with the defaults. */}
+        {list && scheduled && (
+          <>
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Switch
+                checked={list.autoRefresh}
+                disabled={!editable || busy}
+                aria-label={t("subscriptions.rankings.settings.autoRefresh", { name })}
+                onCheckedChange={(autoRefresh) => onChange(row, { autoRefresh })}
+              />
+              {t("subscriptions.rankings.settings.auto")}
+            </label>
+            <FloatingSelect
+              value={String(interval)}
+              options={rankingIntervalOptions(row.kind, interval).map((value) => ({
+                value: String(value),
+                label: intervalLabel(value, t),
+              }))}
+              ariaLabel={t("subscriptions.rankings.settings.interval", { name })}
+              disabled={!editable || !list.autoRefresh || busy}
+              onValueChange={(value) => onChange(row, { refreshIntervalMinutes: Number(value) })}
+              className="w-28"
+            />
+          </>
+        )}
+        {list && (
+          <FloatingSelect
+            value={String(list.depth)}
+            options={depthOptions(list.depth, t)}
+            ariaLabel={`${t("subscriptions.rankings.settings.depth")} · ${name}`}
+            disabled={!editable || busy}
+            onValueChange={(value) => onChange(row, { depth: Number(value) })}
+            className="w-28"
+          />
+        )}
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Switch
+            checked={list?.enabled ?? false}
+            disabled={!editable || busy}
+            aria-label={t("subscriptions.rankings.settings.show", { name })}
+            onCheckedChange={(enabled) => onShow(row, enabled)}
+          />
+          {t("subscriptions.rankings.settings.shown")}
+        </label>
+        {list && (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={t("subscriptions.rankings.settings.remove", { name })}
+            title={t("subscriptions.rankings.settings.remove", { name })}
+            disabled={!editable || busy}
+            onClick={() => onRemove(row)}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          </Button>
+        )}
+      </div>
+      {followYear && list && !finished && (
+        <label className="flex w-full items-start gap-2 text-xs text-muted-foreground">
+          <Switch
+            checked={list.followCurrentYear}
+            disabled={!editable || busy}
+            aria-label={t("subscriptions.rankings.settings.followYear")}
+            onCheckedChange={(followCurrentYear) => onChange(row, { followCurrentYear })}
+          />
+          <span>
+            <span className="font-medium text-foreground">{t("subscriptions.rankings.settings.followYear")}</span>
+            {" · "}
+            {t("subscriptions.rankings.settings.followYearHint")}
+          </span>
+        </label>
+      )}
+    </li>
+  );
+}
+
+function AddYearsPicker({
+  years,
+  disabled,
+  onAdd,
+}: {
+  years: number[];
+  disabled: boolean;
+  onAdd: (years: number[]) => void;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(() => new Set());
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const toggle = (year: number, checked: boolean) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (checked) next.add(year);
+      else next.delete(year);
+      return next;
+    });
+  return (
+    <div ref={anchorRef} className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-xs text-muted-foreground">
+        {years.length > 0
+          ? t("subscriptions.rankings.settings.addYearsHint")
+          : t("subscriptions.rankings.settings.addYearsEmpty")}
+      </p>
+      <Button
+        size="sm"
+        variant="outline"
+        aria-expanded={open}
+        disabled={disabled || years.length === 0}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <CalendarPlus className="h-4 w-4" />
+        {t("subscriptions.rankings.settings.addYears")}
+      </Button>
+      <AnchoredPopover
+        open={open}
+        anchorRef={anchorRef}
+        align="end"
+        onOpenChange={setOpen}
+        ariaLabel={t("subscriptions.rankings.settings.addYears")}
+        className="w-[min(14rem,calc(100vw-1.5rem))] p-2 text-sm"
+      >
+        <div className="app-scroll max-h-64 overflow-y-auto">
+          {years.map((year) => (
+            <label key={year} className="flex min-h-9 items-center gap-2 rounded-md px-2 hover:bg-muted">
+              <Checkbox checked={selected.has(year)} onCheckedChange={(checked) => toggle(year, checked === true)} />
+              {year}
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end pt-2">
+          <Button
+            size="sm"
+            disabled={selected.size === 0}
+            onClick={() => {
+              onAdd([...selected].sort((left, right) => right - left));
+              setSelected(new Set());
+              setOpen(false);
+            }}
+          >
+            {t("subscriptions.rankings.settings.addSelectedYears", { count: selected.size })}
+          </Button>
+        </div>
+      </AnchoredPopover>
+    </div>
+  );
+}
+
+/** Refresh every shown ranking now, and open each pulling workflow's latest run. */
+function RankingPullsPanel({
+  overview,
+  editable,
   onOpenRun,
 }: {
-  schedule: RankingSchedule;
+  overview: RankingOverview;
   editable: boolean;
-  canRun: boolean;
-  onSaved: (schedule: RankingSchedule) => void;
   onOpenRun: (runId: number) => void;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const { resolvedLocale } = useLocale();
-  const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
-
-  const save = async (patch: Partial<Pick<RankingSchedule, "enabled" | "intervalHours">>) => {
-    setSaving(true);
-    try {
-      onSaved(await api.updateRankingSchedule(patch));
-    } catch (saveError) {
-      toast.notify(toastFromError(saveError, t("subscriptions.schedule.saveFailed")));
-    } finally {
-      setSaving(false);
-    }
-  };
+  const canRun = editable && overview.lists.some((list) => list.enabled);
   const runNow = async () => {
     setRunning(true);
     try {
-      const run = await api.runRankingRefresh();
-      onSaved({ ...schedule, latestRun: { id: run.runId, status: run.status } });
+      await api.runRankingRefresh();
       toast.success(t("subscriptions.rankings.refreshQueued"));
     } catch (runError) {
       toast.notify(toastFromError(runError, t("subscriptions.rankings.refreshFailed")));
@@ -337,89 +436,105 @@ function RankingSchedulePanel({
       setRunning(false);
     }
   };
-
-  const intervalOptions = RANKING_INTERVAL_HOURS.map((hours) => ({
-    value: String(hours),
-    label:
-      hours % 24 === 0
-        ? t("subscriptions.schedule.days", { count: hours / 24 })
-        : t("subscriptions.schedule.hours", { count: hours }),
-  }));
-  if (!intervalOptions.some((option) => option.value === String(schedule.intervalHours))) {
-    intervalOptions.push({
-      value: String(schedule.intervalHours),
-      label: t("subscriptions.schedule.hours", { count: schedule.intervalHours }),
-    });
-  }
-  const nextRun = parseServerTimestamp(schedule.nextRunAt);
-  const lastRun = parseServerTimestamp(schedule.lastRunAt);
-  const active = schedule.latestRun?.status === "running" || schedule.latestRun?.status === "queued";
+  const runs = overview.workflows.filter((workflow) => workflow.latestRun);
   return (
-    <section className="grid gap-4 rounded-lg border bg-card p-4" aria-labelledby="ranking-schedule">
+    <section className="grid gap-3 rounded-lg border bg-card p-4" aria-labelledby="ranking-pulls">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
-          <h2 id="ranking-schedule" className="text-sm font-semibold">
-            {t("subscriptions.rankings.schedule.title")}
+          <h2 id="ranking-pulls" className="text-sm font-semibold">
+            {t("subscriptions.rankings.settings.title")}
           </h2>
-          <p className="text-xs text-muted-foreground">{t("subscriptions.rankings.schedule.description")}</p>
+          <p className="text-xs text-muted-foreground">{t("subscriptions.rankings.settings.description")}</p>
         </div>
         {editable && (
-          <Button size="sm" variant="outline" disabled={!canRun || running || active} onClick={() => void runNow()}>
+          <Button size="sm" variant="outline" disabled={!canRun || running} onClick={() => void runNow()}>
             {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {t("subscriptions.schedule.runNow")}
+            {t("subscriptions.rankings.settings.refreshAll")}
           </Button>
         )}
       </div>
-      <div className="grid gap-3">
-        <label className="flex items-center justify-between gap-3 text-sm">
-          {t("subscriptions.schedule.enabled")}
-          <Switch
-            checked={schedule.enabled}
-            disabled={!editable || saving}
-            aria-label={t("subscriptions.schedule.enabled")}
-            onCheckedChange={(enabled) => void save({ enabled })}
-          />
-        </label>
-        <div className="flex items-center justify-between gap-3 text-sm">
-          <span>{t("subscriptions.schedule.interval")}</span>
-          <FloatingSelect
-            value={String(schedule.intervalHours)}
-            options={intervalOptions}
-            ariaLabel={t("subscriptions.schedule.interval")}
-            disabled={!editable || saving}
-            onValueChange={(value) => void save({ intervalHours: Number(value) })}
-            className="w-36"
-          />
-        </div>
-      </div>
-      <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-        <div className="flex gap-1">
-          <dt>{t("subscriptions.schedule.nextRun")}</dt>
-          <dd>
-            {schedule.enabled && nextRun ? formatDateTime(nextRun, resolvedLocale) : t("subscriptions.schedule.off")}
-          </dd>
-        </div>
-        {lastRun && (
-          <div className="flex gap-1">
-            <dt>{t("subscriptions.schedule.lastRun")}</dt>
-            <dd>{formatDateTime(lastRun, resolvedLocale)}</dd>
-          </div>
-        )}
-        {schedule.latestRun && editable && (
-          <div>
+      {editable && runs.length > 0 && (
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+          {runs.map((workflow) => (
             <button
+              key={workflow.code}
               type="button"
               className="underline-offset-2 hover:underline"
-              onClick={() => schedule.latestRun && onOpenRun(schedule.latestRun.id)}
+              onClick={() => workflow.latestRun && onOpenRun(workflow.latestRun.id)}
             >
-              {t("subscriptions.schedule.viewRun")}
+              {t(`subscriptions.rankings.settings.latestRun.${workflow.code}`)}
             </button>
-          </div>
-        )}
-      </dl>
-      {schedule.lastError && (
-        <p className="text-xs text-warning-foreground">{t("subscriptions.schedule.lastErrorNotice")}</p>
+          ))}
+        </div>
       )}
+    </section>
+  );
+}
+
+function RankingRetentionPanel({
+  overview,
+  editable,
+  onSaved,
+}: {
+  overview: RankingOverview;
+  editable: boolean;
+  onSaved: () => void;
+}) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
+  const retention = overview.retention;
+  const save = async (next: typeof retention) => {
+    setSaving(true);
+    try {
+      await api.updateRankingRetention(next);
+      onSaved();
+    } catch (saveError) {
+      toast.notify(toastFromError(saveError, t("subscriptions.rankings.settings.retention.saveFailed")));
+    } finally {
+      setSaving(false);
+    }
+  };
+  const fullOptions = [...new Set([...RANKING_FULL_RETENTION_DAYS, retention.fullDays])].sort((a, b) => a - b);
+  const dailyOptions = [...new Set([...RANKING_DAILY_RETENTION_DAYS, retention.dailyDays])]
+    .filter((days) => days === 0 || days >= retention.fullDays)
+    .sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
+  return (
+    <section className="grid gap-3 rounded-lg border bg-card p-4" aria-labelledby="ranking-retention">
+      <div className="space-y-1">
+        <h2 id="ranking-retention" className="text-sm font-semibold">
+          {t("subscriptions.rankings.settings.retention.title")}
+        </h2>
+        <p className="text-xs text-muted-foreground">{t("subscriptions.rankings.settings.retention.description")}</p>
+      </div>
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span>{t("subscriptions.rankings.settings.retention.full")}</span>
+        <FloatingSelect
+          value={String(retention.fullDays)}
+          options={fullOptions.map((days) => ({ value: String(days), label: retentionLabel(days, t) }))}
+          ariaLabel={t("subscriptions.rankings.settings.retention.full")}
+          disabled={!editable || saving}
+          onValueChange={(value) => {
+            const fullDays = Number(value);
+            void save({
+              fullDays,
+              dailyDays: retention.dailyDays !== 0 && retention.dailyDays < fullDays ? fullDays : retention.dailyDays,
+            });
+          }}
+          className="w-32"
+        />
+      </div>
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span>{t("subscriptions.rankings.settings.retention.daily")}</span>
+        <FloatingSelect
+          value={String(retention.dailyDays)}
+          options={dailyOptions.map((days) => ({ value: String(days), label: retentionLabel(days, t) }))}
+          ariaLabel={t("subscriptions.rankings.settings.retention.daily")}
+          disabled={!editable || saving}
+          onValueChange={(value) => void save({ fullDays: retention.fullDays, dailyDays: Number(value) })}
+          className="w-32"
+        />
+      </div>
     </section>
   );
 }

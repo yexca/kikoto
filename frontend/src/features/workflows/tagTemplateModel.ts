@@ -1,8 +1,8 @@
 import { presetTargetValue, type PresetFormValues } from "@/features/workflows/presetWorkflowModel";
-import { workflowCopy, type DLsitePopularPeriod } from "@/features/workflows/workflowPageModel";
-import type { LibrarySource, WorkflowPreset } from "@/lib/api";
+import { workflowCopy } from "@/features/workflows/workflowPageModel";
+import type { WorkflowPreset } from "@/lib/api";
 
-/** Tag name templates for collection and preset runs: placeholder tokens, validation, and preview. */
+/** Tag name templates for preset runs: placeholder tokens, validation, and preview. */
 
 export type WorkflowTagTemplateToken = {
   name: string;
@@ -18,8 +18,6 @@ export type WorkflowTagTemplatePreview = {
 
 export const TAG_TEMPLATE_MAX_LENGTH = 160;
 export const TAG_NAME_MAX_LENGTH = 40;
-// Defaults omit {date} so repeated runs reuse one tag; saved date templates keep working.
-export const REMOTE_POPULAR_TAG_TEMPLATE = "{remote_name}_popular";
 
 export function workflowTagTemplateBlockers(template: string, tokens: string[]) {
   if (!template.trim()) return [workflowCopy("tagTemplateRequired")];
@@ -62,49 +60,6 @@ export function workflowTagTemplatePreview(
 
 export function workflowTagTemplateTokenValues(tokens: WorkflowTagTemplateToken[]) {
   return Object.fromEntries(tokens.map((token) => [token.name, token.value]));
-}
-
-export function remotePopularTagTemplateTokens(
-  source: LibrarySource | undefined | null,
-  action: "track" | "fetch",
-  now: Date,
-): WorkflowTagTemplateToken[] {
-  return [
-    { name: "date", description: "UTC date (YYMMDD)", value: utcShortDate(now) },
-    {
-      name: "remote_name",
-      description: "Remote source display name",
-      value: workflowTagFragmentPreview(source?.displayName ?? "remote"),
-    },
-    {
-      name: "source_code",
-      description: "Remote source code",
-      value: workflowTagFragmentPreview(source?.code ?? "remote"),
-    },
-    { name: "action", description: "Collection action", value: action },
-  ];
-}
-
-export function dlsitePopularTagTemplateTokens(
-  period: DLsitePopularPeriod,
-  releaseWindow: "30d" | "",
-  year: number,
-  now: Date,
-): WorkflowTagTemplateToken[] {
-  return [
-    { name: "date", description: "UTC date (YYMMDD)", value: utcShortDate(now) },
-    {
-      name: "period",
-      description: "Ranking period",
-      value: period === "day" ? "24h" : period === "week" ? "7d" : period === "month" ? "30d" : "year",
-    },
-    { name: "release_window", description: "Release filter", value: releaseWindow === "30d" ? "r30d" : "all" },
-    { name: "year", description: "Ranking year (annual mode)", value: period === "year" ? String(year) : "0" },
-  ];
-}
-
-export function dlsitePopularDefaultTagTemplate(period: DLsitePopularPeriod) {
-  return period === "year" ? "DL_year_{year}_popular" : "DL_{period}_{release_window}_popular";
 }
 
 function workflowTagFragmentPreview(value: string) {

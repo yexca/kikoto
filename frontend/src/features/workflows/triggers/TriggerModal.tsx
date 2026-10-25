@@ -1,9 +1,9 @@
 import { Save, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input, NativeSelect } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
   metadataSyncBlockers,
@@ -28,22 +28,11 @@ import {
 } from "@/features/workflows/run-forms/LibraryRunPanels";
 import { PresetParameterFields, presetBlockerText } from "@/features/workflows/run-forms/PresetRunPanel";
 import { SourcePresenceFields } from "@/features/workflows/run-forms/SourcePresenceRunPanel";
-import { TagTemplateField } from "@/features/workflows/run-forms/TagTemplateField";
 import { useMetadataSyncSources } from "@/hooks/useMetadataSyncSources";
-import {
-  REMOTE_POPULAR_TAG_TEMPLATE,
-  dlsitePopularDefaultTagTemplate,
-  dlsitePopularTagTemplateTokens,
-  remotePopularTagTemplateTokens,
-  workflowTagTemplateBlockers,
-  workflowTagTemplatePreview,
-  workflowTagTemplateTokenValues,
-} from "@/features/workflows/tagTemplateModel";
 import {
   parseJSONRecord,
   workflowCopy,
   type CurrentTriggerRunOptions,
-  type DLsitePopularPeriod,
   type SystemWorkflowTriggerConfig,
 } from "@/features/workflows/workflowPageModel";
 import { ErrorPanel, Field, Modal } from "@/features/workflows/WorkflowPanelParts";
@@ -56,7 +45,6 @@ import {
 } from "@/features/workflows/workflowTriggerModel";
 import {
   api,
-  type LibrarySource,
   type SourcePresenceCheckOptions,
   type WorkflowDefinition,
   type WorkflowPreset,
@@ -123,12 +111,7 @@ export function TriggerModal({
       ? metadataSyncValuesFromConfig(parseJSONRecord(trigger.configJson))
       : (currentRunOptions?.metadataSync ?? metadataSyncDefaultValues()),
   );
-  const customizable =
-    Boolean(preset) ||
-    isMetadataSync ||
-    definition.code === "remote_popular_collection" ||
-    definition.code === "dlsite_popular_collection" ||
-    definition.code === "source_presence_check";
+  const customizable = Boolean(preset) || isMetadataSync || definition.code === "source_presence_check";
   const [customize, setCustomize] = useState(() => customizable && Boolean(trigger));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -150,7 +133,7 @@ export function TriggerModal({
   ];
 
   useEffect(() => {
-    const needsSource = definition.code === "remote_popular_collection" || definition.code === "source_presence_check";
+    const needsSource = definition.code === "source_presence_check";
     if (!needsSource || systemConfig.sourceId > 0) return;
     let active = true;
     api
@@ -374,43 +357,6 @@ function SystemWorkflowTriggerFields({
   /** Receives functional updates so the async source fill does not overwrite edits made meanwhile. */
   onChange: Dispatch<SetStateAction<SystemWorkflowTriggerConfig>>;
 }) {
-  const [sources, setSources] = useState<LibrarySource[]>([]);
-  const [loadingSources, setLoadingSources] = useState(definitionCode === "remote_popular_collection");
-  const compatibleSources = useMemo(
-    () =>
-      sources.filter(
-        (source) =>
-          source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType),
-      ),
-    [sources],
-  );
-
-  useEffect(() => {
-    if (definitionCode !== "remote_popular_collection") return;
-    let active = true;
-    api
-      .listLibrarySources()
-      .then((items) => {
-        if (!active) return;
-        setSources(items);
-        const compatible = items.filter(
-          (source) =>
-            source.enabled && ["kikoeru_compatible", "kikoeru_compatible_number178"].includes(source.sourceType),
-        );
-        const first = compatible[0];
-        if (first) onChange((current) => (current.sourceId > 0 ? current : { ...current, sourceId: first.id }));
-      })
-      .catch(() => {
-        if (active) setSources([]);
-      })
-      .finally(() => {
-        if (active) setLoadingSources(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [definitionCode, onChange]);
-
   if (definitionCode === "local_media_index") {
     return (
       <LocalMediaIndexModeField
@@ -469,146 +415,8 @@ function SystemWorkflowTriggerFields({
     );
   }
 
-  if (definitionCode === "remote_popular_collection") {
-    const selectedSource = compatibleSources.find((source) => source.id === value.sourceId);
-    const tokens = remotePopularTagTemplateTokens(selectedSource, value.action, new Date());
-    const preview = workflowTagTemplatePreview(value.tagNameTemplate, workflowTagTemplateTokenValues(tokens));
-    const error = workflowTagTemplateBlockers(
-      value.tagNameTemplate,
-      tokens.map((token) => token.name),
-    )[0];
-    return (
-      <div className="grid gap-3 md:grid-cols-2">
-        <Field label={workflowCopy("remoteSource")}>
-          <NativeSelect
-            fieldSize="sm"
-            value={value.sourceId}
-            disabled={loadingSources || compatibleSources.length === 0}
-            onChange={(event) => onChange({ ...value, sourceId: Number(event.target.value) })}
-          >
-            {compatibleSources.length === 0 && (
-              <option value={0}>
-                {loadingSources ? workflowCopy("loadingSources") : workflowCopy("noCompatibleSource")}
-              </option>
-            )}
-            {compatibleSources.map((source) => (
-              <option key={source.id} value={source.id}>
-                {source.displayName}
-              </option>
-            ))}
-          </NativeSelect>
-        </Field>
-        <Field label={workflowCopy("action")}>
-          <NativeSelect
-            fieldSize="sm"
-            value={value.action}
-            onChange={(event) => onChange({ ...value, action: event.target.value === "fetch" ? "fetch" : "track" })}
-          >
-            <option value="track">{workflowCopy("track")}</option>
-            <option value="fetch" disabled>
-              {workflowCopy("fetchManualOnly")}
-            </option>
-          </NativeSelect>
-        </Field>
-        <Field label={workflowCopy("workLimit")}>
-          <NativeSelect
-            fieldSize="sm"
-            value={value.limit}
-            onChange={(event) => onChange({ ...value, limit: Number(event.target.value) })}
-          >
-            {[10, 25, 50, 100].map((limit) => (
-              <option key={limit} value={limit}>
-                {workflowCopy("worksCount", { count: limit })}
-              </option>
-            ))}
-          </NativeSelect>
-        </Field>
-        <TagTemplateField
-          id="remote-trigger-tag-template"
-          enabled={!value.skipTag}
-          onEnabledChange={(enabled) => onChange({ ...value, skipTag: !enabled })}
-          value={value.tagNameTemplate}
-          defaultValue={REMOTE_POPULAR_TAG_TEMPLATE}
-          tokens={tokens}
-          preview={preview}
-          error={error}
-          onChange={(tagNameTemplate) => onChange({ ...value, tagNameTemplate })}
-        />
-      </div>
-    );
-  }
-
   if (definitionCode === "source_presence_check") {
     return <SourcePresenceTriggerFields value={value} onChange={onChange} />;
-  }
-
-  if (definitionCode === "dlsite_popular_collection") {
-    const defaultTemplate = dlsitePopularDefaultTagTemplate(value.period);
-    const tokens = dlsitePopularTagTemplateTokens(value.period, value.releaseWindow, value.year, new Date());
-    const preview = workflowTagTemplatePreview(value.tagNameTemplate, workflowTagTemplateTokenValues(tokens));
-    const error = workflowTagTemplateBlockers(
-      value.tagNameTemplate,
-      tokens.map((token) => token.name),
-    )[0];
-    return (
-      <div className="grid gap-3 md:grid-cols-2">
-        <Field label={workflowCopy("rankingPeriod")}>
-          <NativeSelect
-            fieldSize="sm"
-            value={value.period}
-            onChange={(event) => {
-              const period = event.target.value as DLsitePopularPeriod;
-              const tagNameTemplate =
-                value.tagNameTemplate === dlsitePopularDefaultTagTemplate(value.period)
-                  ? dlsitePopularDefaultTagTemplate(period)
-                  : value.tagNameTemplate;
-              onChange({ ...value, period, tagNameTemplate });
-            }}
-          >
-            <option value="day">{workflowCopy("period24Hours")}</option>
-            <option value="week">{workflowCopy("period7Days")}</option>
-            <option value="month">{workflowCopy("period30Days")}</option>
-            <option value="year">{workflowCopy("periodAnnual")}</option>
-          </NativeSelect>
-        </Field>
-        {value.period === "year" ? (
-          <Field label={workflowCopy("rankingYear")}>
-            <Input
-              fieldSize="sm"
-              type="number"
-              min={2000}
-              max={new Date().getUTCFullYear()}
-              value={value.year}
-              step={1}
-              inputMode="numeric"
-              onChange={(event) => onChange({ ...value, year: wholeNumberFromInput(event.target.value) })}
-            />
-          </Field>
-        ) : (
-          <Field label={workflowCopy("releaseWindow")}>
-            <NativeSelect
-              fieldSize="sm"
-              value={value.releaseWindow}
-              onChange={(event) => onChange({ ...value, releaseWindow: event.target.value === "30d" ? "30d" : "" })}
-            >
-              <option value="30d">{workflowCopy("releasedIn30Days")}</option>
-              <option value="">{workflowCopy("allReleases")}</option>
-            </NativeSelect>
-          </Field>
-        )}
-        <TagTemplateField
-          id="dlsite-trigger-tag-template"
-          enabled={!value.skipTag}
-          onEnabledChange={(enabled) => onChange({ ...value, skipTag: !enabled })}
-          value={value.tagNameTemplate}
-          defaultValue={defaultTemplate}
-          tokens={tokens}
-          preview={preview}
-          error={error}
-          onChange={(tagNameTemplate) => onChange({ ...value, tagNameTemplate })}
-        />
-      </div>
-    );
   }
 
   return null;

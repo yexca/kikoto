@@ -385,40 +385,6 @@ export type DLsiteSyncResult = {
   failures: string[];
 };
 
-export type RemoteCollectionRunResult = {
-  runId: number;
-  sourceId: number;
-  collectionKind: string;
-  action: "track" | "fetch";
-  status: string;
-  discovered: number;
-  accepted: number;
-  skipped: number;
-  tracked: number;
-  fetched: number;
-  tagged: number;
-  failed: number;
-  childRuns: number[];
-  failures: string[];
-  expectedMaximum: number;
-  returnedCount: number;
-  tagName: string;
-};
-
-export type DLsitePopularRunResult = {
-  runId: number;
-  status: string;
-  period: "day" | "week" | "month" | "year";
-  releaseWindow: "30d" | "";
-  year: number;
-  tagName: string;
-  discovered: number;
-  synced: number;
-  tagged: number;
-  failed: number;
-  failures: string[];
-};
-
 async function streamWorkflowRunEvents(
   id: number,
   afterId: number,
@@ -604,23 +570,9 @@ export const workflowApi = {
     postJSONBody<LocalMediaIndexResult>("/api/workflow-runs/local-media-index", payload),
   runSourcePresenceCheck: (payload: SourcePresenceCheckOptions) =>
     postJSONBody<SourcePresenceCheckResult>("/api/workflow-runs/source-presence-check", payload),
-  runRemotePopularCollection: (payload: {
-    action: "track" | "fetch";
-    sourceId: number;
-    limit: number;
-    tagNameTemplate: string;
-    skipTag?: boolean;
-  }) => postJSONBody<RemoteCollectionRunResult>("/api/workflow-runs/remote-popular", payload),
   listWorkflowPresets: () => getJSON<WorkflowPreset[]>("/api/workflow-presets"),
   runWorkflowPreset: (code: string, inputs: Record<string, unknown>) =>
     postJSONBody<WorkflowPresetRunResult>(`/api/workflow-presets/${encodeURIComponent(code)}/runs`, { inputs }),
-  runDLsitePopularCollection: (payload: {
-    period: "day" | "week" | "month" | "year";
-    releaseWindow: "30d" | "";
-    year: number;
-    tagNameTemplate: string;
-    skipTag?: boolean;
-  }) => postJSONBody<DLsitePopularRunResult>("/api/workflow-runs/dlsite-popular", payload),
   recordRemoteBulkRun: (payload: {
     action: "track" | "fetch" | "track_fetch" | "sync" | "sync_fetch" | "save" | "sync_save";
     sourceId: number;
