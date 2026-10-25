@@ -799,6 +799,7 @@ export function releaseFeedFamilyFixture(overrides: Partial<ReleaseFeedFamily> =
       tags: [],
       dlsiteUrl: "https://source.example.invalid/work",
     },
+    watched: false,
     ...overrides,
   };
 }

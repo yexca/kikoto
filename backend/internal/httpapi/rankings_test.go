@@ -217,7 +217,9 @@ func TestRankingPageComparesWithSeenPreviousOrPickedSnapshot(t *testing.T) {
 	env.recordVariant(t, variant, rankingItems("RJ00000001", "RJ00000002", "RJ00000003"), now.Add(-3*time.Hour))
 	env.recordVariant(t, variant, rankingItems("RJ00000002", "RJ00000001", "RJ00000004"), now.Add(-2*time.Hour))
 	env.recordVariant(t, variant, rankingItems("RJ00000003", "RJ00000002", "RJ00000005"), now.Add(-time.Hour))
-	env.exec(t, `INSERT INTO work (primary_code, title) VALUES ('RJ00000002', 'Example Work 2')`)
+	env.exec(t, `INSERT INTO work (id, primary_code, title) VALUES (2, 'RJ00000002', 'Example Work 2')`,
+		`INSERT INTO file_source (id, code, display_name, source_type) VALUES (1, 'example_local', 'Example Local', 'local_folder')`,
+		`INSERT INTO work_source_presence (work_id, file_source_id, presence_type, availability) VALUES (2, 1, 'local', 'available')`)
 
 	firstVisit := env.rankingPage(t, env.adminID, list, nil)
 	if firstVisit.Variant.ID != variant.ID || firstVisit.Baseline == nil || firstVisit.Baseline.Kind != "previous" || firstVisit.At != nil || firstVisit.Coverage != nil {
@@ -229,7 +231,7 @@ func TestRankingPageComparesWithSeenPreviousOrPickedSnapshot(t *testing.T) {
 	if len(firstVisit.Dropped) != 2 || firstVisit.Dropped[0].Code != "RJ00000001" || firstVisit.Dropped[0].PreviousRank != 2 || firstVisit.Dropped[1].Code != "RJ00000004" {
 		t.Fatalf("dropped = %+v", firstVisit.Dropped)
 	}
-	if firstVisit.Counts.NotInLibrary != 2 || firstVisit.Items[1].Work == nil || firstVisit.Items[0].Work != nil {
+	if firstVisit.Counts.NotInLibrary != 2 || firstVisit.Items[1].Work == nil || !firstVisit.Items[1].InLibrary || firstVisit.Items[0].Work != nil {
 		t.Fatalf("library state counts=%+v items=%+v", firstVisit.Counts, firstVisit.Items)
 	}
 	if firstVisit.Items[0].Fallback.Title != "Example Work 03" || firstVisit.Items[0].Fallback.Circle != "Example Circle" {
@@ -1106,6 +1108,8 @@ func TestDemoRankingsShowHistoryAndRefuseChanges(t *testing.T) {
 		{http.MethodDelete, "/api/rankings/1", server.deleteRanking},
 		{http.MethodPost, "/api/rankings/refresh", server.runRankingRefresh},
 		{http.MethodPut, "/api/rankings/retention", server.updateRankingRetention},
+		{http.MethodPost, "/api/rankings/1/metadata-sync", server.createRankingMetadataSyncRun},
+		{http.MethodPost, "/api/rankings/1/source-check", server.createRankingSourceCheckRun},
 	} {
 		if response := env.request(t, env.adminID, attempt.method, attempt.target, map[string]any{}, attempt.handler, "id", "1"); response.Code != http.StatusForbidden {
 			t.Fatalf("demo %s %s = %d", attempt.method, attempt.target, response.Code)

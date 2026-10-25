@@ -323,6 +323,10 @@ const workCardKorean = {
   namedSourceUnavailable: "{{name}} 사용 불가",
   local: "로컬",
   tracked: "추적됨",
+  watch: "모니터링",
+  watchTitle: "가용성 모니터링에 추가",
+  watching: "모니터링 중",
+  watchingTitle: "가용성 모니터링에 있음",
 } as const;
 
 const adminToolsKorean = {

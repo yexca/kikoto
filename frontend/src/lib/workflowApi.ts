@@ -110,6 +110,19 @@ export type WorkflowRunGraph = {
   edges: WorkflowRunGraphEdge[];
 };
 
+/**
+ * A run over the works a Subscriptions view shows. Without a run, no shown
+ * work needed it; an existing run is the one already queued for the same view.
+ */
+export type ShownWorksActionResult = {
+  runId: number;
+  jobId: number;
+  status: string;
+  queued: number;
+  skipped: number;
+  existing: boolean;
+};
+
 export type WorkflowRunDetail = WorkflowRun & {
   metadataIssues?: { encountered: number; pending: number };
   /** False when the viewer may see the run but not cancel, retry, or review it. */

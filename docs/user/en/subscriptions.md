@@ -53,7 +53,11 @@ switch at the top chooses **New releases** or **Rankings**; a dot on
 - A card shows the work once metadata knows it, or the catalog's title,
   circle, and code until then. Open it to go to the work, add it to a favorite
   list, or open DLsite. Accounts that can run workflows and sync metadata can
-  also add it to Availability Watch.
+  also select **Watch** to add it to Availability Watch; a work already in the
+  watch pool shows **Watching** instead.
+- **Actions**, beside **Display options**, syncs the metadata of the works on
+  the page or checks their sources; see
+  [Syncing and checking shown works](#syncing-and-checking-shown-works).
 - Cards added since you last opened the feed are marked with a dot. The
   navigation shows how many there are, and opening the feed clears the count.
   A refresh that adds entries to your feed also sends one notification.
@@ -78,9 +82,11 @@ switch at the top chooses **New releases** or **Rankings**; a dot on
   of its own, with its own updates, history, and seen state. The address keeps
   the choice, so a link opens the same order and Back returns to the previous
   choice; each ranking opens in the choice you last made on it on this device.
-- **All**, **New**, **Moved**, and **Not in library**, beside the order, narrow
-  the list and show how many works each keeps. **Not in library** keeps works
-  with no entry in your library. On a phone, the order and the filters share
+- **All**, **New**, **Moved**, **Not in library**, and **On a source**, beside
+  the order, narrow the list and show how many works each keeps. **Not in
+  library** keeps works your library has no files for: no local or cached
+  files, and not tracked from a remote source. **On a source** keeps works a
+  remote source is known to have. On a phone, the order and the filters share
   one row that scrolls sideways.
 - The status at the end of the toolbar, such as **Updated 12:31 PM · vs your
   last visit**, says when the ranking was last updated and what it is compared
@@ -93,20 +99,27 @@ switch at the top chooses **New releases** or **Rankings**; a dot on
   in the ranking before, **Back** a work that returns after leaving it, and an
   arrow how many places a work moved; a work that did not move shows nothing
   there. The bottom of the card holds its actions and states only what is
-  worth knowing: **In library** for a work your library has, how many days a
-  work has stayed in the ranking when that is more than one, and its best rank
-  when it once ranked higher. **Dropped out** at the end lists the works that
-  left, with their former rank.
-- A work in your library opens as in the Library. Any other work shows the
-  title and circle the ranking lists, and the cover when Kikoto already has it.
-  Rankings never add works to the library, sync their metadata, or tag them;
-  open a work to look it up, open DLsite, or add it to Availability Watch. A
+  worth knowing: **In library** for a work your library has files for, how
+  many days a work has stayed in the ranking when that is more than one, and
+  its best rank when it once ranked higher. **Dropped out** at the end lists
+  the works that left, with their former rank.
+- A work Kikoto knows shows its title, cover, rating, and tags and opens as in
+  the Library. Any other work shows the title and circle the ranking lists,
+  and the cover when Kikoto already has it. Open a work to look it up, open
+  DLsite, or select **Watch** to add a work that is not in the library to
+  Availability Watch; **Watching** marks a work already in the watch pool. A
   work from a remote source's list opens on that source.
+- Updating a ranking only records its order: it never adds works, syncs their
+  metadata, checks sources, or tags them. **Actions**, at the end of the
+  toolbar's first row, does that for the order shown when you ask; see
+  [Syncing and checking shown works](#syncing-and-checking-shown-works).
+  **On a source** then keeps the works a source has.
 - When the latest update failed or a remote source is unavailable, the
   ranking keeps showing its last successful update and says so.
 - A finished year of the annual ranking shows its final order: ranks without
-  New, Back, or movement, the days in the ranking, or best ranks, with **All**
-  and **Not in library**. The toolbar says when the final order was recorded.
+  New, Back, or movement, the days in the ranking, or best ranks, with **All**,
+  **Not in library**, and **On a source**. The toolbar says when the final
+  order was recorded.
 
 ### History
 
@@ -125,6 +138,26 @@ switch at the top chooses **New releases** or **Rankings**; a dot on
   between that confirmation and the chosen time, it says so.
 - For dates before the full history, only the order at the end of each day is
   kept, and History says so.
+
+## Syncing and checking shown works
+
+**Actions** on New releases and Rankings works on the works the page shows,
+only when you ask. Each action takes only the works that still need it, at
+most 100 at a time, and says so when none does.
+
+- **Sync metadata**, for accounts that may sync metadata, syncs DLsite metadata
+  for the works without it and those synced more than a day ago. Works Kikoto
+  does not know yet are added with their title, cover, rating, and tags, but
+  without files, so a ranking still shows them as **Not in library**.
+- **Check sources**, for accounts that may track remote works, asks each
+  enabled compatible remote source which works it has. It skips works with
+  files, works already known to be on a source, and works checked in the last
+  day. A source that has a work shows on its card. For a work Kikoto knows,
+  the answer is kept as its source; for the others, it lasts until you leave
+  the page.
+
+Both run in the background. A line above the works shows the run with **View
+run**, and the page reloads when it ends.
 
 ## Subscription Settings
 

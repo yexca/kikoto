@@ -1445,6 +1445,16 @@ export const surfaceJapanese = {
         name: "作品メタデータを更新",
         description: "1つの作品と限定された言語版ファミリーを更新します。",
       },
+      shown_works_metadata_sync: {
+        name: "表示中の作品のメタデータを同期",
+        description:
+          "表示中のランキングや新作のうち、新しいメタデータがない作品について DLsite のメタデータを同期し、ライブラリにない作品を追加します。",
+      },
+      shown_works_source_check: {
+        name: "表示中の作品のソースを確認",
+        description:
+          "表示中のランキングや新作のうち、利用できると分かっていない作品がリモートソースにあるかを確認します。",
+      },
       work_folder_edit: { name: "作品ファイルを編集" },
       llm_translation: { name: "LLM 翻訳" },
       ai_translation: {

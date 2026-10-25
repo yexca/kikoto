@@ -77,6 +77,8 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 	},
 	rankingWorkflowSpec(dlsiteRankingWorkflowCode),
 	rankingWorkflowSpec(remoteRankingWorkflowCode),
+	shownWorksWorkflowSpec(shownWorksMetadataSyncWorkflowCode),
+	shownWorksWorkflowSpec(shownWorksSourceCheckWorkflowCode),
 	{
 		Code:        "local_library_scan",
 		Name:        "Scan local library",

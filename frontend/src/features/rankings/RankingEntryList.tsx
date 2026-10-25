@@ -1,13 +1,13 @@
-import { ArrowDown, ArrowUp, ChevronDown, Eye, Library } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Library } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { CompactWorkCardShell } from "@/components/work-card/CompactWorkCard";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
+import { WorkCardWatchButton } from "@/components/work-card/WorkCardWatchButton";
 import {
   dlsiteTagBadges,
   userTagBadges,
-  WorkCardActionButton,
   WorkCardDLsiteAction,
   WorkCardFooter,
   WorkCardListButton,
@@ -15,6 +15,7 @@ import {
 } from "@/components/work-card/WorkCardShell";
 import type { RankingChange, RankingDroppedItem, RankingItem, RankingPage } from "@/lib/api";
 import { openCircleRoute } from "@/lib/circleNavigationState";
+import { shownWorkSourcePresence, type ShownWorksSourceCheck } from "@/lib/shownWorksSourceCheck";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { matchesRankingFilter, rankingEntryFacts, type RankingFilter } from "./rankingModel";
@@ -24,7 +25,10 @@ type RankingEntry = RankingItem | RankingDroppedItem;
 type EntryActions = {
   demo: boolean;
   canWatch: boolean;
+  /** Codes added to Availability Watch on this page, and those being added. */
   watched: Set<string>;
+  watching: Set<string>;
+  sourceCheck: ShownWorksSourceCheck;
   onWatch: (code: string) => void;
   onOpenWork: (code: string) => void;
 };
@@ -33,8 +37,17 @@ type EntryActions = {
 // settings open beside it.
 const entryGridClassName = "grid gap-3 sm:gap-4 @4xl:grid-cols-2 @7xl:grid-cols-3";
 
-function rankingCardView(item: RankingEntry, unknownCircle: string): WorkCardViewModel {
+/**
+ * The card of an entry. Its source badges follow what the work records and
+ * this visit's source checks; an entry the library has no files for shows no
+ * "no source" badge, since the ranking is not the library.
+ */
+function rankingCardView(item: RankingEntry, unknownCircle: string, check: ShownWorksSourceCheck): WorkCardViewModel {
   const work = item.work;
+  const presence = shownWorkSourcePresence(item, check);
+  const sourceBadges = sourcePresenceBadges(presence, work?.availability).filter(
+    (badge) => item.inLibrary || badge.key !== "source:no-source",
+  );
   if (work) {
     return {
       code: work.primaryCode,
@@ -56,7 +69,7 @@ function rankingCardView(item: RankingEntry, unknownCircle: string): WorkCardVie
       hasLyrics: work.hasLyrics,
       dlsiteTags: dlsiteTagBadges(work.tags),
       userTags: userTagBadges(work.userTags ?? []),
-      sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
+      sourceBadges,
       sourceBadgeStyle: "icon",
     };
   }
@@ -67,7 +80,8 @@ function rankingCardView(item: RankingEntry, unknownCircle: string): WorkCardVie
     circle: fallback.circle || unknownCircle,
     coverUrl: fallback.coverUrl,
     dlsiteTags: [],
-    sourceBadges: [],
+    sourceBadges,
+    sourceBadgeStyle: "icon",
     sourceUnavailableFallback: false,
   };
 }
@@ -95,7 +109,9 @@ export function RankingEntryList({
   const { t } = useTranslation();
   const archive = page.list.finalAt !== null;
   const history = page.at !== null;
-  const items = page.items.filter((item) => matchesRankingFilter(item, filters.includes(filter) ? filter : "all"));
+  const items = page.items.filter((item) =>
+    matchesRankingFilter(item, filters.includes(filter) ? filter : "all", actions.sourceCheck),
+  );
   const now = new Date();
 
   return (
@@ -170,6 +186,8 @@ function RankingEntryCard({
   demo,
   canWatch,
   watched,
+  watching,
+  sourceCheck,
   onWatch,
   onOpenWork,
 }: EntryActions & {
@@ -180,10 +198,10 @@ function RankingEntryCard({
   notes: string[];
 }) {
   const { t } = useTranslation();
-  const view = rankingCardView(item, t("workCard.unknownCircle"));
-  const facts = (item.work || notes.length > 0) && (
+  const view = rankingCardView(item, t("workCard.unknownCircle"), sourceCheck);
+  const facts = (item.inLibrary || notes.length > 0) && (
     <span className="flex min-w-0 items-center gap-1.5 px-1 text-xs text-muted-foreground">
-      {item.work && (
+      {item.inLibrary && (
         <Badge variant="success" className="shrink-0 gap-1 px-1.5 py-0 text-2xs font-medium">
           <Library className="h-3 w-3" aria-hidden="true" />
           {t("subscriptions.rankings.inLibrary")}
@@ -205,17 +223,12 @@ function RankingEntryCard({
       }
       right={
         <>
-          {canWatch && (
-            <WorkCardActionButton
-              title={t("subscriptions.feed.watch")}
-              disabled={watched.has(item.code)}
-              onClick={(clickEvent) => {
-                clickEvent.stopPropagation();
-                onWatch(item.code);
-              }}
-            >
-              <Eye className="h-4 w-4" />
-            </WorkCardActionButton>
+          {canWatch && !item.inLibrary && (
+            <WorkCardWatchButton
+              watched={item.watched || watched.has(item.code)}
+              pending={watching.has(item.code)}
+              onWatch={() => onWatch(item.code)}
+            />
           )}
           {item.work && <WorkCardListButton workId={item.work.id} active={item.work.favorite} />}
         </>

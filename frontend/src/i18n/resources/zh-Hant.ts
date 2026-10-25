@@ -324,6 +324,10 @@ const workCardHant = {
   namedSourceUnavailable: "{{name}}無法使用",
   local: "本機",
   tracked: "已追蹤",
+  watch: "監視",
+  watchTitle: "加入可用性監視",
+  watching: "監視中",
+  watchingTitle: "已在可用性監視中",
 } as const;
 
 const adminToolsHant = {

@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { LibrarySource } from "@/lib/libraryApi";
 import type { RankingItem, RankingList, RankingOrder, RankingVariant } from "@/lib/rankingApi";
+import {
+  mergeShownWorksSourceChecks,
+  parseShownWorksSourceCheck,
+  shownWorkSourcePresence,
+} from "@/lib/shownWorksSourceCheck";
 
 import {
   decodeRankingOrder,
@@ -21,6 +26,7 @@ import {
   rankingDayAt,
   rankingDayIsDailyOnly,
   rankingEntryFacts,
+  rankingFilterCounts,
   rankingIntervalOptions,
   rankingListLabel,
   rankingOrderFor,
@@ -103,6 +109,8 @@ function item(patch: Partial<RankingItem>): RankingItem {
     bestRank: 1,
     appearances: 1,
     work: null,
+    inLibrary: false,
+    watched: false,
     fallback: { code: "RJ00000001", title: "Example Work 1", circle: "", coverUrl: "", dlsiteUrl: "" },
     ...patch,
   };
@@ -133,14 +141,58 @@ describe("rankingModel", () => {
       item({ code: "RJ00000002", change: { kind: "reentered", from: null, delta: 0 } }),
       item({ code: "RJ00000003", change: { kind: "up", from: 5, delta: 2 } }),
       item({ code: "RJ00000004", change: { kind: "down", from: 1, delta: -3 } }),
-      item({ code: "RJ00000005", work: { id: 5 } as RankingItem["work"] }),
+      item({ code: "RJ00000005", work: { id: 5 } as RankingItem["work"], inLibrary: true }),
+      item({ code: "RJ00000006", work: { id: 6 } as RankingItem["work"] }),
     ];
     const codes = (filter: Parameters<typeof matchesRankingFilter>[1]) =>
       items.filter((entry) => matchesRankingFilter(entry, filter)).map((entry) => entry.code.slice(-1));
     expect(codes("new")).toEqual(["1", "2"]);
     expect(codes("moved")).toEqual(["3", "4"]);
-    expect(codes("notInLibrary")).toEqual(["1", "2", "3", "4"]);
-    expect(codes("all")).toHaveLength(5);
+    // A work known only by its metadata has no files, so it is not in the library.
+    expect(codes("notInLibrary")).toEqual(["1", "2", "3", "4", "6"]);
+    expect(codes("all")).toHaveLength(6);
+  });
+
+  it("finds the entries on a source from recorded presence and this visit's answers", () => {
+    const check = parseShownWorksSourceCheck(
+      JSON.stringify({
+        sources: [{ id: 11, name: "Example Remote" }],
+        results: [
+          { code: "RJ00000001", available: [11], missing: [] },
+          { code: "RJ00000002", available: [], missing: [11] },
+          { code: "RJ00000003", available: [11], missing: [] },
+        ],
+      }),
+    );
+    const recorded = { id: 3, sourcePresence: [{ type: "source", availability: "missing", fileSourceId: 11 }] };
+    const items = [
+      item({ code: "RJ00000001" }),
+      item({ code: "RJ00000002" }),
+      // The work's record of the source wins over the visit's answer.
+      item({ code: "RJ00000003", work: recorded as RankingItem["work"] }),
+      item({
+        code: "RJ00000004",
+        work: { id: 4, sourcePresence: [{ type: "tracked", availability: "available" }] } as RankingItem["work"],
+      }),
+    ];
+    expect(items.filter((entry) => matchesRankingFilter(entry, "onSource", check)).map((entry) => entry.code)).toEqual([
+      "RJ00000001",
+      "RJ00000004",
+    ]);
+    expect(shownWorkSourcePresence(items[0], check)).toEqual([
+      { type: "source", availability: "available", fileSourceId: 11, fileSourceName: "Example Remote" },
+    ]);
+    expect(shownWorkSourcePresence(items[1], check)).toEqual([]);
+    expect(shownWorkSourcePresence(items[2], check)).toEqual(recorded.sourcePresence);
+    const page = { items, counts: { new: 0, reentered: 0, up: 0, down: 0, dropped: 0, notInLibrary: 4 } };
+    expect(rankingFilterCounts(page as unknown as Parameters<typeof rankingFilterCounts>[0], check).onSource).toBe(2);
+    // A later check replaces an earlier answer; an unreadable summary adds nothing.
+    const later = mergeShownWorksSourceChecks(
+      check,
+      parseShownWorksSourceCheck(JSON.stringify({ results: [{ code: "RJ00000001", available: [], missing: [11] }] })),
+    );
+    expect(matchesRankingFilter(items[0], "onSource", later)).toBe(false);
+    expect(parseShownWorksSourceCheck("not json").available.size).toBe(0);
   });
 
   it("counts the entry day as the first day in the ranking", () => {

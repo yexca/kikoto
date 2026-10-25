@@ -70,6 +70,18 @@
   toolbar. The Rankings settings show one line per ranking
   with relative pull times and expand a row in place to edit it, and deleting
   a ranking with its history asks first.
+- New releases and Rankings have an **Actions** menu for the works the page
+  shows. **Sync metadata** syncs DLsite metadata for the works without fresh
+  metadata, adding the works Kikoto does not know yet with their title, cover,
+  rating, and tags, and **Check sources** asks the remote sources about the
+  works not known to be available. Both take only the works that still need
+  them, run in the background with a status line, and reload the page when
+  they end; a ranking pull still only records the order.
+- **In library** and **Not in library** on Rankings follow whether the library
+  has files for a work, and **On a source** keeps the works a remote source is
+  known to have.
+- New releases and Rankings cards label the Availability Watch action
+  **Watch** and show **Watching** for a work already in the watch pool.
 
 </details>
 

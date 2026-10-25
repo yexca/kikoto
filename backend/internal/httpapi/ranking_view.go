@@ -67,13 +67,22 @@ type rankingItem struct {
 	BestRank        int                 `json:"bestRank"`
 	Appearances     int                 `json:"appearances"`
 	Work            *libraryWorkSummary `json:"work"`
-	Fallback        rankingFallback     `json:"fallback"`
+	// InLibrary is true when the work has files: available local, cached, or
+	// tracked remote locations. A work known only by its metadata is not.
+	InLibrary bool `json:"inLibrary"`
+	// Watched is true when the Availability Watch pool watches the code or
+	// another edition of its family. It is stated only to accounts that may
+	// see the pool.
+	Watched  bool            `json:"watched"`
+	Fallback rankingFallback `json:"fallback"`
 }
 
 type rankingDroppedItem struct {
 	Code         string              `json:"code"`
 	PreviousRank int                 `json:"previousRank"`
 	Work         *libraryWorkSummary `json:"work"`
+	InLibrary    bool                `json:"inLibrary"`
+	Watched      bool                `json:"watched"`
 	Fallback     rankingFallback     `json:"fallback"`
 }
 
@@ -83,7 +92,7 @@ type rankingCounts struct {
 	Up        int `json:"up"`
 	Down      int `json:"down"`
 	Dropped   int `json:"dropped"`
-	// NotInLibrary counts items whose code has no work.
+	// NotInLibrary counts items whose code has no work with files.
 	NotInLibrary int `json:"notInLibrary"`
 }
 
@@ -237,6 +246,12 @@ func (s *Server) getRanking(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, err)
 		return
+	}
+	if userHasPermission(user, "workflows:run") {
+		if err := s.markRankingWatched(r.Context(), &page); err != nil {
+			writeError(w, err)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, page)
 }
@@ -455,7 +470,7 @@ func (s *Server) loadRankingPage(ctx context.Context, userID int64, list ranking
 		return page, err
 	}
 	for _, item := range page.Items {
-		if item.Work == nil {
+		if !item.InLibrary {
 			page.Counts.NotInLibrary++
 		}
 	}
@@ -565,6 +580,7 @@ func (s *Server) attachRankingWorks(ctx context.Context, userID int64, list rank
 		item := &page.Items[index]
 		if work, ok := works[item.Code]; ok {
 			item.Work = &work
+			item.InLibrary = workHasFiles(work.Availability)
 		}
 		item.Fallback = s.rankingFallback(ctx, list, item.Code, entries[item.Code])
 	}
@@ -572,8 +588,44 @@ func (s *Server) attachRankingWorks(ctx context.Context, userID int64, list rank
 		item := &page.Dropped[index]
 		if work, ok := works[item.Code]; ok {
 			item.Work = &work
+			item.InLibrary = workHasFiles(work.Availability)
 		}
 		item.Fallback = s.rankingFallback(ctx, list, item.Code, entries[item.Code])
+	}
+	return nil
+}
+
+// workHasFiles reports whether a work's availability names a location that
+// plays: local, cached, or a tracked remote work's stream or download.
+func workHasFiles(availability []string) bool {
+	for _, kind := range availability {
+		switch kind {
+		case "local", "cache", "remote":
+			return true
+		}
+	}
+	return false
+}
+
+// markRankingWatched states which shown codes the Availability Watch pool
+// watches.
+func (s *Server) markRankingWatched(ctx context.Context, page *rankingPage) error {
+	codes := make([]string, 0, len(page.Items)+len(page.Dropped))
+	for _, item := range page.Items {
+		codes = append(codes, item.Code)
+	}
+	for _, item := range page.Dropped {
+		codes = append(codes, item.Code)
+	}
+	watched, err := s.activeAvailabilityWatchCodes(ctx, codes)
+	if err != nil {
+		return err
+	}
+	for index := range page.Items {
+		page.Items[index].Watched = watched[page.Items[index].Code]
+	}
+	for index := range page.Dropped {
+		page.Dropped[index].Watched = watched[page.Dropped[index].Code]
 	}
 	return nil
 }

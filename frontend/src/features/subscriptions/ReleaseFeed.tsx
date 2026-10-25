@@ -1,4 +1,4 @@
-import { Eye, Loader2, Rss } from "lucide-react";
+import { Loader2, Rss } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { CompactWorkCardShell, type CompactWorkCardLayout } from "@/components/work-card/CompactWorkCard";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
+import { WorkCardWatchButton } from "@/components/work-card/WorkCardWatchButton";
 import {
   dlsiteTagBadges,
   userTagBadges,
-  WorkCardActionButton,
   WorkCardDLsiteAction,
   WorkCardFooter,
   WorkCardListButton,
@@ -27,6 +27,7 @@ import { dateTimeFormat } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type ReleaseFeedFamily, type ReleaseFeedPage } from "@/lib/api";
 import { openCircleRoute } from "@/lib/circleNavigationState";
+import { shownWorkSourcePresence, type ShownWorksSourceCheck } from "@/lib/shownWorksSourceCheck";
 
 import {
   groupReleaseFeedByDay,
@@ -37,8 +38,18 @@ import {
   type ReleaseFeedDay,
 } from "./subscriptionModel";
 
-function releaseFeedCardView(family: ReleaseFeedFamily, unknownCircle: string): WorkCardViewModel {
+/**
+ * The card of a family. Its source badges follow what the work records and
+ * this visit's source checks; a catalog-only family shows no "no source"
+ * badge.
+ */
+function releaseFeedCardView(
+  family: ReleaseFeedFamily,
+  unknownCircle: string,
+  check: ShownWorksSourceCheck,
+): WorkCardViewModel {
   const work = family.work;
+  const presence = shownWorkSourcePresence({ code: releaseFeedCode(family), work }, check);
   if (work) {
     return {
       code: work.primaryCode,
@@ -60,7 +71,7 @@ function releaseFeedCardView(family: ReleaseFeedFamily, unknownCircle: string): 
       hasLyrics: work.hasLyrics,
       dlsiteTags: dlsiteTagBadges(work.tags),
       userTags: userTagBadges(work.userTags ?? []),
-      sourceBadges: sourcePresenceBadges(work.sourcePresence, work.availability),
+      sourceBadges: sourcePresenceBadges(presence, work.availability),
       sourceBadgeStyle: "icon",
     };
   }
@@ -72,9 +83,15 @@ function releaseFeedCardView(family: ReleaseFeedFamily, unknownCircle: string): 
     voiceActors: fallback.voiceActors,
     coverUrl: fallback.coverUrl,
     dlsiteTags: dlsiteTagBadges(fallback.tags),
-    sourceBadges: [],
+    sourceBadges: sourcePresenceBadges(presence).filter((badge) => badge.key !== "source:no-source"),
+    sourceBadgeStyle: "icon",
     sourceUnavailableFallback: false,
   };
+}
+
+/** The code a family's card shows and acts on: its work's, or the catalog's. */
+function releaseFeedCode(family: ReleaseFeedFamily) {
+  return family.work?.primaryCode ?? family.fallback.code;
 }
 
 /**
@@ -90,6 +107,8 @@ export function ReleaseFeed({
   desktopColumns,
   canMarkSeen,
   canWatch,
+  sourceCheck,
+  reloadKey,
   onOpenWork,
   onPageChange,
   onLoaded,
@@ -104,6 +123,10 @@ export function ReleaseFeed({
   canMarkSeen: boolean;
   /** The account may add works to Availability Watch. */
   canWatch: boolean;
+  /** What this visit's source checks found for the shown works. */
+  sourceCheck: ShownWorksSourceCheck;
+  /** Changes when the feed should be read again, such as after a run on its works. */
+  reloadKey: number;
   onOpenWork: (code: string) => void;
   onPageChange: (page: number) => void;
   onLoaded?: (page: ReleaseFeedPage) => void;
@@ -115,6 +138,7 @@ export function ReleaseFeed({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [watched, setWatched] = useState<Set<string>>(() => new Set());
+  const [watching, setWatching] = useState<Set<string>>(() => new Set());
   const markedSeen = useRef(false);
   const latestOnLoaded = useRef(onLoaded);
   latestOnLoaded.current = onLoaded;
@@ -146,7 +170,8 @@ export function ReleaseFeed({
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
-  }, [load]);
+    // A new reloadKey reads the feed again.
+  }, [load, reloadKey]);
 
   // A page past the end, after fewer days per page or an emptied feed, shows the last one.
   const totalPages = feed ? Math.max(1, Math.ceil(feed.totalDays / Math.max(1, feed.days))) : 1;
@@ -155,12 +180,19 @@ export function ReleaseFeed({
   }, [feed, loading, onPageChange, page, totalPages]);
 
   const watch = async (code: string) => {
+    setWatching((current) => new Set(current).add(code));
     try {
       await api.addAvailabilityWatchTargets([code]);
       setWatched((current) => new Set(current).add(code));
       toast.success(t("subscriptions.feed.watchAdded", { code }));
     } catch (watchError) {
       toast.notify(toastFromError(watchError, t("subscriptions.feed.watchFailed")));
+    } finally {
+      setWatching((current) => {
+        const next = new Set(current);
+        next.delete(code);
+        return next;
+      });
     }
   };
 
@@ -205,8 +237,8 @@ export function ReleaseFeed({
 
   const card = (family: ReleaseFeedFamily) => {
     const event = primaryReleaseEvent(family);
-    const view = releaseFeedCardView(family, t("workCard.unknownCircle"));
-    const code = family.work?.primaryCode ?? family.fallback.code;
+    const view = releaseFeedCardView(family, t("workCard.unknownCircle"), sourceCheck);
+    const code = releaseFeedCode(family);
     const footer = demo ? undefined : (
       <WorkCardFooter
         className={cardLayout === "row" ? "h-10 border-border/40" : undefined}
@@ -214,16 +246,11 @@ export function ReleaseFeed({
         right={
           <>
             {canWatch && event?.type !== "available" && (
-              <WorkCardActionButton
-                title={t("subscriptions.feed.watch")}
-                disabled={watched.has(code)}
-                onClick={(clickEvent) => {
-                  clickEvent.stopPropagation();
-                  void watch(code);
-                }}
-              >
-                <Eye className="h-4 w-4" />
-              </WorkCardActionButton>
+              <WorkCardWatchButton
+                watched={family.watched || watched.has(code)}
+                pending={watching.has(code)}
+                onWatch={() => void watch(code)}
+              />
             )}
             {family.work && <WorkCardListButton workId={family.work.id} active={family.work.favorite} />}
           </>

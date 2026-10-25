@@ -12,13 +12,18 @@ import type {
   RankingVariant,
 } from "@/lib/rankingApi";
 import { parseServerTimestamp } from "@/lib/serverTimestamp";
+import {
+  EMPTY_SHOWN_WORKS_SOURCE_CHECK,
+  shownWorkOnSource,
+  type ShownWorksSourceCheck,
+} from "@/lib/shownWorksSourceCheck";
 
 /** The filters above a ranking; each narrows the items of the shown snapshot. */
-export const RANKING_FILTERS = ["all", "new", "moved", "notInLibrary"] as const;
+export const RANKING_FILTERS = ["all", "new", "moved", "notInLibrary", "onSource"] as const;
 export type RankingFilter = (typeof RANKING_FILTERS)[number];
 
 /** A finished annual ranking is an archive: it shows ranks without movement. */
-export const ARCHIVE_RANKING_FILTERS = ["all", "notInLibrary"] as const;
+export const ARCHIVE_RANKING_FILTERS = ["all", "notInLibrary", "onSource"] as const;
 
 export const RANKING_DEPTHS = [10, 20, 50, 100] as const;
 
@@ -235,25 +240,35 @@ export function rankingChipGroups(chips: RankingChip[], t: TFunction): RankingCh
   return groups;
 }
 
-export function matchesRankingFilter(item: RankingItem, filter: RankingFilter): boolean {
+export function matchesRankingFilter(
+  item: RankingItem,
+  filter: RankingFilter,
+  check: ShownWorksSourceCheck = EMPTY_SHOWN_WORKS_SOURCE_CHECK,
+): boolean {
   switch (filter) {
     case "new":
       return item.change.kind === "new" || item.change.kind === "reentered";
     case "moved":
       return item.change.kind === "up" || item.change.kind === "down";
     case "notInLibrary":
-      return item.work === null;
+      return !item.inLibrary;
+    case "onSource":
+      return shownWorkOnSource(item, check);
     default:
       return true;
   }
 }
 
-export function rankingFilterCounts(page: RankingPage): Record<RankingFilter, number> {
+export function rankingFilterCounts(
+  page: RankingPage,
+  check: ShownWorksSourceCheck = EMPTY_SHOWN_WORKS_SOURCE_CHECK,
+): Record<RankingFilter, number> {
   return {
     all: page.items.length,
     new: page.counts.new + page.counts.reentered,
     moved: page.counts.up + page.counts.down,
     notInLibrary: page.counts.notInLibrary,
+    onSource: page.items.filter((item) => shownWorkOnSource(item, check)).length,
   };
 }
 

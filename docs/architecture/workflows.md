@@ -77,6 +77,9 @@ Remote sources:
   catalog sync runs.
 - `creator_subscription_refresh`: see
   [Creator Subscriptions](#creator-subscriptions).
+- `shown_works_metadata_sync` and `shown_works_source_check`: sync the metadata
+  of, or check the sources of, the works a Subscriptions view shows (see
+  [Shown Works Actions](#shown-works-actions)).
 
 Media, cleanup, and database:
 
@@ -650,7 +653,10 @@ snapshot's `confirmed_until` forward. Any other order adds a
 `ranking_snapshot` with its ranked codes, confirmed at its pull, and updates
 each `ranking_entry`: first appearance, the start of the current continuous
 presence, best rank, and number of appearances. Entries are codes, and
-reading a ranking resolves library works by code.
+reading a ranking resolves works by code. An entry is in the library when its
+work has files: an available local, cached, or tracked remote location. For an
+account with `workflows:run`, the page also marks the codes the Availability
+Watch pool watches, directly or through another edition of their family.
 
 A page reads one variant, the default one unless `release` and `sort` name
 another the list is pulled in. The latest page compares the variant's latest
@@ -690,6 +696,46 @@ variant holds, so retained history keeps its titles and circles.
 
 Demo serves fixed sample rankings with a short history in each order, built
 from obviously synthetic names and reserved codes, and refuses every change.
+
+## Shown Works Actions
+
+Two system workflows act on the works an account is looking at on the
+Subscriptions page, only when it asks; no schedule, ranking pull, or
+subscription refresh starts them. Both are incremental: each takes only the
+shown works that still need it, at most 100 in the order shown, and with
+nothing to take queues no run. A request names what is shown:
+
+- `POST /api/rankings/{id}/metadata-sync` and `POST
+  /api/rankings/{id}/source-check` take the `snapshotId` of the shown
+  [ranking](#rankings) order, which must belong to a list the account may see.
+- `POST /api/subscriptions/feed/metadata-sync` and `POST
+  /api/subscriptions/feed/source-check` take the `page` and `days` of the
+  account's [release feed](#creator-subscriptions) page; the works are the
+  codes its family cards show.
+
+A request for the same order or feed page while its run is queued or running
+joins that run. Demo refuses both.
+
+- `shown_works_metadata_sync` requires `metadata:sync`. It takes the codes that
+  have no work and those whose work's DLsite metadata is missing or older than
+  a day, and leaves works DLsite does not list. The shown codes are explicitly
+  requested metadata roots, so the run synchronizes each code's DLsite family
+  in the order shown through the paced DLsite client, holding
+  `metadata:provider`, and may create their edition works, as Availability
+  Watch does for watched codes. A code that fails is recorded and the run goes
+  on; the run is partial when some codes failed and failed when every code
+  did.
+- `shown_works_source_check` requires `remote:track` and an enabled source that
+  supports work lookups, or answers `409` with `no_remote_source`. It takes
+  the codes that have no work and the works not known to be available: without
+  an available location or source presence, and whose `source` presence was
+  not checked within a day. The run probes the sources once, then asks the
+  healthy ones about each code through the paced crawl lane, holding
+  `remote:availability`, and records the answer as the `source` presence of
+  a code that has a work. It never creates works. Its summary lists, for every
+  code, the sources that have it and those that do not, so the page can show
+  the answers for codes without a work. After five codes in a row that no
+  source answered, it stops and the run is partial.
 
 ## Preset Workflows
 
@@ -1261,7 +1307,9 @@ event (`released`, `edition`, or `available`). Availability Watch adds
 `available` entries for every account it notifies, and a target that becomes
 available again moves its entry to the top. The Subscriptions page groups
 entries by work family, newest event first, and shows each family through its
-canonical work, or through catalog details when no work exists yet. Each family
+canonical work, or through catalog details when no work exists yet, and, for
+an account with `workflows:run`, whether the Availability Watch pool watches
+the shown code, directly or through another edition of its family. Each family
 belongs to the day of its newest event in the account's time zone, and a feed
 page holds 5, 10, or 15 days that have entries. Opening the
 feed records it as read for the navigation badge. A run that adds entries for
