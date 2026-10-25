@@ -168,8 +168,9 @@ administrators.
   select the run summary to open that run in Activity.
 - Availability Watch, **Refresh subscriptions**, **Pull DLsite rankings**, and
   **Pull remote source rankings** are configured on the
-  [Subscriptions](subscriptions.md) page, where the watch keeps its saved
-  configuration and watch pool, the subscription refresh its schedule, and
+  [Discover](discover.md) page, where the watch keeps its saved
+  configuration and its pool is the **Watch** view, the subscription refresh
+  its schedule, and
   each ranking its own pull schedule. Here they show their latest runs, health
   summary, and run history, link to that page, and have no Run options or
   triggers of their own.
@@ -195,7 +196,7 @@ administrators.
   Availability Watch, or a work's detail page for that.
 - The catalog sync presets have no triggers. To follow new works on a schedule,
   subscribe to the circle, series, or voice actor instead; the preset's
-  triggers section links to [Subscriptions](subscriptions.md).
+  triggers section links to [Discover](discover.md).
 - Metadata sync refreshes works already in the library. Its Run options choose
   **Works** (All works, one circle, one voice actor, or Selected works),
   **Metadata source** tabs, and **Refresh** (Missing or outdated, or All metadata).
@@ -218,7 +219,7 @@ administrators.
   in Activity history.
 - **Pull DLsite rankings** pulls every DLsite ranking that is due, in each of
   its orders, in one run, and **Pull remote source rankings** one remote
-  source's popular list per run; see [Rankings](subscriptions.md#rankings). Neither adds works to the library,
+  source's popular list per run; see [Rankings](discover.md#rankings). Neither adds works to the library,
   syncs their metadata, tracks, fetches, or tags them. Popular collection runs
   that tagged, tracked, or fetched works stay readable in Activity and cannot
   be retried.

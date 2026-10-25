@@ -15,7 +15,7 @@ Appearance owns only mode, style, and color choices.
 
 The account panel (`app/header/AccountPanel`) opens from the avatar, or from
 Sign in for anonymous visitors, on every screen size. It shows the profile,
-Subscriptions, Insights, and Tags as shortcuts, the UI language, Settings and
+Discover, Insights, and Tags as shortcuts, the UI language, Settings and
 Users, and sign-in or sign-out; on phones it also holds the native connection actions. A
 signed-in user also chooses the personal preferred metadata language there:
 **Origin** is shown when the user has no preference and choosing it clears the
@@ -171,15 +171,20 @@ and the Library remote source panel record remote Fetch and Fork runs through
 
 The Workflows page keeps routing, selection, and run handlers. Definition
 detail, run forms, the trigger editor, the Availability Watch configuration
-and pool, run detail, and candidate review live in `features/workflows`.
+and pool that the Discover page composes, run detail, and candidate
+review live in `features/workflows`.
 
-The Subscriptions page switches between two views, the release feed and
-Rankings (`?view=rankings`), and composes its settings as a sticky panel
+The Discover page (`/discover`, rendered by `pages/SubscriptionsPage`) is the
+way in to works from outside the library. A `/subscriptions` address
+redirects to it with its query. It switches between three views, the release
+feed, Rankings (`?view=rankings`), and Watch (`?view=watch`, for accounts that
+can run workflows; any other account sees the release feed), and composes its
+settings as a sticky panel
 beside the view from 1280px, where the view reflows to the remaining width, as
 a drawer over its right edge on narrower desktops, and as a sheet on phones.
 The panel beside the view takes focus when it opens, closes with Escape or the
-settings icon, and returns focus to that icon. Both views offer the same
-actions on the works they show (`components/work-collection/ShownWorksActions`
+settings icon, and returns focus to that icon. The release feed and Rankings
+offer the same actions on the works they show (`components/work-collection/ShownWorksActions`
 and `hooks/useShownWorksActions`): an actions menu syncs their metadata or
 checks their sources, a status line follows the queued run with a link to it,
 the view reloads when the run ends, and the source check's answers for codes
@@ -211,15 +216,32 @@ Watch. A finished annual ranking shows its ranks without movement. The
 ranking settings show one line per ranking with its Show switch, relative pull
 times, and a schedule summary that expands the row in place to edit the
 interval and depth, pull it alone, or delete it after a confirmation; earlier
-annual years and the history retention each collapse into one line. The
-settings hold the subscription list with the refresh schedule, the Availability
-Watch manager, which they take from the workflows feature, and the ranking
-settings.
-`?panel=subscriptions`, `?panel=watch`, or `?panel=rankings` opens the settings,
-and `?page=` names the feed page. The feed, subscription list, schedule panel,
+annual years and the history retention each collapse into one line.
+
+Watch shows the Availability Watch pool: a summary with quick entry, then the
+available targets in full and the targets still waiting for a source, failed
+checks first. Both use the shared work collection grid and card modes with a
+target card of their own, since a target need not be a work, and the waiting
+targets fold to whole rows of the grid's measured tracks. **Clear completed**
+sends the completed targets it shows in one request. `?target=<id>` opens a
+target's family dialog and `?dialog=ready` scrolls to the available targets;
+the page hands both to the view and removes them from the address.
+`?panel=watch` without a view names the Watch view, so a query the page writes
+with the Availability Watch settings open always names its view.
+
+The settings hold the subscription list with the refresh schedule, the ranking
+settings, and the Availability Watch configuration, which they take from the
+workflows feature. The Watch view and that configuration read one
+`useAvailabilityWatch` state, which loads when either is first shown and polls
+while either is shown and the page is visible.
+`?panel=subscriptions`, `?panel=rankings`, or `?panel=watch` opens the
+settings, and the settings button opens the tab of the current view. `?page=`
+names the feed page. The feed, subscription list, schedule panel,
 and the subscribe button that circle, series, and voice actor pages render
 live in `features/subscriptions`; the Rankings view, its settings, and the
-shared ranking state live in `features/rankings`.
+shared ranking state live in `features/rankings`; the Watch view, the watch
+configuration, and their shared state live in
+`features/workflows/availability-watch`.
 
 The Favorites page keeps data loading, browse state, and history restoration.
 The shelf rail, shelf header, controls, card and list views, creator shelves,

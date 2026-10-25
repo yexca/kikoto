@@ -7,7 +7,7 @@
 
 > [!IMPORTANT]
 > The popular collections become Rankings. Each Remote popular and DLsite
-> popular trigger is turned into a ranking in **Subscriptions → Rankings**
+> popular trigger is turned into a ranking in **Discover → Rankings**
 > with its period, year, or source, its interval, and whether it ran on its
 > own; the triggers themselves are removed. Collections no longer add tags,
 > sync metadata, Track, or Fetch, and collection runs still queued or running
@@ -35,9 +35,15 @@
 </details>
 
 <details>
-<summary><strong>Subscriptions</strong></summary>
+<summary><strong>Discover</strong></summary>
 
-- Subscriptions gains a **Rankings** view beside **New releases**. It follows
+- Subscriptions becomes **Discover**, the way in to works from outside the
+  library: new works from your subscriptions, rankings, and the works
+  Availability Watch waits for. Its address is `/discover`, links to
+  `/subscriptions` open it, and its navigation icon is a compass; the bell
+  stays on the subscribe buttons. Subscribing and the subscription settings
+  keep their names.
+- Discover gains a **Rankings** view beside **New releases**. It follows
   the DLsite voice rankings for 24 hours, 7 days, and 30 days, the annual
   ranking of each year, and the all-time ranking, and remote sources' popular
   lists, in a fixed order of chips. A DLsite ranking is shown by
@@ -89,6 +95,16 @@
   known to have.
 - New releases and Rankings cards label the Availability Watch action
   **Watch** and show **Watching** for a work already in the watch pool.
+- The Availability Watch pool becomes the **Watch** view of Discover,
+  after New releases and Rankings and in the same card grid and display
+  options. **Available** comes first and shows every available work; **Not
+  available** follows with failed checks first and folds to whole rows.
+  **Clear completed** removes every work whose Track or Fetch has started in
+  one step. The **Availability Watch** settings tab moves after **Rankings**
+  and keeps the configuration and **Run**, and the settings open on the tab
+  of the current view. Availability notifications, Workflows, and the way back
+  from a watched work open the Watch view, and existing links to the pool in
+  the settings open it too.
 
 </details>
 

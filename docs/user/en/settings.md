@@ -15,8 +15,8 @@ Settings uses Account, Playback, Recommendations, and Tags tabs, shown as icons:
 - Change an account-managed user's password after verifying the current
   password and confirming the replacement.
 - Username and role are visible but read-only.
-- **Time zone** decides where a day starts in your listening report and the
-  Subscriptions feed. **Automatic** follows the device you are using; choosing
+- **Time zone** decides where a day starts in your listening report and in
+  **New releases** on Discover. **Automatic** follows the device you are using; choosing
   a zone uses it on every device. See [Insights](personal-data.md#insights).
 - **Your data** at the end of Account exports and imports personal data; see
   [Personal data](personal-data.md).
@@ -256,8 +256,8 @@ sections and `sources:write` for database sections.
   sessions, dismissed
   notifications, finished workflow runs older than 90 days, recommendation
   signals older than 90 days, unused recommendation snapshots, and
-  [ranking](subscriptions.md#rankings) updates past the history the
-  [ranking settings](subscriptions.md#ranking-settings) keep. Personal tags,
+  [ranking](discover.md#rankings) updates past the history the
+  [ranking settings](discover.md#ranking-settings) keep. Personal tags,
   runs with reviews, Fetch records, or metadata issues, the latest run of each
   workflow, the latest update of each ranking order, finished annual rankings,
   and the update each account last viewed are kept.

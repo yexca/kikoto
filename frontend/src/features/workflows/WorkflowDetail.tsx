@@ -1,4 +1,4 @@
-import { AlertCircle, BellRing, Settings2 } from "lucide-react";
+import { AlertCircle, Compass, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -179,9 +179,9 @@ export function WorkflowDetail({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => openWorkflowPath("/subscriptions?panel=subscriptions")}
+                      onClick={() => openWorkflowPath("/discover?panel=subscriptions")}
                     >
-                      <BellRing className="h-4 w-4" />
+                      <Compass className="h-4 w-4" />
                       {workflowCopy("openSubscriptions")}
                     </Button>
                   </div>

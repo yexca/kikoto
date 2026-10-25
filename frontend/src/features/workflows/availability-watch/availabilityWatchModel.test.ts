@@ -5,6 +5,7 @@ import { syntheticWorkCode } from "@/test-support/workCode";
 import {
   availabilityWatchConfig,
   availabilityWatchConfigDirty,
+  foldedTargetSlots,
   partitionAvailabilityWatchTargets,
   parseQuickAddCodes,
 } from "./availabilityWatchModel";
@@ -51,16 +52,22 @@ describe("availability watch configuration", () => {
 });
 
 describe("availability watch pool", () => {
-  it("splits active targets into unavailable and available families", () => {
+  it("splits active targets into unavailable and available families, failed checks first", () => {
     const pool = partitionAvailabilityWatchTargets([
       target(0, "monitoring"),
       target(1, "error"),
       target(2, "ready"),
       target(3, "completed"),
       target(4, "disabled"),
+      target(5, "monitoring"),
+      target(6, "error"),
     ]);
-    expect(pool.unavailable.map((item) => item.id)).toEqual([0, 1]);
+    expect(pool.unavailable.map((item) => item.id)).toEqual([1, 6, 0, 5]);
     expect(pool.available.map((item) => item.id)).toEqual([2, 3]);
+  });
+
+  it("folds the unavailable side to whole rows", () => {
+    expect([1, 2, 3, 4, 7].map(foldedTargetSlots)).toEqual([6, 6, 6, 8, 14]);
   });
 
   it("adds only new valid codes from pasted input", () => {

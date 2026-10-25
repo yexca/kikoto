@@ -54,6 +54,14 @@ describe("legacyLibraryRedirect", () => {
     expect(legacyLibraryRedirect("/cleanup")).toBe("/settings?tab=cleanup");
   });
 
+  it("opens Subscriptions links as Discover with the same view", () => {
+    expect(legacyLibraryRedirect("/subscriptions")).toBe("/discover");
+    expect(legacyLibraryRedirect("/subscriptions/", "?view=watch&dialog=ready&run=9")).toBe(
+      "/discover?view=watch&dialog=ready&run=9",
+    );
+    expect(legacyLibraryRedirect("/discover", "?view=rankings")).toBeNull();
+  });
+
   it("opens former listening history locations as Insights", () => {
     expect(legacyLibraryRedirect("/history")).toBe("/insights");
     expect(legacyLibraryRedirect("/settings", "?tab=history")).toBe("/insights");

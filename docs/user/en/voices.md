@@ -68,7 +68,7 @@ Voice pages present persisted person and credit data.
   button shows **Refreshing** until the run settles. A warning beside the sync
   state counts remote sources that failed their last pass and opens that run
   in Activity. The bell beside **Favorite** subscribes to the voice actor's
-  new works; see [Subscriptions](subscriptions.md). **More** holds **Change
+  new works; see [Discover](discover.md#subscribing). **More** holds **Change
   cover…**, **Sync this voice actor's catalog…**,
   which opens the preset with this voice actor selected for source, filter,
   metadata, and tag choices, and **Manage aliases**. The works toolbar mirrors the Library: a bounded search on the

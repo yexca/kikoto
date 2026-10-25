@@ -1,7 +1,7 @@
 import type { SourcePresenceItem, Work } from "@/lib/libraryApi";
 
 /**
- * What the source checks of this visit found for the works a Subscriptions
+ * What the source checks of this visit found for the works a Discover
  * view shows: by code, the sources that have it, with the names of the sources
  * asked. A code with a work also keeps the answer as its source presence; for
  * the others this is the only record.

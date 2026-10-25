@@ -12,7 +12,7 @@ the English page first, then mark translations for review.
 - [Sources](sources.md)
 - [Circles](circles.md)
 - [Voices](voices.md)
-- [Subscriptions](subscriptions.md)
+- [Discover](discover.md)
 - [Translation](translation.md)
 - [Playback](playback.md)
 - [Settings](settings.md)

@@ -417,7 +417,7 @@ test("@desktop the feed groups families by day, pages by days, and opening it cl
   server.feed!.totalDays = 12;
   await mockSubscriptions(page, server);
   await page.goto("/");
-  const navigation = page.getByRole("button", { name: /^Subscriptions/ });
+  const navigation = page.getByRole("button", { name: /^Discover/ });
   await expect(navigation.getByLabel("1 new release")).toBeVisible();
 
   await navigation.click();
@@ -448,13 +448,13 @@ test("@desktop the feed groups families by day, pages by days, and opening it cl
   // toolbar icon closes them again.
   const settingsButton = page.getByRole("button", { name: "Subscription settings" });
   await settingsButton.click();
-  await expect(page).toHaveURL(/\/subscriptions\?panel=subscriptions$/);
+  await expect(page).toHaveURL(/\/discover\?panel=subscriptions$/);
   const settings = page.getByRole("complementary", { name: "Subscription settings" });
   await expect(settings.getByRole("tab", { name: "Subscriptions", selected: true })).toBeVisible();
   await expect(settings.getByText("Refresh schedule")).toBeVisible();
   await settingsButton.click();
   await expect(settings).toHaveCount(0);
-  await expect(page).toHaveURL(/\/subscriptions$/);
+  await expect(page).toHaveURL(/\/discover$/);
 
   // Escape closes the panel and returns focus to the toolbar icon.
   await settingsButton.click();
@@ -470,7 +470,7 @@ test("@desktop the feed groups families by day, pages by days, and opening it cl
   await expect(drawer.getByText("Refresh schedule")).toBeVisible();
   await drawer.getByRole("button", { name: "Close settings" }).click();
   await expect(drawer).toHaveCount(0);
-  await expect(page).toHaveURL(/\/subscriptions$/);
+  await expect(page).toHaveURL(/\/discover$/);
 });
 
 test("@desktop subscribing to a circle confirms replacing its series and pulls the catalog for a baseline", async ({
@@ -540,7 +540,7 @@ test("@desktop rankings mark changes since the last visit and compare with the p
     },
   };
   await mockSubscriptions(page, server);
-  await page.goto("/subscriptions?view=rankings");
+  await page.goto("/discover?view=rankings");
 
   await expect(page.getByRole("tab", { name: /^Rankings/, selected: true })).toBeVisible();
   const ranking = page.getByRole("region", { name: "Rankings", exact: true });
@@ -608,7 +608,7 @@ async function mockLongRanking(page: Page) {
     rankings: rankingOverviewFixture({ lists: [day] }),
     rankingPages: { "1:": rankingPageFixture(day, null, items) },
   });
-  await page.goto("/subscriptions?view=rankings");
+  await page.goto("/discover?view=rankings");
   const ranking = page.getByRole("region", { name: "Rankings", exact: true });
   return { ranking, items: ranking.getByRole("list").first().getByRole("listitem") };
 }
@@ -672,7 +672,7 @@ test("@desktop ranking history shows the order at a chosen time without marking 
     },
   };
   await mockSubscriptions(page, server);
-  await page.goto("/subscriptions?view=rankings&list=1");
+  await page.goto("/discover?view=rankings&list=1");
   const ranking = page.getByRole("region", { name: "Rankings", exact: true });
   // The status names the time briefly, leaving out the year only within the current one.
   const latestStatus = ranking.getByRole("button", { name: /^Updated Oct 14,( 2026,)? 9:00 AM · / });
@@ -745,7 +745,7 @@ test("@desktop a ranking's orders keep their own place in the location and their
     },
   };
   await mockSubscriptions(page, server);
-  await page.goto("/subscriptions?view=rankings");
+  await page.goto("/discover?view=rankings");
   const ranking = page.getByRole("region", { name: "Rankings", exact: true });
   const items = ranking.getByRole("list").first().getByRole("listitem");
   const sortOrder = ranking.getByRole("radiogroup", { name: "Ranking order" });
@@ -821,7 +821,7 @@ test("@desktop annual rankings share one chip and finished years read as an arch
     },
   };
   await mockSubscriptions(page, server);
-  await page.goto("/subscriptions?view=rankings");
+  await page.goto("/discover?view=rankings");
   const ranking = page.getByRole("region", { name: "Rankings", exact: true });
   await expect(ranking.getByRole("tab")).toHaveCount(1);
   await expect(ranking.getByRole("tab", { name: "DLsite · Annual", selected: true })).toBeVisible();
@@ -850,7 +850,7 @@ test("@desktop ranking settings show fixed rows and start a ranking when it is f
     rankingPages: { "1:": rankingPageFixture(day, null, []) },
   };
   await mockSubscriptions(page, server);
-  await page.goto("/subscriptions?view=rankings&panel=rankings");
+  await page.goto("/discover?view=rankings&panel=rankings");
   const settings = page.getByRole("complementary", { name: "Subscription settings" });
   const dlsite = settings.getByRole("region", { name: "DLsite voice rankings" });
   // The rows follow the fixed order of the chips.
@@ -964,7 +964,7 @@ test("@desktop syncing a ranking page's metadata follows its run and shows the w
     runs: { "61": pageActionRun(61, "shown_works_metadata_sync", "running") },
   };
   await mockSubscriptions(page, server);
-  await page.goto("/subscriptions?view=rankings");
+  await page.goto("/discover?view=rankings");
   const ranking = page.getByRole("region", { name: "Rankings", exact: true });
   const items = ranking.getByRole("list").first().getByRole("listitem");
   await expect(items).toHaveCount(2);
@@ -1011,7 +1011,7 @@ test("@desktop checking a ranking page's sources marks the entries a source has"
     },
   };
   await mockSubscriptions(page, server);
-  await page.goto("/subscriptions?view=rankings");
+  await page.goto("/discover?view=rankings");
   const ranking = page.getByRole("region", { name: "Rankings", exact: true });
   const items = ranking.getByRole("list").first().getByRole("listitem");
   await expect(ranking.getByRole("button", { name: /^On a source/ })).toContainText("0");
@@ -1057,7 +1057,7 @@ test("@desktop release cards label the watch action and say which works are watc
     ]),
   };
   await mockSubscriptions(page, server);
-  await page.goto("/subscriptions");
+  await page.goto("/discover");
   const feed = page.getByRole("region", { name: "New releases", exact: true });
   const watched = feed.getByRole("listitem", { name: "Example Work 2" });
   await expect(watched).toContainText("Watching");
@@ -1099,7 +1099,7 @@ test("@desktop the feed page's works can have their metadata synced and their so
     },
   };
   await mockSubscriptions(page, server);
-  await page.goto("/subscriptions");
+  await page.goto("/discover");
   const feed = page.getByRole("region", { name: "New releases", exact: true });
   await expect(feed.getByRole("listitem")).toHaveCount(2);
 
@@ -1135,7 +1135,7 @@ test("phones reach the ranking page actions and see the labeled watch action", a
       "1:": rankingPageFixture(day, null, [rankingItemFixture(1, 1, { kind: "same", from: 1, delta: 0 })]),
     },
   });
-  await page.goto("/subscriptions?view=rankings");
+  await page.goto("/discover?view=rankings");
   const ranking = page.getByRole("region", { name: "Rankings", exact: true });
   const entry = ranking.getByRole("listitem", { name: "Example Work 1" });
   await expect(entry.getByRole("button", { name: "Add to Availability Watch" })).toHaveText("Watch");
@@ -1162,7 +1162,7 @@ test("Demo shows a sample feed without actions", async ({ page }) => {
     feed: releaseFeedPageFixture([releaseFeedFamilyFixture({ unread: true })], { demo: true }),
   };
   await mockSubscriptions(page, server);
-  await page.goto("/subscriptions");
+  await page.goto("/discover");
 
   const entry = page.getByRole("region", { name: "New releases", exact: true }).getByRole("listitem");
   await expect(entry).toContainText("Example Work 1");

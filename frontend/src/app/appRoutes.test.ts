@@ -23,6 +23,11 @@ describe("appPageForLocation", () => {
     expect(appPageForLocation("/library/unknown/deeper", {})).toBe("not-found");
   });
 
+  it("gives Discover its own address and the Subscriptions address it redirects from", () => {
+    expect(appPageForLocation("/discover?view=watch", {})).toBe("subscriptions");
+    expect(appPageForLocation("/subscriptions?view=rankings", {})).toBe("subscriptions");
+  });
+
   it("gives work detail to the page that opened it and a direct link to Library", () => {
     const owned = historyStateWithWorkDetailOwner({}, "favorites");
     expect(appPageForLocation("/RJ00000000", owned)).toBe("favorites");

@@ -4,11 +4,15 @@ import { describe, expect, it } from "vitest";
 import type { CreatorSubscription, CreatorSubscriptionLookup, ReleaseFeedFamily } from "@/lib/api";
 
 import {
+  canonicalSubscriptionSearch,
   releaseFeedSources,
   subscribeButtonState,
   subscribeConfirmation,
   subscriptionSubjectPath,
   subscriptionPanelFromSearch,
+  subscriptionViewFromSearch,
+  watchLinkFromSearch,
+  withExplicitSubscriptionView,
   groupReleaseFeedByDay,
   releaseFeedDayCount,
   releaseFeedPageFromSearch,
@@ -42,8 +46,24 @@ function lookup(patch: Partial<CreatorSubscriptionLookup> = {}): CreatorSubscrip
 describe("subscription model", () => {
   it("opens a settings panel only when the location names one", () => {
     expect(subscriptionPanelFromSearch("")).toBeNull();
-    expect(subscriptionPanelFromSearch("?panel=watch&dialog=ready")).toBe("watch");
+    expect(subscriptionPanelFromSearch("?view=watch&panel=watch")).toBe("watch");
+    expect(subscriptionPanelFromSearch("?view=releases&panel=watch")).toBe("watch");
     expect(subscriptionPanelFromSearch("?panel=unknown")).toBeNull();
+  });
+
+  it("opens the Watch view for panel=watch links that name no view", () => {
+    for (const search of ["?panel=watch", "?panel=watch&dialog=ready&run=9", "?panel=watch&target=4"]) {
+      expect(subscriptionViewFromSearch(search)).toBe("watch");
+      expect(subscriptionPanelFromSearch(search)).toBeNull();
+    }
+    expect(canonicalSubscriptionSearch("?panel=watch&target=4")).toBe("?target=4&view=watch");
+    expect(canonicalSubscriptionSearch("?view=rankings&panel=watch")).toBeNull();
+    expect(subscriptionViewFromSearch("?view=rankings&panel=watch")).toBe("rankings");
+    // A query the page writes with the watch settings open keeps its view.
+    expect(String(withExplicitSubscriptionView(new URLSearchParams("panel=watch")))).toBe("panel=watch&view=releases");
+    expect(watchLinkFromSearch("?view=watch&dialog=ready&run=9")).toEqual({ targetId: null, revealAvailable: true });
+    expect(watchLinkFromSearch("?view=watch&target=4")).toEqual({ targetId: 4, revealAvailable: false });
+    expect(watchLinkFromSearch("?view=watch&target=nope")).toBeNull();
   });
 
   it("groups a page by the day the server dated each family", () => {

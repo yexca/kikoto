@@ -238,6 +238,54 @@ func (s *Server) deleteAvailabilityWatchTarget(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+type availabilityWatchTargetIDs struct {
+	TargetIDs []int64 `json:"targetIds"`
+}
+
+// clearCompletedAvailabilityWatchTargets removes the listed targets whose
+// action has completed, in one statement. A listed target that is no longer
+// completed, for example one re-added meanwhile, stays in the pool, so the
+// caller removes only what it showed.
+func (s *Server) clearCompletedAvailabilityWatchTargets(w http.ResponseWriter, r *http.Request) {
+	actor, ok := s.requirePermission(w, r, "workflows:run")
+	if !ok || !s.requireAvailabilityWatchActionPermissions(w, r, actor) {
+		return
+	}
+	var payload availabilityWatchTargetIDs
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	if len(payload.TargetIDs) > 1000 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many target ids; maximum is 1000"})
+		return
+	}
+	for _, id := range payload.TargetIDs {
+		if id <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid Availability Watch target id"})
+			return
+		}
+	}
+	if len(payload.TargetIDs) > 0 {
+		if _, err := s.db.ExecContext(r.Context(), `
+			UPDATE availability_watch_target
+			SET active = 0, state = 'disabled', next_check_at = NULL,
+				revision = revision + 1, updated_at = CURRENT_TIMESTAMP
+			WHERE watch_id = ? AND active = 1 AND state = 'completed'
+				AND id IN (SELECT value FROM json_each(?))
+		`, availabilityWatchID, mustJSON(payload.TargetIDs)); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	view, err := s.loadAvailabilityWatch(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
 func (s *Server) trackAvailabilityWatchTarget(w http.ResponseWriter, r *http.Request) {
 	actor, ok := s.requirePermissions(w, r, "workflows:run", "remote:track")
 	if !ok {

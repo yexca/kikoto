@@ -1,19 +1,22 @@
-# Subscriptions
-[English](../en/subscriptions.md) · [简体中文](../zh-Hans/subscriptions.md) · [繁體中文](../zh-Hant/subscriptions.md) · [日本語](../ja/subscriptions.md) · [한국어](../ko/subscriptions.md)
+# Discover
+[English](../en/discover.md) · [简体中文](../zh-Hans/discover.md) · [繁體中文](../zh-Hant/discover.md) · [日本語](../ja/discover.md) · [한국어](../ko/discover.md)
 
-Subscriptions collects new works from the circles, series, and voice actors you
-subscribe to, and works that Availability Watch finds on a remote source. Its
-**Rankings** view follows popular rankings and shows how they change. The
-switch at the top chooses **New releases** or **Rankings**; a dot on
-**Rankings** means a ranking changed since you last looked at it.
+Discover is where works from outside your library come in. **New releases**
+collects new works from the circles, series, and voice actors you subscribe
+to, and works that Availability Watch finds on a remote source; **Rankings**
+follows popular rankings and shows how they change; and **Watch** holds the
+works Availability Watch waits for. The switch at the top chooses the view; a
+dot on **Rankings** means a ranking changed since you last looked at it.
+**Watch** is shown to accounts that can open Workflows. Links to
+`/subscriptions` open Discover.
 
 ## Subscribing
 
 - Circle and voice actor pages have a bell beside **Favorite**; a series has
   one beside its DLsite link.
   Subscribing is separate from Favorite: a favorite records a preference, a
-  subscription adds new works to the Subscriptions feed. Subscriptions are
-  personal.
+  subscription adds new works to **New releases** in Discover. Subscriptions
+  are personal.
 - A subscription starts with the catalog as it is: works already in the
   catalog are never counted as new. When the catalog was pulled recently, the
   subscription starts at once. Otherwise subscribing asks first: an account
@@ -139,6 +142,31 @@ switch at the top chooses **New releases** or **Rankings**; a dot on
 - For dates before the full history, only the order at the end of each day is
   kept, and History says so.
 
+## Watch
+
+- **Watch** shows the Availability Watch pool, which every account that can
+  open Workflows shares. At the top are how many works it watches, how many
+  are available, not available, or failed their last check, and when it last
+  checked one. To watch more works, paste one or more codes into the field
+  beside them and select **Add**; codes already watched and text that is not
+  a work code are reported and left out.
+- **Available** comes first and lists every work a remote source offers.
+  **Not available** lists the works still waiting for a source, those whose
+  last check failed first. When there are many, it shows their first two
+  rows of cards, or more rows on a narrow screen, and **Show all**.
+- The cards follow **Display options**, with the cards per row and the
+  **Cards** choice shared with New releases. A watched work need not be in the
+  library, so its card shows the code, the title and cover Kikoto knows for
+  its family, its state, and for an available work the remote source, with
+  the edition found when it is another edition of the family.
+- Select a card to open the work's family: every known edition, which one a
+  remote source offers, and **Open**, **Track**, and **Remove from watch**.
+- The `×` on a card removes the work from the pool after a second press.
+  **Clear completed**, beside **Available**, removes after a second press
+  every work whose Track or Fetch has started.
+- Adding and removing works needs the permissions of the action the watch is
+  configured with; see [Availability Watch](#availability-watch).
+
 ## Syncing and checking shown works
 
 **Actions** on New releases and Rankings works on the works the page shows,
@@ -162,11 +190,12 @@ run**, and the page reloads when it ends.
 ## Subscription Settings
 
 The settings icon at the top right, **Subscription settings**, opens the
-settings with three tabs: **Subscriptions**, **Availability Watch**, and
-**Rankings**. On a wide screen they open in a panel beside the feed or the
-rankings, which narrow to make room and stay usable; on a narrower screen they
-open in a drawer from the right edge, or a sheet on a phone. They open on
-**Rankings** from the Rankings view. Close them with the `×` or Escape; the
+settings with three tabs: **Subscriptions**, **Rankings**, and **Availability
+Watch**. On a wide screen they open in a panel beside the view, which narrows
+to make room and stays usable; on a narrower screen they open in a drawer from
+the right edge, or a sheet on a phone. They open on the tab of the view:
+**Subscriptions** from New releases, **Rankings** from Rankings, and
+**Availability Watch** from Watch. Close them with the `×` or Escape; the
 settings icon also closes the panel, and selecting outside closes a drawer or
 sheet.
 
@@ -186,12 +215,16 @@ sheet.
 
 ## Availability Watch
 
-- The **Availability Watch** tab of the settings holds the shared watch pool and its configuration:
-  the remote source, the action when a work becomes available, and optional
-  Fetch extension exclusions; see [Workflows](workflows.md) for how a watch
-  run checks a work's family. It is shown to accounts that can open Workflows.
+- The **Availability Watch** tab of the settings holds the watch's
+  configuration: the remote source, the action when a work becomes
+  available, and optional Fetch extension exclusions; see
+  [Workflows](workflows.md) for how a watch run checks a work's family. The
+  works it watches are in the [Watch](#watch) view. The tab is shown to
+  accounts that can open Workflows.
 - The subscription refresh runs the watch on its schedule; **Run** checks the
   pool now. Workflows keeps the watch's run history and links here.
+- A notification about newly available works opens **Watch** at its
+  **Available** works.
 
 ## Ranking Settings
 
