@@ -32,10 +32,22 @@ export function useRankingOverview() {
     );
   }, []);
 
-  const markSeen = useCallback((listId: number) => {
+  const markSeen = useCallback((listId: number, variantId: number) => {
     setOverview((current) =>
       current
-        ? { ...current, lists: current.lists.map((item) => (item.id === listId ? { ...item, unseen: false } : item)) }
+        ? {
+            ...current,
+            lists: current.lists.map((item) =>
+              item.id === listId
+                ? {
+                    ...item,
+                    variants: item.variants.map((variant) =>
+                      variant.id === variantId ? { ...variant, unseen: false } : variant,
+                    ),
+                  }
+                : item,
+            ),
+          }
         : current,
     );
   }, []);

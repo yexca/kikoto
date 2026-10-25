@@ -1332,11 +1332,6 @@ export const surfaceJapanese = {
         description:
           "購読中のサークルと声優のカタログを更新し、新作のメタデータを同期して購読者の新着に追加し、配信状況の監視をチェックします。",
       },
-      ranking_refresh: {
-        name: "ランキングを更新",
-        description:
-          "追跡中の DLsite とリモートソースのランキングを取得し、その変化を記録します。作品はライブラリに追加されません。",
-      },
       availability_watch: {
         name: "可用性ウォッチ",
         description: "作品コードを監視し、リモートソースが利用可能になったら設定済みの操作を実行します。",
@@ -1366,8 +1361,9 @@ export const surfaceJapanese = {
         description: "デモファイルを検出し、公開閲覧できる作品を索引化します。",
       },
       dlsite_popular_collection: {
-        name: "DLsite人気音声作品を収集",
-        description: "DLsite音声ランキングを検出し、メタデータを同期して実行タグを追加します。",
+        name: "DLsite ランキングを取得",
+        description:
+          "取得時期になった DLsite 音声ランキングを取得し、順位の変化を記録します。作品はライブラリに追加されません。",
       },
       local_library_scan: {
         name: "ローカルライブラリをスキャン",
@@ -1420,8 +1416,9 @@ export const surfaceJapanese = {
         description: "1つのリモート作品と選択したソースディレクトリを復旧可能なジョブで追跡します。",
       },
       remote_popular_collection: {
-        name: "人気のリモート作品を収集",
-        description: "互換ソースから人気作品を検出し、追跡または取得してユーザータグを追加します。",
+        name: "リモートソースのランキングを取得",
+        description:
+          "取得時期になった互換リモートソースの人気リストを取得し、順位の変化を記録します。作品はライブラリに追加されません。",
       },
       unlinked_work_source_check: {
         name: "未リンク作品のソースを確認",
@@ -1477,11 +1474,7 @@ export const surfaceJapanese = {
     sourcePresenceRequiresSource: "ソース上の作品を確認するには、互換性のあるリモートソースを設定してください。",
     sourcePresenceSourceHint: "有効な互換リモートソースが利用可能になるまで、ソース上の作品の確認は無効です。",
     metadataSyncCreateFailed: "メタデータ同期実行を作成できませんでした。",
-    remotePopularQueueFailed: "リモート人気コレクションをキューに追加できませんでした。",
-    remotePopularRequiresSource: "リモート人気を使用するには、互換性のあるリモートソースを設定してください。",
-    remotePopularSourceHint: "有効な互換リモートソースが利用可能になるまで、リモート人気は無効です。",
     configureRemoteSource: "リモートソースを設定",
-    dlsitePopularQueueFailed: "DLsite 人気コレクションをキューに追加できませんでした。",
     triggerUpdateFailed: "トリガーを{{action}}できませんでした。",
     availabilityWatchLoadFailed: "可用性ウォッチを読み込めませんでした。",
     readyPoolRefreshFailed: "準備完了プールを更新できませんでした。",
@@ -1554,8 +1547,8 @@ export const surfaceJapanese = {
       "配信状況の監視は購読ページで設定し、購読の更新がそのスケジュールで実行します。実行履歴はここに残ります。",
     subscriptionRefreshManagedOnSubscriptions:
       "購読の更新スケジュールは購読ページで設定します。実行履歴はここに残ります。",
-    rankingRefreshManagedOnSubscriptions:
-      "ランキングの更新スケジュールは購読ページのランキング設定で行います。実行履歴はここに残ります。",
+    rankingsManagedOnSubscriptions:
+      "各ランキングは、購読ページのランキング設定で決めたスケジュールでそれぞれ取得されます。実行履歴はここに残ります。",
     openSubscriptions: "購読を開く",
     presetScheduledBySubscriptions:
       "このワークフローは手動で実行します。新作を定期的に追うには、サークル、シリーズ、声優を購読してください。購読は購読ページで設定したスケジュールで更新されます。",
@@ -1618,8 +1611,8 @@ export const surfaceJapanese = {
       local_media_index: "ローカルファイル",
       metadata_sync: "メタデータ同期",
       metadata_genre_names: "タグ名",
-      remote_popular_collection: "リモート人気",
-      dlsite_popular_collection: "DLsite 人気",
+      remote_popular_collection: "リモートランキング",
+      dlsite_popular_collection: "DLsite ランキング",
       availability_watch: "配信状況の監視",
       remote_work_fetch: "取得",
       source_presence_check: "ソース上の作品",
@@ -1627,7 +1620,6 @@ export const surfaceJapanese = {
       series_catalog_sync: "シリーズカタログ",
       voice_catalog_sync: "声優カタログ",
       creator_subscription_refresh: "購読",
-      ranking_refresh: "ランキング",
     },
     console: {
       statusStrip: "ワークフローの状態",
@@ -1775,17 +1767,6 @@ export const surfaceJapanese = {
     loadingSources: "ソースを読み込み中",
     noCompatibleSource: "互換性のあるソースはありません",
     action: "操作",
-    fetchPermissionRequired: "取得には remote:fetch と metadata:sync が必要です。",
-    workLimit: "作品数上限",
-    worksCount: "{{count}} 件",
-    rankingPeriod: "ランキング期間",
-    rankingYear: "ランキング年",
-    recentReleasesOnly: "最近リリースされた作品のみ",
-    recentReleasesDescription: "ランキングを過去30日以内にリリースされた作品に限定します。",
-    period24Hours: "24時間",
-    period7Days: "7日間",
-    period30Days: "30日間",
-    periodAnnual: "年間",
     selectRunNodeDetail: "実行を選択してノードごとの実行状況を確認します。",
     summary: "概要",
     started: "開始",
@@ -1872,9 +1853,7 @@ export const surfaceJapanese = {
     workflowAutomations: "ワークフロー自動化",
     lastError: "前回のエラー",
     jobs: "ジョブ",
-    remotePopularAction: "リモート人気の操作",
     current: "今年",
-    onlyWorksReleased30Days: "30日以内にリリースされた作品のみ",
     archivedLocalRoots: "アーカイブ済みのローカルルート",
     oldLocalLocations: "古いローカルの場所",
     originNotRecorded: "オリジンは記録されていません",
@@ -1894,9 +1873,6 @@ export const surfaceJapanese = {
     scanMode: "スキャンモード",
     incremental: "増分",
     full: "完全",
-    releaseWindow: "リリース期間",
-    releasedIn30Days: "30日以内のリリース",
-    allReleases: "すべての期間",
     availableVariables: "使用可能な変数",
     resetTagTemplate: "タグテンプレートをリセット",
     insertTemplatePlaceholder: "{{placeholder}} を挿入",
@@ -1919,12 +1895,8 @@ export const surfaceJapanese = {
       "このソースは外部ホストを制限しています。ホスト名をソースの許可リストに追加するか、ソースのポリシーを変更してから、この取得を再試行してください。",
     selectWorkflowNodePipeline: "ワークフローを選択してノードパイプラインを確認します。",
     afterFoldersSettle: "ローカルライブラリフォルダーの変更が落ち着いた後",
-    fetchManualOnly: "取得（手動のみ）",
     intervalRange: "間隔は 5〜10080 分の範囲で指定してください。",
     selectRemoteSource: "リモートソースを選択してください。",
-    automatedTrackOnly: "自動リモート収集は追跡のみに対応しています。",
-    workLimitRange: "作品数上限は 1〜100 の範囲で指定してください。",
-    yearRange: "年は 2000〜{{year}} の範囲で指定してください。",
     tagTemplateRequired: "タグテンプレートは必須です。",
     tagTemplateMaxLength: "タグテンプレートは {{count}} 文字以内で入力してください。",
     unsupportedTemplatePlaceholder: "サポートされていないタグテンプレートのトークン：{{placeholder}}。",

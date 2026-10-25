@@ -1373,11 +1373,7 @@ export const surfaceEnglish = {
     sourcePresenceRequiresSource: "Configure a compatible remote source to check works on a source.",
     sourcePresenceSourceHint: "Check works on a source is disabled until an enabled compatible source is available.",
     metadataSyncCreateFailed: "Metadata sync run could not be created.",
-    remotePopularQueueFailed: "Remote popular collection could not be queued.",
-    remotePopularRequiresSource: "Configure a compatible remote source to use Remote popular.",
-    remotePopularSourceHint: "Remote popular is disabled until an enabled compatible source is available.",
     configureRemoteSource: "Configure remote source",
-    dlsitePopularQueueFailed: "DLsite popular collection could not be queued.",
     triggerUpdateFailed: "Could not {{action}} trigger.",
     availabilityWatchLoadFailed: "Availability Watch could not be loaded.",
     readyPoolRefreshFailed: "Ready pool could not be refreshed.",
@@ -1450,8 +1446,8 @@ export const surfaceEnglish = {
       "Availability Watch is configured on the Subscriptions page, and the subscription refresh runs it on its schedule. Its run history stays here.",
     subscriptionRefreshManagedOnSubscriptions:
       "The subscription refresh is scheduled on the Subscriptions page. Its run history stays here.",
-    rankingRefreshManagedOnSubscriptions:
-      "The ranking refresh is scheduled in the Rankings settings on the Subscriptions page. Its run history stays here.",
+    rankingsManagedOnSubscriptions:
+      "Each ranking is pulled on its own schedule, set in the Rankings settings on the Subscriptions page. Its run history stays here.",
     openSubscriptions: "Open Subscriptions",
     presetScheduledBySubscriptions:
       "This workflow runs on demand. To follow new works on a schedule, subscribe to the circle, series, or voice actor; subscriptions refresh on the schedule set on the Subscriptions page.",
@@ -1514,8 +1510,8 @@ export const surfaceEnglish = {
       local_media_index: "Local files",
       metadata_sync: "Metadata sync",
       metadata_genre_names: "Tag names",
-      remote_popular_collection: "Remote popular",
-      dlsite_popular_collection: "DLsite popular",
+      remote_popular_collection: "Remote rankings",
+      dlsite_popular_collection: "DLsite rankings",
       availability_watch: "Availability Watch",
       remote_work_fetch: "Fetch",
       source_presence_check: "Works on source",
@@ -1523,7 +1519,6 @@ export const surfaceEnglish = {
       series_catalog_sync: "Series catalog",
       voice_catalog_sync: "VA catalog",
       creator_subscription_refresh: "Subscriptions",
-      ranking_refresh: "Rankings",
     },
     console: {
       statusStrip: "Workflow status",
@@ -1670,20 +1665,7 @@ export const surfaceEnglish = {
     loadingSources: "Loading sources",
     noCompatibleSource: "No compatible source",
     action: "Action",
-    remotePopularAction: "Remote popular action",
-    fetchPermissionRequired: "Fetch requires remote:fetch and metadata:sync.",
-    workLimit: "Work limit",
-    worksCount: "{{count}} works",
-    rankingPeriod: "Ranking period",
-    rankingYear: "Ranking year",
     current: "current",
-    recentReleasesOnly: "Recent releases only",
-    recentReleasesDescription: "Limit the ranking to works released within 30 days.",
-    onlyWorksReleased30Days: "Only works released within 30 days",
-    period24Hours: "24 hours",
-    period7Days: "7 days",
-    period30Days: "30 days",
-    periodAnnual: "Annual",
     selectRunNodeDetail: "Select a run to inspect execution by node.",
     summary: "Summary",
     started: "Started",
@@ -1768,11 +1750,6 @@ export const surfaceEnglish = {
         description:
           "Refresh subscribed circle and voice actor catalogs, sync the metadata of new works, add them to subscribers' feeds, and check Availability Watch.",
       },
-      ranking_refresh: {
-        name: "Refresh rankings",
-        description:
-          "Pull the tracked DLsite and remote source rankings and record how they changed. Works are not added to the library.",
-      },
       availability_watch: {
         name: "Availability Watch",
         description: "Monitor work codes and dispatch configured actions when a remote source becomes available.",
@@ -1803,8 +1780,9 @@ export const surfaceEnglish = {
         description: "Discover Demo files and index works that are eligible for public browsing.",
       },
       dlsite_popular_collection: {
-        name: "Collect DLsite popular voice works",
-        description: "Discover a DLsite voice ranking, synchronize metadata, and append a run tag.",
+        name: "Pull DLsite rankings",
+        description:
+          "Pull the due DLsite voice rankings and record how they changed. Works are not added to the library.",
       },
       local_library_scan: {
         name: "Scan local library",
@@ -1857,8 +1835,9 @@ export const surfaceEnglish = {
         description: "Track one remote work and its selected-source directory in a recoverable job.",
       },
       remote_popular_collection: {
-        name: "Collect popular remote works",
-        description: "Discover popular works from a compatible source, track or fetch them, and append a user tag.",
+        name: "Pull remote source rankings",
+        description:
+          "Pull the due popular list of a compatible remote source and record how it changed. Works are not added to the library.",
       },
       unlinked_work_source_check: {
         name: "Check unlinked work sources",
@@ -1932,9 +1911,6 @@ export const surfaceEnglish = {
     scanMode: "Scan mode",
     incremental: "Incremental",
     full: "Full",
-    releaseWindow: "Release window",
-    releasedIn30Days: "Released in 30 days",
-    allReleases: "All releases",
     availableVariables: "Available variables",
     resetTagTemplate: "Reset tag template",
     insertTemplatePlaceholder: "Insert {{placeholder}}",
@@ -1958,7 +1934,6 @@ export const surfaceEnglish = {
       "This source restricts outbound hosts. Add the hostname to the source allowlist, or change the source policy, then retry this Fetch.",
     selectWorkflowNodePipeline: "Select a workflow to inspect its node pipeline.",
     afterFoldersSettle: "After local library folders settle",
-    fetchManualOnly: "Fetch (manual only)",
     execution: "Execution",
     transfer: "Transfer",
     of: "of",
@@ -1972,9 +1947,6 @@ export const surfaceEnglish = {
     scheduledWorkflow: "Scheduled workflow",
     intervalRange: "Interval must be between 5 and 10080 minutes.",
     selectRemoteSource: "Select a remote source.",
-    automatedTrackOnly: "Automated remote collection supports Track only.",
-    workLimitRange: "Work limit must be between 1 and 100.",
-    yearRange: "Year must be between 2000 and {{year}}.",
     tagTemplateRequired: "Tag template is required.",
     tagTemplateMaxLength: "Tag template must be at most {{count}} characters.",
     unsupportedTemplatePlaceholder: "Unsupported tag template token: {{placeholder}}.",

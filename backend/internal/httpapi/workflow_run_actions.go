@@ -493,7 +493,7 @@ func (s *Server) retryFailedWorkflowJobFor(ctx context.Context, actor *currentUs
 		FROM workflow_job
 		WHERE workflow_run_id = ? AND status = 'failed' AND recoverable = 1
 			AND worker_type IN (
-				'remote_work_fetch', 'remote_media_cache', 'remote_popular_collection',
+				'remote_work_fetch', 'remote_media_cache',
 				'media_cache_limit_cleanup', 'media_cache_cleanup', 'local_media_delete', 'local_location_cleanup',
 				'media_location_cleanup', 'work_folder_edit', 'metadata_family_sync', 'custom_workflow', 'metadata_genre_names', 'llm_translation', 'asr_transcription'
 			)
@@ -527,10 +527,6 @@ func workflowJobRetryPermissions(job workflowJobRecord) []string {
 			return []string{"remote:fetch", "metadata:sync"}
 		}
 		return []string{"remote:fetch"}
-	case "remote_popular_collection":
-		var payload remoteCollectionJobPayload
-		_ = decodeWorkflowJobPayload(job.PayloadJSON, &payload)
-		return remoteCollectionActionPermissions(payload.Action)
 	case "media_cache_limit_cleanup", "media_cache_cleanup", "local_media_delete", "local_location_cleanup", "media_location_cleanup":
 		return []string{"downloads:manage"}
 	case workFolderEditWorkerType:

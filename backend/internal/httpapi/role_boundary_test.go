@@ -70,8 +70,6 @@ func TestRemoteActionsRequireTrackOrFetchCapability(t *testing.T) {
 		{http.MethodPost, "/api/remote-sources/1/works/RJ00000001/save", `{}`, false},
 		{http.MethodPost, "/api/workflow-runs/remote-bulk", `{"action":"track","sourceId":1,"codes":["RJ00000001"]}`, true},
 		{http.MethodPost, "/api/workflow-runs/remote-bulk", `{"action":"fetch","sourceId":1,"codes":["RJ00000001"]}`, false},
-		{http.MethodPost, "/api/workflow-runs/remote-popular", `{"sourceId":1,"action":"track","limit":5,"skipTag":true}`, true},
-		{http.MethodPost, "/api/workflow-runs/remote-popular", `{"sourceId":1,"action":"fetch","limit":5,"skipTag":true}`, false},
 	}
 	for _, route := range routes {
 		if response := fixture.request("user", route.method, route.target, route.body); response.Code != http.StatusForbidden {
@@ -100,7 +98,8 @@ func TestContributorKeepsNoAdministrativeSurface(t *testing.T) {
 		{http.MethodPost, "/api/workflow-runs/local-scan", `{}`},
 		{http.MethodPost, "/api/workflow-runs/local-media-index", `{}`},
 		{http.MethodPost, "/api/workflow-runs/source-presence-check", `{}`},
-		{http.MethodPost, "/api/workflow-runs/dlsite-popular", `{}`},
+		{http.MethodPost, "/api/rankings/refresh", `{}`},
+		{http.MethodPut, "/api/rankings/retention", `{"fullDays":30,"dailyDays":365}`},
 		{http.MethodPost, "/api/works/1/metadata-sync", `{}`},
 		{http.MethodPost, "/api/works/1/metadata-preview", `{}`},
 		{http.MethodPost, "/api/works/1/metadata-preview/apply", `{}`},

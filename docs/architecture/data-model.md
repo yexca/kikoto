@@ -924,6 +924,7 @@ Important tables:
 - `user_release_feed_item`
 - `user_release_feed_state`
 - `ranking_list`
+- `ranking_variant`
 - `ranking_snapshot`
 - `ranking_snapshot_item`
 - `ranking_entry`
@@ -972,15 +973,29 @@ entries are catalog codes, not works; a merge moves subscriptions, seen codes,
 and feed references to the target.
 
 `ranking_list` holds one tracked [ranking](workflows.md#rankings): a DLsite
-period and release window, or a remote source (`file_source_id`, removed with
-the source), with its depth, tracking switch, position, and last pull status.
-`ranking_snapshot` is one pulled order that differed from the one before it,
-with the run that pulled it and a hash of its codes, and
-`ranking_snapshot_item` its codes by rank. `ranking_entry` holds per list and
+period (`day`, `week`, `month`, `year`, or `total`), a DLsite annual `year` (0
+for every other list), or a remote source (`file_source_id`, removed with the
+source). Its identity is the provider, source, period, and year. It also holds
+the depth, whether the list is shown (`enabled`), its schedule
+(`auto_refresh`, `refresh_interval_minutes`, `next_pull_at`, a pending
+`pull_requested_at`, and the `failure_count` that spaces out retries), an
+annual list's `final_at` and `follow_current_year`, and the last pull status,
+`partial` when only some variants failed. `ranking_variant` holds each order
+the list is pulled in, unique per list: a `release_window` (empty or `30d`)
+and a `sort` (empty for popularity or `sale`), with its own last pull status
+and protected error; it is removed with its list.
+`ranking_snapshot` is one pulled order of a variant that differed from the one
+before it, with the run that pulled it, a hash of its codes, and
+`confirmed_until`, the latest pull that returned the same order;
+`ranking_snapshot_item` holds its codes by rank. Snapshots are kept in the
+tiers of [Rankings](workflows.md#recording-and-history), set by the
+`ranking_full_retention_days` and `ranking_daily_retention_days` settings (0
+keeps the daily history forever). `ranking_entry` holds per variant and
 code the title and circle the ranking showed, a remote list's source-local id
 and cover address, and statistics derived from the snapshots: first seen,
 start of the current presence, last seen, best rank, and appearances.
-`user_ranking_state` holds the snapshot each account last displayed per list.
+`user_ranking_state` holds the snapshot each account last displayed per
+variant.
 Rankings store codes, never work ids, so work merges and deletions need no
 ranking changes.
 

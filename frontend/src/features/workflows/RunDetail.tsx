@@ -202,7 +202,6 @@ function RunActions({ run, onRunAction }: { run: WorkflowRun; onRunAction: () =>
       "work_folder_edit",
       "local_media_delete",
       "local_location_cleanup",
-      "remote_popular_collection",
       "source_presence_check",
     ].includes(run.workflowCode);
   if (!cancellable && !retryable) {

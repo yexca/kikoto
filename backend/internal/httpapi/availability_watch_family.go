@@ -6,7 +6,14 @@ import (
 	"log/slog"
 
 	"github.com/yexca/kikoto/backend/internal/metadatatitles"
+	"github.com/yexca/kikoto/backend/internal/metasync"
 )
+
+// dlsiteFamilyMetadataSyncer refreshes one work and its language-edition
+// family from DLsite, as Availability Watch and the subscription refresh do.
+type dlsiteFamilyMetadataSyncer interface {
+	SyncFamily(context.Context, string) (metasync.DLsiteFamilySyncResult, error)
+}
 
 const (
 	// availabilityWatchMaxFamilyCodes bounds the remote requests one target

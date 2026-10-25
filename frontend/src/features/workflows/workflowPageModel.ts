@@ -31,14 +31,7 @@ export type WorkflowNode = {
 };
 
 export type SystemRunKind =
-  | "local_scan"
-  | "local_media_index"
-  | "metadata_sync"
-  | "remote_popular"
-  | "remote_fetch"
-  | "dlsite_popular"
-  | "source_presence_check"
-  | "preset";
+  "local_scan" | "local_media_index" | "metadata_sync" | "remote_fetch" | "source_presence_check" | "preset";
 
 export type SystemRunOptions = {
   followUpRun?: boolean;
@@ -51,24 +44,7 @@ export type SystemRunOptions = {
 export const SOURCE_PRESENCE_DEFAULT_LIMIT = 100;
 export const SOURCE_PRESENCE_MAX_LIMIT = 1000;
 
-export type DLsitePopularPeriod = "day" | "week" | "month" | "year";
 export type LocalScanMode = "incremental" | "full";
-
-export type DLsitePopularRunOptions = {
-  period: DLsitePopularPeriod;
-  releaseWindow: "30d" | "";
-  year: number;
-  tagNameTemplate: string;
-  skipTag: boolean;
-};
-
-export type RemotePopularRunOptions = {
-  sourceId: number;
-  action: "track" | "fetch";
-  limit: number;
-  tagNameTemplate: string;
-  skipTag: boolean;
-};
 
 export type RemoteFetchRunOptions = {
   sourceId: number;
@@ -81,15 +57,9 @@ export type SystemWorkflowTriggerConfig = {
   followUpRun: boolean;
   scanMode: LocalScanMode;
   sourceId: number;
-  action: "track" | "fetch";
   limit: number;
   library: SourcePresenceLibrary;
   presenceFilter: SourcePresenceFilter;
-  period: DLsitePopularPeriod;
-  releaseWindow: "30d" | "";
-  year: number;
-  tagNameTemplate: string;
-  skipTag: boolean;
 };
 
 export type CurrentTriggerRunOptions = {
@@ -102,13 +72,12 @@ export type CurrentTriggerRunOptions = {
 export const manuallyRunnableSystemWorkflows: Record<string, SystemRunKind[]> = {
   availability_watch: [],
   creator_subscription_refresh: [],
-  ranking_refresh: [],
+  dlsite_popular_collection: [],
+  remote_popular_collection: [],
   local_library_scan: ["local_scan"],
   local_media_index: ["local_media_index"],
   metadata_sync: ["metadata_sync"],
-  remote_popular_collection: ["remote_popular"],
   remote_work_fetch: ["remote_fetch"],
-  dlsite_popular_collection: ["dlsite_popular"],
   source_presence_check: ["source_presence_check"],
 };
 

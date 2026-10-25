@@ -1331,11 +1331,6 @@ export const surfaceKorean = {
         description:
           "구독 중인 서클과 성우 카탈로그를 새로 고치고 신작 메타데이터를 동기화해 구독자의 신작 목록에 추가한 뒤 가용성 모니터링을 확인합니다.",
       },
-      ranking_refresh: {
-        name: "순위 새로 고침",
-        description:
-          "추적 중인 DLsite와 원격 소스 순위를 가져와 변화를 기록합니다. 작품은 라이브러리에 추가되지 않습니다.",
-      },
       availability_watch: {
         name: "가용성 감시",
         description: "작품 코드를 감시하고 원격 소스를 사용할 수 있게 되면 구성된 작업을 실행합니다.",
@@ -1365,8 +1360,9 @@ export const surfaceKorean = {
         description: "데모 파일을 검색하고 공개 열람이 가능한 작품을 색인합니다.",
       },
       dlsite_popular_collection: {
-        name: "DLsite 인기 음성 작품 수집",
-        description: "DLsite 음성 순위를 발견하고 메타데이터를 동기화한 뒤 실행 태그를 추가합니다.",
+        name: "DLsite 순위 가져오기",
+        description:
+          "가져올 때가 된 DLsite 음성 순위를 가져와 순위 변화를 기록합니다. 작품은 라이브러리에 추가되지 않습니다.",
       },
       local_library_scan: {
         name: "로컬 라이브러리 스캔",
@@ -1419,8 +1415,9 @@ export const surfaceKorean = {
         description: "원격 작품과 선택한 소스 디렉터리를 복구 가능한 작업으로 추적합니다.",
       },
       remote_popular_collection: {
-        name: "인기 원격 작품 수집",
-        description: "호환 소스에서 인기 작품을 발견하고 추적 또는 가져온 뒤 사용자 태그를 추가합니다.",
+        name: "원격 소스 순위 가져오기",
+        description:
+          "가져올 때가 된 호환 원격 소스의 인기 목록을 가져와 순위 변화를 기록합니다. 작품은 라이브러리에 추가되지 않습니다.",
       },
       unlinked_work_source_check: {
         name: "연결되지 않은 작품 소스 확인",
@@ -1473,11 +1470,7 @@ export const surfaceKorean = {
     sourcePresenceRequiresSource: "소스의 작품을 확인하려면 호환되는 원격 소스를 구성하세요.",
     sourcePresenceSourceHint: "활성화된 호환 원격 소스를 사용할 수 있을 때까지 소스의 작품 확인은 비활성화됩니다.",
     metadataSyncCreateFailed: "메타데이터 동기화를 생성하지 못했습니다.",
-    remotePopularQueueFailed: "원격 인기 모음을 대기열에 추가하지 못했습니다.",
-    remotePopularRequiresSource: "원격 인기를 사용하려면 호환되는 원격 소스를 구성하세요.",
-    remotePopularSourceHint: "활성화된 호환 원격 소스를 사용할 수 있을 때까지 원격 인기는 비활성화됩니다.",
     configureRemoteSource: "원격 소스 구성",
-    dlsitePopularQueueFailed: "DLsite 인기 모음을 대기열에 추가하지 못했습니다.",
     triggerUpdateFailed: "트리거를 {{action}}하지 못했습니다.",
     availabilityWatchLoadFailed: "가용성 감시를 불러오지 못했습니다.",
     readyPoolRefreshFailed: "준비됨 풀을 새로 고치지 못했습니다.",
@@ -1550,8 +1543,8 @@ export const surfaceKorean = {
       "가용성 모니터링은 구독 페이지에서 설정하며, 구독 새로 고침이 일정에 따라 실행합니다. 실행 기록은 여기에 남습니다.",
     subscriptionRefreshManagedOnSubscriptions:
       "구독 새로 고침 일정은 구독 페이지에서 설정합니다. 실행 기록은 여기에 남습니다.",
-    rankingRefreshManagedOnSubscriptions:
-      "순위 새로 고침 일정은 구독 페이지의 순위 설정에서 정합니다. 실행 기록은 여기에 남습니다.",
+    rankingsManagedOnSubscriptions:
+      "각 순위는 구독 페이지의 순위 설정에서 정한 일정에 따라 따로 가져옵니다. 실행 기록은 여기에 남습니다.",
     openSubscriptions: "구독 열기",
     presetScheduledBySubscriptions:
       "이 워크플로는 수동으로 실행합니다. 신작을 정기적으로 확인하려면 서클, 시리즈, 성우를 구독하세요. 구독은 구독 페이지에서 정한 일정에 따라 새로 고쳐집니다.",
@@ -1614,8 +1607,8 @@ export const surfaceKorean = {
       local_media_index: "로컬 파일",
       metadata_sync: "메타데이터 동기화",
       metadata_genre_names: "태그 이름",
-      remote_popular_collection: "원격 인기",
-      dlsite_popular_collection: "DLsite 인기",
+      remote_popular_collection: "원격 순위",
+      dlsite_popular_collection: "DLsite 순위",
       availability_watch: "가용성 모니터링",
       remote_work_fetch: "가져오기",
       source_presence_check: "소스의 작품",
@@ -1623,7 +1616,6 @@ export const surfaceKorean = {
       series_catalog_sync: "시리즈 카탈로그",
       voice_catalog_sync: "성우 카탈로그",
       creator_subscription_refresh: "구독",
-      ranking_refresh: "순위",
     },
     console: {
       statusStrip: "워크플로 상태",
@@ -1769,17 +1761,6 @@ export const surfaceKorean = {
     loadingSources: "소스 로드 중",
     noCompatibleSource: "호환되는 소스가 없습니다",
     action: "작업",
-    fetchPermissionRequired: "가져오기에는 remote:fetch와 metadata:sync 권한이 필요합니다.",
-    workLimit: "작품 한도",
-    worksCount: "작품 {{count}}개",
-    rankingPeriod: "순위 기간",
-    rankingYear: "순위 연도",
-    recentReleasesOnly: "최근 출시 작품만",
-    recentReleasesDescription: "최근 30일 이내 출시된 작품으로 순위를 제한합니다.",
-    period24Hours: "24시간",
-    period7Days: "7일",
-    period30Days: "30일",
-    periodAnnual: "연간",
     selectRunNodeDetail: "실행을 선택하여 노드별 실행을 확인하세요.",
     summary: "요약",
     started: "시작",
@@ -1866,9 +1847,7 @@ export const surfaceKorean = {
     workflowAutomations: "워크플로 자동화",
     lastError: "마지막 오류",
     jobs: "작업",
-    remotePopularAction: "원격 인기 작업",
     current: "올해",
-    onlyWorksReleased30Days: "30일 이내 출시된 작품만",
     archivedLocalRoots: "보관된 로컬 루트",
     oldLocalLocations: "이전 로컬 위치",
     originNotRecorded: "오리진이 기록되지 않았습니다",
@@ -1888,9 +1867,6 @@ export const surfaceKorean = {
     scanMode: "스캔 모드",
     incremental: "증분",
     full: "전체",
-    releaseWindow: "출시 기간",
-    releasedIn30Days: "30일 이내 출시",
-    allReleases: "전체 기간",
     availableVariables: "사용 가능한 변수",
     resetTagTemplate: "태그 템플릿 초기화",
     insertTemplatePlaceholder: "{{placeholder}} 삽입",
@@ -1913,12 +1889,8 @@ export const surfaceKorean = {
       "이 소스는 외부 호스트를 제한합니다. 호스트 이름을 소스 허용 목록에 추가하거나 소스 정책을 변경한 후 이 가져오기를 다시 시도하세요.",
     selectWorkflowNodePipeline: "워크플로를 선택하여 노드 파이프라인을 확인하세요.",
     afterFoldersSettle: "로컬 라이브러리 폴더 변경이 안정된 후",
-    fetchManualOnly: "가져오기(수동 전용)",
     intervalRange: "간격은 5~10080분 사이여야 합니다.",
     selectRemoteSource: "원격 소스를 선택하세요.",
-    automatedTrackOnly: "자동 원격 수집은 추적만 지원합니다.",
-    workLimitRange: "작품 한도는 1~100 사이여야 합니다.",
-    yearRange: "연도는 2000~{{year}} 사이여야 합니다.",
     tagTemplateRequired: "태그 템플릿은 필수입니다.",
     tagTemplateMaxLength: "태그 템플릿은 최대 {{count}}자까지 입력할 수 있습니다.",
     unsupportedTemplatePlaceholder: "지원되지 않는 태그 템플릿 토큰: {{placeholder}}.",

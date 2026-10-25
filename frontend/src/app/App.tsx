@@ -718,7 +718,6 @@ function AuthenticatedApp() {
                     canRun={auth.demoMode || auth.hasPermission("workflows:run")}
                     canSyncMetadata={auth.demoMode || auth.hasPermission("metadata:sync")}
                     canTagWorks={auth.demoMode || auth.hasPermission("tags:write")}
-                    canTrackRemote={auth.demoMode || auth.hasPermission("remote:track")}
                     canFetchRemote={
                       auth.demoMode || (auth.hasPermission("remote:fetch") && auth.hasPermission("metadata:sync"))
                     }

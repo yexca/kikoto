@@ -248,8 +248,6 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		"remote_bulk_action":          s.executeRemoteBulkActionJob,
 		"remote_work_fetch":           s.executeRemoteWorkFetchJob,
 		"remote_media_cache":          s.executeRemoteMediaCacheJob,
-		"remote_popular_collection":   s.executeRemotePopularCollectionJob,
-		"dlsite_popular_collection":   s.executeDLsitePopularCollectionJob,
 		"local_library_scan":          s.executeLocalScanJob,
 		localMediaIndexWorkerType:     s.executeLocalMediaIndexJob,
 		sourcePresenceCheckWorkerType: s.executeSourcePresenceCheckJob,
@@ -267,7 +265,7 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		"custom_workflow":             s.executeWorkflowGraphJob,
 		"availability_watch":          s.executeAvailabilityWatchJob,
 		creatorSubscriptionWorkerType: s.executeCreatorSubscriptionRefreshJob,
-		rankingWorkerType:             s.executeRankingRefreshJob,
+		rankingPullWorkerType:         s.executeRankingPullJob,
 		databaseOptimizeWorkerType:    s.executeDatabaseOptimizeJob,
 		databaseBackupWorkerType:      s.executeDatabaseBackupJob,
 	}
@@ -325,7 +323,7 @@ func (s *Server) notifyWorkflowJobCompletion(ctx context.Context, job workflowJo
 		status = "failed"
 	}
 	switch job.WorkerType {
-	case "metadata_sync", "metadata_family_sync", "custom_workflow", "dlsite_popular_collection":
+	case "metadata_sync", "metadata_family_sync", "custom_workflow":
 		// A sync may have learned new genre ids; learn their preferred-language
 		// names in the background without delaying this job's settlement.
 		s.queueGenreNameLearning(ctx, "metadata_sync")

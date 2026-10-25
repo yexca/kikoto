@@ -7,7 +7,6 @@ import {
   LocalScanRunPanel,
   MetadataSyncRunPanel,
 } from "@/features/workflows/run-forms/LibraryRunPanels";
-import { DLsitePopularRunPanel, RemotePopularRunPanel } from "@/features/workflows/run-forms/PopularRunPanels";
 import { PresetRunPanel } from "@/features/workflows/run-forms/PresetRunPanel";
 import { RemoteFetchRunPanel } from "@/features/workflows/run-forms/RemoteFetchRunPanel";
 import { SourcePresenceRunPanel } from "@/features/workflows/run-forms/SourcePresenceRunPanel";
@@ -21,8 +20,6 @@ import {
   parseNodes,
   workflowCopy,
   type CurrentTriggerRunOptions,
-  type DLsitePopularRunOptions,
-  type RemotePopularRunOptions,
   type RemoteFetchRunOptions,
   type SystemRunKind,
   type SystemRunOptions,
@@ -55,13 +52,10 @@ export function WorkflowDetail({
   isSystemActionRunning,
   canRunSystemAction,
   onRunSystemAction,
-  onRunRemotePopular,
   onRunRemoteFetch,
   onOpenRemoteSourceSettings,
-  canFetchRemotePopular = false,
   canTag = false,
   remoteSourceUnavailable = false,
-  onRunDLsitePopular,
   preset = null,
   onRunPreset,
   onTriggerRunOptionsChange,
@@ -81,13 +75,10 @@ export function WorkflowDetail({
   isSystemActionRunning?: (kind: SystemRunKind) => boolean;
   canRunSystemAction?: (kind: SystemRunKind) => boolean;
   onRunSystemAction?: (kind: SystemRunKind, options?: SystemRunOptions) => Promise<void>;
-  onRunRemotePopular?: (options: RemotePopularRunOptions) => Promise<void>;
   onRunRemoteFetch?: (options: RemoteFetchRunOptions) => Promise<boolean>;
   onOpenRemoteSourceSettings?: () => void;
-  canFetchRemotePopular?: boolean;
   canTag?: boolean;
   remoteSourceUnavailable?: boolean;
-  onRunDLsitePopular?: (options: DLsitePopularRunOptions) => Promise<void>;
   preset?: WorkflowPreset | null;
   onRunPreset?: (inputs: Record<string, unknown>) => Promise<void>;
   onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
@@ -133,25 +124,6 @@ export function WorkflowDetail({
         running={running}
         allowed={allowed}
         onRun={(sourcePresence) => onRunSystemAction("source_presence_check", { sourcePresence })}
-        onTriggerRunOptionsChange={onTriggerRunOptionsChange}
-      />
-    ) : runKind === "dlsite_popular" && onRunDLsitePopular ? (
-      <DLsitePopularRunPanel
-        key={definition.code}
-        layout={layout}
-        running={running}
-        allowed={allowed}
-        onRun={onRunDLsitePopular}
-        onTriggerRunOptionsChange={onTriggerRunOptionsChange}
-      />
-    ) : runKind === "remote_popular" && onRunRemotePopular ? (
-      <RemotePopularRunPanel
-        key={definition.code}
-        layout={layout}
-        running={running}
-        allowed={allowed}
-        canFetch={canFetchRemotePopular}
-        onRun={onRunRemotePopular}
         onTriggerRunOptionsChange={onTriggerRunOptionsChange}
       />
     ) : runKind === "remote_fetch" && onRunRemoteFetch ? (
@@ -266,7 +238,6 @@ export function WorkflowDetail({
 
 /** Workflows that cover their form with a prompt to configure a source while no compatible remote source is enabled. */
 const remoteSourceRequiredCopy: Record<string, { title: string; hint: string }> = {
-  remote_popular_collection: { title: "remotePopularRequiresSource", hint: "remotePopularSourceHint" },
   source_presence_check: { title: "sourcePresenceRequiresSource", hint: "sourcePresenceSourceHint" },
 };
 

@@ -33,18 +33,6 @@ type workflowRunTrigger struct {
 	ID     int64
 }
 
-type systemWorkflowTriggerConfig struct {
-	UserID          int64  `json:"userId,omitempty"`
-	SourceID        int64  `json:"sourceId,omitempty"`
-	Action          string `json:"action,omitempty"`
-	Limit           int    `json:"limit,omitempty"`
-	Period          string `json:"period,omitempty"`
-	ReleaseWindow   string `json:"releaseWindow,omitempty"`
-	Year            int    `json:"year,omitempty"`
-	TagNameTemplate string `json:"tagNameTemplate,omitempty"`
-	SkipTag         bool   `json:"skipTag,omitempty"`
-}
-
 type localScanTriggerConfig struct {
 	FollowUpRun bool   `json:"followUpRun"`
 	ScanMode    string `json:"scanMode,omitempty"`
@@ -149,20 +137,6 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 		}
 		requiredPermissions = append(requiredPermissions, "metadata:sync")
 		prepared.ConfigJSON = mustJSON(options)
-	case "remote_popular_collection":
-		config, err := s.normalizeRemotePopularTriggerConfig(ctx, actor, payload.ConfigJSON, existing, now)
-		if err != nil {
-			return preparedWorkflowTrigger{}, nil, err
-		}
-		requiredPermissions = append(requiredPermissions, remoteCollectionActionPermissions(config.Action)...)
-		prepared.ConfigJSON = mustJSON(config)
-	case "dlsite_popular_collection":
-		config, err := normalizeDLsitePopularTriggerConfig(actor, payload.ConfigJSON, existing, now)
-		if err != nil {
-			return preparedWorkflowTrigger{}, nil, err
-		}
-		requiredPermissions = append(requiredPermissions, "metadata:sync", "tags:write")
-		prepared.ConfigJSON = mustJSON(config)
 	}
 	return prepared, requiredPermissions, nil
 }
@@ -175,16 +149,11 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 func (s *Server) storedWorkflowTriggerPermissions(ctx context.Context, definition workflowDefinitionRecord, trigger workflowTriggerRecord) []string {
 	permissions := []string{"workflows:run"}
 	switch definition.Code {
-	case "local_library_scan", localMediaIndexWorkflowCode, "metadata_sync", creatorSubscriptionWorkflowCode, rankingWorkflowCode:
+	case "local_library_scan", localMediaIndexWorkflowCode, "metadata_sync", creatorSubscriptionWorkflowCode,
+		dlsiteRankingWorkflowCode, remoteRankingWorkflowCode:
 		return append(permissions, "metadata:sync")
 	case sourcePresenceCheckWorkflowCode:
 		return append(permissions, "sources:write")
-	case "remote_popular_collection":
-		var config systemWorkflowTriggerConfig
-		_ = json.Unmarshal([]byte(trigger.ConfigJSON), &config)
-		return append(permissions, remoteCollectionActionPermissions(config.Action)...)
-	case "dlsite_popular_collection":
-		return append(permissions, "metadata:sync", "tags:write")
 	}
 	return permissions
 }
@@ -209,8 +178,7 @@ func normalizeLocalScanTriggerConfig(raw string) (localScanTriggerConfig, error)
 
 func systemWorkflowSupportsConfigurableTriggers(code string) bool {
 	switch code {
-	case "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode,
-		"metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
+	case "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode, "metadata_sync":
 		return true
 	default:
 		return false
@@ -218,11 +186,12 @@ func systemWorkflowSupportsConfigurableTriggers(code string) bool {
 }
 
 // scheduledSystemWorkflowCodes lists the system definitions whose interval
-// triggers the coordinator dispatches.
+// triggers the coordinator dispatches. The ranking workflows' triggers are
+// their dispatchers, planned from the ranking lists.
 func scheduledSystemWorkflowCodes() []string {
 	return []string{
-		creatorSubscriptionWorkflowCode, rankingWorkflowCode, "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode,
-		"metadata_sync", "remote_popular_collection", "dlsite_popular_collection",
+		creatorSubscriptionWorkflowCode, "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode,
+		"metadata_sync", dlsiteRankingWorkflowCode, remoteRankingWorkflowCode,
 	}
 }
 
@@ -241,98 +210,6 @@ func (s *Server) availabilityWatchConfiguredAction(ctx context.Context) (string,
 		return "monitor", nil
 	}
 	return action, err
-}
-
-func workflowTriggerOwnerID(actor currentUser, existing *workflowTriggerRecord) int64 {
-	if existing == nil {
-		return actor.ID
-	}
-	var config systemWorkflowTriggerConfig
-	if json.Unmarshal([]byte(existing.ConfigJSON), &config) == nil && config.UserID > 0 {
-		return config.UserID
-	}
-	return actor.ID
-}
-
-func (s *Server) normalizeRemotePopularTriggerConfig(ctx context.Context, actor currentUser, raw string, existing *workflowTriggerRecord, now time.Time) (systemWorkflowTriggerConfig, error) {
-	config := systemWorkflowTriggerConfig{}
-	if err := decodeStrictJSON(raw, &config); err != nil {
-		return config, fmt.Errorf("remote popular trigger config is invalid")
-	}
-	config.UserID = workflowTriggerOwnerID(actor, existing)
-	config.Action = normalizeRemoteCollectionAction(config.Action)
-	if config.SourceID <= 0 {
-		return config, fmt.Errorf("sourceId is required")
-	}
-	if config.Action == "" {
-		return config, fmt.Errorf("action must be track or fetch")
-	}
-	if config.Action == "fetch" {
-		return config, fmt.Errorf("automated remote popular collection supports track only")
-	}
-	if config.Limit <= 0 || config.Limit > 100 {
-		return config, fmt.Errorf("limit must be between 1 and 100")
-	}
-	source, err := s.remoteCollectionSource(ctx, config.SourceID)
-	if err != nil {
-		return config, err
-	}
-	if !source.Enabled || !isKikoeruSourceType(source.SourceType) {
-		return config, fmt.Errorf("source is not an enabled compatible remote source")
-	}
-	if strings.TrimSpace(source.Endpoint.APIURL) == "" {
-		return config, fmt.Errorf("source has no API endpoint")
-	}
-	if strings.TrimSpace(config.TagNameTemplate) == "" && !config.SkipTag {
-		config.TagNameTemplate = "{remote_name}_popular"
-	}
-	if !config.SkipTag {
-		_, err = renderWorkflowTagNameTemplate(config.TagNameTemplate, map[string]string{
-			"date": now.UTC().Format("060102"), "remote_name": workflowTagFragment(source.DisplayName),
-			"source_code": workflowTagFragment(source.Code), "action": config.Action,
-		})
-	}
-	return config, err
-}
-
-func normalizeDLsitePopularTriggerConfig(actor currentUser, raw string, existing *workflowTriggerRecord, now time.Time) (systemWorkflowTriggerConfig, error) {
-	config := systemWorkflowTriggerConfig{}
-	if err := decodeStrictJSON(raw, &config); err != nil {
-		return config, fmt.Errorf("DLsite popular trigger config is invalid")
-	}
-	config.UserID = workflowTriggerOwnerID(actor, existing)
-	normalized, err := normalizeDLsitePopularRequest(dlsitePopularRunRequest{
-		Period: config.Period, ReleaseWindow: config.ReleaseWindow, Year: config.Year, TagName: "preview",
-	}, now)
-	if err != nil {
-		return config, err
-	}
-	config.Period = normalized.Period
-	config.ReleaseWindow = normalized.ReleaseWindow
-	config.Year = normalized.Year
-	if strings.TrimSpace(config.TagNameTemplate) == "" && !config.SkipTag {
-		if config.Period == "year" {
-			config.TagNameTemplate = "DL_year_{year}_popular"
-		} else {
-			config.TagNameTemplate = "DL_{period}_{release_window}_popular"
-		}
-	}
-	if !config.SkipTag {
-		_, err = renderWorkflowTagNameTemplate(config.TagNameTemplate, dlsitePopularTemplateValues(config, now))
-	}
-	return config, err
-}
-
-func dlsitePopularTemplateValues(config systemWorkflowTriggerConfig, now time.Time) map[string]string {
-	period := map[string]string{"day": "24h", "week": "7d", "month": "30d", "year": "year"}[config.Period]
-	releaseWindow := "all"
-	if config.ReleaseWindow == "30d" {
-		releaseWindow = "r30d"
-	}
-	return map[string]string{
-		"date": now.UTC().Format("060102"), "period": period, "release_window": releaseWindow,
-		"year": fmt.Sprint(config.Year),
-	}
 }
 
 func renderWorkflowTagNameTemplate(template string, values map[string]string) (string, error) {
@@ -449,7 +326,10 @@ func (s *Server) dispatchDueSystemWorkflowTrigger(ctx context.Context, definitio
 	if paused {
 		return nil
 	}
-	if !systemWorkflowSupportsConfigurableTriggers(definition.Code) && definition.Code != creatorSubscriptionWorkflowCode && definition.Code != rankingWorkflowCode {
+	if isRankingWorkflowCode(definition.Code) {
+		return s.dispatchRankingTrigger(ctx, definition, trigger)
+	}
+	if !systemWorkflowSupportsConfigurableTriggers(definition.Code) && definition.Code != creatorSubscriptionWorkflowCode {
 		return s.disableInvalidWorkflowTrigger(ctx, trigger.ID, "system workflow schedule is not supported")
 	}
 	schedule, err := validateWorkflowIntervalSchedule(trigger.ScheduleJSON)
@@ -515,8 +395,6 @@ func (s *Server) dispatchSystemWorkflowTrigger(ctx context.Context, definition w
 	switch definition.Code {
 	case creatorSubscriptionWorkflowCode:
 		return s.executeCreatorSubscriptionSystemTrigger(ctx, trigger, triggerType, triggerReason)
-	case rankingWorkflowCode:
-		return s.executeRankingSystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case "local_library_scan":
 		return s.executeLocalLibrarySystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case localMediaIndexWorkflowCode:
@@ -525,10 +403,6 @@ func (s *Server) dispatchSystemWorkflowTrigger(ctx context.Context, definition w
 		return s.executeSourcePresenceCheckSystemTrigger(ctx, trigger, triggerType, triggerReason)
 	case "metadata_sync":
 		return s.executeMetadataSystemTrigger(ctx, trigger, triggerType, triggerReason)
-	case "remote_popular_collection":
-		return s.executeRemotePopularSystemTrigger(ctx, trigger, triggerType, triggerReason)
-	case "dlsite_popular_collection":
-		return s.executeDLsitePopularSystemTrigger(ctx, trigger, triggerType, triggerReason)
 	default:
 		return "", nil, fmt.Errorf("system workflow trigger is not supported")
 	}
@@ -558,86 +432,13 @@ func (s *Server) executeMetadataSystemTrigger(ctx context.Context, trigger workf
 	return result.Status, result.Failures, err
 }
 
-func (s *Server) executeRemotePopularSystemTrigger(ctx context.Context, trigger workflowTriggerRecord, triggerType, triggerReason string) (string, []string, error) {
-	config, owner, err := s.loadRemotePopularTriggerExecution(ctx, trigger)
-	if err != nil {
-		return "", nil, err
-	}
-	source, err := s.remoteCollectionSource(ctx, config.SourceID)
-	if err != nil {
-		return "", nil, err
-	}
-	tagName := ""
-	if !config.SkipTag {
-		tagName, err = renderWorkflowTagNameTemplate(config.TagNameTemplate, map[string]string{
-			"date": time.Now().UTC().Format("060102"), "remote_name": workflowTagFragment(source.DisplayName),
-			"source_code": workflowTagFragment(source.Code), "action": config.Action,
-		})
-		if err != nil {
-			return "", nil, err
-		}
-	}
-	_, err = s.runRemotePopularWorkflowWithTrigger(ctx, owner.ID, remoteCollectionRunRequest{
-		SourceID: config.SourceID, Action: config.Action, Limit: config.Limit, TagName: tagName, SkipTag: config.SkipTag,
-	}, workflowRunTrigger{Type: triggerType, Reason: triggerReason, ID: trigger.ID})
-	return "succeeded", nil, err
-}
-
-func (s *Server) executeDLsitePopularSystemTrigger(ctx context.Context, trigger workflowTriggerRecord, triggerType, triggerReason string) (string, []string, error) {
-	config, owner, err := s.loadDLsitePopularTriggerExecution(ctx, trigger)
-	if err != nil {
-		return "", nil, err
-	}
-	now := time.Now()
-	tagName := ""
-	if !config.SkipTag {
-		tagName, err = renderWorkflowTagNameTemplate(config.TagNameTemplate, dlsitePopularTemplateValues(config, now))
-		if err != nil {
-			return "", nil, err
-		}
-	}
-	request, err := normalizeDLsitePopularRequest(dlsitePopularRunRequest{
-		Period: config.Period, ReleaseWindow: config.ReleaseWindow, Year: config.Year, TagName: tagName, SkipTag: config.SkipTag,
-	}, now)
-	if err != nil {
-		return "", nil, err
-	}
-	_, err = s.enqueueDLsitePopularCollectionWithTrigger(ctx, owner.ID, request, workflowRunTrigger{Type: triggerType, Reason: triggerReason, ID: trigger.ID})
-	return "succeeded", nil, err
-}
-
 func systemWorkflowTriggerIsAsync(code string) bool {
 	switch code {
-	case creatorSubscriptionWorkflowCode, rankingWorkflowCode, "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode,
-		"metadata_sync", "remote_popular_collection", "dlsite_popular_collection":
+	case creatorSubscriptionWorkflowCode, "local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode, "metadata_sync":
 		return true
 	default:
 		return false
 	}
-}
-
-func (s *Server) loadRemotePopularTriggerExecution(ctx context.Context, trigger workflowTriggerRecord) (systemWorkflowTriggerConfig, currentUser, error) {
-	var config systemWorkflowTriggerConfig
-	if err := decodeStrictJSON(trigger.ConfigJSON, &config); err != nil {
-		return config, currentUser{}, fmt.Errorf("remote popular trigger config is invalid")
-	}
-	owner, err := s.loadSystemWorkflowTriggerOwner(ctx, config.UserID, []string{"workflows:run", "tags:write", "remote:track"})
-	if err != nil {
-		return config, currentUser{}, err
-	}
-	if config.Action != "track" {
-		return config, currentUser{}, fmt.Errorf("automated remote popular collection supports track only")
-	}
-	return config, owner, nil
-}
-
-func (s *Server) loadDLsitePopularTriggerExecution(ctx context.Context, trigger workflowTriggerRecord) (systemWorkflowTriggerConfig, currentUser, error) {
-	var config systemWorkflowTriggerConfig
-	if err := decodeStrictJSON(trigger.ConfigJSON, &config); err != nil {
-		return config, currentUser{}, fmt.Errorf("DLsite popular trigger config is invalid")
-	}
-	owner, err := s.loadSystemWorkflowTriggerOwner(ctx, config.UserID, []string{"workflows:run", "metadata:sync", "tags:write"})
-	return config, owner, err
 }
 
 func (s *Server) loadSystemWorkflowTriggerOwner(ctx context.Context, userID int64, permissions []string) (currentUser, error) {
@@ -672,10 +473,7 @@ func (s *Server) dispatchStartupSystemWorkflowTriggers(ctx context.Context) erro
 }
 
 func (s *Server) startupSystemWorkflowTriggerIDs(ctx context.Context) ([]int64, error) {
-	startupCodes := []string{
-		"local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode,
-		"remote_popular_collection", "dlsite_popular_collection",
-	}
+	startupCodes := []string{"local_library_scan", localMediaIndexWorkflowCode, sourcePresenceCheckWorkflowCode}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT trigger.id
 		FROM workflow_trigger AS trigger

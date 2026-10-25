@@ -24,9 +24,7 @@ import {
   manuallyRunnableSystemWorkflows,
   workflowCopy,
   type CurrentTriggerRunOptions,
-  type DLsitePopularRunOptions,
   type LocalScanMode,
-  type RemotePopularRunOptions,
   type RemoteFetchRunOptions,
   type SystemRunKind,
   type SystemRunOptions,
@@ -34,7 +32,10 @@ import {
 import { WorkflowMetadataErrorState, WorkflowMetadataLoadingState } from "@/features/workflows/WorkflowPanelParts";
 import { WorkflowPulse } from "@/features/workflows/WorkflowPulse";
 import { WorkflowRunSlotProvider } from "@/features/workflows/WorkflowRunSlot";
-import type { CreatableAutomationTriggerType } from "@/features/workflows/workflowTriggerModel";
+import {
+  subscriptionsScheduledWorkflowCodes,
+  type CreatableAutomationTriggerType,
+} from "@/features/workflows/workflowTriggerModel";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
@@ -62,18 +63,27 @@ type TriggerEditorState =
 
 const workflowDefinitionStorageBaseKey = "kikoto.workflows.definition:v3";
 
-// Workflows configured and run from the Subscriptions page.
-const subscriptionsManagedWorkflows = new Set([
-  "availability_watch",
-  "creator_subscription_refresh",
-  "ranking_refresh",
-]);
+/** Where the Subscriptions page configures a workflow it manages. */
+const subscriptionsManagedWorkflowPaths: Record<string, { message: string; path: string }> = {
+  availability_watch: { message: "availabilityWatchManagedOnSubscriptions", path: "/subscriptions?panel=watch" },
+  creator_subscription_refresh: {
+    message: "subscriptionRefreshManagedOnSubscriptions",
+    path: "/subscriptions?panel=subscriptions",
+  },
+  dlsite_popular_collection: {
+    message: "rankingsManagedOnSubscriptions",
+    path: "/subscriptions?view=rankings&panel=rankings",
+  },
+  remote_popular_collection: {
+    message: "rankingsManagedOnSubscriptions",
+    path: "/subscriptions?view=rankings&panel=rankings",
+  },
+};
 
 export function WorkflowsPage({
   canRun,
   canSyncMetadata,
   canTagWorks,
-  canTrackRemote,
   canFetchRemote,
   canManageSources = false,
   readOnly = false,
@@ -81,8 +91,6 @@ export function WorkflowsPage({
   canRun: boolean;
   canSyncMetadata: boolean;
   canTagWorks: boolean;
-  /** `remote:track`: add remote works to the shared Library. */
-  canTrackRemote: boolean;
   /** Fetch also refreshes DLsite family metadata and needs `metadata:sync`. */
   canFetchRemote: boolean;
   /** Instance settings such as the remote metadata fallback need `sources:write`. */
@@ -379,19 +387,6 @@ export function WorkflowsPage({
     }
   };
 
-  const runPopularCollection = async (options: RemotePopularRunOptions) => {
-    setRunningSystemAction("remote_popular");
-    try {
-      await api.runRemotePopularCollection(options);
-      refresh();
-      showQueuedRun();
-    } catch (error) {
-      toast.notify(toastFromError(error, workflowCopy("remotePopularQueueFailed")));
-    } finally {
-      setRunningSystemAction(null);
-    }
-  };
-
   const runRemoteFetch = async (options: RemoteFetchRunOptions) => {
     if (readOnly || !canRun || !canFetchRemote) return false;
     return fetchWorkspace.open({
@@ -400,19 +395,6 @@ export function WorkflowsPage({
       sourceDisplayName: options.sourceDisplayName,
       excludeExtensions: options.excludeExtensions,
     });
-  };
-
-  const runDLsitePopularCollection = async (options: DLsitePopularRunOptions) => {
-    setRunningSystemAction("dlsite_popular");
-    try {
-      await api.runDLsitePopularCollection(options);
-      refresh();
-      showQueuedRun();
-    } catch (error) {
-      toast.notify(toastFromError(error, workflowCopy("dlsitePopularQueueFailed")));
-    } finally {
-      setRunningSystemAction(null);
-    }
   };
 
   const runPreset = async (inputs: Record<string, unknown>) => {
@@ -435,8 +417,6 @@ export function WorkflowsPage({
     if (kind === "metadata_sync") return runMetadataSync(options.metadataSync);
     if (kind === "source_presence_check" && options.sourcePresence)
       return runSourcePresenceCheck(options.sourcePresence);
-    if (kind === "remote_popular") return;
-    if (kind === "dlsite_popular") return;
   };
 
   const systemActionBusy = (kind: SystemRunKind) => {
@@ -451,8 +431,6 @@ export function WorkflowsPage({
     if (readOnly) return false;
     if (kind === "local_scan" || kind === "local_media_index" || kind === "metadata_sync")
       return canRun && canSyncMetadata;
-    if (kind === "dlsite_popular") return canRun && canSyncMetadata && canTagWorks;
-    if (kind === "remote_popular") return canRun && canTagWorks && canTrackRemote;
     if (kind === "remote_fetch") return canRun && canFetchRemote;
     if (kind === "source_presence_check") return canRun && canManageSources;
     // Follow runs refresh catalogs and sync metadata; the optional tag checks tags:write itself.
@@ -462,8 +440,7 @@ export function WorkflowsPage({
 
   const systemActionAllowed = (kind: SystemRunKind) => {
     if (!systemActionPermitted(kind)) return false;
-    if (kind === "remote_popular" || kind === "source_presence_check")
-      return remoteSourceAvailability !== "unavailable";
+    if (kind === "source_presence_check") return remoteSourceAvailability !== "unavailable";
     return true;
   };
 
@@ -619,27 +596,15 @@ export function WorkflowsPage({
                 aria-label={selectedDefinition ? workflowName(selectedDefinition, t) : undefined}
                 className="min-w-0 flex-1"
               >
-                {selectedDefinition && subscriptionsManagedWorkflows.has(selectedDefinition.code) ? (
+                {selectedDefinition && subscriptionsScheduledWorkflowCodes.has(selectedDefinition.code) ? (
                   <SubscriptionsManagedWorkflowPanel
                     definition={selectedDefinition}
                     triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
                     recentRuns={recentDefinitionRuns}
-                    message={workflowCopy(
-                      selectedDefinition.code === "availability_watch"
-                        ? "availabilityWatchManagedOnSubscriptions"
-                        : selectedDefinition.code === "ranking_refresh"
-                          ? "rankingRefreshManagedOnSubscriptions"
-                          : "subscriptionRefreshManagedOnSubscriptions",
-                    )}
+                    message={workflowCopy(subscriptionsManagedWorkflowPaths[selectedDefinition.code].message)}
                     onOpenRun={openActivityRun}
                     onOpenSubscriptions={() =>
-                      openWorkflowPath(
-                        selectedDefinition.code === "availability_watch"
-                          ? "/subscriptions?panel=watch"
-                          : selectedDefinition.code === "ranking_refresh"
-                            ? "/subscriptions?view=rankings&panel=rankings"
-                            : "/subscriptions?panel=subscriptions",
-                      )
+                      openWorkflowPath(subscriptionsManagedWorkflowPaths[selectedDefinition.code].path)
                     }
                   />
                 ) : (
@@ -658,13 +623,10 @@ export function WorkflowsPage({
                     isSystemActionRunning={systemActionBusy}
                     canRunSystemAction={systemActionAllowed}
                     onRunSystemAction={runSystemAction}
-                    onRunRemotePopular={runPopularCollection}
                     onRunRemoteFetch={runRemoteFetch}
-                    canFetchRemotePopular={canFetchRemote}
                     canTag={canTagWorks}
                     remoteSourceUnavailable={remoteSourceAvailability === "unavailable"}
                     onOpenRemoteSourceSettings={openRemoteSourcesSettings}
-                    onRunDLsitePopular={runDLsitePopularCollection}
                     preset={selectedPreset}
                     onRunPreset={runPreset}
                     onTriggerRunOptionsChange={setCurrentTriggerRunOptions}

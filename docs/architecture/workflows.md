@@ -70,9 +70,8 @@ Remote sources:
 - `remote_work_fetch`: Fetch one remote work into the local library.
 - `remote_bulk_action`: dispatch per-work Track or Fetch workflows for several
   selected remote works.
-- `remote_popular_collection` and `dlsite_popular_collection`: see
-  [Popular Collections](#popular-collections).
-- `ranking_refresh`: see [Rankings](#rankings).
+- `dlsite_popular_collection` and `remote_popular_collection`: pull the
+  DLsite and remote source ranking lists (see [Rankings](#rankings)).
 - Preset catalog sync workflows `circle_catalog_sync`, `series_catalog_sync`,
   and `voice_catalog_sync`. Circle and voice actor detail refreshes run as
   catalog sync runs.
@@ -212,9 +211,8 @@ that fills the genre name dictionary for the preferred non-Japanese metadata
 languages, as described in the [data model](data-model.md#work-metadata): the
 languages some user prefers. There is no instance default language. It is
 queued only when some preferred language still has a learnable unnamed genre:
-at startup, after a metadata sync, family refresh, preset or DLsite popular run
-finishes (a sync may have learned new genre ids), and after a user's language
-changes. A request while one is queued or running joins it. Demo mode
+at startup, after a metadata sync, family refresh, or preset run finishes (a
+sync may have learned new genre ids), and after a user's language changes. A request while one is queued or running joins it. Demo mode
 does not learn.
 
 The job reads the current languages and asks DLsite through the same
@@ -404,10 +402,13 @@ distributed request lock between separate application processes.
 The Workflows page lists the manually runnable built-in workflows and the
 preset workflows in one workflow list, grouped by a frontend-owned category
 keyed by workflow code: Basic (local scan, local files, metadata sync, Learn
-tag names), Collect
-(popular collections and the ranking refresh), Catalog sync (the subscription refresh and the catalog
-sync presets), and Remote (Availability Watch, Fetch, and works on a source). A linked run of any other workflow adds a
-read-only entry for it, which stays with Basic. Each entry shows
+tag names), Collect (the DLsite and remote source ranking pulls), Catalog sync
+(the subscription refresh and the catalog sync presets), and Remote
+(Availability Watch, Fetch, and works on a source). A linked run of any other
+workflow adds a read-only entry for it, which stays with Basic. Availability
+Watch, the subscription refresh, and the ranking pulls are configured on the
+Subscriptions page: their entries show the latest run, the health summary, and
+the run history with a link there, and have no Run options or triggers. Each entry shows
 its latest run's status and time and the enabled automation that starts it
 (Startup, schedule, or folder watch). The page reads each listed workflow's
 latest run when it loads and again when the active queue or attention count
@@ -452,13 +453,12 @@ the backend.
   only to its owner or requester, and `system:admin`
   sees every run.
 - Starting, configuring, and scheduling: a kind of run requires every
-  permission its steps use. Track steps (`track_works`, a remote popular
-  collection's Track, a bulk Track, a watch's Track) require `remote:track`;
-  Fetch steps (`fetch_works`, Fetch, a popular collection's Fetch, a bulk
-  Fetch, a watch's Fetch) require both `remote:fetch` and `metadata:sync`;
-  scans, the local file index,
-  metadata sync, presets, the DLsite popular collection, and the ranking
-  refresh require `metadata:sync`; the source presence check requires `sources:write`; tags
+  permission its steps use. Track steps (`track_works`, a bulk Track, a
+  watch's Track) require `remote:track`; Fetch steps (`fetch_works`, Fetch,
+  a bulk Fetch, a watch's Fetch) require both `remote:fetch` and
+  `metadata:sync`; scans, the local file index, metadata sync, presets, and
+  the ranking pulls require `metadata:sync`, as do configuring rankings and
+  requesting a pull; the source presence check requires `sources:write`; tags
   require `tags:write`. Scheduled dispatch re-checks the trigger owner's
   current permissions.
 - Triggers: editing, switching off, or deleting a trigger requires the
@@ -484,8 +484,7 @@ the backend.
   workflow administrators.
 - Retry re-checks what the failed work needs: Fetch jobs require both
   `remote:fetch` and `metadata:sync`, media cache jobs require `remote:fetch`,
-  a popular collection requires `tags:write` and its
-  action's permission, cleanup and local deletion jobs require
+  cleanup and local deletion jobs require
   `downloads:manage`, a folder edit, including one that merges folders,
   requires `downloads:manage` plus
   `remote:fetch` when it downloads and `library:write` when it assigns lyrics,
@@ -527,7 +526,7 @@ cache, local media delete, single-work metadata refresh, and a metadata sync
 of one work; the circle code for a circle catalog sync or a circle-scoped
 metadata sync; the series id for a series catalog sync; the voice actor's name
 for a voice catalog sync or a voice-scoped metadata sync; and the remote
-source's name for a source presence check, a popular collection, or a
+source's name for a source presence check, a remote ranking pull, or a
 per-source cache cleanup. Runs over many targets have an empty subject. Run
 titles append the subject to the workflow name, and Activity search matches
 it.
@@ -547,82 +546,150 @@ Needs attention while the issues stay in the Metadata issue list. Run records
 expose `pendingMetadata` and its retryable share, `pendingFailedMetadata`.
 Demo keeps these actions read-only.
 
-## Popular Collections
-
-Remote popular collection reads the configured compatible file source's own
-recommendations and may track or fetch those remote works when run manually.
-Startup and interval triggers accept only the Track action with a limit of 1 to
-100 works, and expand their tag template when each run is dispatched.
-
-DLsite popular voice collection reads the provider ranking for 24 hours, 7
-days, 30 days, or a selected year. Non-annual runs may be limited to works
-released within 30 days. The recoverable worker synchronizes metadata and
-appends a run-specific tag owned by the user who started the run. It does not
-create remote file-source presence or fetch media.
-
-Both collectors accept `skipTag` on a manual run. The run then renders no tag,
-adds none, and records its tag node as `skipped`. Without `skipTag`, a remote
-collection requires a tag name or template, and a DLsite collection without one
-uses its default ranking tag.
-
-Configurable built-in triggers keep the configuring user for user-owned tag
-effects and revalidate that user's permissions when dispatching. Triggered runs
-store both their trigger reference and the final resolved input.
-
 ## Rankings
 
 A ranking list (`ranking_list`) is one tracked ranking shared by every
-account: the DLsite voice ranking for 24 hours, 7 days, or 30 days, optionally
-limited to works released within 30 days, or the popular list of one enabled
-compatible remote source. Annual rankings stay with the
-[DLsite popular collection](#popular-collections). A list keeps its depth (10
-to 100 places), whether it is tracked, and its position among the lists.
+account: the DLsite voice ranking for 24 hours, 7 days, or 30 days, the DLsite
+annual voice ranking of one year, the DLsite all-time voice ranking, or the
+popular list of one enabled compatible remote source. A list keeps its depth
+(10 to 100 places), whether it is shown, and whether it is pulled
+automatically and how often. DLsite lists read the voice works only
+(`category=voice&sub=SOU`).
 
-One system workflow, `ranking_refresh`, pulls the lists:
+A list is pulled in each of its orders, its variants (`ranking_variant`). A
+DLsite list is ordered by popularity or by sales (`sort=sale`); the 24-hour,
+7-day, and 30-day rankings are also pulled limited to works released within
+30 days (`date=30d`), so they have four variants, and the annual and all-time
+rankings two. A remote list has one. Each variant keeps its own snapshots,
+entry statistics, seen state, and last pull status.
+
+The Rankings view shows the lists in a fixed order: 24 hours, 7 days, 30 days,
+Annual, and All time, then each remote source's popular list in the sources'
+configured order. Annual lists share one chip, newest year first, with a year
+choice. The view chooses a variant with a 30-day switch, on the 24-hour,
+7-day, and 30-day rankings, and a popularity or sales choice; the location
+names it with `release=30d` and `sort=sale`, each choice is a history entry,
+and the last choice on each chip is a per-device preference. History and
+comparisons read the shown variant.
+
+Two system workflows pull the lists, each through the same two nodes:
 
 ```text
-pull   (each enabled list, or the lists a manual run names, in position order)
-  -> record (a snapshot when the order changed, then entry statistics)
+pull   (each variant of the lists of the run's target that are due or requested)
+  -> record (per variant, a snapshot when the order changed and entry statistics;
+             per list, the next pull)
 ```
 
-A DLsite list reads the provider ranking page through the DLsite client, which
-also returns the title and circle each entry shows; either may be empty, and no
-image address is taken from the page. A remote list reads the source's popular
-works through the shared outbound transport on its configured origin; works
-without a stable catalog code are skipped and counted. A disabled, removed, or
-incompatible source records the list as `source_unavailable`, and a failing
-list never stops the others; the run is partial when some lists failed and
-failed when all did. Detailed errors stay in the run and the list's protected
-`last_error`.
+`dlsite_popular_collection` pulls every DLsite list in one run, holding the
+`metadata:provider` resource. `remote_popular_collection` pulls the lists of
+one remote source per run, holding that source's resource, and names the
+source as its run subject. One run per workflow, and per source for remote
+lists, is queued or running at a time. A run picks its lists when it starts,
+so a run waiting behind another provider job also takes the lists that became
+due meanwhile. A requested pull, from **Refresh now**, **Refresh all now**, or
+showing a list for the first time, marks the list and queues its target's run,
+or joins the active one; a request made after a running run pulled the list
+waits for the next run. Lists of a disabled or incompatible source are not
+pulled until the source is available again. Neither workflow adds works to the
+library, syncs metadata, tracks, fetches, or tags.
 
-Recording compares the pulled codes, in order, with the list's latest
-snapshot. An identical order only refreshes the entries' display text and the
-list's pull time. Any other order adds a `ranking_snapshot` with its ranked
-codes and updates each `ranking_entry`: first appearance, the start of the
-current continuous presence, best rank, and number of appearances. Entries are
-codes. A refresh never creates a work, syncs metadata, tracks, fetches, or
-tags, and reading a ranking resolves library works by code.
+A DLsite variant reads the provider ranking page for its period, order, and
+year through the DLsite client, which also returns the title and circle each
+entry shows; either may be empty, and no image address is taken from the page.
+A remote list reads the source's popular works through the shared outbound
+transport on its configured origin; works without a stable catalog code are
+skipped and counted. A removed or incompatible source records the list as
+`source_unavailable`. A failing variant never stops the others: its last
+snapshot stays, the list is `partial` when some of its variants failed, and the
+run is partial when some variants failed and failed when all did. Detailed
+errors stay in the run and the protected `last_error` of the variant and the
+list.
 
-A ranking page compares the latest snapshot with a baseline: the snapshot the
-account last displayed (`user_ranking_state`), the previous snapshot, or a
-retained snapshot of the list. Without a stored or retained seen snapshot it
-uses the previous one. A code missing from the baseline is new when the list
-first held it after the baseline and re-entered otherwise; codes of the
-baseline missing from the latest snapshot are dropped. An account records the
-snapshot it displayed, never moving its seen snapshot back. A remote list's
-covers go through the image proxy, never as the source's address.
+### Schedules
 
-The workflow has one fixed interval trigger, configured only in the Rankings
-settings of the Subscriptions page by a user with `metadata:sync`: on or off
-and an interval from 1 to 168 hours (24 by default). Startup plans its first
-run, and a dispatch while no list is enabled creates no run. Adding a list
-queues its first pull. One refresh is queued or running at a time; a request
-while one is active returns it. Database cleanup removes snapshots older than
-90 days except the two newest of each list, and a refresh removes entries that
-left the list longer ago than that.
+Each workflow keeps one ownerless schedule trigger as its dispatcher. Its next
+run is the earliest time one of its enabled lists is due: a requested pull, or
+the next automatic pull of a list that is not finished. While a target's run
+is queued or running, only its lists due later count; a finished run plans the
+dispatcher again, as does every change to a list. The dispatcher is
+configured only through the lists: the Workflows page shows its next run but
+cannot edit, pause, or delete it.
 
-Demo serves two fixed sample rankings built from obviously synthetic names and
-reserved codes, and refuses every change.
+A pull whose every variant succeeded plans the list's next one an interval
+after it. A pull with any failed variant is retried after one hour, then two,
+and so on, never later than the list's interval, and the retry pulls every
+variant again. A list without automatic pulls is pulled only on request.
+
+| List | Default interval | Choices |
+| --- | --- | --- |
+| DLsite 24 hours | 1 hour | 20 minutes to 24 hours |
+| DLsite 7 days | 6 hours | 1 hour to 7 days |
+| DLsite 30 days | 24 hours | 6 hours to 7 days |
+| DLsite annual, year in progress | 7 days | 24 hours to 30 days |
+| DLsite all time | 7 days | 24 hours to 30 days |
+| Remote source popular list | 24 hours | 1 hour to 7 days |
+
+DLsite's day and year turn over in Japan Standard Time, so the year in
+progress is read in JST. An annual list is pulled once more from 3 January
+JST after its year, even with automatic pulls off; the first such pull in
+which both sort variants succeed records `final_at`, and a finished list keeps
+no schedule. With
+`follow_current_year`, on by default, the final pull adds the list of the
+year then in progress with the same settings and variants and asks for its
+first pull. An earlier year added from the settings is pulled once and
+finished at once.
+**Refresh now** on a finished list pulls it again; an unchanged order adds no
+snapshot.
+
+### Recording and history
+
+Recording compares the pulled codes of a variant, in order, with the
+variant's latest snapshot. An unchanged order refreshes the entries' display
+text and moves the
+snapshot's `confirmed_until` forward. Any other order adds a
+`ranking_snapshot` with its ranked codes, confirmed at its pull, and updates
+each `ranking_entry`: first appearance, the start of the current continuous
+presence, best rank, and number of appearances. Entries are codes, and
+reading a ranking resolves library works by code.
+
+A page reads one variant, the default one unless `release` and `sort` name
+another the list is pulled in. The latest page compares the variant's latest
+snapshot with a baseline of the same variant: the snapshot the account last
+displayed (`user_ranking_state`), the previous snapshot, a picked snapshot, or
+the snapshot in effect at a picked time. Without a stored or retained seen
+snapshot it uses the previous one. A code missing from the baseline is new when
+the variant first held it after the baseline and re-entered otherwise; codes of
+the baseline missing from the shown snapshot are dropped. Displaying the latest
+snapshot records it as seen for its variant, never moving the seen snapshot
+back, and a chip's unseen mark reflects the variant the chip shows. A remote
+list's covers go through the image proxy, never as the source's address.
+
+A history page shows the snapshot in effect at a requested time `T`: the
+latest pulled at or before `T`, compared with the snapshot before it unless
+another is named. Its coverage is `confirmed` when a pull confirmed that order
+at or after `T`, `unpulled` with the last confirmation time when no pull ran
+between it and `T`, and `before` when `T` precedes the history. The page also
+names the snapshots before and after the shown one. A paged timeline lists a
+variant's snapshots within a time range. Viewing history never records a
+snapshot as seen.
+
+History is kept in tiers, configured in the Rankings settings by an account
+with `metadata:sync`:
+
+- Every changed snapshot stays for the full retention, 30 days by default. A
+  snapshot's age is when the next snapshot of its variant replaced it, so the
+  order still in effect is never old.
+- After it, the snapshot in effect at the end of each JST day stays for the
+  daily retention, one year by default or forever.
+- A variant's latest snapshot, every snapshot of a finished annual list, and
+  any snapshot an account last displayed are always kept.
+
+The database cleanup task for old ranking history and its daily automatic run
+apply these tiers, then remove the entries that no kept snapshot of their
+variant holds, so retained history keeps its titles and circles.
+
+Demo serves fixed sample rankings with a short history in each order, built
+from obviously synthetic names and reserved codes, and refuses every change.
 
 ## Preset Workflows
 

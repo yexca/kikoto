@@ -11,7 +11,6 @@ import {
   Languages,
   Library,
   ListChecks,
-  ListOrdered,
   Mic,
   Radar,
   TrendingUp,
@@ -43,7 +42,6 @@ const workflowIcons: Record<string, LucideIcon> = {
   series_catalog_sync: BookCopy,
   voice_catalog_sync: Mic,
   creator_subscription_refresh: BellRing,
-  ranking_refresh: ListOrdered,
 };
 
 /** A neutral glyph that tells workflows apart; status color stays on the run state, never on the icon. */

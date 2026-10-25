@@ -461,7 +461,8 @@ const adminToolsKorean = {
       },
       old_ranking_snapshots: {
         title: "오래된 순위 기록",
-        description: "90일이 지난 순위 업데이트입니다. 각 순위의 최신 업데이트 2개는 유지됩니다.",
+        description:
+          "순위 설정에서 보관하는 기록 기간이 지난 순위 업데이트입니다. 최신 순서, 확정된 연간 순위, 각 계정이 마지막으로 본 업데이트는 유지됩니다.",
       },
     },
     optimize: {

@@ -168,12 +168,6 @@ func workflowTriggerSourceIDs(ctx context.Context, q workflowTriggerQueryer, wor
 		}
 		ids = appendID(ids, config.SourceID)
 		ids = appendIDs(ids, config.RemoteMetadataFallback.SourceIDs)
-	case "remote_popular_collection":
-		var config systemWorkflowTriggerConfig
-		if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
-			return nil, fmt.Errorf("remote popular trigger config is invalid: %w", err)
-		}
-		ids = appendID(ids, config.SourceID)
 	}
 	return ids, nil
 }

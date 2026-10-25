@@ -75,12 +75,8 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 		Description: creatorSubscriptionDescription,
 		Nodes:       creatorSubscriptionNodes(),
 	},
-	{
-		Code:        rankingWorkflowCode,
-		Name:        rankingDisplayName,
-		Description: rankingDescription,
-		Nodes:       rankingNodes(),
-	},
+	rankingWorkflowSpec(dlsiteRankingWorkflowCode),
+	rankingWorkflowSpec(remoteRankingWorkflowCode),
 	{
 		Code:        "local_library_scan",
 		Name:        "Scan local library",
@@ -124,29 +120,6 @@ var systemWorkflowSpecs = []systemWorkflowSpec{
 			{"id": "match", "type": "match_works", "displayName": "Match work"},
 			{"id": "metadata", "type": "sync_metadata", "displayName": "Sync metadata"},
 			{"id": "sync", "type": "sync_file_locations", "displayName": "Sync remote locations"},
-		},
-	},
-	{
-		Code:        "remote_popular_collection",
-		Name:        "Collect popular remote works",
-		Description: "Discover popular works from a selected compatible source, track or fetch them, and append a user tag.",
-		Nodes: []map[string]string{
-			{"id": "configure", "type": "select_remote_source", "displayName": "Configure remote collection"},
-			{"id": "discover", "type": "discover_remote_collection", "displayName": "Discover popular works"},
-			{"id": "filter", "type": "filter_candidates", "displayName": "Filter collection candidates"},
-			{"id": "dispatch", "type": "dispatch_child_workflows", "displayName": "Dispatch accepted works"},
-			{"id": "tag", "type": "assign_user_tags", "displayName": "Add user tag"},
-		},
-	},
-	{
-		Code:        "dlsite_popular_collection",
-		Name:        "Collect DLsite popular voice works",
-		Description: "Discover a DLsite voice ranking, synchronize work metadata, and append a run tag for the current user.",
-		Nodes: []map[string]string{
-			{"id": "configure", "type": "select_ranking", "displayName": "Configure ranking"},
-			{"id": "discover", "type": "discover_provider_ranking", "displayName": "Discover ranking"},
-			{"id": "metadata", "type": "sync_metadata", "displayName": "Sync metadata"},
-			{"id": "tag", "type": "assign_user_tags", "displayName": "Add user tag"},
 		},
 	},
 	{
@@ -381,8 +354,8 @@ func (s *Server) prepareWorkflowTriggerUpdate(ctx context.Context, actor current
 	if currentDefinition.Code == creatorSubscriptionWorkflowCode {
 		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "the subscription refresh schedule is configured on the Subscriptions page")
 	}
-	if currentDefinition.Code == rankingWorkflowCode {
-		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "the ranking refresh schedule is configured on the Subscriptions page")
+	if isRankingWorkflowCode(currentDefinition.Code) {
+		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "ranking pulls are scheduled in the Rankings settings of the Subscriptions page")
 	}
 	if current.TriggerType == "filesystem_event" && !isFixedFilesystemTriggerUpdate(currentDefinition, current, payload) {
 		return workflowTriggerRecord{}, preparedWorkflowTrigger{}, false, workflowTriggerUpdateHTTPErrorf(http.StatusConflict, "the local library filesystem trigger only supports pause and scan-mode changes")
@@ -527,8 +500,8 @@ func (s *Server) deleteWorkflowTrigger(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "the subscription refresh schedule cannot be deleted"})
 		return
 	}
-	if definition.Code == rankingWorkflowCode {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "the ranking refresh schedule cannot be deleted"})
+	if isRankingWorkflowCode(definition.Code) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "the ranking pull schedule cannot be deleted"})
 		return
 	}
 	result, err := s.db.ExecContext(r.Context(), "DELETE FROM workflow_trigger WHERE id = ?", id)

@@ -5,6 +5,15 @@
 > upgrade. Translate those works again with **Translate with AI**, whose
 > results take effect as soon as they finish.
 
+> [!IMPORTANT]
+> The popular collections become Rankings. Each Remote popular and DLsite
+> popular trigger is turned into a ranking in **Subscriptions → Rankings**
+> with its period, year, or source, its interval, and whether it ran on its
+> own; the triggers themselves are removed. Collections no longer add tags,
+> sync metadata, Track, or Fetch, and collection runs still queued or running
+> when the upgrade starts are stopped. Tags they added earlier stay with their
+> works.
+
 <details>
 <summary><strong>Library and work detail</strong></summary>
 
@@ -25,13 +34,33 @@
 <summary><strong>Subscriptions</strong></summary>
 
 - Subscriptions gains a **Rankings** view beside **New releases**. It follows
-  DLsite voice rankings (24 hours, 7 days, or 30 days, optionally only new
-  releases) and remote sources' popular lists, and marks what entered,
-  returned, moved, or dropped out since your last visit, the previous update,
-  or a chosen earlier update. Rankings are added and scheduled in the new
-  **Rankings** tab of the subscription settings; a refresh records each
-  ranking's order and never adds works to the library. Ranking history older
-  than 90 days is removed with the database cleanup.
+  the DLsite voice rankings for 24 hours, 7 days, and 30 days, the annual
+  ranking of each year, and the all-time ranking, and remote sources' popular
+  lists, in a fixed order of chips. A DLsite ranking is shown by
+  **Popularity** or **Sales**, and the 24-hour, 7-day, and 30-day rankings
+  also only for works **Released within 30 days**; each of these orders keeps
+  its own updates, history, and seen state, and the address and Back keep the
+  choice. The view marks what entered, returned, moved, or dropped out since
+  your last visit, the previous update, or another time. A pull records each
+  order and never adds works to the library, syncs metadata, tags, Tracks, or
+  Fetches.
+- **History** shows a ranking as it was on a chosen day and update, in your
+  time zone, says when no pull confirmed that order, and does not mark the
+  ranking as seen.
+- The **Rankings** tab of the subscription settings has a row for every
+  DLsite ranking, the annual ranking of the year in progress and of added
+  earlier years, and each compatible remote source, in the order of the
+  chips. Each ranking is shown, pulled automatically in all of its orders, and
+  given its interval and depth on its own; the default interval follows how
+  often DLsite updates that ranking. The annual ranking is finalized from 3
+  January in Japan once both of its orders are pulled, and can continue with
+  the next year. The annual rankings share one chip with a year choice, and a
+  finished year reads as its final order.
+- Ranking history keeps every change for 30 days and then one order per day
+  for a year by default, both set in the Rankings settings. The database
+  cleanup applies the same rule.
+- Workflows lists **Pull DLsite rankings** and **Pull remote source rankings**
+  under Collect with their run history, configured from the Rankings settings.
 
 </details>
 
