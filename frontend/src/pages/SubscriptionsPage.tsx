@@ -46,12 +46,16 @@ import {
 } from "@/features/subscriptions/subscriptionModel";
 import { AvailabilityWatchManager } from "@/features/workflows/availability-watch/AvailabilityWatchPanel";
 import { openWorkflowPath, workflowActivityRunPath } from "@/features/workflows/workflowLinks";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import i18n from "@/i18n";
 import { NAVIGATION_EVENT, requestHistoryScrollRestoration } from "@/lib/browserHistory";
 import type { RankingOrder } from "@/lib/rankingApi";
+import { cn } from "@/lib/tailwindClassNames";
 
 const feedDaysStorageKey = "kikoto:release-feed-days";
+const SETTINGS_BESIDE_QUERY = "(min-width: 1280px)";
+const SETTINGS_BESIDE_ID = "subscriptions-settings";
 
 function readFeedDays(): ReleaseFeedDayCount {
   try {
@@ -127,6 +131,9 @@ export function SubscriptionsPage({
   const { t } = useTranslation();
   const toast = useToast();
   const mobile = useMobileNavigationLayout();
+  const besideLayout = useMediaQuery(SETTINGS_BESIDE_QUERY);
+  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const besideRef = useRef<HTMLElement | null>(null);
   const [panel, setPanel] = useState<SubscriptionPanel | null>(() =>
     subscriptionPanelFromSearch(window.location.search),
   );
@@ -155,6 +162,13 @@ export function SubscriptionsPage({
   );
   const panels = SUBSCRIPTION_PANELS.filter((item) => item !== "watch" || canRunWorkflows);
   const activePanel = panel && panels.includes(panel) ? panel : panel ? "subscriptions" : null;
+  const settingsBeside = besideLayout && Boolean(activePanel);
+
+  // The panel beside the feed follows the whole feed in reading order, so it
+  // takes focus when it opens, as the drawer does.
+  useEffect(() => {
+    if (settingsBeside) besideRef.current?.focus({ preventScroll: true });
+  }, [settingsBeside]);
 
   useEffect(() => {
     const sync = () => {
@@ -177,6 +191,12 @@ export function SubscriptionsPage({
   const showPanel = (next: SubscriptionPanel | null) => {
     setPanel(next);
     replaceSearch({ panel: next, dialog: null, target: null, run: null });
+  };
+  // Closing from inside the panel returns focus to the toolbar button.
+  const closeBesideSettings = () => {
+    const focusInside = besideRef.current?.contains(document.activeElement) ?? false;
+    showPanel(null);
+    if (focusInside) settingsButtonRef.current?.focus({ preventScroll: true });
   };
   const showView = (next: SubscriptionView) => {
     setView(next);
@@ -307,115 +327,152 @@ export function SubscriptionsPage({
   return (
     <div className="w-full space-y-5">
       {readOnly && <DemoReadOnlyNotice />}
-      <div ref={feedRef} className="min-w-0 scroll-mt-4 space-y-4">
-        <div className="flex items-center justify-between gap-3" data-toast-avoid>
-          <div role="tablist" aria-label={t("subscriptions.views.label")} className={segmentedListClassName()}>
-            {SUBSCRIPTION_VIEWS.map((item) => (
-              <button
-                key={item}
-                type="button"
-                role="tab"
-                id={`subscriptions-view-${item}`}
-                aria-selected={view === item}
-                aria-controls="subscriptions-view-panel"
-                className={segmentedItemClassName(view === item)}
-                onClick={() => showView(item)}
+      <div
+        className={cn(
+          "min-w-0",
+          settingsBeside && "grid grid-cols-[minmax(0,1fr)_clamp(26rem,36%,36rem)] items-start gap-4",
+        )}
+      >
+        <div ref={feedRef} className="min-w-0 scroll-mt-4 space-y-4">
+          <div className="flex items-center justify-between gap-3" data-toast-avoid>
+            <div role="tablist" aria-label={t("subscriptions.views.label")} className={segmentedListClassName()}>
+              {SUBSCRIPTION_VIEWS.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  role="tab"
+                  id={`subscriptions-view-${item}`}
+                  aria-selected={view === item}
+                  aria-controls="subscriptions-view-panel"
+                  className={segmentedItemClassName(view === item)}
+                  onClick={() => showView(item)}
+                >
+                  {t(`subscriptions.views.${item}`)}
+                  {item === "releases" && unread > 0 && (
+                    <span className="text-xs font-normal tabular-nums text-muted-foreground">
+                      {t("subscriptions.feed.unreadCount", { count: unread })}
+                    </span>
+                  )}
+                  {item === "rankings" && rankingsUnseen && (
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full bg-primary"
+                      title={t("subscriptions.views.rankingsUnseen")}
+                    >
+                      <span className="sr-only">{t("subscriptions.views.rankingsUnseen")}</span>
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {view === "releases" && (
+                <WorkCollectionDisplayPicker
+                  mobileColumns={layout.mobileColumns}
+                  desktopColumns={layout.desktopColumns}
+                  onMobileColumnsChange={layout.setMobileColumns}
+                  onDesktopColumnsChange={layout.setDesktopColumns}
+                  cardModes={{
+                    mobile: layout.mobileCardMode,
+                    desktop: layout.desktopCardMode,
+                    onMobileChange: layout.setMobileCardMode,
+                    onDesktopChange: layout.setDesktopCardMode,
+                  }}
+                  pageSize={feedDays}
+                  pageSizeOptions={RELEASE_FEED_DAY_OPTIONS}
+                  onPageSizeChange={changeFeedDays}
+                  pageSizeLabels={{
+                    heading: t("subscriptions.feed.daysPerPage"),
+                    value: (count) => t("subscriptions.feed.daysPerPageValue", { count }),
+                  }}
+                />
+              )}
+              <Button
+                ref={settingsButtonRef}
+                variant="toolbar"
+                size="icon-sm"
+                aria-haspopup={besideLayout ? undefined : "dialog"}
+                aria-controls={settingsBeside ? SETTINGS_BESIDE_ID : undefined}
+                aria-expanded={Boolean(activePanel)}
+                aria-label={t("subscriptions.settings")}
+                title={t("subscriptions.settings")}
+                onClick={() =>
+                  settingsBeside ? closeBesideSettings() : showPanel(view === "rankings" ? "rankings" : "subscriptions")
+                }
               >
-                {t(`subscriptions.views.${item}`)}
-                {item === "releases" && unread > 0 && (
-                  <span className="text-xs font-normal tabular-nums text-muted-foreground">
-                    {t("subscriptions.feed.unreadCount", { count: unread })}
-                  </span>
-                )}
-                {item === "rankings" && rankingsUnseen && (
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full bg-primary"
-                    title={t("subscriptions.views.rankingsUnseen")}
-                  >
-                    <span className="sr-only">{t("subscriptions.views.rankingsUnseen")}</span>
-                  </span>
-                )}
-              </button>
-            ))}
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {view === "releases" && (
-              <WorkCollectionDisplayPicker
-                mobileColumns={layout.mobileColumns}
-                desktopColumns={layout.desktopColumns}
-                onMobileColumnsChange={layout.setMobileColumns}
-                onDesktopColumnsChange={layout.setDesktopColumns}
-                cardModes={{
-                  mobile: layout.mobileCardMode,
-                  desktop: layout.desktopCardMode,
-                  onMobileChange: layout.setMobileCardMode,
-                  onDesktopChange: layout.setDesktopCardMode,
-                }}
-                pageSize={feedDays}
-                pageSizeOptions={RELEASE_FEED_DAY_OPTIONS}
-                onPageSizeChange={changeFeedDays}
-                pageSizeLabels={{
-                  heading: t("subscriptions.feed.daysPerPage"),
-                  value: (count) => t("subscriptions.feed.daysPerPageValue", { count }),
-                }}
-              />
+          <div role="tabpanel" id="subscriptions-view-panel" aria-labelledby={`subscriptions-view-${view}`}>
+            {view === "releases" ? (
+              <section className="min-w-0" aria-label={t("subscriptions.feed.label")}>
+                <ReleaseFeed
+                  page={feedPage}
+                  days={feedDays}
+                  cardLayout={cardLayout}
+                  mobileColumns={layout.mobileColumns}
+                  desktopColumns={layout.desktopColumns}
+                  canMarkSeen={canSubscribe && !readOnly}
+                  canWatch={!readOnly && canRunWorkflows && canManageSchedule}
+                  onOpenWork={(code) => openWorkCodeRoute(code)}
+                  onPageChange={changeFeedPage}
+                  onLoaded={(page) => setUnread(page.unreadCount)}
+                />
+              </section>
+            ) : (
+              <section className="min-w-0" aria-label={t("subscriptions.views.rankings")}>
+                <RankingsView
+                  rankings={rankings}
+                  listId={rankingListId}
+                  at={rankingAt}
+                  compare={rankingCompare}
+                  order={rankingOrder}
+                  orderPreferences={rankingOrderPreferences}
+                  readOnly={readOnly}
+                  canManage={canManageSchedule}
+                  canMarkSeen={canSubscribe && !readOnly}
+                  canWatch={!readOnly && canRunWorkflows && canManageSchedule}
+                  onListChange={changeRankingList}
+                  onOrderChange={changeRankingOrder}
+                  onAtChange={changeRankingAt}
+                  onCompareChange={changeRankingCompare}
+                  onOpenSettings={() => showPanel("rankings")}
+                  onOpenRun={openRun}
+                  onOpenWork={openRankedWork}
+                />
+              </section>
             )}
-            <Button
-              variant="toolbar"
-              size="icon-sm"
-              aria-haspopup="dialog"
-              aria-expanded={Boolean(activePanel)}
-              aria-label={t("subscriptions.settings")}
-              title={t("subscriptions.settings")}
-              onClick={() => showPanel(view === "rankings" ? "rankings" : "subscriptions")}
-            >
-              <Settings2 className="h-4 w-4" />
-            </Button>
           </div>
         </div>
-        <div role="tabpanel" id="subscriptions-view-panel" aria-labelledby={`subscriptions-view-${view}`}>
-          {view === "releases" ? (
-            <section className="min-w-0" aria-label={t("subscriptions.feed.label")}>
-              <ReleaseFeed
-                page={feedPage}
-                days={feedDays}
-                cardLayout={cardLayout}
-                mobileColumns={layout.mobileColumns}
-                desktopColumns={layout.desktopColumns}
-                canMarkSeen={canSubscribe && !readOnly}
-                canWatch={!readOnly && canRunWorkflows && canManageSchedule}
-                onOpenWork={(code) => openWorkCodeRoute(code)}
-                onPageChange={changeFeedPage}
-                onLoaded={(page) => setUnread(page.unreadCount)}
-              />
-            </section>
-          ) : (
-            <section className="min-w-0" aria-label={t("subscriptions.views.rankings")}>
-              <RankingsView
-                rankings={rankings}
-                listId={rankingListId}
-                at={rankingAt}
-                compare={rankingCompare}
-                order={rankingOrder}
-                orderPreferences={rankingOrderPreferences}
-                readOnly={readOnly}
-                canManage={canManageSchedule}
-                canMarkSeen={canSubscribe && !readOnly}
-                canWatch={!readOnly && canRunWorkflows && canManageSchedule}
-                onListChange={changeRankingList}
-                onOrderChange={changeRankingOrder}
-                onAtChange={changeRankingAt}
-                onCompareChange={changeRankingCompare}
-                onOpenSettings={() => showPanel("rankings")}
-                onOpenRun={openRun}
-                onOpenWork={openRankedWork}
-              />
-            </section>
-          )}
-        </div>
+        {settingsBeside && (
+          // From 1280px the panel sits beside the feed, which reflows to the
+          // remaining width. A sticky panel contains its descendants' stacking,
+          // so it rises to the dialog layer while a dialog opened from it is up.
+          <aside
+            ref={besideRef}
+            id={SETTINGS_BESIDE_ID}
+            aria-label={t("subscriptions.settings")}
+            tabIndex={-1}
+            className="theme-card-surface sticky top-[calc(var(--header-height)+1rem)] flex max-h-[calc(100dvh-var(--header-height)-2rem-var(--app-content-bottom-clearance))] flex-col overflow-hidden rounded-lg border bg-card outline-none duration-200 animate-in fade-in-0 slide-in-from-right-8 has-[[aria-modal=true]]:z-overlay"
+            onKeyDown={(event) => {
+              // Escape in a portaled popover or a dialog opened from the panel belongs to that layer.
+              const target = event.target as Element;
+              if (event.key !== "Escape" || event.defaultPrevented || !event.currentTarget.contains(target)) return;
+              if (target.closest("[aria-modal='true']")) return;
+              closeBesideSettings();
+            }}
+          >
+            <DialogHeader
+              title={t("subscriptions.settings")}
+              onClose={closeBesideSettings}
+              closeLabel={t("subscriptions.closeSettings")}
+            />
+            <DialogBody>{settings}</DialogBody>
+          </aside>
+        )}
       </div>
-      {settings && !mobile && (
-        // A drawer over the right edge, like the Library's controls: the feed keeps its width.
+      {settings && !mobile && !besideLayout && (
+        // Narrower desktops keep a drawer over the right edge, like the Library's controls: the feed keeps its width.
         <Dialog
           onClose={() => showPanel(null)}
           ariaLabel={t("subscriptions.settings")}

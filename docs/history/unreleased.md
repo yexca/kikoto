@@ -61,6 +61,9 @@
   cleanup applies the same rule.
 - Workflows lists **Pull DLsite rankings** and **Pull remote source rankings**
   under Collect with their run history, configured from the Rankings settings.
+- On a wide screen the subscription settings open in a panel beside the feed
+  or the rankings, which narrow to make room and stay usable; narrower screens
+  keep the drawer, and phones the sheet.
 
 </details>
 

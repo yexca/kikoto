@@ -115,10 +115,14 @@ switch at the top chooses **New releases** or **Rankings**; a dot on
 
 ## Subscription Settings
 
-The settings icon at the top right, **Subscription settings**, opens a drawer
-from the right edge, or a sheet on a phone, with three tabs: **Subscriptions**,
-**Availability Watch**, and **Rankings**. It opens on **Rankings** from the
-Rankings view. Close it with the `×`, Escape, or by selecting outside it.
+The settings icon at the top right, **Subscription settings**, opens the
+settings with three tabs: **Subscriptions**, **Availability Watch**, and
+**Rankings**. On a wide screen they open in a panel beside the feed or the
+rankings, which narrow to make room and stay usable; on a narrower screen they
+open in a drawer from the right edge, or a sheet on a phone. They open on
+**Rankings** from the Rankings view. Close them with the `×` or Escape; the
+settings icon also closes the panel, and selecting outside closes a drawer or
+sheet.
 
 - **Subscriptions** lists your circle, series, and voice actor subscriptions
   with their state (**Active** or **Waiting for first pull**), when the catalog
@@ -136,7 +140,7 @@ Rankings view. Close it with the `×`, Escape, or by selecting outside it.
 
 ## Availability Watch
 
-- The **Availability Watch** tab of the settings drawer holds the shared watch pool and its configuration:
+- The **Availability Watch** tab of the settings holds the shared watch pool and its configuration:
   the remote source, the action when a work becomes available, and optional
   Fetch extension exclusions; see [Workflows](workflows.md) for how a watch
   run checks a work's family. It is shown to accounts that can open Workflows.
