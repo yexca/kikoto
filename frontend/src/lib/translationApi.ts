@@ -120,6 +120,8 @@ export type TranslationRunLanguage = {
 export type TranslationRun = {
   runId: number;
   status: string;
+  /** The viewer may cancel this live run. */
+  canCancel: boolean;
   workId: number;
   workCode: string;
   workTitle: string;
@@ -165,6 +167,8 @@ export const translationApi = {
     getJSON<{ runs: TranslationRun[]; counts: TranslationCenterCounts; autoAccept: boolean }>(
       `/api/translation/runs?view=${view}`,
     ),
+  cancelTranslationRun: (id: number) =>
+    postJSONBody<{ runId: number; status: string; message: string }>(`/api/translation/runs/${id}/cancel`, {}),
   lyricsAttribution: () => getJSON<{ enabled: boolean }>("/api/llm/lyrics-attribution"),
   updateLyricsAttribution: (enabled: boolean) =>
     putJSONBody<{ enabled: boolean }>("/api/llm/lyrics-attribution", { enabled }),

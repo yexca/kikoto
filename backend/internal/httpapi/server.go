@@ -271,6 +271,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/translation/items/reject", s.rejectTranslationItems)
 	mux.HandleFunc("POST /api/translation/items/resend", s.resendTranslationItems)
 	mux.HandleFunc("GET /api/translation/runs", s.listTranslationRuns)
+	mux.HandleFunc("POST /api/translation/runs/{id}/cancel", s.cancelAITranslationRun)
 	mux.HandleFunc("GET /api/translation/settings", s.getTranslationSettings)
 	mux.HandleFunc("PUT /api/translation/settings", s.updateTranslationSettings)
 	mux.HandleFunc("GET /api/works/{id}/asr-transcriptions", s.listASRTranscriptions)

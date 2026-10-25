@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/llm"
 	"github.com/yexca/kikoto/backend/internal/workflow"
@@ -52,7 +53,25 @@ func (s *Server) executeAITranslationWithDecoder(ctx context.Context, job workfl
 		if task.RunID != job.RunID {
 			return errors.New("translation job scope mismatch")
 		}
-		code, err := s.transcribeTrack(ctx, job, &task, decode)
+		code := ""
+		switch task.State {
+		case "ready", "publishing", "accepted":
+			// Its result committed before its items were released.
+		case "failed", "cancelled", "rejected":
+			if err := s.db.QueryRowContext(ctx, "SELECT failure_code FROM asr_transcription WHERE id = ?", task.ID).Scan(&code); err != nil {
+				return err
+			}
+			if task.State == "rejected" {
+				code = "transcription_rejected"
+			} else if code == "" {
+				code = "transcription_failed"
+				if task.State == "cancelled" {
+					code = asrFailureCancelled
+				}
+			}
+		default:
+			code, err = s.transcribeTrack(ctx, job, &task, decode)
+		}
 		if err != nil {
 			return err
 		}
@@ -87,8 +106,11 @@ func (s *Server) executeAITranslationWithDecoder(ctx context.Context, job workfl
 }
 
 func (s *Server) runTranscriptionIDs(ctx context.Context, runID int64) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM asr_transcription WHERE workflow_run_id = ? AND state IN ('pending', 'requesting')
-		ORDER BY created_at, rowid`, runID)
+	rows, err := s.db.QueryContext(ctx, `SELECT task.id FROM asr_transcription AS task WHERE task.workflow_run_id = ?
+		AND (task.state IN ('pending', 'requesting') OR EXISTS (
+			SELECT 1 FROM translation_item AS item WHERE item.asr_transcription_id = task.id
+			AND (item.state IN ('queued', 'waiting_transcription') OR (item.engine = 'asr' AND item.state = 'ready'))
+		)) ORDER BY task.created_at, task.rowid`, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -139,12 +161,15 @@ func (s *Server) transcriptionReady(ctx context.Context, id string) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	items, err := loadTranslationItems(ctx, tx, "item.asr_transcription_id = ? AND item.state IN ('queued', 'waiting_transcription')", id)
+	items, err := loadTranslationItems(ctx, tx, "item.asr_transcription_id = ? AND (item.state IN ('queued', 'waiting_transcription') OR (item.engine = 'asr' AND item.state = 'ready'))", id)
 	if err != nil {
 		return err
 	}
 	for _, item := range items {
 		if item.Engine == "asr" {
+			if item.State == "ready" {
+				continue
+			}
 			result := text
 			if attribute {
 				if result, err = llm.AddAttribution(".vtt", text, llm.Attribution(item.Language, model, "")); err != nil {
@@ -175,9 +200,19 @@ func (s *Server) transcriptionReady(ctx context.Context, id string) error {
 // transcriptionFailed stops the transcription's items; the run's other items
 // continue.
 func (s *Server) transcriptionFailed(ctx context.Context, id, code string) error {
+	state := "failed"
+	dependentCode := "transcription_failed"
+	switch code {
+	case asrResultUnknown, "cancelled_result_unknown":
+		state, dependentCode = "uncertain", code
+	case asrFailureCancelled:
+		state, dependentCode = "cancelled", code
+	case "transcription_rejected":
+		state, dependentCode = "rejected", code
+	}
 	_, err := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE translation_item
-		SET state = 'failed', failure_code = CASE WHEN engine = 'asr' THEN ? ELSE 'transcription_failed' END, updated_at = CURRENT_TIMESTAMP
-		WHERE asr_transcription_id = ? AND state IN ('queued', 'waiting_transcription')`, code, id)
+		SET state = ?, failure_code = CASE WHEN engine = 'asr' THEN ? ELSE ? END, updated_at = CURRENT_TIMESTAMP
+		WHERE asr_transcription_id = ? AND state IN ('queued', 'waiting_transcription')`, state, code, dependentCode, id)
 	return err
 }
 
@@ -652,8 +687,32 @@ func (s *Server) translateLyricsItem(ctx context.Context, job workflowJobRecord,
 // succeeds when every item reached review, is partial when some stopped, and
 // fails when none reached review.
 func (s *Server) finishAITranslationJob(ctx context.Context, job workflowJobRecord) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var runStatus, jobStatusNow string
+	if err := tx.QueryRowContext(ctx, `SELECT run.status, job.status FROM workflow_run AS run
+		INNER JOIN workflow_job AS job ON job.workflow_run_id = run.id WHERE run.id = ? AND job.id = ?`, job.RunID, job.ID).Scan(&runStatus, &jobStatusNow); err != nil {
+		return err
+	}
+	if runStatus != "running" || jobStatusNow != "running" {
+		return nil
+	}
+	// A missing dependency cannot make progress on another execution. Keep its
+	// failure visible instead of rescheduling it indefinitely.
+	if _, err := tx.ExecContext(ctx, `UPDATE translation_item SET state = 'failed', failure_code = 'transcription_unavailable', updated_at = CURRENT_TIMESTAMP
+		WHERE workflow_run_id = ? AND (state = 'waiting_transcription' OR (engine = 'asr' AND state = 'queued'))
+		AND NOT EXISTS (SELECT 1 FROM asr_transcription AS task WHERE task.id = translation_item.asr_transcription_id)`, job.RunID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE translation_item SET state = 'uncertain', failure_code = 'upstream_result_unknown', updated_at = CURRENT_TIMESTAMP
+		WHERE workflow_run_id = ? AND state = 'requesting'`, job.RunID); err != nil {
+		return err
+	}
 	counts := map[string]int{}
-	rows, err := s.db.QueryContext(ctx, "SELECT state, COUNT(*) FROM translation_item WHERE workflow_run_id = ? GROUP BY state", job.RunID)
+	rows, err := tx.QueryContext(ctx, "SELECT state, COUNT(*) FROM translation_item WHERE workflow_run_id = ? GROUP BY state", job.RunID)
 	if err != nil {
 		return err
 	}
@@ -669,6 +728,16 @@ func (s *Server) finishAITranslationJob(ctx context.Context, job workflowJobReco
 	if err := rows.Close(); err != nil {
 		return err
 	}
+	if counts["queued"]+counts["waiting_transcription"] > 0 {
+		// A reviewer can resend an item after this execution has read its
+		// languages. Settlement and resubmission share the same write boundary:
+		// either this execution schedules it, or the later resend reopens it.
+		availableAt := formatWorkflowTimestamp(time.Now().UTC().Add(asrYieldDelay))
+		if err := requeueWorkflowJobTx(ctx, tx, job, availableAt, "Translation continues with newly queued items", false); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
 	stopped := counts["failed"] + counts["uncertain"] + counts["invalid"] + counts["policy_blocked"]
 	reviewed := counts["ready"] + counts["accepted"] + counts["rejected"]
 	status, jobStatus := "succeeded", "succeeded"
@@ -679,11 +748,6 @@ func (s *Server) finishAITranslationJob(ctx context.Context, job workflowJobReco
 		status = "partial"
 	}
 	summary := map[string]any{"status": status, "items": counts}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
 	message := ""
 	if jobStatus == "failed" {
 		message = "Translation stopped: no item reached review"

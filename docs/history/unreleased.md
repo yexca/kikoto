@@ -61,6 +61,9 @@
   cleanup applies the same rule.
 - Workflows lists **Pull DLsite rankings** and **Pull remote source rankings**
   under Collect with their run history, configured from the Rankings settings.
+- Refresh requests made during a ranking pull stay queued for the next run.
+  Cancelling a pull or recovering an interrupted one preserves the automatic
+  schedule without immediately repeating the cancelled pull.
 - On a wide screen the subscription settings open in a panel beside the feed
   or the rankings, which narrow to make room and stay usable; narrower screens
   keep the drawer, and phones the sheet.
@@ -152,6 +155,13 @@
   translation wrote with a link to its work, and holds the translation
   coverage that was under Metadata. Everyone who can translate sees every
   account's translations.
+- Translation recovers completed transcriptions and their dependent items
+  after interruption. Resending a speech request with an unknown result
+  requires confirmation, including when resending a dependent translation.
+- Accounts with library write permission can cancel their own translations
+  from the Translation page; workflow administrators can cancel other
+  accounts' runs. Shared tag translations apply without stalling the queue
+  on a single database connection.
 - Lyrics written by speech recognition or translation start with a line naming
   the models, in the lyrics' language, and the player marks them as AI-made.
   **Settings → ASR & LLM → AI lyrics** turns the line off.

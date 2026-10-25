@@ -383,23 +383,14 @@ func (s *Server) executeRankingPullJobWith(ctx context.Context, job workflowJobR
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", job.RunID); err != nil {
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_run SET started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ? AND status = 'running'", job.RunID); err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", nodeIDs["pull"]); err != nil {
+	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ? AND status IN ('queued', 'running')", nodeIDs["pull"]); err != nil {
 		return err
 	}
-	// The run takes the lists that are due when it starts, including those
-	// that became due while it waited for the provider.
 	startedAt := now().UTC()
-	where := `list.enabled = 1 AND list.provider = ?
-		AND (list.pull_requested_at IS NOT NULL OR (list.final_at IS NULL AND list.next_pull_at IS NOT NULL AND list.next_pull_at <= ?))`
-	args := []any{payload.Provider, formatWorkflowTimestamp(startedAt)}
-	if payload.Provider == rankingProviderRemote {
-		where += " AND list.file_source_id = ?"
-		args = append(args, payload.SourceID)
-	}
-	lists, err := s.loadRankingLists(ctx, 0, where, args...)
+	lists, err := s.claimRankingPullLists(ctx, job, payload, startedAt)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, "Rankings could not be loaded")
 		return err
@@ -412,7 +403,6 @@ func (s *Server) executeRankingPullJobWith(ctx context.Context, job workflowJobR
 			tasks = append(tasks, &rankingPullTask{list: list, variant: variant})
 		}
 	}
-	_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "pull", map[string]any{"listIds": listIDs}, 0, len(tasks))
 	result := rankingRunResult{RunID: job.RunID, JobID: job.ID, WorkflowCode: rankingWorkflowCodeFor(payload.Provider), Lists: []rankingListOutcome{}, Failures: []string{}}
 	pullFailures := []string{}
 	for index, task := range tasks {
@@ -425,7 +415,7 @@ func (s *Server) executeRankingPullJobWith(ctx context.Context, job workflowJobR
 			pullFailures = append(pullFailures, message)
 			_ = s.recordWorkflowRunEvent(ctx, job.RunID, "warning", "ranking_pull_failed", message, map[string]any{"list_id": task.list.ID, "variant_id": task.variant.ID})
 		}
-		_ = s.updateWorkflowJobCheckpoint(ctx, job.ID, "pull", map[string]any{"listIds": listIDs, "pulled": index + 1}, index+1, len(tasks))
+		_ = s.updateRankingPullCheckpoint(ctx, job, listIDs, index+1, len(tasks))
 	}
 	if _, err := s.db.ExecContext(ctx, "UPDATE workflow_node_run SET status = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id = ?", nodeIDs["record"]); err != nil {
 		return err
@@ -455,6 +445,7 @@ func (s *Server) executeRankingPullJobWith(ctx context.Context, job workflowJobR
 			slog.Warn("ranking pull failure could not be recorded", "variant_id", task.variant.ID, "error", err)
 		}
 	}
+	schedulesSettled := true
 	for _, list := range lists {
 		failed := failedByList[list.ID]
 		status, message := "succeeded", ""
@@ -466,7 +457,9 @@ func (s *Server) executeRankingPullJobWith(ctx context.Context, job workflowJobR
 		}
 		final, err := s.recordRankingListPull(ctx, list, status, message, now().UTC())
 		if err != nil {
+			schedulesSettled = false
 			slog.Warn("ranking schedule could not be recorded", "list_id", list.ID, "error", err)
+			recordFailures = append(recordFailures, fmt.Sprintf("%s schedule: %s", rankingVariantLabel(list, rankingVariant{}), err.Error()))
 			continue
 		}
 		if final {
@@ -487,7 +480,7 @@ func (s *Server) executeRankingPullJobWith(ctx context.Context, job workflowJobR
 	default:
 		result.Status = "failed"
 	}
-	err = s.finishRankingPullJob(ctx, job, nodeIDs, result, pullFailures, recordFailures)
+	err = s.finishRankingPullJob(ctx, job, nodeIDs, result, pullFailures, recordFailures, schedulesSettled)
 	s.refreshRankingDispatchersBestEffort(ctx)
 	return err
 }
@@ -685,6 +678,14 @@ func (s *Server) recordRankingListPull(ctx context.Context, list rankingList, st
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	current, err := loadRankingListsFrom(ctx, tx, 0, "list.id = ?", list.ID)
+	if err != nil {
+		return false, err
+	}
+	if len(current) == 0 {
+		return false, nil
+	}
+	list = current[0]
 	if status != "succeeded" {
 		failures := list.failureCount + 1
 		lastPulledAt := any(nil)
@@ -696,7 +697,7 @@ func (s *Server) recordRankingListPull(ctx context.Context, list rankingList, st
 		}
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE ranking_list
-			SET last_status = ?, last_error = ?, failure_count = ?, pull_requested_at = NULL, next_pull_at = ?, last_pulled_at = ?
+			SET last_status = ?, last_error = ?, failure_count = ?, next_pull_at = ?, last_pulled_at = ?
 			WHERE id = ?
 		`, status, message, failures, formatOptionalWorkflowTimestamp(rankingRetryPullAt(list, failures, now)), lastPulledAt, list.ID); err != nil {
 			return false, err
@@ -714,7 +715,7 @@ func (s *Server) recordRankingListPull(ctx context.Context, list rankingList, st
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE ranking_list
 		SET last_pulled_at = ?, last_status = 'succeeded', last_error = '', failure_count = 0,
-			pull_requested_at = NULL, next_pull_at = ?, final_at = ?
+			next_pull_at = ?, final_at = ?
 		WHERE id = ?
 	`, pulledAt, formatOptionalWorkflowTimestamp(nextRankingPullAt(list, now)), finalAt, list.ID); err != nil {
 		return false, err
@@ -753,7 +754,7 @@ func followRankingYear(ctx context.Context, tx *sql.Tx, list rankingList, now ti
 	return ensureRankingVariants(ctx, tx, id, rankingProviderDLsite, "year")
 }
 
-func (s *Server) finishRankingPullJob(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, result rankingRunResult, pullFailures, recordFailures []string) error {
+func (s *Server) finishRankingPullJob(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, result rankingRunResult, pullFailures, recordFailures []string, schedulesSettled bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -794,12 +795,17 @@ func (s *Server) finishRankingPullJob(ctx context.Context, job workflowJobRecord
 		}
 	}
 	errorMessage := strings.Join(result.Failures, "\n")
-	if _, err := tx.ExecContext(ctx, `
+	settled, err := tx.ExecContext(ctx, `
 		UPDATE workflow_job
-		SET status = ?, error_message = ?, locked_by = '', locked_at = NULL, heartbeat_at = NULL, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, result.Status, errorMessage, job.ID); err != nil {
+		SET status = ?, error_message = ?, locked_by = '', locked_at = NULL, heartbeat_at = NULL,
+			checkpoint_json = json_set(checkpoint_json, '$.rankingScheduleSettled', ?), updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND status = 'running'
+	`, result.Status, errorMessage, schedulesSettled, job.ID)
+	if err != nil {
 		return err
+	}
+	if count, err := settled.RowsAffected(); err != nil || count != 1 {
+		return errors.New("ranking pull has already settled")
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE workflow_run SET status = ?, summary_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, result.Status, mustJSON(result), job.RunID); err != nil {
 		return err

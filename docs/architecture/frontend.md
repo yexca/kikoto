@@ -345,7 +345,9 @@ seeking, and screen lyrics share one timeline.
   while auto-accept is off or items wait; `?view=` selects `review`,
   `running`, `attention`, `history` or `coverage`, and
   `/metadata?view=translation` links redirect to coverage. The page polls
-  while a run is queued or running.
+  while a run is queued or running, and offers cancellation according to each
+  run's server-supplied `canCancel` flag through the dedicated translation
+  cancellation endpoint described in [Activity Summary](workflows.md#activity-summary).
 - Metadata: a Works group for DLsite works and Custom works,
   and an Entries group for Tags, Circles, and Voice actors. DLsite works holds
   the catalog and attention categories behind `WorkReasonFilter`, a segmented

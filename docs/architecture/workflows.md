@@ -484,7 +484,8 @@ the backend.
   to that requester unless the actor administers workflow runs, which is the
   `sources:write` capability shared with the other instance maintenance, or
   holds `system:admin`. A run without a recorded requester is managed only by
-  workflow administrators.
+  workflow administrators. Translation-page cancellation follows this ownership
+  rule through its dedicated endpoint with `library:write`.
 - Retry re-checks what the failed work needs: Fetch jobs require both
   `remote:fetch` and `metadata:sync`, media cache jobs require `remote:fetch`,
   cleanup and local deletion jobs require
@@ -509,6 +510,10 @@ own pages show their runs there too. The Translation page reads Translate with
 AI runs and items through `/api/translation/runs` and
 `/api/translation/items`, open to accounts with `library:write` without
 `workflows:run`, and a work's Manage lyrics lists its transcriptions.
+`POST /api/translation/runs/{id}/cancel` cancels a queued or running
+`ai_translation` run under the [ownership rule](#workflow-permissions).
+Each returned translation run carries `canCancel`, which controls whether
+the Translation page offers the action.
 Notification Center attention rows for a Translate with AI run open the
 Translation page's Stopped view, and those for a transcription open its work.
 The desktop popover and mobile sheet show active runs above two server-paged
@@ -591,9 +596,11 @@ lists, is queued or running at a time. A run picks its lists when it starts,
 so a run waiting behind another provider job also takes the lists that became
 due meanwhile. A requested pull, from **Refresh now**, **Refresh all now**, or
 showing a list for the first time, marks the list and queues its target's run,
-or joins the active one; a request made after a running run pulled the list
-waits for the next run. Lists of a disabled or incompatible source are not
-pulled until the source is available again. Neither workflow adds works to the
+or joins the active one. The run consumes its requests when it takes its lists,
+in the transaction that records its checkpoint; a request made after that
+waits for the next run and survives the current run's result. Lists of a
+disabled or incompatible source are not pulled until the source is available
+again. Neither workflow adds works to the
 library, syncs metadata, tracks, fetches, or tags.
 
 A DLsite variant reads the provider ranking page for its period, order, and
@@ -613,8 +620,11 @@ list.
 Each workflow keeps one ownerless schedule trigger as its dispatcher. Its next
 run is the earliest time one of its enabled lists is due: a requested pull, or
 the next automatic pull of a list that is not finished. While a target's run
-is queued or running, only its lists due later count; a finished run plans the
-dispatcher again, as does every change to a list. The dispatcher is
+is queued or running, only its lists due later count. Completion, failure,
+cancellation, orphan recovery, and changes to a list replan the dispatcher
+from the lists' current settings. Cancelling a pull consumes that run's
+request and keeps an enabled automatic list's next pull in the future;
+a later manual request remains due. The dispatcher is
 configured only through the lists: the Workflows page shows its next run but
 cannot edit, pause, or delete it.
 

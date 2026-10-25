@@ -115,7 +115,7 @@ export function TranslationPage({
   const cancelRun = async (runId: number) => {
     setCancelling((current) => new Set([...current, runId]));
     try {
-      await api.cancelWorkflowRun(runId);
+      await api.cancelTranslationRun(runId);
       toast.success(t("translationCenter.cancelled"));
     } catch (error) {
       toast.notify(toastFromError(error, t("translationCenter.cancelFailed")));

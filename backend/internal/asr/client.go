@@ -8,9 +8,13 @@ import (
 	"errors"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/textproto"
+	"net/url"
 	"strings"
+	"sync/atomic"
 
 	"github.com/yexca/kikoto/backend/internal/kikotohelper"
 )
@@ -21,6 +25,10 @@ const ResponseLimit = 4 << 20
 // ErrNoTimestamps reports a service that returned text without the segment
 // timestamps lyrics need, such as a model without verbose JSON output.
 var ErrNoTimestamps = errors.New("speech recognition response has no segment timestamps")
+
+// ErrResultUnknown reports a lost response after request headers left the
+// client. Repeating the upload may charge the same speech request again.
+var ErrResultUnknown = errors.New("speech recognition result is unknown")
 
 // UpstreamError is a rejected request. Rejection is what a Kikoto Helper
 // reports, and empty for every other service.
@@ -198,7 +206,9 @@ func (c Client) Transcribe(ctx context.Context, model, language, target string, 
 	body := func() io.ReadCloser {
 		return io.NopCloser(io.MultiReader(bytes.NewReader(prefix), bytes.NewReader(pcm), bytes.NewReader(suffix)))
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url("/audio/transcriptions"), body())
+	var sent atomic.Bool
+	traced := httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{WroteHeaders: func() { sent.Store(true) }})
+	req, err := http.NewRequestWithContext(traced, http.MethodPost, c.url("/audio/transcriptions"), body())
 	if err != nil {
 		return Transcript{}, err
 	}
@@ -207,6 +217,11 @@ func (c Client) Transcribe(ctx context.Context, model, language, target string, 
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	data, err := c.do(req)
 	if err != nil {
+		var urlErr *url.Error
+		var networkErr net.Error
+		if sent.Load() && (errors.As(err, &urlErr) || errors.As(err, &networkErr) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
+			return Transcript{}, errors.Join(ErrResultUnknown, err)
+		}
 		return Transcript{}, err
 	}
 	var decoded struct {

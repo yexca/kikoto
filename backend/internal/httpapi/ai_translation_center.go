@@ -33,6 +33,7 @@ type translationRunTranscription struct {
 type translationRunResponse struct {
 	RunID         int64                        `json:"runId"`
 	Status        string                       `json:"status"`
+	CanCancel     bool                         `json:"canCancel"`
 	WorkID        int64                        `json:"workId"`
 	WorkCode      string                       `json:"workCode"`
 	WorkTitle     string                       `json:"workTitle"`
@@ -76,7 +77,7 @@ func (s *Server) listTranslationRuns(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = value
 	}
-	runs, err := s.translationRuns(r.Context(), statuses, limit)
+	runs, err := s.translationRuns(r.Context(), actor, statuses, limit)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -110,13 +111,15 @@ func (s *Server) translationCenterCounts(ctx context.Context) (map[string]int, e
 	return counts, nil
 }
 
-func (s *Server) translationRuns(ctx context.Context, statuses []string, limit int) ([]translationRunResponse, error) {
+func (s *Server) translationRuns(ctx context.Context, actor currentUser, statuses []string, limit int) ([]translationRunResponse, error) {
 	args := stringsToAny(statuses)
 	args = append([]any{aiTranslationWorkflowCode}, args...)
 	args = append(args, limit)
 	rows, err := s.db.QueryContext(ctx, `SELECT run.id, run.status, COALESCE(json_extract(run.input_json, '$.work_id'), 0), COALESCE(work.primary_code, ''),
-		COALESCE(work.title, ''), COALESCE(account.username, ''), run.created_at, COALESCE(run.finished_at, '')
+		COALESCE(work.title, ''), COALESCE(account.username, ''), run.created_at, COALESCE(run.finished_at, ''),
+		COALESCE(CAST(json_extract(run.input_json, '$.requested_by_user_id') AS INTEGER), 0), COALESCE(definition.owner_user_id, 0)
 		FROM workflow_run AS run
+		LEFT JOIN workflow_definition AS definition ON definition.id = run.workflow_definition_id
 		LEFT JOIN work ON work.id = json_extract(run.input_json, '$.work_id')
 		LEFT JOIN user_account AS account ON account.id = json_extract(run.input_json, '$.requested_by_user_id')
 		WHERE run.workflow_code = ? AND run.status IN (`+strings.TrimSuffix(strings.Repeat("?,", len(statuses)), ",")+`)
@@ -128,10 +131,13 @@ func (s *Server) translationRuns(ctx context.Context, statuses []string, limit i
 	index := map[int64]int{}
 	for rows.Next() {
 		var run translationRunResponse
-		if err := rows.Scan(&run.RunID, &run.Status, &run.WorkID, &run.WorkCode, &run.WorkTitle, &run.RequestedBy, &run.CreatedAt, &run.FinishedAt); err != nil {
+		var ownership workflowRunOwnership
+		if err := rows.Scan(&run.RunID, &run.Status, &run.WorkID, &run.WorkCode, &run.WorkTitle, &run.RequestedBy, &run.CreatedAt, &run.FinishedAt,
+			&ownership.requestedByUserID, &ownership.ownerUserID); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
+		run.CanCancel = canCancelAITranslationRun(actor, ownership, run.Status)
 		run.Languages = []translationRunLanguage{}
 		index[run.RunID] = len(runs)
 		runs = append(runs, run)

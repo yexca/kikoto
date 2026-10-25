@@ -174,11 +174,19 @@ const rankingListOrderSQL = `
 `
 
 func (s *Server) loadRankingLists(ctx context.Context, userID int64, where string, args ...any) ([]rankingList, error) {
+	return loadRankingListsFrom(ctx, s.db, userID, where, args...)
+}
+
+type rankingListReader interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func loadRankingListsFrom(ctx context.Context, reader rankingListReader, userID int64, where string, args ...any) ([]rankingList, error) {
 	query := rankingListSelectSQL
 	if where != "" {
 		query += " WHERE " + where
 	}
-	rows, err := s.db.QueryContext(ctx, query+rankingListOrderSQL, args...)
+	rows, err := reader.QueryContext(ctx, query+rankingListOrderSQL, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +232,7 @@ func (s *Server) loadRankingLists(ctx context.Context, userID int64, where strin
 	for _, list := range lists {
 		ids = append(ids, list.ID)
 	}
-	variants, err := s.db.QueryContext(ctx, `
+	variants, err := reader.QueryContext(ctx, `
 		SELECT variant.id, variant.ranking_list_id, variant.release_window, variant.sort,
 			variant.last_pulled_at, variant.last_status, variant.last_error,
 			COALESCE(latest.id, 0), latest.pulled_at, COALESCE(state.seen_snapshot_id, 0)

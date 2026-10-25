@@ -101,6 +101,7 @@ func (s *Server) runWorkflowCoordinator(ctx context.Context) {
 			slog.Error("dispatch scheduled custom workflow", "error", err)
 		}
 		s.settleOrphanedWorkflowJobs(ctx)
+		s.reconcileInterruptedRankingSchedulesBestEffort(ctx)
 		if _, err := s.backfillSnapshotCardSummaries(ctx, snapshotCardSummaryBackfillBatch); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("backfill snapshot card summaries", "error", err)
 		}
@@ -283,6 +284,9 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 }
 
 func (s *Server) handleWorkflowJobResult(ctx context.Context, jobCtx context.Context, job workflowJobRecord, runErr error) error {
+	if job.WorkerType == rankingPullWorkerType {
+		defer s.reconcileInterruptedRankingSchedulesBestEffort(ctx)
+	}
 	if shutdownInterrupted(jobCtx) && s.releaseShutdownInterruptedJob(ctx, job) {
 		return nil
 	}

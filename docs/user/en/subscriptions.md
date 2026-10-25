@@ -216,6 +216,8 @@ sync metadata change them; others can only read them.
   places to keep (**Top 10** to **Top 100**), **Pull now** for this ranking
   alone, and **Delete with history…**, which asks before it deletes the
   ranking and every update recorded for it.
+- A refresh requested during a pull is queued for the next run. Cancelling a
+  pull stops that run; automatic pulls continue on their schedule.
 - Each ranking is pulled on its own schedule:
 
   | Ranking | Default | Choices |

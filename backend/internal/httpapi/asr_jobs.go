@@ -248,6 +248,8 @@ func (s *Server) transcribeTrack(ctx context.Context, job workflowJobRecord, tas
 				code = kikotohelper.Failure(rejected.Rejection)
 			case errors.As(requestErr, &rejected):
 				code = "upstream_rejected"
+			case errors.Is(requestErr, asr.ErrResultUnknown):
+				code = asrResultUnknown
 			case errors.Is(requestErr, asr.ErrNoTimestamps):
 				code = "no_timestamps"
 			}

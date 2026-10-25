@@ -55,7 +55,7 @@ export function TranslationRunList({
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {activityLink?.(run.runId)}
-                {live && onCancel && (
+                {live && run.canCancel && onCancel && (
                   <Button
                     size="sm"
                     variant="ghost"

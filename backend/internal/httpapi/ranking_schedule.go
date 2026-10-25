@@ -256,6 +256,9 @@ func (s *Server) ensureRankingDispatchers(ctx context.Context) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	if err := s.reconcileInterruptedRankingSchedules(ctx); err != nil {
+		return err
+	}
 	return s.refreshRankingDispatchers(ctx)
 }
 

@@ -17,6 +17,13 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.cancelWorkflowRunForActor(w, r, actor, "")
+}
+
+// cancelWorkflowRunForActor shares settlement after the calling surface has
+// checked its permission. A required code confines a feature's cancellation
+// endpoint to that feature's runs.
+func (s *Server) cancelWorkflowRunForActor(w http.ResponseWriter, r *http.Request, actor currentUser, requiredCode string) {
 	id, err := parseInt64PathValue(r, "id")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workflow run id"})
@@ -35,6 +42,10 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeError(w, err)
+		return
+	}
+	if requiredCode != "" && run.WorkflowCode != requiredCode {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "workflow run not found"})
 		return
 	}
 	allowed, err := canManageWorkflowRun(r.Context(), tx, actor, id)
@@ -64,7 +75,11 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if !s.cancelActiveWorkflowJob(id) && run.WorkflowCode == workFolderEditWorkflowCode {
+	cancelledActive := s.cancelActiveWorkflowJob(id)
+	if isRankingWorkflowCode(run.WorkflowCode) {
+		s.refreshRankingDispatchersBestEffort(r.Context())
+	}
+	if !cancelledActive && run.WorkflowCode == workFolderEditWorkflowCode {
 		// An executor settles its own cancelled edit; one no executor holds,
 		// such as an edit waiting for a retry or for recovery after a restart,
 		// is settled here, behind any job that is changing library folders.
@@ -75,6 +90,11 @@ func (s *Server) cancelWorkflowRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cancelWorkflowRunTx(ctx context.Context, tx *sql.Tx, run workflowRunRecord, runID int64) (bool, error) {
+	if isRankingWorkflowCode(run.WorkflowCode) {
+		if err := s.cancelRankingPullTx(ctx, tx, runID); err != nil {
+			return false, err
+		}
+	}
 	if run.WorkflowCode == "llm_translation" {
 		if _, err := tx.ExecContext(ctx, `UPDATE llm_translation_task SET state=CASE WHEN state='requesting' THEN 'uncertain' ELSE 'cancelled' END,failure_code=CASE WHEN state='requesting' THEN 'cancelled_result_unknown' ELSE 'cancelled' END,updated_at=CURRENT_TIMESTAMP WHERE workflow_run_id=? AND state IN ('pending','failed','requesting')`, runID); err != nil {
 			return false, err
@@ -82,11 +102,28 @@ func (s *Server) cancelWorkflowRunTx(ctx context.Context, tx *sql.Tx, run workfl
 	}
 	if run.WorkflowCode == aiTranslationWorkflowCode {
 		// A request in flight keeps an unknown result; everything not yet sent stops.
-		if _, err := tx.ExecContext(ctx, `UPDATE translation_item SET state=CASE WHEN state='requesting' THEN 'uncertain' ELSE 'cancelled' END,failure_code=CASE WHEN state='requesting' THEN 'cancelled_result_unknown' ELSE 'cancelled' END,updated_at=CURRENT_TIMESTAMP WHERE workflow_run_id=? AND state IN ('queued','waiting_transcription','requesting')`, runID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE translation_item
+			SET state = CASE WHEN state = 'requesting' OR EXISTS (
+				SELECT 1 FROM asr_transcription AS task WHERE task.id = translation_item.asr_transcription_id
+					AND (task.state = 'requesting' OR task.failure_code IN ('upstream_result_unknown', 'cancelled_result_unknown'))
+			) THEN 'uncertain' ELSE 'cancelled' END,
+			failure_code = CASE WHEN state = 'requesting' OR EXISTS (
+				SELECT 1 FROM asr_transcription AS task WHERE task.id = translation_item.asr_transcription_id
+					AND (task.state = 'requesting' OR task.failure_code IN ('upstream_result_unknown', 'cancelled_result_unknown'))
+			) THEN 'cancelled_result_unknown' ELSE 'cancelled' END, updated_at = CURRENT_TIMESTAMP
+			WHERE workflow_run_id = ? AND state IN ('queued', 'waiting_transcription', 'requesting')`, runID); err != nil {
 			return false, err
 		}
 	}
-	if run.WorkflowCode == asrWorkerType || run.WorkflowCode == aiTranslationWorkflowCode {
+	switch run.WorkflowCode {
+	case aiTranslationWorkflowCode:
+		if _, err := tx.ExecContext(ctx, `UPDATE asr_transcription SET state = 'cancelled',
+			failure_code = CASE WHEN state = 'requesting' OR failure_code IN ('upstream_result_unknown', 'cancelled_result_unknown')
+				THEN 'cancelled_result_unknown' ELSE ? END, updated_at = CURRENT_TIMESTAMP
+			WHERE workflow_run_id = ? AND state IN ('pending', 'requesting', 'failed')`, asrFailureCancelled, runID); err != nil {
+			return false, err
+		}
+	case asrWorkerType:
 		if _, err := tx.ExecContext(ctx, `UPDATE asr_transcription SET state='cancelled',failure_code=?,updated_at=CURRENT_TIMESTAMP WHERE workflow_run_id=? AND state IN ('pending','requesting','failed')`, asrFailureCancelled, runID); err != nil {
 			return false, err
 		}
