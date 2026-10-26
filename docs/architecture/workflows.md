@@ -880,13 +880,18 @@ available locations become `missing`; the `work`, `media_item`, and location
 history remain. Application-owned deletion updates its known location state
 immediately and may also produce a native event; the later incremental run is an
 idempotent reconciliation. A full scan records presence for every discovered
-folder and keeps a work's completed media index only when the folder stayed
-available at the same root without newly missing locations; otherwise the work
-is indexed again lazily. A full scan commits discovered
-folders in batches of 250, so progress saves and other writers are not locked
-out for the whole library, and marks unseen works missing only in its final
-transaction. An interrupted scan therefore records what it found and marks
-nothing missing, and its retry repeats the idempotent folder writes. A folder
+folder. For a folder with a completed media index or indexed files, it compares
+the current paths, sizes, and file versions outside write transactions. An
+unchanged tree keeps its media rows and index metadata; a changed tree is
+reconciled through the shared per-folder indexer, including files added,
+removed, or replaced while the server was stopped. An indexed tree that
+intersects a directory discovery could not read keeps its stored files
+unchanged while the scan continues with other folders. New and moved folders
+without an index are indexed lazily. A full scan commits discovered folders in
+batches of 250, so progress saves and other writers are not locked out for the
+whole library, and marks unseen work roots missing only in its final
+transaction. An interrupted scan records completed folders and leaves unseen
+roots unchanged; its retry repeats the idempotent folder writes. A folder
 whose work, presence, and folder location already match is not rewritten, so
 its timestamps record its last change. A work whose code is found in several
 folders keeps every one of them as an active folder (see

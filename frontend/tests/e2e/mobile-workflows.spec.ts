@@ -1603,6 +1603,59 @@ test("activity presents a compact run summary without the execution canvas", asy
   await expect(activity.getByText("Tagging works", { exact: true })).toBeVisible();
 });
 
+test("workflow Activity forgets a previous account's private run after sign-in", async ({ page }) => {
+  await mockWorkflows(page);
+  let accountId: number | null = 1;
+  let denied = 0;
+  const account = (id: number) =>
+    authenticatedStateFixture({
+      id,
+      username: `synthetic-user-${id}`,
+      displayName: `Example User ${id}`,
+      devMode: false,
+      permissions: ["library:read", "playback:use", "workflows:run"],
+    });
+  await page.route("**/api/auth/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/logout")) {
+      accountId = null;
+      await route.fulfill({ json: { ok: true } });
+    } else if (path.endsWith("/login")) {
+      accountId = 2;
+      await route.fulfill({ json: account(2) });
+    } else if (path.endsWith("/me")) {
+      await route.fulfill({ json: accountId === null ? { authenticated: false } : account(accountId) });
+    } else await route.fallback();
+  });
+  await page.route("**/api/workflow-runs/51**", async (route) => {
+    if (accountId !== 1) {
+      denied += 1;
+      await route.fulfill({ status: 403, json: { error: "Example access failure" } });
+    } else await route.fallback();
+  });
+  await page.goto("/workflows?activity=1&run=51");
+  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  await activity.getByText("Diagnostic log", { exact: true }).click();
+  await expect(activity.getByText("Tagging works", { exact: true })).toBeVisible();
+  await activity.getByRole("button", { name: "Close Activity", exact: true }).click();
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Sign in to Kikoto" })).toBeVisible();
+  await page.getByLabel("Username").fill("synthetic-user-2");
+  await page.getByLabel("Password").fill("synthetic-password");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
+  // Follow a same-document deep link so the preceding account's module cache remains in memory.
+  await page.evaluate(() => {
+    window.history.pushState(window.history.state, "", "/workflows?activity=1&run=51");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect.poll(() => denied).toBeGreaterThan(0);
+  await expect(activity.getByRole("alert")).toContainText("Activity could not be loaded.");
+  await expect(activity.getByText("Tagging works", { exact: true })).toHaveCount(0);
+  await expect(activity.getByText("Diagnostic log", { exact: true })).toHaveCount(0);
+});
+
 test("activity reports Fetch byte progress without guessing unknown totals", async ({ page }) => {
   const knownTotal = 128 * 1024 * 1024;
   const current = 64 * 1024 * 1024;
