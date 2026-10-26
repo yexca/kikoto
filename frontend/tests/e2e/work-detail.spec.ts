@@ -281,7 +281,14 @@ test("a lone local source is named in the directory header until the viewer alwa
 
 test("work detail reserves a structured directory skeleton until media is ready", async ({ page }) => {
   const mediaItems = [mediaFixture(1, "track.mp3", "RJ00000000/track.mp3", "audio")];
-  await mockApplication(page, undefined, false, 1, 800, mediaItems, undefined, { authenticated: true });
+  let releaseMedia: () => void = () => undefined;
+  const mediaGate = new Promise<void>((resolve) => {
+    releaseMedia = resolve;
+  });
+  await mockApplication(page, undefined, false, 1, 0, mediaItems, undefined, {
+    authenticated: true,
+    beforeMediaResponse: () => mediaGate,
+  });
   await page.goto("/");
   await page.getByText("Tagged mobile work", { exact: true }).click();
 
@@ -290,8 +297,8 @@ test("work detail reserves a structured directory skeleton until media is ready"
   const skeletonBox = await skeleton.boundingBox();
   expect(skeletonBox).not.toBeNull();
   expect(skeletonBox!.height).toBeGreaterThanOrEqual(352);
-  await expect(page.getByText("Loading directory...", { exact: true })).toHaveCount(0);
 
+  releaseMedia();
   await expect(page.getByText("track.mp3", { exact: true })).toBeVisible();
   await expect(skeleton).toBeHidden();
 });

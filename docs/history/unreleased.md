@@ -17,6 +17,11 @@
 <details>
 <summary><strong>Library and work detail</strong></summary>
 
+- **Edit files** recovers a file published just before a service interruption
+  without copying or downloading it again, and preserves a target that changed
+  after publication.
+- Switching accounts clears retained workflow details, logs, and review items;
+  a permission denial also clears protected data already displayed in Activity.
 - Library and Favorites cards show your rating beside the Quick mark and rate
   a work, or clear its rating, without opening it.
 - The work detail stat strip shows your rating beside the DLsite rating, also
@@ -120,6 +125,9 @@
 <details>
 <summary><strong>Metadata and scans</strong></summary>
 
+- Full local scans reconcile changes made inside indexed work folders while the
+  server is stopped, including added, removed, and replaced files, while keeping
+  folders outside the visible scan scope unchanged.
 - Metadata groups All, Needs attention, Metadata issues, and No available
   source as filters under one **DLsite works** tab. Existing links, including
   metadata sync **Open metadata issues** links, open the matching filter.

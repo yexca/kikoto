@@ -114,8 +114,9 @@ type Server struct {
 }
 
 type localMediaIndexCall struct {
-	done chan struct{}
-	err  error
+	done   chan struct{}
+	err    error
+	guards []func(context.Context) error // protected by localMediaIndexMu
 }
 
 func NewServer(db *sql.DB, cfg config.Config) *Server {
