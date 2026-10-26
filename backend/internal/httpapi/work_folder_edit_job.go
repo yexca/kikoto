@@ -45,6 +45,9 @@ type workFolderEditCheckpoint struct {
 	Staged    []string `json:"staged"`
 	Removed   []string `json:"removed"`
 	Published []string `json:"published"`
+	// StagedFiles proves which collected file a publication rename moved,
+	// even when its Published checkpoint did not commit.
+	StagedFiles map[string]workFolderEditStagedFile `json:"staged_files,omitempty"`
 	// Lifted and Placed record moved files, by location, that left their
 	// place for the staging folder and that reached their new path.
 	Lifted []int64 `json:"lifted,omitempty"`
@@ -351,7 +354,33 @@ func (e *workFolderEditExecution) stage(ctx context.Context) error {
 		}
 		count++
 		stagedPath := e.stagedPath(index)
+		if staged[item.ItemKey] && !published[item.ItemKey] {
+			recovered, err := e.recoverPublishedItem(ctx, index, item)
+			if err != nil {
+				return err
+			}
+			if recovered {
+				published[item.ItemKey] = true
+				e.checkpoint.Published = append(e.checkpoint.Published, item.ItemKey)
+				e.progress = count
+				if err := e.saveCheckpoint(ctx, "publish"); err != nil {
+					return err
+				}
+			}
+		}
 		if published[item.ItemKey] || (staged[item.ItemKey] && existingFileMatches(stagedPath, item.SizeBytes)) {
+			if !published[item.ItemKey] {
+				if _, known := e.checkpoint.StagedFiles[item.ItemKey]; !known {
+					// A collected file in a legacy checkpoint is still present.
+					// Record its proof before any publication can start.
+					if err := e.recordStagedFile(ctx, index, item); err != nil {
+						return err
+					}
+					if err := e.saveCheckpoint(ctx, "stage"); err != nil {
+						return err
+					}
+				}
+			}
 			if item.Action == "cache_download" {
 				if err := byteProgress.skipDownload(downloadIndex, item.remoteWorkSavePlanItem); err != nil {
 					return err
@@ -426,6 +455,9 @@ func (e *workFolderEditExecution) stage(ctx context.Context) error {
 		if item.SizeBytes != nil && info.Size() != *item.SizeBytes {
 			_ = os.Remove(stagedPath)
 			return fmt.Errorf("collected size mismatch for %s: got %d, want %d", item.Path, info.Size(), *item.SizeBytes)
+		}
+		if err := e.recordStagedFile(ctx, index, item); err != nil {
+			return err
 		}
 		staged[item.ItemKey] = true
 		e.checkpoint.Staged = append(e.checkpoint.Staged, item.ItemKey)
@@ -550,6 +582,9 @@ func (e *workFolderEditExecution) publish(ctx context.Context) error {
 				return err
 			}
 			lyricsRootReady = true
+		}
+		if err := e.verifyStagedFile(ctx, index, item); err != nil {
+			return err
 		}
 		statusCtx := context.WithoutCancel(ctx)
 		if err := e.publishItem(index, item); err != nil {
@@ -912,7 +947,9 @@ func (e *workFolderEditExecution) publishItem(index int, item workFolderEditItem
 	stagedPath := e.stagedPath(index)
 	if _, err := os.Lstat(stagedPath); errors.Is(err, os.ErrNotExist) {
 		// The move finished before its checkpoint was written.
-		if existingFileMatches(destination, item.SizeBytes) {
+		if recovered, err := e.recoverPublishedItem(context.Background(), index, item); err != nil {
+			return err
+		} else if recovered {
 			return nil
 		}
 		return fmt.Errorf("the collected copy of %s is missing; retry the edit", item.Path)

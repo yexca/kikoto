@@ -1,0 +1,360 @@
+import {
+  api,
+  ApiError,
+  type WorkflowCandidate,
+  type WorkflowEvent,
+  type WorkflowRunDetail,
+  type WorkflowRunEventStreamMessage,
+} from "@/lib/api";
+import { ApiSessionChangedError, apiSessionVersion, subscribeApiSession } from "@/lib/apiSession";
+
+const activeStatuses = new Set(["queued", "running"]);
+const foregroundPollMs = 1500;
+const backgroundPollMs = 15000;
+const streamReconnectMs = 1000;
+const cacheRetentionMs = 5 * 60 * 1000;
+
+export type WorkflowRunSnapshot = {
+  run: WorkflowRunDetail | null;
+  events: WorkflowEvent[];
+  candidates: WorkflowCandidate[];
+  loading: boolean;
+  error: string;
+};
+
+type WatcherEntry = {
+  runId: number;
+  session: number;
+  retired: boolean;
+  revision: number;
+  accessDenied: boolean;
+  snapshot: WorkflowRunSnapshot;
+  listeners: Set<(snapshot: WorkflowRunSnapshot) => void>;
+  pollListeners: number;
+  lastEventId: number;
+  inFlight: Promise<void> | null;
+  refreshPending: boolean;
+  pollTimer: number | null;
+  cleanupTimer: number | null;
+  streamAbortController: AbortController | null;
+  streamTask: Promise<void> | null;
+  streamRetryTimer: number | null;
+  streamGeneration: number;
+  streamTerminal: boolean;
+  visibilityListener: () => void;
+};
+
+const entries = new Map<number, WatcherEntry>();
+export const emptySnapshot: WorkflowRunSnapshot = { run: null, events: [], candidates: [], loading: false, error: "" };
+
+subscribeApiSession(() => {
+  const previous = [...entries.values()];
+  entries.clear();
+  for (const entry of previous) {
+    entry.retired = true;
+    clearPoll(entry);
+    stopStream(entry);
+    if (entry.cleanupTimer !== null) window.clearTimeout(entry.cleanupTimer);
+    document.removeEventListener("visibilitychange", entry.visibilityListener);
+    publish(entry, { ...emptySnapshot, error: new ApiSessionChangedError().message });
+    entry.listeners.clear();
+  }
+});
+
+function isCurrentEntry(entry: WatcherEntry) {
+  return !entry.retired && entry.session === apiSessionVersion();
+}
+
+function isAccessFailure(cause: unknown): cause is ApiError {
+  return cause instanceof ApiError && [401, 403, 404].includes(cause.status);
+}
+
+function revokeAccess(entry: WatcherEntry, cause: Error) {
+  entry.accessDenied = true;
+  entry.revision += 1;
+  entry.refreshPending = false;
+  entry.lastEventId = 0;
+  clearPoll(entry);
+  stopStream(entry);
+  publish(entry, { ...emptySnapshot, error: cause.message });
+}
+
+export function isActiveWorkflowStatus(status: string | null | undefined) {
+  return Boolean(status && activeStatuses.has(status));
+}
+
+function getEntry(runId: number) {
+  const existing = entries.get(runId);
+  if (existing) return existing;
+  const entry: WatcherEntry = {
+    runId,
+    session: apiSessionVersion(),
+    retired: false,
+    revision: 0,
+    accessDenied: false,
+    snapshot: { ...emptySnapshot },
+    listeners: new Set(),
+    pollListeners: 0,
+    lastEventId: 0,
+    inFlight: null,
+    refreshPending: false,
+    pollTimer: null,
+    cleanupTimer: null,
+    streamAbortController: null,
+    streamTask: null,
+    streamRetryTimer: null,
+    streamGeneration: 0,
+    streamTerminal: false,
+    visibilityListener: () => {
+      if (!document.hidden) void refreshEntry(entry);
+      startStream(entry);
+      schedulePoll(entry);
+    },
+  };
+  entries.set(runId, entry);
+  return entry;
+}
+
+function publish(entry: WatcherEntry, next: WorkflowRunSnapshot) {
+  entry.snapshot = next;
+  entry.listeners.forEach((listener) => listener(next));
+}
+
+function mergeEvents(entry: WatcherEntry, nextEvents: WorkflowEvent[], replace: boolean) {
+  const merged = replace ? nextEvents : [...entry.snapshot.events, ...nextEvents];
+  const unique = Array.from(new Map(merged.map((event) => [event.id, event])).values());
+  unique.sort((left, right) => left.id - right.id);
+  entry.lastEventId = unique.length > 0 ? unique[unique.length - 1].id : 0;
+  return unique;
+}
+
+function refreshEntry(entry: WatcherEntry, replaceEvents = false) {
+  if (!isCurrentEntry(entry)) return Promise.resolve();
+  if (entry.inFlight) {
+    entry.refreshPending = true;
+    return entry.inFlight;
+  }
+  const revision = entry.revision;
+  entry.accessDenied = false;
+  if (!entry.snapshot.run) publish(entry, { ...entry.snapshot, loading: true, error: "" });
+  entry.inFlight = (async () => {
+    try {
+      const afterId = replaceEvents ? 0 : entry.lastEventId;
+      const [nextRun, nextEvents] = await Promise.all([
+        api.getWorkflowRun(entry.runId),
+        api.listWorkflowRunEvents(entry.runId, afterId),
+      ]);
+      if (!isCurrentEntry(entry) || revision !== entry.revision) return;
+      const shouldLoadCandidates = nextRun.candidateCount > 0 || entry.snapshot.candidates.length > 0;
+      const nextCandidates = shouldLoadCandidates ? await api.listWorkflowRunCandidates(entry.runId) : [];
+      if (!isCurrentEntry(entry) || revision !== entry.revision) return;
+      if (isActiveWorkflowStatus(nextRun.status)) entry.streamTerminal = false;
+      publish(entry, {
+        run: nextRun,
+        events: mergeEvents(entry, nextEvents, replaceEvents),
+        candidates: nextCandidates,
+        loading: false,
+        error: "",
+      });
+    } catch (cause) {
+      if (!isCurrentEntry(entry) || revision !== entry.revision) return;
+      if (isAccessFailure(cause)) {
+        revokeAccess(entry, cause);
+        return;
+      }
+      publish(entry, {
+        ...entry.snapshot,
+        loading: false,
+        error: cause instanceof Error ? cause.message : "Workflow run refresh failed.",
+      });
+    } finally {
+      entry.inFlight = null;
+      if (isCurrentEntry(entry) && revision === entry.revision) {
+        if (entry.refreshPending) {
+          entry.refreshPending = false;
+          void refreshEntry(entry);
+        }
+        if (entry.listeners.size > 0 && entry.pollListeners > 0 && isActiveWorkflowStatus(entry.snapshot.run?.status)) {
+          startStream(entry);
+          schedulePoll(entry);
+        } else if (!isActiveWorkflowStatus(entry.snapshot.run?.status)) {
+          clearPoll(entry);
+        }
+      }
+    }
+  })();
+  return entry.inFlight;
+}
+
+function clearPoll(entry: WatcherEntry) {
+  if (entry.pollTimer !== null) window.clearTimeout(entry.pollTimer);
+  entry.pollTimer = null;
+}
+
+function schedulePoll(entry: WatcherEntry) {
+  clearPoll(entry);
+  if (
+    !isCurrentEntry(entry) ||
+    entry.accessDenied ||
+    entry.pollListeners === 0 ||
+    entry.streamTask !== null ||
+    (entry.snapshot.run && !isActiveWorkflowStatus(entry.snapshot.run.status))
+  ) {
+    return;
+  }
+  const delay = entry.snapshot.run ? (document.hidden ? backgroundPollMs : foregroundPollMs) : 0;
+  entry.pollTimer = window.setTimeout(() => {
+    entry.pollTimer = null;
+    void refreshEntry(entry).finally(() => schedulePoll(entry));
+  }, delay);
+}
+
+function clearStreamRetry(entry: WatcherEntry) {
+  if (entry.streamRetryTimer !== null) window.clearTimeout(entry.streamRetryTimer);
+  entry.streamRetryTimer = null;
+}
+
+function stopStream(entry: WatcherEntry) {
+  entry.streamGeneration += 1;
+  entry.streamAbortController?.abort();
+  entry.streamAbortController = null;
+  entry.streamTask = null;
+  clearStreamRetry(entry);
+}
+
+function scheduleStreamReconnect(entry: WatcherEntry) {
+  if (
+    !isCurrentEntry(entry) ||
+    entry.accessDenied ||
+    entry.streamRetryTimer !== null ||
+    entry.streamTerminal ||
+    entry.listeners.size === 0 ||
+    entry.pollListeners === 0 ||
+    !isActiveWorkflowStatus(entry.snapshot.run?.status)
+  ) {
+    return;
+  }
+  entry.streamRetryTimer = window.setTimeout(() => {
+    entry.streamRetryTimer = null;
+    startStream(entry);
+  }, streamReconnectMs);
+}
+
+function startStream(entry: WatcherEntry) {
+  if (
+    !isCurrentEntry(entry) ||
+    entry.accessDenied ||
+    entry.streamTask !== null ||
+    entry.streamTerminal ||
+    entry.listeners.size === 0 ||
+    entry.pollListeners === 0 ||
+    !isActiveWorkflowStatus(entry.snapshot.run?.status)
+  ) {
+    return;
+  }
+  clearPoll(entry);
+  clearStreamRetry(entry);
+  const generation = entry.streamGeneration + 1;
+  entry.streamGeneration = generation;
+  const controller = new AbortController();
+  entry.streamAbortController = controller;
+  entry.streamTask = (async () => {
+    try {
+      await api.streamWorkflowRunEvents(entry.runId, entry.lastEventId, controller.signal, (message) => {
+        if (!isCurrentEntry(entry) || generation !== entry.streamGeneration) return;
+        handleStreamMessage(entry, message);
+      });
+    } catch (cause) {
+      if (isCurrentEntry(entry) && !controller.signal.aborted && generation === entry.streamGeneration) {
+        if (isAccessFailure(cause)) {
+          revokeAccess(entry, cause);
+          return;
+        }
+        const message = cause instanceof Error ? cause.message : "Workflow event stream failed.";
+        if (!entry.snapshot.error) publish(entry, { ...entry.snapshot, error: message });
+      }
+    } finally {
+      if (generation === entry.streamGeneration) {
+        entry.streamTask = null;
+        entry.streamAbortController = null;
+        if (entry.listeners.size > 0 && entry.pollListeners > 0 && !entry.streamTerminal) {
+          schedulePoll(entry);
+          scheduleStreamReconnect(entry);
+        }
+      }
+    }
+  })();
+}
+
+function handleStreamMessage(entry: WatcherEntry, message: WorkflowRunEventStreamMessage) {
+  if (message.type === "tick" && message.status && !isActiveWorkflowStatus(message.status)) {
+    entry.streamTerminal = true;
+  }
+  void refreshEntry(entry);
+}
+
+export function subscribeToRun(runId: number, poll: boolean, listener: (snapshot: WorkflowRunSnapshot) => void) {
+  const entry = getEntry(runId);
+  if (entry.cleanupTimer !== null) window.clearTimeout(entry.cleanupTimer);
+  entry.cleanupTimer = null;
+  const wasEmpty = entry.listeners.size === 0;
+  entry.listeners.add(listener);
+  if (poll) entry.pollListeners += 1;
+  listener(entry.snapshot);
+  if (wasEmpty) {
+    document.addEventListener("visibilitychange", entry.visibilityListener);
+    void refreshEntry(entry, entry.snapshot.events.length === 0).finally(() => {
+      startStream(entry);
+      schedulePoll(entry);
+    });
+  } else {
+    startStream(entry);
+    schedulePoll(entry);
+  }
+  return () => {
+    entry.listeners.delete(listener);
+    if (!isCurrentEntry(entry)) return;
+    if (poll) entry.pollListeners = Math.max(0, entry.pollListeners - 1);
+    if (entry.listeners.size > 0) {
+      schedulePoll(entry);
+      return;
+    }
+    clearPoll(entry);
+    stopStream(entry);
+    document.removeEventListener("visibilitychange", entry.visibilityListener);
+    entry.cleanupTimer = window.setTimeout(() => {
+      if (entry.listeners.size === 0 && entries.get(runId) === entry) entries.delete(runId);
+    }, cacheRetentionMs);
+  };
+}
+
+/**
+ * Resolves with the run once it has left the queued and running states. It
+ * rejects when the run cannot be read at all, since nothing would then report
+ * its end.
+ */
+export function workflowRunSettled(runId: number): Promise<WorkflowRunDetail> {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    let unsubscribe: (() => void) | null = null;
+    const finish = (settle: () => void) => {
+      done = true;
+      settle();
+      // The first snapshot arrives while subscribing, before unsubscribe exists.
+      queueMicrotask(() => unsubscribe?.());
+    };
+    unsubscribe = subscribeToRun(runId, true, (snapshot) => {
+      if (done) return;
+      if (snapshot.run && !isActiveWorkflowStatus(snapshot.run.status)) {
+        const run = snapshot.run;
+        finish(() => resolve(run));
+      } else if (!snapshot.run && snapshot.error) {
+        finish(() => reject(new Error(snapshot.error)));
+      }
+    });
+  });
+}
+
+export function refreshWorkflowRun(runId: number, replaceEvents = false) {
+  return refreshEntry(getEntry(runId), replaceEvents);
+}

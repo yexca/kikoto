@@ -246,6 +246,10 @@ func (s *Server) resolveLocalMediaIndexWorkIDForRequest(ctx context.Context, wor
 }
 
 func (s *Server) indexLocalMediaForWork(ctx context.Context, workID int64, fileSourceID int64, relPath string) error {
+	return s.indexLocalMediaForWorkGuarded(ctx, workID, fileSourceID, relPath, nil)
+}
+
+func (s *Server) indexLocalMediaForWorkGuarded(ctx context.Context, workID int64, fileSourceID int64, relPath string, guard func(context.Context) error) error {
 	relPath = filepath.ToSlash(strings.TrimSpace(relPath))
 	// A folder recorded in a metadata directory, such as Synology's @eaDir, is
 	// never a work folder: its files are not indexed and it never becomes the
@@ -253,25 +257,50 @@ func (s *Server) indexLocalMediaForWork(ctx context.Context, workID int64, fileS
 	if relPath == "" || localfs.IsMetadataPath(relPath) {
 		return nil
 	}
+	if guard != nil {
+		if err := guard(ctx); err != nil {
+			return err
+		}
+	}
 	indexKey := fmt.Sprintf("%d:%d:%s", workID, fileSourceID, relPath)
 	s.localMediaIndexMu.Lock()
 	if s.localMediaIndexes == nil {
 		s.localMediaIndexes = map[string]*localMediaIndexCall{}
 	}
 	if call, ok := s.localMediaIndexes[indexKey]; ok {
+		if guard != nil {
+			call.guards = append(call.guards, guard)
+		}
 		s.localMediaIndexMu.Unlock()
 		select {
 		case <-call.done:
+			if call.err == nil && guard != nil {
+				return guard(ctx)
+			}
 			return call.err
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
 	call := &localMediaIndexCall{done: make(chan struct{})}
+	if guard != nil {
+		call.guards = append(call.guards, guard)
+	}
 	s.localMediaIndexes[indexKey] = call
 	s.localMediaIndexMu.Unlock()
 
-	call.err = s.indexLocalMediaForWorkOnce(ctx, workID, fileSourceID, relPath)
+	checkScope := func(ctx context.Context) error {
+		s.localMediaIndexMu.Lock()
+		guards := append([]func(context.Context) error(nil), call.guards...)
+		s.localMediaIndexMu.Unlock()
+		for _, guard := range guards {
+			if err := guard(ctx); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	call.err = s.indexLocalMediaForWorkOnce(ctx, workID, fileSourceID, relPath, checkScope)
 	s.localMediaIndexMu.Lock()
 	delete(s.localMediaIndexes, indexKey)
 	close(call.done)
@@ -279,11 +308,16 @@ func (s *Server) indexLocalMediaForWork(ctx context.Context, workID int64, fileS
 	return call.err
 }
 
-func (s *Server) indexLocalMediaForWorkOnce(ctx context.Context, workID int64, fileSourceID int64, relPath string) error {
+func (s *Server) indexLocalMediaForWorkOnce(ctx context.Context, workID int64, fileSourceID int64, relPath string, guard func(context.Context) error) error {
 	startedAt := time.Now()
 	relPath = filepath.ToSlash(strings.TrimSpace(relPath))
 	if relPath == "" {
 		return nil
+	}
+	if guard != nil {
+		if err := guard(ctx); err != nil {
+			return err
+		}
 	}
 	folder, collectDuration, err := s.collectLocalWorkFolder(ctx, workID, relPath)
 	if err != nil {
@@ -294,6 +328,11 @@ func (s *Server) indexLocalMediaForWorkOnce(ctx context.Context, workID int64, f
 		return err
 	}
 	defer releaseWriteSlot()
+	if guard != nil {
+		if err := guard(ctx); err != nil {
+			return err
+		}
+	}
 	writeStartedAt := time.Now()
 	if err := s.persistIndexedLocalWork(ctx, workID, fileSourceID, relPath, folder); err != nil {
 		return err

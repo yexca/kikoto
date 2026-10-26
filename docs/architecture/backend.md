@@ -533,9 +533,15 @@ has no other available file outside the folders the edit merges, so its
 references follow it; an item whose file at that path the edit removes gives
 the path up and keeps its own references. It then removes the folders
 it emptied, creates the requested folders, and indexes the folder. A resumed
-or retried run never collects again a file it already published. It deletes
-each merged folder last, only while it holds exactly the files the edit was
-planned with and each of them the reviewed merge check did not report lost
+or retried run never collects again a file it already published. Before
+publication, its checkpoint records each collected file's size, file version,
+and SHA-256. If a rename completes before the publication checkpoint, recovery
+accepts the target only when it is a plain file below plain directories and
+matches that proof; a changed target is kept and stops the edit. A checkpoint
+without proof can continue while its collected file exists; a missing copy
+without proof requires a new review. It deletes each merged folder last, only
+while it holds exactly the files the edit was planned with and each of them
+the reviewed merge check did not report lost
 still has a file of the same size and SHA-256 in the edited folder; otherwise the run
 stops and asks for a new review. It marks the deleted folder's locations
 unavailable and its folder ignored; a run that fails or is cancelled returns a

@@ -5,6 +5,7 @@ import { sharedInflightRequests } from "@/lib/inflightRequests";
 let generation = 0;
 let principal: number | null | undefined;
 let controller = new AbortController();
+const listeners = new Set<() => void>();
 
 export class ApiSessionChangedError extends DOMException {
   constructor() {
@@ -14,6 +15,14 @@ export class ApiSessionChangedError extends DOMException {
 
 export function apiSessionVersion() {
   return generation;
+}
+
+/** Invalidate retained account data as soon as the login or server changes. */
+export function subscribeApiSession(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 /** Only resume account-owned queues once this session has confirmed their owner. */
@@ -33,6 +42,7 @@ export function changeApiSession() {
   const reason = new ApiSessionChangedError();
   previous.abort(reason);
   sharedInflightRequests.invalidateAll(reason);
+  listeners.forEach((listener) => listener());
 }
 
 export function observeApiPrincipal(id: number | null) {
