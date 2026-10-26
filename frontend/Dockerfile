@@ -7,7 +7,7 @@ COPY VERSION /src/VERSION
 COPY frontend/ ./
 RUN npm run build
 
-FROM nginx:1.31-alpine@sha256:892bb2152464f0c5d8972593a5f5afaf8054552580b699d95f8ff4af08c2d33d
+FROM nginx:1.31-alpine@sha256:a3554c0d0b48177b1413c26e01f695334428020d9df01243fbae3e11cfd17417
 COPY --from=build /src/frontend/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY frontend/nginx-security.conf /etc/nginx/kikoto-security.conf
