@@ -172,6 +172,7 @@ type MockApplicationFixture = {
   onLyricsPreference?: (method: "PUT" | "DELETE", audioMediaItemId: number, lyricsMediaItemId: number | null) => void;
   beforeWorksResponse?: () => Promise<void>;
   beforeWorkDetailResponse?: (workId: number) => Promise<void>;
+  beforeMediaResponse?: () => Promise<void>;
   detailTranslations?: WorkTranslation[];
   detailMetadataPresentation?: WorkMetadataPresentation;
   detailMetadataSync?: WorkMetadataSyncStatus;
@@ -517,6 +518,7 @@ export async function mockApplication(
       }
       fixture.onMediaRequest?.();
       if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
+      await fixture.beforeMediaResponse?.();
       if (fixture.mediaBusy) {
         await route.fulfill({
           status: 503,
