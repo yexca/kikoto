@@ -131,6 +131,9 @@ func (s *Server) normalizeSystemWorkflowTriggerConfig(
 				return preparedWorkflowTrigger{}, nil, fmt.Errorf("config JSON must contain the metadata sync scope")
 			}
 		}
+		if metadataSyncOptionsSelectWorks(options) {
+			return preparedWorkflowTrigger{}, nil, errMetadataSyncWorksTrigger
+		}
 		options, err := s.validateMetadataSyncOptions(ctx, options)
 		if err != nil {
 			return preparedWorkflowTrigger{}, nil, err
@@ -423,6 +426,14 @@ func (s *Server) executeMetadataSystemTrigger(ctx context.Context, trigger workf
 		if err := decodeStrictJSON(trigger.ConfigJSON, &options); err != nil {
 			return "", nil, fmt.Errorf("metadata sync trigger config is invalid")
 		}
+	}
+	// A stored trigger with selected works is switched off rather than run;
+	// it stays editable and deletable.
+	if metadataSyncOptionsSelectWorks(options) {
+		if err := s.disableInvalidWorkflowTrigger(ctx, trigger.ID, errMetadataSyncWorksTrigger.Error()); err != nil {
+			return "", nil, err
+		}
+		return "", nil, errMetadataSyncWorksTrigger
 	}
 	options, err := s.validateMetadataSyncOptions(ctx, options)
 	if err != nil {

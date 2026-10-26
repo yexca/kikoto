@@ -8,6 +8,7 @@ import {
   metadataSyncWorkCodes,
   metadataSyncSources,
   metadataSyncSelectScope,
+  metadataSyncTriggerValues,
 } from "./metadataSyncModel";
 
 describe("metadataSyncModel", () => {
@@ -68,6 +69,23 @@ describe("metadataSyncModel", () => {
     expect(metadataSyncBlockers({ ...metadataSyncDefaultValues(), scope: "works", workCodes: "invalid" })).toEqual([
       "works_required",
     ]);
+  });
+
+  it("keeps selected works out of triggers", () => {
+    const works = {
+      ...metadataSyncDefaultValues(),
+      scope: "works" as const,
+      mode: "full" as const,
+      workCodes: "RJ00000001",
+      sourceId: 8,
+    };
+    expect(metadataSyncBlockers(works)).toEqual([]);
+    expect(metadataSyncBlockers(works, undefined, { automated: true })).toEqual(["works_not_schedulable"]);
+    const trigger = metadataSyncTriggerValues(works);
+    expect(metadataSyncPayload(trigger)).toEqual({ scope: "all", mode: "missing", sourceId: 8 });
+    expect(metadataSyncBlockers(trigger, undefined, { automated: true })).toEqual([]);
+    const voice = { ...works, scope: "voice" as const, personId: "7" };
+    expect(metadataSyncTriggerValues(voice)).toBe(voice);
   });
 
   it("uses DLsite for circles and an enabled remote for voice actors across scope changes", () => {

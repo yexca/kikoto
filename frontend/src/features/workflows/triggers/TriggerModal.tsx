@@ -6,10 +6,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
+  METADATA_SYNC_TRIGGER_SCOPES,
   metadataSyncBlockers,
   metadataSyncDefaultValues,
   metadataSyncPayload,
   metadataSyncSourceId,
+  metadataSyncTriggerValues,
   metadataSyncValuesFromConfig,
   type MetadataSyncFormValues,
 } from "@/features/workflows/metadataSyncModel";
@@ -109,7 +111,7 @@ export function TriggerModal({
   const [metadataSyncValues, setMetadataSyncValues] = useState<MetadataSyncFormValues>(() =>
     trigger
       ? metadataSyncValuesFromConfig(parseJSONRecord(trigger.configJson))
-      : (currentRunOptions?.metadataSync ?? metadataSyncDefaultValues()),
+      : metadataSyncTriggerValues(currentRunOptions?.metadataSync ?? metadataSyncDefaultValues()),
   );
   const customizable = Boolean(preset) || isMetadataSync || definition.code === "source_presence_check";
   const [customize, setCustomize] = useState(() => customizable && Boolean(trigger));
@@ -119,7 +121,9 @@ export function TriggerModal({
     ? presetBlockers(preset, presetValues, { canTag, automated: true }).map((blocker) => presetBlockerText(blocker))
     : [];
   const systemConfigBlockers = isMetadataSync
-    ? metadataSyncBlockers(metadataSyncValues, metadataSources.sources ?? undefined).map(metadataSyncBlockerText)
+    ? metadataSyncBlockers(metadataSyncValues, metadataSources.sources ?? undefined, { automated: true }).map(
+        metadataSyncBlockerText,
+      )
     : workflowSystemTriggerConfigBlockers(definition.code, systemConfig);
   // An unfiltered follow syncs every catalog work without metadata on each
   // automated run. It is allowed, but recommend a filter before saving one.
@@ -205,7 +209,10 @@ export function TriggerModal({
   const setCustomizeAndReset = (next: boolean) => {
     if (!next) {
       if (preset) setPresetValues(currentRunOptions?.presetValues ?? presetDefaultValues(preset));
-      else if (isMetadataSync) setMetadataSyncValues(currentRunOptions?.metadataSync ?? metadataSyncDefaultValues());
+      else if (isMetadataSync)
+        setMetadataSyncValues(
+          metadataSyncTriggerValues(currentRunOptions?.metadataSync ?? metadataSyncDefaultValues()),
+        );
       else setSystemConfig(currentRunOptions?.systemConfig ?? workflowSystemTriggerConfig(definition.code, null));
     }
     setCustomize(next);
@@ -281,6 +288,7 @@ export function TriggerModal({
                 idPrefix="metadata-sync-trigger"
                 compact
                 values={metadataSyncValues}
+                scopes={METADATA_SYNC_TRIGGER_SCOPES}
                 onChange={setMetadataSyncValues}
                 sources={metadataSources.sources}
                 sourceLoadFailed={metadataSources.failed}

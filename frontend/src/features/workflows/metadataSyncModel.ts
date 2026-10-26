@@ -2,12 +2,15 @@ import type { LibrarySource, MetadataSyncOptions, RemoteMetadataFallbackSettings
 import { librarySourceProvidesMetadata } from "@/lib/remoteSourceCapabilities";
 
 /**
- * Metadata sync maintains works that already exist. The scope selects every
- * work, one circle's works, or one voice actor's works; the mode refreshes only
- * missing or stale metadata, or every selected work.
+ * Metadata sync maintains works. The scope selects every work, one circle's
+ * works, one voice actor's works, or selected codes, which DLsite adds when the
+ * library does not know them yet; the mode refreshes only missing or stale
+ * metadata, or every selected work.
  */
 export const METADATA_SYNC_SCOPES = ["all", "circle", "voice", "works"] as const;
 export type MetadataSyncScope = (typeof METADATA_SYNC_SCOPES)[number];
+/** Selected works are a one-off request, so a trigger cannot run them. */
+export const METADATA_SYNC_TRIGGER_SCOPES: readonly MetadataSyncScope[] = ["all", "circle", "voice"];
 export const METADATA_SYNC_MODES = ["missing", "full"] as const;
 export type MetadataSyncMode = (typeof METADATA_SYNC_MODES)[number];
 
@@ -29,6 +32,7 @@ export type MetadataSyncBlocker =
   | "voice_required"
   | "voice_source_required"
   | "works_required"
+  | "works_not_schedulable"
   | "source_required"
   | "fallback_required";
 
@@ -126,7 +130,22 @@ export function metadataSyncPayload(values: MetadataSyncFormValues): MetadataSyn
   return payload;
 }
 
-export function metadataSyncBlockers(values: MetadataSyncFormValues, sources?: LibrarySource[]): MetadataSyncBlocker[] {
+/**
+ * Trigger values started from run options. Selected works fall back to every
+ * work with missing metadata, keeping the source choices.
+ */
+export function metadataSyncTriggerValues(values: MetadataSyncFormValues): MetadataSyncFormValues {
+  return METADATA_SYNC_TRIGGER_SCOPES.includes(values.scope)
+    ? values
+    : { ...values, scope: "all", mode: "missing", workCodes: "" };
+}
+
+export function metadataSyncBlockers(
+  values: MetadataSyncFormValues,
+  sources?: LibrarySource[],
+  { automated = false }: { automated?: boolean } = {},
+): MetadataSyncBlocker[] {
+  if (automated && !METADATA_SYNC_TRIGGER_SCOPES.includes(values.scope)) return ["works_not_schedulable"];
   if (values.scope === "circle" && !circleIdPattern.test(values.circleId.trim())) return ["circle_required"];
   if (values.scope === "voice" && (values.sourceId === 0 || (sources && metadataSyncSources(sources).length === 0)))
     return ["voice_source_required"];

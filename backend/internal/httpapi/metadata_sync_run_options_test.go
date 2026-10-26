@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,25 +17,178 @@ import (
 	"github.com/yexca/kikoto/backend/internal/remotemetadata"
 )
 
-func TestMetadataSyncSelectedWorksNormalizesAndRejectsUnknownWorks(t *testing.T) {
+// selectedWorksDLsiteClient lists every code except unlisted and counts the
+// product requests for each code.
+type selectedWorksDLsiteClient struct {
+	unlisted string
+	mu       sync.Mutex
+	requests map[string]int
+}
+
+func (c *selectedWorksDLsiteClient) FetchProduct(_ context.Context, code string) (dlsite.Product, error) {
+	c.mu.Lock()
+	c.requests[code]++
+	c.mu.Unlock()
+	if code == c.unlisted {
+		return dlsite.Product{}, dlsite.ErrNoProduct
+	}
+	return dlsite.Product{WorkNo: code, ProductName: "Example Work " + code, Language: "ja-jp"}, nil
+}
+
+func (*selectedWorksDLsiteClient) DownloadCover(context.Context, dlsite.Product, string) (string, error) {
+	return "", nil
+}
+
+func (c *selectedWorksDLsiteClient) requestsFor(code string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.requests[code]
+}
+
+func TestMetadataSyncSelectedWorksAddsCodesTheLibraryDoesNotHave(t *testing.T) {
 	f := newRemoteFallbackFixture(t, 70, nil)
+	const added, unlisted = "RJ00000079", "RJ00000080"
+	client := &selectedWorksDLsiteClient{unlisted: unlisted, requests: map[string]int{}}
+	f.server.dlsiteClient = client
+	var fallbackHits atomic.Int32
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fallbackHits.Add(1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer remote.Close()
+	sourceID := f.addSource(t, "A", 10, remote.URL)
 	ctx := context.Background()
-	options, err := f.server.validateMetadataSyncOptions(ctx, metadataSyncOptions{Scope: "works", WorkCodes: []string{strings.ToLower(f.code), " " + f.code + " "}, Mode: "full"})
-	if err != nil || !slices.Equal(options.WorkCodes, []string{f.code}) {
+	options, err := f.server.validateMetadataSyncOptions(ctx, metadataSyncOptions{
+		Scope: "works", WorkCodes: []string{strings.ToLower(f.code), " " + f.code + " ", added, unlisted}, Mode: "full",
+		RemoteMetadataFallback: remoteMetadataFallbackSettings{Enabled: true, SourceIDs: []int64{sourceID}},
+	})
+	if err != nil || !slices.Equal(options.WorkCodes, []string{f.code, added, unlisted}) {
 		t.Fatalf("normalized works: %+v, %v", options, err)
 	}
-	scope, err := f.server.metadataSyncScope(ctx, options)
-	if err != nil || !slices.Equal(scope.WorkIDs, []int64{f.workID}) || !scope.RecheckUnavailable {
-		t.Fatalf("selected works: %+v, %v", scope, err)
-	}
-	for _, codes := range [][]string{nil, {"invalid"}, {"RJ00000099"}, make([]string, 101)} {
+	for _, codes := range [][]string{nil, {"invalid"}, make([]string, 101)} {
 		if _, err := f.server.validateMetadataSyncOptions(ctx, metadataSyncOptions{Scope: "works", WorkCodes: codes}); err == nil {
 			t.Fatalf("accepted invalid work selection: %v", codes)
 		}
 	}
 	var works int
 	if err := f.db.QueryRow("SELECT COUNT(*) FROM work").Scan(&works); err != nil || works != 1 {
-		t.Fatalf("validation materialized works: %d, %v", works, err)
+		t.Fatalf("validation added works: %d, %v", works, err)
+	}
+	run, err := f.server.enqueueScopedDLsiteMetadataSync(ctx, "manual", "manual", 0, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.server.runNextQueuedWorkflowJob(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var addedWork, unlistedWork bool
+	if err := f.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM work WHERE primary_code=?), EXISTS(SELECT 1 FROM work WHERE primary_code=?)`, added, unlisted).Scan(&addedWork, &unlistedWork); err != nil {
+		t.Fatal(err)
+	}
+	if !addedWork || unlistedWork {
+		t.Fatalf("added work=%t unlisted work=%t", addedWork, unlistedWork)
+	}
+	// The added code is synchronized once, like the code that already had a work.
+	if client.requestsFor(added) != client.requestsFor(f.code) || client.requestsFor(added) == 0 {
+		t.Fatalf("requests added=%d existing=%d", client.requestsFor(added), client.requestsFor(f.code))
+	}
+	if fallbackHits.Load() != 0 {
+		t.Fatalf("an unlisted code without a work reached the remote fallback %d times", fallbackHits.Load())
+	}
+	var status, summary string
+	if err := f.db.QueryRow("SELECT status, summary_json FROM workflow_run WHERE id=?", run.RunID).Scan(&status, &summary); err != nil {
+		t.Fatal(err)
+	}
+	var counts struct {
+		Target      int `json:"target_works"`
+		Synced      int `json:"synced_works"`
+		Unavailable int `json:"unavailable_works"`
+		Failed      int `json:"failed_works"`
+	}
+	if err := json.Unmarshal([]byte(summary), &counts); err != nil {
+		t.Fatal(err)
+	}
+	if status != "succeeded" || counts.Target != 3 || counts.Synced != 2 || counts.Unavailable != 1 || counts.Failed != 0 {
+		t.Fatalf("run status=%s summary=%s", status, summary)
+	}
+}
+
+func TestMetadataSyncSelectedWorksFromRemoteSourceRefreshOnlyExistingWorks(t *testing.T) {
+	f := newRemoteFallbackFixture(t, 81, nil)
+	const deleted = "RJ00000082"
+	if _, err := f.db.Exec("INSERT INTO work(primary_code,title) VALUES (?,'Example Work 82')", deleted); err != nil {
+		t.Fatal(err)
+	}
+	var hits atomic.Int32
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		code := strings.TrimPrefix(r.URL.Path, "/api/workInfo/")
+		_ = json.NewEncoder(w).Encode(map[string]any{"source_id": code, "title": "Example refreshed title"})
+	}))
+	defer remote.Close()
+	sourceID := f.addSource(t, "A", 10, remote.URL)
+	ctx := context.Background()
+	if _, err := f.server.validateMetadataSyncOptions(ctx, metadataSyncOptions{Scope: "works", WorkCodes: []string{f.code, "RJ00000083"}, SourceID: sourceID}); err == nil {
+		t.Fatal("a remote source accepted a code without a work")
+	}
+	if _, err := f.server.enqueueScopedDLsiteMetadataSync(ctx, "manual", "manual", 0, metadataSyncOptions{Scope: "works", WorkCodes: []string{f.code, deleted}, SourceID: sourceID, Mode: "full"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec("DELETE FROM work WHERE primary_code=?", deleted); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.server.runNextQueuedWorkflowJob(ctx); err != nil {
+		t.Fatalf("a work deleted after queueing failed the run: %v", err)
+	}
+	var works int
+	var status string
+	if err := f.db.QueryRow("SELECT (SELECT COUNT(*) FROM work), (SELECT status FROM workflow_run ORDER BY id DESC LIMIT 1)").Scan(&works, &status); err != nil {
+		t.Fatal(err)
+	}
+	if works != 1 || status != "succeeded" || hits.Load() != 1 {
+		t.Fatalf("remote run works=%d status=%s hits=%d", works, status, hits.Load())
+	}
+}
+
+func TestMetadataSyncTriggersRefuseSelectedWorks(t *testing.T) {
+	f := newRemoteFallbackFixture(t, 84, nil)
+	ctx := context.Background()
+	if err := f.server.ensureSystemWorkflowDefinitions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	definition := workflowDefinitionRecord{Code: "metadata_sync", Scope: "system"}
+	if err := f.db.QueryRow("SELECT id FROM workflow_definition WHERE code='metadata_sync'").Scan(&definition.ID); err != nil {
+		t.Fatal(err)
+	}
+	actor := currentUser{ID: 1, Permissions: []string{"workflows:run", "metadata:sync"}}
+	works := `{"scope":"works","workCodes":["` + f.code + `"],"mode":"full"}`
+	payload := workflowTriggerPayload{WorkflowDefinitionID: definition.ID, DisplayName: "Sync", TriggerType: "schedule", ScheduleJSON: `{"intervalMinutes":60}`}
+	payload.ConfigJSON = works
+	if _, err := f.server.prepareWorkflowTrigger(ctx, actor, definition, payload, time.Now(), nil); !errors.Is(err, errMetadataSyncWorksTrigger) {
+		t.Fatalf("trigger accepted selected works: %v", err)
+	}
+	payload.ConfigJSON = `{"scope":"all","mode":"missing"}`
+	if _, err := f.server.prepareWorkflowTrigger(ctx, actor, definition, payload, time.Now(), nil); err != nil {
+		t.Fatalf("trigger refused every work: %v", err)
+	}
+	// A stored selected-works trigger switches itself off instead of queuing a run.
+	result, err := f.db.Exec(`INSERT INTO workflow_trigger (workflow_definition_id, trigger_type, display_name, enabled, schedule_json, config_json)
+		VALUES (?, 'schedule', 'Sync', 1, '{"intervalMinutes":60}', ?)`, definition.ID, works)
+	if err != nil {
+		t.Fatal(err)
+	}
+	triggerID, _ := result.LastInsertId()
+	if _, _, err := f.server.executeMetadataSystemTrigger(ctx, workflowTriggerRecord{ID: triggerID, ConfigJSON: works}, "schedule", "test"); !errors.Is(err, errMetadataSyncWorksTrigger) {
+		t.Fatalf("stored selected-works trigger ran: %v", err)
+	}
+	var enabled bool
+	var message string
+	var runs int
+	if err := f.db.QueryRow("SELECT enabled, last_error_message, (SELECT COUNT(*) FROM workflow_run) FROM workflow_trigger WHERE id=?", triggerID).Scan(&enabled, &message, &runs); err != nil {
+		t.Fatal(err)
+	}
+	if enabled || message != errMetadataSyncWorksTrigger.Error() || runs != 0 {
+		t.Fatalf("stored trigger enabled=%t message=%q runs=%d", enabled, message, runs)
 	}
 }
 
@@ -196,7 +350,13 @@ func TestMetadataRunOptionsDeduplicationTriggerAndRetry(t *testing.T) {
 	if originalJSON != retryJSON {
 		t.Fatalf("retry changed options: %s => %s", originalJSON, retryJSON)
 	}
-	_, _, err = f.server.executeMetadataSystemTrigger(ctx, workflowTriggerRecord{ConfigJSON: originalJSON}, "schedule", "test")
+	// A trigger stores the same choices for every work; selected works never run from one.
+	var stored metadataSyncOptions
+	if err := json.Unmarshal([]byte(originalJSON), &stored); err != nil {
+		t.Fatal(err)
+	}
+	stored.Scope, stored.WorkCodes = metadataSyncScopeAll, nil
+	_, _, err = f.server.executeMetadataSystemTrigger(ctx, workflowTriggerRecord{ConfigJSON: mustJSON(stored)}, "schedule", "test")
 	if err != nil {
 		t.Fatal(err)
 	}

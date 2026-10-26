@@ -1076,7 +1076,7 @@ test("@desktop Metadata sync saves fallback order and bonus choices in this run 
   expect(settingsWrites).toEqual([]);
 });
 
-test("Metadata sync selects multiple works and stores source choices in triggers", async ({ page }) => {
+test("Metadata sync runs selected works and keeps them out of triggers", async ({ page }) => {
   await mockWorkflows(page);
   await page.route("**/api/workflow-triggers/73", async (route) => {
     const payload = route.request().postDataJSON() as Partial<WorkflowTrigger>;
@@ -1105,9 +1105,10 @@ test("Metadata sync selects multiple works and stores source choices in triggers
   await page.getByRole("button", { name: "Add schedule", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "New schedule", exact: true });
   await dialog.getByRole("checkbox", { name: "Customize run options", exact: true }).click();
-  await expect(dialog.getByRole("textbox", { name: "Work codes", exact: true })).toHaveValue(
-    "rj00000002，RJ00000001 rj00000002",
-  );
+  // Selected works are a one-off request; a schedule starts from every work.
+  await expect(dialog.getByRole("button", { name: "Selected works", exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("textbox", { name: "Work codes", exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "All works", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(
     dialog
       .getByRole("group", { name: "Metadata source", exact: true })
@@ -1118,14 +1119,13 @@ test("Metadata sync selects multiple works and stores source choices in triggers
   );
   await dialog.getByRole("button", { name: "Add", exact: true }).click();
   expect(JSON.parse((await request).postDataJSON().configJson)).toEqual({
-    scope: "works",
-    mode: "full",
-    workCodes: ["RJ00000001", "RJ00000002"],
+    scope: "all",
+    mode: "missing",
     sourceId: 8,
   });
   await page.getByRole("button", { name: "Edit Scheduled workflow", exact: true }).click();
   const edit = page.getByRole("dialog", { name: "Edit trigger", exact: true });
-  await expect(edit.getByRole("textbox", { name: "Work codes", exact: true })).toHaveValue("RJ00000001\nRJ00000002");
+  await expect(edit.getByRole("button", { name: "Selected works", exact: true })).toHaveCount(0);
   await expect(
     edit
       .getByRole("group", { name: "Metadata source", exact: true })
@@ -1143,9 +1143,8 @@ test("Metadata sync selects multiple works and stores source choices in triggers
   );
   await edit.getByRole("button", { name: "Save", exact: true }).click();
   expect(JSON.parse((await update).postDataJSON().configJson)).toEqual({
-    scope: "works",
-    mode: "full",
-    workCodes: ["RJ00000001", "RJ00000002"],
+    scope: "all",
+    mode: "missing",
     remoteMetadataFallback: { enabled: true, sourceIds: [8] },
     purchaseBonusAutoLink: false,
   });

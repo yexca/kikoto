@@ -5,6 +5,11 @@
 > upgrade. Translate those works again with **Translate with AI**, whose
 > results take effect as soon as they finish.
 
+> [!NOTE]
+> A metadata sync schedule that uses **Selected works** switches itself off
+> the next time it is due, with a message on the trigger. Edit it to another
+> scope, or run the selected works from **Workflows** instead.
+
 > [!IMPORTANT]
 > The popular collections become Rankings. Each Remote popular and DLsite
 > popular trigger is turned into a ranking in **Discover → Rankings**
@@ -156,6 +161,11 @@
   provides metadata, for an affected edition or the selected works, without
   turning on automatic remote fallback.
 - Metadata view counts load faster on large libraries.
+- Metadata sync **Selected works** accepts codes the library does not have
+  yet: with DLsite it adds those works and their language editions, and counts
+  a code DLsite does not list as unavailable. A remote metadata source still
+  refreshes only works in the library. Selected works runs only on demand, so
+  schedules no longer offer it.
 
 </details>
 

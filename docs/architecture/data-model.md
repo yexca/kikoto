@@ -609,8 +609,9 @@ The ranking decides every stored remote value, independent of which source
 wrote last.
 
 The metadata workflow stores `sourceId`, `workCodes`, `remoteMetadataFallback`
-and `purchaseBonusAutoLink` alongside its scope and mode in run, job and trigger
-JSON. These are execution options, not instance-setting mutations, and a bulk
+and `purchaseBonusAutoLink` alongside its scope and mode in run and job JSON.
+Trigger JSON holds the same options except `workCodes`, because selected works
+never run from a trigger. These are execution options, not instance-setting mutations, and a bulk
 run's fallback choice is independent of the instance policy. Retries keep the
 saved values. A per-work refresh without a selected source snapshots the
 instance policy and the purchase-bonus auto-link setting into its job when it

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/localfs"
@@ -686,22 +687,38 @@ func (s *Server) executeDLsiteMetadataSyncJob(ctx context.Context, job workflowJ
 			return err
 		}
 	}
-	options, err := s.validateMetadataSyncOptions(ctx, input.metadataSyncOptions)
+	options, err := s.revalidateMetadataSyncOptions(ctx, input.metadataSyncOptions)
 	if err != nil {
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
 	var result metasync.DLsiteSyncResult
-	scope, runErr := s.metadataSyncScope(ctx, options)
-	if runErr == nil {
-		if options.SourceID > 0 {
+	var runErr error
+	if options.SourceID > 0 {
+		var scope metasync.DLsiteSyncScope
+		scope, runErr = s.metadataSyncScope(ctx, options)
+		if runErr == nil {
 			result, runErr = s.syncMetadataScopeFromRemote(ctx, job, scope, options)
-		} else {
-			syncer := s.newDLsiteMetadataSyncer(ctx).WithPurchaseBonusLinking(*options.PurchaseBonusAutoLink, options.Scope == metadataSyncScopeWorks)
+		}
+	} else {
+		syncer := s.newDLsiteMetadataSyncer(ctx).WithPurchaseBonusLinking(*options.PurchaseBonusAutoLink, options.Scope == metadataSyncScopeWorks)
+		var added requestedMetadataWorks
+		if options.Scope == metadataSyncScopeWorks {
+			added, runErr = s.addRequestedMetadataWorks(ctx, syncer, options.WorkCodes)
+		}
+		var scope metasync.DLsiteSyncScope
+		if runErr == nil {
+			scope, runErr = s.metadataSyncScope(ctx, options)
+		}
+		if runErr == nil {
+			scope.WorkIDs = slices.DeleteFunc(scope.WorkIDs, func(id int64) bool { return slices.Contains(added.WorkIDs, id) })
 			if options.RemoteMetadataFallback.Enabled {
 				syncer.WithUnavailableHandler(s.metadataSyncFallbackHandler(job, options.RemoteMetadataFallback))
 			}
 			result, runErr = syncer.SyncScopeWithoutWorkflow(ctx, scope)
+		}
+		if options.Scope == metadataSyncScopeWorks {
+			added.mergeInto(&result)
 		}
 	}
 	if runErr == nil {

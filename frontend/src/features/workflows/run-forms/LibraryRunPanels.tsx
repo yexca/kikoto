@@ -14,6 +14,7 @@ import {
   metadataSyncSources,
   type MetadataSyncBlocker,
   type MetadataSyncFormValues,
+  type MetadataSyncScope,
 } from "@/features/workflows/metadataSyncModel";
 import { presetParameterLabel } from "@/features/workflows/run-forms/PresetRunPanel";
 import { MetadataSyncFallbackFields } from "@/features/workflows/run-forms/MetadataSyncFallbackFields";
@@ -137,16 +138,18 @@ export function metadataSyncBlockerText(blocker: MetadataSyncBlocker) {
     voice_required: "voiceRequired",
     voice_source_required: "voiceSourceRequired",
     works_required: "worksRequired",
+    works_not_schedulable: "worksNotSchedulable",
     source_required: "sourceRequired",
     fallback_required: "fallbackRequired",
   };
   return workflowCopy(`metadataSyncScope.${keys[blocker]}`);
 }
 
-/** Metadata sync scope: which existing works to refresh, and how much of their metadata. */
+/** Metadata sync scope: which works to refresh, and how much of their metadata. */
 export function MetadataSyncFields({
   idPrefix,
   values,
+  scopes = METADATA_SYNC_SCOPES,
   compact = false,
   disabled = false,
   onChange,
@@ -156,6 +159,8 @@ export function MetadataSyncFields({
 }: {
   idPrefix: string;
   values: MetadataSyncFormValues;
+  /** The scopes offered; a stored scope outside them stays shown but disabled. */
+  scopes?: readonly MetadataSyncScope[];
   compact?: boolean;
   disabled?: boolean;
   onChange: Dispatch<SetStateAction<MetadataSyncFormValues>>;
@@ -190,11 +195,13 @@ export function MetadataSyncFields({
           label={workflowCopy("metadataSyncScope.label")}
           value={values.scope}
           onChange={(scope) => onChange((current) => metadataSyncSelectScope(current, scope, sources ?? []))}
-          options={METADATA_SYNC_SCOPES.map((scope) => ({
-            value: scope,
-            label: workflowCopy(`metadataSyncScope.scopes.${scope}`),
-            disabled: disabled || (scope === "voice" && capableSources.length === 0),
-          }))}
+          options={METADATA_SYNC_SCOPES.filter((scope) => scopes.includes(scope) || scope === values.scope).map(
+            (scope) => ({
+              value: scope,
+              label: workflowCopy(`metadataSyncScope.scopes.${scope}`),
+              disabled: disabled || !scopes.includes(scope) || (scope === "voice" && capableSources.length === 0),
+            }),
+          )}
         />
       </OptionField>
       {values.scope === "works" && (

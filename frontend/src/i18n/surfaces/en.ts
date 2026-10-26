@@ -1605,15 +1605,18 @@ export const surfaceEnglish = {
       source: "Metadata source",
       sourceHint: "Refreshes this source's metadata. Manual edits and DLsite values keep their precedence.",
       workCodes: "Work codes",
-      workCodesHint: "Enter up to 100 existing work codes, separated by spaces, commas or new lines.",
-      worksRequired: "Enter 1 to 100 valid work codes already in the library.",
+      workCodesHint:
+        "Enter up to 100 work codes, separated by spaces, commas or new lines. DLsite adds works the library does not have yet; another metadata source refreshes only works in the library.",
+      worksRequired: "Enter 1 to 100 valid work codes.",
+      worksNotSchedulable:
+        "Selected works cannot run on a trigger. Choose another scope, or run selected works from Workflows.",
       sourceRequired: "Choose an enabled metadata source.",
       fallbackRequired: "Choose 1 to 16 enabled fallback sources.",
       sourcesFailed: "Metadata sources could not be loaded.",
       fallbackHint: "For this run, try the selected sources in order only when DLsite reports a work as not found.",
       bonusHint: "Automatically identify and link purchase bonuses for this run. Existing links continue to apply.",
       label: "Works",
-      hint: "Only works already in the library are refreshed; new catalog works are added by the follow workflows.",
+      hint: "All works, a circle, or a voice actor refresh only works in the library; the follow workflows add new catalog works. Selected works can add works from DLsite.",
       scopes: {
         all: "All works",
         circle: "Circle",

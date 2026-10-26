@@ -5,16 +5,20 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/workcode"
 )
 
-// Metadata sync maintains works that already exist. A scope narrows the run to
-// every work, the works of one circle, or the works of one voice actor; it never
-// reads a catalog to add works. Discovering new works belongs to the follow
-// presets.
+// Metadata sync maintains works. A scope narrows the run to every work, the
+// works of one circle, the works of one voice actor, or selected codes; it never
+// reads a catalog to add works. Selected codes are explicitly requested metadata
+// roots, so a DLsite run adds the works of codes the library does not know yet.
+// Discovering new works from catalogs belongs to the follow presets.
 
 const (
 	metadataSyncScopeAll    = "all"
@@ -103,7 +107,7 @@ func (options metadataSyncOptions) normalized() (metadataSyncOptions, error) {
 	case metadataSyncScopeWorks:
 		options.CircleID, options.PersonID = "", 0
 		if len(options.WorkCodes) == 0 || len(options.WorkCodes) > 100 {
-			return metadataSyncOptions{}, fmt.Errorf("workCodes must contain 1 to 100 existing work codes")
+			return metadataSyncOptions{}, fmt.Errorf("workCodes must contain 1 to 100 work codes")
 		}
 		codes := make([]string, 0, len(options.WorkCodes))
 		for _, code := range options.WorkCodes {
@@ -121,9 +125,41 @@ func (options metadataSyncOptions) normalized() (metadataSyncOptions, error) {
 	return options, nil
 }
 
-// validateMetadataSyncOptions normalizes options and checks that a voice actor
-// target exists. A circle target may have no works yet.
+// errMetadataSyncWorksTrigger refuses selected works on a trigger: they are a
+// one-off request, not a standing schedule.
+var errMetadataSyncWorksTrigger = errors.New("selected works cannot run from a trigger; run them from Workflows instead")
+
+func metadataSyncOptionsSelectWorks(options metadataSyncOptions) bool {
+	return strings.EqualFold(strings.TrimSpace(options.Scope), metadataSyncScopeWorks)
+}
+
+// validateMetadataSyncOptions checks the options a request starts a run with.
+// DLsite accepts selected codes the library does not know yet; a remote metadata
+// source refreshes only works that exist, because its results never add works.
 func (s *Server) validateMetadataSyncOptions(ctx context.Context, options metadataSyncOptions) (metadataSyncOptions, error) {
+	options, err := s.revalidateMetadataSyncOptions(ctx, options)
+	if err != nil {
+		return metadataSyncOptions{}, err
+	}
+	if options.Scope == metadataSyncScopeWorks && options.SourceID > 0 {
+		for _, code := range options.WorkCodes {
+			var exists bool
+			if err := s.db.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM work WHERE UPPER(primary_code) = ?)", code).Scan(&exists); err != nil {
+				return metadataSyncOptions{}, err
+			}
+			if !exists {
+				return metadataSyncOptions{}, fmt.Errorf("a remote metadata source refreshes only works in the library: %s", code)
+			}
+		}
+	}
+	return options, nil
+}
+
+// revalidateMetadataSyncOptions normalizes options and checks that a voice actor
+// target and the chosen sources exist. A circle target may have no works yet. A
+// queued run checks only this, so a selected work deleted after queueing does
+// not fail the run.
+func (s *Server) revalidateMetadataSyncOptions(ctx context.Context, options metadataSyncOptions) (metadataSyncOptions, error) {
 	options, err := options.normalized()
 	if err != nil {
 		return metadataSyncOptions{}, err
@@ -133,17 +169,6 @@ func (s *Server) validateMetadataSyncOptions(ctx context.Context, options metada
 			return metadataSyncOptions{}, fmt.Errorf("voice actor not found")
 		} else if err != nil {
 			return metadataSyncOptions{}, err
-		}
-	}
-	if options.Scope == metadataSyncScopeWorks {
-		for _, code := range options.WorkCodes {
-			var exists bool
-			if err := s.db.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM work WHERE UPPER(primary_code) = ?)", code).Scan(&exists); err != nil {
-				return metadataSyncOptions{}, err
-			}
-			if !exists {
-				return metadataSyncOptions{}, fmt.Errorf("workCodes contains a work not in the library: %s", code)
-			}
 		}
 	}
 	ids := options.RemoteMetadataFallback.SourceIDs
@@ -215,4 +240,85 @@ func (s *Server) metadataSyncScope(ctx context.Context, options metadataSyncOpti
 		scope.WorkIDs = append(scope.WorkIDs, id)
 	}
 	return scope, rows.Err()
+}
+
+// requestedMetadataWorks is what adding the selected codes without a work did.
+type requestedMetadataWorks struct {
+	// WorkIDs are the works the step added and synchronized; the scoped sync
+	// leaves them out instead of requesting them again.
+	WorkIDs     []int64
+	Requested   int
+	Synced      int
+	Unavailable int
+	Skipped     int
+	Failures    []string
+}
+
+// addRequestedMetadataWorks synchronizes the DLsite family of each selected code
+// that has no work, which adds its edition works. A code DLsite does not list
+// adds nothing and has no remote fallback, since remote results never add works.
+// A custom code without a work is not a DLsite product and is skipped. A
+// timeout or cancellation stops the step so the job retries it.
+func (s *Server) addRequestedMetadataWorks(ctx context.Context, syncer dlsiteFamilyMetadataSyncer, codes []string) (requestedMetadataWorks, error) {
+	added := requestedMetadataWorks{Failures: []string{}}
+	for _, code := range codes {
+		if err := ctx.Err(); err != nil {
+			return added, err
+		}
+		var exists bool
+		if err := s.db.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM work WHERE UPPER(primary_code) = ?)", code).Scan(&exists); err != nil {
+			return added, err
+		}
+		if exists {
+			continue
+		}
+		if workcode.IsCustom(code) {
+			added.Skipped++
+			continue
+		}
+		added.Requested++
+		family, err := syncer.SyncFamily(ctx, code)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return added, ctxErr
+		}
+		switch {
+		case err != nil && dlsite.IsTimeout(err):
+			added.Failures = append(added.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
+			return added, err
+		case family.RequestedUnavailable:
+			added.Unavailable++
+			continue
+		case err != nil:
+			slog.Warn("requested work metadata sync failed", "work_code", code, "error", err)
+			added.Failures = append(added.Failures, fmt.Sprintf("%s: %s", code, err.Error()))
+			continue
+		}
+		added.Synced++
+		added.Failures = append(added.Failures, family.Failures...)
+		var id int64
+		if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE UPPER(primary_code) = ?", code).Scan(&id); err == nil {
+			added.WorkIDs = append(added.WorkIDs, id)
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return added, err
+		}
+	}
+	return added, nil
+}
+
+// mergeInto counts the added works in the run result.
+func (added requestedMetadataWorks) mergeInto(result *metasync.DLsiteSyncResult) {
+	result.TargetWorks += added.Requested
+	result.SyncedWorks += added.Synced
+	result.UnavailableWorks += added.Unavailable
+	result.SkippedWorks += added.Skipped
+	result.Failures = append(result.Failures, added.Failures...)
+	result.FailedWorks = len(result.Failures)
+	switch {
+	case result.FailedWorks == 0:
+		result.Status = "succeeded"
+	case result.SyncedWorks == 0 && result.TargetWorks > 0:
+		result.Status = "failed"
+	default:
+		result.Status = "partial"
+	}
 }

@@ -26,8 +26,8 @@ Library and metadata:
   presence (see [Local Folder Trigger](#local-folder-trigger)).
 - `local_media_index`: index the media files of discovered local work folders
   (see [Local Work File Refresh](#local-work-file-refresh)).
-- `metadata_sync`: bulk metadata sync of existing works (see
-  [Metadata Sync Scope](#metadata-sync-scope)).
+- `metadata_sync`: bulk metadata sync of existing works and explicitly
+  selected codes (see [Metadata Sync Scope](#metadata-sync-scope)).
 - `metadata_family_sync`: refresh one work and its bounded language-edition
   family, queued by work detail, Metadata recovery, and link changes.
 - `metadata_genre_names`: learn genre names in preferred metadata languages
@@ -130,22 +130,34 @@ entry points are unaffected. The dismissal and selected run are stored in
 
 ## Metadata Sync Scope
 
-Metadata sync maintains works that already exist; it never reads a catalog to
-add works. `POST /api/workflow-runs/dlsite-sync` and its interval trigger
-accept an optional scope:
+Metadata sync maintains works; it never reads a catalog to add works. Selected
+codes are explicitly requested metadata roots, so a DLsite run may add their
+works. `POST /api/workflow-runs/dlsite-sync` accepts an optional scope, and its
+interval trigger accepts every scope except `works`:
 
 | Input | Values | Default |
 | --- | --- | --- |
 | `scope` | `all`, `circle` (with `circleId`), `voice` (with `personId`), `works` (with `workCodes`) | `all` |
 | `mode` | `missing` (no DLsite snapshot, or a stale origin link), `full` (every selected work) | `missing` |
-| `workCodes` | 1–100 existing product codes; normalized, sorted and deduplicated | none |
+| `workCodes` | 1–100 product codes; normalized, sorted and deduplicated. DLsite accepts codes without a work; a remote source requires existing works. | none |
 | `sourceId` | An enabled metadata-capable remote source; omitted for DLsite. Circle requires DLsite; voice requires a remote source. | DLsite for all, circle and selected works |
 | `remoteMetadataFallback` | DLsite only: `enabled` and up to 16 ordered source ids | disabled |
 | `purchaseBonusAutoLink` | DLsite only: automatically detect purchase bonus links | true |
 
-Manual runs and interval triggers store the same normalized options. Selecting
-works in the UI defaults to full refresh and accepts whitespace, commas and
-newlines. Unknown codes are rejected without creating works. Remote missing
+Manual runs and interval triggers store the same normalized options. Selected
+works are a one-off request: creating or editing a trigger refuses `works`, and
+a stored trigger with `works` switches itself off with that reason when it
+fires instead of queuing a run. Selecting works in the UI defaults to full
+refresh and accepts whitespace, commas and newlines.
+
+With DLsite, a selected-works run first synchronizes the DLsite family of each
+code that has no work, which adds its edition works, then refreshes the
+selected works that already existed; a code the run added is not requested
+twice. A code DLsite does not list adds no work, counts as unavailable, and
+gets no remote fallback. A custom code without a work is skipped. A remote
+source refreshes only existing works: submission rejects a code without a
+work. Execution resolves the codes again, so a work deleted after queueing is
+added again by a DLsite run and skipped by a remote one. Remote missing
 mode checks the selected provider's snapshots, independently of DLsite;
 full mode bypasses cached remote descriptions. Source capability and enabled
 state are checked at submission and execution. DLsite full refresh of selected
