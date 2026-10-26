@@ -816,6 +816,13 @@ changes, caller cancellation, and ordinary network or API failures do not
 trigger this recovery. Background workflow completion uses the explicit refresh
 paths; in-flight sharing does not cache settled responses.
 
+Retained workflow run snapshots and event streams belong to the same session
+generation. A session change clears the snapshots immediately, stops their
+streams and polling, rejects pending run-settlement waits, and rebinds mounted
+views to the current session. An authentication, permission, or not-found
+response clears the run, events, and review candidates; a temporary failure
+within the same session keeps the last known snapshot for retry.
+
 ## Multilingual title presentation
 
 `WorkTitleEditor` lists per-language titles in a single column, then the

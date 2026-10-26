@@ -224,6 +224,16 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 		if err := s.persistLocalScanFolderBatch(ctx, fileSourceID, batch, &state, seenRoots); err != nil {
 			return localScanResult{}, nil, err
 		}
+		for _, folder := range batch {
+			checked, updated, missing, err := s.refreshIndexedLocalScanFolder(ctx, fileSourceID, folder, scope)
+			if err != nil {
+				return localScanResult{}, nil, err
+			}
+			scanSummary.ScannedFiles += checked
+			state.updatedLocations += updated
+			state.skippedLocations += checked - updated
+			state.missingLocations += missing
+		}
 	}
 	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
@@ -357,15 +367,16 @@ func (s *Server) persistLocalScanFolder(ctx context.Context, tx *sql.Tx, fileSou
 	}
 	state.missingLocations += ignored
 	var previousRoot, previousAvailability, previousScannedAt string
-	var previousScanned int
+	var previousScanned, previousFiles int
 	if err := tx.QueryRowContext(ctx, `
 		SELECT source_url,
 			availability,
 			COALESCE(json_extract(raw_json, '$.file_tree_scanned'), 0),
-			COALESCE(json_extract(raw_json, '$.file_tree_scanned_at'), '')
+			COALESCE(json_extract(raw_json, '$.file_tree_scanned_at'), ''),
+			COALESCE(json_extract(raw_json, '$.files'), 0)
 		FROM work_source_presence
 		WHERE work_id = ? AND file_source_id = ? AND presence_type = 'local'
-	`, workID, fileSourceID).Scan(&previousRoot, &previousAvailability, &previousScanned, &previousScannedAt); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	`, workID, fileSourceID).Scan(&previousRoot, &previousAvailability, &previousScanned, &previousScannedAt, &previousFiles); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
 	}
 	code := strings.ToUpper(strings.TrimSpace(folder.Code))
@@ -395,6 +406,9 @@ func (s *Server) persistLocalScanFolder(ctx context.Context, tx *sql.Tx, fileSou
 	rawPresence := map[string]any{
 		"code": folder.Code, "title": folder.Title, "rel_path": currentRoot,
 		"files": len(folder.Files), "file_tree_scanned": preserveCompletedIndex,
+	}
+	if preserveCompletedIndex {
+		rawPresence["files"] = previousFiles
 	}
 	if preserveCompletedIndex && previousScannedAt != "" {
 		rawPresence["file_tree_scanned_at"] = previousScannedAt
