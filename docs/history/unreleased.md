@@ -214,6 +214,16 @@
 </details>
 
 <details>
+<summary><strong>Operations and reliability</strong></summary>
+
+- Playback, transcription, loudness analysis, cover selection, and media
+  probing accept files when the data or cache root, or one of its parent
+  directories, is a symbolic link. A link inside the root that leaves it is
+  still refused.
+
+</details>
+
+<details>
 <summary><strong>Development and docs</strong></summary>
 
 - CI validation finishes sooner: planned jobs start without waiting for Style,
@@ -221,5 +231,8 @@
   recorded in CI (`make RACE_RUN=<run id> backend-race-durations` refreshes
   them), each browser test shard runs three workers in the pinned Playwright
   image, and no browser job installs system packages.
+- Make runs every Go target with the toolchain `backend/go.mod` pins, so a
+  newer locally installed Go no longer breaks `make backend-lint`; set
+  `GOTOOLCHAIN` to override it.
 
 </details>

@@ -111,6 +111,14 @@ after `GOLANGCI_LINT_BASE` (which defaults to `HEAD` locally and the first
 parent in CI), so existing lint debt does not block new work. Use
 `make backend-lint-full` for a complete audit of the current backend.
 
+The Makefile exports `GOTOOLCHAIN` set to the `toolchain` line of
+`backend/go.mod`, or its `go` line when there is none, so a local run uses the
+Go release CI installs even when a newer Go is installed; Go switches up to a
+pinned toolchain on its own but never down. The first run downloads that
+toolchain when it is not installed. Set `GOTOOLCHAIN` on the command line or in
+the environment, for example `make GOTOOLCHAIN=local backend-test`, to use
+another one. `make backend-test-container` uses the Go of `GO_IMAGE`.
+
 `make ci-backend` runs the full test suite with coverage and then with the race
 detector, alongside formatting, lint, module verification, vulnerability checks,
 and vet. It omits a third plain test run because coverage already executes the

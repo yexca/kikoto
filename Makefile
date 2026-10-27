@@ -71,6 +71,24 @@ else
 APP_VERSION := $(shell tr -d '\r\n' < VERSION)
 endif
 
+# Go targets run the toolchain that backend/go.mod pins, the one CI installs: a
+# newer installed Go never switches down to it on its own. The go line stands in
+# when go.mod has no toolchain line. Set GOTOOLCHAIN on the command line or in
+# the environment to override it.
+ifeq ($(OS),Windows_NT)
+GO_MOD_TOOLCHAIN := $(shell powershell -NoProfile -Command "$$m = Select-String -Path backend/go.mod -Pattern '^toolchain\s+(go\S+)'; if ($$m) { $$m.Matches[0].Groups[1].Value } else { $$m = Select-String -Path backend/go.mod -Pattern '^go\s+(\d\S*)'; if ($$m) { 'go' + $$m.Matches[0].Groups[1].Value } }")
+else
+GO_MOD_TOOLCHAIN := $(shell sed -n -e 's/^toolchain[[:space:]][[:space:]]*\(go[^[:space:]]*\).*/\1/p' backend/go.mod)
+ifeq ($(GO_MOD_TOOLCHAIN),)
+GO_MOD_TOOLCHAIN := $(shell sed -n -e 's/^go[[:space:]][[:space:]]*\([0-9][^[:space:]]*\).*/go\1/p' backend/go.mod)
+endif
+endif
+ifeq ($(GO_MOD_TOOLCHAIN),)
+$(error backend/go.mod declares neither a toolchain nor a go version)
+endif
+GOTOOLCHAIN ?= $(GO_MOD_TOOLCHAIN)
+export GOTOOLCHAIN
+
 ifeq ($(CI),true)
 GOLANGCI_LINT_BASE ?= HEAD^
 else
