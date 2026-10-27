@@ -114,6 +114,8 @@ const FavoriteWorkCard = memo(function FavoriteWorkCard({
               <WorkCardListButton
                 workId={work.id}
                 active={work.favorite}
+                memberLists={work.memberLists}
+                fitLabel
                 disabled={isListSaving}
                 onSaved={() => void handlers.onListsChanged(work)}
               />

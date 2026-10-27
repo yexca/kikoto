@@ -27,7 +27,7 @@ import { FavoriteListPicker, type FavoriteListPickerOption } from "@/components/
 import { FavoriteListPickerSurface } from "@/components/favorite-list/FavoriteListPickerSurface";
 import { useWorkFavoriteLists } from "@/components/favorite-list/useWorkFavoriteLists";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -38,11 +38,11 @@ import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import {
   api,
   assetURL,
-  type FavoriteList,
   type ListeningStatus,
   type UserTag,
   type VoiceCredit,
   type WorkEntityLink,
+  type WorkMemberList,
 } from "@/lib/api";
 import { ageRatingPresentation } from "@/lib/ageRating";
 import { openLibraryAgeRatingSearch } from "@/lib/libraryAgeRatingSearch";
@@ -50,6 +50,7 @@ import { NAVIGATION_EVENT, historyStateWithReturn } from "@/lib/browserHistory";
 import { cn } from "@/lib/tailwindClassNames";
 import { voiceDetailPath } from "@/lib/voiceRoute";
 import { visibleBadgeCountForRows } from "./tagLayout";
+import { useWorkCardLabelFit } from "./useWorkCardLabelFit";
 
 export type WorkCardBadge = {
   key?: string;
@@ -1052,16 +1053,21 @@ export function WorkCardFooter({
       )}
     >
       <div className="flex min-w-0 items-center gap-1">{left}</div>
-      <div className="flex min-w-0 items-center gap-1">{right}</div>
+      {/* The right group takes the free space so an action can tell whether its label fits. */}
+      <div className="flex min-w-0 grow items-center justify-end gap-1">{right}</div>
     </div>
   );
 }
+
+/** A labeled action that keeps the borderless look of the icon actions in a card footer. */
+const quietLabelButtonClassName = "h-8 gap-1.5 px-2";
 
 export function WorkCardActionButton({
   title,
   disabled,
   showLabel = false,
   responsiveLabel = false,
+  quiet = false,
   label,
   labelClassName,
   popup,
@@ -1076,6 +1082,8 @@ export function WorkCardActionButton({
   expanded?: boolean;
   showLabel?: boolean;
   responsiveLabel?: boolean;
+  /** Shows the label without the outline, beside the icon actions of a card footer. */
+  quiet?: boolean;
   label?: ReactNode;
   labelClassName?: string;
   children: ReactNode;
@@ -1083,9 +1091,17 @@ export function WorkCardActionButton({
 }) {
   return (
     <Button
-      variant={showLabel ? "outline" : "ghost"}
+      variant={showLabel && !quiet ? "outline" : "ghost"}
       size={showLabel ? "sm" : "icon"}
-      className={showLabel ? (responsiveLabel ? "h-8 w-8 px-0 sm:w-auto sm:px-3" : "h-8") : "h-8 w-8"}
+      className={
+        showLabel
+          ? quiet
+            ? quietLabelButtonClassName
+            : responsiveLabel
+              ? "h-8 w-8 px-0 sm:w-auto sm:px-3"
+              : "h-8"
+          : "h-8 w-8"
+      }
       title={title}
       aria-label={title}
       aria-haspopup={popup}
@@ -1178,6 +1194,7 @@ export function WorkCardListButton({
   disabled,
   showLabel = false,
   responsiveLabel = false,
+  fitLabel = false,
   memberLists,
   ensureWorkId,
   onSaved,
@@ -1187,8 +1204,13 @@ export function WorkCardListButton({
   disabled?: boolean;
   showLabel?: boolean;
   responsiveLabel?: boolean;
+  /**
+   * In a card footer: names the lists beside the icon while the footer has
+   * room for the name, and shows the lit icon alone otherwise.
+   */
+  fitLabel?: boolean;
   /** The user lists holding the work, in list order, once the caller has loaded them; they name the button. */
-  memberLists?: readonly FavoriteList[];
+  memberLists?: readonly WorkMemberList[];
   ensureWorkId?: () => Promise<number | null>;
   onSaved?: (favorite: boolean, workId: number) => void;
 }) {
@@ -1218,12 +1240,43 @@ export function WorkCardListButton({
     });
   }, [membership, t]);
 
-  const members = memberLists ?? [];
-  const firstMemberList: FavoriteList | undefined = members[0];
+  // Once the picker has loaded the work's lists, they name the button, so a
+  // change shows before the caller reloads its own copy.
+  const members: readonly WorkMemberList[] = membership.lists
+    ? membership.lists.filter((list) => list.selected)
+    : (memberLists ?? []);
+  const firstMemberList: WorkMemberList | undefined = members[0];
   const otherMemberListCount = members.length - 1;
+  const memberLabel = firstMemberList && (
+    <>
+      <span className="truncate">{firstMemberList.name}</span>
+      {otherMemberListCount > 0 && (
+        <span className="shrink-0 tabular-nums text-muted-foreground">
+          {t("workCard.moreLists", { others: otherMemberListCount })}
+        </span>
+      )}
+    </>
+  );
+  const sampleRef = useRef<HTMLSpanElement | null>(null);
+  const fitCandidate = fitLabel && !showLabel && Boolean(firstMemberList);
+  const labelFits = useWorkCardLabelFit(fitCandidate, ref, sampleRef);
 
   return (
     <div className="relative" ref={ref}>
+      {fitCandidate && (
+        <span
+          ref={sampleRef}
+          aria-hidden="true"
+          className={cn(
+            buttonVariants({ variant: "ghost", size: "sm" }),
+            quietLabelButtonClassName,
+            "pointer-events-none invisible absolute right-0 top-0 w-max",
+          )}
+        >
+          <ListMusic className="h-4 w-4" />
+          <span className="flex min-w-0 max-w-24 items-baseline gap-1">{memberLabel}</span>
+        </span>
+      )}
       <WorkCardActionButton
         title={
           firstMemberList
@@ -1238,27 +1291,13 @@ export function WorkCardListButton({
               : t("workCard.addToList")
         }
         disabled={disabled || resolving || (!effectiveWorkId && !ensureWorkId)}
-        showLabel={showLabel}
+        showLabel={showLabel || labelFits}
         responsiveLabel={responsiveLabel}
-        label={
-          firstMemberList ? (
-            <>
-              <span className="truncate">{firstMemberList.name}</span>
-              {otherMemberListCount > 0 && (
-                <span className="shrink-0 tabular-nums text-muted-foreground">
-                  {t("workCard.moreLists", { others: otherMemberListCount })}
-                </span>
-              )}
-            </>
-          ) : active ? (
-            t("workCard.lists")
-          ) : (
-            t("workCard.addToListShort")
-          )
-        }
+        quiet={!showLabel && labelFits}
+        label={memberLabel || (active ? t("workCard.lists") : t("workCard.addToListShort"))}
         labelClassName={
           firstMemberList
-            ? cn("min-w-0 max-w-24 items-baseline gap-1", responsiveLabel ? "sm:flex" : "flex")
+            ? cn("min-w-0 max-w-24 items-baseline gap-1", responsiveLabel && showLabel ? "sm:flex" : "flex")
             : undefined
         }
         onClick={(event) => {

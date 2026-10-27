@@ -95,9 +95,14 @@ func (s *Server) scanLibraryWorkRows(ctx context.Context, userID int64, rows []l
 	if err != nil {
 		return nil, err
 	}
+	memberListsByWork, err := s.loadWorkMemberListsBatch(ctx, userID, workIDs)
+	if err != nil {
+		return nil, err
+	}
 	for index := range works {
 		works[index].UserTags = tagsByWork[works[index].ID]
 		works[index].UserRating = ratingsByWork[works[index].ID]
+		works[index].MemberLists = memberListsByWork[works[index].ID]
 	}
 	return works, nil
 }
@@ -217,6 +222,7 @@ type libraryWorkSummary struct {
 	Progress               workProgressSummary  `json:"progress"`
 	ListeningStatus        string               `json:"listeningStatus"`
 	Favorite               bool                 `json:"favorite"`
+	MemberLists            []workMemberList     `json:"memberLists,omitempty"`
 	UserRating             *int                 `json:"userRating"`
 	RecommendScore         int                  `json:"recommendScore"`
 	mediaWorkID            int64
