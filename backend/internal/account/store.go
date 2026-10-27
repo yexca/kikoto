@@ -11,17 +11,19 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type Store struct {
-	db *sql.DB
+	db *sqlutil.DB
 }
 
 const DemoUsername = "__demo__"
 
 var ErrDemoAccountConflict = errors.New("reserved demo account username is already in use")
 
-func NewStore(db *sql.DB) *Store {
+func NewStore(db *sqlutil.DB) *Store {
 	return &Store{db: db}
 }
 

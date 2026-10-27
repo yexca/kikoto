@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/library"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -86,7 +86,7 @@ func TestDLsiteCardSummaryPreservesSnapshotCardFields(t *testing.T) {
 }
 
 type snapshotCardTestWorks struct {
-	db       *sql.DB
+	db       *sqlutil.DB
 	server   *Server
 	personID int64
 }

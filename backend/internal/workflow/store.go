@@ -10,12 +10,12 @@ import (
 )
 
 type Store struct {
-	db *sql.DB
+	db *sqlutil.DB
 }
 
 const DemoShowcaseTriggerReason = "Demo example"
 
-func NewStore(db *sql.DB) *Store {
+func NewStore(db *sqlutil.DB) *Store {
 	return &Store{db: db}
 }
 

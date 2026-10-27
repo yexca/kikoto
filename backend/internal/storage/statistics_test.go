@@ -45,18 +45,25 @@ func TestOptimizeStatisticsAnalyzesTablesFilledAfterTheLastPass(t *testing.T) {
 }
 
 func TestOptimizeStatisticsYieldsToWriterAndRestoresConnectionPolicy(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "example.db"))
+	path := filepath.Join(t.TempDir(), "example.db")
+	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	db.SetMaxOpenConns(2)
 	if _, err := db.Exec(`CREATE TABLE item(id INTEGER PRIMARY KEY,kind TEXT); CREATE INDEX idx_item_kind ON item(kind);
 		WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<500)
 		INSERT INTO item SELECT n,'example' FROM seq`); err != nil {
 		t.Fatal(err)
 	}
-	tx, err := db.Begin()
+	// Another process holds the write lock, so the pass reaches SQLite's busy
+	// handler on db's own writer connection.
+	contender, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = contender.Close() }()
+	tx, err := contender.Begin()
 	if err != nil {
 		t.Fatal(err)
 	}

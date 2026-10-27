@@ -2,10 +2,11 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"database/sql/driver"
 	"fmt"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 const (
@@ -23,7 +24,7 @@ const (
 // only those this pooled connection has queried, so a table filled after the
 // last pass, such as by a new install's first scan, is analyzed. A table
 // whose size has not changed much is skipped, which keeps a pass cheap.
-func OptimizeStatistics(ctx context.Context, db *sql.DB) (err error) {
+func OptimizeStatistics(ctx context.Context, db *sqlutil.DB) (err error) {
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return err
@@ -65,6 +66,6 @@ func OptimizeStatistics(ctx context.Context, db *sql.DB) (err error) {
 // then every period until ctx is cancelled. Without statistics SQLite can
 // choose a full scan over an index, which makes a new install's Library slow
 // until someone compacts the database by hand.
-func MaintainStatistics(ctx context.Context, db *sql.DB, period time.Duration) {
+func MaintainStatistics(ctx context.Context, db *sqlutil.DB, period time.Duration) {
 	NewStatisticsMaintainer(db).Run(ctx, period)
 }

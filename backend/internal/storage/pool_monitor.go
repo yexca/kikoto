@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"log/slog"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 const (
@@ -76,8 +78,9 @@ func (m *poolMonitor) observe(stats sql.DBStats) poolReport {
 	return report
 }
 
-func (r poolReport) log(logger *slog.Logger) {
+func (r poolReport) log(logger *slog.Logger, pool string) {
 	attributes := []any{
+		"pool", pool,
 		"in_use", r.stats.InUse,
 		"idle", r.stats.Idle,
 		"max_open", r.stats.MaxOpenConnections,
@@ -94,18 +97,31 @@ func (r poolReport) log(logger *slog.Logger) {
 	}
 }
 
-// MonitorPool samples db's connection pool until ctx ends and logs sustained
-// saturation, recovery, and slow connection waits.
-func MonitorPool(ctx context.Context, db *sql.DB, interval time.Duration) {
+// MonitorPool samples db's reader and writer pools until ctx ends and logs
+// sustained saturation, recovery, and slow connection waits of each.
+func MonitorPool(ctx context.Context, db *sqlutil.DB, interval time.Duration) {
+	type sampledPool struct {
+		name    string
+		db      *sql.DB
+		monitor poolMonitor
+	}
+	pools := []*sampledPool{{name: "read", db: db.Readers()}}
+	if db.Writer() != db.Readers() {
+		pools = append(pools, &sampledPool{name: "write", db: db.Writer()})
+	}
+	for _, pool := range pools {
+		pool.monitor.previous = pool.db.Stats()
+	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	monitor := poolMonitor{previous: db.Stats()}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			monitor.observe(db.Stats()).log(slog.Default())
+			for _, pool := range pools {
+				pool.monitor.observe(pool.db.Stats()).log(slog.Default(), pool.name)
+			}
 		}
 	}
 }

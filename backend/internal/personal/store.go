@@ -2,11 +2,12 @@
 package personal
 
 import (
-	"database/sql"
 	"errors"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
-type Store struct{ DB *sql.DB }
+type Store struct{ DB *sqlutil.DB }
 
 var (
 	ErrInvalid        = errors.New("invalid personal data")

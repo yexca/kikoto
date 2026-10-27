@@ -10,6 +10,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
 	"github.com/yexca/kikoto/backend/internal/remotemetadata"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // DLsiteMetadataVariant is the language-scoped title/tag projection captured
@@ -36,7 +37,7 @@ type DLsiteMetadataVariant struct {
 // matches the canonical edition, regardless of that edition's actual
 // language. Unknown edition languages are retained in the table but never
 // become a priority match.
-func SelectDLsiteMetadataVariant(ctx context.Context, db *sql.DB, workID int64, priorities []string) (DLsiteMetadataVariant, bool, error) {
+func SelectDLsiteMetadataVariant(ctx context.Context, db *sqlutil.DB, workID int64, priorities []string) (DLsiteMetadataVariant, bool, error) {
 	variants, err := ListDLsiteMetadataVariants(ctx, db, workID)
 	if err != nil {
 		return DLsiteMetadataVariant{}, false, err
@@ -48,17 +49,17 @@ func SelectDLsiteMetadataVariant(ctx context.Context, db *sql.DB, workID int64, 
 // ListDLsiteMetadataVariants returns the stored title/tag representations for
 // the logical family containing workID. The variants do not create or replace
 // work identities; PrimaryCode is only a stable presentation key.
-func ListDLsiteMetadataVariants(ctx context.Context, db *sql.DB, workID int64) ([]DLsiteMetadataVariant, error) {
+func ListDLsiteMetadataVariants(ctx context.Context, db *sqlutil.DB, workID int64) ([]DLsiteMetadataVariant, error) {
 	return listDLsiteMetadataVariants(ctx, db, workID, false)
 }
 
 // ListDLsiteMetadataVariantsWithDescriptions is for the detail page only.
 // Projection and list reads must not load every edition's introduction.
-func ListDLsiteMetadataVariantsWithDescriptions(ctx context.Context, db *sql.DB, workID int64) ([]DLsiteMetadataVariant, error) {
+func ListDLsiteMetadataVariantsWithDescriptions(ctx context.Context, db *sqlutil.DB, workID int64) ([]DLsiteMetadataVariant, error) {
 	return listDLsiteMetadataVariants(ctx, db, workID, true)
 }
 
-func listDLsiteMetadataVariants(ctx context.Context, db *sql.DB, workID int64, descriptions bool) ([]DLsiteMetadataVariant, error) {
+func listDLsiteMetadataVariants(ctx context.Context, db *sqlutil.DB, workID int64, descriptions bool) ([]DLsiteMetadataVariant, error) {
 	if db == nil || workID <= 0 {
 		return []DLsiteMetadataVariant{}, nil
 	}
@@ -81,7 +82,7 @@ func listDLsiteMetadataVariants(ctx context.Context, db *sql.DB, workID int64, d
 // every known family. It is called after a priority change so the existing
 // library/search projections reflect the new choice without another provider
 // request.
-func ProjectDLsiteMetadata(ctx context.Context, db *sql.DB, priorities []string) error {
+func ProjectDLsiteMetadata(ctx context.Context, db *sqlutil.DB, priorities []string) error {
 	if db == nil {
 		return nil
 	}
@@ -169,7 +170,7 @@ func projectMetadataBatch(ctx context.Context, tx *sql.Tx, cursor, frontier int6
 
 // BackfillMetadataTags resumes safely after an interrupted start. Completion is
 // saved only after every bounded work batch has committed.
-func BackfillMetadataTags(ctx context.Context, db *sql.DB, priorities []string) error {
+func BackfillMetadataTags(ctx context.Context, db *sqlutil.DB, priorities []string) error {
 	var done bool
 	if err := db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM app_setting WHERE key='metadata_tag_projection_version' AND value_json='1') AND NOT EXISTS(SELECT 1 FROM app_setting WHERE key='metadata_projection_pending')").Scan(&done); err != nil {
 		return err
@@ -183,7 +184,7 @@ func BackfillMetadataTags(ctx context.Context, db *sql.DB, priorities []string) 
 // ProjectDLsiteMetadataFamily updates one logical family. SyncProduct uses
 // this narrower operation to avoid reprojecting the entire library after each
 // provider response.
-func ProjectDLsiteMetadataFamily(ctx context.Context, db *sql.DB, logicalWorkID int64, priorities []string) error {
+func ProjectDLsiteMetadataFamily(ctx context.Context, db *sqlutil.DB, logicalWorkID int64, priorities []string) error {
 	if db == nil || logicalWorkID <= 0 {
 		return nil
 	}
@@ -293,7 +294,7 @@ func chooseDLsiteTagSourceVariant(variants []DLsiteMetadataVariant) DLsiteMetada
 
 // SelectDLsiteTagSourceVariant returns the edition whose genres supply the
 // shared tags of workID's family; see chooseDLsiteTagSourceVariant.
-func SelectDLsiteTagSourceVariant(ctx context.Context, db *sql.DB, workID int64) (DLsiteMetadataVariant, bool, error) {
+func SelectDLsiteTagSourceVariant(ctx context.Context, db *sqlutil.DB, workID int64) (DLsiteMetadataVariant, bool, error) {
 	variants, err := ListDLsiteMetadataVariants(ctx, db, workID)
 	if err != nil {
 		return DLsiteMetadataVariant{}, false, err

@@ -2,18 +2,18 @@ package metasync
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 )
 
 // ProcessMetadataTagQueue commits at most limit works atomically. Selection,
 // projection and acknowledgement share the write transaction, so concurrent
 // edits cannot lose a wakeup. A failed or cancelled batch remains durable.
-func ProcessMetadataTagQueue(ctx context.Context, db *sql.DB, limit int, priorities []string) (count int, err error) {
+func ProcessMetadataTagQueue(ctx context.Context, db *sqlutil.DB, limit int, priorities []string) (count int, err error) {
 	return processMetadataTagQueue(ctx, db, limit, priorities, time.Now(), 5*time.Second)
 }
 
@@ -27,7 +27,7 @@ func (e *metadataTagQueueWorkError) Error() string {
 }
 func (e *metadataTagQueueWorkError) Unwrap() error { return e.err }
 
-func processMetadataTagQueue(ctx context.Context, db *sql.DB, limit int, priorities []string, now time.Time, timeout time.Duration) (count int, err error) {
+func processMetadataTagQueue(ctx context.Context, db *sqlutil.DB, limit int, priorities []string, now time.Time, timeout time.Duration) (count int, err error) {
 	if limit <= 0 {
 		return 0, nil
 	}

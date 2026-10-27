@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
 	"os"
 	"path/filepath"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 )
 
@@ -17,7 +17,7 @@ import (
 // fit. Whatever an interrupted run left in dir is removed first. It returns
 // the directory in use, or "" for the system temporary directory when the
 // cache root cannot hold one.
-func useCacheTempDir(ctx context.Context, db *sql.DB, dir string) string {
+func useCacheTempDir(ctx context.Context, db *sqlutil.DB, dir string) string {
 	if dir == "" {
 		return ""
 	}
@@ -28,7 +28,7 @@ func useCacheTempDir(ctx context.Context, db *sql.DB, dir string) string {
 	return dir
 }
 
-func resetTempDir(ctx context.Context, db *sql.DB, dir string) error {
+func resetTempDir(ctx context.Context, db *sqlutil.DB, dir string) error {
 	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}

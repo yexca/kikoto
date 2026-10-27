@@ -2,11 +2,11 @@ package library
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metadatatitles"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // work_title_language holds each work's display title for every language that
@@ -36,7 +36,7 @@ func (s *Store) RefreshTitleLanguages(ctx context.Context) error {
 	return refreshTitleLanguages(ctx, s.db)
 }
 
-func refreshTitleLanguages(ctx context.Context, db *sql.DB) error {
+func refreshTitleLanguages(ctx context.Context, db *sqlutil.DB) error {
 	for {
 		refreshed, err := refreshTitleLanguageBatch(ctx, db, titleLanguageBatchSize)
 		if err != nil || refreshed < titleLanguageBatchSize {
@@ -48,7 +48,7 @@ func refreshTitleLanguages(ctx context.Context, db *sql.DB) error {
 	}
 }
 
-func refreshTitleLanguageBatch(ctx context.Context, db *sql.DB, limit int) (int, error) {
+func refreshTitleLanguageBatch(ctx context.Context, db *sqlutil.DB, limit int) (int, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err

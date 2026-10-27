@@ -38,6 +38,9 @@ type Config struct {
 	// DatabaseBackupDir holds database backups, or is empty when the database
 	// is not a plain file and cannot be backed up.
 	DatabaseBackupDir string
+	// DBReadConnections bounds the SQLite reader pool. Writes use one
+	// separate connection.
+	DBReadConnections int
 	DataRoot          string
 	CacheRoot         string
 	// TempDir holds short-lived working files inside the cache root. Empty
@@ -113,6 +116,7 @@ func Load() (Config, error) {
 		HTTPAddr:            env("KIKOTO_HTTP_ADDR", "127.0.0.1:7659"),
 		DatabasePath:        databasePath,
 		DatabaseBackupDir:   env("KIKOTO_DB_BACKUP_DIR", defaultDatabaseBackupDir(databasePath)),
+		DBReadConnections:   envInt("KIKOTO_DB_READ_CONNECTIONS", 8),
 		DataRoot:            env("KIKOTO_DATA_ROOT", "../data"),
 		CacheRoot:           cacheRoot,
 		TempDir:             filepath.Join(cacheRoot, tempDirName),

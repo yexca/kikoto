@@ -9,9 +9,10 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
-func seedLyricsAssignmentFamily(t *testing.T) *sql.DB {
+func seedLyricsAssignmentFamily(t *testing.T) *sqlutil.DB {
 	t.Helper()
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
@@ -47,7 +48,7 @@ func putLyricsAssignments(server *Server, workID string, body string, permission
 	return response
 }
 
-func assignedLyricsFor(t *testing.T, db *sql.DB, audioID int64) (int64, bool) {
+func assignedLyricsFor(t *testing.T, db *sqlutil.DB, audioID int64) (int64, bool) {
 	t.Helper()
 	var lyricsID int64
 	err := db.QueryRow("SELECT lyrics_media_item_id FROM media_lyrics_assignment WHERE audio_media_item_id = ?", audioID).Scan(&lyricsID)

@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -16,13 +15,14 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 // newRemoteTreeFetchServer serves one remote work whose file tree is tracks and
 // whose every file downloads as its own URL path.
-func newRemoteTreeFetchServer(t *testing.T, tracks []kikoeru.Track) (*Server, *sql.DB, string) {
+func newRemoteTreeFetchServer(t *testing.T, tracks []kikoeru.Track) (*Server, *sqlutil.DB, string) {
 	t.Helper()
 	code := testfixture.WorkCode(testfixture.PrefixRJ, 0)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

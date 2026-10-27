@@ -214,6 +214,17 @@
 </details>
 
 <details>
+<summary><strong>Operations and reliability</strong></summary>
+
+- Database writes wait for one dedicated writer connection, and reads use a
+  separate pool of eight connections, so queued writes no longer leave
+  browsing and sign-in waiting for a free connection.
+  `KIKOTO_DB_READ_CONNECTIONS` sets the number of readers; each connection
+  may use up to 16 MiB of page cache.
+
+</details>
+
+<details>
 <summary><strong>Development and docs</strong></summary>
 
 - CI validation finishes sooner: planned jobs start without waiting for Style,

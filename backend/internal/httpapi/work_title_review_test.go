@@ -10,6 +10,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -169,7 +170,7 @@ func TestUniversalManualTitleKeepsTheDefaultEdition(t *testing.T) {
 }
 
 type titleQueryCounter struct {
-	*sql.DB
+	*sqlutil.DB
 	queries []string
 }
 

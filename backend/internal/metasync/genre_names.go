@@ -11,6 +11,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // DLsite reports genre names in the requested locale whether or not a work
@@ -76,7 +77,7 @@ func requestableGenreWorkSQL(alias string) string {
 
 // PendingGenreNames counts unnamed, unexhausted genre and language pairs that
 // still have a requestable work.
-func PendingGenreNames(ctx context.Context, db *sql.DB, languages []string) (int, error) {
+func PendingGenreNames(ctx context.Context, db *sqlutil.DB, languages []string) (int, error) {
 	total := 0
 	for _, language := range languages {
 		var count int
@@ -163,7 +164,7 @@ func stopsGenreNameLearning(ctx context.Context, err error) bool {
 // nextGenreNameCandidate picks the never-requested work whose genres cover the
 // most unnamed genres in the language; a linked work is requested by the code
 // its metadata comes from.
-func nextGenreNameCandidate(ctx context.Context, db *sql.DB, language string, skipped []int64) (genreNameCandidate, bool, error) {
+func nextGenreNameCandidate(ctx context.Context, db *sqlutil.DB, language string, skipped []int64) (genreNameCandidate, bool, error) {
 	skippedJSON, err := json.Marshal(skipped)
 	if err != nil {
 		return genreNameCandidate{}, false, err
@@ -272,7 +273,7 @@ func (s *DLsiteSyncer) recordGenreNameResponse(ctx context.Context, candidate ge
 
 // exhaustUnreachableGenreNames marks unnamed genres without a requestable work
 // in the language, so they are not selected again.
-func exhaustUnreachableGenreNames(ctx context.Context, db *sql.DB, language string) (int, error) {
+func exhaustUnreachableGenreNames(ctx context.Context, db *sqlutil.DB, language string) (int, error) {
 	result, err := db.ExecContext(ctx, `INSERT INTO dlsite_genre_name_gap (genre_id, language, attempts, exhausted)
 		SELECT DISTINCT genre.genre_id, ?, 0, 1 FROM work_dlsite_genre AS genre
 		WHERE `+missingGenreNameSQL+`

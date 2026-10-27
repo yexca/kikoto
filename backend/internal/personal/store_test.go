@@ -2,7 +2,6 @@ package personal
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
@@ -33,7 +33,7 @@ func testStore(t *testing.T) Store {
 	return Store{DB: db}
 }
 
-func execFixture(t *testing.T, db *sql.DB, query string, args ...any) {
+func execFixture(t *testing.T, db *sqlutil.DB, query string, args ...any) {
 	t.Helper()
 	if _, err := db.Exec(query, args...); err != nil {
 		t.Fatal(err)

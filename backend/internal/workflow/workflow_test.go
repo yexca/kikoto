@@ -2,14 +2,14 @@ package workflow
 
 import (
 	"context"
-	"database/sql"
 	"path/filepath"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 )
 
-func openWorkflowTestDB(t *testing.T) *sql.DB {
+func openWorkflowTestDB(t *testing.T) *sqlutil.DB {
 	t.Helper()
 	db, err := storage.Open(filepath.Join(t.TempDir(), "workflow.db"))
 	if err != nil {

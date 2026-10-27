@@ -2,8 +2,8 @@ package metasync
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 	"path/filepath"
 	"strings"
@@ -600,7 +600,7 @@ func TestSyncFamilyMarksRequestedProductUnavailable(t *testing.T) {
 	}
 }
 
-func openTestDB(t *testing.T) *sql.DB {
+func openTestDB(t *testing.T) *sqlutil.DB {
 	t.Helper()
 	db, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {

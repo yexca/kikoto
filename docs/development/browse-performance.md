@@ -28,7 +28,7 @@ never application routes.
 canonical edition, one available local presence, and a work-code-only metadata
 snapshot, plus one synthetic user and session. Each measured group starts from
 a fresh file-backed database migrated through the packaged migrations. HTTP
-experiments use the production four-connection pool and access policy over a
+experiments use the production connection pools and access policy over a
 real loopback server. Workflow jobs, the statistics worker, the card-summary
 worker, and metadata synchronization do not run during a measurement.
 
@@ -159,7 +159,7 @@ directly only when a change touches those paths.
 
 The recommendation experiment uses the bounded
 `testfixture.HighCardinalityWorkCodeAt` constructor, a file-backed migrated
-database, and the production connection pool. Its 100 users span zero, 10, 100,
+database, and the production connection pools. Its 100 users span zero, 10, 100,
 and 1,000 feedback works. Shared popular tags and creators exercise long posting
 lists. Catalog preparation runs separately from measured user preparation;
 normal GET requests consume only a fully published epoch.

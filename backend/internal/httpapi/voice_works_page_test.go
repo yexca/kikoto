@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 func TestKnownVoiceWorkViewKeepsIdentityWithItsRemoteObservations(t *testing.T) {
@@ -323,7 +323,7 @@ func voiceWorksPageFixture(t *testing.T) *Server {
 	return server
 }
 
-func execVoiceWorksFixture(t *testing.T, db *sql.DB, statements ...string) {
+func execVoiceWorksFixture(t *testing.T, db *sqlutil.DB, statements ...string) {
 	t.Helper()
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {

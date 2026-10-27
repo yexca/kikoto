@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
-func queueTestWorks(t *testing.T, count int) (*sql.DB, []int64) {
+func queueTestWorks(t *testing.T, count int) (*sqlutil.DB, []int64) {
 	t.Helper()
 	db := openTestDB(t)
 	if _, err := db.Exec("DELETE FROM work"); err != nil {

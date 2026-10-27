@@ -26,8 +26,22 @@ mounted at:
 
 ## Concurrency
 
-SQLite connections use an immediate lock for explicit write transactions. A
-writer therefore waits before establishing a read snapshot, avoiding failed
+A file-backed database opens two connection pools:
+
+- **Writer**: one connection. Statements run with `Exec`, write transactions,
+  and leased connections use it. SQLite admits one writer at a time, so other
+  writes wait for this connection in the server, where a request deadline or
+  cancellation ends the wait, instead of each holding a pooled connection
+  while SQLite waits for the write lock.
+- **Readers**: `KIKOTO_DB_READ_CONNECTIONS` connections, 8 by default.
+  Queries and read-only transactions use them. They are query-only, so a
+  write sent to a reader fails instead of waiting for the write lock; a write
+  that returns rows outside a transaction uses the writer explicitly. Because
+  of WAL, readers keep reading the last committed state while a write is in
+  progress or queued.
+
+The writer uses an immediate lock for explicit write transactions. A writer
+therefore waits before establishing a read snapshot, avoiding failed
 snapshot-to-write upgrades under concurrent workflow, heartbeat, and request
 traffic.
 
@@ -42,7 +56,7 @@ stall rather than fail its workflow.
 
 ## Connection Settings
 
-The file-backed pool opens at most four connections. Every connection applies:
+Every writer and reader connection applies:
 
 | Pragma | Value | Purpose |
 | --- | --- | --- |
@@ -50,13 +64,14 @@ The file-backed pool opens at most four connections. Every connection applies:
 | `journal_mode` | `WAL` | Let readers continue while one writer commits. |
 | `busy_timeout` | `30000` ms | Wait for a competing writer, including a commit stalled by slow storage. |
 | `synchronous` | `NORMAL` | Sync at WAL checkpoints rather than every commit. |
-| `cache_size` | `-16000` (about 16 MiB) | Page cache per connection, about 64 MiB in total. |
+| `cache_size` | `-16000` (about 16 MiB) | Page cache per connection, about 144 MiB in total with the default eight readers and one writer. |
 | `mmap_size` | 256 MiB | Memory-mapped reads per connection; address space, not resident memory. |
 
 With WAL, `synchronous=NORMAL` keeps the database consistent after an
 application or operating-system crash. A power loss can roll back only the most
-recently committed transactions. An in-memory database uses one connection and
-the same settings where they apply.
+recently committed transactions. Reader connections are also query-only. An
+in-memory database uses one connection for reads and writes and the same
+settings where they apply.
 
 ## Maintenance
 

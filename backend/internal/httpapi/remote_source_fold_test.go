@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -31,7 +31,7 @@ func remoteFoldEntry(id int64, code, title string) kikoeru.Work {
 	}
 }
 
-func seedRemoteFoldFamily(t *testing.T, db *sql.DB) {
+func seedRemoteFoldFamily(t *testing.T, db *sqlutil.DB) {
 	t.Helper()
 	metadataReviewExec(t, db, fmt.Sprintf(`INSERT INTO work(id,primary_code,title) VALUES(1,%[1]q,'Origin'),(2,%[2]q,'Chinese');
 	 INSERT INTO logical_work(id,canonical_work_id,canonical_code) VALUES(1,1,%[1]q);

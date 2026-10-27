@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,12 +11,13 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
 type duplicateFilesFixture struct {
 	server   *Server
-	db       *sql.DB
+	db       *sqlutil.DB
 	dataRoot string
 	originID int64
 }

@@ -12,10 +12,11 @@ import (
 	"github.com/yexca/kikoto/backend/internal/agerating"
 	"github.com/yexca/kikoto/backend/internal/contentpolicy"
 	"github.com/yexca/kikoto/backend/internal/searchtext"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type Store struct {
-	db *sql.DB
+	db *sqlutil.DB
 	// searchIndexWake asks RunSearchIndexWorker for an immediate pass.
 	searchIndexWake              chan struct{}
 	recommendationWrite          chan struct{}
@@ -27,7 +28,7 @@ type Store struct {
 	recommendationContextFlights map[string]*recommendationRecallPreparation
 }
 
-func NewStore(db *sql.DB) *Store {
+func NewStore(db *sqlutil.DB) *Store {
 	return &Store{db: db, searchIndexWake: make(chan struct{}, 1), recommendationWrite: make(chan struct{}, 1), recommendationQueue: make(chan struct{}, 32), recommendationCPU: make(chan struct{}, 2), recommendationFlights: make(map[string]*recommendationPreparation), recommendationContextFlights: make(map[string]*recommendationRecallPreparation)}
 }
 

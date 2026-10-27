@@ -21,7 +21,7 @@ func TestVoiceCreditProjectionTakesDLsiteIDsBehindNewerRemoteSnapshot(t *testing
 		t.Fatal(err)
 	}
 	var remoteProviderID int64
-	if err := db.QueryRow(`INSERT INTO metadata_provider (code, display_name) VALUES ('test_remote_metadata', 'Test remote metadata') RETURNING id`).Scan(&remoteProviderID); err != nil {
+	if err := db.Writer().QueryRow(`INSERT INTO metadata_provider (code, display_name) VALUES ('test_remote_metadata', 'Test remote metadata') RETURNING id`).Scan(&remoteProviderID); err != nil {
 		t.Fatal(err)
 	}
 	insertProjectionSnapshot(t, db, 1, "2000-01-01 00:00:00", `{"workno":"RJ00000000","creaters":{"voice_by":[{"id":"100","name":"Example Voice A","classification":"voice_by"}]}}`)
@@ -32,7 +32,7 @@ func TestVoiceCreditProjectionTakesDLsiteIDsBehindNewerRemoteSnapshot(t *testing
 	}
 	for _, workID := range []int64{1, 2} {
 		var snapshotID int64
-		if err := db.QueryRow(`
+		if err := db.Writer().QueryRow(`
 			INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json, fetched_at)
 			VALUES (?, ?, 'example', ?, '2000-01-01 00:00:05') RETURNING id
 		`, workID, remoteProviderID, remote[workID]).Scan(&snapshotID); err != nil {

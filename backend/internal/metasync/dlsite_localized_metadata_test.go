@@ -2,12 +2,12 @@ package metasync
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 func TestSyncFamilyStoresAllLanguageVariantsAndProjectsPriority(t *testing.T) {
@@ -241,7 +241,7 @@ func TestMetadataSnapshotRetentionSpansVariantKeyChanges(t *testing.T) {
 	}
 }
 
-func workIDForTest(t *testing.T, db *sql.DB, code string) int64 {
+func workIDForTest(t *testing.T, db *sqlutil.DB, code string) int64 {
 	t.Helper()
 	var id int64
 	if err := db.QueryRow("SELECT id FROM work WHERE primary_code = ?", code).Scan(&id); err != nil {

@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,11 +9,12 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
-func localPresenceAvailability(t *testing.T, db *sql.DB, workID, sourceID int64) string {
+func localPresenceAvailability(t *testing.T, db *sqlutil.DB, workID, sourceID int64) string {
 	t.Helper()
 	var availability string
 	if err := db.QueryRow(`
@@ -314,7 +314,7 @@ func TestLocalScanMarksIgnoredEntriesInsideAReadWorkFolderMissing(t *testing.T) 
 	assertLocalScanLocationAvailability(t, db, code+"/track.mp3", "available")
 }
 
-func assertLocalScanLocationAvailability(t *testing.T, db *sql.DB, path, want string) {
+func assertLocalScanLocationAvailability(t *testing.T, db *sqlutil.DB, path, want string) {
 	t.Helper()
 	var availability string
 	if err := db.QueryRow("SELECT availability FROM media_file_location WHERE path = ?", path).Scan(&availability); err != nil {

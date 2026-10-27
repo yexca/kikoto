@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,11 +9,12 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // seedDisplayNameWork stores one work whose folder holds an audio track and a
 // text file in a subfolder, and a second work with a file of its own.
-func seedDisplayNameWork(t *testing.T) *sql.DB {
+func seedDisplayNameWork(t *testing.T) *sqlutil.DB {
 	t.Helper()
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
@@ -196,7 +196,7 @@ func TestFolderEditMovesFolderDisplayNames(t *testing.T) {
 	}
 }
 
-func workFolderDisplayNamePaths(t *testing.T, db *sql.DB) []string {
+func workFolderDisplayNamePaths(t *testing.T, db *sqlutil.DB) []string {
 	t.Helper()
 	rows, err := db.Query("SELECT path FROM work_folder_display_name WHERE work_id = 11 ORDER BY path")
 	if err != nil {

@@ -2,12 +2,12 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"log/slog"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // Optional repairs run after core startup dispatch and snapshot projection.
@@ -47,7 +47,7 @@ func (s *Server) startStartupMetadataRepairs() {
 // language settings. Stored titles and tag names always use the original
 // language, so a database projected in another language is marked for the
 // backfill that follows to project again.
-func retireInstanceMetadataLanguage(ctx context.Context, db *sql.DB) error {
+func retireInstanceMetadataLanguage(ctx context.Context, db *sqlutil.DB) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

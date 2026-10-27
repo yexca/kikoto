@@ -10,10 +10,11 @@ import (
 	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
-func publishRecommendationMetadata(t *testing.T, db *sql.DB, store *library.Store) {
+func publishRecommendationMetadata(t *testing.T, db *sqlutil.DB, store *library.Store) {
 	t.Helper()
 	for {
 		processed, err := metasync.ProcessMetadataTagQueue(context.Background(), db, 64, nil)

@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,6 +24,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/llm"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/proxyconfig"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -38,7 +38,7 @@ type Server struct {
 	llmStore                       *llm.Store
 	llmRequestSlots                chan struct{}
 	asrStore                       *asr.Store
-	db                             *sql.DB
+	db                             *sqlutil.DB
 	statistics                     *storage.StatisticsMaintainer
 	accountStore                   *account.Store
 	accessPolicy                   *accesspolicy.Store
@@ -119,7 +119,7 @@ type localMediaIndexCall struct {
 	guards []func(context.Context) error // protected by localMediaIndexMu
 }
 
-func NewServer(db *sql.DB, cfg config.Config) *Server {
+func NewServer(db *sqlutil.DB, cfg config.Config) *Server {
 	dlsiteEndpoints := dlsite.DefaultEndpoints()
 	server := &Server{
 		llmStore:        llm.NewStore(db),

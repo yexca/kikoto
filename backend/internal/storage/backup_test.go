@@ -11,7 +11,8 @@ import (
 
 func TestBackupIntoWritesVerifiedCopy(t *testing.T) {
 	dir := t.TempDir()
-	db, err := Open(filepath.Join(dir, "source.db"))
+	// One reader, so the connection that ran the copy is the one checked below.
+	db, err := OpenWithOptions(filepath.Join(dir, "source.db"), OpenOptions{ReadConnections: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,6 +30,9 @@ func TestBackupIntoWritesVerifiedCopy(t *testing.T) {
 	}
 	if _, err := os.Stat(backupPath + backupPartialName); !os.IsNotExist(err) {
 		t.Fatalf("partial backup was left behind: %v", err)
+	}
+	if _, err := db.Readers().Exec("INSERT INTO note VALUES ('misrouted')"); err == nil {
+		t.Fatal("reader connection accepted a write after the backup")
 	}
 	copyDB, err := Open(backupPath)
 	if err != nil {
