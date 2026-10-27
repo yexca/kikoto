@@ -37,6 +37,16 @@
   as lyrics** is replaced by a note in the workspace that opens **Manage
   lyrics** on the folder's other lyrics. Manage cache and viewers who do not
   manage local files keep the list that selects files to delete.
+- **Find identical files** sits in the head of **This folder** and says what
+  it does before it starts. Its result is one line with how many files have
+  an identical copy and how much the suggested deletions free; marked files
+  carry a badge with the number of copies and where the other copy is, folders
+  count their identical files, and **Only identical files** filters the
+  folder. **Review identical files** lists each set with every copy, keeps the
+  copy you choose of a set repeated in the folder (suggesting the one without
+  a copy mark such as `(1)` or ` - Copy`), and replaces **Delete them** and
+  **Keep them**. In the wide workspace a badge opens the other copy's folder
+  at that file.
 - **Edit files** recovers a file published just before a service interruption
   without copying or downloading it again, and preserves a target that changed
   after publication.

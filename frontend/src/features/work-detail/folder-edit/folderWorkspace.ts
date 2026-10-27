@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { PendingDeletion, PendingDeletions } from "@/features/work-detail/folder-edit/fileWorkspaceModel";
 import {
@@ -100,15 +100,63 @@ export type FolderWorkspaceManage = {
   toolbar?: ReactNode;
   /** Shown above the edited folder's files. */
   thisFolderTools?: ReactNode;
-  /** A line under a file of the edited folder, by its path. */
-  fileNote?: (path: string) => ReactNode;
-  /** A note after a folder's name, by its path, in the edited folder and the final folder. */
-  folderNote?: (path: string) => ReactNode;
+  /**
+   * A note after a folder's name, by its path, in the edited folder and the
+   * final folder, with the paths in the edited folder of the files it holds.
+   */
+  folderNote?: (path: string, files: readonly string[]) => ReactNode;
+  /** Finding the edited folder's files that have an identical copy, when the viewer may. */
+  identical?: FolderWorkspaceIdentical;
   pending: PendingDeletions;
   onKeep: (item: PendingDeletion) => void;
   /** Deletes a file of the edited folder, or drops a file the edit adds. */
   onDiscard: (entry: FolderEditResultEntry) => void;
 };
+
+/**
+ * The edited folder's files that have an identical copy, and the parts that
+ * find, mark, and review them.
+ */
+export type FolderWorkspaceIdentical = {
+  /** Starts a check after saying what it does; it sits in This folder's head. */
+  entry: ReactNode;
+  /** The check's progress, or what it found with the way to the review. */
+  status: ReactNode;
+  /** Every set of identical files with the copy each keeps, once a check found some. */
+  review: ReactNode | null;
+  /** How many files of the edited folder have an identical copy. */
+  count: number;
+  /** The paths in the edited folder that have an identical copy. */
+  paths: ReadonlySet<string>;
+  /** A file's mark, by its path in the edited folder; `deleting` adds that the edit deletes it. */
+  badge: (path: string, options?: { deleting?: boolean }) => ReactNode;
+  /** Only the files with an identical copy are shown in the edited folder. */
+  only: boolean;
+  /** Changes with each finished check, so the edited folder opens the folders that hold identical files. */
+  revision: number;
+};
+
+/** A file to bring into view, by the place that holds it and its path there. */
+export type FolderWorkspaceRevealTarget = { resourceId: string; path: string };
+
+/** A file a tree brings into view; `seq` changes with each request, also for the same file. */
+export type FolderEditReveal = { path: string; seq: number };
+
+/**
+ * Moves between the workspace's views from inside them: to the review of
+ * identical files, and to a file in the place that holds it. A layout that
+ * cannot show a file in its place leaves `reveal` out.
+ */
+export type FolderWorkspaceNavigation = {
+  showIdenticalReview?: () => void;
+  reveal?: (target: FolderWorkspaceRevealTarget) => void;
+};
+
+export const FolderWorkspaceNavigationContext = createContext<FolderWorkspaceNavigation>({});
+
+export function useFolderWorkspaceNavigation() {
+  return useContext(FolderWorkspaceNavigationContext);
+}
 
 /** Arranges the final folder: moves its files and folders, and creates, renames, and deletes folders. */
 export type FolderWorkspaceArrange = {

@@ -8,6 +8,7 @@ import {
   Lock,
   Pencil,
   Trash2,
+  Undo2,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -35,7 +36,14 @@ import {
   type FolderEditResultEntry,
   type FolderEditTreeNode,
 } from "@/features/work-detail/folder-edit/folderEditModel";
-import { ResultRow, sortedFolders } from "@/features/work-detail/folder-edit/FolderEditPanes";
+import {
+  ResultRow,
+  revealedRowClass,
+  sortedFolders,
+  useFolderOpen,
+  useRevealedRow,
+  type FolderEditExpand,
+} from "@/features/work-detail/folder-edit/FolderEditPanes";
 import type { FolderWorkspaceArrange } from "@/features/work-detail/folder-edit/folderWorkspace";
 import type { RemoteFetchFileDecision } from "@/lib/api";
 import { naturalNameCompare } from "@/lib/naturalNameOrder";
@@ -374,8 +382,11 @@ export function FolderEditArrangeTree({
   creatingAtRoot,
   onCreatedAtRoot,
   onDiscard,
+  onRestore,
   folderNote,
-  entryNote,
+  entryMark,
+  expand,
+  reveal,
   onDropped,
   hint,
 }: {
@@ -388,10 +399,19 @@ export function FolderEditArrangeTree({
   creatingAtRoot: boolean;
   onCreatedAtRoot: () => void;
   onDiscard?: (entry: FolderEditResultEntry) => void;
-  /** Shown after a folder's name, such as for Kikoto's lyrics folder. */
-  folderNote?: (path: string) => ReactNode;
-  /** A line under a file's row, such as where it has an identical copy. */
-  entryNote?: (entry: FolderEditResultEntry) => ReactNode;
+  /** Takes a file the edit deletes back out of the edit. */
+  onRestore?: (entry: FolderEditResultEntry) => void;
+  /**
+   * Shown after a folder's name, such as for Kikoto's lyrics folder, with the
+   * paths in the edited folder of the files it holds.
+   */
+  folderNote?: (path: string, files: readonly string[]) => ReactNode;
+  /** Shown after a file's name, such as where it has an identical copy. */
+  entryMark?: (entry: FolderEditResultEntry) => ReactNode;
+  /** Opens the folders of marked entries, by entry key. */
+  expand?: FolderEditExpand;
+  /** An entry to bring into view, by its key. */
+  reveal?: { key: string; seq: number } | null;
   onDropped?: (drop: FolderEditDrop) => void;
   /** Replaces the arrange hint below the tree. */
   hint?: string;
@@ -425,8 +445,11 @@ export function FolderEditArrangeTree({
     over,
     setOver,
     onDiscard,
+    onRestore,
     folderNote,
-    entryNote,
+    entryMark,
+    expand,
+    reveal,
     onDropped,
   };
   const root = dropTarget(context, "", disabled);
@@ -487,8 +510,11 @@ type TreeContext = {
   over: DropOver | null;
   setOver: (over: DropOver | null) => void;
   onDiscard?: (entry: FolderEditResultEntry) => void;
-  folderNote?: (path: string) => ReactNode;
-  entryNote?: (entry: FolderEditResultEntry) => ReactNode;
+  onRestore?: (entry: FolderEditResultEntry) => void;
+  folderNote?: (path: string, files: readonly string[]) => ReactNode;
+  entryMark?: (entry: FolderEditResultEntry) => ReactNode;
+  expand?: FolderEditExpand;
+  reveal?: { key: string; seq: number } | null;
   onDropped?: (drop: FolderEditDrop) => void;
 };
 
@@ -504,17 +530,23 @@ function ArrangeNode({
   isRoot?: boolean;
 }) {
   const { t } = useTranslation();
-  const { arrange, disabled } = context;
-  const [open, setOpen] = useState(true);
+  const { arrange, disabled, expand, reveal } = context;
   const [renaming, setRenaming] = useState(false);
   const [creating, setCreating] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const locked = inLyricsFolder(node.path);
   const drop = dropTarget(context, node.path, disabled || locked || isRoot);
   const entries = [...node.files].sort((left, right) => naturalNameCompare(left.name, right.name));
-  const count = useMemo(
-    () => folderEditTreeFiles(node).filter((entry) => entry.state !== "remove" && entry.state !== "excluded").length,
-    [node],
+  const inside = useMemo(() => folderEditTreeFiles(node), [node]);
+  const count = inside.filter((entry) => entry.state !== "remove" && entry.state !== "excluded").length;
+  const ownPaths = useMemo(() => {
+    const prefix = currentFileKey("");
+    return inside.filter((entry) => entry.key.startsWith(prefix)).map((entry) => entry.key.slice(prefix.length));
+  }, [inside]);
+  const [open, setOpen] = useFolderOpen(
+    true,
+    !isRoot && expand && inside.some((entry) => expand.has(entry.key)) ? expand.revision : null,
+    !isRoot && reveal && inside.some((entry) => entry.key === reveal.key) ? reveal.seq : null,
   );
   const hasContent = !isRoot && folderHasContent(context.placed, arrange.folders, node.path);
   const deleteNow = () => {
@@ -622,7 +654,7 @@ function ArrangeNode({
           <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">{count}</span>
         </button>
         <DropActionLabel action={drop.action} />
-        {context.folderNote?.(node.path)}
+        {context.folderNote?.(node.path, ownPaths)}
         {!locked && (
           <RowMenu
             label={t("folderEdit.folderActions", { name: node.name })}
@@ -676,12 +708,16 @@ function ArrangeFile({ entry, depth, context }: { entry: FolderEditResultEntry; 
   const movable = !disabled && folderEditEntryMovable(entry);
   const here = parentFolder(entry.path);
   const own = entry.key.startsWith(currentFileKey(""));
-  const note = context.entryNote?.(entry);
+  const revealed = useRevealedRow<HTMLDivElement>(context.reveal?.key === entry.key ? context.reveal.seq : null);
   const discard =
     context.onDiscard && entry.state !== "remove" && entry.state !== "moved" && entry.state !== "replaced"
       ? context.onDiscard
       : undefined;
+  const restore = context.onRestore && entry.state === "remove" ? context.onRestore : undefined;
   const actions: RowMenuAction[] = [
+    ...(restore
+      ? [{ key: "keep", label: t("fileWorkspace.pending.keep"), icon: Undo2, run: () => restore(entry) }]
+      : []),
     ...(movable
       ? [{ key: "move", label: t("folderEdit.moveTo"), icon: FolderInput, choosesFolder: true, run: () => undefined }]
       : []),
@@ -701,8 +737,9 @@ function ArrangeFile({ entry, depth, context }: { entry: FolderEditResultEntry; 
   ];
   return (
     <div
+      ref={revealed.ref}
       draggable={movable}
-      className={cn(movable && "cursor-grab")}
+      className={cn("rounded-md", movable && "cursor-grab", revealed.flashing && revealedRowClass)}
       onDragStart={
         movable
           ? (event) => {
@@ -718,6 +755,7 @@ function ArrangeFile({ entry, depth, context }: { entry: FolderEditResultEntry; 
         decision={entry.item ? context.decisions[entry.item.itemKey] : undefined}
         disabled={disabled}
         onDecisionChange={context.onDecisionChange}
+        mark={context.entryMark?.(entry)}
         actions={
           actions.length > 0 && !disabled ? (
             <RowMenu
@@ -732,11 +770,6 @@ function ArrangeFile({ entry, depth, context }: { entry: FolderEditResultEntry; 
           )
         }
       />
-      {note && (
-        <div className="pb-1 pr-2" style={{ paddingLeft: depth * 14 + 32 }}>
-          {note}
-        </div>
-      )}
     </div>
   );
 }
