@@ -3802,6 +3802,8 @@ export const surfaceEnglish = {
     pending: "Unsaved changes: {{count}}",
     noChanges: "No changes",
     groupCoverage: "Tracks with lyrics: {{count}} of {{total}}",
+    coverage: "Lyrics on {{count}} of {{total}} tracks",
+    panelEmpty: "This track has no lyrics in this language.",
     save: "Save",
     saving: "Saving…",
     saved: "Lyrics assignments saved.",

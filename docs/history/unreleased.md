@@ -37,6 +37,16 @@
   as lyrics** is replaced by a note in the workspace that opens **Manage
   lyrics** on the folder's other lyrics. Manage cache and viewers who do not
   manage local files keep the list that selects files to delete.
+- **Manage lyrics → Assignments** shows the selected track's lyrics beside
+  the list on wide screens, with its timed lines and timing check, instead of
+  opening a preview under the row. Each folder and the language strip show
+  how many tracks have lyrics, a language with unsaved changes is marked, and
+  a dashed choice marks a track left to a file-name match or without lyrics.
+  **Lyrics files** marks its places like **Manage files**: the work folder's
+  managed and other lyrics as **Edited**, a remote edition as **Read-only**.
+  **Managed lyrics** lists how many files each language holds, the language
+  and copy-or-move choices sit together with the folder the lyrics go to, and
+  a language still to choose for selected lyrics is highlighted.
 - **Find identical files** sits in the head of **This folder** and says what
   it does before it starts. Its result is one line with how many files have
   an identical copy and how much the suggested deletions free; marked files

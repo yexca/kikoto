@@ -281,8 +281,11 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   with a lyrics choice. A user with library write access can assign any local
   lyrics file of the work, including translated lyrics whose names do not
   match the audio, or align a lyrics folder to the tracks by track number (or
-  by position when both folders hold the same number of files). Each row
-  previews the first lines and warns when the last timed line starts after the
+  by position when both folders hold the same number of files). Each folder
+  and the language strip show how many tracks have lyrics, and a dashed choice
+  marks a track left to a file-name match or without lyrics. On a wide screen
+  the selected track's lyrics appear beside the list; on a narrow one each row
+  previews the first lines. Both warn when the last timed line starts after the
   track ends. Assignments are shared by every listener and become the Auto
   choice; a listener's own choice still takes priority.
 - A track keeps one assigned lyrics file per language. The **Lyrics language**

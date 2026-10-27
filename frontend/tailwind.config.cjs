@@ -57,15 +57,21 @@ module.exports = {
           surface: "hsl(var(--error-surface) / <alpha-value>)",
           border: "hsl(var(--error-border) / <alpha-value>)",
         },
-        // What a file workspace pane may do: the edited folder, another local folder, a read-only remote.
+        // What a file workspace pane may do: the edited folder, another local folder, a read-only
+        // remote. Each is a strength of the primary color, from full for the edited folder to faint
+        // for a remote, so the places follow the preset and palette.
         place: Object.fromEntries(
-          ["target", "local", "remote"].map((role) => [
+          [
+            ["target", { band: 1, surface: 0.08, border: 0.4, text: "--primary" }],
+            ["local", { band: 0.5, surface: 0.045, border: 0.26, text: "--primary" }],
+            ["remote", { band: 0.22, surface: 0.025, border: 0.18, text: "--muted-foreground" }],
+          ].map(([role, strength]) => [
             role,
             {
-              DEFAULT: `hsl(var(--place-${role}) / <alpha-value>)`,
-              foreground: `hsl(var(--place-${role}-foreground) / <alpha-value>)`,
-              surface: `hsl(var(--place-${role}-surface) / <alpha-value>)`,
-              border: `hsl(var(--place-${role}-border) / <alpha-value>)`,
+              DEFAULT: `hsl(var(--primary) / calc(<alpha-value> * ${strength.band}))`,
+              foreground: `hsl(var(${strength.text}) / <alpha-value>)`,
+              surface: `hsl(var(--primary) / calc(<alpha-value> * ${strength.surface}))`,
+              border: `hsl(var(--primary) / calc(<alpha-value> * ${strength.border}))`,
             },
           ]),
         ),

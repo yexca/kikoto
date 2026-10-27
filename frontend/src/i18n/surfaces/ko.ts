@@ -3730,6 +3730,8 @@ export const surfaceKorean = {
     pending: "저장하지 않은 변경: {{count}}",
     noChanges: "변경 없음",
     groupCoverage: "가사가 있는 트랙: {{count}} / {{total}}",
+    coverage: "가사가 있는 트랙 {{count}} / {{total}}",
+    panelEmpty: "이 트랙에는 이 언어의 가사가 없습니다.",
     save: "저장",
     saving: "저장 중…",
     saved: "가사 설정을 저장했습니다.",

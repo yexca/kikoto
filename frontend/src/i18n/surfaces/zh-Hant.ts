@@ -3590,6 +3590,8 @@ export const surfaceHant = {
     pending: "未儲存的變更：{{count}}",
     noChanges: "沒有變更",
     groupCoverage: "有歌詞的音軌：{{count}} / {{total}}",
+    coverage: "有歌詞的音軌 {{count}} / {{total}}",
+    panelEmpty: "這條音軌沒有該語言的歌詞。",
     save: "儲存",
     saving: "正在儲存…",
     saved: "歌詞設定已儲存。",

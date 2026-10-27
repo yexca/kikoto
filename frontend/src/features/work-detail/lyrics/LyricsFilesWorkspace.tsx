@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ArrowRight,
   ArrowRightLeft,
   Captions,
   CheckCircle2,
@@ -8,6 +9,7 @@ import {
   HardDrive,
   Languages,
   Loader2,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -32,8 +34,10 @@ import {
   ResultNode,
   SelectionNode,
 } from "@/features/work-detail/folder-edit/FolderEditPanes";
+import type { FileWorkspacePlace } from "@/features/work-detail/folder-edit/fileWorkspaceModel";
+import { PlaceBadge, placeTone } from "@/features/work-detail/folder-edit/FolderWorkspaceTools";
 import { lyricsEditResourceChanges, type LyricsEditResource } from "@/features/work-detail/lyrics/lyricsEditModel";
-import { lyricsFileTrackCounts } from "@/features/work-detail/lyrics/managedLyricsModel";
+import { lyricsFileTrackCounts, managedLyricsLanguage } from "@/features/work-detail/lyrics/managedLyricsModel";
 import { useLyricsEditWorkspace, type LyricsEditWorkspace } from "@/features/work-detail/lyrics/useLyricsEditWorkspace";
 import { formatBytes } from "@/features/work-detail/media/mediaTreeModel";
 import { languageLabel } from "@/features/work-detail/workflows/RemoteFetchWorkspaceTrees";
@@ -203,7 +207,31 @@ function resourceTitle(resource: LyricsEditResource, t: (key: string) => string)
   return languageLabel(resource.editionLanguage, t);
 }
 
-const resourceIcons = { current: Captions, folder: FolderOpen, local: HardDrive, remote: Cloud } as const;
+const resourceIcons: Record<LyricsEditResource["kind"], LucideIcon> = {
+  current: Captions,
+  folder: FolderOpen,
+  local: HardDrive,
+  remote: Cloud,
+};
+
+/** The edited folder holds both the managed lyrics and its other lyrics; other places are only read from. */
+function lyricsResourcePlace(resource: LyricsEditResource): FileWorkspacePlace {
+  if (resource.kind === "current" || resource.kind === "folder") return "target";
+  return resource.kind;
+}
+
+/** The managed lyrics per language, such as "Japanese 2 · Simplified Chinese 1", in the languages' order. */
+function managedLanguageSummary(files: readonly FolderEditFile[], t: (key: string) => string) {
+  const counts = new Map<string, number>();
+  for (const file of files) {
+    const language = managedLyricsLanguage(file.path);
+    if (language !== null) counts.set(language, (counts.get(language) ?? 0) + 1);
+  }
+  return lyricsLanguages
+    .filter(([language]) => counts.has(language))
+    .map(([language, labelKey]) => `${t(labelKey)} ${counts.get(language)}`)
+    .join(" · ");
+}
 
 function ResourceColumn({
   workspace,
@@ -246,10 +274,13 @@ function ResourceColumn({
             {group.items.map((resource) => {
               const own = resource.kind === "current" || resource.kind === "folder";
               const state = workspace.files[resource.id];
+              const languages =
+                resource.kind === "current" && state?.status === "ready" ? managedLanguageSummary(state.files, t) : "";
               return (
                 <ResourceOption
                   key={resource.id}
                   icon={resourceIcons[resource.kind]}
+                  stripe={placeTone[lyricsResourcePlace(resource)].band}
                   title={resourceTitle(resource, t)}
                   noteTone={resource.offline ? "warning" : "muted"}
                   note={
@@ -260,7 +291,7 @@ function ResourceColumn({
                         : undefined
                   }
                   code={own ? undefined : resource.editionCode}
-                  detail={resource.kind === "remote" ? resource.sourceName : resource.rootPath}
+                  detail={languages || (resource.kind === "remote" ? resource.sourceName : resource.rootPath)}
                   removes={resource.kind === "current"}
                   selected={workspace.activeResource.id === resource.id}
                   changes={lyricsEditResourceChanges(
@@ -316,6 +347,10 @@ function SelectionColumn({
   const selectedCount = files.filter((file) => selected.has(file.path)).length;
   const bytes = folderEditSelectedBytes(files, selected);
   const language = workspace.language(resource);
+  const place = lyricsResourcePlace(resource);
+  const PlaceIcon = resourceIcons[resource.kind];
+  // Selected lyrics wait for their language before anything is planned.
+  const needsLanguage = language === null && selectedCount > 0;
   const setIncluded = (paths: readonly string[], included: boolean) =>
     workspace.setSelected(resource.id, withFolderEditPaths(selected, paths, included));
   const hint =
@@ -335,20 +370,23 @@ function SelectionColumn({
       aria-label={t("folderEdit.pane.select")}
       className={cn("min-h-0 flex-1 flex-col bg-card lg:flex lg:border-r", active ? "flex" : "hidden")}
     >
-      <div className="flex shrink-0 flex-col gap-2 border-b px-3 py-2.5 lg:px-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="truncate text-sm font-medium">
-              {resourceTitle(resource, t)}
-              {(resource.kind === "local" || resource.kind === "remote") && (
-                <span className="ml-1.5 font-mono text-xs font-normal text-muted-foreground">
-                  {resource.editionCode}
-                </span>
-              )}
-            </div>
-            <div className="truncate text-xs tabular-nums text-muted-foreground">
-              {t("folderEdit.selectionSummary", { selected: selectedCount, total: files.length })}
-              {selectedCount > 0 && bytes > 0 ? ` · ${formatBytes(bytes)}` : ""}
+      <div className="shrink-0 border-b">
+        <div className={cn("h-1", placeTone[place].band)} aria-hidden="true" />
+        <div className="flex items-center justify-between gap-3 px-3 pb-2 pt-2.5 lg:px-4">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <PlaceIcon className={cn("mt-0.5 h-4 w-4 shrink-0", placeTone[place].text)} aria-hidden="true" />
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-sm font-medium">{resourceTitle(resource, t)}</span>
+                {(resource.kind === "local" || resource.kind === "remote") && (
+                  <span className="shrink-0 font-mono text-xs text-muted-foreground">{resource.editionCode}</span>
+                )}
+                {place !== "local" && <PlaceBadge place={place} />}
+              </div>
+              <div className="mt-0.5 truncate text-xs tabular-nums text-muted-foreground">
+                {t("folderEdit.selectionSummary", { selected: selectedCount, total: files.length })}
+                {selectedCount > 0 && bytes > 0 ? ` · ${formatBytes(bytes)}` : ""}
+              </div>
             </div>
           </div>
           <div className="-mr-2 flex shrink-0 gap-1">
@@ -370,66 +408,88 @@ function SelectionColumn({
             </Button>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">{hint}</p>
+        <p className="px-3 pb-2.5 text-xs text-muted-foreground lg:px-4">{hint}</p>
         {resource.kind !== "current" && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <div className="mx-3 mb-3 grid grid-cols-1 gap-x-3 gap-y-1.5 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center sm:gap-y-2 rounded-lg border bg-muted/30 p-2.5 lg:mx-4">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Languages className="h-3.5 w-3.5" aria-hidden="true" />
               {t("lyricsManager.lyricsLanguage")}
             </span>
-            <div className="min-w-0 flex-1 basis-44 sm:max-w-64">
-              <FloatingSelect
-                // Each place keeps its own declared language.
-                key={resource.id}
-                value={language === null ? "" : language || allLanguagesValue}
-                options={languageOptions}
-                onValueChange={(value) => workspace.setLanguage(resource.id, value === allLanguagesValue ? "" : value)}
-                ariaLabel={t("lyricsManager.lyricsLanguage")}
-                triggerLabel={
-                  language === null ? (
-                    <span className="text-muted-foreground">{t("lyricsManager.chooseLanguage")}</span>
-                  ) : undefined
-                }
-                disabled={workspace.applying}
-              />
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <div className="min-w-0 flex-1 basis-44 sm:max-w-60">
+                <FloatingSelect
+                  // Each place keeps its own declared language.
+                  key={resource.id}
+                  value={language === null ? "" : language || allLanguagesValue}
+                  options={languageOptions}
+                  onValueChange={(value) =>
+                    workspace.setLanguage(resource.id, value === allLanguagesValue ? "" : value)
+                  }
+                  ariaLabel={t("lyricsManager.lyricsLanguage")}
+                  ariaInvalid={needsLanguage}
+                  triggerLabel={
+                    language === null ? (
+                      <span className={needsLanguage ? "text-warning-foreground" : "text-muted-foreground"}>
+                        {t("lyricsManager.chooseLanguage")}
+                      </span>
+                    ) : undefined
+                  }
+                  className={cn(
+                    "bg-background",
+                    needsLanguage && "border-warning-border bg-warning-surface ring-1 ring-warning/30",
+                  )}
+                  disabled={workspace.applying}
+                />
+              </div>
+              {language !== null && (
+                <span
+                  className={cn(
+                    "inline-flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-2xs",
+                    placeTone.target.surface,
+                    placeTone.target.border,
+                    placeTone.target.text,
+                  )}
+                  title={t("lyricsFiles.targetFolder", { folder: lyricsLanguageFolderPath(language) })}
+                >
+                  <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <span className="truncate">{lyricsLanguageFolderPath(language)}</span>
+                  <span className="sr-only">
+                    {t("lyricsFiles.targetFolder", { folder: lyricsLanguageFolderPath(language) })}
+                  </span>
+                </span>
+              )}
             </div>
-            {language !== null && (
-              <span className="truncate font-mono text-xs text-muted-foreground">
-                {t("lyricsFiles.targetFolder", { folder: lyricsLanguageFolderPath(language) })}
-              </span>
+            {resource.kind === "folder" && (
+              <>
+                <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t("lyricsFiles.folderMode")}
+                </span>
+                <div className="min-w-0 sm:max-w-60">
+                  <FloatingSelect
+                    value={workspace.folderMode}
+                    options={[
+                      { value: "copy", label: t("lyricsFiles.folderModeCopy") },
+                      { value: "move", label: t("lyricsFiles.folderModeMove") },
+                    ]}
+                    onValueChange={(value) => workspace.setFolderMode(value === "move" ? "move" : "copy")}
+                    ariaLabel={t("lyricsFiles.folderMode")}
+                    className="bg-background"
+                    disabled={workspace.applying}
+                  />
+                </div>
+                <label className="flex sm:col-span-2 cursor-pointer items-center gap-2 mt-0.5 border-t pt-2 text-xs text-muted-foreground">
+                  <Checkbox
+                    className="h-4 w-4"
+                    checked={workspace.listManaged}
+                    disabled={workspace.applying}
+                    onCheckedChange={workspace.setListManaged}
+                  />
+                  {t("lyricsFiles.listManaged")}
+                </label>
+              </>
             )}
           </div>
-        )}
-        {resource.kind === "folder" && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" />
-              {t("lyricsFiles.folderMode")}
-            </span>
-            <div className="min-w-0 flex-1 basis-44 sm:max-w-64">
-              <FloatingSelect
-                value={workspace.folderMode}
-                options={[
-                  { value: "copy", label: t("lyricsFiles.folderModeCopy") },
-                  { value: "move", label: t("lyricsFiles.folderModeMove") },
-                ]}
-                onValueChange={(value) => workspace.setFolderMode(value === "move" ? "move" : "copy")}
-                ariaLabel={t("lyricsFiles.folderMode")}
-                disabled={workspace.applying}
-              />
-            </div>
-          </div>
-        )}
-        {resource.kind === "folder" && (
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-            <Checkbox
-              className="h-4 w-4"
-              checked={workspace.listManaged}
-              disabled={workspace.applying}
-              onCheckedChange={workspace.setListManaged}
-            />
-            {t("lyricsFiles.listManaged")}
-          </label>
         )}
       </div>
       <div className="app-scroll min-h-0 flex-1 overflow-auto overscroll-contain px-2 py-2">
@@ -447,6 +507,7 @@ function SelectionColumn({
           </PaneNote>
         ) : files.length === 0 ? (
           <PaneNote>
+            <PlaceIcon className="h-5 w-5" aria-hidden="true" />
             {t(resource.kind === "current" ? "lyricsFiles.emptyResult" : "lyricsFiles.noLyricsFiles")}
           </PaneNote>
         ) : (
@@ -496,45 +557,52 @@ function ResultColumn({
       aria-label={t("lyricsFiles.managed")}
       className={cn("min-h-0 flex-1 flex-col bg-card lg:flex", active ? "flex" : "hidden")}
     >
-      <div className="shrink-0 space-y-1 border-b px-3 py-2.5 lg:px-4">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-sm font-medium">{t("lyricsFiles.managed")}</div>
-          <div className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums">
-            {added > 0 && (
-              <span className="rounded-full bg-primary/10 px-1.5 py-px font-medium text-primary">
-                {t("folderEdit.addCount", { count: added })}
-              </span>
-            )}
-            {removed > 0 && (
-              <span className="rounded-full bg-error-surface px-1.5 py-px font-medium text-error-foreground">
-                {t("folderEdit.removeCount", { count: removed })}
-              </span>
-            )}
+      <div className={cn("shrink-0 border-b", placeTone.target.surface)}>
+        <div className={cn("h-1", placeTone.target.band)} aria-hidden="true" />
+        <div className="space-y-2 px-3 py-2.5 lg:px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <Captions className={cn("h-4 w-4 shrink-0", placeTone.target.text)} aria-hidden="true" />
+            <span className="truncate text-sm font-medium">{t("lyricsFiles.managed")}</span>
+            <PlaceBadge place="target" />
+            <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs tabular-nums">
+              {added > 0 && (
+                <span className="rounded-full bg-primary/10 px-1.5 py-px font-medium text-primary">
+                  {t("folderEdit.addCount", { count: added })}
+                </span>
+              )}
+              {removed > 0 && (
+                <span className="rounded-full bg-error-surface px-1.5 py-px font-medium text-error-foreground">
+                  {t("folderEdit.removeCount", { count: removed })}
+                </span>
+              )}
+            </span>
           </div>
+          {folders.length > 1 ? (
+            <FloatingSelect
+              value={String(folder.id)}
+              options={folders.map((candidate) => ({
+                value: String(candidate.id),
+                label: <span className="font-mono text-xs">{candidate.rootPath}</span>,
+              }))}
+              onValueChange={(value) => onFolderChange(Number(value))}
+              ariaLabel={t("lyricsFiles.folder")}
+              disabled={workspace.applying}
+              className="h-8 bg-background font-mono text-xs"
+              contentClassName="max-w-[min(32rem,calc(100vw-1.5rem))]"
+            />
+          ) : (
+            <div className="truncate font-mono text-2xs text-muted-foreground" title={folder.rootPath}>
+              {folder.rootPath}
+            </div>
+          )}
         </div>
-        {folders.length > 1 ? (
-          <select
-            className="h-8 w-full rounded-md border bg-background px-2 font-mono text-xs"
-            value={folder.id}
-            disabled={workspace.applying}
-            aria-label={t("lyricsFiles.folder")}
-            onChange={(event) => onFolderChange(Number(event.target.value))}
-          >
-            {folders.map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {candidate.rootPath}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <div className="truncate font-mono text-xs text-muted-foreground" title={folder.rootPath}>
-            {folder.rootPath}
-          </div>
-        )}
       </div>
       <div className="app-scroll min-h-0 flex-1 overflow-auto overscroll-contain px-2 py-2">
         {workspace.result.length === 0 ? (
-          <PaneNote>{t("lyricsFiles.emptyResult")}</PaneNote>
+          <PaneNote>
+            <Captions className="h-5 w-5" aria-hidden="true" />
+            {t("lyricsFiles.emptyResult")}
+          </PaneNote>
         ) : (
           <ResultNode
             node={tree}

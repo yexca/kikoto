@@ -3582,6 +3582,8 @@ export const surfaceHans = {
     pending: "未保存的更改：{{count}}",
     noChanges: "没有更改",
     groupCoverage: "有歌词的音轨：{{count}} / {{total}}",
+    coverage: "有歌词的音轨 {{count}} / {{total}}",
+    panelEmpty: "这条音轨没有该语言的歌词。",
     save: "保存",
     saving: "正在保存…",
     saved: "歌词设置已保存。",
