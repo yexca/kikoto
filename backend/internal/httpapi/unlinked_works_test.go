@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +13,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/library"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 func TestCheckUnlinkedWorkSourcesEnqueuesOneParentWorkflow(t *testing.T) {
@@ -221,14 +221,14 @@ func TestDeleteUnlinkedWorksRequiresPermissionAndConfirmation(t *testing.T) {
 	}
 }
 
-func insertUnlinkedMaintenanceUser(t *testing.T, db *sql.DB, id int64) {
+func insertUnlinkedMaintenanceUser(t *testing.T, db *sqlutil.DB, id int64) {
 	t.Helper()
 	if _, err := db.Exec("INSERT INTO user_account (id, username, display_name, role) VALUES (?, ?, ?, 'admin')", id, "maintenance-user", "Maintenance user"); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertUnlinkedMaintenanceCount(t *testing.T, db *sql.DB, query string, want int) {
+func assertUnlinkedMaintenanceCount(t *testing.T, db *sqlutil.DB, query string, want int) {
 	t.Helper()
 	var got int
 	if err := db.QueryRow(query).Scan(&got); err != nil {

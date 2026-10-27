@@ -16,6 +16,7 @@ does not update its environment.
 | --- | --- | --- |
 | `KIKOTO_HTTP_ADDR` | `127.0.0.1:7659` | Backend listen address. |
 | `KIKOTO_DB_PATH` | `../config/kikoto.db` | SQLite database path. |
+| `KIKOTO_DB_READ_CONNECTIONS` | `8` | SQLite reader connections; writes use one separate connection. See [Database concurrency](database.md#concurrency). Each connection may hold a 16 MiB page cache; a missing, invalid, or non-positive value uses the default. |
 | `KIKOTO_DB_BACKUP_DIR` | `backups` beside the database | Verified database backups; see [Database backups](database.md#backups). Direct backend runs only: the Compose stacks do not pass it, so the container always uses `/config/backups`. |
 | `KIKOTO_DATA_ROOT` | `../data` | Local media library root. |
 | `KIKOTO_CACHE_ROOT` | `../cache` | Runtime cache root. It also holds [temporary files](#temporary-files). |

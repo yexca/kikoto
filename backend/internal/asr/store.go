@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 var ErrNotFound = errors.New("speech recognition service not found")
@@ -15,11 +17,11 @@ var ErrInvalid = errors.New("invalid speech recognition configuration")
 
 // Store keeps the administrator-configured services in one app setting.
 type Store struct {
-	db *sql.DB
+	db *sqlutil.DB
 	mu sync.Mutex
 }
 
-func NewStore(db *sql.DB) *Store { return &Store{db: db} }
+func NewStore(db *sqlutil.DB) *Store { return &Store{db: db} }
 
 func (s *Store) List(ctx context.Context) ([]Provider, error) {
 	var raw string

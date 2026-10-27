@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -53,7 +54,7 @@ func (c *genreNameClient) FetchProductWithLocale(_ context.Context, code, locale
 	return product, nil
 }
 
-func seedGenreWorks(t *testing.T, db *sql.DB, works map[int][]int64) map[int]int64 {
+func seedGenreWorks(t *testing.T, db *sqlutil.DB, works map[int][]int64) map[int]int64 {
 	t.Helper()
 	ids := map[int]int64{}
 	ordinals := make([]int, 0, len(works))
@@ -81,7 +82,7 @@ func seedGenreWorks(t *testing.T, db *sql.DB, works map[int][]int64) map[int]int
 	return ids
 }
 
-func genreName(t *testing.T, db *sql.DB, genre int64, language string) string {
+func genreName(t *testing.T, db *sqlutil.DB, genre int64, language string) string {
 	t.Helper()
 	var name string
 	err := db.QueryRow("SELECT name FROM dlsite_genre_name WHERE genre_id = ? AND language = ?", genre, language).Scan(&name)

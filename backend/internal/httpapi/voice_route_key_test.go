@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
-func seedVoiceRouteKeyFixture(t *testing.T, db *sql.DB) {
+func seedVoiceRouteKeyFixture(t *testing.T, db *sqlutil.DB) {
 	t.Helper()
 	for _, statement := range []string{
 		"INSERT INTO metadata_provider (id, code, display_name) VALUES (11, 'kikoeru_source_example_remote_a', 'Example Remote A')",

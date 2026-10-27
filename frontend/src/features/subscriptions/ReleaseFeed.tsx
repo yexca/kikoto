@@ -252,7 +252,14 @@ export function ReleaseFeed({
                 onWatch={() => void watch(code)}
               />
             )}
-            {family.work && <WorkCardListButton workId={family.work.id} active={family.work.favorite} />}
+            {family.work && (
+              <WorkCardListButton
+                workId={family.work.id}
+                active={family.work.favorite}
+                memberLists={family.work.memberLists}
+                fitLabel
+              />
+            )}
           </>
         }
       />

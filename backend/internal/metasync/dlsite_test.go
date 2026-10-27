@@ -2,16 +2,13 @@ package metasync
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"github.com/yexca/kikoto/backend/internal/storage"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/yexca/kikoto/backend/migrations"
-
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 	_ "modernc.org/sqlite"
 )
@@ -600,17 +597,10 @@ func TestSyncFamilyMarksRequestedProductUnavailable(t *testing.T) {
 	}
 }
 
-func openTestDB(t *testing.T) *sql.DB {
+func openTestDB(t *testing.T) *sqlutil.DB {
 	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := storagetest.Open(t)
 	db.SetMaxOpenConns(1)
-	t.Cleanup(func() { _ = db.Close() })
-	if err := storage.MigrateFS(db, migrations.Files, "test"); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := db.Exec("INSERT INTO work(primary_code,title) VALUES ('RJ00000004','Local title')"); err != nil {
 		t.Fatal(err)
 	}

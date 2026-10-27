@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -608,7 +609,7 @@ func (s *Server) reconcileRemoteFetchManifest(ctx context.Context, runID int64, 
 
 // The detailed cause stays in the server log; Activity only records that the
 // Fetch needs attention, because the cause can include local paths.
-func recordRemoteFetchRecoveryFailure(ctx context.Context, db *sql.DB, runID int64) error {
+func recordRemoteFetchRecoveryFailure(ctx context.Context, db *sqlutil.DB, runID int64) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

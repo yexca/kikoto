@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,13 +12,14 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/personal"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 var smartListUser = currentUser{ID: 1, Permissions: []string{"library:read", "favorites:write"}}
 
 // openSmartListTestServer seeds works 1–6 with metadata and personal tags.
 // Work 6 is a non-canonical edition of work 5 and carries Example Tag A.
-func openSmartListTestServer(t *testing.T) (*Server, *sql.DB) {
+func openSmartListTestServer(t *testing.T) (*Server, *sqlutil.DB) {
 	t.Helper()
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
@@ -126,7 +126,7 @@ func pageCodes(page smartListPage) []string {
 	return codes
 }
 
-func workFavoriteFlag(t *testing.T, db *sql.DB, workID int64) bool {
+func workFavoriteFlag(t *testing.T, db *sqlutil.DB, workID int64) bool {
 	t.Helper()
 	var favorite bool
 	err := db.QueryRow("SELECT COALESCE((SELECT favorite FROM user_work_state WHERE user_id = 1 AND work_id = ?), 0)", workID).Scan(&favorite)
@@ -214,6 +214,53 @@ func TestSmartListShowsRuleMatchesAndHandEditsWithoutFavoritingMatches(t *testin
 	}
 	if got := pageCodes(requestSmartListPage(t, server, listQuery)); slices.Contains(got, "RJ00000005") {
 		t.Fatalf("a rule match cleared through the work's lists stays shown: %v", got)
+	}
+}
+
+func TestWorkCardsNameTheViewersListsInListOrder(t *testing.T) {
+	server, db := openSmartListTestServer(t)
+	code, body := callSmartListHandler(t, server.createFavoriteList, http.MethodPost, "/api/favorite-lists", `{"name":"Example List"}`, smartListUser)
+	if code != http.StatusCreated {
+		t.Fatalf("create list status = %d, body = %s", code, body)
+	}
+	var userList favoriteListResponse
+	if err := json.Unmarshal([]byte(body), &userList); err != nil {
+		t.Fatal(err)
+	}
+	smart := createSmartList(t, server, "Example Smart", `{"require":[{"kind":"metadata","id":101}],"exclude":[{"kind":"metadata","id":102}]}`)
+	userKey, smartKey := strconv.FormatInt(userList.ID, 10), strconv.FormatInt(smart.ID, 10)
+	changeSmartListMembership(t, server, `{"workIds":[1,3],"addListIds":[`+userKey+`]}`)
+	changeSmartListMembership(t, server, `{"workIds":[3],"addListIds":[`+smartKey+`]}`)
+	changeSmartListMembership(t, server, `{"workIds":[5],"removeListIds":[`+smartKey+`]}`)
+	if _, err := db.Exec(`
+		INSERT INTO favorite_list (id, user_id, name, sort_order, kind) VALUES (900, 2, 'Other List', 0, 'user');
+		INSERT INTO favorite_list_item (list_id, work_id) VALUES (900, 4);
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	code, body = callSmartListHandler(t, server.listWorks, http.MethodGet, "/api/works?pageSize=50&sort=code&direction=asc", "", smartListUser)
+	if code != http.StatusOK {
+		t.Fatalf("list works status = %d, body = %s", code, body)
+	}
+	var page struct {
+		Works []libraryWorkSummary `json:"works"`
+	}
+	if err := json.Unmarshal([]byte(body), &page); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string][]string{}
+	for _, work := range page.Works {
+		for _, list := range work.MemberLists {
+			got[work.PrimaryCode] = append(got[work.PrimaryCode], list.Name)
+		}
+	}
+	want := map[string][]string{
+		"RJ00000001": {"Example List", "Example Smart"},
+		"RJ00000003": {"Example List", "Example Smart"},
+	}
+	if len(got) != len(want) || !slices.Equal(got["RJ00000001"], want["RJ00000001"]) || !slices.Equal(got["RJ00000003"], want["RJ00000003"]) {
+		t.Fatalf("card lists = %v, want %v: hand adds and rule matches in list order, without removed matches or another user's lists", got, want)
 	}
 }
 

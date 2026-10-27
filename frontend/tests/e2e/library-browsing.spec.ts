@@ -437,6 +437,30 @@ test("narrow cards fold personal and metadata tags into one row while wide cards
   await expect(page.getByRole("button", { name: "Long metadata tag 14", exact: true })).toBeVisible();
 });
 
+test("a card names its lists beside the list icon only while the footer has room", async ({ page }) => {
+  const memberLists = [
+    { id: 1, name: "Synthetic list" },
+    { id: 2, name: "Synthetic smart list" },
+  ];
+  await mockApplication(page, undefined, false, 1, 0, [], undefined, {
+    work: { ...work, favorite: true, memberLists } as typeof work,
+  });
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/?mobileColumns=2&desktopColumns=4");
+
+  const card = page.getByTestId("work-card").first();
+  const listButton = card.getByRole("button", { name: "Lists: Synthetic list and Synthetic smart list", exact: true });
+  await expect(listButton.getByText("Synthetic list", { exact: true })).toBeVisible();
+  await expect(listButton.getByText("+1", { exact: true })).toBeVisible();
+  expect(await card.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+
+  // A two-column phone card has no room for the name, so only the lit icon stays.
+  await page.setViewportSize({ width: 412, height: 915 });
+  await expect(listButton.getByText("Synthetic list", { exact: true })).toHaveCount(0);
+  await expect(listButton).toBeVisible();
+  expect((await listButton.boundingBox())?.width).toBeLessThanOrEqual(33);
+});
+
 test("@desktop recently played opens from a toolbar popover and returns to the work", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const recentWorks = [

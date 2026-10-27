@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type syncContextKey int
@@ -30,7 +31,7 @@ func (s *DLsiteSyncer) beginAttempt(ctx context.Context) (context.Context, error
 	return beginSyncAttempt(ctx, s.db)
 }
 
-func beginSyncAttempt(ctx context.Context, db *sql.DB) (context.Context, error) {
+func beginSyncAttempt(ctx context.Context, db *sqlutil.DB) (context.Context, error) {
 	if attemptID(ctx) > 0 {
 		return ctx, nil
 	}
@@ -50,7 +51,7 @@ func (s *DLsiteSyncer) linkAttemptRun(ctx context.Context, id int64) error {
 	return linkSyncAttemptRun(ctx, s.db, id)
 }
 
-func linkSyncAttemptRun(ctx context.Context, db *sql.DB, id int64) error {
+func linkSyncAttemptRun(ctx context.Context, db *sqlutil.DB, id int64) error {
 	runID, _ := ctx.Value(syncRunKey).(int64)
 	if runID <= 0 || id <= 0 {
 		return nil
@@ -71,7 +72,7 @@ const (
 // RecordProviderOutcome stores a non-DLsite provider's metadata outcome, such
 // as one remote fallback source, in the same attempt ledger and current state
 // as DLsite. An unavailable outcome means the provider has no such work.
-func RecordProviderOutcome(ctx context.Context, db *sql.DB, workID int64, providerCode, providerName, status string) error {
+func RecordProviderOutcome(ctx context.Context, db *sqlutil.DB, workID int64, providerCode, providerName, status string) error {
 	if ctx.Err() != nil {
 		return nil
 	}
@@ -205,7 +206,7 @@ func newerMetadataWasStored(ctx context.Context, tx *sql.Tx, workID, providerID 
 // ClearWorkProviderIssues removes one work's pending failed and unavailable
 // states of the given providers, for example earlier fallback sources once a
 // later source has filled the work.
-func ClearWorkProviderIssues(ctx context.Context, db *sql.DB, workID int64, providerCodes []string) error {
+func ClearWorkProviderIssues(ctx context.Context, db *sqlutil.DB, workID int64, providerCodes []string) error {
 	for _, code := range providerCodes {
 		if _, err := db.ExecContext(ctx, `DELETE FROM work_metadata_sync_state
 			WHERE work_id = ? AND status IN ('failed', 'unavailable')

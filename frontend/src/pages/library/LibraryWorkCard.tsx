@@ -163,6 +163,8 @@ export const LibraryWorkCard = memo(function LibraryWorkCard({
               <WorkCardListButton
                 workId={work.id}
                 active={work.favorite}
+                memberLists={work.memberLists}
+                fitLabel
                 onSaved={(favorite) => onFavoriteSaved(work, favorite)}
               />
               <WorkRatingControl

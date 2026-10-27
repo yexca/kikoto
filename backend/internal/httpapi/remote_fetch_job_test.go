@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,9 +9,11 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
-func seedExecutableFetch(t *testing.T, server *Server, db *sql.DB, sourceURL string) remoteWorkSavePlan {
+func seedExecutableFetch(t *testing.T, server *Server, db *sqlutil.DB, sourceURL string) remoteWorkSavePlan {
 	t.Helper()
 	plan := seedPublishedFetch(t, server, db, 0, true)
 	plan.Items[0].SourcePath = sourceURL + "/track.mp3"
@@ -37,7 +38,7 @@ func seedExecutableFetch(t *testing.T, server *Server, db *sql.DB, sourceURL str
 	return plan
 }
 
-func assertCompletedFetch(t *testing.T, server *Server, db *sql.DB) {
+func assertCompletedFetch(t *testing.T, server *Server, db *sqlutil.DB) {
 	t.Helper()
 	manifest, err := server.loadRemoteFetchManifest(context.Background(), 1)
 	if err != nil {

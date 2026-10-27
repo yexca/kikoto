@@ -2,30 +2,22 @@ package personal
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 func testStore(t *testing.T) Store {
 	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "personal.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := storagetest.Open(t)
 	db.SetMaxOpenConns(1)
-	t.Cleanup(func() { _ = db.Close() })
-	if err = storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		t.Fatal(err)
-	}
 	execFixture(t, db, `INSERT INTO user_account (id,username,display_name,role) VALUES (1,'synthetic-user','Example User','user'),(2,'synthetic-other','Example Other','user')`)
 	for i := 0; i < 3; i++ {
 		execFixture(t, db, `INSERT INTO work (id,primary_code,title) VALUES (?,?,?)`, i+1, testfixture.WorkCode(testfixture.PrefixRJ, i), "Example Work")
@@ -33,7 +25,7 @@ func testStore(t *testing.T) Store {
 	return Store{DB: db}
 }
 
-func execFixture(t *testing.T, db *sql.DB, query string, args ...any) {
+func execFixture(t *testing.T, db *sqlutil.DB, query string, args ...any) {
 	t.Helper()
 	if _, err := db.Exec(query, args...); err != nil {
 		t.Fatal(err)

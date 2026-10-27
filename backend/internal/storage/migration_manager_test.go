@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/migrations"
 )
 
@@ -616,7 +617,7 @@ func TestMigrateConcurrentStartupIsIdempotent(t *testing.T) {
 	}
 }
 
-func openMigrationManagerDB(t *testing.T) *sql.DB {
+func openMigrationManagerDB(t *testing.T) *sqlutil.DB {
 	t.Helper()
 	db, err := Open(filepath.Join(t.TempDir(), "migration-manager.db"))
 	if err != nil {
@@ -660,7 +661,7 @@ func writeMigration(t *testing.T, dir, filename, contents string) {
 	}
 }
 
-func replaceMigrationHistoryWithRetiredBaseline(t *testing.T, db *sql.DB, filename string) {
+func replaceMigrationHistoryWithRetiredBaseline(t *testing.T, db *sqlutil.DB, filename string) {
 	t.Helper()
 	var baseline migrationAsset
 	for _, candidate := range retiredBaselineLedgerAssets {
@@ -698,7 +699,7 @@ func replaceMigrationHistoryWithRetiredBaseline(t *testing.T, db *sql.DB, filena
 	}
 }
 
-func schemaSnapshot(t *testing.T, db *sql.DB) map[string]string {
+func schemaSnapshot(t *testing.T, db *sqlutil.DB) map[string]string {
 	t.Helper()
 	rows, err := db.Query(`
 		SELECT type, name, sql
@@ -725,7 +726,7 @@ func schemaSnapshot(t *testing.T, db *sql.DB) map[string]string {
 	return snapshot
 }
 
-func dataSnapshot(t *testing.T, db *sql.DB) map[string]string {
+func dataSnapshot(t *testing.T, db *sqlutil.DB) map[string]string {
 	t.Helper()
 	tables := applicationTables(t, db)
 	snapshot := make(map[string]string)
@@ -773,7 +774,7 @@ type testColumn struct {
 	defaultValue string
 }
 
-func applicationTables(t *testing.T, db *sql.DB) []string {
+func applicationTables(t *testing.T, db *sqlutil.DB) []string {
 	t.Helper()
 	rows, err := db.Query(`
 		SELECT name FROM sqlite_schema
@@ -799,7 +800,7 @@ func applicationTables(t *testing.T, db *sql.DB) []string {
 	return tables
 }
 
-func tableInfo(t *testing.T, db *sql.DB, table string) []testColumn {
+func tableInfo(t *testing.T, db *sqlutil.DB, table string) []testColumn {
 	t.Helper()
 	rows, err := db.Query("PRAGMA table_info(" + quoteIdentifierForTest(table) + ")")
 	if err != nil {

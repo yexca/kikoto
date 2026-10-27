@@ -39,7 +39,7 @@ func run() error {
 	// one ends the process immediately instead of waiting for the drain.
 	context.AfterFunc(ctx, stop)
 
-	db, err := storage.Open(cfg.DatabasePath)
+	db, err := storage.OpenWithOptions(cfg.DatabasePath, storage.OpenOptions{ReadConnections: cfg.DBReadConnections})
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}

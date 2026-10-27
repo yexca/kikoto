@@ -2,11 +2,12 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
-func insertProjectionSnapshot(t *testing.T, db *sql.DB, workID int64, fetchedAt string, raw string) {
+func insertProjectionSnapshot(t *testing.T, db *sqlutil.DB, workID int64, fetchedAt string, raw string) {
 	t.Helper()
 	if _, err := db.Exec(`
 		INSERT INTO metadata_snapshot (work_id, provider_id, external_id, snapshot_json, fetched_at)
@@ -16,7 +17,7 @@ func insertProjectionSnapshot(t *testing.T, db *sql.DB, workID int64, fetchedAt 
 	}
 }
 
-func recommendationInputRevision(t *testing.T, db *sql.DB) int {
+func recommendationInputRevision(t *testing.T, db *sqlutil.DB) int {
 	t.Helper()
 	var revision int
 	if err := db.QueryRow(`SELECT revision FROM recommendation_input_revision WHERE id = 1`).Scan(&revision); err != nil {

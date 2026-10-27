@@ -14,10 +14,11 @@ import (
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
-func metadataLanguageUser(t *testing.T, db *sql.DB, name string) (int64, context.Context) {
+func metadataLanguageUser(t *testing.T, db *sqlutil.DB, name string) (int64, context.Context) {
 	t.Helper()
 	id := metadataReviewExec(t, db, "INSERT INTO user_account (username, display_name, role) VALUES (?, ?, 'user')", name, name)
 	return id, context.WithValue(context.Background(), currentUserKey, currentUser{ID: id, Role: "user"})
@@ -25,7 +26,7 @@ func metadataLanguageUser(t *testing.T, db *sql.DB, name string) (int64, context
 
 // setUserMetadataLanguages stores a user's personal metadata language
 // priority directly, as a JSON list.
-func setUserMetadataLanguages(t *testing.T, db *sql.DB, userID int64, languages string) {
+func setUserMetadataLanguages(t *testing.T, db *sqlutil.DB, userID int64, languages string) {
 	t.Helper()
 	metadataReviewExec(t, db, `INSERT INTO user_preference (user_id, metadata_languages) VALUES (?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET metadata_languages = excluded.metadata_languages`, userID, languages)

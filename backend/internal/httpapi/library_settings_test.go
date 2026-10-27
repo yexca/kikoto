@@ -13,10 +13,11 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
-func clearLibraryMode(t *testing.T, db *sql.DB) {
+func clearLibraryMode(t *testing.T, db *sqlutil.DB) {
 	t.Helper()
 	if _, err := db.Exec("DELETE FROM app_setting WHERE key = 'library_mode'"); err != nil {
 		t.Fatal(err)

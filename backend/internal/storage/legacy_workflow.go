@@ -2,14 +2,15 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // PreserveLegacyWorkflows runs before numbered migration 035 can remove user
 // definitions. It is safe to repeat after an interrupted upgrade. Snapshot
 // rows belong to the protected database and are never logged.
-func PreserveLegacyWorkflows(ctx context.Context, db *sql.DB, fromVersion int) error {
+func PreserveLegacyWorkflows(ctx context.Context, db *sqlutil.DB, fromVersion int) error {
 	if fromVersion >= 35 {
 		return nil
 	}

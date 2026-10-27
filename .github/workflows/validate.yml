@@ -84,7 +84,9 @@ jobs:
       matrix:
         # The race suite is serial inside each package, so it runs as slices on
         # separate runners. Slices share one compilation cache, saved by the
-        # first; every other check owns its cache.
+        # first; every other check owns its cache. Each slice uploads its test
+        # events, from which make backend-race-durations records the durations
+        # the slices balance by.
         include:
           - check: static
             target: ci-backend-static
@@ -96,22 +98,28 @@ jobs:
             save-cache: true
           - check: race 1/6
             target: RACE_SHARD=1/6 backend-race-shard
+            slice: 1
             cache: race
             save-cache: true
           - check: race 2/6
             target: RACE_SHARD=2/6 backend-race-shard
+            slice: 2
             cache: race
           - check: race 3/6
             target: RACE_SHARD=3/6 backend-race-shard
+            slice: 3
             cache: race
           - check: race 4/6
             target: RACE_SHARD=4/6 backend-race-shard
+            slice: 4
             cache: race
           - check: race 5/6
             target: RACE_SHARD=5/6 backend-race-shard
+            slice: 5
             cache: race
           - check: race 6/6
             target: RACE_SHARD=6/6 backend-race-shard
+            slice: 6
             cache: race
     steps:
       - name: Checkout
@@ -144,6 +152,8 @@ jobs:
           key: go-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ matrix.cache }}-${{ hashFiles('backend/**/*.go', 'backend/**/*.sql', 'backend/go.mod', 'backend/go.sum', 'scripts/*.go', 'scripts/golangci-lint.yml', 'Makefile') }}
           restore-keys: go-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ matrix.cache }}-
       - name: Run backend checks
+        env:
+          RACE_EVENTS: ${{ runner.temp }}/race-events.json
         run: make ${{ matrix.target }}
       - name: Save Go modules from one matrix job
         if: matrix.check == 'static' && steps.modules.outputs.cache-hit != 'true'
@@ -159,6 +169,13 @@ jobs:
             ~/.cache/go-build
             ~/.cache/golangci-lint
           key: ${{ steps.build.outputs.cache-primary-key }}
+      - name: Upload race test events
+        if: matrix.slice
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: backend-race-events-${{ matrix.slice }}
+          path: ${{ runner.temp }}/race-events.json
+          retention-days: 30
       - name: Upload backend coverage
         if: always() && matrix.check == 'coverage'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -208,7 +225,7 @@ jobs:
       - name: Set up Node
         uses: ./.github/actions/setup-node
       - name: Run browser regression shard
-        run: make E2E_ARGS="--shard=${{ matrix.shard }}/4" frontend-e2e
+        run: make E2E_ARGS="--shard=${{ matrix.shard }}/4" frontend-e2e-container
       - name: Upload E2E artifacts
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

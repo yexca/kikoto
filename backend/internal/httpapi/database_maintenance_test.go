@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,9 +11,10 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
-func seedDatabaseCleanupFixture(t *testing.T, db *sql.DB, dataRoot string) {
+func seedDatabaseCleanupFixture(t *testing.T, db *sqlutil.DB, dataRoot string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(dataRoot, "present", "RJ00000001"), 0o755); err != nil {
 		t.Fatal(err)

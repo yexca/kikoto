@@ -44,6 +44,9 @@
   a permission denial also clears protected data already displayed in Activity.
 - Library and Favorites cards show your rating beside the Quick mark and rate
   a work, or clear its rating, without opening it.
+- The list button on Library, Favorites, Discover, and Rankings cards names
+  the list that holds the work, as on work detail, when the card footer has
+  room for the name; a narrower card keeps the lit list icon alone.
 - The work detail stat strip shows your rating beside the DLsite rating, also
   for custom works.
 - Work detail labels the unrated star **Rate**, so it no longer reads as a
@@ -226,11 +229,32 @@
 </details>
 
 <details>
+<summary><strong>Operations and reliability</strong></summary>
+
+- Database writes wait for one dedicated writer connection, and reads use a
+  separate pool of eight connections, so queued writes no longer leave
+  browsing and sign-in waiting for a free connection.
+  `KIKOTO_DB_READ_CONNECTIONS` sets the number of readers; each connection
+  may use up to 16 MiB of page cache.
+- Playback, transcription, loudness analysis, cover selection, and media
+  probing accept files when the data or cache root, or one of its parent
+  directories, is a symbolic link. A link inside the root that leaves it is
+  still refused.
+
+</details>
+
+<details>
 <summary><strong>Development and docs</strong></summary>
 
 - CI validation finishes sooner: planned jobs start without waiting for Style,
-  the backend race suite runs as six slices balanced by recorded test
-  durations (`make backend-race-durations` refreshes them), and each browser
-  test shard runs three workers.
+  the backend race suite runs as six slices balanced by test durations
+  recorded in CI (`make RACE_RUN=<run id> backend-race-durations` refreshes
+  them), backend tests copy a schema migrated once per test process instead
+  of migrating a database for each test, each browser test shard runs three
+  workers in the pinned Playwright image, and no browser job installs system
+  packages.
+- Make runs every Go target with the toolchain `backend/go.mod` pins, so a
+  newer locally installed Go no longer breaks `make backend-lint`; set
+  `GOTOOLCHAIN` to override it.
 
 </details>

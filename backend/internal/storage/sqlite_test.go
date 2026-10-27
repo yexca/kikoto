@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 func TestOpenEnablesForeignKeysOnEveryConnection(t *testing.T) {
@@ -30,13 +32,18 @@ func TestOpenEnablesForeignKeysOnEveryConnection(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	conns := make([]*sql.Conn, 4)
-	for i := range conns {
-		conn, err := db.Conn(ctx)
+	writer, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("writer Conn() error = %v", err)
+	}
+	defer func() { _ = writer.Close() }()
+	conns := []*sql.Conn{writer}
+	for i := range DefaultReadConnections {
+		conn, err := db.Readers().Conn(ctx)
 		if err != nil {
-			t.Fatalf("Conn(%d) error = %v", i, err)
+			t.Fatalf("reader Conn(%d) error = %v", i, err)
 		}
-		conns[i] = conn
+		conns = append(conns, conn)
 		defer conn.Close()
 	}
 
@@ -111,6 +118,101 @@ func TestOpenSerializesImmediateWriteTransactions(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("second transaction remained blocked")
+	}
+}
+
+func TestOpenSizesWriterAndReaderPools(t *testing.T) {
+	for _, test := range []struct {
+		options OpenOptions
+		readers int
+	}{
+		{options: OpenOptions{}, readers: DefaultReadConnections},
+		{options: OpenOptions{ReadConnections: 3}, readers: 3},
+		{options: OpenOptions{ReadConnections: -1}, readers: DefaultReadConnections},
+	} {
+		db, err := OpenWithOptions(filepath.Join(t.TempDir(), "pools.db"), test.options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writers, readers := db.Writer().Stats().MaxOpenConnections, db.Readers().Stats().MaxOpenConnections
+		_ = db.Close()
+		if writers != 1 || readers != test.readers {
+			t.Fatalf("OpenWithOptions(%+v) pools = %d writer / %d readers, want 1 / %d", test.options, writers, readers, test.readers)
+		}
+	}
+}
+
+func TestOpenKeepsReadsAvailableWhileWritersQueue(t *testing.T) {
+	db, err := OpenWithOptions(filepath.Join(t.TempDir(), "queued-writers.db"), OpenOptions{ReadConnections: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec("CREATE TABLE values_for_test (id INTEGER PRIMARY KEY, value TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	first, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = first.Rollback() }()
+	if _, err := first.Exec("INSERT INTO values_for_test (value) VALUES ('first')"); err != nil {
+		t.Fatal(err)
+	}
+	// Further writers wait for the writer connection without taking a reader.
+	waitingCtx, cancelWaiting := context.WithCancel(ctx)
+	defer cancelWaiting()
+	waiting := make(chan error, 2)
+	for range 2 {
+		go func() {
+			_, err := db.ExecContext(waitingCtx, "INSERT INTO values_for_test (value) VALUES ('queued')")
+			waiting <- err
+		}()
+	}
+	for db.Writer().Stats().WaitCount < 2 {
+		time.Sleep(time.Millisecond)
+	}
+
+	readCtx, cancelRead := context.WithTimeout(ctx, 2*time.Second)
+	defer cancelRead()
+	var count int
+	if err := db.QueryRowContext(readCtx, "SELECT COUNT(*) FROM values_for_test").Scan(&count); err != nil {
+		t.Fatalf("read while writers queue: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("read saw %d uncommitted rows", count)
+	}
+	snapshot, err := db.BeginTx(readCtx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatalf("read-only transaction while writers queue: %v", err)
+	}
+	_ = snapshot.Rollback()
+
+	cancelWaiting()
+	for range 2 {
+		if err := <-waiting; err == nil {
+			t.Fatal("queued writer ran while the write transaction held the writer")
+		}
+	}
+}
+
+func TestOpenRejectsWritesOnReaderConnections(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "query-only.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec("CREATE TABLE values_for_test (id INTEGER PRIMARY KEY, value TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	var id int64
+	err = db.QueryRow("INSERT INTO values_for_test (value) VALUES ('misrouted') RETURNING id").Scan(&id)
+	if err == nil {
+		t.Fatal("query method wrote through a reader connection")
+	}
+	if err := db.Writer().QueryRow("INSERT INTO values_for_test (value) VALUES ('routed') RETURNING id").Scan(&id); err != nil {
+		t.Fatalf("writer query: %v", err)
 	}
 }
 
@@ -650,7 +752,7 @@ func TestMergeStartupLibraryRefreshMigrationDoesNotRestoreDeletedStartupTrigger(
 	}
 }
 
-func openWorkflowMergeMigrationDB(t *testing.T) *sql.DB {
+func openWorkflowMergeMigrationDB(t *testing.T) *sqlutil.DB {
 	t.Helper()
 	db, err := Open(":memory:")
 	if err != nil {
@@ -668,7 +770,7 @@ func openWorkflowMergeMigrationDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func applyWorkflowMergeMigration(t *testing.T, db *sql.DB) {
+func applyWorkflowMergeMigration(t *testing.T, db *sqlutil.DB) {
 	t.Helper()
 	migrationSQL, err := os.ReadFile(filepath.Join("..", "..", "migrations", "018_merge_startup_library_refresh.sql"))
 	if err != nil {

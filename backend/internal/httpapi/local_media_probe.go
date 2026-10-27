@@ -127,8 +127,7 @@ func (s *Server) probeLocalMediaTarget(ctx context.Context, target localMediaPro
 	if err != nil || !isPathWithinRoot(root, file.AbsPath) {
 		return nil
 	}
-	resolved, err := filepath.EvalSymlinks(file.AbsPath)
-	if err != nil || !isPathWithinRoot(root, resolved) {
+	if _, err := resolvePathWithinRoot(root, file.AbsPath); err != nil {
 		return nil
 	}
 	before, err := os.Stat(file.AbsPath)

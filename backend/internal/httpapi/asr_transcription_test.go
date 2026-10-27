@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/binary"
 	"encoding/json"
 	"io"
@@ -20,6 +19,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/asr"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/llm"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -31,7 +31,7 @@ type asrUpload struct {
 
 type asrFixture struct {
 	server   *Server
-	db       *sql.DB
+	db       *sqlutil.DB
 	dataRoot string
 	root     string
 	workID   int64

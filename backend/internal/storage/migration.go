@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 const (
@@ -125,7 +126,7 @@ type schemaState struct {
 
 // Migrate applies migrations from a filesystem directory. Tests use this
 // entry point to construct databases at historical migration boundaries.
-func Migrate(db *sql.DB, dir string) error {
+func Migrate(db *sqlutil.DB, dir string) error {
 	return MigrateFS(db, os.DirFS(dir), buildinfo.Version)
 }
 
@@ -147,11 +148,11 @@ type MigrateOptions struct {
 // existing databases continue through the immutable numbered chain.
 // The baseline's release suffix does not need to match appVersion when no
 // numbered SQL changed.
-func MigrateFS(db *sql.DB, migrationFS fs.FS, appVersion string) error {
+func MigrateFS(db *sqlutil.DB, migrationFS fs.FS, appVersion string) error {
 	return MigrateFSWithOptions(db, migrationFS, appVersion, MigrateOptions{})
 }
 
-func MigrateFSWithOptions(db *sql.DB, migrationFS fs.FS, appVersion string, options MigrateOptions) error {
+func MigrateFSWithOptions(db *sqlutil.DB, migrationFS fs.FS, appVersion string, options MigrateOptions) error {
 	if db == nil {
 		return errors.New("migrate database: nil database")
 	}
@@ -187,7 +188,7 @@ func MigrateFSWithOptions(db *sql.DB, migrationFS fs.FS, appVersion string, opti
 	return nil
 }
 
-func prepareMigrationCatalog(db *sql.DB, migrationFS fs.FS, development bool) (migrationCatalog, databaseClassification, error) {
+func prepareMigrationCatalog(db *sqlutil.DB, migrationFS fs.FS, development bool) (migrationCatalog, databaseClassification, error) {
 	catalog, err := loadMigrationCatalog(migrationFS, development)
 	if err != nil {
 		return migrationCatalog{}, databaseClassification{}, err
@@ -211,7 +212,7 @@ func prepareMigrationCatalog(db *sql.DB, migrationFS fs.FS, development bool) (m
 	return catalog, classification, nil
 }
 
-func prepareMigrationState(db *sql.DB, catalog migrationCatalog, classification databaseClassification) (migrationHistory, schemaState, error) {
+func prepareMigrationState(db *sqlutil.DB, catalog migrationCatalog, classification databaseClassification) (migrationHistory, schemaState, error) {
 	baselineVersion := 0
 	if catalog.baseline != nil {
 		baselineVersion = catalog.baseline.version
@@ -241,7 +242,7 @@ func prepareMigrationState(db *sql.DB, catalog migrationCatalog, classification 
 	return migrationHistory{}, schemaState{}, errors.New("could not establish migration state")
 }
 
-func applyMigrationCatalog(db *sql.DB, catalog migrationCatalog, classification databaseClassification, history migrationHistory, state schemaState, appVersion string) (schemaState, bool, error) {
+func applyMigrationCatalog(db *sqlutil.DB, catalog migrationCatalog, classification databaseClassification, history migrationHistory, state schemaState, appVersion string) (schemaState, bool, error) {
 	applied := false
 	if history.current == 0 && !classification.hasApplicationTables && catalog.baseline != nil {
 		changed, err := applyMigrationAsset(db, *catalog.baseline, state.currentVersion, appVersion)
@@ -295,7 +296,7 @@ func isConcurrentStateMismatch(err error) bool {
 
 // RecordSuccessfulStart records an application version only after startup has
 // completed its migration and bootstrap gates.
-func RecordSuccessfulStart(db *sql.DB, appVersion string) error {
+func RecordSuccessfulStart(db *sqlutil.DB, appVersion string) error {
 	if db == nil {
 		return errors.New("record successful application start: nil database")
 	}
@@ -484,7 +485,7 @@ type databaseClassification struct {
 	futureVersion        int
 }
 
-func classifyDatabase(db *sql.DB) (databaseClassification, error) {
+func classifyDatabase(db *sqlutil.DB) (databaseClassification, error) {
 	rows, err := db.Query(`
 		SELECT name
 		FROM sqlite_schema
@@ -523,7 +524,7 @@ func classifyDatabase(db *sql.DB) (databaseClassification, error) {
 	return classification, nil
 }
 
-func ensureMigrationMetadata(db *sql.DB) error {
+func ensureMigrationMetadata(db *sqlutil.DB) error {
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS schema_migration (
 			filename TEXT PRIMARY KEY,
@@ -581,7 +582,7 @@ func ensureMigrationMetadata(db *sql.DB) error {
 	return nil
 }
 
-func tableColumns(db *sql.DB, table string) (map[string]bool, error) {
+func tableColumns(db *sqlutil.DB, table string) (map[string]bool, error) {
 	rows, err := db.Query("PRAGMA table_info(" + table + ")")
 	if err != nil {
 		return nil, fmt.Errorf("inspect %s columns: %w", table, err)
@@ -610,7 +611,7 @@ type migrationHistoryRow struct {
 	asset    migrationAsset
 }
 
-func validateAndAdoptHistory(db *sql.DB, catalog migrationCatalog) (migrationHistory, error) {
+func validateAndAdoptHistory(db *sqlutil.DB, catalog migrationCatalog) (migrationHistory, error) {
 	historyRows, err := loadMigrationHistoryRows(db, catalog)
 	if err != nil {
 		return migrationHistory{}, err
@@ -633,7 +634,7 @@ func validateAndAdoptHistory(db *sql.DB, catalog migrationCatalog) (migrationHis
 	return history, nil
 }
 
-func loadMigrationHistoryRows(db *sql.DB, catalog migrationCatalog) ([]migrationHistoryRow, error) {
+func loadMigrationHistoryRows(db *sqlutil.DB, catalog migrationCatalog) ([]migrationHistoryRow, error) {
 	rows, err := db.Query(`
 		SELECT filename, version, checksum
 		FROM schema_migration
@@ -672,7 +673,7 @@ func loadMigrationHistoryRows(db *sql.DB, catalog migrationCatalog) ([]migration
 	return historyRows, nil
 }
 
-func adoptMigrationHistoryRows(db *sql.DB, historyRows []migrationHistoryRow) (migrationHistory, error) {
+func adoptMigrationHistoryRows(db *sqlutil.DB, historyRows []migrationHistoryRow) (migrationHistory, error) {
 	history := migrationHistory{}
 	seenVersions := make(map[int]string)
 	for _, row := range historyRows {
@@ -753,7 +754,7 @@ func versionFromUnknownFilename(filename string) int {
 	return version
 }
 
-func ensureSchemaState(db *sql.DB, history migrationHistory, catalogCurrent, catalogBaselineVersion int) (schemaState, error) {
+func ensureSchemaState(db *sqlutil.DB, history migrationHistory, catalogCurrent, catalogBaselineVersion int) (schemaState, error) {
 	state, err := readSchemaState(db)
 	if errors.Is(err, sql.ErrNoRows) {
 		if _, err := db.Exec(`
@@ -801,7 +802,7 @@ func ensureSchemaState(db *sql.DB, history migrationHistory, catalogCurrent, cat
 	return state, nil
 }
 
-func readSchemaState(db *sql.DB) (schemaState, error) {
+func readSchemaState(db *sqlutil.DB) (schemaState, error) {
 	var state schemaState
 	err := db.QueryRow(`
 		SELECT current_version, baseline_version, baseline_checksum, dirty_version
@@ -814,7 +815,7 @@ func readSchemaState(db *sql.DB) (schemaState, error) {
 	return state, nil
 }
 
-func applyMigrationAsset(db *sql.DB, asset migrationAsset, expectedCurrent int, appVersion string) (bool, error) {
+func applyMigrationAsset(db *sqlutil.DB, asset migrationAsset, expectedCurrent int, appVersion string) (bool, error) {
 	result, err := db.Exec(`
 		UPDATE schema_state
 		SET dirty_version = ?, last_migration_app_version = ?, updated_at = CURRENT_TIMESTAMP
@@ -854,7 +855,7 @@ func applyMigrationAsset(db *sql.DB, asset migrationAsset, expectedCurrent int, 
 // connection. It reports alreadyApplied when another process advanced the
 // schema first; the caller verifies that record after the connection is
 // released, because a single-connection database cannot serve both.
-func commitMigrationAsset(db *sql.DB, asset migrationAsset, expectedCurrent int, appVersion string) (alreadyApplied bool, err error) {
+func commitMigrationAsset(db *sqlutil.DB, asset migrationAsset, expectedCurrent int, appVersion string) (alreadyApplied bool, err error) {
 	started := time.Now()
 	ctx := context.Background()
 	conn, err := db.Conn(ctx)

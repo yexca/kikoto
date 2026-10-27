@@ -2,7 +2,6 @@ package library
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
@@ -275,13 +275,13 @@ func scaleLogLatency(t testing.TB, name string, samples []time.Duration) {
 	t.Logf("%s n=%d errors=0 p50_ms=%.3f p95_ms=%.3f", name, len(ordered), float64(ordered[(len(ordered)-1)/2])/float64(time.Millisecond), float64(ordered[(len(ordered)*95+99)/100-1])/float64(time.Millisecond))
 }
 
-func scaleHasTable(db *sql.DB, table string) bool {
+func scaleHasTable(db *sqlutil.DB, table string) bool {
 	var exists bool
 	_ = db.QueryRow("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)", table).Scan(&exists)
 	return exists
 }
 
-func scaleLogStorage(t testing.TB, db *sql.DB, path, phase string) {
+func scaleLogStorage(t testing.TB, db *sqlutil.DB, path, phase string) {
 	t.Helper()
 	allocated := map[string]int64{}
 	if rows, err := db.Query("SELECT name,SUM(pgsize) FROM dbstat GROUP BY name"); err == nil {
@@ -371,7 +371,7 @@ func scaleLogStorage(t testing.TB, db *sql.DB, path, phase string) {
 	t.Logf("storage/%s database_plus_wal_shm_bytes=%d", phase, fileBytes)
 }
 
-func scaleLogCandidateQuality(t testing.TB, db *sql.DB, snapshot RecommendationSessionSnapshot, works int) {
+func scaleLogCandidateQuality(t testing.TB, db *sqlutil.DB, snapshot RecommendationSessionSnapshot, works int) {
 	t.Helper()
 	var raw string
 	if err := db.QueryRow("SELECT profile_json FROM recommendation_generation_profile WHERE generation_id=?", snapshot.GenerationID).Scan(&raw); err != nil {

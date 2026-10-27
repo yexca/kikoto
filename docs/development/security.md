@@ -508,7 +508,8 @@ anonymous user.
   unless a specific job requires a later authenticated Git operation. Set up
   Node, Go, and the Android toolchain through the composite actions under
   `.github/actions` so each third-party setup action is pinned in one file.
-- Pin Docker build stages by tag and digest. Public-distribution Compose files
+- Pin Docker build stages, and the images that Make targets run tests in, by
+  tag and digest. Public-distribution Compose files
   may default to `latest` only when the release workflow updates that tag;
   document a reviewed version or digest for reproducible deployments. Treat a
   mutable tag as a convenience entry point, not the deployment trust anchor.
@@ -525,7 +526,9 @@ anonymous user.
   any other dependency change, including the install-script and audit steps
   above. It deliberately skips the Go and Node toolchain versions, which must
   be upgraded by hand everywhere they appear, and Gradle dependencies, which
-  need a reviewed verification-metadata update.
+  need a reviewed verification-metadata update. The Playwright test image
+  follows `@playwright/test` by hand, as described in
+  [Frontend](testing.md#frontend).
 - The daily `Dependency Audit` workflow runs `make dependency-audit` against
   `main`, as described in
   [Continuous Integration](testing.md#continuous-integration). Treat a failed

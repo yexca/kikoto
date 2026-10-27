@@ -2,16 +2,16 @@ package library
 
 import (
 	"context"
-	"database/sql"
 	"path/filepath"
 	"reflect"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
-func dlsiteProviderID(t *testing.T, db *sql.DB) int64 {
+func dlsiteProviderID(t *testing.T, db *sqlutil.DB) int64 {
 	t.Helper()
 	var id int64
 	if err := db.QueryRow(`SELECT id FROM metadata_provider WHERE code = 'dlsite'`).Scan(&id); err != nil {
@@ -22,7 +22,7 @@ func dlsiteProviderID(t *testing.T, db *sql.DB) int64 {
 
 // searchEditionFamily links works into one logical family; the first work is
 // the canonical edition.
-func searchEditionFamily(t *testing.T, db *sql.DB, ordinals []int, workIDs ...int64) int64 {
+func searchEditionFamily(t *testing.T, db *sqlutil.DB, ordinals []int, workIDs ...int64) int64 {
 	t.Helper()
 	logicalID := execSearchFixture(t, db, `INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, ?)`,
 		workIDs[0], testfixture.WorkCode(testfixture.PrefixRJ, ordinals[0]))
@@ -33,13 +33,13 @@ func searchEditionFamily(t *testing.T, db *sql.DB, ordinals []int, workIDs ...in
 	return logicalID
 }
 
-func searchVariant(t *testing.T, db *sql.DB, logicalID, workID int64, ordinal int, locale, title string) int64 {
+func searchVariant(t *testing.T, db *sqlutil.DB, logicalID, workID int64, ordinal int, locale, title string) int64 {
 	t.Helper()
 	return execSearchFixture(t, db, `INSERT INTO dlsite_metadata_variant (logical_work_id, work_id, provider_id, external_id, request_locale, title)
 		VALUES (?, ?, ?, ?, ?, ?)`, logicalID, workID, dlsiteProviderID(t, db), testfixture.WorkCode(testfixture.PrefixRJ, ordinal), locale, title)
 }
 
-func searchGenre(t *testing.T, db *sql.DB, workID int64, genreID int64, names map[string]string) {
+func searchGenre(t *testing.T, db *sqlutil.DB, workID int64, genreID int64, names map[string]string) {
 	t.Helper()
 	execSearchFixture(t, db, `INSERT INTO work_dlsite_genre (work_id, genre_id) VALUES (?, ?)`, workID, genreID)
 	for language, name := range names {
@@ -49,7 +49,7 @@ func searchGenre(t *testing.T, db *sql.DB, workID int64, genreID int64, names ma
 }
 
 func TestSearchFindsOwnVariantTitleAfterPriorityProjection(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	// The priority projection rewrote the canonical title into another language.
 	canonical := insertSearchWork(t, db, 10, "Projected simplified title")
 	translated := insertSearchWork(t, db, 11, "Projected simplified title")
@@ -66,7 +66,7 @@ func TestSearchFindsOwnVariantTitleAfterPriorityProjection(t *testing.T) {
 }
 
 func TestSearchExpandsDLsiteGenreIDsAcrossLanguages(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	girl := insertSearchWork(t, db, 12, "Example One")
 	healing := insertSearchWork(t, db, 13, "Example Two")
 	tagSearchWork(t, db, girl, "少女")
@@ -90,7 +90,7 @@ func TestSearchExpandsDLsiteGenreIDsAcrossLanguages(t *testing.T) {
 }
 
 func TestSearchRanksExactMatchesAheadOfPartialMatches(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	older := insertSearchWork(t, db, 15, "Example One")
 	exact := insertSearchWork(t, db, 16, "Example Two")
 	insertSearchWork(t, db, 17, "Girl Next Door")
@@ -130,7 +130,7 @@ func TestSearchRanksExactMatchesAheadOfPartialMatches(t *testing.T) {
 
 func TestMultilingualSearchMigrationsIndexExistingWorks(t *testing.T) {
 	migrationDir := filepath.Join("..", "..", "migrations")
-	db := openSearchTestDB(t, migrationsBefore(t, migrationDir, "046_work_search_variant_title.sql"))
+	db := openSearchTestDBAt(t, migrationsBefore(t, migrationDir, "046_work_search_variant_title.sql"))
 	projected := insertSearchWork(t, db, 18, "Projected title")
 	legacy := insertSearchWork(t, db, 19, "Legacy Example")
 	logicalID := searchEditionFamily(t, db, []int{18}, projected)

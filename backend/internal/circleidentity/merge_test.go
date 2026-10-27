@@ -2,30 +2,21 @@ package circleidentity
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
 
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
-	"github.com/yexca/kikoto/backend/migrations"
 )
 
-func circleMergeDB(t *testing.T) *sql.DB {
+func circleMergeDB(t *testing.T) *sqlutil.DB {
 	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "circles.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.Open(t)
 	db.SetMaxOpenConns(1)
-	if err := storage.MigrateFS(db, migrations.Files, "test"); err != nil {
-		t.Fatal(err)
-	}
 	run := func(query string, args ...any) {
 		t.Helper()
 		if _, err := db.Exec(query, args...); err != nil {
@@ -59,7 +50,7 @@ func circleMergeDB(t *testing.T) *sql.DB {
 	run("INSERT INTO user_release_feed_item(user_id,primary_code,event_type,subject_kind,party_id,series_title_id) VALUES (1,?,'released','series',2,'SRI0000000001')", testfixture.WorkCode(testfixture.PrefixRJ, 1))
 	return db
 }
-func circleRecords(t *testing.T, db *sql.DB) map[string][]string {
+func circleRecords(t *testing.T, db *sqlutil.DB) map[string][]string {
 	t.Helper()
 	tx, err := db.Begin()
 	if err != nil {

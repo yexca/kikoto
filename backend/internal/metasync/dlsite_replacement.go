@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type replacementQueryer interface {
@@ -110,7 +111,7 @@ func replacementEdition(editions []dlsite.LanguageEdition, code string) (dlsite.
 
 // ExistingReplacementEdition finds an unambiguous local owner without creating
 // any discovered works. An independently persisted candidate keeps its identity.
-func ExistingReplacementEdition(ctx context.Context, db *sql.DB, product dlsite.Product) (int64, string, error) {
+func ExistingReplacementEdition(ctx context.Context, db *sqlutil.DB, product dlsite.Product) (int64, string, error) {
 	code := dlsiteProductCode(product)
 	original := strings.ToUpper(strings.TrimSpace(product.TranslationInfo.OriginalWorkNo))
 	if !dlsiteWorkNoPattern.MatchString(code) || !dlsiteWorkNoPattern.MatchString(original) {

@@ -10,17 +10,19 @@ import (
 	"io"
 	"strings"
 	"sync"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 var ErrNotFound = errors.New("LLM provider not found")
 var ErrInvalid = errors.New("invalid LLM configuration")
 
 type Store struct {
-	db *sql.DB
+	db *sqlutil.DB
 	mu sync.Mutex
 }
 
-func NewStore(db *sql.DB) *Store { return &Store{db: db} }
+func NewStore(db *sqlutil.DB) *Store { return &Store{db: db} }
 
 func (s *Store) List(ctx context.Context) ([]Provider, error) {
 	var raw string

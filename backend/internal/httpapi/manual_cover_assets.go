@@ -50,9 +50,7 @@ func (s *Server) copyManualCoverFromLocation(ctx context.Context, workID, locati
 	if err != nil {
 		return "", "", errManualCoverCandidate
 	}
-	resolved, err := filepath.EvalSymlinks(sourcePath)
-	root, rootErr := filepath.Abs(s.cfg.DataRoot)
-	if err != nil || rootErr != nil || !isPathWithinRoot(root, resolved) {
+	if _, err := resolvePathWithinRoot(s.cfg.DataRoot, sourcePath); err != nil {
 		return "", "", errManualCoverCandidate
 	}
 	source, err := os.Open(sourcePath)

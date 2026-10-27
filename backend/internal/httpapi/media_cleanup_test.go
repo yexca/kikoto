@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 func TestMediaLocationCleanupKeepsLargeSelectionInOneRun(t *testing.T) {
@@ -707,7 +708,7 @@ func TestMediaCleanupForgetWorkRequiresSourcesWrite(t *testing.T) {
 	}
 }
 
-func assertMediaCleanupCount(t *testing.T, db *sql.DB, query string, args ...any) {
+func assertMediaCleanupCount(t *testing.T, db *sqlutil.DB, query string, args ...any) {
 	t.Helper()
 	want := args[len(args)-1].(int)
 	queryArgs := args[:len(args)-1]

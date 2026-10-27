@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // The persisted primary circles and catalog owners must equal what the
@@ -138,7 +140,7 @@ func TestCircleOwnershipProjectionFollowsIsolatedInputs(t *testing.T) {
 
 type circleOwnershipSteps struct {
 	t  *testing.T
-	db *sql.DB
+	db *sqlutil.DB
 }
 
 // exec runs one write and checks the persisted ownership against the rules.
@@ -172,7 +174,7 @@ func (s circleOwnershipSteps) wantPrimary(step string, workID, want int64) {
 	}
 }
 
-func assertCircleOwnershipParity(t *testing.T, db *sql.DB, step string) {
+func assertCircleOwnershipParity(t *testing.T, db *sqlutil.DB, step string) {
 	t.Helper()
 	read := func(query string) string {
 		rows, err := db.Query(query)

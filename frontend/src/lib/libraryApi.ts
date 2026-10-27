@@ -35,10 +35,15 @@ export type Work = {
   progress: WorkProgressSummary;
   listeningStatus: ListeningStatus;
   favorite: boolean;
+  /** The viewer's user and smart lists that show the work, in list order; absent when none do. */
+  memberLists?: WorkMemberList[];
   /** The viewer's own one-to-five-star rating; null or absent when unrated. */
   userRating?: number | null;
   recommendScore: number;
 };
+
+/** One of the viewer's lists that holds a work, as a work card names it. */
+export type WorkMemberList = Pick<FavoriteList, "id" | "name">;
 
 export type RecommendationConfig = {
   affinityBase: number;

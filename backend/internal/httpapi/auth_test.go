@@ -15,6 +15,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 func TestPasswordHashUsesArgon2idAndVerifies(t *testing.T) {
@@ -394,7 +395,7 @@ func TestLocalMediaDeleteBlocksSymlinkAndCreatesReview(t *testing.T) {
 	}
 }
 
-func insertTestLocalMediaLocation(t *testing.T, db *sql.DB, relPath string) int64 {
+func insertTestLocalMediaLocation(t *testing.T, db *sqlutil.DB, relPath string) int64 {
 	t.Helper()
 	if _, err := db.Exec("INSERT INTO work (primary_code, title) VALUES ('RJTEST001', 'Test Work')"); err != nil {
 		t.Fatalf("insert work: %v", err)

@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"path/filepath"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 )
 
@@ -19,7 +19,7 @@ const preMigrationBackupsKept = 3
 // migrations are irreversible, so a failed snapshot stops startup instead of
 // upgrading without a way back. A database without a backup directory, such
 // as an in-memory one, upgrades without a snapshot.
-func preMigrationBackup(ctx context.Context, db *sql.DB, backupDir string) func(int, int) error {
+func preMigrationBackup(ctx context.Context, db *sqlutil.DB, backupDir string) func(int, int) error {
 	if backupDir == "" {
 		return nil
 	}

@@ -16,6 +16,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/library"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -32,7 +33,7 @@ type demoRecommendationTestPage struct {
 	RecommendationUnavailable bool                         `json:"recommendationUnavailable"`
 }
 
-func newDemoRecommendationFixture(t *testing.T) (*sql.DB, *Server, int64) {
+func newDemoRecommendationFixture(t *testing.T) (*sqlutil.DB, *Server, int64) {
 	t.Helper()
 	db, server := newDemoRemoteFixture(t, 12)
 	metadataReviewExec(t, db, `INSERT INTO file_source(code,display_name,source_type,enabled)
@@ -87,7 +88,7 @@ func decodeDemoRecommendationResponse(t *testing.T, response *httptest.ResponseR
 	}
 }
 
-func assertDemoRecommendationStorageUntouched(t *testing.T, db *sql.DB, server *Server) {
+func assertDemoRecommendationStorageUntouched(t *testing.T, db *sqlutil.DB, server *Server) {
 	t.Helper()
 	for _, table := range []string{"recommendation_generation", "recommendation_generation_profile", "recommendation_generation_state", "recommendation_client_session", "recommendation_snapshot", "recommendation_query_context", "recommendation_query_candidate", "recommendation_query_checkpoint", "recommendation_catalog_epoch", "recommendation_catalog_work", "recommendation_catalog_entity", "recommendation_catalog_frequency", "recommendation_catalog_name"} {
 		var count int

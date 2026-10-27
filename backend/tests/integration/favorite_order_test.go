@@ -2,11 +2,11 @@ package integration_test
 
 import (
 	"context"
-	"database/sql"
 	"reflect"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/library"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -72,7 +72,7 @@ func TestFavoriteAddedOrderUsesSelectedListOrMarkedMembership(t *testing.T) {
 	}
 }
 
-func favoriteOrderDatabase(t *testing.T) *sql.DB {
+func favoriteOrderDatabase(t *testing.T) *sqlutil.DB {
 	t.Helper()
 	db := openMigratedTestDB(t, "favorite-order.db")
 	if _, err := db.Exec(`

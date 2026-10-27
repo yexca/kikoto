@@ -3,7 +3,7 @@ package library
 import "testing"
 
 func TestAgeSearchMatchesDisplayAndProviderAliasesAcrossFamilies(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	ids := []int64{}
 	for ordinal, age := range []string{"adult", "R-18", "general", "全年齢", "r15", "", "unknown"} {
 		id := insertSearchWork(t, db, ordinal, "Example Work")
@@ -24,7 +24,7 @@ func TestAgeSearchMatchesDisplayAndProviderAliasesAcrossFamilies(t *testing.T) {
 }
 
 func TestAgeSearchUsesManualRatingUnlessTheProviderIsStricter(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	for ordinal, ages := range [][2]string{{"", "general"}, {"general", "adult"}, {"adult", "general"}, {"r15", "unrated"}} {
 		id := insertSearchWork(t, db, ordinal, "Example Work")
 		execSearchFixture(t, db, "UPDATE work SET age_rating=? WHERE id=?", ages[0], id)

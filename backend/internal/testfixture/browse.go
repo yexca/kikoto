@@ -2,14 +2,15 @@ package testfixture
 
 import (
 	"crypto/sha256"
-	"database/sql"
 	"fmt"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // SeedBrowse gives the SQL and HTTP measurements exactly the same records.
 // It owns no deployment data, workers, statistics refresh or derived summaries.
-func SeedBrowse(t testing.TB, db *sql.DB) {
+func SeedBrowse(t testing.TB, db *sqlutil.DB) {
 	t.Helper()
 	tx, err := db.Begin()
 	if err != nil {
@@ -45,7 +46,7 @@ func SeedBrowse(t testing.TB, db *sql.DB) {
 
 // Modernc enables STAT4 as well as STAT1. Clearing only row estimates leaves
 // histogram statistics behind, so it does not represent a missing-stats state.
-func ClearBrowseStatistics(t testing.TB, db *sql.DB) {
+func ClearBrowseStatistics(t testing.TB, db *sqlutil.DB) {
 	t.Helper()
 	if _, err := db.Exec(`ANALYZE`); err != nil {
 		t.Fatal(err)

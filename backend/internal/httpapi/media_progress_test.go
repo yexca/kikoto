@@ -189,24 +189,6 @@ func TestCanceledMediaProgressPersistenceDoesNotBlockTheNextWriter(t *testing.T)
 	}
 	user := account.User{ID: userID, Username: "cancel-progress-user", Role: "user", Permissions: account.PermissionsForRole("user")}
 
-	db.SetMaxOpenConns(2)
-	db.SetMaxIdleConns(2)
-	connections := make([]*sql.Conn, 2)
-	for index := range connections {
-		connections[index], err = db.Conn(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := connections[index].ExecContext(context.Background(), "PRAGMA busy_timeout = 100"); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, conn := range connections {
-		if err := conn.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}
-
 	blocker, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -223,11 +205,12 @@ func TestCanceledMediaProgressPersistenceDoesNotBlockTheNextWriter(t *testing.T)
 			mediaProgressUpdateRequest{PositionSeconds: 10}, "2026-01-01 00:00:00")
 	}()
 
+	// The blocked write waits for the writer connection the blocker holds.
 	deadline := time.Now().Add(time.Second)
-	for db.Stats().InUse < 2 && time.Now().Before(deadline) {
+	for db.Writer().Stats().WaitCount == 0 && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	if db.Stats().InUse < 2 {
+	if db.Writer().Stats().WaitCount == 0 {
 		_ = blocker.Rollback()
 		t.Fatal("progress request did not reach the blocked database write")
 	}
@@ -259,13 +242,15 @@ func TestCanceledMediaProgressPersistenceDoesNotBlockTheNextWriter(t *testing.T)
 	}
 	// On Windows, sqlite3_interrupt cleanup may finish just after the handler
 	// returns. Drain the pool before TempDir attempts to remove the database.
-	db.SetMaxIdleConns(0)
-	closeDeadline := time.Now().Add(time.Second)
-	for db.Stats().OpenConnections != 0 && time.Now().Before(closeDeadline) {
-		time.Sleep(time.Millisecond)
-	}
-	if db.Stats().OpenConnections != 0 {
-		t.Fatalf("database connections remained open after cancellation: %+v", db.Stats())
+	for _, pool := range []*sql.DB{db.Writer(), db.Readers()} {
+		pool.SetMaxIdleConns(0)
+		closeDeadline := time.Now().Add(time.Second)
+		for pool.Stats().OpenConnections != 0 && time.Now().Before(closeDeadline) {
+			time.Sleep(time.Millisecond)
+		}
+		if pool.Stats().OpenConnections != 0 {
+			t.Fatalf("database connections remained open after cancellation: %+v", pool.Stats())
+		}
 	}
 }
 

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 const anonymousAccessSettingKey = "anonymous_access_enabled"
@@ -17,12 +19,12 @@ type Policy struct {
 }
 
 type Store struct {
-	db                     *sql.DB
+	db                     *sqlutil.DB
 	mu                     sync.Mutex
 	anonymousAccessEnabled atomic.Bool
 }
 
-func NewStore(db *sql.DB) *Store {
+func NewStore(db *sqlutil.DB) *Store {
 	return &Store{db: db}
 }
 

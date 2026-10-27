@@ -2,9 +2,10 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // StatisticsMaintainer merges committed bulk changes into a single bounded
@@ -15,7 +16,7 @@ type StatisticsMaintainer struct {
 	settle, cooldown, budget time.Duration
 }
 
-func NewStatisticsMaintainer(db *sql.DB) *StatisticsMaintainer {
+func NewStatisticsMaintainer(db *sqlutil.DB) *StatisticsMaintainer {
 	return &StatisticsMaintainer{
 		wake:     make(chan struct{}, 1),
 		optimize: func(ctx context.Context) error { return OptimizeStatistics(ctx, db) },

@@ -429,7 +429,7 @@ func TestWorkFolderEditRetryFinishesAfterAMergedSourceWasCleared(t *testing.T) {
 		}
 	}
 	var fetchRunID int64
-	if err := fixture.db.QueryRow("SELECT last_insert_rowid()").Scan(&fetchRunID); err != nil {
+	if err := fixture.db.Writer().QueryRow("SELECT last_insert_rowid()").Scan(&fetchRunID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := fixture.db.Exec(`INSERT INTO workflow_job (workflow_run_id, worker_type, status) VALUES (?, 'remote_work_fetch', 'running')`, fetchRunID); err != nil {

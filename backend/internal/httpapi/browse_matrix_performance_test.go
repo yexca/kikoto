@@ -149,7 +149,7 @@ func TestBrowseMatrixPerformance(t *testing.T) {
 						return err
 					}},
 					{"connection-acquire", func() error {
-						conn, err := db.Conn(context.Background())
+						conn, err := db.Readers().Conn(context.Background())
 						if err == nil {
 							return conn.Close()
 						}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/searchtext"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // The work_search FTS5 table holds one folded document per work. Triggers
@@ -145,20 +146,24 @@ func searchUsesIndex(queryText string) bool {
 	return false
 }
 
-// txBeginner is a *sql.DB, which returns its connection to the pool after
+// txBeginner is a *sqlutil.DB, which returns its connection to the pool after
 // each batch, or a *sql.Conn whose settings a refresh has changed.
 type txBeginner interface {
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 }
 
-func refreshSearchIndex(ctx context.Context, db *sql.DB, options searchIndexRefresh) (err error) {
+func refreshSearchIndex(ctx context.Context, db *sqlutil.DB, options searchIndexRefresh) (err error) {
 	var pending bool
 	if err := db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM work_search_dirty)`).Scan(&pending); err != nil || !pending {
 		return err
 	}
 	var beginner txBeginner = db
 	if options.busyTimeout > 0 {
-		conn, err := db.Conn(ctx)
+		// Another writer may hold the writer connection, so waiting for it is
+		// bounded like the lock wait.
+		connCtx, cancel := context.WithTimeout(ctx, options.busyTimeout)
+		conn, err := db.Conn(connCtx)
+		cancel()
 		if err != nil {
 			return err
 		}

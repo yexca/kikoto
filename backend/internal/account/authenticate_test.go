@@ -6,25 +6,16 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 	"golang.org/x/crypto/argon2"
 )
 
 func openAccountTestStore(t *testing.T) *Store {
 	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "account.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		t.Fatal(err)
-	}
-	store := NewStore(db)
+	store := NewStore(storagetest.Open(t))
 	if _, err := store.CreateInitialAdministrator(context.Background(), "root", "synthetic-root-password"); err != nil {
 		t.Fatal(err)
 	}

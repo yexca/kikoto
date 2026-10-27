@@ -2,13 +2,13 @@ package library
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/remotemetadata"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -34,7 +34,7 @@ func titleSortCodes(t *testing.T, store *Store, languages []string, ordinals ...
 // Stored remote edition titles participate in the same title sort and search
 // queues as DLsite titles, without requiring a second library work.
 func TestRemoteLanguageTitlesSortSearchAndRefresh(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	ctx := context.Background()
 	workID := insertSearchWork(t, db, 30, "Zulu original")
 	insertSearchWork(t, db, 31, "Bravo original")
@@ -99,13 +99,13 @@ func TestRemoteLanguageTitlesSortSearchAndRefresh(t *testing.T) {
 	}
 }
 
-func titleLanguageVariant(t *testing.T, db *sql.DB, logicalID, workID int64, ordinal int, language, title string) int64 {
+func titleLanguageVariant(t *testing.T, db *sqlutil.DB, logicalID, workID int64, ordinal int, language, title string) int64 {
 	t.Helper()
 	return execSearchFixture(t, db, `INSERT INTO dlsite_metadata_variant (logical_work_id, work_id, provider_id, external_id, edition_language, request_locale, title)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`, logicalID, workID, dlsiteProviderID(t, db), testfixture.WorkCode(testfixture.PrefixRJ, ordinal), language, language, title)
 }
 
-func queuedTitleLanguageWorks(t *testing.T, db *sql.DB) []int64 {
+func queuedTitleLanguageWorks(t *testing.T, db *sqlutil.DB) []int64 {
 	t.Helper()
 	rows, err := db.Query(`SELECT work_id FROM work_title_language_dirty ORDER BY work_id`)
 	if err != nil {
@@ -126,7 +126,7 @@ func queuedTitleLanguageWorks(t *testing.T, db *sql.DB) []int64 {
 // A title sort follows the titles each viewer sees, from stored language
 // titles that no preference change rewrites.
 func TestTitleSortFollowsViewerLanguage(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	translatedFamily := insertSearchWork(t, db, 20, "Bravo original")
 	translation := insertSearchWork(t, db, 21, "Bravo original")
 	logicalID := searchEditionFamily(t, db, []int{20, 21}, translatedFamily, translation)
@@ -163,7 +163,7 @@ func TestTitleSortFollowsViewerLanguage(t *testing.T) {
 // An edition's title is part of every family member's titles, so changing
 // it queues the whole family.
 func TestTitleLanguageQueueCoversWholeFamily(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	canonical := insertSearchWork(t, db, 23, "Example original")
 	translation := insertSearchWork(t, db, 24, "Example original")
 	logicalID := searchEditionFamily(t, db, []int{23, 24}, canonical, translation)

@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,10 +17,11 @@ import (
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
-func metadataReviewExec(t *testing.T, db *sql.DB, query string, args ...any) int64 {
+func metadataReviewExec(t *testing.T, db *sqlutil.DB, query string, args ...any) int64 {
 	t.Helper()
 	result, err := db.Exec(query, args...)
 	if err != nil {

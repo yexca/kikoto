@@ -230,7 +230,14 @@ function RankingEntryCard({
               onWatch={() => onWatch(item.code)}
             />
           )}
-          {item.work && <WorkCardListButton workId={item.work.id} active={item.work.favorite} />}
+          {item.work && (
+            <WorkCardListButton
+              workId={item.work.id}
+              active={item.work.favorite}
+              memberLists={item.work.memberLists}
+              fitLabel
+            />
+          )}
         </>
       }
     />

@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -618,7 +618,7 @@ func requestWorkflowResource(t *testing.T, handler http.HandlerFunc, method stri
 	return response
 }
 
-func insertWorkflowGraphAPIUser(t *testing.T, db *sql.DB, username string) int64 {
+func insertWorkflowGraphAPIUser(t *testing.T, db *sqlutil.DB, username string) int64 {
 	t.Helper()
 	result, err := db.Exec(`INSERT INTO user_account (username, display_name, role) VALUES (?, ?, 'admin')`, username, username)
 	if err != nil {
@@ -631,7 +631,7 @@ func insertWorkflowGraphAPIUser(t *testing.T, db *sql.DB, username string) int64
 	return id
 }
 
-func insertWorkflowGraphAPIDefinition(t *testing.T, db *sql.DB, ownerID int64) int64 {
+func insertWorkflowGraphAPIDefinition(t *testing.T, db *sqlutil.DB, ownerID int64) int64 {
 	t.Helper()
 	result, err := db.Exec(`
 		INSERT INTO workflow_definition (
@@ -648,7 +648,7 @@ func insertWorkflowGraphAPIDefinition(t *testing.T, db *sql.DB, ownerID int64) i
 	return id
 }
 
-func assertWorkflowGraphAPICount(t *testing.T, db *sql.DB, table string, want int) {
+func assertWorkflowGraphAPICount(t *testing.T, db *sqlutil.DB, table string, want int) {
 	t.Helper()
 	if table != "workflow_run" && table != "work" {
 		t.Fatalf("unsupported count table: %s", table)

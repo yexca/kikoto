@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+
+	"github.com/yexca/kikoto/backend/internal/library"
 )
 
 // maxFavoriteMembershipBatchWorks bounds one bulk membership request. The
@@ -110,6 +112,119 @@ func favoriteMembershipCountQuery(userID int64, workIDs []int64) (string, []any)
 		GROUP BY list.id
 		ORDER BY list.sort_order, list.id
 	`, args
+}
+
+// workMemberList names one of the user's own lists that holds a work.
+type workMemberList struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// loadWorkMemberListsBatch returns, for each work, the user and smart lists
+// that show it, in list order: the lists a work card names. A smart list
+// counts whether it holds the work by hand or through its rule.
+func (s *Server) loadWorkMemberListsBatch(ctx context.Context, userID int64, workIDs []int64) (map[int64][]workMemberList, error) {
+	result := make(map[int64][]workMemberList, len(workIDs))
+	if userID <= 0 || len(workIDs) == 0 {
+		return result, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, name
+		FROM favorite_list
+		WHERE user_id = ? AND kind IN `+library.ManualFavoriteListKindsSQL+`
+		ORDER BY sort_order ASC, name ASC, id ASC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	ordered := []workMemberList{}
+	for rows.Next() {
+		var list workMemberList
+		if err := rows.Scan(&list.ID, &list.Name); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		ordered = append(ordered, list)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if len(ordered) == 0 {
+		return result, nil
+	}
+	editable, err := loadEditableFavoriteLists(ctx, s.db, userID)
+	if err != nil {
+		return nil, err
+	}
+	members := map[int64]map[int64]bool{}
+	addMember := func(listID, workID int64) {
+		if members[listID] == nil {
+			members[listID] = map[int64]bool{}
+		}
+		members[listID][workID] = true
+	}
+	handRows, err := s.db.QueryContext(ctx, `
+		SELECT item.list_id, item.work_id
+		FROM favorite_list_item AS item
+		INNER JOIN favorite_list AS list ON list.id = item.list_id
+		WHERE list.user_id = ? AND list.kind = 'user'
+			AND item.work_id IN (`+sqlPlaceholders(len(workIDs))+`)
+	`, append([]any{userID}, int64Args(workIDs)...)...)
+	if err != nil {
+		return nil, err
+	}
+	for handRows.Next() {
+		var listID, workID int64
+		if err := handRows.Scan(&listID, &workID); err != nil {
+			_ = handRows.Close()
+			return nil, err
+		}
+		addMember(listID, workID)
+	}
+	if err := handRows.Err(); err != nil {
+		_ = handRows.Close()
+		return nil, err
+	}
+	if err := handRows.Close(); err != nil {
+		return nil, err
+	}
+	for _, list := range editable {
+		if list.Kind != "smart" {
+			continue
+		}
+		where, args := smartListMemberWhere(list.ID, list.Match)
+		smartRows, err := s.db.QueryContext(ctx, "SELECT work.id FROM work WHERE work.id IN ("+sqlPlaceholders(len(workIDs))+") AND "+where, append(int64Args(workIDs), args...)...)
+		if err != nil {
+			return nil, err
+		}
+		for smartRows.Next() {
+			var workID int64
+			if err := smartRows.Scan(&workID); err != nil {
+				_ = smartRows.Close()
+				return nil, err
+			}
+			addMember(list.ID, workID)
+		}
+		if err := smartRows.Err(); err != nil {
+			_ = smartRows.Close()
+			return nil, err
+		}
+		if err := smartRows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	for _, list := range ordered {
+		for _, workID := range workIDs {
+			if members[list.ID][workID] {
+				result[workID] = append(result[workID], list)
+			}
+		}
+	}
+	return result, nil
 }
 
 // updateFavoriteListMembership adds and removes the given works to and from the

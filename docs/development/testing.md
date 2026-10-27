@@ -111,6 +111,14 @@ after `GOLANGCI_LINT_BASE` (which defaults to `HEAD` locally and the first
 parent in CI), so existing lint debt does not block new work. Use
 `make backend-lint-full` for a complete audit of the current backend.
 
+The Makefile exports `GOTOOLCHAIN` set to the `toolchain` line of
+`backend/go.mod`, or its `go` line when there is none, so a local run uses the
+Go release CI installs even when a newer Go is installed; Go switches up to a
+pinned toolchain on its own but never down. The first run downloads that
+toolchain when it is not installed. Set `GOTOOLCHAIN` on the command line or in
+the environment, for example `make GOTOOLCHAIN=local backend-test`, to use
+another one. `make backend-test-container` uses the Go of `GO_IMAGE`.
+
 `make ci-backend` runs the full test suite with coverage and then with the race
 detector, alongside formatting, lint, module verification, vulnerability checks,
 and vet. It omits a third plain test run because coverage already executes the
@@ -125,16 +133,24 @@ slices on separate runners. `make RACE_SHARD=1/6 backend-race-shard` runs one
 slice; `make backend-race` still runs the whole suite in one process.
 `scripts/go-test-shard.mjs` lists every test, example, and fuzz target, places
 them on slices by their recorded race-detector durations, and runs its slice
-with a single `go test -run` pattern. Because a slice takes as long as its
-slowest package, placement balances each package's serial time as well as the
-slice total. Every slice computes the same placement from the same list and
+with a single `go test -run` pattern. `go test` starts a slice's packages in
+import path order on as many slots as the runner has CPUs and runs each
+package's tests one after another, so placement estimates a slice by that
+schedule and balances each package's serial time as well as the slice total.
+Every slice computes the same placement from the same list and
 `scripts/go-test-durations.json`, so each test runs in exactly one of them. A
 new test needs no registration: until it is recorded, it costs the median of
 its package, and each slice reports how many tests have no recording.
-`make backend-race-durations` refreshes the file from a race run in the pinned
-Go image, limited to the CPUs of a CI runner; refresh it when that count grows
-or the slices finish far apart. The slice count lives in the `backend` matrix
-of `.github/workflows/validate.yml`.
+
+The durations come from CI, because the race detector slows each package on a
+runner by a different factor than on a workstation. Each race slice uploads
+its `go test -json` events as a `backend-race-events-<slice>` artifact, kept
+for 30 days, and `make RACE_RUN=<run id> backend-race-durations` records them
+from a successful `PR` or `Full` run that planned the backend checks, through
+an authenticated GitHub CLI. Refresh the file when the unrecorded count grows
+or the slices finish far apart. `make RACE_EVENTS=<file> backend-race-shard`
+keeps a local slice's events in a file. The slice count lives in the
+`backend` matrix of `.github/workflows/validate.yml`.
 
 No slice finishes before its slowest single test. A test that repeats the
 same checks over a matrix of inputs may run a smaller part of it when its
@@ -162,18 +178,28 @@ Do not export production identifiers only to move a white-box test into the
 integration suite. Extract a domain service first, then test its public
 contract.
 
-HTTP handler tests build the real packaged schema once per test process, then
-copy its checkpointed database image into each test's private temporary file.
-Each copy uses the production WAL and foreign-key settings but a single pooled
-connection, so a path that issues a query while its own cursor or transaction
-still holds a connection blocks deterministically instead of passing until
-concurrent production requests exhaust the pool. A test that hangs in
-`database/sql.(*DB).conn` has this defect: read the rows and close the cursor
-before enrichment queries. Tests that deliberately exercise concurrent
-connections use `openMigratedTestDBWithProductionPool`. No writable database or
-WAL is shared between tests. Storage migration tests
-continue to exercise fresh databases and the numbered upgrade chain directly.
-Do not replace this with a checked-in database or reuse a mutated test copy.
+A test that needs the current schema opens its database through
+`internal/storage/storagetest`. The package migrates the embedded catalog once
+per test process, the same catalog and options `storage.Migrate` reads from
+disk, and copies the checkpointed database image into each test's private
+temporary file. Under the race detector, migrating the pure-Go SQLite engine
+costs seconds per database, while copying the image costs a fraction of one.
+`storagetest.Open` and `storagetest.OpenFile` open the copy with the production
+WAL, foreign-key, and pool settings; a test that needs one connection sets it
+on the returned database. `storagetest.NewTemplate` adds seed rows that every
+test of a package starts from, applied once before the image is taken. No
+writable database or WAL is shared between tests. Tests of a migration or of
+the numbered upgrade chain build their own databases and run the real
+migrations. Do not replace the template with a checked-in database or reuse a
+mutated test copy.
+
+HTTP handler tests start from a template seeded with a configured standard
+library and use a single pooled connection, so a path that issues a query while
+its own cursor or transaction still holds a connection blocks deterministically
+instead of passing until concurrent production requests exhaust the pool. A
+test that hangs in `database/sql.(*DB).conn` has this defect: read the rows and
+close the cursor before enrichment queries. Tests that deliberately exercise
+concurrent connections use `openMigratedTestDBWithProductionPool`.
 
 ### Coverage
 
@@ -224,6 +250,16 @@ split by workflow, with common fixtures in `tests/e2e/fixtures/player-library.ts
 CI runs four independent shards with separate failure artifacts. Run one shard
 locally with `make E2E_ARGS="--shard=1/4" frontend-e2e`; `make frontend-e2e`
 still runs every test.
+
+CI runs the shards through `make frontend-e2e-container`, which runs the suite
+in the Playwright image that `PLAYWRIGHT_IMAGE` in the `Makefile` pins by
+digest. The image carries the browsers, their system libraries, and the fonts,
+so a shard downloads no browser or system package. The target runs the host's
+`node_modules` inside the image, so it needs a Linux host. The image tag names
+the Playwright release in `frontend/package-lock.json`, and
+`make playwright-image-check`, part of `make ci-style`, fails until both name
+the same release. Dependabot proposes `@playwright/test` in its own pull
+request; update the image tag and digest in that pull request.
 
 Queue parsing, legacy-state migration, and timer normalization are unit tests
 of `playerPersistence`; Playwright retains real owner/server isolation and
@@ -344,7 +380,10 @@ The Android job shares frontend installation, build, and Capacitor sync between
 JVM tests and assembly. Production Smoke builds the image once through
 `make docker-build`, with Buildx layers cached between runs, then exercises that
 same local image through `make production-e2e`. Development Compose and the
-API-intercepted browser suite remain separate checks.
+API-intercepted browser suite remain separate checks. Smoke and Development
+Compose run Chromium on the runner itself: they download the browser but
+install no system package, because the runner image ships Google Chrome and
+with it every library Chromium needs.
 
 A new push to a pull request cancels that pull request's running validation.
 Every commit pushed to `main` runs to completion alongside any other run.

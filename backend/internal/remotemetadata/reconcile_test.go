@@ -2,35 +2,26 @@ package remotemetadata_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/remotemetadata"
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
-	"github.com/yexca/kikoto/backend/migrations"
 )
 
-func openRemoteDB(t *testing.T) *sql.DB {
+func openRemoteDB(t *testing.T) *sqlutil.DB {
 	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "remote.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.Open(t)
 	db.SetMaxOpenConns(1)
-	if err := storage.MigrateFS(db, migrations.Files, "test"); err != nil {
-		t.Fatal(err)
-	}
 	return db
 }
 
-func mustExec(t *testing.T, db *sql.DB, query string, args ...any) int64 {
+func mustExec(t *testing.T, db *sqlutil.DB, query string, args ...any) int64 {
 	t.Helper()
 	result, err := db.Exec(query, args...)
 	if err != nil {
@@ -42,7 +33,7 @@ func mustExec(t *testing.T, db *sql.DB, query string, args ...any) int64 {
 
 // addRemoteSource registers a remote source and its provider; it returns the
 // file source id and the provider id.
-func addRemoteSource(t *testing.T, db *sql.DB, letter string, priority int, config string) (int64, int64) {
+func addRemoteSource(t *testing.T, db *sqlutil.DB, letter string, priority int, config string) (int64, int64) {
 	t.Helper()
 	code := "example_remote_" + strings.ToLower(letter)
 	sourceID := mustExec(t, db, `INSERT INTO file_source (code, display_name, source_type, priority, enabled, config_json)
@@ -51,7 +42,7 @@ func addRemoteSource(t *testing.T, db *sql.DB, letter string, priority int, conf
 	return sourceID, providerID
 }
 
-func addRemoteSnapshot(t *testing.T, db *sql.DB, workID, providerID int64, code string, work map[string]any) {
+func addRemoteSnapshot(t *testing.T, db *sqlutil.DB, workID, providerID int64, code string, work map[string]any) {
 	t.Helper()
 	work["source_id"] = code
 	raw, err := json.Marshal(work)
@@ -62,14 +53,14 @@ func addRemoteSnapshot(t *testing.T, db *sql.DB, workID, providerID int64, code 
 		workID, providerID, code, string(raw))
 }
 
-func setFallback(t *testing.T, db *sql.DB, enabled bool, ids ...int64) {
+func setFallback(t *testing.T, db *sqlutil.DB, enabled bool, ids ...int64) {
 	t.Helper()
 	raw, _ := json.Marshal(remotemetadata.Settings{Enabled: enabled, SourceIDs: ids})
 	mustExec(t, db, `INSERT INTO app_setting (key, value_json) VALUES (?, ?)
 		ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json`, remotemetadata.SettingKey, string(raw))
 }
 
-func reconcile(t *testing.T, db *sql.DB, workID int64) remotemetadata.Result {
+func reconcile(t *testing.T, db *sqlutil.DB, workID int64) remotemetadata.Result {
 	t.Helper()
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
@@ -86,7 +77,7 @@ func reconcile(t *testing.T, db *sql.DB, workID int64) remotemetadata.Result {
 	return result
 }
 
-func fieldSources(t *testing.T, db *sql.DB, workID int64) map[string]int64 {
+func fieldSources(t *testing.T, db *sqlutil.DB, workID int64) map[string]int64 {
 	t.Helper()
 	rows, err := db.Query("SELECT field_name, provider_id FROM work_metadata_field_source WHERE work_id = ?", workID)
 	if err != nil {

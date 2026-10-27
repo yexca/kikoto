@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -17,6 +16,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
 	"github.com/yexca/kikoto/backend/internal/localfs"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 )
 
@@ -24,7 +24,7 @@ const lyricsFetchVTT = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nSynthetic trans
 
 type lyricsFetchFixture struct {
 	server   *Server
-	db       *sql.DB
+	db       *sqlutil.DB
 	dataRoot string
 	workID   int64
 	audioID  int64
