@@ -22,6 +22,21 @@
 <details>
 <summary><strong>Library and work detail</strong></summary>
 
+- **Manage files** on a local work opens the file workspace that **Edit files**
+  was: the folder's own files, the work's other folders and remote editions,
+  the folder as it will be, and a **To be deleted** view of everything the
+  edit deletes, each with **Keep**. **Find identical files**, choosing files
+  by format, the folder choice, and **Delete folder and forget work** move
+  into it. On wide screens it has three fixed columns: the work's other
+  folders and remote editions on the left, behind one prompt for each kind,
+  the edited folder in the middle, and **To be deleted** on the right, with
+  drag and drop into the edited folder. Another local folder chooses **Copy**
+  or **Merge** in place of the **Merge into this folder** switch, and a
+  remote edition is marked **Read-only**. **Undo all changes** drops the
+  whole edit, and **Restore** brings it back until the next change. **Manage
+  as lyrics** is replaced by a note in the workspace that opens **Manage
+  lyrics** on the folder's other lyrics. Manage cache and viewers who do not
+  manage local files keep the list that selects files to delete.
 - **Edit files** recovers a file published just before a service interruption
   without copying or downloading it again, and preserves a target that changed
   after publication.

@@ -80,9 +80,12 @@ export function ResourceOption({
   removes = false,
   selected,
   disabled,
+  stripe,
   onSelect,
 }: {
   icon: LucideIcon;
+  /** A class that colors the edge of the option by what the edit may do there. */
+  stripe?: string;
   title: string;
   /** A short remark next to the title. */
   note?: string;
@@ -106,10 +109,11 @@ export function ResourceOption({
       onClick={onSelect}
       title={detail}
       className={cn(
-        "flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-70",
+        "relative flex w-full items-start gap-2.5 overflow-hidden rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-70",
         selected ? "border-primary bg-primary/[0.07]" : "bg-background hover:border-foreground/20 hover:bg-muted/50",
       )}
     >
+      {stripe && <span className={cn("absolute inset-y-0 left-0 w-1", stripe)} aria-hidden="true" />}
       <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1 leading-tight">
         <span className="flex items-center gap-1.5">
@@ -177,9 +181,10 @@ export function sortedFolders<T>(node: FolderEditTreeNode<T>) {
 
 /**
  * One folder of a selection tree with its files. `meta` adds a note to a file
- * row, before its size, and `below` a line under the file's name. With
- * `onDragFiles`, a file or folder can be dragged: it hands over the files'
- * paths and the folder above them.
+ * row, before its size, and `below` a line under the file's name. A folder
+ * row shows `folderNote` after its name, and every row ends with `rowMenu`
+ * when it is given. With `onDragFiles`, a file or folder can be dragged: it
+ * hands over the files' paths and the folder above them.
  */
 export function SelectionNode({
   node,
@@ -189,6 +194,8 @@ export function SelectionNode({
   isRoot = false,
   meta,
   below,
+  folderNote,
+  rowMenu,
   onToggle,
   onDragFiles,
 }: {
@@ -199,6 +206,8 @@ export function SelectionNode({
   isRoot?: boolean;
   meta?: (file: FolderEditFile) => ReactNode;
   below?: (file: FolderEditFile) => ReactNode;
+  folderNote?: (path: string) => ReactNode;
+  rowMenu?: (paths: readonly string[], base: string, name: string) => ReactNode;
   onToggle: (paths: readonly string[], included: boolean) => void;
   onDragFiles?: (event: DragEvent, paths: readonly string[], base: string) => void;
 }) {
@@ -250,9 +259,11 @@ export function SelectionNode({
           >
             {node.name}
           </button>
+          {folderNote?.(node.path)}
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
             {count}/{paths.length}
           </span>
+          {rowMenu?.(paths, parentOf(node.path), node.name)}
         </div>
       )}
       {(isRoot || open) &&
@@ -265,6 +276,8 @@ export function SelectionNode({
             disabled={disabled}
             meta={meta}
             below={below}
+            folderNote={folderNote}
+            rowMenu={rowMenu}
             onToggle={onToggle}
             onDragFiles={onDragFiles}
           />
@@ -298,6 +311,7 @@ export function SelectionNode({
               <span className="w-16 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
                 {file.sizeBytes === null ? "" : formatBytes(file.sizeBytes)}
               </span>
+              {rowMenu?.([file.path], parentOf(file.path), file.name)}
             </label>
           );
           if (!line) return row;

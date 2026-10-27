@@ -1,23 +1,72 @@
-import { FolderCog } from "lucide-react";
+import { FolderCog, ShieldAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
+import { LibraryOfflineNotice } from "@/components/library-offline/LibraryOfflineNotice";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogHeader } from "@/components/ui/dialog";
+import { FloatingSelect } from "@/components/ui/floating-select";
 import { ConfirmMediaBatchDeleteDialog } from "@/features/work-detail/dialogs/ConfirmMediaBatchDeleteDialog";
-import type { FolderEditResource, FolderEditTarget } from "@/features/work-detail/folder-edit/folderEditModel";
+import { folderEditDuplicates, type PendingDeletion } from "@/features/work-detail/folder-edit/fileWorkspaceModel";
+import {
+  CURRENT_FOLDER_RESOURCE,
+  currentFileKey,
+  folderEditResourceItemKey,
+  withFolderEditPaths,
+  type FolderEditResource,
+  type FolderEditResultEntry,
+  type FolderEditTarget,
+} from "@/features/work-detail/folder-edit/folderEditModel";
 import { FolderEditMergeConfirmDialog } from "@/features/work-detail/folder-edit/FolderEditMergeConfirmDialog";
+import type { FolderWorkspaceManage } from "@/features/work-detail/folder-edit/folderWorkspace";
+import {
+  DuplicateFileTools,
+  DuplicateMark,
+  FolderLyricsNote,
+  ManagedLyricsTag,
+} from "@/features/work-detail/folder-edit/FolderWorkspaceTools";
 import { FolderWorkspaceView } from "@/features/work-detail/folder-edit/FolderWorkspaceView";
+import { useDuplicateFileCheck } from "@/features/work-detail/folder-edit/useDuplicateFileCheck";
 import {
   useFolderEditWorkspace,
   type FolderEditInitialRemote,
 } from "@/features/work-detail/folder-edit/useFolderEditWorkspace";
-import type { MediaDeleteTarget } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
+import { managedLyricsLanguage } from "@/features/work-detail/lyrics/managedLyricsModel";
+import { isLyricsFilePath } from "@/features/work-detail/lyrics/remoteLyricsModel";
+import type { MediaCleanupMode, MediaDeleteTarget } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
 import type { MediaItem, WorkFolderEditResult } from "@/lib/api";
+import { isLocalOffline } from "@/lib/localAvailability";
+import { lyricsRootFolderName } from "@/lib/lyricsLanguage";
+
+const noSelection: ReadonlySet<string> = new Set();
+
+/** The work's folders, and what Manage files does to the work as a whole. */
+export type FolderEditFolders = {
+  /** The work's local folders when it has several; the workspace edits one at a time. */
+  folders: { id: number; rootPath: string; availability?: string }[];
+  onSelectFolder: (folderId: number) => void;
+  /**
+   * Deletes the folder entirely and forgets the work. Present only while the
+   * viewer may forget the work and this is its only folder.
+   */
+  forget?: {
+    targets: () => MediaDeleteTarget[];
+    deleting: boolean;
+    onConfirm: (targets: MediaDeleteTarget[], mode: MediaCleanupMode) => void;
+  };
+  /** Opens Manage lyrics on the lyrics Kikoto manages in this folder. */
+  onManageLyrics?: () => void;
+  /** Opens Manage lyrics on this folder's other lyrics, to make them lyrics of a language. */
+  onManageFolderLyrics?: () => void;
+  canCheckDuplicates: boolean;
+};
 
 /**
- * Edits one local folder of a work in three columns: where files can come
- * from, the files of the chosen place, and the folder as it will be. The
- * edited folder is the first place; clearing a file there removes it.
+ * Manage files of one local folder of a work: where files can come from, the
+ * files of the chosen place, the folder as it will be, and everything the edit
+ * deletes. The folder is the only place the edit changes; clearing a file of
+ * it deletes the file when the edit is applied.
  */
 export function FolderEditDialog({
   workId,
@@ -25,18 +74,69 @@ export function FolderEditDialog({
   currentItems,
   initialRemote,
   localOnly = false,
-  onBack,
+  manage,
   onClose,
   onApplied,
 }: {
   workId: number;
-  folder: { id: number; rootPath: string };
+  folder: { id: number; rootPath: string; availability?: string };
   currentItems: MediaItem[];
   initialRemote?: FolderEditInitialRemote | null;
   /** Lists only local places, for a custom work that no remote source has. */
   localOnly?: boolean;
-  /** Returns to the folder's own file list. */
-  onBack?: () => void;
+  manage: FolderEditFolders;
+  onClose: () => void;
+  onApplied: (result: WorkFolderEditResult) => void;
+}) {
+  const { t } = useTranslation();
+  const toolbar = <ManageToolbar folder={folder} manage={manage} disabled={false} />;
+  // A folder on an offline storage pool cannot be read or changed until its disk is back.
+  if (isLocalOffline(folder.availability)) {
+    return (
+      <Dialog onClose={onClose} size="full" marker="folder-edit" className="max-w-3xl">
+        <DialogHeader
+          title={t("libraryDetail.manageFiles")}
+          icon={<FolderCog className="h-4 w-4" />}
+          onClose={onClose}
+          closeLabel={t("content.close")}
+        />
+        {toolbar}
+        <div className="p-4">
+          <LibraryOfflineNotice detail={t("libraryOffline.editBlocked")} />
+        </div>
+      </Dialog>
+    );
+  }
+  return (
+    <FolderEditWorkspaceDialog
+      workId={workId}
+      folder={folder}
+      currentItems={currentItems}
+      initialRemote={initialRemote}
+      localOnly={localOnly}
+      manage={manage}
+      onClose={onClose}
+      onApplied={onApplied}
+    />
+  );
+}
+
+function FolderEditWorkspaceDialog({
+  workId,
+  folder,
+  currentItems,
+  initialRemote,
+  localOnly,
+  manage,
+  onClose,
+  onApplied,
+}: {
+  workId: number;
+  folder: { id: number; rootPath: string; availability?: string };
+  currentItems: MediaItem[];
+  initialRemote?: FolderEditInitialRemote | null;
+  localOnly: boolean;
+  manage: FolderEditFolders;
   onClose: () => void;
   onApplied: (result: WorkFolderEditResult) => void;
 }) {
@@ -91,12 +191,95 @@ export function FolderEditDialog({
     ...(merging ? [t("folderEdit.statusMerge", { count: workspace.request.mergeFolderIds?.length ?? 0 })] : []),
   ].join(" · ");
 
+  const kept = workspace.selection[CURRENT_FOLDER_RESOURCE] ?? noSelection;
+  const setKept = (paths: readonly string[], keep: boolean) =>
+    workspace.setSelected(CURRENT_FOLDER_RESOURCE, withFolderEditPaths(kept, paths, keep));
+  const duplicateCheck = useDuplicateFileCheck(workId);
+  const duplicates = useMemo(
+    () =>
+      duplicateCheck.check.status === "done"
+        ? folderEditDuplicates(duplicateCheck.check.groups, workspace.currentFiles)
+        : null,
+    [duplicateCheck.check, workspace.currentFiles],
+  );
+  const sizes = useMemo(
+    () => new Map(workspace.currentFiles.map((file) => [file.path, file.sizeBytes])),
+    [workspace.currentFiles],
+  );
+  const folderLyricsCount = useMemo(
+    () =>
+      workspace.currentFiles.filter((file) => isLyricsFilePath(file.path) && managedLyricsLanguage(file.path) === null)
+        .length,
+    [workspace.currentFiles],
+  );
+  const keep = (item: PendingDeletion) => {
+    if (item.kind === "cleared") setKept([item.path], true);
+    else if (item.kind === "replaced")
+      workspace.setDecision({
+        itemKey: item.incoming.itemKey,
+        sourceId: 0,
+        resolution: "keep_local",
+        targetPath: item.incoming.targetPath,
+      });
+    else workspace.merge?.setMerged(item.resource, false);
+  };
+  // A file of this folder is deleted with the edit; a file the edit adds is simply not added.
+  const discard = (entry: FolderEditResultEntry) => {
+    const own = currentFileKey("");
+    if (entry.key.startsWith(own)) {
+      setKept([entry.key.slice(own.length)], false);
+      return;
+    }
+    for (const resource of workspace.resources) {
+      const state = workspace.files[resource.id];
+      if (resource.kind === "current" || state?.status !== "ready") continue;
+      const file = state.files.find((candidate) => folderEditResourceItemKey(resource, candidate.path) === entry.key);
+      if (!file) continue;
+      const selected = workspace.selection[resource.id] ?? noSelection;
+      workspace.setSelected(resource.id, withFolderEditPaths(selected, [file.path], false));
+      return;
+    }
+  };
+  const manageExtras: FolderWorkspaceManage = {
+    toolbar: <ManageToolbar folder={folder} manage={manage} disabled={workspace.applying} />,
+    thisFolderTools:
+      (manage.canCheckDuplicates && workspace.currentFiles.length > 0) ||
+      (manage.onManageFolderLyrics && folderLyricsCount > 0) ? (
+        <div className="space-y-2">
+          {manage.canCheckDuplicates && workspace.currentFiles.length > 0 && (
+            <DuplicateFileTools
+              check={duplicateCheck.check}
+              duplicates={duplicates}
+              kept={kept}
+              sizes={sizes}
+              disabled={workspace.applying}
+              onStart={() => void duplicateCheck.start()}
+              onStop={duplicateCheck.reset}
+              onKeep={setKept}
+            />
+          )}
+          {manage.onManageFolderLyrics && folderLyricsCount > 0 && (
+            <FolderLyricsNote count={folderLyricsCount} onOpen={manage.onManageFolderLyrics} />
+          )}
+        </div>
+      ) : undefined,
+    fileNote: (path) => {
+      const mark = duplicates?.marks.get(path);
+      return mark ? <DuplicateMark mark={mark} /> : null;
+    },
+    folderNote: (path) =>
+      path === lyricsRootFolderName ? <ManagedLyricsTag onManageLyrics={manage.onManageLyrics} /> : null,
+    pending: workspace.pendingDeletions,
+    onKeep: keep,
+    onDiscard: discard,
+  };
+
   return (
     <>
       <FolderWorkspaceView
         workspace={workspace}
-        title={t("folderEdit.title")}
-        description={t("folderEdit.description")}
+        title={t("libraryDetail.manageFiles")}
+        description={t("fileWorkspace.description")}
         icon={<FolderCog className="h-4 w-4" />}
         marker="folder-edit"
         hints={hints}
@@ -105,8 +288,8 @@ export function FolderEditDialog({
         statusReady={statusReady}
         applyingLabel={t("folderEdit.applying")}
         applyLabel={t("folderEdit.apply")}
-        initialPane={initialRemote ? "select" : "sources"}
-        onBack={onBack}
+        initialPane="select"
+        manage={manageExtras}
         onClose={onClose}
         onApply={startApply}
       />
@@ -139,5 +322,80 @@ export function FolderEditDialog({
         />
       )}
     </>
+  );
+}
+
+/**
+ * What Manage files does to the folder and the work as a whole: switching to
+ * another of the work's folders, and forgetting the work, which deletes the
+ * whole folder and is kept apart from the edit's own file changes.
+ */
+function ManageToolbar({
+  folder,
+  manage,
+  disabled,
+}: {
+  folder: { id: number; rootPath: string };
+  manage: FolderEditFolders;
+  disabled: boolean;
+}) {
+  const { t } = useTranslation();
+  const [forgetting, setForgetting] = useState<{ step: 1 | 2; targets: MediaDeleteTarget[] } | null>(null);
+  const { forget } = manage;
+  const canSwitch = manage.folders.length > 1;
+  if (!canSwitch && !forget) return null;
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
+      {canSwitch && (
+        <>
+          <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+            {t("libraryDetail.manageFolder")}
+          </span>
+          <FloatingSelect
+            value={String(folder.id)}
+            options={manage.folders.map((candidate) => ({
+              value: String(candidate.id),
+              label: isLocalOffline(candidate.availability)
+                ? `${t("libraryOffline.badge")} · ${candidate.rootPath}`
+                : candidate.rootPath,
+            }))}
+            onValueChange={(value) => manage.onSelectFolder(Number(value))}
+            ariaLabel={t("libraryDetail.manageFolder")}
+            disabled={disabled}
+            className="h-8 min-w-0 flex-1 text-xs sm:max-w-md"
+          />
+        </>
+      )}
+      {forget && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          disabled={disabled || forget.deleting}
+          title={t("fileWorkspace.forgetHint")}
+          onClick={() => {
+            const targets = forget.targets();
+            if (targets.length > 0) setForgetting({ step: 1, targets });
+          }}
+        >
+          <ShieldAlert className="h-4 w-4" />
+          {t("fileWorkspace.forget")}
+        </Button>
+      )}
+      {forget && forgetting && (
+        <ConfirmMediaBatchDeleteDialog
+          targets={forgetting.targets}
+          mode="files_and_forget_work"
+          step={forgetting.step}
+          deleting={forget.deleting}
+          onCancel={() => setForgetting(null)}
+          onContinue={() => setForgetting({ ...forgetting, step: 2 })}
+          onConfirm={() => {
+            setForgetting(null);
+            forget.onConfirm(forgetting.targets, "files_and_forget_work");
+          }}
+        />
+      )}
+    </div>
   );
 }

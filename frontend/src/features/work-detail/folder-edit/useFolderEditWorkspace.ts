@@ -27,6 +27,7 @@ import {
   type FolderEditResource,
   type FolderEditTarget,
 } from "@/features/work-detail/folder-edit/folderEditModel";
+import { folderEditPendingDeletions } from "@/features/work-detail/folder-edit/fileWorkspaceModel";
 import { folderEditAssignments } from "@/features/work-detail/folder-edit/folderEditLyrics";
 import {
   createFolderWorkspaceRequestId,
@@ -89,8 +90,18 @@ export function useFolderEditWorkspace({
   const [resources, setResources] = useState<FolderEditResource[]>([currentResource]);
   const [sourcesStatus, setSourcesStatus] = useState<"loading" | "ready" | "error">("loading");
   const [sourcesAttempt, setSourcesAttempt] = useState(0);
-  const { files, setFiles, selection, setSelection, setSelected, lyrics, setLyricsRole, loadResource, readyFiles } =
-    useFolderWorkspaceFiles();
+  const {
+    files,
+    setFiles,
+    selection,
+    setSelection,
+    setSelected,
+    lyrics,
+    setLyrics,
+    setLyricsRole,
+    loadResource,
+    readyFiles,
+  } = useFolderWorkspaceFiles();
   const [activeId, setActiveId] = useState(CURRENT_FOLDER_RESOURCE);
   const [decisions, setDecisions] = useState<Record<string, RemoteFetchFileDecision>>({});
   const [plan, setPlan] = useState<WorkFolderEditPlan | null>(null);
@@ -119,12 +130,18 @@ export function useFolderEditWorkspace({
     }));
   }, [currentFiles, setFiles, setSelection]);
 
-  const selectResource = useCallback(
+  const openResource = useCallback(
     (resource: FolderEditResource) => {
-      setActiveId(resource.id);
       if (!files[resource.id] || files[resource.id].status === "error") void loadResource(resource);
     },
     [files, loadResource],
+  );
+  const selectResource = useCallback(
+    (resource: FolderEditResource) => {
+      setActiveId(resource.id);
+      openResource(resource);
+    },
+    [openResource],
   );
 
   useEffect(() => {
@@ -192,6 +209,41 @@ export function useFolderEditWorkspace({
   );
   const revision = useMemo(() => JSON.stringify(request), [request]);
   const needsPlan = folderEditNeedsPlan(request);
+  const changed = needsPlan || request.removeLocationIds.length > 0;
+
+  // Undoing every change keeps what it undid until the next change, so the
+  // undo itself can be taken back.
+  const [undone, setUndone] = useState<{
+    selection: typeof selection;
+    lyrics: typeof lyrics;
+    decisions: typeof decisions;
+    layout: FolderEditLayout;
+    merged: ReadonlySet<number>;
+    assign: boolean;
+  } | null>(null);
+  useEffect(() => {
+    if (changed) setUndone(null);
+  }, [changed]);
+  const undoAll = () => {
+    if (!changed || applying) return;
+    setUndone({ selection, lyrics, decisions, layout, merged, assign });
+    setSelection({ [CURRENT_FOLDER_RESOURCE]: new Set(currentFiles.map((file) => file.path)) });
+    setLyrics({});
+    setDecisions({});
+    setLayout(emptyFolderEditLayout);
+    setMerged(new Set());
+    setAssign(true);
+  };
+  const restore = () => {
+    if (!undone || applying) return;
+    setSelection(undone.selection);
+    setLyrics(undone.lyrics);
+    setDecisions(undone.decisions);
+    setLayout(undone.layout);
+    setMerged(undone.merged);
+    setAssign(undone.assign);
+    setUndone(null);
+  };
 
   useEffect(() => {
     if (!needsPlan || applying) return;
@@ -248,6 +300,18 @@ export function useFolderEditWorkspace({
   const removedFiles = useMemo(
     () => currentFiles.filter((file) => !currentSelection.has(file.path)),
     [currentFiles, currentSelection],
+  );
+  const pendingDeletions = useMemo(
+    () =>
+      folderEditPendingDeletions({
+        currentFiles,
+        currentSelection,
+        result,
+        merged: resources
+          .filter((resource) => resource.kind === "local" && merges.includes(resource.folderId))
+          .map((resource) => ({ resource, files: readyFiles[resource.id] ?? null })),
+      }),
+    [currentFiles, currentSelection, merges, readyFiles, resources, result],
   );
   const lyricsAdditionCount = request.additions.filter((addition) => addition.language !== undefined).length;
   const assignments = useMemo(() => {
@@ -319,6 +383,7 @@ export function useFolderEditWorkspace({
     lyrics,
     activeResource: resources.find((resource) => resource.id === activeId) ?? resources[0] ?? currentResource,
     selectResource,
+    openResource,
     retryResource: (resource: FolderEditResource) => void loadResource(resource),
     setSelected,
     setLyricsRole,
@@ -362,6 +427,7 @@ export function useFolderEditWorkspace({
         }),
       keyFor: folderEditResourceItemKey,
     }),
+    undo: { canUndo: changed, undoAll, canRestore: undone !== null && !changed, restore },
     merge: {
       folderIds: merged,
       setMerged: (resource, merging) => {
@@ -383,7 +449,9 @@ export function useFolderEditWorkspace({
   };
   return {
     ...workspace,
+    currentFiles,
     removedFiles,
+    pendingDeletions,
     apply,
     request,
     mergePlan: planCurrent ? (currentPlan?.merges ?? []) : [],

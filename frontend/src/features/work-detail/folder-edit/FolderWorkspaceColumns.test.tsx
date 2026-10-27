@@ -9,7 +9,7 @@ import "@/i18n";
 
 import type { FolderEditResource } from "./folderEditModel";
 import type { FolderEditFilesState, FolderWorkspace } from "./folderWorkspace";
-import { SelectionColumn } from "./FolderWorkspaceView";
+import { CopyMergeSwitch } from "./FolderWorkspaceColumns";
 
 const other: FolderEditResource = {
   id: "local:12",
@@ -24,7 +24,7 @@ const other: FolderEditResource = {
   sourceName: "",
 };
 
-/** Whether the Merge switch renders disabled. */
+/** Whether Merge renders disabled in the Copy / Merge switch. */
 function mergeSwitchDisabled(files: FolderEditFilesState) {
   const workspace = {
     activeResource: other,
@@ -36,12 +36,12 @@ function mergeSwitchDisabled(files: FolderEditFilesState) {
     setSelected: () => undefined,
     setLyricsRole: () => undefined,
   } as unknown as FolderWorkspace;
-  const markup = renderToStaticMarkup(<SelectionColumn workspace={workspace} hint="" active />);
-  const button = markup.match(/<button[^>]*role="switch"[^>]*>/)?.[0] ?? "";
+  const markup = renderToStaticMarkup(<CopyMergeSwitch workspace={workspace} resource={other} />);
+  const button = [...markup.matchAll(/<button[^>]*role="radio"[^>]*>/g)][1]?.[0] ?? "";
   return / disabled=""/.test(button);
 }
 
-describe("the Merge switch", () => {
+describe("Merge for another local folder", () => {
   it("turns on only once the folder's files have loaded", () => {
     expect(mergeSwitchDisabled({ status: "loading", files: [] })).toBe(true);
     expect(

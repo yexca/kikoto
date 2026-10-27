@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import type { TreeNode, TreeTrack } from "@/features/work-detail/media/mediaTreeModel";
 import {
-  compactLibraryPath,
-  directoryManagerDuplicates,
   directoryManagerFormatGroups,
   directoryManagerLocationGroups,
   directoryManagerSelectionState,
@@ -98,63 +96,5 @@ describe("directory manager selection model", () => {
     expect(directoryManagerSelectionState(keys, selected).checked).toBe(true);
     expect([...withTargetKeys(selected, keys, false)]).toEqual(["local:5"]);
     expect(directoryManagerSelectionState([], new Set()).checked).toBe(false);
-  });
-});
-
-describe("identical files in the directory manager", () => {
-  const duplicate = (locationId: number, workCode: string, path: string) => ({
-    locationId,
-    mediaItemId: locationId,
-    workId: workCode === "RJ00000000" ? 1 : 2,
-    workCode,
-    path,
-  });
-  const targets = directoryManageTargets(root, { allowLocalDelete: true });
-
-  it("treats every listed copy as redundant when the same file is in another folder", () => {
-    const duplicates = directoryManagerDuplicates(
-      [
-        {
-          sizeBytes: 100,
-          files: [
-            duplicate(1, "RJ00000000", "library/RJ00000000/mp3/01.mp3"),
-            duplicate(2, "RJ00000000", "library/RJ00000000/mp3/02.mp3"),
-            duplicate(70, "RJ00000001", "library/RJ00000001/Translated/01.mp3"),
-          ],
-        },
-      ],
-      targets,
-    );
-    expect(duplicates.elsewhere).toMatchObject({ files: 2, sizeBytes: 200, targetKeys: ["local:1", "local:2"] });
-    expect(duplicates.repeated.files).toBe(0);
-    expect(duplicates.marks.get(1)).toMatchObject({ elsewhere: true, counterpart: { locationId: 70 } });
-    expect(compactLibraryPath(duplicates.marks.get(1)?.counterpart.path ?? "")).toBe("Translated/01.mp3");
-  });
-
-  it("keeps the first file of a set that exists only in the listed folder", () => {
-    const duplicates = directoryManagerDuplicates(
-      [
-        {
-          sizeBytes: 500,
-          files: [
-            duplicate(3, "RJ00000000", "library/RJ00000000/wav/01.wav"),
-            duplicate(4, "RJ00000000", "library/RJ00000000/wav/02.WAV"),
-          ],
-        },
-        // A set whose copies are all outside the listed folder is not this folder's concern.
-        {
-          sizeBytes: 9,
-          files: [
-            duplicate(80, "RJ00000001", "library/RJ00000001/a.txt"),
-            duplicate(81, "RJ00000001", "library/RJ00000001/b.txt"),
-          ],
-        },
-      ],
-      targets,
-    );
-    expect(duplicates.repeated).toMatchObject({ files: 1, sizeBytes: 500, targetKeys: ["local:4"] });
-    expect(duplicates.elsewhere.files).toBe(0);
-    expect([...duplicates.marks.keys()].sort()).toEqual([3, 4]);
-    expect(duplicates.marks.get(3)).toMatchObject({ elsewhere: false, counterpart: { locationId: 4 } });
   });
 });

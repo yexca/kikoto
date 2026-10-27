@@ -16,10 +16,9 @@ import { FilePreviewDialog, type FilePreviewRequest } from "@/features/work-deta
 import { toastFromError, type useToast } from "@/components/ui/toast";
 import type { MediaCleanupMode, MediaDeleteTarget } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
 import { DirectoryManagerDialog } from "@/features/work-detail/dialogs/DirectoryManagerDialog";
-import { FolderEditDialog } from "@/features/work-detail/folder-edit/FolderEditDialog";
+import { FolderEditDialog, type FolderEditFolders } from "@/features/work-detail/folder-edit/FolderEditDialog";
 import type { FolderEditInitialRemote } from "@/features/work-detail/folder-edit/useFolderEditWorkspace";
 import { LyricsManagerDialog, type LyricsManagerRequest } from "@/features/work-detail/lyrics/LyricsManagerDialog";
-import type { FolderLyricsFile } from "@/features/work-detail/lyrics/managedLyricsModel";
 import { WorkMetadataEditorModal, type MetadataEditorSection } from "@/features/work-detail/metadata";
 import { ReforkConfirmDialog } from "@/features/work-detail/dialogs/ReforkConfirmDialog";
 import { useAuth } from "@/auth/AuthProvider";
@@ -62,13 +61,9 @@ export function PersistedDirectoryManagerOverlay({
   deleting,
   onDeleteTargets,
   workID,
-  canForgetWork,
   localRoot,
   localFolders = [],
   onSelectLocalFolder,
-  onEditFiles,
-  onManageAsLyrics,
-  onManageLyrics,
   onClose,
 }: {
   open: boolean;
@@ -79,23 +74,13 @@ export function PersistedDirectoryManagerOverlay({
   deleting: boolean;
   onDeleteTargets: (targets: MediaDeleteTarget[], mode: MediaCleanupMode) => void;
   workID: number;
-  canForgetWork: boolean;
   localRoot: { folderId: number; path: string; offline?: boolean } | null;
   /** The work's local folders when it has several; file management then shows one at a time. */
   localFolders?: { id: number; rootPath: string; availability?: string }[];
   onSelectLocalFolder?: (folderId: number) => void;
-  /** Opens the three-column edit of the listed folder; absent when the folder cannot be edited. */
-  onEditFiles?: () => void;
-  /** Opens the lyrics manager on the selected lyrics files of the listed folder, to manage them as lyrics. */
-  onManageAsLyrics?: (files: FolderLyricsFile[]) => void;
-  /** Opens the lyrics manager on its files, which takes over the lyrics Kikoto manages. */
-  onManageLyrics?: () => void;
   onClose: () => void;
 }) {
-  const { demoMode, hasPermission } = useAuth();
   if (!open) return null;
-  // Comparing files reads the library, which the server allows only to users who manage its files.
-  const canCheckDuplicates = !demoMode && hasPermission("downloads:manage");
   const title = selectedTrackedPresence ? i18n.t("libraryDetail.manageCache") : i18n.t("libraryDetail.manageFiles");
   const description = selectedTrackedPresence ? i18n.t("libraryDetail.reviewCachedFiles") : undefined;
   const emptyLabel = selectedTrackedPresence
@@ -115,34 +100,30 @@ export function PersistedDirectoryManagerOverlay({
       deleting={deleting}
       onDeleteTargets={onDeleteTargets}
       workId={workID}
-      canForgetWork={canForgetWork}
       allowCacheDelete={!selectedRemoteSource}
       allowLocalDelete={!selectedRemoteSource && !selectedTrackedPresence}
-      duplicateWorkId={canCheckDuplicates ? workID : 0}
       localRoot={localRoot}
       localFolders={localFolders}
       onSelectLocalFolder={onSelectLocalFolder}
-      onEditFiles={onEditFiles}
-      onManageAsLyrics={localRoot ? onManageAsLyrics : undefined}
-      onManageLyrics={onManageLyrics}
       showCachedFilter={Boolean(selectedTrackedPresence)}
     />
   );
 }
 
+/** Manage files of a local folder for a manager of local files: the file workspace. */
 export function PersistedFolderEditOverlay({
   work,
   folder,
   initialRemote,
-  onBack,
+  manage,
   onClose,
   onApplied,
 }: {
   work: WorkDetail | null;
-  /** The folder being edited; the overlay is closed while it is null. */
+  /** The folder being managed; the overlay is closed while it is null. */
   folder: WorkFolderLocation | null;
   initialRemote: FolderEditInitialRemote | null;
-  onBack?: () => void;
+  manage: FolderEditFolders;
   onClose: () => void;
   onApplied: (result: WorkFolderEditResult) => void;
 }) {
@@ -156,7 +137,7 @@ export function PersistedFolderEditOverlay({
       currentItems={work.mediaItems}
       initialRemote={initialRemote}
       localOnly={Boolean(work.customWork)}
-      onBack={onBack}
+      manage={manage}
       onClose={onClose}
       onApplied={onApplied}
     />
