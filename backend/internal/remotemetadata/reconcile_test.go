@@ -5,28 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/remotemetadata"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
-	"github.com/yexca/kikoto/backend/migrations"
 )
 
 func openRemoteDB(t *testing.T) *sqlutil.DB {
 	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "remote.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.Open(t)
 	db.SetMaxOpenConns(1)
-	if err := storage.MigrateFS(db, migrations.Files, "test"); err != nil {
-		t.Fatal(err)
-	}
 	return db
 }
 

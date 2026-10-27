@@ -4,29 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
-	"github.com/yexca/kikoto/backend/migrations"
 )
 
 func openTagDB(t *testing.T) *sqlutil.DB {
 	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "tags.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := storagetest.Open(t)
 	db.SetMaxOpenConns(1)
-	if err := storage.MigrateFS(db, migrations.Files, "test"); err != nil {
-		t.Fatal(err)
-	}
 	return db
 }
 func execTag(t *testing.T, db *sqlutil.DB, query string, args ...any) int64 {

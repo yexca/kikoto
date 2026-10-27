@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 )
 
 // The default weights in hundredths of a favorite: 5★ 150, 4★ 100, 2★ −75,
@@ -138,14 +139,8 @@ func TestRatingChangeStartsNewRecommendationGeneration(t *testing.T) {
 func TestCatalogBackfillPublishesAtomicallyAndSurvivesRestart(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "catalog.db")
-	db, err := storage.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := storagetest.OpenFile(t, path)
 	t.Cleanup(func() { _ = db.Close() })
-	if err := storage.Migrate(db, "../../migrations"); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := db.Exec("INSERT INTO user_account(id,username,display_name,role) VALUES (1,'synthetic-user','Example User','user'); INSERT INTO work(id,primary_code,title) VALUES(1,'RJ00000000','Example Work'),(2,'RJ00000001','Example Other Work')"); err != nil {
 		t.Fatal(err)
 	}

@@ -670,22 +670,11 @@ func safeResolvedPath(root string, relPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	resolved, err := filepath.EvalSymlinks(absPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return absPath, nil
-		}
-		return "", err
+	resolved, err := resolvePathWithinRoot(root, absPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return absPath, nil
 	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return "", err
-	}
-	resolved, err = filepath.Abs(resolved)
-	if err != nil || !isPathWithinRoot(absRoot, resolved) {
-		return "", fmt.Errorf("path escapes data root")
-	}
-	return resolved, nil
+	return resolved, err
 }
 
 func safeCachePath(root string, relPath string) (string, error) {

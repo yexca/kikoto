@@ -13,20 +13,13 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/account"
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 )
 
 func migratedCommandTestDatabase(t *testing.T) (string, *account.Store) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "kikoto.db")
-	db, err := storage.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		t.Fatal(err)
-	}
+	db := storagetest.OpenFile(t, path)
 	t.Setenv("KIKOTO_MODE", "production")
 	t.Setenv("KIKOTO_DB_PATH", path)
 	t.Setenv("KIKOTO_ROOT_USERNAME", "")

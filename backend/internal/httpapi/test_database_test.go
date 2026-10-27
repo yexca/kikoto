@@ -1,49 +1,18 @@
 package httpapi
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"sync"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 )
 
-// Build the real packaged schema once, then give every test its own writable
-// file. No database or WAL is shared.
-var migratedTestDatabaseImage = sync.OnceValues(func() ([]byte, error) {
-	dir, err := os.MkdirTemp("", "kikoto-test-schema-")
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = os.RemoveAll(dir) }()
-	path := filepath.Join(dir, "schema.db")
-	db, err := storage.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = db.Close() }()
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		return nil, err
-	}
-	// Tests start from a configured standard library, like an instance that
-	// finished onboarding. Onboarding tests clear the mode themselves.
-	if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('library_mode', '"standard"')`); err != nil {
-		return nil, err
-	}
-	var busy, logPages, checkpointed int
-	if err := db.QueryRow("PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logPages, &checkpointed); err != nil {
-		return nil, err
-	}
-	if busy != 0 {
-		return nil, fmt.Errorf("test schema checkpoint remained busy")
-	}
-	if err := db.Close(); err != nil {
-		return nil, err
-	}
-	return os.ReadFile(path)
+// Tests start from a configured standard library, like an instance that
+// finished onboarding. Onboarding tests clear the mode themselves.
+var migratedTestDatabase = storagetest.NewTemplate(func(db *sqlutil.DB) error {
+	_, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('library_mode', '"standard"')`)
+	return err
 })
 
 // openMigratedTestDB limits the reader pool to one connection, like the
@@ -65,55 +34,14 @@ func openMigratedTestDB(t *testing.T) *sqlutil.DB {
 // reader proceeding while another connection holds the write lock.
 func openMigratedTestDBWithProductionPool(t *testing.T) *sqlutil.DB {
 	t.Helper()
-	image, err := migratedTestDatabaseImage()
-	if err != nil {
-		t.Fatalf("prepare test database: %v", err)
-	}
-	path := filepath.Join(t.TempDir(), "test.db")
-	if err := os.WriteFile(path, image, 0o600); err != nil {
-		t.Fatalf("copy test database: %v", err)
-	}
-	db, err := storage.Open(path)
-	if err != nil {
-		t.Fatalf("open test database: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
+	return migratedTestDatabase.Open(t)
 }
 
-func TestMigratedTestDatabasesRemainIsolated(t *testing.T) {
-	first := openMigratedTestDB(t)
-	if _, err := first.Exec("CREATE TABLE test_isolation_probe (id INTEGER PRIMARY KEY)"); err != nil {
-		t.Fatal(err)
-	}
-	second := openMigratedTestDB(t)
-	var count int
-	if err := second.QueryRow("SELECT COUNT(*) FROM sqlite_schema WHERE name = 'test_isolation_probe'").Scan(&count); err != nil {
-		t.Fatal(err)
-	}
-	if count != 0 {
-		t.Fatal("one test's schema change leaked into another database")
-	}
-	var journal string
-	if err := second.QueryRow("PRAGMA journal_mode").Scan(&journal); err != nil {
-		t.Fatal(err)
-	}
-	var foreignKeys int
-	if err := second.QueryRow("PRAGMA foreign_keys").Scan(&foreignKeys); err != nil {
-		t.Fatal(err)
-	}
-	if journal != "wal" || foreignKeys != 1 {
-		t.Fatal("test database must retain production WAL and foreign keys")
-	}
-	if second.Readers().Stats().MaxOpenConnections != 1 || second.Writer().Stats().MaxOpenConnections != 1 {
+func TestMigratedTestDatabasePools(t *testing.T) {
+	if db := openMigratedTestDB(t); db.Readers().Stats().MaxOpenConnections != 1 || db.Writer().Stats().MaxOpenConnections != 1 {
 		t.Fatal("test database must use one connection per pool to expose nested pool acquisition")
 	}
 	if production := openMigratedTestDBWithProductionPool(t); production.Readers().Stats().MaxOpenConnections != storage.DefaultReadConnections {
 		t.Fatal("production-pool test database must retain the production reader pool")
-	}
-	// Startup must still accept the copied ledger and schema as an already
-	// migrated installation. Migration-chain tests continue to build their own DBs.
-	if err := storage.Migrate(second, filepath.Join("..", "..", "migrations")); err != nil {
-		t.Fatalf("copied migration state is invalid: %v", err)
 	}
 }

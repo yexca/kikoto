@@ -4,24 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 )
 
 func openEmptyAccountTestStore(t *testing.T) *Store {
 	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "account.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		t.Fatal(err)
-	}
-	return NewStore(db)
+	return NewStore(storagetest.Open(t))
 }
 
 func requireSetupState(t *testing.T, store *Store, want bool) {

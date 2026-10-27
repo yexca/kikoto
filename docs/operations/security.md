@@ -345,6 +345,8 @@ or cache roots.
 
 Local scans ignore symbolic-link files, and media processing and Fetch source
 copies reject stored paths whose resolved target leaves the configured root.
+The check compares against the root's own resolved location, so a root that is
+itself a symbolic link, or sits below a linked directory, holds its files.
 
 The production image runs as the container root user. Production and Demo
 Compose drop Linux capabilities, enable `no-new-privileges`, and use a read-only

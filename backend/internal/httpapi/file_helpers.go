@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -39,6 +40,36 @@ func copyFile(sourcePath string, targetPath string) error {
 		return err
 	}
 	return nil
+}
+
+var errPathEscapesRoot = errors.New("path escapes data root")
+
+// resolvePathWithinRoot resolves every symbolic link in candidate and returns
+// its real path when that path stays inside the real path of root. Both sides
+// are resolved so that a root reached through a symbolic link, or one below a
+// linked parent directory, still contains its own files. A candidate that does
+// not exist returns the os.ErrNotExist error from resolving it.
+func resolvePathWithinRoot(root string, candidate string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", err
+	}
+	resolved, err = filepath.Abs(resolved)
+	if err != nil {
+		return "", err
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	realRoot, err := filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		return "", err
+	}
+	if !isPathWithinRoot(realRoot, resolved) {
+		return "", errPathEscapesRoot
+	}
+	return resolved, nil
 }
 
 func isPathWithinRoot(root string, candidate string) bool {

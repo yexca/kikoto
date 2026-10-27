@@ -59,18 +59,8 @@ func v061MigrationCatalog(t *testing.T) string {
 
 func openRestartableMigrationDB(t *testing.T) (string, *sqlutil.DB) {
 	t.Helper()
-	image, err := migratedTestDatabaseImage()
-	if err != nil {
-		t.Fatal(err)
-	}
 	path := filepath.Join(t.TempDir(), "library.db")
-	if err := os.WriteFile(path, image, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	db, err := storage.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := migratedTestDatabase.OpenFile(t, path)
 	return path, db
 }
 
