@@ -231,5 +231,8 @@
   recorded in CI (`make RACE_RUN=<run id> backend-race-durations` refreshes
   them), each browser test shard runs three workers in the pinned Playwright
   image, and no browser job installs system packages.
+- Make runs every Go target with the toolchain `backend/go.mod` pins, so a
+  newer locally installed Go no longer breaks `make backend-lint`; set
+  `GOTOOLCHAIN` to override it.
 
 </details>
