@@ -217,8 +217,9 @@
 <summary><strong>Development and docs</strong></summary>
 
 - CI validation finishes sooner: planned jobs start without waiting for Style,
-  the backend race suite runs as six slices balanced by recorded test
-  durations (`make backend-race-durations` refreshes them), and each browser
-  test shard runs three workers.
+  the backend race suite runs as six slices balanced by test durations
+  recorded in CI (`make RACE_RUN=<run id> backend-race-durations` refreshes
+  them), each browser test shard runs three workers in the pinned Playwright
+  image, and no browser job installs system packages.
 
 </details>

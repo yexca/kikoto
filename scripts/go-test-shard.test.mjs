@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  createReporter,
   parseDurations,
   parseShard,
   parseTestList,
   runPattern,
   selectShard,
+  shardSeconds,
 } from "./go-test-shard.mjs";
 
 const event = (pkg, output, action = "output") =>
@@ -107,6 +109,23 @@ test("recorded durations give a slow test's package room on its own shard", () =
   assert.equal(first.unrecorded, 2);
 });
 
+test("a shard lasts until its packages, started in import path order on four slots, finish", () => {
+  const seconds = (entries) => shardSeconds(new Map(entries));
+  assert.equal(seconds([]), 0);
+  assert.equal(seconds([["example/a", 30]]), 30);
+  // Four packages run at once; the fifth starts when the shortest finishes.
+  assert.equal(
+    seconds([
+      ["example/e", 50],
+      ["example/a", 10],
+      ["example/b", 40],
+      ["example/c", 40],
+      ["example/d", 40],
+    ]),
+    60,
+  );
+});
+
 test("durations come from passed top-level tests of a run that did not fail", () => {
   const run = (action, pkg, name, elapsed) =>
     JSON.stringify({
@@ -138,6 +157,53 @@ test("durations come from passed top-level tests of a run that did not fail", ()
         ].join("\n"),
       ),
     /failed run/,
+  );
+});
+
+test("the run prints each passing package's result line and all output of a failing one", () => {
+  const event = (action, pkg, test, output) =>
+    JSON.stringify({
+      Action: action,
+      Package: pkg,
+      Test: test,
+      Output: output,
+    });
+  const printed = [];
+  const report = createReporter((text) => printed.push(text));
+  for (const line of [
+    event("start", "example/a"),
+    event("run", "example/a", "TestOne"),
+    event("output", "example/a", "TestOne", "=== RUN   TestOne\n"),
+    event("output", "example/b", "TestTwo", "=== RUN   TestTwo\n"),
+    event("output", "example/b", "TestTwo", "    two_test.go:9: wrong\n"),
+    event("output", "example/a", "TestOne", "--- PASS: TestOne (0.10s)\n"),
+    event("pass", "example/a", "TestOne"),
+    event("output", "example/a", undefined, "PASS\n"),
+    event("output", "example/a", undefined, "ok  \texample/a\t0.20s\n"),
+    event("pass", "example/a"),
+    event("output", "example/b", "TestTwo", "--- FAIL: TestTwo (0.30s)\n"),
+    event("fail", "example/b", "TestTwo"),
+    event("output", "example/b", undefined, "FAIL\texample/b\t0.40s\n"),
+    event("fail", "example/b"),
+    JSON.stringify({
+      Action: "build-output",
+      ImportPath: "example/c",
+      Output: "c.go:1: error\n",
+    }),
+    "go: not an event",
+  ])
+    report(line);
+  assert.equal(
+    printed.join(""),
+    [
+      "ok  \texample/a\t0.20s\n",
+      "=== RUN   TestTwo\n",
+      "    two_test.go:9: wrong\n",
+      "--- FAIL: TestTwo (0.30s)\n",
+      "FAIL\texample/b\t0.40s\n",
+      "c.go:1: error\n",
+      "go: not an event\n",
+    ].join(""),
   );
 });
 

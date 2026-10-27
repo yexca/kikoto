@@ -1,6 +1,7 @@
 .PHONY: backend-format backend-lint backend-lint-full backend-verify backend-vuln backend-test backend-test-container backend-coverage backend-vet backend-race backend-build backend-run frontend-install frontend-dev frontend-build frontend-coverage frontend-format frontend-lint frontend-docs frontend-i18n frontend-audit frontend-audit-signatures dependency-audit frontend-playwright-install frontend-e2e-smoke frontend-e2e android-sync android-test android-build ios-sync ios-build docker-build docker-up docker-down docker-status docker-logs smoke smoke-api smoke-up smoke-down smoke-status smoke-logs sensitive-check sensitive-check-test privacy-check ci-style ci-backend ci-frontend ci-local ci
 .PHONY: ci-plan ci-plan-test ci-results ci-backend-static ci-backend-coverage ci-backend-race ci-production production-smoke production-e2e
 .PHONY: backend-race-shard backend-race-durations go-test-shard-test
+.PHONY: frontend-e2e-container playwright-image-check
 .PHONY: pr-description-check pr-description-test
 .PHONY: actionlint ci-metrics ci-metrics-test
 .PHONY: browse-performance browse-production-performance playback-performance recommendation-performance
@@ -10,6 +11,8 @@ DOCKER_BUILD ?= $(DOCKER) build
 DOCKER_BUILD_ARGS ?=
 E2E_ARGS ?=
 RACE_SHARD ?= 1/1
+RACE_EVENTS ?=
+RACE_RUN ?=
 RECOMMENDATION_PERF_ARGS ?=
 GOLANGCI_LINT_VERSION ?= v2.13.1
 GOLANGCI_LINT_TIMEOUT ?= 5m
@@ -21,6 +24,9 @@ NODE ?= node
 DOCKER ?= docker
 DOCKER_IMAGE ?= kikoto:dev
 GO_IMAGE ?= golang:1.26.10@sha256:fb456410ab4c979617acaf28c46b2b9fe60b11bcc3dc8ceea0eaeb3e7cd0f8a8
+# Its tag follows @playwright/test in frontend/package-lock.json; make
+# playwright-image-check enforces that.
+PLAYWRIGHT_IMAGE ?= mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
 # Keep build contexts, .env lookup, mounts, and the project name rooted here.
 DOCKER_COMPOSE_DEV = $(DOCKER) compose --project-directory "$(CURDIR)" -f deploy/compose/dev.yml
 SMOKE_COMPOSE_PROJECT := kikoto-smoke
@@ -33,6 +39,8 @@ SMOKE_HEALTH_URL := http://127.0.0.1:$(SMOKE_BACKEND_PORT)/health
 SMOKE_BASE_URL := http://127.0.0.1:$(SMOKE_FRONTEND_PORT)
 SMOKE_TARGETS := smoke smoke-api smoke-up smoke-down smoke-status smoke-logs
 DOCKER_COMPOSE_SMOKE = $(DOCKER) compose --project-directory "$(CURDIR)" -p $(SMOKE_COMPOSE_PROJECT) -f deploy/compose/dev.yml
+# Hosted CI runners ship Google Chrome and with it every library Chromium
+# needs, so no target installs system packages for the browser.
 PLAYWRIGHT_INSTALL_ARGS ?= chromium
 
 # Smoke always runs against disposable mounts, non-development ports, and fixed runtime inputs.
@@ -56,10 +64,6 @@ $(SMOKE_TARGETS): export KIKOTO_DEV_BACKEND_PORT := $(SMOKE_BACKEND_PORT)
 $(SMOKE_TARGETS): export KIKOTO_DEV_FRONTEND_PORT := $(SMOKE_FRONTEND_PORT)
 $(SMOKE_TARGETS): export KIKOTO_SMOKE_HEALTH_URL := $(SMOKE_HEALTH_URL)
 $(SMOKE_TARGETS): export PLAYWRIGHT_BASE_URL := $(SMOKE_BASE_URL)
-
-ifeq ($(CI),true)
-PLAYWRIGHT_INSTALL_ARGS := --with-deps chromium
-endif
 
 ifeq ($(OS),Windows_NT)
 APP_VERSION := $(shell powershell -NoProfile -Command "(Get-Content -Raw VERSION).Trim()")
@@ -167,6 +171,12 @@ frontend-e2e-smoke: frontend-playwright-install
 frontend-e2e: frontend-playwright-install
 	cd frontend && $(NPM) run test:e2e -- $(E2E_ARGS)
 
+# The browser suite inside the pinned Playwright image, which carries the
+# browsers, system libraries, and fonts, so CI downloads no browser or system
+# package. It runs the host's node_modules, so the host must be Linux.
+frontend-e2e-container: frontend-install
+	$(DOCKER) run --rm --ipc=host --user "$$(id -u):$$(id -g)" -e CI -e HOME=/tmp -v "$(CURDIR):/src" -w /src/frontend $(PLAYWRIGHT_IMAGE) npm run test:e2e -- $(E2E_ARGS)
+
 android-sync: frontend-build
 	cd frontend && $(NPX) cap sync android
 
@@ -263,6 +273,9 @@ ci-plan-test:
 go-test-shard-test:
 	$(NODE) --test scripts/go-test-shard.test.mjs
 
+playwright-image-check:
+	$(NODE) scripts/check-playwright-image.mjs
+
 pr-description-check:
 	$(NODE) scripts/check-pr-description.mjs
 
@@ -279,7 +292,7 @@ ci-metrics:
 ci-metrics-test:
 	$(NODE) --test scripts/ci-metrics.test.mjs
 
-ci-style: frontend-format frontend-lint frontend-docs frontend-i18n sensitive-check-test ci-plan-test go-test-shard-test pr-description-test ci-metrics-test actionlint
+ci-style: frontend-format frontend-lint frontend-docs frontend-i18n sensitive-check-test ci-plan-test go-test-shard-test playwright-image-check pr-description-test ci-metrics-test actionlint
 
 # Coverage executes the full suite; retain the separate race-instrumented run.
 ci-backend-static: backend-format backend-lint backend-verify backend-vuln backend-vet
@@ -290,16 +303,17 @@ ci-backend-race: backend-race
 
 # One slice of the race suite, as CI runs it on parallel runners; the slices
 # of a total together run every test once: make RACE_SHARD=1/4 backend-race-shard
+# RACE_EVENTS names a file that keeps the slice's `go test -json` events.
+backend-race-shard: export GO_TEST_JSON := $(if $(RACE_EVENTS),$(abspath $(RACE_EVENTS)))
 backend-race-shard:
 	cd backend && $(NODE) ../scripts/go-test-shard.mjs $(RACE_SHARD) -race -timeout=20m
 
-# Records each test's race-detector duration, which the slices balance by, in
-# the pinned Go image limited to the CPUs of a CI runner. Refresh it when the
-# slices report many unrecorded tests or finish far apart. Git Bash would
-# otherwise rewrite the container paths into Windows paths.
-backend-race-durations: export MSYS_NO_PATHCONV := 1
+# Records each test's race-detector duration, which the slices balance by, from
+# the events that the race slices of a successful CI run uploaded. Refresh it
+# when the slices report many unrecorded tests or finish far apart; it needs
+# the GitHub CLI: make RACE_RUN=<run id> backend-race-durations
 backend-race-durations:
-	$(DOCKER) run --rm --cpus 4 -v "$(CURDIR)/backend:/src" -w /src $(GO_IMAGE) $(GO) test -race -count=1 -json -timeout=40m ./... | $(NODE) scripts/go-test-shard.mjs record scripts/go-test-durations.json
+	$(NODE) scripts/go-test-shard.mjs record "$(RACE_RUN)" scripts/go-test-durations.json
 
 ci-backend: ci-backend-static ci-backend-coverage ci-backend-race
 

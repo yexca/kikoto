@@ -37,6 +37,7 @@ export const scriptJobs = {
   "smoke.mjs": ["dev_smoke"],
   "check-doc-links.mjs": [],
   "check-doc-locales.mjs": [],
+  "check-playwright-image.mjs": [],
   "check-pr-description.mjs": [],
   "check-sensitive.mjs": [],
   "check-ui-copy.mjs": [],
