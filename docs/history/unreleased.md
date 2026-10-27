@@ -29,6 +29,9 @@
   a permission denial also clears protected data already displayed in Activity.
 - Library and Favorites cards show your rating beside the Quick mark and rate
   a work, or clear its rating, without opening it.
+- The list button on Library, Favorites, Discover, and Rankings cards names
+  the list that holds the work, as on work detail, when the card footer has
+  room for the name; a narrower card keeps the lit list icon alone.
 - The work detail stat strip shows your rating beside the DLsite rating, also
   for custom works.
 - Work detail labels the unrated star **Rate**, so it no longer reads as a

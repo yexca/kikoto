@@ -185,7 +185,10 @@ list. `Marked` is the fixed system list containing only works whose Quick mark
 is not Unmarked; its membership is derived and cannot be edited as a list.
 Other lists are user-created and keep explicit membership. The list button on a
 work card or on work detail, a list icon with a plus while the work is in no
-list, opens **Add to list**: your lists with a search field. Each list you
+list, opens **Add to list**: your lists with a search field. On a card in
+Library, Favorites, or Discover, the button of a work in a list names that list
+like the work detail button when the card footer has room for the name;
+otherwise it shows only the lit list icon. Each list you
 check or clear is saved at once, and typing a name no list has offers to create
 that list with the work in it. A smart list that holds the work through its
 rule says so, and clearing it keeps the work out of that list. **Change lists**
