@@ -9,7 +9,7 @@ import (
 )
 
 func TestLLMTitlesParticipateInDisplaySortingSearchAndExpiry(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	first := insertSearchWork(t, db, 0, "Zulu original")
 	insertSearchWork(t, db, 1, "Bravo original")
 	execSearchFixture(t, db, `INSERT INTO work_llm_translation(work_id,language,field_name,value_text,source_hash,source_text,source_work_id) VALUES(?,'en-us','title','Alpha machine','synthetic-hash','Zulu original',?)`, first, first)

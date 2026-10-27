@@ -4,13 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -111,14 +110,7 @@ func BenchmarkLibraryRecommendationPage(b *testing.B) {
 
 func seedPaginationLibrary(t testing.TB, count, tracks, snapshotBytes int) (*Store, int64) {
 	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "library.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if err := storage.Migrate(db, "../../migrations"); err != nil {
-		t.Fatal(err)
-	}
+	db := storagetest.Open(t)
 	tx, err := db.Begin()
 	if err != nil {
 		t.Fatal(err)
@@ -221,14 +213,7 @@ func publishRecommendationCatalog(t testing.TB, store *Store) {
 // Nullable sort values stay after every known value in both directions, with
 // ties broken by the newest or oldest addition.
 func TestListPagePlacesMissingSortValuesLast(t *testing.T) {
-	db, err := storage.Open(filepath.Join(t.TempDir(), "library.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if err := storage.Migrate(db, "../../migrations"); err != nil {
-		t.Fatal(err)
-	}
+	db := storagetest.Open(t)
 	for ordinal, row := range []struct {
 		release, rating, sales any
 	}{

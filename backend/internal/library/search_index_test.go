@@ -10,12 +10,20 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 const searchIndexMigration = "036_work_search_index.sql"
 
-func openSearchTestDB(t *testing.T, migrationDir string) *sql.DB {
+func openSearchTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	return storagetest.Open(t)
+}
+
+// openSearchTestDBAt migrates through the catalog in migrationDir, for tests
+// of the migrations that build or backfill the search index.
+func openSearchTestDBAt(t *testing.T, migrationDir string) *sql.DB {
 	t.Helper()
 	db, err := storage.Open(filepath.Join(t.TempDir(), "search.db"))
 	if err != nil {
@@ -71,7 +79,7 @@ func insertSearchWork(t *testing.T, db *sql.DB, ordinal int, title string) int64
 }
 
 func TestSearchIndexesEveryTitleLanguageAndTracksScopedResets(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	id := insertSearchWork(t, db, 0, "【简体中文版】Example display title")
 	execSearchFixture(t, db, `INSERT INTO work_manual_override(work_id,field_name,language,value_json) VALUES (?,'title','ja-jp','"Example Japanese manual"'),(?,'title','ko-kr','"Example Korean manual"')`, id, id)
 	store := NewStore(db)
@@ -126,7 +134,7 @@ func assertSearchCodes(t *testing.T, store *Store, userID int64, query string, o
 }
 
 func TestSearchMatchesWildcardAndSyntaxCharactersLiterally(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	insertSearchWork(t, db, 0, "Example 100% Voice")
 	insertSearchWork(t, db, 1, "Example 1000 Voice")
 	insertSearchWork(t, db, 2, "Example a_b")
@@ -149,7 +157,7 @@ func TestSearchMatchesWildcardAndSyntaxCharactersLiterally(t *testing.T) {
 }
 
 func TestSearchFoldsWidthCaseAndKana(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	userID := execSearchFixture(t, db, `INSERT INTO user_account (username, display_name, role) VALUES ('synthetic-user', 'Example User', 'user')`)
 	whisper := insertSearchWork(t, db, 4, "ささやきボイス")
 	other := insertSearchWork(t, db, 5, "Other Work")
@@ -178,7 +186,7 @@ func TestSearchFoldsWidthCaseAndKana(t *testing.T) {
 }
 
 func TestSearchIndexFollowsMetadataChangesAcrossEditionFamily(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	canonical := insertSearchWork(t, db, 6, "Canonical Example")
 	translated := insertSearchWork(t, db, 7, "Translated Example")
 	logicalID := execSearchFixture(t, db, `INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, ?)`, canonical, testfixture.WorkCode(testfixture.PrefixRJ, 6))
@@ -211,7 +219,7 @@ func TestSearchIndexFollowsMetadataChangesAcrossEditionFamily(t *testing.T) {
 
 func TestSearchIndexMigrationIndexesExistingWorks(t *testing.T) {
 	migrationDir := filepath.Join("..", "..", "migrations")
-	db := openSearchTestDB(t, migrationsBefore(t, migrationDir, searchIndexMigration))
+	db := openSearchTestDBAt(t, migrationsBefore(t, migrationDir, searchIndexMigration))
 	workID := insertSearchWork(t, db, 8, "Existing Example")
 	tagSearchWork(t, db, workID, "癒し")
 
@@ -234,7 +242,7 @@ func TestSearchIndexMigrationIndexesExistingWorks(t *testing.T) {
 }
 
 func TestSearchLeavesLongQueueToBackgroundWorker(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	backlog := searchIndexInlineLimit + 1
 	ordinals := make([]int, 0, backlog)
 	for ordinal := range backlog {
@@ -282,7 +290,7 @@ func TestSearchLeavesLongQueueToBackgroundWorker(t *testing.T) {
 // A leading "-" excludes on the circle and voice actor fields exactly as it does
 // on tags, and a quoted phrase is one needle rather than independent words.
 func TestSearchExcludesCirclesAndVoicesAndKeepsQuotedPhrasesWhole(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	credited := insertSearchWork(t, db, 6, "Example calm night")
 	other := insertSearchWork(t, db, 7, "Example night calm")
 	personID := execSearchFixture(t, db, `INSERT INTO person (display_name) VALUES ('Example Voice')`)
@@ -317,7 +325,7 @@ func TestSearchExcludesCirclesAndVoicesAndKeepsQuotedPhrasesWhole(t *testing.T) 
 // Each staff role has its own clause, "staff" matches any role, a short needle
 // takes the instr path, and a plain-text search finds staff names too.
 func TestSearchMatchesStaffCreditsByRoleAndAcrossRoles(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	written := insertSearchWork(t, db, 8, "Example First Work")
 	illustrated := insertSearchWork(t, db, 9, "Example Second Work")
 	insertSearchWork(t, db, 10, "Example Third Work")
@@ -351,7 +359,7 @@ func TestSearchMatchesStaffCreditsByRoleAndAcrossRoles(t *testing.T) {
 }
 
 func TestSearchFindsBundlesByTheirMembers(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	insertSearchWork(t, db, 20, "Example Series Complete Pack")
 	member := insertSearchWork(t, db, 21, "Example Moonlit Episode")
 	insertSearchWork(t, db, 23, "Unrelated Example")
