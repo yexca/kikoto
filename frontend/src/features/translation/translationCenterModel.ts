@@ -21,11 +21,11 @@ export function visibleTranslationCenterViews(autoAccept: boolean, waiting: numb
 }
 
 /**
- * The stage one language of a run is in: waiting for the transcription,
- * translating (with its finished items), waiting for review, or done.
+ * The stage one language of a run is in: queued, translating (with its
+ * finished items), waiting for review, stopped, or done.
  */
 export function runLanguageStage(language: TranslationRunLanguage): {
-  stage: "waiting" | "queued" | "translating" | "review" | "done" | "stopped";
+  stage: "queued" | "translating" | "review" | "done" | "stopped";
   done: number;
   total: number;
   count: number;
@@ -46,8 +46,6 @@ export function runLanguageStage(language: TranslationRunLanguage): {
   if (count("requesting") > 0 || (count("queued") > 0 && settled > 0)) {
     return { stage: "translating", done: settled, total, count: settled };
   }
-  if (count("waiting_transcription") > 0)
-    return { stage: "waiting", done: settled, total, count: count("waiting_transcription") };
   if (count("queued") > 0) return { stage: "queued", done: settled, total, count: count("queued") };
   if (count("ready") > 0) return { stage: "review", done: settled, total, count: count("ready") };
   if (count("failed", "uncertain", "invalid", "policy_blocked") > 0) {

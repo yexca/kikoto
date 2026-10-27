@@ -38,8 +38,7 @@ export type TranslationWorkSection = {
 
 /**
  * Groups items for review: by work, then by language in the order the
- * languages first appear, then by category in reading order. A transcription
- * joins the lyrics of the language it is written in.
+ * languages first appear, then by category in reading order.
  */
 export function groupTranslationItems(items: readonly TranslationItem[]): TranslationWorkSection[] {
   const works = new Map<number, TranslationWorkSection>();
@@ -74,7 +73,6 @@ export function groupTranslationItems(items: readonly TranslationItem[]): Transl
 
 export const translationStateBadges: Record<TranslationItemState, BadgeProps["variant"]> = {
   queued: "secondary",
-  waiting_transcription: "secondary",
   requesting: "info",
   ready: "warning",
   accepted: "success",
@@ -98,9 +96,6 @@ const knownTranslationFailures = new Set([
   "policy_changed",
   "policy_blocked",
   "permission_changed",
-  "transcription_failed",
-  "transcription_rejected",
-  "transcription_unavailable",
   "invalid_output",
   "invalid_lyrics_output",
   "translation_output_too_large",
@@ -109,14 +104,6 @@ const knownTranslationFailures = new Set([
   "service_start_failed",
   "service_out_of_memory",
   "service_agreement_required",
-  "no_speech",
-  "audio_decode_failed",
-  "audio_too_long",
-  "upstream_failed",
-  "no_timestamps",
-  "ffmpeg_unavailable",
-  "source_unavailable",
-  "transcript_too_large",
   "cancelled",
   "lyrics_folder_blocked",
   "accept_failed",
@@ -137,7 +124,6 @@ const knownReviewRefusals = new Set([
   "policy_changed",
   "policy_blocked",
   "source_changed",
-  "transcription_rejected",
   "lyrics_folder_blocked",
   "llm_acknowledgement_required",
   "not_resendable",
@@ -154,11 +140,7 @@ export function hasInlineText(item: Pick<TranslationItem, "category">) {
   return item.category !== "lyrics";
 }
 
-/**
- * The ids an "accept all" of a group sends: every item waiting for review. A
- * translation read from a transcription brings the transcription with it, so
- * the transcription is not listed twice.
- */
+/** The ids an "accept all" of a group sends: every item waiting for review. */
 export function acceptableIds(items: readonly TranslationItem[]) {
   return items.filter((item) => item.state === "ready").map((item) => item.id);
 }

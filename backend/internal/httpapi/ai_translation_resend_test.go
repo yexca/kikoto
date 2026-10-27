@@ -62,7 +62,7 @@ func TestAITranslationResendWhileAnotherLanguageRuns(t *testing.T) {
 			if err := f.db.QueryRow("SELECT id FROM translation_item WHERE workflow_run_id=? AND language='en-us'", queued.RunID).Scan(&id); err != nil {
 				t.Fatal(err)
 			}
-			if result := resendSpeechTranslation(t, asrFixture{db: f.db, server: f.server, userID: f.userID}, id, false); !result.OK {
+			if result := resendTranslation(t, asrFixture{db: f.db, server: f.server, userID: f.userID}, id, false); !result.OK {
 				t.Fatalf("resend=%+v", result)
 			}
 			if cancel {
@@ -115,48 +115,27 @@ func TestAITranslationResendWhileAnotherLanguageRuns(t *testing.T) {
 	}
 }
 
-func TestAITranslationMissingDependencyStopsWithoutRescheduling(t *testing.T) {
-	f, response, requests := queuedTranslationFromSpeech(t)
-	if _, err := f.db.Exec("DELETE FROM asr_transcription WHERE workflow_run_id=?", response.RunID); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.server.runNextQueuedWorkflowJob(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	var failed int
-	var status string
-	if err := f.db.QueryRow("SELECT COUNT(*) FROM translation_item WHERE workflow_run_id=? AND state='failed' AND failure_code='transcription_unavailable'", response.RunID).Scan(&failed); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.db.QueryRow("SELECT status FROM workflow_run WHERE id=?", response.RunID).Scan(&status); err != nil {
-		t.Fatal(err)
-	}
-	if failed != 2 || status != "failed" || requests.Load() != 0 || f.requests.Load() != 0 {
-		t.Fatalf("failed items=%d run=%s speech requests=%d translation requests=%d", failed, status, f.requests.Load(), requests.Load())
-	}
-}
-
 func TestAITranslationSettlementKeepsUnfinishedRequestUnknown(t *testing.T) {
-	f, response, _ := queuedTranslationFromSpeech(t)
+	f, response, _ := queuedLyricsTranslation(t)
 	ctx := context.Background()
 	job, claimed, err := f.server.claimNextQueuedWorkflowJob(ctx, "translation-settlement-test")
 	if err != nil || !claimed {
 		t.Fatalf("claim=%v error=%v", claimed, err)
 	}
-	if _, err := f.db.Exec("UPDATE translation_item SET state=CASE WHEN engine='asr' THEN 'ready' ELSE 'requesting' END WHERE workflow_run_id=?", response.RunID); err != nil {
+	if _, err := f.db.Exec("UPDATE translation_item SET state='requesting' WHERE workflow_run_id=?", response.RunID); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.server.finishAITranslationJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
 	var state, code, status string
-	if err := f.db.QueryRow("SELECT state, failure_code FROM translation_item WHERE workflow_run_id=? AND engine='llm'", response.RunID).Scan(&state, &code); err != nil {
+	if err := f.db.QueryRow("SELECT state, failure_code FROM translation_item WHERE workflow_run_id=?", response.RunID).Scan(&state, &code); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.db.QueryRow("SELECT status FROM workflow_run WHERE id=?", response.RunID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if state != "uncertain" || code != asrResultUnknown || status != "partial" {
+	if state != "uncertain" || code != "upstream_result_unknown" || status != "failed" {
 		t.Fatalf("unsettled request=%s/%s run=%s", state, code, status)
 	}
 }

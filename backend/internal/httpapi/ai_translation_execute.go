@@ -20,17 +20,10 @@ type aiTranslationJobPayload struct {
 // use the executor; the job continues from its items when it runs again.
 var errAITranslationYield = errors.New("translation yields to other queued work")
 
+// executeAITranslationJob runs a Translate with AI run: it translates the
+// queued items of each language, one request at a time. Every outcome is
+// recorded on its item; one item's failure leaves the others running.
 func (s *Server) executeAITranslationJob(ctx context.Context, job workflowJobRecord) error {
-	return s.executeAITranslationWithDecoder(ctx, job, extractASRChunk)
-}
-
-// executeAITranslationWithDecoder runs a Translate with AI run: it first
-// transcribes the tracks that need it, then translates the queued items of
-// each language. Speech recognition and translation run one request at a
-// time, so a local service that offers both never loads both models at once.
-// Every outcome is recorded on its item; one item's failure leaves the others
-// running.
-func (s *Server) executeAITranslationWithDecoder(ctx context.Context, job workflowJobRecord, decode asrDecoder) error {
 	var payload aiTranslationJobPayload
 	if err := decodeWorkflowJobPayload(job.PayloadJSON, &payload); err != nil {
 		return errors.New("invalid translation job")
@@ -40,55 +33,6 @@ func (s *Server) executeAITranslationWithDecoder(ctx context.Context, job workfl
 	if _, err := s.db.ExecContext(ctx, `UPDATE translation_item SET state = 'uncertain', failure_code = 'upstream_result_unknown', updated_at = CURRENT_TIMESTAMP
 		WHERE workflow_run_id = ? AND state = 'requesting'`, job.RunID); err != nil {
 		return err
-	}
-	transcriptions, err := s.runTranscriptionIDs(ctx, job.RunID)
-	if err != nil {
-		return err
-	}
-	for index, id := range transcriptions {
-		task, err := s.loadASRTask(ctx, id)
-		if err != nil {
-			return err
-		}
-		if task.RunID != job.RunID {
-			return errors.New("translation job scope mismatch")
-		}
-		code := ""
-		switch task.State {
-		case "ready", "publishing", "accepted":
-			// Its result committed before its items were released.
-		case "failed", "cancelled", "rejected":
-			if err := s.db.QueryRowContext(ctx, "SELECT failure_code FROM asr_transcription WHERE id = ?", task.ID).Scan(&code); err != nil {
-				return err
-			}
-			if task.State == "rejected" {
-				code = "transcription_rejected"
-			} else if code == "" {
-				code = "transcription_failed"
-				if task.State == "cancelled" {
-					code = asrFailureCancelled
-				}
-			}
-		default:
-			code, err = s.transcribeTrack(ctx, job, &task, decode)
-		}
-		if err != nil {
-			return err
-		}
-		if code == asrYield {
-			return s.deferWorkflowJob(ctx, job, asrYieldDelay, "Transcription yields to other queued work between chunks")
-		}
-		if code != "" {
-			err = s.transcriptionFailed(ctx, task.ID, code)
-		} else {
-			err = s.transcriptionReady(ctx, task.ID)
-		}
-		if err != nil {
-			return err
-		}
-		if err := s.updateWorkflowJobCheckpoint(ctx, job.ID, "transcribing", map[string]any{"run_id": job.RunID}, index+1, len(transcriptions)); err != nil {
-			return err
-		}
 	}
 	languages, err := s.queuedTranslationLanguages(ctx, job.RunID)
 	if err != nil {
@@ -105,29 +49,8 @@ func (s *Server) executeAITranslationWithDecoder(ctx context.Context, job workfl
 	return s.finishAITranslationJob(ctx, job)
 }
 
-func (s *Server) runTranscriptionIDs(ctx context.Context, runID int64) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT task.id FROM asr_transcription AS task WHERE task.workflow_run_id = ?
-		AND (task.state IN ('pending', 'requesting') OR EXISTS (
-			SELECT 1 FROM translation_item AS item WHERE item.asr_transcription_id = task.id
-			AND (item.state IN ('queued', 'waiting_transcription') OR (item.engine = 'asr' AND item.state = 'ready'))
-		)) ORDER BY task.created_at, task.rowid`, runID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
-}
-
 func (s *Server) queuedTranslationLanguages(ctx context.Context, runID int64) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT language FROM translation_item WHERE workflow_run_id = ? AND state = 'queued' AND engine = 'llm'
+	rows, err := s.db.QueryContext(ctx, `SELECT language FROM translation_item WHERE workflow_run_id = ? AND state = 'queued'
 		GROUP BY language ORDER BY MIN(id)`, runID)
 	if err != nil {
 		return nil, err
@@ -142,78 +65,6 @@ func (s *Server) queuedTranslationLanguages(ctx context.Context, runID int64) ([
 		languages = append(languages, language)
 	}
 	return languages, rows.Err()
-}
-
-// transcriptionReady offers a finished transcript for review, accepting it
-// when auto-accept is on, and releases the translations waiting for it. The transcript is their source; they never
-// read another translation.
-func (s *Server) transcriptionReady(ctx context.Context, id string) error {
-	var text, model string
-	if err := s.db.QueryRowContext(ctx, "SELECT value_text, model FROM asr_transcription WHERE id = ?", id).Scan(&text, &model); err != nil {
-		return err
-	}
-	attribute, err := s.lyricsAttributionEnabled(ctx)
-	if err != nil {
-		return err
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	items, err := loadTranslationItems(ctx, tx, "item.asr_transcription_id = ? AND (item.state IN ('queued', 'waiting_transcription') OR (item.engine = 'asr' AND item.state = 'ready'))", id)
-	if err != nil {
-		return err
-	}
-	for _, item := range items {
-		if item.Engine == "asr" {
-			if item.State == "ready" {
-				continue
-			}
-			result := text
-			if attribute {
-				if result, err = llm.AddAttribution(".vtt", text, llm.Attribution(item.Language, model, "")); err != nil {
-					result = text
-				}
-			}
-			_, err = tx.ExecContext(ctx, "UPDATE translation_item SET state = 'ready', result_text = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", result, item.ID)
-		} else {
-			_, err = tx.ExecContext(ctx, "UPDATE translation_item SET state = 'queued', source_text = ?, source_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", text, llmValueHash(text), item.ID)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	for _, item := range items {
-		if item.Engine == "asr" {
-			if err := s.autoAcceptTranslationItem(ctx, item.ID, nil); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// transcriptionFailed stops the transcription's items; the run's other items
-// continue.
-func (s *Server) transcriptionFailed(ctx context.Context, id, code string) error {
-	state := "failed"
-	dependentCode := "transcription_failed"
-	switch code {
-	case asrResultUnknown, "cancelled_result_unknown":
-		state, dependentCode = "uncertain", code
-	case asrFailureCancelled:
-		state, dependentCode = "cancelled", code
-	case "transcription_rejected":
-		state, dependentCode = "rejected", code
-	}
-	_, err := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE translation_item
-		SET state = ?, failure_code = CASE WHEN engine = 'asr' THEN ? ELSE ? END, updated_at = CURRENT_TIMESTAMP
-		WHERE asr_transcription_id = ? AND state IN ('queued', 'waiting_transcription')`, state, code, dependentCode, id)
-	return err
 }
 
 // translationSend is what every request of a language checks before it
@@ -237,7 +88,7 @@ func (send *translationSend) close() {
 // work's title, description and tag names in one request, display names in
 // batches, then each track's lyrics in chunks.
 func (s *Server) translateQueuedItems(ctx context.Context, job workflowJobRecord, language string) error {
-	items, err := loadTranslationItems(ctx, s.db, "item.workflow_run_id = ? AND item.language = ? AND item.state = 'queued' AND item.engine = 'llm' ORDER BY item.id", job.RunID, language)
+	items, err := loadTranslationItems(ctx, s.db, "item.workflow_run_id = ? AND item.language = ? AND item.state = 'queued' ORDER BY item.id", job.RunID, language)
 	if err != nil || len(items) == 0 {
 		return err
 	}
@@ -341,7 +192,7 @@ func (s *Server) stopTranslationItems(ctx context.Context, items []translationIt
 	switch code {
 	case "policy_blocked":
 		state = "policy_blocked"
-	case "endpoint_unavailable", "transcription_unavailable", "source_temporarily_unavailable":
+	case "endpoint_unavailable", "source_temporarily_unavailable":
 		state = "failed"
 	}
 	for _, item := range items {
@@ -575,22 +426,9 @@ func (s *Server) translateNameItems(ctx context.Context, job workflowJobRecord, 
 	return nil
 }
 
-// translationLyricsSource reads the lyrics a lyrics item translates: its
-// transcription, or the chosen file.
+// translationLyricsSource reads the lyrics file a lyrics item translates.
 func (s *Server) translationLyricsSource(ctx context.Context, send *translationSend, item translationItem) (llm.LyricsDocument, string, string) {
 	audioID, _ := strconv.ParseInt(item.Subject, 10, 64)
-	if item.TranscriptionID != "" {
-		var text, state string
-		if err := s.db.QueryRowContext(ctx, "SELECT value_text, state FROM asr_transcription WHERE id = ?", item.TranscriptionID).Scan(&text, &state); err != nil ||
-			state != "ready" && state != "publishing" && state != "accepted" || text == "" {
-			return llm.LyricsDocument{}, "", "transcription_unavailable"
-		}
-		document, err := llm.ParseLyrics("transcript.vtt", text)
-		if err != nil {
-			return document, "", "transcription_unavailable"
-		}
-		return document, llmValueHash(text), ""
-	}
 	lyrics, err := s.loadLLMLyrics(context.WithValue(ctx, currentUserKey, send.actor), item.WorkID,
 		llmTranslatePayload{LyricsLocationID: item.Detail.SourceLocationID, AudioMediaItemID: audioID, FolderID: item.Detail.FolderID}, send.policy)
 	if err != nil {
@@ -627,7 +465,7 @@ func (s *Server) translateLyricsItem(ctx context.Context, job workflowJobRecord,
 	} else if hash != item.SourceHash {
 		return s.stopTranslationItems(ctx, []translationItem{item}, "source_changed")
 	}
-	// The transcript or file is checked as a whole before any chunk leaves.
+	// The file is checked as a whole before any chunk leaves.
 	input, err := loadLLMWorkInput(ctx, s.db, item.WorkID)
 	if err != nil {
 		return s.stopTranslationItems(ctx, []translationItem{item}, "source_changed")
@@ -676,7 +514,7 @@ func (s *Server) translateLyricsItem(ctx context.Context, job workflowJobRecord,
 		return err
 	}
 	if attribute {
-		if attributed, err := llm.AddAttribution(document.Format, text, llm.Attribution(item.Language, item.Detail.ASRModel, item.Model)); err == nil {
+		if attributed, err := llm.AddAttribution(document.Format, text, llm.Attribution(item.Language, "", item.Model)); err == nil {
 			text = attributed
 		}
 	}
@@ -700,13 +538,6 @@ func (s *Server) finishAITranslationJob(ctx context.Context, job workflowJobReco
 	if runStatus != "running" || jobStatusNow != "running" {
 		return nil
 	}
-	// A missing dependency cannot make progress on another execution. Keep its
-	// failure visible instead of rescheduling it indefinitely.
-	if _, err := tx.ExecContext(ctx, `UPDATE translation_item SET state = 'failed', failure_code = 'transcription_unavailable', updated_at = CURRENT_TIMESTAMP
-		WHERE workflow_run_id = ? AND (state = 'waiting_transcription' OR (engine = 'asr' AND state = 'queued'))
-		AND NOT EXISTS (SELECT 1 FROM asr_transcription AS task WHERE task.id = translation_item.asr_transcription_id)`, job.RunID); err != nil {
-		return err
-	}
 	if _, err := tx.ExecContext(ctx, `UPDATE translation_item SET state = 'uncertain', failure_code = 'upstream_result_unknown', updated_at = CURRENT_TIMESTAMP
 		WHERE workflow_run_id = ? AND state = 'requesting'`, job.RunID); err != nil {
 		return err
@@ -728,7 +559,7 @@ func (s *Server) finishAITranslationJob(ctx context.Context, job workflowJobReco
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	if counts["queued"]+counts["waiting_transcription"] > 0 {
+	if counts["queued"] > 0 {
 		// A reviewer can resend an item after this execution has read its
 		// languages. Settlement and resubmission share the same write boundary:
 		// either this execution schedules it, or the later resend reopens it.

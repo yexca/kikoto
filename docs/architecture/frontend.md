@@ -874,10 +874,9 @@ with Revoke and their history with Restore (`LLMTranslationHistoryPanel`).
 `TranslateWithAIDialog` (`features/work-detail/translation`) reads the
 server's plan for the chosen languages, which counts what each category
 lacks, and builds the lyrics request from the work's local tracks:
-`translateWithAIModel` selects every missing track and language, reads each
-track from its default source file or transcribes a track without lyrics, and
-offers direct speech output only for one language. `LyricsTranslationMatrix`
-edits that selection. The dialog's Results tab reuses `TranslationReviewList`
+`translateWithAIModel` selects every missing track and language and reads
+each track from its default source file; a track without lyrics links to
+Manage lyrics → Transcribe. `LyricsTranslationMatrix` edits that selection. The dialog's Results tab reuses `TranslationReviewList`
 with `LyricsPreview` for lyrics: items waiting for review when auto-accept is
 off, then running, stopped and applied items. Every
 change is a draft until Save: credit reverts become explicit `null` or empty

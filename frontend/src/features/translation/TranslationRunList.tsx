@@ -1,4 +1,4 @@
-import { AudioLines, ExternalLink, Loader2, X } from "lucide-react";
+import { ExternalLink, Loader2, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,8 +9,8 @@ import { metadataTagNameLanguages } from "@/lib/metadataTagModel";
 import { runLanguageStage, runStatusBadge } from "./translationCenterModel";
 
 /**
- * Translate with AI runs by work: the transcription stage of the work, then
- * one row per language with its stage and progress.
+ * Translate with AI runs by work: one row per language with its stage and
+ * progress.
  */
 export function TranslationRunList({
   runs,
@@ -32,7 +32,6 @@ export function TranslationRunList({
   return (
     <ul className="space-y-3">
       {runs.map((run) => {
-        const transcription = run.transcription;
         const live = run.status === "running" || run.status === "queued";
         return (
           <li key={run.runId} className="overflow-hidden rounded-lg border bg-card">
@@ -69,23 +68,6 @@ export function TranslationRunList({
               </div>
             </div>
             <div className="divide-y text-sm">
-              {transcription && (
-                <div className="flex flex-wrap items-center gap-2 px-3 py-2 sm:px-4">
-                  <AudioLines className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <span className="min-w-0 flex-1">{t("translationCenter.transcriptionStage")}</span>
-                  <span className="tabular-nums text-muted-foreground">
-                    {t("translationCenter.transcriptionProgress", {
-                      done: transcription.done,
-                      total: transcription.total,
-                    })}
-                    {transcription.failed > 0 &&
-                      ` · ${t("translationCenter.failedCount", { count: transcription.failed })}`}
-                  </span>
-                  {transcription.durationMs > 0 && live && (
-                    <ProgressBar value={transcription.progressMs} total={transcription.durationMs} />
-                  )}
-                </div>
-              )}
               {run.languages.map((language) => (
                 <LanguageRow key={language.language} language={language} name={languageName(language.language)} />
               ))}

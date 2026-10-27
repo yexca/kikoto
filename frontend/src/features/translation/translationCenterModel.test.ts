@@ -29,10 +29,6 @@ describe("run language stages", () => {
     chunks: 0,
   });
 
-  it("waits for the transcription before translating", () => {
-    expect(runLanguageStage(language({ waiting_transcription: 3 })).stage).toBe("waiting");
-  });
-
   it("translates while a request is out or some items are done", () => {
     expect(runLanguageStage(language({ requesting: 1, queued: 2 }))).toMatchObject({
       stage: "translating",

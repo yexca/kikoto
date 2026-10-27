@@ -52,9 +52,42 @@ var ErrIncompatible = errors.New("helper answered with an unsupported service or
 type Model struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// Languages are the languages an ASR model hears; nil when the helper
+	// does not say.
+	Languages *Languages `json:"languages"`
 	// Translation is set for an ASR model that writes its target language
 	// from source speech instead of the language it hears.
 	Translation *Direction `json:"translation"`
+}
+
+// Multilingual is the languages value of a model that hears any language.
+const Multilingual = "multilingual"
+
+// Languages are the language codes an ASR model hears, from one code,
+// "multilingual" or a list of either.
+type Languages struct {
+	Multilingual bool
+	Codes        []string
+}
+
+func (l *Languages) UnmarshalJSON(data []byte) error {
+	var values []string
+	var value string
+	if json.Unmarshal(data, &value) == nil {
+		values = []string{value}
+	} else if err := json.Unmarshal(data, &values); err != nil {
+		return err
+	}
+	*l = Languages{}
+	for _, code := range values {
+		code = strings.TrimSpace(code)
+		if strings.EqualFold(code, Multilingual) {
+			l.Multilingual = true
+		} else if code != "" && len(code) <= 32 && len(l.Codes) < 64 {
+			l.Codes = append(l.Codes, code)
+		}
+	}
+	return nil
 }
 
 // Direction is the source and target language code of a translating model.

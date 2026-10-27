@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { interfaceLyricsLanguage, modelTranslationTargets, translationTarget } from "@/lib/translationTargets";
+import {
+  interfaceLyricsLanguage,
+  modelTranslationDirection,
+  modelTranslationTargets,
+  translationTarget,
+} from "@/lib/translationTargets";
 
 const offered = ["ja-jp", "en-us", "zh-cn", "zh-tw", "ko-kr"];
 
@@ -32,5 +37,16 @@ describe("translation targets", () => {
     expect(modelTranslationTargets(service, "restricted")).toEqual(["zh-cn"]);
     expect(modelTranslationTargets(service, "open")).toBeNull();
     expect(modelTranslationTargets({}, "restricted")).toBeNull();
+  });
+
+  it("checks a direction against the declared pairs, an unknown source matching any of them", () => {
+    const service = { modelPairs: { restricted: [{ source: "ja-jp", target: "zh-cn" }] } };
+    const translates = modelTranslationDirection(service, "restricted")!;
+    expect(translates("ja-jp", "zh-cn")).toBe(true);
+    expect(translates("zh-cn", "zh-cn")).toBe(false);
+    expect(translates("en-us", "zh-cn")).toBe(false);
+    expect(translates("", "zh-cn")).toBe(true);
+    expect(translates("", "en-us")).toBe(false);
+    expect(modelTranslationDirection(service, "open")).toBeNull();
   });
 });

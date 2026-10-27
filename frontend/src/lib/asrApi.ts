@@ -5,7 +5,27 @@ import type { LLMAssessment } from "@/lib/llmApi";
 /** The one direction a translating model writes: `target` lyrics from `source` speech, as lyrics language tokens. */
 export type ASRTranslation = { source: string; target: string };
 
-export type ASRModel = { id: string; name?: string; translation?: ASRTranslation };
+export type ASRModel = {
+  id: string;
+  name?: string;
+  /** The service declares what the model writes, as Kikoto Helper does. */
+  declared?: boolean;
+  multilingual?: boolean;
+  languages?: string[];
+  translation?: ASRTranslation;
+};
+
+/**
+ * What an enabled model writes: the language it hears, the one direction it
+ * translates, or, when its service never declared it, any language.
+ */
+export type ASRModelCapability = {
+  kind: "transcribe" | "translate" | "unknown";
+  /** A transcribing model hears any language, or these lyrics language tokens. */
+  multilingual?: boolean;
+  languages?: string[];
+  translation?: ASRTranslation;
+};
 
 export type ASRScope = "local_machine" | "other_machine";
 
@@ -68,8 +88,8 @@ export type ASRProviderList = {
 export type ASRService = Pick<ASRProvider, "id" | "name" | "defaultModel" | "boundary" | "maxContentClass"> & {
   /** The enabled models, any of which a transcription may use. */
   models: string[];
-  /** The direction of each enabled model that translates; any other model writes the language it hears. */
-  translations?: Record<string, ASRTranslation>;
+  /** What each enabled model writes; a model without an entry has unknown capability. */
+  capabilities?: Record<string, ASRModelCapability>;
 };
 
 export type ASRTranscriptionState =
@@ -80,7 +100,7 @@ export type ASRTranscription = {
   runId: number;
   audioMediaItemId: number;
   audioTitle: string;
-  /** The language spoken in the audio; it differs from `language` only for a translating model. */
+  /** The language spoken in the audio; it differs from `language` for a model that writes another language. */
   audioLanguage: string;
   language: string;
   providerName: string;

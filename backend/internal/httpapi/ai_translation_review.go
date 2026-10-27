@@ -29,33 +29,28 @@ type translationItemResponse struct {
 	Language    string `json:"language"`
 	Category    string `json:"category"`
 	Subject     string `json:"subject"`
-	Engine      string `json:"engine"`
 	State       string `json:"state"`
 	FailureCode string `json:"failureCode,omitempty"`
 	// Label names the object: a tag's source name, a file or folder path, or
 	// a track's title.
 	Label string `json:"label"`
 	// Source and Result hold short text; lyrics are read as files.
-	Source string `json:"source"`
-	Result string `json:"result"`
-	Model  string `json:"model"`
-	// TranscriptionItemID is the item of the transcription lyrics are read
-	// from, reviewed together with them.
-	TranscriptionItemID int64  `json:"transcriptionItemId,omitempty"`
-	ASRModel            string `json:"asrModel,omitempty"`
-	SourceTitle         string `json:"sourceTitle,omitempty"`
-	AppliedPath         string `json:"appliedPath,omitempty"`
-	Progress            int    `json:"progress"`
-	Chunks              int    `json:"chunks"`
-	AffectedWorks       int    `json:"affectedWorks,omitempty"`
-	RequestedBy         string `json:"requestedBy"`
-	DurationSeconds     int64  `json:"durationSeconds,omitempty"`
-	UpdatedAt           string `json:"updatedAt"`
+	Source          string `json:"source"`
+	Result          string `json:"result"`
+	Model           string `json:"model"`
+	SourceTitle     string `json:"sourceTitle,omitempty"`
+	AppliedPath     string `json:"appliedPath,omitempty"`
+	Progress        int    `json:"progress"`
+	Chunks          int    `json:"chunks"`
+	AffectedWorks   int    `json:"affectedWorks,omitempty"`
+	RequestedBy     string `json:"requestedBy"`
+	DurationSeconds int64  `json:"durationSeconds,omitempty"`
+	UpdatedAt       string `json:"updatedAt"`
 }
 
 var translationListStates = map[string][]string{
 	"review":    {"ready"},
-	"active":    {"queued", "waiting_transcription", "requesting"},
+	"active":    {"queued", "requesting"},
 	"attention": {"failed", "uncertain", "invalid", "policy_blocked"},
 	"history":   {"accepted"},
 }
@@ -132,10 +127,7 @@ func (s *Server) translationItemResponses(ctx context.Context, where string, arg
 	rows, err := s.db.QueryContext(ctx, "SELECT "+translationItemColumns+`, work.primary_code, work.title, COALESCE(account.username, ''), item.updated_at,
 		COALESCE((SELECT media.title FROM media_item AS media WHERE item.category IN ('lyrics', 'file_name') AND media.id = CAST(item.subject AS INTEGER)), ''),
 		COALESCE((SELECT media.duration_seconds FROM media_item AS media WHERE item.category = 'lyrics' AND media.id = CAST(item.subject AS INTEGER)), 0),
-		COALESCE((SELECT transcript.id FROM translation_item AS transcript WHERE item.engine = 'llm' AND transcript.engine = 'asr'
-			AND transcript.asr_transcription_id = item.asr_transcription_id), 0),
-		CASE WHEN item.category = 'tag' THEN (SELECT COUNT(DISTINCT link.work_id) FROM work_tag AS link WHERE link.tag_id = CAST(item.subject AS INTEGER)) ELSE 0 END,
-		CASE WHEN item.state = 'failed' THEN COALESCE((SELECT failure_code FROM asr_transcription WHERE id = item.asr_transcription_id), '') ELSE '' END
+		CASE WHEN item.category = 'tag' THEN (SELECT COUNT(DISTINCT link.work_id) FROM work_tag AS link WHERE link.tag_id = CAST(item.subject AS INTEGER)) ELSE 0 END
 		FROM translation_item AS item
 		INNER JOIN work ON work.id = item.work_id
 		LEFT JOIN user_account AS account ON account.id = item.requested_by_user_id
@@ -149,30 +141,26 @@ func (s *Server) translationItemResponses(ctx context.Context, where string, arg
 		var item translationItem
 		var detail, checkpoint string
 		var response translationItemResponse
-		var mediaTitle, transcriptionFailure string
+		var mediaTitle string
 		if err := rows.Scan(&item.ID, &item.RunID, &item.WorkID, &item.UserID, &item.Language, &item.Category, &item.Subject,
-			&item.Engine, &item.State, &item.FailureCode, &item.TranscriptionID, &detail, &item.SourceText, &item.SourceHash,
+			&item.State, &item.FailureCode, &detail, &item.SourceText, &item.SourceHash,
 			&item.ResultText, &checkpoint, &item.RequestIndex, &item.ProviderID, &item.Model, &item.ConfigHash, &item.PolicyHash,
 			&response.WorkCode, &response.WorkTitle, &response.RequestedBy, &response.UpdatedAt, &mediaTitle, &response.DurationSeconds,
-			&response.TranscriptionItemID, &response.AffectedWorks, &transcriptionFailure); err != nil {
+			&response.AffectedWorks); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(detail), &item.Detail); err != nil {
 			return nil, err
 		}
 		response.ID, response.RunID, response.WorkID = item.ID, item.RunID, item.WorkID
-		response.Language, response.Category, response.Subject, response.Engine = item.Language, item.Category, item.Subject, item.Engine
+		response.Language, response.Category, response.Subject = item.Language, item.Category, item.Subject
 		response.State, response.FailureCode, response.Model = item.State, item.FailureCode, item.Model
-		// Persisted failures of an unknown speech request use the same explicit
-		// confirmation as uncertain items, including its dependent translations.
-		if item.State == "failed" {
-			if translationResultUnknown(item.FailureCode) {
-				response.State = "uncertain"
-			} else if translationResultUnknown(transcriptionFailure) {
-				response.State, response.FailureCode = "uncertain", transcriptionFailure
-			}
+		// A persisted failure of an unknown request uses the same explicit
+		// confirmation as an uncertain item.
+		if item.State == "failed" && translationResultUnknown(item.FailureCode) {
+			response.State = "uncertain"
 		}
-		response.ASRModel, response.SourceTitle, response.AppliedPath = item.Detail.ASRModel, item.Detail.SourceTitle, item.Detail.AppliedPath
+		response.SourceTitle, response.AppliedPath = item.Detail.SourceTitle, item.Detail.AppliedPath
 		response.Progress, response.Chunks = item.RequestIndex, item.Detail.Chunks
 		switch item.Category {
 		case translationLyrics:
@@ -299,35 +287,33 @@ func (s *Server) acceptTranslationItem(ctx context.Context, actor currentUser, i
 	if !hasTranslationPermissions(actor, item.Category) {
 		return "permission_denied", nil
 	}
-	if item.Engine == "llm" {
-		provider, err := s.llmProvider(ctx, item.ProviderID)
-		if err != nil || !provider.Enabled || s.llmConfigHash(provider, item.Model) != item.ConfigHash {
-			return s.invalidateTranslationItem(ctx, item, "provider_changed")
+	provider, err := s.llmProvider(ctx, item.ProviderID)
+	if err != nil || !provider.Enabled || s.llmConfigHash(provider, item.Model) != item.ConfigHash {
+		return s.invalidateTranslationItem(ctx, item, "provider_changed")
+	}
+	policy, err := s.llmStore.Policy(ctx)
+	if err != nil || llmValueHash(policy) != item.PolicyHash {
+		return s.invalidateTranslationItem(ctx, item, "policy_changed")
+	}
+	input, err := loadLLMWorkInput(ctx, s.db, item.WorkID)
+	if err != nil {
+		return s.invalidateTranslationItem(ctx, item, "source_changed")
+	}
+	source := llm.Text{}
+	switch item.Category {
+	case translationTitle:
+		source.Title = item.SourceText
+	case translationDescription:
+		source.Description = item.SourceText
+	case translationLyrics:
+		if document, err := llm.ParseLyrics("source"+item.Detail.Extension, item.SourceText); err == nil {
+			source.Lyrics = document.Text()
 		}
-		policy, err := s.llmStore.Policy(ctx)
-		if err != nil || llmValueHash(policy) != item.PolicyHash {
-			return s.invalidateTranslationItem(ctx, item, "policy_changed")
-		}
-		input, err := loadLLMWorkInput(ctx, s.db, item.WorkID)
-		if err != nil {
-			return s.invalidateTranslationItem(ctx, item, "source_changed")
-		}
-		source := llm.Text{}
-		switch item.Category {
-		case translationTitle:
-			source.Title = item.SourceText
-		case translationDescription:
-			source.Description = item.SourceText
-		case translationLyrics:
-			if document, err := llm.ParseLyrics("source"+item.Detail.Extension, item.SourceText); err == nil {
-				source.Lyrics = document.Text()
-			}
-		default:
-			source.Tags = []string{item.SourceText}
-		}
-		if !llmAllowed(assessLLMTranslation(policy, input, source).Class, provider) {
-			return s.invalidateTranslationItem(ctx, item, "policy_blocked")
-		}
+	default:
+		source.Tags = []string{item.SourceText}
+	}
+	if !llmAllowed(assessLLMTranslation(policy, input, source).Class, provider) {
+		return s.invalidateTranslationItem(ctx, item, "policy_blocked")
 	}
 	switch item.Category {
 	case translationTitle, translationDescription, translationTag:
@@ -450,9 +436,8 @@ func (s *Server) acceptNameTranslation(ctx context.Context, actor currentUser, i
 	return "", tx.Commit()
 }
 
-// acceptLyricsTranslation publishes lyrics into the track's work folder. A
-// translation read from a transcription publishes that transcription first,
-// so the original-language lyrics it came from join the track with it.
+// acceptLyricsTranslation publishes lyrics into the track's work folder while
+// the lyrics file they were translated from is unchanged.
 func (s *Server) acceptLyricsTranslation(ctx context.Context, actor currentUser, item translationItem) (string, error) {
 	audioID, _ := strconv.ParseInt(item.Subject, 10, 64)
 	track, err := s.loadLocalTrack(ctx, audioID)
@@ -462,37 +447,14 @@ func (s *Server) acceptLyricsTranslation(ctx context.Context, actor currentUser,
 	if err != nil {
 		return "", err
 	}
-	if item.Engine == "llm" && item.TranscriptionID == "" {
-		send := &translationSend{actor: actor}
-		if send.policy, err = s.llmStore.Policy(ctx); err != nil {
-			return "", err
-		}
-		if _, hash, code := s.translationLyricsSource(ctx, send, item); code != "" || hash != item.SourceHash {
-			return s.invalidateTranslationItem(ctx, item, "source_changed")
-		}
+	send := &translationSend{actor: actor}
+	if send.policy, err = s.llmStore.Policy(ctx); err != nil {
+		return "", err
 	}
-	if item.Engine == "llm" && item.TranscriptionID != "" {
-		transcripts, err := loadTranslationItems(ctx, s.db, "item.asr_transcription_id = ? AND item.engine = 'asr'", item.TranscriptionID)
-		if err != nil {
-			return "", err
-		}
-		for _, transcript := range transcripts {
-			if transcript.State == "rejected" {
-				return s.invalidateTranslationItem(ctx, item, "transcription_rejected")
-			}
-			if transcript.State == "ready" {
-				if code, err := s.acceptLyricsTranslation(ctx, actor, transcript); code != "" || err != nil {
-					return code, err
-				}
-			}
-		}
+	if _, hash, code := s.translationLyricsSource(ctx, send, item); code != "" || hash != item.SourceHash {
+		return s.invalidateTranslationItem(ctx, item, "source_changed")
 	}
-	origin, extension := "translation", item.Detail.Extension
-	asrModel, llmModel := item.Detail.ASRModel, item.Model
-	if item.Engine == "asr" {
-		origin, extension, asrModel, llmModel = "transcription", ".vtt", item.Model, ""
-	}
-	lyricsPath, lyricsID, err := s.publishTrackLyrics(ctx, actor.ID, track.WorkID, audioID, track.FolderID, item.Language, track.Path, extension, item.ResultText, origin)
+	lyricsPath, lyricsID, err := s.publishTrackLyrics(ctx, actor.ID, track.WorkID, audioID, track.FolderID, item.Language, track.Path, item.Detail.Extension, item.ResultText, "translation")
 	if err != nil {
 		var requestErr lyricsFetchRequestError
 		if errors.Is(err, errLyricsFolderBlocked) || errors.As(err, &requestErr) {
@@ -514,14 +476,8 @@ func (s *Server) acceptLyricsTranslation(ctx context.Context, actor currentUser,
 		return "", err
 	}
 	if lyricsID > 0 {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO media_lyrics_ai_source(lyrics_media_item_id, asr_model, llm_model) VALUES(?, ?, ?)
-			ON CONFLICT(lyrics_media_item_id) DO UPDATE SET asr_model = excluded.asr_model, llm_model = excluded.llm_model`, lyricsID, asrModel, llmModel); err != nil {
-			return "", err
-		}
-	}
-	if item.Engine == "asr" {
-		if _, err := tx.ExecContext(ctx, "UPDATE asr_transcription SET state = 'accepted', lyrics_path = ?, lyrics_media_item_id = ?, cues_json = '[]', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-			lyricsPath, nullableInt64(lyricsID), item.TranscriptionID); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO media_lyrics_ai_source(lyrics_media_item_id, asr_model, llm_model) VALUES(?, '', ?)
+			ON CONFLICT(lyrics_media_item_id) DO UPDATE SET asr_model = excluded.asr_model, llm_model = excluded.llm_model`, lyricsID, item.Model); err != nil {
 			return "", err
 		}
 	}
@@ -548,7 +504,6 @@ func (s *Server) rejectTranslationItems(w http.ResponseWriter, r *http.Request) 
 }
 
 // rejectTranslationItem discards an item that waits for review or stopped.
-// Discarding a transcription discards the translations read from it.
 func (s *Server) rejectTranslationItem(ctx context.Context, actor currentUser, id int64) (string, error) {
 	items, err := loadTranslationItems(ctx, s.db, "item.id = ?", id)
 	if err != nil || len(items) == 0 {
@@ -571,25 +526,14 @@ func (s *Server) rejectTranslationItem(ctx context.Context, actor currentUser, i
 	if count, err := result.RowsAffected(); err != nil || count != 1 {
 		return "already_handled", err
 	}
-	if item.Engine == "asr" && item.TranscriptionID != "" {
-		if _, err := tx.ExecContext(ctx, `UPDATE translation_item SET state = 'rejected', failure_code = 'transcription_rejected', reviewed_by_user_id = ?, reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-			WHERE asr_transcription_id = ? AND id <> ? AND state IN ('queued', 'waiting_transcription', 'ready', 'failed', 'uncertain', 'invalid', 'policy_blocked')`,
-			nullableUserID(actor.ID), item.TranscriptionID, item.ID); err != nil {
-			return "", err
-		}
-		if _, err := tx.ExecContext(ctx, "UPDATE asr_transcription SET state = 'rejected', value_text = '', cues_json = '[]', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND state = 'ready'", item.TranscriptionID); err != nil {
-			return "", err
-		}
-	}
 	return "", tx.Commit()
 }
 
 // resendTranslationItems queues stopped items of a run again. A request whose
 // result is unknown is resent only after explicit acknowledgement, because it
-// may be charged twice; a failed transcription is retried after its last
-// finished chunk. An item whose result acceptance could not apply is accepted
-// again without another request, and one whose source, provider or policy
-// changed needs a new request.
+// may be charged twice. An item whose result acceptance could not apply is
+// accepted again without another request, and one whose source, provider or
+// policy changed needs a new request.
 func (s *Server) resendTranslationItems(w http.ResponseWriter, r *http.Request) {
 	actor, body, ok := s.decodeTranslationReview(w, r)
 	if !ok {
@@ -661,36 +605,24 @@ func (s *Server) resendTranslationItems(w http.ResponseWriter, r *http.Request) 
 var translationApplyFailures = map[string]bool{"permission_changed": true, "lyrics_folder_blocked": true, "accept_failed": true}
 
 func translationResultUnknown(code string) bool {
-	return code == asrResultUnknown || code == "cancelled_result_unknown"
+	return code == "upstream_result_unknown" || code == "cancelled_result_unknown"
 }
 
 // translationNeedsNewRequest are the codes of an item whose source, provider
 // or policy changed; only a new request translates it again.
-var translationNeedsNewRequest = map[string]bool{"source_changed": true, "provider_changed": true, "policy_changed": true, "policy_blocked": true, "transcription_rejected": true}
+var translationNeedsNewRequest = map[string]bool{"source_changed": true, "provider_changed": true, "policy_changed": true, "policy_blocked": true}
 
-// requeueTranslationItemTx queues one stopped item again. An item of a
-// failed transcription waits for that transcription, which is retried.
+// requeueTranslationItemTx queues one stopped item again.
 func requeueTranslationItemTx(ctx context.Context, tx *sql.Tx, item translationItem, acknowledgeUncertain bool) (string, error) {
 	if translationNeedsNewRequest[item.FailureCode] {
 		return "not_resendable", nil
 	}
-	transcription, failure := "", ""
-	if item.TranscriptionID != "" {
-		if err := tx.QueryRowContext(ctx, "SELECT state, failure_code FROM asr_transcription WHERE id = ?", item.TranscriptionID).Scan(&transcription, &failure); err != nil {
-			return "", err
-		}
-	}
-	// The underlying transcription decides this for every dependent item,
-	// including persisted failures that only say transcription_failed.
-	if !acknowledgeUncertain && (item.State == "uncertain" || translationResultUnknown(item.FailureCode) || transcription == "requesting" || translationResultUnknown(failure)) {
+	if !acknowledgeUncertain && (item.State == "uncertain" || translationResultUnknown(item.FailureCode)) {
 		return "llm_acknowledgement_required", nil
-	}
-	if translationNeedsNewRequest[failure] {
-		return "not_resendable", nil
 	}
 	var active bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM translation_item WHERE dedup_key = ? AND id <> ?
-		AND state IN ('queued', 'waiting_transcription', 'requesting', 'ready', 'uncertain'))`,
+		AND state IN ('queued', 'requesting', 'ready', 'uncertain'))`,
 		translationDedupKey(item.Language, item.Category, item.WorkID, item.Subject), item.ID).Scan(&active); err != nil {
 		return "", err
 	}
@@ -700,31 +632,6 @@ func requeueTranslationItemTx(ctx context.Context, tx *sql.Tx, item translationI
 	state := "queued"
 	if item.ResultText != "" && translationApplyFailures[item.FailureCode] {
 		state = "ready"
-	} else if item.TranscriptionID != "" {
-		switch transcription {
-		case "failed", "cancelled":
-			if _, err := tx.ExecContext(ctx, "UPDATE asr_transcription SET state = 'pending', failure_code = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?", item.TranscriptionID); err != nil {
-				return "", err
-			}
-			if item.Engine == "llm" {
-				state = "waiting_transcription"
-			}
-			if _, err := tx.ExecContext(ctx, `UPDATE OR IGNORE translation_item SET state = CASE WHEN engine = 'asr' THEN 'queued' ELSE 'waiting_transcription' END,
-				failure_code = '', updated_at = CURRENT_TIMESTAMP WHERE asr_transcription_id = ? AND id <> ? AND state IN ('failed', 'uncertain')
-				AND (engine = 'asr' OR failure_code IN ('transcription_failed', 'upstream_result_unknown', 'cancelled_result_unknown'))`,
-				item.TranscriptionID, item.ID); err != nil {
-				return "", err
-			}
-		case "pending":
-			if item.Engine == "llm" {
-				state = "waiting_transcription"
-			}
-		case "requesting":
-			// Its executor must first settle the request already in flight.
-			return "not_resendable", nil
-		case "rejected":
-			return "transcription_rejected", nil
-		}
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE OR IGNORE translation_item SET state = ?, failure_code = '', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND state IN ('failed', 'uncertain')`, state, item.ID)
 	if err != nil {

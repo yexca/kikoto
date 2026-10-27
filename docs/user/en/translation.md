@@ -7,13 +7,13 @@ The page is a view of the Translate with AI runs and their items. Activity in [W
 
 ## In progress
 
-**In progress** (`?view=running`), which the page opens on, lists the runs that are translating, then those still queued, one card per work. The card's first row is the transcription (ASR) stage, with how many tracks are transcribed and the progress of the current one. Each target language follows on its own row with its stage: waiting for transcription, queued, translating with how many items are done, or done.
+**In progress** (`?view=running`), which the page opens on, lists the runs that are translating, then those still queued, one card per work, with each target language on its own row and its stage: queued, translating with how many items are done, or done.
 
-**Cancel** is available for your own runs without workflow permission; workflow administrators can also cancel other accounts' runs. It stops everything not yet sent, and a speech or translation request already out keeps an unknown result. Accounts with workflow permission also see **Activity**, which opens the run's diagnostics.
+**Cancel** is available for your own runs without workflow permission; workflow administrators can also cancel other accounts' runs. It stops everything not yet sent, and a translation request already out keeps an unknown result. Accounts with workflow permission also see **Activity**, which opens the run's diagnostics.
 
 ## Stopped
 
-**Stopped** (`?view=attention`) lists the items that failed, whose result is unknown, that went out of date, or that the content safety policy blocked, grouped by work, language and category, each with the reason. **Send again** queues a failed item, or a transcription and the translations waiting for it, in the same run. An item whose result could not be written, such as lyrics whose folder was blocked, is written from its kept result without another request. A request whose response was lost, including during a connection failure, server stop or cancellation, may already have been charged by the provider, so **Send again** first asks you to confirm. An item whose source, provider or content policy changed is translated again by a new request from the work.
+**Stopped** (`?view=attention`) lists the items that failed, whose result is unknown, that went out of date, or that the content safety policy blocked, grouped by work, language and category, each with the reason. **Send again** queues a failed item in the same run. An item whose result could not be written, such as lyrics whose folder was blocked, is written from its kept result without another request. A request whose response was lost, including during a connection failure, server stop or cancellation, may already have been charged by the provider, so **Send again** first asks you to confirm. An item whose source, provider or content policy changed is translated again by a new request from the work.
 
 ## History
 

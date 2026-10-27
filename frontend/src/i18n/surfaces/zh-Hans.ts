@@ -3325,8 +3325,12 @@ export const surfaceHans = {
   },
   asrTranscription: {
     demoCue: "示例第 {{number}} 行。演示没有转写这段音频。",
-    service: "服务",
     detect: "自动检测",
+    model: "模型",
+    noModelShort: "没有适用此语言的模型",
+    noModel: "没有已启用的模型能根据{{language}}音频写出歌词。请选择其他音频语言，或请管理员添加模型。",
+    unknownModel:
+      "此服务没有说明其模型写出哪些语言。可以要求其他歌词语言，但服务可能忽略它；以其他语言返回的转写不会保存。",
     noService: "没有可用的语音识别服务。管理员可在「设置 → 语音识别与大语言模型」中添加。",
     noServiceShort: "没有可用服务",
     loading: "加载中…",
@@ -3366,6 +3370,7 @@ export const surfaceHans = {
       service_out_of_memory: "服务因内存不足无法加载模型。请释放显存，或将助手的显存调度设为轮流加载，然后重新转写。",
       unsupported_language_pair:
         "该模型无法根据此音频语言写出此语言的歌词。管理员可在「设置 → 语音识别与大语言模型」中重新获取服务的模型，然后重新转写。",
+      output_language_mismatch: "服务写出的语言与歌词语言不同，因此结果未保存。请选择能写出此语言的模型。",
       ffmpeg_unavailable: "此服务器无法准备音频。",
       endpoint_unavailable: "无法建立服务连接。",
       cancelled: "转写已取消。",
@@ -3394,11 +3399,9 @@ export const surfaceHans = {
     language: "音频语言",
     languageHint: "音频中所说的语言，会作为提示发送给服务。",
     lyricsLanguage: "歌词语言",
-    lyricsLanguageHint: "歌词以此语言保存并指派；自动检测时保存为后备歌词。除非模型会翻译，否则它就是音频语言。",
-    sameAsAudio: "与音频语言相同",
+    lyricsLanguageHint:
+      "歌词以此语言保存并指派；自动检测时保存为后备歌词。转写模型写出音频语言，翻译模型写出它自己的语言，其他模型可以选择。",
     languageDirection: "{{audio}} → {{lyrics}}",
-    translatesOnly: "此模型只能根据{{audio}}音频写出{{lyrics}}歌词。",
-    writesAudioLanguage: "此模型只能以音频语言写出歌词。",
     filter: "显示的音轨",
     filters: {
       noLyrics: "无歌词",
@@ -3533,10 +3536,6 @@ export const surfaceHans = {
     joinedCount_one: "{{count}} 个翻译已在队列中。",
     joinedCount_other: "{{count}} 个翻译已在队列中。",
     awaitingCount: "{{count}} 个待审核",
-  },
-  translationTargets: {
-    unsupported: "此模型不支持",
-    noTarget: "此模型无法将该作品翻译为以下任何语言。请选择其他模型。",
   },
   serviceModels: {
     label: "模型",

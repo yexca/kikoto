@@ -1,54 +1,59 @@
-import { ArrowRight, AudioLines, Check, Cloud, FileText, Folder, Loader2, Plus, X } from "lucide-react";
+import { ArrowRight, Check, Cloud, FileText, Folder, Loader2, Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import type { LyricsManagerAudio } from "@/features/work-detail/lyrics/lyricsManagerModel";
 import { groupAudioByFolder } from "@/features/work-detail/lyrics/lyricsManagerModel";
-import {
-  chooseTranslationSource,
-  toggleTranslationTarget,
-  type TranslationSourceFile,
-} from "@/features/work-detail/lyrics/lyricsTaskModel";
+import type { TranslationSourceFile } from "@/features/work-detail/lyrics/lyricsTaskModel";
 import type { TranslationItemState } from "@/lib/translationApi";
 import { allLyricsLanguages, lyricsLanguages } from "@/lib/lyricsLanguage";
 import { cn } from "@/lib/tailwindClassNames";
-import { lyricsCellKey, type LyricsPlan, type PlanTrack } from "./translateWithAIModel";
+import {
+  canTranslateLyrics,
+  chooseLyricsSource,
+  lyricsCellKey,
+  lyricsCellOpen,
+  lyricsLanguageChoice,
+  lyricsTrackChoice,
+  toggleLyricsCell,
+  toggleLyricsLanguage,
+  toggleLyricsTrack,
+  type LyricsCellContext,
+  type LyricsChoice,
+  type LyricsPlan,
+  type PlanTrack,
+} from "./translateWithAIModel";
 
 const reviewStates: ReadonlySet<TranslationItemState> = new Set(["ready"]);
 
 /**
  * Each local track's lyrics per language and the part they play in a
  * request: a track translates the chosen target languages from one of its
- * lyrics files, and a track without lyrics can be transcribed first.
+ * lyrics files, and a track without lyrics says it has none. The head of a
+ * target language chooses it for every track that can create it, and the
+ * head of a track every target language it can create. A missing target the
+ * model cannot translate shows ×.
  */
 export function LyricsTranslationMatrix({
   audio,
   tracks,
   sourceFiles,
-  origin,
   targetLanguages,
-  plan,
-  active,
-  transcribeAvailable,
-  supports,
+  context,
   disabled,
   onPlanChange,
 }: {
   audio: readonly LyricsManagerAudio[];
   tracks: readonly PlanTrack[];
   sourceFiles: ReadonlyMap<number, TranslationSourceFile>;
-  origin: string;
   /** The languages the request translates into. */
   targetLanguages: readonly string[];
-  plan: LyricsPlan;
-  active: ReadonlyMap<string, TranslationItemState>;
-  /** Whether tracks without lyrics can be transcribed in this request. */
-  transcribeAvailable: boolean;
-  supports: (language: string) => boolean;
+  context: LyricsCellContext;
   disabled: boolean;
   onPlanChange: (plan: LyricsPlan) => void;
 }) {
   const { t } = useTranslation();
+  const { plan, active, origin } = context;
   const trackByID = new Map(tracks.map((track) => [track.audioId, track]));
   const groups = groupAudioByFolder([...audio]);
   const columns = lyricsLanguages;
@@ -63,17 +68,20 @@ export function LyricsTranslationMatrix({
                 {t("lyricsTranslation.audioFile")}
               </th>
               {columns.map(([language, labelKey]) => (
-                <th key={language || "fallback"} scope="col" className="w-24 px-1 py-1.5 text-center font-medium">
+                <th key={language || "fallback"} scope="col" className="w-20 px-1 py-1.5 text-center font-medium">
                   <span className="flex flex-col items-center gap-0.5 px-1 py-1 leading-tight">
                     <span>{t(labelKey)}</span>
                     {language === origin && language !== allLyricsLanguages && (
                       <span className="text-2xs font-normal text-info-foreground">{t("lyricsManager.original")}</span>
                     )}
-                    {language !== allLyricsLanguages && !supports(language) && (
-                      <span className="text-2xs font-normal text-muted-foreground">
-                        {t("translationTargets.unsupported")}
-                      </span>
-                    )}
+                    <HeadChoice
+                      choice={
+                        targetLanguages.includes(language) ? lyricsLanguageChoice(tracks, language, context) : null
+                      }
+                      label={t("aiTranslation.lyricsAllTracks", { language: t(labelKey) })}
+                      disabled={disabled}
+                      onToggle={() => onPlanChange(toggleLyricsLanguage(tracks, language, context))}
+                    />
                   </span>
                 </th>
               ))}
@@ -99,35 +107,26 @@ export function LyricsTranslationMatrix({
                 const track = trackByID.get(entry.mediaItemId);
                 if (!track) return null;
                 const row = plan.selection.get(track.audioId);
-                const transcribed = plan.transcribe.has(track.audioId);
                 const noLyrics = track.lyrics.size === 0;
                 return (
-                  <tr
-                    key={track.audioId}
-                    className={cn("border-t first:border-t-0", (row || transcribed) && "bg-primary/5")}
-                  >
+                  <tr key={track.audioId} className={cn("border-t first:border-t-0", row && "bg-primary/5")}>
                     <th
                       scope="row"
-                      className="sticky left-0 z-10 max-w-[16rem] bg-card px-3 py-1.5 text-left font-normal sm:max-w-xs sm:px-4"
+                      className="sticky left-0 z-10 max-w-[9rem] bg-card px-3 py-1.5 text-left font-normal sm:max-w-xs sm:px-4"
                     >
-                      <span className="block truncate" title={entry.path}>
-                        {entry.title}
+                      <span className="flex items-center gap-2">
+                        <HeadChoice
+                          choice={lyricsTrackChoice(track, targetLanguages, context)}
+                          label={t("aiTranslation.lyricsAllLanguages", { track: entry.title })}
+                          disabled={disabled}
+                          onToggle={() => onPlanChange(toggleLyricsTrack(track, targetLanguages, context))}
+                        />
+                        <span className="min-w-0 truncate" title={entry.path}>
+                          {entry.title}
+                        </span>
                       </span>
-                      {noLyrics && transcribeAvailable && (
-                        <label className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Checkbox
-                            checked={transcribed}
-                            disabled={disabled}
-                            aria-label={t("aiTranslation.transcribeTrack", { track: entry.title })}
-                            onCheckedChange={(checked) => {
-                              const next = new Set(plan.transcribe);
-                              if (checked) next.add(track.audioId);
-                              else next.delete(track.audioId);
-                              onPlanChange({ ...plan, transcribe: next });
-                            }}
-                          />
-                          {t("aiTranslation.transcribeShort")}
-                        </label>
+                      {noLyrics && (
+                        <span className="block text-xs text-error-foreground">{t("aiTranslation.trackNoLyrics")}</span>
                       )}
                     </th>
                     {columns.map(([language, labelKey]) => {
@@ -144,29 +143,17 @@ export function LyricsTranslationMatrix({
                             remoteSource={file?.remote ? file.sourceName : null}
                             source={row?.source === language}
                             canBeSource={row !== undefined && lyricsID !== undefined}
-                            target={transcribed ? target : (row?.targets.has(language) ?? false)}
-                            transcribed={transcribed && target}
-                            canBeTarget={!noLyrics && target && supports(language) && state === undefined}
+                            target={row?.targets.has(language) ?? false}
+                            canBeTarget={target && lyricsCellOpen(track, language, context)}
+                            unavailable={
+                              target &&
+                              canTranslateLyrics(track, language, active) &&
+                              !lyricsCellOpen(track, language, context)
+                            }
                             state={state ?? null}
                             disabled={disabled}
-                            onToggleTarget={() =>
-                              onPlanChange({
-                                ...plan,
-                                selection: toggleTranslationTarget(
-                                  plan.selection,
-                                  track.audioId,
-                                  track.lyrics,
-                                  language,
-                                  origin,
-                                ),
-                              })
-                            }
-                            onChooseSource={() =>
-                              onPlanChange({
-                                ...plan,
-                                selection: chooseTranslationSource(plan.selection, track.audioId, language),
-                              })
-                            }
+                            onToggleTarget={() => onPlanChange(toggleLyricsCell(track, language, context))}
+                            onChooseSource={() => onPlanChange(chooseLyricsSource(plan, track, language))}
                           />
                         </td>
                       );
@@ -191,8 +178,8 @@ function MatrixCell({
   source,
   canBeSource,
   target,
-  transcribed,
   canBeTarget,
+  unavailable,
   state,
   disabled,
   onToggleTarget,
@@ -206,9 +193,9 @@ function MatrixCell({
   source: boolean;
   canBeSource: boolean;
   target: boolean;
-  /** The cell is written from the track's transcription. */
-  transcribed: boolean;
   canBeTarget: boolean;
+  /** Whether the model cannot translate this missing target from the lyrics the track reads. */
+  unavailable: boolean;
   state: TranslationItemState | null;
   disabled: boolean;
   onToggleTarget: () => void;
@@ -216,7 +203,7 @@ function MatrixCell({
 }) {
   const { t } = useTranslation();
   const base =
-    "relative mx-auto flex h-8 w-full min-w-[4.5rem] items-center justify-center gap-1 rounded-md border text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default";
+    "relative mx-auto flex h-8 w-full min-w-[4rem] items-center justify-center gap-1 rounded-md border text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default";
   if (has) {
     const title = [
       t(
@@ -282,12 +269,10 @@ function MatrixCell({
       </span>
     );
   }
-  if (transcribed) {
-    const label = t("aiTranslation.cellTranscribed", { track, language });
+  if (unavailable) {
     return (
-      <span className={cn(base, "border-primary bg-primary text-primary-foreground shadow-sm")} title={label}>
-        <AudioLines className="h-3.5 w-3.5" aria-hidden="true" />
-        <span className="sr-only">{label}</span>
+      <span className={cn(base, "border-transparent")}>
+        <UnavailableMark label={`${track} · ${language}`} />
       </span>
     );
   }
@@ -312,6 +297,44 @@ function MatrixCell({
       {target ? <Plus className="h-3.5 w-3.5" aria-hidden="true" /> : <X className="h-3.5 w-3.5" aria-hidden="true" />}
       {target && <span>{t("lyricsTranslation.targetShort")}</span>}
     </button>
+  );
+}
+
+/** Marks what the chosen model cannot translate. */
+export function UnavailableMark({ label }: { label?: string }) {
+  const { t } = useTranslation();
+  const reason = t("aiTranslation.modelCannotTranslate");
+  return (
+    <span className="text-sm leading-none text-muted-foreground" title={reason}>
+      <span aria-hidden="true">×</span>
+      <span className="sr-only">{label ? `${label} · ${reason}` : reason}</span>
+    </span>
+  );
+}
+
+/** Chooses every open cell of a target language or of a track. */
+function HeadChoice({
+  choice,
+  label,
+  disabled,
+  onToggle,
+}: {
+  choice: LyricsChoice;
+  label: string;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  if (choice === null) return null;
+  return (
+    <Checkbox
+      className="mt-0.5 h-4 w-4"
+      checked={choice === "all"}
+      indeterminate={choice === "some"}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      onCheckedChange={onToggle}
+    />
   );
 }
 

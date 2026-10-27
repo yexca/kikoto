@@ -58,6 +58,14 @@ const apiPrefix = "/v1"
 type Model struct {
 	ID   string `json:"id"`
 	Name string `json:"name,omitempty"`
+	// Declared is set for a model whose service declares what it writes, as
+	// Kikoto Helper does.
+	Declared bool `json:"declared,omitempty"`
+	// Multilingual and Languages are the speech a declared model hears: any
+	// language, or these lyrics language tokens. A code the server does not
+	// know is left out.
+	Multilingual bool     `json:"multilingual,omitempty"`
+	Languages    []string `json:"languages,omitempty"`
 	// Translation is set for a model that writes lyrics in another language
 	// than the one spoken; nil for a model that writes what it hears.
 	Translation *Translation `json:"translation,omitempty"`
@@ -71,26 +79,56 @@ type Translation struct {
 	Target string `json:"target"`
 }
 
-// ModelTranslation is the direction a discovered model translates, or nil
-// for a model that writes the language it hears or was never discovered.
-func (p Provider) ModelTranslation(id string) *Translation {
+// Model capabilities: a model writes the language it hears, writes the one
+// direction it translates, or was never declared and may write any language.
+const (
+	CapabilityTranscribe = "transcribe"
+	CapabilityTranslate  = "translate"
+	CapabilityUnknown    = "unknown"
+)
+
+// Capability is what the model's service declares it writes.
+func (m Model) Capability() string {
+	switch {
+	case m.Translation != nil:
+		return CapabilityTranslate
+	case m.Declared:
+		return CapabilityTranscribe
+	}
+	return CapabilityUnknown
+}
+
+// Hears reports whether a transcribing model hears speech in language; the
+// empty language detects speech.
+func (m Model) Hears(language string) bool {
+	return language == "" || m.Multilingual || slices.Contains(m.Languages, language)
+}
+
+// ModelInfo is the discovered model id, or a model of unknown capability
+// when the service never listed it, such as a model ID entered by hand.
+func (p Provider) ModelInfo(id string) Model {
 	for _, model := range p.Models {
 		if model.ID == id {
-			return model.Translation
+			return model
 		}
 	}
-	return nil
+	return Model{ID: id}
 }
 
 // Writes reports whether model writes lyrics in language from speech in
-// audioLanguage: a translating model only its own direction, any other model
-// only the language it hears. Empty languages detect speech and declare
-// fallback lyrics.
+// audioLanguage: a translating model only its own direction, a transcribing
+// model only a language it hears, and a model of unknown capability any
+// language from speech in a chosen language. Empty languages detect speech and
+// declare fallback lyrics, which a translating model never writes.
 func (p Provider) Writes(model, audioLanguage, language string) bool {
-	if translation := p.ModelTranslation(model); translation != nil {
-		return language != "" && translation.Source == audioLanguage && translation.Target == language
+	info := p.ModelInfo(model)
+	switch info.Capability() {
+	case CapabilityTranslate:
+		return language != "" && info.Translation.Source == audioLanguage && info.Translation.Target == language
+	case CapabilityTranscribe:
+		return audioLanguage == language && info.Hears(audioLanguage)
 	}
-	return audioLanguage == language
+	return (audioLanguage == "") == (language == "")
 }
 
 type Provider struct {

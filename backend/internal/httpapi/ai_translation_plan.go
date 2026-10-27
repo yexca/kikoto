@@ -75,8 +75,6 @@ type translationPlanResponse struct {
 	OriginLanguage string                     `json:"originLanguage"`
 	Permissions    translationPlanPermissions `json:"permissions"`
 	Languages      []translationPlanLanguage  `json:"languages"`
-	// Transcribing lists the tracks with a transcription that is running.
-	Transcribing []int64 `json:"transcribing"`
 	// AttributionEnabled reports whether AI-made lyrics files open with a
 	// line naming their models.
 	AttributionEnabled bool `json:"attributionEnabled"`
@@ -134,7 +132,7 @@ func (s *Server) getAITranslationPlan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) planAITranslation(ctx context.Context, actor currentUser, workID int64, languages []string) (translationPlanResponse, error) {
-	response := translationPlanResponse{WorkID: workID, Languages: []translationPlanLanguage{}, Transcribing: []int64{}}
+	response := translationPlanResponse{WorkID: workID, Languages: []translationPlanLanguage{}}
 	var exists int64
 	if err := s.db.QueryRowContext(ctx, "SELECT id FROM work WHERE id = ?", workID).Scan(&exists); err != nil {
 		return response, err
@@ -226,7 +224,7 @@ func (s *Server) planAITranslation(ctx context.Context, actor currentUser, workI
 	ids = append(ids, mediaWorkID)
 	marks := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
 	rows, err := s.db.QueryContext(ctx, `SELECT language, CAST(subject AS INTEGER), state FROM translation_item
-		WHERE category = 'lyrics' AND work_id IN (`+marks+`) AND state IN ('queued', 'waiting_transcription', 'requesting', 'ready', 'uncertain')`, ids...)
+		WHERE category = 'lyrics' AND work_id IN (`+marks+`) AND state IN ('queued', 'requesting', 'ready', 'uncertain')`, ids...)
 	if err != nil {
 		return response, err
 	}
@@ -243,23 +241,7 @@ func (s *Server) planAITranslation(ctx context.Context, actor currentUser, workI
 			}
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return response, err
-	}
-	transcribing, err := s.db.QueryContext(ctx, `SELECT DISTINCT audio_media_item_id FROM asr_transcription
-		WHERE work_id IN (`+marks+`) AND state IN ('pending', 'requesting')`, ids...)
-	if err != nil {
-		return response, err
-	}
-	defer func() { _ = transcribing.Close() }()
-	for transcribing.Next() {
-		var audioID int64
-		if err := transcribing.Scan(&audioID); err != nil {
-			return response, err
-		}
-		response.Transcribing = append(response.Transcribing, audioID)
-	}
-	return response, transcribing.Err()
+	return response, rows.Err()
 }
 
 func stringsToAny(values []string) []any {
@@ -391,7 +373,7 @@ func (s *Server) activeTranslationKeys(ctx context.Context, keys []string) (map[
 	for start := 0; start < len(keys); start += 500 {
 		batch := keys[start:min(start+500, len(keys))]
 		rows, err := s.db.QueryContext(ctx, `SELECT dedup_key, state, work_id FROM translation_item
-			WHERE state IN ('queued', 'waiting_transcription', 'requesting', 'ready', 'uncertain')
+			WHERE state IN ('queued', 'requesting', 'ready', 'uncertain')
 				AND dedup_key IN (`+strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")+`)`, stringsToAny(batch)...)
 		if err != nil {
 			return nil, err

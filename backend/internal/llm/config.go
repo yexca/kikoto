@@ -88,17 +88,26 @@ const MaxLanguagePairs = 64
 // a work whose original language is unknown, matches every declared source.
 // A model that is not among the discovered models has no declared pairs.
 func (p Provider) TranslationTargets(model, source string) []string {
+	pairs := p.TranslationPairs(model)
+	if pairs == nil {
+		return nil
+	}
+	targets := []string{}
+	for _, pair := range pairs {
+		if (source == "" || pair.Source == source) && !slices.Contains(targets, pair.Target) {
+			targets = append(targets, pair.Target)
+		}
+	}
+	return targets
+}
+
+// TranslationPairs returns the only directions model translates, or nil when
+// it translates any direction.
+func (p Provider) TranslationPairs(model string) []LanguagePair {
 	for _, discovered := range p.Models {
-		if discovered.ID != model || len(discovered.Pairs) == 0 {
-			continue
+		if discovered.ID == model && len(discovered.Pairs) > 0 {
+			return discovered.Pairs
 		}
-		targets := []string{}
-		for _, pair := range discovered.Pairs {
-			if (source == "" || pair.Source == source) && !slices.Contains(targets, pair.Target) {
-				targets = append(targets, pair.Target)
-			}
-		}
-		return targets
 	}
 	return nil
 }

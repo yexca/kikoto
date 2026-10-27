@@ -3462,8 +3462,13 @@ export const surfaceKorean = {
   },
   asrTranscription: {
     demoCue: "예시 {{number}}번째 줄. 데모는 이 오디오를 전사하지 않았습니다.",
-    service: "서비스",
     detect: "자동 감지",
+    model: "모델",
+    noModelShort: "이 언어용 모델 없음",
+    noModel:
+      "{{language}} 오디오에서 가사를 작성할 수 있는 활성화된 모델이 없습니다. 다른 오디오 언어를 선택하거나 관리자에게 모델 추가를 요청하세요.",
+    unknownModel:
+      "이 서비스는 모델이 어떤 언어로 작성하는지 알려 주지 않습니다. 다른 가사 언어를 요청할 수 있지만 서비스가 무시할 수 있으며, 다른 언어로 돌아온 받아쓰기는 저장되지 않습니다.",
     noService: "사용할 수 있는 음성 인식 서비스가 없습니다. 관리자가 설정 → 음성 인식 및 LLM에서 추가할 수 있습니다.",
     noServiceShort: "사용 가능한 서비스 없음",
     loading: "불러오는 중…",
@@ -3505,6 +3510,8 @@ export const surfaceKorean = {
         "메모리가 부족해 서비스가 모델을 불러오지 못했습니다. GPU 메모리를 확보하거나 헬퍼의 GPU 공유를 번갈아 불러오기로 설정한 뒤 다시 전사하세요.",
       unsupported_language_pair:
         "모델이 이 오디오 언어에서 이 언어의 가사를 작성하지 못합니다. 관리자가 설정 → 음성 인식 및 LLM에서 서비스의 모델을 다시 가져온 뒤 다시 전사하세요.",
+      output_language_mismatch:
+        "서비스가 가사 언어와 다른 언어로 작성해 결과를 저장하지 않았습니다. 이 언어로 작성하는 모델을 선택하세요.",
       ffmpeg_unavailable: "이 서버에서 오디오를 준비할 수 없습니다.",
       endpoint_unavailable: "서비스 연결을 준비할 수 없습니다.",
       cancelled: "전사가 취소되었습니다.",
@@ -3535,11 +3542,8 @@ export const surfaceKorean = {
     languageHint: "오디오에서 말하는 언어로, 서비스에 힌트로 전송됩니다.",
     lyricsLanguage: "가사 언어",
     lyricsLanguageHint:
-      "가사는 이 언어로 저장되고 지정되며, 자동 감지하면 대체 가사로 저장됩니다. 모델이 번역하지 않는 한 오디오 언어와 같습니다.",
-    sameAsAudio: "오디오 언어와 같음",
+      "가사는 이 언어로 저장되고 지정됩니다. 자동 감지하면 대체 가사로 저장됩니다. 받아쓰는 모델은 오디오 언어로, 번역하는 모델은 자기 언어로 작성하며, 그 밖의 모델은 선택할 수 있습니다.",
     languageDirection: "{{audio}} → {{lyrics}}",
-    translatesOnly: "이 모델은 {{audio}} 오디오에서 {{lyrics}} 가사만 작성합니다.",
-    writesAudioLanguage: "이 모델은 오디오 언어로만 가사를 작성합니다.",
     filter: "표시할 트랙",
     filters: {
       noLyrics: "가사 없음",
@@ -3679,10 +3683,6 @@ export const surfaceKorean = {
     joinedCount_one: "{{count}}개는 이미 대기열에 있습니다.",
     joinedCount_other: "{{count}}개는 이미 대기열에 있습니다.",
     awaitingCount: "검토 대기 {{count}}개",
-  },
-  translationTargets: {
-    unsupported: "이 모델에서 지원하지 않음",
-    noTarget: "이 모델은 이 작품을 이 언어들 중 어느 것으로도 번역할 수 없습니다. 다른 모델을 선택하세요.",
   },
   serviceModels: {
     label: "모델",

@@ -324,7 +324,6 @@ function reviewItem(overrides: Partial<TranslationItem>): TranslationItem {
     language: "en-us",
     category: "title",
     subject: "",
-    engine: "llm",
     state: "ready",
     label: "",
     source: "Example original",
@@ -410,7 +409,6 @@ test("Translate with AI sends only what each language lacks and shows what it wr
           files: translationPlanCategory(1),
           lyrics: [],
         })),
-        transcribing: [],
         attributionEnabled: true,
         autoAccept: true,
       } satisfies ApiResponse<"translationPlan">,
@@ -442,8 +440,6 @@ test("Translate with AI sends only what each language lacks and shows what it wr
     providerId: provider.id,
     model: "example-model",
     lyrics: [{ audioMediaItemId: 1, targetLanguage: "en-us", lyricsLocationId: 2 }],
-    asrProviderId: "",
-    directAsr: false,
   });
 
   // Each finished item applies at once; the results name what it wrote.
@@ -561,7 +557,7 @@ test("With auto-accept off, the Translation page reviews items across works and 
   await expect.poll(() => resent).toEqual([{ ids: [3], acknowledgeUncertain: true }]);
 });
 
-test("Manage lyrics transcribes the selected tracks without lyrics in the original language @desktop", async ({
+test("Manage lyrics transcribes from the audio language with a model that decides the lyrics language @desktop", async ({
   page,
 }) => {
   const localFile = (id: number, kind: string, name: string) =>
@@ -593,8 +589,11 @@ test("Manage lyrics transcribes the selected tracks without lyrics in the origin
           id: "synthetic-asr",
           name: "Example ASR",
           defaultModel: "example-asr",
-          models: ["example-asr", "example-translating-asr"],
-          translations: { "example-translating-asr": { source: "ja-jp", target: "zh-cn" } },
+          models: ["example-asr", "example-translating-asr", "example-hosted-asr"],
+          capabilities: {
+            "example-asr": { kind: "transcribe", languages: ["ja-jp"] },
+            "example-translating-asr": { kind: "translate", translation: { source: "ja-jp", target: "zh-cn" } },
+          },
           boundary: "external",
           maxContentClass: "sensitive",
         },
@@ -629,39 +628,52 @@ test("Manage lyrics transcribes the selected tracks without lyrics in the origin
   await expect(lyrics.getByRole("checkbox", { name: "Select 03.mp3" })).toHaveCount(0);
   await lyrics.getByRole("checkbox", { name: "Select all listed tracks" }).click();
 
-  // The audio language starts as the work's original language, and the lyrics are written in it.
+  // The audio language starts as the work's original language, and a model that transcribes it writes it.
   await expect(lyrics.getByRole("combobox", { name: "Audio language" })).toContainText("Japanese");
-  const sameAsAudio = lyrics.getByRole("checkbox", { name: "Same as audio language" });
-  await expect(sameAsAudio).toBeChecked();
+  await expect(lyrics.getByRole("combobox", { name: "Model" })).toContainText("Example ASR · example-asr");
+  const lyricsLanguage = lyrics.getByRole("combobox", { name: "Lyrics language" });
+  await expect(lyricsLanguage).toContainText("Japanese");
+  await expect(lyricsLanguage).toBeDisabled();
   await lyrics.getByRole("button", { name: "Transcribe 2", exact: true }).click();
   await expect.poll(() => created).toHaveLength(2);
-  const request = (audioMediaItemId: number, model: string, language: string) => ({
+  const request = (audioMediaItemId: number, model: string, language: string, audioLanguage = "ja-jp") => ({
     audioMediaItemId,
     providerId: "synthetic-asr",
     model,
     language,
-    audioLanguage: "ja-jp",
+    audioLanguage,
   });
   expect(created).toEqual([request(1, "example-asr", "ja-jp"), request(2, "example-asr", "ja-jp")]);
 
-  // Another lyrics language waits for a model that writes it from the audio language.
+  // A translating model names its direction and fixes the lyrics language to it.
   await lyrics.getByRole("checkbox", { name: "Select all listed tracks" }).click();
-  await sameAsAudio.click();
-  await lyrics.getByRole("combobox", { name: "Lyrics language" }).click();
-  await page.getByRole("option", { name: "Simplified Chinese" }).click();
-  await expect(lyrics.getByText("This model writes lyrics only in the audio language.")).toBeVisible();
-  await expect(lyrics.getByRole("button", { name: "Transcribe 2", exact: true })).toBeDisabled();
-
-  // A translating model sets the direction it writes.
-  await lyrics.getByRole("combobox", { name: "Service" }).click();
-  await page.getByRole("option", { name: "Example ASR · example-translating-asr" }).click();
-  await expect(lyrics.getByRole("combobox", { name: "Lyrics language" })).toContainText("Simplified Chinese");
-  await expect(sameAsAudio).not.toBeChecked();
+  await lyrics.getByRole("combobox", { name: "Model" }).click();
+  await page
+    .getByRole("option", { name: "Example ASR · example-translating-asr (Japanese → Simplified Chinese)" })
+    .click();
+  await expect(lyricsLanguage).toContainText("Simplified Chinese");
+  await expect(lyricsLanguage).toBeDisabled();
   await lyrics.getByRole("button", { name: "Transcribe 2", exact: true }).click();
   await expect.poll(() => created).toHaveLength(4);
   expect(created.slice(2)).toEqual([
     request(1, "example-translating-asr", "zh-cn"),
     request(2, "example-translating-asr", "zh-cn"),
+  ]);
+
+  // English audio leaves only the model whose languages are unknown; its lyrics language can be chosen.
+  await lyrics.getByRole("checkbox", { name: "Select all listed tracks" }).click();
+  await lyrics.getByRole("combobox", { name: "Audio language" }).click();
+  await page.getByRole("option", { name: "English" }).click();
+  await expect(lyrics.getByRole("combobox", { name: "Model" })).toContainText("Example ASR · example-hosted-asr");
+  await expect(lyrics.getByText(/does not say which languages its model writes/)).toBeVisible();
+  await expect(lyricsLanguage).toContainText("English");
+  await lyricsLanguage.click();
+  await page.getByRole("option", { name: "Korean" }).click();
+  await lyrics.getByRole("button", { name: "Transcribe 2", exact: true }).click();
+  await expect.poll(() => created).toHaveLength(6);
+  expect(created.slice(4)).toEqual([
+    request(1, "example-hosted-asr", "ko-kr", "en-us"),
+    request(2, "example-hosted-asr", "ko-kr", "en-us"),
   ]);
 
   await lyrics.getByRole("tab", { name: /^All tracks/ }).click();
@@ -726,7 +738,7 @@ test("Demo shows sample transcriptions in Manage lyrics with every action off @d
   await expect(lyrics.getByRole("button", { name: "Add to lyrics" })).toBeDisabled();
   await expect(lyrics.getByRole("button", { name: "Check rating" })).toBeDisabled();
   await lyrics.getByRole("checkbox", { name: "Select 02.mp3" }).click();
-  await expect(lyrics.getByRole("combobox", { name: "Service" })).toContainText("Example speech service");
+  await expect(lyrics.getByRole("combobox", { name: "Model" })).toContainText("Example speech service");
   await expect(lyrics.getByRole("button", { name: "Transcribe 1", exact: true })).toBeDisabled();
   await expect(lyrics.getByRole("tab", { name: "Translate" })).toHaveCount(0);
 

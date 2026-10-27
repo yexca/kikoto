@@ -114,6 +114,28 @@ func TestRequestLanguageMapsLyricsLanguages(t *testing.T) {
 	}
 }
 
+func TestWroteLanguageComparesBaseLanguages(t *testing.T) {
+	for _, check := range []struct {
+		reported, token string
+		wrote           bool
+	}{
+		{"zh", "zh-cn", true},
+		{"zh-CN", "zh-cn", true},
+		{"zh", "zh-tw", true},
+		{"japanese", "ja-jp", true},
+		{"ja", "ja-jp", true},
+		{"ja", "zh-cn", false},
+		{"japanese", "zh-cn", false},
+		{"en", "ja-jp", false},
+		{"", "zh-cn", true},
+		{"zh", "", true},
+	} {
+		if got := WroteLanguage(check.reported, check.token); got != check.wrote {
+			t.Errorf("WroteLanguage(%q, %q) = %v", check.reported, check.token, got)
+		}
+	}
+}
+
 func TestOpenAIDiscoverySuggestsOnlyWhisperModels(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[{"id":"example-chat"},{"id":"whisper-1"},{"id":"example-transcribe"}]}`))

@@ -6,6 +6,11 @@
 > results take effect as soon as they finish.
 
 > [!NOTE]
+> A transcription queued before the upgrade, or a failed one retried after it,
+> stops because the service settings changed. Start it again from **Manage
+> lyrics → Transcribe**.
+
+> [!NOTE]
 > A metadata sync schedule that uses **Selected works** switches itself off
 > the next time it is due, with a message on the trigger. Edit it to another
 > scope, or run the selected works from **Workflows** instead.
@@ -228,10 +233,15 @@
   once, and sends only what each language lacks. Each result takes effect as
   soon as it finishes, after its source, the content policy, the requester's
   permission and the provider are checked again. Tag names show how many works
-  they affect. Lyrics of tracks without any are transcribed first, once per
-  track, and every language is translated from that transcription; a speech
-  model that writes the one chosen language directly writes it without an LLM
-  step.
+  they affect. Lyrics are translated from a lyrics file the track has; a
+  track without lyrics links to **Manage lyrics → Transcribe**. Its
+  **Translate** tab sets categories against languages, **Lyrics**
+  sets tracks against lyrics languages, every missing cell or a **Custom**
+  choice cell by cell, and **Results** records what each item wrote as before
+  and after, with links to where it can be changed or undone. A model limited
+  to declared directions is checked against the work's original language for
+  its text and against each lyrics file's own language for lyrics; what it
+  cannot translate shows × and is not sent.
 - Display names of local files and folders can be translated with AI. Names in
   the original language and names without words, such as `Track01`, are left
   as they are.
@@ -240,9 +250,13 @@
   translation wrote with a link to its work, and holds the translation
   coverage that was under Metadata. Everyone who can translate sees every
   account's translations.
-- Translation recovers completed transcriptions and their dependent items
-  after interruption. Resending a speech request with an unknown result
-  requires confirmation, including when resending a dependent translation.
+- **Manage lyrics → Transcribe** chooses the audio language first, then the
+  model, and the model decides the lyrics language: a model that transcribes
+  writes the audio language, a model that translates is offered only for its
+  source language and names its direction, and a model whose languages the
+  service does not declare lets the lyrics language be chosen. Kikoto Helper
+  models are offered only for the languages they hear. A transcription the
+  service reports in another language than the lyrics language is not kept.
 - Accounts with library write permission can cancel their own translations
   from the Translation page; workflow administrators can cancel other
   accounts' runs. Shared tag translations apply without stalling the queue

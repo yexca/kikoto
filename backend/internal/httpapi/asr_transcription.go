@@ -127,7 +127,8 @@ type asrTranscriptionRequest struct {
 	// Language is the lyrics language the result is saved and assigned in.
 	Language string `json:"language"`
 	// AudioLanguage is the language spoken in the audio; omitted, it is
-	// Language. It differs only for a model that translates.
+	// Language. It differs for a model that translates, or one of unknown
+	// capability asked for another language.
 	AudioLanguage *string `json:"audioLanguage,omitempty"`
 }
 

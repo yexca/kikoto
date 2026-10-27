@@ -13,6 +13,7 @@ import (
 	"net/http/httptrace"
 	"net/textproto"
 	"net/url"
+	"slices"
 	"strings"
 	"sync/atomic"
 
@@ -54,6 +55,7 @@ type Segment struct {
 }
 
 type Transcript struct {
+	// Language is the language the service reports it wrote, or empty.
 	Language string
 	Segments []Segment
 }
@@ -162,7 +164,16 @@ func (c Client) helperModels(ctx context.Context) ([]Model, error) {
 			continue
 		}
 		seen[id] = true
-		model := Model{ID: id, Name: strings.TrimSpace(item.Name)}
+		// A helper that does not name a model's languages has it hear any.
+		model := Model{ID: id, Name: strings.TrimSpace(item.Name), Declared: true, Multilingual: item.Languages == nil}
+		if item.Languages != nil {
+			model.Multilingual = item.Languages.Multilingual
+			for _, code := range item.Languages.Codes {
+				if token := kikotohelper.LanguageToken(code); token != "" && !slices.Contains(model.Languages, token) {
+					model.Languages = append(model.Languages, token)
+				}
+			}
+		}
 		if item.Translation != nil {
 			model.Translation = &Translation{Source: kikotohelper.LanguageToken(item.Translation.Source), Target: kikotohelper.LanguageToken(item.Translation.Target)}
 		}
@@ -277,4 +288,24 @@ func RequestLanguage(token string) string {
 	default:
 		return ""
 	}
+}
+
+// requestLanguageNames are the English names OpenAI reports languages by.
+var requestLanguageNames = map[string]string{"ja": "japanese", "en": "english", "zh": "chinese", "ko": "korean"}
+
+// WroteLanguage reports whether the language a service reports for its
+// transcript is the lyrics language token, comparing base languages only: a
+// Kikoto Helper reports zh for zh-cn, and OpenAI names the language in
+// English. A transcript without a reported language, or lyrics in a language
+// without a base, has nothing to compare.
+func WroteLanguage(reported, token string) bool {
+	base := RequestLanguage(token)
+	reported = strings.ToLower(strings.TrimSpace(reported))
+	if base == "" || reported == "" {
+		return true
+	}
+	if cut := strings.IndexAny(reported, "-_"); cut >= 0 {
+		reported = reported[:cut]
+	}
+	return reported == base || reported == requestLanguageNames[base]
 }

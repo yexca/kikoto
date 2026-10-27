@@ -127,9 +127,11 @@ func TestKikotoHelperDeclaredPairsLimitTranslationTargets(t *testing.T) {
 	w := httptest.NewRecorder()
 	f.server.listLLMTranslationModels(w, r)
 	var choices []struct {
-		ModelTargets map[string][]string `json:"modelTargets"`
+		ModelTargets map[string][]string           `json:"modelTargets"`
+		ModelPairs   map[string][]llm.LanguagePair `json:"modelPairs"`
 	}
-	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &choices) != nil || len(choices) != 1 || len(choices[0].ModelTargets["example-helper-model"]) != 1 || choices[0].ModelTargets["example-helper-model"][0] != "zh-cn" {
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &choices) != nil || len(choices) != 1 || len(choices[0].ModelTargets["example-helper-model"]) != 1 || choices[0].ModelTargets["example-helper-model"][0] != "zh-cn" ||
+		len(choices[0].ModelPairs["example-helper-model"]) != 1 || choices[0].ModelPairs["example-helper-model"][0] != (llm.LanguagePair{Source: "ja-jp", Target: "zh-cn"}) {
 		t.Fatalf("translation models: %d %s", w.Code, w.Body.String())
 	}
 

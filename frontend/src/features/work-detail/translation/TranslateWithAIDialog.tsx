@@ -1,15 +1,15 @@
-import { AudioLines, ChevronDown, ChevronRight, Languages, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { AudioLines, Check, History, Languages, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { TranslationReviewList } from "@/components/translation/TranslationReviewList";
 import { useTranslationReviewActions } from "@/components/translation/useTranslationReviewActions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { DialogTabs } from "@/components/ui/dialog-tabs";
 import { FloatingSelect } from "@/components/ui/floating-select";
-import { Switch } from "@/components/ui/switch";
+import { filterChipClassName, segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { lyricsManagerEntries } from "@/features/work-detail/lyrics/lyricsManagerModel";
 import { LyricsPreview } from "@/features/work-detail/lyrics/LyricsPreview";
@@ -21,7 +21,6 @@ import {
 import {
   ApiError,
   api,
-  type ASRService,
   type LLMTranslationModel,
   type TranslationCategory,
   type TranslationItem,
@@ -32,15 +31,22 @@ import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { metadataTagNameLanguages } from "@/lib/metadataTagModel";
 import { serviceModelChoices } from "@/lib/serviceModels";
 import { cn } from "@/lib/tailwindClassNames";
-import { interfaceLyricsLanguage, modelTranslationTargets } from "@/lib/translationTargets";
-import { LyricsTranslationMatrix } from "./LyricsTranslationMatrix";
+import { interfaceLyricsLanguage, modelTranslationDirection, modelTranslationTargets } from "@/lib/translationTargets";
+import { allLyricsLanguages } from "@/lib/lyricsLanguage";
+import { LyricsTranslationMatrix, UnavailableMark } from "./LyricsTranslationMatrix";
+import { TranslationResults } from "./TranslationResults";
 import {
   activeLyricsCells,
+  anyLyricsDirection,
+  canTranslateLyrics,
   defaultLyricsPlan,
-  directASRLanguage,
+  lyricsCellOpen,
+  lyricsFileLanguage,
   lyricsRequestTargets,
   missingCount,
   requestEstimates,
+  resultsSection,
+  type LyricsCellContext,
   type LyricsPlan,
   type PlanTrack,
 } from "./translateWithAIModel";
@@ -49,7 +55,13 @@ const categories: readonly TranslationCategory[] = ["title", "description", "tag
 const languageOrder = metadataTagNameLanguages.map(([language]) => language);
 const pollMs = 4000;
 
-type Tab = "translate" | "results";
+type Tab = "translate" | "lyrics" | "results";
+
+/** Whether the lyrics follow every missing cell of the chosen languages, or the cells chosen one by one. */
+type LyricsMode = "missing" | "custom";
+
+/** Where applied items of a category can be changed or undone, outside this dialog. */
+export type TranslateWithAIEditor = "title" | "description" | "files" | "lyrics" | "transcribe";
 
 /** Refusals that say what to change. */
 const requestRefusals = new Set([
@@ -57,27 +69,25 @@ const requestRefusals = new Set([
   "llm_not_ready",
   "llm_policy_blocked",
   "llm_unsupported_language_pair",
-  "asr_not_ready",
-  "asr_language_unsupported",
-  "asr_origin_unknown",
-  "asr_ffmpeg_unavailable",
   "llm_permission_changed",
 ]);
 
 /**
  * Translates what one work lacks in the chosen languages: its title,
  * description and shared tag names, local file and folder display names, and
- * the lyrics of each local track. A track without lyrics can be transcribed
- * first by a speech recognition service. Each finished item is accepted at
- * once while auto-accept is on, and otherwise waits here and on the
- * Translation page for review; the results tab lists what is running,
- * stopped and applied.
+ * the lyrics of each local track. The translate tab sets each category
+ * against the chosen languages; the lyrics tab sets each track against the
+ * lyrics languages, translating from one of its lyrics files, and sends a
+ * track without lyrics to Manage lyrics to be transcribed. Each finished item is accepted at
+ * once while auto-accept is on, and otherwise waits for review; the results
+ * tab records what was written and where to change it.
  */
 export function TranslateWithAIDialog({
   work,
   mediaWork,
   onClose,
   onChanged,
+  onOpenEditor,
 }: {
   work: WorkDetail;
   /** The work whose local files the detail shows, for display names and lyrics. */
@@ -85,6 +95,8 @@ export function TranslateWithAIDialog({
   onClose: () => void;
   /** Reloads the work after an accepted item changed it. */
   onChanged: () => Promise<void> | void;
+  /** Closes the dialog and opens where an applied category can be changed or undone. */
+  onOpenEditor?: (editor: TranslateWithAIEditor) => void;
 }) {
   const { t, i18n } = useTranslation();
   const toast = useToast();
@@ -109,16 +121,12 @@ export function TranslateWithAIDialog({
   });
   const [chosenCategories, setChosenCategories] = useState<Set<TranslationCategory>>(() => new Set(categories));
   const [lyricsChosen, setLyricsChosen] = useState(true);
-  const [transcribe, setTranscribe] = useState(true);
-  const [directASR, setDirectASR] = useState(true);
-  const [lyricsOpen, setLyricsOpen] = useState(false);
   const [plan, setPlan] = useState<TranslationPlan | null>(null);
   const [planError, setPlanError] = useState(false);
   const [providers, setProviders] = useState<LLMTranslationModel[] | null>(null);
-  const [asrServices, setASRServices] = useState<ASRService[] | null>(null);
   const [choiceKey, setChoiceKey] = useState("");
-  const [asrKey, setASRKey] = useState("");
-  const [lyricsPlan, setLyricsPlan] = useState<LyricsPlan | null>(null);
+  const [lyricsMode, setLyricsMode] = useState<LyricsMode>("missing");
+  const [customPlan, setCustomPlan] = useState<LyricsPlan>(() => ({ selection: new Map() }));
   const [submitting, setSubmitting] = useState(false);
   const [items, setItems] = useState<TranslationItem[]>([]);
 
@@ -156,16 +164,9 @@ export function TranslateWithAIDialog({
         setChoiceKey((current) => current || serviceModelChoices(result)[0]?.key || "");
       })
       .catch(() => setProviders([]));
-    api
-      .listASRServices()
-      .then((result) => {
-        setASRServices(result);
-        setASRKey((current) => current || serviceModelChoices(result)[0]?.key || "");
-      })
-      .catch(() => setASRServices([]));
   }, [loadItems, work.id]);
 
-  const running = items.some((item) => ["queued", "waiting_transcription", "requesting"].includes(item.state));
+  const running = items.some((item) => resultsSection(item.state) === "active");
   useEffect(() => {
     if (!running) return;
     const timer = window.setInterval(() => {
@@ -176,52 +177,73 @@ export function TranslateWithAIDialog({
   }, [loadItems, loadPlan, running]);
 
   const active = useMemo(() => activeLyricsCells(plan), [plan]);
-  const transcribing = useMemo(() => new Set(plan?.transcribing ?? []), [plan?.transcribing]);
   const permissions = plan?.permissions ?? { metadata: false, files: false, lyrics: false };
-  const asrChoices = serviceModelChoices(asrServices ?? []);
-  const asrChoice = asrChoices.find((candidate) => candidate.key === asrKey) ?? null;
-  const asrConfigured = asrChoices.length > 0;
-  const canTranscribe = transcribe && asrConfigured && origin !== "";
-  // Every missing cell starts chosen; a change of languages or switches starts over.
+  const choices = serviceModelChoices(providers ?? []);
+  const choice = choices.find((candidate) => candidate.key === choiceKey) ?? null;
+  // The work's text translates from its original language, and each track's
+  // lyrics from the language of the file it reads.
+  const modelTargets = modelTranslationTargets(choice?.service, choice?.model);
+  const translatesText = (language: string) => modelTargets === null || modelTargets.includes(language);
+  const direction = useMemo(
+    () => modelTranslationDirection(choice?.service, choice?.model),
+    [choice?.model, choice?.service],
+  );
+  const translates = direction ?? anyLyricsDirection;
+  // Until a cell is chosen by hand, every missing cell the model can translate is chosen.
   const defaultPlan = useMemo(
-    () => defaultLyricsPlan({ tracks, languages, origin, active, transcribe: canTranscribe, transcribing }),
-    [active, canTranscribe, languages, origin, tracks, transcribing],
+    () => defaultLyricsPlan({ tracks, languages, origin, active, translates }),
+    [active, languages, origin, tracks, translates],
   );
-  useEffect(() => setLyricsPlan(null), [defaultPlan]);
-  const currentLyricsPlan = lyricsPlan ?? defaultPlan;
-  const lyricsTargets = useMemo(
+  const currentLyricsPlan = lyricsMode === "custom" ? customPlan : defaultPlan;
+  const cellContext: LyricsCellContext = { plan: currentLyricsPlan, origin, active, translates };
+  // The lyrics row counts what the tracks would send even while the row is not chosen.
+  const plannedLyrics = useMemo(
     () =>
-      lyricsChosen && permissions.lyrics
-        ? lyricsRequestTargets({ tracks, languages, plan: currentLyricsPlan, sourceFiles, active })
+      permissions.lyrics
+        ? lyricsRequestTargets({ tracks, languages, plan: currentLyricsPlan, sourceFiles, active, translates })
         : [],
-    [active, currentLyricsPlan, languages, lyricsChosen, permissions.lyrics, sourceFiles, tracks],
+    [active, currentLyricsPlan, languages, permissions.lyrics, sourceFiles, tracks, translates],
   );
-  const transcribedLanguages = [
-    ...new Set(lyricsTargets.filter((target) => target.lyricsLocationId === 0).map((target) => target.targetLanguage)),
-  ];
-  const direct = directASR
-    ? directASRLanguage(asrChoice?.service, asrChoice?.model, origin, transcribedLanguages)
-    : null;
-  const directOffered = directASRLanguage(asrChoice?.service, asrChoice?.model, origin, transcribedLanguages);
+  const lyricsTargets = lyricsChosen ? plannedLyrics : [];
   const allowedCategories = categories.filter(
     (category) => chosenCategories.has(category) && (category === "files" ? permissions.files : permissions.metadata),
   );
-  const estimates = requestEstimates(plan, allowedCategories, lyricsTargets);
+  const estimates = requestEstimates(plan, allowedCategories, lyricsTargets, translatesText);
   const total = estimates.reduce((sum, estimate) => sum + estimate.items, 0);
-  const choices = serviceModelChoices(providers ?? []);
-  const choice = choices.find((candidate) => candidate.key === choiceKey) ?? null;
-  const modelTargets = modelTranslationTargets(choice?.service, choice?.model);
-  const supports = (language: string) => modelTargets === null || modelTargets.includes(language);
-  const needsLLM =
-    allowedCategories.length > 0 ||
-    lyricsTargets.some((target) => target.lyricsLocationId > 0) ||
-    (transcribedLanguages.length > 0 && !direct);
+  const needsLLM = allowedCategories.length > 0 || lyricsTargets.length > 0;
   const tracksWithoutLyrics = tracks.filter((track) => track.lyrics.size === 0);
   const noLyricsAtAll = tracks.length > 0 && tracksWithoutLyrics.length === tracks.length;
-  const unsupported = languages.filter((language) => !supports(language));
-  const reviewCount = items.filter((item) => item.state === "ready").length;
+  // Languages the model translates into from no source at all.
+  const unsupported = languages.filter((language) => !translates(allLyricsLanguages, language));
+  // Fallback lyrics have no declared language, so a model limited to declared
+  // directions is sent them without knowing what they are in.
+  const trackByID = new Map(tracks.map((track) => [track.audioId, track]));
+  const unknownSources =
+    direction === null
+      ? 0
+      : new Set(
+          plannedLyrics
+            .filter((target) => {
+              const track = trackByID.get(target.audioMediaItemId);
+              const row = currentLyricsPlan.selection.get(target.audioMediaItemId);
+              return track && row && lyricsFileLanguage(track, row.source) === allLyricsLanguages;
+            })
+            .map((target) => target.audioMediaItemId),
+        ).size;
+  const chooseLyricsMode = (mode: LyricsMode) => {
+    if (mode === "custom") setCustomPlan(currentLyricsPlan);
+    setLyricsMode(mode);
+  };
+  const editLyricsPlan = (next: LyricsPlan) => {
+    setCustomPlan(next);
+    setLyricsMode("custom");
+  };
+  const lyricsAvailable = permissions.lyrics && tracks.length > 0;
+  const lyricsTracksChosen = new Set(plannedLyrics.map((target) => target.audioMediaItemId)).size;
+  const needsAction = items.filter((item) => ["review", "attention"].includes(resultsSection(item.state) ?? "")).length;
   const languageName = (language: string) =>
     t(metadataTagNameLanguages.find(([value]) => value === language)?.[1] ?? language);
+  const shownTab = tab === "lyrics" && !lyricsAvailable ? "translate" : tab;
 
   const submit = async () => {
     if (total === 0) return;
@@ -233,9 +255,6 @@ export function TranslateWithAIDialog({
         providerId: choice?.service.id ?? "",
         model: choice?.model,
         lyrics: lyricsTargets,
-        asrProviderId: asrChoice?.service.id ?? "",
-        asrModel: asrChoice?.model,
-        directAsr: direct !== null,
       });
       toast.success(
         t(plan?.autoAccept === false ? "aiTranslation.queued" : "aiTranslation.queuedApply", { count: result.items }),
@@ -267,6 +286,73 @@ export function TranslateWithAIDialog({
         : languageOrder.filter((value) => value === language || current.includes(value)),
     );
   const audioByID = new Map(entries.audio.map((entry) => [entry.mediaItemId, entry]));
+  const navigate = (path: string) => {
+    onClose();
+    window.history.pushState({}, "", path);
+    window.dispatchEvent(new Event(NAVIGATION_EVENT));
+  };
+  const openServiceSettings = () => navigate("/settings?tab=services");
+  const openTranscribe = onOpenEditor
+    ? () => {
+        onClose();
+        onOpenEditor("transcribe");
+      }
+    : undefined;
+  const settingsLink = (
+    <a
+      href="/settings?tab=services"
+      className="text-primary hover:underline"
+      onClick={(event) => {
+        event.preventDefault();
+        openServiceSettings();
+      }}
+    >
+      {t("aiTranslation.openServiceSettings")}
+    </a>
+  );
+
+  const languagePicker = (
+    <fieldset>
+      <legend className="mb-2 text-sm font-medium">{t("aiTranslation.languages")}</legend>
+      <div className="flex flex-wrap gap-1.5">
+        {languageOrder.map((language) => {
+          const chosen = languages.includes(language);
+          return (
+            <button
+              key={language}
+              type="button"
+              aria-pressed={chosen}
+              disabled={submitting || (chosen && languages.length === 1)}
+              onClick={() => toggleLanguage(language)}
+              className={filterChipClassName(chosen, "h-9 disabled:cursor-default sm:h-8")}
+            >
+              {chosen && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+              {languageName(language)}
+              {language === origin && <span className="font-normal opacity-70">· {t("lyricsManager.original")}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+
+  const planState = planError ? (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground"
+    >
+      {t("aiTranslation.planFailed")}
+      <Button size="sm" variant="outline" onClick={() => void loadPlan()}>
+        <RefreshCw className="h-4 w-4" />
+        {t("common.retry")}
+      </Button>
+    </div>
+  ) : !plan ? (
+    <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+      {t("aiTranslation.loadingPlan")}
+    </p>
+  ) : null;
 
   return (
     <Dialog onClose={onClose} size="2xl" dismissible={!submitting} marker="translate-with-ai">
@@ -276,91 +362,55 @@ export function TranslateWithAIDialog({
         icon={<Sparkles className="h-4 w-4" />}
         onClose={submitting ? undefined : onClose}
         closeLabel={t("content.close")}
+        className="border-b-0 pb-1"
       />
-      <div role="tablist" aria-label={t("aiTranslation.title")} className="flex shrink-0 gap-1 border-b px-5">
-        {(["translate", "results"] as const).map((value) => (
-          <button
-            key={value}
-            type="button"
-            role="tab"
-            aria-selected={tab === value}
-            onClick={() => setTab(value)}
-            className={cn(
-              "-mb-px flex min-h-11 items-center gap-1.5 border-b-2 px-2 text-sm transition-colors",
-              tab === value
-                ? "border-primary font-medium text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {t(`aiTranslation.tabs.${value}`)}
-            {value === "results" && reviewCount > 0 && (
-              <span className="rounded-full bg-warning-surface px-1.5 py-px text-2xs tabular-nums text-warning-foreground">
-                {reviewCount}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-      {tab === "translate" ? (
-        <DialogBody className="space-y-4">
-          {noLyricsAtAll && permissions.lyrics && (
-            <p className="rounded-md border border-info-border bg-info-surface px-3 py-2 text-sm text-info-foreground">
-              {t("aiTranslation.noLyricsAtAll")}
-            </p>
-          )}
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">{t("aiTranslation.languages")}</legend>
-            <div className="flex flex-wrap gap-2">
-              {languageOrder.map((language) => {
-                const chosen = languages.includes(language);
-                return (
-                  <button
-                    key={language}
-                    type="button"
-                    aria-pressed={chosen}
-                    disabled={submitting || (chosen && languages.length === 1)}
-                    onClick={() => toggleLanguage(language)}
-                    className={cn(
-                      "inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      chosen ? "border-primary bg-primary/10 text-foreground" : "text-muted-foreground hover:bg-muted",
-                    )}
-                  >
-                    {languageName(language)}
-                    {language === origin && (
-                      <span className="text-2xs text-info-foreground">{t("lyricsManager.original")}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
-
-          {planError ? (
-            <div
-              role="alert"
-              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-error-border bg-error-surface px-3 py-2 text-sm text-error-foreground"
-            >
-              {t("aiTranslation.planFailed")}
-              <Button size="sm" variant="outline" onClick={() => void loadPlan()}>
-                <RefreshCw className="h-4 w-4" />
-                {t("common.retry")}
-              </Button>
-            </div>
-          ) : !plan ? (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              {t("aiTranslation.loadingPlan")}
-            </p>
-          ) : (
+      <DialogTabs
+        tabs={[
+          { value: "translate", icon: Languages, label: t("aiTranslation.tabs.translate") },
+          ...(lyricsAvailable
+            ? [
+                {
+                  value: "lyrics" as const,
+                  icon: AudioLines,
+                  label: t("aiTranslation.tabs.lyrics"),
+                  count: lyricsChosen ? lyricsTracksChosen : 0,
+                },
+              ]
+            : []),
+          {
+            value: "results",
+            icon: History,
+            label: t("aiTranslation.tabs.results"),
+            count: needsAction,
+            countTone: "warning",
+            busy: running,
+          },
+        ]}
+        value={shownTab}
+        label={t("aiTranslation.title")}
+        onChange={setTab}
+      />
+      {shownTab === "translate" ? (
+        <DialogBody key="translate" className="space-y-4">
+          {languagePicker}
+          {planState ?? (
             <div className="app-scrollbar overflow-x-auto rounded-lg border bg-card">
-              <table className="w-full min-w-max border-collapse text-sm">
+              {/* Category names wrap so the language counts stay in view on phones. */}
+              <table
+                className="w-full border-collapse text-sm"
+                style={{ minWidth: `${10 + (plan?.languages.length ?? 0) * 6}rem` }}
+              >
                 <thead>
                   <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
                     <th scope="col" className="px-3 py-2 text-left font-medium">
                       {t("aiTranslation.category")}
                     </th>
-                    {plan.languages.map((language) => (
-                      <th key={language.language} scope="col" className="w-28 px-2 py-2 text-center font-medium">
+                    {plan?.languages.map((language) => (
+                      <th
+                        key={language.language}
+                        scope="col"
+                        className="w-24 px-2 py-2 text-center font-medium sm:w-28"
+                      >
                         {languageName(language.language)}
                       </th>
                     ))}
@@ -404,13 +454,16 @@ export function TranslateWithAIDialog({
                             </span>
                           </label>
                         </th>
-                        {plan.languages.map((language) => {
+                        {plan?.languages.map((language) => {
                           const entry = language[category];
                           return (
                             <td key={language.language} className="px-2 py-2 text-center align-top">
                               <PlanCell
                                 missing={missingCount(language, category)}
+                                complete={missingCount(language, category) === 0}
+                                unavailable={!translatesText(language.language)}
                                 active={entry.active}
+                                sent={allowed && chosenCategories.has(category)}
                                 origin={category === "files" && language.language === origin}
                                 note={
                                   category === "tags" && entry.affectedWorks
@@ -428,17 +481,20 @@ export function TranslateWithAIDialog({
                       </tr>
                     );
                   })}
-                  <tr className={cn(!permissions.lyrics && "opacity-60")}>
+                  <tr className={cn(!lyricsAvailable && "opacity-60")}>
                     <th scope="row" className="px-3 py-2 text-left font-normal">
-                      <label className="flex items-start gap-2">
+                      <div className="flex items-start gap-2">
                         <Checkbox
                           className="mt-0.5"
-                          checked={permissions.lyrics && lyricsChosen}
-                          disabled={!permissions.lyrics || submitting || tracks.length === 0}
+                          checked={lyricsAvailable && lyricsChosen}
+                          disabled={!lyricsAvailable || submitting}
+                          aria-labelledby="translate-with-ai-lyrics"
                           onCheckedChange={setLyricsChosen}
                         />
                         <span className="min-w-0">
-                          <span className="block">{t("aiTranslation.categories.lyrics")}</span>
+                          <span id="translate-with-ai-lyrics" className="block">
+                            {t("aiTranslation.categories.lyrics")}
+                          </span>
                           <span className="block text-xs text-muted-foreground">
                             {!permissions.lyrics
                               ? t("aiTranslation.noLyricsPermission")
@@ -446,142 +502,70 @@ export function TranslateWithAIDialog({
                                 ? t("aiTranslation.noLocalTracks")
                                 : t("aiTranslation.lyricsHint")}
                           </span>
+                          {lyricsAvailable && (
+                            <button
+                              type="button"
+                              className="mt-0.5 inline-flex min-h-8 items-center text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              onClick={() => setTab("lyrics")}
+                            >
+                              {t("aiTranslation.chooseTracks", { chosen: lyricsTracksChosen, total: tracks.length })}
+                            </button>
+                          )}
                         </span>
-                      </label>
+                      </div>
                     </th>
-                    {plan.languages.map((language) => (
-                      <td key={language.language} className="px-2 py-2 text-center align-top">
-                        <PlanCell
-                          missing={lyricsTargets.filter((target) => target.targetLanguage === language.language).length}
-                          active={language.lyrics.length}
-                          origin={false}
-                        />
-                      </td>
-                    ))}
+                    {plan?.languages.map((language) => {
+                      // Missing lyrics count what is chosen; cells the model
+                      // cannot translate make the language unavailable only
+                      // when no track can create it.
+                      const planned = plannedLyrics.filter(
+                        (target) => target.targetLanguage === language.language,
+                      ).length;
+                      const missing = tracks.some((track) => canTranslateLyrics(track, language.language, active));
+                      const open = tracks.some((track) => lyricsCellOpen(track, language.language, cellContext));
+                      return (
+                        <td key={language.language} className="px-2 py-2 text-center align-top">
+                          <PlanCell
+                            missing={planned}
+                            complete={!missing}
+                            unavailable={!open}
+                            noneChosen={planned === 0}
+                            active={language.lyrics.length}
+                            sent={lyricsAvailable && lyricsChosen}
+                            origin={false}
+                          />
+                        </td>
+                      );
+                    })}
                   </tr>
                 </tbody>
               </table>
             </div>
           )}
 
-          {permissions.lyrics && lyricsChosen && tracks.length > 0 && (
-            <section className="space-y-3" aria-label={t("aiTranslation.categories.lyrics")}>
-              {tracksWithoutLyrics.length > 0 && (
-                <div className="space-y-2 rounded-lg border px-3 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="flex items-center gap-2 text-sm">
-                      <AudioLines className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                      {t("aiTranslation.tracksNeedTranscription", { count: tracksWithoutLyrics.length })}
-                    </p>
-                    <label className="flex items-center gap-2 text-sm">
-                      {t("aiTranslation.transcribeFirst")}
-                      <Switch
-                        checked={canTranscribe}
-                        disabled={submitting || !asrConfigured || origin === ""}
-                        onCheckedChange={setTranscribe}
-                        aria-label={t("aiTranslation.transcribeFirst")}
-                      />
-                    </label>
-                  </div>
-                  {!asrConfigured ? (
-                    <p className="text-xs text-muted-foreground">
-                      {t("aiTranslation.noASRService")}{" "}
-                      <a
-                        href="/settings?tab=services"
-                        className="text-primary hover:underline"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          onClose();
-                          window.history.pushState({}, "", "/settings?tab=services");
-                          window.dispatchEvent(new Event(NAVIGATION_EVENT));
-                        }}
-                      >
-                        {t("aiTranslation.openServiceSettings")}
-                      </a>
-                    </p>
-                  ) : origin === "" ? (
-                    <p className="text-xs text-muted-foreground">{t("aiTranslation.originUnknown")}</p>
-                  ) : canTranscribe ? (
-                    <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground">
-                        {direct
-                          ? t("aiTranslation.directOutputNote", { language: languageName(direct) })
-                          : t("aiTranslation.transcriptionKeepsOriginal", { language: languageName(origin) })}
-                      </p>
-                      <div className="flex flex-wrap items-end gap-3">
-                        <div className="min-w-0 flex-1 basis-52 sm:max-w-72">
-                          <div className="mb-1 text-xs font-medium text-muted-foreground">
-                            {t("aiTranslation.asrService")}
-                          </div>
-                          <FloatingSelect
-                            value={asrKey}
-                            ariaLabel={t("aiTranslation.asrService")}
-                            options={asrChoices.map(({ key, service, model }) => ({
-                              value: key,
-                              label: `${service.name} · ${model}`,
-                            }))}
-                            onValueChange={setASRKey}
-                            disabled={submitting}
-                          />
-                        </div>
-                        {directOffered && (
-                          <label className="flex min-h-9 items-center gap-2 text-sm">
-                            <Checkbox checked={directASR} disabled={submitting} onCheckedChange={setDirectASR} />
-                            {t("aiTranslation.useDirectOutput", { language: languageName(directOffered) })}
-                          </label>
-                        )}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-              <button
-                type="button"
-                aria-expanded={lyricsOpen}
-                onClick={() => setLyricsOpen((current) => !current)}
-                className="flex min-h-9 items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-              >
-                {lyricsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                {t("aiTranslation.chooseTracks")}
-              </button>
-              {lyricsOpen && (
-                <LyricsTranslationMatrix
-                  audio={entries.audio}
-                  tracks={tracks}
-                  sourceFiles={sourceFiles}
-                  origin={origin}
-                  targetLanguages={languages}
-                  plan={currentLyricsPlan}
-                  active={active}
-                  transcribeAvailable={canTranscribe}
-                  supports={supports}
-                  disabled={submitting}
-                  onPlanChange={setLyricsPlan}
-                />
-              )}
-            </section>
-          )}
-
           {needsLLM && (
-            <div className="min-w-0 sm:max-w-80">
+            <div className="min-w-0">
               <div className="mb-1 text-xs font-medium text-muted-foreground">{t("aiTranslation.llmModel")}</div>
-              <FloatingSelect
-                value={choiceKey}
-                ariaLabel={t("aiTranslation.llmModel")}
-                options={choices.map(({ key, service, model }) => ({
-                  value: key,
-                  label: `${service.name} · ${model}`,
-                }))}
-                onValueChange={setChoiceKey}
-                triggerLabel={
-                  providers === null
-                    ? t("aiTranslation.loading")
-                    : choices.length === 0
-                      ? t("aiTranslation.noLLMService")
-                      : undefined
-                }
-                disabled={submitting || choices.length === 0}
-              />
+              <div className="sm:max-w-80">
+                <FloatingSelect
+                  value={choiceKey}
+                  ariaLabel={t("aiTranslation.llmModel")}
+                  options={choices.map(({ key, service, model }) => ({
+                    value: key,
+                    label: `${service.name} · ${model}`,
+                  }))}
+                  onValueChange={setChoiceKey}
+                  triggerLabel={
+                    providers === null
+                      ? t("aiTranslation.loading")
+                      : choices.length === 0
+                        ? t("aiTranslation.noLLMService")
+                        : undefined
+                  }
+                  disabled={submitting || choices.length === 0}
+                />
+              </div>
+              {providers !== null && choices.length === 0 && <p className="mt-1 text-xs">{settingsLink}</p>}
               {unsupported.length > 0 && (
                 <p className="mt-1 text-xs text-warning-foreground">
                   {t("aiTranslation.unsupportedLanguages", { languages: unsupported.map(languageName).join(", ") })}
@@ -598,7 +582,7 @@ export function TranslateWithAIDialog({
               <h4 className="mb-1 text-xs font-medium text-muted-foreground">{t("aiTranslation.estimate")}</h4>
               <ul className="space-y-0.5">
                 {estimates.map((estimate) => (
-                  <li key={estimate.language} className="flex flex-wrap justify-between gap-2">
+                  <li key={estimate.language} className="flex flex-wrap justify-between gap-x-2">
                     <span>{languageName(estimate.language)}</span>
                     <span className="tabular-nums text-muted-foreground">
                       {t("aiTranslation.estimateLine", {
@@ -610,76 +594,125 @@ export function TranslateWithAIDialog({
                   </li>
                 ))}
               </ul>
-              <p className="mt-1 text-xs text-muted-foreground">{t("aiTranslation.onlyMissing")}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t(plan.autoAccept ? "aiTranslation.appliesAtOnce" : "aiTranslation.waitsForReview")}{" "}
+                {t("aiTranslation.onlyMissing")}
+              </p>
             </section>
           )}
         </DialogBody>
-      ) : (
-        <DialogBody className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm text-muted-foreground">
-              {t(plan?.autoAccept === false ? "aiTranslation.reviewIntro" : "aiTranslation.resultsIntro")}
-            </p>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t("aiTranslation.refresh")}
-              title={t("aiTranslation.refresh")}
-              onClick={() => void loadItems()}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
-          {items.length === 0 ? (
-            <p className="rounded-lg border px-3 py-6 text-center text-sm text-muted-foreground">
-              {t("aiTranslation.noResults")}
-            </p>
-          ) : (
-            <>
-              {(["review", "active", "attention", "history"] as const).map((mode) => {
-                const shown = items.filter((item) =>
-                  mode === "review"
-                    ? item.state === "ready"
-                    : mode === "active"
-                      ? ["queued", "waiting_transcription", "requesting"].includes(item.state)
-                      : mode === "attention"
-                        ? ["failed", "uncertain", "invalid", "policy_blocked"].includes(item.state)
-                        : item.state === "accepted",
-                );
-                if (shown.length === 0) return null;
-                return (
-                  <section key={mode} className="space-y-2" aria-label={t(`aiTranslation.reviewSections.${mode}`)}>
-                    <h4 className="text-sm font-medium">{t(`aiTranslation.reviewSections.${mode}`)}</h4>
-                    <TranslationReviewList
-                      items={shown}
-                      mode={mode}
-                      busyIds={review.busyIds}
-                      onAccept={(ids) => void review.accept(ids)}
-                      onReject={(ids) => void review.reject(ids)}
-                      onResend={(ids, acknowledge) => void review.resend(ids, acknowledge)}
-                      renderLyricsPreview={(item) => (
-                        <LyricsPreview
-                          label={item.label}
-                          loadKey={`translation:${item.id}`}
-                          load={() => api.translationItemText(item.id, "result")}
-                          durationSeconds={
-                            audioByID.get(Number(item.subject))?.durationSeconds ?? item.durationSeconds ?? null
-                          }
-                        />
-                      )}
-                    />
-                  </section>
-                );
-              })}
-            </>
+      ) : shownTab === "lyrics" ? (
+        <DialogBody key="lyrics" className="space-y-4">
+          {languagePicker}
+          {!lyricsChosen && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+              {t("aiTranslation.lyricsNotChosen")}
+              <Button size="sm" variant="outline" disabled={submitting} onClick={() => setLyricsChosen(true)}>
+                {t("aiTranslation.chooseLyrics")}
+              </Button>
+            </div>
           )}
+          {tracksWithoutLyrics.length > 0 && (
+            <div
+              className={cn(
+                "flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2",
+                noLyricsAtAll && "border-info-border bg-info-surface",
+              )}
+            >
+              <p className={cn("flex items-start gap-2 text-sm", noLyricsAtAll && "text-info-foreground")}>
+                <AudioLines className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                {noLyricsAtAll
+                  ? t("aiTranslation.noLyricsAtAll")
+                  : t("aiTranslation.tracksWithoutLyrics", { count: tracksWithoutLyrics.length })}
+              </p>
+              {openTranscribe && (
+                <Button size="sm" variant="outline" disabled={submitting} onClick={openTranscribe}>
+                  {t("aiTranslation.openTranscribe")}
+                </Button>
+              )}
+            </div>
+          )}
+          {planState ?? (
+            <div className={cn("space-y-2", !lyricsChosen && "pointer-events-none opacity-60")}>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <div role="radiogroup" aria-label={t("aiTranslation.lyricsMode")} className={segmentedListClassName()}>
+                  {(["missing", "custom"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      role="radio"
+                      aria-checked={lyricsMode === mode}
+                      disabled={submitting || !lyricsChosen}
+                      onClick={() => chooseLyricsMode(mode)}
+                      className={segmentedItemClassName(lyricsMode === mode)}
+                    >
+                      {t(`aiTranslation.lyricsModes.${mode}`)}
+                    </button>
+                  ))}
+                </div>
+                <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                  {t(lyricsMode === "custom" ? "aiTranslation.lyricsCustomHint" : "aiTranslation.lyricsMissingHint")}
+                </p>
+              </div>
+              {unknownSources > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {t("aiTranslation.unknownLyricsSource", { count: unknownSources })}
+                </p>
+              )}
+              <LyricsTranslationMatrix
+                audio={entries.audio}
+                tracks={tracks}
+                sourceFiles={sourceFiles}
+                targetLanguages={languages}
+                context={cellContext}
+                disabled={submitting || !lyricsChosen}
+                onPlanChange={editLyricsPlan}
+              />
+            </div>
+          )}
+        </DialogBody>
+      ) : (
+        <DialogBody key="results">
+          <TranslationResults
+            items={items}
+            autoAccept={plan?.autoAccept ?? null}
+            busyIds={review.busyIds}
+            onRefresh={() => void loadItems()}
+            onAccept={(ids) => void review.accept(ids)}
+            onReject={(ids) => void review.reject(ids)}
+            onResend={(ids, acknowledge) => void review.resend(ids, acknowledge)}
+            onOpen={(group) => {
+              if (group === "tags") return permissions.metadata ? () => navigate("/metadata?view=tags") : undefined;
+              if (!onOpenEditor) return undefined;
+              return () => {
+                onClose();
+                onOpenEditor(group);
+              };
+            }}
+            renderLyricsPreview={(item) => (
+              <LyricsPreview
+                label={item.label}
+                loadKey={`translation:${item.id}`}
+                load={() => api.translationItemText(item.id, "result")}
+                durationSeconds={audioByID.get(Number(item.subject))?.durationSeconds ?? item.durationSeconds ?? null}
+              />
+            )}
+          />
         </DialogBody>
       )}
       <DialogFooter className="justify-between">
-        {tab === "translate" ? (
+        {shownTab === "results" ? (
+          <Button variant="ghost" onClick={onClose}>
+            {t("content.close")}
+          </Button>
+        ) : (
           <>
             <span className="mr-auto text-xs text-muted-foreground" role="status">
-              {total > 0 ? t("aiTranslation.totalItems", { count: total }) : t("aiTranslation.nothingMissing")}
+              {total > 0
+                ? t("aiTranslation.totalItems", { count: total })
+                : unsupported.length > 0
+                  ? t("aiTranslation.nothingTranslatable")
+                  : t("aiTranslation.nothingMissing")}
             </span>
             <Button variant="ghost" onClick={onClose} disabled={submitting}>
               {t("content.close")}
@@ -689,25 +722,36 @@ export function TranslateWithAIDialog({
               {t("aiTranslation.start", { count: total })}
             </Button>
           </>
-        ) : (
-          <Button variant="ghost" onClick={onClose}>
-            {t("content.close")}
-          </Button>
         )}
       </DialogFooter>
     </Dialog>
   );
 }
 
-/** What one language lacks in one category. */
+/**
+ * What one language lacks in one category: nothing, what is sent, or × when
+ * the model cannot translate it. Dimmed while the category is not sent.
+ */
 function PlanCell({
   missing,
+  complete,
+  unavailable,
+  noneChosen = false,
   active,
+  sent,
   origin,
   note,
 }: {
+  /** What is sent. */
   missing: number;
+  /** Whether nothing is missing. */
+  complete: boolean;
+  /** Whether the chosen model cannot translate what is missing. */
+  unavailable: boolean;
+  /** Whether what is missing is left out cell by cell. */
+  noneChosen?: boolean;
   active: number;
+  sent: boolean;
   origin: boolean;
   note?: string;
 }) {
@@ -715,13 +759,18 @@ function PlanCell({
   if (origin) return <span className="text-xs text-muted-foreground">{t("aiTranslation.originalNames")}</span>;
   return (
     <span className="inline-flex flex-col items-center gap-0.5">
-      {missing > 0 ? (
-        <span className="tabular-nums text-warning-foreground">
-          {t("aiTranslation.missingCount", { count: missing })}
+      {complete ? (
+        <span className="text-success-foreground" title={t("aiTranslation.nothingMissing")}>
+          <Check className="h-4 w-4" aria-hidden="true" />
+          <span className="sr-only">{t("aiTranslation.nothingMissing")}</span>
         </span>
+      ) : unavailable ? (
+        <UnavailableMark />
+      ) : noneChosen ? (
+        <span className="text-xs text-muted-foreground">{t("aiTranslation.noneChosen")}</span>
       ) : (
-        <span className="text-muted-foreground" title={t("aiTranslation.nothingMissing")}>
-          —
+        <span className={cn("tabular-nums", sent ? "text-warning-foreground" : "text-muted-foreground")}>
+          {t("aiTranslation.missingCount", { count: missing })}
         </span>
       )}
       {active > 0 && (

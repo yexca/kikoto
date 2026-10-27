@@ -41,18 +41,21 @@ type asrFixture struct {
 	requests *atomic.Int32
 	mu       *sync.Mutex
 	uploads  *[]asrUpload
+	// ignoresTarget makes the service write Japanese whatever lyrics language
+	// it is asked for.
+	ignoresTarget *atomic.Bool
 }
 
 // newASRFixture scans a local work whose only track is audioSeconds of
 // synthetic tone, and configures a private service answering every chunk with
-// one segment.
+// one segment in the requested lyrics language, Japanese without one.
 func newASRFixture(t *testing.T, audioSeconds int) asrFixture {
 	t.Helper()
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		t.Skip("ffmpeg is unavailable")
 	}
-	fixture := asrFixture{requests: &atomic.Int32{}, mu: &sync.Mutex{}, uploads: &[]asrUpload{}}
+	fixture := asrFixture{requests: &atomic.Int32{}, mu: &sync.Mutex{}, uploads: &[]asrUpload{}, ignoresTarget: &atomic.Bool{}}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fixture.requests.Add(1)
 		if r.URL.Path != "/v1/audio/transcriptions" || r.Header.Get("Authorization") != "Bearer synthetic-token" {
@@ -76,7 +79,11 @@ func newASRFixture(t *testing.T, audioSeconds int) asrFixture {
 		fixture.mu.Lock()
 		*fixture.uploads = append(*fixture.uploads, upload)
 		fixture.mu.Unlock()
-		_, _ = io.WriteString(w, `{"text":"Synthetic line","language":"japanese","segments":[{"start":0.5,"end":1.5,"text":" Synthetic line"}]}`)
+		language := "japanese"
+		if target := upload.Fields["target_language"]; target != "" && !fixture.ignoresTarget.Load() {
+			language = target
+		}
+		_, _ = io.WriteString(w, `{"text":"Synthetic line","language":"`+language+`","segments":[{"start":0.5,"end":1.5,"text":" Synthetic line"}]}`)
 	}))
 	t.Cleanup(upstream.Close)
 
@@ -568,7 +575,7 @@ func TestASRTranslatingModelWritesItsLyricsLanguageFromTheSpokenOne(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.server.asrStore.Models(ctx, provider, []asr.Model{{ID: "example-model"}, {ID: "translating-model", Translation: &asr.Translation{Source: "ja-jp", Target: "zh-cn"}}}); err != nil {
+	if _, err := fixture.server.asrStore.Models(ctx, provider, []asr.Model{{ID: "example-model", Declared: true, Languages: []string{"ja-jp"}}, {ID: "translating-model", Declared: true, Languages: []string{"ja-jp"}, Translation: &asr.Translation{Source: "ja-jp", Target: "zh-cn"}}}); err != nil {
 		t.Fatal(err)
 	}
 	create := func(model, audioLanguage, language string) (*httptest.ResponseRecorder, string) {
@@ -583,8 +590,8 @@ func TestASRTranslatingModelWritesItsLyricsLanguageFromTheSpokenOne(t *testing.T
 		return response, result.ID
 	}
 	// A model writes the language it hears, and a translating model only its
-	// own direction; neither request reaches the service.
-	for _, refused := range [][3]string{{"example-model", "ja-jp", "zh-cn"}, {"translating-model", "ja-jp", "ja-jp"}, {"translating-model", "en-us", "zh-cn"}} {
+	// own direction; no refused request reaches the service.
+	for _, refused := range [][3]string{{"example-model", "ja-jp", "zh-cn"}, {"example-model", "en-us", "en-us"}, {"translating-model", "ja-jp", "ja-jp"}, {"translating-model", "en-us", "zh-cn"}} {
 		if response, _ := create(refused[0], refused[1], refused[2]); response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "asr_language_unsupported") {
 			t.Fatalf("%v = %d %s", refused, response.Code, response.Body.String())
 		}
@@ -634,6 +641,78 @@ func TestASRTranslatingModelWritesItsLyricsLanguageFromTheSpokenOne(t *testing.T
 	}
 	if _, sent := (*fixture.uploads)[1].Fields["target_language"]; sent {
 		t.Fatalf("fields = %v", (*fixture.uploads)[1].Fields)
+	}
+}
+
+func TestASRUnknownModelWritesTheChosenLanguageOnlyWhenTheServiceDoes(t *testing.T) {
+	fixture := newASRFixture(t, 2)
+	ctx := context.Background()
+	create := func(audioLanguage, language string) string {
+		body, _ := json.Marshal(asrTranscriptionRequest{AudioMediaItemID: fixture.audioID, ProviderID: fixture.provider.ID, Language: language, AudioLanguage: &audioLanguage})
+		workID := jsonNumber(fixture.workID)
+		response := httptest.NewRecorder()
+		fixture.server.createASRTranscription(response, fixture.request(t, http.MethodPost, "/api/works/"+workID+"/asr-transcriptions", string(body), map[string]string{"id": workID}))
+		var result struct {
+			ID string `json:"id"`
+		}
+		if response.Code != http.StatusAccepted || json.Unmarshal(response.Body.Bytes(), &result) != nil {
+			t.Fatalf("create = %d %s", response.Code, response.Body.String())
+		}
+		// A failed transcription fails its job, which the state below reports.
+		_ = fixture.server.runNextQueuedWorkflowJob(ctx)
+		return result.ID
+	}
+	// The fixture's service never listed its model, so it may write any
+	// language it is asked for.
+	id := create("ja-jp", "zh-cn")
+	if state, failure, _ := fixture.state(t, id); state != "ready" {
+		t.Fatalf("state = %s (%s)", state, failure)
+	}
+	if fields := (*fixture.uploads)[0].Fields; fields["language"] != "ja" || fields["target_language"] != "zh-cn" {
+		t.Fatalf("fields = %v", fields)
+	}
+	// A service that writes the audio language instead keeps it out of the
+	// lyrics.
+	fixture.ignoresTarget.Store(true)
+	id = create("ja-jp", "zh-cn")
+	if state, failure, _ := fixture.state(t, id); state != "failed" || failure != asrFailureLanguageMismatch {
+		t.Fatalf("state = %s (%s)", state, failure)
+	}
+	var text string
+	if err := fixture.db.QueryRow("SELECT value_text FROM asr_transcription WHERE id = ?", id).Scan(&text); err != nil || text != "" {
+		t.Fatalf("text = %q, %v", text, err)
+	}
+	if accepted := fixture.accept(t, id); accepted.Code != http.StatusConflict {
+		t.Fatalf("accept = %d %s", accepted.Code, accepted.Body.String())
+	}
+}
+
+func TestASRConfigHashFollowsWhatTheServiceDeclaresForTheModel(t *testing.T) {
+	server := &Server{}
+	provider := asr.Provider{ID: "example-service", PresetID: "local", Scope: asr.ScopeOtherMachine, BaseURL: "http://192.0.2.10:8000", EnabledModels: []string{"example-model", "other-model"},
+		Models: []asr.Model{{ID: "example-model", Declared: true, Languages: []string{"ja-jp"}, Translation: &asr.Translation{Source: "ja-jp", Target: "zh-cn"}}, {ID: "other-model"}}}
+	stored := server.asrConfigHash(provider, "example-model")
+	changed := func(edit func(*asr.Provider)) bool {
+		next := provider
+		next.Models = append([]asr.Model(nil), provider.Models...)
+		edit(&next)
+		return server.asrConfigHash(next, "example-model") != stored
+	}
+	// A re-fetch that names the model differently, or changes another model,
+	// leaves a queued transcription running.
+	if changed(func(p *asr.Provider) { p.Models[0].Name = "Renamed"; p.Models[1].Declared = true }) {
+		t.Fatal("an unrelated change invalidated the configuration")
+	}
+	for name, edit := range map[string]func(*asr.Provider){
+		"direction": func(p *asr.Provider) { p.Models[0].Translation = &asr.Translation{Source: "ja-jp", Target: "zh-tw"} },
+		"languages": func(p *asr.Provider) { p.Models[0].Languages = []string{"ja-jp", "en-us"} },
+		"undeclared": func(p *asr.Provider) {
+			p.Models = p.Models[1:]
+		},
+	} {
+		if !changed(edit) {
+			t.Errorf("a changed %s kept the configuration", name)
+		}
 	}
 }
 

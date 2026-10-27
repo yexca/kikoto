@@ -1,4 +1,4 @@
-import type { ASRTranslation, MediaItem, WorkDetail } from "@/lib/api";
+import type { ASRModelCapability, ASRService, MediaItem, WorkDetail } from "@/lib/api";
 import { allLyricsLanguages, editionLyricsLanguage, lyricsLanguages } from "@/lib/lyricsLanguage";
 import type { LyricsManagerAudio, LyricsManagerFile } from "@/features/work-detail/lyrics/lyricsManagerModel";
 import { isLyricsPath } from "@/player/lyricsMatching";
@@ -73,21 +73,48 @@ export function matchesTranscribeFilter(lyrics: ReadonlyMap<string, number>, fil
   return true;
 }
 
-/** The audio and lyrics languages of a transcription. */
-export type TranscriptionLanguages = { audio: string; lyrics: string };
+const unknownCapability: ASRModelCapability = { kind: "unknown" };
+
+/** What a service's model writes; a model the service never declared may write any language. */
+export function modelCapability(service: Pick<ASRService, "capabilities">, model: string): ASRModelCapability {
+  return service.capabilities?.[model] ?? unknownCapability;
+}
 
 /**
- * Whether a model writes lyrics in `lyrics` from speech in `audio`: a
- * translating model only its own direction, any other model only the language
- * it hears.
+ * Whether a model is offered for speech in `audio`, the fallback detecting
+ * it: a translating model only from its source language, a transcribing model
+ * for a language it hears or detected speech, and a model of unknown
+ * capability always.
  */
-export function transcriptionWrites(
-  translation: ASRTranslation | undefined,
-  { audio, lyrics }: TranscriptionLanguages,
-) {
-  if (translation)
-    return lyrics !== allLyricsLanguages && translation.source === audio && translation.target === lyrics;
-  return audio === lyrics;
+export function offersTranscription(capability: ASRModelCapability, audio: string) {
+  switch (capability.kind) {
+    case "translate":
+      return audio !== allLyricsLanguages && capability.translation?.source === audio;
+    case "transcribe":
+      return audio === allLyricsLanguages || !!capability.multilingual || !!capability.languages?.includes(audio);
+    default:
+      return true;
+  }
+}
+
+/** The lyrics language a transcription writes, and whether the model fixes it. */
+export type TranscriptionOutput = { language: string; fixed: boolean };
+
+/**
+ * The lyrics language a model writes from speech in `audio`: detected speech
+ * is saved as fallback lyrics, a translating model writes its target, a
+ * transcribing model the audio language, and a model of unknown capability the
+ * chosen language, the audio language until one is chosen.
+ */
+export function transcriptionOutput(
+  capability: ASRModelCapability,
+  audio: string,
+  chosen: string | null,
+): TranscriptionOutput {
+  if (audio === allLyricsLanguages) return { language: allLyricsLanguages, fixed: true };
+  if (capability.kind === "translate") return { language: capability.translation?.target ?? audio, fixed: true };
+  if (capability.kind === "transcribe") return { language: audio, fixed: true };
+  return { language: chosen ?? audio, fixed: false };
 }
 
 /** What one track translates: the language it reads, and the languages it creates. */

@@ -37,33 +37,6 @@ func speechProviderWithLostResponse(t *testing.T, f asrFixture) (asr.Provider, *
 	return changed, requests
 }
 
-func TestAITranslationLostSpeechResponseRequiresAcknowledgement(t *testing.T) {
-	f, llmProvider, _ := newTranslationASRFixture(t)
-	disableAutoAccept(t, f.db)
-	provider, requests := speechProviderWithLostResponse(t, f)
-	actor := translationActor(t, f.server, f.userID)
-	response, err := f.server.submitAITranslation(context.Background(), actor, f.workID, aiTranslationRequest{
-		Languages: []string{"en-us"}, ProviderID: llmProvider.ID, ASRProviderID: provider.ID,
-		Lyrics: []aiLyricsTarget{{AudioMediaItemID: f.audioID, TargetLanguage: "en-us"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := f.server.runNextQueuedWorkflowJob(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	var id int64
-	if err := f.db.QueryRow("SELECT id FROM translation_item WHERE workflow_run_id=? AND engine='asr'", response.RunID).Scan(&id); err != nil {
-		t.Fatal(err)
-	}
-	if result := resendSpeechTranslation(t, f, id, false); result.OK || result.Code != "llm_acknowledgement_required" {
-		t.Fatalf("an uploaded request without a response was resent: %+v", result)
-	}
-	if requests.Load() != 1 {
-		t.Fatalf("uploads=%d, want only the original upload", requests.Load())
-	}
-}
-
 func TestASRTranscriptionLostResponseNeedsExplicitRetry(t *testing.T) {
 	f := newASRFixture(t, 2)
 	provider, requests := speechProviderWithLostResponse(t, f)

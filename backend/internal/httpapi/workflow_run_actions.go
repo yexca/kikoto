@@ -103,27 +103,13 @@ func (s *Server) cancelWorkflowRunTx(ctx context.Context, tx *sql.Tx, run workfl
 	if run.WorkflowCode == aiTranslationWorkflowCode {
 		// A request in flight keeps an unknown result; everything not yet sent stops.
 		if _, err := tx.ExecContext(ctx, `UPDATE translation_item
-			SET state = CASE WHEN state = 'requesting' OR EXISTS (
-				SELECT 1 FROM asr_transcription AS task WHERE task.id = translation_item.asr_transcription_id
-					AND (task.state = 'requesting' OR task.failure_code IN ('upstream_result_unknown', 'cancelled_result_unknown'))
-			) THEN 'uncertain' ELSE 'cancelled' END,
-			failure_code = CASE WHEN state = 'requesting' OR EXISTS (
-				SELECT 1 FROM asr_transcription AS task WHERE task.id = translation_item.asr_transcription_id
-					AND (task.state = 'requesting' OR task.failure_code IN ('upstream_result_unknown', 'cancelled_result_unknown'))
-			) THEN 'cancelled_result_unknown' ELSE 'cancelled' END, updated_at = CURRENT_TIMESTAMP
-			WHERE workflow_run_id = ? AND state IN ('queued', 'waiting_transcription', 'requesting')`, runID); err != nil {
+			SET state = CASE WHEN state = 'requesting' THEN 'uncertain' ELSE 'cancelled' END,
+			failure_code = CASE WHEN state = 'requesting' THEN 'cancelled_result_unknown' ELSE 'cancelled' END, updated_at = CURRENT_TIMESTAMP
+			WHERE workflow_run_id = ? AND state IN ('queued', 'requesting')`, runID); err != nil {
 			return false, err
 		}
 	}
-	switch run.WorkflowCode {
-	case aiTranslationWorkflowCode:
-		if _, err := tx.ExecContext(ctx, `UPDATE asr_transcription SET state = 'cancelled',
-			failure_code = CASE WHEN state = 'requesting' OR failure_code IN ('upstream_result_unknown', 'cancelled_result_unknown')
-				THEN 'cancelled_result_unknown' ELSE ? END, updated_at = CURRENT_TIMESTAMP
-			WHERE workflow_run_id = ? AND state IN ('pending', 'requesting', 'failed')`, asrFailureCancelled, runID); err != nil {
-			return false, err
-		}
-	case asrWorkerType:
+	if run.WorkflowCode == asrWorkerType {
 		if _, err := tx.ExecContext(ctx, `UPDATE asr_transcription SET state='cancelled',failure_code=?,updated_at=CURRENT_TIMESTAMP WHERE workflow_run_id=? AND state IN ('pending','requesting','failed')`, asrFailureCancelled, runID); err != nil {
 			return false, err
 		}

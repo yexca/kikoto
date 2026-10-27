@@ -36,6 +36,9 @@ const (
 	asrYieldDelay       = 5 * time.Second
 	asrResultUnknown    = "upstream_result_unknown"
 	asrFailureCancelled = "cancelled"
+	// asrFailureLanguageMismatch: the service reported writing another
+	// language than the lyrics language.
+	asrFailureLanguageMismatch = "output_language_mismatch"
 )
 
 type asrJobPayload struct {
@@ -59,17 +62,15 @@ type asrTask struct {
 	State         string
 	OffsetMS      int64
 	Cues          []asr.Cue
-	// RunCode is the workflow of the run the task belongs to.
-	RunCode string
 }
 
 func (s *Server) loadASRTask(ctx context.Context, id string) (asrTask, error) {
 	var task asrTask
 	var userID sql.NullInt64
 	var cues string
-	err := s.db.QueryRowContext(ctx, `SELECT task.id,task.workflow_run_id,task.user_id,task.work_id,task.audio_media_item_id,task.audio_location_id,task.provider_id,task.model,task.audio_language,task.language,task.config_hash,task.source_version,task.state,task.offset_ms,task.cues_json,COALESCE(run.workflow_code,'')
-		FROM asr_transcription AS task LEFT JOIN workflow_run AS run ON run.id=task.workflow_run_id WHERE task.id=?`, id).Scan(
-		&task.ID, &task.RunID, &userID, &task.WorkID, &task.AudioID, &task.LocationID, &task.ProviderID, &task.Model, &task.AudioLanguage, &task.Language, &task.ConfigHash, &task.SourceVersion, &task.State, &task.OffsetMS, &cues, &task.RunCode)
+	err := s.db.QueryRowContext(ctx, `SELECT task.id,task.workflow_run_id,task.user_id,task.work_id,task.audio_media_item_id,task.audio_location_id,task.provider_id,task.model,task.audio_language,task.language,task.config_hash,task.source_version,task.state,task.offset_ms,task.cues_json
+		FROM asr_transcription AS task WHERE task.id=?`, id).Scan(
+		&task.ID, &task.RunID, &userID, &task.WorkID, &task.AudioID, &task.LocationID, &task.ProviderID, &task.Model, &task.AudioLanguage, &task.Language, &task.ConfigHash, &task.SourceVersion, &task.State, &task.OffsetMS, &cues)
 	if err != nil {
 		return task, err
 	}
@@ -231,7 +232,7 @@ func (s *Server) transcribeTrack(ctx context.Context, job workflowJobRecord, tas
 		if count, err := result.RowsAffected(); err != nil || count != 1 {
 			return "", errors.New("transcription task cannot send a request")
 		}
-		// A translating model is asked for the lyrics language it writes.
+		// Lyrics in another language than the audio are asked for.
 		target := ""
 		if task.AudioLanguage != task.Language {
 			target = task.Language
@@ -255,6 +256,12 @@ func (s *Server) transcribeTrack(ctx context.Context, job workflowJobRecord, tas
 			}
 			slog.Warn("speech transcription request failed", "run_id", job.RunID, "provider", task.ProviderID, "error", requestErr)
 			return fail(code)
+		}
+		// A service that wrote another language than the lyrics language, such
+		// as one that ignored the requested output, keeps its text out of the
+		// lyrics.
+		if !asr.WroteLanguage(transcript.Language, task.Language) {
+			return fail(asrFailureLanguageMismatch)
 		}
 		task.Cues = append(task.Cues, asr.ChunkCues(transcript.Segments, task.OffsetMS, durationMS)...)
 		cues, err := json.Marshal(task.Cues)
@@ -308,8 +315,7 @@ func (s *Server) checkASRSend(ctx context.Context, task asrTask) (asr.Provider, 
 		return asr.Provider{}, "permission_changed"
 	}
 	actor, err := s.accountStore.LoadByID(ctx, task.UserID)
-	// A Translate with AI run needs only the translation permission.
-	if err != nil || !userHasPermission(actor, "library:write") || task.RunCode != aiTranslationWorkflowCode && !userHasPermission(actor, "workflows:run") {
+	if err != nil || !userHasPermission(actor, "library:write") || !userHasPermission(actor, "workflows:run") {
 		return asr.Provider{}, "permission_changed"
 	}
 	provider, err := s.asrStore.Get(ctx, task.ProviderID)

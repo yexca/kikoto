@@ -232,35 +232,55 @@ func (s *Server) listASRServices(w http.ResponseWriter, r *http.Request) {
 	result := []map[string]any{}
 	for _, p := range providers {
 		if p.Enabled && p.DefaultModel != "" {
-			// The direction of each enabled model that translates.
-			translations := map[string]asr.Translation{}
+			capabilities := map[string]asrModelCapability{}
 			for _, model := range p.EnabledModels {
-				if translation := p.ModelTranslation(model); translation != nil {
-					translations[model] = *translation
-				}
+				capabilities[model] = newASRModelCapability(p.ModelInfo(model))
 			}
-			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "translations": translations, "boundary": p.Boundary, "maxContentClass": p.MaxContentClass})
+			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "capabilities": capabilities, "boundary": p.Boundary, "maxContentClass": p.MaxContentClass})
 		}
 	}
 	writeJSON(w, 200, result)
 }
 
+// asrModelCapability is what an enabled model writes: the language it hears,
+// the direction it translates, or, unknown, any language.
+type asrModelCapability struct {
+	Kind         string           `json:"kind"`
+	Multilingual bool             `json:"multilingual,omitempty"`
+	Languages    []string         `json:"languages,omitempty"`
+	Translation  *asr.Translation `json:"translation,omitempty"`
+}
+
+func newASRModelCapability(model asr.Model) asrModelCapability {
+	capability := asrModelCapability{Kind: model.Capability()}
+	switch capability.Kind {
+	case asr.CapabilityTranscribe:
+		capability.Multilingual, capability.Languages = model.Multilingual, model.Languages
+	case asr.CapabilityTranslate:
+		capability.Translation = model.Translation
+	}
+	return capability
+}
+
 // asrConfigHash identifies everything that decides where audio goes and how
-// model transcribes it, so a task notices a changed service before sending
-// more. The name, the default and the other enabled models are left out. A
-// model that is no longer enabled has no digest, so every comparison with a
-// stored one fails.
+// model transcribes it, including what the service declares the model writes,
+// so a task notices a changed service or a re-fetched model before sending
+// more. The name, the default and the other models are left out. A model that
+// is no longer enabled has no digest, so every comparison with a stored one
+// fails.
 func (s *Server) asrConfigHash(p asr.Provider, model string) string {
 	if model == "" || !slices.Contains(p.EnabledModels, model) {
 		return ""
 	}
+	info := p.ModelInfo(model)
+	info.Name = ""
 	p.Name, p.Revision, p.DefaultModel = "", 0, ""
 	p.Models, p.EnabledModels = nil, nil
 	p.BaseURL = p.Endpoint(s.cfg.HostProxyAddress())
 	return llmValueHash(struct {
 		Provider asr.Provider
-		Model    string
-	}{p, model})
+		Model    asr.Model
+	}{p, info})
 }
 
 // asrClient reaches only the administrator-configured origin, including its

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -39,7 +40,7 @@ func TestKikotoHelperListsInstalledModelsFromItsInfoProbe(t *testing.T) {
 		switch r.URL.Path {
 		case kikotohelper.InfoPath:
 			if installed.Load() {
-				_, _ = w.Write([]byte(`{"service":"asr","api_version":1,"installed":true,"state":"stopped","model":"example-asr","models":[{"id":"example-asr","name":"Example ASR"},{"id":"example-asr","name":"Duplicate"},{"id":"example-translating-asr","name":"Example translating ASR","translation":{"source":"ja","target":"zh-CN"}},{"id":"example-unknown-direction","translation":{"source":"ja","target":"xx"}}]}`))
+				_, _ = w.Write([]byte(`{"service":"asr","api_version":1,"installed":true,"state":"stopped","model":"example-asr","models":[{"id":"example-asr","name":"Example ASR","languages":"multilingual"},{"id":"example-asr","name":"Duplicate"},{"id":"example-japanese-asr","languages":"ja"},{"id":"example-listed-asr","languages":["en","xx"]},{"id":"example-unnamed-asr"},{"id":"example-translating-asr","name":"Example translating ASR","languages":"ja","translation":{"source":"ja","target":"zh-CN"}},{"id":"example-unknown-direction","translation":{"source":"ja","target":"xx"}}]}`))
 			} else {
 				_, _ = w.Write([]byte(`{"service":"asr","api_version":1,"installed":false,"state":"stopped","models":[]}`))
 			}
@@ -57,24 +58,55 @@ func TestKikotoHelperListsInstalledModelsFromItsInfoProbe(t *testing.T) {
 	}
 	client := Client{HTTP: upstream.Client(), Provider: p}
 	models, err := client.Models(context.Background())
-	if err != nil || len(models) != 3 || models[0] != (Model{ID: "example-asr", Name: "Example ASR"}) {
+	if err != nil || len(models) != 6 || models[0].Name != "Example ASR" {
 		t.Fatalf("models = %+v, %v", models, err)
 	}
-	// A translating model names its direction in lyrics language tokens; a
-	// direction the server cannot name matches no request.
+	// Every helper model is declared: a model without a direction transcribes
+	// the languages it names, any language when it names none, and a
+	// translating model names its direction in lyrics language tokens.
 	p.Models = models
+	for _, check := range []struct {
+		model, capability string
+		multilingual      bool
+		languages         string
+	}{
+		{"example-asr", CapabilityTranscribe, true, ""},
+		{"example-japanese-asr", CapabilityTranscribe, false, "ja-jp"},
+		{"example-listed-asr", CapabilityTranscribe, false, "en-us"},
+		{"example-unnamed-asr", CapabilityTranscribe, true, ""},
+		{"example-translating-asr", CapabilityTranslate, false, "ja-jp"},
+		{"example-entered-by-hand", CapabilityUnknown, false, ""},
+	} {
+		model := p.ModelInfo(check.model)
+		if model.Capability() != check.capability || model.Multilingual != check.multilingual || strings.Join(model.Languages, ",") != check.languages {
+			t.Errorf("%s = %+v", check.model, model)
+		}
+	}
+	// A direction the server cannot name matches no request. A model of
+	// unknown capability writes any language from a chosen audio language,
+	// and fallback lyrics only from detected speech.
 	for _, check := range []struct {
 		model, audio, lyrics string
 		writes               bool
 	}{
 		{"example-asr", "ja-jp", "ja-jp", true},
 		{"example-asr", "ja-jp", "zh-cn", false},
+		{"example-asr", "", "", true},
+		{"example-japanese-asr", "ja-jp", "ja-jp", true},
+		{"example-japanese-asr", "en-us", "en-us", false},
+		{"example-japanese-asr", "", "", true},
 		{"example-translating-asr", "ja-jp", "zh-cn", true},
 		{"example-translating-asr", "ja-jp", "ja-jp", false},
 		{"example-translating-asr", "ja-jp", "zh-tw", false},
 		{"example-translating-asr", "", "zh-cn", false},
+		{"example-translating-asr", "", "", false},
 		{"example-unknown-direction", "ja-jp", "", false},
 		{"example-unknown-direction", "ja-jp", "ja-jp", false},
+		{"example-entered-by-hand", "ja-jp", "ja-jp", true},
+		{"example-entered-by-hand", "ja-jp", "zh-cn", true},
+		{"example-entered-by-hand", "", "", true},
+		{"example-entered-by-hand", "", "zh-cn", false},
+		{"example-entered-by-hand", "ja-jp", "", false},
 	} {
 		if got := p.Writes(check.model, check.audio, check.lyrics); got != check.writes {
 			t.Errorf("Writes(%s, %q, %q) = %v", check.model, check.audio, check.lyrics, got)

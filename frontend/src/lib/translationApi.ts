@@ -8,7 +8,6 @@ export type TranslationItemCategory = "title" | "description" | "tag" | "file_na
 
 export type TranslationItemState =
   | "queued"
-  | "waiting_transcription"
   | "requesting"
   | "ready"
   | "accepted"
@@ -47,8 +46,6 @@ export type TranslationPlan = {
   originLanguage: string;
   permissions: { metadata: boolean; files: boolean; lyrics: boolean };
   languages: TranslationPlanLanguage[];
-  /** Tracks with a transcription that is running. */
-  transcribing: number[];
   attributionEnabled: boolean;
   /** Finished items apply through acceptance at once; off, they wait for review. */
   autoAccept: boolean;
@@ -57,7 +54,7 @@ export type TranslationPlan = {
 export type TranslationLyricsTarget = {
   audioMediaItemId: number;
   targetLanguage: string;
-  /** The lyrics file to translate; 0 transcribes the track first. */
+  /** The lyrics file of the track to translate. */
   lyricsLocationId: number;
 };
 
@@ -67,9 +64,6 @@ export type TranslationRequest = {
   providerId: string;
   model?: string;
   lyrics: TranslationLyricsTarget[];
-  asrProviderId: string;
-  asrModel?: string;
-  directAsr: boolean;
 };
 
 export type TranslationSkip = { category: string; language?: string; subject?: string; reason: string };
@@ -83,7 +77,6 @@ export type TranslationItem = {
   language: string;
   category: TranslationItemCategory;
   subject: string;
-  engine: "llm" | "asr";
   state: TranslationItemState;
   failureCode?: string;
   /** A tag's source name, a file or folder path, or a track title. */
@@ -91,9 +84,6 @@ export type TranslationItem = {
   source: string;
   result: string;
   model: string;
-  /** The transcription a lyrics translation reads, reviewed with it. */
-  transcriptionItemId?: number;
-  asrModel?: string;
   sourceTitle?: string;
   /** The lyrics file an applied lyrics item became. */
   appliedPath?: string;
@@ -128,7 +118,6 @@ export type TranslationRun = {
   requestedBy: string;
   createdAt: string;
   finishedAt?: string;
-  transcription?: { total: number; done: number; failed: number; progressMs: number; durationMs: number };
   languages: TranslationRunLanguage[];
 };
 

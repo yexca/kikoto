@@ -3478,8 +3478,13 @@ export const surfaceJapanese = {
   },
   asrTranscription: {
     demoCue: "サンプル {{number}} 行目。デモはこの音声を文字起こししていません。",
-    service: "サービス",
     detect: "自動検出",
+    model: "モデル",
+    noModelShort: "この言語のモデルなし",
+    noModel:
+      "{{language}}の音声から歌詞を書き出せる有効なモデルがありません。別の音声の言語を選ぶか、管理者にモデルの追加を依頼してください。",
+    unknownModel:
+      "このサービスは、モデルがどの言語を書き出すかを示していません。別の歌詞の言語を指定することはできますが、サービスが無視する場合があり、別の言語で返された文字起こしは保存されません。",
     noService: "利用できる音声認識サービスがありません。管理者が「設定 → 音声認識・LLM」で追加できます。",
     noServiceShort: "利用できるサービスなし",
     loading: "読み込み中…",
@@ -3523,6 +3528,8 @@ export const surfaceJapanese = {
         "メモリ不足のため、サービスがモデルを読み込めませんでした。GPU メモリを空けるか、ヘルパーの GPU 共有を交互に読み込む設定にしてから、もう一度文字起こししてください。",
       unsupported_language_pair:
         "モデルはこの音声の言語からこの言語の歌詞を書き出せません。管理者が「設定 → 音声認識・LLM」でサービスのモデルを取得し直してから、もう一度文字起こししてください。",
+      output_language_mismatch:
+        "サービスが歌詞の言語とは別の言語で書き出したため、結果は保存されませんでした。この言語を書き出せるモデルを選んでください。",
       ffmpeg_unavailable: "このサーバーでは音声を準備できません。",
       endpoint_unavailable: "サービスへの接続を準備できませんでした。",
       cancelled: "文字起こしはキャンセルされました。",
@@ -3553,11 +3560,8 @@ export const surfaceJapanese = {
     languageHint: "音声で話されている言語で、サービスへのヒントとして送られます。",
     lyricsLanguage: "歌詞の言語",
     lyricsLanguageHint:
-      "歌詞はこの言語で保存・割り当てされ、自動検出の場合はフォールバックの歌詞として保存されます。モデルが翻訳しない限り、音声の言語と同じです。",
-    sameAsAudio: "音声の言語と同じ",
+      "歌詞はこの言語で保存・割り当てられます。自動検出のときはフォールバック歌詞として保存されます。文字起こしするモデルは音声の言語を、翻訳するモデルは自身の言語を書き出し、それ以外のモデルでは選べます。",
     languageDirection: "{{audio}} → {{lyrics}}",
-    translatesOnly: "このモデルは{{audio}}の音声から{{lyrics}}の歌詞だけを書き出します。",
-    writesAudioLanguage: "このモデルは音声の言語でのみ歌詞を書き出します。",
     filter: "表示するトラック",
     filters: {
       noLyrics: "歌詞なし",
@@ -3701,10 +3705,6 @@ export const surfaceJapanese = {
     joinedCount_one: "{{count}} 件はすでに登録済みです。",
     joinedCount_other: "{{count}} 件はすでに登録済みです。",
     awaitingCount: "確認待ち {{count}} 件",
-  },
-  translationTargets: {
-    unsupported: "このモデルは非対応",
-    noTarget: "このモデルは、この作品をこれらのどの言語にも翻訳できません。別のモデルを選んでください。",
   },
   serviceModels: {
     label: "モデル",

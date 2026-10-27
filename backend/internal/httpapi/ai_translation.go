@@ -15,8 +15,8 @@ import (
 // One submission is one workflow run with one job; its translation_item rows
 // are the units that run, wait for review and are accepted or rejected one by
 // one: a work's title or description, a shared tag name, a file or folder
-// display name, or the lyrics of one track. Lyrics of a track without any are
-// first transcribed by a speech recognition service in the same run.
+// display name, or the lyrics of one track, translated from one of its lyrics
+// files.
 
 const (
 	aiTranslationWorkflowCode = "ai_translation"
@@ -62,8 +62,6 @@ type translationItemDetail struct {
 	SourceLanguage string `json:"sourceLanguage,omitempty"`
 	// Chunks is how many requests a lyrics item takes.
 	Chunks int `json:"chunks,omitempty"`
-	// ASRModel is the speech model of lyrics read from a transcription.
-	ASRModel string `json:"asrModel,omitempty"`
 	// SourceWorkID is the work whose original edition supplied a title or
 	// description.
 	SourceWorkID int64 `json:"sourceWorkId,omitempty"`
@@ -72,31 +70,29 @@ type translationItemDetail struct {
 }
 
 type translationItem struct {
-	ID              int64
-	RunID           int64
-	WorkID          int64
-	UserID          int64
-	Language        string
-	Category        string
-	Subject         string
-	Engine          string
-	State           string
-	FailureCode     string
-	TranscriptionID string
-	Detail          translationItemDetail
-	SourceText      string
-	SourceHash      string
-	ResultText      string
-	Checkpoint      []string
-	RequestIndex    int
-	ProviderID      string
-	Model           string
-	ConfigHash      string
-	PolicyHash      string
+	ID           int64
+	RunID        int64
+	WorkID       int64
+	UserID       int64
+	Language     string
+	Category     string
+	Subject      string
+	State        string
+	FailureCode  string
+	Detail       translationItemDetail
+	SourceText   string
+	SourceHash   string
+	ResultText   string
+	Checkpoint   []string
+	RequestIndex int
+	ProviderID   string
+	Model        string
+	ConfigHash   string
+	PolicyHash   string
 }
 
 const translationItemColumns = `item.id, item.workflow_run_id, item.work_id, COALESCE(item.requested_by_user_id, 0), item.language,
-	item.category, item.subject, item.engine, item.state, item.failure_code, COALESCE(item.asr_transcription_id, ''),
+	item.category, item.subject, item.state, item.failure_code,
 	item.detail_json, item.source_text, item.source_hash, item.result_text, item.checkpoint_json, item.request_index,
 	item.provider_id, item.model, item.config_hash, item.policy_hash`
 
@@ -106,7 +102,7 @@ func scanTranslationItem(row rowScanner) (translationItem, error) {
 	var item translationItem
 	var detail, checkpoint string
 	if err := row.Scan(&item.ID, &item.RunID, &item.WorkID, &item.UserID, &item.Language, &item.Category, &item.Subject,
-		&item.Engine, &item.State, &item.FailureCode, &item.TranscriptionID, &detail, &item.SourceText, &item.SourceHash,
+		&item.State, &item.FailureCode, &detail, &item.SourceText, &item.SourceHash,
 		&item.ResultText, &checkpoint, &item.RequestIndex, &item.ProviderID, &item.Model, &item.ConfigHash, &item.PolicyHash); err != nil {
 		return item, err
 	}

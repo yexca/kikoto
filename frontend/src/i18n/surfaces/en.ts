@@ -3527,8 +3527,13 @@ export const surfaceEnglish = {
   },
   asrTranscription: {
     demoCue: "Sample line {{number}}. Demo did not transcribe this audio.",
-    service: "Service",
     detect: "Detect automatically",
+    model: "Model",
+    noModelShort: "No model for this language",
+    noModel:
+      "No enabled model writes lyrics from {{language}} audio. Choose another audio language, or ask an administrator to add a model.",
+    unknownModel:
+      "This service does not say which languages its model writes. Another lyrics language is asked for, but the service may ignore it; a transcription that comes back in another language is not kept.",
     noService: "No speech recognition service is ready. An administrator can add one under Settings → ASR & LLM.",
     noServiceShort: "No service available",
     loading: "Loading…",
@@ -3569,6 +3574,8 @@ export const surfaceEnglish = {
         "The service could not load its model because memory ran out. Free GPU memory or set the helper's GPU sharing to take turns, then transcribe again.",
       unsupported_language_pair:
         "The model does not write lyrics in this language from this audio language. An administrator can fetch the service's models again under Settings → ASR & LLM, then transcribe again.",
+      output_language_mismatch:
+        "The service wrote another language than the lyrics language, so the result was not kept. Choose a model that writes this language.",
       ffmpeg_unavailable: "Audio preparation is unavailable on this server.",
       endpoint_unavailable: "The service connection could not be prepared.",
       cancelled: "The transcription was cancelled.",
@@ -3599,11 +3606,8 @@ export const surfaceEnglish = {
     languageHint: "The language spoken in the audio, sent to the service as a hint.",
     lyricsLanguage: "Lyrics language",
     lyricsLanguageHint:
-      "The lyrics are saved and assigned in this language; detected speech is saved as fallback lyrics. It is the audio language unless the model translates.",
-    sameAsAudio: "Same as audio language",
+      "The lyrics are saved and assigned in this language; detected speech is saved as fallback lyrics. A model that transcribes writes the audio language and one that translates writes its own language; for another model it can be chosen.",
     languageDirection: "{{audio}} → {{lyrics}}",
-    translatesOnly: "This model writes only {{lyrics}} lyrics from {{audio}} audio.",
-    writesAudioLanguage: "This model writes lyrics only in the audio language.",
     filter: "Show tracks",
     filters: {
       noLyrics: "No lyrics",
@@ -3746,10 +3750,6 @@ export const surfaceEnglish = {
     joinedCount_one: "{{count}} translation was already queued.",
     joinedCount_other: "{{count}} translations were already queued.",
     awaitingCount: "{{count}} to review",
-  },
-  translationTargets: {
-    unsupported: "Not supported by this model",
-    noTarget: "This model does not translate this work into any of these languages. Choose another model.",
   },
   serviceModels: {
     label: "Models",

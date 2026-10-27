@@ -816,6 +816,12 @@ export function PersistedWorkDetailController({
           onChanged={async () => {
             await Promise.all([metadataSaved(), localMediaSaved()]);
           }}
+          onOpenEditor={(editor) => {
+            if (editor === "files") setFileNamesOpen(true);
+            else if (editor === "lyrics") files.openLyricsManager({ tab: "files" });
+            else if (editor === "transcribe") files.openLyricsManager({ tab: "transcribe" });
+            else setMetadataEditorSection(editor);
+          }}
         />
       )}
       <PersistedReforkOverlay

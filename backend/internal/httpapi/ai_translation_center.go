@@ -8,7 +8,7 @@ import (
 )
 
 // The Translation page shows Translate with AI runs as they progress: per
-// work, the transcription stage and then one row per language. It is a view
+// work, one row per language. It is a view
 // of the runs and their items; it keeps no state of its own.
 
 type translationRunLanguage struct {
@@ -21,27 +21,17 @@ type translationRunLanguage struct {
 	Chunks     int `json:"chunks"`
 }
 
-type translationRunTranscription struct {
-	Total  int `json:"total"`
-	Done   int `json:"done"`
-	Failed int `json:"failed"`
-	// ProgressMS and DurationMS describe the track being transcribed.
-	ProgressMS int64 `json:"progressMs"`
-	DurationMS int64 `json:"durationMs"`
-}
-
 type translationRunResponse struct {
-	RunID         int64                        `json:"runId"`
-	Status        string                       `json:"status"`
-	CanCancel     bool                         `json:"canCancel"`
-	WorkID        int64                        `json:"workId"`
-	WorkCode      string                       `json:"workCode"`
-	WorkTitle     string                       `json:"workTitle"`
-	RequestedBy   string                       `json:"requestedBy"`
-	CreatedAt     string                       `json:"createdAt"`
-	FinishedAt    string                       `json:"finishedAt,omitempty"`
-	Transcription *translationRunTranscription `json:"transcription,omitempty"`
-	Languages     []translationRunLanguage     `json:"languages"`
+	RunID       int64                    `json:"runId"`
+	Status      string                   `json:"status"`
+	CanCancel   bool                     `json:"canCancel"`
+	WorkID      int64                    `json:"workId"`
+	WorkCode    string                   `json:"workCode"`
+	WorkTitle   string                   `json:"workTitle"`
+	RequestedBy string                   `json:"requestedBy"`
+	CreatedAt   string                   `json:"createdAt"`
+	FinishedAt  string                   `json:"finishedAt,omitempty"`
+	Languages   []translationRunLanguage `json:"languages"`
 }
 
 var translationRunViews = map[string][]string{
@@ -154,9 +144,9 @@ func (s *Server) translationRuns(ctx context.Context, actor currentUser, statuse
 	}
 	marks := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
 	items, err := s.db.QueryContext(ctx, `SELECT workflow_run_id, language, state, COUNT(*),
-		SUM(CASE WHEN category = 'lyrics' AND engine = 'llm' THEN request_index ELSE 0 END),
-		SUM(CASE WHEN category = 'lyrics' AND engine = 'llm' THEN COALESCE(json_extract(detail_json, '$.chunks'), 0) ELSE 0 END)
-		FROM translation_item WHERE workflow_run_id IN (`+marks+`) AND engine = 'llm'
+		SUM(CASE WHEN category = 'lyrics' THEN request_index ELSE 0 END),
+		SUM(CASE WHEN category = 'lyrics' THEN COALESCE(json_extract(detail_json, '$.chunks'), 0) ELSE 0 END)
+		FROM translation_item WHERE workflow_run_id IN (`+marks+`)
 		GROUP BY workflow_run_id, language, state ORDER BY workflow_run_id, MIN(id)`, ids...)
 	if err != nil {
 		return nil, err
@@ -186,40 +176,5 @@ func (s *Server) translationRuns(ctx context.Context, actor currentUser, statuse
 		entry.ChunksDone += done
 		entry.Chunks += chunks
 	}
-	if err := items.Close(); err != nil {
-		return nil, err
-	}
-	transcriptions, err := s.db.QueryContext(ctx, `SELECT transcription.workflow_run_id, transcription.state, transcription.offset_ms,
-		COALESCE(location.duration_seconds, item.duration_seconds, 0) * 1000
-		FROM asr_transcription AS transcription
-		INNER JOIN media_item AS item ON item.id = transcription.audio_media_item_id
-		LEFT JOIN media_file_location AS location ON location.id = transcription.audio_location_id
-		WHERE transcription.workflow_run_id IN (`+marks+`) ORDER BY transcription.created_at, transcription.rowid`, ids...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = transcriptions.Close() }()
-	for transcriptions.Next() {
-		var runID, offset, duration int64
-		var state string
-		if err := transcriptions.Scan(&runID, &state, &offset, &duration); err != nil {
-			return nil, err
-		}
-		run := &runs[index[runID]]
-		if run.Transcription == nil {
-			run.Transcription = &translationRunTranscription{}
-		}
-		run.Transcription.Total++
-		switch state {
-		case "ready", "publishing", "accepted", "rejected":
-			run.Transcription.Done++
-		case "failed", "cancelled":
-			run.Transcription.Failed++
-		default:
-			if offset > 0 && run.Transcription.ProgressMS == 0 {
-				run.Transcription.ProgressMS, run.Transcription.DurationMS = offset, duration
-			}
-		}
-	}
-	return runs, transcriptions.Err()
+	return runs, items.Close()
 }

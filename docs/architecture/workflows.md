@@ -38,9 +38,9 @@ Library and metadata:
   shared executor. [Translation task persistence](data-model.md#llm-translation)
   defines source/configuration invalidation, restart recovery and explicit
   resubmission of uncertain requests.
-- `ai_translation`: Translate with AI for one work: transcribe the tracks it
-  lists without lyrics, then translate the missing title, description, shared
-  tag names, display names and lyrics into each requested language, accepting
+- `ai_translation`: Translate with AI for one work: translate the missing
+  title, description, shared tag names, display names and lyrics, each from a
+  lyrics file, into each requested language, accepting
   each item as it finishes while auto-accept is on, in one job that yields
   between requests like a transcription. Each item
   keeps its own state, so one item's failure leaves the others running.

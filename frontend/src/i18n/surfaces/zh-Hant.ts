@@ -3331,8 +3331,12 @@ export const surfaceHant = {
   },
   asrTranscription: {
     demoCue: "範例第 {{number}} 行。示範沒有轉寫這段音訊。",
-    service: "服務",
     detect: "自動偵測",
+    model: "模型",
+    noModelShort: "沒有適用此語言的模型",
+    noModel: "沒有已啟用的模型能根據{{language}}音訊寫出歌詞。請選擇其他音訊語言，或請管理員新增模型。",
+    unknownModel:
+      "此服務沒有說明其模型寫出哪些語言。可以要求其他歌詞語言，但服務可能忽略它；以其他語言傳回的轉寫不會儲存。",
     noService: "沒有可用的語音辨識服務。管理員可在「設定 → 語音辨識與大型語言模型」中新增。",
     noServiceShort: "沒有可用的服務",
     loading: "載入中…",
@@ -3373,6 +3377,7 @@ export const surfaceHant = {
         "服務因記憶體不足無法載入模型。請釋放顯示記憶體，或將助手的顯示記憶體排程設為輪流載入，然後重新轉寫。",
       unsupported_language_pair:
         "該模型無法根據此音訊語言寫出此語言的歌詞。管理員可在「設定 → 語音辨識與大型語言模型」中重新取得服務的模型，然後重新轉寫。",
+      output_language_mismatch: "服務寫出的語言與歌詞語言不同，因此結果未儲存。請選擇能寫出此語言的模型。",
       ffmpeg_unavailable: "此伺服器無法準備音訊。",
       endpoint_unavailable: "無法建立服務連線。",
       cancelled: "轉寫已取消。",
@@ -3401,11 +3406,9 @@ export const surfaceHant = {
     language: "音訊語言",
     languageHint: "音訊中所說的語言，會作為提示傳送給服務。",
     lyricsLanguage: "歌詞語言",
-    lyricsLanguageHint: "歌詞會以此語言儲存並指派；自動偵測時儲存為備用歌詞。除非模型會翻譯，否則它就是音訊語言。",
-    sameAsAudio: "與音訊語言相同",
+    lyricsLanguageHint:
+      "歌詞會以此語言儲存並指派；自動偵測時儲存為備用歌詞。轉寫模型寫出音訊語言，翻譯模型寫出它自己的語言，其他模型可以選擇。",
     languageDirection: "{{audio}} → {{lyrics}}",
-    translatesOnly: "此模型只能根據{{audio}}音訊寫出{{lyrics}}歌詞。",
-    writesAudioLanguage: "此模型只能以音訊語言寫出歌詞。",
     filter: "顯示的音軌",
     filters: {
       noLyrics: "無歌詞",
@@ -3540,10 +3543,6 @@ export const surfaceHant = {
     joinedCount_one: "{{count}} 個翻譯已在佇列中。",
     joinedCount_other: "{{count}} 個翻譯已在佇列中。",
     awaitingCount: "{{count}} 個待審核",
-  },
-  translationTargets: {
-    unsupported: "此模型不支援",
-    noTarget: "此模型無法將該作品翻譯為以下任何語言。請選擇其他模型。",
   },
   serviceModels: {
     label: "模型",

@@ -83,8 +83,6 @@ export function BatchTranslationDialog({
             providerId: choice.service.id,
             model: choice.model,
             lyrics: [],
-            asrProviderId: "",
-            directAsr: false,
           });
           queued++;
         } catch (error) {

@@ -441,14 +441,18 @@ func (s *Server) listLLMTranslationModels(w http.ResponseWriter, r *http.Request
 	result := []map[string]any{}
 	for _, p := range providers {
 		if p.Enabled && p.DefaultModel != "" {
-			// Only models restricted to declared directions have targets.
+			// Only models restricted to declared directions have targets and
+			// pairs; the pairs check sources other than the original, such
+			// as a lyrics file in another language.
 			targets := map[string][]string{}
+			pairs := map[string][]llm.LanguagePair{}
 			for _, model := range p.EnabledModels {
 				if languages := p.TranslationTargets(model, source); languages != nil {
 					targets[model] = languages
+					pairs[model] = p.TranslationPairs(model)
 				}
 			}
-			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "modelTargets": targets, "boundary": p.Boundary, "maxContentClass": p.MaxContentClass})
+			result = append(result, map[string]any{"id": p.ID, "name": p.Name, "defaultModel": p.DefaultModel, "models": p.EnabledModels, "modelTargets": targets, "modelPairs": pairs, "boundary": p.Boundary, "maxContentClass": p.MaxContentClass})
 		}
 	}
 	writeJSON(w, 200, result)

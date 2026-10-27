@@ -311,7 +311,7 @@ func (s *Server) loadTranslationCoverage(ctx context.Context, c translationCover
 	sql.add(c.files(false)).text(", ").add(c.files(true)).text(", ")
 	sql.add(c.lyrics(false)).text(", ").add(c.lyrics(true)).text(", ")
 	sql.text(`(SELECT COUNT(*) FROM translation_item AS item WHERE item.work_id IN ` + translationCoverageFamily + `
-		AND item.language = ? AND item.state IN ('queued', 'waiting_transcription', 'requesting', 'uncertain')), `)
+		AND item.language = ? AND item.state IN ('queued', 'requesting', 'uncertain')), `)
 	sql.args = append(sql.args, c.language)
 	sql.text(`(SELECT COUNT(*) FROM translation_item AS item WHERE item.work_id IN ` + translationCoverageFamily + `
 		AND item.language = ? AND item.state = 'ready')`)

@@ -23,8 +23,10 @@ import { LyricsNote } from "@/features/work-detail/lyrics/LyricsNote";
 import { LyricsPreview } from "@/features/work-detail/lyrics/LyricsPreview";
 import {
   matchesTranscribeFilter,
+  modelCapability,
+  offersTranscription,
   trackLyricsByLanguage,
-  transcriptionWrites,
+  transcriptionOutput,
   workOriginLyricsLanguage,
   type TranscribeFilter,
 } from "@/features/work-detail/lyrics/lyricsTaskModel";
@@ -72,6 +74,7 @@ const knownFailures = new Set([
   "service_start_failed",
   "service_out_of_memory",
   "unsupported_language_pair",
+  "output_language_mismatch",
   "no_timestamps",
   "no_speech",
   "provider_changed",
@@ -128,15 +131,13 @@ export function TranscriptionPanel({
   const [serverOrigin, setServerOrigin] = useState<string | null>(null);
   const [filter, setFilter] = useState<TranscribeFilter>("noLyrics");
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
+  // The spoken language the user chose; until then, the work's original language.
+  const [chosenAudio, setChosenAudio] = useState<string | null>(null);
   // A service and one of its enabled models, as a serviceModelKey.
   const [choiceKey, setChoiceKey] = useState(() => (demo ? serviceModelChoices(demoASRServices)[0]?.key : "") ?? "");
-  // The spoken language the user chose; until then, a translating model's
-  // source language or the work's original language.
-  const [chosenLanguage, setChosenLanguage] = useState<string | null>(null);
-  // Whether the lyrics are in the audio language, and the lyrics language
-  // chosen otherwise; until chosen, what the model writes.
-  const [chosenSameAsAudio, setChosenSameAsAudio] = useState<boolean | null>(null);
-  const [chosenLyricsLanguage, setChosenLyricsLanguage] = useState<string | null>(null);
+  // The lyrics language chosen for a model of unknown capability, kept only
+  // for the model and audio language it was chosen with.
+  const [chosenOutput, setChosenOutput] = useState<{ key: string; language: string } | null>(null);
   const [submitting, setSubmitting] = useState<{ done: number; total: number } | null>(null);
   const [busyID, setBusyID] = useState<string | null>(null);
   const [previewID, setPreviewID] = useState<string | null>(null);
@@ -232,29 +233,25 @@ export function TranscriptionPanel({
     setSelected(new Set());
   };
 
-  const choices = serviceModelChoices(services ?? []);
-  const choice = choices.find((candidate) => candidate.key === choiceKey) ?? null;
+  // The audio language comes first; it decides which models are offered, and
+  // the model decides the lyrics language.
+  const language = chosenAudio ?? origin;
+  const choices = serviceModelChoices(services ?? []).filter((candidate) =>
+    offersTranscription(modelCapability(candidate.service, candidate.model), language),
+  );
+  const choice = choices.find((candidate) => candidate.key === choiceKey) ?? choices[0] ?? null;
   const service = choice?.service ?? null;
   const noService = services !== null && services.length === 0;
-  const translationOf = (candidate: typeof choice) => candidate?.service.translations?.[candidate.model];
-  const translation = translationOf(choice);
-  const language = chosenLanguage ?? translation?.source ?? origin;
-  const sameAsAudio = chosenSameAsAudio ?? !translation;
-  const lyricsLanguage = sameAsAudio ? language : (chosenLyricsLanguage ?? translation?.target ?? language);
-  const writes = transcriptionWrites(translation, { audio: language, lyrics: lyricsLanguage });
-
-  // A translating model, chosen or left, sets the languages to what the newly chosen model writes.
-  const chooseService = (key: string) => {
-    if (translationOf(choice) || translationOf(choices.find((candidate) => candidate.key === key) ?? null)) {
-      setChosenLanguage(null);
-      setChosenSameAsAudio(null);
-      setChosenLyricsLanguage(null);
-    }
-    setChoiceKey(key);
-  };
+  const noModel = !noService && services !== null && choices.length === 0;
+  const capability = choice ? modelCapability(choice.service, choice.model) : null;
+  const outputKey = `${choice?.key ?? ""}\n${language}`;
+  const output = capability
+    ? transcriptionOutput(capability, language, chosenOutput?.key === outputKey ? chosenOutput.language : null)
+    : { language, fixed: true };
+  const lyricsLanguage = output.language;
 
   const start = async () => {
-    if (selection.length === 0 || !choice || !writes) return;
+    if (selection.length === 0 || !choice) return;
     let queued = 0;
     let joined = 0;
     let lastRun = 0;
@@ -328,15 +325,22 @@ export function TranscriptionPanel({
       ? t("asrTranscription.detect")
       : t(lyricsLanguages.find(([token]) => token === value)?.[1] ?? "asrTranscription.detect");
   const originName = t(lyricsLanguages.find(([token]) => token === origin)?.[1] ?? "lyricsManager.fallback");
-  const serviceOptions: FloatingSelectOption[] = choices.map(({ key, service, model }) => ({
-    value: key,
-    label: (
-      <ServiceChoiceLabel
-        name={`${service.name} · ${model}`}
-        excluded={rating.contentClass !== null && !serviceReceives(rating.contentClass, service)}
-      />
-    ),
-  }));
+  // A translating model names the direction it writes.
+  const serviceOptions: FloatingSelectOption[] = choices.map(({ key, service, model }) => {
+    const translation = modelCapability(service, model).translation;
+    const direction = translation
+      ? ` (${t("asrTranscription.languageDirection", { audio: languageName(translation.source), lyrics: languageName(translation.target) })})`
+      : "";
+    return {
+      value: key,
+      label: (
+        <ServiceChoiceLabel
+          name={`${service.name} · ${model}${direction}`}
+          excluded={rating.contentClass !== null && !serviceReceives(rating.contentClass, service)}
+        />
+      ),
+    };
+  });
   const languageOptions: FloatingSelectOption[] = [
     { value: allLyricsLanguages, label: t("asrTranscription.detect") },
     ...lyricsLanguages
@@ -623,7 +627,7 @@ export function TranscriptionPanel({
             <span className="flex h-[var(--control-height)] items-center text-sm font-medium" role="status">
               {t("asrTranscription.selectedCount", { count: selection.length })}
             </span>
-            <div className="min-w-0 basis-44">
+            <div className="min-w-0 basis-48">
               <div
                 className="mb-1 text-xs font-medium text-muted-foreground"
                 title={t("asrTranscription.languageHint")}
@@ -633,73 +637,63 @@ export function TranscriptionPanel({
               <FloatingSelect
                 value={language}
                 options={languageOptions}
-                onValueChange={setChosenLanguage}
+                onValueChange={setChosenAudio}
                 ariaLabel={t("asrTranscription.language")}
                 disabled={working}
               />
             </div>
-            <div className="min-w-0 basis-72">
-              <div className="mb-1 flex items-center justify-between gap-3 whitespace-nowrap text-xs font-medium text-muted-foreground">
-                <span className="truncate" title={t("asrTranscription.lyricsLanguageHint")}>
-                  {t("asrTranscription.lyricsLanguage")}
-                </span>
-                <label className="flex shrink-0 cursor-pointer items-center gap-1.5 font-normal">
-                  <Checkbox
-                    checked={sameAsAudio}
-                    disabled={working}
-                    aria-label={t("asrTranscription.sameAsAudio")}
-                    className="h-4 w-4"
-                    onCheckedChange={(checked) => {
-                      setChosenSameAsAudio(checked);
-                      if (!checked) setChosenLyricsLanguage(lyricsLanguage);
-                    }}
-                  />
-                  {t("asrTranscription.sameAsAudio")}
-                </label>
-              </div>
+            <div className="min-w-0 flex-1 basis-56 sm:max-w-80">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">{t("asrTranscription.model")}</div>
               <FloatingSelect
-                value={lyricsLanguage}
-                options={sameAsAudio ? languageOptions : lyricsLanguageOptions}
-                onValueChange={setChosenLyricsLanguage}
-                ariaLabel={t("asrTranscription.lyricsLanguage")}
-                triggerLabel={
-                  sameAsAudio && lyricsLanguage === allLyricsLanguages ? t("lyricsManager.fallback") : undefined
-                }
-                disabled={working || sameAsAudio}
-              />
-            </div>
-            <div className="min-w-0 flex-1 basis-52 sm:max-w-72">
-              <div className="mb-1 text-xs font-medium text-muted-foreground">{t("asrTranscription.service")}</div>
-              <FloatingSelect
-                value={choiceKey}
+                value={choice?.key ?? ""}
                 options={serviceOptions}
-                onValueChange={chooseService}
-                ariaLabel={t("asrTranscription.service")}
+                onValueChange={setChoiceKey}
+                ariaLabel={t("asrTranscription.model")}
                 triggerLabel={
                   services === null
                     ? t("asrTranscription.loading")
                     : noService
                       ? t("asrTranscription.noServiceShort")
-                      : undefined
+                      : noModel
+                        ? t("asrTranscription.noModelShort")
+                        : undefined
                 }
-                disabled={working || !services?.length}
+                disabled={working || choices.length === 0}
               />
             </div>
-            <Button onClick={() => void start()} disabled={demo || working || !choice || !writes}>
+            <div className="min-w-0 basis-48">
+              <div
+                className="mb-1 text-xs font-medium text-muted-foreground"
+                title={t("asrTranscription.lyricsLanguageHint")}
+              >
+                {t("asrTranscription.lyricsLanguage")}
+              </div>
+              <FloatingSelect
+                value={lyricsLanguage}
+                options={output.fixed ? languageOptions : lyricsLanguageOptions}
+                onValueChange={(value) => setChosenOutput({ key: outputKey, language: value })}
+                ariaLabel={t("asrTranscription.lyricsLanguage")}
+                triggerLabel={lyricsLanguage === allLyricsLanguages ? t("lyricsManager.fallback") : undefined}
+                disabled={working || output.fixed}
+              />
+            </div>
+            <Button onClick={() => void start()} disabled={demo || working || !choice}>
               {working ? <Loader2 className="h-4 w-4 animate-spin" /> : <AudioLines className="h-4 w-4" />}
               {working
                 ? t("asrTranscription.startingCount", { done: submitting.done, total: submitting.total })
                 : t("asrTranscription.startCount", { count: selection.length })}
             </Button>
-            {choice && !writes && (
+            {noModel ? (
               <p role="status" className="basis-full text-xs text-warning-foreground">
-                {translation
-                  ? t("asrTranscription.translatesOnly", {
-                      audio: languageName(translation.source),
-                      lyrics: languageName(translation.target),
-                    })
-                  : t("asrTranscription.writesAudioLanguage")}
+                {t("asrTranscription.noModel", { language: languageName(language) })}
               </p>
+            ) : (
+              capability?.kind === "unknown" &&
+              language !== allLyricsLanguages && (
+                <p role="status" className="basis-full text-xs text-muted-foreground">
+                  {t("asrTranscription.unknownModel")}
+                </p>
+              )
             )}
           </div>
         )}

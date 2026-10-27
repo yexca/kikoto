@@ -106,6 +106,11 @@ export type LLMTranslationModel = Pick<LLMProvider, "id" | "name" | "defaultMode
    * entry translates any direction.
    */
   modelTargets?: Record<string, string[]>;
+  /**
+   * The only directions each of those models translates, for sources other
+   * than the original language, such as a lyrics file.
+   */
+  modelPairs?: Record<string, Array<{ source: string; target: string }>>;
 };
 export type LLMAssessment = {
   class: ContentClass;

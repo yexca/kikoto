@@ -197,16 +197,12 @@ function TranslationReviewRow({
                 {t(`translationReview.states.${item.state}`)}
               </Badge>
             )}
-            {lyrics && item.engine === "llm" && item.chunks > 1 && mode === "active" && (
+            {lyrics && item.chunks > 1 && mode === "active" && (
               <span className="tabular-nums">
                 {t("translationReview.chunks", { done: item.progress, total: item.chunks })}
               </span>
             )}
-            <span>
-              {item.engine === "asr"
-                ? t("translationReview.byASR", { model: item.model })
-                : t("translationReview.byLLM", { model: item.model })}
-            </span>
+            <span>{t("translationReview.byLLM", { model: item.model })}</span>
             {item.requestedBy && <span>· {t("translationReview.requestedBy", { name: item.requestedBy })}</span>}
           </div>
           {stopped && (
@@ -291,10 +287,6 @@ function LyricsItemNote({ item }: { item: TranslationItem }) {
   let note: string;
   if (item.appliedPath) {
     note = t("translationReview.appliedTo", { path: item.appliedPath });
-  } else if (item.engine === "asr") {
-    note = t("translationReview.transcriptNote");
-  } else if (item.transcriptionItemId) {
-    note = t("translationReview.fromTranscript", { model: item.asrModel ?? "" });
   } else {
     note = t("translationReview.fromFile", { file: item.sourceTitle || "—" });
   }

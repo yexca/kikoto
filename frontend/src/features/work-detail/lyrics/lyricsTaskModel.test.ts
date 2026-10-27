@@ -9,7 +9,9 @@ import {
   toggleTranslationColumn,
   toggleTranslationTarget,
   trackLyricsByLanguage,
-  transcriptionWrites,
+  modelCapability,
+  offersTranscription,
+  transcriptionOutput,
   translationJobs,
   workOriginLyricsLanguage,
   whenLLMFree,
@@ -85,17 +87,42 @@ describe("matchesTranscribeFilter", () => {
   });
 });
 
-describe("transcriptionWrites", () => {
-  const japaneseToChinese = { source: "ja-jp", target: "zh-cn" };
+describe("transcription models", () => {
+  const service = {
+    capabilities: {
+      "example-multilingual": { kind: "transcribe" as const, multilingual: true },
+      "example-japanese": { kind: "transcribe" as const, languages: ["ja-jp"] },
+      "example-translating": { kind: "translate" as const, translation: { source: "ja-jp", target: "zh-cn" } },
+    },
+  };
+  const offered = (audio: string) =>
+    ["example-multilingual", "example-japanese", "example-translating", "example-entered-by-hand"].filter((model) =>
+      offersTranscription(modelCapability(service, model), audio),
+    );
 
-  it("lets a model write the language it hears, and a translating model only its direction", () => {
-    expect(transcriptionWrites(undefined, { audio: "ja-jp", lyrics: "ja-jp" })).toBe(true);
-    expect(transcriptionWrites(undefined, { audio: "", lyrics: "" })).toBe(true);
-    expect(transcriptionWrites(undefined, { audio: "ja-jp", lyrics: "zh-cn" })).toBe(false);
-    expect(transcriptionWrites(japaneseToChinese, { audio: "ja-jp", lyrics: "zh-cn" })).toBe(true);
-    expect(transcriptionWrites(japaneseToChinese, { audio: "ja-jp", lyrics: "ja-jp" })).toBe(false);
-    expect(transcriptionWrites(japaneseToChinese, { audio: "ja-jp", lyrics: "zh-tw" })).toBe(false);
-    expect(transcriptionWrites(japaneseToChinese, { audio: "", lyrics: "zh-cn" })).toBe(false);
+  it("offers the models that hear the audio language, and every model of unknown capability", () => {
+    expect(modelCapability(service, "example-entered-by-hand")).toEqual({ kind: "unknown" });
+    expect(offered("ja-jp")).toEqual([
+      "example-multilingual",
+      "example-japanese",
+      "example-translating",
+      "example-entered-by-hand",
+    ]);
+    expect(offered("en-us")).toEqual(["example-multilingual", "example-entered-by-hand"]);
+    // Detected speech has no source language to translate from.
+    expect(offered("")).toEqual(["example-multilingual", "example-japanese", "example-entered-by-hand"]);
+  });
+
+  it("lets the model fix the lyrics language, and a model of unknown capability write the chosen one", () => {
+    const output = (model: string, audio: string, chosen: string | null = null) =>
+      transcriptionOutput(modelCapability(service, model), audio, chosen);
+    expect(output("example-japanese", "ja-jp", "zh-cn")).toEqual({ language: "ja-jp", fixed: true });
+    expect(output("example-translating", "ja-jp", "en-us")).toEqual({ language: "zh-cn", fixed: true });
+    expect(output("example-entered-by-hand", "ja-jp")).toEqual({ language: "ja-jp", fixed: false });
+    expect(output("example-entered-by-hand", "ja-jp", "zh-cn")).toEqual({ language: "zh-cn", fixed: false });
+    // Detected speech is saved as fallback lyrics.
+    expect(output("example-entered-by-hand", "", "zh-cn")).toEqual({ language: "", fixed: true });
+    expect(output("example-multilingual", "")).toEqual({ language: "", fixed: true });
   });
 });
 

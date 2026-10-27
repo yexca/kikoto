@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AudioLines, Captions, Files, Folder, ListChecks, ListOrdered, RotateCcw, type LucideIcon } from "lucide-react";
+import { AudioLines, Captions, Files, Folder, ListChecks, ListOrdered, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { CoverageBar } from "@/components/ui/coverage-bar";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { DialogTabs, type DialogTabItem } from "@/components/ui/dialog-tabs";
 import { FloatingSelect, type FloatingSelectOption } from "@/components/ui/floating-select";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import {
@@ -98,7 +99,11 @@ export function LyricsManagerDialog({
   );
   const filesAvailable = localFolders.length > 0;
   const transcribeAvailable = (canTranscribe || demo) && entries.audio.length > 0;
-  const [tab, setTab] = useState<LyricsManagerTab>(request.tab === "files" && filesAvailable ? "files" : "assign");
+  const [tab, setTab] = useState<LyricsManagerTab>(() => {
+    if (request.tab === "files" && filesAvailable) return "files";
+    if (request.tab === "transcribe" && transcribeAvailable) return "transcribe";
+    return "assign";
+  });
   const [folderId, setFolderId] = useState(request.folderId ?? 0);
   const folder = localFolders.find((candidate) => candidate.id === folderId) ?? localFolders[0];
   const managedCount = useMemo(
@@ -194,7 +199,7 @@ export function LyricsManagerDialog({
       </span>
     ),
   }));
-  const tabs: LyricsManagerTabItem[] = [
+  const tabs: DialogTabItem<LyricsManagerTab>[] = [
     { value: "assign", icon: ListChecks, label: t("lyricsManager.tabAssign") },
     ...(filesAvailable
       ? [{ value: "files" as const, icon: Files, label: t("lyricsManager.tabFiles"), count: managedCount }]
@@ -263,7 +268,7 @@ export function LyricsManagerDialog({
         className={tabs.length > 1 ? "border-b-0 pb-1" : undefined}
       />
       {tabs.length > 1 && (
-        <LyricsManagerTabs tabs={tabs} value={tab} label={t("lyricsManager.title")} disabled={busy} onChange={setTab} />
+        <DialogTabs tabs={tabs} value={tab} label={t("lyricsManager.title")} disabled={busy} onChange={setTab} />
       )}
       {tab === "transcribe" && transcribeAvailable ? (
         <TranscriptionPanel
@@ -409,58 +414,5 @@ export function LyricsManagerDialog({
         </>
       )}
     </Dialog>
-  );
-}
-
-type LyricsManagerTabItem = { value: LyricsManagerTab; icon: LucideIcon; label: string; count?: number };
-
-/** The manager's sections, as an underlined strip below its header. */
-function LyricsManagerTabs({
-  tabs,
-  value,
-  label,
-  disabled,
-  onChange,
-}: {
-  tabs: readonly LyricsManagerTabItem[];
-  value: LyricsManagerTab;
-  label: string;
-  disabled: boolean;
-  onChange: (tab: LyricsManagerTab) => void;
-}) {
-  return (
-    <div
-      role="tablist"
-      aria-label={label}
-      className="flex shrink-0 gap-1 overflow-x-auto overflow-y-hidden border-b px-2 ![scrollbar-width:none] sm:px-3 [&::-webkit-scrollbar]:hidden"
-    >
-      {tabs.map(({ value: tabValue, icon: Icon, label: tabLabel, count = 0 }) => {
-        const active = tabValue === value;
-        return (
-          <button
-            key={tabValue}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            disabled={disabled}
-            onClick={() => onChange(tabValue)}
-            className={cn(
-              "relative inline-flex h-11 shrink-0 items-center gap-2 rounded-t-md px-3 text-sm font-medium transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-              active
-                ? "text-foreground after:bg-primary"
-                : "text-muted-foreground after:bg-transparent hover:text-foreground",
-            )}
-          >
-            <Icon className={cn("h-4 w-4 shrink-0", active && "text-primary")} aria-hidden="true" />
-            {tabLabel}
-            {count > 0 && (
-              <span className="rounded-full bg-muted px-1.5 py-px text-2xs tabular-nums text-muted-foreground">
-                {count}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
   );
 }

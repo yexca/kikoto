@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -247,9 +248,9 @@ func TestAITranslationCancelledRunStopsUnsentItems(t *testing.T) {
 	}
 }
 
-// newTranslationASRFixture adds a Japanese original edition and an LLM
-// provider to the speech fixture.
-func newTranslationASRFixture(t *testing.T) (asrFixture, llm.Provider, *atomic.Int32) {
+// newTranslationFixture adds a Japanese original edition and an LLM provider
+// to the fixture of a local work with one track.
+func newTranslationFixture(t *testing.T) (asrFixture, llm.Provider, *atomic.Int32) {
 	t.Helper()
 	fixture := newASRFixture(t, 2)
 	for _, statement := range []string{
@@ -269,115 +270,186 @@ func newTranslationASRFixture(t *testing.T) (asrFixture, llm.Provider, *atomic.I
 	return fixture, provider, requests
 }
 
-func TestAITranslationTranscribesOnceThenTranslatesAndPublishesBoth(t *testing.T) {
-	fixture, provider, requests := newTranslationASRFixture(t)
+const translationSourceLyrics = "WEBVTT\n\n00:00:00.500 --> 00:00:01.500\nSynthetic line\n"
+
+// translationLyricsFile adds a lyrics file beside the fixture's track and
+// returns its location.
+func translationLyricsFile(t *testing.T, fixture asrFixture) int64 {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(fixture.dataRoot, "RJ00000001", "mp3", "Track1.vtt"), []byte(translationSourceLyrics), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var fileSourceID, locationID int64
+	if err := fixture.db.QueryRow("SELECT file_source_id FROM work_folder_location WHERE work_id = ?", fixture.workID).Scan(&fileSourceID); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.server.indexLocalMediaForWork(context.Background(), fixture.workID, fileSourceID, fixture.root); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.db.QueryRow(`SELECT location.id FROM media_file_location AS location
+		INNER JOIN media_item AS item ON item.id = location.media_item_id WHERE item.work_id = ? AND item.kind = 'text'`, fixture.workID).Scan(&locationID); err != nil {
+		t.Fatal(err)
+	}
+	return locationID
+}
+
+func TestAITranslationTranslatesLyricsFromAFileAndPublishesThem(t *testing.T) {
+	fixture, provider, requests := newTranslationFixture(t)
 	disableAutoAccept(t, fixture.db)
 	ctx := context.Background()
 	actor := translationActor(t, fixture.server, fixture.userID)
+	source := translationLyricsFile(t, fixture)
 	response, err := fixture.server.submitAITranslation(ctx, actor, fixture.workID, aiTranslationRequest{
-		Languages: []string{"zh-cn", "en-us"}, ProviderID: provider.ID, ASRProviderID: fixture.provider.ID, DirectASR: true,
-		Lyrics: []aiLyricsTarget{{AudioMediaItemID: fixture.audioID, TargetLanguage: "zh-cn"}, {AudioMediaItemID: fixture.audioID, TargetLanguage: "en-us"}},
+		Languages: []string{"zh-cn"}, ProviderID: provider.ID,
+		Lyrics: []aiLyricsTarget{{AudioMediaItemID: fixture.audioID, TargetLanguage: "zh-cn", LyricsLocationID: source}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The original transcription and one translation per language.
-	if response.Items != 3 {
-		t.Fatalf("items = %d %+v", response.Items, response.Skipped)
+	if err != nil || response.Items != 1 {
+		t.Fatalf("submit = %+v %v", response, err)
 	}
 	if err := fixture.server.runNextQueuedWorkflowJob(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if fixture.requests.Load() != 1 || requests.Load() != 2 {
-		t.Fatalf("speech requests = %d, translation requests = %d", fixture.requests.Load(), requests.Load())
-	}
-	var chinese int64
+	var id int64
 	var result string
-	if err := fixture.db.QueryRow("SELECT id, result_text FROM translation_item WHERE language = 'zh-cn' AND engine = 'llm' AND state = 'ready'").Scan(&chinese, &result); err != nil {
+	if err := fixture.db.QueryRow("SELECT id, result_text FROM translation_item WHERE language = 'zh-cn' AND state = 'ready'").Scan(&id, &result); err != nil {
 		t.Fatal(err)
 	}
-	// The translation names both models, as its own first cue, and never
-	// sends the transcript's attribution.
-	want := "WEBVTT\n\n00:00:00.000 --> 00:00:00.500\n当前歌词由 example-model 生成，example-llm 翻译\n\n00:00:00.500 --> 00:00:01.500\nzh-cn: Synthetic line\n"
-	if result != want {
-		t.Fatalf("translation = %q", result)
+	// The translation names only its translation model, as its own first cue.
+	want := "WEBVTT\n\n00:00:00.000 --> 00:00:00.500\n当前歌词由 example-llm 翻译\n\n00:00:00.500 --> 00:00:01.500\nzh-cn: Synthetic line\n"
+	if result != want || requests.Load() != 1 || fixture.requests.Load() != 0 {
+		t.Fatalf("translation = %q, requests = %d, speech requests = %d", result, requests.Load(), fixture.requests.Load())
 	}
-	if code, err := fixture.server.acceptTranslationItem(ctx, actor, chinese); code != "" || err != nil {
+	if code, err := fixture.server.acceptTranslationItem(ctx, actor, id); code != "" || err != nil {
 		t.Fatalf("accept = %q %v", code, err)
 	}
-	folder := filepath.Join(fixture.dataRoot, filepath.FromSlash(fixture.root), "lyrics_kikoto")
-	original, err := os.ReadFile(filepath.Join(folder, "ja", "mp3", "Track1.vtt"))
-	if err != nil || !strings.Contains(string(original), "この歌詞は example-model によって生成されました") || !strings.Contains(string(original), "\nSynthetic line\n") {
-		t.Fatalf("original = %q %v", original, err)
-	}
-	translated, err := os.ReadFile(filepath.Join(folder, "zh-hans", "mp3", "Track1.vtt"))
+	translated, err := os.ReadFile(filepath.Join(fixture.dataRoot, filepath.FromSlash(fixture.root), "lyrics_kikoto", "zh-hans", "mp3", "Track1.vtt"))
 	if err != nil || string(translated) != want {
 		t.Fatalf("translated = %q %v", translated, err)
 	}
 	var sources int
-	if err := fixture.db.QueryRow("SELECT COUNT(*) FROM media_lyrics_ai_source WHERE asr_model = 'example-model'").Scan(&sources); err != nil || sources != 2 {
+	if err := fixture.db.QueryRow("SELECT COUNT(*) FROM media_lyrics_ai_source WHERE asr_model = '' AND llm_model = 'example-llm'").Scan(&sources); err != nil || sources != 1 {
 		t.Fatalf("AI sources = %d %v", sources, err)
-	}
-
-	// Discarding the transcription discards what was translated from it.
-	var transcript, english int64
-	if err := fixture.db.QueryRow("SELECT id FROM translation_item WHERE engine = 'asr'").Scan(&transcript); err != nil {
-		t.Fatal(err)
-	}
-	if err := fixture.db.QueryRow("SELECT id FROM translation_item WHERE language = 'en-us'").Scan(&english); err != nil {
-		t.Fatal(err)
-	}
-	if code, err := fixture.server.rejectTranslationItem(ctx, actor, transcript); code != "already_handled" || err != nil {
-		t.Fatalf("rejecting an accepted transcription = %q %v", code, err)
-	}
-	if _, err := fixture.db.Exec("UPDATE translation_item SET state = 'ready' WHERE id = ?", transcript); err != nil {
-		t.Fatal(err)
-	}
-	if code, err := fixture.server.rejectTranslationItem(ctx, actor, transcript); code != "" || err != nil {
-		t.Fatalf("reject = %q %v", code, err)
-	}
-	var state string
-	if err := fixture.db.QueryRow("SELECT state FROM translation_item WHERE id = ?", english).Scan(&state); err != nil || state != "rejected" {
-		t.Fatalf("dependent = %q %v", state, err)
 	}
 }
 
-func TestAITranslationKeepsATranscriptWhosePolicyBlocksTranslation(t *testing.T) {
-	fixture, provider, requests := newTranslationASRFixture(t)
+func TestAITranslationRefusesLyricsWithoutAFile(t *testing.T) {
+	fixture, provider, _ := newTranslationFixture(t)
 	ctx := context.Background()
-	policy := llm.DefaultPolicy()
-	policy.Keywords = []llm.KeywordRule{{ID: "example-rule", Term: "Synthetic", Fields: []string{"lyrics"}, Action: "blocked"}}
-	if err := fixture.server.llmStore.SavePolicy(ctx, policy); err != nil {
-		t.Fatal(err)
-	}
 	actor := translationActor(t, fixture.server, fixture.userID)
-	if _, err := fixture.server.submitAITranslation(ctx, actor, fixture.workID, aiTranslationRequest{
-		Languages: []string{"ko-kr"}, ProviderID: provider.ID, ASRProviderID: fixture.provider.ID,
-		Lyrics: []aiLyricsTarget{{AudioMediaItemID: fixture.audioID, TargetLanguage: "ko-kr"}},
-	}); err != nil {
+	// A track without lyrics is transcribed in Manage lyrics, never here.
+	_, err := fixture.server.submitAITranslation(ctx, actor, fixture.workID, aiTranslationRequest{
+		Languages: []string{"zh-cn"}, Categories: []string{"title"}, ProviderID: provider.ID,
+		Lyrics: []aiLyricsTarget{{AudioMediaItemID: fixture.audioID, TargetLanguage: "zh-cn"}},
+	})
+	if code := requestErrorCode(t, err); code != "invalid_translation_request" {
+		t.Fatalf("lyrics without a file = %q", code)
+	}
+	var items, transcriptions int
+	if err := fixture.db.QueryRow("SELECT (SELECT COUNT(*) FROM translation_item), (SELECT COUNT(*) FROM asr_transcription)").Scan(&items, &transcriptions); err != nil || items != 0 || transcriptions != 0 {
+		t.Fatalf("items = %d, transcriptions = %d, %v", items, transcriptions, err)
+	}
+	// The request has no speech recognition fields.
+	workID := jsonNumber(fixture.workID)
+	for _, field := range []string{`"asrProviderId":"example"`, `"speechLanguage":"ja-jp"`, `"directAsr":true`} {
+		response := httptest.NewRecorder()
+		body := `{"languages":["zh-cn"],"categories":["title"],"providerId":"` + provider.ID + `","lyrics":[],` + field + `}`
+		fixture.server.createAITranslation(response, fixture.request(t, http.MethodPost, "/api/works/"+workID+"/ai-translation", body, map[string]string{"id": workID}))
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invalid_translation_request") {
+			t.Fatalf("%s = %d %s", field, response.Code, response.Body.String())
+		}
+	}
+}
+
+// A model limited to declared directions is checked against the language of
+// the lyrics file each track reads, not the work's original language; fallback
+// lyrics have no declared language and match every declared source.
+func TestAITranslationChecksLyricsDirectionsByTheirFileLanguage(t *testing.T) {
+	fixture, provider, _ := newTranslationFixture(t)
+	ctx := context.Background()
+	actor := translationActor(t, fixture.server, fixture.userID)
+	source := translationLyricsFile(t, fixture)
+	provider, err := fixture.server.llmStore.Models(ctx, provider, []llm.Model{{ID: "example-llm", Pairs: []llm.LanguagePair{{Source: "ja-jp", Target: "zh-cn"}}}})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.server.runNextQueuedWorkflowJob(ctx); err != nil {
+	var lyricsID int64
+	if err := fixture.db.QueryRow("SELECT media_item_id FROM media_file_location WHERE id = ?", source).Scan(&lyricsID); err != nil {
 		t.Fatal(err)
 	}
-	if requests.Load() != 0 {
-		t.Fatal("a blocked transcript reached the translation provider")
+	submit := func(languages ...string) (aiTranslationRunResponse, error) {
+		body := aiTranslationRequest{Languages: languages, ProviderID: provider.ID}
+		for _, language := range languages {
+			body.Lyrics = append(body.Lyrics, aiLyricsTarget{AudioMediaItemID: fixture.audioID, TargetLanguage: language, LyricsLocationID: source})
+		}
+		return fixture.server.submitAITranslation(ctx, actor, fixture.workID, body)
 	}
-	var asrState, llmState string
-	if err := fixture.db.QueryRow("SELECT state FROM translation_item WHERE engine = 'asr'").Scan(&asrState); err != nil {
+	assign := func(language string) {
+		t.Helper()
+		for _, statement := range []string{"DELETE FROM translation_item", "DELETE FROM media_lyrics_assignment"} {
+			if _, err := fixture.db.Exec(statement); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if language == "" {
+			return
+		}
+		if _, err := fixture.db.Exec("INSERT INTO media_lyrics_assignment (audio_media_item_id, language, lyrics_media_item_id) VALUES (?, ?, ?)", fixture.audioID, language, lyricsID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sourceLanguage := func() string {
+		t.Helper()
+		var detail string
+		if err := fixture.db.QueryRow("SELECT detail_json FROM translation_item WHERE category = ?", translationLyrics).Scan(&detail); err != nil {
+			t.Fatal(err)
+		}
+		var decoded translationItemDetail
+		if err := json.Unmarshal([]byte(detail), &decoded); err != nil {
+			t.Fatal(err)
+		}
+		return decoded.SourceLanguage
+	}
+
+	// English lyrics are refused even though the work is Japanese.
+	assign("en-us")
+	if _, err := submit("zh-cn"); requestErrorCode(t, err) != "llm_unsupported_language_pair" {
+		t.Fatalf("English lyrics = %v", err)
+	}
+	// Japanese lyrics translate into the declared target; an undeclared
+	// target of the same request is left out.
+	assign("ja-jp")
+	response, err := submit("zh-cn", "en-us")
+	if err != nil || response.Items != 1 || sourceLanguage() != "ja-jp" || len(response.Skipped) != 1 ||
+		response.Skipped[0] != (aiTranslationSkip{translationLyrics, "en-us", jsonNumber(fixture.audioID), "unsupported_language_pair"}) {
+		t.Fatalf("Japanese lyrics = %+v %v", response, err)
+	}
+	// Fallback lyrics are not blocked, are sent without a source language,
+	// and still reach only a declared target.
+	assign("")
+	if response, err := submit("zh-cn"); err != nil || response.Items != 1 || sourceLanguage() != "" {
+		t.Fatalf("fallback lyrics = %+v %v", response, err)
+	}
+	assign("")
+	if _, err := submit("en-us"); requestErrorCode(t, err) != "llm_unsupported_language_pair" {
+		t.Fatalf("fallback lyrics into an undeclared target = %v", err)
+	}
+}
+
+// requestErrorCode is the refusal code of a submission, or "" when it is accepted.
+func requestErrorCode(t *testing.T, err error) string {
+	t.Helper()
+	var refusal llmRequestError
+	if err == nil {
+		return ""
+	}
+	if !errors.As(err, &refusal) {
 		t.Fatal(err)
 	}
-	if err := fixture.db.QueryRow("SELECT state FROM translation_item WHERE engine = 'llm'").Scan(&llmState); err != nil {
-		t.Fatal(err)
-	}
-	// The transcription becomes the original lyrics either way.
-	if asrState != "accepted" || llmState != "policy_blocked" {
-		t.Fatalf("transcript = %s, translation = %s", asrState, llmState)
-	}
+	return refusal.Code
 }
 
 func TestAITranslationTranslatesDisplayNamesAndSkipsNumberedOnes(t *testing.T) {
-	fixture, provider, requests := newTranslationASRFixture(t)
+	fixture, provider, requests := newTranslationFixture(t)
 	ctx := context.Background()
 	folder := filepath.Join(fixture.dataRoot, "RJ00000001", "mp3")
 	audio, err := os.ReadFile(filepath.Join(folder, "Track1.wav"))
@@ -441,7 +513,7 @@ func TestAITranslationTranslatesDisplayNamesAndSkipsNumberedOnes(t *testing.T) {
 }
 
 func TestAITranslationAppliesFinishedItemsAndResendsOneThatCouldNotApply(t *testing.T) {
-	fixture, provider, requests := newTranslationASRFixture(t)
+	fixture, provider, requests := newTranslationFixture(t)
 	ctx := context.Background()
 	// A file where the Simplified Chinese lyrics folder belongs stops that
 	// language's lyrics from being written.
@@ -452,9 +524,10 @@ func TestAITranslationAppliesFinishedItemsAndResendsOneThatCouldNotApply(t *test
 		t.Fatal(err)
 	}
 	actor := translationActor(t, fixture.server, fixture.userID)
+	source := translationLyricsFile(t, fixture)
 	if _, err := fixture.server.submitAITranslation(ctx, actor, fixture.workID, aiTranslationRequest{
-		Languages: []string{"zh-cn"}, Categories: []string{"title"}, ProviderID: provider.ID, ASRProviderID: fixture.provider.ID,
-		Lyrics: []aiLyricsTarget{{AudioMediaItemID: fixture.audioID, TargetLanguage: "zh-cn"}},
+		Languages: []string{"zh-cn"}, Categories: []string{"title"}, ProviderID: provider.ID,
+		Lyrics: []aiLyricsTarget{{AudioMediaItemID: fixture.audioID, TargetLanguage: "zh-cn", LyricsLocationID: source}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +535,7 @@ func TestAITranslationAppliesFinishedItemsAndResendsOneThatCouldNotApply(t *test
 		t.Fatal(err)
 	}
 	states := map[string]string{}
-	rows, err := fixture.db.Query("SELECT language || ':' || category || ':' || engine, state || ':' || failure_code FROM translation_item")
+	rows, err := fixture.db.Query("SELECT language || ':' || category, state || ':' || failure_code FROM translation_item")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -474,16 +547,13 @@ func TestAITranslationAppliesFinishedItemsAndResendsOneThatCouldNotApply(t *test
 		states[key] = state
 	}
 	_ = rows.Close()
-	// The title and the original lyrics apply; the blocked lyrics fail with the reason and keep their result.
-	if states["zh-cn:title:llm"] != "accepted:" || states["ja-jp:lyrics:asr"] != "accepted:" || states["zh-cn:lyrics:llm"] != "failed:lyrics_folder_blocked" {
+	// The title applies; the blocked lyrics fail with the reason and keep their result.
+	if states["zh-cn:title"] != "accepted:" || states["zh-cn:lyrics"] != "failed:lyrics_folder_blocked" {
 		t.Fatalf("states = %v", states)
 	}
 	var title string
 	if err := fixture.db.QueryRow("SELECT value_text FROM work_llm_translation WHERE work_id = ? AND language = 'zh-cn' AND field_name = 'title'", fixture.workID).Scan(&title); err != nil || title == "" {
 		t.Fatalf("title = %q %v", title, err)
-	}
-	if _, err := os.Stat(filepath.Join(workRoot, "lyrics_kikoto", "ja", "mp3", "Track1.vtt")); err != nil {
-		t.Fatalf("original lyrics: %v", err)
 	}
 	sent := requests.Load()
 	if err := os.Remove(blocker); err != nil {
