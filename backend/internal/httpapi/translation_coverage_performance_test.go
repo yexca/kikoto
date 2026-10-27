@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
@@ -56,7 +56,7 @@ func TestTranslationCoveragePerformance(t *testing.T) {
 // have display names, a fifth have lyrics in the language, and one user has a
 // translation history twice the size of the library with one task in 50 still
 // queued.
-func seedTranslationCoverageScale(t *testing.T, db *sql.DB, works int) {
+func seedTranslationCoverageScale(t *testing.T, db *sqlutil.DB, works int) {
 	t.Helper()
 	tx, err := db.Begin()
 	if err != nil {

@@ -2,13 +2,13 @@ package metasync
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
@@ -29,7 +29,7 @@ type DLsiteClientWithLocale interface {
 
 type DLsiteSyncer struct {
 	coordinator      *Coordinator
-	db               *sql.DB
+	db               *sqlutil.DB
 	client           DLsiteClient
 	cacheRoot        string
 	languages        []string
@@ -82,7 +82,7 @@ type syncTargetResult struct {
 	failures    []string
 }
 
-func NewDLsiteSyncer(db *sql.DB, client DLsiteClient) *DLsiteSyncer {
+func NewDLsiteSyncer(db *sqlutil.DB, client DLsiteClient) *DLsiteSyncer {
 	return &DLsiteSyncer{
 		coordinator: NewCoordinator(),
 		db:          db, client: client, triggerType: "manual", triggerReason: "manual",

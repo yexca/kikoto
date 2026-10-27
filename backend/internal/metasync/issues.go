@@ -2,9 +2,9 @@ package metasync
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/workcode"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
@@ -45,9 +45,9 @@ type IssuePage struct {
 	PageSize int         `json:"pageSize"`
 }
 
-type IssueStore struct{ db *sql.DB }
+type IssueStore struct{ db *sqlutil.DB }
 
-func NewIssueStore(db *sql.DB) *IssueStore { return &IssueStore{db: db} }
+func NewIssueStore(db *sqlutil.DB) *IssueStore { return &IssueStore{db: db} }
 
 func issueFilter(query IssueQuery) (string, []any) {
 	where := workflow.PendingMetadataState

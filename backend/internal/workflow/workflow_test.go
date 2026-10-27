@@ -2,13 +2,13 @@ package workflow
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 )
 
-func openWorkflowTestDB(t *testing.T) *sql.DB {
+func openWorkflowTestDB(t *testing.T) *sqlutil.DB {
 	t.Helper()
 	return storagetest.Open(t)
 }

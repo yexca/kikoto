@@ -2,11 +2,11 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 func TestRemoteFetchByteProgressPersistsKnownAndUnknownTransfers(t *testing.T) {
@@ -81,7 +81,7 @@ func TestRemoteFetchByteProgressPersistsKnownAndUnknownTransfers(t *testing.T) {
 	}
 }
 
-func assertFetchByteProgress(t *testing.T, db *sql.DB, current int64, total int64, unknown int) {
+func assertFetchByteProgress(t *testing.T, db *sqlutil.DB, current int64, total int64, unknown int) {
 	t.Helper()
 	var gotCurrent, gotTotal int64
 	var gotUnknown int

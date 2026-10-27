@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -40,7 +40,7 @@ func fetchTestDirectoryFiles(t *testing.T, root string) []string {
 	return names
 }
 
-func execFetchTestStatements(t *testing.T, db *sql.DB, statements ...string) {
+func execFetchTestStatements(t *testing.T, db *sqlutil.DB, statements ...string) {
 	t.Helper()
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
@@ -51,7 +51,7 @@ func execFetchTestStatements(t *testing.T, db *sql.DB, statements ...string) {
 
 // newFetchPublishFixture prepares a Fetch that adds track.mp3 from cache to a
 // target root that already holds earlier.mp3.
-func newFetchPublishFixture(t *testing.T) (*Server, *sql.DB, remoteWorkSavePlan) {
+func newFetchPublishFixture(t *testing.T) (*Server, *sqlutil.DB, remoteWorkSavePlan) {
 	t.Helper()
 	ctx := context.Background()
 	db := openMigratedTestDB(t)
@@ -157,7 +157,7 @@ func TestPublishRemoteFetchRefusesToReplaceExistingBackup(t *testing.T) {
 // registration was interrupted. withRemoteStream selects whether the
 // remote_stream row survived; without it, the local location written before
 // the interruption is the only remaining link to the media item.
-func seedPublishedFetch(t *testing.T, server *Server, db *sql.DB, index int, withRemoteStream bool) remoteWorkSavePlan {
+func seedPublishedFetch(t *testing.T, server *Server, db *sqlutil.DB, index int, withRemoteStream bool) remoteWorkSavePlan {
 	t.Helper()
 	ctx := context.Background()
 	id := int64(index + 1)
@@ -204,7 +204,7 @@ func seedPublishedFetch(t *testing.T, server *Server, db *sql.DB, index int, wit
 	return plan
 }
 
-func newFetchRecoveryServer(t *testing.T) (*Server, *sql.DB) {
+func newFetchRecoveryServer(t *testing.T) (*Server, *sqlutil.DB) {
 	t.Helper()
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{DataRoot: t.TempDir(), CacheRoot: t.TempDir()})

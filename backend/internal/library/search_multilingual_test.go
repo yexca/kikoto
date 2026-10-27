@@ -2,16 +2,16 @@ package library
 
 import (
 	"context"
-	"database/sql"
 	"path/filepath"
 	"reflect"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
-func dlsiteProviderID(t *testing.T, db *sql.DB) int64 {
+func dlsiteProviderID(t *testing.T, db *sqlutil.DB) int64 {
 	t.Helper()
 	var id int64
 	if err := db.QueryRow(`SELECT id FROM metadata_provider WHERE code = 'dlsite'`).Scan(&id); err != nil {
@@ -22,7 +22,7 @@ func dlsiteProviderID(t *testing.T, db *sql.DB) int64 {
 
 // searchEditionFamily links works into one logical family; the first work is
 // the canonical edition.
-func searchEditionFamily(t *testing.T, db *sql.DB, ordinals []int, workIDs ...int64) int64 {
+func searchEditionFamily(t *testing.T, db *sqlutil.DB, ordinals []int, workIDs ...int64) int64 {
 	t.Helper()
 	logicalID := execSearchFixture(t, db, `INSERT INTO logical_work (canonical_work_id, canonical_code) VALUES (?, ?)`,
 		workIDs[0], testfixture.WorkCode(testfixture.PrefixRJ, ordinals[0]))
@@ -33,13 +33,13 @@ func searchEditionFamily(t *testing.T, db *sql.DB, ordinals []int, workIDs ...in
 	return logicalID
 }
 
-func searchVariant(t *testing.T, db *sql.DB, logicalID, workID int64, ordinal int, locale, title string) int64 {
+func searchVariant(t *testing.T, db *sqlutil.DB, logicalID, workID int64, ordinal int, locale, title string) int64 {
 	t.Helper()
 	return execSearchFixture(t, db, `INSERT INTO dlsite_metadata_variant (logical_work_id, work_id, provider_id, external_id, request_locale, title)
 		VALUES (?, ?, ?, ?, ?, ?)`, logicalID, workID, dlsiteProviderID(t, db), testfixture.WorkCode(testfixture.PrefixRJ, ordinal), locale, title)
 }
 
-func searchGenre(t *testing.T, db *sql.DB, workID int64, genreID int64, names map[string]string) {
+func searchGenre(t *testing.T, db *sqlutil.DB, workID int64, genreID int64, names map[string]string) {
 	t.Helper()
 	execSearchFixture(t, db, `INSERT INTO work_dlsite_genre (work_id, genre_id) VALUES (?, ?)`, workID, genreID)
 	for language, name := range names {

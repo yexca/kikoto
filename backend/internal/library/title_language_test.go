@@ -2,13 +2,13 @@ package library
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/remotemetadata"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -99,13 +99,13 @@ func TestRemoteLanguageTitlesSortSearchAndRefresh(t *testing.T) {
 	}
 }
 
-func titleLanguageVariant(t *testing.T, db *sql.DB, logicalID, workID int64, ordinal int, language, title string) int64 {
+func titleLanguageVariant(t *testing.T, db *sqlutil.DB, logicalID, workID int64, ordinal int, language, title string) int64 {
 	t.Helper()
 	return execSearchFixture(t, db, `INSERT INTO dlsite_metadata_variant (logical_work_id, work_id, provider_id, external_id, edition_language, request_locale, title)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`, logicalID, workID, dlsiteProviderID(t, db), testfixture.WorkCode(testfixture.PrefixRJ, ordinal), language, language, title)
 }
 
-func queuedTitleLanguageWorks(t *testing.T, db *sql.DB) []int64 {
+func queuedTitleLanguageWorks(t *testing.T, db *sqlutil.DB) []int64 {
 	t.Helper()
 	rows, err := db.Query(`SELECT work_id FROM work_title_language_dirty ORDER BY work_id`)
 	if err != nil {

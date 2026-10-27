@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -27,7 +27,7 @@ func (*recoveryMetadataClient) DownloadCover(context.Context, dlsite.Product, st
 	return "", nil
 }
 
-func seedMetadataIssue(t *testing.T, db *sql.DB, index int) int64 {
+func seedMetadataIssue(t *testing.T, db *sqlutil.DB, index int) int64 {
 	t.Helper()
 	result, err := db.Exec("INSERT INTO work(primary_code,title) VALUES (?, 'Synthetic failed work')", testfixture.WorkCode(testfixture.PrefixRJ, index))
 	if err != nil {

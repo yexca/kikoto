@@ -3,7 +3,6 @@
 package storagetest
 
 import (
-	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/migrations"
 )
@@ -28,7 +28,7 @@ var migrated = NewTemplate(nil)
 
 // NewTemplate returns a template of the packaged schema plus the rows seed
 // writes. A nil seed leaves the freshly migrated schema.
-func NewTemplate(seed func(*sql.DB) error) *Template {
+func NewTemplate(seed func(*sqlutil.DB) error) *Template {
 	return &Template{image: sync.OnceValues(func() ([]byte, error) {
 		return buildImage(seed)
 	})}
@@ -36,27 +36,27 @@ func NewTemplate(seed func(*sql.DB) error) *Template {
 
 // Open copies the migrated schema into a private file and opens it with the
 // production connection pool.
-func Open(t testing.TB) *sql.DB {
+func Open(t testing.TB) *sqlutil.DB {
 	t.Helper()
 	return migrated.Open(t)
 }
 
 // OpenFile is Open at a path the test chooses, for a test that reopens the
 // file or hands its path to the code under test.
-func OpenFile(t testing.TB, path string) *sql.DB {
+func OpenFile(t testing.TB, path string) *sqlutil.DB {
 	t.Helper()
 	return migrated.OpenFile(t, path)
 }
 
 // Open copies the template into a private file and opens it with the
 // production connection pool. The database closes when the test ends.
-func (template *Template) Open(t testing.TB) *sql.DB {
+func (template *Template) Open(t testing.TB) *sqlutil.DB {
 	t.Helper()
 	return template.OpenFile(t, filepath.Join(t.TempDir(), "test.db"))
 }
 
 // OpenFile is Open at a path the test chooses. The file must not exist yet.
-func (template *Template) OpenFile(t testing.TB, path string) *sql.DB {
+func (template *Template) OpenFile(t testing.TB, path string) *sqlutil.DB {
 	t.Helper()
 	image, err := template.image()
 	if err != nil {
@@ -73,7 +73,7 @@ func (template *Template) OpenFile(t testing.TB, path string) *sql.DB {
 	return db
 }
 
-func buildImage(seed func(*sql.DB) error) ([]byte, error) {
+func buildImage(seed func(*sqlutil.DB) error) ([]byte, error) {
 	dir, err := os.MkdirTemp("", "kikoto-test-schema-")
 	if err != nil {
 		return nil, err

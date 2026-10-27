@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 func TestDemoReadPathsDoNotPersistOperationalState(t *testing.T) {
@@ -147,7 +148,7 @@ func TestDemoCreatorAggregatesExcludeRestrictedWorks(t *testing.T) {
 	}
 }
 
-func insertDemoSecurityWork(t *testing.T, db *sql.DB, code string, title string, ageRating string, permanentlyFree bool) int64 {
+func insertDemoSecurityWork(t *testing.T, db *sqlutil.DB, code string, title string, ageRating string, permanentlyFree bool) int64 {
 	t.Helper()
 	result, err := db.Exec(`
 		INSERT INTO work (primary_code, title, age_rating, is_permanently_free)
@@ -163,7 +164,7 @@ func insertDemoSecurityWork(t *testing.T, db *sql.DB, code string, title string,
 	return id
 }
 
-func insertDemoSecurityParty(t *testing.T, db *sql.DB, providerID int64, externalID string, name string, workID int64) int64 {
+func insertDemoSecurityParty(t *testing.T, db *sqlutil.DB, providerID int64, externalID string, name string, workID int64) int64 {
 	t.Helper()
 	result, err := db.Exec(`INSERT INTO party (party_type, display_name) VALUES ('circle', ?)`, name)
 	if err != nil {

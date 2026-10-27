@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"net/http"
 	"strings"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -32,7 +32,7 @@ func (c *genreNameTestClient) FetchProductWithLocale(_ context.Context, code, lo
 
 // setGenreNameUserLanguages stores a user's personal metadata language
 // priority directly, without the request side effect of queueing learning.
-func setGenreNameUserLanguages(t *testing.T, db *sql.DB, name, languages string) {
+func setGenreNameUserLanguages(t *testing.T, db *sqlutil.DB, name, languages string) {
 	t.Helper()
 	userID, _ := metadataLanguageUser(t, db, name)
 	setUserMetadataLanguages(t, db, userID, languages)
@@ -40,7 +40,7 @@ func setGenreNameUserLanguages(t *testing.T, db *sql.DB, name, languages string)
 
 // newGenreNameFixture seeds one work with an unnamed genre. A non-empty
 // userLanguages gives one user that personal priority.
-func newGenreNameFixture(t *testing.T, userLanguages string) (*Server, *sql.DB, *genreNameTestClient) {
+func newGenreNameFixture(t *testing.T, userLanguages string) (*Server, *sqlutil.DB, *genreNameTestClient) {
 	t.Helper()
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})

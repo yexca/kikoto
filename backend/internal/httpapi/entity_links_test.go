@@ -70,7 +70,7 @@ func TestSyncVoiceCreditPersistsProviderScopedExternalIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	var providerID int64
-	if err := db.QueryRow("INSERT INTO metadata_provider (code, display_name) VALUES ('test_remote_metadata', 'Test remote metadata') RETURNING id").Scan(&providerID); err != nil {
+	if err := db.Writer().QueryRow("INSERT INTO metadata_provider (code, display_name) VALUES ('test_remote_metadata', 'Test remote metadata') RETURNING id").Scan(&providerID); err != nil {
 		t.Fatal(err)
 	}
 	tx, err := db.Begin()

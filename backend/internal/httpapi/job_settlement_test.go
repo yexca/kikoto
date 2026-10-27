@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"github.com/yexca/kikoto/backend/internal/account"
@@ -11,11 +10,12 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // seedQueuedCacheJobs inserts one queued media cache run per id. Each job
 // allows three retries and resumes from a checkpoint.
-func seedQueuedCacheJobs(t *testing.T, db *sql.DB, ids ...int64) {
+func seedQueuedCacheJobs(t *testing.T, db *sqlutil.DB, ids ...int64) {
 	t.Helper()
 	for _, id := range ids {
 		for _, statement := range []struct {
@@ -33,7 +33,7 @@ func seedQueuedCacheJobs(t *testing.T, db *sql.DB, ids ...int64) {
 	}
 }
 
-func loadJobState(t *testing.T, db *sql.DB, jobID int64) (jobStatus, runStatus, lockedBy, errorMessage string, retryCount int) {
+func loadJobState(t *testing.T, db *sqlutil.DB, jobID int64) (jobStatus, runStatus, lockedBy, errorMessage string, retryCount int) {
 	t.Helper()
 	if err := db.QueryRow(`
 		SELECT job.status, run.status, job.locked_by, job.error_message, job.retry_count

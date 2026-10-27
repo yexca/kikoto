@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
-func Merge(ctx context.Context, db *sql.DB, target, source int64) (int64, error) {
+func Merge(ctx context.Context, db *sqlutil.DB, target, source int64) (int64, error) {
 	if target <= 0 || source <= 0 || target == source {
 		return 0, ErrInvalid
 	}
@@ -153,7 +155,7 @@ func mergeSeries(ctx context.Context, tx *sql.Tx, target, source int64) error {
 	}
 	return nil
 }
-func Undo(ctx context.Context, db *sql.DB, target, mergeID int64) error {
+func Undo(ctx context.Context, db *sqlutil.DB, target, mergeID int64) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

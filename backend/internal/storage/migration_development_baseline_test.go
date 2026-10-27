@@ -1,10 +1,11 @@
 package storage
 
 import (
-	"database/sql"
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 const (
@@ -26,7 +27,7 @@ func developmentBaselineCatalog() fstest.MapFS {
 	}
 }
 
-func migrationLedger(t *testing.T, db *sql.DB) string {
+func migrationLedger(t *testing.T, db *sqlutil.DB) string {
 	t.Helper()
 	rows, err := db.Query("SELECT filename FROM schema_migration ORDER BY version")
 	if err != nil {

@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -17,6 +16,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/localfs"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
@@ -622,7 +622,7 @@ func TestLocalLibraryScanInvalidatesLocationsWhenFolderDisappears(t *testing.T) 
 }
 
 // localWorkFolders lists a work's folder locations as "root state primary".
-func localWorkFolders(t *testing.T, db *sql.DB, code string) []string {
+func localWorkFolders(t *testing.T, db *sqlutil.DB, code string) []string {
 	t.Helper()
 	rows, err := db.Query(`
 		SELECT folder.root_path, folder.state, folder.is_primary
@@ -1020,7 +1020,7 @@ type seededLocalScanWorkRecord struct {
 	sourceID    int64
 }
 
-func seedIndexedLocalScanWork(t *testing.T, db *sql.DB, server *Server, code string, presenceRoot string, locationPath string) seededLocalScanWorkRecord {
+func seedIndexedLocalScanWork(t *testing.T, db *sqlutil.DB, server *Server, code string, presenceRoot string, locationPath string) seededLocalScanWorkRecord {
 	t.Helper()
 	if err := server.EnsureLocalSource(context.Background()); err != nil {
 		t.Fatal(err)
@@ -1105,7 +1105,7 @@ func executeIncrementalLocalScanForTest(t *testing.T, server *Server, changedPat
 	return result.RunID
 }
 
-func localScanMissingLocationCount(t *testing.T, db *sql.DB, runID int64) int {
+func localScanMissingLocationCount(t *testing.T, db *sqlutil.DB, runID int64) int {
 	t.Helper()
 	var summaryJSON string
 	if err := db.QueryRow("SELECT summary_json FROM workflow_run WHERE id = ?", runID).Scan(&summaryJSON); err != nil {

@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,10 +13,11 @@ import (
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type subscriptionTestEnv struct {
-	db      *sql.DB
+	db      *sqlutil.DB
 	server  *Server
 	adminID int64
 }
@@ -177,7 +177,7 @@ func TestSubscriptionTakesItsBaselineFromTheFirstPullAfterSubscribing(t *testing
 // fakeFamilySyncer stores the works a test declares, as a DLsite family sync
 // would, without a request.
 type fakeFamilySyncer struct {
-	db          *sql.DB
+	db          *sqlutil.DB
 	works       map[string]fakeFamilyWork
 	unavailable map[string]bool
 	calls       []string
@@ -204,7 +204,7 @@ func (syncer *fakeFamilySyncer) SyncFamily(ctx context.Context, code string) (me
 	return metasync.DLsiteFamilySyncResult{RequestedCode: code, SyncedCodes: []string{code}}, nil
 }
 
-func insertFakeFamilyWork(ctx context.Context, db *sql.DB, code string, work fakeFamilyWork) error {
+func insertFakeFamilyWork(ctx context.Context, db *sqlutil.DB, code string, work fakeFamilyWork) error {
 	result, err := db.ExecContext(ctx, `INSERT INTO work (primary_code, title, release_date) VALUES (?, ?, ?)`, code, "Example Work "+code[len(code)-2:], work.releaseDate)
 	if err != nil {
 		return err

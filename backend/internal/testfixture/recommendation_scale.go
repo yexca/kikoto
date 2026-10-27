@@ -1,15 +1,16 @@
 package testfixture
 
 import (
-	"database/sql"
 	"fmt"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // SeedRecommendationScale uses popular tags and shared creators to expose
 // unbounded entity recall, and four feedback densities to separate library
 // growth from personal profile growth. It contains no provider or media data.
-func SeedRecommendationScale(t testing.TB, db *sql.DB, works, users int) {
+func SeedRecommendationScale(t testing.TB, db *sqlutil.DB, works, users int) {
 	t.Helper()
 	if works < 1000 || works > 400000 || users < 20 || users > 100 {
 		t.Fatal("scale fixture requires 1000..400000 works and 20..100 users")

@@ -14,10 +14,11 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type manualOverrideFixture struct {
-	db         *sql.DB
+	db         *sqlutil.DB
 	server     *Server
 	userID     int64
 	workID     int64

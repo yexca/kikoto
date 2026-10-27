@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/internal/storagepool"
 	"github.com/yexca/kikoto/backend/migrations"
@@ -57,14 +57,14 @@ func v061MigrationCatalog(t *testing.T) string {
 	return target
 }
 
-func openRestartableMigrationDB(t *testing.T) (string, *sql.DB) {
+func openRestartableMigrationDB(t *testing.T) (string, *sqlutil.DB) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "library.db")
 	db := migratedTestDatabase.OpenFile(t, path)
 	return path, db
 }
 
-func reopenMigrationServer(t *testing.T, databasePath, dataRoot string) (*sql.DB, *Server) {
+func reopenMigrationServer(t *testing.T, databasePath, dataRoot string) (*sqlutil.DB, *Server) {
 	t.Helper()
 	db, err := storage.Open(databasePath)
 	if err != nil {
@@ -88,7 +88,7 @@ func reopenMigrationServer(t *testing.T, databasePath, dataRoot string) (*sql.DB
 	return db, server
 }
 
-func saveTestLibraryMigration(t *testing.T, db *sql.DB, plan layoutMigrationPlan, phase string) {
+func saveTestLibraryMigration(t *testing.T, db *sqlutil.DB, plan layoutMigrationPlan, phase string) {
 	t.Helper()
 	encoded, err := json.Marshal(plan)
 	if err != nil {

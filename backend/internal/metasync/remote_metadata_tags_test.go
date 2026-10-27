@@ -2,16 +2,16 @@ package metasync
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
 	"github.com/yexca/kikoto/backend/internal/remotemetadata"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
-func projectRemoteWork(t *testing.T, db *sql.DB, workID int64, priorities []string) {
+func projectRemoteWork(t *testing.T, db *sqlutil.DB, workID int64, priorities []string) {
 	t.Helper()
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
@@ -26,7 +26,7 @@ func projectRemoteWork(t *testing.T, db *sql.DB, workID int64, priorities []stri
 	}
 }
 
-func remoteWorkTags(t *testing.T, db *sql.DB, workID int64) (map[string]bool, bool) {
+func remoteWorkTags(t *testing.T, db *sqlutil.DB, workID int64) (map[string]bool, bool) {
 	t.Helper()
 	tags, err := metadatatags.Read(context.Background(), db, workID)
 	if err != nil {

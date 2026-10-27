@@ -2,20 +2,20 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // newBundleFixture stores a bundle RJ00000010 and works of its circle:
 // RJ00000011 and RJ00000012 in the bundle's DLsite series, RJ00000013 in
 // another series. The series catalog also lists RJ00000014, which is not a
 // work.
-func newBundleFixture(t *testing.T) (*Server, *sql.DB) {
+func newBundleFixture(t *testing.T) (*Server, *sqlutil.DB) {
 	t.Helper()
 	db := openMigratedTestDB(t)
 	snapshot := func(code string, series string) string {

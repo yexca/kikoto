@@ -9,17 +9,18 @@ import (
 	"github.com/yexca/kikoto/backend/internal/library"
 	"github.com/yexca/kikoto/backend/internal/metadatatags"
 	"github.com/yexca/kikoto/backend/internal/metasync"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
-func openTagDB(t *testing.T) *sql.DB {
+func openTagDB(t *testing.T) *sqlutil.DB {
 	t.Helper()
 	db := storagetest.Open(t)
 	db.SetMaxOpenConns(1)
 	return db
 }
-func execTag(t *testing.T, db *sql.DB, query string, args ...any) int64 {
+func execTag(t *testing.T, db *sqlutil.DB, query string, args ...any) int64 {
 	t.Helper()
 	result, err := db.Exec(query, args...)
 	if err != nil {
@@ -31,7 +32,7 @@ func execTag(t *testing.T, db *sql.DB, query string, args ...any) int64 {
 	}
 	return id
 }
-func tagTx(t *testing.T, db *sql.DB, run func(*sql.Tx) error) {
+func tagTx(t *testing.T, db *sqlutil.DB, run func(*sql.Tx) error) {
 	t.Helper()
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
@@ -45,7 +46,7 @@ func tagTx(t *testing.T, db *sql.DB, run func(*sql.Tx) error) {
 		t.Fatal(err)
 	}
 }
-func readTag(t *testing.T, db *sql.DB, id int64) metadatatags.Tag {
+func readTag(t *testing.T, db *sqlutil.DB, id int64) metadatatags.Tag {
 	t.Helper()
 	tag, err := metadatatags.Load(context.Background(), db, id)
 	if err != nil {
@@ -53,7 +54,7 @@ func readTag(t *testing.T, db *sql.DB, id int64) metadatatags.Tag {
 	}
 	return tag
 }
-func requireWorkTags(t *testing.T, db *sql.DB, workID int64, ids ...int64) {
+func requireWorkTags(t *testing.T, db *sqlutil.DB, workID int64, ids ...int64) {
 	t.Helper()
 	tags, err := metadatatags.Read(context.Background(), db, workID)
 	if err != nil {
@@ -238,7 +239,7 @@ func TestSharedTagsLanguagesOverridesSearchAndRecommendation(t *testing.T) {
 	}
 }
 
-func publishTagRecommendationCatalog(t *testing.T, db *sql.DB, store *library.Store) {
+func publishTagRecommendationCatalog(t *testing.T, db *sqlutil.DB, store *library.Store) {
 	t.Helper()
 	for {
 		processed, err := metasync.ProcessMetadataTagQueue(context.Background(), db, 64, nil)

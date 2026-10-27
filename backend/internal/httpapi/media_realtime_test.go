@@ -3,7 +3,6 @@ package httpapi
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 func TestDirectPlaybackContentTypeRequiresMatchingContainerCodecAndCapability(t *testing.T) {
@@ -463,7 +463,7 @@ func TestStreamMediaRejectsTrackedNonRemoteSource(t *testing.T) {
 	}
 }
 
-func insertTrackedRemotePlaybackFixture(t *testing.T, db *sql.DB, mediaURL string, enabled bool) {
+func insertTrackedRemotePlaybackFixture(t *testing.T, db *sqlutil.DB, mediaURL string, enabled bool) {
 	t.Helper()
 	statements := []struct {
 		query string

@@ -8,13 +8,15 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // BeginBoundedTx leases a connection and bounds each SQLite busy wait, because
 // sqlite's busy handler can outlast a Go context deadline. The caller must call
 // release after committing or abandoning the transaction. Other pooled
 // connections retain their configured busy policy.
-func BeginBoundedTx(ctx context.Context, db *sql.DB) (*sql.Tx, func(), error) {
+func BeginBoundedTx(ctx context.Context, db *sqlutil.DB) (*sql.Tx, func(), error) {
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return nil, nil, err

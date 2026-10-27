@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -301,7 +301,7 @@ func TestSeriesCatalogNodeCombinesListedSeries(t *testing.T) {
 	}
 }
 
-func insertPresetWorkflowSource(t *testing.T, db *sql.DB) {
+func insertPresetWorkflowSource(t *testing.T, db *sqlutil.DB) {
 	t.Helper()
 	if _, err := db.Exec(`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (91, 'example_remote', 'Example Remote', 'kikoeru_compatible', 1)`); err != nil {
 		t.Fatal(err)

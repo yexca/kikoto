@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 const databaseBusyRetryAttempts = 4
@@ -27,7 +29,7 @@ func withDatabaseBusyRetry(ctx context.Context, operation func() error) error {
 	return err
 }
 
-func beginTxWithDatabaseBusyRetry(ctx context.Context, db *sql.DB) (*sql.Tx, error) {
+func beginTxWithDatabaseBusyRetry(ctx context.Context, db *sqlutil.DB) (*sql.Tx, error) {
 	var tx *sql.Tx
 	err := withDatabaseBusyRetry(ctx, func() error {
 		var err error

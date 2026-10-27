@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
-func workflowNodeIDsByNodeID(ctx context.Context, db *sql.DB, runID int64) (map[string]int64, error) {
+func workflowNodeIDsByNodeID(ctx context.Context, db *sqlutil.DB, runID int64) (map[string]int64, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT node_id, id
 		FROM workflow_node_run
@@ -39,7 +41,7 @@ func (s *Server) ensureWorkflowRunActive(ctx context.Context, runID int64) error
 	return fmt.Errorf("workflow run is %s", status)
 }
 
-func updateWorkflowJobProgress(ctx context.Context, db *sql.DB, jobID int64, current int, total int) error {
+func updateWorkflowJobProgress(ctx context.Context, db *sqlutil.DB, jobID int64, current int, total int) error {
 	_, err := db.ExecContext(ctx, `
 		UPDATE workflow_job
 		SET progress_current = ?,
@@ -51,7 +53,7 @@ func updateWorkflowJobProgress(ctx context.Context, db *sql.DB, jobID int64, cur
 	return err
 }
 
-func finishWorkflowRunSimple(ctx context.Context, db *sql.DB, runID int64, nodeID int64, jobID int64, status string, errorMessage string, current int, total int, summary remoteWorkSaveSummary) error {
+func finishWorkflowRunSimple(ctx context.Context, db *sqlutil.DB, runID int64, nodeID int64, jobID int64, status string, errorMessage string, current int, total int, summary remoteWorkSaveSummary) error {
 	tx, err := beginTxWithDatabaseBusyRetry(ctx, db)
 	if err != nil {
 		return err

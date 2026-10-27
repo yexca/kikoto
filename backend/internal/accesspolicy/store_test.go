@@ -2,10 +2,10 @@ package accesspolicy
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 )
 
@@ -101,7 +101,7 @@ func TestStoreRejectsMalformedOrUnavailableSettings(t *testing.T) {
 	}
 }
 
-func openAccessPolicyTestDB(t *testing.T) *sql.DB {
+func openAccessPolicyTestDB(t *testing.T) *sqlutil.DB {
 	t.Helper()
 	return storagetest.Open(t)
 }

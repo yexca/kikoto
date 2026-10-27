@@ -3,7 +3,6 @@ package httpapi
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -17,12 +16,13 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 // newDemoRemoteFixture admits the first `eligible` local works; the two works
 // after them fail Demo admission as adult and paid.
-func newDemoRemoteFixture(t *testing.T, eligible int) (*sql.DB, *Server) {
+func newDemoRemoteFixture(t *testing.T, eligible int) (*sqlutil.DB, *Server) {
 	t.Helper()
 	db := openMigratedTestDB(t)
 	s := NewServer(db, config.Config{Mode: config.ModeDemo, DataRoot: t.TempDir(), CacheRoot: t.TempDir()})
@@ -59,7 +59,7 @@ func newDemoRemoteFixture(t *testing.T, eligible int) (*sql.DB, *Server) {
 	return db, s
 }
 
-func demoRemotePresenceCodes(t *testing.T, db *sql.DB, presenceType string, availability string) []string {
+func demoRemotePresenceCodes(t *testing.T, db *sqlutil.DB, presenceType string, availability string) []string {
 	t.Helper()
 	rows, err := db.Query(`SELECT work.primary_code FROM work_source_presence AS presence
 		INNER JOIN work ON work.id = presence.work_id

@@ -16,10 +16,11 @@ import (
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type sourcePresenceCheckFixture struct {
-	db     *sql.DB
+	db     *sqlutil.DB
 	server *Server
 }
 

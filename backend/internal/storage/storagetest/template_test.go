@@ -1,10 +1,10 @@
 package storagetest
 
 import (
-	"database/sql"
 	"path/filepath"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 )
 
@@ -32,8 +32,8 @@ func TestTemplateDatabasesRemainIsolated(t *testing.T) {
 	if journal != "wal" || foreignKeys != 1 {
 		t.Fatal("test database must retain production WAL and foreign keys")
 	}
-	if second.Stats().MaxOpenConnections != 4 {
-		t.Fatal("test database must open with the production connection pool")
+	if second.Readers().Stats().MaxOpenConnections != storage.DefaultReadConnections || second.Writer().Stats().MaxOpenConnections != 1 {
+		t.Fatal("test database must open with the production connection pools")
 	}
 	// Startup must accept the copied ledger and schema as an already migrated
 	// installation.
@@ -43,7 +43,7 @@ func TestTemplateDatabasesRemainIsolated(t *testing.T) {
 }
 
 func TestSeededTemplateStartsEachTestFromItsSeed(t *testing.T) {
-	template := NewTemplate(func(db *sql.DB) error {
+	template := NewTemplate(func(db *sqlutil.DB) error {
 		_, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES ('library_mode', '"standard"')`)
 		return err
 	})

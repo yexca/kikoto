@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/kikoeru"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 func TestDLsitePartyProjectionPrefersProductMakerIdentity(t *testing.T) {
@@ -67,17 +68,16 @@ func TestDLsitePartyProjectionSkipsUnchangedSnapshots(t *testing.T) {
 	if partyUpdatedAt != sentinel || catalogLastSeenAt != sentinel || relationUpdatedAt != sentinel {
 		t.Fatalf("unchanged projection timestamps = %q/%q/%q, want sentinel", partyUpdatedAt, catalogLastSeenAt, relationUpdatedAt)
 	}
-	// The pass reads on another pooled connection while the blocker holds the
-	// write lock. Both connections load the schema first, so the timed pass
-	// does not include opening one, which the race detector slows down. A pass
-	// that waited for the writer would wait the 30 s busy timeout, far beyond
-	// the deadline.
+	// The pass reads on a reader connection while the blocker holds the writer
+	// connection and the write lock. Both connections load the schema first, so
+	// the timed pass does not include opening one, which the race detector
+	// slows down. A pass that waited for the writer would outlast the deadline.
 	writerConn, err := db.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = writerConn.Close() }()
-	readerConn, err := db.Conn(ctx)
+	readerConn, err := db.Readers().Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,6 +101,10 @@ func TestDLsitePartyProjectionSkipsUnchangedSnapshots(t *testing.T) {
 		t.Fatalf("unchanged projection waited for the active writer: %v", err)
 	}
 	if err := blocker.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	// Return the writer connection for the repair below.
+	if err := writerConn.Close(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -450,7 +454,7 @@ func TestAuthoritativeTranslationPartyUsesEditionRole(t *testing.T) {
 	}
 }
 
-func insertSyntheticRemoteSource(t *testing.T, db *sql.DB, code string) int64 {
+func insertSyntheticRemoteSource(t *testing.T, db *sqlutil.DB, code string) int64 {
 	t.Helper()
 	result, err := db.Exec(`
 		INSERT INTO file_source (code, display_name, source_type, enabled)

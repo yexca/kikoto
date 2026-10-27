@@ -2,15 +2,15 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 )
 
-func openTempDirTestDB(t *testing.T) *sql.DB {
+func openTempDirTestDB(t *testing.T) *sqlutil.DB {
 	t.Helper()
 	db, err := storage.Open(filepath.Join(t.TempDir(), "kikoto.db"))
 	if err != nil {

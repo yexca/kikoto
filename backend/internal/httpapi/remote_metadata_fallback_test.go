@@ -20,11 +20,12 @@ import (
 	"github.com/yexca/kikoto/backend/internal/dlsite"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/remotemetadata"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
 type remoteFallbackFixture struct {
-	db     *sql.DB
+	db     *sqlutil.DB
 	server *Server
 	workID int64
 	code   string

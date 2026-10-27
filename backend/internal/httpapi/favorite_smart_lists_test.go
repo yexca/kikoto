@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,13 +12,14 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/personal"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 var smartListUser = currentUser{ID: 1, Permissions: []string{"library:read", "favorites:write"}}
 
 // openSmartListTestServer seeds works 1–6 with metadata and personal tags.
 // Work 6 is a non-canonical edition of work 5 and carries Example Tag A.
-func openSmartListTestServer(t *testing.T) (*Server, *sql.DB) {
+func openSmartListTestServer(t *testing.T) (*Server, *sqlutil.DB) {
 	t.Helper()
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
@@ -126,7 +126,7 @@ func pageCodes(page smartListPage) []string {
 	return codes
 }
 
-func workFavoriteFlag(t *testing.T, db *sql.DB, workID int64) bool {
+func workFavoriteFlag(t *testing.T, db *sqlutil.DB, workID int64) bool {
 	t.Helper()
 	var favorite bool
 	err := db.QueryRow("SELECT COALESCE((SELECT favorite FROM user_work_state WHERE user_id = 1 AND work_id = ?), 0)", workID).Scan(&favorite)

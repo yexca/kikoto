@@ -17,6 +17,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/localfs"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type fakeFilesystemWatcher struct {
@@ -438,7 +439,7 @@ func requestWorkflowTriggerUpdate(t *testing.T, server *Server, actor account.Us
 	return response
 }
 
-func assertFilesystemRunCount(t *testing.T, db *sql.DB, want int) {
+func assertFilesystemRunCount(t *testing.T, db *sqlutil.DB, want int) {
 	t.Helper()
 	var count int
 	if err := db.QueryRow("SELECT COUNT(*) FROM workflow_run WHERE trigger_type = 'filesystem_event'").Scan(&count); err != nil {
@@ -477,7 +478,7 @@ func startFilesystemWatcherSession(t *testing.T, server *Server, watcher *fakeFi
 	})
 }
 
-func waitForFilesystemRunCount(t *testing.T, db *sql.DB, want int) {
+func waitForFilesystemRunCount(t *testing.T, db *sqlutil.DB, want int) {
 	t.Helper()
 	waitForFilesystemCondition(t, func() bool {
 		var count int
@@ -492,7 +493,7 @@ func waitForFilesystemTriggerNotification(t *testing.T, server *Server) {
 	}, "filesystem trigger notification was not consumed")
 }
 
-func waitForFilesystemTriggerError(t *testing.T, db *sql.DB, want string) {
+func waitForFilesystemTriggerError(t *testing.T, db *sqlutil.DB, want string) {
 	t.Helper()
 	waitForFilesystemCondition(t, func() bool {
 		var message string

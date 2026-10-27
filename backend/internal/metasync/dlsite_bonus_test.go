@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/dlsite"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 type bonusCatalogClient struct {
@@ -63,7 +64,7 @@ func purchaseBonusFixture() (bonusCatalogClient, *int) {
 	}, &calls
 }
 
-func insertBonusTestWork(t *testing.T, db *sql.DB, code string) {
+func insertBonusTestWork(t *testing.T, db *sqlutil.DB, code string) {
 	t.Helper()
 	if _, err := db.Exec(`INSERT INTO metadata_provider (code, display_name) VALUES ('dlsite', 'DLsite') ON CONFLICT(code) DO NOTHING`); err != nil {
 		t.Fatal(err)
@@ -73,7 +74,7 @@ func insertBonusTestWork(t *testing.T, db *sql.DB, code string) {
 	}
 }
 
-func purchaseBonusRow(t *testing.T, db *sql.DB, code string) (string, string, string, string) {
+func purchaseBonusRow(t *testing.T, db *sqlutil.DB, code string) (string, string, string, string) {
 	t.Helper()
 	var status, parent, origin, evidence string
 	err := db.QueryRow(`SELECT bonus.status, bonus.parent_code, bonus.origin, bonus.evidence FROM work_purchase_bonus AS bonus

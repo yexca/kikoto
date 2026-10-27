@@ -2,23 +2,23 @@ package metasync
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"time"
 
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 )
 
 // MetadataTagQueueProcessor drains eligible work in bounded transactions. One
 // runner owns the adaptive batch size; retry state belongs to the database.
 type MetadataTagQueueProcessor struct {
-	db                   *sql.DB
+	db                   *sqlutil.DB
 	batchSize, successes int
 	timeout              time.Duration
 	now                  func() time.Time
 }
 
-func NewMetadataTagQueueProcessor(db *sql.DB) *MetadataTagQueueProcessor {
+func NewMetadataTagQueueProcessor(db *sqlutil.DB) *MetadataTagQueueProcessor {
 	return &MetadataTagQueueProcessor{db: db, batchSize: 32, timeout: 5 * time.Second, now: time.Now}
 }
 

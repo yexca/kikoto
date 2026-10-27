@@ -27,9 +27,9 @@ func serveWithFirstResponseDeadline(t *testing.T, pattern string, handler http.H
 
 func TestFirstResponseDeadlineReleasesRequestWaitingForConnection(t *testing.T) {
 	db := openMigratedTestDB(t)
-	// Hold the only connection so the handler waits in the pool, as it would
-	// behind requests that exhausted the production pool.
-	held, err := db.Conn(context.Background())
+	// Hold the only reader connection so the handler waits in the pool, as it
+	// would behind requests that exhausted the production reader pool.
+	held, err := db.Readers().Conn(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

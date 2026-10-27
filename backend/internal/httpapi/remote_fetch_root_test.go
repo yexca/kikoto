@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/localfs"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 func TestRemoteFetchManagedRootFromTemplate(t *testing.T) {
@@ -426,7 +426,7 @@ func TestConfiguredRemoteFetchWatchRootsIncludeVerifiedLegacySourceFolder(t *tes
 	}
 }
 
-func seedLegacyRemoteFetchSources(t *testing.T, db *sql.DB) {
+func seedLegacyRemoteFetchSources(t *testing.T, db *sqlutil.DB) {
 	t.Helper()
 	if _, err := db.Exec(`
 		INSERT INTO file_source (id, code, display_name, source_type, config_json)
@@ -438,7 +438,7 @@ func seedLegacyRemoteFetchSources(t *testing.T, db *sql.DB) {
 	}
 }
 
-func insertLegacyRemoteFetchWorkflow(t *testing.T, db *sql.DB, runID int64, runStatus string, planStatus string, inputSourceID int64, outputSourceID int64, saveRoot string) {
+func insertLegacyRemoteFetchWorkflow(t *testing.T, db *sqlutil.DB, runID int64, runStatus string, planStatus string, inputSourceID int64, outputSourceID int64, saveRoot string) {
 	t.Helper()
 	workCode := filepath.Base(filepath.FromSlash(saveRoot))
 	_, err := db.Exec(`

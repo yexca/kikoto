@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 // The persisted circle ownership must start out equal to what the views of
@@ -67,7 +69,7 @@ func TestCircleOwnershipMigrationKeepsPrimaryCirclesAndCatalogOwners(t *testing.
 	}
 }
 
-func readPrimaryCircles(t *testing.T, db *sql.DB, query string) string {
+func readPrimaryCircles(t *testing.T, db *sqlutil.DB, query string) string {
 	t.Helper()
 	rows, err := db.Query(query)
 	if err != nil {
