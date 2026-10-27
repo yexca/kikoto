@@ -16,6 +16,36 @@ fix(player): restore progress seek
 docs(readme): reorganize public docs
 ```
 
+## Merging Into main
+
+A branch reaches `main` either as one squash commit or through a merge commit
+that keeps its commits. Keep the commits only when they are worth reading,
+reverting, or bisecting on their own:
+
+- **Squash** when the branch is one logical change, or when its commits record
+  how the work went rather than separate steps: work in progress, review
+  fixes, fixups, reverts of the branch's own attempts, or commits that do not
+  pass validation alone. A single-commit branch is squashed too. The squash
+  commit uses the [commit format](#commit-format), describes the whole change,
+  and summarizes its parts in the body.
+- **Create a merge commit** when every commit on the branch is a
+  self-contained step with its own message that passes validation alone, and
+  the steps are useful apart, such as a refactor or migration followed by the
+  behavior that depends on it, or independent fixes delivered together. The
+  merge commit is `merge(<scope>): integrate <summary>` with a short body.
+
+Decide by the branch as a whole. Catch-up merges from `main` and conflict
+resolutions never justify keeping history; a squash folds them away. When only
+some commits are separate steps and the rest cannot be folded into them first,
+squash the branch.
+
+Bring the branch up to date with `main` and validate it before either merge.
+Locally, a squash is `git merge --squash <branch>` followed by a signed
+`git commit`, and a merge commit is `git merge --no-ff <branch>`; on GitHub,
+use **Squash and merge** or **Create a merge commit** by the same rule. A
+squashed branch is not an ancestor of `main`, so confirm
+`git diff main <branch>` is empty before deleting it with `git branch -D`.
+
 ## Release Notes
 
 A release note shows its area titles and folds the changes under each one, so

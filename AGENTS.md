@@ -206,6 +206,11 @@ requires approval or is unavailable, stop and ask the user. Do not disable
 commit signing, pass a no-sign flag, replace the configured signer, or otherwise
 bypass the agent.
 
+When merging a branch into `main`, judge whether its commits are worth keeping
+as separate steps. Squash the branch when they are not; create a merge commit
+only when they are. The criteria and commands are in
+[Merging Into main](docs/development/commit-and-release.md#merging-into-main).
+
 Release and migration boundaries are derived from repository state:
 
 - Read `VERSION` for the application version; do not hard-code the current
