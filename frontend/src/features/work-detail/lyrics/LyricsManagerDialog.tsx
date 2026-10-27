@@ -3,6 +3,7 @@ import { AudioLines, Captions, Files, Folder, ListChecks, ListOrdered, RotateCcw
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { CoverageBar } from "@/components/ui/coverage-bar";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { FloatingSelect, type FloatingSelectOption } from "@/components/ui/floating-select";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -23,7 +24,6 @@ import {
   LyricsAssignmentGroup,
   LyricsAssignmentPanel,
   LyricsAssignmentRow,
-  LyricsCoverageBar,
   LyricsLanguageTabs,
 } from "@/features/work-detail/lyrics/LyricsAssignments";
 import { LyricsFilesWorkspace } from "@/features/work-detail/lyrics/LyricsFilesWorkspace";
@@ -352,7 +352,7 @@ export function LyricsManagerDialog({
                   {language === allLyricsLanguages ? t("lyricsManager.fallbackHint") : t("lyricsManager.languageHint")}
                 </p>
                 <p className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                  <LyricsCoverageBar count={covered} total={entries.audio.length} className="w-24" />
+                  <CoverageBar count={covered} total={entries.audio.length} className="w-24" />
                   <span className="tabular-nums">{coverage}</span>
                 </p>
               </div>

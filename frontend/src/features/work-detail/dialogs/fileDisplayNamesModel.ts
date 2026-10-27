@@ -28,7 +28,7 @@ export function splitFileExtension(name: string) {
     : { baseName: name, extension: "" };
 }
 
-/** Folders and files as the directory nests them: each folder's subfolders, then its files, in natural order. */
+/** Folders and files as the directory nests them: each folder, its files, then its subfolders, in natural order. */
 export function displayNameRows(entries: Pick<FileDisplayNames, "folders" | "files">): DisplayNameRow[] {
   type Branch = { folders: Map<string, Branch>; files: DisplayNameRow[]; row: DisplayNameRow | null };
   const root: Branch = { folders: new Map(), files: [], row: null };
@@ -74,15 +74,54 @@ export function displayNameRows(entries: Pick<FileDisplayNames, "folders" | "fil
   }
   const rows: DisplayNameRow[] = [];
   const visit = (branch: Branch) => {
-    for (const name of [...branch.folders.keys()].sort(naturalNameCompare)) {
-      const child = branch.folders.get(name)!;
-      if (child.row) rows.push(child.row);
-      visit(child);
-    }
+    if (branch.row) rows.push(branch.row);
     rows.push(...branch.files.sort((left, right) => naturalNameCompare(left.path, right.path)));
+    for (const name of [...branch.folders.keys()].sort(naturalNameCompare)) visit(branch.folders.get(name)!);
   };
   visit(root);
   return rows;
+}
+
+/** A folder of the editor with the files directly in it. The work folder, and a folder without a name of its own, have no folder row. */
+export type DisplayNameGroup = { path: string; folder: DisplayNameRow | null; files: DisplayNameRow[] };
+
+export function parentFolderPath(path: string) {
+  const index = path.lastIndexOf("/");
+  return index > 0 ? path.slice(0, index) : "";
+}
+
+/** The rows by folder, in row order: each folder row opens a group that its files follow. */
+export function displayNameGroups(rows: DisplayNameRow[]): DisplayNameGroup[] {
+  const groups: DisplayNameGroup[] = [];
+  for (const row of rows) {
+    if (row.kind === "folder") {
+      groups.push({ path: row.path, folder: row, files: [] });
+      continue;
+    }
+    const path = parentFolderPath(row.path);
+    const last = groups[groups.length - 1];
+    if (last?.path === path) last.files.push(row);
+    else groups.push({ path, folder: null, files: [row] });
+  }
+  return groups;
+}
+
+/** Whether a row's real path or stored name in a language contains the filter, ignoring case. */
+export function displayNameMatches(row: DisplayNameRow, query: string, language: string) {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return true;
+  return [row.path, row.names[language] ?? ""].some((text) => text.toLocaleLowerCase().includes(needle));
+}
+
+/** How many rows show a display name in a language once the drafts are saved. */
+export function namedRowCount(rows: DisplayNameRow[], drafts: DisplayNameDrafts, language: string) {
+  return rows.filter((row) => displayNameValue(row, drafts, language).trim() !== "").length;
+}
+
+/** Whether a row's draft would change its stored name in a language. */
+export function displayNameChanged(row: DisplayNameRow, drafts: DisplayNameDrafts, language: string) {
+  const draft = drafts[row.key];
+  return draft !== undefined && draft.trim() !== (row.names[language] ?? "");
 }
 
 /** The value a row's field holds in a language: its draft, else its stored name. */
@@ -98,34 +137,45 @@ export function displayNameChange(
 ): FileDisplayNamesChange | null {
   const change: FileDisplayNamesChange = { language, files: [], folders: [] };
   for (const row of rows) {
-    const draft = drafts[row.key];
-    if (draft === undefined) continue;
-    const name = draft.trim();
-    if (name === (row.names[language] ?? "")) continue;
+    if (!displayNameChanged(row, drafts, language)) continue;
+    const name = drafts[row.key].trim();
     if (row.kind === "file" && row.mediaItemId) change.files.push({ mediaItemId: row.mediaItemId, name });
     else if (row.kind === "folder") change.folders.push({ path: row.path, name });
   }
   return change.files.length + change.folders.length > 0 ? change : null;
 }
 
-/** The real names of the rows, one per line, to translate elsewhere and paste back. */
+/** The real names of the rows, one per line, to translate elsewhere. */
 export function realNamesText(rows: DisplayNameRow[]) {
   return rows.map((row) => row.baseName).join("\n");
 }
 
+/** The names of the rows in a language, one per line, as the text view edits them. */
+export function displayNamesText(rows: DisplayNameRow[], drafts: DisplayNameDrafts, language: string) {
+  return rows.map((row) => displayNameValue(row, drafts, language)).join("\n");
+}
+
 /**
- * Applies pasted names to the rows in order, one line per row. A blank line
- * leaves its row alone, and lines past the last row are ignored.
+ * The drafts the text view's text makes from the drafts it started with: each
+ * line names the row at its position, and an empty line leaves the row its
+ * real name. A row past the last line keeps its starting draft, and lines past
+ * the last row are ignored.
  */
-export function pasteDisplayNames(rows: DisplayNameRow[], drafts: DisplayNameDrafts, text: string): DisplayNameDrafts {
-  const lines = text.replace(/\r\n?/g, "\n").split("\n");
-  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
-  const next = { ...drafts };
+export function textDisplayNames(rows: DisplayNameRow[], base: DisplayNameDrafts, text: string): DisplayNameDrafts {
+  const lines = textLines(text);
+  const next = { ...base };
   rows.forEach((row, index) => {
-    const line = lines[index]?.trim();
-    if (line) next[row.key] = line;
+    if (index < lines.length) next[row.key] = lines[index];
   });
   return next;
+}
+
+/** The lines of a text, without the empty line a final line break leaves. */
+export function textLines(text: string) {
+  if (!text) return [];
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  if (lines[lines.length - 1] === "") lines.pop();
+  return lines;
 }
 
 /** A name is one path segment of at most 255 characters. */

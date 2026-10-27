@@ -1,32 +1,49 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ClipboardCopy, ClipboardPaste, FileText, Folder, Languages, Loader2 } from "lucide-react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { AlignLeft, Languages, ListTree, Loader2, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CoverageBar } from "@/components/ui/coverage-bar";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { Input, Textarea } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import {
+  DisplayNameGroupSection,
+  DisplayNameLanguageTabs,
+  DisplayNamePanel,
+  type DisplayNameRowProps,
+  displayNameFieldAttribute,
+} from "@/features/work-detail/dialogs/FileDisplayNamesList";
+import { DisplayNamesTextView } from "@/features/work-detail/dialogs/FileDisplayNamesText";
+import {
   type DisplayNameDrafts,
+  type DisplayNameRow,
   displayNameChange,
+  displayNameGroups,
   displayNameInvalid,
+  displayNameMatches,
   displayNameRows,
-  displayNameValue,
-  pasteDisplayNames,
+  displayNamesText,
+  namedRowCount,
   realNamesText,
+  textDisplayNames,
+  textLines,
 } from "@/features/work-detail/dialogs/fileDisplayNamesModel";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { api, type FileDisplayNames } from "@/lib/api";
 import { FILE_DISPLAY_NAMES_CHANGED_EVENT } from "@/lib/appEvents";
 import { metadataTagNameLanguages } from "@/lib/metadataTagModel";
 import { interfaceLyricsLanguage } from "@/lib/translationTargets";
 import { cn } from "@/lib/tailwindClassNames";
 
+const panelQuery = "(min-width: 1024px)";
+
 /**
  * Edits the names the directory shows for a work's local files and folders, one
- * metadata language at a time. Files on disk keep their names, and an empty
- * field shows the real name.
+ * metadata language at a time as a list of fields or as one text with a line
+ * per entry, and every language of the selected row beside it on wide screens.
+ * Files on disk keep their names, and an empty name shows the real name.
  */
 export function FileDisplayNamesDialog({
   workId,
@@ -41,15 +58,23 @@ export function FileDisplayNamesDialog({
   const toast = useToast();
   const [entries, setEntries] = useState<FileDisplayNames | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [language, setLanguage] = useState(() => interfaceLyricsLanguage(i18n.resolvedLanguage));
   const languageChosen = useRef(false);
   const [drafts, setDrafts] = useState<Record<string, DisplayNameDrafts>>({});
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [pasteText, setPasteText] = useState("");
+  const [query, setQuery] = useState("");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [view, setView] = useState<"list" | "text">("list");
+  // The text view's text, and the drafts of its language it started from.
+  const [text, setText] = useState("");
+  const [textBase, setTextBase] = useState<DisplayNameDrafts>({});
   const [saving, setSaving] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const wide = useMediaQuery(panelQuery);
 
   useEffect(() => {
     const controller = new AbortController();
+    setLoadFailed(false);
     api
       .getWorkFileDisplayNames(workId, controller.signal)
       .then(setEntries)
@@ -57,7 +82,7 @@ export function FileDisplayNamesDialog({
         if (!controller.signal.aborted) setLoadFailed(true);
       });
     return () => controller.abort();
-  }, [workId]);
+  }, [workId, loadAttempt]);
 
   // The editor starts on the editor's own metadata language, else the interface language.
   useEffect(() => {
@@ -74,12 +99,30 @@ export function FileDisplayNamesDialog({
     return () => controller.abort();
   }, []);
 
+  const rows = useMemo(() => (entries ? displayNameRows(entries) : []), [entries]);
+
+  const startText = (textLanguage: string) => {
+    const base = drafts[textLanguage] ?? {};
+    setTextBase(base);
+    setText(displayNamesText(rows, base, textLanguage));
+  };
+
   const chooseLanguage = (next: string) => {
     languageChosen.current = true;
     setLanguage(next);
+    if (view === "text") startText(next);
   };
 
-  const rows = useMemo(() => (entries ? displayNameRows(entries) : []), [entries]);
+  const chooseView = (next: "list" | "text") => {
+    if (next === "text" && view !== "text") startText(language);
+    setView(next);
+  };
+
+  const editText = (next: string) => {
+    setText(next);
+    setDrafts((current) => ({ ...current, [language]: textDisplayNames(rows, textBase, next) }));
+  };
+  const groups = useMemo(() => displayNameGroups(rows), [rows]);
   const languageDrafts = drafts[language] ?? {};
   const changes = useMemo(
     () =>
@@ -88,11 +131,82 @@ export function FileDisplayNamesDialog({
         .filter((change) => change !== null),
     [drafts, rows],
   );
+  const changedNames = changes.reduce((sum, change) => sum + change.files.length + change.folders.length, 0);
+  const pendingLanguages = useMemo(() => new Set(changes.map((change) => change.language)), [changes]);
+  const languageCounts = useMemo(
+    () =>
+      new Map<string, number>(
+        metadataTagNameLanguages.map(([candidate]) => [
+          candidate,
+          namedRowCount(rows, drafts[candidate] ?? {}, candidate),
+        ]),
+      ),
+    [drafts, rows],
+  );
+  const named = languageCounts.get(language) ?? 0;
   // Stored names are valid, so only an edit can make one invalid.
   const anyInvalid = Object.values(drafts).some((values) => Object.values(values).some(displayNameInvalid));
 
-  const setDraft = (key: string, value: string) =>
-    setDrafts((current) => ({ ...current, [language]: { ...(current[language] ?? {}), [key]: value } }));
+  const visibleGroups = useMemo(
+    () =>
+      groups
+        .map((group) => {
+          const files = group.files.filter((file) => displayNameMatches(file, query, language));
+          const folderMatches = !group.folder || displayNameMatches(group.folder, query, language);
+          return { group, files, visible: files.length > 0 || (Boolean(group.folder) && folderMatches) };
+        })
+        .filter((entry) => entry.visible),
+    [groups, language, query],
+  );
+
+  const panel = wide && rows.length > 0;
+  const panelRow = rows.find((row) => row.key === selectedKey) ?? rows[0] ?? null;
+
+  const setDraftIn = (draftLanguage: string, key: string, value: string) =>
+    setDrafts((current) => ({ ...current, [draftLanguage]: { ...(current[draftLanguage] ?? {}), [key]: value } }));
+
+  // The panel edits the text view's language through its line, so both stay one edit.
+  const setPanelDraft = (draftLanguage: string, row: DisplayNameRow, value: string) => {
+    const index = rows.indexOf(row);
+    const lines = textLines(text);
+    if (view !== "text" || draftLanguage !== language || index >= lines.length) {
+      setDraftIn(draftLanguage, row.key, value);
+      return;
+    }
+    lines[index] = value;
+    editText(lines.join("\n"));
+  };
+
+  const revert = (key: string) =>
+    setDrafts((current) => {
+      const next = { ...(current[language] ?? {}) };
+      delete next[key];
+      return { ...current, [language]: next };
+    });
+
+  // Enter steps to the next name and Shift+Enter back, outside an IME composition.
+  const stepField = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    const fields = Array.from(
+      listRef.current?.querySelectorAll<HTMLInputElement>(`[${displayNameFieldAttribute}]`) ?? [],
+    );
+    const next = fields[fields.indexOf(event.currentTarget) + (event.shiftKey ? -1 : 1)];
+    if (!next) return;
+    next.focus();
+    next.select();
+  };
+
+  const rowProps = (row: DisplayNameRow): DisplayNameRowProps => ({
+    row,
+    drafts: languageDrafts,
+    language,
+    selected: panel ? row.key === panelRow?.key : null,
+    onSelect: () => setSelectedKey(row.key),
+    onChange: (value) => setDraftIn(language, row.key, value),
+    onRevert: () => revert(row.key),
+    onFieldKeyDown: stepField,
+  });
 
   const save = async () => {
     if (changes.length === 0 || anyInvalid) return;
@@ -123,147 +237,178 @@ export function FileDisplayNamesDialog({
     }
   };
 
-  const applyPaste = () => {
-    setDrafts((current) => ({ ...current, [language]: pasteDisplayNames(rows, current[language] ?? {}, pasteText) }));
-    setPasteText("");
-    setPasteOpen(false);
-  };
+  const languageLabel = t(metadataTagNameLanguages.find(([candidate]) => candidate === language)?.[1] ?? "");
+
+  const views = [
+    ["list", ListTree, t("fileDisplayNames.viewList")],
+    ["text", AlignLeft, t("fileDisplayNames.viewText")],
+  ] as const;
+
+  const list =
+    view === "text" ? (
+      <DisplayNamesTextView
+        rows={rows}
+        drafts={languageDrafts}
+        language={language}
+        languageLabel={languageLabel}
+        text={text}
+        onTextChange={editText}
+        onLineSelect={(row) => row && setSelectedKey(row.key)}
+        onCopyRealNames={() => void copyRealNames()}
+      />
+    ) : (
+      <div ref={listRef} className="space-y-3">
+        {visibleGroups.map(({ group, files }) => (
+          <DisplayNameGroupSection key={group.path || "."} group={group} files={files} rowProps={rowProps} />
+        ))}
+        {visibleGroups.length === 0 && (
+          <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+            {t("fileDisplayNames.noMatches", { query: query.trim() })}
+          </p>
+        )}
+      </div>
+    );
 
   return (
-    <Dialog onClose={onClose} size="xl" dismissible={!saving && changes.length === 0}>
+    <Dialog
+      onClose={onClose}
+      size="full"
+      dismissible={!saving && changes.length === 0}
+      marker="file-display-names"
+      className={cn(
+        "max-h-[min(90vh,var(--dialog-max-height))]",
+        rows.length > 0 && "h-[var(--dialog-max-height)] md:h-[min(90dvh,var(--dialog-max-height))]",
+        panel ? "max-w-6xl" : "max-w-4xl",
+      )}
+    >
       <DialogHeader
         icon={<Languages className="h-4 w-4" />}
         title={t("fileDisplayNames.title")}
         description={t("fileDisplayNames.description")}
-        onClose={onClose}
+        onClose={saving ? undefined : onClose}
         closeLabel={t("content.close")}
       />
-      <DialogBody className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div role="group" aria-label={t("fileDisplayNames.language")} className={segmentedListClassName()}>
-            {metadataTagNameLanguages.map(([candidate, labelKey]) => (
-              <button
-                key={candidate}
-                type="button"
-                aria-pressed={candidate === language}
-                className={segmentedItemClassName(candidate === language)}
-                onClick={() => chooseLanguage(candidate)}
-              >
-                {t(labelKey)}
-              </button>
-            ))}
-          </div>
-          <div className="ml-auto flex items-center gap-1.5">
-            <Button variant="outline" size="sm" disabled={rows.length === 0} onClick={() => void copyRealNames()}>
-              <ClipboardCopy className="h-4 w-4" />
-              {t("fileDisplayNames.copyRealNames")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={rows.length === 0}
-              aria-expanded={pasteOpen}
-              onClick={() => setPasteOpen((open) => !open)}
-            >
-              <ClipboardPaste className="h-4 w-4" />
-              {t("fileDisplayNames.pasteNames")}
-            </Button>
-          </div>
-        </div>
-        {pasteOpen && (
-          <div className="space-y-2 rounded-md border bg-muted/40 p-3">
-            <p className="text-xs text-muted-foreground">{t("fileDisplayNames.pasteHint", { count: rows.length })}</p>
-            <Textarea
-              className="min-h-28 w-full py-2"
-              value={pasteText}
-              aria-label={t("fileDisplayNames.pasteNames")}
-              onChange={(event) => setPasteText(event.target.value)}
+      {rows.length > 0 && (
+        <div className="shrink-0 space-y-2.5 border-b bg-muted/20 px-4 py-3 sm:px-5">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <DisplayNameLanguageTabs
+              selected={language}
+              counts={languageCounts}
+              total={rows.length}
+              pending={pendingLanguages}
+              onSelect={chooseLanguage}
             />
-            <div className="flex justify-end">
-              <Button size="sm" disabled={!pasteText.trim()} onClick={applyPaste}>
-                {t("fileDisplayNames.applyPaste")}
-              </Button>
+            <div className="flex min-w-0 flex-1 basis-64 items-center justify-end gap-1.5">
+              {view === "list" && (
+                <label className="relative min-w-0 flex-1 sm:max-w-64">
+                  <Search
+                    className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <Input
+                    type="search"
+                    fieldSize="sm"
+                    className="w-full pl-8"
+                    value={query}
+                    placeholder={t("fileDisplayNames.filter")}
+                    aria-label={t("fileDisplayNames.filter")}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </label>
+              )}
+              <div role="group" aria-label={t("fileDisplayNames.view")} className={segmentedListClassName("shrink-0")}>
+                {views.map(([value, Icon, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={view === value}
+                    className={segmentedItemClassName(view === value, "h-9 gap-1.5 px-2.5 sm:h-7")}
+                    onClick={() => chooseView(value)}
+                  >
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        )}
-        {!entries && !loadFailed && (
-          <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {t("fileDisplayNames.loading")}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <p className="min-w-0 flex-1 basis-80 text-xs text-muted-foreground">
+              {view === "text" ? (
+                t("fileDisplayNames.textHint", { language: languageLabel })
+              ) : (
+                <>
+                  {t("fileDisplayNames.languageHint", { language: languageLabel })}
+                  <span className="hidden pointer-fine:inline"> {t("fileDisplayNames.keyboardHint")}</span>
+                </>
+              )}
+            </p>
+            <p className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+              <CoverageBar count={named} total={rows.length} className="w-24" />
+              <span className="tabular-nums">
+                {t("fileDisplayNames.coverage", { count: named, total: rows.length })}
+              </span>
+            </p>
           </div>
-        )}
-        {loadFailed && <p className="py-6 text-sm text-muted-foreground">{t("fileDisplayNames.loadFailed")}</p>}
-        {entries && rows.length === 0 && (
-          <p className="py-6 text-sm text-muted-foreground">{t("fileDisplayNames.noLocalFiles")}</p>
-        )}
-        {rows.length > 0 && (
-          <ul className="space-y-1">
-            {rows.map((row) => {
-              const value = displayNameValue(row, languageDrafts, language);
-              const rowInvalid = displayNameInvalid(value);
-              const Icon = row.kind === "folder" ? Folder : FileText;
-              return (
-                <li
-                  key={row.key}
-                  className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-3"
-                >
-                  <span
-                    className="flex min-w-0 items-center gap-2 text-sm"
-                    style={{ paddingLeft: Math.min(row.depth, 6) * 12 }}
-                    title={row.path}
-                  >
-                    <Icon
-                      className={cn(
-                        "h-4 w-4 shrink-0",
-                        row.kind === "folder" ? "text-primary" : "text-muted-foreground",
-                      )}
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0 truncate">
-                      {row.baseName}
-                      {row.extension && <span className="text-muted-foreground">{row.extension}</span>}
-                    </span>
-                  </span>
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <Input
-                      fieldSize="sm"
-                      className="min-w-0 flex-1"
-                      value={value}
-                      placeholder={row.baseName}
-                      maxLength={255}
-                      aria-label={t("fileDisplayNames.nameFor", { name: row.baseName + row.extension })}
-                      aria-invalid={rowInvalid}
-                      onChange={(event) => setDraft(row.key, event.target.value)}
-                    />
-                    {/* Every row keeps the same suffix width, so the fields line up. */}
-                    <span className="w-10 shrink-0 truncate text-xs text-muted-foreground" aria-hidden="true">
-                      {row.extension}
-                    </span>
-                    {/* A stored name an LLM wrote keeps its mark until someone edits or clears it. */}
-                    {row.llmLanguages.includes(language) && value === (row.names[language] ?? "") && value !== "" && (
-                      <Badge
-                        variant="info"
-                        className="shrink-0 px-1.5 py-0 text-2xs"
-                        title={t("fileDisplayNames.llmName")}
-                      >
-                        {t("workTitles.llmBadge")}
-                      </Badge>
-                    )}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </DialogBody>
+        </div>
+      )}
+      {rows.length === 0 ? (
+        <DialogBody>
+          {!entries && !loadFailed && (
+            <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t("fileDisplayNames.loading")}
+            </div>
+          )}
+          {loadFailed && (
+            <div className="flex flex-wrap items-center gap-3 py-6 text-sm text-muted-foreground">
+              {t("fileDisplayNames.loadFailed")}
+              <Button variant="outline" size="sm" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
+                {t("fileDisplayNames.retry")}
+              </Button>
+            </div>
+          )}
+          {entries && !loadFailed && (
+            <p className="py-6 text-sm text-muted-foreground">{t("fileDisplayNames.noLocalFiles")}</p>
+          )}
+        </DialogBody>
+      ) : panel ? (
+        <div className="flex min-h-0 flex-1">
+          <DialogBody className="min-w-0">{list}</DialogBody>
+          <DisplayNamePanel
+            row={panelRow}
+            drafts={drafts}
+            language={language}
+            onLanguage={chooseLanguage}
+            onChange={(draftLanguage, value) => panelRow && setPanelDraft(draftLanguage, panelRow, value)}
+          />
+        </div>
+      ) : (
+        <DialogBody>{list}</DialogBody>
+      )}
       <DialogFooter>
-        {anyInvalid && <span className="mr-auto text-xs text-error">{t("fileDisplayNames.invalidName")}</span>}
-        <Button variant="outline" onClick={onClose} disabled={saving}>
+        <span
+          className={cn(
+            "mr-auto flex min-w-0 items-center gap-2 text-xs",
+            anyInvalid ? "text-error" : changedNames > 0 ? "font-medium text-foreground" : "text-muted-foreground",
+          )}
+          role="status"
+        >
+          {!anyInvalid && changedNames > 0 && (
+            <span className="h-2 w-2 shrink-0 rounded-full bg-info" aria-hidden="true" />
+          )}
+          {anyInvalid
+            ? t("fileDisplayNames.invalidName")
+            : changedNames > 0
+              ? t("fileDisplayNames.pending", { count: changedNames })
+              : t("fileDisplayNames.noChanges")}
+        </span>
+        <Button variant="ghost" onClick={onClose} disabled={saving}>
           {t("content.cancel")}
         </Button>
         <Button onClick={() => void save()} disabled={saving || changes.length === 0 || anyInvalid}>
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-          {t("fileDisplayNames.save")}
+          {saving ? t("fileDisplayNames.saving") : t("fileDisplayNames.save")}
         </Button>
       </DialogFooter>
     </Dialog>

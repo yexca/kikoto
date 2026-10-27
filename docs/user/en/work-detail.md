@@ -272,10 +272,16 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   names still decide the order, track numbers, the recommended folder, and
   lyrics matching, and file management, Fetch, previews, and downloads use
   them. A user with library write access edits the names from the local
-  source's **Edit display names** option, one language at a time: an empty
-  field shows the real name, a file keeps its own extension, and **Copy real
-  names** and **Paste names** move the whole list out and back in, one name
-  per line. A file or folder that **Manage files** moves keeps its names; one
+  source's **Edit display names** option. Its list groups the files under
+  their folders and edits one language at a time; each language shows how
+  many entries it names and marks unsaved changes, and Enter moves to the
+  next name. An empty field shows the real name, and a file keeps its own
+  extension. **Text** shows the same names as one text, a line per entry
+  beside its real name, to paste a list translated elsewhere or edit it in
+  place; it says when the lines and the entries differ in number, and
+  **Copy** above the real names copies them, one per line. On a wide screen
+  the selected file or folder shows its names in every language beside the
+  list. A file or folder that **Manage files** moves keeps its names; one
   renamed outside Kikoto loses them.
 - The local source's **Manage lyrics** option lists every local audio file
   with a lyrics choice. A user with library write access can assign any local

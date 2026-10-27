@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CoverageBar } from "@/components/ui/coverage-bar";
 import { FloatingSelect, type FloatingSelectOption } from "@/components/ui/floating-select";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import {
@@ -93,22 +94,6 @@ export function LyricsLanguageTabs({
   );
 }
 
-/** How many tracks have lyrics, as a short bar beside its count. */
-export function LyricsCoverageBar({ count, total, className }: { count: number; total: number; className?: string }) {
-  const ratio = total > 0 ? count / total : 0;
-  return (
-    <span className={cn("block h-1.5 overflow-hidden rounded-full bg-muted", className)} aria-hidden="true">
-      <span
-        className={cn(
-          "block h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none",
-          ratio >= 1 ? "bg-success" : "bg-primary/70",
-        )}
-        style={{ width: `${Math.round(ratio * 100)}%` }}
-      />
-    </span>
-  );
-}
-
 /** A folder of tracks with its coverage in the selected language. */
 export function LyricsAssignmentGroup({
   folder,
@@ -126,11 +111,11 @@ export function LyricsAssignmentGroup({
   const coverage = t("lyricsManager.groupCoverage", { count: covered, total });
   return (
     <section aria-label={name} className="rounded-lg border bg-card">
-      <h4 className="sticky top-0 z-10 flex items-center gap-2 rounded-t-lg border-b bg-card/95 px-3 py-2 text-xs font-medium text-muted-foreground backdrop-blur-sm sm:px-4">
+      <h4 className="sticky -top-4 z-10 flex items-center gap-2 rounded-t-lg border-b bg-card/95 px-3 py-2 text-xs font-medium text-muted-foreground backdrop-blur-sm sm:px-4">
         <Folder className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span className="min-w-0 truncate text-foreground">{name}</span>
         <span className="ml-auto flex shrink-0 items-center gap-2" title={coverage}>
-          <LyricsCoverageBar count={covered} total={total} className="w-16" />
+          <CoverageBar count={covered} total={total} className="w-16" />
           <span className="tabular-nums" aria-hidden="true">
             {covered}/{total}
           </span>

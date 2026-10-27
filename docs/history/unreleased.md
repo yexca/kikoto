@@ -47,6 +47,15 @@
   **Managed lyrics** lists how many files each language holds, the language
   and copy-or-move choices sit together with the folder the lyrics go to, and
   a language still to choose for selected lyrics is highlighted.
+- **Edit display names** groups the files under their folders, with each
+  folder's own name in its head, and filters by name. Each language shows how
+  many entries it names and marks unsaved changes, a changed row can be
+  undone on its own, and Enter moves to the next name. **Text** replaces
+  **Copy real names** and **Paste names**: the names become one text, a line
+  per entry beside its real name, to paste a translated list into or edit in
+  place, and it says when the lines and the entries differ in number. On wide
+  screens the selected file or folder shows its names in every language
+  beside the list, where any of them can be edited.
 - **Find identical files** sits in the head of **This folder** and says what
   it does before it starts. Its result is one line with how many files have
   an identical copy and how much the suggested deletions free; marked files
