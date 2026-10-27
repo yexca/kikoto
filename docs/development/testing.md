@@ -170,18 +170,28 @@ Do not export production identifiers only to move a white-box test into the
 integration suite. Extract a domain service first, then test its public
 contract.
 
-HTTP handler tests build the real packaged schema once per test process, then
-copy its checkpointed database image into each test's private temporary file.
-Each copy uses the production WAL and foreign-key settings but a single pooled
-connection, so a path that issues a query while its own cursor or transaction
-still holds a connection blocks deterministically instead of passing until
-concurrent production requests exhaust the pool. A test that hangs in
-`database/sql.(*DB).conn` has this defect: read the rows and close the cursor
-before enrichment queries. Tests that deliberately exercise concurrent
-connections use `openMigratedTestDBWithProductionPool`. No writable database or
-WAL is shared between tests. Storage migration tests
-continue to exercise fresh databases and the numbered upgrade chain directly.
-Do not replace this with a checked-in database or reuse a mutated test copy.
+A test that needs the current schema opens its database through
+`internal/storage/storagetest`. The package migrates the embedded catalog once
+per test process, the same catalog and options `storage.Migrate` reads from
+disk, and copies the checkpointed database image into each test's private
+temporary file. Under the race detector, migrating the pure-Go SQLite engine
+costs seconds per database, while copying the image costs a fraction of one.
+`storagetest.Open` and `storagetest.OpenFile` open the copy with the production
+WAL, foreign-key, and pool settings; a test that needs one connection sets it
+on the returned database. `storagetest.NewTemplate` adds seed rows that every
+test of a package starts from, applied once before the image is taken. No
+writable database or WAL is shared between tests. Tests of a migration or of
+the numbered upgrade chain build their own databases and run the real
+migrations. Do not replace the template with a checked-in database or reuse a
+mutated test copy.
+
+HTTP handler tests start from a template seeded with a configured standard
+library and use a single pooled connection, so a path that issues a query while
+its own cursor or transaction still holds a connection blocks deterministically
+instead of passing until concurrent production requests exhaust the pool. A
+test that hangs in `database/sql.(*DB).conn` has this defect: read the rows and
+close the cursor before enrichment queries. Tests that deliberately exercise
+concurrent connections use `openMigratedTestDBWithProductionPool`.
 
 ### Coverage
 

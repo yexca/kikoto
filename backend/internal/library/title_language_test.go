@@ -34,7 +34,7 @@ func titleSortCodes(t *testing.T, store *Store, languages []string, ordinals ...
 // Stored remote edition titles participate in the same title sort and search
 // queues as DLsite titles, without requiring a second library work.
 func TestRemoteLanguageTitlesSortSearchAndRefresh(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	ctx := context.Background()
 	workID := insertSearchWork(t, db, 30, "Zulu original")
 	insertSearchWork(t, db, 31, "Bravo original")
@@ -126,7 +126,7 @@ func queuedTitleLanguageWorks(t *testing.T, db *sql.DB) []int64 {
 // A title sort follows the titles each viewer sees, from stored language
 // titles that no preference change rewrites.
 func TestTitleSortFollowsViewerLanguage(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	translatedFamily := insertSearchWork(t, db, 20, "Bravo original")
 	translation := insertSearchWork(t, db, 21, "Bravo original")
 	logicalID := searchEditionFamily(t, db, []int{20, 21}, translatedFamily, translation)
@@ -163,7 +163,7 @@ func TestTitleSortFollowsViewerLanguage(t *testing.T) {
 // An edition's title is part of every family member's titles, so changing
 // it queues the whole family.
 func TestTitleLanguageQueueCoversWholeFamily(t *testing.T) {
-	db := openSearchTestDB(t, "../../migrations")
+	db := openSearchTestDB(t)
 	canonical := insertSearchWork(t, db, 23, "Example original")
 	translation := insertSearchWork(t, db, 24, "Example original")
 	logicalID := searchEditionFamily(t, db, []int{23, 24}, canonical, translation)

@@ -3,11 +3,10 @@ package accesspolicy
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/yexca/kikoto/backend/internal/storage"
+	"github.com/yexca/kikoto/backend/internal/storage/storagetest"
 )
 
 func TestStoreDefaultsAnonymousAccessToDisabled(t *testing.T) {
@@ -104,14 +103,5 @@ func TestStoreRejectsMalformedOrUnavailableSettings(t *testing.T) {
 
 func openAccessPolicyTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := storage.Migrate(db, filepath.Join("..", "..", "migrations")); err != nil {
-		_ = db.Close()
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
+	return storagetest.Open(t)
 }
