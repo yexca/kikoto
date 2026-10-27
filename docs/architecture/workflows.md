@@ -541,7 +541,7 @@ notification panel and Quick actions open this same surface. Events,
 candidates, progress, retries, and cancellation are available within the panel.
 
 A run record's `subject` names the one target the run acts on, read from its
-input: a work code for Fetch, Track, ASR, LLM translation, Translate with AI, Edit files, media
+input: a work code for Fetch, Track, ASR, LLM translation, Translate with AI, folder edit, media
 cache, local media delete, single-work metadata refresh, and a metadata sync
 of one work; the circle code for a circle catalog sync or a circle-scoped
 metadata sync; the series id for a series catalog sync; the voice actor's name
@@ -1105,7 +1105,7 @@ a stream URL; it reads as available again once the pool is back, without a
 scan. Library filters and counts still treat such a work as local. Every read,
 write, or deletion of library files checks the pool of the path it touches
 first: streaming, download, text preview, HLS playback, ASR, local file
-refresh, Edit files and its copy and merge folders, lyrics edits and their copy
+refresh, folder edits and their copy and merge folders, lyrics edits and their copy
 folders, generated-lyrics publication, file and folder deletion, workflow
 review cleanup, Fetch trash deletion, and a starting or resuming Fetch run. A
 refused request answers `409` with `storage_pool_offline` in pool mode or

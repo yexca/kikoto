@@ -99,12 +99,18 @@ export function useFetchComposeWorkspace({
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [primaryAttempt]);
 
-  const selectResource = useCallback(
+  const openResource = useCallback(
     (resource: FolderEditResource) => {
-      setActiveId(resource.id);
       if (!files[resource.id] || files[resource.id].status === "error") void loadResource(resource);
     },
     [files, loadResource],
+  );
+  const selectResource = useCallback(
+    (resource: FolderEditResource) => {
+      setActiveId(resource.id);
+      openResource(resource);
+    },
+    [openResource],
   );
 
   const [layout, setLayout] = useState<FolderEditLayout>(emptyFolderEditLayout);
@@ -247,6 +253,7 @@ export function useFetchComposeWorkspace({
     lyrics,
     activeResource: resources.find((resource) => resource.id === activeId) ?? primary,
     selectResource,
+    openResource,
     retryResource: (resource: FolderEditResource) => void loadResource(resource),
     setSelected,
     setLyricsRole,

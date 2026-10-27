@@ -271,7 +271,7 @@ administrators.
 - Works on a disk that is not mounted stay in the library. Their cards show
   **Local · Offline**, and the work's local files say that the disk is not
   mounted. Until it is mounted again, their files cannot be played, downloaded,
-  edited, or deleted, and **Edit files** shows such a folder as offline and takes
+  edited, or deleted, and **Manage files** shows such a folder as offline and takes
   nothing from it. Once the disk is back, the files are available again without
   a scan.
 

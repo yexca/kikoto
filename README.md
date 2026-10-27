@@ -46,7 +46,7 @@ in any browser and in the Android and iOS apps.
       <h3>📚 One library, every location</h3>
       Local, cached, tracked, and remote files are states of one work. Use
       one data directory or a <b>storage pool</b> per disk, and
-      <b>Edit files</b> to gather scattered copies into one folder.
+      <b>Manage files</b> to gather scattered copies into one folder.
     </td>
     <td width="50%" valign="top">
       <h3>🌐 Remote sources</h3>

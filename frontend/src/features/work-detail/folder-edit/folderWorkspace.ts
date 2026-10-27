@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 
+import type { PendingDeletion, PendingDeletions } from "@/features/work-detail/folder-edit/fileWorkspaceModel";
 import {
   folderEditCollision,
   localFolderFiles,
@@ -50,6 +51,8 @@ export type FolderWorkspace = {
   lyrics: FolderEditLyricsRoles;
   activeResource: FolderEditResource;
   selectResource: (resource: FolderEditResource) => void;
+  /** Loads a place's files for a pane that shows it, without making it the active place. */
+  openResource: (resource: FolderEditResource) => void;
   retryResource: (resource: FolderEditResource) => void;
   setSelected: (resourceId: string, paths: ReadonlySet<string>) => void;
   /** Adds the files as lyrics of a language, or as plain files for `null`. */
@@ -78,6 +81,33 @@ export type FolderWorkspace = {
   arrange?: FolderWorkspaceArrange;
   /** Present where local places can be merged into the final folder. */
   merge?: FolderWorkspaceMerge;
+  /** Present where every change of the edit can be undone at once, and the undo taken back. */
+  undo?: {
+    canUndo: boolean;
+    undoAll: () => void;
+    /** The last undo can still be taken back: nothing changed since. */
+    canRestore: boolean;
+    restore: () => void;
+  };
+};
+
+/**
+ * What Manage files adds to the workspace: a toolbar for the whole folder,
+ * tools and notes for the edited folder's files, and everything the edit
+ * deletes, which each file's menu can add to or take from.
+ */
+export type FolderWorkspaceManage = {
+  toolbar?: ReactNode;
+  /** Shown above the edited folder's files. */
+  thisFolderTools?: ReactNode;
+  /** A line under a file of the edited folder, by its path. */
+  fileNote?: (path: string) => ReactNode;
+  /** A note after a folder's name, by its path, in the edited folder and the final folder. */
+  folderNote?: (path: string) => ReactNode;
+  pending: PendingDeletions;
+  onKeep: (item: PendingDeletion) => void;
+  /** Deletes a file of the edited folder, or drops a file the edit adds. */
+  onDiscard: (entry: FolderEditResultEntry) => void;
 };
 
 /** Arranges the final folder: moves its files and folders, and creates, renames, and deletes folders. */
@@ -223,7 +253,18 @@ export function useFolderWorkspaceFiles() {
     }
   }, []);
 
-  return { files, setFiles, selection, setSelection, setSelected, lyrics, setLyricsRole, loadResource, readyFiles };
+  return {
+    files,
+    setFiles,
+    selection,
+    setSelection,
+    setSelected,
+    lyrics,
+    setLyrics,
+    setLyricsRole,
+    loadResource,
+    readyFiles,
+  };
 }
 
 /**

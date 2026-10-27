@@ -110,7 +110,7 @@ Until a background update finishes, the work keeps its last saved tag set, inclu
 
 ## Custom works
 
-A [custom work](settings.md#metadata) has no provider metadata and no remote source. Its detail shows no DLsite link, DLsite rating, sales, or metadata notice, and offers no metadata refresh, remote source tabs, or source checks; the directory lists only its local folders. The metadata editor has no **Fetch for edit** and no Links section, so a custom work takes no metadata link, purchase bonus parent, or bundle contents; its title, description, age rating, cover, tags, and credits are edited by hand. **Edit files** and the **Lyrics files** tab of **Manage lyrics** list only local folders and editions. When its folder is missing, the directory explains that a scan finds the work again once a folder's name carries its KT code in brackets, such as `[KT00000001]`. Its cover is one of its local images; resetting the cover shows the work code in its place.
+A [custom work](settings.md#metadata) has no provider metadata and no remote source. Its detail shows no DLsite link, DLsite rating, sales, or metadata notice, and offers no metadata refresh, remote source tabs, or source checks; the directory lists only its local folders. The metadata editor has no **Fetch for edit** and no Links section, so a custom work takes no metadata link, purchase bonus parent, or bundle contents; its title, description, age rating, cover, tags, and credits are edited by hand. **Manage files** and the **Lyrics files** tab of **Manage lyrics** list only local folders and editions. When its folder is missing, the directory explains that a scan finds the work again once a folder's name carries its KT code in brackets, such as `[KT00000001]`. Its cover is one of its local images; resetting the cover shows the work code in its place.
 
 ## Purchase bonuses
 
@@ -275,7 +275,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   source's **Edit display names** option, one language at a time: an empty
   field shows the real name, a file keeps its own extension, and **Copy real
   names** and **Paste names** move the whole list out and back in, one name
-  per line. A file or folder that **Edit files** moves keeps its names; one
+  per line. A file or folder that **Manage files** moves keeps its names; one
   renamed outside Kikoto loses them.
 - The local source's **Manage lyrics** option lists every local audio file
   with a lyrics choice. A user with library write access can assign any local
@@ -304,7 +304,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   it or deletes from it as managed lyrics. A `lyrics_kikoto` folder that Kikoto
   did not create, or a file of that name, stops lyrics from being added until
   you rename or move it. The tab edits them in three
-  columns, like **Edit files**: the places lyrics can come from on the left, the
+  columns, like **Manage files**: the places lyrics can come from on the left, the
   lyrics files of the chosen place in the middle, and the managed lyrics as they
   will be on the right. When the work has several local folders, the right
   column chooses the one to edit.
@@ -327,7 +327,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   same content is left alone. A different file with the same name is a conflict
   you resolve in that column: keep the existing file, replace it, keep both, or
   rename the incoming file; nothing has to be deleted first. Folders and files
-  in the way are handled as in **Edit files**. **Apply changes**
+  in the way are handled as in **Manage files**. **Apply changes**
   asks for confirmation before it deletes files. With library write access,
   **Assign added lyrics to matching tracks** assigns each added file in its
   language to the track it matches by file name, then by track order; a track
@@ -335,81 +335,114 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   use a moved file follow it to its language; a copied file is a new file, and
   the work's own file keeps its assignments. A remote edition you read from is
   not added to the library.
-- **Manage files** on a local work has **Manage as lyrics** for lyrics that are
-  elsewhere in the work folder. Select `.lrc`, `.vtt`, `.srt`, `.ass`, `.ssa`, or `.txt`
-  files and choose it to open **Lyrics files** with those files selected under
-  **Other lyrics in this folder**.
-- **Manage files** hides the lyrics Kikoto manages by default when **Manage
-  lyrics** is available for the work. A **Lyrics managed by Kikoto** row
-  counts them and opens **Manage lyrics** on its **Lyrics files** tab. Its
-  **Show in the list** switch lists them with the other files, where they are
-  selected like any file. While they are hidden, selecting the whole work
-  folder for deletion includes them; any smaller selection leaves them in
-  place.
 - **Manage lyrics** has a **Transcribe** tab for users with library write and
   workflow permission; without a [speech recognition
   service](settings.md#asr-services) the tab says that none is configured. See
   [Transcribe](#transcribe). Demo shows it with samples.
-- **Quick select** in **Manage files** selects files by location or format.
-  On a local work it also has **Find identical files**, which compares
-  the local files of every edition and folder of the work by content, so a
-  translated edition's renamed audio is recognized as the original's. A file
-  with an identical copy is marked with the copy's location, and two
-  selections appear: **Also in another folder** selects the listed files that
-  exist elsewhere with the same content, and **Repeated in this folder**
-  selects every copy except the first inside the listed folder. Files that
-  only resemble each other, such as the same track encoded again, are not
-  identical and are not marked. Nothing is deleted until you review the
-  deletion.
-- **Manage files** on a local work has **Edit files** for users who manage
-  local files. It edits the listed folder in three columns. **Sources** lists
-  **This folder**, every other local folder of the work's editions, and every
-  edition a configured remote source was last found to offer. **Check sources**
-  beside **Remote**, for users who may check sources, asks every remote source
-  that answers again about each edition of the work and refreshes the list.
-  **Select** shows the files of the
-  chosen place: clearing a file of this folder removes it, and selecting a
-  file anywhere else adds it. **Final folder** shows the folder as it will be
-  and marks each file as kept, removed, moved, copied, downloaded, replaced,
-  or already there; a file just selected shows as checking until the preview
-  includes it. It is arranged like a file manager: drag a file or folder onto
-  a folder to move it there, drag files or folders from the middle column onto
-  a folder to add them there, which leaves the middle column as it is, and use
-  **New folder** or a folder's menu to create, rename, and delete folders.
-  Each row's menu also has **Move to**, for touch screens and keyboards.
-  Deleting a folder that holds something asks first, then moves what it held
-  up one level. A name already taken where a file or folder lands gets a
+- **Manage files** on a local work opens the file workspace for users who
+  manage local files. It changes one local folder of the work, **This
+  folder**; every other place is a source it copies or downloads from. Its
+  places are **This folder**, every other local folder of the work's editions,
+  and every edition a configured remote source was last found to offer, and
+  each is marked by what the edit may do there, in words, an icon, and a
+  color of its own: **This folder** is **Edited**, another local folder
+  offers **Copy** or **Merge**, and a remote edition is **Read-only**. A place's files load
+  when it is first shown, so **This folder** shows at once and a remote
+  edition is read only when you open it. **Check sources** beside **Remote**,
+  for users who may check sources, asks every remote source that answers
+  again about each edition of the work and refreshes the list. Anyone else,
+  and **Manage cache** on a tracked source, gets a list of the source's files
+  to select and delete.
+- On a phone and a narrow window the workspace has four views: **Sources**,
+  **Select** with the files of the chosen place, **Final folder** with the
+  folder as it will be, and **To delete**. In **Select**, a selected file of
+  **This folder** is kept and a cleared one is deleted when the edit is
+  applied; **Keep all** and **Delete all** do this for every file. A selected
+  file anywhere else is added. **Final folder** marks each file as kept,
+  moved, copied, downloaded, replaced, or already there; a file just selected
+  shows as checking until the preview includes it.
+- From about 1280 pixels of width, the workspace has three fixed columns:
+  the other places on the left, **This folder** in the middle, and **To be
+  deleted** on the right. **This folder** always shows the folder as it will
+  be. The left column starts with one prompt for the work's other local
+  folders and one for all its remote editions, whichever sources offer them,
+  each with how many there are; the local folders' prompt names each folder
+  with **Copy** or **Merge**. Opening one shows the files of one folder or
+  edition, its picker switches to another of the same kind, and its back
+  button returns to the prompts; a remote edition loads only when you open
+  it. Dragging files or folders from the left into **This folder** copies
+  them there, or downloads them from a remote edition; dragging within **This
+  folder** moves them. While a drag is over a folder, the folder names what
+  releasing it does, and **This folder** says what the drop added. Any other
+  place takes no drops and offers no move or delete, and its menu says why:
+  the edit changes only **This folder**.
+- **Undo all changes** drops every change of the edit at once, from
+  selections, deletions, moves, and new folders to merges, lyrics roles, and
+  conflict choices, and starts again from the folder as it is. Nothing on disk
+  changes, so it asks nothing first; until you change something again,
+  **Restore** beside the status brings the undone changes back.
+- Dragging is a shortcut. Each row has a menu for touch screens and keyboards:
+  in **This folder**, **Move to** and **Delete** for a file, or **Do not add**
+  for a file the edit adds, and for a folder **New folder**, **Rename**,
+  **Move to**, and **Delete folder**; in another place, **Copy to This
+  folder** or **Download to This folder**, which chooses the folder it goes
+  to. Deleting a folder that holds something asks first, then moves what it
+  held up one level. A name already taken where a file or folder lands gets a
   number, such as `01 (2).mp3`. A file you clear gives up the place you moved
   it to, so selecting it again returns it to its own path. When two files
-  would still end up at one path, the edit names that path and waits until you
-  move or clear one of them. A moved file keeps its playback progress,
+  would still end up at one path, the edit names that path and waits until
+  you move or clear one of them. A moved file keeps its playback progress,
   lyrics, and other references. Folders the edit empties are removed, and
-  folders you create stay even when empty. Kikoto's `lyrics_kikoto` folder is
-  arranged only through lyrics roles, so a dragged selection that holds it is
-  not dropped. Files from another local folder are
-  copied, and that folder is left unchanged unless **Merge into this folder**
-  is on for it. The switch turns on once the folder's files have loaded, and a
-  folder on an offline storage pool is never merged. A merged folder takes all
-  its files when none are selected yet,
-  and once this folder holds what the edit copies, the merged folder is
-  deleted with everything it still holds. Files from a remote edition are
-  downloaded, which also
-  needs permission to fetch, and the edition is not added to the library. A
-  lyrics file (`.lrc`, `.vtt`, `.srt`, `.ass`, `.ssa`, or `.txt`) from another place
-  can be added as lyrics instead of at its own path: choose a language under
-  its name, or for all selected lyrics files of the place under **Selected
-  lyrics files**, and it goes to that language's folder inside
-  `lyrics_kikoto`, as in **Lyrics files**. You declare the language; Kikoto
-  does not guess it. With library write access, **Assign added lyrics to
-  matching tracks** assigns each added lyrics file in its language to the track
-  it matches by file name, then by track order, including tracks the same edit
-  adds; a track that already has lyrics in that language keeps them. A
-  file that would land on a different file of the same name is a conflict:
-  keep the file in the folder, replace it, keep both, or rename the incoming
-  file. A folder or link already at that name is never replaced, so only the
-  other choices are offered. A file where a folder of the incoming path belongs
-  leaves only keeping that file or renaming the incoming file to another path.
-  **Apply changes** asks for both deletion confirmations when files are
+  folders you create stay even when empty.
+- **To be deleted** lists everything the edit deletes, by folder, with their
+  number and size: the files of **This folder** you cleared or deleted, a file
+  an incoming file replaces, and each folder merged into this one. **Keep**
+  takes an item back out of the edit. It is the edit before it is applied, not
+  a place deleted files go to: nothing is deleted until you apply the edit,
+  and what it deletes cannot be restored.
+- **Quick select** in **Select**, shown open in the wide **This folder** column,
+  keeps or deletes the files of **This folder** by format and has **Find
+  identical files**, which compares the local files of every edition and
+  folder of the work by content, so a translated edition's renamed audio is
+  recognized as the original's. A file with an identical copy is marked with
+  the copy's location, and two groups appear: **Also in another folder**, the
+  files that exist elsewhere with the same content, and **Repeated in this
+  folder**, every copy except the first inside the folder. **Delete them**
+  adds a group to **To be deleted**. Files that only resemble each other, such
+  as the same track encoded again, are not identical and are not marked.
+- Kikoto's `lyrics_kikoto` folder is marked **Lyrics managed by Kikoto**, and
+  its **Manage lyrics** opens **Manage lyrics** on its **Lyrics files** tab over
+  the workspace; the workspace keeps its changes and shows the folder as it is
+  afterwards. The folder is arranged only through lyrics roles, so a dragged
+  selection that holds it is not dropped. When **This folder** has other
+  lyrics files (`.lrc`, `.vtt`, `.srt`, `.ass`, `.ssa`, or `.txt`), a note
+  counts them, and **Open in Manage lyrics** opens **Lyrics files** on
+  **Other lyrics in this folder**, where they become lyrics of a language.
+- Another local folder has **Copy** and **Merge** where its mark would be,
+  chosen for each folder and starting on **Copy**. **Copy** takes the files
+  you select and leaves that folder unchanged. **Merge** turns on once the
+  folder's files have loaded, and a folder on an offline storage pool is never
+  merged. A merged folder takes all its files when none are selected yet,
+  says that the whole folder is deleted, and is listed under **To be
+  deleted**; once this folder holds what the edit copies, the merged folder is
+  deleted with everything it still holds. Switching back to **Copy** keeps the
+  folder. Files from a remote
+  edition are downloaded, which also needs permission to fetch, and the
+  edition is not added to the library. A lyrics file from another place can
+  be added as lyrics instead of at its own path: choose a language under its
+  name, or for all selected lyrics files of the place under **Selected lyrics
+  files**, and it goes to that language's folder inside `lyrics_kikoto`, as in
+  **Lyrics files**. You declare the language; Kikoto does not guess it. With
+  library write access, **Assign added lyrics to matching tracks** assigns
+  each added lyrics file in its language to the track it matches by file
+  name, then by track order, including tracks the same edit adds; a track
+  that already has lyrics in that language keeps them. A file that would land
+  on a different file of the same name is a conflict: keep the file in the
+  folder, replace it, keep both, or rename the incoming file. A folder or
+  link already at that name is never replaced, so only the other choices are
+  offered. A file where a folder of the incoming path belongs leaves only
+  keeping that file or renaming the incoming file to another path.
+- **Apply changes** asks for both deletion confirmations when files are
   removed. With a merged folder it first compares every file of the merged
   folders by content with the folder as it will be, lists each file that has
   no identical copy there and is lost when its folder is deleted, and asks
@@ -417,16 +450,22 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   compared. Metadata that a NAS or the system keeps beside files, such as
   `@eaDir` folders and `Thumbs.db`, is not compared and goes with the merged
   folder. When a merged folder or this folder changes after the comparison,
-  the edit is not applied and asks you to review the merge again. The edit runs
-  as one Activity workflow that collects every added file before it removes,
-  moves, or adds anything, removes a file only while it is unchanged since you
-  applied the edit, and deletes a merged folder last, only if it still
-  holds exactly the files the review listed, unchanged, and every file the
-  review found a copy of still has that identical copy in this folder;
+  the edit is not applied and asks you to review the merge again. The edit
+  runs as one Activity workflow that collects every added file before it
+  removes, moves, or adds anything, removes a file only while it is unchanged
+  since you applied the edit, and deletes a merged folder last, only if it
+  still holds exactly the files the review listed, unchanged, and every file
+  the review found a copy of still has that identical copy in this folder;
   otherwise it stops and asks you to review the merge again. A stopped edit
-  that you retry continues where it stopped. A merged folder of a
-  work that a Fetch is still filling is not merged. The
-  directory reloads when it finishes.
+  that you retry continues where it stopped. A merged folder of a work that a
+  Fetch is still filling is not merged. The directory reloads when it
+  finishes.
+- **Delete folder and forget work**, above the workspace, deletes the whole
+  folder and every copy of its files, then forgets the work if no source
+  remains. It is kept apart from the edit's file changes, asks for both
+  confirmations, and is offered to users who may forget works while the work
+  has a single local folder. A folder on an offline storage pool shows a
+  notice instead of its files until its disk is mounted.
 - A work whose code a scan finds in several local folders keeps all of them.
   The directory then shows one folder per copy, **Manage files** lists one
   folder at a time with a **Folder** choice, and the work can be forgotten
@@ -474,16 +513,16 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
 - Opens Login before any Fetch preparation request when the current visitor is
   anonymous.
 - **Fetch** on a remote source of a work that has a local folder opens
-  **Edit files** on that source's edition, for users who may manage local
+  **Manage files** on that source's edition, for users who may manage local
   files and fetch. For those users, a work without a local folder opens a
   Fetch into a new folder in the same three columns: the source's edition
   comes first with all its files selected, the work's other editions,
   sources, and local folders can add files, and lyrics files can be added as
-  lyrics of a language with track assignments, as in **Edit files**. Its
-  **Final folder** is arranged as in **Edit files**, except that a folder
+  lyrics of a language with track assignments, as in **Manage files**. Its
+  **Final folder** is arranged as in **Manage files**, except that a folder
   holding no file is not created. The edition's own files are one Fetch.
-  Everything else is added by an
-  **Edit files** workflow once the Fetch has published the folder, so a file
+  Everything else is added by a
+  folder edit workflow once the Fetch has published the folder, so a file
   that would land on one the Fetch publishes is a conflict to resolve first.
   While a storage pool it reads or writes is offline, it waits and starts
   once the pool is back. If it cannot be queued at all, the Fetch's run in

@@ -57,6 +57,18 @@ module.exports = {
           surface: "hsl(var(--error-surface) / <alpha-value>)",
           border: "hsl(var(--error-border) / <alpha-value>)",
         },
+        // What a file workspace pane may do: the edited folder, another local folder, a read-only remote.
+        place: Object.fromEntries(
+          ["target", "local", "remote"].map((role) => [
+            role,
+            {
+              DEFAULT: `hsl(var(--place-${role}) / <alpha-value>)`,
+              foreground: `hsl(var(--place-${role}-foreground) / <alpha-value>)`,
+              surface: `hsl(var(--place-${role}-surface) / <alpha-value>)`,
+              border: `hsl(var(--place-${role}-border) / <alpha-value>)`,
+            },
+          ]),
+        ),
         card: {
           DEFAULT: "hsl(var(--card) / <alpha-value>)",
           foreground: "hsl(var(--card-foreground) / <alpha-value>)",

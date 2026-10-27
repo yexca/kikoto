@@ -58,8 +58,8 @@ export type LyricsManagerRequest = {
   tab: LyricsManagerTab;
   /** The local folder whose lyrics files are shown first. */
   folderId?: number;
-  /** Lyrics files of that folder to start with selected, by their path below it. */
-  paths?: string[];
+  /** Opens the files of that folder on its other lyrics, the lyrics Kikoto does not manage yet. */
+  folderLyrics?: boolean;
 };
 
 /**
@@ -242,7 +242,7 @@ export function LyricsManagerDialog({
           folder={folder}
           folders={localFolders}
           canAssign={!readOnly}
-          initialPaths={folder.id === request.folderId ? request.paths : undefined}
+          startInFolderLyrics={folder.id === request.folderId && Boolean(request.folderLyrics)}
           localOnly={Boolean(work.customWork)}
           onFolderChange={setFolderId}
           onBusyChange={setFilesBusy}

@@ -58,6 +58,13 @@ steps. The design contract includes:
   readable foreground, and border treatment.
 - A destructive action role reserved for irreversible commands. Error feedback
   is not automatically a destructive action.
+- Place roles for the file workspace: `place-target` for the folder an edit
+  changes, `place-local` for another local folder it only copies from, and
+  `place-remote` for a read-only remote edition, each with a band, subtle
+  surface, readable foreground, and border in both themes. They tell the
+  workspace's places apart by what the edit may do there; they are never a
+  status and never name a source, and a place always also carries an icon
+  and a label such as **Read-only**.
 
 Status color communicates state, not source identity. Configured source names
 remain low emphasis; green, amber, and red describe available, degraded, and

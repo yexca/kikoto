@@ -738,7 +738,7 @@ export function PersistedWorkDetailController({
         onMetadataSaved={metadataSaved}
       />
       <PersistedDirectoryManagerOverlay
-        open={files.isManageOpen}
+        open={files.isListOpen}
         root={files.managementTree}
         selectedTrackedPresence={selectedTrackedPresence}
         showNoSourceDirectory={showNoSourceDirectory}
@@ -746,24 +746,31 @@ export function PersistedWorkDetailController({
         deleting={mediaCleanup.isSubmitting}
         onDeleteTargets={mediaCleanup.submit}
         workID={localDirectoryWork?.id ?? work?.id ?? 0}
-        // Forgetting a work removes it entirely, which one of several folders must not do.
-        canForgetWork={canForgetWork && localFolders.length <= 1}
         localRoot={files.localRoot}
         localFolders={localFolders.length > 1 ? localFolders : []}
         onSelectLocalFolder={files.selectManageFolder}
-        onEditFiles={files.editFiles}
-        onManageAsLyrics={files.manageAsLyrics}
-        onManageLyrics={files.manageLyrics}
         onClose={files.closeManager}
       />
       <PersistedFolderEditOverlay
         work={localDirectoryWork}
-        folder={files.editedFolder}
-        initialRemote={files.folderEdit?.initialRemote ?? null}
-        onBack={files.backFromFolderEdit}
-        onClose={files.closeFolderEdit}
+        folder={files.workspaceFolder}
+        initialRemote={files.initialRemote}
+        manage={{
+          folders: files.workspaceFolders.length > 1 ? files.workspaceFolders : [],
+          onSelectFolder: files.selectWorkspaceFolder,
+          // Forgetting a work removes it entirely, which one of several folders must not do.
+          forget:
+            canForgetWork && files.workspaceFolders.length <= 1
+              ? { targets: files.forgetTargets, deleting: mediaCleanup.isSubmitting, onConfirm: mediaCleanup.submit }
+              : undefined,
+          onManageLyrics: files.manageLyrics,
+          onManageFolderLyrics: files.manageFolderLyrics,
+          // Comparing files reads the library, which the server allows only to users who manage its files.
+          canCheckDuplicates: canEditFolders,
+        }}
+        onClose={files.closeManager}
         onApplied={(result) => {
-          files.closeFolderEdit();
+          files.closeManager();
           folderEditWorkflow.accepted(result);
         }}
       />

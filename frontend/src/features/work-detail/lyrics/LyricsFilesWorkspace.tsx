@@ -61,7 +61,7 @@ export function LyricsFilesWorkspace({
   folder,
   folders,
   canAssign,
-  initialPaths,
+  startInFolderLyrics = false,
   localOnly = false,
   onFolderChange,
   onBusyChange,
@@ -75,8 +75,8 @@ export function LyricsFilesWorkspace({
   /** Every folder of the work that can be edited. */
   folders: WorkFolderLocation[];
   canAssign: boolean;
-  /** Lyrics files of the folder to start with selected, by their path below it. */
-  initialPaths?: readonly string[];
+  /** Opens on the folder's other lyrics instead of the managed lyrics. */
+  startInFolderLyrics?: boolean;
   /** Lists only local places, for a custom work that no remote source has. */
   localOnly?: boolean;
   onFolderChange: (folderId: number) => void;
@@ -89,8 +89,8 @@ export function LyricsFilesWorkspace({
     () => ({ workId, folderId: folder.id, rootPath: folder.rootPath }),
     [folder.id, folder.rootPath, workId],
   );
-  const workspace = useLyricsEditWorkspace({ target, items, canAssign, initialPaths, localOnly, onApplied });
-  const [pane, setPane] = useState<LyricsPane>(initialPaths?.length ? "select" : "sources");
+  const workspace = useLyricsEditWorkspace({ target, items, canAssign, startInFolderLyrics, localOnly, onApplied });
+  const [pane, setPane] = useState<LyricsPane>(startInFolderLyrics ? "select" : "sources");
   const [confirmation, setConfirmation] = useState<{ step: 1 | 2; targets: MediaDeleteTarget[] } | null>(null);
   const trackCounts = useMemo(() => lyricsFileTrackCounts(items), [items]);
   const tracksByLocation = useMemo(() => {

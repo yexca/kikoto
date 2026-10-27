@@ -50,7 +50,7 @@ export function useLyricsEditWorkspace({
   target,
   items,
   canAssign,
-  initialPaths,
+  startInFolderLyrics = false,
   localOnly = false,
   onApplied,
 }: {
@@ -59,8 +59,8 @@ export function useLyricsEditWorkspace({
   items: MediaItem[];
   /** Whether the viewer may assign the added lyrics to tracks. */
   canAssign: boolean;
-  /** Lyrics files of the folder to start with selected, by their path below it. */
-  initialPaths?: readonly string[];
+  /** Opens on the folder's other lyrics instead of the managed lyrics. */
+  startInFolderLyrics?: boolean;
   /** Lists only local places, for a custom work that no remote source has. */
   localOnly?: boolean;
   onApplied: (result: LyricsEditResult) => Promise<void>;
@@ -79,7 +79,6 @@ export function useLyricsEditWorkspace({
   const [loaded, setLoaded] = useState<Record<string, LyricsEditFilesState>>({});
   const [selection, setSelection] = useState<Record<string, ReadonlySet<string>>>(() => ({
     [MANAGED_LYRICS_RESOURCE]: new Set(lyrics.managed.map((file) => file.path)),
-    [FOLDER_LYRICS_RESOURCE]: new Set(initialPaths),
   }));
   const [languages, setLanguages] = useState<Record<string, string | null>>({});
   const [listManaged, setListManaged] = useState(false);
@@ -88,7 +87,7 @@ export function useLyricsEditWorkspace({
   const [defaultFolderMode, setDefaultFolderMode] = useState<FolderLyricsMode>("copy");
   const [chosenFolderMode, setChosenFolderMode] = useState<FolderLyricsMode | null>(null);
   const folderMode = chosenFolderMode ?? defaultFolderMode;
-  const [activeId, setActiveId] = useState(initialPaths?.length ? FOLDER_LYRICS_RESOURCE : MANAGED_LYRICS_RESOURCE);
+  const [activeId, setActiveId] = useState(startInFolderLyrics ? FOLDER_LYRICS_RESOURCE : MANAGED_LYRICS_RESOURCE);
   const [decisions, setDecisions] = useState<Record<string, RemoteFetchFileDecision>>({});
   const [plan, setPlan] = useState<LyricsEditPlan | null>(null);
   const [plannedRevision, setPlannedRevision] = useState("");
