@@ -214,6 +214,16 @@
 </details>
 
 <details>
+<summary><strong>Operations and reliability</strong></summary>
+
+- Playback, transcription, loudness analysis, cover selection, and media
+  probing accept files when the data or cache root, or one of its parent
+  directories, is a symbolic link. A link inside the root that leaves it is
+  still refused.
+
+</details>
+
+<details>
 <summary><strong>Development and docs</strong></summary>
 
 - CI validation finishes sooner: planned jobs start without waiting for Style,

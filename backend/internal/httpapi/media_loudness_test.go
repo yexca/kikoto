@@ -219,7 +219,12 @@ func TestMediaLoudnessIsMeasuredOncePerFileVersion(t *testing.T) {
 	if status, _ := get(); status != http.StatusServiceUnavailable {
 		t.Fatalf("measurement after a failure = %d, want the remembered 503", status)
 	}
-	key := mediaPreparationFailureKey("loudness", path, changedInfo)
+	// The handler measures the file at its resolved path.
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := mediaPreparationFailureKey("loudness", resolved, changedInfo)
 	if expires := s.mediaPreparationFailures.expires[key]; time.Until(expires) <= mediaPreparationFailureTTL {
 		t.Fatalf("loudness failure expires in %s, want longer than a transcode failure", time.Until(expires))
 	}
