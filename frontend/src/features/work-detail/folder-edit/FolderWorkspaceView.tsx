@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Loader2, Redo2, Undo2 } from "lucide-react";
-import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -7,16 +7,21 @@ import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { FileManagerPanes } from "@/features/work-detail/folder-edit/FileManagerPanes";
 import type { FolderEditResource } from "@/features/work-detail/folder-edit/folderEditModel";
 import { PaneSwitch } from "@/features/work-detail/folder-edit/FolderEditPanes";
-import type { FolderWorkspace, FolderWorkspaceManage } from "@/features/work-detail/folder-edit/folderWorkspace";
+import {
+  FolderWorkspaceNavigationContext,
+  type FolderWorkspace,
+  type FolderWorkspaceManage,
+  type FolderWorkspaceNavigation,
+} from "@/features/work-detail/folder-edit/folderWorkspace";
 import {
   ResourceColumn,
   ResultColumn,
   SelectionColumn,
+  type ResultColumnView,
 } from "@/features/work-detail/folder-edit/FolderWorkspaceColumns";
 import { cn } from "@/lib/tailwindClassNames";
 
-type EditPane = "sources" | "select" | "result" | "delete";
-type ResultView = "folder" | "delete";
+type EditPane = "sources" | "select" | "result" | "delete" | "identical";
 
 /** The workspace width from which Manage files shows its places side by side, like a file manager. */
 const WIDE_WORKSPACE_PX = 1280;
@@ -66,22 +71,39 @@ export function FolderWorkspaceView({
 }) {
   const { t } = useTranslation();
   const [pane, setPane] = useState<EditPane>(initialPane === "delete" ? "result" : initialPane);
-  const [resultView, setResultView] = useState<ResultView>(initialPane === "delete" ? "delete" : "folder");
+  const [resultView, setResultView] = useState<ResultColumnView>(initialPane === "delete" ? "delete" : "folder");
   const body = useRef<HTMLDivElement | null>(null);
   const width = useElementWidth(body);
   const wide = Boolean(manage) && width >= WIDE_WORKSPACE_PX;
+  const reviewing = Boolean(manage?.identical?.review);
   const paneCounts: Record<EditPane, number> = {
     sources: workspace.resources.length,
     select: workspace.additionCount,
     result: workspace.result.filter((entry) => entry.state !== "remove" && entry.state !== "excluded").length,
     delete: manage?.pending.files ?? 0,
+    identical: manage?.identical?.count ?? 0,
   };
-  const panes: EditPane[] = manage ? ["sources", "select", "result", "delete"] : ["sources", "select", "result"];
-  const shownPane: EditPane = pane === "result" && resultView === "delete" ? "delete" : pane;
+  const panes: EditPane[] = manage
+    ? ["sources", "select", "result", "delete", ...(reviewing ? (["identical"] as const) : [])]
+    : ["sources", "select", "result"];
+  // What the edit deletes and the identical files are views of the final folder's column.
+  const view = pane === "result" && !(resultView === "identical" && !reviewing) ? resultView : "folder";
+  const shownPane: EditPane = pane === "result" && view !== "folder" ? view : pane;
   const showPane = (next: EditPane) => {
-    setPane(next === "delete" ? "result" : next);
-    if (next === "delete" || next === "result") setResultView(next === "delete" ? "delete" : "folder");
+    const asView = next === "delete" || next === "identical" || next === "result";
+    setPane(asView ? "result" : next);
+    if (asView) setResultView(next === "result" ? "folder" : next);
   };
+  // In a narrow workspace the review is a view of its own, and a file is not shown in its place.
+  const navigation = useMemo<FolderWorkspaceNavigation>(
+    () => ({
+      showIdenticalReview: () => {
+        setPane("result");
+        setResultView("identical");
+      },
+    }),
+    [],
+  );
   return (
     <Dialog
       onClose={onClose}
@@ -105,51 +127,58 @@ export function FolderWorkspaceView({
         <PaneSwitch
           panes={panes.map((value) => ({
             value,
-            label: value === "delete" ? t("fileWorkspace.pending.short") : t(`folderEdit.pane.${value}`),
+            label:
+              value === "delete"
+                ? t("fileWorkspace.pending.short")
+                : value === "identical"
+                  ? t("fileWorkspace.identical.pane")
+                  : t(`folderEdit.pane.${value}`),
             count: paneCounts[value],
           }))}
           value={shownPane}
           onChange={showPane}
         />
       )}
-      <div ref={body} className="flex min-h-0 flex-1 flex-col">
-        {wide && manage ? (
-          <FileManagerPanes
-            workspace={workspace}
-            manage={manage}
-            hints={hints}
-            notice={notice}
-            emptyResult={emptyResult}
-          />
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[17rem_minmax(0,1fr)_minmax(0,25rem)]">
-            <ResourceColumn
+      <FolderWorkspaceNavigationContext.Provider value={navigation}>
+        <div ref={body} className="flex min-h-0 flex-1 flex-col">
+          {wide && manage ? (
+            <FileManagerPanes
               workspace={workspace}
-              active={pane === "sources"}
-              onSelect={(resource) => {
-                workspace.selectResource(resource);
-                setPane("select");
-              }}
-            />
-            <SelectionColumn
-              workspace={workspace}
-              resource={workspace.activeResource}
-              hint={hints(workspace.activeResource)}
-              active={pane === "select"}
               manage={manage}
-            />
-            <ResultColumn
-              workspace={workspace}
+              hints={hints}
               notice={notice}
               emptyResult={emptyResult}
-              active={pane === "result"}
-              manage={manage}
-              view={manage ? resultView : "folder"}
-              onViewChange={setResultView}
             />
-          </div>
-        )}
-      </div>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[17rem_minmax(0,1fr)_minmax(0,25rem)]">
+              <ResourceColumn
+                workspace={workspace}
+                active={pane === "sources"}
+                onSelect={(resource) => {
+                  workspace.selectResource(resource);
+                  setPane("select");
+                }}
+              />
+              <SelectionColumn
+                workspace={workspace}
+                resource={workspace.activeResource}
+                hint={hints(workspace.activeResource)}
+                active={pane === "select"}
+                manage={manage}
+              />
+              <ResultColumn
+                workspace={workspace}
+                notice={notice}
+                emptyResult={emptyResult}
+                active={pane === "result"}
+                manage={manage}
+                view={manage ? view : "folder"}
+                onViewChange={setResultView}
+              />
+            </div>
+          )}
+        </div>
+      </FolderWorkspaceNavigationContext.Provider>
       <WorkspaceFooter
         workspace={workspace}
         statusIdle={statusIdle}

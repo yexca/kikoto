@@ -35,13 +35,18 @@ import {
   type FolderEditResource,
   type FolderEditResultEntry,
 } from "@/features/work-detail/folder-edit/folderEditModel";
-import type { FolderWorkspace, FolderWorkspaceManage } from "@/features/work-detail/folder-edit/folderWorkspace";
+import type {
+  FolderEditReveal,
+  FolderWorkspace,
+  FolderWorkspaceManage,
+} from "@/features/work-detail/folder-edit/folderWorkspace";
 import {
   ColumnLabel,
   PaneNote,
   ResourceOption,
   ResultNode,
   SelectionNode,
+  type FolderEditExpand,
 } from "@/features/work-detail/folder-edit/FolderEditPanes";
 import { PlaceBadge, placeIcon, placeReason, placeTone } from "@/features/work-detail/folder-edit/FolderWorkspaceTools";
 import { PendingDeletionPanel } from "@/features/work-detail/folder-edit/PendingDeletionPanel";
@@ -345,6 +350,7 @@ export function SelectionColumn({
   active,
   manage,
   header,
+  reveal,
   className,
 }: {
   workspace: FolderWorkspace;
@@ -353,6 +359,8 @@ export function SelectionColumn({
   active: boolean;
   manage?: FolderWorkspaceManage;
   header?: ReactNode;
+  /** A file of this place to bring into view. */
+  reveal?: FolderEditReveal | null;
   className?: string;
 }) {
   const { t } = useTranslation();
@@ -360,9 +368,25 @@ export function SelectionColumn({
   const files = state?.status === "ready" ? state.files : noFiles;
   const selected = workspace.selection[resource.id] ?? noSelection;
   const roles = workspace.lyrics[resource.id];
-  const tree = useMemo(() => buildFolderEditTree(files), [files]);
-  const allPaths = useMemo(() => files.map((file) => file.path), [files]);
   const current = resource.kind === "current";
+  // The edited folder's identical files: marked, opened after each check, and shown alone on request.
+  const identical = current ? manage?.identical : undefined;
+  const onlyIdentical = identical?.only ? identical.paths : null;
+  const shown = useMemo(
+    () => (onlyIdentical ? files.filter((file) => onlyIdentical.has(file.path)) : files),
+    [files, onlyIdentical],
+  );
+  const identicalPaths = identical?.paths;
+  const identicalRevision = identical?.revision ?? 0;
+  const expand = useMemo<FolderEditExpand | undefined>(
+    () =>
+      identicalPaths && identicalPaths.size > 0
+        ? { revision: identicalRevision, has: (path) => identicalPaths.has(path) }
+        : undefined,
+    [identicalPaths, identicalRevision],
+  );
+  const tree = useMemo(() => buildFolderEditTree(shown), [shown]);
+  const allPaths = useMemo(() => files.map((file) => file.path), [files]);
   const place = fileWorkspacePlace(resource);
   // The edited folder's own files keep their place; any other place's lyrics can become managed lyrics.
   const lyricsPaths = useMemo(
@@ -416,21 +440,22 @@ export function SelectionColumn({
           />
         )
       : undefined;
+  const meta = identical
+    ? (file: FolderEditFile) => identical.badge(file.path, { deleting: !selected.has(file.path) })
+    : undefined;
   const below =
-    current && manage?.fileNote
-      ? (file: FolderEditFile) => manage.fileNote?.(file.path)
-      : lyricsPaths.length > 0
-        ? (file: FolderEditFile) =>
-            isLyricsFilePath(file.path) ? (
-              <LyricsRoleSelect
-                value={roles?.[file.path]}
-                compact
-                label={t("folderEdit.fileRole", { name: file.name })}
-                disabled={workspace.applying}
-                onChange={(language) => workspace.setLyricsRole(resource.id, [file.path], language)}
-              />
-            ) : null
-        : undefined;
+    lyricsPaths.length > 0
+      ? (file: FolderEditFile) =>
+          isLyricsFilePath(file.path) ? (
+            <LyricsRoleSelect
+              value={roles?.[file.path]}
+              compact
+              label={t("folderEdit.fileRole", { name: file.name })}
+              disabled={workspace.applying}
+              onChange={(language) => workspace.setLyricsRole(resource.id, [file.path], language)}
+            />
+          ) : null
+      : undefined;
   return (
     <section
       aria-label={header ? resourceTitle(resource, t) : t("folderEdit.pane.select")}
@@ -496,22 +521,24 @@ export function SelectionColumn({
           <p className="text-xs text-muted-foreground">{hint}</p>
         )}
         {current && manage ? (
-          // The edited folder's tools fold away, so its files keep the room on a phone.
+          // Choosing by format folds away, so the folder's files keep the room on a phone.
           <>
-            <Button
-              variant="toolbar"
-              size="sm"
-              className="self-start"
-              aria-expanded={toolsOpen}
-              onClick={() => setToolsOpen((open) => !open)}
-            >
-              <ListChecks className="h-4 w-4" aria-hidden="true" />
-              {t("libraryDetail.quickSelect")}
-              <ChevronDown
-                className={cn("h-3.5 w-3.5 transition-transform", toolsOpen && "rotate-180")}
-                aria-hidden="true"
-              />
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="toolbar"
+                size="sm"
+                aria-expanded={toolsOpen}
+                onClick={() => setToolsOpen((open) => !open)}
+              >
+                <ListChecks className="h-4 w-4" aria-hidden="true" />
+                {t("libraryDetail.quickSelect")}
+                <ChevronDown
+                  className={cn("h-3.5 w-3.5 transition-transform", toolsOpen && "rotate-180")}
+                  aria-hidden="true"
+                />
+              </Button>
+              {identical?.entry}
+            </div>
             {toolsOpen && (
               <div className="space-y-2" role="group" aria-label={t("libraryDetail.quickSelect")}>
                 <ExtensionChips
@@ -521,9 +548,10 @@ export function SelectionColumn({
                   label={t("fileWorkspace.keepByFormat")}
                   onToggle={setIncluded}
                 />
-                {manage.thisFolderTools}
               </div>
             )}
+            {identical?.status}
+            {manage.thisFolderTools}
           </>
         ) : (
           <ExtensionChips files={files} selected={selected} disabled={workspace.applying} onToggle={setIncluded} />
@@ -566,9 +594,12 @@ export function SelectionColumn({
             disabled={workspace.applying}
             onToggle={setIncluded}
             onDragFiles={onDragFiles}
+            meta={meta}
             below={below}
             folderNote={current ? manage?.folderNote : undefined}
             rowMenu={rowMenu}
+            expand={expand}
+            reveal={reveal}
             isRoot
           />
         )}
@@ -576,6 +607,9 @@ export function SelectionColumn({
     </section>
   );
 }
+
+/** The views of the final folder's column: the folder, what the edit deletes, and identical files to review. */
+export type ResultColumnView = "folder" | "delete" | "identical";
 
 /**
  * The folder as it will be, arranged like a file manager. With `manage`, it
@@ -592,6 +626,7 @@ export function ResultColumn({
   onViewChange,
   header,
   tools,
+  reveal,
   className,
 }: {
   workspace: FolderWorkspace;
@@ -599,19 +634,40 @@ export function ResultColumn({
   emptyResult: string;
   active: boolean;
   manage?: FolderWorkspaceManage;
-  view?: "folder" | "delete";
-  onViewChange?: (view: "folder" | "delete") => void;
+  view?: ResultColumnView;
+  onViewChange?: (view: ResultColumnView) => void;
   header?: ReactNode;
   /** Shown above the tree, such as the edited folder's own tools in a wide pane. */
   tools?: ReactNode;
+  /** A file of the edited folder to bring into view, by its path there. */
+  reveal?: FolderEditReveal | null;
   className?: string;
 }) {
   const { t } = useTranslation();
-  const entries = useMemo(
-    () => (header ? workspace.result.filter((entry) => entry.state !== "remove") : workspace.result),
-    [header, workspace.result],
-  );
+  const identical = manage?.identical;
+  const onlyIdentical = identical?.only ? identical.paths : null;
+  // A wide pane leaves the files the edit deletes to its own column, except
+  // while it shows only identical files, which mark what the edit deletes.
+  const entries = useMemo(() => {
+    if (onlyIdentical) {
+      const prefix = currentFileKey("");
+      return workspace.result.filter(
+        (entry) => entry.key.startsWith(prefix) && onlyIdentical.has(entry.key.slice(prefix.length)),
+      );
+    }
+    return header ? workspace.result.filter((entry) => entry.state !== "remove") : workspace.result;
+  }, [header, onlyIdentical, workspace.result]);
   const tree = useMemo(() => buildFolderEditTree(entries), [entries]);
+  const identicalPaths = identical?.paths;
+  const identicalRevision = identical?.revision ?? 0;
+  const expand = useMemo<FolderEditExpand | undefined>(() => {
+    if (!identicalPaths || identicalPaths.size === 0) return undefined;
+    const prefix = currentFileKey("");
+    return {
+      revision: identicalRevision,
+      has: (key) => key.startsWith(prefix) && identicalPaths.has(key.slice(prefix.length)),
+    };
+  }, [identicalPaths, identicalRevision]);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [dropped, setDropped] = useState<FolderEditDrop | null>(null);
   // What the last drop did stays in view for a moment, then gives way to the folder.
@@ -625,12 +681,19 @@ export function ResultColumn({
   const moved = workspace.result.filter((entry) => entry.state === "add_move").length;
   const showAssign = workspace.canAssign && workspace.lyricsAdditionCount > 0;
   const showingPending = Boolean(manage) && view === "delete" && !header;
-  // A file the edited folder keeps carries its note, such as where it has an identical copy.
-  const fileNote = manage?.fileNote;
+  const showingIdentical = Boolean(identical?.review) && view === "identical" && !header;
+  const views: ResultColumnView[] = identical?.review ? ["folder", "delete", "identical"] : ["folder", "delete"];
   const ownPrefix = currentFileKey("");
-  const entryNote = fileNote
+  // A file of the edited folder with an identical copy carries its mark.
+  const entryMark = identical
     ? (entry: FolderEditResultEntry) =>
-        entry.key.startsWith(ownPrefix) ? fileNote(entry.key.slice(ownPrefix.length)) : null
+        entry.key.startsWith(ownPrefix) ? identical.badge(entry.key.slice(ownPrefix.length)) : null
+    : undefined;
+  const restore = manage
+    ? (entry: FolderEditResultEntry) => {
+        const item = manage.pending.groups.flatMap((group) => group.items).find((each) => each.key === entry.key);
+        if (item) manage.onKeep(item);
+      }
     : undefined;
   return (
     <section
@@ -644,7 +707,7 @@ export function ResultColumn({
       {header}
       {manage && !header && (
         <div className="hidden shrink-0 gap-1 border-b px-3 pt-2 lg:flex" role="tablist">
-          {(["folder", "delete"] as const).map((value) => (
+          {views.map((value) => (
             <button
               key={value}
               type="button"
@@ -658,11 +721,18 @@ export function ResultColumn({
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              {value === "folder" ? t("folderEdit.pane.result") : t("fileWorkspace.pending.short")}
+              {value === "folder"
+                ? t("folderEdit.pane.result")
+                : value === "delete"
+                  ? t("fileWorkspace.pending.short")
+                  : t("fileWorkspace.identical.pane")}
               {value === "delete" && manage.pending.files > 0 && (
                 <span className="rounded-full bg-error-surface px-1.5 text-2xs tabular-nums text-error-foreground">
                   {manage.pending.files}
                 </span>
+              )}
+              {value === "identical" && identical && (
+                <span className="rounded-full bg-muted px-1.5 text-2xs tabular-nums">{identical.count}</span>
               )}
             </button>
           ))}
@@ -670,6 +740,8 @@ export function ResultColumn({
       )}
       {showingPending && manage ? (
         <PendingDeletionPanel pending={manage.pending} disabled={workspace.applying} onKeep={manage.onKeep} />
+      ) : showingIdentical ? (
+        identical?.review
       ) : (
         <>
           <div className="shrink-0 space-y-1 border-b px-3 py-2.5 lg:px-4">
@@ -756,8 +828,11 @@ export function ResultColumn({
                   creatingAtRoot={creatingFolder}
                   onCreatedAtRoot={() => setCreatingFolder(false)}
                   onDiscard={manage?.onDiscard}
+                  onRestore={restore}
                   folderNote={manage?.folderNote}
-                  entryNote={entryNote}
+                  entryMark={entryMark}
+                  expand={expand}
+                  reveal={reveal ? { key: currentFileKey(reveal.path), seq: reveal.seq } : null}
                   onDropped={setDropped}
                   hint={header ? t("fileWorkspace.arrangeHint") : undefined}
                 />

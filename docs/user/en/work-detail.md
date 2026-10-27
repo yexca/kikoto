@@ -355,7 +355,8 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   to select and delete.
 - On a phone and a narrow window the workspace has four views: **Sources**,
   **Select** with the files of the chosen place, **Final folder** with the
-  folder as it will be, and **To delete**. In **Select**, a selected file of
+  folder as it will be, and **To delete**, and a fifth, **Identical**, once
+  **Find identical files** finds some. In **Select**, a selected file of
   **This folder** is kept and a cleared one is deleted when the edit is
   applied; **Keep all** and **Delete all** do this for every file. A selected
   file anywhere else is added. **Final folder** marks each file as kept,
@@ -382,8 +383,9 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   changes, so it asks nothing first; until you change something again,
   **Restore** beside the status brings the undone changes back.
 - Dragging is a shortcut. Each row has a menu for touch screens and keyboards:
-  in **This folder**, **Move to** and **Delete** for a file, or **Do not add**
-  for a file the edit adds, and for a folder **New folder**, **Rename**,
+  in **This folder**, **Move to** and **Delete** for a file, **Do not add**
+  for a file the edit adds, or **Keep** for a file the edit deletes, and for a
+  folder **New folder**, **Rename**,
   **Move to**, and **Delete folder**; in another place, **Copy to This
   folder** or **Download to This folder**, which chooses the folder it goes
   to. Deleting a folder that holds something asks first, then moves what it
@@ -401,15 +403,37 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   a place deleted files go to: nothing is deleted until you apply the edit,
   and what it deletes cannot be restored.
 - **Quick select** in **Select**, shown open in the wide **This folder** column,
-  keeps or deletes the files of **This folder** by format and has **Find
-  identical files**, which compares the local files of every edition and
-  folder of the work by content, so a translated edition's renamed audio is
-  recognized as the original's. A file with an identical copy is marked with
-  the copy's location, and two groups appear: **Also in another folder**, the
-  files that exist elsewhere with the same content, and **Repeated in this
-  folder**, every copy except the first inside the folder. **Delete them**
-  adds a group to **To be deleted**. Files that only resemble each other, such
-  as the same track encoded again, are not identical and are not marked.
+  keeps or deletes the files of **This folder** by format.
+- **Find identical files**, in the head of **This folder**, compares the local
+  files of every edition and folder of the work by content, so a translated
+  edition's renamed audio is recognized as the original's. Before it starts
+  it says what it does: large files take longer, **Stop** ends the
+  comparison, and it only marks files. When it finishes, a line says how many
+  files of **This folder** have an identical copy and how much the suggested
+  deletions free, or that none has. Each such file is marked with how many
+  copies there are and whether another copy is in another folder (**Also
+  elsewhere**) or in **This folder** (**Repeated**), in words, with an icon,
+  and in the color of that place; each folder says how many identical files
+  it holds and opens when the comparison finishes. **Only identical files**
+  shows only them, including the ones the edit deletes, struck through, each
+  with **Keep**. In the wide workspace, selecting a mark opens the folder that
+  holds the other copy on the left and shows the file there. Files that only
+  resemble each other, such as the same track encoded again, are not
+  identical and are not marked.
+- **Review identical files** lists each set of identical files with every
+  copy and where it is: on the left of the wide workspace, and as the
+  **Identical** view otherwise. **Also in another folder** lists files whose
+  content another folder or edition also has: the copies here go to **To be
+  deleted** and the other copy stays, so no content is lost. The other copy is
+  only shown for reference, because the edit changes only **This folder**.
+  **Repeated in This folder** keeps the one copy you choose in each set.
+  Kikoto suggests the copy whose name has no copy mark such as `(1)`,
+  `(copy)`, or ` - Copy`, then the one in the fewest folders, then the first by
+  name. **Add to To be deleted** adds a set as chosen and **Keep** takes it
+  back; **Add the suggested copies to To be deleted** does so for every set.
+  They change the edit like any other choice, so **To be deleted**, **Undo all
+  changes**, and **Restore** follow them, and a set whose every copy is to be
+  deleted says that its content is lost.
 - Kikoto's `lyrics_kikoto` folder is marked **Lyrics managed by Kikoto**, and
   its **Manage lyrics** opens **Manage lyrics** on its **Lyrics files** tab over
   the workspace; the workspace keeps its changes and shows the folder as it is

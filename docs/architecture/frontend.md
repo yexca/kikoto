@@ -127,8 +127,10 @@ local folder and the Fetch into a new folder: `folderEditModel` derives the
 resources, the request, and the final folder from the selection, the lyrics
 role of each file, and the layout, `folderEditLayout` moves, places, and
 numbers files and folders of the final folder as pure functions over that
-layout, `fileWorkspaceModel` names what each place may do and derives the
-identical-file marks and everything the edit deletes,
+layout, `fileWorkspaceModel` names what each place may do and derives
+everything the edit deletes, `identicalFilesModel` relates the identical-file
+check to the edited folder and suggests the copy each repeated set keeps,
+`useIdenticalFiles` turns its review into selection changes,
 `useFolderEditWorkspace` and `useFetchComposeWorkspace` load each resource's
 files when a column or pane first shows it and the server preview,
 `folderEditLyrics` suggests track assignments for added lyrics,

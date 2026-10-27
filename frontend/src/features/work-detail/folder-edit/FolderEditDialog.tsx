@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { ConfirmMediaBatchDeleteDialog } from "@/features/work-detail/dialogs/ConfirmMediaBatchDeleteDialog";
-import { folderEditDuplicates, type PendingDeletion } from "@/features/work-detail/folder-edit/fileWorkspaceModel";
+import type { PendingDeletion } from "@/features/work-detail/folder-edit/fileWorkspaceModel";
 import {
   CURRENT_FOLDER_RESOURCE,
   currentFileKey,
@@ -20,18 +20,14 @@ import {
 } from "@/features/work-detail/folder-edit/folderEditModel";
 import { FolderEditMergeConfirmDialog } from "@/features/work-detail/folder-edit/FolderEditMergeConfirmDialog";
 import type { FolderWorkspaceManage } from "@/features/work-detail/folder-edit/folderWorkspace";
-import {
-  DuplicateFileTools,
-  DuplicateMark,
-  FolderLyricsNote,
-  ManagedLyricsTag,
-} from "@/features/work-detail/folder-edit/FolderWorkspaceTools";
+import { FolderLyricsNote, ManagedLyricsTag } from "@/features/work-detail/folder-edit/FolderWorkspaceTools";
 import { FolderWorkspaceView } from "@/features/work-detail/folder-edit/FolderWorkspaceView";
-import { useDuplicateFileCheck } from "@/features/work-detail/folder-edit/useDuplicateFileCheck";
+import { IdenticalFolderCount } from "@/features/work-detail/folder-edit/IdenticalFiles";
 import {
   useFolderEditWorkspace,
   type FolderEditInitialRemote,
 } from "@/features/work-detail/folder-edit/useFolderEditWorkspace";
+import { useIdenticalFiles } from "@/features/work-detail/folder-edit/useIdenticalFiles";
 import { managedLyricsLanguage } from "@/features/work-detail/lyrics/managedLyricsModel";
 import { isLyricsFilePath } from "@/features/work-detail/lyrics/remoteLyricsModel";
 import type { MediaCleanupMode, MediaDeleteTarget } from "@/features/work-detail/workflows/useMediaCleanupWorkflow";
@@ -194,18 +190,14 @@ function FolderEditWorkspaceDialog({
   const kept = workspace.selection[CURRENT_FOLDER_RESOURCE] ?? noSelection;
   const setKept = (paths: readonly string[], keep: boolean) =>
     workspace.setSelected(CURRENT_FOLDER_RESOURCE, withFolderEditPaths(kept, paths, keep));
-  const duplicateCheck = useDuplicateFileCheck(workId);
-  const duplicates = useMemo(
-    () =>
-      duplicateCheck.check.status === "done"
-        ? folderEditDuplicates(duplicateCheck.check.groups, workspace.currentFiles)
-        : null,
-    [duplicateCheck.check, workspace.currentFiles],
-  );
-  const sizes = useMemo(
-    () => new Map(workspace.currentFiles.map((file) => [file.path, file.sizeBytes])),
-    [workspace.currentFiles],
-  );
+  const identical = useIdenticalFiles({
+    workId,
+    files: workspace.currentFiles,
+    resources: workspace.resources,
+    kept,
+    setKept: (next) => workspace.setSelected(CURRENT_FOLDER_RESOURCE, next),
+    disabled: workspace.applying,
+  });
   const folderLyricsCount = useMemo(
     () =>
       workspace.currentFiles.filter((file) => isLyricsFilePath(file.path) && managedLyricsLanguage(file.path) === null)
@@ -243,32 +235,20 @@ function FolderEditWorkspaceDialog({
   const manageExtras: FolderWorkspaceManage = {
     toolbar: <ManageToolbar folder={folder} manage={manage} disabled={workspace.applying} />,
     thisFolderTools:
-      (manage.canCheckDuplicates && workspace.currentFiles.length > 0) ||
-      (manage.onManageFolderLyrics && folderLyricsCount > 0) ? (
-        <div className="space-y-2">
-          {manage.canCheckDuplicates && workspace.currentFiles.length > 0 && (
-            <DuplicateFileTools
-              check={duplicateCheck.check}
-              duplicates={duplicates}
-              kept={kept}
-              sizes={sizes}
-              disabled={workspace.applying}
-              onStart={() => void duplicateCheck.start()}
-              onStop={duplicateCheck.reset}
-              onKeep={setKept}
-            />
-          )}
-          {manage.onManageFolderLyrics && folderLyricsCount > 0 && (
-            <FolderLyricsNote count={folderLyricsCount} onOpen={manage.onManageFolderLyrics} />
-          )}
-        </div>
+      manage.onManageFolderLyrics && folderLyricsCount > 0 ? (
+        <FolderLyricsNote count={folderLyricsCount} onOpen={manage.onManageFolderLyrics} />
       ) : undefined,
-    fileNote: (path) => {
-      const mark = duplicates?.marks.get(path);
-      return mark ? <DuplicateMark mark={mark} /> : null;
+    identical: manage.canCheckDuplicates && workspace.currentFiles.length > 0 ? identical : undefined,
+    folderNote: (path, files) => {
+      const count = identical.count > 0 ? files.filter((file) => identical.paths.has(file)).length : 0;
+      if (path !== lyricsRootFolderName && count === 0) return null;
+      return (
+        <>
+          {count > 0 && <IdenticalFolderCount count={count} />}
+          {path === lyricsRootFolderName && <ManagedLyricsTag onManageLyrics={manage.onManageLyrics} />}
+        </>
+      );
     },
-    folderNote: (path) =>
-      path === lyricsRootFolderName ? <ManagedLyricsTag onManageLyrics={manage.onManageLyrics} /> : null,
     pending: workspace.pendingDeletions,
     onKeep: keep,
     onDiscard: discard,

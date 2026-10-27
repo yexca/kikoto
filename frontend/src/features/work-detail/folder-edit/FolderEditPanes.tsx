@@ -8,7 +8,7 @@ import {
   Image as ImageIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,7 @@ import {
   type FolderEditResultState,
   type FolderEditTreeNode,
 } from "@/features/work-detail/folder-edit/folderEditModel";
+import type { FolderEditReveal } from "@/features/work-detail/folder-edit/folderWorkspace";
 import { formatBytes } from "@/features/work-detail/media/mediaTreeModel";
 import type { RemoteFetchFileDecision, RemoteFetchResolution } from "@/lib/api";
 import { naturalNameCompare } from "@/lib/naturalNameOrder";
@@ -41,6 +42,8 @@ export function PaneSwitch<Pane extends string>({
   value: Pane;
   onChange: (pane: Pane) => void;
 }) {
+  // Past four views a phone has no room for each label beside its count, so the count goes below it.
+  const stacked = panes.length > 4;
   return (
     <div className="flex shrink-0 gap-1 border-b bg-background px-3 py-2 lg:hidden">
       <div className="flex min-w-0 flex-1 gap-1 rounded-lg bg-muted p-1">
@@ -51,7 +54,8 @@ export function PaneSwitch<Pane extends string>({
             aria-pressed={value === pane.value}
             onClick={() => onChange(pane.value)}
             className={cn(
-              "inline-flex min-h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "inline-flex min-h-8 min-w-0 flex-1 items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              stacked ? "flex-col gap-0 px-0.5 py-0.5 leading-tight" : "gap-1.5 px-1.5",
               value === pane.value
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -179,12 +183,54 @@ export function sortedFolders<T>(node: FolderEditTreeNode<T>) {
   return Array.from(node.children.values()).sort((left, right) => naturalNameCompare(left.name, right.name));
 }
 
+/** Files whose folders open whenever `revision` changes, such as the files a check marked. */
+export type FolderEditExpand = { revision: number; has: (key: string) => boolean };
+
+/**
+ * Whether a folder's row is open. It opens again when a new `expand`
+ * revision marks a file inside it, or when a file inside it is revealed;
+ * otherwise it keeps what the listener chose.
+ */
+export function useFolderOpen(initial: boolean, expandKey: number | null, revealKey: number | null) {
+  const [open, setOpen] = useState(initial || expandKey !== null || revealKey !== null);
+  const [seen, setSeen] = useState({ expand: expandKey, reveal: revealKey });
+  if (seen.expand !== expandKey || seen.reveal !== revealKey) {
+    setSeen({ expand: expandKey, reveal: revealKey });
+    if ((expandKey !== null && expandKey !== seen.expand) || (revealKey !== null && revealKey !== seen.reveal)) {
+      setOpen(true);
+    }
+  }
+  return [open, setOpen] as const;
+}
+
+/**
+ * Brings a revealed row into view and marks it for a moment. `seq` is the
+ * reveal request for this row, or null while there is none.
+ */
+export function useRevealedRow<T extends HTMLElement>(seq: number | null) {
+  const ref = useRef<T | null>(null);
+  const [flashing, setFlashing] = useState<number | null>(null);
+  useEffect(() => {
+    if (seq === null) return;
+    ref.current?.scrollIntoView({ block: "center" });
+    setFlashing(seq);
+    const timer = window.setTimeout(() => setFlashing(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [seq]);
+  return { ref, flashing: seq !== null && flashing === seq };
+}
+
+/** How a revealed row stands out for a moment. */
+export const revealedRowClass = "bg-primary/10 ring-2 ring-primary/60";
+
 /**
  * One folder of a selection tree with its files. `meta` adds a note to a file
  * row, before its size, and `below` a line under the file's name. A folder
  * row shows `folderNote` after its name, and every row ends with `rowMenu`
  * when it is given. With `onDragFiles`, a file or folder can be dragged: it
- * hands over the files' paths and the folder above them.
+ * hands over the files' paths and the folder above them. `expand` opens the
+ * folders of marked files, and `reveal` opens the way to a file and brings it
+ * into view.
  */
 export function SelectionNode({
   node,
@@ -198,6 +244,8 @@ export function SelectionNode({
   rowMenu,
   onToggle,
   onDragFiles,
+  expand,
+  reveal,
 }: {
   node: FolderEditTreeNode<FolderEditFile>;
   depth: number;
@@ -206,16 +254,22 @@ export function SelectionNode({
   isRoot?: boolean;
   meta?: (file: FolderEditFile) => ReactNode;
   below?: (file: FolderEditFile) => ReactNode;
-  folderNote?: (path: string) => ReactNode;
+  folderNote?: (path: string, files: readonly string[]) => ReactNode;
   rowMenu?: (paths: readonly string[], base: string, name: string) => ReactNode;
   onToggle: (paths: readonly string[], included: boolean) => void;
   onDragFiles?: (event: DragEvent, paths: readonly string[], base: string) => void;
+  expand?: FolderEditExpand;
+  reveal?: FolderEditReveal | null;
 }) {
   const draggable = Boolean(onDragFiles) && !disabled;
   const parentOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
   const { t } = useTranslation();
-  const [open, setOpen] = useState(depth <= 1);
   const paths = useMemo(() => folderEditTreeFiles(node).map((file) => file.path), [node]);
+  const [open, setOpen] = useFolderOpen(
+    depth <= 1,
+    !isRoot && expand && paths.some(expand.has) ? expand.revision : null,
+    !isRoot && reveal && paths.includes(reveal.path) ? reveal.seq : null,
+  );
   const count = paths.filter((path) => selected.has(path)).length;
   const checked = paths.length > 0 && count === paths.length;
   const files = [...node.files].sort((left, right) => naturalNameCompare(left.name, right.name));
@@ -259,7 +313,7 @@ export function SelectionNode({
           >
             {node.name}
           </button>
-          {folderNote?.(node.path)}
+          {folderNote?.(node.path, paths)}
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
             {count}/{paths.length}
           </span>
@@ -280,51 +334,92 @@ export function SelectionNode({
             rowMenu={rowMenu}
             onToggle={onToggle}
             onDragFiles={onDragFiles}
+            expand={expand}
+            reveal={reveal}
           />
         ))}
       {(isRoot || open) &&
-        files.map((file) => {
-          const included = selected.has(file.path);
-          const line = below?.(file);
-          const row = (
-            <label
-              key={file.path}
-              className={cn(
-                "flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 text-sm",
-                included ? "hover:bg-muted/70" : "text-muted-foreground hover:bg-muted/70",
-              )}
-              style={{ paddingLeft: depth * 14 + 8 }}
-              title={file.path}
-              draggable={draggable}
-              onDragStart={draggable ? (event) => onDragFiles?.(event, [file.path], parentOf(file.path)) : undefined}
-            >
-              <span className="w-[18px] shrink-0" aria-hidden="true" />
-              <Checkbox
-                checked={included}
-                disabled={disabled}
-                onCheckedChange={(next) => onToggle([file.path], next)}
-                aria-label={t("libraryDetail.selectFile", { name: file.name })}
-              />
-              <KindIcon kind={file.kind} />
-              <span className="min-w-0 flex-1 truncate">{file.name}</span>
-              {meta?.(file)}
-              <span className="w-16 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                {file.sizeBytes === null ? "" : formatBytes(file.sizeBytes)}
-              </span>
-              {rowMenu?.([file.path], parentOf(file.path), file.name)}
-            </label>
-          );
-          if (!line) return row;
-          // The line starts under the file's name: past the spacer, checkbox, and icon.
-          return (
-            <div key={file.path}>
-              {row}
-              <div className="-mt-1 pb-1.5 pr-2" style={{ paddingLeft: depth * 14 + 82 }}>
-                {line}
-              </div>
-            </div>
-          );
-        })}
+        files.map((file) => (
+          <SelectionFileRow
+            key={file.path}
+            file={file}
+            depth={depth}
+            included={selected.has(file.path)}
+            disabled={disabled}
+            revealSeq={reveal?.path === file.path ? reveal.seq : null}
+            meta={meta}
+            below={below}
+            rowMenu={rowMenu}
+            onToggle={onToggle}
+            onDragStart={draggable ? (event) => onDragFiles?.(event, [file.path], parentOf(file.path)) : undefined}
+            base={parentOf(file.path)}
+          />
+        ))}
+    </div>
+  );
+}
+
+function SelectionFileRow({
+  file,
+  depth,
+  included,
+  disabled,
+  revealSeq,
+  meta,
+  below,
+  rowMenu,
+  onToggle,
+  onDragStart,
+  base,
+}: {
+  file: FolderEditFile;
+  depth: number;
+  included: boolean;
+  disabled: boolean;
+  revealSeq: number | null;
+  meta?: (file: FolderEditFile) => ReactNode;
+  below?: (file: FolderEditFile) => ReactNode;
+  rowMenu?: (paths: readonly string[], base: string, name: string) => ReactNode;
+  onToggle: (paths: readonly string[], included: boolean) => void;
+  onDragStart?: (event: DragEvent) => void;
+  base: string;
+}) {
+  const { t } = useTranslation();
+  const revealed = useRevealedRow<HTMLDivElement>(revealSeq);
+  const line = below?.(file);
+  return (
+    <div ref={revealed.ref} className={cn("rounded-md", revealed.flashing && revealedRowClass)}>
+      <label
+        className={cn(
+          "flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 text-sm",
+          included ? "hover:bg-muted/70" : "text-muted-foreground hover:bg-muted/70",
+        )}
+        style={{ paddingLeft: depth * 14 + 8 }}
+        title={file.path}
+        draggable={Boolean(onDragStart)}
+        onDragStart={onDragStart}
+      >
+        <span className="w-[18px] shrink-0" aria-hidden="true" />
+        <Checkbox
+          checked={included}
+          disabled={disabled}
+          onCheckedChange={(next) => onToggle([file.path], next)}
+          aria-label={t("libraryDetail.selectFile", { name: file.name })}
+        />
+        <KindIcon kind={file.kind} />
+        <span className="min-w-0 flex-1 truncate">{file.name}</span>
+        {meta?.(file)}
+        <span className="w-16 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+          {file.sizeBytes === null ? "" : formatBytes(file.sizeBytes)}
+        </span>
+        {rowMenu?.([file.path], base, file.name)}
+      </label>
+      {line && (
+        // The line starts under the file's name: past the spacer, checkbox, and icon.
+        <div className="-mt-1 pb-1.5 pr-2" style={{ paddingLeft: depth * 14 + 82 }}>
+          {line}
+        </div>
+      )}
     </div>
   );
 }
@@ -418,12 +513,13 @@ export function ResultNode({
   );
 }
 
-/** One file of the result with its state; `actions` sits at the end of the row. */
+/** One file of the result with its state; `mark` follows its name and `actions` ends the row. */
 export function ResultRow({
   entry,
   depth,
   decision,
   disabled,
+  mark,
   actions,
   onDecisionChange,
 }: {
@@ -431,6 +527,8 @@ export function ResultRow({
   depth: number;
   decision: RemoteFetchFileDecision | undefined;
   disabled: boolean;
+  /** Shown after the file's name, such as where it has an identical copy. */
+  mark?: ReactNode;
   actions?: ReactNode;
   onDecisionChange: (decision: RemoteFetchFileDecision) => void;
 }) {
@@ -461,6 +559,7 @@ export function ResultRow({
         <span className={cn("min-w-0 flex-1 truncate", leaving && "text-muted-foreground line-through")}>
           {entry.name}
         </span>
+        {mark}
         {entry.sizeBytes !== null && (
           <span className="hidden shrink-0 tabular-nums text-muted-foreground sm:inline">
             {formatBytes(entry.sizeBytes)}

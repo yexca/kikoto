@@ -1,4 +1,3 @@
-import type { DuplicateFile, DuplicateFileGroup } from "../../../lib/api";
 import { naturalNameCompare } from "../../../lib/naturalNameOrder";
 import { inLyricsFolder, parentFolder, pathIdentity } from "./folderEditLayout";
 import {
@@ -20,49 +19,6 @@ export function fileWorkspacePlace(resource: Pick<FolderEditResource, "kind">): 
   return resource.kind === "local" ? "local" : "remote";
 }
 
-/** What makes a file of the edited folder redundant: another file with the same content. */
-export type FolderDuplicateMark = {
-  /** A file with the same content, from outside the edited folder when there is one. */
-  counterpart: DuplicateFile;
-  /** The counterpart is in another folder or edition. */
-  elsewhere: boolean;
-};
-
-export type FolderDuplicates = {
-  /** A mark per path of the edited folder that has an identical file. */
-  marks: Map<string, FolderDuplicateMark>;
-  /** Paths whose content also exists outside the edited folder. */
-  elsewhere: string[];
-  /** Paths repeated inside the edited folder: every copy except the first of each set. */
-  repeated: string[];
-};
-
-/**
- * Relates identical-file groups to the edited folder's files. A set that also
- * has a copy outside the folder makes every copy in it redundant; a set that
- * exists only inside it keeps its first file.
- */
-export function folderEditDuplicates(groups: readonly DuplicateFileGroup[], files: readonly FolderEditFile[]) {
-  const listed = new Map(
-    files.filter((file) => file.locationId !== null).map((file) => [file.locationId as number, file.path]),
-  );
-  const duplicates: FolderDuplicates = { marks: new Map(), elsewhere: [], repeated: [] };
-  for (const group of groups) {
-    const inside = group.files.filter((file) => listed.has(file.locationId));
-    const outside = group.files.filter((file) => !listed.has(file.locationId));
-    if (inside.length === 0 || inside.length + outside.length < 2) continue;
-    inside.forEach((file, index) => {
-      const path = listed.get(file.locationId);
-      const counterpart = outside[0] ?? inside.find((other) => other.locationId !== file.locationId);
-      if (path === undefined || !counterpart) return;
-      duplicates.marks.set(path, { counterpart, elsewhere: outside.length > 0 });
-      if (outside.length > 0) duplicates.elsewhere.push(path);
-      else if (index > 0) duplicates.repeated.push(path);
-    });
-  }
-  return duplicates;
-}
-
 /**
  * The folders of the final folder that files can go to, parents first and in
  * name order: every folder that holds a file the folder keeps or gains, and
@@ -80,11 +36,6 @@ export function finalFolderPaths(entries: readonly FolderEditResultEntry[], crea
   }
   for (const folder of created) add(folder);
   return [...folders].filter((folder) => !inLyricsFolder(folder)).sort(naturalNameCompare);
-}
-
-/** The last two segments of a library path, enough to recognize a file without its full location. */
-export function compactLibraryPath(path: string) {
-  return path.replace(/\\/g, "/").split("/").filter(Boolean).slice(-2).join("/");
 }
 
 /**

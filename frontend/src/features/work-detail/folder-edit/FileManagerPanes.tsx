@@ -1,5 +1,5 @@
-import { ChevronLeft, ChevronRight, Copy, Merge } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight, Copy, CopyCheck, Merge } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,13 @@ import {
   withFolderEditPaths,
   type FolderEditResource,
 } from "@/features/work-detail/folder-edit/folderEditModel";
-import type { FolderWorkspace, FolderWorkspaceManage } from "@/features/work-detail/folder-edit/folderWorkspace";
+import {
+  FolderWorkspaceNavigationContext,
+  type FolderWorkspace,
+  type FolderWorkspaceManage,
+  type FolderWorkspaceNavigation,
+  type FolderWorkspaceRevealTarget,
+} from "@/features/work-detail/folder-edit/folderWorkspace";
 import {
   CheckSourcesButton,
   CopyMergeSwitch,
@@ -56,48 +62,105 @@ export function FileManagerPanes({
   notice?: ReactNode;
   emptyResult: string;
 }) {
+  const { t } = useTranslation();
   // A workspace opened on a place, such as the remote edition a Fetch adds, starts with it open.
   const [openId, setOpenId] = useState<string | null>(() =>
     workspace.activeResource.kind !== "current" ? workspace.activeResource.id : null,
   );
+  const [reveal, setReveal] = useState<(FolderWorkspaceRevealTarget & { seq: number }) | null>(null);
+  const review = manage.identical?.review ?? null;
+  const reviewing = openId === IDENTICAL_REVIEW && review !== null;
   const open = workspace.resources.find((resource) => resource.id === openId && resource.kind !== "current") ?? null;
   const { openResource } = workspace;
   useEffect(() => {
     if (open) openResource(open);
   }, [open, openResource]);
+  // The review takes the left column, beside This folder; a file of another
+  // folder opens that folder there, and a file of This folder scrolls to it.
+  const navigation = useMemo<FolderWorkspaceNavigation>(
+    () => ({
+      showIdenticalReview: () => setOpenId(IDENTICAL_REVIEW),
+      reveal: (target) => {
+        if (target.resourceId !== CURRENT_FOLDER_RESOURCE) setOpenId(target.resourceId);
+        setReveal((current) => ({ ...target, seq: (current?.seq ?? 0) + 1 }));
+      },
+    }),
+    [],
+  );
+  const revealIn = (resourceId: string) =>
+    reveal?.resourceId === resourceId ? { path: reveal.path, seq: reveal.seq } : null;
   return (
-    <div
-      className="grid min-h-0 flex-1 divide-x"
-      style={{
-        gridTemplateColumns: open
-          ? "minmax(0, 1fr) minmax(0, 1.15fr) minmax(18rem, 22rem)"
-          : "minmax(16rem, 20rem) minmax(0, 1fr) minmax(18rem, 22rem)",
-      }}
-    >
-      {open ? (
-        <SelectionColumn
+    <FolderWorkspaceNavigationContext.Provider value={navigation}>
+      <div
+        className="grid min-h-0 flex-1 divide-x"
+        style={{
+          gridTemplateColumns:
+            open || reviewing
+              ? "minmax(0, 1fr) minmax(0, 1.15fr) minmax(18rem, 22rem)"
+              : "minmax(16rem, 20rem) minmax(0, 1fr) minmax(18rem, 22rem)",
+        }}
+      >
+        {reviewing ? (
+          <section aria-label={t("fileWorkspace.identical.title")} className="flex min-h-0 flex-col bg-card">
+            <ReviewHeader onClose={() => setOpenId(null)} />
+            {review}
+          </section>
+        ) : open ? (
+          <SelectionColumn
+            workspace={workspace}
+            resource={open}
+            hint={hints(open)}
+            active
+            manage={manage}
+            reveal={revealIn(open.id)}
+            header={
+              <SourceHeader workspace={workspace} resource={open} onPick={setOpenId} onClose={() => setOpenId(null)} />
+            }
+          />
+        ) : (
+          <SourcePrompts
+            workspace={workspace}
+            identical={review ? (manage.identical?.count ?? 0) : 0}
+            onOpen={(resource) => setOpenId(resource.id)}
+            onReview={() => setOpenId(IDENTICAL_REVIEW)}
+          />
+        )}
+        <ResultColumn
           workspace={workspace}
-          resource={open}
-          hint={hints(open)}
+          notice={notice}
+          emptyResult={emptyResult}
           active
           manage={manage}
-          header={
-            <SourceHeader workspace={workspace} resource={open} onPick={setOpenId} onClose={() => setOpenId(null)} />
-          }
+          reveal={revealIn(CURRENT_FOLDER_RESOURCE)}
+          header={<TargetHeader workspace={workspace} entry={manage.identical?.entry} />}
+          tools={<TargetTools workspace={workspace} manage={manage} />}
         />
-      ) : (
-        <SourcePrompts workspace={workspace} onOpen={(resource) => setOpenId(resource.id)} />
-      )}
-      <ResultColumn
-        workspace={workspace}
-        notice={notice}
-        emptyResult={emptyResult}
-        active
-        manage={manage}
-        header={<TargetHeader workspace={workspace} />}
-        tools={<TargetTools workspace={workspace} manage={manage} />}
-      />
-      <PendingDeletionPanel pending={manage.pending} disabled={workspace.applying} onKeep={manage.onKeep} />
+        <PendingDeletionPanel pending={manage.pending} disabled={workspace.applying} onKeep={manage.onKeep} />
+      </div>
+    </FolderWorkspaceNavigationContext.Provider>
+  );
+}
+
+/** The left column's value while it shows the review of identical files. */
+const IDENTICAL_REVIEW = "identical-review";
+
+/** The review's head in the left column, with the way back to the other places. */
+function ReviewHeader({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b px-2 py-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="shrink-0 px-2"
+        aria-label={t("fileWorkspace.closePlace")}
+        title={t("fileWorkspace.closePlace")}
+        onClick={onClose}
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+      <CopyCheck className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <h2 className="text-sm font-medium">{t("fileWorkspace.identical.title")}</h2>
     </div>
   );
 }
@@ -108,10 +171,15 @@ export function FileManagerPanes({
  */
 function SourcePrompts({
   workspace,
+  identical,
   onOpen,
+  onReview,
 }: {
   workspace: FolderWorkspace;
+  /** How many files of This folder have an identical copy to review. */
+  identical: number;
   onOpen: (resource: FolderEditResource) => void;
+  onReview: () => void;
 }) {
   const { t } = useTranslation();
   const groups = (["local", "remote"] as const)
@@ -140,6 +208,22 @@ function SourcePrompts({
         )}
         <SourcesStatus workspace={workspace} />
         <CheckSourcesButton workspace={workspace} className="h-8 px-2 text-xs" />
+        {identical > 0 && (
+          <button
+            type="button"
+            onClick={onReview}
+            className="flex min-h-14 w-full items-center gap-3 rounded-lg border bg-background py-2.5 pl-4 pr-2 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <CopyCheck className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">{t("fileWorkspace.identical.review")}</span>
+              <span className="block text-2xs text-muted-foreground">
+                {t("fileWorkspace.identical.found", { count: identical })}
+              </span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          </button>
+        )}
       </div>
     </aside>
   );
@@ -304,8 +388,11 @@ function SourceHeader({
   );
 }
 
-/** This folder's fixed head: the folder the edit changes, in its own color and words. */
-function TargetHeader({ workspace }: { workspace: FolderWorkspace }) {
+/**
+ * This folder's fixed head: the folder the edit changes, in its own color and
+ * words, and `entry`, such as the way to find its identical files.
+ */
+function TargetHeader({ workspace, entry }: { workspace: FolderWorkspace; entry?: ReactNode }) {
   const { t } = useTranslation();
   const Icon = placeIcon("target");
   return (
@@ -321,12 +408,13 @@ function TargetHeader({ workspace }: { workspace: FolderWorkspace }) {
         >
           {workspace.rootPath}
         </span>
+        {entry}
       </div>
     </div>
   );
 }
 
-/** The edited folder's own tools in its column: keeping its files by format, and finding identical ones. */
+/** The edited folder's own tools in its column: keeping its files by format, and what a check for identical files found. */
 function TargetTools({ workspace, manage }: { workspace: FolderWorkspace; manage: FolderWorkspaceManage }) {
   const { t } = useTranslation();
   const state = workspace.files[CURRENT_FOLDER_RESOURCE];
@@ -342,6 +430,7 @@ function TargetTools({ workspace, manage }: { workspace: FolderWorkspace; manage
           workspace.setSelected(CURRENT_FOLDER_RESOURCE, withFolderEditPaths(selected, paths, included))
         }
       />
+      {manage.identical?.status}
       {manage.thisFolderTools}
     </div>
   );

@@ -5,7 +5,8 @@ import { api, type DuplicateFileGroup } from "@/lib/api";
 export type DuplicateFileCheck =
   | { status: "idle" | "error" }
   | { status: "running"; checkedFiles: number; pendingFiles: number }
-  | { status: "done"; groups: DuplicateFileGroup[] };
+  /** `run` numbers the finished checks, so a view can react to each new result. */
+  | { status: "done"; groups: DuplicateFileGroup[]; run: number };
 
 /**
  * Runs the identical-file check of a work's family on demand. The server does
@@ -29,7 +30,7 @@ export function useDuplicateFileCheck(workId: number) {
         const result = await api.findWorkDuplicateFiles(workId);
         if (current !== run.current) return;
         if (result.complete) {
-          setCheck({ status: "done", groups: result.groups });
+          setCheck({ status: "done", groups: result.groups, run: current });
           return;
         }
         setCheck({ status: "running", checkedFiles: result.checkedFiles, pendingFiles: result.pendingFiles });

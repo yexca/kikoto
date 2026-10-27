@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  compactLibraryPath,
-  folderEditDuplicates,
-  folderEditPendingDeletions,
-  type PendingDeletion,
-} from "./fileWorkspaceModel";
+import { folderEditPendingDeletions, type PendingDeletion } from "./fileWorkspaceModel";
 import { currentFileKey, type FolderEditFile, type FolderEditResource } from "./folderEditModel";
 
 function file(locationId: number, path: string, sizeBytes = 100): FolderEditFile {
@@ -19,63 +14,6 @@ const files = [
   file(4, "wav/02.WAV", 500),
   file(5, "readme.txt", 1),
 ];
-
-describe("identical files of the edited folder", () => {
-  const duplicate = (locationId: number, workCode: string, path: string) => ({
-    locationId,
-    mediaItemId: locationId,
-    workId: workCode === "RJ00000000" ? 1 : 2,
-    workCode,
-    path,
-  });
-
-  it("treats every copy in the folder as redundant when the same file is in another folder", () => {
-    const duplicates = folderEditDuplicates(
-      [
-        {
-          sizeBytes: 100,
-          files: [
-            duplicate(1, "RJ00000000", "library/RJ00000000/mp3/01.mp3"),
-            duplicate(2, "RJ00000000", "library/RJ00000000/mp3/02.mp3"),
-            duplicate(70, "RJ00000001", "library/RJ00000001/Translated/01.mp3"),
-          ],
-        },
-      ],
-      files,
-    );
-    expect(duplicates.elsewhere).toEqual(["mp3/01.mp3", "mp3/02.mp3"]);
-    expect(duplicates.repeated).toEqual([]);
-    expect(duplicates.marks.get("mp3/01.mp3")).toMatchObject({ elsewhere: true, counterpart: { locationId: 70 } });
-    expect(compactLibraryPath(duplicates.marks.get("mp3/01.mp3")?.counterpart.path ?? "")).toBe("Translated/01.mp3");
-  });
-
-  it("keeps the first file of a set that exists only in the folder", () => {
-    const duplicates = folderEditDuplicates(
-      [
-        {
-          sizeBytes: 500,
-          files: [
-            duplicate(3, "RJ00000000", "library/RJ00000000/wav/01.wav"),
-            duplicate(4, "RJ00000000", "library/RJ00000000/wav/02.WAV"),
-          ],
-        },
-        // A set whose copies are all outside the folder is not this folder's concern.
-        {
-          sizeBytes: 9,
-          files: [
-            duplicate(80, "RJ00000001", "library/RJ00000001/a.txt"),
-            duplicate(81, "RJ00000001", "library/RJ00000001/b.txt"),
-          ],
-        },
-      ],
-      files,
-    );
-    expect(duplicates.repeated).toEqual(["wav/02.WAV"]);
-    expect(duplicates.elsewhere).toEqual([]);
-    expect([...duplicates.marks.keys()].sort()).toEqual(["wav/01.wav", "wav/02.WAV"]);
-    expect(duplicates.marks.get("wav/01.wav")).toMatchObject({ elsewhere: false, counterpart: { locationId: 4 } });
-  });
-});
 
 describe("files the edit deletes", () => {
   const merged: FolderEditResource = {
