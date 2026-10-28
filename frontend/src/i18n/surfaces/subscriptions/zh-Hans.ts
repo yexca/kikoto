@@ -78,7 +78,6 @@ export const subscriptionsHans = {
       },
     },
     watchAvailability: "监视可用性",
-    watchQueued: "已将可用性监视检查加入队列。",
     unreadBadge_one: "{{count}} 部新作",
     unreadBadge_other: "{{count}} 部新作",
     actions: {

@@ -28,15 +28,16 @@ The four views show works the same way.
   **Mini** only the cover and title. Two phone columns of **Compact** cards
   show short tiles.
 - The bottom of a card holds its actions, always in this order: DLsite, then
-  **Watch**, your favorite lists, your rating, and **Quick mark**. Each
-  appears only where it applies: **Watch** for a work your library has no
-  files for (no local or cached files, and not tracked from a remote source),
-  and the personal buttons for a work Kikoto knows.
+  **Watch**, the view's own actions such as **Track** and **Fetch**, your
+  favorite lists, your rating, and **Quick mark**. Each appears only where it
+  applies: **Watch** for a work your library has no files for (no local or
+  cached files, and not tracked from a remote source), and the personal
+  buttons for a work Kikoto knows.
 - A work Kikoto has no metadata for shows its code on the cover, the title
   and circle the ranking or catalog gives, and no rating line.
 - The top right always shows **Actions**, **Display options**, and
   **Subscription settings** in the same places. **Actions** works on New
-  releases and Rankings and is unavailable on For you and Watch.
+  releases, Rankings, and Watch, and is unavailable on For you.
 - Each group of cards, such as a day of New releases, a For you column, or
   the available works in Watch, starts with a heading that counts its works.
 
@@ -114,7 +115,9 @@ you do in For you changes what the Library recommends.
   - **New edition**: a new language edition of a work released long before,
     such as a translation.
   - **Now available**: Availability Watch found the work on a remote source.
-    Every account that can open Workflows receives these.
+    Every account that can open Workflows receives these. While the library
+    does not have the work, its card offers **Track** and **Fetch**, as in
+    [Watch](#watch).
   A family with several events keeps one card, on the day of its newest event.
 - **Display options** also choose how many days a page holds: 5, 10 (the
   default), or 15. Days without new works are skipped, so a page holds that
@@ -211,28 +214,69 @@ you do in For you changes what the Library recommends.
 
 ## Watch
 
-- **Watch** shows the Availability Watch pool, which every account that can
-  open Workflows shares. At the top are how many works it watches, how many
-  are available, not available, or failed their last check, and when it last
-  checked one. To watch more works, paste one or more codes into the field
-  beside them and select **Add**; codes already watched and text that is not
-  a work code are reported and left out.
-- **Available** comes first and lists every work a remote source offers.
-  **Not available** lists the works still waiting for a source, those whose
-  last check failed first. When there are many, it shows their first two
-  rows of cards, or more rows on a narrow screen, and **Show all**.
+**Watch** shows the Availability Watch pool, which every account that can
+open Workflows shares. Availability Watch only monitors: it reports when a
+remote source offers a watched work and never tracks or fetches on its own.
+Each check first refreshes the code's DLsite family, and any edition of the
+family on a remote source makes the work available. What to do with an
+available work is your choice, here.
+
+- At the top are how many works the pool watches, how many are available, in
+  progress, waiting, or failed their last check, and when it last checked
+  one. To watch more works, paste codes, DLsite work links, or a mixed list
+  into the field beside them. Before anything is added, the field lists the
+  new codes, those already watched (including another edition of a watched
+  work), and the text that is not a code; **Add** adds only the new codes.
+- Below them, search the pool by code or title, choose **Date added** or
+  **Release date** to order it, newest first, and **Select** works.
+- The works come in five groups, in this order:
+  - **Available**: a remote source offers the work, or another edition of
+    its family, and the library does not have it.
+  - **In progress**: a Track or Fetch was started. The line above the card
+    says whether it is queued, running, failed, or done, with **View run**.
+  - **Waiting**: no source has the work yet.
+  - **Check failed**: the last check failed; the line above the card says
+    why.
+  - **Already in library**: the work has local or cached files or is tracked
+    from a remote source, the same rule as a ranking's **Not in library**.
+    These stay in the pool until you clean them up.
+
+  **Waiting** and **Already in library** show their first two rows of cards,
+  or more rows on a narrow screen, and **Show all**; a search shows every
+  match.
 - A watched work need not be in the library, so its card shows the code and
   the title and cover Kikoto knows for its family. The line above it shows
   its state, then the remote source for an available work, with the edition
   found when it is another edition of the family, when it was last checked
   for a waiting work, or why the last check failed.
+- The bottom of a card holds, after DLsite, **Track** and **Fetch** on an
+  available work, as on a remote source's cards. When a source offers only
+  another edition, the buttons name that edition's code and Fetch shows it,
+  since that is the code tracked or fetched. A waiting or failed work has
+  **Check now**, which checks only that work. Every card has **Remove**,
+  which removes the work from the pool after a second press.
 - Select a card to open the work's family: every known edition, which one a
-  remote source offers, and **Open**, **Track**, and **Remove from watch**.
-- The `×` at the end of the line above a card removes the work from the pool
-  after a second press. **Clear completed**, beside **Available**, removes
-  after a second press every work whose Track or Fetch has started.
-- Adding and removing works needs the permissions of the action the watch is
-  configured with; see [Availability Watch](#availability-watch).
+  remote source offers, and **Open**, **Track**, **Fetch**, **Check now**, and
+  **Remove from watch**.
+- **Select** turns on checkboxes on the cards and a bar with **Fetch**,
+  **Track**, **Check now**, and **Remove**. Each action counts the selected
+  works it applies to; in a mixed selection it says so, such as "3 of 5 can
+  be fetched", and acts only on those. Removing several works asks first.
+- **Actions** at the top right has:
+  - **Check now**: checks every waiting work and failed check.
+  - **Fetch all available**: fetches every available work.
+  - **Clean up**: removes the works already in the library and the works
+    whose Track or Fetch is done, after a confirmation that counts both.
+- Fetch asks first. The confirmation states how many works it fetches, which
+  ones a source offers only as another edition (shown as the watched code
+  and the edition fetched), the sources they come from, and which file
+  extensions to leave out. That exclusion is remembered on the device for the
+  next Fetch. One Fetch takes at most 100 works through the same bulk Fetch a
+  remote source's selection uses, one run per source; the rest stay available
+  for the next Fetch. Each work then shows its own Fetch run.
+- Adding, removing, cleaning up, and **Check now** need the permission to sync
+  metadata. **Track** and **Fetch** need their own remote permissions; without
+  one, the button stays in place, disabled, and its tooltip says why.
 
 ## Syncing and checking shown works
 
@@ -282,16 +326,17 @@ sheet.
 
 ## Availability Watch
 
-- The **Availability Watch** tab of the settings holds the watch's
-  configuration: the remote source, the action when a work becomes
-  available, and optional Fetch extension exclusions; see
-  [Workflows](workflows.md) for how a watch run checks a work's family. The
-  works it watches are in the [Watch](#watch) view. The tab is shown to
-  accounts that can open Workflows.
-- The subscription refresh runs the watch on its schedule; **Run** checks the
-  pool now. Workflows keeps the watch's run history and links here.
+- The **Availability Watch** tab of the settings holds the watch's one
+  setting: the remote source it checks, **Any healthy source** or one source,
+  and **Save**. The works it watches, and what to do with them, are in the
+  [Watch](#watch) view. The tab is shown to accounts that can open Workflows;
+  changing the source needs the permission to sync metadata.
+- The subscription refresh checks the watch on its schedule; **Check now** in
+  Watch checks it at any time. Workflows keeps the watch's run history and
+  links here.
 - A notification about newly available works opens **Watch** at its
-  **Available** works.
+  **Available** works with the works that check found already selected, so
+  **Fetch** in the selection bar fetches them.
 
 ## Ranking Settings
 

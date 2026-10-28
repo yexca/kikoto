@@ -152,6 +152,7 @@ function rankingPageFixture(
       work: null,
       inLibrary: false,
       watched: false,
+      watchTarget: null,
       fallback: { code: syntheticWorkCode("RJ", 9), title: "Example Work 9", circle: "", coverUrl: "", dlsiteUrl: "" },
     },
   ];
@@ -1059,6 +1060,7 @@ test("@desktop release cards label the watch action and say which works are watc
       releaseFeedFamilyFixture({
         key: "code:RJ00000002",
         watched: true,
+        watchTarget: null,
         fallback: { ...releaseFeedFamilyFixture().fallback, code: syntheticWorkCode("RJ", 2), title: "Example Work 2" },
       }),
       // A work the library already has files for has nothing to wait for.

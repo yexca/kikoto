@@ -113,6 +113,19 @@ export type ReleaseFeedFamily = {
   fallback: ReleaseFeedFallback;
   /** Availability Watch watches the shown code or another edition of it; false for accounts that cannot see the pool. */
   watched: boolean;
+  /** The available watch target behind a "Now available" event, for its Track and Fetch; null otherwise. */
+  watchTarget: ReleaseFeedWatchTarget | null;
+};
+
+/** What a feed card needs to track or fetch an available watch target. */
+export type ReleaseFeedWatchTarget = {
+  id: number;
+  workCode: string;
+  availableCode: string;
+  availableSourceId: number;
+  trackRunStatus: string;
+  fetchRunStatus: string;
+  inLibrary: boolean;
 };
 
 export type ReleaseFeedPage = {

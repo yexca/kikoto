@@ -78,7 +78,6 @@ export const subscriptionsHant = {
       },
     },
     watchAvailability: "監視可用性",
-    watchQueued: "已將可用性監視檢查加入佇列。",
     unreadBadge_one: "{{count}} 部新作",
     unreadBadge_other: "{{count}} 部新作",
     actions: {

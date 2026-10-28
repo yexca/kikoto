@@ -79,7 +79,6 @@ export const subscriptionsKorean = {
       },
     },
     watchAvailability: "가용성 모니터링",
-    watchQueued: "가용성 모니터링 확인을 대기열에 추가했습니다.",
     unreadBadge_one: "신작 {{count}}개",
     unreadBadge_other: "신작 {{count}}개",
     actions: {

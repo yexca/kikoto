@@ -1,5 +1,5 @@
 import { Loader2, Rss } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -106,6 +106,7 @@ export function ReleaseFeed({
   canMarkSeen,
   canMark,
   canWatch,
+  availableActions,
   sourceCheck,
   reloadKey,
   onOpenWork,
@@ -124,6 +125,8 @@ export function ReleaseFeed({
   canMark: boolean;
   /** The account may add works to Availability Watch. */
   canWatch: boolean;
+  /** Track and Fetch for a family whose "Now available" event names an available watch target. */
+  availableActions?: (target: NonNullable<ReleaseFeedFamily["watchTarget"]>) => ReactNode;
   /** What this visit's source checks found for the shown works. */
   sourceCheck: ShownWorksSourceCheck;
   /** Changes when the feed should be read again, such as after a run on its works. */
@@ -271,6 +274,7 @@ export function ReleaseFeed({
                     }
                   : null
               }
+              actions={family.watchTarget && availableActions?.(family.watchTarget)}
               work={family.work}
               canMark={canMark}
               onWorkChange={patchWork}

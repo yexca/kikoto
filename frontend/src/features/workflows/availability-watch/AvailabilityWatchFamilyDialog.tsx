@@ -1,41 +1,31 @@
-import { Activity, ExternalLink, GitBranchPlus, Loader2, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Activity, ExternalLink, GitFork, HardDriveDownload, Loader2, RefreshCw, Trash2 } from "lucide-react";
 
 import { openWorkDetail } from "@/app/workDetailNavigation";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { toastFromError, useToast } from "@/components/ui/toast";
 import i18n, { intlLocaleFor } from "@/i18n";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { formatTimestamp, parseWorkflowTimestamp } from "@/features/workflows/runPresentation";
 import { workflowCopy } from "@/features/workflows/workflowPageModel";
 import { Modal } from "@/features/workflows/WorkflowPanelParts";
-import { api, assetURL, type AvailabilityWatchTarget } from "@/lib/api";
+import { assetURL, type AvailabilityWatchTarget } from "@/lib/api";
 import { metadataTagLanguages } from "@/lib/metadataTagModel";
 
-import { isAvailableTarget } from "./availabilityWatchModel";
+import { watchTargetStateLabel, type WatchCardPermissions } from "./AvailabilityWatchTargetCard";
+import {
+  isAvailableTarget,
+  watchTargetActionCode,
+  watchTargetAllows,
+  watchTargetGroup,
+  watchTargetRun,
+} from "./availabilityWatchModel";
 import { useArmedConfirm } from "./useArmedConfirm";
-
-export function availabilityWatchStateLabel(target: AvailabilityWatchTarget) {
-  switch (target.state) {
-    case "ready":
-      return workflowCopy("availabilityState.available");
-    case "action_queued":
-      return workflowCopy("availabilityState.actionQueued");
-    case "completed":
-      return workflowCopy("availabilityState.completed");
-    case "error":
-      return workflowCopy("availabilityState.checkFailed");
-    default:
-      return target.lastCheckedAt
-        ? workflowCopy("availabilityState.notAvailable")
-        : workflowCopy("availabilityState.notChecked");
-  }
-}
+import type { WatchTargetActions } from "./useWatchTargetActions";
 
 function stateBadgeVariant(target: AvailabilityWatchTarget): BadgeProps["variant"] {
-  if (target.state === "error" || target.lastError) return "warning";
-  return isAvailableTarget(target) ? "success" : "secondary";
+  const group = watchTargetGroup(target);
+  if (group === "failed" || watchTargetRun(target)?.state === "failed") return "warning";
+  return group === "available" || group === "inLibrary" ? "success" : "secondary";
 }
 
 function editionLanguageLabel(language: string) {
@@ -45,30 +35,33 @@ function editionLanguageLabel(language: string) {
 
 /**
  * One watched code's family: every known edition, which one a remote source
- * offers, and the actions for that edition.
+ * offers, and the actions for the target: Track and Fetch of the edition
+ * found, Check now, and Remove.
  */
 export function AvailabilityWatchFamilyDialog({
   target,
   sourceName,
-  readOnly,
+  permissions,
+  actions,
   onClose,
   onChanged,
 }: {
   target: AvailabilityWatchTarget;
   sourceName: string;
-  readOnly: boolean;
+  /** The account's permissions on the watch, or null where the view is read-only. */
+  permissions: WatchCardPermissions | null;
+  actions: WatchTargetActions;
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const toast = useToast();
   const { resolvedLocale } = useLocale();
   const locale = intlLocaleFor(resolvedLocale);
   const confirm = useArmedConfirm<"remove">();
-  const [busy, setBusy] = useState<"track" | "remove" | null>(null);
   const available = isAvailableTarget(target);
-  const availableCode = target.availableCode || target.workCode;
+  const availableCode = watchTargetActionCode(target);
   const checkedAt = parseWorkflowTimestamp(target.lastCheckedAt);
-  const runId = target.fetchRunId ?? target.trackRunId;
+  const runId = watchTargetRun(target)?.runId ?? null;
+  const busy = actions.busy !== null;
 
   const open = () => {
     if (!target.availableSourceId) return;
@@ -77,34 +70,14 @@ export function AvailabilityWatchFamilyDialog({
       { returnTo: watchTargetLocation(target.id), returnLabel: workflowCopy("backToAvailabilityWatch") },
     );
   };
-  const track = async () => {
-    setBusy("track");
-    try {
-      const result = await api.trackAvailabilityWatchTarget(target.id);
-      toast.success(workflowCopy("trackRunQueued", { runId: result.runId }));
-      onChanged();
-    } catch (error) {
-      toast.notify(toastFromError(error, workflowCopy("trackTargetFailed", { workCode: availableCode })));
-    } finally {
-      setBusy(null);
-    }
-  };
-  const remove = async () => {
+  const remove = () => {
     if (confirm.armed !== "remove") {
       confirm.arm("remove");
       return;
     }
     confirm.disarm();
-    setBusy("remove");
-    try {
-      await api.removeAvailabilityWatchTarget(target.id);
-      toast.success(workflowCopy("removedFromWatch", { workCode: target.workCode }));
-      onChanged();
-      onClose();
-    } catch (error) {
-      toast.notify(toastFromError(error, workflowCopy("removeTargetFailed", { workCode: target.workCode })));
-      setBusy(null);
-    }
+    actions.removeOne(target);
+    onClose();
   };
 
   const facts: [string, string][] = [
@@ -128,7 +101,7 @@ export function AvailabilityWatchFamilyDialog({
             <div className="font-mono text-sm font-semibold">{target.workCode}</div>
             {target.title && <div className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{target.title}</div>}
           </div>
-          <Badge variant={stateBadgeVariant(target)}>{availabilityWatchStateLabel(target)}</Badge>
+          <Badge variant={stateBadgeVariant(target)}>{watchTargetStateLabel(target)}</Badge>
         </div>
         {target.lastError && (
           <p className="rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning-foreground">
@@ -189,15 +162,20 @@ export function AvailabilityWatchFamilyDialog({
         </section>
 
         <div className="flex flex-wrap items-center gap-2 border-t pt-3">
-          {!readOnly && (
+          {permissions && (
             <>
               <Button
                 size="sm"
                 variant={confirm.armed === "remove" ? "destructive" : "ghost"}
-                onClick={() => void remove()}
-                disabled={busy !== null}
+                onClick={remove}
+                disabled={!permissions.manage || busy}
+                title={permissions.manage ? undefined : workflowCopy("watchView.needsManagePermission")}
               >
-                {busy === "remove" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {actions.busy === "remove" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
                 {confirm.armed === "remove" ? workflowCopy("confirmRemoveFromWatch") : workflowCopy("removeFromWatch")}
               </Button>
               {confirm.armed === "remove" && (
@@ -220,18 +198,49 @@ export function AvailabilityWatchFamilyDialog({
               </Button>
             )}
             {available && (
+              <Button size="sm" variant="outline" onClick={open} disabled={!target.availableSourceId}>
+                <ExternalLink className="h-4 w-4" />
+                {workflowCopy("open")}
+              </Button>
+            )}
+            {permissions && watchTargetAllows(target, "check") && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  actions.check([target.id]);
+                  onChanged();
+                }}
+                disabled={!permissions.manage || busy}
+                title={permissions.manage ? undefined : workflowCopy("watchView.needsManagePermission")}
+              >
+                <RefreshCw className="h-4 w-4" />
+                {workflowCopy("watchView.checkNow")}
+              </Button>
+            )}
+            {permissions && available && !target.inLibrary && (
               <>
-                <Button size="sm" variant="outline" onClick={open} disabled={!target.availableSourceId}>
-                  <ExternalLink className="h-4 w-4" />
-                  {workflowCopy("open")}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => actions.track([target])}
+                  disabled={!permissions.track || !watchTargetAllows(target, "track") || busy}
+                  title={permissions.track ? undefined : workflowCopy("watchView.needsTrackPermission")}
+                >
+                  <GitFork className="h-4 w-4" />
+                  {workflowCopy("watchView.trackCode", { code: availableCode })}
                 </Button>
-                <Button size="sm" onClick={() => void track()} disabled={readOnly || busy !== null}>
-                  {busy === "track" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <GitBranchPlus className="h-4 w-4" />
-                  )}
-                  {workflowCopy("track")}
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    onClose();
+                    actions.fetch([target]);
+                  }}
+                  disabled={!permissions.fetch || !watchTargetAllows(target, "fetch") || busy}
+                  title={permissions.fetch ? undefined : workflowCopy("watchView.needsFetchPermission")}
+                >
+                  <HardDriveDownload className="h-4 w-4" />
+                  {workflowCopy("watchView.fetchCode", { code: availableCode })}
                 </Button>
               </>
             )}

@@ -24,6 +24,13 @@
 > when the upgrade starts are stopped. Tags they added earlier stay with their
 > works.
 
+> [!NOTE]
+> Availability Watch only monitors. A watch configured to Track, Fetch, or
+> Track and Fetch available works becomes monitor only, and its stored Fetch
+> extension exclusion is dropped. Works already tracked or fetched keep their
+> runs. Track and Fetch available works by hand in **Discover → Watch**, where
+> the Fetch confirmation asks for the extensions to leave out.
+
 <details>
 <summary><strong>Library and work detail</strong></summary>
 
@@ -166,8 +173,7 @@
   heading with a count. With **Full** or **Mini** cards, the For you columns
   follow one another.
 - The top right of Discover always shows **Actions**, **Display options**,
-  and the settings in the same places; **Actions** is unavailable on For you
-  and Watch.
+  and the settings in the same places; **Actions** is unavailable on For you.
 - New releases and Rankings have an **Actions** menu for the works the page
   shows. **Sync metadata** syncs DLsite metadata for the works without fresh
   metadata, adding the works Kikoto does not know yet with their title, cover,
@@ -182,16 +188,35 @@
   **Watch**, show **Watching** for a work already in the watch pool, and
   leave it off a work the library already has files for.
 - The Availability Watch pool becomes the **Watch** view of Discover,
-  after New releases and Rankings, with the same cards. **Available** comes
-  first and shows every available work; **Not available** follows with failed
-  checks first and folds to whole rows. The `×` that removes a work sits at
-  the end of the line above its card.
-  **Clear completed** removes every work whose Track or Fetch has started in
-  one step. The **Availability Watch** settings tab moves after **Rankings**
-  and keeps the configuration and **Run**, and the settings open on the tab
-  of the current view. Availability notifications, Workflows, and the way back
-  from a watched work open the Watch view, and existing links to the pool in
-  the settings open it too.
+  after New releases and Rankings, with the same cards. Availability Watch
+  only monitors, and acting on an available work happens there by hand. The
+  works come in five groups: **Available**, **In progress** with the Track or
+  Fetch run's state and **View run**, **Waiting**, **Check failed**, and
+  **Already in library**, which stay until cleaned up. Waiting and in-library
+  works fold to whole rows; a search by code or title and a **Date added** or
+  **Release date** order help with a large pool.
+- Watch cards offer **Track** and **Fetch** on available works, named after
+  the edition found when a source offers another edition, **Check now** on
+  waiting and failed works, and **Remove** with a second press; without a
+  remote permission the button stays disabled and says why. **Select** adds a
+  selection bar with **Fetch**, **Track**, **Check now**, and **Remove**, each
+  counting the works it applies to. **Actions** on Watch has **Check now**,
+  **Fetch all available**, and **Clean up**, which removes the works already
+  in the library and those whose Track or Fetch is done after a confirmation
+  with both counts.
+- Fetch from Watch confirms how many works it fetches, which ones come as
+  another edition, the sources, and the file extensions to leave out, which
+  the device remembers. It queues up to 100 works through the same bulk Fetch
+  as a remote source's selection, and each work then shows its own run.
+- **Add** in Watch accepts DLsite links and mixed text and previews the new
+  codes, those already watched, and text that is not a code before adding.
+- "Now available" cards in New releases offer **Track** and **Fetch**, and an
+  availability notification opens Watch with the newly available works
+  selected, ready to fetch.
+- The **Availability Watch** settings tab moves after **Rankings** and keeps
+  only the remote source; the settings open on the tab of the current view.
+  Workflows and the way back from a watched work open the Watch view, and
+  existing links to the pool in the settings open it too.
 
 </details>
 

@@ -2,11 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 import type {
   AuthState,
   AvailabilityWatch,
+  AvailabilityWatchActionResult,
   AvailabilityWatchRunResult,
   LocalMediaIndexResult,
   LocalScanResult,
   MaintenanceWorkPage,
-  RemoteWorkTrackResult,
   RemoteWorkSavePlan,
   RemoteWorkSaveResult,
   WorkflowCandidate,
@@ -257,9 +257,7 @@ async function mockWorkflows(
 ) {
   let availabilityWatch: AvailabilityWatch = {
     id: 1,
-    action: "monitor",
     sourceId: null,
-    excludeExtensions: ["wav"],
     revision: 2,
     targets: [
       {
@@ -276,6 +274,11 @@ async function mockWorkflows(
         availableCode: "",
         trackRunId: null,
         fetchRunId: null,
+        trackRunStatus: "",
+        fetchRunStatus: "",
+        inLibrary: false,
+        addedAt: "2026-07-26 00:00:00",
+        releaseDate: "",
         family: [],
       },
       {
@@ -283,7 +286,7 @@ async function mockWorkflows(
         workCode: "RJ00000001",
         title: "Synthetic watched work",
         coverUrl: "",
-        state: "completed",
+        state: "ready",
         nextCheckAt: "",
         lastCheckedAt: "2026-07-27T00:00:00Z",
         lastStatus: "available",
@@ -291,7 +294,12 @@ async function mockWorkflows(
         availableSourceId: 8,
         availableCode: "RJ00000003",
         trackRunId: null,
-        fetchRunId: 88,
+        fetchRunId: null,
+        trackRunStatus: "",
+        fetchRunStatus: "",
+        inLibrary: false,
+        addedAt: "2026-07-26 00:00:00",
+        releaseDate: "",
         family: [
           { code: "RJ00000001", title: "Synthetic watched work", language: "ja-jp", canonical: true },
           { code: "RJ00000003", title: "Synthetic translated work", language: "en-us", canonical: false },
@@ -358,16 +366,11 @@ async function mockWorkflows(
     }
     if (url.pathname === "/api/availability-watch") {
       if (route.request().method() === "PUT") {
-        const payload = route.request().postDataJSON() as Pick<
-          AvailabilityWatch,
-          "action" | "sourceId" | "excludeExtensions"
-        >;
+        const payload = route.request().postDataJSON() as Pick<AvailabilityWatch, "sourceId">;
         onAvailabilityWatch?.(payload);
         availabilityWatch = {
           ...availabilityWatch,
-          action: payload.action,
           sourceId: payload.sourceId,
-          excludeExtensions: payload.excludeExtensions,
           revision: availabilityWatch.revision + 1,
         };
       }
@@ -396,6 +399,11 @@ async function mockWorkflows(
             availableCode: "",
             trackRunId: null,
             fetchRunId: null,
+            trackRunStatus: "",
+            fetchRunStatus: "",
+            inLibrary: false,
+            addedAt: "2026-07-27 03:00:00",
+            releaseDate: "",
             family: [],
           })),
         ],
@@ -414,44 +422,52 @@ async function mockWorkflows(
       await route.fulfill({ json: { ok: true } satisfies ApiResponse<"removeAvailabilityWatchTarget"> });
       return;
     }
-    if (url.pathname === "/api/availability-watch/targets/clear-completed" && route.request().method() === "POST") {
+    if (
+      (url.pathname === "/api/availability-watch/targets/remove" ||
+        url.pathname === "/api/availability-watch/targets/clean-up") &&
+      route.request().method() === "POST"
+    ) {
       const { targetIds } = route.request().postDataJSON() as { targetIds: number[] };
-      onAvailabilityWatch?.({ clearCompletedTargetIds: targetIds });
+      const cleanUp = url.pathname.endsWith("clean-up");
+      onAvailabilityWatch?.(cleanUp ? { cleanUpTargetIds: targetIds } : { removeTargetIds: targetIds });
       availabilityWatch = {
         ...availabilityWatch,
         revision: availabilityWatch.revision + 1,
         targets: availabilityWatch.targets.filter(
-          (target) => !(targetIds.includes(target.id) && target.state === "completed"),
+          (target) => !(targetIds.includes(target.id) && (!cleanUp || target.inLibrary)),
         ),
       };
       await route.fulfill({ json: availabilityWatch });
       return;
     }
-    if (url.pathname.startsWith("/api/availability-watch/targets/") && route.request().method() === "POST") {
-      const targetID = Number(url.pathname.split("/").at(-2));
-      onAvailabilityWatch?.({ trackTargetId: targetID });
-      const trackedTarget = availabilityWatch.targets.find((target) => target.id === targetID);
+    if (url.pathname === "/api/availability-watch/fetch" && route.request().method() === "POST") {
+      const { targetIds, excludeExtensions } = route.request().postDataJSON() as {
+        targetIds: number[];
+        excludeExtensions: string[];
+      };
+      onAvailabilityWatch?.({ fetchTargetIds: targetIds, excludeExtensions });
+      // The Fetch finishes at once here, so the work is in the library.
       availabilityWatch = {
         ...availabilityWatch,
         targets: availabilityWatch.targets.map((target) =>
-          target.id === targetID ? { ...target, state: "completed", trackRunId: 89 } : target,
+          targetIds.includes(target.id)
+            ? { ...target, fetchRunId: 88, fetchRunStatus: "succeeded", inLibrary: true }
+            : target,
         ),
       };
       await route.fulfill({
+        status: 202,
         json: {
-          runId: 89,
-          jobId: 90,
-          workId: null,
-          primaryCode: trackedTarget?.workCode ?? "",
-          status: "queued",
-          triggerReason: "",
-          deduplicated: false,
-        } satisfies RemoteWorkTrackResult,
+          runs: [{ runId: 87, sourceId: 8, codes: ["RJ00000003"] }],
+          queued: targetIds,
+          skipped: 0,
+        } satisfies AvailabilityWatchActionResult,
       });
       return;
     }
     if (url.pathname === "/api/availability-watch/run" && route.request().method() === "POST") {
-      onAvailabilityWatch?.({ run: true });
+      const { targetIds } = route.request().postDataJSON() as { targetIds: number[] };
+      onAvailabilityWatch?.({ checkTargetIds: targetIds });
       await route.fulfill({
         status: 202,
         json: {
@@ -461,7 +477,6 @@ async function mockWorkflows(
           targetCount: availabilityWatch.targets.length,
           checked: 0,
           ready: 0,
-          dispatched: 0,
           newlyAvailableCodes: [],
           readyCodes: [],
           failures: [],
@@ -1411,111 +1426,98 @@ test("local work file refresh sends the chosen mode for manual and startup runs"
   expect(JSON.parse(payload.configJson)).toEqual({ mode: "full" });
 });
 
-test("availability watch edits its configuration in place and manages the watch pool on mobile", async ({ page }) => {
+test("availability watch keeps only its source in settings and acts on works from the Watch view on mobile", async ({
+  page,
+}) => {
   const updates: unknown[] = [];
   await mockWorkflows(page, undefined, undefined, (payload) => updates.push(payload));
   await page.goto("/workflows?workflow=availability_watch");
 
   // Workflows keeps the run history and links to the Discover page,
-  // whose Watch view holds the pool and whose settings hold the configuration.
+  // whose Watch view holds the pool and whose settings hold the source.
   await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Open Discover", exact: true }).click();
   await expect(page).toHaveURL(/\/discover\?view=watch&panel=watch$/);
   const settings = page.getByRole("dialog", { name: "Subscription settings", exact: true });
   await expect(settings.getByRole("tab")).toHaveText(["Subscriptions", "Rankings", "Availability Watch"]);
   await expect(settings.getByRole("tab", { name: "Availability Watch", selected: true })).toBeVisible();
-  await expect(settings.getByRole("region", { name: "Watch pool", exact: true })).toHaveCount(0);
 
-  // The configuration is edited in place; Run waits until Save stores it.
-  const configuration = page.getByRole("region", { name: "Configuration", exact: true });
-  const save = page.getByRole("button", { name: "Save", exact: true });
-  const run = page.getByRole("button", { name: "Run", exact: true });
+  // The watch only monitors: the settings choose the source, with no action, exclusion, or Run.
+  const save = settings.getByRole("button", { name: "Save", exact: true });
   await expect(save).toBeDisabled();
-  const sourceTabs = configuration.getByRole("group", { name: "Remote source", exact: true });
-  await expect(sourceTabs.getByRole("button", { name: "Any healthy source", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(settings.getByRole("button", { name: "Run", exact: true })).toHaveCount(0);
+  await expect(settings.getByRole("group", { name: "When available", exact: true })).toHaveCount(0);
+  const sourceTabs = settings.getByRole("group", { name: "Remote source", exact: true });
   await sourceTabs.getByRole("button", { name: "Remote Test", exact: true }).click();
-  await configuration
-    .getByRole("group", { name: "When available", exact: true })
-    .getByRole("button", { name: "Track", exact: true })
-    .click();
-  await expect(configuration.getByRole("switch", { name: "Exclude extensions", exact: true })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
-  await configuration.getByLabel("Extensions to exclude", { exact: true }).fill("wav, flac");
-  await expect(page.getByText("Save the configuration before running.", { exact: true })).toBeVisible();
-  await expect(run).toBeDisabled();
   await save.click();
-  await expect.poll(() => updates).toHaveLength(1);
+  await expect.poll(() => updates).toContainEqual({ sourceId: 8 });
   await expect(save).toBeDisabled();
-  await run.click();
-  await expect(page.getByText("Availability Watch check queued.", { exact: true })).toBeVisible();
-  await expect.poll(() => updates).toHaveLength(2);
-  expect(updates).toContainEqual({ action: "track", sourceId: 8, excludeExtensions: ["wav", "flac"] });
-  expect(updates).toContainEqual({ run: true });
 
-  // Behind the settings, the Watch view shows the available works above the waiting ones.
+  // Behind the settings, the Watch view groups the works: available above waiting.
   await settings.getByRole("button", { name: "Close settings", exact: true }).click();
   await expect(page.getByRole("tab", { name: "Watch", selected: true })).toBeVisible();
   const pool = page.getByRole("region", { name: "Watch pool", exact: true });
-  const unavailable = pool.getByRole("region", { name: /^Not available/ });
   const available = pool.getByRole("region", { name: /^Available/ });
+  const waiting = pool.getByRole("region", { name: /^Waiting/ });
   await expect(pool.getByRole("region").nth(0)).toHaveAccessibleName("Available");
-  await expect(pool.getByRole("region").nth(1)).toHaveAccessibleName("Not available");
-  await expect(unavailable.getByRole("button", { name: /^RJ00000000/ })).toBeVisible();
-  await expect(available.getByRole("button", { name: /^RJ00000001/ })).toBeVisible();
+  await expect(pool.getByRole("region").nth(1)).toHaveAccessibleName("Waiting");
+  await expect(waiting.getByRole("button", { name: /^RJ00000000/ })).toBeVisible();
 
-  // Quick entry adds only codes the pool does not watch yet.
+  // Add codes reads links and mixed text and previews what it adds.
   await pool
     .getByRole("textbox", { name: "Add work codes to the watch pool", exact: true })
-    .fill("RJ00000001, rj00000002");
-  await pool.getByRole("button", { name: "Add", exact: true }).click();
-  await expect.poll(() => updates).toHaveLength(3);
-  expect(updates).toContainEqual({ targetCodes: ["RJ00000002"] });
+    .fill("RJ00000003, https://www.dlsite.example/maniax/work/=/product_id/RJ00000002.html hello");
+  await expect(pool.getByText("1 new:", { exact: true })).toBeVisible();
   await expect(pool.getByText("1 code is already watched.", { exact: true })).toBeVisible();
-  await expect(unavailable.getByRole("button", { name: /^RJ00000002/ })).toBeVisible();
+  await expect(pool.getByText("1 not a code:", { exact: true })).toBeVisible();
+  await pool.getByRole("button", { name: "Add 1", exact: true }).click();
+  await expect.poll(() => updates).toContainEqual({ targetCodes: ["RJ00000002"] });
+  await expect(waiting.getByRole("button", { name: /^RJ00000002/ })).toBeVisible();
 
-  // Removing a tag takes a second, confirming click.
-  await unavailable.getByRole("button", { name: "Remove RJ00000002 from watch", exact: true }).click();
-  expect(updates).toHaveLength(3);
-  await unavailable.getByRole("button", { name: "Confirm removing RJ00000002 from watch", exact: true }).click();
-  await expect.poll(() => updates).toHaveLength(4);
-  expect(updates).toContainEqual({ deleteTargetId: 100 });
+  // Removing a work takes a second, confirming press.
+  const removed = updates.length;
+  await waiting.getByRole("button", { name: "Remove RJ00000002 from watch", exact: true }).click();
+  expect(updates).toHaveLength(removed);
+  await waiting.getByRole("button", { name: "Confirm removing RJ00000002 from watch", exact: true }).click();
+  await expect.poll(() => updates).toContainEqual({ removeTargetIds: [100] });
 
-  // A work opens its family, where the available edition can be tracked.
-  await available.getByRole("button", { name: /^RJ00000001/ }).click();
-  const family = page.getByRole("dialog", { name: "RJ00000001 work family" });
-  await expect(family.getByText("RJ00000003", { exact: true }).first()).toBeVisible();
-  await expect(family.getByText("Synthetic translated work", { exact: true })).toBeVisible();
-  const bounds = await family.boundingBox();
-  expect(bounds).not.toBeNull();
-  expect(bounds!.x).toBeGreaterThanOrEqual(0);
-  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(412);
-  expect(await family.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-  await family.getByRole("button", { name: "Track", exact: true }).click();
-  await expect(page.getByText("Track run #89 queued.", { exact: true })).toBeVisible();
-  await expect.poll(() => updates).toHaveLength(5);
-  expect(updates).toContainEqual({ trackTargetId: 2 });
-  await family.getByRole("button", { name: "Close", exact: true }).click();
+  // Fetch of a work available as another edition names that edition and confirms first.
+  await available.getByRole("button", { name: "Fetch RJ00000003", exact: true }).click();
+  const confirm = page.getByRole("dialog", { name: "Fetch 1 work?" });
+  await expect(confirm.getByText("RJ00000003", { exact: true })).toBeVisible();
+  await confirm.getByRole("switch").click();
+  await confirm.getByRole("textbox", { name: "Extensions to exclude", exact: true }).fill("wav ");
+  await confirm.getByRole("button", { name: "Fetch 1 work", exact: true }).click();
+  await expect.poll(() => updates).toContainEqual({ fetchTargetIds: [2], excludeExtensions: ["wav"] });
 
-  // Clearing the completed works takes a second, confirming click and one request.
-  await available.getByRole("button", { name: "Clear completed (1)", exact: true }).click();
-  expect(updates).toHaveLength(5);
-  await available.getByRole("button", { name: "Remove 1 completed work", exact: true }).click();
-  await expect(available.getByText("No available works.", { exact: true })).toBeVisible();
-  expect(updates).toContainEqual({ clearCompletedTargetIds: [2] });
+  // The fetched work is in the library; Clean up removes it after a confirmation with both counts.
+  const inLibrary = pool.getByRole("region", { name: /^Already in library/ });
+  await expect(inLibrary.getByRole("button", { name: /^RJ00000001/ })).toBeVisible();
+  await page.getByRole("button", { name: "Watch actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: /^Clean up \(1\)/ }).click();
+  const cleanUp = page.getByRole("alertdialog", { name: "Remove 1 work from the watch?" });
+  await cleanUp.getByRole("button", { name: "Remove 1 work", exact: true }).click();
+  await expect.poll(() => updates).toContainEqual({ cleanUpTargetIds: [2] });
+  await expect(inLibrary).toHaveCount(0);
+
+  // Selection checks only the works an action applies to.
+  await pool.getByRole("button", { name: "Select", exact: true }).click();
+  const selection = page.getByRole("toolbar", { name: "Selection actions", exact: true });
+  await selection.getByRole("checkbox", { name: "Select all on this page", exact: true }).click();
+  await selection.getByRole("button", { name: "Check now (1)", exact: true }).click();
+  await expect.poll(() => updates).toContainEqual({ checkTargetIds: [1] });
+  await selection.getByRole("button", { name: "Exit selection mode", exact: true }).click();
 
   // The family dialog removes a work too.
-  await unavailable.getByRole("button", { name: /^RJ00000000/ }).click();
-  const waiting = page.getByRole("dialog", { name: "RJ00000000 work family" });
-  await waiting.getByRole("button", { name: "Remove from watch", exact: true }).click();
-  await waiting.getByRole("button", { name: "Confirm removal", exact: true }).click();
-  await expect(waiting).toHaveCount(0);
-  await expect(unavailable.getByText("No works are waiting for a source.", { exact: true })).toBeVisible();
-  expect(updates).toContainEqual({ deleteTargetId: 1 });
+  await waiting.getByRole("button", { name: /^RJ00000000/ }).click();
+  const family = page.getByRole("dialog", { name: "RJ00000000 work family" });
+  const bounds = await family.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(412);
+  await family.getByRole("button", { name: "Remove from watch", exact: true }).click();
+  await family.getByRole("button", { name: "Confirm removal", exact: true }).click();
+  await expect(family).toHaveCount(0);
+  await expect.poll(() => updates).toContainEqual({ removeTargetIds: [1] });
 });
 
 test("availability notifications and earlier watch links open the Watch view", async ({ page }) => {
@@ -1534,6 +1536,20 @@ test("availability notifications and earlier watch links open the Watch view", a
       }),
     ],
   });
+  // Registered after the mock, so it answers first: the run that found RJ00000001.
+  await page.route("**/api/workflow-runs/91", async (route) => {
+    await route.fulfill({
+      json: workflowRunDetailFixture(
+        {
+          ...sampleRun,
+          id: 91,
+          workflowCode: "availability_watch",
+          summaryJson: '{"newlyAvailableCodes":["RJ00000001"]}',
+        },
+        { nodeRuns: [], graphJson: sampleRunGraph },
+      ),
+    });
+  });
   await page.goto("/workflows");
 
   await page.getByRole("button", { name: "Notifications", exact: true }).click();
@@ -1544,10 +1560,11 @@ test("availability notifications and earlier watch links open the Watch view", a
     })
     .click();
   await expect(page.getByRole("tab", { name: "Watch", selected: true })).toBeVisible();
-  const available = page.getByRole("region", { name: "Watch pool", exact: true }).getByRole("region", {
-    name: /^Available/,
-  });
-  await expect(available.getByRole("button", { name: /^RJ00000001/ })).toBeInViewport();
+  // The run's newly available works are selected, ready for Fetch in the selection bar.
+  const selection = page.getByRole("toolbar", { name: "Selection actions", exact: true });
+  await expect(selection).toBeInViewport();
+  await expect(selection.getByText("1 selected", { exact: true })).toBeVisible();
+  await expect(selection.getByRole("button", { name: "Fetch (1)", exact: true })).toBeEnabled();
   await expect(page).toHaveURL(/\/discover\?view=watch$/);
 
   // A Subscriptions bookmark of the pool in the settings opens Discover's Watch view and the target's family.

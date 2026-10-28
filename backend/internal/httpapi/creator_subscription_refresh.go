@@ -697,11 +697,6 @@ func (s *Server) addSubscriptionReleasesToAvailabilityWatch(ctx context.Context,
 	if len(codesByUser) == 0 {
 		return
 	}
-	action, err := s.availabilityWatchConfiguredAction(ctx)
-	if err != nil {
-		execution.fail("watch", "Availability Watch configuration could not be read")
-		return
-	}
 	userIDs := make([]int64, 0, len(codesByUser))
 	for userID := range codesByUser {
 		userIDs = append(userIDs, userID)
@@ -709,7 +704,7 @@ func (s *Server) addSubscriptionReleasesToAvailabilityWatch(ctx context.Context,
 	sort.Slice(userIDs, func(i, j int) bool { return userIDs[i] < userIDs[j] })
 	for _, userID := range userIDs {
 		owner, err := s.accountStore.LoadByID(ctx, userID)
-		if err != nil || !userHasPermission(owner, "workflows:run") || validateAvailabilityWatchAction(owner, action) != nil {
+		if err != nil || missingWorkflowGraphPermission(owner.Permissions, availabilityWatchPermissions) != "" {
 			continue
 		}
 		codes, err := normalizeGraphWorkCodes(codesByUser[userID], 1000)
@@ -742,14 +737,7 @@ func (s *Server) dispatchSubscriptionAvailabilityWatch(ctx context.Context, runI
 		execution.fail("watch", "Availability Watch could not be read")
 		return
 	}
-	action, err := s.availabilityWatchConfiguredAction(ctx)
-	if err != nil {
-		execution.watch = "failed"
-		execution.fail("watch", "Availability Watch configuration could not be read")
-		return
-	}
-	permissions := append([]string{"workflows:run"}, availabilityWatchPermissions(action)...)
-	owner, err := s.loadSystemWorkflowTriggerOwner(ctx, ownerID.Int64, permissions)
+	owner, err := s.loadSystemWorkflowTriggerOwner(ctx, ownerID.Int64, availabilityWatchPermissions)
 	if err != nil {
 		execution.watch = "failed"
 		execution.fail("watch", "Availability Watch: "+err.Error())

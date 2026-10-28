@@ -206,15 +206,6 @@ func stringArgs(values []string) []any {
 	return args
 }
 
-func (s *Server) availabilityWatchConfiguredAction(ctx context.Context) (string, error) {
-	var action string
-	err := s.db.QueryRowContext(ctx, "SELECT action FROM availability_watch WHERE id = ?", availabilityWatchID).Scan(&action)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "monitor", nil
-	}
-	return action, err
-}
-
 func renderWorkflowTagNameTemplate(template string, values map[string]string) (string, error) {
 	template = strings.TrimSpace(template)
 	if template == "" {

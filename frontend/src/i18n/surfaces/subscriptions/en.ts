@@ -79,7 +79,6 @@ export const subscriptionsEnglish = {
       },
     },
     watchAvailability: "Watch availability",
-    watchQueued: "Availability Watch check queued.",
     unreadBadge_one: "{{count}} new release",
     unreadBadge_other: "{{count}} new releases",
     actions: {

@@ -79,7 +79,6 @@ export const subscriptionsJapanese = {
       },
     },
     watchAvailability: "配信状況を監視",
-    watchQueued: "配信状況の監視のチェックをキューに追加しました。",
     unreadBadge_one: "新着 {{count}} 件",
     unreadBadge_other: "新着 {{count}} 件",
     actions: {

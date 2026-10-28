@@ -60,14 +60,33 @@ export function withExplicitSubscriptionView(params: URLSearchParams): URLSearch
 
 /**
  * What a Watch view link asks for: a target's family (`target=<id>`), or the
- * available works (`dialog=ready`, from notifications).
+ * available works (`dialog=ready`, from notifications), with the works that
+ * watch run found newly available selected when it names the run (`run=<id>`).
  */
-export function watchLinkFromSearch(search: string): { targetId: number | null; revealAvailable: boolean } | null {
+export function watchLinkFromSearch(
+  search: string,
+): { targetId: number | null; revealAvailable: boolean; runId: number | null } | null {
   const params = new URLSearchParams(search);
-  const target = Number(params.get("target"));
-  const targetId = Number.isInteger(target) && target > 0 ? target : null;
+  const positive = (key: string) => {
+    const value = Number(params.get(key));
+    return Number.isInteger(value) && value > 0 ? value : null;
+  };
+  const targetId = positive("target");
   const revealAvailable = params.get("dialog") === "ready";
-  return targetId !== null || revealAvailable ? { targetId, revealAvailable } : null;
+  const runId = revealAvailable ? positive("run") : null;
+  return targetId !== null || revealAvailable ? { targetId, revealAvailable, runId } : null;
+}
+
+/** The codes a watch run found newly available, from its summary. */
+export function newlyAvailableCodes(summaryJson: string): string[] {
+  try {
+    const summary: unknown = JSON.parse(summaryJson || "{}");
+    const codes =
+      summary && typeof summary === "object" ? (summary as Record<string, unknown>).newlyAvailableCodes : null;
+    return Array.isArray(codes) ? codes.filter((code): code is string => typeof code === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 export const SUBSCRIPTION_INTERVAL_HOURS = [1, 6, 12, 24, 48, 168] as const;

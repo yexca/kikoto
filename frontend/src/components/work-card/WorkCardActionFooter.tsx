@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -16,7 +17,8 @@ export type WorkCardActionWork = Pick<
 
 /**
  * The action row of a card outside the Library, always in one order: DLsite
- * at the start, then Watch, the lists, your rating, and Quick mark at the end.
+ * at the start, then Watch, the view's own actions such as Track and Fetch,
+ * the lists, your rating, and Quick mark at the end.
  * Each appears only when it applies: Watch for a work the caller offers to
  * watch that the library does not have, and the personal actions for a work
  * Kikoto knows when the account may mark it.
@@ -25,6 +27,7 @@ export function WorkCardActionFooter({
   layout,
   dlsiteUrl,
   watch,
+  actions,
   work,
   canMark,
   onWorkChange,
@@ -32,6 +35,8 @@ export function WorkCardActionFooter({
   layout: CompactWorkCardLayout | null;
   dlsiteUrl: string;
   watch?: { watched: boolean; pending: boolean; onWatch: () => void } | null;
+  /** The view's own actions on the work, after Watch. */
+  actions?: ReactNode;
   work?: WorkCardActionWork | null;
   canMark: boolean;
   /** Receives the work's new personal state after a change saves. */
@@ -71,6 +76,7 @@ export function WorkCardActionFooter({
               onWatch={offeredWatch.onWatch}
             />
           )}
+          {actions}
           {personal && (
             <>
               <WorkCardListButton

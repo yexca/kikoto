@@ -246,21 +246,32 @@ times, and a schedule summary that expands the row in place to edit the
 interval and depth, pull it alone, or delete it after a confirmation; earlier
 annual years and the history retention each collapse into one line.
 
-Watch shows the Availability Watch pool: a summary with quick entry, then the
-available targets in full and the targets still waiting for a source, failed
-checks first. A target need not be a work, so `watchTargetCardView` gives the
-shared card only its code, title, and cover, and the context line holds its
-state and the remove control with its second-press confirmation. The waiting
-targets fold to whole rows of the grid's measured tracks. **Clear completed**
-sends the completed targets it shows in one request. `?target=<id>` opens a
-target's family dialog and `?dialog=ready` scrolls to the available targets;
-the page hands both to the view and removes them from the address.
+Watch shows the Availability Watch pool: a summary with Add codes, whose
+preview `parseWatchCodes` extracts from pasted codes, DLsite links, or mixed
+text; a search, sort, and Select row; then the targets in the groups
+`watchTargetGroup` assigns (available, in progress, waiting, failed checks,
+already in library). A target need not be a work, so `watchTargetCardView`
+gives the shared card only its code, title, and cover; the context line holds
+its state and, for a started Track or Fetch, View run, and the footer keeps
+the shared order with Track and Fetch (`WatchTrackFetchButtons`, also on New
+releases' "Now available" cards), Check now, and Remove with its second-press
+confirmation. Waiting and in-library targets fold to whole rows of the grid's
+measured tracks unless a search is active. `useWatchTargetActions` holds
+Track, Fetch, Check now, Remove, and Clean up for the page: the page's Actions
+menu (`WatchPoolActionMenu`), the selection bar, the cards, and the family
+dialog share it, and Fetch always passes through `WatchFetchConfirmDialog`,
+which keeps the last extension exclusion in local storage. Selection reuses
+`WorkSelectionBar`, whose actions count what each applies to.
+`?target=<id>` opens a target's family dialog and `?dialog=ready` scrolls to
+the available targets; with `&run=<id>` the page reads that run's newly
+available codes and selects them. The page hands these to the view and
+removes them from the address.
 `?panel=watch` without a view names the Watch view, so a query the page writes
 with the Availability Watch settings open always names its view.
 
 The settings hold the subscription list with the refresh schedule, the ranking
-settings, and the Availability Watch configuration, which they take from the
-workflows feature. The Watch view and that configuration read one
+settings, and the Availability Watch source setting, which they take from the
+workflows feature. The Watch view and that setting read one
 `useAvailabilityWatch` state, which loads when either is first shown and polls
 while either is shown and the page is visible.
 `?panel=subscriptions`, `?panel=rankings`, or `?panel=watch` opens the

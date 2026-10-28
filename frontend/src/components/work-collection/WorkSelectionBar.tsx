@@ -104,6 +104,7 @@ export function WorkSelectionAction({
   icon,
   label,
   count,
+  detail,
   busy = false,
   disabled = false,
   className,
@@ -113,13 +114,16 @@ export function WorkSelectionAction({
   icon: ReactNode;
   label: string;
   count?: number;
+  /** Replaces the counted name, such as how many of a mixed selection the action applies to. */
+  detail?: string;
   busy?: boolean;
   disabled?: boolean;
   className?: string;
   onClick: () => void;
 } & Pick<ButtonProps, "aria-expanded">) {
   const { t } = useTranslation();
-  const accessibleLabel = count === undefined ? label : t("collection.actionWithCount", { action: label, count });
+  const accessibleLabel =
+    detail ?? (count === undefined ? label : t("collection.actionWithCount", { action: label, count }));
   return (
     <Button
       type="button"

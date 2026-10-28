@@ -955,12 +955,16 @@ work code, run and result, so a repeated request returns the original result
 and reusing the id for another work is rejected.
 
 `availability_watch` holds the single shared
-[Availability Watch](workflows.md#availability-watch) configuration (action,
-source, excluded extensions and revision). `availability_watch_target` holds
-the normalized work codes in its pool with per-target check state, the source
-that became available and the family edition it offered (`available_code`),
-the last family metadata refresh, and child Track and Fetch run ids. A target
-is a code, not a work.
+[Availability Watch](workflows.md#availability-watch) setting: the source it
+checks, the account that last configured it, and a revision. Its `action` is
+always `monitor`, since the watch never tracks or fetches on its own.
+`availability_watch_target` holds the normalized work codes in its pool with
+per-target check state (`monitoring`, `ready` once available, `error`, or
+`disabled` once removed), the source that became available and the family
+edition it offered (`available_code`), the last family metadata refresh, and
+the Track and Fetch runs started for it by hand: the bulk run that queued
+them, then each work's own run. `created_at` is when the code last entered
+the pool. A target is a code, not a work.
 
 `creator_subscription` holds one account's
 [creator subscription](workflows.md#creator-subscriptions) to a circle
