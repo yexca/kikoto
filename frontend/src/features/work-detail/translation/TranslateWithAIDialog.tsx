@@ -355,7 +355,7 @@ export function TranslateWithAIDialog({
   ) : null;
 
   return (
-    <Dialog onClose={onClose} size="2xl" dismissible={!submitting} marker="translate-with-ai">
+    <Dialog onClose={onClose} size="workspace" dismissible={!submitting} marker="translate-with-ai">
       <DialogHeader
         title={t("aiTranslation.title")}
         description={work.title}

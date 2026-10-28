@@ -2538,7 +2538,6 @@ export const surfaceJapanese = {
     fetch: "取得",
     openOriginOn: "{{source}} で開く",
     openOrigin: "元のページを開く",
-    refreshLocalFiles: "ローカルファイルを更新",
     manageCache: "キャッシュを管理",
     noCachedFiles: "キャッシュされたファイルはありません",
     manageFiles: "ファイルを管理",
@@ -2884,6 +2883,11 @@ export const surfaceJapanese = {
       "このフォルダー内でファイルやフォルダーをドラッグすると移動し、ほかのペインからドロップするとコピーします。各行のメニューでも同じ操作ができます。",
     forget: "フォルダーを削除して作品を忘れる",
     forgetHint: "このフォルダー全体とそのファイルのすべてのコピーを削除し、ソースが残らなければ作品を忘れます。",
+    refresh: "更新",
+    refreshHint:
+      "Kikoto の外で追加・変更・削除されたファイルを反映するため、このフォルダーをディスクから読み直します。",
+    refreshBlocked: "このフォルダーを更新する前に、変更を適用するか元に戻してください。",
+    refreshing: "このフォルダーを更新しています",
     folderLyrics_one:
       "このフォルダーには Kikoto が管理していない歌詞ファイルが {{count}} 個あります。「歌詞を管理」で言語ごとの歌詞にできます。",
     folderLyrics_other:

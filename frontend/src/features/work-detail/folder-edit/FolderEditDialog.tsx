@@ -1,11 +1,11 @@
-import { FolderCog, ShieldAlert } from "lucide-react";
+import { FolderCog, RefreshCw, ShieldAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
 import { LibraryOfflineNotice } from "@/components/library-offline/LibraryOfflineNotice";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogHeader } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogHeader } from "@/components/ui/dialog";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { ConfirmMediaBatchDeleteDialog } from "@/features/work-detail/dialogs/ConfirmMediaBatchDeleteDialog";
 import type { PendingDeletion } from "@/features/work-detail/folder-edit/fileWorkspaceModel";
@@ -34,6 +34,7 @@ import type { MediaCleanupMode, MediaDeleteTarget } from "@/features/work-detail
 import type { MediaItem, WorkFolderEditResult } from "@/lib/api";
 import { isLocalOffline } from "@/lib/localAvailability";
 import { lyricsRootFolderName } from "@/lib/lyricsLanguage";
+import { cn } from "@/lib/tailwindClassNames";
 
 const noSelection: ReadonlySet<string> = new Set();
 
@@ -56,6 +57,8 @@ export type FolderEditFolders = {
   /** Opens Manage lyrics on this folder's other lyrics, to make them lyrics of a language. */
   onManageFolderLyrics?: () => void;
   canCheckDuplicates: boolean;
+  /** Indexes the edited folder again, for files changed outside Kikoto; the page reloads the work after it. */
+  refresh?: { refreshing: boolean; onRefresh: () => void };
 };
 
 /**
@@ -85,21 +88,20 @@ export function FolderEditDialog({
   onApplied: (result: WorkFolderEditResult) => void;
 }) {
   const { t } = useTranslation();
-  const toolbar = <ManageToolbar folder={folder} manage={manage} disabled={false} />;
-  // A folder on an offline storage pool cannot be read or changed until its disk is back.
+  // A folder on an offline storage pool cannot be read, refreshed, or changed until its disk is back.
   if (isLocalOffline(folder.availability)) {
     return (
-      <Dialog onClose={onClose} size="full" marker="folder-edit" className="max-w-3xl">
+      <Dialog onClose={onClose} size="workspace" marker="folder-edit">
         <DialogHeader
           title={t("libraryDetail.manageFiles")}
           icon={<FolderCog className="h-4 w-4" />}
           onClose={onClose}
           closeLabel={t("content.close")}
         />
-        {toolbar}
-        <div className="p-4">
+        <ManageToolbar folder={folder} manage={{ ...manage, refresh: undefined }} disabled={false} changed={false} />
+        <DialogBody>
           <LibraryOfflineNotice detail={t("libraryOffline.editBlocked")} />
-        </div>
+        </DialogBody>
       </Dialog>
     );
   }
@@ -232,8 +234,18 @@ function FolderEditWorkspaceDialog({
       return;
     }
   };
+  // While the folder is read again, the workspace holds still as it does while an edit is applied.
+  const refreshing = manage.refresh?.refreshing ?? false;
+  const shownWorkspace = refreshing ? { ...workspace, applying: true } : workspace;
   const manageExtras: FolderWorkspaceManage = {
-    toolbar: <ManageToolbar folder={folder} manage={manage} disabled={workspace.applying} />,
+    toolbar: (
+      <ManageToolbar
+        folder={folder}
+        manage={manage}
+        disabled={workspace.applying || refreshing}
+        changed={workspace.undo?.canUndo ?? false}
+      />
+    ),
     thisFolderTools:
       manage.onManageFolderLyrics && folderLyricsCount > 0 ? (
         <FolderLyricsNote count={folderLyricsCount} onOpen={manage.onManageFolderLyrics} />
@@ -257,7 +269,7 @@ function FolderEditWorkspaceDialog({
   return (
     <>
       <FolderWorkspaceView
-        workspace={workspace}
+        workspace={shownWorkspace}
         title={t("libraryDetail.manageFiles")}
         description={t("fileWorkspace.description")}
         icon={<FolderCog className="h-4 w-4" />}
@@ -266,7 +278,7 @@ function FolderEditWorkspaceDialog({
         emptyResult={t("folderEdit.emptyResult")}
         statusIdle={t("folderEdit.statusIdle")}
         statusReady={statusReady}
-        applyingLabel={t("folderEdit.applying")}
+        applyingLabel={refreshing ? t("fileWorkspace.refreshing") : t("folderEdit.applying")}
         applyLabel={t("folderEdit.apply")}
         initialPane="select"
         manage={manageExtras}
@@ -307,23 +319,28 @@ function FolderEditWorkspaceDialog({
 
 /**
  * What Manage files does to the folder and the work as a whole: switching to
- * another of the work's folders, and forgetting the work, which deletes the
- * whole folder and is kept apart from the edit's own file changes.
+ * another of the work's folders, reading the folder from disk again, and
+ * forgetting the work, which deletes the whole folder and is kept apart from
+ * the edit's own file changes. A refresh waits until the edit has no changes,
+ * so it never replaces the files a pending change refers to.
  */
 function ManageToolbar({
   folder,
   manage,
   disabled,
+  changed,
 }: {
   folder: { id: number; rootPath: string };
   manage: FolderEditFolders;
   disabled: boolean;
+  /** Whether the edit has changes that are not applied. */
+  changed: boolean;
 }) {
   const { t } = useTranslation();
   const [forgetting, setForgetting] = useState<{ step: 1 | 2; targets: MediaDeleteTarget[] } | null>(null);
-  const { forget } = manage;
+  const { forget, refresh } = manage;
   const canSwitch = manage.folders.length > 1;
-  if (!canSwitch && !forget) return null;
+  if (!canSwitch && !forget && !refresh) return null;
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
       {canSwitch && (
@@ -346,22 +363,37 @@ function ManageToolbar({
           />
         </>
       )}
-      {forget && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="ml-auto text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-          disabled={disabled || forget.deleting}
-          title={t("fileWorkspace.forgetHint")}
-          onClick={() => {
-            const targets = forget.targets();
-            if (targets.length > 0) setForgetting({ step: 1, targets });
-          }}
-        >
-          <ShieldAlert className="h-4 w-4" />
-          {t("fileWorkspace.forget")}
-        </Button>
-      )}
+      <div className="ml-auto flex flex-wrap items-center gap-1">
+        {refresh && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            disabled={disabled || changed}
+            title={changed ? t("fileWorkspace.refreshBlocked") : t("fileWorkspace.refreshHint")}
+            onClick={refresh.onRefresh}
+          >
+            <RefreshCw className={cn("h-4 w-4", refresh.refreshing && "animate-spin")} />
+            {t("fileWorkspace.refresh")}
+          </Button>
+        )}
+        {forget && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            disabled={disabled || forget.deleting}
+            title={t("fileWorkspace.forgetHint")}
+            onClick={() => {
+              const targets = forget.targets();
+              if (targets.length > 0) setForgetting({ step: 1, targets });
+            }}
+          >
+            <ShieldAlert className="h-4 w-4" />
+            {t("fileWorkspace.forget")}
+          </Button>
+        )}
+      </div>
       {forget && forgetting && (
         <ConfirmMediaBatchDeleteDialog
           targets={forgetting.targets}

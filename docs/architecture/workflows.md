@@ -951,6 +951,15 @@ and interval triggers store `{"mode": ...}`; retry repeats the failed run's
 mode. Starting a run requires `workflows:run` and `metadata:sync`, like the
 local scan. No trigger is seeded.
 
+A single work's refresh, `POST /api/works/{id}/local-files/refresh`, runs the
+same per-work indexer directly instead of queuing a run and requires
+`downloads:manage`. Without a folder it indexes the folder the work's local
+presence names, then every other active folder of the work that the scan
+reaches. With `folderId`, which **Manage files** sends for the folder it edits,
+it indexes only that active folder of the work and leaves the others as
+indexed. A folder on an offline pool, or outside the scan scope
+(`folder_outside_scan_scope`), is refused rather than recorded as missing.
+
 ## Queue Ordering
 
 `workflow_job.priority` is persisted with each job. One embedded executor claims

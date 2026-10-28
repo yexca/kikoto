@@ -164,7 +164,7 @@ type MockApplicationFixture = {
   remoteDetail?: RemoteWorkDetail;
   onSourceCheck?: () => void;
   onUntrack?: (workId: number, sourceId: number) => void;
-  onLocalRefresh?: () => void;
+  onLocalRefresh?: (body: unknown) => void;
   onMediaRequest?: () => void;
   mediaBusy?: boolean;
   authenticated?: boolean;
@@ -580,7 +580,7 @@ export async function mockApplication(
       return;
     }
     if (url.pathname === "/api/works/1/local-files/refresh" && route.request().method() === "POST") {
-      fixture.onLocalRefresh?.();
+      fixture.onLocalRefresh?.(route.request().postDataJSON());
       await route.fulfill({
         json: {
           workId: 1,

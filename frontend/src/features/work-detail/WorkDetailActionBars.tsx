@@ -13,7 +13,6 @@ import {
   HardDriveDownload,
   Languages,
   Loader2,
-  RefreshCw,
   Sparkles,
   Unlink,
 } from "lucide-react";
@@ -148,7 +147,6 @@ export function MediaContextActionBar({
   onManageLyrics,
   onEditFileNames,
   onTranslateWithAI,
-  onRefreshLocalFiles,
 }: {
   busy: boolean;
   mode: DetailActionMode;
@@ -177,7 +175,6 @@ export function MediaContextActionBar({
   onEditFileNames?: () => void;
   /** Opens Translate with AI for the work's text, display names and lyrics. */
   onTranslateWithAI?: () => void;
-  onRefreshLocalFiles?: () => void;
   /** `list` renders the actions inline, for a panel that already names the source. */
   layout?: SourceActionLayout;
 }) {
@@ -200,7 +197,6 @@ export function MediaContextActionBar({
     onManageLyrics ||
     onEditFileNames ||
     onTranslateWithAI ||
-    onRefreshLocalFiles ||
     sourceDetailsLoading,
   );
   const SourceIcon = mode === "local" ? HardDrive : mode === "remote_source" ? Cloud : GitFork;
@@ -351,20 +347,8 @@ export function MediaContextActionBar({
           <span className="min-w-0 flex-1 truncate">{t("detailActions.openOrigin")}</span>
         </a>
       )}
-      {(onManageCache ||
-        onManageFiles ||
-        onManageLyrics ||
-        onEditFileNames ||
-        onTranslateWithAI ||
-        onRefreshLocalFiles) && <div className="my-1 border-t first:hidden" />}
-      {onRefreshLocalFiles && (
-        <SourceOptionButton
-          layout={layout}
-          icon={<RefreshCw className={`h-4 w-4 ${busy && layout === "list" ? "animate-spin" : ""}`} />}
-          label={t("detailActions.refreshLocalFiles")}
-          disabled={busy}
-          onClick={() => runOption(onRefreshLocalFiles)}
-        />
+      {(onManageCache || onManageFiles || onManageLyrics || onEditFileNames || onTranslateWithAI) && (
+        <div className="my-1 border-t first:hidden" />
       )}
       {onManageCache && (
         <SourceOptionButton

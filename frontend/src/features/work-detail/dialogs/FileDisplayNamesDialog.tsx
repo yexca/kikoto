@@ -272,14 +272,9 @@ export function FileDisplayNamesDialog({
   return (
     <Dialog
       onClose={onClose}
-      size="full"
+      size="workspace"
       dismissible={!saving && changes.length === 0}
       marker="file-display-names"
-      className={cn(
-        "max-h-[min(90vh,var(--dialog-max-height))]",
-        rows.length > 0 && "h-[var(--dialog-max-height)] md:h-[min(90dvh,var(--dialog-max-height))]",
-        panel ? "max-w-6xl" : "max-w-4xl",
-      )}
     >
       <DialogHeader
         icon={<Languages className="h-4 w-4" />}

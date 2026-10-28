@@ -2535,7 +2535,6 @@ export const surfaceEnglish = {
     fetch: "Fetch",
     openOriginOn: "Open on {{source}}",
     openOrigin: "Open origin",
-    refreshLocalFiles: "Refresh local files",
     manageCache: "Manage cache",
     noCachedFiles: "No cached files",
     manageFiles: "Manage files",
@@ -2936,6 +2935,10 @@ export const surfaceEnglish = {
       "Drag files and folders within this folder to move them, or drop files here from another pane to copy them. Each row's menu does the same.",
     forget: "Delete folder and forget work",
     forgetHint: "Deletes this whole folder and every copy of its files, then forgets the work if no source remains.",
+    refresh: "Refresh",
+    refreshHint: "Reads this folder from disk again, for files added, changed, or removed outside Kikoto.",
+    refreshBlocked: "Apply or undo the changes before refreshing this folder.",
+    refreshing: "Refreshing this folder",
     folderLyrics_one:
       "{{count}} lyrics file of this folder is not among Kikoto's managed lyrics. Manage lyrics can make it lyrics of a language.",
     folderLyrics_other:

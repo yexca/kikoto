@@ -2417,7 +2417,6 @@ export const surfaceHant = {
     fetch: "取得",
     openOriginOn: "在 {{source}} 上開啟",
     openOrigin: "開啟來源頁面",
-    refreshLocalFiles: "重新整理本機檔案",
     manageCache: "管理快取",
     noCachedFiles: "沒有快取檔案",
     manageFiles: "管理檔案",
@@ -2750,6 +2749,10 @@ export const surfaceHant = {
     arrangeHint: "在此資料夾內拖動檔案和資料夾來移動，或從其他窗格拖入檔案來複製。每列的選單也能完成同樣的操作。",
     forget: "刪除資料夾並忘記作品",
     forgetHint: "刪除整個資料夾及其檔案的所有副本，如果沒有剩餘來源，則忘記該作品。",
+    refresh: "重新整理",
+    refreshHint: "重新從磁碟讀取此資料夾，以反映在 Kikoto 之外新增、修改或刪除的檔案。",
+    refreshBlocked: "請先套用或復原變更，再重新整理此資料夾。",
+    refreshing: "正在重新整理此資料夾",
     folderLyrics_one:
       "此資料夾中有 {{count}} 個歌詞檔不在 Kikoto 託管的歌詞中。可在「管理歌詞」中把它們設為某種語言的歌詞。",
     folderLyrics_other:

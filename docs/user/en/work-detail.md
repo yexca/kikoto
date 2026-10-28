@@ -497,6 +497,13 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   that you retry continues where it stopped. A merged folder of a work that a
   Fetch is still filling is not merged. The directory reloads when it
   finishes.
+- **Refresh**, above the workspace, reads **This folder** from disk again for
+  files added, changed, or removed outside Kikoto, and the workspace then
+  lists what the folder holds. The work's other folders keep what is indexed.
+  It waits until the edit has no changes, and nothing in the workspace can be
+  changed while it runs. A folder deeper than the
+  [scan depth](settings.md#library) is not refreshed until the scan depth
+  reaches it.
 - **Delete folder and forget work**, above the workspace, deletes the whole
   folder and every copy of its files, then forgets the work if no source
   remains. It is kept apart from the edit's file changes, asks for both
@@ -566,7 +573,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   Activity says why, and the folder keeps only the Fetch's files.
   When the destination folder needs review, **Review in the standard Fetch**
   opens the Fetch dialog. Anyone else gets the Fetch dialog.
-- Open source-specific Track, Fork, Fetch, Origin, cache, refresh, and file
+- Open source-specific Track, Fork, Fetch, Origin, cache, and file
   maintenance commands from the selected source's Hero Source menu.
 - Track the selected remote source, persist its browsable tree, and open the
   corresponding source inside the aggregated Tracked context without requiring

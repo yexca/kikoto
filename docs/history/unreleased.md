@@ -42,6 +42,13 @@
   as lyrics** is replaced by a note in the workspace that opens **Manage
   lyrics** on the folder's other lyrics. Manage cache and viewers who do not
   manage local files keep the list that selects files to delete.
+- **Refresh local files** moves from the source actions into **Manage files**
+  as **Refresh**, above the workspace. It reads only the edited folder from
+  disk again, waits until the edit has no changes, and leaves a folder deeper
+  than the scan depth as it is instead of marking its files missing.
+- **Manage files**, **Manage lyrics**, **Edit display names**, and
+  **Translate with AI** open at one width and at their full height, so loading
+  or switching tabs no longer resizes them.
 - **Manage lyrics → Assignments** shows the selected track's lyrics beside
   the list on wide screens, with its timed lines and timing check, instead of
   opening a preview under the row. Each folder and the language strip show
