@@ -410,6 +410,17 @@ test("@desktop favorites puts shelves in a collapsible rail beside search and wo
   await expect.poll(async () => (await shelves.boundingBox())!.y).toBe(stickyTop);
   await page.evaluate(() => window.scrollTo(0, 0));
 
+  await shelves.getByRole("button", { name: /^Circles/ }).click();
+  await expect(page.getByPlaceholder("Search circles")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Resource:/ })).toHaveCount(0);
+});
+
+test("@desktop Edit lists edits, adds, and deletes lists in one dialog", async ({ page }) => {
+  await mockFavorites(page);
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/favorites");
+
+  const shelves = page.getByRole("navigation", { name: "Favorite shelves" });
   await shelves.getByRole("button", { name: "Edit lists", exact: true }).click();
   const listManager = page.getByRole("dialog", { name: "Edit lists" });
   await expect(listManager).toBeVisible();
@@ -466,9 +477,7 @@ test("@desktop favorites puts shelves in a collapsible rail beside search and wo
   await expect(listManager).toBeVisible();
 
   await page.getByRole("button", { name: "Close favorite list editor" }).click();
-  await shelves.getByRole("button", { name: /^Circles/ }).click();
-  await expect(page.getByPlaceholder("Search circles")).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Resource:/ })).toHaveCount(0);
+  await expect(listManager).toHaveCount(0);
 });
 
 test("continue listening starts collapsed and stays through quick mark filters", async ({ page }) => {

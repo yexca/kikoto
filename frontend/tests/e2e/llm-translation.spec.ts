@@ -455,10 +455,10 @@ test("Translate with AI sends only what each language lacks and shows what it wr
   ];
   await dialog.getByRole("tab", { name: "Results" }).click();
   await dialog.getByRole("button", { name: "Refresh", exact: true }).click();
+  const appliedResults = dialog.getByRole("region", { name: "Applied" });
   await expect(
-    dialog.getByText(`Written to ${work.primaryCode}/lyrics_kikoto/en/track.mp3.vtt`, { exact: true }),
+    appliedResults.getByText(`${work.primaryCode}/lyrics_kikoto/en/track.mp3.vtt`, { exact: true }),
   ).toBeVisible();
-  await expect(dialog.getByText("Applied", { exact: true }).first()).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
 });
 

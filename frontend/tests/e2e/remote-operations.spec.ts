@@ -446,8 +446,8 @@ test("local Delete selects by location, summarizes the selection, and requires t
   await expect.poll(() => localRefreshes).toBe(1);
   await runSourceAction(page, "Manage files");
 
-  const workRoot = page.getByRole("checkbox", { name: `Select work root ${work.primaryCode}`, exact: true });
-  await expect(workRoot).toBeVisible();
+  const localCopy = page.getByRole("button", { name: "Local copy of track.mp3", exact: true });
+  await expect(localCopy).toBeVisible();
   await expect(page.getByRole("button", { name: "Review file deletion" })).toBeDisabled();
   // Selections by location, format, and identical content wait behind Quick select.
   await expect(page.getByLabel("Include Cache", { exact: true })).toHaveCount(0);
@@ -457,9 +457,9 @@ test("local Delete selects by location, summarizes the selection, and requires t
     "aria-pressed",
     "true",
   );
-  await expect(page.getByText(/^1 selected \/ 3 deletable/)).toBeVisible();
-  await workRoot.click();
-  await expect(page.getByText(/^3 selected \/ 3 deletable/)).toBeVisible();
+  await expect(page.getByText(/^1 selected \/ 2 deletable/)).toBeVisible();
+  await localCopy.click();
+  await expect(page.getByText(/^2 selected \/ 2 deletable/)).toBeVisible();
 
   await page.getByRole("button", { name: "Review file deletion" }).click();
   await expect(page.getByRole("heading", { name: "Review file deletion" })).toBeVisible();
@@ -476,7 +476,6 @@ test("local Delete selects by location, summarizes the selection, and requires t
     targets: [
       { kind: "cache", locationId: 2 },
       { kind: "local", locationId: 1 },
-      { kind: "local_root", locationId: 1, folderId: 101, expectedPath: work.primaryCode },
     ],
   });
 });
@@ -499,7 +498,7 @@ test("@desktop wide work detail lists source actions inside Source info", async 
   await expect(page.getByRole("dialog", { name: "Manage files" })).toBeVisible();
 });
 
-test("@desktop Edit files lists the family's sources and applies the reviewed folder", async ({ page }) => {
+test("@desktop Manage files lists the work's other places and applies the reviewed folder", async ({ page }) => {
   const applied: Record<string, unknown>[] = [];
   const localFile = (id: number, name: string): MediaItem => ({
     id,
@@ -602,23 +601,26 @@ test("@desktop Edit files lists the family's sources and applies the reviewed fo
     .getByRole("complementary", { name: "Source info", exact: true })
     .getByRole("button", { name: "Manage files", exact: true })
     .click();
-  await page.getByRole("dialog", { name: "Manage files" }).getByRole("button", { name: "Edit files" }).click();
 
-  const editor = page.getByRole("dialog", { name: "Edit files" });
-  const sources = editor.getByRole("complementary", { name: "Sources", exact: true });
+  const editor = page.getByRole("dialog", { name: "Manage files" });
   await expect(
-    sources.getByRole("group", { name: "Local" }).getByRole("button", { name: /This folder/ }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    sources.getByRole("group", { name: "Remote" }).getByRole("button", { name: /Example Remote A/ }),
+    editor
+      .getByRole("complementary", { name: "Other places", exact: true })
+      .getByRole("button", { name: /Example Remote A/ }),
   ).toBeVisible();
-  const result = editor.getByRole("region", { name: "Final folder", exact: true });
-  await expect(result.getByText("Keep", { exact: true })).toHaveCount(2);
+  const folder = editor.getByRole("region", { name: "This folder", exact: true });
+  await expect(folder.getByText("Keep", { exact: true })).toHaveCount(2);
   await expect(editor.getByRole("button", { name: "Apply changes" })).toBeDisabled();
 
-  // Clearing a file of the edited folder takes it out of the final folder.
-  await editor.getByRole("checkbox", { name: "Select extra.mp3", exact: true }).click();
-  await expect(result.getByText("Remove 1", { exact: true })).toBeVisible();
+  // Deleting a file of the edited folder moves it to To be deleted.
+  await folder.getByRole("button", { name: "Actions for extra.mp3", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+  await expect(folder.getByText("Remove 1", { exact: true })).toBeVisible();
+  await expect(
+    editor
+      .getByRole("region", { name: "To be deleted", exact: true })
+      .getByRole("button", { name: "Keep extra.mp3", exact: true }),
+  ).toBeVisible();
   await editor.getByRole("button", { name: "Apply changes" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("heading", { name: "Final confirmation" })).toBeVisible();
@@ -783,27 +785,18 @@ test("@desktop Manage lyrics resolves a lyrics conflict in place of deleting the
     .getByRole("button", { name: "Manage files", exact: true })
     .click();
 
-  // A lyrics file in a language's lyrics folder has no row of its own until it is asked for.
-  const files = page.getByRole("dialog", { name: "Manage files" });
-  const managedRow = files.getByRole("checkbox", { name: "Select lyrics_kikoto", exact: true });
-  await expect(managedRow).toHaveCount(0);
-  const note = files.getByRole("note");
-  await expect(note).toContainText("Lyrics managed by Kikoto");
-  await note.getByRole("checkbox", { name: "Show in the list" }).click();
-  await expect(managedRow).toBeVisible();
-  await note.getByRole("checkbox", { name: "Show in the list" }).click();
-  await expect(managedRow).toHaveCount(0);
-
-  // Managing a file as lyrics opens the lyrics files with that file selected.
-  await files.getByRole("checkbox", { name: "Select track.mp3.vtt", exact: true }).click();
-  await files.getByRole("button", { name: /Manage as lyrics/ }).click();
+  // The workspace marks Kikoto's lyrics folder and sends the folder's other lyrics to Manage lyrics.
+  const folder = page.getByRole("dialog", { name: "Manage files" }).getByRole("region", { name: "This folder" });
+  await expect(folder.getByText("Lyrics managed by Kikoto", { exact: true })).toBeVisible();
+  await expect(folder.getByText(/^1 lyrics file of this folder is not among Kikoto's managed lyrics/)).toBeVisible();
+  await folder.getByRole("button", { name: "Open in Manage lyrics", exact: true }).click();
   const lyrics = page.getByRole("dialog", { name: "Manage lyrics" });
   await expect(lyrics.getByRole("tab", { name: /Lyrics files/ })).toHaveAttribute("aria-selected", "true");
   await expect(lyrics.getByRole("button", { name: /Other lyrics in this folder/ })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await expect(lyrics.getByRole("checkbox", { name: "Select track.mp3.vtt", exact: true })).toBeChecked();
+  await lyrics.getByRole("checkbox", { name: "Select track.mp3.vtt", exact: true }).click();
 
   // The work's own files are copied by default; this edit moves them instead.
   const folderMode = lyrics.getByRole("combobox", { name: "The work's own files" });
@@ -858,9 +851,7 @@ test("@desktop Manage lyrics resolves a lyrics conflict in place of deleting the
   ).toBeVisible();
 });
 
-test("local Delete enables work forgetting only for a complete root and confirms its data boundary", async ({
-  page,
-}) => {
+test("Manage files forgets a work with its whole folder and confirms its data boundary", async ({ page }) => {
   const cleanupBodies: Record<string, unknown>[] = [];
   const mediaItems: MediaItem[] = [
     {
@@ -905,14 +896,11 @@ test("local Delete enables work forgetting only for a complete root and confirms
   await page.getByText(work.title, { exact: true }).click();
   await runSourceAction(page, "Manage files");
 
-  // Forgetting a work deletes its complete folder, so it is offered only once everything is selected.
-  const forgetButton = page.getByRole("button", { name: "Review deletion and forget work" });
-  await expect(forgetButton).toHaveCount(0);
-  await page.getByRole("checkbox", { name: "Select track.mp3", exact: true }).click();
-  await expect(forgetButton).toHaveCount(0);
-  await page.getByRole("checkbox", { name: `Select work root ${work.primaryCode}`, exact: true }).click();
-  await expect(forgetButton).toBeEnabled();
-  await forgetButton.click();
+  // Forgetting a work deletes its whole folder, apart from the edit's own file changes.
+  await page
+    .getByRole("dialog", { name: "Manage files" })
+    .getByRole("button", { name: "Delete folder and forget work", exact: true })
+    .click();
 
   await expect(page.getByRole("heading", { name: "Review deletion and forget work" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Will be deleted" })).toBeVisible();
