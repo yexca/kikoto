@@ -126,7 +126,8 @@ export function AvailabilityWatchSettings({
 }) {
   const { watch } = state;
   if (!watch) return <AvailabilityWatchLoadState state={state} />;
-  const layout = runFormLayout({ optionsTitle: workflowCopy("configuration") });
+  // The settings panel scrolls on its own, where a floating run bar would cover the last options.
+  const layout = runFormLayout({ optionsTitle: workflowCopy("configuration"), floatingRunBar: false });
   return (
     <div className="workflow-detail grid min-w-0 gap-5">
       <AvailabilityWatchRunForm

@@ -451,7 +451,9 @@ partial results, and active runs stand out.
 Run options form a run form that ends in a run bar holding Run, any workflow
 action such as Availability Watch Save, and the first reason Run is
 unavailable. The bar sticks above the page's fixed bottom controls while a long
-form scrolls. Preset option groups (Input, Filter, Actions) become columns once
+form scrolls; in the Discover settings, which scroll on their own, the
+Availability Watch bar stays after its options instead of floating over them.
+Preset option groups (Input, Filter, Actions) become columns once
 the form is wide enough. A workflow without run options keeps Run in its header.
 The latest run's monitor follows the form, then triggers and recent runs.
 

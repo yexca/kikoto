@@ -42,6 +42,7 @@ import type {
   WorkflowRun,
   WorkflowTrigger,
 } from "@/lib/api";
+import { cn } from "@/lib/tailwindClassNames";
 
 export function WorkflowDetail({
   definition,
@@ -250,9 +251,17 @@ export function WorkflowPanel({ children, className = "" }: { children: ReactNod
  * A workflow with options gets a run form: the options, then a run bar that
  * sticks to the bottom of the viewport while a long form scrolls, keeping Run
  * and the reason it is unavailable beside each other. A workflow without
- * options places Run in the header instead.
+ * options places Run in the header instead. A form inside a panel that
+ * scrolls on its own keeps the run bar in place after the options, so it never
+ * floats over them.
  */
-export function runFormLayout({ optionsTitle }: { optionsTitle: string }): RunFormLayout {
+export function runFormLayout({
+  optionsTitle,
+  floatingRunBar = true,
+}: {
+  optionsTitle: string;
+  floatingRunBar?: boolean;
+}): RunFormLayout {
   return ({ run, actions, options, optionsActions, blocker }) => {
     if (!options) {
       return run || actions ? (
@@ -271,7 +280,7 @@ export function runFormLayout({ optionsTitle }: { optionsTitle: string }): RunFo
           </div>
           <div className="pb-4 pt-3">{options}</div>
           {(run || actions || blocker) && (
-            <RunBar blocker={blocker}>
+            <RunBar blocker={blocker} floating={floatingRunBar}>
               {actions}
               {run}
             </RunBar>
@@ -283,14 +292,14 @@ export function runFormLayout({ optionsTitle }: { optionsTitle: string }): RunFo
 }
 
 /** The run form's last row; it is marked stuck while it floats over the rest of a long form. */
-function RunBar({ blocker, children }: { blocker?: ReactNode; children: ReactNode }) {
+function RunBar({ blocker, floating, children }: { blocker?: ReactNode; floating: boolean; children: ReactNode }) {
   const barRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const [stuck, setStuck] = useState(false);
   useEffect(() => {
     const bar = barRef.current;
     const end = endRef.current;
-    if (!bar || !end) return;
+    if (!floating || !bar || !end) return;
     // The bar floats while the form's end is still below the bar's resting line.
     const inset = Number.parseFloat(window.getComputedStyle(bar).bottom) || 0;
     const observer = new IntersectionObserver(
@@ -299,13 +308,16 @@ function RunBar({ blocker, children }: { blocker?: ReactNode; children: ReactNod
     );
     observer.observe(end);
     return () => observer.disconnect();
-  }, []);
+  }, [floating]);
   return (
     <>
       <div
         ref={barRef}
         data-stuck={stuck || undefined}
-        className="workflow-run-bar -mx-4 flex min-h-14 items-center gap-2 rounded-b-lg border-t px-4 py-2.5"
+        className={cn(
+          "-mx-4 flex min-h-14 items-center gap-2 rounded-b-lg border-t px-4 py-2.5",
+          floating && "workflow-run-bar",
+        )}
       >
         <div className="min-w-0 flex-1">{blocker}</div>
         {children}

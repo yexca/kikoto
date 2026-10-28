@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogBody, DialogHeader } from "@/components/ui/dialog";
+import { Dialog, DialogBody } from "@/components/ui/dialog";
 import { MobileSheet } from "@/components/ui/mobile-sheet";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { useToast } from "@/components/ui/toast";
@@ -322,7 +322,7 @@ export function SubscriptionsPage({
 
   const settings = activePanel && (
     <div className="flex min-h-0 flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-1">
         <div role="tablist" aria-label={t("subscriptions.settings")} className={segmentedListClassName()}>
           {panels.map((item) => (
             <button
@@ -339,17 +339,17 @@ export function SubscriptionsPage({
             </button>
           ))}
         </div>
-        {mobile && (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t("subscriptions.closeSettings")}
-            title={t("subscriptions.closeSettings")}
-            onClick={() => showPanel(null)}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
+        {/* The tabs name the panel, so it has no title bar; Close sits beside them. */}
+        <Button
+          variant="ghost"
+          size={mobile ? "icon" : "icon-sm"}
+          className={cn("shrink-0 text-muted-foreground", !mobile && "-mr-2")}
+          aria-label={t("subscriptions.closeSettings")}
+          title={t("subscriptions.closeSettings")}
+          onClick={() => (settingsBeside ? closeBesideSettings() : showPanel(null))}
+        >
+          <X className="h-4 w-4" />
+        </Button>
       </div>
       <div
         role="tabpanel"
@@ -544,12 +544,7 @@ export function SubscriptionsPage({
               closeBesideSettings();
             }}
           >
-            <DialogHeader
-              title={t("subscriptions.settings")}
-              onClose={closeBesideSettings}
-              closeLabel={t("subscriptions.closeSettings")}
-            />
-            <DialogBody>{settings}</DialogBody>
+            <DialogBody className="px-4">{settings}</DialogBody>
           </aside>
         )}
       </div>
@@ -561,12 +556,7 @@ export function SubscriptionsPage({
           overlayClassName="!place-items-stretch !justify-items-end !p-0"
           className="!h-full !max-h-none w-[min(36rem,100vw)] !max-w-none !rounded-none border-y-0 border-r-0 slide-in-from-bottom-0 slide-in-from-right-8 zoom-in-100"
         >
-          <DialogHeader
-            title={t("subscriptions.settings")}
-            onClose={() => showPanel(null)}
-            closeLabel={t("subscriptions.closeSettings")}
-          />
-          <DialogBody>{settings}</DialogBody>
+          <DialogBody className="px-4">{settings}</DialogBody>
         </Dialog>
       )}
       {mobile && (
