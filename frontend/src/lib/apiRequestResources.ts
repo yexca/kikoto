@@ -22,7 +22,12 @@ export function apiMutationResources(path: string): {
   ) {
     return { forget: ["work-state"], interrupt: [] };
   }
-  if (pathname === "/api/recommendation-events" || /^\/api\/remote-sources\/\d+\/recommendations$/.test(pathname))
+  // A For you draw writes only its own impressions.
+  if (
+    pathname === "/api/recommendation-events" ||
+    pathname === "/api/for-you/draw" ||
+    /^\/api\/remote-sources\/\d+\/recommendations$/.test(pathname)
+  )
     return { forget: [], interrupt: [] };
 
   const work = /^\/api\/works\/(\d+)(?:\/|$)/.exec(pathname);

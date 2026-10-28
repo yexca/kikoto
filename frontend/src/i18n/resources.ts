@@ -366,7 +366,8 @@ export const englishResource = {
         insights: "Insights",
         insightsDescription: "Your listening calendar, statistics, and history",
         subscriptions: "Discover",
-        subscriptionsDescription: "New works from your subscriptions, rankings, and works you are waiting for",
+        subscriptionsDescription:
+          "What to listen to next: picks from your library, new releases, rankings, and works you are waiting for",
         translation: "Translation",
         translationDescription: "Review AI translations and follow the ones that are running",
         about: "About",

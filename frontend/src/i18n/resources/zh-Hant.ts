@@ -689,7 +689,7 @@ export const zhHantResource = {
         insights: "資料面板",
         insightsDescription: "查看收聽日曆、統計和歷史",
         subscriptions: "發現",
-        subscriptionsDescription: "訂閱的新作、排行榜和等待中的作品",
+        subscriptionsDescription: "接下來聽什麼：媒體庫中的推薦、新作、排行榜和等待中的作品",
         translation: "翻譯",
         translationDescription: "審核 AI 翻譯，並追蹤正在進行的翻譯",
         about: "關於",

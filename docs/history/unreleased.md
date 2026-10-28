@@ -99,12 +99,21 @@
 <details>
 <summary><strong>Discover</strong></summary>
 
-- Subscriptions becomes **Discover**, the way in to works from outside the
-  library: new works from your subscriptions, rankings, and the works
-  Availability Watch waits for. Its address is `/discover`, links to
+- Subscriptions becomes **Discover**, where you find what to listen to next:
+  picks from your library, new works from your subscriptions, rankings, and
+  the works Availability Watch waits for. Its address is `/discover`, links to
   `/subscriptions` open it, and its navigation icon is a compass; the bell
   stays on the subscribe buttons. Subscribing and the subscription settings
   keep their names.
+- Discover gains **For you**, before **New releases**: three small, random
+  draws from your local works. **Maybe like** offers unplayed works close to
+  what you like, **Try new** unplayed works whose circles, voices, and tags
+  you rarely hear, and **Listen again** works you liked and have not played
+  for a while. Each card says why it was drawn, each column has **Draw
+  again**, and **Safe**, **Balanced**, and **Adventurous** set how far the
+  draws stray; the choice is saved for your account. For you reads the same
+  ratings, favorites, and marks as the Library's **Recommended** order and
+  leaves that order and the recommendation activity report unchanged.
 - Discover gains a **Rankings** view beside **New releases**. It follows
   the DLsite voice rankings for 24 hours, 7 days, and 30 days, the annual
   ranking of each year, and the all-time ranking, and remote sources' popular

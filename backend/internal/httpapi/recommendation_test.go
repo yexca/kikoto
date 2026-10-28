@@ -370,6 +370,25 @@ func TestRecommendationTelemetryRejectsArbitraryFieldsAndAggregates(t *testing.T
 		t.Fatalf("invalid event status = %d, body = %s", invalidResponse.Code, invalidResponse.Body.String())
 	}
 
+	// For you events rotate its draws and stay out of the Library report.
+	forYou := httptest.NewRequest(http.MethodPost, "/api/recommendation-events", strings.NewReader(`{"events":[{"workId":`+jsonInt(workID)+`,"eventType":"open","contextId":"maybe_like","surface":"for_you"}]}`))
+	forYou = forYou.WithContext(context.WithValue(forYou.Context(), currentUserKey, user))
+	forYouResponse := httptest.NewRecorder()
+	server.recordRecommendationEvents(forYouResponse, forYou)
+	if forYouResponse.Code != http.StatusCreated {
+		t.Fatalf("for you event status = %d, body = %s", forYouResponse.Code, forYouResponse.Body.String())
+	}
+	if _, err := db.Exec("INSERT INTO recommendation_event (user_id, work_id, event_type, score, surface) VALUES (?, ?, 'impression', 90, 'for_you')", userID, workID); err != nil {
+		t.Fatal(err)
+	}
+	unknownSurface := httptest.NewRequest(http.MethodPost, "/api/recommendation-events", strings.NewReader(`{"events":[{"workId":`+jsonInt(workID)+`,"eventType":"open","surface":"elsewhere"}]}`))
+	unknownSurface = unknownSurface.WithContext(context.WithValue(unknownSurface.Context(), currentUserKey, user))
+	unknownSurfaceResponse := httptest.NewRecorder()
+	server.recordRecommendationEvents(unknownSurfaceResponse, unknownSurface)
+	if unknownSurfaceResponse.Code != http.StatusBadRequest {
+		t.Fatalf("unknown surface status = %d, body = %s", unknownSurfaceResponse.Code, unknownSurfaceResponse.Body.String())
+	}
+
 	otherResult, err := db.Exec("INSERT INTO user_account (username, display_name, role) VALUES ('telemetry-other', 'Other User', 'user')")
 	if err != nil {
 		t.Fatal(err)

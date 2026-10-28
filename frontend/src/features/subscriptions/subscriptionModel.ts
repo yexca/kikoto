@@ -14,8 +14,11 @@ import { voiceDetailPath } from "@/lib/voiceRoute";
 export const SUBSCRIPTION_PANELS = ["subscriptions", "rankings", "watch"] as const;
 export type SubscriptionPanel = (typeof SUBSCRIPTION_PANELS)[number];
 
-/** The page shows new releases from subscriptions, the tracked rankings, or the Availability Watch pool. */
-export const SUBSCRIPTION_VIEWS = ["releases", "rankings", "watch"] as const;
+/**
+ * The page shows For you draws from the local library, new releases from
+ * subscriptions, the tracked rankings, or the Availability Watch pool.
+ */
+export const SUBSCRIPTION_VIEWS = ["for-you", "releases", "rankings", "watch"] as const;
 export type SubscriptionView = (typeof SUBSCRIPTION_VIEWS)[number];
 
 /**
@@ -25,13 +28,13 @@ export type SubscriptionView = (typeof SUBSCRIPTION_VIEWS)[number];
 export function subscriptionViewFromSearch(search: string): SubscriptionView {
   const params = new URLSearchParams(search);
   const view = params.get("view");
-  if (view === "rankings" || view === "watch") return view;
+  if (view === "for-you" || view === "rankings" || view === "watch") return view;
   return view === null && params.get("panel") === "watch" ? "watch" : "releases";
 }
 
 /** The settings tab that belongs to a view, which the settings button opens. */
 export function subscriptionPanelForView(view: SubscriptionView): SubscriptionPanel {
-  return view === "releases" ? "subscriptions" : view;
+  return view === "releases" || view === "for-you" ? "subscriptions" : view;
 }
 
 /**

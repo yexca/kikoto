@@ -1,14 +1,55 @@
 # Discover
 [English](../en/discover.md) · [简体中文](../zh-Hans/discover.md) · [繁體中文](../zh-Hant/discover.md) · [日本語](../ja/discover.md) · [한국어](../ko/discover.md)
 
-Discover is where works from outside your library come in. **New releases**
-collects new works from the circles, series, and voice actors you subscribe
-to, and works that Availability Watch finds on a remote source; **Rankings**
-follows popular rankings and shows how they change; and **Watch** holds the
-works Availability Watch waits for. The switch at the top chooses the view; a
-dot on **Rankings** means a ranking changed since you last looked at it.
-**Watch** is shown to accounts that can open Workflows. Links to
-`/subscriptions` open Discover.
+Discover is where you find what to listen to next. **For you** draws a few
+works from your own library: ones you may like, ones unlike what you usually
+hear, and ones worth hearing again. **New releases** collects new works from
+the circles, series, and voice actors you subscribe to, and works that
+Availability Watch finds on a remote source; **Rankings** follows popular
+rankings and shows how they change; and **Watch** holds the works
+Availability Watch waits for. The switch at the top chooses the view, and
+`/discover` opens **New releases**; a dot on **Rankings** means a ranking
+changed since you last looked at it. **Watch** is shown to accounts that can
+open Workflows. Links to `/subscriptions` open Discover.
+
+## For You
+
+**For you** answers what to play next with small, changing sets of local
+works, where the Library's **Recommended** order is a stable way to browse
+all of them. Both read the same taste profile: your ratings, favorites, and
+marks, as described in [Library](library.md). For you only reads it; nothing
+you do in For you changes what the Library recommends.
+
+- Three columns hold about ten works each: **Maybe like**, works you have not
+  played yet that are close to what you like; **Try new**, works you have not
+  played whose circles, voices, and tags you rarely hear, leaving out works
+  like the ones you rated low or shelved; and **Listen again**, works you have
+  played, the more likely the more you liked them (your rating, favorite,
+  Relisten, and listening time) and the longer ago you played them. A work you are listening to now, or
+  stopped in the last two weeks, is left to **Continue listening** in the
+  Library. Works you rated one or two stars are never offered.
+- A work appears in one column only. Every column holds works with local
+  files; works only on a remote source or only in a catalog are not drawn.
+- Above each card is why it was drawn, such as **A circle you like: …**,
+  **A tag you rarely hear: …**, or **4 months since last played, rated 5**.
+  Cards open the work and offer the Library card's list, rating, and Quick
+  mark buttons.
+- **Safe**, **Balanced**, and **Adventurous** set how far the draws stray.
+  **Safe** keeps to the best matches, **Try new** stays near what you know,
+  and **Listen again** offers only finished works you liked or heard more
+  than once. **Adventurous** draws from every candidate, **Try new** goes as
+  far from your usual listening as the library allows, and **Listen again**
+  adds works you heard once or left half-finished. **Balanced**, the default,
+  sits between them. The choice is saved for your account.
+- **Draw again** draws its column anew from your current ratings and marks,
+  leaving out what the other columns show. Each draw is random, and works
+  shown recently that you neither opened nor played are drawn less often for
+  three days, so the columns rotate.
+- Before you have rated, favorited, or marked anything, **Maybe like** follows
+  the DLsite rating and sales, and **Listen again** waits for works you play.
+- On a narrow window or a phone, the switch under the temperature chooses the
+  column to show.
+- For you is not available in the demo.
 
 ## Subscribing
 

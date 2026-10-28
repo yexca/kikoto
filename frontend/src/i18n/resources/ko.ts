@@ -706,7 +706,7 @@ export const koreanResource = {
         insights: "인사이트",
         insightsDescription: "청취 달력, 통계, 기록을 확인합니다",
         subscriptions: "둘러보기",
-        subscriptionsDescription: "구독한 신작, 순위, 기다리는 작품",
+        subscriptionsDescription: "다음에 들을 작품: 라이브러리 추천, 신작, 순위, 기다리는 작품",
         translation: "번역",
         translationDescription: "AI 번역을 검토하고 진행 중인 번역을 확인",
         about: "정보",

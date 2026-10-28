@@ -31,6 +31,9 @@ type recommendationEventInput struct {
 	Seed             int64  `json:"seed"`
 	Rank             int    `json:"rank"`
 	Score            int    `json:"score"`
+	// Surface is the view that showed the work: the Library, or For you in
+	// Discover. Empty is the Library.
+	Surface string `json:"surface"`
 }
 
 type recommendationTelemetrySummary struct {
@@ -168,6 +171,13 @@ func validateRecommendationEvent(event recommendationEventInput) (recommendation
 	if event.EventType != "reshuffle" && (event.WorkID == nil || *event.WorkID <= 0) {
 		return recommendationEventInput{}, nil, recommendationEventValidationError{"workId is required for this recommendation event"}
 	}
+	switch event.Surface {
+	case "":
+		event.Surface = "library"
+	case "library", "for_you":
+	default:
+		return recommendationEventInput{}, nil, recommendationEventValidationError{"unsupported recommendation surface"}
+	}
 	event.AlgorithmVersion = strings.TrimSpace(event.AlgorithmVersion)
 	if event.AlgorithmVersion == "" {
 		event.AlgorithmVersion = library.RecommendationAlgorithmVersion
@@ -189,9 +199,9 @@ func insertRecommendationEvents(ctx context.Context, tx *sql.Tx, userID int64, e
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO recommendation_event (user_id, work_id, event_type, context_id, algorithm_version, seed, rank, score)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`, userID, workID, event.EventType, event.ContextID, event.AlgorithmVersion, event.Seed, event.Rank, event.Score); err != nil {
+			INSERT INTO recommendation_event (user_id, work_id, event_type, context_id, algorithm_version, seed, rank, score, surface)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, userID, workID, event.EventType, event.ContextID, event.AlgorithmVersion, event.Seed, event.Rank, event.Score, event.Surface); err != nil {
 			return err
 		}
 	}
@@ -199,7 +209,8 @@ func insertRecommendationEvents(ctx context.Context, tx *sql.Tx, userID int64, e
 }
 
 // getRecommendationTelemetry summarizes only the signed-in user's own
-// recommendation events, matching the per-user recommendation model.
+// Library recommendation events, matching the per-user recommendation model.
+// For you events rotate its draws and stay out of this report.
 func (s *Server) getRecommendationTelemetry(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
 	if !ok {
@@ -210,7 +221,7 @@ func (s *Server) getRecommendationTelemetry(w http.ResponseWriter, r *http.Reque
 	rows, err := s.db.QueryContext(r.Context(), `
 		SELECT event_type, COUNT(*)
 		FROM recommendation_event
-		WHERE user_id = ? AND created_at >= datetime('now', '-30 days')
+		WHERE user_id = ? AND surface = 'library' AND created_at >= datetime('now', '-30 days')
 		GROUP BY event_type
 	`, user.ID)
 	if err != nil {
@@ -237,7 +248,7 @@ func (s *Server) getRecommendationTelemetry(w http.ResponseWriter, r *http.Reque
 	bucketRows, err := s.db.QueryContext(r.Context(), `
 		SELECT CASE WHEN score < 20 THEN '0-19' WHEN score < 40 THEN '20-39' WHEN score < 60 THEN '40-59' WHEN score < 80 THEN '60-79' ELSE '80-100' END, COUNT(*)
 		FROM recommendation_event
-		WHERE user_id = ? AND event_type = 'impression' AND created_at >= datetime('now', '-30 days')
+		WHERE user_id = ? AND surface = 'library' AND event_type = 'impression' AND created_at >= datetime('now', '-30 days')
 		GROUP BY 1 ORDER BY 1
 	`, user.ID)
 	if err != nil {

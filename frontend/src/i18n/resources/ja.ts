@@ -714,7 +714,8 @@ export const japaneseResource = {
         insights: "インサイト",
         insightsDescription: "聴取カレンダー、統計、履歴を確認",
         subscriptions: "見つける",
-        subscriptionsDescription: "購読した新作、ランキング、配信を待っている作品",
+        subscriptionsDescription:
+          "次に聴く作品を見つける: ライブラリからのおすすめ、新作、ランキング、配信を待っている作品",
         translation: "翻訳",
         translationDescription: "AI 翻訳を確認し、実行中のものを追う",
         about: "情報",

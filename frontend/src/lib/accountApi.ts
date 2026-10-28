@@ -9,6 +9,7 @@ import {
   readApiJSON,
   responseError,
 } from "@/lib/apiTransport";
+import type { ForYouTemperature } from "@/lib/forYouApi";
 import type { RecommendationConfig } from "@/lib/libraryApi";
 import { clearStoredSessionToken, isNativeApp, setStoredSessionToken } from "@/lib/serverConfig";
 import type { DirectoryRoutingRule } from "@/lib/settingsApi";
@@ -22,6 +23,8 @@ export type UserPreferences = {
   metadataLanguages: string[] | null;
   /** The IANA time zone the user fixed; null follows the device in use. */
   timeZone: string | null;
+  /** How far For you draws stray from what the account likes. */
+  forYouTemperature: ForYouTemperature;
 };
 
 /** Account roles; behavior follows each role's permissions, never its name. */

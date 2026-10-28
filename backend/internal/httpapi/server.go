@@ -215,6 +215,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/works/{id}/playback-cursor", s.getWorkPlaybackCursor)
 	mux.HandleFunc("POST /api/recommendation-events", s.recordRecommendationEvents)
 	mux.HandleFunc("GET /api/recommendation-telemetry", s.getRecommendationTelemetry)
+	mux.HandleFunc("POST /api/for-you/draw", s.drawForYou)
 	mux.HandleFunc("GET /api/works/{id}/media", s.getWorkMedia)
 	mux.HandleFunc("GET /api/works/{id}/file-display-names", s.getWorkFileDisplayNames)
 	mux.HandleFunc("PUT /api/works/{id}/file-display-names", s.setWorkFileDisplayNames)

@@ -15,6 +15,7 @@ import {
   WorkCollectionDisplayPicker,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { openWorkDetail } from "@/app/workDetailNavigation";
+import { ForYouView } from "@/features/for-you/ForYouView";
 import { RankingSettings } from "@/features/rankings/RankingSettings";
 import {
   DEFAULT_RANKING_ORDER,
@@ -115,10 +116,11 @@ function openRankedWork(code: string, remoteSourceId: number | null) {
 }
 
 /**
- * Discover, the way in to works from outside the library (`/discover`).
- * New works from subscribed circles, series, and voice actors, grouped by day
- * in the Library's card grid; the tracked rankings with how they changed; or
- * the shared Availability Watch pool in the same card grid. The subscriptions
+ * Discover, where to find what to listen to next (`/discover`). For you
+ * draws small sets from the local library; New releases shows new works from
+ * subscribed circles, series, and voice actors, grouped by day in the
+ * Library's card grid; Rankings the tracked rankings with how they changed;
+ * and Watch the shared Availability Watch pool in the same card grid. The subscriptions
  * with their refresh schedule, the tracked rankings, and the watch's
  * configuration live in a settings panel beside them.
  */
@@ -174,7 +176,10 @@ export function SubscriptionsPage({
   );
   const panels = SUBSCRIPTION_PANELS.filter((item) => item !== "watch" || canRunWorkflows);
   const activePanel = panel && panels.includes(panel) ? panel : panel ? "subscriptions" : null;
-  const views = SUBSCRIPTION_VIEWS.filter((item) => item !== "watch" || canRunWorkflows);
+  // For you draws from the account's own library, which the demo does not have.
+  const views = SUBSCRIPTION_VIEWS.filter(
+    (item) => (item !== "watch" || canRunWorkflows) && (item !== "for-you" || !readOnly),
+  );
   const activeView = views.includes(view) ? view : "releases";
   const settingsBeside = besideLayout && Boolean(activePanel);
   // The Watch view and the watch's settings share one watch and its poll.
@@ -424,7 +429,7 @@ export function SubscriptionsPage({
               {activeView === "releases" && (
                 <ShownWorksActionMenu actions={feedActions} requests={feedActionRequests} />
               )}
-              {activeView !== "rankings" && (
+              {activeView !== "rankings" && activeView !== "for-you" && (
                 // New releases and Watch share the Library's card grid; only the feed is paged.
                 <WorkCollectionDisplayPicker
                   mobileColumns={layout.mobileColumns}
@@ -468,7 +473,9 @@ export function SubscriptionsPage({
             </div>
           </div>
           <div role="tabpanel" id="subscriptions-view-panel" aria-labelledby={`subscriptions-view-${activeView}`}>
-            {activeView === "watch" ? (
+            {activeView === "for-you" ? (
+              <ForYouView canMark={canSubscribe} onOpenWork={(code) => openWorkCodeRoute(code)} />
+            ) : activeView === "watch" ? (
               <AvailabilityWatchPool
                 state={watchState}
                 readOnly={readOnly}

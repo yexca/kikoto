@@ -184,11 +184,12 @@ detail, run forms, the trigger editor, the Availability Watch configuration
 and pool that the Discover page composes, run detail, and candidate
 review live in `features/workflows`.
 
-The Discover page (`/discover`, rendered by `pages/SubscriptionsPage`) is the
-way in to works from outside the library. A `/subscriptions` address
-redirects to it with its query. It switches between three views, the release
-feed, Rankings (`?view=rankings`), and Watch (`?view=watch`, for accounts that
-can run workflows; any other account sees the release feed), and composes its
+The Discover page (`/discover`, rendered by `pages/SubscriptionsPage`) is
+where to find what to listen to next. A `/subscriptions` address redirects to
+it with its query. It switches between four views, For you (`?view=for-you`,
+not in the demo), the release feed, Rankings (`?view=rankings`), and Watch
+(`?view=watch`, for accounts that can run workflows; any other account sees
+the release feed), and composes its
 settings as a sticky panel
 beside the view from 1280px, where the view reflows to the remaining width, as
 a drawer over its right edge on narrower desktops, and as a sheet on phones.
@@ -249,7 +250,10 @@ settings, and the settings button opens the tab of the current view. `?page=`
 names the feed page. The feed, subscription list, schedule panel,
 and the subscribe button that circle, series, and voice actor pages render
 live in `features/subscriptions`; the Rankings view, its settings, and the
-shared ranking state live in `features/rankings`; the Watch view, the watch
+shared ranking state live in `features/rankings`; For you, its draws, and its
+reason sentences live in `features/for-you`, which draws every column on open
+and after a temperature change, and one column, without the other columns'
+works, on **Draw again**; the Watch view, the watch
 configuration, and their shared state live in
 `features/workflows/availability-watch`.
 

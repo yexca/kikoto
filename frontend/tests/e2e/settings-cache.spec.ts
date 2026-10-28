@@ -183,6 +183,7 @@ async function mockCacheSettings(
     recommendationDefaults: currentSettings.recommendationDefaults,
     metadataLanguages,
     timeZone,
+    forYouTemperature: "balanced",
   });
   const replaceRemoteSource = (source: FileSource) => {
     currentSettings = { ...currentSettings, fileSources: [currentSettings.fileSources[0], source] };
