@@ -1,7 +1,6 @@
 import { ListX, Loader2, Plus } from "lucide-react";
 import { forwardRef, useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -11,6 +10,7 @@ import {
   workCollectionStyle,
   type WorkCollectionColumnSetting,
 } from "@/components/work-collection/WorkCollectionLayout";
+import { WorkSectionHeading } from "@/components/work-collection/WorkSectionHeading";
 import { intlLocaleFor } from "@/i18n";
 import { useLocale } from "@/i18n/LocaleProvider";
 import { formatRelativeTime, parseWorkflowTimestamp } from "@/features/workflows/runPresentation";
@@ -172,20 +172,19 @@ export function AvailabilityWatchPool({
   };
 
   const card = (target: AvailabilityWatchTarget) => (
-    <li key={target.id} className="min-w-0">
-      <AvailabilityWatchTargetCard
-        target={target}
-        layout={cardLayout}
-        sourceName={sourceName(target.availableSourceId)}
-        locale={locale}
-        now={now}
-        readOnly={manageReadOnly}
-        armed={confirm.armed === target.id}
-        removing={removing === target.id}
-        onOpen={() => onSelectTarget(target.id)}
-        onRemove={() => void remove(target)}
-      />
-    </li>
+    <AvailabilityWatchTargetCard
+      key={target.id}
+      target={target}
+      layout={cardLayout}
+      sourceName={sourceName(target.availableSourceId)}
+      locale={locale}
+      now={now}
+      readOnly={manageReadOnly}
+      armed={confirm.armed === target.id}
+      removing={removing === target.id}
+      onOpen={() => onSelectTarget(target.id)}
+      onRemove={() => void remove(target)}
+    />
   );
   const gridProps = {
     className: workCollectionClassName(),
@@ -241,7 +240,6 @@ export function AvailabilityWatchPool({
         ref={availableRef}
         id="availability-watch-available"
         label={workflowCopy("availabilityState.available")}
-        dotClassName="bg-success"
         count={available.length}
         action={
           !manageReadOnly &&
@@ -280,7 +278,6 @@ export function AvailabilityWatchPool({
       <PoolSection
         id="availability-watch-unavailable"
         label={workflowCopy("availabilityState.notAvailable")}
-        dotClassName="bg-muted-foreground/50"
         count={unavailable.length}
         action={
           foldable && (
@@ -296,10 +293,12 @@ export function AvailabilityWatchPool({
           <ol ref={gridRef} {...gridProps} aria-label={workflowCopy("availabilityState.notAvailable")}>
             {shownUnavailable.map(card)}
             {folded && (
-              <li className="min-h-[9rem] min-w-0">
+              // Lines up with the cards beside it, below the space of their context line.
+              <li className="flex min-h-[9rem] min-w-0 flex-col gap-1.5">
+                <span className="h-6 shrink-0" aria-hidden="true" />
                 <button
                   type="button"
-                  className="h-full w-full rounded-lg border border-dashed px-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full flex-1 rounded-lg border border-dashed px-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => setExpanded(true)}
                 >
                   {workflowCopy("moreCount", { count: unavailable.length - shownUnavailable.length })}
@@ -367,25 +366,15 @@ function PoolStat({ label, value, tone }: { label: string; value: ReactNode; ton
 
 const PoolSection = forwardRef<
   HTMLElement,
-  { id: string; label: string; dotClassName: string; count: number; action?: ReactNode; children: ReactNode }
->(function PoolSection({ id, label, dotClassName, count, action, children }, ref) {
+  { id: string; label: string; count: number; action?: ReactNode; children: ReactNode }
+>(function PoolSection({ id, label, count, action, children }, ref) {
   return (
     <section
       ref={ref}
       className="min-w-0 scroll-mt-[calc(var(--header-height)+var(--safe-area-top)+1rem)]"
       aria-labelledby={`${id}-label`}
     >
-      <div className="mb-3 flex min-h-9 items-center gap-3">
-        <h3 id={`${id}-label`} className="flex min-w-0 shrink-0 items-center gap-2 text-lg font-semibold leading-7">
-          <span className={cn("h-2 w-2 shrink-0 rounded-full", dotClassName)} aria-hidden="true" />
-          {label}
-        </h3>
-        <Badge variant="outline" className="shrink-0 tabular-nums">
-          {count}
-        </Badge>
-        <span className="h-px min-w-4 flex-1 bg-border" aria-hidden="true" />
-        {action}
-      </div>
+      <WorkSectionHeading id={`${id}-label`} title={label} count={count} action={action} />
       {children}
     </section>
   );

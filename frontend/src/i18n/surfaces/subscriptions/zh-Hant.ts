@@ -284,9 +284,8 @@ export const subscriptionsHant = {
       streak_one: "已上榜 {{count}} 天",
       streak_other: "已上榜 {{count}} 天",
       bestRank: "最高第 {{rank}} 名",
-      inLibrary: "在媒體庫中",
       previousRank: "先前第 {{rank}} 名",
-      dropped: "已掉出（{{count}}）",
+      dropped: "已掉出",
       noMatches: "沒有符合此篩選條件的作品。",
       stale: {
         failed: "最近一次更新失敗，目前顯示的是 {{time}} 的排行榜。",

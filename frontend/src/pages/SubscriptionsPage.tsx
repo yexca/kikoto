@@ -10,8 +10,9 @@ import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/
 import { useToast } from "@/components/ui/toast";
 import { ShownWorksActionMenu, ShownWorksActionStatus } from "@/components/work-collection/ShownWorksActions";
 import {
+  discoverCardLayout,
+  DISCOVER_LAYOUT_STORE,
   useWorkCollectionLayout,
-  workCardLayout,
   WorkCollectionDisplayPicker,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { openWorkDetail } from "@/app/workDetailNavigation";
@@ -29,7 +30,7 @@ import {
   rankingsUnseen as anyRankingUnseen,
 } from "@/features/rankings/rankingModel";
 import { readRankingOrderPreferences, writeRankingOrderPreference } from "@/features/rankings/rankingOrderPreference";
-import { RankingsView } from "@/features/rankings/RankingsView";
+import { RankingsView, type RankingActionTarget } from "@/features/rankings/RankingsView";
 import { useRankingOverview } from "@/features/rankings/useRankingOverview";
 import { openWorkCodeRoute } from "@/features/work-detail/workDetailShared";
 import { ReleaseFeed } from "@/features/subscriptions/ReleaseFeed";
@@ -118,11 +119,13 @@ function openRankedWork(code: string, remoteSourceId: number | null) {
 /**
  * Discover, where to find what to listen to next (`/discover`). For you
  * draws small sets from the local library; New releases shows new works from
- * subscribed circles, series, and voice actors, grouped by day in the
- * Library's card grid; Rankings the tracked rankings with how they changed;
- * and Watch the shared Availability Watch pool in the same card grid. The subscriptions
- * with their refresh schedule, the tracked rankings, and the watch's
- * configuration live in a settings panel beside them.
+ * subscribed circles, series, and voice actors, grouped by day; Rankings the
+ * tracked rankings with how they changed; and Watch the shared Availability
+ * Watch pool. All four lay their cards out alike, in one display choice kept
+ * apart from the Library's, under one toolbar whose Actions, Display options,
+ * and Settings keep their places; Actions is disabled where a view has none.
+ * The subscriptions with their refresh schedule, the tracked rankings, and the
+ * watch's configuration live in a settings panel beside them.
  */
 export function SubscriptionsPage({
   readOnly,
@@ -168,8 +171,8 @@ export function SubscriptionsPage({
   const [feedPage, setFeedPage] = useState(() => releaseFeedPageFromSearch(window.location.search));
   const [feedDays, setFeedDays] = useState(readFeedDays);
   const feedRef = useRef<HTMLDivElement | null>(null);
-  const layout = useWorkCollectionLayout();
-  const cardLayout = workCardLayout(
+  const layout = useWorkCollectionLayout(undefined, DISCOVER_LAYOUT_STORE);
+  const cardLayout = discoverCardLayout(
     mobile ? layout.mobileCardMode : layout.desktopCardMode,
     !mobile,
     layout.mobileColumns,
@@ -324,6 +327,24 @@ export function SubscriptionsPage({
           ? { sources: () => api.checkReleaseFeedSources(feedPage, feedDays) }
           : {}),
       };
+  // The same actions on the ranking order the view shows, which reads itself again when a run ends.
+  const [rankingReload, setRankingReload] = useState(0);
+  const [rankingActionTarget, setRankingActionTarget] = useState<RankingActionTarget | null>(null);
+  const rankingActions = useShownWorksActions({
+    onSettled: () => setRankingReload((value) => value + 1),
+    onOpenRun: openRun,
+  });
+  const rankingActionRequests = rankingActionTarget
+    ? {
+        ...(canManageSchedule
+          ? { metadata: () => api.syncRankingMetadata(rankingActionTarget.listId, rankingActionTarget.snapshotId) }
+          : {}),
+        ...(canTrackRemote && canRunWorkflows
+          ? { sources: () => api.checkRankingSources(rankingActionTarget.listId, rankingActionTarget.snapshotId) }
+          : {}),
+      }
+    : {};
+  const canMark = canSubscribe && !readOnly;
 
   const settings = activePanel && (
     <div className="flex min-h-0 flex-col gap-4">
@@ -426,35 +447,38 @@ export function SubscriptionsPage({
               ))}
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {activeView === "releases" && (
+              {/* Every view keeps the same three controls in place; Actions is disabled where it offers none. */}
+              {activeView === "releases" ? (
                 <ShownWorksActionMenu actions={feedActions} requests={feedActionRequests} />
+              ) : activeView === "rankings" ? (
+                <ShownWorksActionMenu actions={rankingActions} requests={rankingActionRequests} />
+              ) : (
+                <ShownWorksActionMenu actions={feedActions} requests={{}} />
               )}
-              {activeView !== "rankings" && activeView !== "for-you" && (
-                // New releases and Watch share the Library's card grid; only the feed is paged.
-                <WorkCollectionDisplayPicker
-                  mobileColumns={layout.mobileColumns}
-                  desktopColumns={layout.desktopColumns}
-                  onMobileColumnsChange={layout.setMobileColumns}
-                  onDesktopColumnsChange={layout.setDesktopColumns}
-                  cardModes={{
-                    mobile: layout.mobileCardMode,
-                    desktop: layout.desktopCardMode,
-                    onMobileChange: layout.setMobileCardMode,
-                    onDesktopChange: layout.setDesktopCardMode,
-                  }}
-                  {...(activeView === "releases"
-                    ? {
-                        pageSize: feedDays,
-                        pageSizeOptions: RELEASE_FEED_DAY_OPTIONS,
-                        onPageSizeChange: changeFeedDays,
-                        pageSizeLabels: {
-                          heading: t("subscriptions.feed.daysPerPage"),
-                          value: (count: number) => t("subscriptions.feed.daysPerPageValue", { count }),
-                        },
-                      }
-                    : {})}
-                />
-              )}
+              {/* One display choice for every view; only the feed is paged. */}
+              <WorkCollectionDisplayPicker
+                mobileColumns={layout.mobileColumns}
+                desktopColumns={layout.desktopColumns}
+                onMobileColumnsChange={layout.setMobileColumns}
+                onDesktopColumnsChange={layout.setDesktopColumns}
+                cardModes={{
+                  mobile: layout.mobileCardMode,
+                  desktop: layout.desktopCardMode,
+                  onMobileChange: layout.setMobileCardMode,
+                  onDesktopChange: layout.setDesktopCardMode,
+                }}
+                {...(activeView === "releases"
+                  ? {
+                      pageSize: feedDays,
+                      pageSizeOptions: RELEASE_FEED_DAY_OPTIONS,
+                      onPageSizeChange: changeFeedDays,
+                      pageSizeLabels: {
+                        heading: t("subscriptions.feed.daysPerPage"),
+                        value: (count: number) => t("subscriptions.feed.daysPerPageValue", { count }),
+                      },
+                    }
+                  : {})}
+              />
               <Button
                 ref={settingsButtonRef}
                 variant="toolbar"
@@ -474,7 +498,13 @@ export function SubscriptionsPage({
           </div>
           <div role="tabpanel" id="subscriptions-view-panel" aria-labelledby={`subscriptions-view-${activeView}`}>
             {activeView === "for-you" ? (
-              <ForYouView canMark={canSubscribe} onOpenWork={(code) => openWorkCodeRoute(code)} />
+              <ForYouView
+                canMark={canMark}
+                cardLayout={cardLayout}
+                mobileColumns={layout.mobileColumns}
+                desktopColumns={layout.desktopColumns}
+                onOpenWork={(code) => openWorkCodeRoute(code)}
+              />
             ) : activeView === "watch" ? (
               <AvailabilityWatchPool
                 state={watchState}
@@ -499,6 +529,7 @@ export function SubscriptionsPage({
                   mobileColumns={layout.mobileColumns}
                   desktopColumns={layout.desktopColumns}
                   canMarkSeen={canSubscribe && !readOnly}
+                  canMark={canMark}
                   canWatch={!readOnly && canRunWorkflows && canManageSchedule}
                   sourceCheck={feedActions.sourceCheck}
                   reloadKey={feedReload}
@@ -519,12 +550,18 @@ export function SubscriptionsPage({
                   readOnly={readOnly}
                   canManage={canManageSchedule}
                   canMarkSeen={canSubscribe && !readOnly}
+                  canMark={canMark}
                   canWatch={!readOnly && canRunWorkflows && canManageSchedule}
-                  canCheckSources={!readOnly && canRunWorkflows && canTrackRemote}
+                  actions={rankingActions}
+                  reloadKey={rankingReload}
+                  cardLayout={cardLayout}
+                  mobileColumns={layout.mobileColumns}
+                  desktopColumns={layout.desktopColumns}
                   onListChange={changeRankingList}
                   onOrderChange={changeRankingOrder}
                   onAtChange={changeRankingAt}
                   onCompareChange={changeRankingCompare}
+                  onActionTargetChange={setRankingActionTarget}
                   onOpenSettings={() => showPanel("rankings")}
                   onOpenRun={openRun}
                   onOpenWork={openRankedWork}

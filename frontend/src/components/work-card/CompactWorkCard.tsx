@@ -19,6 +19,7 @@ import {
   formatPrice,
   formatRating,
   useWorkCardEntityActions,
+  WorkCardShell,
   type WorkCardBadge,
   type WorkCardShellProps,
   type WorkCardViewModel,
@@ -32,6 +33,11 @@ import {
  * artwork.
  */
 export type CompactWorkCardLayout = "row" | "tile" | "cover";
+
+/** The card for a collection's layout: a reduced layout, or the regular card for null. */
+export function LayoutWorkCard({ layout, ...props }: WorkCardShellProps & { layout: CompactWorkCardLayout | null }) {
+  return layout ? <CompactWorkCardShell layout={layout} {...props} /> : <WorkCardShell {...props} />;
+}
 
 export function CompactWorkCardShell({
   layout,
@@ -404,6 +410,7 @@ function CreditLine({
   onVoiceOpen?: (name: string) => void;
 }) {
   const { t } = useTranslation();
+  if (work.credits === false) return null;
   const circleLabel = !work.circle || work.circle === "Unknown circle" ? t("workCard.unknownCircle") : work.circle;
   const voices = onVoiceOpen ? (work.voiceActors ?? []) : [];
   const shownVoices = voices.slice(0, 2);
@@ -474,27 +481,29 @@ function MetricLine({
   const regularPrice = work.regularPrice ?? null;
   const discountedFrom =
     price !== null && price > 0 && regularPrice !== null && regularPrice > price ? regularPrice : null;
-  const ratingLabel =
-    normalizedRating === null
-      ? t("workCard.noRating")
-      : t("workCard.rating", { value: formatRating(normalizedRating, resolvedLocale) });
+  const knownSales = sales !== null && sales >= 0;
+  const shownPrice = !hidePrice && price !== null;
+  // A work without metadata states no metrics rather than a row of placeholders.
+  if (normalizedRating === null && !knownSales && !shownPrice) return null;
   return (
     <div className={cn("flex min-w-0 items-center gap-2 text-xs text-muted-foreground", className)}>
-      <span
-        className="inline-flex shrink-0 items-center gap-0.5"
-        title={ratingLabel}
-        role="img"
-        aria-label={ratingLabel}
-      >
-        <Star className={cn("h-3 w-3", normalizedRating !== null && "fill-primary text-primary")} aria-hidden="true" />
-        <span className="font-semibold tabular-nums text-foreground">
-          {normalizedRating === null ? "--" : formatRating(normalizedRating, resolvedLocale)}
+      {normalizedRating !== null && (
+        <span
+          className="inline-flex shrink-0 items-center gap-0.5"
+          title={t("workCard.rating", { value: formatRating(normalizedRating, resolvedLocale) })}
+          role="img"
+          aria-label={t("workCard.rating", { value: formatRating(normalizedRating, resolvedLocale) })}
+        >
+          <Star className="h-3 w-3 fill-primary text-primary" aria-hidden="true" />
+          <span className="font-semibold tabular-nums text-foreground">
+            {formatRating(normalizedRating, resolvedLocale)}
+          </span>
+          {ratingCount !== null && ratingCount >= 0 && (
+            <span className="tabular-nums">({formatCompactCount(ratingCount, resolvedLocale)})</span>
+          )}
         </span>
-        {ratingCount !== null && ratingCount >= 0 && (
-          <span className="tabular-nums">({formatCompactCount(ratingCount, resolvedLocale)})</span>
-        )}
-      </span>
-      {sales !== null && sales >= 0 && (
+      )}
+      {knownSales && (
         <span className="inline-flex min-w-0 shrink items-center gap-1 truncate">
           <span className="truncate">{t("workCard.sales")}</span>
           <span className="font-semibold tabular-nums text-foreground">
@@ -502,7 +511,7 @@ function MetricLine({
           </span>
         </span>
       )}
-      {!hidePrice && price !== null && (
+      {shownPrice && (
         <span className="ml-auto inline-flex shrink-0 items-baseline gap-1 tabular-nums">
           <span className={cn("font-semibold", price === 0 ? "text-primary" : "text-foreground")}>
             {price === 0 ? t("workCard.free") : formatPrice(price, work.priceCurrency, resolvedLocale)}

@@ -1,31 +1,29 @@
 import { Loader2, Rss } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { CompactWorkCardShell, type CompactWorkCardLayout } from "@/components/work-card/CompactWorkCard";
+import { LayoutWorkCard, type CompactWorkCardLayout } from "@/components/work-card/CompactWorkCard";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
-import { WorkCardWatchButton } from "@/components/work-card/WorkCardWatchButton";
+import { WorkCardActionFooter } from "@/components/work-card/WorkCardActionFooter";
 import {
-  dlsiteTagBadges,
-  userTagBadges,
-  WorkCardDLsiteAction,
-  WorkCardFooter,
-  WorkCardListButton,
-  WorkCardShell,
-  type WorkCardViewModel,
-} from "@/components/work-card/WorkCardShell";
+  WorkCardContextItem,
+  WorkCardContextStrip,
+  WorkCardStatusBadge,
+  WorkCardUnreadDot,
+} from "@/components/work-card/WorkCardContext";
+import { dlsiteTagBadges, userTagBadges, type WorkCardViewModel } from "@/components/work-card/WorkCardShell";
 import {
   workCollectionClassName,
   workCollectionStyle,
   type WorkCollectionColumnSetting,
 } from "@/components/work-collection/WorkCollectionLayout";
 import { WorkCollectionPagination } from "@/components/work-collection/WorkCollectionPagination";
+import { WorkSectionHeading } from "@/components/work-collection/WorkSectionHeading";
 import { dateTimeFormat } from "@/i18n/format";
 import { useLocale } from "@/i18n/LocaleProvider";
-import { api, type ReleaseFeedFamily, type ReleaseFeedPage } from "@/lib/api";
+import { api, type ReleaseFeedFamily, type ReleaseFeedPage, type Work } from "@/lib/api";
 import { openCircleRoute } from "@/lib/circleNavigationState";
 import { shownWorkSourcePresence, type ShownWorksSourceCheck } from "@/lib/shownWorksSourceCheck";
 
@@ -106,6 +104,7 @@ export function ReleaseFeed({
   mobileColumns,
   desktopColumns,
   canMarkSeen,
+  canMark,
   canWatch,
   sourceCheck,
   reloadKey,
@@ -121,6 +120,8 @@ export function ReleaseFeed({
   desktopColumns: WorkCollectionColumnSetting;
   /** Opening the feed records it as read; Demo keeps its sample state. */
   canMarkSeen: boolean;
+  /** The account may add library works to lists, rate, and mark them. */
+  canMark: boolean;
   /** The account may add works to Availability Watch. */
   canWatch: boolean;
   /** What this visit's source checks found for the shown works. */
@@ -178,6 +179,17 @@ export function ReleaseFeed({
   useEffect(() => {
     if (feed && !loading && page > totalPages) onPageChange(totalPages);
   }, [feed, loading, onPageChange, page, totalPages]);
+
+  const patchWork = (workId: number, patch: Partial<Work>) =>
+    setFeed(
+      (current) =>
+        current && {
+          ...current,
+          families: current.families.map((family) =>
+            family.work?.id === workId ? { ...family, work: { ...family.work, ...patch } } : family,
+          ),
+        },
+    );
 
   const watch = async (code: string) => {
     setWatching((current) => new Set(current).add(code));
@@ -237,41 +249,36 @@ export function ReleaseFeed({
 
   const card = (family: ReleaseFeedFamily) => {
     const event = primaryReleaseEvent(family);
-    const view = releaseFeedCardView(family, t("workCard.unknownCircle"), sourceCheck);
     const code = releaseFeedCode(family);
-    const footer = demo ? undefined : (
-      <WorkCardFooter
-        className={cardLayout === "row" ? "h-10 border-border/40" : undefined}
-        left={<WorkCardDLsiteAction href={family.work?.dlsiteUrl || family.fallback.dlsiteUrl} />}
-        right={
-          <>
-            {canWatch && event?.type !== "available" && (
-              <WorkCardWatchButton
-                watched={family.watched || watched.has(code)}
-                pending={watching.has(code)}
-                onWatch={() => void watch(code)}
-              />
-            )}
-            {family.work && (
-              <WorkCardListButton
-                workId={family.work.id}
-                active={family.work.favorite}
-                memberLists={family.work.memberLists}
-                fitLabel
-              />
-            )}
-          </>
+    return (
+      <LayoutWorkCard
+        layout={cardLayout}
+        work={releaseFeedCardView(family, t("workCard.unknownCircle"), sourceCheck)}
+        canOpen={!demo}
+        onOpen={() => onOpenWork(code)}
+        onCircleOpen={demo ? undefined : (externalId: string) => openCircleRoute(externalId)}
+        footer={
+          demo ? undefined : (
+            <WorkCardActionFooter
+              layout={cardLayout}
+              dlsiteUrl={family.work?.dlsiteUrl || family.fallback.dlsiteUrl}
+              watch={
+                canWatch && event?.type !== "available"
+                  ? {
+                      watched: family.watched || watched.has(code),
+                      pending: watching.has(code),
+                      onWatch: () => void watch(code),
+                    }
+                  : null
+              }
+              work={family.work}
+              canMark={canMark}
+              onWorkChange={patchWork}
+            />
+          )
         }
       />
     );
-    const shared = {
-      work: view,
-      canOpen: !demo,
-      onOpen: () => onOpenWork(code),
-      onCircleOpen: demo ? undefined : (externalId: string) => openCircleRoute(externalId),
-      footer,
-    };
-    return cardLayout ? <CompactWorkCardShell layout={cardLayout} {...shared} /> : <WorkCardShell {...shared} />;
   };
 
   return (
@@ -280,26 +287,26 @@ export function ReleaseFeed({
         const label = dayLabel(group);
         return (
           <section key={group.day} aria-label={t("subscriptions.feed.dayLabel", { day: label })}>
-            <div className="mb-3 flex items-center gap-3">
-              <h3 className="flex min-w-0 shrink-0 items-baseline gap-2">
-                <span className="text-lg font-semibold leading-7">{label}</span>
-                {group.offset !== null && group.offset <= 1 && group.date && (
-                  <span className="text-sm text-muted-foreground">{dayFormat.format(group.date)}</span>
-                )}
-              </h3>
-              <Badge variant="outline" className="shrink-0 tabular-nums">
-                {t("subscriptions.feed.dayCount", { count: group.families.length })}
-              </Badge>
-              <span className="h-px min-w-4 flex-1 bg-border" aria-hidden="true" />
-            </div>
+            <WorkSectionHeading
+              title={label}
+              detail={
+                group.offset !== null && group.offset <= 1 && group.date ? dayFormat.format(group.date) : undefined
+              }
+              count={group.families.length}
+              countLabel={t("subscriptions.feed.dayCount", { count: group.families.length })}
+            />
             <ol
               className={workCollectionClassName()}
               style={workCollectionStyle(mobileColumns, desktopColumns, cardLayout)}
             >
               {group.families.map((family) => (
-                <ReleaseFeedItem key={family.key} family={family} title={releaseFeedTitle(family)}>
+                <WorkCardContextItem
+                  key={family.key}
+                  label={releaseFeedTitle(family)}
+                  context={<ReleaseFeedContext family={family} />}
+                >
                   {card(family)}
-                </ReleaseFeedItem>
+                </WorkCardContextItem>
               ))}
             </ol>
           </section>
@@ -321,37 +328,18 @@ function releaseFeedTitle(family: ReleaseFeedFamily) {
   return family.work?.title || family.fallback.title || family.fallback.code;
 }
 
-/** One family: what happened and through which subscription, above its card. */
-function ReleaseFeedItem({
-  family,
-  title,
-  children,
-}: {
-  family: ReleaseFeedFamily;
-  title: string;
-  children: ReactNode;
-}) {
+/** What happened to a family and through which subscription, above its card. */
+function ReleaseFeedContext({ family }: { family: ReleaseFeedFamily }) {
   const { t } = useTranslation();
   const event = primaryReleaseEvent(family);
-  const sources = releaseFeedSources(family, t).join(" · ");
   return (
-    <li aria-label={title} className="flex min-w-0 flex-col gap-1.5">
-      <div className="flex h-6 min-w-0 items-center gap-1.5 text-xs">
-        {family.unread && (
-          <span className="h-2 w-2 shrink-0 rounded-full bg-primary" title={t("subscriptions.feed.unread")}>
-            <span className="sr-only">{t("subscriptions.feed.unread")}</span>
-          </span>
-        )}
-        {event && (
-          <Badge variant={event.type === "available" ? "success" : "secondary"} className="shrink-0">
-            {releaseEventLabel(event, t)}
-          </Badge>
-        )}
-        <span className="min-w-0 truncate text-muted-foreground" title={sources}>
-          {sources}
-        </span>
-      </div>
-      <div className="min-h-0 flex-1">{children}</div>
-    </li>
+    <WorkCardContextStrip detail={releaseFeedSources(family, t).join(" · ")}>
+      {family.unread && <WorkCardUnreadDot label={t("subscriptions.feed.unread")} />}
+      {event && (
+        <WorkCardStatusBadge tone={event.type === "available" ? "success" : "neutral"}>
+          {releaseEventLabel(event, t)}
+        </WorkCardStatusBadge>
+      )}
+    </WorkCardContextStrip>
   );
 }

@@ -4,10 +4,12 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
-import { ShownWorksActionMenu, ShownWorksActionStatus } from "@/components/work-collection/ShownWorksActions";
-import { useShownWorksActions } from "@/hooks/useShownWorksActions";
+import type { CompactWorkCardLayout } from "@/components/work-card/CompactWorkCard";
+import { ShownWorksActionStatus } from "@/components/work-collection/ShownWorksActions";
+import type { WorkCollectionColumnSetting } from "@/components/work-collection/WorkCollectionLayout";
+import type { ShownWorksActions } from "@/hooks/useShownWorksActions";
 import { useLocale } from "@/i18n/LocaleProvider";
-import { api, type RankingOrder, type RankingPage } from "@/lib/api";
+import { api, type RankingOrder, type RankingPage, type Work } from "@/lib/api";
 
 import { RankingEntryList } from "./RankingEntryList";
 import { RankingHistoryPopover } from "./RankingHistoryPopover";
@@ -36,6 +38,9 @@ import {
 } from "./rankingModel";
 import type { RankingOverviewState } from "./useRankingOverview";
 
+/** The recorded order whose works the page's actions may sync or check. */
+export type RankingActionTarget = { listId: number; snapshotId: number };
+
 /**
  * One tracked ranking's latest order compared with a baseline: the account's
  * last visit by default, the previous update, or another time. A DLsite
@@ -44,8 +49,9 @@ import type { RankingOverviewState } from "./useRankingOverview";
  * state. History shows the order in effect at a chosen time, compared with the
  * update before it, and never records the ranking as seen. Entries are codes;
  * one without a library work shows the ranking's own text. On request, the
- * shown order's metadata is synced, which adds the works the library does not
- * know yet, and the remote sources are asked which entries they have.
+ * page's actions sync the shown order's metadata, which adds the works the
+ * library does not know yet, and ask the remote sources which entries they
+ * have; the view names the order they act on.
  */
 export function RankingsView({
   rankings,
@@ -57,12 +63,18 @@ export function RankingsView({
   readOnly,
   canManage,
   canMarkSeen,
+  canMark,
   canWatch,
-  canCheckSources,
+  actions,
+  reloadKey,
+  cardLayout,
+  mobileColumns,
+  desktopColumns,
   onListChange,
   onOrderChange,
   onAtChange,
   onCompareChange,
+  onActionTargetChange,
   onOpenSettings,
   onOpenRun,
   onOpenWork,
@@ -83,14 +95,24 @@ export function RankingsView({
   canManage: boolean;
   /** Opening the latest order records it as seen; Demo keeps its sample state. */
   canMarkSeen: boolean;
+  /** The account may add library works to lists, rate, and mark them. */
+  canMark: boolean;
   /** The account may add works to Availability Watch. */
   canWatch: boolean;
-  /** `remote:track`: the remote sources may be asked about the shown entries. */
-  canCheckSources: boolean;
+  /** The page's actions on the shown works, whose source checks mark the entries. */
+  actions: ShownWorksActions;
+  /** Changes when the ranking should be read again, such as after an action's run. */
+  reloadKey: number;
+  /** Discover's card layout, or null for the regular card. */
+  cardLayout: CompactWorkCardLayout | null;
+  mobileColumns: WorkCollectionColumnSetting;
+  desktopColumns: WorkCollectionColumnSetting;
   onListChange: (listId: number) => void;
   onOrderChange: (chipKey: string, order: RankingOrder) => void;
   onAtChange: (at: string | null) => void;
   onCompareChange: (compare: string) => void;
+  /** Receives the recorded order the actions may act on, or null when there is none or the account may not. */
+  onActionTargetChange: (target: RankingActionTarget | null) => void;
   onOpenSettings: () => void;
   onOpenRun: (runId: number) => void;
   /** Opens a code; a remote list passes its source for codes without a work. */
@@ -152,9 +174,24 @@ export function RankingsView({
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
-  }, [load]);
+    // A new reloadKey reads the ranking again.
+  }, [load, reloadKey]);
 
-  const actions = useShownWorksActions({ onSettled: () => void load(), onOpenRun });
+  const variant = selected ? rankingVariantFor(selected, shownOrder ?? { releaseWindow, sort }) : null;
+  const current = page && selected && page.list.id === selected.id && page.variant.id === variant?.id ? page : null;
+  const actionSnapshotId = !readOnly && !overview?.demo && current?.snapshot ? current.snapshot.id : null;
+  useEffect(() => {
+    onActionTargetChange(
+      selectedId !== null && actionSnapshotId !== null ? { listId: selectedId, snapshotId: actionSnapshotId } : null,
+    );
+  }, [actionSnapshotId, onActionTargetChange, selectedId]);
+  useEffect(() => () => onActionTargetChange(null), [onActionTargetChange]);
+
+  const patchWork = (workId: number, patch: Partial<Work>) => {
+    const patched = <T extends { work: Work | null }>(item: T): T =>
+      item.work?.id === workId ? { ...item, work: { ...item.work, ...patch } } : item;
+    setPage((value) => value && { ...value, items: value.items.map(patched), dropped: value.dropped.map(patched) });
+  };
 
   useEffect(() => {
     setFilter("all");
@@ -217,8 +254,6 @@ export function RankingsView({
 
   const demo = overview.demo;
   const timeZone = overview.timeZone || "UTC";
-  const variant = rankingVariantFor(selected, shownOrder ?? { releaseWindow, sort });
-  const current = page && page.list.id === selected.id && page.variant.id === variant?.id ? page : null;
   const time = (value: string | null | undefined) => formatRankingTime(value, resolvedLocale, timeZone);
   const canRefresh = canManage && !readOnly && !demo && selected.sourceAvailable;
   const latestRunId = overview.workflows.find(
@@ -271,30 +306,24 @@ export function RankingsView({
           page={current}
           filter={filter}
           filters={filters}
+          mobileColumns={mobileColumns}
+          desktopColumns={desktopColumns}
           droppedOpen={droppedOpen}
           demo={demo}
+          cardLayout={cardLayout}
           canWatch={canWatch && !readOnly}
+          canMark={canMark && !readOnly && !demo}
           watched={watched}
           watching={watching}
           sourceCheck={actions.sourceCheck}
           onDroppedOpenChange={setDroppedOpen}
           onWatch={(code) => void watch(code)}
           onOpenWork={(code) => onOpenWork(code, selected.provider === "remote_source" ? selected.sourceId : null)}
+          onWorkChange={patchWork}
         />
       </div>
     );
   }
-
-  const shownSnapshot = recorded?.snapshot ?? null;
-  const editable = !readOnly && !demo && shownSnapshot !== null;
-  const actionRequests = shownSnapshot
-    ? {
-        ...(canManage && editable ? { metadata: () => api.syncRankingMetadata(selected.id, shownSnapshot.id) } : {}),
-        ...(canCheckSources && editable
-          ? { sources: () => api.checkRankingSources(selected.id, shownSnapshot.id) }
-          : {}),
-      }
-    : {};
 
   const lastStatus = current?.variant.lastStatus;
   const stale =
@@ -331,7 +360,6 @@ export function RankingsView({
               />
             )}
             {canRefresh && current?.snapshot && !at && refreshButton(false)}
-            <ShownWorksActionMenu actions={actions} requests={actionRequests} />
           </>
         }
         order={

@@ -284,9 +284,8 @@ export const subscriptionsHans = {
       streak_one: "已上榜 {{count}} 天",
       streak_other: "已上榜 {{count}} 天",
       bestRank: "最高第 {{rank}} 名",
-      inLibrary: "在媒体库中",
       previousRank: "此前第 {{rank}} 名",
-      dropped: "已掉出（{{count}}）",
+      dropped: "已掉出",
       noMatches: "没有符合此筛选条件的作品。",
       stale: {
         failed: "最近一次更新失败，当前显示的是 {{time}} 的排行榜。",

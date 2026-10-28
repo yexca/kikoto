@@ -11,6 +11,7 @@ import i18n from "@/i18n";
 import { cn } from "@/lib/tailwindClassNames";
 import {
   chooseWorkCardMode,
+  LIBRARY_LAYOUT_STORE,
   storedWorkCollectionLayout,
   workCardModes,
   workCollectionDesktopColumnOptions,
@@ -19,9 +20,12 @@ import {
   type WorkCardMode,
   type WorkCollectionColumnDefaults,
   type WorkCollectionColumnSetting,
+  type WorkCollectionLayoutStore,
 } from "@/components/work-collection/workCollectionLayoutModel";
 
 export {
+  discoverCardLayout,
+  DISCOVER_LAYOUT_STORE,
   workCardLayout,
   workCollectionClassName,
   workCollectionColumnOptions,
@@ -33,31 +37,41 @@ export type {
   WorkCollectionColumnSetting,
 } from "@/components/work-collection/workCollectionLayoutModel";
 
-const layoutStorageKey = "kikoto:work-collection-layout";
 const layoutChangeEvent = "kikoto:work-collection-layout-change";
 
 export type WorkCollectionViewMode = "grid" | "list";
 
 export function useWorkCollectionLayout(
   initial: WorkCollectionColumnDefaults = { mobileColumns: "auto", desktopColumns: "auto" },
+  store: WorkCollectionLayoutStore = LIBRARY_LAYOUT_STORE,
 ) {
-  const [layout, setLayout] = useState<StoredWorkCollectionLayout>(() => readStoredLayout(initial));
+  const [layout, setLayout] = useState<StoredWorkCollectionLayout>(() => readStoredLayout(initial, store));
   // Callers may pass a fresh default object each render; subscribe on its values.
   const { mobileColumns: initialMobileColumns, desktopColumns: initialDesktopColumns } = initial;
+  const { storageKey, cardMode } = store;
   useEffect(() => {
     const sync = () =>
-      setLayout(readStoredLayout({ mobileColumns: initialMobileColumns, desktopColumns: initialDesktopColumns }));
+      setLayout(
+        readStoredLayout(
+          { mobileColumns: initialMobileColumns, desktopColumns: initialDesktopColumns },
+          { storageKey, cardMode },
+        ),
+      );
     window.addEventListener("storage", sync);
     window.addEventListener(layoutChangeEvent, sync);
     return () => {
       window.removeEventListener("storage", sync);
       window.removeEventListener(layoutChangeEvent, sync);
     };
-  }, [initialDesktopColumns, initialMobileColumns]);
+  }, [cardMode, initialDesktopColumns, initialMobileColumns, storageKey]);
   const update = (patch: Partial<StoredWorkCollectionLayout>) => {
     setLayout((current) => {
       const next = { ...current, ...patch };
-      localStorage.setItem(layoutStorageKey, JSON.stringify(next));
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {
+        // The choice lasts for this visit when local storage is unavailable.
+      }
       window.dispatchEvent(new Event(layoutChangeEvent));
       return next;
     });
@@ -319,12 +333,15 @@ function columnOptionLabel(setting: WorkCollectionColumnSetting, t: TFunction<"t
   return t("collection.column", { count: setting });
 }
 
-function readStoredLayout(defaults: WorkCollectionColumnDefaults): StoredWorkCollectionLayout {
+function readStoredLayout(
+  defaults: WorkCollectionColumnDefaults,
+  store: WorkCollectionLayoutStore,
+): StoredWorkCollectionLayout {
   let raw: string | null = null;
   try {
-    raw = localStorage.getItem(layoutStorageKey);
+    raw = localStorage.getItem(store.storageKey);
   } catch {
     // The defaults apply when local storage is unavailable.
   }
-  return storedWorkCollectionLayout(raw, defaults);
+  return storedWorkCollectionLayout(raw, defaults, store.cardMode);
 }

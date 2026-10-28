@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   chooseWorkCardMode,
+  discoverCardLayout,
+  DISCOVER_LAYOUT_STORE,
+  LIBRARY_LAYOUT_STORE,
   storedWorkCollectionLayout,
   workCardLayout,
   workCollectionStyle,
@@ -38,6 +41,18 @@ describe("stored work collection layout", () => {
   it("falls back to the defaults when the stored value is not JSON", () => {
     expect(storedWorkCollectionLayout("{", defaults).mobileCardMode).toBe("full");
   });
+
+  it("starts Discover with compact cards while keeping a stored choice", () => {
+    const { storageKey, cardMode } = DISCOVER_LAYOUT_STORE;
+    expect(storageKey).not.toBe(LIBRARY_LAYOUT_STORE.storageKey);
+    expect(storedWorkCollectionLayout(null, defaults, cardMode)).toMatchObject({
+      mobileCardMode: "compact",
+      desktopCardMode: "compact",
+    });
+    expect(
+      storedWorkCollectionLayout(JSON.stringify({ desktopCardMode: "full" }), defaults, cardMode).desktopCardMode,
+    ).toBe("full");
+  });
 });
 
 describe("work card layout", () => {
@@ -56,6 +71,14 @@ describe("work card layout", () => {
   it("shows mini cards as covers at every width", () => {
     expect(workCardLayout("mini", false, 1)).toBe("cover");
     expect(workCardLayout("mini", true, "auto")).toBe("cover");
+  });
+
+  it("keeps Discover's compact cards as rows on wide screens, with tiles only in two phone columns", () => {
+    expect(discoverCardLayout("compact", true, 2)).toBe("row");
+    expect(discoverCardLayout("compact", false, "auto")).toBe("row");
+    expect(discoverCardLayout("compact", false, 2)).toBe("tile");
+    expect(discoverCardLayout("full", true, "auto")).toBeNull();
+    expect(discoverCardLayout("mini", true, "auto")).toBe("cover");
   });
 });
 
@@ -111,9 +134,10 @@ describe("work collection grid", () => {
     expect(workCollectionStyle(1, 6, "cover")).toEqual(workCollectionStyle(1, 6));
   });
 
-  it("fits up to five full, six compact, and seven mini cards in automatic wide-screen columns", () => {
-    const desktop = (layout: "tile" | "cover" | null) =>
+  it("fits up to five full, three row, six compact, and seven mini cards in automatic wide-screen columns", () => {
+    const desktop = (layout: "row" | "tile" | "cover" | null) =>
       (workCollectionStyle("auto", "auto", layout) as Record<string, string>)["--desktop-grid-template"];
+    expect(desktop("row")).toBe("repeat(auto-fill, minmax(min(100%, max(22rem, calc((100% - 2rem) / 3))), 1fr))");
     expect(desktop(null)).toBe("repeat(auto-fill, minmax(min(100%, max(16rem, calc((100% - 4rem) / 5))), 1fr))");
     expect(desktop("tile")).toBe("repeat(auto-fill, minmax(min(100%, max(13rem, calc((100% - 5rem) / 6))), 1fr))");
     expect(desktop("cover")).toBe("repeat(auto-fill, minmax(min(100%, max(11rem, calc((100% - 6rem) / 7))), 1fr))");

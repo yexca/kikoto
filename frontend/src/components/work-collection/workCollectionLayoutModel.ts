@@ -63,6 +63,23 @@ export type StoredWorkCollectionLayout = {
 
 export type WorkCollectionColumnDefaults = Pick<StoredWorkCollectionLayout, "mobileColumns" | "desktopColumns">;
 
+/**
+ * Where a set of collections keeps its display choices and the card mode they
+ * start in. The Library and the creator pages share the default store; Discover
+ * keeps its own, starting with compact (row) cards.
+ */
+export type WorkCollectionLayoutStore = { storageKey: string; cardMode: WorkCardMode };
+
+export const LIBRARY_LAYOUT_STORE: WorkCollectionLayoutStore = {
+  storageKey: "kikoto:work-collection-layout",
+  cardMode: "full",
+};
+
+export const DISCOVER_LAYOUT_STORE: WorkCollectionLayoutStore = {
+  storageKey: "kikoto:discover-layout",
+  cardMode: "compact",
+};
+
 type AutoColumns = { maximum: number; minWidth: string };
 
 /**
@@ -72,6 +89,8 @@ type AutoColumns = { maximum: number; minWidth: string };
  */
 const autoColumns = {
   regular: { maximum: 5, minWidth: "16rem" },
+  // Discover lays row cards out on wide screens too; a row needs room beside its cover.
+  row: { maximum: 3, minWidth: "22rem" },
   tile: { maximum: 6, minWidth: "13rem" },
   cover: { maximum: 7, minWidth: "11rem" },
 } satisfies Record<string, AutoColumns>;
@@ -89,10 +108,7 @@ export function workCollectionStyle(
     // One cover card fills a phone row, so automatic phone columns pair them up.
     "--mobile-grid-template": gridTemplate(cardLayout === "cover" && mobileColumns === "auto" ? 2 : mobileColumns),
     // Phone rows only occur below the wide breakpoint, so they keep the regular tracks.
-    "--desktop-grid-template": gridTemplate(
-      desktopColumns,
-      cardLayout === "tile" || cardLayout === "cover" ? autoColumns[cardLayout] : autoColumns.regular,
-    ),
+    "--desktop-grid-template": gridTemplate(desktopColumns, cardLayout ? autoColumns[cardLayout] : autoColumns.regular),
   } as CSSProperties;
 }
 
@@ -111,6 +127,21 @@ export function workCardLayout(
   return null;
 }
 
+/**
+ * Discover's card layout for a mode. Its views explain each card in a line
+ * above it, which reads best beside a small cover, so compact keeps row cards
+ * on wide screens too; only two phone columns, too narrow for a row, use
+ * tiles.
+ */
+export function discoverCardLayout(
+  mode: WorkCardMode,
+  wide: boolean,
+  mobileColumns: WorkCollectionColumnSetting,
+): CompactWorkCardLayout | null {
+  if (mode === "compact") return !wide && mobileColumns === 2 ? "tile" : "row";
+  return workCardLayout(mode, wide, mobileColumns);
+}
+
 export function isWorkCardMode(value: unknown): value is WorkCardMode {
   return (workCardModes as readonly unknown[]).includes(value);
 }
@@ -119,8 +150,9 @@ export function isWorkCardMode(value: unknown): value is WorkCardMode {
 export function storedWorkCollectionLayout(
   raw: string | null,
   defaults: WorkCollectionColumnDefaults,
+  cardMode: WorkCardMode = "full",
 ): StoredWorkCollectionLayout {
-  const fallback: StoredWorkCollectionLayout = { ...defaults, mobileCardMode: "full", desktopCardMode: "full" };
+  const fallback: StoredWorkCollectionLayout = { ...defaults, mobileCardMode: cardMode, desktopCardMode: cardMode };
   try {
     const value = JSON.parse(raw ?? "{}") as Partial<StoredWorkCollectionLayout> & { mobileCompact?: unknown };
     return {

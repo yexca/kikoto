@@ -93,6 +93,8 @@
 - Remote source cards for works already in the library show the Local,
   Tracked, or Cached marks and the personal tags of their Library card, so
   **Always** cover source marks no longer show only the remote source.
+- Work cards leave out a rating or sales figure they do not know instead of
+  showing `--`, and a work without either has no metric line.
 
 </details>
 
@@ -149,11 +151,23 @@
   or the rankings, which narrow to make room and stay usable; narrower screens
   keep the drawer, and phones the sheet.
 - Rankings keeps its ranking, order, filter, and update controls in a compact
-  toolbar that stays in reach while scrolling, states beside each work's card
+  toolbar that stays in reach while scrolling, states above each work's card
   only the facts worth stating, and opens History and the comparison from the
   toolbar. The Rankings settings show one line per ranking
   with relative pull times and expand a row in place to edit it, and deleting
   a ranking with its history asks first.
+- Discover's four views share one card layout. **Display options** apply to
+  all of them, apart from the Library's, and start with **Compact** cards, a
+  small cover beside the facts in up to three columns. Above each card a line
+  says why the work is there, with one set of status colors, and the card's
+  actions keep one order: DLsite, **Watch**, lists, rating, and **Quick
+  mark**, so New releases and Rankings cards can also be rated and marked.
+  Day groups, For you columns, Watch groups, and **Dropped out** share one
+  heading with a count. With **Full** or **Mini** cards, the For you columns
+  follow one another.
+- The top right of Discover always shows **Actions**, **Display options**,
+  and the settings in the same places; **Actions** is unavailable on For you
+  and Watch.
 - New releases and Rankings have an **Actions** menu for the works the page
   shows. **Sync metadata** syncs DLsite metadata for the works without fresh
   metadata, adding the works Kikoto does not know yet with their title, cover,
@@ -161,15 +175,17 @@
   works not known to be available. Both take only the works that still need
   them, run in the background with a status line, and reload the page when
   they end; a ranking pull still only records the order.
-- **In library** and **Not in library** on Rankings follow whether the library
-  has files for a work, and **On a source** keeps the works a remote source is
-  known to have.
+- **Not in library** on Rankings follows whether the library has files for a
+  work, which the cover's source marks show, and **On a source** keeps the
+  works a remote source is known to have.
 - New releases and Rankings cards label the Availability Watch action
-  **Watch** and show **Watching** for a work already in the watch pool.
+  **Watch**, show **Watching** for a work already in the watch pool, and
+  leave it off a work the library already has files for.
 - The Availability Watch pool becomes the **Watch** view of Discover,
-  after New releases and Rankings and in the same card grid and display
-  options. **Available** comes first and shows every available work; **Not
-  available** follows with failed checks first and folds to whole rows.
+  after New releases and Rankings, with the same cards. **Available** comes
+  first and shows every available work; **Not available** follows with failed
+  checks first and folds to whole rows. The `×` that removes a work sits at
+  the end of the line above its card.
   **Clear completed** removes every work whose Track or Fetch has started in
   one step. The **Availability Watch** settings tab moves after **Rankings**
   and keeps the configuration and **Run**, and the settings open on the tab

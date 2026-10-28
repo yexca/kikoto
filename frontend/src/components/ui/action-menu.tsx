@@ -24,6 +24,8 @@ export function ActionMenu({
   triggerClassName = "h-[var(--control-icon-size)] w-[var(--control-icon-size)] lg:h-[var(--control-height-sm)] lg:w-auto lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs",
   buttonLabelClassName = "hidden lg:inline",
   align = "end",
+  keepWhenEmpty = false,
+  toolbar = false,
 }: {
   label: string;
   /** Visible on wide layouts; phones show the icon only. */
@@ -33,6 +35,10 @@ export function ActionMenu({
   buttonLabelClassName?: string;
   /** Which edge of the button the menu lines up with. */
   align?: "start" | "end";
+  /** Shows a disabled button without items instead of nothing, so a toolbar keeps its layout. */
+  keepWhenEmpty?: boolean;
+  /** Matches the page toolbar's icon buttons instead of the outlined action button. */
+  toolbar?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -48,7 +54,7 @@ export function ActionMenu({
     return () => window.cancelAnimationFrame(frame);
   }, [open]);
 
-  if (items.length === 0) return null;
+  if (items.length === 0 && !keepWhenEmpty) return null;
 
   const close = (restoreFocus: boolean) => {
     setOpen(false);
@@ -87,13 +93,14 @@ export function ActionMenu({
     <div className="relative shrink-0" ref={anchorRef}>
       <Button
         ref={buttonRef}
-        variant={open ? "secondary" : "outline"}
-        size="icon"
-        className={triggerClassName}
+        variant={toolbar ? "toolbar" : open ? "secondary" : "outline"}
+        size={toolbar ? "icon-sm" : "icon"}
+        className={toolbar ? "lg:w-auto lg:gap-2 lg:px-[var(--control-padding-sm-x)] lg:text-xs" : triggerClassName}
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
+        disabled={items.length === 0}
         title={label}
         onClick={() => setOpen((value) => !value)}
       >

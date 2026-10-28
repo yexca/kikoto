@@ -291,9 +291,8 @@ export const subscriptionsJapanese = {
       streak_one: "ランキング入り {{count}} 日",
       streak_other: "ランキング入り {{count}} 日",
       bestRank: "最高 {{rank}} 位",
-      inLibrary: "ライブラリ内",
       previousRank: "前回 {{rank}} 位",
-      dropped: "圏外へ（{{count}}）",
+      dropped: "圏外へ",
       noMatches: "この条件に一致する作品はありません。",
       stale: {
         failed: "最新の更新に失敗しました。{{time}} 時点のランキングです。",

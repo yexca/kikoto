@@ -168,6 +168,21 @@ scanned by its artwork while the work detail page carries everything else. Only
 cover source marks and the selection control ride on a mini cover. Loading
 placeholders match the footprint of the mode in use.
 
+Discover's four views read as one surface. They keep one card mode of their
+own, apart from the Library's, which starts at compact; there compact stays a
+row card on wide screens, up to three automatic tracks, and only two phone
+columns use tiles. Every card has a fixed-height context line above it that
+says why the work is in the view, the card itself, and an action row in one
+order: DLsite, then Watch, lists, rating, and Quick mark, each only where it
+applies. The context line uses one status vocabulary: a success badge for
+available or in the library, a primary badge for new or back, a neutral badge
+for an event, a warning badge for a failed check, and a dot only for unread.
+Groups of cards share one section heading (title, count badge, hairline, and
+an optional action at the end), and the page toolbar keeps the same controls
+in place on every view, disabling one a view does not offer. A work without
+metadata shows its code on a placeholder cover and no metric line; every card
+leaves out a rating or sales figure it does not know.
+
 The bottom page bar of a collection shows the first and last pages and the
 current page with its neighbors, with an ellipsis for each gap that opens a
 page number field. The bar's own width sets how many neighbors it shows: one

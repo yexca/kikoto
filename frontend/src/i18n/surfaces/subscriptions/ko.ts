@@ -290,9 +290,8 @@ export const subscriptionsKorean = {
       streak_one: "순위권 {{count}}일",
       streak_other: "순위권 {{count}}일",
       bestRank: "최고 {{rank}}위",
-      inLibrary: "라이브러리에 있음",
       previousRank: "이전 {{rank}}위",
-      dropped: "순위권 밖으로 ({{count}})",
+      dropped: "순위권 밖으로",
       noMatches: "이 필터와 일치하는 작품이 없습니다.",
       stale: {
         failed: "최근 업데이트에 실패했습니다. {{time}}의 순위입니다.",

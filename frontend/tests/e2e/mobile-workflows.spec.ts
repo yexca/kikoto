@@ -1463,7 +1463,8 @@ test("availability watch edits its configuration in place and manages the watch 
   const pool = page.getByRole("region", { name: "Watch pool", exact: true });
   const unavailable = pool.getByRole("region", { name: /^Not available/ });
   const available = pool.getByRole("region", { name: /^Available/ });
-  await expect(pool.getByRole("heading", { level: 3 })).toHaveText(["Available", "Not available"]);
+  await expect(pool.getByRole("region").nth(0)).toHaveAccessibleName("Available");
+  await expect(pool.getByRole("region").nth(1)).toHaveAccessibleName("Not available");
   await expect(unavailable.getByRole("button", { name: /^RJ00000000/ })).toBeVisible();
   await expect(available.getByRole("button", { name: /^RJ00000001/ })).toBeVisible();
 

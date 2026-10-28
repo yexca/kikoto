@@ -292,9 +292,8 @@ export const subscriptionsEnglish = {
       streak_one: "{{count}} day in the ranking",
       streak_other: "{{count}} days in the ranking",
       bestRank: "Best #{{rank}}",
-      inLibrary: "In library",
       previousRank: "Was #{{rank}}",
-      dropped: "Dropped out ({{count}})",
+      dropped: "Dropped out",
       noMatches: "No works match this filter.",
       stale: {
         failed: "The latest update failed. This is the ranking from {{time}}.",

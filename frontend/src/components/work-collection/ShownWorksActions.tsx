@@ -7,8 +7,8 @@ import type { ShownWorksActionResult } from "@/lib/api";
 
 /**
  * The menu of actions on the shown works. An action without a request is one
- * the account may not run, and the menu leaves it out; it shows nothing when
- * no action remains.
+ * the account may not run, or the view does not offer, and the menu leaves it
+ * out; with no action left, the button stays in place, disabled.
  */
 export function ShownWorksActionMenu({
   actions,
@@ -36,6 +36,8 @@ export function ShownWorksActionMenu({
     <ActionMenu
       label={t("subscriptions.actions.label")}
       buttonLabel={t("subscriptions.actions.button")}
+      keepWhenEmpty
+      toolbar
       items={[
         ...item("metadata", <DatabaseZap className="h-4 w-4" />),
         ...item("sources", <SearchCheck className="h-4 w-4" />),
