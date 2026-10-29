@@ -2485,6 +2485,7 @@ export const surfaceHans = {
     save: "保存",
     saved: "已保存显示名称",
     saveFailed: "无法保存显示名称",
+    saveFailedLanguages: "无法保存{{languages}}的显示名称，其他语言已保存。",
     languageHint: "以{{language}}浏览的用户会看到这些名称。留空则显示原始名称。",
     keyboardHint: "按 Enter 跳到下一个名称。",
     coverage: "{{count}} / {{total}} 已命名",

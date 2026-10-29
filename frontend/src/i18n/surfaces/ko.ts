@@ -2604,6 +2604,7 @@ export const surfaceKorean = {
     save: "저장",
     saved: "표시 이름을 저장했습니다",
     saveFailed: "표시 이름을 저장할 수 없습니다",
+    saveFailedLanguages: "{{languages}} 표시 이름을 저장할 수 없습니다. 다른 언어는 저장되었습니다.",
     languageHint: "{{language}}(으)로 보는 사용자에게 이 이름이 표시됩니다. 비워 두면 실제 이름을 표시합니다.",
     keyboardHint: "Enter 키로 다음 이름으로 이동합니다.",
     coverage: "{{total}}개 중 {{count}}개 이름 있음",

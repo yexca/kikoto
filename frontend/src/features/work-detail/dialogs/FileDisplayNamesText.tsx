@@ -42,7 +42,7 @@ export function DisplayNamesTextView({
   const { t } = useTranslation();
   const statusId = useId();
   const [caretLine, setCaretLine] = useState<number | null>(null);
-  const lineCount = textLines(text).length;
+  const lineCount = textLines(text, rows.length).length;
   const shownLines = Math.max(rows.length, lineCount, 1);
   const status =
     lineCount === rows.length

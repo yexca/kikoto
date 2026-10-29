@@ -2663,6 +2663,7 @@ export const surfaceEnglish = {
     save: "Save",
     saved: "Display names saved",
     saveFailed: "Could not save display names",
+    saveFailedLanguages: "Could not save the {{languages}} display names; the other languages were saved.",
     languageHint: "Viewers who read {{language}} see these names. An empty field shows the real name.",
     keyboardHint: "Enter moves to the next name.",
     coverage: "{{count}} of {{total}} named",

@@ -2488,6 +2488,7 @@ export const surfaceHant = {
     save: "儲存",
     saved: "已儲存顯示名稱",
     saveFailed: "無法儲存顯示名稱",
+    saveFailedLanguages: "無法儲存{{languages}}的顯示名稱，其他語言已儲存。",
     languageHint: "以{{language}}瀏覽的使用者會看到這些名稱。留空則顯示原始名稱。",
     keyboardHint: "按 Enter 跳到下一個名稱。",
     coverage: "{{count}} / {{total}} 已命名",

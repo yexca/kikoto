@@ -90,7 +90,18 @@ describe("fileDisplayNamesModel", () => {
   it("writes one name per row and reads edited text back line by line", () => {
     const rows = displayNameRows(entries);
     const base = { "file:1": "说明" };
-    expect(displayNamesText(rows, base, "zh-cn")).toBe("说明\n音频\n开始\n\n\n");
+    const text = displayNamesText(rows, base, "zh-cn");
+    expect(text).toBe("说明\n音频\n开始\n\n\n");
+    // The text has a line for every row, the unnamed last ones included.
+    expect(textLines(text, rows.length)).toHaveLength(rows.length);
+    expect(textDisplayNames(rows, {}, text)).toEqual({
+      "file:1": "说明",
+      "folder:mp3": "音频",
+      "file:2": "开始",
+      "file:3": "",
+      "folder:mp3/SE": "",
+      "file:4": "",
+    });
     // An empty line leaves its row the real name; lines past the last row are ignored.
     expect(textDisplayNames(rows, base, "About\r\n\r\nFirst\n\nLast\nOne\nextra\n")).toEqual({
       "file:1": "About",
@@ -101,12 +112,15 @@ describe("fileDisplayNamesModel", () => {
       "file:4": "One",
     });
     // Rows past the last line keep the drafts the text started with.
-    expect(textDisplayNames(rows, { ...base, "file:4": "kept" }, "readme\n")).toEqual({
+    expect(textDisplayNames(rows, { ...base, "file:4": "kept" }, "readme")).toEqual({
       "file:1": "readme",
       "file:4": "kept",
     });
-    expect(textLines("a\r\n\nb\n")).toEqual(["a", "", "b"]);
-    expect(textLines("")).toEqual([]);
+    // A pasted list's final line break is not a line of its own, unless an entry is left for it.
+    expect(textLines("a\r\n\nb\n", 3)).toEqual(["a", "", "b"]);
+    expect(textLines("a\r\n\nb\n", 4)).toEqual(["a", "", "b", ""]);
+    expect(textLines("", 1)).toEqual([""]);
+    expect(textLines("", 0)).toEqual([]);
   });
 
   it("refuses names that are not one path segment", () => {

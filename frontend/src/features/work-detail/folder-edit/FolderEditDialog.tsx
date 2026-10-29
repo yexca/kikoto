@@ -192,13 +192,16 @@ function FolderEditWorkspaceDialog({
   const kept = workspace.selection[CURRENT_FOLDER_RESOURCE] ?? noSelection;
   const setKept = (paths: readonly string[], keep: boolean) =>
     workspace.setSelected(CURRENT_FOLDER_RESOURCE, withFolderEditPaths(kept, paths, keep));
+  // While the folder is read again, the workspace holds still as it does while an edit is applied.
+  const refreshing = manage.refresh?.refreshing ?? false;
+  const shownWorkspace = refreshing ? { ...workspace, applying: true } : workspace;
   const identical = useIdenticalFiles({
     workId,
     files: workspace.currentFiles,
     resources: workspace.resources,
     kept,
     setKept: (next) => workspace.setSelected(CURRENT_FOLDER_RESOURCE, next),
-    disabled: workspace.applying,
+    disabled: shownWorkspace.applying,
   });
   const folderLyricsCount = useMemo(
     () =>
@@ -234,9 +237,6 @@ function FolderEditWorkspaceDialog({
       return;
     }
   };
-  // While the folder is read again, the workspace holds still as it does while an edit is applied.
-  const refreshing = manage.refresh?.refreshing ?? false;
-  const shownWorkspace = refreshing ? { ...workspace, applying: true } : workspace;
   const manageExtras: FolderWorkspaceManage = {
     toolbar: (
       <ManageToolbar

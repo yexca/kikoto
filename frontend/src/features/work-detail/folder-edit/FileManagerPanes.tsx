@@ -30,6 +30,7 @@ import {
 } from "@/features/work-detail/folder-edit/FolderWorkspaceColumns";
 import { PlaceBadge, placeIcon, placeReason, placeTone } from "@/features/work-detail/folder-edit/FolderWorkspaceTools";
 import { PendingDeletionPanel } from "@/features/work-detail/folder-edit/PendingDeletionPanel";
+import { useStableCallback } from "@/hooks/useStableCallback";
 import { cn } from "@/lib/tailwindClassNames";
 
 const noSelection: ReadonlySet<string> = new Set();
@@ -63,18 +64,27 @@ export function FileManagerPanes({
   emptyResult: string;
 }) {
   const { t } = useTranslation();
-  // A workspace opened on a place, such as the remote edition a Fetch adds, starts with it open.
-  const [openId, setOpenId] = useState<string | null>(() =>
-    workspace.activeResource.kind !== "current" ? workspace.activeResource.id : null,
-  );
+  // A workspace made active on a place, such as the remote edition a Fetch
+  // adds once the work's places are listed, opens it.
+  const activeId = workspace.activeResource.kind !== "current" ? workspace.activeResource.id : null;
+  const [openId, setOpenId] = useState<string | null>(activeId);
+  useEffect(() => {
+    if (activeId) setOpenId(activeId);
+  }, [activeId]);
   const [reveal, setReveal] = useState<(FolderWorkspaceRevealTarget & { seq: number }) | null>(null);
   const review = manage.identical?.review ?? null;
   const reviewing = openId === IDENTICAL_REVIEW && review !== null;
   const open = workspace.resources.find((resource) => resource.id === openId && resource.kind !== "current") ?? null;
-  const { openResource } = workspace;
+  // A place loads when it is opened; one that failed stays failed until the
+  // user retries it or opens it again.
+  const openKey = open?.id ?? null;
+  const loadOpen = useStableCallback((id: string) => {
+    const resource = workspace.resources.find((candidate) => candidate.id === id);
+    if (resource) workspace.openResource(resource);
+  });
   useEffect(() => {
-    if (open) openResource(open);
-  }, [open, openResource]);
+    if (openKey) loadOpen(openKey);
+  }, [loadOpen, openKey]);
   // The review takes the left column, beside This folder; a file of another
   // folder opens that folder there, and a file of This folder scrolls to it.
   const navigation = useMemo<FolderWorkspaceNavigation>(

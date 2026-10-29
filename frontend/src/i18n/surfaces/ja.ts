@@ -2612,6 +2612,7 @@ export const surfaceJapanese = {
     save: "保存",
     saved: "表示名を保存しました",
     saveFailed: "表示名を保存できませんでした",
+    saveFailedLanguages: "{{languages}} の表示名を保存できませんでした。ほかの言語は保存されました。",
     languageHint: "{{language}}で閲覧するユーザーにこの名前が表示されます。空欄なら実際の名前を表示します。",
     keyboardHint: "Enter で次の名前に移動します。",
     coverage: "{{total}} 件中 {{count}} 件に名前あり",
