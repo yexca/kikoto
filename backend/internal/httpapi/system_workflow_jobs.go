@@ -220,6 +220,7 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 	}
 	state := localScanPersistState{scope: scope, duplicateRoots: localScanDuplicateRoots(scanSummary.DuplicateGroups), seenWorkIDs: map[int64]bool{}, reconciledWorkIDs: map[int64]bool{}}
 	seenRoots := map[string]bool{}
+	unseenFolders := []string{}
 	for start := 0; start < len(workFolders); start += localScanFolderCommitBatch {
 		batch := workFolders[start:min(start+localScanFolderCommitBatch, len(workFolders))]
 		if err := s.persistLocalScanFolderBatch(ctx, fileSourceID, batch, &state, seenRoots); err != nil {
@@ -227,6 +228,13 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 		}
 		for _, folder := range batch {
 			checked, updated, missing, err := s.refreshIndexedLocalScanFolder(ctx, fileSourceID, folder, scope)
+			if errors.Is(err, errLocalScanFolderUnseen) {
+				// A folder the scan cannot read completely keeps its index; the
+				// rest of the library is still scanned.
+				slog.Warn("local scan skipped a work folder it could not read", "run_id", job.RunID, "folder", folder.RelPath, "error", err)
+				unseenFolders = append(unseenFolders, folder.RelPath)
+				continue
+			}
 			if err != nil {
 				return localScanResult{}, nil, err
 			}
@@ -236,6 +244,15 @@ func (s *Server) persistLocalScanResults(ctx context.Context, job workflowJobRec
 			state.missingLocations += missing
 		}
 	}
+	// A pool that went offline during the scan is reported offline, and a
+	// folder the refresh could not read is reported unreadable. Nothing in
+	// either is marked missing.
+	current, err := s.localScanScope(ctx, payload.Root, scope.depth)
+	if err != nil {
+		return localScanResult{}, nil, err
+	}
+	scope = scope.withPoolsOfflineIn(current)
+	scope = scope.withUnreadableFolders(append(slices.Clone(scope.unreadable), scope.foldersOnOnlinePools(unseenFolders)...))
 	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
 	if err != nil {
 		return localScanResult{}, nil, err

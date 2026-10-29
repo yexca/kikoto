@@ -20,9 +20,17 @@ func copyFile(sourcePath string, targetPath string) error {
 		return err
 	}
 	defer func() { _ = source.Close() }()
-	tempPath := targetPath + ".tmp"
-	target, err := os.Create(tempPath)
+	// A new, uniquely named temporary never replaces a file beside the target,
+	// such as a user's own file named like it with a .tmp suffix.
+	target, err := os.CreateTemp(filepath.Dir(targetPath), ".kikoto-copy-*.partial")
 	if err != nil {
+		return err
+	}
+	tempPath := target.Name()
+	// CreateTemp makes the file private; the copy keeps the library's usual mode.
+	if err := target.Chmod(0o644); err != nil {
+		_ = target.Close()
+		_ = os.Remove(tempPath)
 		return err
 	}
 	// The wrappers hide ReadFrom and WriteTo so the copy stays chunked.
@@ -70,6 +78,45 @@ func resolvePathWithinRoot(root string, candidate string) (string, error) {
 		return "", errPathEscapesRoot
 	}
 	return resolved, nil
+}
+
+// resolveMissingPathWithinRoot returns where candidate, which does not exist,
+// would be: its deepest existing folder, resolved and checked like
+// resolvePathWithinRoot, joined with the missing rest. A dangling link on the
+// way is refused, so opening the result later cannot follow a link that
+// leaves the root. The configured root is trusted, so when even it is missing
+// the candidate is returned as it is.
+func resolveMissingPathWithinRoot(root string, candidate string) (string, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	if !isPathWithinRoot(absRoot, candidate) {
+		return "", errPathEscapesRoot
+	}
+	missing := []string{}
+	for directory := filepath.Clean(candidate); ; directory = filepath.Dir(directory) {
+		if directory == absRoot {
+			realRoot, err := filepath.EvalSymlinks(absRoot)
+			if err != nil {
+				return candidate, nil
+			}
+			return filepath.Join(append([]string{realRoot}, missing...)...), nil
+		}
+		resolved, err := resolvePathWithinRoot(root, directory)
+		if err == nil {
+			return filepath.Join(append([]string{resolved}, missing...)...), nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		if _, err := os.Lstat(directory); err == nil {
+			return "", errPathEscapesRoot
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		missing = append([]string{filepath.Base(directory)}, missing...)
+	}
 }
 
 func isPathWithinRoot(root string, candidate string) bool {

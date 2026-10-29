@@ -182,7 +182,15 @@
 
 - Fetch rejects linked staging, target, and backup directories during copying,
   publication, recovery, and cleanup, and keeps filesystem operations within
-  the data root when a directory changes after validation.
+  the data root when a directory changes after validation. A link or special
+  file inside the folder a Fetch published does not stop its recovery.
+- A Fetch or folder edit that replaces a file keeps a file of the user's own
+  beside it named like a temporary copy, such as `track.wav.tmp` beside
+  `track.wav`, instead of deleting it.
+- Startup recovery of an interrupted Fetch waits while the target's storage
+  pool is offline instead of reading the empty mount point, which could leave
+  the next attempt stopped on a pending backup; retrying the Fetch once the
+  pool is back finishes the publication.
 
 </details>
 
@@ -191,7 +199,9 @@
 
 - Full local scans reconcile changes made inside indexed work folders while the
   server is stopped, including added, removed, and replaced files, while keeping
-  folders outside the visible scan scope unchanged.
+  folders outside the visible scan scope unchanged. A work folder the scan
+  cannot read completely, or a storage pool that goes offline during the scan,
+  is left as it was and reported, and the rest of the scan completes.
 - Metadata groups All, Needs attention, Metadata issues, and No available
   source as filters under one **DLsite works** tab. Existing links, including
   metadata sync **Open metadata issues** links, open the matching filter.
@@ -289,7 +299,8 @@
 - Playback, transcription, loudness analysis, cover selection, and media
   probing accept files when the data or cache root, or one of its parent
   directories, is a symbolic link. A link inside the root that leaves it is
-  still refused.
+  still refused. They open the location they checked, and refuse a dangling
+  link.
 
 </details>
 
@@ -305,6 +316,7 @@
   packages.
 - Make runs every Go target with the toolchain `backend/go.mod` pins, so a
   newer locally installed Go no longer breaks `make backend-lint`; set
-  `GOTOOLCHAIN` to override it.
+  `GOTOOLCHAIN` to override it. This works from Git Bash and PowerShell on
+  Windows as well as on Linux.
 
 </details>

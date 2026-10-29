@@ -3,13 +3,25 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/yexca/kikoto/backend/internal/localfs"
 )
 
+// errLocalScanFolderUnseen marks a work folder a full scan could not observe
+// completely: part of its file tree could not be read, or its pool went
+// offline during the scan. The scan keeps that folder's index and continues.
+var errLocalScanFolderUnseen = errors.New("local work folder could not be observed")
+
+// errLocalScanFolderOutsideScope is the guard's refusal once a folder leaves
+// the observable scope, such as when its pool goes offline mid-scan.
+var errLocalScanFolderOutsideScope = errors.New("local work folder is outside the observable scan scope")
+
 // refreshIndexedLocalScanFolder verifies only folders that already have an
 // index. New folders retain lazy indexing. File trees are read outside write
-// transactions, and an unchanged observation never rewrites media rows.
+// transactions, and an unchanged observation never rewrites media rows. A
+// folder it cannot observe completely returns errLocalScanFolderUnseen with
+// its index unchanged.
 func (s *Server) refreshIndexedLocalScanFolder(ctx context.Context, sourceID int64, folder localfs.WorkFolder, scope localScanScope) (checked, updated, missing int, err error) {
 	// Discovery can see a work root while a descendant is unreadable. Its
 	// complete file tree is unknown, so preserve that index and let the scan's
@@ -44,19 +56,22 @@ func (s *Server) refreshIndexedLocalScanFolder(ctx context.Context, sourceID int
 			return err
 		}
 		if !scope.contains(folder.RelPath) || !current.contains(folder.RelPath) {
-			return errors.New("local work folder is outside the observable scan scope")
+			return errLocalScanFolderOutsideScope
 		}
 		return nil
 	}
 	if err := guard(ctx); err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, localScanFolderError(err)
 	}
+	// Discovery reads folders only down to the scan depth, so a deeper
+	// unreadable folder, or a file removed while the tree is read, shows up
+	// only here.
 	files, err := localfs.CollectWorkFiles(s.cfg.DataRoot, folder.AbsPath)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, fmt.Errorf("%w: %w", errLocalScanFolderUnseen, err)
 	}
 	if err := guard(ctx); err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, localScanFolderError(err)
 	}
 	for _, file := range files {
 		previous, exists := observed[file.RelPath]
@@ -72,9 +87,20 @@ func (s *Server) refreshIndexedLocalScanFolder(ctx context.Context, sourceID int
 	// Reuse the same per-work coalescing and serialized write slot as lazy
 	// indexing. The guard is checked again before and after its filesystem read.
 	if err := s.indexLocalMediaForWorkGuarded(ctx, workID, sourceID, folder.RelPath, guard); err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, localScanFolderError(err)
 	}
 	return len(files), updated, missing, nil
+}
+
+// localScanFolderError reports a failure to read the folder, or the folder
+// leaving the scope, as errLocalScanFolderUnseen. Any other error, such as a
+// database failure, fails the scan.
+func localScanFolderError(err error) error {
+	var readErr localWorkFolderReadError
+	if errors.Is(err, errLocalScanFolderOutsideScope) || errors.As(err, &readErr) {
+		return fmt.Errorf("%w: %w", errLocalScanFolderUnseen, err)
+	}
+	return err
 }
 
 type localScanFileObservation struct {

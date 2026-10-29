@@ -63,13 +63,14 @@ func (s *Server) executeIncrementalLocalScanJob(ctx context.Context, job workflo
 	for index := range workFolders {
 		files, collectErr := localfs.CollectWorkFiles(payload.Root, workFolders[index].AbsPath)
 		if collectErr != nil {
+			// Skipping the folder here would mark its known root missing, so the
+			// full scan, which keeps an unreadable folder's state, takes over.
+			payload.ScanMode = localScanModeFull
+			payload.FullFallbackReason = "work_folder_unreadable"
 			if errors.Is(collectErr, os.ErrNotExist) {
-				payload.ScanMode = localScanModeFull
 				payload.FullFallbackReason = "work_root_changed_during_scan"
-				return s.executeFullLocalScanJob(ctx, job, payload)
 			}
-			_ = s.failClaimedWorkflowJob(ctx, job, collectErr.Error())
-			return collectErr
+			return s.executeFullLocalScanJob(ctx, job, payload)
 		}
 		workFolders[index].Files = files
 		scanSummary.ScannedFiles += len(files)

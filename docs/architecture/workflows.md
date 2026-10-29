@@ -869,8 +869,9 @@ The coordinator deduplicates at most 1,024 changed paths into the durable run
 and job input. Incremental execution resolves those paths to affected known or
 new work roots, walks each affected work's complete media tree, and reconciles
 its locations. It does not walk unaffected media trees. A watcher error, path
-batch overflow, invalid or unavailable path batch, watch-root invalidation, or
-a work whose code lies in several folders switches that run to full mode. An invalidated root keeps
+batch overflow, invalid or unavailable path batch, watch-root invalidation, a
+work whose code lies in several folders, or an affected work folder whose
+files cannot be read switches that run to full mode. An invalidated root keeps
 the recovery request across watcher restarts and dispatches it only after the
 replacement watcher has settled.
 
@@ -900,7 +901,11 @@ unchanged tree keeps its media rows and index metadata; a changed tree is
 reconciled through the shared per-folder indexer, including files added,
 removed, or replaced while the server was stopped. An indexed tree that
 intersects a directory discovery could not read keeps its stored files
-unchanged while the scan continues with other folders. New and moved folders
+unchanged while the scan continues with other folders. Discovery reads folders
+only down to the scan depth, while this comparison reads the whole tree, so a
+tree it cannot read completely, such as one holding an unreadable folder below
+the scan depth or a file removed while it is read, likewise keeps its stored
+files, and its work folder is recorded in `unreadable_folders`. New and moved folders
 without an index are indexed lazily. A full scan commits discovered folders in
 batches of 250, so progress saves and other writers are not locked out for the
 whole library, and marks unseen work roots missing only in its final
@@ -1022,7 +1027,9 @@ running job is settled by the orphan rule under
 spends one resume, or it fails. Queued jobs keep waiting, runs are repaired as
 the manual command repairs them but without its one-minute wait, and
 interrupted Fetch publications are reconciled from the staging, target, and
-backup directories.
+backup directories. Which of them exist decides the outcome, not what they
+hold. While the target's pool is offline, recovery leaves the publication as
+it is, and a retry of the run finishes it once the pool is back.
 
 Fetch retries and startup recovery share the same publication reconciliation
 and local registration steps. A published or registered target is completed
@@ -1083,7 +1090,9 @@ Depth counts inside a pool and is at least the deepest Fetch save template or
 active `managed_fetch` root. Discovery walks only online pools; missing-marking
 of folders and presences applies only to recorded roots inside that scope.
 Offline pools make a full or incremental scan `partial` with an
-`offline_pools` summary; no online pool fails the scan.
+`offline_pools` summary; no online pool fails the scan. A pool that goes
+offline during a full scan is reported the same way: its works keep their
+state and the rest of the scan completes.
 A folder below a walk's start that the walk cannot read, for lack of
 permission or because it disappeared during the walk, is skipped and recorded
 in an `unreadable_folders` summary that makes the scan `partial`; recorded
@@ -1118,7 +1127,8 @@ write, or deletion of library files checks the pool of the path it touches
 first: streaming, download, text preview, HLS playback, ASR, local file
 refresh, folder edits and their copy and merge folders, lyrics edits and their copy
 folders, generated-lyrics publication, file and folder deletion, workflow
-review cleanup, Fetch trash deletion, and a starting or resuming Fetch run. A
+review cleanup, Fetch trash deletion, a starting or resuming Fetch run, and
+startup Fetch recovery. A
 refused request answers `409` with `storage_pool_offline` in pool mode or
 `library_offline` in standard mode and changes nothing. Fetch quarantine leaves
 a root on an offline pool in place, opening a work does not index a folder on

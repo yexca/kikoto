@@ -127,10 +127,12 @@ func (s *Server) probeLocalMediaTarget(ctx context.Context, target localMediaPro
 	if err != nil || !isPathWithinRoot(root, file.AbsPath) {
 		return nil
 	}
-	if _, err := resolvePathWithinRoot(root, file.AbsPath); err != nil {
+	// Probe the checked location itself, which holds no link.
+	probePath, err := resolvePathWithinRoot(root, file.AbsPath)
+	if err != nil {
 		return nil
 	}
-	before, err := os.Stat(file.AbsPath)
+	before, err := os.Stat(probePath)
 	if err != nil || !before.Mode().IsRegular() || before.Size() != file.SizeBytes {
 		return nil
 	}
@@ -138,12 +140,12 @@ func (s *Server) probeLocalMediaTarget(ctx context.Context, target localMediaPro
 	if target.file.FileVersion != "" && target.file.FileVersion != file.FileVersion {
 		return nil
 	}
-	duration, hasAudio, probeErr := probe(ctx, file.AbsPath)
+	duration, hasAudio, probeErr := probe(ctx, probePath)
 	if probeErr != nil && !errors.Is(probeErr, errMediaProbeRejected) {
 		// A timeout, cancellation, or busy probe says nothing about the file.
 		return ctx.Err()
 	}
-	after, err := os.Stat(file.AbsPath)
+	after, err := os.Stat(probePath)
 	if err != nil || !os.SameFile(before, after) || localfs.FileVersion(after) != file.FileVersion {
 		return nil
 	}

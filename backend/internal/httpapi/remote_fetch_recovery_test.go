@@ -12,6 +12,7 @@ import (
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
+	"github.com/yexca/kikoto/backend/internal/storagepool"
 	"github.com/yexca/kikoto/backend/internal/testfixture"
 )
 
@@ -284,5 +285,122 @@ func TestRecoverInterruptedWorkflowsContinuesPastUnrecoverableFetch(t *testing.T
 	}
 	if strings.Contains(message, server.cfg.DataRoot) {
 		t.Fatalf("recovery event exposes a local path: %q", message)
+	}
+}
+
+// interruptFetchPublication leaves the fixture's Fetch as a crash between the
+// two publication renames leaves it: the old target moved to the backup, the
+// complete staged root not yet moved into its place.
+func interruptFetchPublication(t *testing.T, server *Server, db *sqlutil.DB) remoteFetchPublishPaths {
+	t.Helper()
+	manifest, err := server.loadRemoteFetchManifest(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := server.remoteFetchPublishPaths(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFetchTestFile(t, paths.stageRoot, "earlier.mp3", "earlier")
+	writeFetchTestFile(t, paths.stageRoot, "track.mp3", "track")
+	if err := os.MkdirAll(filepath.Dir(paths.backupRoot), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(paths.targetRoot, paths.backupRoot); err != nil {
+		t.Fatal(err)
+	}
+	execFetchTestStatements(t, db, `UPDATE remote_fetch_manifest SET state = 'publishing' WHERE id = 1`)
+	return paths
+}
+
+// On an offline pool the staged, target, and backup roots all look absent.
+// Startup recovery waits for the pool instead of reading that as a fact, and
+// finishes the publication once the pool is back.
+func TestFetchRecoveryWaitsForAnOfflinePool(t *testing.T) {
+	ctx := context.Background()
+	server, db, _ := newFetchPublishFixture(t)
+	if err := server.saveSettingValue(ctx, settingLibraryMode, storagepool.ModePools); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.saveSettingValue(ctx, settingStoragePools, []storagepool.Pool{{Path: "Library", ID: "synthetic-pool"}}); err != nil {
+		t.Fatal(err)
+	}
+	paths := interruptFetchPublication(t, server, db)
+
+	// The pool has no marker, so it is offline.
+	if err := server.RecoverInterruptedWorkflows(ctx); err != nil {
+		t.Fatalf("startup recovery with an offline pool: %v", err)
+	}
+	manifest, err := server.loadRemoteFetchManifest(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.State != "publishing" {
+		t.Fatalf("manifest state with the pool offline = %q, want publishing", manifest.State)
+	}
+	var failures int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM workflow_event WHERE workflow_run_id = 1 AND event_type = 'fetch.recovery_failed'`).Scan(&failures); err != nil {
+		t.Fatal(err)
+	}
+	if failures != 0 {
+		t.Fatal("waiting for an offline pool was recorded as a recovery failure")
+	}
+
+	if err := storagepool.WriteMarker(filepath.Join(server.cfg.DataRoot, "Library"), "synthetic-pool"); err != nil {
+		t.Fatal(err)
+	}
+	if manifest, err = server.settleInterruptedRemoteFetchPublication(ctx, manifest); err != nil {
+		t.Fatalf("recovery with the pool back: %v", err)
+	}
+	if manifest.State != "published" {
+		t.Fatalf("manifest state with the pool back = %q, want published", manifest.State)
+	}
+	assertFetchTestFile(t, filepath.Join(paths.targetRoot, "track.mp3"), "track")
+	assertFetchTestFile(t, filepath.Join(paths.targetRoot, "earlier.mp3"), "earlier")
+}
+
+// Recovery decides from which roots exist. A link the user keeps in the
+// published folder does not change that decision.
+func TestFetchRecoverySettlesAPublishedTargetHoldingALink(t *testing.T) {
+	ctx := context.Background()
+	server, db, _ := newFetchPublishFixture(t)
+	paths := interruptFetchPublication(t, server, db)
+	if err := os.Rename(paths.stageRoot, paths.targetRoot); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("earlier.mp3", filepath.Join(paths.targetRoot, "shortcut.mp3")); err != nil {
+		t.Skipf("file links unavailable: %v", err)
+	}
+	manifest, err := server.loadRemoteFetchManifest(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest, err = server.settleInterruptedRemoteFetchPublication(ctx, manifest); err != nil {
+		t.Fatalf("recovery of a published target holding a link: %v", err)
+	}
+	if manifest.State != "published" {
+		t.Fatalf("manifest state = %q, want published", manifest.State)
+	}
+}
+
+// Staging copies the existing folder and then writes the Fetch's files. A
+// user's file named like a temporary copy of one of them is kept.
+func TestFetchKeepsAUserFileNamedLikeATemporaryCopy(t *testing.T) {
+	ctx := context.Background()
+	server, _, plan := newFetchPublishFixture(t)
+	target := filepath.Join(server.cfg.DataRoot, filepath.FromSlash(plan.SaveRoot))
+	writeFetchTestFile(t, target, "track.mp3", "older")
+	writeFetchTestFile(t, target, "track.mp3.tmp", "user")
+	manifest, err := server.loadRemoteFetchManifest(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.stageAndPublishRemoteFetch(ctx, manifest, plan); err != nil {
+		t.Fatal(err)
+	}
+	assertFetchTestFile(t, filepath.Join(target, "track.mp3"), "track")
+	assertFetchTestFile(t, filepath.Join(target, "track.mp3.tmp"), "user")
+	if got := fetchTestDirectoryFiles(t, target); strings.Join(got, ",") != "earlier.mp3,track.mp3,track.mp3.tmp" {
+		t.Fatalf("published files = %v", got)
 	}
 }

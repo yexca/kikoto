@@ -108,7 +108,17 @@ func (s *Server) removeRemoteFetchBackup(manifest remoteFetchManifestRecord) err
 	return removeFetchDirectory(root, filepath.Dir(scoped.backupRoot))
 }
 
+// fetchStagingCopyTempPath is where a staged file is written before it is
+// renamed into place: one fixed file in the run's staging directory, beside
+// the staged tree rather than in it. A temporary name inside the tree could be
+// a file of the user's own, and one left by an interruption would be
+// published with the tree. Copies run one at a time.
+func fetchStagingCopyTempPath(stageRoot string) string {
+	return filepath.Join(filepath.Dir(stageRoot), "copy.partial")
+}
+
 func copyFetchDirectory(root *os.Root, source, target string) error {
+	tempPath := fetchStagingCopyTempPath(target)
 	return walkFetchDirectory(root, source, func(name string, info fs.FileInfo) error {
 		relative, err := filepath.Rel(source, name)
 		if err != nil {
@@ -123,18 +133,17 @@ func copyFetchDirectory(root *os.Root, source, target string) error {
 			return err
 		}
 		defer func() { _ = file.Close() }()
-		return copyFetchFile(root, destination, file)
+		return copyFetchFile(root, destination, tempPath, file)
 	})
 }
 
-func copyFetchFile(root *os.Root, targetPath string, source io.Reader) error {
+func copyFetchFile(root *os.Root, targetPath string, tempPath string, source io.Reader) error {
 	if err := validateFetchDirectoryPath(root, filepath.Dir(targetPath)); err != nil {
 		return err
 	}
 	if err := root.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 		return err
 	}
-	tempPath := targetPath + ".tmp"
 	if info, err := root.Lstat(tempPath); err == nil {
 		if unsafeFetchStagingEntry(info) || !info.Mode().IsRegular() {
 			return errors.New("fetch temporary file is not a regular file")

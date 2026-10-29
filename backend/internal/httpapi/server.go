@@ -664,7 +664,9 @@ func safeDataPath(root string, relPath string) (string, error) {
 
 // safeResolvedPath resolves a stored path before it is read or copied. The
 // lexical check in safeDataPath is insufficient when a library entry or one
-// of its parents is a symbolic link.
+// of its parents is a symbolic link. Callers open the returned path, which
+// holds no link. A file that does not exist still returns a path, below its
+// resolved folder, so the caller reports it missing.
 func safeResolvedPath(root string, relPath string) (string, error) {
 	absPath, err := safeDataPath(root, relPath)
 	if err != nil {
@@ -672,7 +674,7 @@ func safeResolvedPath(root string, relPath string) (string, error) {
 	}
 	resolved, err := resolvePathWithinRoot(root, absPath)
 	if errors.Is(err, os.ErrNotExist) {
-		return absPath, nil
+		return resolveMissingPathWithinRoot(root, absPath)
 	}
 	return resolved, err
 }
