@@ -242,7 +242,7 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 	}()
 	ctx = metasync.WithWorkflowRun(ctx, job.RunID)
 	executors := map[string]func(context.Context, workflowJobRecord) error{
-		"llm_translation":             s.executeLLMTranslationJob,
+		"llm_translation":             s.stopLLMTranslationJob,
 		aiTranslationWorkerType:       s.executeAITranslationJob,
 		asrWorkerType:                 s.executeASRTranscriptionJob,
 		"remote_source_track":         s.executeRemoteWorkTrackJob,

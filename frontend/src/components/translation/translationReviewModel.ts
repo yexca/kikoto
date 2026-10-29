@@ -99,6 +99,9 @@ const knownTranslationFailures = new Set([
   "invalid_output",
   "invalid_lyrics_output",
   "translation_output_too_large",
+  "request_too_large",
+  "name_exists",
+  "lyrics_exist",
   "unsupported_language_pair",
   "service_not_ready",
   "service_start_failed",
@@ -128,6 +131,8 @@ const knownReviewRefusals = new Set([
   "llm_acknowledgement_required",
   "not_resendable",
   "already_active",
+  "name_exists",
+  "lyrics_exist",
   "accept_failed",
 ]);
 

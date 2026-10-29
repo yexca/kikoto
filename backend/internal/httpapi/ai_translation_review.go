@@ -58,11 +58,12 @@ var translationListStates = map[string][]string{
 // listTranslationItems lists translation items by view: review (waiting for
 // review), active, attention (stopped) or history, across works or for one.
 func (s *Server) listTranslationItems(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.IsDemo() {
-		writeAPIError(w, 403, "llm_disabled", "Translation is unavailable in Demo.", false)
+	actor, ok := userFromContext(r.Context())
+	if ok && s.cfg.IsDemo() {
+		// Demo translates nothing, so its Translation page lists no items.
+		writeJSON(w, 200, map[string]any{"items": []translationItemResponse{}})
 		return
 	}
-	actor, ok := userFromContext(r.Context())
 	if !ok || !canUseTranslationCenter(actor) {
 		writeAPIError(w, http.StatusForbidden, "permission_denied", "permission denied", false)
 		return
@@ -420,20 +421,44 @@ func (s *Server) acceptNameTranslation(ctx context.Context, actor currentUser, i
 	if err != nil || !settled {
 		return "already_handled", err
 	}
-	// A name someone gave the file or folder meanwhile is kept.
+	var result sql.Result
 	if item.Category == translationFileName {
-		_, err = tx.ExecContext(ctx, `INSERT INTO media_item_display_name (media_item_id, language, name, updated_by_user_id, origin, model, source_text)
+		result, err = tx.ExecContext(ctx, `INSERT INTO media_item_display_name (media_item_id, language, name, updated_by_user_id, origin, model, source_text)
 			VALUES (?, ?, ?, ?, 'llm', ?, ?) ON CONFLICT(media_item_id, language) DO NOTHING`,
 			item.Subject, item.Language, item.ResultText, nullableUserID(actor.ID), item.Model, item.SourceText)
 	} else {
-		_, err = tx.ExecContext(ctx, `INSERT INTO work_folder_display_name (work_id, path, language, name, updated_by_user_id, origin, model, source_text)
+		result, err = tx.ExecContext(ctx, `INSERT INTO work_folder_display_name (work_id, path, language, name, updated_by_user_id, origin, model, source_text)
 			VALUES (?, ?, ?, ?, ?, 'llm', ?, ?) ON CONFLICT(work_id, path, language) DO NOTHING`,
 			item.Detail.MediaWorkID, item.Subject, item.Language, item.ResultText, nullableUserID(actor.ID), item.Model, item.SourceText)
 	}
 	if err != nil {
 		return "", err
 	}
+	// A name someone gave the file or folder meanwhile is kept, and the item
+	// says so instead of reporting a name it never wrote.
+	count, err := result.RowsAffected()
+	if err != nil {
+		return "", err
+	}
+	if count == 0 {
+		_ = tx.Rollback()
+		return s.invalidateTranslationItem(ctx, item, "name_exists")
+	}
 	return "", tx.Commit()
+}
+
+var (
+	errTranslationLyricsKept     = errors.New("the track has lyrics in the language")
+	errTranslationAlreadyHandled = errors.New("the translation item was already reviewed")
+)
+
+// trackHasLyrics reports whether a track has lyrics assigned in a language.
+func trackHasLyrics(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, audioID int64, language string) (bool, error) {
+	var assigned bool
+	err := q.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM media_lyrics_assignment WHERE audio_media_item_id = ? AND language = ?)", audioID, language).Scan(&assigned)
+	return assigned, err
 }
 
 // acceptLyricsTranslation publishes lyrics into the track's work folder while
@@ -454,34 +479,55 @@ func (s *Server) acceptLyricsTranslation(ctx context.Context, actor currentUser,
 	if _, hash, code := s.translationLyricsSource(ctx, send, item); code != "" || hash != item.SourceHash {
 		return s.invalidateTranslationItem(ctx, item, "source_changed")
 	}
-	lyricsPath, lyricsID, err := s.publishTrackLyrics(ctx, actor.ID, track.WorkID, audioID, track.FolderID, item.Language, track.Path, item.Detail.Extension, item.ResultText, "translation")
-	if err != nil {
-		var requestErr lyricsFetchRequestError
-		if errors.Is(err, errLyricsFolderBlocked) || errors.As(err, &requestErr) {
-			return "lyrics_folder_blocked", nil
-		}
-		return "", err
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	// Lyrics someone assigned or fetched in the language meanwhile are kept,
+	// as a submission skips a track that has them.
+	assigned, err := trackHasLyrics(ctx, s.db, audioID, item.Language)
 	if err != nil {
 		return "", err
 	}
-	defer func() { _ = tx.Rollback() }()
-	settled, err := settleAcceptedItem(ctx, tx, item, actor.ID)
-	if err != nil || !settled {
-		return "already_handled", err
+	if assigned {
+		return s.invalidateTranslationItem(ctx, item, "lyrics_exist")
 	}
-	// The history names the file the lyrics became.
-	if _, err := tx.ExecContext(ctx, "UPDATE translation_item SET detail_json = json_set(detail_json, '$.appliedPath', ?) WHERE id = ?", lyricsPath, item.ID); err != nil {
-		return "", err
+	// The item settles in the transaction that assigns the file, which checks
+	// the assignment again.
+	_, _, err = s.publishTrackLyricsWith(ctx, actor.ID, track.WorkID, audioID, track.FolderID, item.Language, track.Path, item.Detail.Extension, item.ResultText, "translation",
+		func(tx *sql.Tx, lyricsPath string, lyricsID int64) error {
+			assigned, err := trackHasLyrics(ctx, tx, audioID, item.Language)
+			if err != nil {
+				return err
+			}
+			if assigned {
+				return errTranslationLyricsKept
+			}
+			settled, err := settleAcceptedItem(ctx, tx, item, actor.ID)
+			if err != nil {
+				return err
+			}
+			if !settled {
+				return errTranslationAlreadyHandled
+			}
+			// The history names the file the lyrics became.
+			if _, err := tx.ExecContext(ctx, "UPDATE translation_item SET detail_json = json_set(detail_json, '$.appliedPath', ?) WHERE id = ?", lyricsPath, item.ID); err != nil {
+				return err
+			}
+			if lyricsID > 0 {
+				if _, err := tx.ExecContext(ctx, `INSERT INTO media_lyrics_ai_source(lyrics_media_item_id, asr_model, llm_model) VALUES(?, '', ?)
+					ON CONFLICT(lyrics_media_item_id) DO UPDATE SET asr_model = excluded.asr_model, llm_model = excluded.llm_model`, lyricsID, item.Model); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	var requestErr lyricsFetchRequestError
+	switch {
+	case errors.Is(err, errTranslationLyricsKept):
+		return s.invalidateTranslationItem(ctx, item, "lyrics_exist")
+	case errors.Is(err, errTranslationAlreadyHandled):
+		return "already_handled", nil
+	case errors.Is(err, errLyricsFolderBlocked) || errors.As(err, &requestErr):
+		return "lyrics_folder_blocked", nil
 	}
-	if lyricsID > 0 {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO media_lyrics_ai_source(lyrics_media_item_id, asr_model, llm_model) VALUES(?, '', ?)
-			ON CONFLICT(lyrics_media_item_id) DO UPDATE SET asr_model = excluded.asr_model, llm_model = excluded.llm_model`, lyricsID, item.Model); err != nil {
-			return "", err
-		}
-	}
-	return "", tx.Commit()
+	return "", err
 }
 
 func (s *Server) rejectTranslationItems(w http.ResponseWriter, r *http.Request) {
@@ -609,8 +655,15 @@ func translationResultUnknown(code string) bool {
 }
 
 // translationNeedsNewRequest are the codes of an item whose source, provider
-// or policy changed; only a new request translates it again.
-var translationNeedsNewRequest = map[string]bool{"source_changed": true, "provider_changed": true, "policy_changed": true, "policy_blocked": true}
+// or policy changed, or whose object got a value meanwhile; only a new
+// request translates it again.
+var translationNeedsNewRequest = map[string]bool{"source_changed": true, "provider_changed": true, "policy_changed": true, "policy_blocked": true,
+	"name_exists": true, "lyrics_exist": true}
+
+// translationOutputFailures are the codes of lyrics whose translated chunks
+// could not be used as a whole; sending the item again translates it from its
+// first chunk.
+var translationOutputFailures = map[string]bool{"invalid_lyrics_output": true, "translation_output_too_large": true}
 
 // requeueTranslationItemTx queues one stopped item again.
 func requeueTranslationItemTx(ctx context.Context, tx *sql.Tx, item translationItem, acknowledgeUncertain bool) (string, error) {
@@ -633,7 +686,10 @@ func requeueTranslationItemTx(ctx context.Context, tx *sql.Tx, item translationI
 	if item.ResultText != "" && translationApplyFailures[item.FailureCode] {
 		state = "ready"
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE OR IGNORE translation_item SET state = ?, failure_code = '', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND state IN ('failed', 'uncertain')`, state, item.ID)
+	restart := translationOutputFailures[item.FailureCode]
+	result, err := tx.ExecContext(ctx, `UPDATE OR IGNORE translation_item SET state = ?, failure_code = '',
+		request_index = CASE WHEN ? THEN 0 ELSE request_index END, checkpoint_json = CASE WHEN ? THEN '{}' ELSE checkpoint_json END,
+		updated_at = CURRENT_TIMESTAMP WHERE id = ? AND state IN ('failed', 'uncertain')`, state, restart, restart, item.ID)
 	if err != nil {
 		return "", err
 	}

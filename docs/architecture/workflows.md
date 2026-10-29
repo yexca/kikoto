@@ -32,12 +32,10 @@ Library and metadata:
   family, queued by work detail, Metadata recovery, and link changes.
 - `metadata_genre_names`: learn genre names in preferred metadata languages
   (see [Genre Name Learning](#genre-name-learning)).
-- `llm_translation`: translate one explicitly selected existing work for review.
-  A batch names at most 100 existing works and creates one task per work;
-  lyrics selects one work and one file. Progress and cancellation use the
-  shared executor. [Translation task persistence](data-model.md#llm-translation)
-  defines source/configuration invalidation, restart recovery and explicit
-  resubmission of uncertain requests.
+- `llm_translation`: a per-work LLM translation for review. Nothing queues one;
+  its job ends a queued or retried run without a request, as
+  [Translation task persistence](data-model.md#llm-translation) describes.
+  Translate with AI runs as `ai_translation`.
 - `ai_translation`: Translate with AI for one work: translate the missing
   title, description, shared tag names, display names and lyrics, each from a
   lyrics file, into each requested language, accepting

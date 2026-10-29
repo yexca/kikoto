@@ -5,16 +5,39 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"slices"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/yexca/kikoto/backend/internal/kikotohelper"
 )
 
 const ResponseLimit = 2 << 20
+
+// requestLimit bounds the encoded body of one request.
+const requestLimit = 128 << 10
+
+// ErrRequestTooLarge reports a request the client refused to send because its
+// body exceeds the request limit.
+var ErrRequestTooLarge = errors.New("LLM request is too large")
+
+// ErrResultUnknown reports a lost answer after the request headers left, so
+// the provider may have answered and charged the request. Every other
+// transport error happened before the request was written.
+var ErrResultUnknown = errors.New("LLM result is unknown")
+
+// ErrInvalidResult reports an answer the provider gave that is not a usable
+// result.
+var ErrInvalidResult = errors.New("invalid LLM result")
+
+func invalidResult(reason string) error {
+	return fmt.Errorf("%w: %s", ErrInvalidResult, reason)
+}
 
 // UpstreamError is a rejected request. Rejection is what a Kikoto Helper
 // reports, and empty for every other provider.
@@ -38,11 +61,13 @@ func (c Client) request(ctx context.Context, method, suffix string, body any) ([
 		if err != nil {
 			return nil, err
 		}
-		if len(encoded) > 128<<10 {
-			return nil, errors.New("LLM request is too large")
+		if len(encoded) > requestLimit {
+			return nil, ErrRequestTooLarge
 		}
 		reader = bytes.NewReader(encoded)
 	}
+	var sent atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{WroteHeaders: func() { sent.Store(true) }})
 	req, err := http.NewRequestWithContext(ctx, method, c.Provider.Endpoint(c.Host)+c.Provider.Preset().Prefix+suffix, reader)
 	if err != nil {
 		return nil, err
@@ -61,6 +86,9 @@ func (c Client) request(ctx context.Context, method, suffix string, body any) ([
 	}
 	response, err := c.HTTP.Do(req)
 	if err != nil {
+		if sent.Load() {
+			return nil, errors.Join(ErrResultUnknown, err)
+		}
 		return nil, err
 	}
 	defer func() { _ = response.Body.Close() }()
@@ -73,14 +101,14 @@ func (c Client) request(ctx context.Context, method, suffix string, body any) ([
 		return nil, rejected
 	}
 	if response.ContentLength > ResponseLimit {
-		return nil, errors.New("LLM response is too large")
+		return nil, invalidResult("response is too large")
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, ResponseLimit+1))
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(ErrResultUnknown, err)
 	}
 	if len(data) > ResponseLimit {
-		return nil, errors.New("LLM response is too large")
+		return nil, invalidResult("response is too large")
 	}
 	return data, nil
 }
@@ -276,13 +304,13 @@ func (c Client) Translate(ctx context.Context, model, source, language string, i
 		StopReason string `json:"stop_reason"`
 	}
 	if json.Unmarshal(data, &envelope) != nil {
-		return Text{}, errors.New("invalid LLM result")
+		return Text{}, ErrInvalidResult
 	}
 	var text string
 	switch c.Provider.Preset().Kind {
 	case "anthropic":
 		if envelope.StopReason == "max_tokens" {
-			return Text{}, errors.New("translation was truncated")
+			return Text{}, invalidResult("translation was truncated")
 		}
 		for _, part := range envelope.Content {
 			if part.Type == "text" {
@@ -293,7 +321,7 @@ func (c Client) Translate(ctx context.Context, model, source, language string, i
 		text = envelope.Message.Content
 	default:
 		if len(envelope.Choices) != 1 || envelope.Choices[0].FinishReason == "length" {
-			return Text{}, errors.New("invalid LLM result")
+			return Text{}, ErrInvalidResult
 		}
 		text = envelope.Choices[0].Message.Content
 	}
@@ -301,7 +329,7 @@ func (c Client) Translate(ctx context.Context, model, source, language string, i
 	decoder := json.NewDecoder(strings.NewReader(text))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&result) != nil || decoder.Decode(new(any)) != io.EOF {
-		return Text{}, errors.New("translation must contain a JSON object")
+		return Text{}, invalidResult("translation must contain a JSON object")
 	}
 	return checkTranslation(input, result)
 }
@@ -321,13 +349,13 @@ func (c Client) translateTask(ctx context.Context, source, language string, inpu
 		Text json.RawMessage `json:"text"`
 	}
 	if json.Unmarshal(data, &envelope) != nil || len(envelope.Text) == 0 {
-		return Text{}, errors.New("invalid LLM result")
+		return Text{}, ErrInvalidResult
 	}
 	var result Text
 	decoder := json.NewDecoder(bytes.NewReader(envelope.Text))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&result) != nil {
-		return Text{}, errors.New("invalid LLM result")
+		return Text{}, ErrInvalidResult
 	}
 	return checkTranslation(input, result)
 }
@@ -336,7 +364,7 @@ func (c Client) translateTask(ctx context.Context, source, language string, inpu
 // that dropped, merged or emptied an entry.
 func checkTranslation(input, result Text) (Text, error) {
 	if input.Title != "" && strings.TrimSpace(result.Title) == "" || input.Description != "" && strings.TrimSpace(result.Description) == "" || len(result.Title) > 4096 || len(result.Description) > 64<<10 {
-		return Text{}, errors.New("invalid translated text")
+		return Text{}, invalidResult("invalid translated text")
 	}
 	if input.Title == "" {
 		result.Title = ""
@@ -345,16 +373,16 @@ func checkTranslation(input, result Text) (Text, error) {
 		result.Description = ""
 	}
 	if len(result.Tags) != len(input.Tags) || len(result.Lyrics) != len(input.Lyrics) {
-		return Text{}, errors.New("translation changed the number of text entries")
+		return Text{}, invalidResult("translation changed the number of text entries")
 	}
 	for _, name := range result.Tags {
 		if strings.TrimSpace(name) == "" || len(name) > 512 {
-			return Text{}, errors.New("invalid translated tag name")
+			return Text{}, invalidResult("invalid translated tag name")
 		}
 	}
 	for _, line := range result.Lyrics {
 		if strings.TrimSpace(line) == "" || len(line) > 4096 || strings.ContainsAny(line, "\r\n") {
-			return Text{}, errors.New("invalid translated lyrics line")
+			return Text{}, invalidResult("invalid translated lyrics line")
 		}
 	}
 	return result, nil

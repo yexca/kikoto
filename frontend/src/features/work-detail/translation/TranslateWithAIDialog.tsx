@@ -1,5 +1,5 @@
 import { AudioLines, Check, History, Languages, Loader2, RefreshCw, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useTranslationReviewActions } from "@/components/translation/useTranslationReviewActions";
@@ -130,12 +130,18 @@ export function TranslateWithAIDialog({
   const [submitting, setSubmitting] = useState(false);
   const [items, setItems] = useState<TranslationItem[]>([]);
 
+  // Only the latest plan request applies, so a slower answer for languages
+  // chosen before never replaces the plan of the current ones.
+  const planRequest = useRef(0);
   const loadPlan = useCallback(async () => {
+    const request = ++planRequest.current;
     try {
-      setPlan(await api.translationPlan(work.id, languages));
+      const next = await api.translationPlan(work.id, languages);
+      if (request !== planRequest.current) return;
+      setPlan(next);
       setPlanError(false);
     } catch {
-      setPlanError(true);
+      if (request === planRequest.current) setPlanError(true);
     }
   }, [languages, work.id]);
   const loadItems = useCallback(async () => {
@@ -176,6 +182,8 @@ export function TranslateWithAIDialog({
     return () => window.clearInterval(timer);
   }, [loadItems, loadPlan, running]);
 
+  // Start waits for the plan of the chosen languages.
+  const planCurrent = plan?.languages.map((entry) => entry.language).join(",") === languages.join(",");
   const active = useMemo(() => activeLyricsCells(plan), [plan]);
   const permissions = plan?.permissions ?? { metadata: false, files: false, lyrics: false };
   const choices = serviceModelChoices(providers ?? []);
@@ -246,7 +254,7 @@ export function TranslateWithAIDialog({
   const shownTab = tab === "lyrics" && !lyricsAvailable ? "translate" : tab;
 
   const submit = async () => {
-    if (total === 0) return;
+    if (total === 0 || !planCurrent) return;
     setSubmitting(true);
     try {
       const result = await api.requestTranslation(work.id, {
@@ -717,7 +725,10 @@ export function TranslateWithAIDialog({
             <Button variant="ghost" onClick={onClose} disabled={submitting}>
               {t("content.close")}
             </Button>
-            <Button onClick={() => void submit()} disabled={submitting || total === 0 || (needsLLM && !choice)}>
+            <Button
+              onClick={() => void submit()}
+              disabled={submitting || !planCurrent || total === 0 || (needsLLM && !choice)}
+            >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Languages className="h-4 w-4" />}
               {t("aiTranslation.start", { count: total })}
             </Button>

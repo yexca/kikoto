@@ -2,8 +2,9 @@
 
 > [!NOTE]
 > LLM translation previews still waiting for review are discarded during the
-> upgrade. Translate those works again with **Translate with AI**, whose
-> results take effect as soon as they finish.
+> upgrade, and an LLM translation still queued, or retried after it, stops
+> without sending its request. Translate those works again with **Translate
+> with AI**, whose results take effect as soon as they finish.
 
 > [!NOTE]
 > A transcription queued before the upgrade, or a failed one retried after it,
@@ -261,12 +262,17 @@
   cannot translate shows × and is not sent.
 - Display names of local files and folders can be translated with AI. Names in
   the original language and names without words, such as `Track01`, are left
-  as they are.
+  as they are. A display name or lyrics someone sets while a translation waits
+  are kept, and the translation says so.
 - A new **Translation** page in the sidebar follows running and queued
   translations by work and language, resends stopped ones, lists what each
   translation wrote with a link to its work, and holds the translation
   coverage that was under Metadata. Everyone who can translate sees every
-  account's translations.
+  account's translations. Sending a stopped translation again asks for
+  confirmation only when its request may already have been charged. Coverage
+  counts a **Fallback** title or description as **Manual**, since every
+  language shows it, and Translate with AI does not offer to translate it.
+  Demo shows the page read-only.
 - **Manage lyrics → Transcribe** chooses the audio language first, then the
   model, and the model decides the lyrics language: a model that transcribes
   writes the audio language, a model that translates is offered only for its

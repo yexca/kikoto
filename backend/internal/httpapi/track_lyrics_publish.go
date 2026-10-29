@@ -92,6 +92,15 @@ const trackLyricsNameAttempts = 5
 // folders keep separate lyrics. An identical file already at the name counts
 // as published, so an interrupted publication completes when it runs again.
 func (s *Server) publishTrackLyrics(ctx context.Context, userID, workID, audioID, folderID int64, language, audioPath, extension, text, origin string) (string, int64, error) {
+	return s.publishTrackLyricsWith(ctx, userID, workID, audioID, folderID, language, audioPath, extension, text, origin, nil)
+}
+
+// publishTrackLyricsWith publishes like publishTrackLyrics and runs finish in
+// the transaction that assigns the file, before the assignment, so what the
+// caller records commits with it; an error from finish leaves the track's
+// assignments unchanged.
+func (s *Server) publishTrackLyricsWith(ctx context.Context, userID, workID, audioID, folderID int64, language, audioPath, extension, text, origin string,
+	finish func(tx *sql.Tx, lyricsPath string, lyricsID int64) error) (string, int64, error) {
 	family, err := s.lyricsAssignmentFamily(ctx, workID)
 	if err != nil {
 		return "", 0, err
@@ -141,6 +150,11 @@ func (s *Server) publishTrackLyrics(ctx context.Context, userID, workID, audioID
 	lyricsID, indexed, err := lyricsEditLyricsItem(ctx, tx, target, lyricsPath)
 	if err != nil {
 		return "", 0, err
+	}
+	if finish != nil {
+		if err := finish(tx, lyricsPath, lyricsID); err != nil {
+			return "", 0, err
+		}
 	}
 	// A file the rescan did not index is published but cannot be assigned.
 	if indexed {

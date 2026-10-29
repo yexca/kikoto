@@ -14,8 +14,10 @@ import (
 	"github.com/yexca/kikoto/backend/internal/llm"
 )
 
-func TestLLMTextLyricsAssessesWholeInputAndRechecksModeBetweenChunks(t *testing.T) {
-	for _, scenario := range []string{"success", "cross_chunk_block", "mode_changed"} {
+// The precheck assesses lyrics as a whole, so a blocked phrase split across
+// two chunks is still found.
+func TestLLMTextLyricsPrecheckAssessesTheWholeInput(t *testing.T) {
+	for _, scenario := range []string{"success", "cross_chunk_block"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newLyricsFetchFixture(t, func(w http.ResponseWriter, r *http.Request) {}, func(origin string) string { return origin + "/example.vtt" })
 			if _, err := f.db.Exec("INSERT INTO user_account(username,role) VALUES('synthetic-admin','admin')"); err != nil {
@@ -72,13 +74,6 @@ func TestLLMTextLyricsAssessesWholeInputAndRechecksModeBetweenChunks(t *testing.
 					w.WriteHeader(400)
 					return
 				}
-				if scenario == "mode_changed" {
-					changed := policy
-					changed.LLMTranslationTextOnly = false
-					if err := f.server.llmStore.SavePolicy(r.Context(), changed); err != nil {
-						t.Error(err)
-					}
-				}
 				_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": request.Messages[1].Content}}}})
 			}))
 			defer upstream.Close()
@@ -97,43 +92,6 @@ func TestLLMTextLyricsAssessesWholeInputAndRechecksModeBetweenChunks(t *testing.
 			}
 			if err := json.Unmarshal(w.Body.Bytes(), &precheck); err != nil || w.Code != 200 || precheck.Assessment.Class != wantClass || requests.Load() != 0 {
 				t.Fatalf("precheck: %d %s %v", w.Code, w.Body.String(), err)
-			}
-			ctx := context.Background()
-			runs, err := f.server.enqueueLLMTranslations(ctx, userID, []int64{f.workID}, payload)
-			if scenario == "cross_chunk_block" {
-				if err == nil || requests.Load() != 0 {
-					t.Fatalf("whole input not blocked: %v", err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			err = f.server.runNextQueuedWorkflowJob(ctx)
-			wantRequests := int32(2)
-			if scenario == "mode_changed" {
-				wantRequests = 1
-			}
-			if requests.Load() != wantRequests {
-				t.Fatalf("requests=%d, want=%d, err=%v", requests.Load(), wantRequests, err)
-			}
-			if scenario == "mode_changed" {
-				if err == nil {
-					t.Fatal("policy change did not stop the next chunk")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			var preview string
-			if err := f.db.QueryRow("SELECT preview_id FROM llm_translation_task WHERE workflow_run_id=? AND state='ready'", runs[0].RunID).Scan(&preview); err != nil {
-				t.Fatal(err)
-			}
-			w = httptest.NewRecorder()
-			f.server.applyLLMTranslation(w, llmTestRequest(fixture, http.MethodPut, `{"previewId":"`+preview+`"}`))
-			if w.Code != 200 {
-				t.Fatalf("accept lyrics: %d %s", w.Code, w.Body.String())
 			}
 		})
 	}

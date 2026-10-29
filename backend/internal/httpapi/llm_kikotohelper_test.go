@@ -74,32 +74,32 @@ func TestKikotoHelperRejectionsNameTheirCause(t *testing.T) {
 		t.Fatalf("agreement required: %d %s", w.Code, w.Body.String())
 	}
 
-	// A queued translation names the cause, and a start failure stays
+	// A Translate with AI item names the cause, and a start failure stays
 	// retryable once memory is freed.
 	ctx := context.Background()
 	answer.Store("not_installed")
-	runs, err := f.server.enqueueLLMTranslations(ctx, f.userID, []int64{f.workID}, llmTranslatePayload{ProviderID: p.ID, Target: "zh-cn", Fields: []string{"title"}})
+	actor := translationActor(t, f.server, f.userID)
+	response, err := f.server.submitAITranslation(ctx, actor, f.workID, aiTranslationRequest{Languages: []string{"zh-cn"}, Categories: []string{"title"}, ProviderID: p.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	actor, _ := f.server.accountStore.LoadByID(ctx, f.userID)
 	for i, want := range []struct{ answer, code string }{{"not_installed", "service_not_ready"}, {"out_of_memory", "service_out_of_memory"}, {"agreement", "service_agreement_required"}} {
 		answer.Store(want.answer)
 		if i > 0 {
-			if _, err := f.server.retryLLMTranslationRun(ctx, actor, runs[0].RunID); err != nil {
+			if _, err := f.server.retryAITranslationRun(ctx, actor, response.RunID); err != nil {
 				t.Fatal(err)
 			}
 		}
 		_ = f.server.runNextQueuedWorkflowJob(ctx)
 		var state, code string
-		_ = f.db.QueryRow("SELECT state,COALESCE(failure_code,'') FROM llm_translation_task WHERE workflow_run_id=?", runs[0].RunID).Scan(&state, &code)
+		_ = f.db.QueryRow("SELECT state, failure_code FROM translation_item WHERE workflow_run_id = ?", response.RunID).Scan(&state, &code)
 		if state != "failed" || code != want.code {
 			t.Fatalf("%s: queued translation state=%s code=%s", want.answer, state, code)
 		}
 	}
 }
 
-// A direction the helper's model does not declare is refused before a task is
+// A direction the helper's model does not declare is refused before a run is
 // queued or the helper receives a request, and the translation choices name
 // the model's targets.
 func TestKikotoHelperDeclaredPairsLimitTranslationTargets(t *testing.T) {
@@ -135,27 +135,12 @@ func TestKikotoHelperDeclaredPairsLimitTranslationTargets(t *testing.T) {
 		t.Fatalf("translation models: %d %s", w.Code, w.Body.String())
 	}
 
-	_, err = f.server.enqueueLLMTranslations(ctx, f.userID, []int64{f.workID}, llmTranslatePayload{ProviderID: p.ID, Target: "en-us", Fields: []string{"title"}})
+	actor := translationActor(t, f.server, f.userID)
+	_, err = f.server.submitAITranslation(ctx, actor, f.workID, aiTranslationRequest{Languages: []string{"en-us"}, Categories: []string{"title"}, ProviderID: p.ID})
 	var refused llmRequestError
 	var runs int
 	_ = f.db.QueryRow("SELECT COUNT(*) FROM workflow_run").Scan(&runs)
 	if !errors.As(err, &refused) || refused.Code != "llm_unsupported_language_pair" || runs != 0 || requests.Load() != 0 {
 		t.Fatalf("unsupported direction: err=%v runs=%d requests=%d", err, runs, requests.Load())
-	}
-
-	// A model that changes its pairs while a translation waits stops the task
-	// without a request.
-	queued, err := f.server.enqueueLLMTranslations(ctx, f.userID, []int64{f.workID}, llmTranslatePayload{ProviderID: p.ID, Target: "zh-cn", Fields: []string{"title"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = f.server.llmStore.Models(ctx, p, []llm.Model{{ID: "example-helper-model", Pairs: []llm.LanguagePair{{Source: "ja-jp", Target: "ko-kr"}}}}); err != nil {
-		t.Fatal(err)
-	}
-	_ = f.server.runNextQueuedWorkflowJob(ctx)
-	var state, code string
-	_ = f.db.QueryRow("SELECT state,COALESCE(failure_code,'') FROM llm_translation_task WHERE workflow_run_id=?", queued[0].RunID).Scan(&state, &code)
-	if state != "invalid" || code != "unsupported_language_pair" || requests.Load() != 0 {
-		t.Fatalf("queued translation state=%s code=%s requests=%d", state, code, requests.Load())
 	}
 }
