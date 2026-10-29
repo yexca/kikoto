@@ -25,7 +25,6 @@ export type PersistedDetailActionsProps = {
   hasResumableCursor: boolean;
   isSyncingDetail: boolean;
   fetchBusy: boolean;
-  isRefreshingLocalFiles: boolean;
   cleanupBusy: boolean;
   isResuming: boolean;
   actionMode: DetailActionMode;
@@ -62,13 +61,10 @@ export type PersistedDetailActionsProps = {
   onEditFileNames?: () => void;
   /** Absent when the viewer cannot translate. */
   onTranslateWithAI?: () => void;
-  onRefreshLocalFiles: () => void;
 };
 
 function identityActionsBusy(props: PersistedDetailActionsProps) {
-  return (
-    props.isSyncingDetail || props.fetchBusy || props.isRefreshingLocalFiles || props.cleanupBusy || props.isResuming
-  );
+  return props.isSyncingDetail || props.fetchBusy || props.cleanupBusy || props.isResuming;
 }
 
 export function PersistedIdentityActions(props: PersistedDetailActionsProps) {
@@ -115,8 +111,6 @@ function persistedMediaActionBindings(props: PersistedDetailActionsProps) {
     onManageLyrics: props.actionMode === "local" ? props.onManageLyrics : undefined,
     onEditFileNames: props.actionMode === "local" ? props.onEditFileNames : undefined,
     onTranslateWithAI: props.actionMode === "local" ? props.onTranslateWithAI : undefined,
-    onRefreshLocalFiles:
-      props.actionMode === "local" && props.selectedSource?.kind === "local" ? props.onRefreshLocalFiles : undefined,
   };
 }
 
@@ -126,7 +120,7 @@ export function PersistedMediaActions({
 }: PersistedDetailActionsProps & { layout: SourceActionLayout }) {
   const { t } = useTranslation();
   if (!props.work) return null;
-  const busy = props.isSyncingDetail || props.fetchBusy || props.isRefreshingLocalFiles || props.cleanupBusy;
+  const busy = props.isSyncingDetail || props.fetchBusy || props.cleanupBusy;
   const actions = persistedMediaActionBindings(props);
   return (
     <MediaContextActionBar

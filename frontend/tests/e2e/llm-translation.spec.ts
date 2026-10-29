@@ -462,6 +462,146 @@ test("Translate with AI sends only what each language lacks and shows what it wr
   await expect(dialog.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
 });
 
+test("Translate with AI keeps the plan of the chosen languages when an earlier plan answers late @desktop", async ({
+  page,
+}) => {
+  const localFile = (id: number, kind: string, name: string) =>
+    mediaItemFixture({
+      id,
+      kind,
+      title: name,
+      locations: [mediaLocationFixture({ id, path: `${work.primaryCode}/${name}`, availability: "available" })],
+    });
+  await mockApplication(page, undefined, false, 1, 0, [localFile(1, "audio", "track.mp3")], undefined, {
+    work: {
+      ...work,
+      ageRating: "general",
+      sourcePresence: [
+        {
+          type: "local",
+          availability: "available",
+          fileSourceId: 1,
+          fileSourceCode: "local",
+          fileSourceName: "Local",
+          sourceUrl: work.primaryCode,
+        },
+      ],
+    },
+    authenticated: true,
+    permissions: rolePermissions.admin,
+  });
+  await page.route("**/api/llm/translation-models?*", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: provider.id,
+          name: provider.name,
+          defaultModel: provider.defaultModel,
+          models: ["example-model"],
+          boundary: provider.boundary,
+          maxContentClass: "sensitive",
+        },
+      ] satisfies ApiResponse<"listTranslationModels">,
+    }),
+  );
+  await page.route("**/api/asr/services", (route) =>
+    route.fulfill({ json: [] satisfies ApiResponse<"listASRServices"> }),
+  );
+  await page.route("**/api/translation/items?*", (route) => route.fulfill({ json: { items: [] } }));
+  const plan = (languages: string[]) =>
+    ({
+      workId: work.id,
+      originLanguage: "ja-jp",
+      permissions: { metadata: true, files: true, lyrics: true },
+      languages: languages.map((language) => ({
+        language,
+        title: translationPlanCategory(1),
+        description: translationPlanCategory(0),
+        tags: translationPlanCategory(0),
+        files: translationPlanCategory(0),
+        lyrics: [],
+      })),
+      attributionEnabled: true,
+      autoAccept: true,
+    }) satisfies ApiResponse<"translationPlan">;
+  // The plan for two languages answers only after the plan for one.
+  let releaseLate: () => void = () => {};
+  const late = new Promise<void>((resolve) => (releaseLate = resolve));
+  let lateAnswered = false;
+  const requests: unknown[] = [];
+  await page.route(`**/api/works/${work.id}/ai-translation*`, async (route) => {
+    if (route.request().method() === "POST") {
+      requests.push(route.request().postDataJSON());
+      return route.fulfill({ status: 202, json: { runId: 41, items: 1, skipped: [] } });
+    }
+    const languages = new URL(route.request().url()).searchParams.get("languages")!.split(",");
+    if (languages.length > 1) {
+      await late;
+      await route.fulfill({ json: plan(languages) });
+      lateAnswered = true;
+      return;
+    }
+    return route.fulfill({ json: plan(languages) });
+  });
+
+  await page.goto("/");
+  await page.getByText(work.title, { exact: true }).click();
+  await page
+    .getByRole("complementary", { name: "Source info", exact: true })
+    .getByRole("button", { name: "Translate with AI", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Translate with AI" });
+  const start = dialog.getByRole("button", { name: "Translate 1 item", exact: true });
+  await expect(start).toBeEnabled();
+  const korean = dialog.getByRole("button", { name: "Korean", exact: true });
+  await korean.click();
+  await korean.click();
+  await expect(korean).toHaveAttribute("aria-pressed", "false");
+  releaseLate();
+  await expect.poll(() => lateAnswered).toBe(true);
+  await start.click();
+  await expect.poll(() => requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({ languages: ["en-us"], categories: ["title", "description", "tags", "files"] });
+});
+
+test("The Translation page shows the current view when an earlier view answers late", async ({ page }) => {
+  await application(page);
+  await page.route("**/api/translation/runs?*", (route) =>
+    route.fulfill({
+      json: {
+        runs: [],
+        counts: { active: 0, queued: 0, review: 1, attention: 0 },
+        autoAccept: false,
+      } satisfies ApiResponse<"listTranslationRuns">,
+    }),
+  );
+  let releaseReview: () => void = () => {};
+  const review = new Promise<void>((resolve) => (releaseReview = resolve));
+  let reviewAnswered = false;
+  await page.route("**/api/translation/items?*", async (route) => {
+    const view = new URL(route.request().url()).searchParams.get("view");
+    if (view === "review") {
+      await review;
+      await route.fulfill({ json: { items: [reviewItem({ id: 1, result: "Example review result" })] } });
+      reviewAnswered = true;
+      return;
+    }
+    const items =
+      view === "history" ? [reviewItem({ id: 2, state: "accepted", result: "Example applied result" })] : [];
+    return route.fulfill({ json: { items } satisfies ApiResponse<"listTranslationItems"> });
+  });
+
+  await page.goto("/translation");
+  const views = page.getByRole("tablist", { name: "Translation views", exact: true });
+  await expect(views.getByRole("tab", { name: /^Review/ })).toHaveAttribute("aria-selected", "true");
+  await views.getByRole("tab", { name: "History" }).click();
+  await expect(page.getByText("Example applied result", { exact: true })).toBeVisible();
+  releaseReview();
+  await expect.poll(() => reviewAnswered).toBe(true);
+  await expect(page.getByText("Example applied result", { exact: true })).toBeVisible();
+  await expect(page.getByText("Example review result", { exact: true })).toHaveCount(0);
+});
+
 test("The Translation page leaves out review while auto-accept is on and lists what was written", async ({ page }) => {
   await application(page);
   await page.route("**/api/translation/runs?*", (route) =>

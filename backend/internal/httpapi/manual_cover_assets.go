@@ -50,10 +50,12 @@ func (s *Server) copyManualCoverFromLocation(ctx context.Context, workID, locati
 	if err != nil {
 		return "", "", errManualCoverCandidate
 	}
-	if _, err := resolvePathWithinRoot(s.cfg.DataRoot, sourcePath); err != nil {
+	// Open the checked location itself, which holds no link.
+	resolvedPath, err := resolvePathWithinRoot(s.cfg.DataRoot, sourcePath)
+	if err != nil {
 		return "", "", errManualCoverCandidate
 	}
-	source, err := os.Open(sourcePath)
+	source, err := os.Open(resolvedPath)
 	if err != nil {
 		return "", "", err
 	}
@@ -77,7 +79,7 @@ func (s *Server) copyManualCoverFromLocation(ctx context.Context, workID, locati
 	if _, err := download.WriteFile(manualCoverReader{ctx, source}, size, staged, download.Options{MaxBytes: download.CoverMaxBytes, ExpectedBytes: &size}); err != nil {
 		return "", "", err
 	}
-	after, err := os.Stat(sourcePath)
+	after, err := os.Stat(resolvedPath)
 	if err != nil || !os.SameFile(before, after) || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
 		return "", "", errManualCoverCandidate
 	}

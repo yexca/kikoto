@@ -380,6 +380,14 @@ func (s *Server) collectLocalWorkFolder(ctx context.Context, workID int64, relPa
 	}, time.Since(collectStartedAt), nil
 }
 
+// localWorkFolderReadError marks a failure to read a work folder's file tree,
+// as opposed to a database failure, so a scan can skip that one folder.
+type localWorkFolderReadError struct{ err error }
+
+func (e localWorkFolderReadError) Error() string { return e.err.Error() }
+
+func (e localWorkFolderReadError) Unwrap() error { return e.err }
+
 func (s *Server) acquireLocalMediaWriteSlot(ctx context.Context) (func(), time.Duration, error) {
 	writeWaitStartedAt := time.Now()
 	s.localMediaIndexMu.Lock()

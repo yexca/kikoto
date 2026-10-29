@@ -695,6 +695,38 @@ export function ResultColumn({
         if (item) manage.onKeep(item);
       }
     : undefined;
+  const changes = (
+    <>
+      {added > 0 && (
+        <span className="rounded-full bg-primary/10 px-1.5 py-px font-medium text-primary">
+          {t("folderEdit.addCount", { count: added })}
+        </span>
+      )}
+      {moved > 0 && (
+        <span className="rounded-full bg-muted px-1.5 py-px font-medium">
+          {t("folderEdit.moveCount", { count: moved })}
+        </span>
+      )}
+      {/* A wide pane lists what the edit deletes in a column of its own. */}
+      {removed > 0 && !header && (
+        <span className="rounded-full bg-error-surface px-1.5 py-px font-medium text-error-foreground">
+          {t("folderEdit.removeCount", { count: removed })}
+        </span>
+      )}
+      {workspace.arrange && (
+        <Button
+          variant={header ? "outline" : "ghost"}
+          size="sm"
+          className={cn("h-7 gap-1 px-2 text-xs", header ? "ml-1" : "-mr-2 ml-auto")}
+          disabled={workspace.applying}
+          onClick={() => setCreatingFolder(true)}
+        >
+          <FolderPlus className="h-3.5 w-3.5" />
+          {t("folderEdit.newFolder")}
+        </Button>
+      )}
+    </>
+  );
   return (
     <section
       aria-label={header ? t("folderEdit.currentFolder") : t("folderEdit.pane.result")}
@@ -744,45 +776,25 @@ export function ResultColumn({
         identical?.review
       ) : (
         <>
-          <div className="shrink-0 space-y-1 border-b px-3 py-2.5 lg:px-4">
-            <div className="flex items-center justify-between gap-2">
-              {!header && <div className="text-sm font-medium">{t("folderEdit.pane.result")}</div>}
-              <div className={cn("flex shrink-0 items-center gap-1.5 text-xs tabular-nums", header && "flex-1")}>
-                {added > 0 && (
-                  <span className="rounded-full bg-primary/10 px-1.5 py-px font-medium text-primary">
-                    {t("folderEdit.addCount", { count: added })}
-                  </span>
-                )}
-                {moved > 0 && (
-                  <span className="rounded-full bg-muted px-1.5 py-px font-medium">
-                    {t("folderEdit.moveCount", { count: moved })}
-                  </span>
-                )}
-                {removed > 0 && (
-                  <span className="rounded-full bg-error-surface px-1.5 py-px font-medium text-error-foreground">
-                    {t("folderEdit.removeCount", { count: removed })}
-                  </span>
-                )}
-                {workspace.arrange && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="-mr-2 ml-auto h-7 gap-1 px-2 text-xs"
-                    disabled={workspace.applying}
-                    onClick={() => setCreatingFolder(true)}
-                  >
-                    <FolderPlus className="h-3.5 w-3.5" />
-                    {t("folderEdit.newFolder")}
-                  </Button>
-                )}
+          <div className={cn("shrink-0 border-b px-3 py-2.5 lg:px-4", header ? "space-y-2" : "space-y-1")}>
+            {header ? (
+              // A wide pane's head names the folder, so its tools share one row with the changes.
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1 space-y-2">{tools}</div>
+                <div className="flex min-h-8 shrink-0 items-center gap-1.5 text-xs tabular-nums">{changes}</div>
               </div>
-            </div>
-            {!header && (
-              <div className="truncate font-mono text-xs text-muted-foreground" title={workspace.rootPath}>
-                {workspace.rootPath || t("fetchCompose.newFolder")}
-              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium">{t("folderEdit.pane.result")}</div>
+                  <div className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums">{changes}</div>
+                </div>
+                <div className="truncate font-mono text-xs text-muted-foreground" title={workspace.rootPath}>
+                  {workspace.rootPath || t("fetchCompose.newFolder")}
+                </div>
+                {tools}
+              </>
             )}
-            {tools}
             {workspace.lyricsAdditionCount > 0 && (
               <p className="text-xs text-muted-foreground">
                 {t("folderEdit.lyricsTarget", { folder: lyricsRootFolderName })}
@@ -835,6 +847,7 @@ export function ResultColumn({
                   reveal={reveal ? { key: currentFileKey(reveal.path), seq: reveal.seq } : null}
                   onDropped={setDropped}
                   hint={header ? t("fileWorkspace.arrangeHint") : undefined}
+                  changesOnly={Boolean(header)}
                 />
               </>
             ) : workspace.result.length === 0 ? (

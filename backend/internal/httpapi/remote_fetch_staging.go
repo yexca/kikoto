@@ -267,7 +267,7 @@ func (s *Server) stageRemoteFetchItems(ctx context.Context, manifest remoteFetch
 					return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
 				}
 			}
-			copyErr := copyFetchFile(root, stagedPath, source)
+			copyErr := copyFetchFile(root, stagedPath, fetchStagingCopyTempPath(scoped.stageRoot), source)
 			closeErr := source.Close()
 			if err := errors.Join(copyErr, closeErr); err != nil {
 				return s.recordRemoteFetchManifestError(ctx, manifest.ID, err)
@@ -583,6 +583,12 @@ func (s *Server) reconcileRemoteFetchManifests(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			// On an offline pool every root looks absent. The manifest keeps its
+			// state until the pool is back and the run is retried.
+			if errors.Is(err, errStoragePoolOffline) || errors.Is(err, errLibraryOffline) {
+				slog.Warn("interrupted remote Fetch waits for its storage pool", "run_id", item.runID)
+				continue
+			}
 			// One unrecoverable Fetch must not keep the server from starting.
 			slog.Error("recover interrupted remote Fetch", "run_id", item.runID, "error", err)
 			if err := recordRemoteFetchRecoveryFailure(ctx, s.db, item.runID); err != nil {
@@ -636,6 +642,11 @@ func (s *Server) settleInterruptedRemoteFetchPublication(ctx context.Context, ma
 	if manifest.State != "publishing" {
 		return manifest, nil
 	}
+	// The evidence is read from the target's pool. While it is offline its
+	// mount point shows none of the roots, which is not evidence of anything.
+	if err := s.ensureLibraryPathOnline(ctx, manifest.TargetRoot); err != nil {
+		return manifest, err
+	}
 	if err := s.reconcilePublishingRemoteFetch(ctx, manifest); err != nil {
 		return manifest, err
 	}
@@ -652,18 +663,18 @@ func (s *Server) reconcilePublishingRemoteFetch(ctx context.Context, manifest re
 		return err
 	}
 	defer func() { _ = root.Close() }()
+	// Opening the paths refused a root, or a folder above one, that is a link
+	// or not a directory. Which roots exist decides the outcome; what they hold
+	// does not, and a rename moves a directory without following links inside
+	// it, so a link or special file the user keeps in the target cannot stall
+	// recovery.
 	exists := make(map[string]bool, 3)
 	for _, name := range []string{scoped.targetRoot, scoped.stageRoot, scoped.backupRoot} {
-		_, err := root.Stat(name)
+		_, err := root.Lstat(name)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 		exists[name] = err == nil
-		if err == nil {
-			if err := walkFetchDirectory(root, name, nil); err != nil {
-				return err
-			}
-		}
 	}
 	targetExists, stageExists, backupExists := exists[scoped.targetRoot], exists[scoped.stageRoot], exists[scoped.backupRoot]
 	switch {

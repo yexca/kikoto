@@ -6,7 +6,7 @@ import { cn } from "@/lib/tailwindClassNames";
 import { lockPageScroll } from "./pageScrollLock";
 
 type DialogLayer = "overlay" | "overlay-nested" | "sheet" | "overlay-top";
-type DialogSize = "sm" | "md" | "lg" | "xl" | "2xl" | "full";
+type DialogSize = "sm" | "md" | "lg" | "xl" | "2xl" | "full" | "workspace";
 
 const layerClassNames: Record<DialogLayer, string> = {
   overlay: "z-overlay",
@@ -22,6 +22,9 @@ const sizeClassNames: Record<DialogSize, string> = {
   xl: "max-w-2xl",
   "2xl": "max-w-4xl",
   full: "max-w-6xl",
+  // A work's editing workspaces share one size and open at their full height,
+  // so loading content or switching tabs never resizes them.
+  workspace: "h-[var(--dialog-max-height)] max-w-7xl md:h-[min(90dvh,var(--dialog-max-height))]",
 };
 
 // Only the most recently opened dialog reacts to Escape and traps Tab, so a

@@ -347,6 +347,13 @@ Local scans ignore symbolic-link files, and media processing and Fetch source
 copies reject stored paths whose resolved target leaves the configured root.
 The check compares against the root's own resolved location, so a root that is
 itself a symbolic link, or sits below a linked directory, holds its files.
+Media processing opens the resolved location it checked, and refuses a
+dangling link.
+
+Inside the data root, scans do not descend into a linked folder, and Fetch
+refuses to stage, publish, or back up through a linked folder or Windows
+junction, so Fetch writes only where a scan can see. Mount another disk inside
+the data root, for example as a storage pool, instead of linking to it.
 
 The production image runs as the container root user. Production and Demo
 Compose drop Linux capabilities, enable `no-new-privileges`, and use a read-only

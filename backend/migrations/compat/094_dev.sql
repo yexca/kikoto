@@ -2328,6 +2328,10 @@ CREATE INDEX idx_workflow_job_claim_priority
 CREATE INDEX idx_workflow_job_node_run
   ON workflow_job(workflow_node_run_id);
 
+CREATE INDEX idx_workflow_job_ranking_unsettled ON workflow_job(id)
+  WHERE worker_type = 'ranking_pull'
+    AND COALESCE(json_extract(checkpoint_json, '$.rankingScheduleSettled'), 0) = 0;
+
 CREATE INDEX idx_workflow_job_recovery
   ON workflow_job(status, recoverable, available_at, heartbeat_at, id);
 

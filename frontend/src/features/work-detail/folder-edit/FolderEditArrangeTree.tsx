@@ -389,6 +389,7 @@ export function FolderEditArrangeTree({
   reveal,
   onDropped,
   hint,
+  changesOnly = false,
 }: {
   entries: readonly FolderEditResultEntry[];
   arrange: FolderWorkspaceArrange;
@@ -415,6 +416,8 @@ export function FolderEditArrangeTree({
   onDropped?: (drop: FolderEditDrop) => void;
   /** Replaces the arrange hint below the tree. */
   hint?: string;
+  /** Marks only the files the edit changes, where the files it deletes are listed apart. */
+  changesOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const tree = useMemo(() => buildFolderEditTree(entries, arrange.folders), [arrange.folders, entries]);
@@ -451,6 +454,7 @@ export function FolderEditArrangeTree({
     expand,
     reveal,
     onDropped,
+    changesOnly,
   };
   const root = dropTarget(context, "", disabled);
   return (
@@ -516,6 +520,7 @@ type TreeContext = {
   expand?: FolderEditExpand;
   reveal?: { key: string; seq: number } | null;
   onDropped?: (drop: FolderEditDrop) => void;
+  changesOnly: boolean;
 };
 
 function ArrangeNode({
@@ -756,6 +761,7 @@ function ArrangeFile({ entry, depth, context }: { entry: FolderEditResultEntry; 
         disabled={disabled}
         onDecisionChange={context.onDecisionChange}
         mark={context.entryMark?.(entry)}
+        changesOnly={context.changesOnly}
         actions={
           actions.length > 0 && !disabled ? (
             <RowMenu

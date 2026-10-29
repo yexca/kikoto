@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/yexca/kikoto/backend/internal/localfs"
@@ -240,6 +241,40 @@ func (scope localScanScope) withUnreadableFolders(folders []string) localScanSco
 		}
 	}
 	return scope
+}
+
+// withPoolsOfflineIn returns the scope without the pools that current, a later
+// observation, finds offline, so a pool that went offline during the scan is
+// reported offline and keeps its works' state.
+func (scope localScanScope) withPoolsOfflineIn(current localScanScope) localScanScope {
+	online := []string{}
+	offline := slices.Clone(scope.offline)
+	for _, pool := range scope.online {
+		if current.poolOnline(pool) {
+			online = append(online, pool)
+			continue
+		}
+		state := libraryPoolState{Pool: storagepool.Pool{Path: pool}, Reason: storagepool.ReasonUnreadable}
+		for _, candidate := range current.offline {
+			if strings.EqualFold(candidate.Pool.Path, pool) {
+				state = candidate
+			}
+		}
+		offline = append(offline, state)
+	}
+	scope.online, scope.offline = online, offline
+	return scope
+}
+
+// foldersOnOnlinePools keeps the folders whose pool is online in this scope.
+func (scope localScanScope) foldersOnOnlinePools(folders []string) []string {
+	kept := []string{}
+	for _, folder := range folders {
+		if poolPath, _ := storagepool.Split(scope.mode, folder); scope.poolOnline(poolPath) {
+			kept = append(kept, folder)
+		}
+	}
+	return kept
 }
 
 // applyUnreadableResult makes a scan that skipped unreadable folders partial,

@@ -229,24 +229,39 @@ func (s *Server) markTranslationRequesting(ctx context.Context, runID int64, ite
 }
 
 // translationRequestFailure names what a failed request leaves its items
-// with. A definitive rejection fails them and may be retried; any other error
-// leaves the result unknown, and only an explicit resend repeats it.
+// with. A request that never left, a definitive rejection and an answer that
+// cannot be used fail them and may be sent again. A request that left without
+// a usable status or with its answer lost leaves the result unknown, and only
+// an explicit resend repeats it.
 func translationRequestFailure(err error) (string, string) {
 	if code := llmHelperRejection(err); code != "" {
 		return "failed", code
 	}
 	var rejected llm.UpstreamError
-	if errors.As(err, &rejected) && (rejected.Status == 400 || rejected.Status == 401 || rejected.Status == 403 || rejected.Status == 404 || rejected.Status == 422 || rejected.Status == 429) {
+	switch {
+	case errors.As(err, &rejected) && (rejected.Status == 400 || rejected.Status == 401 || rejected.Status == 403 || rejected.Status == 404 || rejected.Status == 422 || rejected.Status == 429):
 		return "failed", "upstream_rejected"
+	case errors.As(err, &rejected), errors.Is(err, llm.ErrResultUnknown):
+		return "uncertain", "upstream_result_unknown"
+	case errors.Is(err, llm.ErrRequestTooLarge):
+		return "failed", "request_too_large"
+	case errors.Is(err, llm.ErrInvalidResult):
+		return "failed", "invalid_output"
 	}
-	return "uncertain", "upstream_result_unknown"
+	return "failed", "endpoint_unavailable"
 }
 
 func (s *Server) failTranslationRequest(ctx context.Context, items []translationItem, requestErr error) error {
 	state, code := translationRequestFailure(requestErr)
+	unsent := ctx.Err() != nil && state == "failed" && code == "endpoint_unavailable"
 	for _, item := range items {
-		if _, err := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE translation_item SET state = ?, failure_code = ?, updated_at = CURRENT_TIMESTAMP
-			WHERE id = ? AND state = 'requesting'`, state, code, item.ID); err != nil {
+		statement, args := `UPDATE translation_item SET state = ?, failure_code = ?, updated_at = CURRENT_TIMESTAMP
+			WHERE id = ? AND state = 'requesting'`, []any{state, code, item.ID}
+		if unsent {
+			// A request a stop interrupted before it left runs when the job does.
+			statement, args = "UPDATE translation_item SET state = 'queued', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND state = 'requesting'", []any{item.ID}
+		}
+		if _, err := s.db.ExecContext(context.WithoutCancel(ctx), statement, args...); err != nil {
 			return err
 		}
 	}
@@ -254,6 +269,14 @@ func (s *Server) failTranslationRequest(ctx context.Context, items []translation
 		return ctx.Err()
 	}
 	return nil
+}
+
+// failTranslationOutput fails an item whose answer could not be used. An item
+// a cancellation already settled keeps that state.
+func (s *Server) failTranslationOutput(ctx context.Context, item translationItem, code string) error {
+	_, err := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE translation_item SET state = 'failed', failure_code = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND state IN ('requesting', 'queued')`, code, item.ID)
+	return err
 }
 
 func (s *Server) translateMetadataItems(ctx context.Context, job workflowJobRecord, send *translationSend, items []translationItem) error {
@@ -414,7 +437,7 @@ func (s *Server) translateNameItems(ctx context.Context, job workflowJobRecord, 
 	for index, item := range ready {
 		name, err := normalizeFileDisplayName(translated.Tags[index])
 		if err != nil || name == "" {
-			if _, err := s.db.ExecContext(ctx, "UPDATE translation_item SET state = 'failed', failure_code = 'invalid_output', updated_at = CURRENT_TIMESTAMP WHERE id = ?", item.ID); err != nil {
+			if err := s.failTranslationOutput(ctx, item, "invalid_output"); err != nil {
 				return err
 			}
 			continue
@@ -493,8 +516,7 @@ func (s *Server) translateLyricsItem(ctx context.Context, job workflowJobRecord,
 		}
 		translated = append(translated, result.Lyrics...)
 		if len(strings.Join(translated, "\n")) > llm.LyricsLimit {
-			_, err := s.db.ExecContext(ctx, "UPDATE translation_item SET state = 'failed', failure_code = 'translation_output_too_large', updated_at = CURRENT_TIMESTAMP WHERE id = ?", item.ID)
-			return err
+			return s.failTranslationOutput(ctx, item, "translation_output_too_large")
 		}
 		if _, err := s.db.ExecContext(ctx, `UPDATE translation_item SET state = 'queued', request_index = ?, checkpoint_json = ?, updated_at = CURRENT_TIMESTAMP
 			WHERE id = ? AND state = 'requesting'`, index+1, mustJSON(translated), item.ID); err != nil {
@@ -506,8 +528,7 @@ func (s *Server) translateLyricsItem(ctx context.Context, job workflowJobRecord,
 	}
 	text, err := document.Render(translated)
 	if err != nil {
-		_, err := s.db.ExecContext(ctx, "UPDATE translation_item SET state = 'failed', failure_code = 'invalid_lyrics_output', updated_at = CURRENT_TIMESTAMP WHERE id = ?", item.ID)
-		return err
+		return s.failTranslationOutput(ctx, item, "invalid_lyrics_output")
 	}
 	attribute, err := s.lyricsAttributionEnabled(ctx)
 	if err != nil {

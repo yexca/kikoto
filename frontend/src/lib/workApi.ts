@@ -154,7 +154,10 @@ export type WorkEntityLink = {
 export type LocalMediaRefreshResult = {
   workId: number;
   fileSourceId: number;
+  /** The folder refreshed, when the request named one. */
+  folderId?: number;
   status: string;
+  /** Available local files indexed: in the folder when one was named, otherwise on the source. */
   indexedFiles: number;
 };
 
@@ -171,8 +174,12 @@ export const workApi = {
       `/api/works/${encodeURIComponent(id)}/media`,
       signal,
     ),
-  refreshWorkLocalFiles: (id: number, fileSourceId?: number | null) =>
-    postJSONBody<LocalMediaRefreshResult>(`/api/works/${id}/local-files/refresh`, { fileSourceId: fileSourceId ?? 0 }),
+  /** Indexes a work's local files again: one folder when `folderId` is given, otherwise its folders on the source. */
+  refreshWorkLocalFiles: (id: number, fileSourceId?: number | null, folderId?: number) =>
+    postJSONBody<LocalMediaRefreshResult>(`/api/works/${id}/local-files/refresh`, {
+      fileSourceId: fileSourceId ?? 0,
+      ...(folderId ? { folderId } : {}),
+    }),
   resolveWorkCode: (code: string, signal?: AbortSignal) =>
     getJSON<WorkResolveResponse>(`/api/works/${encodeURIComponent(code)}/resolve`, signal),
   resolveWorkEntityLink: (code: string, kind: WorkEntityLink["kind"], name = "") =>

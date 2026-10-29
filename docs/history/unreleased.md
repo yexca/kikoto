@@ -2,8 +2,9 @@
 
 > [!NOTE]
 > LLM translation previews still waiting for review are discarded during the
-> upgrade. Translate those works again with **Translate with AI**, whose
-> results take effect as soon as they finish.
+> upgrade, and an LLM translation still queued, or retried after it, stops
+> without sending its request. Translate those works again with **Translate
+> with AI**, whose results take effect as soon as they finish.
 
 > [!NOTE]
 > A transcription queued before the upgrade, or a failed one retried after it,
@@ -16,13 +17,21 @@
 > scope, or run the selected works from **Workflows** instead.
 
 > [!IMPORTANT]
-> The popular collections become Rankings. Each Remote popular and DLsite
-> popular trigger is turned into a ranking in **Discover → Rankings**
-> with its period, year, or source, its interval, and whether it ran on its
-> own; the triggers themselves are removed. Collections no longer add tags,
-> sync metadata, Track, or Fetch, and collection runs still queued or running
-> when the upgrade starts are stopped. Tags they added earlier stay with their
-> works.
+> The popular collections become Rankings, and their triggers are removed.
+> Each DLsite popular and Remote popular trigger becomes the ranking of its
+> period, year, or source in **Discover → Rankings**. Triggers for the same
+> ranking, including one limited to new releases, become one ranking, which
+> is pulled automatically when any of them was enabled, at the shortest
+> interval among the enabled ones; a Startup trigger counts as the ranking's
+> default interval. An interval outside what the ranking offers moves to the
+> nearest choice, and a remote ranking keeps at least 10 places. An earlier
+> year's annual ranking is pulled once and does not continue with the next
+> year. A Remote popular trigger whose source was removed or is no longer a
+> compatible remote source is dropped. Every ranking is pulled once right
+> after the upgrade, also those of paused triggers. Collections no longer add
+> tags, sync metadata, Track, or Fetch, and collection runs still queued or
+> running when the upgrade starts are stopped. Tags they added earlier stay
+> with their works.
 
 > [!NOTE]
 > Availability Watch only monitors. A watch configured to Track, Fetch, or
@@ -42,13 +51,24 @@
   into it. On wide screens it has three fixed columns: the work's other
   folders and remote editions on the left, behind one prompt for each kind,
   the edited folder in the middle, and **To be deleted** on the right, with
-  drag and drop into the edited folder. Another local folder chooses **Copy**
-  or **Merge** in place of the **Merge into this folder** switch, and a
+  drag and drop into the edited folder. There the folder choice and
+  **Refresh** sit in the edited folder's head, **Delete folder and forget
+  work** below **To be deleted**, and only the files the edit changes carry a
+  mark. Another local folder chooses **Copy** or **Merge** in place of the
+  **Merge into this folder** switch, and a
   remote edition is marked **Read-only**. **Undo all changes** drops the
   whole edit, and **Restore** brings it back until the next change. **Manage
   as lyrics** is replaced by a note in the workspace that opens **Manage
   lyrics** on the folder's other lyrics. Manage cache and viewers who do not
   manage local files keep the list that selects files to delete.
+- **Refresh local files** moves from the source actions into **Manage files**
+  as **Refresh**, above the workspace or in the edited folder's head on wide
+  screens. It reads only the edited folder from
+  disk again, waits until the edit has no changes, and leaves a folder deeper
+  than the scan depth as it is instead of marking its files missing.
+- **Manage files**, **Manage lyrics**, **Edit display names**, and
+  **Translate with AI** open at one width and at their full height, so loading
+  or switching tabs no longer resizes them.
 - **Manage lyrics → Assignments** shows the selected track's lyrics beside
   the list on wide screens, with its timed lines and timing check, instead of
   opening a preview under the row. Each folder and the language strip show
@@ -225,7 +245,15 @@
 
 - Fetch rejects linked staging, target, and backup directories during copying,
   publication, recovery, and cleanup, and keeps filesystem operations within
-  the data root when a directory changes after validation.
+  the data root when a directory changes after validation. A link or special
+  file inside the folder a Fetch published does not stop its recovery.
+- A Fetch or folder edit that replaces a file keeps a file of the user's own
+  beside it named like a temporary copy, such as `track.wav.tmp` beside
+  `track.wav`, instead of deleting it.
+- Startup recovery of an interrupted Fetch waits while the target's storage
+  pool is offline instead of reading the empty mount point, which could leave
+  the next attempt stopped on a pending backup; retrying the Fetch once the
+  pool is back finishes the publication.
 
 </details>
 
@@ -234,7 +262,9 @@
 
 - Full local scans reconcile changes made inside indexed work folders while the
   server is stopped, including added, removed, and replaced files, while keeping
-  folders outside the visible scan scope unchanged.
+  folders outside the visible scan scope unchanged. A work folder the scan
+  cannot read completely, or a storage pool that goes offline during the scan,
+  is left as it was and reported, and the rest of the scan completes.
 - Metadata groups All, Needs attention, Metadata issues, and No available
   source as filters under one **DLsite works** tab. Existing links, including
   metadata sync **Open metadata issues** links, open the matching filter.
@@ -294,12 +324,17 @@
   cannot translate shows × and is not sent.
 - Display names of local files and folders can be translated with AI. Names in
   the original language and names without words, such as `Track01`, are left
-  as they are.
+  as they are. A display name or lyrics someone sets while a translation waits
+  are kept, and the translation says so.
 - A new **Translation** page in the sidebar follows running and queued
   translations by work and language, resends stopped ones, lists what each
   translation wrote with a link to its work, and holds the translation
   coverage that was under Metadata. Everyone who can translate sees every
-  account's translations.
+  account's translations. Sending a stopped translation again asks for
+  confirmation only when its request may already have been charged. Coverage
+  counts a **Fallback** title or description as **Manual**, since every
+  language shows it, and Translate with AI does not offer to translate it.
+  Demo shows the page read-only.
 - **Manage lyrics → Transcribe** chooses the audio language first, then the
   model, and the model decides the lyrics language: a model that transcribes
   writes the audio language, a model that translates is offered only for its
@@ -332,7 +367,8 @@
 - Playback, transcription, loudness analysis, cover selection, and media
   probing accept files when the data or cache root, or one of its parent
   directories, is a symbolic link. A link inside the root that leaves it is
-  still refused.
+  still refused. They open the location they checked, and refuse a dangling
+  link.
 
 </details>
 
@@ -348,6 +384,7 @@
   packages.
 - Make runs every Go target with the toolchain `backend/go.mod` pins, so a
   newer locally installed Go no longer breaks `make backend-lint`; set
-  `GOTOOLCHAIN` to override it.
+  `GOTOOLCHAIN` to override it. This works from Git Bash and PowerShell on
+  Windows as well as on Linux.
 
 </details>

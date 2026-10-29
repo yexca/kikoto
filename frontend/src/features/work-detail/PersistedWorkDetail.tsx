@@ -8,6 +8,7 @@ import {
   type LibrarySource,
   type ListeningStatus,
   type WorkDetail,
+  type WorkFolderLocation,
   type WorkMetadataSyncRunResult,
 } from "@/lib/api";
 import type { WorkPreview } from "@/features/work-detail/workDetailShared";
@@ -414,12 +415,13 @@ export function PersistedWorkDetailController({
     onShowEdition: editions.showEdition,
   });
 
-  const refreshLocalFiles = async () => {
+  /** Indexes the folder Manage files edits again, for files changed outside Kikoto. */
+  const refreshLocalFolder = async (folder: WorkFolderLocation) => {
     const target = localDirectoryWork ?? work;
-    if (!target || selectedSource?.kind !== "local") return;
+    if (!target) return;
     setIsRefreshingLocalFiles(true);
     try {
-      const result = await api.refreshWorkLocalFiles(target.id, selectedSource.fileSourceId);
+      const result = await api.refreshWorkLocalFiles(target.id, folder.fileSourceId, folder.id);
       invalidateCachedWorkMedia(target.id, principalID);
       if (result.workId !== target.id) invalidateCachedWorkMedia(result.workId, principalID);
       const refreshed = await api.getWork(result.workId);
@@ -592,7 +594,6 @@ export function PersistedWorkDetailController({
     hasResumableCursor,
     isSyncingDetail,
     fetchBusy: fetchWorkspace.isBusy,
-    isRefreshingLocalFiles,
     cleanupBusy: mediaCleanup.isBusy,
     isResuming: playback.isResuming,
     actionMode,
@@ -634,7 +635,6 @@ export function PersistedWorkDetailController({
         ? () => setFileNamesOpen(true)
         : undefined,
     onTranslateWithAI: canTranslate ? () => setTranslateOpen(true) : undefined,
-    onRefreshLocalFiles: () => void refreshLocalFiles(),
   };
   const heroActions = <PersistedIdentityActions {...detailActionProps} />;
   const renderSourceActions = (layout: SourceActionLayout) => (
@@ -767,6 +767,12 @@ export function PersistedWorkDetailController({
           onManageFolderLyrics: files.manageFolderLyrics,
           // Comparing files reads the library, which the server allows only to users who manage its files.
           canCheckDuplicates: canEditFolders,
+          refresh: {
+            refreshing: isRefreshingLocalFiles,
+            onRefresh: () => {
+              if (files.workspaceFolder) void refreshLocalFolder(files.workspaceFolder);
+            },
+          },
         }}
         onClose={files.closeManager}
         onApplied={(result) => {

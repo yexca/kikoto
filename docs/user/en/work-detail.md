@@ -378,7 +378,8 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
 - From about 1280 pixels of width, the workspace has three fixed columns:
   the other places on the left, **This folder** in the middle, and **To be
   deleted** on the right. **This folder** always shows the folder as it will
-  be. The left column starts with one prompt for the work's other local
+  be and marks only the files the edit changes, leaving a file it keeps as it
+  is unmarked. The left column starts with one prompt for the work's other local
   folders and one for all its remote editions, whichever sources offer them,
   each with how many there are; the local folders' prompt names each folder
   with **Copy** or **Merge**. Opening one shows the files of one folder or
@@ -497,7 +498,16 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   that you retry continues where it stopped. A merged folder of a work that a
   Fetch is still filling is not merged. The directory reloads when it
   finishes.
-- **Delete folder and forget work**, above the workspace, deletes the whole
+- **Refresh**, above the workspace or, in the wide workspace, in the head of
+  **This folder**, reads **This folder** from disk again for
+  files added, changed, or removed outside Kikoto, and the workspace then
+  lists what the folder holds. The work's other folders keep what is indexed.
+  It waits until the edit has no changes, and nothing in the workspace can be
+  changed while it runs. A folder deeper than the
+  [scan depth](settings.md#library) is not refreshed until the scan depth
+  reaches it.
+- **Delete folder and forget work**, above the workspace or, in the wide
+  workspace, below **To be deleted**, deletes the whole
   folder and every copy of its files, then forgets the work if no source
   remains. It is kept apart from the edit's file changes, asks for both
   confirmations, and is offered to users who may forget works while the work
@@ -505,7 +515,8 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   notice instead of its files until its disk is mounted.
 - A work whose code a scan finds in several local folders keeps all of them.
   The directory then shows one folder per copy, **Manage files** lists one
-  folder at a time with a **Folder** choice, and the work can be forgotten
+  folder at a time with a **Folder** choice, in the head of **This folder** in
+  the wide workspace, and the work can be forgotten
   only once a single folder is left. A library manager sees a notice above the
   directory when the work is in several folders or another edition of it is in
   the library, with **Manage lyrics** and **Manage files** to bring the lyrics
@@ -566,7 +577,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   Activity says why, and the folder keeps only the Fetch's files.
   When the destination folder needs review, **Review in the standard Fetch**
   opens the Fetch dialog. Anyone else gets the Fetch dialog.
-- Open source-specific Track, Fork, Fetch, Origin, cache, refresh, and file
+- Open source-specific Track, Fork, Fetch, Origin, cache, and file
   maintenance commands from the selected source's Hero Source menu.
 - Track the selected remote source, persist its browsable tree, and open the
   corresponding source inside the aggregated Tracked context without requiring

@@ -2500,7 +2500,6 @@ export const surfaceHans = {
     fetch: "获取",
     openOriginOn: "在 {{source}} 上打开",
     openOrigin: "打开来源页面",
-    refreshLocalFiles: "刷新本地文件",
     manageCache: "管理缓存",
     noCachedFiles: "没有缓存文件",
     manageFiles: "管理文件",
@@ -2572,6 +2571,7 @@ export const surfaceHans = {
     save: "保存",
     saved: "已保存显示名称",
     saveFailed: "无法保存显示名称",
+    saveFailedLanguages: "无法保存{{languages}}的显示名称，其他语言已保存。",
     languageHint: "以{{language}}浏览的用户会看到这些名称。留空则显示原始名称。",
     keyboardHint: "按 Enter 跳到下一个名称。",
     coverage: "{{count}} / {{total}} 已命名",
@@ -2833,6 +2833,10 @@ export const surfaceHans = {
     arrangeHint: "在此文件夹内拖动文件和文件夹来移动，或从其他窗格拖入文件来复制。每行的菜单也能完成同样的操作。",
     forget: "删除文件夹并忘记作品",
     forgetHint: "删除整个文件夹及其文件的所有副本，如果没有剩余来源，则忘记该作品。",
+    refresh: "刷新",
+    refreshHint: "重新从磁盘读取此文件夹，以反映在 Kikoto 之外添加、修改或删除的文件。",
+    refreshBlocked: "请先应用或撤销更改，再刷新此文件夹。",
+    refreshing: "正在刷新此文件夹",
     folderLyrics_one:
       "此文件夹中有 {{count}} 个歌词文件不在 Kikoto 托管的歌词中。可在“管理歌词”中把它们设为某种语言的歌词。",
     folderLyrics_other:

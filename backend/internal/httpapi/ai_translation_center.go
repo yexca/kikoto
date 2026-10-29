@@ -40,11 +40,12 @@ var translationRunViews = map[string][]string{
 }
 
 func (s *Server) listTranslationRuns(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.IsDemo() {
-		writeAPIError(w, 403, "llm_disabled", "Translation is unavailable in Demo.", false)
+	actor, ok := userFromContext(r.Context())
+	if ok && s.cfg.IsDemo() {
+		// Demo translates nothing, so its Translation page lists no runs.
+		writeJSON(w, 200, map[string]any{"runs": []translationRunResponse{}, "counts": map[string]int{"active": 0, "queued": 0, "review": 0, "attention": 0}, "autoAccept": true})
 		return
 	}
-	actor, ok := userFromContext(r.Context())
 	if !ok || !canUseTranslationCenter(actor) {
 		writeAPIError(w, http.StatusForbidden, "permission_denied", "permission denied", false)
 		return

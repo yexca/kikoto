@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -356,5 +357,173 @@ func TestFullLocalScanSkipsAnIndexedTreeWithAnUnreadableDescendant(t *testing.T)
 	}
 	if inaccessibleNewFiles != 0 {
 		t.Fatal("a tree with an unreadable descendant was reconciled")
+	}
+}
+
+// Discovery reads folders only down to the scan depth, while the refresh of an
+// indexed work reads its whole tree. A folder deeper inside one work that
+// cannot be read skips that work, and the rest of the scan, including marking
+// works that are gone missing, still completes.
+func TestFullLocalScanSkipsAWorkWhoseTreeCannotBeReadBelowTheScanDepth(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("folder permissions are not enforced for this user")
+	}
+	ctx := context.Background()
+	db := openMigratedTestDB(t)
+	dataRoot := t.TempDir()
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 2})
+	writeTrack := func(rel string) {
+		t.Helper()
+		path := filepath.Join(dataRoot, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("audio"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTrack("RJ00000001/track.mp3")
+	writeTrack("RJ00000001/a/b/c/d/e/locked/deep.mp3")
+	writeTrack("RJ00000002/track.mp3")
+	executeLocalScanForTest(t, server)
+	for _, code := range []string{"RJ00000001", "RJ00000002"} {
+		var workID int64
+		if err := db.QueryRow("SELECT id FROM work WHERE primary_code = ?", code).Scan(&workID); err != nil {
+			t.Fatal(err)
+		}
+		if err := server.ensureLocalMediaIndexed(ctx, workID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTrack("RJ00000001/new.mp3")
+	if err := os.RemoveAll(filepath.Join(dataRoot, "RJ00000002")); err != nil {
+		t.Fatal(err)
+	}
+	locked := filepath.Join(dataRoot, "RJ00000001", "a", "b", "c", "d", "e", "locked")
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	runID, err := runQueuedLocalScan(t, server)
+	if err != nil {
+		t.Fatalf("scan with an unreadable folder inside one work: %v", err)
+	}
+	var status, summary string
+	if err := db.QueryRow("SELECT status, summary_json FROM workflow_run WHERE id = ?", runID).Scan(&status, &summary); err != nil {
+		t.Fatal(err)
+	}
+	if status != "partial" || !strings.Contains(summary, `"unreadable_folders":["RJ00000001"]`) {
+		t.Fatalf("run status = %q, summary = %s; want partial with the skipped work folder", status, summary)
+	}
+	assertLocalScanLocationAvailability(t, db, "RJ00000001/track.mp3", "available")
+	assertLocalScanLocationAvailability(t, db, "RJ00000001/a/b/c/d/e/locked/deep.mp3", "available")
+	var added int
+	if err := db.QueryRow("SELECT COUNT(*) FROM media_file_location WHERE path = 'RJ00000001/new.mp3'").Scan(&added); err != nil {
+		t.Fatal(err)
+	}
+	if added != 0 {
+		t.Fatal("a work whose tree could not be read was reconciled")
+	}
+	assertLocalScanLocationAvailability(t, db, "RJ00000002/track.mp3", "missing")
+}
+
+// A pool that goes offline after discovery leaves its works as they were and
+// is reported offline, while the other pool's works are still reconciled.
+func TestFullLocalScanSkipsAPoolThatGoesOfflineDuringTheScan(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedTestDB(t)
+	dataRoot := t.TempDir()
+	server := NewServer(db, config.Config{DataRoot: dataRoot, LocalScanDepth: 2})
+	if err := server.saveSettingValue(ctx, settingLibraryMode, storagepool.ModePools); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.saveSettingValue(ctx, settingStoragePools, []storagepool.Pool{{Path: "disk1", ID: "synthetic-pool-1"}, {Path: "disk2", ID: "synthetic-pool-2"}}); err != nil {
+		t.Fatal(err)
+	}
+	for pool, id := range map[string]string{"disk1": "synthetic-pool-1", "disk2": "synthetic-pool-2"} {
+		if err := os.MkdirAll(filepath.Join(dataRoot, pool), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := storagepool.WriteMarker(filepath.Join(dataRoot, pool), id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTrack := func(rel string) {
+		t.Helper()
+		path := filepath.Join(dataRoot, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("audio"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTrack("disk1/RJ00000001/track.mp3")
+	writeTrack("disk1/RJ00000003/track.mp3")
+	writeTrack("disk2/RJ00000002/track.mp3")
+	executeLocalScanForTest(t, server)
+	for _, code := range []string{"RJ00000001", "RJ00000002", "RJ00000003"} {
+		var workID int64
+		if err := db.QueryRow("SELECT id FROM work WHERE primary_code = ?", code).Scan(&workID); err != nil {
+			t.Fatal(err)
+		}
+		if err := server.ensureLocalMediaIndexed(ctx, workID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTrack("disk1/RJ00000001/new.mp3")
+	writeTrack("disk2/RJ00000002/new.mp3")
+	if err := os.RemoveAll(filepath.Join(dataRoot, "disk1", "RJ00000003")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := server.enqueueLocalScan(ctx, "manual", "manual"); err != nil {
+		t.Fatal(err)
+	}
+	job, ok, err := server.claimNextQueuedWorkflowJob(ctx, "local-scan-pool-offline-test")
+	if err != nil || !ok {
+		t.Fatalf("claim scan: ok=%v err=%v", ok, err)
+	}
+	payload, err := server.prepareLocalScanPayload(ctx, job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, err := server.localScanScope(ctx, dataRoot, payload.ScanDepth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folders, summary, err := localfs.DiscoverFolders(dataRoot, localfs.Options{ScanDepth: scope.walkDepth(), SubRoots: scope.subRoots()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	folders = scope.filterFolders(folders)
+	nodes, err := workflowNodeIDsByNodeID(ctx, db, job.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The second pool disappears after discovery found its work.
+	if err := os.Remove(filepath.Join(dataRoot, "disk2", storagepool.MarkerName)); err != nil {
+		t.Fatal(err)
+	}
+	result, runSummary, err := server.persistLocalScanResults(ctx, job, payload, scope, folders, summary, nodes)
+	if err != nil {
+		t.Fatalf("scan with a pool going offline: %v", err)
+	}
+	if result.Status != "partial" || len(result.Failures) != 1 || !strings.Contains(result.Failures[0], "disk2") {
+		t.Fatalf("result = %+v, want partial with the offline pool", result)
+	}
+	if _, ok := runSummary["offline_pools"]; !ok {
+		t.Fatalf("run summary = %v, want the offline pool recorded", runSummary)
+	}
+	assertLocalScanLocationAvailability(t, db, "disk2/RJ00000002/track.mp3", "available")
+	assertLocalScanLocationAvailability(t, db, "disk1/RJ00000001/new.mp3", "available")
+	assertLocalScanLocationAvailability(t, db, "disk1/RJ00000003/track.mp3", "missing")
+	var offlineAdded int
+	if err := db.QueryRow("SELECT COUNT(*) FROM media_file_location WHERE path = 'disk2/RJ00000002/new.mp3'").Scan(&offlineAdded); err != nil {
+		t.Fatal(err)
+	}
+	if offlineAdded != 0 {
+		t.Fatal("a work in a pool that went offline was reconciled")
 	}
 }

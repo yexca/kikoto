@@ -224,6 +224,8 @@ export function useFolderEditWorkspace({
   useEffect(() => {
     if (changed) setUndone(null);
   }, [changed]);
+  // An undo taken back against a reloaded folder would clear the files it now lists.
+  useEffect(() => setUndone(null), [currentFiles]);
   const undoAll = () => {
     if (!changed || applying) return;
     setUndone({ selection, lyrics, decisions, layout, merged, assign });

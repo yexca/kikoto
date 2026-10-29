@@ -2618,7 +2618,6 @@ export const surfaceKorean = {
     fetch: "가져오기",
     openOriginOn: "{{source}}에서 열기",
     openOrigin: "원본 열기",
-    refreshLocalFiles: "로컬 파일 새로 고침",
     manageCache: "캐시 관리",
     noCachedFiles: "캐시된 파일 없음",
     manageFiles: "파일 관리",
@@ -2693,6 +2692,7 @@ export const surfaceKorean = {
     save: "저장",
     saved: "표시 이름을 저장했습니다",
     saveFailed: "표시 이름을 저장할 수 없습니다",
+    saveFailedLanguages: "{{languages}} 표시 이름을 저장할 수 없습니다. 다른 언어는 저장되었습니다.",
     languageHint: "{{language}}(으)로 보는 사용자에게 이 이름이 표시됩니다. 비워 두면 실제 이름을 표시합니다.",
     keyboardHint: "Enter 키로 다음 이름으로 이동합니다.",
     coverage: "{{total}}개 중 {{count}}개 이름 있음",
@@ -2961,6 +2961,10 @@ export const surfaceKorean = {
       "이 폴더 안에서 파일과 폴더를 끌어 이동하거나, 다른 창에서 파일을 여기에 놓아 복사합니다. 각 행의 메뉴로도 같은 작업을 할 수 있습니다.",
     forget: "폴더 삭제 후 작품 잊기",
     forgetHint: "이 폴더 전체와 그 파일의 모든 사본을 삭제한 다음, 소스가 남아 있지 않으면 작품을 잊습니다.",
+    refresh: "새로 고침",
+    refreshHint: "Kikoto 밖에서 추가, 변경 또는 삭제된 파일을 반영하도록 이 폴더를 디스크에서 다시 읽습니다.",
+    refreshBlocked: "이 폴더를 새로 고치기 전에 변경 사항을 적용하거나 되돌리세요.",
+    refreshing: "이 폴더를 새로 고치는 중",
     folderLyrics_one:
       "이 폴더에 Kikoto가 관리하지 않는 가사 파일이 {{count}}개 있습니다. 가사 관리에서 언어별 가사로 만들 수 있습니다.",
     folderLyrics_other:

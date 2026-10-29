@@ -356,12 +356,15 @@ type rankingListRequest struct {
 	Depth                  int    `json:"depth"`
 	AutoRefresh            *bool  `json:"autoRefresh"`
 	RefreshIntervalMinutes int    `json:"refreshIntervalMinutes"`
+	// FollowCurrentYear is set by normalization: only the annual list of the
+	// year in progress continues with the next year.
+	FollowCurrentYear bool `json:"-"`
 }
 
 // normalizeRankingListRequest validates what a new list names. A DLsite list
 // takes a period, or an annual year from 2000 to the year in progress in
 // Japan; a remote list takes an enabled compatible source. A past year is
-// pulled once and not scheduled.
+// pulled once, not scheduled, and not continued with the next year.
 func (s *Server) normalizeRankingListRequest(ctx context.Context, request rankingListRequest, now time.Time) (rankingListRequest, error) {
 	request.Provider = strings.TrimSpace(request.Provider)
 	request.Period = strings.ToLower(strings.TrimSpace(request.Period))
@@ -405,11 +408,13 @@ func (s *Server) normalizeRankingListRequest(ctx context.Context, request rankin
 	if request.RefreshIntervalMinutes < limits.Min || request.RefreshIntervalMinutes > limits.Max {
 		return request, fmt.Errorf("refreshIntervalMinutes must be between %d and %d", limits.Min, limits.Max)
 	}
-	autoRefresh := request.Period != "year" || request.Year == currentRankingYear(now)
+	pastYear := request.Period == "year" && request.Year != currentRankingYear(now)
+	autoRefresh := !pastYear
 	if request.AutoRefresh != nil && autoRefresh {
 		autoRefresh = *request.AutoRefresh
 	}
 	request.AutoRefresh = &autoRefresh
+	request.FollowCurrentYear = !pastYear
 	return request, nil
 }
 
@@ -484,11 +489,12 @@ func (s *Server) insertRankingList(ctx context.Context, request rankingListReque
 	}
 	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO ranking_list (provider, file_source_id, period, year, depth, auto_refresh, refresh_interval_minutes, pull_requested_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO ranking_list (provider, file_source_id, period, year, depth, auto_refresh, refresh_interval_minutes,
+			follow_current_year, pull_requested_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT DO NOTHING
 	`, request.Provider, sourceID, request.Period, request.Year, request.Depth,
-		*request.AutoRefresh, request.RefreshIntervalMinutes, formatWorkflowTimestamp(now))
+		*request.AutoRefresh, request.RefreshIntervalMinutes, request.FollowCurrentYear, formatWorkflowTimestamp(now))
 	if err != nil {
 		return 0, err
 	}
@@ -540,12 +546,13 @@ func (s *Server) updateRanking(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	next, err := applyRankingListUpdate(current, payload)
+	now := time.Now().UTC()
+	next, err := applyRankingListUpdate(current, payload, now)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if err := s.saveRankingList(r.Context(), current, next, time.Now().UTC()); err != nil {
+	if err := s.saveRankingList(r.Context(), current, next, now); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -567,7 +574,7 @@ func (s *Server) updateRanking(w http.ResponseWriter, r *http.Request) {
 
 // applyRankingListUpdate validates a settings change. A finalized annual list
 // keeps no schedule, so only whether it is shown and its depth change.
-func applyRankingListUpdate(list rankingList, payload rankingListUpdate) (rankingList, error) {
+func applyRankingListUpdate(list rankingList, payload rankingListUpdate, now time.Time) (rankingList, error) {
 	if payload.Enabled != nil {
 		list.Enabled = *payload.Enabled
 	}
@@ -594,19 +601,21 @@ func applyRankingListUpdate(list rankingList, payload rankingListUpdate) (rankin
 		if list.Period != "year" {
 			return list, fmt.Errorf("only an annual ranking follows the current year")
 		}
+		if *payload.FollowCurrentYear && !list.FollowCurrentYear && list.Year != currentRankingYear(now) {
+			return list, fmt.Errorf("only the annual ranking of the year in progress continues with the next year")
+		}
 		list.FollowCurrentYear = *payload.FollowCurrentYear
 	}
 	return list, nil
 }
 
 // saveRankingList stores a list's settings and plans its next pull from its
-// last one when its schedule changed.
+// last one when its schedule changed. Otherwise the next pull stays as stored,
+// so a pull that finished after current was read keeps the schedule it wrote.
 func (s *Server) saveRankingList(ctx context.Context, current, next rankingList, now time.Time) error {
+	replan := next.FinalAt == nil && (current.AutoRefresh != next.AutoRefresh || current.RefreshIntervalMinutes != next.RefreshIntervalMinutes || current.Enabled != next.Enabled)
 	nextPullAt := any(nil)
-	if current.NextPullAt != nil {
-		nextPullAt = *current.NextPullAt
-	}
-	if next.FinalAt == nil && (current.AutoRefresh != next.AutoRefresh || current.RefreshIntervalMinutes != next.RefreshIntervalMinutes || current.Enabled != next.Enabled) {
+	if replan {
 		from := now
 		if last, ok := parseWorkflowTimestamp(stringValue(next.LastPulledAt)); ok {
 			from = last
@@ -615,9 +624,10 @@ func (s *Server) saveRankingList(ctx context.Context, current, next rankingList,
 	}
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE ranking_list
-		SET enabled = ?, depth = ?, auto_refresh = ?, refresh_interval_minutes = ?, follow_current_year = ?, next_pull_at = ?
+		SET enabled = ?, depth = ?, auto_refresh = ?, refresh_interval_minutes = ?, follow_current_year = ?,
+			next_pull_at = CASE WHEN ? THEN ? ELSE next_pull_at END
 		WHERE id = ?
-	`, next.Enabled, next.Depth, next.AutoRefresh, next.RefreshIntervalMinutes, next.FollowCurrentYear, nextPullAt, next.ID)
+	`, next.Enabled, next.Depth, next.AutoRefresh, next.RefreshIntervalMinutes, next.FollowCurrentYear, replan, nextPullAt, next.ID)
 	return err
 }
 

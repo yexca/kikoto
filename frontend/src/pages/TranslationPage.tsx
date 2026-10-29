@@ -1,5 +1,5 @@
 import { Inbox, Loader2, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { TranslationReviewList, type TranslationReviewMode } from "@/components/translation/TranslationReviewList";
@@ -35,18 +35,21 @@ const itemViews: Partial<Record<TranslationCenterView, TranslationReviewMode>> =
  * wrote, and how much of the library each language covers. Finished items
  * apply through acceptance; while auto-accept is off, the items waiting for
  * review are listed first. It reads runs and their items; Activity keeps the
- * runs' diagnostics.
+ * runs' diagnostics. Demo shows it read-only: it translates nothing, so only
+ * coverage has content.
  */
 export function TranslationPage({
   canTranslateMetadata,
   canTranslateFiles,
   canOpenActivity,
+  readOnly = false,
 }: {
   /** Titles, descriptions and shared tag names. */
   canTranslateMetadata: boolean;
   /** File and folder display names and lyrics. */
   canTranslateFiles: boolean;
   canOpenActivity: boolean;
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -75,7 +78,11 @@ export function TranslationPage({
     };
   }, []);
 
+  // Only the latest load applies, so a slower answer for a view left behind
+  // never replaces the current view's list.
+  const loadRequest = useRef(0);
   const load = useCallback(async () => {
+    const request = ++loadRequest.current;
     try {
       const mode = itemViews[view];
       const [active, queued, list] = await Promise.all([
@@ -83,13 +90,14 @@ export function TranslationPage({
         view === "running" ? api.listTranslationRuns("queued") : Promise.resolve(null),
         mode ? api.listTranslationItems(mode) : Promise.resolve(null),
       ]);
+      if (request !== loadRequest.current) return;
       setCounts(active.counts);
       setAutoAccept(active.autoAccept);
       if (queued) setRuns({ active: active.runs, queued: queued.runs });
       if (list) setItems(list.items);
       setLoadError(false);
     } catch {
-      setLoadError(true);
+      if (request === loadRequest.current) setLoadError(true);
     }
   }, [view]);
 
@@ -226,7 +234,7 @@ export function TranslationPage({
       )}
       {view === "coverage" ? (
         <TranslationCoverage
-          readOnly={false}
+          readOnly={readOnly}
           permissions={{ metadata: canTranslateMetadata, files: canTranslateFiles }}
           toolbar={toolbar}
         />

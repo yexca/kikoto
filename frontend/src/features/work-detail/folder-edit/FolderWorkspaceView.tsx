@@ -19,12 +19,11 @@ import {
   SelectionColumn,
   type ResultColumnView,
 } from "@/features/work-detail/folder-edit/FolderWorkspaceColumns";
-import { cn } from "@/lib/tailwindClassNames";
 
 type EditPane = "sources" | "select" | "result" | "delete" | "identical";
 
 /** The workspace width from which Manage files shows its places side by side, like a file manager. */
-const WIDE_WORKSPACE_PX = 1280;
+const WIDE_WORKSPACE_PX = 1200;
 
 /**
  * Builds one folder in three columns: where files can come from, the files of
@@ -107,13 +106,10 @@ export function FolderWorkspaceView({
   return (
     <Dialog
       onClose={onClose}
-      size="full"
+      size="workspace"
       dismissible={!workspace.applying}
       marker={marker}
-      className={cn(
-        "h-[var(--dialog-max-height)] bg-background md:h-[min(90dvh,var(--dialog-max-height))]",
-        manage ? "max-w-[120rem]" : "max-w-7xl",
-      )}
+      className="bg-background"
     >
       <DialogHeader
         title={title}
@@ -122,7 +118,7 @@ export function FolderWorkspaceView({
         onClose={onClose}
         closeLabel={t("content.close")}
       />
-      {manage?.toolbar}
+      {!wide && manage?.toolbar}
       {!wide && (
         <PaneSwitch
           panes={panes.map((value) => ({

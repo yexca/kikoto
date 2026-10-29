@@ -20,6 +20,10 @@ func (s *Server) resumeRemoteFetchPublication(ctx context.Context, manifest remo
 	}
 	switch manifest.State {
 	case "published", "registered", "completed":
+		// Registration reads the published files, so it waits for their pool.
+		if err := s.ensureLibraryPathOnline(ctx, manifest.TargetRoot); err != nil {
+			return remoteWorkSaveResult{}, true, err
+		}
 		var plan remoteWorkSavePlan
 		if err := json.Unmarshal([]byte(manifest.PlanJSON), &plan); err != nil {
 			return remoteWorkSaveResult{}, true, err

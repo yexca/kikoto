@@ -411,6 +411,11 @@ func (s *Server) runRemoteWorkFetchJob(ctx context.Context, runID int64, jobID i
 		return remoteWorkSaveResult{}, err
 	}
 	if result, resumed, err := s.resumeRemoteFetchPublication(ctx, manifest); resumed || err != nil {
+		if errors.Is(err, errStoragePoolOffline) || errors.Is(err, errLibraryOffline) {
+			// The manifest is unchanged, so a retry once the pool is back
+			// finishes the publication.
+			_ = s.failClaimedWorkflowJob(ctx, workflowJobRecord{ID: jobID, RunID: runID}, err.Error())
+		}
 		return result, err
 	}
 	execution, err := s.prepareRemoteWorkFetchExecution(ctx, runID, jobID, payload)

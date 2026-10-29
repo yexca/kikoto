@@ -104,10 +104,12 @@ func (c translationCoverageSQL) edition() (string, []any) {
 		AND edition.metadata_language IN ` + c.editionList() + `)`, c.editionLanguages
 }
 
-// manual matches a manual title or description saved for the language.
+// manual matches a manual title or description saved for the language, or a
+// fallback one saved for every language, which the language shows instead of
+// any edition or translation.
 func (c translationCoverageSQL) manual(field string) (string, []any) {
 	return `EXISTS (SELECT 1 FROM work_manual_override AS override WHERE override.work_id IN ` + translationCoverageFamily + `
-		AND override.field_name = ? AND override.language = ? AND override.value_json NOT IN ('null', '""'))`, []any{field, c.language}
+		AND override.field_name = ? AND override.language IN (?, '') AND override.value_json NOT IN ('null', '""'))`, []any{field, c.language}
 }
 
 func (c translationCoverageSQL) llm(field string) (string, []any) {

@@ -32,12 +32,10 @@ Library and metadata:
   family, queued by work detail, Metadata recovery, and link changes.
 - `metadata_genre_names`: learn genre names in preferred metadata languages
   (see [Genre Name Learning](#genre-name-learning)).
-- `llm_translation`: translate one explicitly selected existing work for review.
-  A batch names at most 100 existing works and creates one task per work;
-  lyrics selects one work and one file. Progress and cancellation use the
-  shared executor. [Translation task persistence](data-model.md#llm-translation)
-  defines source/configuration invalidation, restart recovery and explicit
-  resubmission of uncertain requests.
+- `llm_translation`: a per-work LLM translation for review. Nothing queues one;
+  its job ends a queued or retried run without a request, as
+  [Translation task persistence](data-model.md#llm-translation) describes.
+  Translate with AI runs as `ai_translation`.
 - `ai_translation`: Translate with AI for one work: translate the missing
   title, description, shared tag names, display names and lyrics, each from a
   lyrics file, into each requested language, accepting
@@ -625,8 +623,9 @@ A remote list reads the source's popular works through the shared outbound
 transport on its configured origin; works without a stable catalog code are
 skipped and counted. A removed or incompatible source records the list as
 `source_unavailable`. A failing variant never stops the others: its last
-snapshot stays, the list is `partial` when some of its variants failed, and the
-run is partial when some variants failed and failed when all did. Detailed
+snapshot stays, and the list is `partial` when some of its variants failed.
+The run is failed when it recorded no variant, and partial when it recorded
+some but a variant failed or a list's next pull could not be written. Detailed
 errors stay in the run and the protected `last_error` of the variant and the
 list.
 
@@ -639,7 +638,9 @@ is queued or running, only its lists due later count. Completion, failure,
 cancellation, orphan recovery, and changes to a list replan the dispatcher
 from the lists' current settings. Cancelling a pull consumes that run's
 request and keeps an enabled automatic list's next pull in the future;
-a later manual request remains due. The dispatcher is
+a later manual request remains due. A run that fails before it takes its
+lists consumes no request or due pull, and its target is dispatched again
+five minutes after the failure. The dispatcher is
 configured only through the lists: the Workflows page shows its next run but
 cannot edit, pause, or delete it.
 
@@ -661,11 +662,13 @@ DLsite's day and year turn over in Japan Standard Time, so the year in
 progress is read in JST. An annual list is pulled once more from 3 January
 JST after its year, even with automatic pulls off; the first such pull in
 which both sort variants succeed records `final_at`, and a finished list keeps
-no schedule. With
-`follow_current_year`, on by default, the final pull adds the list of the
-year then in progress with the same settings and variants and asks for its
-first pull. An earlier year added from the settings is pulled once and
-finished at once.
+no schedule. The annual list of the year in progress follows the current year
+(`follow_current_year`): on when it is added, it can be switched off until the
+list is finished and on again only while its year is in progress. Its final
+pull then adds the list of the year then in progress with the same settings
+and variants and asks for its first pull. An earlier year added from the
+settings is pulled once, finished at once, and
+not followed by another year.
 **Refresh now** on a finished list pulls it again; an unchanged order adds no
 snapshot.
 
@@ -870,8 +873,9 @@ The coordinator deduplicates at most 1,024 changed paths into the durable run
 and job input. Incremental execution resolves those paths to affected known or
 new work roots, walks each affected work's complete media tree, and reconciles
 its locations. It does not walk unaffected media trees. A watcher error, path
-batch overflow, invalid or unavailable path batch, watch-root invalidation, or
-a work whose code lies in several folders switches that run to full mode. An invalidated root keeps
+batch overflow, invalid or unavailable path batch, watch-root invalidation, a
+work whose code lies in several folders, or an affected work folder whose
+files cannot be read switches that run to full mode. An invalidated root keeps
 the recovery request across watcher restarts and dispatches it only after the
 replacement watcher has settled.
 
@@ -901,7 +905,11 @@ unchanged tree keeps its media rows and index metadata; a changed tree is
 reconciled through the shared per-folder indexer, including files added,
 removed, or replaced while the server was stopped. An indexed tree that
 intersects a directory discovery could not read keeps its stored files
-unchanged while the scan continues with other folders. New and moved folders
+unchanged while the scan continues with other folders. Discovery reads folders
+only down to the scan depth, while this comparison reads the whole tree, so a
+tree it cannot read completely, such as one holding an unreadable folder below
+the scan depth or a file removed while it is read, likewise keeps its stored
+files, and its work folder is recorded in `unreadable_folders`. New and moved folders
 without an index are indexed lazily. A full scan commits discovered folders in
 batches of 250, so progress saves and other writers are not locked out for the
 whole library, and marks unseen work roots missing only in its final
@@ -951,6 +959,15 @@ dispatch while one is active returns that run. Manual runs, Startup triggers,
 and interval triggers store `{"mode": ...}`; retry repeats the failed run's
 mode. Starting a run requires `workflows:run` and `metadata:sync`, like the
 local scan. No trigger is seeded.
+
+A single work's refresh, `POST /api/works/{id}/local-files/refresh`, runs the
+same per-work indexer directly instead of queuing a run and requires
+`downloads:manage`. Without a folder it indexes the folder the work's local
+presence names, then every other active folder of the work that the scan
+reaches. With `folderId`, which **Manage files** sends for the folder it edits,
+it indexes only that active folder of the work and leaves the others as
+indexed. A folder on an offline pool, or outside the scan scope
+(`folder_outside_scan_scope`), is refused rather than recorded as missing.
 
 ## Queue Ordering
 
@@ -1014,7 +1031,9 @@ running job is settled by the orphan rule under
 spends one resume, or it fails. Queued jobs keep waiting, runs are repaired as
 the manual command repairs them but without its one-minute wait, and
 interrupted Fetch publications are reconciled from the staging, target, and
-backup directories.
+backup directories. Which of them exist decides the outcome, not what they
+hold. While the target's pool is offline, recovery leaves the publication as
+it is, and a retry of the run finishes it once the pool is back.
 
 Fetch retries and startup recovery share the same publication reconciliation
 and local registration steps. A published or registered target is completed
@@ -1075,7 +1094,9 @@ Depth counts inside a pool and is at least the deepest Fetch save template or
 active `managed_fetch` root. Discovery walks only online pools; missing-marking
 of folders and presences applies only to recorded roots inside that scope.
 Offline pools make a full or incremental scan `partial` with an
-`offline_pools` summary; no online pool fails the scan.
+`offline_pools` summary; no online pool fails the scan. A pool that goes
+offline during a full scan is reported the same way: its works keep their
+state and the rest of the scan completes.
 A folder below a walk's start that the walk cannot read, for lack of
 permission or because it disappeared during the walk, is skipped and recorded
 in an `unreadable_folders` summary that makes the scan `partial`; recorded
@@ -1110,7 +1131,8 @@ write, or deletion of library files checks the pool of the path it touches
 first: streaming, download, text preview, HLS playback, ASR, local file
 refresh, folder edits and their copy and merge folders, lyrics edits and their copy
 folders, generated-lyrics publication, file and folder deletion, workflow
-review cleanup, Fetch trash deletion, and a starting or resuming Fetch run. A
+review cleanup, Fetch trash deletion, a starting or resuming Fetch run, and
+startup Fetch recovery. A
 refused request answers `409` with `storage_pool_offline` in pool mode or
 `library_offline` in standard mode and changes nothing. Fetch quarantine leaves
 a root on an offline pool in place, opening a work does not index a folder on

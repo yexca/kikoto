@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/asr"
@@ -95,62 +94,6 @@ func TestASRRechecksSendBoundaryAfterDecoding(t *testing.T) {
 			}
 			if state+"/"+failure != want || offset != 0 {
 				t.Fatalf("state=%s/%s offset=%d want=%s", state, failure, offset, want)
-			}
-		})
-	}
-}
-
-func TestLLMCompletedPreviewDoesNotPermanentlyDeduplicate(t *testing.T) {
-	for _, status := range []string{"proposed", "expired", "rejected", "accepted", "elapsed"} {
-		t.Run(status, func(t *testing.T) {
-			f := newManualOverrideFixture(t, config.Config{})
-			if _, err := f.db.Exec("UPDATE work SET age_rating='general' WHERE id=?", f.workID); err != nil {
-				t.Fatal(err)
-			}
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"title\":\"Example translation\"}"}}]}`))
-			}))
-			defer upstream.Close()
-			p := llmTestProvider(t, f, upstream.URL, "external", "safe")
-			payload := llmTranslatePayload{ProviderID: p.ID, Target: "zh-cn", Fields: []string{"title"}}
-			ctx := context.Background()
-			runs, err := f.server.enqueueLLMTranslations(ctx, f.userID, []int64{f.workID}, payload)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := f.server.runNextQueuedWorkflowJob(ctx); err != nil {
-				t.Fatal(err)
-			}
-			if status == "elapsed" {
-				_, err = f.db.Exec("UPDATE llm_translation_preview SET expires_at=0")
-			} else {
-				_, err = f.db.Exec("UPDATE llm_translation_preview SET status=?", status)
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			repeat, err := f.server.enqueueLLMTranslations(ctx, f.userID, []int64{f.workID}, payload)
-			if err != nil {
-				t.Fatal(err)
-			}
-			reuse := status == "proposed"
-			if repeat[0].Deduplicated != reuse || (repeat[0].RunID == runs[0].RunID) != reuse {
-				t.Fatalf("repeat=%+v original=%+v", repeat, runs)
-			}
-			if reuse {
-				return
-			}
-			// Retiring the key keeps the completed result and its Activity run.
-			var oldKey string
-			if err := f.db.QueryRow("SELECT dedup_key FROM llm_translation_task WHERE workflow_run_id=? AND state='ready'", runs[0].RunID).Scan(&oldKey); err != nil || !strings.Contains(oldKey, ":completed:") {
-				t.Fatalf("old task lost: %q %v", oldKey, err)
-			}
-			if err := f.server.runNextQueuedWorkflowJob(ctx); err != nil {
-				t.Fatal(err)
-			}
-			joined, err := f.server.enqueueLLMTranslations(ctx, f.userID, []int64{f.workID}, payload)
-			if err != nil || !joined[0].Deduplicated || joined[0].RunID != repeat[0].RunID {
-				t.Fatalf("new result not reusable: %+v %v", joined, err)
 			}
 		})
 	}

@@ -133,8 +133,24 @@ func (s *Server) prepareLLMTranslation(ctx context.Context, workID int64, payloa
 	return plan, nil
 }
 
+// llmPlanRequests splits a plan's text into requests: the metadata in one,
+// then the lyrics in chunks.
+func llmPlanRequests(plan llmTranslationPlan) []llm.Text {
+	requests := []llm.Text{}
+	if plan.Text.Title != "" || plan.Text.Description != "" || len(plan.Text.Tags) > 0 {
+		requests = append(requests, llm.Text{Title: plan.Text.Title, Description: plan.Text.Description, Tags: plan.Text.Tags})
+	}
+	for start := 0; start < len(plan.Text.Lyrics); start += llm.LyricsChunkLines {
+		requests = append(requests, llm.Text{Lyrics: plan.Text.Lyrics[start:min(start+llm.LyricsChunkLines, len(plan.Text.Lyrics))]})
+	}
+	return requests
+}
+
 func (s *Server) requestLLMTranslation(ctx context.Context, plan llmTranslationPlan, target string, beforeRequest func(context.Context) error) (llm.Text, error) {
-	if len(llmPlanRequests(plan)) == 0 {
+	// Check the complete input before splitting. Each chunk has stable order
+	// and retries never advance past an uncertain outgoing request.
+	requests := llmPlanRequests(plan)
+	if len(requests) == 0 {
 		return completeLLMTags(plan, llm.Text{}), nil
 	}
 	// Each request is bounded by the provider's request timeout.
@@ -144,15 +160,6 @@ func (s *Server) requestLLMTranslation(ctx context.Context, plan llmTranslationP
 	}
 	defer closeClient()
 	result := llm.Text{}
-	// Check the complete input before splitting. Each chunk has stable order
-	// and retries never advance past an uncertain outgoing request.
-	requests := []llm.Text{}
-	if plan.Text.Title != "" || plan.Text.Description != "" || len(plan.Text.Tags) > 0 {
-		requests = append(requests, llm.Text{Title: plan.Text.Title, Description: plan.Text.Description, Tags: plan.Text.Tags})
-	}
-	for start := 0; start < len(plan.Text.Lyrics); start += llm.LyricsChunkLines {
-		requests = append(requests, llm.Text{Lyrics: plan.Text.Lyrics[start:min(start+llm.LyricsChunkLines, len(plan.Text.Lyrics))]})
-	}
 	for _, input := range requests {
 		if err := ctx.Err(); err != nil {
 			return result, err

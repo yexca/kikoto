@@ -729,7 +729,8 @@ function AuthenticatedApp() {
                   <TranslationPage
                     canTranslateMetadata={auth.hasPermission("metadata:sync") && auth.hasPermission("library:write")}
                     canTranslateFiles={auth.hasPermission("library:write")}
-                    canOpenActivity={auth.hasPermission("workflows:run")}
+                    canOpenActivity={!auth.demoMode && auth.hasPermission("workflows:run")}
+                    readOnly={auth.demoMode}
                   />
                 )}
                 {showRoutePage && page === "insights" && auth.user && (

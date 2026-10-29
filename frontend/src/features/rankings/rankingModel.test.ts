@@ -380,6 +380,9 @@ describe("rankingModel", () => {
     expect(new Date(day.end).toISOString()).toBe("2026-10-25T15:00:00.000Z");
     expect(zonedWallTime("2026-10-25T09:30", "Asia/Tokyo")).toBe("2026-10-25T00:30:00.000Z");
     expect(zonedWallTime("not a time", "Asia/Tokyo")).toBeNull();
+    // Days that start or end daylight saving time keep the chosen hour.
+    expect(zonedWallTime("2026-03-08T10:00", "America/New_York")).toBe("2026-03-08T14:00:00.000Z");
+    expect(zonedWallTime("2026-11-01T10:00", "America/New_York")).toBe("2026-11-01T15:00:00.000Z");
   });
 
   it("shows a past day at its end and today at the current time", () => {

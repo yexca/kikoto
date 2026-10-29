@@ -121,3 +121,37 @@ func TestRemoteFetchSourceRejectsSymlinkOutsideRoot(t *testing.T) {
 		t.Fatal("Fetch opened a source outside the root")
 	}
 }
+
+// A missing file still resolves to a path, so its caller reports it missing,
+// but never to one a link can redirect out of the root once its target
+// appears.
+func TestSafeResolvedPathKeepsMissingFilesInsideTheRoot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "Library"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path, err := safeResolvedPath(root, "Library/missing.mp3")
+	if err != nil {
+		t.Fatalf("missing file: %v", err)
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isPathWithinRoot(realRoot, path) || filepath.Base(path) != "missing.mp3" {
+		t.Fatalf("missing file resolved to %q, want it inside %q", path, realRoot)
+	}
+
+	outside := t.TempDir()
+	if err := os.Symlink(filepath.Join(outside, "later.mp3"), filepath.Join(root, "Library", "track.mp3")); err != nil {
+		t.Skipf("symlink is not available on this system: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "later"), filepath.Join(root, "Library", "Disc")); err != nil {
+		t.Fatal(err)
+	}
+	for _, relPath := range []string{"Library/track.mp3", "Library/Disc/track.mp3"} {
+		if path, err := safeResolvedPath(root, relPath); err == nil {
+			t.Fatalf("dangling link %q resolved to %q", relPath, path)
+		}
+	}
+}

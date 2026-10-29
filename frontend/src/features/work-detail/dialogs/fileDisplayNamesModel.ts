@@ -162,7 +162,7 @@ export function displayNamesText(rows: DisplayNameRow[], drafts: DisplayNameDraf
  * the last row are ignored.
  */
 export function textDisplayNames(rows: DisplayNameRow[], base: DisplayNameDrafts, text: string): DisplayNameDrafts {
-  const lines = textLines(text);
+  const lines = textLines(text, rows.length);
   const next = { ...base };
   rows.forEach((row, index) => {
     if (index < lines.length) next[row.key] = lines[index];
@@ -170,11 +170,14 @@ export function textDisplayNames(rows: DisplayNameRow[], base: DisplayNameDrafts
   return next;
 }
 
-/** The lines of a text, without the empty line a final line break leaves. */
-export function textLines(text: string) {
-  if (!text) return [];
+/**
+ * The lines of a text for `entries` entries, every line an entry's name, an
+ * empty one included. Empty lines past the last entry, such as the one a
+ * pasted list's final line break leaves, are not counted.
+ */
+export function textLines(text: string, entries: number) {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
-  if (lines[lines.length - 1] === "") lines.pop();
+  while (lines.length > entries && lines[lines.length - 1] === "") lines.pop();
   return lines;
 }
 

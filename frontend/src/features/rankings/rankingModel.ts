@@ -550,8 +550,11 @@ export function rankingSettingRows(
 
 /** A wall-clock time (YYYY-MM-DDTHH:mm) in a time zone as an ISO instant, or null when it is not one. */
 export function zonedWallTime(value: string, timeZone: string): string | null {
-  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(value);
-  if (!match) return null;
-  const { start } = zonedDayRange(match[1], timeZone);
-  return new Date(start + (Number(match[2]) * 60 + Number(match[3])) * 60_000).toISOString();
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  // The wall-clock time read as UTC, moved by the zone's offset at that time,
+  // so a day that changes daylight saving time keeps the chosen hour.
+  const wall = Date.parse(`${value}:00Z`);
+  if (Number.isNaN(wall)) return null;
+  const instant = wall - zoneOffset(wall - zoneOffset(wall, timeZone), timeZone);
+  return new Date(instant).toISOString();
 }

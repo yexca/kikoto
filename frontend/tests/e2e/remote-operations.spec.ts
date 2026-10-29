@@ -382,7 +382,6 @@ function localRootFolder(id: number): WorkFolderLocation {
 
 test("local Delete selects by location, summarizes the selection, and requires two confirmations", async ({ page }) => {
   const cleanupBodies: Record<string, unknown>[] = [];
-  let localRefreshes = 0;
   let mediaRequests = 0;
   const mediaItems: MediaItem[] = [
     {
@@ -433,17 +432,12 @@ test("local Delete selects by location, summarizes the selection, and requires t
   await mockApplication(page, undefined, false, 1, 0, mediaItems, (body) => cleanupBodies.push(body), {
     work: { ...work, sourcePresence: [localPresence] },
     detailLocalFolders: [localRootFolder(101)],
-    onLocalRefresh: () => {
-      localRefreshes += 1;
-    },
     onMediaRequest: () => {
       mediaRequests += 1;
     },
   });
   await page.goto("/");
   await page.getByText("Tagged mobile work", { exact: true }).click();
-  await runSourceAction(page, "Refresh local files");
-  await expect.poll(() => localRefreshes).toBe(1);
   await runSourceAction(page, "Manage files");
 
   const localCopy = page.getByRole("button", { name: "Local copy of track.mp3", exact: true });
@@ -492,7 +486,6 @@ test("@desktop wide work detail lists source actions inside Source info", async 
   const sourceActions = page
     .getByRole("complementary", { name: "Source info", exact: true })
     .getByRole("group", { name: /Source actions for/ });
-  await expect(sourceActions.getByRole("button", { name: "Refresh local files", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Source actions for/ })).toHaveCount(0);
   await sourceActions.getByRole("button", { name: "Manage files", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Manage files" })).toBeVisible();
@@ -500,6 +493,7 @@ test("@desktop wide work detail lists source actions inside Source info", async 
 
 test("@desktop Manage files lists the work's other places and applies the reviewed folder", async ({ page }) => {
   const applied: Record<string, unknown>[] = [];
+  const refreshes: unknown[] = [];
   const localFile = (id: number, name: string): MediaItem => ({
     id,
     parentId: null,
@@ -542,6 +536,7 @@ test("@desktop Manage files lists the work's other places and applies the review
       detailLocalFolders: [localRootFolder(104)],
       authenticated: true,
       permissions: rolePermissions.admin,
+      onLocalRefresh: (body) => refreshes.push(body),
     },
   );
   await page.route(`**/api/works/${work.id}/folder-edit/sources`, (route) =>
@@ -609,18 +604,26 @@ test("@desktop Manage files lists the work's other places and applies the review
       .getByRole("button", { name: /Example Remote A/ }),
   ).toBeVisible();
   const folder = editor.getByRole("region", { name: "This folder", exact: true });
-  await expect(folder.getByText("Keep", { exact: true })).toHaveCount(2);
+  await expect(folder.getByText("track.mp3", { exact: true })).toBeVisible();
+  await expect(folder.getByText("extra.mp3", { exact: true })).toBeVisible();
+  // The wide workspace marks only the files the edit changes.
+  await expect(folder.getByText("Keep", { exact: true })).toHaveCount(0);
   await expect(editor.getByRole("button", { name: "Apply changes" })).toBeDisabled();
+
+  // Refresh reads the edited folder from disk again.
+  const refresh = editor.getByRole("button", { name: "Refresh", exact: true });
+  await refresh.click();
+  await expect.poll(() => refreshes).toEqual([{ fileSourceId: 1, folderId: 104 }]);
+  await expect(refresh).toBeEnabled();
 
   // Deleting a file of the edited folder moves it to To be deleted.
   await folder.getByRole("button", { name: "Actions for extra.mp3", exact: true }).click();
   await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
-  await expect(folder.getByText("Remove 1", { exact: true })).toBeVisible();
-  await expect(
-    editor
-      .getByRole("region", { name: "To be deleted", exact: true })
-      .getByRole("button", { name: "Keep extra.mp3", exact: true }),
-  ).toBeVisible();
+  const pending = editor.getByRole("region", { name: "To be deleted", exact: true });
+  await expect(pending.getByText(/^1 file · /)).toBeVisible();
+  // A pending change keeps the folder as it was listed until it is applied or undone.
+  await expect(refresh).toBeDisabled();
+  await expect(pending.getByRole("button", { name: "Keep extra.mp3", exact: true })).toBeVisible();
   await editor.getByRole("button", { name: "Apply changes" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("heading", { name: "Final confirmation" })).toBeVisible();
@@ -1110,11 +1113,10 @@ test("work detail preserves Local and Tracked entry intent while keeping every r
     await expect(page.getByTestId("hero-actions").getByRole("button", { name: /Source actions for/ })).toBeVisible();
   }
   let actions = await openSourceActions(page);
-  await expect(actions.scope.getByRole(actions.role, { name: "Refresh local files", exact: true })).toBeVisible();
   await expect(actions.scope.getByRole(actions.role, { name: "Manage files", exact: true })).toBeVisible();
   if (!compact) {
     await expect(sourceMenu).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Refresh local files", exact: true })).toBeFocused();
+    await expect(page.getByRole("menuitem", { name: "Manage files", exact: true })).toBeFocused();
     // Dismiss on a non-interactive surface; a screen corner can fall inside a control's touch target.
     await page.getByRole("heading", { name: work.title, exact: true }).click();
     await expect(sourceMenu).toHaveCount(0);

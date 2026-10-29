@@ -52,7 +52,7 @@ CREATE TABLE ranking_list_next (
   )
 );
 
--- Converted triggers that name an already tracked list add nothing.
+-- One list per ranking.
 CREATE UNIQUE INDEX idx_ranking_list_next_identity
   ON ranking_list_next(provider, COALESCE(file_source_id, 0), period, year);
 
@@ -69,22 +69,29 @@ CREATE TABLE ranking_variant (
   UNIQUE(ranking_list_id, release_window, sort)
 );
 
--- The lists of one period join the list that keeps the smallest id. Each list
--- takes the shared refresh schedule's switch and interval, within its kind's
--- range, and is shown when any of its former lists was.
-INSERT INTO ranking_list_next (
-  id, provider, file_source_id, period, year, depth, enabled,
-  auto_refresh, refresh_interval_minutes, last_pulled_at, last_status, last_error, created_at
+-- Every schedule that pulled a ranking becomes a source of its list: each list
+-- of the earlier chain with the shared ranking refresh schedule's switch and
+-- interval, and each popular collection trigger.
+CREATE TEMP TABLE ranking_schedule_source (
+  provider TEXT NOT NULL,
+  file_source_id INTEGER,
+  period TEXT NOT NULL,
+  year INTEGER NOT NULL,
+  -- The id of a list of the earlier chain; empty for a trigger.
+  list_id INTEGER,
+  depth INTEGER NOT NULL,
+  shown INTEGER NOT NULL,
+  automatic INTEGER NOT NULL,
+  minutes INTEGER,
+  last_pulled_at TEXT,
+  created_at TEXT
+);
+
+INSERT INTO ranking_schedule_source (
+  provider, file_source_id, period, year, list_id, depth, shown, automatic, minutes, last_pulled_at, created_at
 )
-SELECT MIN(list.id), list.provider, list.file_source_id, list.period, 0, MAX(list.depth), MAX(list.enabled),
-  COALESCE(refresh.enabled, 1),
-  CASE
-    WHEN list.provider = 'remote_source' THEN MIN(10080, MAX(60, COALESCE(refresh.minutes, 1440)))
-    WHEN list.period = 'day' THEN MIN(1440, MAX(20, COALESCE(refresh.minutes, 60)))
-    WHEN list.period = 'week' THEN MIN(10080, MAX(60, COALESCE(refresh.minutes, 360)))
-    ELSE MIN(10080, MAX(360, COALESCE(refresh.minutes, 1440)))
-  END,
-  MAX(list.last_pulled_at), '', '', MIN(list.created_at)
+SELECT list.provider, list.file_source_id, list.period, 0, list.id, list.depth, list.enabled,
+  COALESCE(refresh.enabled, 1), refresh.minutes, list.last_pulled_at, list.created_at
 FROM ranking_list AS list
 LEFT JOIN (
   SELECT trigger.enabled AS enabled,
@@ -95,66 +102,42 @@ LEFT JOIN (
   WHERE definition.code = 'ranking_refresh' AND trigger.trigger_type = 'schedule'
   ORDER BY trigger.id
   LIMIT 1
-) AS refresh ON true
-GROUP BY list.provider, COALESCE(list.file_source_id, 0), list.period;
+) AS refresh ON true;
 
-INSERT INTO ranking_variant (id, ranking_list_id, release_window, sort, last_pulled_at, last_status, last_error)
-SELECT list.id, joined.id, list.release_window, '', list.last_pulled_at, list.last_status, list.last_error
-FROM ranking_list AS list
-INNER JOIN ranking_list_next AS joined
-  ON joined.provider = list.provider
-  AND COALESCE(joined.file_source_id, 0) = COALESCE(list.file_source_id, 0)
-  AND joined.period = list.period AND joined.year = 0;
-
--- DLsite popular collection triggers become DLsite lists; a trigger limited
--- to new releases names the list of its period. An interval trigger keeps its
--- interval and switch; a Startup trigger keeps its switch with the default
--- interval. An annual trigger for a past year adds a list that is pulled once.
-INSERT INTO ranking_list_next (
-  provider, period, year, depth, auto_refresh, refresh_interval_minutes, pull_requested_at
-)
-SELECT 'dlsite', collection.period,
+-- A DLsite popular collection trigger names the list of its period, also when
+-- it was limited to new releases, or of its annual year up to the year in
+-- progress in Japan. A Startup trigger has no interval of its own.
+INSERT INTO ranking_schedule_source (provider, file_source_id, period, year, depth, shown, automatic, minutes)
+SELECT 'dlsite', NULL, collection.period,
   CASE WHEN collection.period = 'year' THEN collection.year ELSE 0 END,
-  100,
-  CASE WHEN collection.period = 'year' AND collection.year < collection.current_year THEN 0 ELSE collection.enabled END,
-  CASE collection.period
-    WHEN 'day' THEN CASE WHEN collection.trigger_type = 'schedule' THEN MIN(1440, MAX(20, COALESCE(collection.minutes, 60))) ELSE 60 END
-    WHEN 'week' THEN CASE WHEN collection.trigger_type = 'schedule' THEN MIN(10080, MAX(60, COALESCE(collection.minutes, 360))) ELSE 360 END
-    WHEN 'month' THEN CASE WHEN collection.trigger_type = 'schedule' THEN MIN(10080, MAX(360, COALESCE(collection.minutes, 1440))) ELSE 1440 END
-    ELSE CASE WHEN collection.trigger_type = 'schedule' THEN MIN(43200, MAX(1440, COALESCE(collection.minutes, 10080))) ELSE 10080 END
-  END,
-  CURRENT_TIMESTAMP
+  100, collection.enabled, collection.enabled,
+  CASE WHEN collection.trigger_type = 'schedule' THEN collection.minutes END
 FROM (
-  SELECT trigger.id AS trigger_id, trigger.trigger_type, trigger.enabled,
+  SELECT trigger.trigger_type, trigger.enabled,
     CASE WHEN json_valid(trigger.schedule_json)
       THEN CAST(json_extract(trigger.schedule_json, '$.intervalMinutes') AS INTEGER) END AS minutes,
     CASE WHEN json_valid(trigger.config_json)
       THEN LOWER(TRIM(COALESCE(json_extract(trigger.config_json, '$.period'), ''))) ELSE '' END AS period,
     CASE WHEN json_valid(trigger.config_json)
-      THEN CAST(COALESCE(json_extract(trigger.config_json, '$.year'), 0) AS INTEGER) ELSE 0 END AS year,
-    CAST(strftime('%Y', 'now', '+9 hours') AS INTEGER) AS current_year
+      THEN CAST(COALESCE(json_extract(trigger.config_json, '$.year'), 0) AS INTEGER) ELSE 0 END AS year
   FROM workflow_trigger AS trigger
   INNER JOIN workflow_definition AS definition ON definition.id = trigger.workflow_definition_id
   WHERE definition.code = 'dlsite_popular_collection' AND trigger.trigger_type IN ('schedule', 'startup')
-  ORDER BY trigger.id
 ) AS collection
 WHERE collection.period IN ('day', 'week', 'month')
-  OR (collection.period = 'year' AND collection.year BETWEEN 2000 AND collection.current_year)
-ON CONFLICT DO NOTHING;
+  OR (collection.period = 'year'
+    AND collection.year BETWEEN 2000 AND CAST(strftime('%Y', 'now', '+9 hours') AS INTEGER));
 
--- Remote popular collection triggers become the popular lists of their
--- sources, keeping up to 100 places. A trigger whose source no longer exists
--- is dropped.
-INSERT INTO ranking_list_next (
-  provider, file_source_id, depth, auto_refresh, refresh_interval_minutes, pull_requested_at
-)
-SELECT 'remote_source', source.id,
+-- A remote popular collection trigger names the popular list of its source,
+-- with its limit as the depth, at least 10 places. A trigger whose source no
+-- longer exists or is no longer a compatible remote source names no list.
+INSERT INTO ranking_schedule_source (provider, file_source_id, period, year, depth, shown, automatic, minutes)
+SELECT 'remote_source', source.id, '', 0,
   MIN(100, MAX(10, COALESCE(collection.depth, 100))),
-  collection.enabled,
-  CASE WHEN collection.trigger_type = 'schedule' THEN MIN(10080, MAX(60, COALESCE(collection.minutes, 1440))) ELSE 1440 END,
-  CURRENT_TIMESTAMP
+  collection.enabled, collection.enabled,
+  CASE WHEN collection.trigger_type = 'schedule' THEN collection.minutes END
 FROM (
-  SELECT trigger.id AS trigger_id, trigger.trigger_type, trigger.enabled,
+  SELECT trigger.trigger_type, trigger.enabled,
     CASE WHEN json_valid(trigger.schedule_json)
       THEN CAST(json_extract(trigger.schedule_json, '$.intervalMinutes') AS INTEGER) END AS minutes,
     CASE WHEN json_valid(trigger.config_json)
@@ -166,9 +149,70 @@ FROM (
   WHERE definition.code = 'remote_popular_collection' AND trigger.trigger_type IN ('schedule', 'startup')
 ) AS collection
 INNER JOIN file_source AS source ON source.id = collection.source_id
-WHERE source.source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178')
-ORDER BY collection.trigger_id
-ON CONFLICT DO NOTHING;
+WHERE source.source_type IN ('kikoeru_compatible', 'kikoeru_compatible_number178');
+
+-- A source without an interval of its own takes its kind's default, and every
+-- interval moves into its kind's range.
+UPDATE ranking_schedule_source
+SET minutes = CASE
+  WHEN provider = 'remote_source' THEN MIN(10080, MAX(60, COALESCE(minutes, 1440)))
+  WHEN period = 'day' THEN MIN(1440, MAX(20, COALESCE(minutes, 60)))
+  WHEN period = 'week' THEN MIN(10080, MAX(60, COALESCE(minutes, 360)))
+  WHEN period = 'month' THEN MIN(10080, MAX(360, COALESCE(minutes, 1440)))
+  ELSE MIN(43200, MAX(1440, COALESCE(minutes, 10080)))
+END;
+
+-- The sources of one ranking join one list, independent of the order they are
+-- read in. The list keeps the smallest id of its lists of the earlier chain
+-- and the most places. It is shown unless such a list was hidden and no
+-- enabled trigger names it. It is pulled automatically when any of its sources
+-- was, at the shortest interval among those, or among all of its sources when
+-- none was. An annual list of a past year is pulled once and does not continue
+-- with the next year. Lists that keep an id are added first, so the others'
+-- new ids cannot take one of theirs.
+INSERT INTO ranking_list_next (
+  id, provider, file_source_id, period, year, depth, enabled, auto_refresh, refresh_interval_minutes,
+  follow_current_year, last_pulled_at, last_status, last_error, created_at
+)
+SELECT MIN(source.list_id), source.provider, MAX(source.file_source_id), source.period, source.year,
+  MAX(source.depth),
+  CASE WHEN MIN(source.list_id) IS NULL THEN 1 ELSE MAX(source.shown) END,
+  CASE WHEN source.period = 'year' AND source.year < CAST(strftime('%Y', 'now', '+9 hours') AS INTEGER)
+    THEN 0 ELSE MAX(source.automatic) END,
+  COALESCE(MIN(CASE WHEN source.automatic = 1 THEN source.minutes END), MIN(source.minutes)),
+  CASE WHEN source.period = 'year' AND source.year < CAST(strftime('%Y', 'now', '+9 hours') AS INTEGER)
+    THEN 0 ELSE 1 END,
+  MAX(source.last_pulled_at), '', '', COALESCE(MIN(source.created_at), CURRENT_TIMESTAMP)
+FROM ranking_schedule_source AS source
+GROUP BY source.provider, COALESCE(source.file_source_id, 0), source.period, source.year
+HAVING MIN(source.list_id) IS NOT NULL;
+
+INSERT INTO ranking_list_next (
+  provider, file_source_id, period, year, depth, enabled, auto_refresh, refresh_interval_minutes,
+  follow_current_year, last_pulled_at, last_status, last_error, created_at
+)
+SELECT source.provider, MAX(source.file_source_id), source.period, source.year,
+  MAX(source.depth),
+  1,
+  CASE WHEN source.period = 'year' AND source.year < CAST(strftime('%Y', 'now', '+9 hours') AS INTEGER)
+    THEN 0 ELSE MAX(source.automatic) END,
+  COALESCE(MIN(CASE WHEN source.automatic = 1 THEN source.minutes END), MIN(source.minutes)),
+  CASE WHEN source.period = 'year' AND source.year < CAST(strftime('%Y', 'now', '+9 hours') AS INTEGER)
+    THEN 0 ELSE 1 END,
+  MAX(source.last_pulled_at), '', '', COALESCE(MIN(source.created_at), CURRENT_TIMESTAMP)
+FROM ranking_schedule_source AS source
+GROUP BY source.provider, COALESCE(source.file_source_id, 0), source.period, source.year
+HAVING MIN(source.list_id) IS NULL;
+
+DROP TABLE ranking_schedule_source;
+
+INSERT INTO ranking_variant (id, ranking_list_id, release_window, sort, last_pulled_at, last_status, last_error)
+SELECT list.id, joined.id, list.release_window, '', list.last_pulled_at, list.last_status, list.last_error
+FROM ranking_list AS list
+INNER JOIN ranking_list_next AS joined
+  ON joined.provider = list.provider
+  AND COALESCE(joined.file_source_id, 0) = COALESCE(list.file_source_id, 0)
+  AND joined.period = list.period AND joined.year = 0;
 
 -- Every list has each order its ranking offers.
 INSERT INTO ranking_variant (ranking_list_id, release_window, sort)
@@ -327,3 +371,10 @@ UPDATE workflow_run
 SET status = 'cancelled', finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP)
 WHERE workflow_code IN ('dlsite_popular_collection', 'remote_popular_collection', 'ranking_refresh')
   AND status IN ('queued', 'running');
+
+-- The ranking pulls whose list schedules are not settled yet: queued and
+-- running pulls and the few finished ones still to be settled. The workflow
+-- coordinator reads it on every tick instead of the whole job history.
+CREATE INDEX idx_workflow_job_ranking_unsettled ON workflow_job(id)
+  WHERE worker_type = 'ranking_pull'
+    AND COALESCE(json_extract(checkpoint_json, '$.rankingScheduleSettled'), 0) = 0;

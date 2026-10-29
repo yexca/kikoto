@@ -74,9 +74,16 @@ endif
 # Go targets run the toolchain that backend/go.mod pins, the one CI installs: a
 # newer installed Go never switches down to it on its own. The go line stands in
 # when go.mod has no toolchain line. Set GOTOOLCHAIN on the command line or in
-# the environment to override it.
+# the environment to override it. The PowerShell commands contain no `$`, so
+# they read the same whether make runs them through sh, as from Git Bash, or
+# through cmd.
 ifeq ($(OS),Windows_NT)
-GO_MOD_TOOLCHAIN := $(shell powershell -NoProfile -Command "$$m = Select-String -Path backend/go.mod -Pattern '^toolchain\s+(go\S+)'; if ($$m) { $$m.Matches[0].Groups[1].Value } else { $$m = Select-String -Path backend/go.mod -Pattern '^go\s+(\d\S*)'; if ($$m) { 'go' + $$m.Matches[0].Groups[1].Value } }")
+GO_MOD_MATCH = $(shell powershell -NoProfile -Command "Select-String -Path backend/go.mod -Pattern '$(1)' | Select-Object -First 1 | ForEach-Object Matches | ForEach-Object Groups | Select-Object -Last 1 | ForEach-Object Value")
+GO_MOD_TOOLCHAIN := $(call GO_MOD_MATCH,^toolchain\s+(go\S+))
+ifeq ($(GO_MOD_TOOLCHAIN),)
+GO_MOD_GO_VERSION := $(call GO_MOD_MATCH,^go\s+(\d\S*))
+GO_MOD_TOOLCHAIN := $(if $(GO_MOD_GO_VERSION),go$(GO_MOD_GO_VERSION))
+endif
 else
 GO_MOD_TOOLCHAIN := $(shell sed -n -e 's/^toolchain[[:space:]][[:space:]]*\(go[^[:space:]]*\).*/\1/p' backend/go.mod)
 ifeq ($(GO_MOD_TOOLCHAIN),)

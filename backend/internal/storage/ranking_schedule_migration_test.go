@@ -42,6 +42,7 @@ func TestMigrationJoinsRankingListsAndConvertsPopularCollectionTriggers(t *testi
 		`INSERT INTO workflow_trigger (id, workflow_definition_id, trigger_type, display_name, enabled, schedule_json, config_json, next_run_at)
 			VALUES (401, 301, 'schedule', 'Ranking refresh', 0, '{"intervalMinutes":720}', '{}', NULL),
 				(402, 302, 'schedule', 'Weekly new', 1, '{"intervalMinutes":120}', '{"userId":1,"period":"week","releaseWindow":"30d","tagNameTemplate":"DL_{period}"}', '2026-10-21 00:00:00'),
+				(405, 302, 'schedule', 'Weekly paused', 0, '{"intervalMinutes":60}', '{"userId":1,"period":"week"}', NULL),
 				(403, 302, 'startup', 'Daily new', 1, '{"type":"startup"}', '{"userId":1,"period":"day","releaseWindow":"30d","skipTag":true}', NULL),
 				(404, 302, 'schedule', 'Year 2020', 1, '{"intervalMinutes":1440}', '{"userId":1,"period":"year","year":2020}', NULL),
 				(406, 303, 'schedule', 'Remote B', 0, '{"intervalMinutes":20}', '{"userId":1,"sourceId":7,"action":"track","limit":5}', NULL),
@@ -66,13 +67,13 @@ func TestMigrationJoinsRankingListsAndConvertsPopularCollectionTriggers(t *testi
 	type list struct {
 		id                                    int64
 		autoRefresh, enabled, interval, depth int
-		year                                  int
+		year, follow                          int
 		nextPullAt, requestedAt               sql.NullString
 		variants                              string
 	}
 	lists := map[string]list{}
 	rows, err := db.Query(`SELECT list.id, list.provider, COALESCE(list.file_source_id, 0), list.period, list.year, list.depth,
-		list.enabled, list.auto_refresh, list.refresh_interval_minutes, list.next_pull_at, list.pull_requested_at,
+		list.enabled, list.auto_refresh, list.refresh_interval_minutes, list.follow_current_year, list.next_pull_at, list.pull_requested_at,
 		(SELECT group_concat(variant.id || ':' || variant.release_window || '/' || variant.sort, ',') FROM (
 			SELECT * FROM ranking_variant WHERE ranking_list_id = list.id ORDER BY release_window, sort
 		) AS variant)
@@ -85,7 +86,7 @@ func TestMigrationJoinsRankingListsAndConvertsPopularCollectionTriggers(t *testi
 		var sourceID int64
 		var item list
 		if err := rows.Scan(&item.id, &provider, &sourceID, &period, &item.year, &item.depth, &item.enabled,
-			&item.autoRefresh, &item.interval, &item.nextPullAt, &item.requestedAt, &item.variants); err != nil {
+			&item.autoRefresh, &item.interval, &item.follow, &item.nextPullAt, &item.requestedAt, &item.variants); err != nil {
 			t.Fatal(err)
 		}
 		key := provider + ":" + period
@@ -98,11 +99,13 @@ func TestMigrationJoinsRankingListsAndConvertsPopularCollectionTriggers(t *testi
 	if len(lists) != 5 {
 		t.Fatalf("lists = %+v, want the joined day list, the remote list, and three converted triggers", lists)
 	}
-	// The two day lists join the one with the smaller id. It is shown, keeps
-	// the larger depth, and takes the shared schedule's switch and interval;
-	// the earlier lists become its variants by id, and the other orders are added.
+	// The two day lists join the one with the smaller id, and the enabled
+	// Startup trigger of their period joins them. The list is shown, keeps the
+	// larger depth, and is automatic because the trigger was, at the trigger's
+	// default interval rather than the paused shared schedule's; the earlier
+	// lists become its variants by id, and the other orders are added.
 	day := lists["dlsite:day"]
-	if day.id != 1 || day.enabled != 1 || day.depth != 100 || day.autoRefresh != 0 || day.interval != 720 || day.nextPullAt.Valid || !day.requestedAt.Valid {
+	if day.id != 1 || day.enabled != 1 || day.depth != 100 || day.autoRefresh != 1 || day.interval != 60 || !day.nextPullAt.Valid || !day.requestedAt.Valid {
 		t.Fatalf("joined day list = %+v", day)
 	}
 	if !strings.HasPrefix(day.variants, "1:/,") || !strings.Contains(day.variants, ",3:30d/,") || strings.Count(day.variants, ",") != 3 {
@@ -111,11 +114,13 @@ func TestMigrationJoinsRankingListsAndConvertsPopularCollectionTriggers(t *testi
 	if remote := lists["remote_source:5"]; remote.id != 2 || remote.interval != 720 || remote.depth != 50 || remote.variants != "2:/" {
 		t.Fatalf("tracked remote list = %+v", remote)
 	}
-	// A trigger limited to new releases names the list of its period.
+	// A trigger limited to new releases names the list of its period. Joined
+	// with a paused trigger of the period, the list stays automatic at the
+	// enabled trigger's interval.
 	if week := lists["dlsite:week"]; week.autoRefresh != 1 || week.interval != 120 || !week.nextPullAt.Valid || strings.Count(week.variants, ",") != 3 {
 		t.Fatalf("converted interval trigger = %+v", week)
 	}
-	if annual := lists["dlsite:year"]; annual.year != 2020 || annual.autoRefresh != 0 || !annual.requestedAt.Valid || strings.Count(annual.variants, ",") != 1 || strings.Contains(annual.variants, "30d") {
+	if annual := lists["dlsite:year"]; annual.year != 2020 || annual.autoRefresh != 0 || annual.follow != 0 || !annual.requestedAt.Valid || strings.Count(annual.variants, ",") != 1 || strings.Contains(annual.variants, "30d") {
 		t.Fatalf("converted past-year trigger = %+v", annual)
 	}
 	// A paused trigger stays paused, its interval within the remote range and

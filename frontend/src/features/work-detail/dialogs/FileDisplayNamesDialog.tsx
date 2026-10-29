@@ -25,12 +25,15 @@ import {
   displayNameMatches,
   displayNameRows,
   displayNamesText,
+  displayNameValue,
   namedRowCount,
   realNamesText,
   textDisplayNames,
   textLines,
 } from "@/features/work-detail/dialogs/fileDisplayNamesModel";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { formatList } from "@/i18n/format";
+import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type FileDisplayNames } from "@/lib/api";
 import { FILE_DISPLAY_NAMES_CHANGED_EVENT } from "@/lib/appEvents";
 import { metadataTagNameLanguages } from "@/lib/metadataTagModel";
@@ -55,6 +58,7 @@ export function FileDisplayNamesDialog({
   onSaved: () => Promise<void>;
 }) {
   const { t, i18n } = useTranslation();
+  const { resolvedLocale } = useLocale();
   const toast = useToast();
   const [entries, setEntries] = useState<FileDisplayNames | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -168,11 +172,14 @@ export function FileDisplayNamesDialog({
   // The panel edits the text view's language through its line, so both stay one edit.
   const setPanelDraft = (draftLanguage: string, row: DisplayNameRow, value: string) => {
     const index = rows.indexOf(row);
-    const lines = textLines(text);
-    if (view !== "text" || draftLanguage !== language || index >= lines.length) {
+    if (view !== "text" || draftLanguage !== language || index < 0) {
       setDraftIn(draftLanguage, row.key, value);
       return;
     }
+    // A row past the text's last line takes a line, after lines for the rows before it.
+    const lines = textLines(text, rows.length);
+    for (let line = lines.length; line < index; line++)
+      lines.push(displayNameValue(rows[line], languageDrafts, language));
     lines[index] = value;
     editText(lines.join("\n"));
   };
@@ -208,19 +215,66 @@ export function FileDisplayNamesDialog({
     onFieldKeyDown: stepField,
   });
 
+  const languageLabelOf = (code: string) =>
+    t(metadataTagNameLanguages.find(([candidate]) => candidate === code)?.[1] ?? "");
+
   const save = async () => {
     if (changes.length === 0 || anyInvalid) return;
     setSaving(true);
+    // Each language saves on its own, so a failed one leaves the languages
+    // before it saved: the dialog and the page show them, and only the rest
+    // stay as drafts.
+    const savedLanguages = new Set<string>();
+    let saved: FileDisplayNames | null = null;
+    let failure: unknown = null;
+    for (const change of changes) {
+      try {
+        saved = await api.setWorkFileDisplayNames(workId, change);
+        savedLanguages.add(change.language);
+      } catch (error) {
+        failure = error;
+        break;
+      }
+    }
     try {
-      let saved: FileDisplayNames | null = null;
-      for (const change of changes) saved = await api.setWorkFileDisplayNames(workId, change);
-      if (saved) setEntries(saved);
-      setDrafts({});
-      // Queued tracks of this work take the new names.
-      window.dispatchEvent(new CustomEvent(FILE_DISPLAY_NAMES_CHANGED_EVENT, { detail: { workId } }));
-      toast.success(t("fileDisplayNames.saved"));
+      if (saved) {
+        const stored = saved;
+        setEntries(stored);
+        setDrafts((current) =>
+          Object.fromEntries(Object.entries(current).filter(([draftLanguage]) => !savedLanguages.has(draftLanguage))),
+        );
+        if (view === "text" && savedLanguages.has(language)) {
+          setTextBase({});
+          setText(displayNamesText(displayNameRows(stored), {}, language));
+        }
+        // Queued tracks of this work take the new names.
+        window.dispatchEvent(new CustomEvent(FILE_DISPLAY_NAMES_CHANGED_EVENT, { detail: { workId } }));
+      }
+      if (failure === null) {
+        toast.success(t("fileDisplayNames.saved"));
+        await onSaved();
+        onClose();
+        return;
+      }
+      if (!saved) {
+        toast.notify(toastFromError(failure, t("fileDisplayNames.saveFailed")));
+        return;
+      }
+      const unsaved = formatList(
+        changes
+          .filter((change) => !savedLanguages.has(change.language))
+          .map((change) => languageLabelOf(change.language)),
+        resolvedLocale,
+      );
+      // The languages left unsaved come first, whatever reason the error gives.
+      const unsavedMessage = t("fileDisplayNames.saveFailedLanguages", { languages: unsaved });
+      const feedback = toastFromError(failure, unsavedMessage);
+      toast.notify(
+        feedback.message === unsavedMessage
+          ? feedback
+          : { ...feedback, message: `${unsavedMessage} ${feedback.message}` },
+      );
       await onSaved();
-      onClose();
     } catch (error) {
       toast.notify(toastFromError(error, t("fileDisplayNames.saveFailed")));
     } finally {
@@ -237,7 +291,7 @@ export function FileDisplayNamesDialog({
     }
   };
 
-  const languageLabel = t(metadataTagNameLanguages.find(([candidate]) => candidate === language)?.[1] ?? "");
+  const languageLabel = languageLabelOf(language);
 
   const views = [
     ["list", ListTree, t("fileDisplayNames.viewList")],
@@ -272,14 +326,9 @@ export function FileDisplayNamesDialog({
   return (
     <Dialog
       onClose={onClose}
-      size="full"
+      size="workspace"
       dismissible={!saving && changes.length === 0}
       marker="file-display-names"
-      className={cn(
-        "max-h-[min(90vh,var(--dialog-max-height))]",
-        rows.length > 0 && "h-[var(--dialog-max-height)] md:h-[min(90dvh,var(--dialog-max-height))]",
-        panel ? "max-w-6xl" : "max-w-4xl",
-      )}
     >
       <DialogHeader
         icon={<Languages className="h-4 w-4" />}

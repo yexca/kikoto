@@ -98,6 +98,15 @@ export type FolderWorkspace = {
  */
 export type FolderWorkspaceManage = {
   toolbar?: ReactNode;
+  /**
+   * The toolbar's parts for a wide workspace, which shows them where they
+   * belong instead: switching folders in This folder's head, and forgetting
+   * the work below what the edit deletes.
+   */
+  folderPicker?: ReactNode;
+  /** Reads This folder from disk again, in its head on a wide workspace. */
+  refresh?: ReactNode;
+  forget?: ReactNode;
   /** Shown above the edited folder's files. */
   thisFolderTools?: ReactNode;
   /**
