@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -131,6 +132,51 @@ func TestRankingStartupSettlesAnInterruptedFirstPullSchedule(t *testing.T) {
 	current := env.rankingList(t, list.ID)
 	if current.PullRequested || current.NextPullAt == nil || *current.NextPullAt <= formatWorkflowTimestamp(time.Now().UTC()) {
 		t.Fatalf("the interrupted first pull was not settled to a future automatic pull: %+v", current)
+	}
+}
+
+func TestRankingRunThatCannotTakeItsListsKeepsTheirRequests(t *testing.T) {
+	env := newSubscriptionTestEnv(t)
+	ctx := context.Background()
+	if err := env.server.ensureRankingDispatchers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	list := env.insertRankingList(t, `INSERT INTO ranking_list(provider,period,auto_refresh,refresh_interval_minutes,next_pull_at)
+		VALUES('dlsite','day',1,60,'2000-01-01 00:00:00')`)
+	runs, err := env.server.requestRankingPulls(ctx, []int64{list.ID}, env.adminID, "manual_run")
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("queue: %+v %v", runs, err)
+	}
+	job, ok, err := env.server.claimNextQueuedWorkflowJob(ctx, "failing-ranking-runner")
+	if err != nil || !ok {
+		t.Fatalf("claim = %v %v", ok, err)
+	}
+	env.exec(t, `CREATE TRIGGER example_ranking_claim_failure BEFORE UPDATE OF pull_requested_at ON ranking_list
+		BEGIN SELECT RAISE(FAIL, 'example claim failure'); END`)
+	puller := rankingPullCallback(func(context.Context, rankingList, rankingVariant) (rankingPull, error) {
+		t.Fatal("a run without lists contacted the provider")
+		return rankingPull{}, nil
+	})
+	if err := env.server.executeRankingPullJobWith(ctx, job, puller, time.Now); err == nil {
+		t.Fatal("the run took its lists despite the failure")
+	}
+	env.exec(t, "DROP TRIGGER example_ranking_claim_failure")
+	if err := env.server.handleWorkflowJobResult(ctx, ctx, job, errors.New("example claim failure")); err == nil {
+		t.Fatal("the failed run reported success")
+	}
+	if status := env.scalar(t, "SELECT status FROM workflow_run WHERE id=?", runs[0].RunID); status.String != "failed" {
+		t.Fatalf("run = %v", status)
+	}
+	current := env.rankingList(t, list.ID)
+	if !current.PullRequested || current.NextPullAt == nil || *current.NextPullAt != "2000-01-01 00:00:00" {
+		t.Fatalf("a run that pulled nothing consumed the request or the due pull: %+v", current)
+	}
+	now := time.Now().UTC()
+	next := env.scalar(t, `SELECT trigger.next_run_at FROM workflow_trigger AS trigger
+		JOIN workflow_definition AS definition ON definition.id=trigger.workflow_definition_id
+		WHERE definition.code=?`, dlsiteRankingWorkflowCode)
+	if !next.Valid || next.String <= formatWorkflowTimestamp(now) || next.String > formatWorkflowTimestamp(now.Add(rankingDispatchRetryDelay+time.Minute)) {
+		t.Fatalf("the dispatcher after a run without lists = %v, want the retry delay", next)
 	}
 }
 
@@ -294,6 +340,43 @@ func TestRankingPartialScheduleWriteFailureIsReconciled(t *testing.T) {
 	}
 	if after := env.rankingList(t, day.ID); after.NextPullAt == nil || *after.NextPullAt != *current.NextPullAt {
 		t.Fatalf("an already settled schedule moved during a repeated settlement: before=%+v after=%+v", current, after)
+	}
+}
+
+func TestRankingRunWithARecordedOrderIsNotFailed(t *testing.T) {
+	env := newSubscriptionTestEnv(t)
+	list := env.insertRankingList(t, `INSERT INTO ranking_list(provider,period,auto_refresh,refresh_interval_minutes,pull_requested_at)
+		VALUES('dlsite','day',1,60,'2000-01-01 00:00:00')`)
+	env.exec(t, `DELETE FROM ranking_variant WHERE ranking_list_id = `+strconv.FormatInt(list.ID, 10)+` AND (release_window <> '' OR sort <> '')`)
+	env.exec(t, `CREATE TRIGGER example_ranking_schedule_failure BEFORE UPDATE OF last_pulled_at ON ranking_list
+		WHEN NEW.last_status = 'succeeded' BEGIN SELECT RAISE(FAIL, 'example schedule failure'); END`)
+	runID := env.runRankingPull(t, &fakeRankingPuller{pulls: map[int64]rankingPull{list.ID: rankingItems("RJ00000000")}}, time.Now().UTC())
+	if status := env.scalar(t, "SELECT status FROM workflow_run WHERE id=?", runID); status.String != "partial" {
+		t.Fatalf("run whose only order was recorded but whose schedule was not = %v", status)
+	}
+	if snapshots := env.scalar(t, "SELECT COUNT(*) FROM ranking_snapshot"); snapshots.String != "1" {
+		t.Fatalf("snapshots = %v", snapshots)
+	}
+}
+
+func TestRankingSettlementReadsOnlyUnsettledPulls(t *testing.T) {
+	env := newSubscriptionTestEnv(t)
+	rows, err := env.db.Query("EXPLAIN QUERY PLAN " + unsettledRankingPullsSQL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	plan := []string{}
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	if len(plan) == 0 || !strings.Contains(strings.Join(plan, "\n"), "idx_workflow_job_ranking_unsettled") {
+		t.Fatalf("the coordinator's settlement query scans more than the unsettled pulls: %q", plan)
 	}
 }
 

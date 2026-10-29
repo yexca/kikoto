@@ -168,16 +168,25 @@ func (s *Server) settleInterruptedRankingPullTx(ctx context.Context, tx *sql.Tx,
 	return err
 }
 
+// unsettledRankingPullsSQL selects terminal pulls whose schedules are not
+// settled. Its first two terms are those of the partial index
+// idx_workflow_job_ranking_unsettled, so a coordinator tick reads only the
+// pulls still queued, running, or awaiting settlement, not the job history.
+// The unary plus keeps the status terms from choosing the status indexes,
+// which cover every job.
+const unsettledRankingPullsSQL = `SELECT workflow_run_id FROM workflow_job
+	WHERE worker_type = '` + rankingPullWorkerType + `'
+		AND COALESCE(json_extract(checkpoint_json, '$.rankingScheduleSettled'), 0) = 0
+		AND (+status IN ('failed', 'cancelled')
+			OR (+status IN ('succeeded', 'partial') AND json_extract(checkpoint_json, '$.rankingScheduleSettled') = 0))
+	ORDER BY id DESC LIMIT 32`
+
 // reconcileInterruptedRankingSchedules settles a bounded batch of terminal
 // pulls whose executor or cancellation did not finish schedule settlement.
 // Startup and the coordinator repeat it, so a failed settlement write is
 // retried without resending the cancelled or interrupted pull.
 func (s *Server) reconcileInterruptedRankingSchedules(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT workflow_run_id FROM workflow_job
-		WHERE worker_type = ? AND (status IN ('failed', 'cancelled')
-			OR (status IN ('succeeded', 'partial') AND json_extract(checkpoint_json, '$.rankingScheduleSettled') = 0))
-			AND COALESCE(json_extract(checkpoint_json, '$.rankingScheduleSettled'), 0) = 0
-		ORDER BY id DESC LIMIT 32`, rankingPullWorkerType)
+	rows, err := s.db.QueryContext(ctx, unsettledRankingPullsSQL)
 	if err != nil {
 		return err
 	}

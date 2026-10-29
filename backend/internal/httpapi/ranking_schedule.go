@@ -147,13 +147,14 @@ type rankingDueGroup struct {
 
 // rankingDueGroups reads the due times of a workflow's enabled lists per
 // target. A requested pull is due at once; a list of a disabled or
-// incompatible source is not dispatched.
-func (s *Server) rankingDueGroups(ctx context.Context, code string, now time.Time) ([]rankingDueGroup, error) {
+// incompatible source is not dispatched. A target whose latest run failed
+// before it took its lists waits rankingDispatchRetryDelay after that failure.
+func (s *Server) rankingDueGroups(ctx context.Context, q workflowTriggerQueryer, code string, now time.Time) ([]rankingDueGroup, error) {
 	provider := rankingProviderDLsite
 	if code == remoteRankingWorkflowCode {
 		provider = rankingProviderRemote
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(list.file_source_id, 0), list.pull_requested_at,
 			CASE WHEN list.final_at IS NULL THEN list.next_pull_at END
 		FROM ranking_list AS list
@@ -203,14 +204,57 @@ func (s *Server) rankingDueGroups(ctx context.Context, code string, now time.Tim
 		if group.dueAt.IsZero() {
 			continue
 		}
-		active, err := s.activeRankingRun(ctx, s.db, group.target)
+		active, err := s.activeRankingRun(ctx, q, group.target)
 		if err != nil {
 			return nil, err
 		}
 		group.active = active.RunID > 0
+		if !group.active {
+			hold, err := rankingUnclaimedFailureHold(ctx, q, group.target)
+			if err != nil {
+				return nil, err
+			}
+			if hold.After(group.dueAt) {
+				group.dueAt = hold
+			}
+		}
 		result = append(result, *group)
 	}
 	return result, nil
+}
+
+// rankingUnclaimedFailureHold is when a target may be dispatched again after
+// its latest run failed before it took any list. A run whose lists could not
+// be taken consumed no request and no due pull, so its lists stay due; the
+// delay keeps a persistent failure from queueing a failing run on every
+// dispatch.
+func rankingUnclaimedFailureHold(ctx context.Context, q workflowTriggerQueryer, target rankingPullTarget) (time.Time, error) {
+	latest := `SELECT id, finished_at FROM workflow_run WHERE workflow_code = ?`
+	args := []any{target.workflowCode()}
+	if target.Provider == rankingProviderRemote {
+		latest += ` AND json_valid(input_json) AND CAST(json_extract(input_json, '$.source_id') AS INTEGER) = ?`
+		args = append(args, target.SourceID)
+	}
+	query := `WITH latest AS (` + latest + ` ORDER BY id DESC LIMIT 1)
+		SELECT COALESCE(latest.finished_at, job.updated_at, '') FROM latest
+		INNER JOIN workflow_job AS job ON job.workflow_run_id = latest.id AND job.worker_type = ?
+		WHERE job.status = 'failed' AND json_valid(job.checkpoint_json)
+			AND json_extract(job.checkpoint_json, '$.detail.listIds') IS NULL
+		ORDER BY job.id DESC LIMIT 1`
+	args = append(args, rankingPullWorkerType)
+	var failedAt string
+	err := q.QueryRowContext(ctx, query, args...).Scan(&failedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	at, ok := parseWorkflowTimestamp(failedAt)
+	if !ok {
+		return time.Time{}, nil
+	}
+	return at.Add(rankingDispatchRetryDelay), nil
 }
 
 // nextRankingDispatchAt is when a workflow's dispatcher should run next: the
@@ -263,15 +307,22 @@ func (s *Server) ensureRankingDispatchers(ctx context.Context) error {
 }
 
 // refreshRankingDispatchers replans both dispatchers. Every change to a list's
-// schedule and every finished pull calls it.
+// schedule and every finished pull calls it. The lists are read and the plan
+// written in one write transaction, so a replan that read the lists before a
+// request cannot overwrite the plan of one that read them after it.
 func (s *Server) refreshRankingDispatchers(ctx context.Context) error {
+	tx, err := beginTxWithDatabaseBusyRetry(ctx, s.db)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
 	now := time.Now().UTC()
 	for _, code := range rankingWorkflowCodes {
-		groups, err := s.rankingDueGroups(ctx, code, now)
+		groups, err := s.rankingDueGroups(ctx, tx, code, now)
 		if err != nil {
 			return err
 		}
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := tx.ExecContext(ctx, `
 			UPDATE workflow_trigger
 			SET next_run_at = ?, updated_at = CURRENT_TIMESTAMP
 			WHERE trigger_type = 'schedule'
@@ -280,7 +331,7 @@ func (s *Server) refreshRankingDispatchers(ctx context.Context) error {
 			return err
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (s *Server) refreshRankingDispatchersBestEffort(ctx context.Context) {
@@ -304,7 +355,7 @@ func (s *Server) dispatchRankingTrigger(ctx context.Context, definition workflow
 	if claimed, err := claim.RowsAffected(); err != nil || claimed == 0 {
 		return err
 	}
-	groups, err := s.rankingDueGroups(ctx, definition.Code, now)
+	groups, err := s.rankingDueGroups(ctx, s.db, definition.Code, now)
 	if err != nil {
 		return err
 	}

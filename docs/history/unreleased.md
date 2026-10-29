@@ -17,13 +17,21 @@
 > scope, or run the selected works from **Workflows** instead.
 
 > [!IMPORTANT]
-> The popular collections become Rankings. Each Remote popular and DLsite
-> popular trigger is turned into a ranking in **Discover → Rankings**
-> with its period, year, or source, its interval, and whether it ran on its
-> own; the triggers themselves are removed. Collections no longer add tags,
-> sync metadata, Track, or Fetch, and collection runs still queued or running
-> when the upgrade starts are stopped. Tags they added earlier stay with their
-> works.
+> The popular collections become Rankings, and their triggers are removed.
+> Each DLsite popular and Remote popular trigger becomes the ranking of its
+> period, year, or source in **Discover → Rankings**. Triggers for the same
+> ranking, including one limited to new releases, become one ranking, which
+> is pulled automatically when any of them was enabled, at the shortest
+> interval among the enabled ones; a Startup trigger counts as the ranking's
+> default interval. An interval outside what the ranking offers moves to the
+> nearest choice, and a remote ranking keeps at least 10 places. An earlier
+> year's annual ranking is pulled once and does not continue with the next
+> year. A Remote popular trigger whose source was removed or is no longer a
+> compatible remote source is dropped. Every ranking is pulled once right
+> after the upgrade, also those of paused triggers. Collections no longer add
+> tags, sync metadata, Track, or Fetch, and collection runs still queued or
+> running when the upgrade starts are stopped. Tags they added earlier stay
+> with their works.
 
 <details>
 <summary><strong>Library and work detail</strong></summary>

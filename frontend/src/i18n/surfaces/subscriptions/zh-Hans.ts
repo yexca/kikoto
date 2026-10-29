@@ -237,6 +237,7 @@ export const subscriptionsHans = {
         date: "日期",
         updates: "当天的更新",
         noUpdates: "当天没有记录到更新。",
+        updatesFailed: "无法加载当天的更新。",
         more: "更多",
         previous: "上一次更新",
         next: "下一次更新",

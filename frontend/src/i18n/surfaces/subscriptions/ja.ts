@@ -243,6 +243,7 @@ export const subscriptionsJapanese = {
         date: "日付",
         updates: "この日の更新",
         noUpdates: "この日に記録された更新はありません。",
+        updatesFailed: "この日の更新を読み込めませんでした。",
         more: "さらに表示",
         previous: "前の更新",
         next: "次の更新",

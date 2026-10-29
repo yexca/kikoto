@@ -802,7 +802,7 @@ func TestAnnualRankingFinalizesWhenEveryOrderHasTheFinalPull(t *testing.T) {
 		t.Fatalf("followed year = depth %d auto %v interval %d follow %v requested %v orders %d", depth, autoRefresh, interval, follow, requested, orders)
 	}
 	autoRefresh = true
-	if _, err := applyRankingListUpdate(finished, rankingListUpdate{AutoRefresh: &autoRefresh}); err == nil {
+	if _, err := applyRankingListUpdate(finished, rankingListUpdate{AutoRefresh: &autoRefresh}, time.Now()); err == nil {
 		t.Fatal("a finalized list accepted a schedule")
 	}
 
@@ -826,14 +826,39 @@ func TestAnnualRankingYearsFollowJapanTime(t *testing.T) {
 		t.Fatalf("current year = %+v %v", current, err)
 	}
 	previous, err := env.server.normalizeRankingListRequest(context.Background(), rankingListRequest{Provider: rankingProviderDLsite, Period: "year", Year: 2026}, newYearInJapan)
-	if err != nil || *previous.AutoRefresh {
-		t.Fatalf("a past year is scheduled: %+v %v", previous, err)
+	if err != nil || *previous.AutoRefresh || previous.FollowCurrentYear || !current.FollowCurrentYear {
+		t.Fatalf("a past year is scheduled or continues: %+v %v", previous, err)
 	}
 	if _, err := env.server.normalizeRankingListRequest(context.Background(), rankingListRequest{Provider: rankingProviderDLsite, Period: "year", Year: 2028}, newYearInJapan); err == nil {
 		t.Fatal("a future year was accepted")
 	}
 	if got := rankingFinalPullAt(2026); !got.Equal(time.Date(2027, time.January, 3, 0, 0, 0, 0, time.FixedZone("JST", 9*60*60))) {
 		t.Fatalf("final pull = %v", got)
+	}
+}
+
+func TestPastAnnualRankingFinalizesWithoutAddingTheYearInProgress(t *testing.T) {
+	env := newSubscriptionTestEnv(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	request, err := env.server.normalizeRankingListRequest(ctx, rankingListRequest{Provider: rankingProviderDLsite, Period: "year", Year: 2020}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := env.server.insertRankingList(ctx, request, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	past := env.rankingList(t, id)
+	follow := true
+	if _, err := applyRankingListUpdate(past, rankingListUpdate{FollowCurrentYear: &follow}, now); err == nil {
+		t.Fatal("a past year accepted following the current year")
+	}
+	if outcome := env.record(t, past, rankingItems("RJ00000030"), now); !outcome.Final {
+		t.Fatalf("past year pull = %+v", outcome)
+	}
+	if count := env.scalar(t, "SELECT COUNT(*) FROM ranking_list WHERE period = 'year' AND year <> 2020"); count.String != "0" {
+		t.Fatalf("a finalized past year added %s lists", count.String)
 	}
 }
 

@@ -244,6 +244,7 @@ export const subscriptionsEnglish = {
         date: "Date",
         updates: "Updates on this day",
         noUpdates: "No update was recorded on this day.",
+        updatesFailed: "The updates of this day could not be loaded.",
         more: "More",
         previous: "Previous update",
         next: "Next update",

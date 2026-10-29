@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, History } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
@@ -80,6 +80,9 @@ export function RankingHistoryPopover({
   );
 }
 
+/** The updates loaded for one day, and the cursor of the rest. */
+type DayTimeline = { key: string; updates: RankingSnapshotRef[]; more: number | null; failed: boolean };
+
 /**
  * Chooses a time in a ranking's history: a day in the account's time zone,
  * that day's updates, and the update before or after the one shown.
@@ -108,11 +111,17 @@ function RankingTimeTravel({
   const day = zonedDay(shownTime, timeZone);
   const first = parseServerTimestamp(page.history.firstPulledAt);
   const firstDay = first ? zonedDay(first.getTime(), timeZone) : today;
-  const [updates, setUpdates] = useState<RankingSnapshotRef[]>([]);
-  const [more, setMore] = useState<number | null>(null);
+  // The updates belong to the day they were loaded for, so a response that
+  // arrives after another day was chosen is never shown with it.
+  const dayKey = `${timeZone}:${day}`;
+  const [timeline, setTimeline] = useState<DayTimeline | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const dayLoad = useRef<AbortController | null>(null);
+  const shown = timeline?.key === dayKey ? timeline : null;
 
   useEffect(() => {
     const controller = new AbortController();
+    dayLoad.current = controller;
     const range = zonedDayRange(day, timeZone);
     api
       .listRankingSnapshots(
@@ -125,28 +134,47 @@ function RankingTimeTravel({
         },
         controller.signal,
       )
-      .then((timeline) => {
-        setUpdates(timeline.snapshots);
-        setMore(timeline.nextAfterId);
-      })
+      .then((page) => setTimeline({ key: dayKey, updates: page.snapshots, more: page.nextAfterId, failed: false }))
       .catch(() => {
-        if (!controller.signal.aborted) setUpdates([]);
+        if (!controller.signal.aborted) setTimeline({ key: dayKey, updates: [], more: null, failed: true });
       });
     return () => controller.abort();
-  }, [day, list.id, timeZone, variant.releaseWindow, variant.sort]);
+  }, [day, dayKey, list.id, timeZone, variant.releaseWindow, variant.sort]);
 
-  const loadMore = async () => {
-    if (more === null) return;
+  // More continues the shown day under its load, so choosing another day
+  // stops it.
+  const loadMore = () => {
+    const controller = dayLoad.current;
+    if (!shown || shown.more === null || !controller || loadingMore) return;
+    const { key, more } = shown;
     const range = zonedDayRange(day, timeZone);
-    const timeline = await api.listRankingSnapshots(list.id, {
-      to: new Date(range.end).toISOString(),
-      afterId: more,
-      releaseWindow: variant.releaseWindow,
-      sort: variant.sort,
-    });
-    setUpdates((current) => [...current, ...timeline.snapshots]);
-    setMore(timeline.nextAfterId);
+    setLoadingMore(true);
+    api
+      .listRankingSnapshots(
+        list.id,
+        {
+          to: new Date(range.end).toISOString(),
+          afterId: more,
+          releaseWindow: variant.releaseWindow,
+          sort: variant.sort,
+        },
+        controller.signal,
+      )
+      .then((page) =>
+        setTimeline((current) =>
+          current?.key === key
+            ? { key, updates: [...current.updates, ...page.snapshots], more: page.nextAfterId, failed: false }
+            : current,
+        ),
+      )
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setTimeline((current) => (current?.key === key ? { ...current, failed: true } : current));
+      })
+      .finally(() => setLoadingMore(false));
   };
+  const updates = shown?.updates ?? [];
+  const noUpdates = shown?.failed === false && updates.length === 0;
   const go = (snapshot: RankingSnapshotRef | null) => snapshot && onAtChange(rankingInstant(snapshot.pulledAt));
   const coverage = page.coverage;
   const notes: string[] = [];
@@ -164,6 +192,7 @@ function RankingTimeTravel({
   if (coverage?.state === "before") {
     notes.push(t("subscriptions.rankings.history.before", { time: time(page.history.firstPulledAt) }));
   }
+  if (shown?.failed) notes.push(t("subscriptions.rankings.history.updatesFailed"));
   if (rankingDayIsDailyOnly(day, timeZone, page.history.fullFrom))
     notes.push(t("subscriptions.rankings.history.dailyOnly"));
   notes.push(t("subscriptions.rankings.history.timeZone", { zone: timeZone }));
@@ -211,7 +240,7 @@ function RankingTimeTravel({
         aria-label={t("subscriptions.rankings.history.updates")}
         className="flex max-h-40 flex-wrap gap-1 overflow-y-auto"
       >
-        {updates.length === 0 ? (
+        {noUpdates ? (
           <span className="text-xs text-muted-foreground">{t("subscriptions.rankings.history.noUpdates")}</span>
         ) : (
           updates.map((update) => {
@@ -229,8 +258,8 @@ function RankingTimeTravel({
             );
           })
         )}
-        {more !== null && (
-          <Button size="sm" variant="ghost" className="h-7" onClick={() => void loadMore()}>
+        {shown && shown.more !== null && (
+          <Button size="sm" variant="ghost" className="h-7" disabled={loadingMore} onClick={loadMore}>
             {t("subscriptions.rankings.history.more")}
           </Button>
         )}

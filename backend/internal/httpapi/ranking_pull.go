@@ -392,7 +392,15 @@ func (s *Server) executeRankingPullJobWith(ctx context.Context, job workflowJobR
 	startedAt := now().UTC()
 	lists, err := s.claimRankingPullLists(ctx, job, payload, startedAt)
 	if err != nil {
+		// The run took no list, so it consumed no request and no due pull:
+		// its schedule settlement has nothing to do. The dispatcher waits a
+		// moment before it queues the target again.
+		if _, settleErr := s.db.ExecContext(ctx, `UPDATE workflow_job
+			SET checkpoint_json = json_set(checkpoint_json, '$.rankingScheduleSettled', 1) WHERE id = ? AND status = 'running'`, job.ID); settleErr != nil {
+			slog.Warn("ranking pull without lists could not be marked settled", "job_id", job.ID, "error", settleErr)
+		}
 		_ = s.failClaimedWorkflowJob(ctx, job, "Rankings could not be loaded")
+		s.refreshRankingDispatchersBestEffort(ctx)
 		return err
 	}
 	tasks := []*rankingPullTask{}
@@ -471,16 +479,24 @@ func (s *Server) executeRankingPullJobWith(ctx context.Context, job workflowJobR
 		}
 	}
 	result.Failures = append(append(result.Failures, pullFailures...), recordFailures...)
-	succeeded := len(tasks) - len(result.Failures)
+	// Failures mix variants that were not pulled or recorded with lists whose
+	// schedule was not written, so the run is failed only when no variant was
+	// recorded.
+	recorded := 0
+	for _, outcome := range result.Lists {
+		if outcome.Status == "succeeded" {
+			recorded++
+		}
+	}
 	switch {
 	case len(result.Failures) == 0:
 		result.Status = "succeeded"
-	case succeeded > 0:
+	case recorded > 0:
 		result.Status = "partial"
 	default:
 		result.Status = "failed"
 	}
-	err = s.finishRankingPullJob(ctx, job, nodeIDs, result, pullFailures, recordFailures, schedulesSettled)
+	err = s.finishRankingPullJob(ctx, job, nodeIDs, result, len(tasks)-len(pullFailures), pullFailures, recordFailures, schedulesSettled)
 	s.refreshRankingDispatchersBestEffort(ctx)
 	return err
 }
@@ -754,7 +770,7 @@ func followRankingYear(ctx context.Context, tx *sql.Tx, list rankingList, now ti
 	return ensureRankingVariants(ctx, tx, id, rankingProviderDLsite, "year")
 }
 
-func (s *Server) finishRankingPullJob(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, result rankingRunResult, pullFailures, recordFailures []string, schedulesSettled bool) error {
+func (s *Server) finishRankingPullJob(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, result rankingRunResult, pulledVariants int, pullFailures, recordFailures []string, schedulesSettled bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -784,7 +800,7 @@ func (s *Server) finishRankingPullJob(ctx context.Context, job workflowJobRecord
 		output       map[string]any
 		failures     []string
 	}{
-		{"pull", nodeStatus(pullFailures, pulled+len(recordFailures)), map[string]any{"variants": len(result.Lists), "failed": len(pullFailures)}, pullFailures},
+		{"pull", nodeStatus(pullFailures, pulledVariants), map[string]any{"variants": len(result.Lists), "failed": len(pullFailures)}, pullFailures},
 		{"record", nodeStatus(recordFailures, pulled), map[string]any{"recorded": pulled, "changed": changed, "lists": result.Lists}, recordFailures},
 	}
 	for _, update := range updates {

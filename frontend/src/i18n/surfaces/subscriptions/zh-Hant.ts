@@ -237,6 +237,7 @@ export const subscriptionsHant = {
         date: "日期",
         updates: "當天的更新",
         noUpdates: "當天沒有記錄到更新。",
+        updatesFailed: "無法載入當天的更新。",
         more: "更多",
         previous: "上一次更新",
         next: "下一次更新",

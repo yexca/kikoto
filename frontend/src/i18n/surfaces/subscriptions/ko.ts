@@ -242,6 +242,7 @@ export const subscriptionsKorean = {
         date: "날짜",
         updates: "이날의 업데이트",
         noUpdates: "이날 기록된 업데이트가 없습니다.",
+        updatesFailed: "이날의 업데이트를 불러오지 못했습니다.",
         more: "더 보기",
         previous: "이전 업데이트",
         next: "다음 업데이트",

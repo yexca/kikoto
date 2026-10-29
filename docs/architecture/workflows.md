@@ -622,8 +622,9 @@ A remote list reads the source's popular works through the shared outbound
 transport on its configured origin; works without a stable catalog code are
 skipped and counted. A removed or incompatible source records the list as
 `source_unavailable`. A failing variant never stops the others: its last
-snapshot stays, the list is `partial` when some of its variants failed, and the
-run is partial when some variants failed and failed when all did. Detailed
+snapshot stays, and the list is `partial` when some of its variants failed.
+The run is failed when it recorded no variant, and partial when it recorded
+some but a variant failed or a list's next pull could not be written. Detailed
 errors stay in the run and the protected `last_error` of the variant and the
 list.
 
@@ -636,7 +637,9 @@ is queued or running, only its lists due later count. Completion, failure,
 cancellation, orphan recovery, and changes to a list replan the dispatcher
 from the lists' current settings. Cancelling a pull consumes that run's
 request and keeps an enabled automatic list's next pull in the future;
-a later manual request remains due. The dispatcher is
+a later manual request remains due. A run that fails before it takes its
+lists consumes no request or due pull, and its target is dispatched again
+five minutes after the failure. The dispatcher is
 configured only through the lists: the Workflows page shows its next run but
 cannot edit, pause, or delete it.
 
@@ -658,11 +661,13 @@ DLsite's day and year turn over in Japan Standard Time, so the year in
 progress is read in JST. An annual list is pulled once more from 3 January
 JST after its year, even with automatic pulls off; the first such pull in
 which both sort variants succeed records `final_at`, and a finished list keeps
-no schedule. With
-`follow_current_year`, on by default, the final pull adds the list of the
-year then in progress with the same settings and variants and asks for its
-first pull. An earlier year added from the settings is pulled once and
-finished at once.
+no schedule. The annual list of the year in progress follows the current year
+(`follow_current_year`): on when it is added, it can be switched off until the
+list is finished and on again only while its year is in progress. Its final
+pull then adds the list of the year then in progress with the same settings
+and variants and asks for its first pull. An earlier year added from the
+settings is pulled once, finished at once, and
+not followed by another year.
 **Refresh now** on a finished list pulls it again; an unchanged order adds no
 snapshot.
 
