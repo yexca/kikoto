@@ -81,17 +81,18 @@ func TestAvailabilityWatchRunRecordsActivityWithoutMaterializingUnknownWork(t *t
 	if state != "ready" || lastStatus != "available" {
 		t.Fatalf("target = state %q, status %q", state, lastStatus)
 	}
+	// The watch only monitors: an available work starts no other run.
 	var works, runs, succeededNodes, notifications int
 	if err := db.QueryRow(`
 		SELECT
 			(SELECT COUNT(*) FROM work),
-			(SELECT COUNT(*) FROM workflow_run WHERE workflow_code = 'availability_watch'),
+			(SELECT COUNT(*) FROM workflow_run),
 			(SELECT COUNT(*) FROM workflow_node_run WHERE workflow_run_id = ? AND status = 'succeeded'),
 			(SELECT COUNT(*) FROM workflow_notification WHERE workflow_run_id = ? AND notification_type = 'availability_watch_ready')
 	`, queued.RunID, queued.RunID).Scan(&works, &runs, &succeededNodes, &notifications); err != nil {
 		t.Fatal(err)
 	}
-	if works != 0 || runs != 1 || succeededNodes != 5 || notifications != 2 {
+	if works != 0 || runs != 1 || succeededNodes != 4 || notifications != 2 {
 		t.Fatalf("works=%d runs=%d succeeded nodes=%d notifications=%d", works, runs, succeededNodes, notifications)
 	}
 }
@@ -298,30 +299,6 @@ func TestSubscriptionRefreshQueuesAvailabilityWatchWithItsConfiguringAccount(t *
 		t.Fatalf("watch dispatch with revoked owner = %q %v", revoked.watch, revoked.failures)
 	}
 
-}
-
-func TestAvailabilityWatchExcludesNoExtensionsUntilConfigured(t *testing.T) {
-	db := openMigratedTestDB(t)
-	if _, err := db.Exec(`INSERT INTO user_account (id, username, role) VALUES (1, 'watch-editor', 'admin')`); err != nil {
-		t.Fatal(err)
-	}
-	server := NewServer(db, config.Config{})
-	view, err := server.loadAvailabilityWatch(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(view.ExcludeExtensions) != 0 {
-		t.Fatalf("unconfigured watch excludes %v", view.ExcludeExtensions)
-	}
-	if err := server.persistAvailabilityWatchTargets(context.Background(), 1, []string{"RJ00000000"}, true); err != nil {
-		t.Fatal(err)
-	}
-	if view, err = server.loadAvailabilityWatch(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if len(view.ExcludeExtensions) != 0 {
-		t.Fatalf("watch created from the pool excludes %v", view.ExcludeExtensions)
-	}
 }
 
 func TestAvailabilityWatchFamilyEditionSatisfiesWatchedCode(t *testing.T) {

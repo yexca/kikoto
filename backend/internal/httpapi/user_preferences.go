@@ -20,6 +20,9 @@ type userPreferences struct {
 	// TimeZone is the time zone the user fixed, or nil when the user's days
 	// follow the device the account is used from.
 	TimeZone *string `json:"timeZone"`
+	// ForYouTemperature is how far For you draws stray from what the user
+	// likes: safe, balanced, or adventurous.
+	ForYouTemperature library.ForYouTemperature `json:"forYouTemperature"`
 }
 
 func (s *Server) loadUserPreferences(r *http.Request, userID int64) (userPreferences, error) {
@@ -35,9 +38,14 @@ func (s *Server) loadUserPreferences(r *http.Request, userID int64) (userPrefere
 	if languages, ok := s.ownMetadataLanguages(r.Context(), userID); ok {
 		result.MetadataLanguages = languages
 	}
+	temperature, err := s.forYouTemperature(r.Context(), userID)
+	if err != nil {
+		return result, err
+	}
+	result.ForYouTemperature = temperature
 	var rules sql.NullString
 	var threshold sql.NullInt64
-	err := s.db.QueryRowContext(r.Context(), "SELECT directory_routing_rules, recommendation_threshold FROM user_preference WHERE user_id = ?", userID).Scan(&rules, &threshold)
+	err = s.db.QueryRowContext(r.Context(), "SELECT directory_routing_rules, recommendation_threshold FROM user_preference WHERE user_id = ?", userID).Scan(&rules, &threshold)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return result, err
 	}
@@ -81,7 +89,8 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 		MetadataLanguages json.RawMessage `json:"metadataLanguages"`
 		// TimeZone is an IANA zone name, or null to follow the device.
 		// Omitting it keeps the current choice.
-		TimeZone json.RawMessage `json:"timeZone"`
+		TimeZone          json.RawMessage `json:"timeZone"`
+		ForYouTemperature *string         `json:"forYouTemperature"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
 	decoder.DisallowUnknownFields()
@@ -141,6 +150,12 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 			metadataLanguagesJSON = string(encoded)
 		}
 	}
+	if payload.ForYouTemperature != nil {
+		if _, ok := library.ParseForYouTemperature(*payload.ForYouTemperature); !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "forYouTemperature must be safe, balanced, or adventurous"})
+			return
+		}
+	}
 	timeZoneChanged := len(payload.TimeZone) > 0
 	var timeZone any
 	if timeZoneChanged && string(payload.TimeZone) != "null" {
@@ -163,6 +178,13 @@ func (s *Server) updateUserPreferences(w http.ResponseWriter, r *http.Request) {
 	if timeZoneChanged {
 		if _, err := s.db.ExecContext(r.Context(), `INSERT INTO user_preference (user_id, time_zone) VALUES (?, ?)
 			ON CONFLICT(user_id) DO UPDATE SET time_zone = excluded.time_zone`, user.ID, timeZone); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if payload.ForYouTemperature != nil {
+		if _, err := s.db.ExecContext(r.Context(), `INSERT INTO user_preference (user_id, for_you_temperature) VALUES (?, ?)
+			ON CONFLICT(user_id) DO UPDATE SET for_you_temperature = excluded.for_you_temperature`, user.ID, *payload.ForYouTemperature); err != nil {
 			writeError(w, err)
 			return
 		}

@@ -9,7 +9,7 @@ export function sourcePresenceBadges(
   availability: string[] = [],
 ): WorkCardBadge[] {
   const items = sourcePresence ?? [];
-  const hasPlayable = hasPlayableAvailability(availability);
+  const hasPlayable = workHasLibraryFiles(availability);
   const badges: WorkCardBadge[] = [];
   const seen = new Set<string>();
   const add = (badge: WorkCardBadge) => {
@@ -25,7 +25,7 @@ export function sourcePresenceBadges(
   }
 
   if (badges.length > 0) return sortSourceBadges(badges);
-  if (items.length === 0 && !hasPlayableAvailability(availability)) {
+  if (items.length === 0 && !workHasLibraryFiles(availability)) {
     return [{ key: "source:no-source", label: i18n.t("workCard.noSource"), variant: "warning" }];
   }
   return sortSourceBadges(availabilityBadges(availability));
@@ -134,7 +134,12 @@ function normalizePresenceType(type: string) {
   return normalized;
 }
 
-function hasPlayableAvailability(availability: string[]) {
+/**
+ * Whether the library has the work: local or cached files, or a location
+ * tracked from a remote source. A work known only by its metadata is not in
+ * the library, and the server's Rankings `inLibrary` follows the same rule.
+ */
+export function workHasLibraryFiles(availability: readonly string[] = []) {
   return availability.some((item) => ["local", "cache", "cached", "remote"].includes(item.toLowerCase()));
 }
 

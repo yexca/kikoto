@@ -152,6 +152,7 @@ function rankingPageFixture(
       work: null,
       inLibrary: false,
       watched: false,
+      watchTarget: null,
       fallback: { code: syntheticWorkCode("RJ", 9), title: "Example Work 9", circle: "", coverUrl: "", dlsiteUrl: "" },
     },
   ];
@@ -424,7 +425,7 @@ test("@desktop the feed groups families by day, pages by days, and opening it cl
   const feed = page.getByRole("region", { name: "New releases", exact: true });
   const yesterday = feed.getByRole("region", { name: "New releases, Yesterday" });
   await expect(yesterday.getByRole("heading", { name: /^Yesterday/ })).toBeVisible();
-  await expect(yesterday.getByText("1 work", { exact: true })).toBeVisible();
+  await expect(yesterday.getByText("1 work", { exact: true })).toBeAttached();
   const entry = yesterday.getByRole("listitem");
   await expect(entry).toContainText("New English edition");
   await expect(entry).toContainText("Series · Example Series 1");
@@ -512,10 +513,17 @@ test("@desktop rankings mark changes since the last visit and compare with the p
   await page.setViewportSize({ width: 1280, height: 800 });
   const day = rankingListFixture();
   const week = rankingListFixture({ id: 2, period: "week", unseen: [] });
-  // A work in the library is marked; the others carry no badge.
+  // A work in the library shows its local source on the cover; the others carry no mark.
   const owned = {
     ...rankingItemFixture(3, 3, { kind: "same", from: 3, delta: 0 }),
-    work: workFixture({ id: 3, primaryCode: syntheticWorkCode("RJ", 3), title: "Example Work 3", rating: null }),
+    work: workFixture({
+      id: 3,
+      primaryCode: syntheticWorkCode("RJ", 3),
+      title: "Example Work 3",
+      rating: null,
+      sourcePresence: [{ type: "local", availability: "available" }],
+      availability: ["local"],
+    }),
     inLibrary: true,
   };
   const server: SubscriptionServer = {
@@ -551,8 +559,8 @@ test("@desktop rankings mark changes since the last visit and compare with the p
   await expect(items).toHaveCount(3);
   await expect(items.nth(0)).toContainText("New");
   await expect(items.nth(1).getByText("Up 3")).toBeAttached();
-  await expect(items.nth(0)).not.toContainText("In library");
-  await expect(items.nth(2)).toContainText("In library");
+  await expect(items.nth(0).getByRole("img", { name: /^Local/ })).toHaveCount(0);
+  await expect(items.nth(2).getByRole("img", { name: /^Local/ })).toBeVisible();
   // A best rank equal to the current rank says nothing.
   await expect(items.nth(2)).not.toContainText("Best #");
 
@@ -578,7 +586,7 @@ test("@desktop rankings mark changes since the last visit and compare with the p
   await expect(ranking.getByRole("button", { name: /· vs the previous update$/ })).toBeVisible();
   await expect(items.nth(0)).toContainText("Back");
 
-  await ranking.getByRole("button", { name: "Dropped out (1)" }).click();
+  await ranking.getByRole("button", { name: "Dropped out" }).click();
   await expect(ranking.getByRole("listitem", { name: "Example Work 9" })).toContainText("Was #3");
 
   // The settings icon opens the ranking settings from this view.
@@ -969,7 +977,7 @@ test("@desktop syncing a ranking page's metadata follows its run and shows the w
   const items = ranking.getByRole("list").first().getByRole("listitem");
   await expect(items).toHaveCount(2);
 
-  await ranking.getByRole("button", { name: "Actions for the shown works" }).click();
+  await page.getByRole("button", { name: "Actions for the shown works" }).click();
   await page.getByRole("menuitem", { name: /^Sync metadata/ }).click();
   await expect(page.getByText("Metadata sync queued for 2 works.")).toBeVisible();
   expect(server.requests.find((request) => request.path === "/api/rankings/1/metadata-sync")?.body).toEqual({
@@ -990,7 +998,7 @@ test("@desktop syncing a ranking page's metadata follows its run and shows the w
   server.runs!["61"] = pageActionRun(61, "shown_works_metadata_sync", "succeeded");
   await expect(page.getByText("Metadata synced.")).toBeVisible();
   await expect(items.first()).toHaveAccessibleName("Example Work 1 Synced");
-  await expect(items.first()).not.toContainText("In library");
+  await expect(items.first().getByRole("img", { name: /^Local/ })).toHaveCount(0);
   await expect(ranking.getByRole("status").filter({ hasText: "Syncing metadata" })).toHaveCount(0);
   await ranking.getByRole("button", { name: /^Not in library/ }).click();
   await expect(items).toHaveCount(2);
@@ -1017,7 +1025,7 @@ test("@desktop checking a ranking page's sources marks the entries a source has"
   await expect(ranking.getByRole("button", { name: /^On a source/ })).toContainText("0");
 
   // Without a source to ask, the check explains what is missing.
-  await ranking.getByRole("button", { name: "Actions for the shown works" }).click();
+  await page.getByRole("button", { name: "Actions for the shown works" }).click();
   await page.getByRole("menuitem", { name: /^Check sources/ }).click();
   await expect(page.getByText("No remote source can be checked.", { exact: false })).toBeVisible();
 
@@ -1031,7 +1039,7 @@ test("@desktop checking a ranking page's sources marks the entries a source has"
       ],
     }),
   };
-  await ranking.getByRole("button", { name: "Actions for the shown works" }).click();
+  await page.getByRole("button", { name: "Actions for the shown works" }).click();
   await page.getByRole("menuitem", { name: /^Check sources/ }).click();
   await expect(page.getByText("Source check finished.")).toBeVisible();
   await expect(items.first().getByRole("img", { name: "Example Remote" })).toBeVisible();
@@ -1052,7 +1060,20 @@ test("@desktop release cards label the watch action and say which works are watc
       releaseFeedFamilyFixture({
         key: "code:RJ00000002",
         watched: true,
+        watchTarget: null,
         fallback: { ...releaseFeedFamilyFixture().fallback, code: syntheticWorkCode("RJ", 2), title: "Example Work 2" },
+      }),
+      // A work the library already has files for has nothing to wait for.
+      releaseFeedFamilyFixture({
+        key: "code:RJ00000003",
+        work: workFixture({
+          id: 3,
+          primaryCode: syntheticWorkCode("RJ", 3),
+          title: "Example Work 3",
+          sourcePresence: [{ type: "local", availability: "available" }],
+          availability: ["local"],
+        }),
+        fallback: { ...releaseFeedFamilyFixture().fallback, code: syntheticWorkCode("RJ", 3), title: "Example Work 3" },
       }),
     ]),
   };
@@ -1062,6 +1083,10 @@ test("@desktop release cards label the watch action and say which works are watc
   const watched = feed.getByRole("listitem", { name: "Example Work 2" });
   await expect(watched).toContainText("Watching");
   await expect(watched.getByRole("button", { name: "Add to Availability Watch" })).toHaveCount(0);
+  const owned = feed.getByRole("listitem", { name: "Example Work 3" });
+  await expect(owned).toBeVisible();
+  await expect(owned.getByRole("button", { name: "Add to Availability Watch" })).toHaveCount(0);
+  await expect(owned).not.toContainText("Watching");
 
   const entry = feed.getByRole("listitem", { name: "Example Work 1" });
   const watch = entry.getByRole("button", { name: "Add to Availability Watch" });
@@ -1140,7 +1165,7 @@ test("phones reach the ranking page actions and see the labeled watch action", a
   const entry = ranking.getByRole("listitem", { name: "Example Work 1" });
   await expect(entry.getByRole("button", { name: "Add to Availability Watch" })).toHaveText("Watch");
 
-  await ranking.getByRole("button", { name: "Actions for the shown works" }).click();
+  await page.getByRole("button", { name: "Actions for the shown works" }).click();
   await expect(page.getByRole("menuitem", { name: /^Sync metadata/ })).toBeInViewport();
   await expect(page.getByRole("menuitem", { name: /^Check sources/ })).toBeInViewport();
   await page.keyboard.press("Escape");

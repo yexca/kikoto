@@ -33,6 +33,13 @@
 > running when the upgrade starts are stopped. Tags they added earlier stay
 > with their works.
 
+> [!NOTE]
+> Availability Watch only monitors. A watch configured to Track, Fetch, or
+> Track and Fetch available works becomes monitor only, and its stored Fetch
+> extension exclusion is dropped. Works already tracked or fetched keep their
+> runs. Track and Fetch available works by hand in **Discover → Watch**, where
+> the Fetch confirmation asks for the extensions to leave out.
+
 <details>
 <summary><strong>Library and work detail</strong></summary>
 
@@ -113,18 +120,29 @@
 - Remote source cards for works already in the library show the Local,
   Tracked, or Cached marks and the personal tags of their Library card, so
   **Always** cover source marks no longer show only the remote source.
+- Work cards leave out a rating or sales figure they do not know instead of
+  showing `--`, and a work without either has no metric line.
 
 </details>
 
 <details>
 <summary><strong>Discover</strong></summary>
 
-- Subscriptions becomes **Discover**, the way in to works from outside the
-  library: new works from your subscriptions, rankings, and the works
-  Availability Watch waits for. Its address is `/discover`, links to
+- Subscriptions becomes **Discover**, where you find what to listen to next:
+  picks from your library, new works from your subscriptions, rankings, and
+  the works Availability Watch waits for. Its address is `/discover`, links to
   `/subscriptions` open it, and its navigation icon is a compass; the bell
   stays on the subscribe buttons. Subscribing and the subscription settings
   keep their names.
+- Discover gains **For you**, before **New releases**: three small, random
+  draws from your local works. **Maybe like** offers unplayed works close to
+  what you like, **Try new** unplayed works whose circles, voices, and tags
+  you rarely hear, and **Listen again** works you liked and have not played
+  for a while. Each card says why it was drawn, each column has **Draw
+  again**, and **Safe**, **Balanced**, and **Adventurous** set how far the
+  draws stray; the choice is saved for your account. For you reads the same
+  ratings, favorites, and marks as the Library's **Recommended** order and
+  leaves that order and the recommendation activity report unchanged.
 - Discover gains a **Rankings** view beside **New releases**. It follows
   the DLsite voice rankings for 24 hours, 7 days, and 30 days, the annual
   ranking of each year, and the all-time ranking, and remote sources' popular
@@ -160,11 +178,22 @@
   or the rankings, which narrow to make room and stay usable; narrower screens
   keep the drawer, and phones the sheet.
 - Rankings keeps its ranking, order, filter, and update controls in a compact
-  toolbar that stays in reach while scrolling, states beside each work's card
+  toolbar that stays in reach while scrolling, states above each work's card
   only the facts worth stating, and opens History and the comparison from the
   toolbar. The Rankings settings show one line per ranking
   with relative pull times and expand a row in place to edit it, and deleting
   a ranking with its history asks first.
+- Discover's four views share one card layout. **Display options** apply to
+  all of them, apart from the Library's, and start with **Compact** cards, a
+  small cover beside the facts in up to three columns. Above each card a line
+  says why the work is there, with one set of status colors, and the card's
+  actions keep one order: DLsite, **Watch**, lists, rating, and **Quick
+  mark**, so New releases and Rankings cards can also be rated and marked.
+  Day groups, For you columns, Watch groups, and **Dropped out** share one
+  heading with a count. With **Full** or **Mini** cards, the For you columns
+  follow one another.
+- The top right of Discover always shows **Actions**, **Display options**,
+  and the settings in the same places; **Actions** is unavailable on For you.
 - New releases and Rankings have an **Actions** menu for the works the page
   shows. **Sync metadata** syncs DLsite metadata for the works without fresh
   metadata, adding the works Kikoto does not know yet with their title, cover,
@@ -172,21 +201,42 @@
   works not known to be available. Both take only the works that still need
   them, run in the background with a status line, and reload the page when
   they end; a ranking pull still only records the order.
-- **In library** and **Not in library** on Rankings follow whether the library
-  has files for a work, and **On a source** keeps the works a remote source is
-  known to have.
+- **Not in library** on Rankings follows whether the library has files for a
+  work, which the cover's source marks show, and **On a source** keeps the
+  works a remote source is known to have.
 - New releases and Rankings cards label the Availability Watch action
-  **Watch** and show **Watching** for a work already in the watch pool.
+  **Watch**, show **Watching** for a work already in the watch pool, and
+  leave it off a work the library already has files for.
 - The Availability Watch pool becomes the **Watch** view of Discover,
-  after New releases and Rankings and in the same card grid and display
-  options. **Available** comes first and shows every available work; **Not
-  available** follows with failed checks first and folds to whole rows.
-  **Clear completed** removes every work whose Track or Fetch has started in
-  one step. The **Availability Watch** settings tab moves after **Rankings**
-  and keeps the configuration and **Run**, and the settings open on the tab
-  of the current view. Availability notifications, Workflows, and the way back
-  from a watched work open the Watch view, and existing links to the pool in
-  the settings open it too.
+  after New releases and Rankings, with the same cards. Availability Watch
+  only monitors, and acting on an available work happens there by hand. The
+  works come in five groups: **Available**, **In progress** with the Track or
+  Fetch run's state and **View run**, **Waiting**, **Check failed**, and
+  **Already in library**, which stay until cleaned up. Waiting and in-library
+  works fold to whole rows; a search by code or title and a **Date added** or
+  **Release date** order help with a large pool.
+- Watch cards offer **Track** and **Fetch** on available works, named after
+  the edition found when a source offers another edition, **Check now** on
+  waiting and failed works, and **Remove** with a second press; without a
+  remote permission the button stays disabled and says why. **Select** adds a
+  selection bar with **Fetch**, **Track**, **Check now**, and **Remove**, each
+  counting the works it applies to. **Actions** on Watch has **Check now**,
+  **Fetch all available**, and **Clean up**, which removes the works already
+  in the library and those whose Track or Fetch is done after a confirmation
+  with both counts.
+- Fetch from Watch confirms how many works it fetches, which ones come as
+  another edition, the sources, and the file extensions to leave out, which
+  the device remembers. It queues up to 100 works through the same bulk Fetch
+  as a remote source's selection, and each work then shows its own run.
+- **Add** in Watch accepts DLsite links and mixed text and previews the new
+  codes, those already watched, and text that is not a code before adding.
+- "Now available" cards in New releases offer **Track** and **Fetch**, and an
+  availability notification opens Watch with the newly available works
+  selected, ready to fetch.
+- The **Availability Watch** settings tab moves after **Rankings** and keeps
+  only the remote source; the settings open on the tab of the current view.
+  Workflows and the way back from a watched work open the Watch view, and
+  existing links to the pool in the settings open it too.
 
 </details>
 

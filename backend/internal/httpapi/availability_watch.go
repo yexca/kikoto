@@ -6,29 +6,37 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/yexca/kikoto/backend/internal/account"
+	"io"
 	"net/http"
-	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/yexca/kikoto/backend/internal/account"
 	"github.com/yexca/kikoto/backend/internal/workflow"
 )
 
 const (
 	availabilityWatchID          int64 = 1
 	availabilityWatchDisplayName       = "Availability Watch"
+	availabilityWatchDescription       = "Monitor a shared pool of work codes and report when a remote source offers one of them."
+	// availabilityWatchMaxTargets bounds the shared pool and one request's
+	// target list.
+	availabilityWatchMaxTargets = 1000
 )
 
 var errAvailabilityWatchRunActive = errors.New("an Availability Watch run is already active")
 
+// availabilityWatchPermissions are what changing or running the watch needs:
+// every run refreshes the watched DLsite families before it checks the
+// sources. The watch only monitors; a Track or Fetch of an available work
+// checks its own remote permission.
+var availabilityWatchPermissions = []string{"workflows:run", "metadata:sync"}
+
 type availabilityWatchView struct {
-	ID                int64                     `json:"id"`
-	Action            string                    `json:"action"`
-	SourceID          *int64                    `json:"sourceId"`
-	ExcludeExtensions []string                  `json:"excludeExtensions"`
-	Revision          int                       `json:"revision"`
-	Targets           []availabilityWatchTarget `json:"targets"`
+	ID       int64                     `json:"id"`
+	SourceID *int64                    `json:"sourceId"`
+	Revision int                       `json:"revision"`
+	Targets  []availabilityWatchTarget `json:"targets"`
 }
 
 type availabilityWatchTarget struct {
@@ -43,16 +51,26 @@ type availabilityWatchTarget struct {
 	LastError         string `json:"lastError"`
 	AvailableSourceID *int64 `json:"availableSourceId"`
 	// AvailableCode is the family edition a remote source offered.
-	AvailableCode string                          `json:"availableCode"`
-	TrackRunID    *int64                          `json:"trackRunId"`
-	FetchRunID    *int64                          `json:"fetchRunId"`
-	Family        []availabilityWatchFamilyMember `json:"family"`
+	AvailableCode string `json:"availableCode"`
+	TrackRunID    *int64 `json:"trackRunId"`
+	FetchRunID    *int64 `json:"fetchRunId"`
+	// TrackRunStatus and FetchRunStatus are the status of the referenced run,
+	// empty when there is none.
+	TrackRunStatus string `json:"trackRunStatus"`
+	FetchRunStatus string `json:"fetchRunStatus"`
+	// InLibrary is true when the watched code or the edition found has files:
+	// local, cached, or a tracked remote work's stream or download, the same
+	// rule as a ranking's in-library works.
+	InLibrary bool `json:"inLibrary"`
+	// AddedAt is when the code last entered the pool.
+	AddedAt string `json:"addedAt"`
+	// ReleaseDate is the watched code's release date when Kikoto knows it.
+	ReleaseDate string                          `json:"releaseDate"`
+	Family      []availabilityWatchFamilyMember `json:"family"`
 }
 
 type availabilityWatchConfigUpdate struct {
-	Action            string   `json:"action"`
-	SourceID          *int64   `json:"sourceId"`
-	ExcludeExtensions []string `json:"excludeExtensions"`
+	SourceID *int64 `json:"sourceId"`
 }
 
 type availabilityWatchTargetsUpdate struct {
@@ -66,7 +84,6 @@ type availabilityWatchRunResult struct {
 	TargetCount         int      `json:"targetCount"`
 	Checked             int      `json:"checked"`
 	Ready               int      `json:"ready"`
-	Dispatched          int      `json:"dispatched"`
 	NewlyAvailableCodes []string `json:"newlyAvailableCodes"`
 	ReadyCodes          []string `json:"readyCodes"`
 	Failures            []string `json:"failures"`
@@ -82,8 +99,6 @@ type availabilityWatchTargetSnapshot struct {
 type availabilityWatchJobPayload struct {
 	RequestedByUserID int64                             `json:"requestedByUserId"`
 	SourceID          int64                             `json:"sourceId"`
-	Action            string                            `json:"action"`
-	ExcludeExtensions []string                          `json:"excludeExtensions"`
 	Targets           []availabilityWatchTargetSnapshot `json:"targets"`
 }
 
@@ -98,11 +113,14 @@ type availabilityWatchExecutionTarget struct {
 }
 
 type availabilityWatchExecution struct {
-	result           availabilityWatchRunResult
-	readySeen        map[string]bool
-	dispatchFailures int
-	syncer           dlsiteFamilyMetadataSyncer
-	metadata         availabilityWatchFamilyMetadata
+	result    availabilityWatchRunResult
+	readySeen map[string]bool
+	syncer    dlsiteFamilyMetadataSyncer
+	metadata  availabilityWatchFamilyMetadata
+}
+
+type availabilityWatchTargetIDs struct {
+	TargetIDs []int64 `json:"targetIds"`
 }
 
 func (s *Server) getAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
@@ -118,21 +136,13 @@ func (s *Server) getAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
-	actor, ok := s.requirePermission(w, r, "workflows:run")
-	if !ok || !s.requireAvailabilityWatchActionPermissions(w, r, actor) {
+	actor, ok := s.requirePermissions(w, r, availabilityWatchPermissions...)
+	if !ok {
 		return
 	}
 	var payload availabilityWatchConfigUpdate
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
-		return
-	}
-	if err := validateAvailabilityWatchAction(actor, payload.Action); err != nil {
-		status := http.StatusBadRequest
-		if _, known := availabilityWatchActionPermissions(payload.Action); known {
-			status = http.StatusForbidden
-		}
-		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
 	if err := s.validateAvailabilityWatchSource(r.Context(), payload.SourceID); err != nil {
@@ -142,17 +152,11 @@ func (s *Server) updateAvailabilityWatch(w http.ResponseWriter, r *http.Request)
 	if payload.SourceID == nil || *payload.SourceID <= 0 {
 		payload.SourceID = nil
 	}
-	excluded := normalizeExtensionList(payload.ExcludeExtensions)
-	if err := s.persistAvailabilityWatchConfig(r.Context(), actor.ID, payload, excluded); err != nil {
+	if err := s.persistAvailabilityWatchConfig(r.Context(), actor.ID, payload); err != nil {
 		writeError(w, err)
 		return
 	}
-	view, err := s.loadAvailabilityWatch(r.Context())
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, view)
+	s.writeAvailabilityWatchView(w, r)
 }
 
 func (s *Server) updateAvailabilityWatchTargets(w http.ResponseWriter, r *http.Request) {
@@ -166,8 +170,8 @@ func (s *Server) addAvailabilityWatchTargets(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) writeAvailabilityWatchTargets(w http.ResponseWriter, r *http.Request, replace bool) {
-	actor, ok := s.requirePermission(w, r, "workflows:run")
-	if !ok || !s.requireAvailabilityWatchActionPermissions(w, r, actor) {
+	actor, ok := s.requirePermissions(w, r, availabilityWatchPermissions...)
+	if !ok {
 		return
 	}
 	var payload availabilityWatchTargetsUpdate
@@ -175,7 +179,7 @@ func (s *Server) writeAvailabilityWatchTargets(w http.ResponseWriter, r *http.Re
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
-	codes, err := normalizeGraphWorkCodes(payload.TargetCodes, 1000)
+	codes, err := normalizeGraphWorkCodes(payload.TargetCodes, availabilityWatchMaxTargets)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -193,7 +197,7 @@ func (s *Server) writeAvailabilityWatchTargets(w http.ResponseWriter, r *http.Re
 			writeError(w, err)
 			return
 		}
-		if total > 1000 {
+		if total > availabilityWatchMaxTargets {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many work codes; maximum is 1000"})
 			return
 		}
@@ -202,17 +206,11 @@ func (s *Server) writeAvailabilityWatchTargets(w http.ResponseWriter, r *http.Re
 		writeError(w, err)
 		return
 	}
-	view, err := s.loadAvailabilityWatch(r.Context())
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, view)
+	s.writeAvailabilityWatchView(w, r)
 }
 
 func (s *Server) deleteAvailabilityWatchTarget(w http.ResponseWriter, r *http.Request) {
-	actor, ok := s.requirePermission(w, r, "workflows:run")
-	if !ok || !s.requireAvailabilityWatchActionPermissions(w, r, actor) {
+	if _, ok := s.requirePermissions(w, r, availabilityWatchPermissions...); !ok {
 		return
 	}
 	targetID, err := parseInt64PathValue(r, "id")
@@ -238,103 +236,20 @@ func (s *Server) deleteAvailabilityWatchTarget(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-type availabilityWatchTargetIDs struct {
-	TargetIDs []int64 `json:"targetIds"`
-}
-
-// clearCompletedAvailabilityWatchTargets removes the listed targets whose
-// action has completed, in one statement. A listed target that is no longer
-// completed, for example one re-added meanwhile, stays in the pool, so the
-// caller removes only what it showed.
-func (s *Server) clearCompletedAvailabilityWatchTargets(w http.ResponseWriter, r *http.Request) {
-	actor, ok := s.requirePermission(w, r, "workflows:run")
-	if !ok || !s.requireAvailabilityWatchActionPermissions(w, r, actor) {
+// runAvailabilityWatch checks the whole pool, or only the listed targets, so
+// a failed check can be retried without checking the pool again.
+func (s *Server) runAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
+	actor, ok := s.requirePermissions(w, r, availabilityWatchPermissions...)
+	if !ok {
 		return
 	}
 	var payload availabilityWatchTargetIDs
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil && !errors.Is(err, io.EOF) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
-	if len(payload.TargetIDs) > 1000 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many target ids; maximum is 1000"})
-		return
-	}
-	for _, id := range payload.TargetIDs {
-		if id <= 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid Availability Watch target id"})
-			return
-		}
-	}
-	if len(payload.TargetIDs) > 0 {
-		if _, err := s.db.ExecContext(r.Context(), `
-			UPDATE availability_watch_target
-			SET active = 0, state = 'disabled', next_check_at = NULL,
-				revision = revision + 1, updated_at = CURRENT_TIMESTAMP
-			WHERE watch_id = ? AND active = 1 AND state = 'completed'
-				AND id IN (SELECT value FROM json_each(?))
-		`, availabilityWatchID, mustJSON(payload.TargetIDs)); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	view, err := s.loadAvailabilityWatch(r.Context())
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, view)
-}
-
-func (s *Server) trackAvailabilityWatchTarget(w http.ResponseWriter, r *http.Request) {
-	actor, ok := s.requirePermissions(w, r, "workflows:run", "remote:track")
-	if !ok {
-		return
-	}
-	targetID, err := parseInt64PathValue(r, "id")
-	if err != nil || targetID <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid Availability Watch target id"})
-		return
-	}
-	var code string
-	var sourceID sql.NullInt64
-	err = s.db.QueryRowContext(r.Context(), `
-		SELECT COALESCE(NULLIF(available_code, ''), work_code), available_source_id
-		FROM availability_watch_target
-		WHERE id = ? AND watch_id = ? AND active = 1
-			AND state IN ('ready', 'action_queued', 'completed')
-	`, targetID, availabilityWatchID).Scan(&code, &sourceID)
-	if errors.Is(err, sql.ErrNoRows) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "ready Availability Watch target not found"})
-		return
-	}
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if !sourceID.Valid || sourceID.Int64 <= 0 {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "the available source is no longer known"})
-		return
-	}
-	result, err := s.enqueueRemoteWorkTrack(r.Context(), actor.ID, sourceID.Int64, code, "availability_watch_manual_track")
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if _, err := s.db.ExecContext(r.Context(), `
-		UPDATE availability_watch_target
-		SET state = 'completed', track_run_id = ?, last_error = '', updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND watch_id = ? AND active = 1
-	`, result.RunID, targetID, availabilityWatchID); err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusAccepted, result)
-}
-
-func (s *Server) runAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
-	actor, ok := s.requirePermission(w, r, "workflows:run")
-	if !ok {
+	if err := validateAvailabilityWatchTargetIDs(payload.TargetIDs, availabilityWatchMaxTargets); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	view, err := s.loadAvailabilityWatch(r.Context())
@@ -343,14 +258,14 @@ func (s *Server) runAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if view.ID == 0 {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "configure Availability Watch before running it"})
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "add works to Availability Watch before checking it"})
 		return
 	}
-	if err := validateAvailabilityWatchAction(actor, view.Action); err != nil {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
-		return
+	trigger := workflowRunTrigger{Type: "manual", Reason: "manual_run"}
+	if len(payload.TargetIDs) > 0 {
+		trigger.Reason = "manual_target_check"
 	}
-	result, err := s.enqueueAvailabilityWatch(r.Context(), actor.ID, workflowRunTrigger{Type: "manual", Reason: "manual_run"})
+	result, err := s.enqueueAvailabilityWatch(r.Context(), actor.ID, trigger, payload.TargetIDs...)
 	if errors.Is(err, errAvailabilityWatchRunActive) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
@@ -362,49 +277,25 @@ func (s *Server) runAvailabilityWatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, result)
 }
 
-func validateAvailabilityWatchAction(actor currentUser, action string) error {
-	permissions, known := availabilityWatchActionPermissions(action)
-	if !known {
-		return fmt.Errorf("invalid Availability Watch action")
+func validateAvailabilityWatchTargetIDs(ids []int64, limit int) error {
+	if len(ids) > limit {
+		return fmt.Errorf("too many target ids; maximum is %d", limit)
 	}
-	if missing := missingWorkflowGraphPermission(actor.Permissions, permissions); missing != "" {
-		return fmt.Errorf("%s permission is required", missing)
+	for _, id := range ids {
+		if id <= 0 {
+			return fmt.Errorf("invalid Availability Watch target id")
+		}
 	}
 	return nil
 }
 
-// availabilityWatchActionPermissions names the composite capabilities a watch
-// needs. Every run refreshes the watched DLsite family before checking source
-// availability, so metadata:sync is required even for monitor-only watches.
-// Track and Fetch add their respective remote capability on top.
-func availabilityWatchActionPermissions(action string) ([]string, bool) {
-	switch action {
-	case "monitor":
-		return []string{"metadata:sync"}, true
-	case "track":
-		return []string{"metadata:sync", "remote:track"}, true
-	case "fetch":
-		return []string{"metadata:sync", "remote:fetch"}, true
-	case "track_fetch":
-		return []string{"metadata:sync", "remote:track", "remote:fetch"}, true
-	default:
-		return nil, false
-	}
-}
-
-// requireAvailabilityWatchActionPermissions checks the actor against the
-// action the watch is configured with.
-func (s *Server) requireAvailabilityWatchActionPermissions(w http.ResponseWriter, r *http.Request, actor currentUser) bool {
-	action, err := s.availabilityWatchConfiguredAction(r.Context())
+func (s *Server) writeAvailabilityWatchView(w http.ResponseWriter, r *http.Request) {
+	view, err := s.loadAvailabilityWatch(r.Context())
 	if err != nil {
 		writeError(w, err)
-		return false
+		return
 	}
-	if err := validateAvailabilityWatchAction(actor, action); err != nil {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
-		return false
-	}
-	return true
+	writeJSON(w, http.StatusOK, view)
 }
 
 func (s *Server) validateAvailabilityWatchSource(ctx context.Context, sourceID *int64) error {
@@ -418,26 +309,17 @@ func (s *Server) validateAvailabilityWatchSource(ctx context.Context, sourceID *
 	return nil
 }
 
-func (s *Server) persistAvailabilityWatchConfig(ctx context.Context, userID int64, payload availabilityWatchConfigUpdate, excluded []string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO availability_watch (id, configured_by_user_id, action, source_id, exclude_extensions_json)
-		VALUES (?, ?, ?, ?, ?)
+func (s *Server) persistAvailabilityWatchConfig(ctx context.Context, userID int64, payload availabilityWatchConfigUpdate) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO availability_watch (id, configured_by_user_id, source_id)
+		VALUES (?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			configured_by_user_id = excluded.configured_by_user_id,
-			action = excluded.action,
 			source_id = excluded.source_id,
-			exclude_extensions_json = excluded.exclude_extensions_json,
 			revision = availability_watch.revision + 1,
 			updated_at = CURRENT_TIMESTAMP
-	`, availabilityWatchID, userID, payload.Action, payload.SourceID, mustJSON(excluded)); err != nil {
-		return err
-	}
-	return tx.Commit()
+	`, availabilityWatchID, userID, payload.SourceID)
+	return err
 }
 
 func (s *Server) persistAvailabilityWatchTargets(ctx context.Context, userID int64, codes []string, replace bool) error {
@@ -447,12 +329,13 @@ func (s *Server) persistAvailabilityWatchTargets(ctx context.Context, userID int
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO availability_watch (id, configured_by_user_id, exclude_extensions_json)
-		VALUES (?, ?, '[]')
+		INSERT INTO availability_watch (id, configured_by_user_id)
+		VALUES (?, ?)
 		ON CONFLICT(id) DO NOTHING
 	`, availabilityWatchID, userID); err != nil {
 		return err
 	}
+	// A removed code that is added again starts over, with a new added time.
 	for _, code := range codes {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO availability_watch_target (watch_id, work_code, active, state, next_check_at)
@@ -468,6 +351,7 @@ func (s *Server) persistAvailabilityWatchTargets(ctx context.Context, userID int
 				track_run_id = CASE WHEN availability_watch_target.active = 0 THEN NULL ELSE availability_watch_target.track_run_id END,
 				fetch_run_id = CASE WHEN availability_watch_target.active = 0 THEN NULL ELSE availability_watch_target.fetch_run_id END,
 				revision = availability_watch_target.revision + CASE WHEN availability_watch_target.active = 0 THEN 1 ELSE 0 END,
+				created_at = CASE WHEN availability_watch_target.active = 0 THEN CURRENT_TIMESTAMP ELSE availability_watch_target.created_at END,
 				updated_at = CASE WHEN availability_watch_target.active = 0 THEN CURRENT_TIMESTAMP ELSE availability_watch_target.updated_at END
 		`, availabilityWatchID, code); err != nil {
 			return err
@@ -503,15 +387,24 @@ func (s *Server) persistAvailabilityWatchTargets(ctx context.Context, userID int
 	return tx.Commit()
 }
 
+// availabilityWatchInLibrarySQL is true for a target row named `target` whose
+// watched code or found edition has a work with an available local, cached,
+// or tracked remote file location.
+const availabilityWatchInLibrarySQL = `EXISTS (
+	SELECT 1 FROM work
+	INNER JOIN media_item ON media_item.work_id = work.id
+	INNER JOIN media_file_location AS location ON location.media_item_id = media_item.id
+	WHERE work.primary_code IN (target.work_code, NULLIF(target.available_code, ''))
+		AND location.availability = 'available'
+		AND location.location_type IN ('local', 'cache', 'remote_stream', 'remote_download')
+)`
+
 func (s *Server) loadAvailabilityWatch(ctx context.Context) (availabilityWatchView, error) {
-	// Extension exclusion is opt-in: a watch that was never configured excludes nothing.
-	view := availabilityWatchView{Action: "monitor", ExcludeExtensions: []string{}, Targets: []availabilityWatchTarget{}}
+	view := availabilityWatchView{Targets: []availabilityWatchTarget{}}
 	var sourceID sql.NullInt64
-	var rawExcluded string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, action, source_id, exclude_extensions_json, revision
-		FROM availability_watch WHERE id = ?
-	`, availabilityWatchID).Scan(&view.ID, &view.Action, &sourceID, &rawExcluded, &view.Revision)
+		SELECT id, source_id, revision FROM availability_watch WHERE id = ?
+	`, availabilityWatchID).Scan(&view.ID, &sourceID, &view.Revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return view, nil
 	}
@@ -521,13 +414,19 @@ func (s *Server) loadAvailabilityWatch(ctx context.Context) (availabilityWatchVi
 	if sourceID.Valid {
 		view.SourceID = &sourceID.Int64
 	}
-	_ = json.Unmarshal([]byte(rawExcluded), &view.ExcludeExtensions)
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, work_code, state, COALESCE(next_check_at, ''), COALESCE(last_checked_at, ''),
-			last_status, last_error, available_source_id, available_code, track_run_id, fetch_run_id
-		FROM availability_watch_target
-		WHERE watch_id = ? AND active = 1
-		ORDER BY CASE state WHEN 'ready' THEN 0 WHEN 'action_queued' THEN 0 WHEN 'completed' THEN 0 ELSE 1 END, work_code
+		SELECT target.id, target.work_code, target.state, COALESCE(target.next_check_at, ''),
+			COALESCE(target.last_checked_at, ''), target.last_status, target.last_error,
+			target.available_source_id, target.available_code, target.track_run_id, target.fetch_run_id,
+			COALESCE(track_run.status, ''), COALESCE(fetch_run.status, ''),
+			`+availabilityWatchInLibrarySQL+`, target.created_at,
+			COALESCE((SELECT release_date FROM work WHERE work.primary_code = target.work_code), ''),
+			COALESCE((SELECT title FROM work WHERE work.primary_code = target.work_code), '')
+		FROM availability_watch_target AS target
+		LEFT JOIN workflow_run AS track_run ON track_run.id = target.track_run_id
+		LEFT JOIN workflow_run AS fetch_run ON fetch_run.id = target.fetch_run_id
+		WHERE target.watch_id = ? AND target.active = 1
+		ORDER BY target.created_at DESC, target.id DESC
 	`, availabilityWatchID)
 	if err != nil {
 		return view, err
@@ -536,7 +435,12 @@ func (s *Server) loadAvailabilityWatch(ctx context.Context) (availabilityWatchVi
 	for rows.Next() {
 		var target availabilityWatchTarget
 		var availableSourceID, trackRunID, fetchRunID sql.NullInt64
-		if err := rows.Scan(&target.ID, &target.WorkCode, &target.State, &target.NextCheckAt, &target.LastCheckedAt, &target.LastStatus, &target.LastError, &availableSourceID, &target.AvailableCode, &trackRunID, &fetchRunID); err != nil {
+		if err := rows.Scan(
+			&target.ID, &target.WorkCode, &target.State, &target.NextCheckAt, &target.LastCheckedAt, &target.LastStatus,
+			&target.LastError, &availableSourceID, &target.AvailableCode, &trackRunID, &fetchRunID,
+			&target.TrackRunStatus, &target.FetchRunStatus, &target.InLibrary, &target.AddedAt, &target.ReleaseDate,
+			&target.Title,
+		); err != nil {
 			return view, err
 		}
 		if availableSourceID.Valid {
@@ -563,10 +467,14 @@ func (s *Server) loadAvailabilityWatch(ctx context.Context) (availabilityWatchVi
 	}
 	for index := range view.Targets {
 		target := &view.Targets[index]
+		// The family names the work; a code without family metadata keeps its
+		// own work's title when the library has one.
 		if family := families[target.WorkCode]; family != nil {
 			target.Family = family
-			target.Title = availabilityWatchFamilyTitle(target.WorkCode, family)
+			target.Title = firstNonEmpty(availabilityWatchFamilyTitle(target.WorkCode, family), target.Title)
 			target.CoverURL = s.availabilityWatchFamilyCover(target.WorkCode, family)
+		} else {
+			target.CoverURL = s.coverURL(target.WorkCode)
 		}
 	}
 	return view, nil
@@ -636,18 +544,18 @@ func normalizeExtensionList(values []string) []string {
 	return result
 }
 
-func (s *Server) enqueueAvailabilityWatch(ctx context.Context, userID int64, trigger workflowRunTrigger) (availabilityWatchRunResult, error) {
+// enqueueAvailabilityWatch queues a check of the pool, or of the listed
+// active targets when targetIDs names some.
+func (s *Server) enqueueAvailabilityWatch(ctx context.Context, userID int64, trigger workflowRunTrigger, targetIDs ...int64) (availabilityWatchRunResult, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return availabilityWatchRunResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var action, rawExcluded string
 	var sourceID sql.NullInt64
 	if err := tx.QueryRowContext(ctx, `
-		SELECT action, source_id, exclude_extensions_json
-		FROM availability_watch WHERE id = ?
-	`, availabilityWatchID).Scan(&action, &sourceID, &rawExcluded); err != nil {
+		SELECT source_id FROM availability_watch WHERE id = ?
+	`, availabilityWatchID).Scan(&sourceID); err != nil {
 		return availabilityWatchRunResult{}, err
 	}
 	var activeRuns int
@@ -660,13 +568,15 @@ func (s *Server) enqueueAvailabilityWatch(ctx context.Context, userID int64, tri
 	if activeRuns > 0 {
 		return availabilityWatchRunResult{}, errAvailabilityWatchRunActive
 	}
+	subset := len(targetIDs) > 0
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, work_code, state, revision
 		FROM availability_watch_target
 		WHERE watch_id = ? AND active = 1
+			AND (? = 0 OR id IN (SELECT value FROM json_each(?)))
 		ORDER BY id
 		LIMIT 1000
-	`, availabilityWatchID)
+	`, availabilityWatchID, subset, mustJSON(targetIDs))
 	if err != nil {
 		return availabilityWatchRunResult{}, err
 	}
@@ -682,20 +592,20 @@ func (s *Server) enqueueAvailabilityWatch(ctx context.Context, userID int64, tri
 	if err := rows.Close(); err != nil {
 		return availabilityWatchRunResult{}, err
 	}
-	var excluded []string
-	_ = json.Unmarshal([]byte(rawExcluded), &excluded)
-	payload := availabilityWatchJobPayload{RequestedByUserID: userID, Action: action, ExcludeExtensions: normalizeExtensionList(excluded), Targets: targets}
+	payload := availabilityWatchJobPayload{RequestedByUserID: userID, Targets: targets}
 	if sourceID.Valid {
 		payload.SourceID = sourceID.Int64
 	}
-	definitionID, err := workflow.EnsureDefinition(ctx, tx, "availability_watch", availabilityWatchDisplayName, "Monitor a shared pool of work codes and dispatch configured actions when a remote source becomes available.", availabilityWatchDefinition())
+	definitionID, err := workflow.EnsureDefinition(ctx, tx, "availability_watch", availabilityWatchDisplayName, availabilityWatchDescription, availabilityWatchDefinition())
 	if err != nil {
 		return availabilityWatchRunResult{}, err
 	}
 	result := availabilityWatchRunResult{Status: "queued", TargetCount: len(targets), NewlyAvailableCodes: []string{}, ReadyCodes: []string{}, Failures: []string{}}
-	runID, err := workflow.InsertRun(ctx, tx, definitionID, "availability_watch", availabilityWatchDisplayName, "queued", trigger.Type, trigger.Reason, map[string]any{
-		"source_id": payload.SourceID, "action": payload.Action, "target_count": len(targets), workflowRunRequesterKey: userID,
-	}, result)
+	input := map[string]any{"source_id": payload.SourceID, "target_count": len(targets), workflowRunRequesterKey: userID}
+	if subset {
+		input["target_ids"] = targetIDs
+	}
+	runID, err := workflow.InsertRun(ctx, tx, definitionID, "availability_watch", availabilityWatchDisplayName, "queued", trigger.Type, trigger.Reason, input, result)
 	if err != nil {
 		return availabilityWatchRunResult{}, err
 	}
@@ -704,8 +614,12 @@ func (s *Server) enqueueAvailabilityWatch(ctx context.Context, userID int64, tri
 			return availabilityWatchRunResult{}, err
 		}
 	}
+	selectName := "Snapshot monitoring pool"
+	if subset {
+		selectName = "Snapshot selected targets"
+	}
 	if _, err := workflow.InsertNodeRun(ctx, tx, runID, workflow.NodeRunSpec{
-		NodeID: "targets", NodeType: "select_works", DisplayName: "Snapshot monitoring pool", Position: 1,
+		NodeID: "targets", NodeType: "select_works", DisplayName: selectName, Position: 1,
 		Status: "succeeded", Output: map[string]any{"target_count": len(targets)},
 	}); err != nil {
 		return availabilityWatchRunResult{}, err
@@ -719,8 +633,7 @@ func (s *Server) enqueueAvailabilityWatch(ctx context.Context, userID int64, tri
 	}
 	for _, node := range []workflow.NodeRunSpec{
 		{NodeID: "check", NodeType: "check_source_availability", DisplayName: "Check family availability", Position: 3, Status: "queued", Input: map[string]any{"source_id": payload.SourceID, "target_count": len(targets)}},
-		{NodeID: "ready", NodeType: "filter_candidates", DisplayName: "Filter ready works", Position: 4, Status: "queued"},
-		{NodeID: "dispatch", NodeType: "dispatch_child_workflows", DisplayName: "Dispatch configured action", Position: 5, Status: "queued", Input: map[string]any{"action": payload.Action}},
+		{NodeID: "ready", NodeType: "filter_candidates", DisplayName: "Filter available works", Position: 4, Status: "queued"},
 	} {
 		if _, err := workflow.InsertNodeRun(ctx, tx, runID, node); err != nil {
 			return availabilityWatchRunResult{}, err
@@ -743,13 +656,16 @@ func (s *Server) enqueueAvailabilityWatch(ctx context.Context, userID int64, tri
 }
 
 func availabilityWatchDefinition() map[string]any {
-	return map[string]any{"nodes": []map[string]string{
+	return map[string]any{"nodes": availabilityWatchNodes()}
+}
+
+func availabilityWatchNodes() []map[string]string {
+	return []map[string]string{
 		{"id": "targets", "type": "select_works", "displayName": "Monitoring pool"},
 		{"id": "metadata", "type": "sync_metadata", "displayName": "Refresh family metadata"},
 		{"id": "check", "type": "check_source_availability", "displayName": "Check family availability"},
-		{"id": "ready", "type": "filter_candidates", "displayName": "Ready pool"},
-		{"id": "dispatch", "type": "dispatch_child_workflows", "displayName": "Dispatch configured action"},
-	}}
+		{"id": "ready", "type": "filter_candidates", "displayName": "Available works"},
+	}
 }
 
 func (s *Server) executeAvailabilityWatchJob(ctx context.Context, job workflowJobRecord) error {
@@ -767,7 +683,7 @@ func (s *Server) executeAvailabilityWatchJob(ctx context.Context, job workflowJo
 		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch requester is unavailable")
 		return err
 	}
-	if missing := missingWorkflowGraphPermission(owner.Permissions, append([]string{"workflows:run"}, availabilityWatchPermissions(payload.Action)...)); missing != "" {
+	if missing := missingWorkflowGraphPermission(owner.Permissions, availabilityWatchPermissions); missing != "" {
 		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch permission is no longer available")
 		return fmt.Errorf("availability watch requires permission %s", missing)
 	}
@@ -809,14 +725,8 @@ func (s *Server) executeAvailabilityWatchJob(ctx context.Context, job workflowJo
 	return nil
 }
 
-func availabilityWatchPermissions(action string) []string {
-	permissions, known := availabilityWatchActionPermissions(action)
-	if !known {
-		return []string{"metadata:sync", "remote:track", "remote:fetch"}
-	}
-	return permissions
-}
-
+// executeAvailabilityWatchTarget checks a waiting or failed target and
+// records an available one; it never tracks or fetches.
 func (s *Server) executeAvailabilityWatchTarget(
 	ctx context.Context,
 	job workflowJobRecord,
@@ -841,7 +751,7 @@ func (s *Server) executeAvailabilityWatchTarget(
 		}
 	}
 	execution.recordReady(code, target.State)
-	return s.dispatchReadyAvailabilityWatchTarget(ctx, job, payload, snapshot.ID, code, target, execution)
+	return nil
 }
 
 func availabilityWatchTargetNeedsCheck(state string) bool {
@@ -917,50 +827,11 @@ func (s *Server) checkAvailabilityWatchExecutionTarget(
 }
 
 func (execution *availabilityWatchExecution) recordReady(code string, state string) {
-	if state != "ready" && state != "action_queued" && state != "completed" {
-		return
-	}
-	if execution.readySeen[code] {
+	if state != "ready" || execution.readySeen[code] {
 		return
 	}
 	execution.readySeen[code] = true
 	execution.result.ReadyCodes = append(execution.result.ReadyCodes, code)
-}
-
-func (s *Server) dispatchReadyAvailabilityWatchTarget(
-	ctx context.Context,
-	job workflowJobRecord,
-	payload availabilityWatchJobPayload,
-	targetID int64,
-	code string,
-	target availabilityWatchExecutionTarget,
-	execution *availabilityWatchExecution,
-) error {
-	if target.State != "ready" || payload.Action == "monitor" {
-		return nil
-	}
-	availableCode := target.AvailableCode
-	if availableCode == "" {
-		availableCode = code
-	}
-	trackRunID, fetchRunID, err := s.dispatchAvailabilityWatchTarget(ctx, payload, targetID, availableCode, target.AvailableSourceID, target.Epoch)
-	if err != nil {
-		execution.dispatchFailures++
-		execution.result.Failures = append(execution.result.Failures, code+": configured action could not be queued")
-		s.execBestEffort(ctx, "record availability watch dispatch failure", `UPDATE availability_watch_target SET state = 'ready', last_error = 'Action failed', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND active = 1`, targetID)
-		return nil
-	}
-	execution.result.Dispatched++
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE availability_watch_target
-		SET state = 'completed', track_run_id = COALESCE(NULLIF(?, 0), track_run_id),
-			fetch_run_id = COALESCE(NULLIF(?, 0), fetch_run_id), last_error = '', updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND active = 1
-	`, trackRunID, fetchRunID, targetID)
-	if err != nil {
-		_ = s.failClaimedWorkflowJob(ctx, job, "Availability Watch dispatch state could not be saved")
-	}
-	return err
 }
 
 func (s *Server) loadAvailabilityWatchExecutionTarget(ctx context.Context, targetID int64) (availabilityWatchExecutionTarget, error) {
@@ -1024,35 +895,8 @@ func firstAvailableSource(response sourceAvailabilityResponse) *sourceAvailabili
 	return nil
 }
 
-func (s *Server) dispatchAvailabilityWatchTarget(ctx context.Context, payload availabilityWatchJobPayload, targetID int64, code string, sourceID int64, epoch int) (int64, int64, error) {
-	if sourceID <= 0 {
-		return 0, 0, fmt.Errorf("available source is unknown")
-	}
-	trackRunID := int64(0)
-	if payload.Action == "track" || payload.Action == "track_fetch" {
-		tracked, err := s.enqueueRemoteWorkTrack(ctx, payload.RequestedByUserID, sourceID, code, fmt.Sprintf("availability_watch:%d:%d:track", targetID, epoch))
-		if err != nil {
-			return 0, 0, err
-		}
-		trackRunID = tracked.RunID
-	}
-	fetchRunID := int64(0)
-	if payload.Action == "fetch" || payload.Action == "track_fetch" {
-		paths, err := s.availabilityWatchFetchPaths(ctx, sourceID, code, payload.ExcludeExtensions)
-		if err != nil {
-			return trackRunID, 0, err
-		}
-		fetched, err := s.enqueueRemoteWorkSave(withRemoteFetchOrigin(ctx, "availability_watch"), sourceID, code, paths, nil, "", fmt.Sprintf("availability-watch:%d:%d:fetch", targetID, epoch), nil, 0, payload.RequestedByUserID, workflow.JobPriorityBackground, nil)
-		if err != nil {
-			return trackRunID, 0, err
-		}
-		fetchRunID = fetched.RunID
-	}
-	return trackRunID, fetchRunID, nil
-}
-
 func (s *Server) finishAvailabilityWatchJob(ctx context.Context, job workflowJobRecord, nodeIDs map[string]int64, execution availabilityWatchExecution) error {
-	result, dispatchFailures, metadata := execution.result, execution.dispatchFailures, execution.metadata
+	result, metadata := execution.result, execution.metadata
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -1069,20 +913,13 @@ func (s *Server) finishAvailabilityWatchJob(ctx context.Context, job workflowJob
 	}
 	errorMessage := strings.Join(result.Failures, "\n")
 	checkStatus := "succeeded"
-	if len(result.Failures) > dispatchFailures {
+	if len(result.Failures) > 0 {
 		checkStatus = "partial"
-	}
-	dispatchStatus := "succeeded"
-	if dispatchFailures > 0 {
-		dispatchStatus = "partial"
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, checkStatus, mustJSON(map[string]any{"checked": result.Checked, "failures": result.Failures}), errorMessage, nodeIDs["check"]); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE workflow_node_run SET status = 'succeeded', output_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, mustJSON(map[string]any{"ready": result.Ready, "ready_codes": result.ReadyCodes, "newly_available_codes": result.NewlyAvailableCodes}), nodeIDs["ready"]); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE workflow_node_run SET status = ?, output_json = ?, error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, dispatchStatus, mustJSON(map[string]any{"dispatched": result.Dispatched}), errorMessage, nodeIDs["dispatch"]); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -1172,26 +1009,4 @@ func createAvailabilityWatchNotifications(ctx context.Context, tx *sql.Tx, runID
 		}
 	}
 	return nil
-}
-
-func (s *Server) availabilityWatchFetchPaths(ctx context.Context, sourceID int64, code string, excludedValues []string) ([]string, error) {
-	_, _, tracks, err := s.loadRemoteWorkTracksCached(ctx, sourceID, code)
-	if err != nil {
-		return nil, err
-	}
-	excluded := map[string]bool{}
-	for _, value := range normalizeExtensionList(excludedValues) {
-		excluded[value] = true
-	}
-	paths := []string{}
-	for _, file := range flattenRemoteSaveFiles(tracks) {
-		extension := strings.ToLower(strings.TrimPrefix(filepath.Ext(file.Path), "."))
-		if !excluded[extension] {
-			paths = append(paths, file.Path)
-		}
-	}
-	if len(paths) == 0 {
-		return nil, fmt.Errorf("no files remain after extension filtering")
-	}
-	return paths, nil
 }

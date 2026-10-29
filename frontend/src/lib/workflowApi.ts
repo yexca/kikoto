@@ -11,7 +11,6 @@ import {
   responseError,
   responseSignal,
 } from "@/lib/apiTransport";
-import type { RemoteWorkTrackResult } from "@/lib/remoteSourceApi";
 import type { RemoteMetadataFallbackSettings } from "@/lib/settingsApi";
 
 export type WorkflowRun = {
@@ -272,7 +271,7 @@ export type AvailabilityWatchTarget = {
   title: string;
   /** The watched code's cover, or its family original's; empty when none is cached. */
   coverUrl: string;
-  state: "monitoring" | "ready" | "action_queued" | "completed" | "error" | "disabled";
+  state: "monitoring" | "ready" | "error" | "disabled";
   nextCheckAt: string;
   lastCheckedAt: string;
   lastStatus: string;
@@ -282,17 +281,33 @@ export type AvailabilityWatchTarget = {
   availableCode: string;
   trackRunId: number | null;
   fetchRunId: number | null;
+  /** The status of the referenced Track or Fetch run; empty when there is none. */
+  trackRunStatus: string;
+  fetchRunStatus: string;
+  /** The watched code or the edition found has local, cached, or tracked files. */
+  inLibrary: boolean;
+  /** When the code last entered the pool. */
+  addedAt: string;
+  /** The watched code's release date; empty when Kikoto does not know it. */
+  releaseDate: string;
   /** Empty until the watch has fetched the code's family metadata. */
   family: AvailabilityWatchFamilyMember[];
 };
 
 export type AvailabilityWatch = {
   id: number;
-  action: "monitor" | "track" | "fetch" | "track_fetch";
   sourceId: number | null;
-  excludeExtensions: string[];
   revision: number;
   targets: AvailabilityWatchTarget[];
+};
+
+/** What a Track or Fetch of watched works queued: one bulk run per remote source. */
+export type AvailabilityWatchActionResult = {
+  runs: { runId: number; sourceId: number; codes: string[] }[];
+  /** The targets a run now acts for. */
+  queued: number[];
+  /** Listed targets that are not available or already have the action running. */
+  skipped: number;
 };
 
 export type AvailabilityWatchRunResult = {
@@ -302,7 +317,6 @@ export type AvailabilityWatchRunResult = {
   targetCount: number;
   checked: number;
   ready: number;
-  dispatched: number;
   newlyAvailableCodes: string[];
   readyCodes: string[];
   failures: string[];
@@ -503,22 +517,25 @@ export const workflowApi = {
   clearSucceededNotifications: () => postJSON<{ ok: boolean; dismissed: number }>("/api/notifications/clear-succeeded"),
   listWorkflowDefinitions: () => getJSON<WorkflowDefinition[]>("/api/workflow-definitions"),
   getAvailabilityWatch: () => getJSON<AvailabilityWatch>("/api/availability-watch"),
-  updateAvailabilityWatch: (payload: {
-    action: AvailabilityWatch["action"];
-    sourceId: number | null;
-    excludeExtensions: string[];
-  }) => putJSONBody<AvailabilityWatch>("/api/availability-watch", payload),
+  updateAvailabilityWatch: (payload: { sourceId: number | null }) =>
+    putJSONBody<AvailabilityWatch>("/api/availability-watch", payload),
   updateAvailabilityWatchTargets: (targetCodes: string[]) =>
     putJSONBody<AvailabilityWatch>("/api/availability-watch/targets", { targetCodes }),
   addAvailabilityWatchTargets: (targetCodes: string[]) =>
     postJSONBody<AvailabilityWatch>("/api/availability-watch/targets", { targetCodes }),
   removeAvailabilityWatchTarget: (id: number) => deleteJSON<{ ok: boolean }>(`/api/availability-watch/targets/${id}`),
-  /** Removes the listed targets that are still completed; the others stay. */
-  clearCompletedAvailabilityWatchTargets: (targetIds: number[]) =>
-    postJSONBody<AvailabilityWatch>("/api/availability-watch/targets/clear-completed", { targetIds }),
-  trackAvailabilityWatchTarget: (id: number) =>
-    postJSON<RemoteWorkTrackResult>(`/api/availability-watch/targets/${id}/track`),
-  runAvailabilityWatch: () => postJSON<AvailabilityWatchRunResult>("/api/availability-watch/run"),
+  removeAvailabilityWatchTargets: (targetIds: number[]) =>
+    postJSONBody<AvailabilityWatch>("/api/availability-watch/targets/remove", { targetIds }),
+  /** Removes the listed targets the library has or whose Track or Fetch is done; the others stay. */
+  cleanUpAvailabilityWatchTargets: (targetIds: number[]) =>
+    postJSONBody<AvailabilityWatch>("/api/availability-watch/targets/clean-up", { targetIds }),
+  trackAvailabilityWatchTargets: (targetIds: number[]) =>
+    postJSONBody<AvailabilityWatchActionResult>("/api/availability-watch/track", { targetIds }),
+  fetchAvailabilityWatchTargets: (targetIds: number[], excludeExtensions: string[]) =>
+    postJSONBody<AvailabilityWatchActionResult>("/api/availability-watch/fetch", { targetIds, excludeExtensions }),
+  /** Checks the whole pool, or only the listed targets. */
+  runAvailabilityWatch: (targetIds: number[] = []) =>
+    postJSONBody<AvailabilityWatchRunResult>("/api/availability-watch/run", { targetIds }),
   listWorkflowTriggers: () => getJSON<WorkflowTrigger[]>("/api/workflow-triggers"),
   createWorkflowTrigger: (payload: {
     workflowDefinitionId: number;

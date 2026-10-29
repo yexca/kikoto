@@ -67,7 +67,9 @@ Remote sources:
 - `availability_watch`: see [Availability Watch](#availability-watch).
 - `remote_work_fetch`: Fetch one remote work into the local library.
 - `remote_bulk_action`: dispatch per-work Track or Fetch workflows for several
-  selected remote works.
+  selected remote works or available Availability Watch targets. A run
+  started from the watch also carries the Fetch extension exclusion and which
+  target each code acts for.
 - `dlsite_popular_collection` and `remote_popular_collection`: pull the
   DLsite and remote source ranking lists (see [Rankings](#rankings)).
 - Preset catalog sync workflows `circle_catalog_sync`, `series_catalog_sync`,
@@ -447,10 +449,8 @@ plots those runs oldest first; ordinary successes stay neutral so failures,
 partial results, and active runs stand out.
 
 Run options form a run form that ends in a run bar holding Run, any workflow
-action such as Availability Watch Save, and the first reason Run is
-unavailable. The bar sticks above the page's fixed bottom controls while a long
-form scrolls; in the Discover settings, which scroll on their own, the
-Availability Watch bar stays after its options instead of floating over them.
+action, and the first reason Run is unavailable. The bar sticks above the
+page's fixed bottom controls while a long form scrolls.
 Preset option groups (Input, Filter, Actions) become columns once
 the form is wide enough. A workflow without run options keeps Run in its header.
 The latest run's monitor follows the form, then triggers and recent runs.
@@ -468,9 +468,10 @@ the backend.
   only to its owner or requester, and `system:admin`
   sees every run.
 - Starting, configuring, and scheduling: a kind of run requires every
-  permission its steps use. Track steps (`track_works`, a bulk Track, a
-  watch's Track) require `remote:track`; Fetch steps (`fetch_works`, Fetch,
-  a bulk Fetch, a watch's Fetch) require both `remote:fetch` and
+  permission its steps use. Track steps (`track_works`, a bulk Track,
+  including one of watched works) require `remote:track`; Fetch steps
+  (`fetch_works`, Fetch, a bulk Fetch, including one of watched works)
+  require both `remote:fetch` and
   `metadata:sync`; scans, the local file index, metadata sync, presets, and
   the ranking pulls require `metadata:sync`, as do configuring rankings and
   requesting a pull; the source presence check requires `sources:write`; tags
@@ -487,9 +488,9 @@ the backend.
   The scheduler repeats this dependency check to cover a concurrent or
   out-of-band source change. Re-enabling a source does not resume its paused
   triggers automatically; an administrator must review and enable them.
-- Availability Watch: its configuration, targets, schedule, and runs require
-  the permissions of the configured action, and Track on a ready target
-  requires `remote:track`.
+- Availability Watch: its source setting, targets, and checks require
+  `metadata:sync`; Track and Fetch of its targets require the permissions of
+  a bulk Track or Fetch.
 - Ownership: a run records its requester as `requested_by_user_id` in its
   input, written by the account that started it or by the trigger owner a
   trigger dispatched for. Cancel, retry, and candidate decisions are limited
@@ -1199,56 +1200,76 @@ stores the run options in its config. No trigger is seeded.
 ## Availability Watch
 
 Availability Watch is one instance-level system workflow with a shared
-monitoring pool, rather than one watch per user. Authorized users can edit the
-pool of normalized work codes, while its configuration selects a compatible
-remote source (or any healthy compatible source), an action on availability,
-and Fetch extension exclusions. Exclusions are opt-in: a watch created without
-an explicit configuration excludes no extensions. A change to that
-configuration records the user whose permissions govern its scheduled
-execution.
+monitoring pool, rather than one watch per user. It only monitors: a check
+reports which watched works a remote source offers and never tracks or
+fetches. Authorized users edit the pool of normalized work codes, and its one
+setting selects a compatible remote source, or any healthy compatible
+source. A change to that setting records the user whose permissions govern
+the scheduled checks.
 
 It has no trigger of its own. The [subscription refresh](#creator-subscriptions)
 queues it after each refresh while its Availability Watch option is on, using
-the account that last configured the watch, and it may also be run directly
-from the Discover page, whose Watch view shows the pool and whose
-settings hold the configuration.
-Workflows lists its runs and links to that page. Each execution snapshots the
-active pool and
-records a normal workflow run, node runs, and durable job. Before checking a
-target, the run synchronizes the code's DLsite family metadata when it has not
-been refreshed within a day; a watched code is an explicitly requested metadata
-root, so this may create its edition works. A metadata failure marks only the
-metadata node partial and the check uses the family already known; a code
-DLsite does not list is checked alone. The target is available when a remote
-source offers any edition of its family: the watched code first, then the
-other editions and provider-declared edition codes, at most 32. The target
-records which edition was found, and Track, Fetch, and opening the remote work
-use that edition. Remote results never materialize new `work` rows.
+the account that last configured the watch, and Check now on the Discover
+page's Watch view queues it directly, for the whole pool or for listed
+targets (`POST /api/availability-watch/run` with optional `targetIds`). The
+settings hold the source. Workflows lists its runs and links to that page.
+Each execution snapshots the active targets it checks and records a normal
+workflow run, node runs (pool, family metadata, availability check, available
+works), and a durable job; only one check is queued or running at a time.
+Before checking a waiting or failed target, the run synchronizes the code's
+DLsite family metadata when it has not been refreshed within a day; a watched
+code is an explicitly requested metadata root, so this may create its edition
+works. A metadata failure marks only the metadata node partial and the check
+uses the family already known; a code DLsite does not list is checked alone.
+The target is available when a remote source offers any edition of its
+family: the watched code first, then the other editions and provider-declared
+edition codes, at most 32. The target records which source and edition was
+found, and Track, Fetch, and opening the remote work use that edition. Remote
+results never materialize new `work` rows, and an available target is not
+checked again.
 
-Because every run refreshes DLsite metadata, Availability Watch configuration,
-target edits, and manual runs require `metadata:sync`; Track also requires
-`remote:track`, Fetch also requires `remote:fetch`, and Track plus Fetch
-require both remote permissions. A run the subscription refresh queues
-re-checks the configuring account's complete permission set.
+Because every check refreshes DLsite metadata, the source setting, target
+edits, cleanup, and checks require `workflows:run` and `metadata:sync`. A check
+the subscription refresh queues re-checks the configuring account's
+permissions.
 
-Available targets form the Watch view's Available section; configured Track
-and Fetch actions are child workflows with their own histories, and a target
-is `completed` once its action, or a manual Track, is queued. A successful run
-that
-finds new available works creates a notification for every enabled account
-that holds `workflows:run`, which opens the Watch view at its available
-targets, and adds each newly available work to those accounts' release feeds.
+A successful check that finds new available works creates a notification for
+every enabled account that holds `workflows:run`, which opens the Watch view
+at its available targets with that run's newly available codes selected, and
+adds each newly available work to those accounts' release feeds.
+
+Track and Fetch of available targets are started by hand. `POST
+/api/availability-watch/track` and `POST /api/availability-watch/fetch` take
+at most 100 `targetIds`, and Fetch an `excludeExtensions` list. They need the
+permissions of a bulk Track or Fetch (see
+[Workflow Permissions](#workflow-permissions)): `remote:track`, or
+`remote:fetch` with `metadata:sync`. Each queues one `remote_bulk_action`
+run per source for the listed targets that are available and have no run of
+that action queued or running, acting on the edition each target found. In
+the same transaction the targets reference the bulk run; when the bulk run
+starts a target's Track or Fetch, the target references that run instead, and
+a failure leaves the target on the bulk run with a reason. The view reports
+each referenced run's status.
+
+The Watch view groups targets by these rules: a target with a Track or Fetch
+queued or running is in progress; otherwise one whose watched code or found
+edition has local, cached, or tracked remote files is in the library (the
+rule of a ranking's in-library works); otherwise one with a finished or
+failed run is in progress; otherwise an available target is available, a
+target whose last check failed has failed, and the rest wait.
 
 `PUT /api/availability-watch/targets` replaces the pool;
 `POST /api/availability-watch/targets` adds codes without deactivating
-targets added by someone else. `DELETE /api/availability-watch/targets/{id}`
-removes one target, and `POST
-/api/availability-watch/targets/clear-completed` removes the listed targets
-that are still `completed` in one statement, so a target that completes after
-the caller listed it stays. Changing targets needs the permissions of the
-configured action. The view returns each target's title and
-cached cover (its own, or the family original's) and its known family editions
-with their titles and languages.
+targets added by someone else; a code added again after removal starts over
+with a new added time. `DELETE /api/availability-watch/targets/{id}` removes
+one target and `POST /api/availability-watch/targets/remove` the listed ones.
+`POST /api/availability-watch/targets/clean-up` removes, in one statement,
+the listed targets that are in the library or whose Track or Fetch succeeded,
+so a target that no longer qualifies stays; nothing removes targets on its
+own. The view returns each target's title and cached cover (its own, or the
+family original's), its known family editions with their titles and
+languages, when it was added, its release date when known, whether it is in
+the library, and the status of its Track and Fetch runs.
 
 ## Voice Catalog Refresh
 
@@ -1368,7 +1389,9 @@ available again moves its entry to the top. The Discover page groups
 entries by work family, newest event first, and shows each family through its
 canonical work, or through catalog details when no work exists yet, and, for
 an account with `workflows:run`, whether the Availability Watch pool watches
-the shown code, directly or through another edition of its family. Each family
+the shown code, directly or through another edition of its family. A family
+whose `available` event belongs to an available target also carries that
+target, so its card can Track or Fetch it. Each family
 belongs to the day of its newest event in the account's time zone, and a feed
 page holds 5, 10, or 15 days that have entries. Opening the
 feed records it as read for the navigation badge. A run that adds entries for

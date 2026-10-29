@@ -130,6 +130,8 @@ export type RecommendationEventInput = {
   seed?: number;
   rank?: number;
   score?: number;
+  /** The view that showed the work; the Library when omitted. */
+  surface?: "library" | "for_you";
 };
 
 export type RecommendationTelemetrySummary = {

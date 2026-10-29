@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { circleSourceBadges, sourcePresenceBadges } from "./sourceBadges";
+import { circleSourceBadges, sourcePresenceBadges, workHasLibraryFiles } from "./sourceBadges";
 
 describe("source presence badges", () => {
   it("orders local, tracked, and remote presence and distinguishes unforked tracking", () => {
@@ -63,5 +63,16 @@ describe("circle source badges", () => {
         sourceTags: null,
       }),
     ).toEqual([]);
+  });
+});
+
+describe("work in the library", () => {
+  it("counts local, cached, and tracked files, and not metadata or a missing folder", () => {
+    expect(workHasLibraryFiles(["local"])).toBe(true);
+    expect(workHasLibraryFiles(["cache"])).toBe(true);
+    expect(workHasLibraryFiles(["remote"])).toBe(true);
+    expect(workHasLibraryFiles(["missing"])).toBe(false);
+    expect(workHasLibraryFiles([])).toBe(false);
+    expect(workHasLibraryFiles()).toBe(false);
   });
 });

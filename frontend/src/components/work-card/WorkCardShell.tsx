@@ -65,6 +65,8 @@ export type WorkCardViewModel = {
   code: string;
   title: string;
   circle: string;
+  /** False when the card knows no credits, such as a watched code outside the library; the credit line is left out. */
+  credits?: boolean;
   circleExternalId?: string;
   ageRating?: string;
   voiceActors?: string[];
@@ -576,44 +578,14 @@ function WorkCardBody({
             </span>
           )}
         </h3>
-        <div
-          className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left text-[0.8125rem] text-muted-foreground @max-[12.5rem]/work-card:text-xs"
-          title={[circleLabel, work.series].filter(Boolean).join(" / ")}
-        >
-          {onCircleOpen ? (
-            <button
-              className="hover:text-primary"
-              onClick={(event) => {
-                event.stopPropagation();
-                onCircleOpen();
-              }}
-            >
-              {circleLabel}
-            </button>
-          ) : (
-            <span>{circleLabel}</span>
-          )}
-          {work.series && (
-            <>
-              <span className="px-1 opacity-60" aria-hidden="true">
-                /
-              </span>
-              {onSeriesOpen ? (
-                <button
-                  className="text-foreground/80 hover:text-primary"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onSeriesOpen();
-                  }}
-                >
-                  {work.series}
-                </button>
-              ) : (
-                <span className="text-foreground/80">{work.series}</span>
-              )}
-            </>
-          )}
-        </div>
+        {work.credits !== false && (
+          <WorkCardCircleLine
+            work={work}
+            circleLabel={circleLabel}
+            onCircleOpen={onCircleOpen}
+            onSeriesOpen={onSeriesOpen}
+          />
+        )}
       </div>
       {work.voiceActors && work.voiceActors.length > 0 && (
         <div
@@ -651,6 +623,59 @@ function WorkCardBody({
         onTagOpen={onTagOpen}
       />
       <WorkCardMetrics rating={work.rating ?? null} ratingCount={work.ratingCount ?? null} sales={work.sales ?? null} />
+    </div>
+  );
+}
+
+function WorkCardCircleLine({
+  work,
+  circleLabel,
+  onCircleOpen,
+  onSeriesOpen,
+}: {
+  work: WorkCardViewModel;
+  circleLabel: string;
+  onCircleOpen?: () => void;
+  onSeriesOpen?: () => void;
+}) {
+  return (
+    <div
+      className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left text-[0.8125rem] text-muted-foreground @max-[12.5rem]/work-card:text-xs"
+      title={[circleLabel, work.series].filter(Boolean).join(" / ")}
+    >
+      {onCircleOpen ? (
+        <button
+          className="hover:text-primary"
+          onClick={(event) => {
+            event.stopPropagation();
+            onCircleOpen();
+          }}
+        >
+          {circleLabel}
+        </button>
+      ) : (
+        <span>{circleLabel}</span>
+      )}
+      {work.series && (
+        <>
+          <span className="px-1 opacity-60" aria-hidden="true">
+            /
+          </span>
+          {onSeriesOpen ? (
+            <button
+              className="text-foreground/80 hover:text-primary"
+              onClick={(event) => {
+                event.stopPropagation();
+                onSeriesOpen();
+              }}
+            >
+              {work.series}
+            </button>
+          ) : (
+            <span className="text-foreground/80">{work.series}</span>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -961,9 +986,13 @@ function WorkCardMetrics({
   const normalizedRating = rating !== null && Number.isFinite(rating) ? Math.min(5, Math.max(0, rating)) : null;
   const normalizedRatingCount =
     ratingCount !== null && Number.isFinite(ratingCount) && ratingCount >= 0 ? Math.floor(ratingCount) : null;
+  const knownSales = sales !== null && Number.isFinite(sales) && sales >= 0 ? Math.floor(sales) : null;
+  // A metric shows only when known, and a work without metadata has no
+  // metric line rather than a row of placeholders.
+  if (normalizedRating === null && knownSales === null) return null;
   const ratingLabel =
     normalizedRating === null
-      ? t("workCard.noRating")
+      ? ""
       : normalizedRatingCount === null
         ? t("workCard.rating", { value: formatRating(normalizedRating, resolvedLocale) })
         : t("workCard.ratingWithCount", {
@@ -971,32 +1000,38 @@ function WorkCardMetrics({
             count: formatStandardCount(normalizedRatingCount, resolvedLocale),
           });
   const salesLabel =
-    sales !== null && Number.isFinite(sales) && sales >= 0
-      ? t("workCard.salesLabel", { value: formatStandardCount(Math.floor(sales), resolvedLocale) })
-      : t("workCard.salesUnavailable");
+    knownSales === null ? "" : t("workCard.salesLabel", { value: formatStandardCount(knownSales, resolvedLocale) });
   // Each stat stays whole and wraps as a unit on narrow cards instead of
   // truncating its number.
   return (
     <div className="mt-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs text-muted-foreground @max-[12.5rem]/work-card:gap-x-2 @max-[12.5rem]/work-card:gap-y-0.5 @max-[12.5rem]/work-card:pt-0 @max-[12.5rem]/work-card:text-2xs">
-      <span className="inline-flex shrink-0 items-center gap-1" title={ratingLabel} role="img" aria-label={ratingLabel}>
-        <Star
-          className={cn(
-            "h-3.5 w-3.5 @max-[12.5rem]/work-card:h-3 @max-[12.5rem]/work-card:w-3",
-            normalizedRating !== null && "fill-primary text-primary",
+      {normalizedRating !== null && (
+        <span
+          className="inline-flex shrink-0 items-center gap-1"
+          title={ratingLabel}
+          role="img"
+          aria-label={ratingLabel}
+        >
+          <Star
+            className="h-3.5 w-3.5 fill-primary text-primary @max-[12.5rem]/work-card:h-3 @max-[12.5rem]/work-card:w-3"
+            aria-hidden="true"
+          />
+          <span className="font-semibold tabular-nums text-foreground">
+            {formatRating(normalizedRating, resolvedLocale)}
+          </span>
+          {normalizedRatingCount !== null && (
+            <span className="tabular-nums">({formatCompactCount(normalizedRatingCount, resolvedLocale)})</span>
           )}
-          aria-hidden="true"
-        />
-        <span className="font-semibold tabular-nums text-foreground">
-          {normalizedRating === null ? "--" : formatRating(normalizedRating, resolvedLocale)}
         </span>
-        {normalizedRatingCount !== null && (
-          <span className="tabular-nums">({formatCompactCount(normalizedRatingCount, resolvedLocale)})</span>
-        )}
-      </span>
-      <span className="inline-flex shrink-0 items-center gap-1" title={salesLabel} aria-label={salesLabel}>
-        <span>{t("workCard.sales")}</span>
-        <span className="font-semibold tabular-nums text-foreground">{formatCompactCount(sales, resolvedLocale)}</span>
-      </span>
+      )}
+      {knownSales !== null && (
+        <span className="inline-flex shrink-0 items-center gap-1" title={salesLabel} aria-label={salesLabel}>
+          <span>{t("workCard.sales")}</span>
+          <span className="font-semibold tabular-nums text-foreground">
+            {formatCompactCount(knownSales, resolvedLocale)}
+          </span>
+        </span>
+      )}
     </div>
   );
 }

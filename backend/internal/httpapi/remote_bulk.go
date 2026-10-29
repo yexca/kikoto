@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -77,6 +78,11 @@ type remoteBulkActionJobPayload struct {
 	SourceID int64    `json:"source_id"`
 	Action   string   `json:"action"`
 	Codes    []string `json:"codes"`
+	// ExcludeExtensions leaves files with these extensions out of each Fetch.
+	ExcludeExtensions []string `json:"exclude_extensions,omitempty"`
+	// WatchTargets maps a code to the Availability Watch target the run acts
+	// for, which then references the Track or Fetch run started for it.
+	WatchTargets map[string]int64 `json:"watch_targets,omitempty"`
 }
 
 func normalizeRemoteBulkAction(action string) string {
@@ -107,16 +113,21 @@ func remoteBulkActionPermissions(action string) []string {
 }
 
 func (s *Server) enqueueRemoteBulkWorkflow(ctx context.Context, userID int64, sourceID int64, action string, codes []string) (remoteBulkWorkflowResult, error) {
-	action = normalizeRemoteBulkAction(action)
-	if action == "" {
+	return s.enqueueRemoteBulkWorkflowWith(ctx, remoteBulkActionJobPayload{UserID: userID, SourceID: sourceID, Action: action, Codes: codes}, nil)
+}
+
+// enqueueRemoteBulkWorkflowWith queues a bulk run; beforeCommit, when given,
+// runs in the same transaction once the run exists.
+func (s *Server) enqueueRemoteBulkWorkflowWith(ctx context.Context, payload remoteBulkActionJobPayload, beforeCommit func(tx *sql.Tx, runID int64) error) (remoteBulkWorkflowResult, error) {
+	payload.Action = normalizeRemoteBulkAction(payload.Action)
+	if payload.Action == "" {
 		return remoteBulkWorkflowResult{}, fmt.Errorf("invalid remote bulk action")
 	}
-	payload := remoteBulkActionJobPayload{UserID: userID, SourceID: sourceID, Action: action, Codes: codes}
-	runID, jobID, err := s.startRemoteBulkWorkflow(ctx, payload)
+	runID, jobID, err := s.startRemoteBulkWorkflow(ctx, payload, beforeCommit)
 	if err != nil {
 		return remoteBulkWorkflowResult{}, err
 	}
-	return remoteBulkWorkflowResult{RunID: runID, JobID: jobID, SourceID: sourceID, Action: action, Codes: codes, Status: "queued", Failures: []string{}}, nil
+	return remoteBulkWorkflowResult{RunID: runID, JobID: jobID, SourceID: payload.SourceID, Action: payload.Action, Codes: payload.Codes, Status: "queued", Failures: []string{}}, nil
 }
 
 func (s *Server) executeRemoteBulkActionJob(ctx context.Context, job workflowJobRecord) error {
@@ -136,7 +147,7 @@ func (s *Server) executeRemoteBulkActionJob(ctx context.Context, job workflowJob
 	}
 	result := remoteBulkWorkflowResult{RunID: job.RunID, SourceID: payload.SourceID, Action: payload.Action, Codes: payload.Codes, Status: "succeeded", Failures: []string{}}
 	for _, code := range payload.Codes {
-		s.processRemoteBulkCode(ctx, payload.UserID, payload.SourceID, payload.Action, code, &result)
+		s.processRemoteBulkCode(ctx, job.RunID, payload, code, &result)
 	}
 	status := "succeeded"
 	if result.Failed > 0 {
@@ -145,7 +156,7 @@ func (s *Server) executeRemoteBulkActionJob(ctx context.Context, job workflowJob
 	return s.finishRemoteBulkWorkflowJob(ctx, job, status, result, nil)
 }
 
-func (s *Server) startRemoteBulkWorkflow(ctx context.Context, payload remoteBulkActionJobPayload) (int64, int64, error) {
+func (s *Server) startRemoteBulkWorkflow(ctx context.Context, payload remoteBulkActionJobPayload, beforeCommit func(tx *sql.Tx, runID int64) error) (int64, int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, 0, err
@@ -161,6 +172,9 @@ func (s *Server) startRemoteBulkWorkflow(ctx context.Context, payload remoteBulk
 		return 0, 0, err
 	}
 	input := map[string]any{"source_id": payload.SourceID, "action": payload.Action, "codes": payload.Codes, workflowRunRequesterKey: payload.UserID}
+	if len(payload.ExcludeExtensions) > 0 {
+		input["exclude_extensions"] = payload.ExcludeExtensions
+	}
 	summary := map[string]any{"source_id": payload.SourceID, "action": payload.Action, "works": len(payload.Codes)}
 	runID, err := workflow.InsertRun(ctx, tx, definitionID, "remote_bulk_action", "Run remote bulk action", "queued", "manual", payload.Action, input, summary)
 	if err != nil {
@@ -187,32 +201,60 @@ func (s *Server) startRemoteBulkWorkflow(ctx context.Context, payload remoteBulk
 	if err != nil {
 		return 0, 0, err
 	}
+	if beforeCommit != nil {
+		if err := beforeCommit(tx, runID); err != nil {
+			return 0, 0, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, 0, err
 	}
 	return runID, jobID, nil
 }
 
-func (s *Server) processRemoteBulkCode(ctx context.Context, userID, sourceID int64, action, code string, result *remoteBulkWorkflowResult) {
+func (s *Server) processRemoteBulkCode(ctx context.Context, bulkRunID int64, payload remoteBulkActionJobPayload, code string, result *remoteBulkWorkflowResult) {
+	action := payload.Action
+	watchTargetID := payload.WatchTargets[code]
+	fail := func(failedAction string, err error) {
+		recordRemoteBulkFailure(result, code, err)
+		if watchTargetID > 0 {
+			s.recordAvailabilityWatchActionFailure(ctx, watchTargetID, failedAction, bulkRunID)
+		}
+	}
 	if action == "track" || action == "track_fetch" {
-		syncResult, err := s.runRemoteWorkSync(ctx, sourceID, code, "remote_bulk_"+action)
+		syncResult, err := s.runRemoteWorkSync(ctx, payload.SourceID, code, "remote_bulk_"+action)
 		if err != nil {
-			recordRemoteBulkFailure(result, code, err)
+			fail("track", err)
 			return
 		}
 		result.Synced++
 		result.ChildRuns = append(result.ChildRuns, syncResult.RunID)
+		if watchTargetID > 0 {
+			s.recordAvailabilityWatchRun(ctx, watchTargetID, "track", bulkRunID, syncResult.RunID)
+		}
 	}
 	if action != "fetch" && action != "track_fetch" {
 		return
 	}
-	saveResult, err := s.enqueueRemoteWorkSave(withRemoteFetchOrigin(ctx, "remote_bulk_action"), sourceID, code, []string{}, nil, "", "", nil, 0, userID, workflow.JobPriorityBackground, nil)
+	paths := []string{}
+	if len(payload.ExcludeExtensions) > 0 {
+		filtered, err := s.remoteFetchPathsExcluding(ctx, payload.SourceID, code, payload.ExcludeExtensions)
+		if err != nil {
+			fail("fetch", err)
+			return
+		}
+		paths = filtered
+	}
+	saveResult, err := s.enqueueRemoteWorkSave(withRemoteFetchOrigin(ctx, "remote_bulk_action"), payload.SourceID, code, paths, nil, "", "", nil, 0, payload.UserID, workflow.JobPriorityBackground, nil)
 	if err != nil {
-		recordRemoteBulkFailure(result, code, err)
+		fail("fetch", err)
 		return
 	}
 	result.Fetched++
 	result.ChildRuns = append(result.ChildRuns, saveResult.RunID)
+	if watchTargetID > 0 {
+		s.recordAvailabilityWatchRun(ctx, watchTargetID, "fetch", bulkRunID, saveResult.RunID)
+	}
 }
 
 func recordRemoteBulkFailure(result *remoteBulkWorkflowResult, code string, err error) {

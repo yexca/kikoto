@@ -67,6 +67,22 @@ type releaseFeedFamily struct {
 	// shown code or another edition of it. It is stated only to accounts that
 	// may see the pool.
 	Watched bool `json:"watched"`
+	// WatchTarget is the available Availability Watch target behind a "Now
+	// available" event, so the card can track or fetch it; nil otherwise and
+	// for accounts that may not see the pool.
+	WatchTarget *releaseFeedWatchTarget `json:"watchTarget"`
+}
+
+// releaseFeedWatchTarget is what a feed card needs to act on an available
+// target: the edition and source found, and any Track or Fetch started.
+type releaseFeedWatchTarget struct {
+	ID                int64  `json:"id"`
+	WorkCode          string `json:"workCode"`
+	AvailableCode     string `json:"availableCode"`
+	AvailableSourceID int64  `json:"availableSourceId"`
+	TrackRunStatus    string `json:"trackRunStatus"`
+	FetchRunStatus    string `json:"fetchRunStatus"`
+	InLibrary         bool   `json:"inLibrary"`
 }
 
 type releaseFeedPage struct {
@@ -150,6 +166,59 @@ func (s *Server) markReleaseFeedWatched(ctx context.Context, families []releaseF
 	}
 	for index := range families {
 		families[index].Watched = watched[releaseFeedShownCode(families[index])]
+	}
+	return s.attachReleaseFeedWatchTargets(ctx, families)
+}
+
+// attachReleaseFeedWatchTargets gives each family with a "Now available"
+// event the available target that reported it.
+func (s *Server) attachReleaseFeedWatchTargets(ctx context.Context, families []releaseFeedFamily) error {
+	codes := []string{}
+	for _, family := range families {
+		for _, event := range family.Events {
+			if event.Type == "available" {
+				codes = append(codes, strings.ToUpper(event.Code))
+			}
+		}
+	}
+	if len(codes) == 0 {
+		return nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT target.work_code, target.id, COALESCE(NULLIF(target.available_code, ''), target.work_code),
+			target.available_source_id, COALESCE(track_run.status, ''), COALESCE(fetch_run.status, ''),
+			`+availabilityWatchInLibrarySQL+`
+		FROM availability_watch_target AS target
+		LEFT JOIN workflow_run AS track_run ON track_run.id = target.track_run_id
+		LEFT JOIN workflow_run AS fetch_run ON fetch_run.id = target.fetch_run_id
+		WHERE target.watch_id = ? AND target.active = 1 AND target.state = 'ready'
+			AND target.available_source_id IS NOT NULL
+			AND target.work_code IN (SELECT value FROM json_each(?))
+	`, availabilityWatchID, mustJSON(codes))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	targets := map[string]*releaseFeedWatchTarget{}
+	for rows.Next() {
+		var code string
+		var target releaseFeedWatchTarget
+		if err := rows.Scan(&code, &target.ID, &target.AvailableCode, &target.AvailableSourceID, &target.TrackRunStatus, &target.FetchRunStatus, &target.InLibrary); err != nil {
+			return err
+		}
+		target.WorkCode = code
+		targets[code] = &target
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for index := range families {
+		for _, event := range families[index].Events {
+			if target := targets[strings.ToUpper(event.Code)]; event.Type == "available" && target != nil {
+				families[index].WatchTarget = target
+				break
+			}
+		}
 	}
 	return nil
 }

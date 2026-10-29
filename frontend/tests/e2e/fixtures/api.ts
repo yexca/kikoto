@@ -789,6 +789,7 @@ export function releaseFeedFamilyFixture(overrides: Partial<ReleaseFeedFamily> =
       },
     ],
     work: null,
+    watchTarget: null,
     fallback: {
       code,
       title: "Example Work 1",

@@ -184,29 +184,47 @@ detail, run forms, the trigger editor, the Availability Watch configuration
 and pool that the Discover page composes, run detail, and candidate
 review live in `features/workflows`.
 
-The Discover page (`/discover`, rendered by `pages/SubscriptionsPage`) is the
-way in to works from outside the library. A `/subscriptions` address
-redirects to it with its query. It switches between three views, the release
-feed, Rankings (`?view=rankings`), and Watch (`?view=watch`, for accounts that
-can run workflows; any other account sees the release feed), and composes its
+The Discover page (`/discover`, rendered by `pages/SubscriptionsPage`) is
+where to find what to listen to next. A `/subscriptions` address redirects to
+it with its query. It switches between four views, For you (`?view=for-you`,
+not in the demo), the release feed, Rankings (`?view=rankings`), and Watch
+(`?view=watch`, for accounts that can run workflows; any other account sees
+the release feed), and composes its
 settings as a sticky panel
 beside the view from 1280px, where the view reflows to the remaining width, as
 a drawer over its right edge on narrower desktops, and as a sheet on phones.
 The panel beside the view takes focus when it opens, closes with Escape or the
-settings icon, and returns focus to that icon. The release feed and Rankings
-offer the same actions on the works they show (`components/work-collection/ShownWorksActions`
-and `hooks/useShownWorksActions`): an actions menu syncs their metadata or
-checks their sources, a status line follows the queued run with a link to it,
-the view reloads when the run ends, and the source check's answers for codes
-without a work last for the visit. The release feed draws each day's families
-in the shared work collection grid and card modes, with the actions menu
-beside the display options. Rankings shows one tracked ranking
-(`?list=`) as compact row cards beside their rank, in one to three columns set
-by the view's own width, under a two-row toolbar that sticks below the app
-header. The first row holds segmented controls grouped by provider, in
-the fixed order of the lists, with the annual lists behind one segment and a
-year choice, the History and refresh icons, and the actions menu for the shown
-order. The second row holds the order, the
+settings icon, and returns focus to that icon. The page toolbar always holds
+the actions menu, the display options, and the settings icon, in that order;
+the actions menu is disabled on a view without actions.
+
+The four views compose the same card parts from shared code. Their cards
+follow one Discover display choice (`DISCOVER_LAYOUT_STORE` and
+`discoverCardLayout` in `components/work-collection/WorkCollectionLayout`),
+kept apart from the Library's and starting with compact row cards, in the
+shared work collection grid. Each card is a `WorkCardContextItem`: a
+fixed-height `WorkCardContextStrip` above `LayoutWorkCard`, with the strip's
+`WorkCardStatusBadge` and `WorkCardUnreadDot` as its status vocabulary
+(`components/work-card/WorkCardContext`), and `WorkCardActionFooter` orders
+the actions and saves a rating or Quick mark. `WorkSectionHeading`
+(`components/work-collection`) heads the day groups, For you columns, Watch
+groups, and the dropped-out list. Each view adapts its records to
+`WorkCardViewModel` itself, so the feature folders do not import one another.
+
+The release feed and Rankings offer the same actions on the works they show
+(`components/work-collection/ShownWorksActions` and
+`hooks/useShownWorksActions`): the page's actions menu syncs their metadata or
+checks their sources, a status line in the view follows the queued run with a
+link to it, the view reloads when the run ends, and the source check's answers
+for codes without a work last for the visit. Rankings names the recorded
+order the menu acts on to the page. The release feed draws each day's families
+under a section heading. For you shows its three columns side by side on a
+wide screen with row cards, and one after another with full or mini cards.
+Rankings shows one tracked ranking (`?list=`) as cards beside their rank,
+under a two-row toolbar that sticks below the app header. The first row holds
+segmented controls grouped by provider, in the fixed order of the lists, with
+the annual lists behind one segment and a year choice, and the History and
+refresh icons. The second row holds the order, the
 filters with their counts, including the entries a remote source has, and a
 status button that opens the update times and the comparison choice; on phones
 both rows scroll sideways and the status wraps below them. A 30-day switch and a popularity or sales choice pick
@@ -218,30 +236,42 @@ shows. The latest order is compared with a baseline
 `?at=` shows the order in effect at a time instead, compared with the update
 before it, chosen in the History popover by day and that day's updates in the
 account's time zone, with a banner under the toolbar leading back to the
-latest order; it does not record the ranking as seen. A card's footer states a
-stay or best rank only when they add something and marks the entries whose
-work has files instead of the others. Ranking and release cards share a
-labeled Watch action that reads Watching for a code already in Availability
-Watch. A finished annual ranking shows its ranks without movement. The
+latest order; it does not record the ranking as seen. A card's context line
+states a stay or best rank only when they add something, and the cover's
+source marks say whether the library has the work. Ranking and release cards
+share a labeled Watch action that reads Watching for a code already in
+Availability Watch. A finished annual ranking shows its ranks without movement. The
 ranking settings show one line per ranking with its Show switch, relative pull
 times, and a schedule summary that expands the row in place to edit the
 interval and depth, pull it alone, or delete it after a confirmation; earlier
 annual years and the history retention each collapse into one line.
 
-Watch shows the Availability Watch pool: a summary with quick entry, then the
-available targets in full and the targets still waiting for a source, failed
-checks first. Both use the shared work collection grid and card modes with a
-target card of their own, since a target need not be a work, and the waiting
-targets fold to whole rows of the grid's measured tracks. **Clear completed**
-sends the completed targets it shows in one request. `?target=<id>` opens a
-target's family dialog and `?dialog=ready` scrolls to the available targets;
-the page hands both to the view and removes them from the address.
+Watch shows the Availability Watch pool: a summary with Add codes, whose
+preview `parseWatchCodes` extracts from pasted codes, DLsite links, or mixed
+text; a search, sort, and Select row; then the targets in the groups
+`watchTargetGroup` assigns (available, in progress, waiting, failed checks,
+already in library). A target need not be a work, so `watchTargetCardView`
+gives the shared card only its code, title, and cover; the context line holds
+its state and, for a started Track or Fetch, View run, and the footer keeps
+the shared order with Track and Fetch (`WatchTrackFetchButtons`, also on New
+releases' "Now available" cards), Check now, and Remove with its second-press
+confirmation. Waiting and in-library targets fold to whole rows of the grid's
+measured tracks unless a search is active. `useWatchTargetActions` holds
+Track, Fetch, Check now, Remove, and Clean up for the page: the page's Actions
+menu (`WatchPoolActionMenu`), the selection bar, the cards, and the family
+dialog share it, and Fetch always passes through `WatchFetchConfirmDialog`,
+which keeps the last extension exclusion in local storage. Selection reuses
+`WorkSelectionBar`, whose actions count what each applies to.
+`?target=<id>` opens a target's family dialog and `?dialog=ready` scrolls to
+the available targets; with `&run=<id>` the page reads that run's newly
+available codes and selects them. The page hands these to the view and
+removes them from the address.
 `?panel=watch` without a view names the Watch view, so a query the page writes
 with the Availability Watch settings open always names its view.
 
 The settings hold the subscription list with the refresh schedule, the ranking
-settings, and the Availability Watch configuration, which they take from the
-workflows feature. The Watch view and that configuration read one
+settings, and the Availability Watch source setting, which they take from the
+workflows feature. The Watch view and that setting read one
 `useAvailabilityWatch` state, which loads when either is first shown and polls
 while either is shown and the page is visible.
 `?panel=subscriptions`, `?panel=rankings`, or `?panel=watch` opens the
@@ -249,7 +279,10 @@ settings, and the settings button opens the tab of the current view. `?page=`
 names the feed page. The feed, subscription list, schedule panel,
 and the subscribe button that circle, series, and voice actor pages render
 live in `features/subscriptions`; the Rankings view, its settings, and the
-shared ranking state live in `features/rankings`; the Watch view, the watch
+shared ranking state live in `features/rankings`; For you, its draws, and its
+reason sentences live in `features/for-you`, which draws every column on open
+and after a temperature change, and one column, without the other columns'
+works, on **Draw again**; the Watch view, the watch
 configuration, and their shared state live in
 `features/workflows/availability-watch`.
 

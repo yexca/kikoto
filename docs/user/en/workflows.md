@@ -42,10 +42,11 @@ administrators.
   automate their Fetch paths.
 - Editing, switching off, or deleting a trigger needs the same permissions as
   creating it.
-- Availability Watch always refreshes family metadata, so its configuration,
-  watch pool, and runs require `metadata:sync`; Track also needs
-  `remote:track`, Fetch also needs `remote:fetch`, and Track plus Fetch need
-  both remote permissions.
+- Availability Watch only monitors and always refreshes family metadata, so
+  its source setting, watch pool, and checks require `metadata:sync`. Track
+  and Fetch of a watched work are started by hand and check their own
+  permissions: Track needs `remote:track`, and Fetch needs `remote:fetch` and
+  `metadata:sync`, as a remote source's bulk Fetch does.
 - A run can be cancelled or retried, and its items reviewed, by the account
   that started it, directly or as the owner of the trigger that fired it.
   Administrators can do so for every run. A retry needs the permissions that
@@ -168,8 +169,8 @@ administrators.
   select the run summary to open that run in Activity.
 - Availability Watch, **Refresh subscriptions**, **Pull DLsite rankings**, and
   **Pull remote source rankings** are configured on the
-  [Discover](discover.md) page, where the watch keeps its saved
-  configuration and its pool is the **Watch** view, the subscription refresh
+  [Discover](discover.md) page, where the watch keeps its source setting
+  and its pool is the **Watch** view, the subscription refresh
   its schedule, and
   each ranking its own pull schedule. Here they show their latest runs, health
   summary, and run history, link to that page, and have no Run options or
@@ -192,8 +193,8 @@ administrators.
   every catalog work that lacks metadata. The tag template is also off by
   default; turn it on to tag the synced works. With Sync metadata off, a circle
   or voice actor catalog sync only refreshes the catalog (and checks sources).
-  Catalog sync does not Track or Fetch; use a remote source's works,
-  Availability Watch, or a work's detail page for that.
+  Catalog sync does not Track or Fetch; use a remote source's works, the
+  Watch view in Discover, or a work's detail page for that.
 - The catalog sync presets have no triggers. To follow new works on a schedule,
   subscribe to the circle, series, or voice actor instead; the preset's
   triggers section links to [Discover](discover.md).
@@ -240,9 +241,9 @@ administrators.
   top with its own progress bar, and the full list marks each file as done,
   waiting, or where the run failed or paused.
 - Each Fetch run is named after its work, such as `Fetch RJ00000001`, and
-  Activity search finds a Fetch by its work code. Fetches queued by
-  Availability Watch or bulk actions record that origin as their trigger
-  reason.
+  Activity search finds a Fetch by its work code. Fetches queued by a bulk
+  action, including one started from the Watch view, record that origin as
+  their trigger reason.
 - Runs that act on one work, circle, series, voice actor, or remote source add
   it to their title, such as `Sync a circle catalog · RG00000000`, and Activity
   search finds them by it.

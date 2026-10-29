@@ -53,9 +53,10 @@ password is reset from the server host; see
 - **Folder preference** holds ordered folder matching and exclusion rules.
   Saving updates subsequent directory selection without stopping the player.
 - **Recommendations** starts with the **Your recommendation activity** report
-  of the signed-in user's own last 30 days (how impressions turned into opens
-  and plays, the marks and reshuffles given, and the affinity score
-  distribution), followed by recommendation presets, a live preview, ordering
+  of the signed-in user's own last 30 days of Library recommendations (how
+  impressions turned into opens and plays, the marks and reshuffles given, and
+  the affinity score distribution; Discover's **For you** is not counted),
+  followed by recommendation presets, a live preview, ordering
   variety, and advanced scoring. The live preview scores an adjustable example
   work on a gauge beside the highlight threshold and shows its composition;
   ordering variety shows how variation and discovery boost can move that

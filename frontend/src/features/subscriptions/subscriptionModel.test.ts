@@ -12,6 +12,7 @@ import {
   subscriptionPanelFromSearch,
   subscriptionViewFromSearch,
   watchLinkFromSearch,
+  newlyAvailableCodes,
   withExplicitSubscriptionView,
   groupReleaseFeedByDay,
   releaseFeedDayCount,
@@ -59,10 +60,18 @@ describe("subscription model", () => {
     expect(canonicalSubscriptionSearch("?panel=watch&target=4")).toBe("?target=4&view=watch");
     expect(canonicalSubscriptionSearch("?view=rankings&panel=watch")).toBeNull();
     expect(subscriptionViewFromSearch("?view=rankings&panel=watch")).toBe("rankings");
+    expect(subscriptionViewFromSearch("?view=for-you")).toBe("for-you");
+    expect(subscriptionViewFromSearch("")).toBe("releases");
     // A query the page writes with the watch settings open keeps its view.
     expect(String(withExplicitSubscriptionView(new URLSearchParams("panel=watch")))).toBe("panel=watch&view=releases");
-    expect(watchLinkFromSearch("?view=watch&dialog=ready&run=9")).toEqual({ targetId: null, revealAvailable: true });
-    expect(watchLinkFromSearch("?view=watch&target=4")).toEqual({ targetId: 4, revealAvailable: false });
+    expect(watchLinkFromSearch("?view=watch&dialog=ready&run=9")).toEqual({
+      targetId: null,
+      revealAvailable: true,
+      runId: 9,
+    });
+    expect(watchLinkFromSearch("?view=watch&target=4")).toEqual({ targetId: 4, revealAvailable: false, runId: null });
+    expect(newlyAvailableCodes(JSON.stringify({ newlyAvailableCodes: ["RJ00000066", 3] }))).toEqual(["RJ00000066"]);
+    expect(newlyAvailableCodes("not json")).toEqual([]);
     expect(watchLinkFromSearch("?view=watch&target=nope")).toBeNull();
   });
 

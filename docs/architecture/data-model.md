@@ -955,12 +955,16 @@ work code, run and result, so a repeated request returns the original result
 and reusing the id for another work is rejected.
 
 `availability_watch` holds the single shared
-[Availability Watch](workflows.md#availability-watch) configuration (action,
-source, excluded extensions and revision). `availability_watch_target` holds
-the normalized work codes in its pool with per-target check state, the source
-that became available and the family edition it offered (`available_code`),
-the last family metadata refresh, and child Track and Fetch run ids. A target
-is a code, not a work.
+[Availability Watch](workflows.md#availability-watch) setting: the source it
+checks, the account that last configured it, and a revision. Its `action` is
+always `monitor`, since the watch never tracks or fetches on its own.
+`availability_watch_target` holds the normalized work codes in its pool with
+per-target check state (`monitoring`, `ready` once available, `error`, or
+`disabled` once removed), the source that became available and the family
+edition it offered (`available_code`), the last family metadata refresh, and
+the Track and Fetch runs started for it by hand: the bulk run that queued
+them, then each work's own run. `created_at` is when the code last entered
+the pool. A target is a code, not a work.
 
 `creator_subscription` holds one account's
 [creator subscription](workflows.md#creator-subscriptions) to a circle
@@ -1277,6 +1281,19 @@ preparation records, legacy full-library score caches, and unreferenced shared
 history in bounded batches. Referenced epochs remain protected. Personal
 feedback, settings, telemetry retention, and durable listening history are
 separate from these derived caches.
+
+Discover's For you (`for-you-v1`) draws from the same generation as a
+sessionless explanation: the generation of the account's current inputs. It
+reads candidates through the Local-scope recall above plus the account's most
+recent 1,000 works with playback history, and measures novelty against the
+catalog features of the works the account has heard or marked. It writes no
+profile evidence and no generation of its own. `user_preference.for_you_temperature`
+holds the account's temperature (`safe`, `balanced`, or `adventurous`; NULL is
+balanced). Every drawn work is a `recommendation_event` impression with
+`surface = 'for_you'` and the column as `context_id`; opens report the same
+surface. Impressions of the last three days not followed by an open or play
+lower a work's score in later draws. Library events use `surface = 'library'`,
+and the recommendation activity report reads only those.
 
 ## Modeling Rules
 

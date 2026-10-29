@@ -1,19 +1,18 @@
-import { ArrowDown, ArrowUp, ChevronDown, Library } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
-import { CompactWorkCardShell } from "@/components/work-card/CompactWorkCard";
+import { LayoutWorkCard, type CompactWorkCardLayout } from "@/components/work-card/CompactWorkCard";
 import { sourcePresenceBadges } from "@/components/work-card/sourceBadges";
-import { WorkCardWatchButton } from "@/components/work-card/WorkCardWatchButton";
+import { WorkCardActionFooter } from "@/components/work-card/WorkCardActionFooter";
+import { WorkCardContextItem, WorkCardContextStrip, WorkCardStatusBadge } from "@/components/work-card/WorkCardContext";
+import { dlsiteTagBadges, userTagBadges, type WorkCardViewModel } from "@/components/work-card/WorkCardShell";
 import {
-  dlsiteTagBadges,
-  userTagBadges,
-  WorkCardDLsiteAction,
-  WorkCardFooter,
-  WorkCardListButton,
-  type WorkCardViewModel,
-} from "@/components/work-card/WorkCardShell";
-import type { RankingChange, RankingDroppedItem, RankingItem, RankingPage } from "@/lib/api";
+  workCollectionClassName,
+  workCollectionStyle,
+  type WorkCollectionColumnSetting,
+} from "@/components/work-collection/WorkCollectionLayout";
+import { WorkSectionHeading } from "@/components/work-collection/WorkSectionHeading";
+import type { RankingChange, RankingDroppedItem, RankingItem, RankingPage, Work } from "@/lib/api";
 import { openCircleRoute } from "@/lib/circleNavigationState";
 import { shownWorkSourcePresence, type ShownWorksSourceCheck } from "@/lib/shownWorksSourceCheck";
 import { cn } from "@/lib/tailwindClassNames";
@@ -24,18 +23,18 @@ type RankingEntry = RankingItem | RankingDroppedItem;
 
 type EntryActions = {
   demo: boolean;
+  cardLayout: CompactWorkCardLayout | null;
   canWatch: boolean;
+  /** The account may add library works to lists, rate, and mark them. */
+  canMark: boolean;
   /** Codes added to Availability Watch on this page, and those being added. */
   watched: Set<string>;
   watching: Set<string>;
   sourceCheck: ShownWorksSourceCheck;
   onWatch: (code: string) => void;
   onOpenWork: (code: string) => void;
+  onWorkChange: (workId: number, patch: Partial<Work>) => void;
 };
-
-// The view's own width decides the columns, so the list reflows when the
-// settings open beside it.
-const entryGridClassName = "grid gap-3 sm:gap-4 @4xl:grid-cols-2 @7xl:grid-cols-3";
 
 /**
  * The card of an entry. Its source badges follow what the work records and
@@ -87,15 +86,17 @@ function rankingCardView(item: RankingEntry, unknownCircle: string, check: Shown
 }
 
 /**
- * The shown order's entries as compact row cards beside their rank, narrowed
- * by the filter, then the works that dropped out behind a disclosure. A
- * finished annual ranking and a past order show no stay or best rank; an
- * archive shows no movement either.
+ * The shown order's entries as cards beside their rank in Discover's card
+ * grid, narrowed by the filter, then the works that dropped out behind a
+ * disclosure. A finished annual ranking and a past order show no stay or best
+ * rank; an archive shows no movement either.
  */
 export function RankingEntryList({
   page,
   filter,
   filters,
+  mobileColumns,
+  desktopColumns,
   droppedOpen,
   onDroppedOpenChange,
   ...actions
@@ -103,6 +104,8 @@ export function RankingEntryList({
   page: RankingPage;
   filter: RankingFilter;
   filters: readonly RankingFilter[];
+  mobileColumns: WorkCollectionColumnSetting;
+  desktopColumns: WorkCollectionColumnSetting;
   droppedOpen: boolean;
   onDroppedOpenChange: (open: boolean) => void;
 }) {
@@ -113,13 +116,17 @@ export function RankingEntryList({
     matchesRankingFilter(item, filters.includes(filter) ? filter : "all", actions.sourceCheck),
   );
   const now = new Date();
+  const gridProps = {
+    className: workCollectionClassName(),
+    style: workCollectionStyle(mobileColumns, desktopColumns, actions.cardLayout),
+  };
 
   return (
-    <div className="@container space-y-4">
+    <div className="space-y-6">
       {items.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted-foreground">{t("subscriptions.rankings.noMatches")}</p>
       ) : (
-        <ol className={entryGridClassName}>
+        <ol {...gridProps}>
           {items.map((item) => {
             const facts = archive || history ? null : rankingEntryFacts(item, now);
             const notes: string[] = [];
@@ -139,21 +146,27 @@ export function RankingEntryList({
         </ol>
       )}
       {!archive && page.dropped.length > 0 && (
-        <section className="space-y-3">
-          <button
-            type="button"
-            aria-expanded={droppedOpen}
-            className="flex items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => onDroppedOpenChange(!droppedOpen)}
-          >
-            <ChevronDown
-              className={cn("h-4 w-4 transition-transform", !droppedOpen && "-rotate-90")}
-              aria-hidden="true"
-            />
-            {t("subscriptions.rankings.dropped", { count: page.dropped.length })}
-          </button>
+        <section aria-labelledby="ranking-dropped-heading">
+          <WorkSectionHeading
+            id="ranking-dropped-heading"
+            title={
+              <button
+                type="button"
+                aria-expanded={droppedOpen}
+                className="flex items-center gap-1.5 rounded-md hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => onDroppedOpenChange(!droppedOpen)}
+              >
+                <ChevronDown
+                  className={cn("h-4 w-4 shrink-0 transition-transform", !droppedOpen && "-rotate-90")}
+                  aria-hidden="true"
+                />
+                {t("subscriptions.rankings.dropped")}
+              </button>
+            }
+            count={page.dropped.length}
+          />
           {droppedOpen && (
-            <ol className={entryGridClassName}>
+            <ol {...gridProps}>
               {page.dropped.map((item) => (
                 <RankingEntryCard
                   key={item.code}
@@ -173,10 +186,10 @@ export function RankingEntryList({
 }
 
 /**
- * One entry: the rank and its movement beside the work's compact row card.
- * The card's footer holds the actions and states only the facts worth
- * stating: that the library has the work, a stay longer than a day, and a
- * best rank above the current one.
+ * One entry: the rank and its movement beside the work's card, with the facts
+ * worth stating above the card: a stay longer than a day and a best rank above
+ * the current one, or the rank a dropped work had. The cover's source marks
+ * say whether the library has the work.
  */
 function RankingEntryCard({
   item,
@@ -184,12 +197,15 @@ function RankingEntryCard({
   change,
   notes,
   demo,
+  cardLayout,
   canWatch,
+  canMark,
   watched,
   watching,
   sourceCheck,
   onWatch,
   onOpenWork,
+  onWorkChange,
 }: EntryActions & {
   item: RankingEntry;
   /** Null for a work that dropped out. */
@@ -199,95 +215,72 @@ function RankingEntryCard({
 }) {
   const { t } = useTranslation();
   const view = rankingCardView(item, t("workCard.unknownCircle"), sourceCheck);
-  const facts = (item.inLibrary || notes.length > 0) && (
-    <span className="flex min-w-0 items-center gap-1.5 px-1 text-xs text-muted-foreground">
-      {item.inLibrary && (
-        <Badge variant="success" className="shrink-0 gap-1 px-1.5 py-0 text-2xs font-medium">
-          <Library className="h-3 w-3" aria-hidden="true" />
-          {t("subscriptions.rankings.inLibrary")}
-        </Badge>
-      )}
-      {notes.length > 0 && <span className="truncate">{notes.join(" · ")}</span>}
-    </span>
-  );
-  const footer = demo ? (
-    facts && <WorkCardFooter className="h-10 border-border/40" left={facts} />
-  ) : (
-    <WorkCardFooter
-      className="h-10 border-border/40"
-      left={
-        <>
-          <WorkCardDLsiteAction href={item.work?.dlsiteUrl || item.fallback.dlsiteUrl} />
-          {facts}
-        </>
+  const footer = demo ? undefined : (
+    <WorkCardActionFooter
+      layout={cardLayout}
+      dlsiteUrl={item.work?.dlsiteUrl || item.fallback.dlsiteUrl}
+      watch={
+        canWatch
+          ? {
+              watched: item.watched || watched.has(item.code),
+              pending: watching.has(item.code),
+              onWatch: () => onWatch(item.code),
+            }
+          : null
       }
-      right={
-        <>
-          {canWatch && !item.inLibrary && (
-            <WorkCardWatchButton
-              watched={item.watched || watched.has(item.code)}
-              pending={watching.has(item.code)}
-              onWatch={() => onWatch(item.code)}
-            />
-          )}
-          {item.work && (
-            <WorkCardListButton
-              workId={item.work.id}
-              active={item.work.favorite}
-              memberLists={item.work.memberLists}
-              fitLabel
-            />
-          )}
-        </>
-      }
+      work={item.work}
+      canMark={canMark}
+      onWorkChange={onWorkChange}
     />
   );
   return (
-    <li aria-label={view.title} className="flex min-w-0 gap-2 sm:gap-3">
-      <div className="flex w-10 shrink-0 flex-col items-center gap-1 pt-2.5 sm:w-12">
-        {rank === null ? (
-          <span className="text-base font-medium leading-6 text-muted-foreground tabular-nums" aria-hidden="true">
-            —
-          </span>
-        ) : (
-          <span
-            className="text-xl font-semibold leading-6 tabular-nums"
-            aria-label={t("subscriptions.rankings.rank", { rank })}
-          >
-            {rank}
-          </span>
-        )}
-        {change && <RankingChangeMarker change={change} />}
-      </div>
-      <div className="min-w-0 flex-1">
-        <CompactWorkCardShell
-          layout="row"
-          work={view}
-          canOpen={!demo}
-          onOpen={() => onOpenWork(item.code)}
-          onCircleOpen={demo ? undefined : (externalId: string) => openCircleRoute(externalId)}
-          footer={footer || undefined}
-        />
-      </div>
-    </li>
+    <WorkCardContextItem
+      label={view.title}
+      context={<WorkCardContextStrip detail={notes.join(" · ")} />}
+      leading={
+        // The rank lines up with the top of the card's content, below the context strip.
+        <div
+          className={cn(
+            "flex w-10 shrink-0 flex-col items-center gap-1 sm:w-12",
+            cardLayout === "row" ? "pt-10" : "pt-9",
+          )}
+        >
+          {rank === null ? (
+            <span className="text-base font-medium leading-6 text-muted-foreground tabular-nums" aria-hidden="true">
+              —
+            </span>
+          ) : (
+            <span
+              className="text-xl font-semibold leading-6 tabular-nums"
+              aria-label={t("subscriptions.rankings.rank", { rank })}
+            >
+              {rank}
+            </span>
+          )}
+          {change && <RankingChangeMarker change={change} />}
+        </div>
+      }
+    >
+      <LayoutWorkCard
+        layout={cardLayout}
+        work={view}
+        canOpen={!demo}
+        onOpen={() => onOpenWork(item.code)}
+        onCircleOpen={demo ? undefined : (externalId: string) => openCircleRoute(externalId)}
+        footer={footer}
+      />
+    </WorkCardContextItem>
   );
 }
 
-/** Movement against the baseline: NEW and Back use the accent, arrows stay neutral, no change shows nothing. */
+/** Movement against the baseline: NEW and Back use the primary badge, arrows stay neutral, no change shows nothing. */
 function RankingChangeMarker({ change }: { change: RankingChange }) {
   const { t } = useTranslation();
-  if (change.kind === "new") {
+  if (change.kind === "new" || change.kind === "reentered") {
     return (
-      <Badge className="px-1.5 py-0 text-[10px] uppercase tracking-wide">
-        {t("subscriptions.rankings.change.new")}
-      </Badge>
-    );
-  }
-  if (change.kind === "reentered") {
-    return (
-      <Badge variant="outline" className="border-primary/40 px-1.5 py-0 text-[10px] text-primary">
-        {t("subscriptions.rankings.change.reentered")}
-      </Badge>
+      <WorkCardStatusBadge tone="primary" className="uppercase tracking-wide">
+        {t(`subscriptions.rankings.change.${change.kind}`)}
+      </WorkCardStatusBadge>
     );
   }
   if (change.kind === "same") return null;
