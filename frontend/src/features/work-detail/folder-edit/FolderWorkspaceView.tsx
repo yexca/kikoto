@@ -118,7 +118,7 @@ export function FolderWorkspaceView({
         onClose={onClose}
         closeLabel={t("content.close")}
       />
-      {manage?.toolbar}
+      {!wide && manage?.toolbar}
       {!wide && (
         <PaneSwitch
           panes={panes.map((value) => ({

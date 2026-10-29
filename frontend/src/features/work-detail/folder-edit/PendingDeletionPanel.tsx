@@ -1,4 +1,5 @@
 import { FolderMinus, Trash2, Undo2 } from "lucide-react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -16,38 +17,60 @@ export function PendingDeletionPanel({
   pending,
   disabled,
   onKeep,
+  header,
+  footer,
   className,
 }: {
   pending: PendingDeletions;
   disabled: boolean;
   onKeep: (item: PendingDeletion) => void;
+  /** Replaces the panel's own head, such as a wide pane's; the hint then moves into the list. */
+  header?: ReactNode;
+  /** Kept below the list, such as an action that deletes more than the edit does. */
+  footer?: ReactNode;
   className?: string;
 }) {
   const { t } = useTranslation();
+  const empty = pending.groups.length === 0;
   return (
     <section
       aria-label={t("fileWorkspace.pending.title")}
       className={cn("flex min-h-0 flex-1 flex-col bg-card", className)}
     >
-      <div className="shrink-0 space-y-1 border-b px-3 py-2.5 lg:px-4">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
-            <Trash2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span className="truncate">{t("fileWorkspace.pending.title")}</span>
+      {header ?? (
+        <div className="shrink-0 space-y-1 border-b px-3 py-2.5 lg:px-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
+              <Trash2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="truncate">{t("fileWorkspace.pending.title")}</span>
+            </div>
+            {pending.files > 0 && <PendingTotal pending={pending} />}
           </div>
-          {pending.files > 0 && (
-            <span className="shrink-0 rounded-full bg-error-surface px-1.5 py-px text-xs font-medium tabular-nums text-error-foreground">
-              {t("fileWorkspace.pending.total", { count: pending.files, size: formatBytes(pending.sizeBytes) })}
-            </span>
-          )}
+          <p className="text-xs text-muted-foreground">{t("fileWorkspace.pending.hint")}</p>
         </div>
-        <p className="text-xs text-muted-foreground">{t("fileWorkspace.pending.hint")}</p>
-      </div>
+      )}
       <div className="app-scroll min-h-0 flex-1 overflow-auto overscroll-contain px-2 py-2">
-        {pending.groups.length === 0 ? (
+        {empty && header ? (
+          <div
+            className="flex min-h-full flex-col items-center justify-center gap-3 px-6 py-10 text-center"
+            role="status"
+          >
+            <span className="grid h-12 w-12 place-items-center rounded-full bg-muted text-muted-foreground">
+              <Trash2 className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <p className="text-sm font-medium">{t("fileWorkspace.pending.empty")}</p>
+            <p className="max-w-64 text-xs text-muted-foreground">{t("fileWorkspace.pending.hint")}</p>
+          </div>
+        ) : empty ? (
           <PaneNote>{t("fileWorkspace.pending.empty")}</PaneNote>
         ) : (
           <div className="space-y-3">
+            {header && (
+              <p className="flex gap-2 rounded-md bg-muted/60 px-2.5 py-2 text-2xs text-muted-foreground">
+                <Trash2 className="mt-px h-3.5 w-3.5 shrink-0 text-error" aria-hidden="true" />
+                {t("fileWorkspace.pending.hint")}
+              </p>
+            )}
             {pending.groups.map((group) => (
               <div key={group.key} role="group" aria-label={groupLabel(group, t)}>
                 <div className="flex items-center gap-1.5 px-2 pb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -63,7 +86,18 @@ export function PendingDeletionPanel({
           </div>
         )}
       </div>
+      {footer}
     </section>
+  );
+}
+
+/** How many files the edit deletes and how much room that frees. */
+export function PendingTotal({ pending }: { pending: PendingDeletions }) {
+  const { t } = useTranslation();
+  return (
+    <span className="shrink-0 rounded-full bg-error-surface px-1.5 py-px text-xs font-medium tabular-nums text-error-foreground">
+      {t("fileWorkspace.pending.total", { count: pending.files, size: formatBytes(pending.sizeBytes) })}
+    </span>
   );
 }
 

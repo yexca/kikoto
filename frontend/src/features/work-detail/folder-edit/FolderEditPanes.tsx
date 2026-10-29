@@ -521,6 +521,7 @@ export function ResultRow({
   disabled,
   mark,
   actions,
+  changesOnly = false,
   onDecisionChange,
 }: {
   entry: FolderEditResultEntry;
@@ -530,6 +531,8 @@ export function ResultRow({
   /** Shown after the file's name, such as where it has an identical copy. */
   mark?: ReactNode;
   actions?: ReactNode;
+  /** Leaves a file the edit keeps as it is unmarked, so only what changes carries a state. */
+  changesOnly?: boolean;
   onDecisionChange: (decision: RemoteFetchFileDecision) => void;
 }) {
   const { t } = useTranslation();
@@ -565,9 +568,11 @@ export function ResultRow({
             {formatBytes(entry.sizeBytes)}
           </span>
         )}
-        <Badge variant={badge.variant} className="shrink-0 px-2 py-0 text-2xs">
-          {t(badge.key)}
-        </Badge>
+        {!(changesOnly && entry.state === "keep") && (
+          <Badge variant={badge.variant} className="shrink-0 px-2 py-0 text-2xs">
+            {t(badge.key)}
+          </Badge>
+        )}
         {actions}
       </div>
       {showEditor && item && (

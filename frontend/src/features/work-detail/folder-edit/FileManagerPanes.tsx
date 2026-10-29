@@ -1,10 +1,24 @@
-import { ChevronLeft, ChevronRight, Copy, CopyCheck, Merge } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  CopyCheck,
+  Layers,
+  Merge,
+  MousePointerClick,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { FloatingSelect } from "@/components/ui/floating-select";
-import { fileWorkspacePlace, type FileWorkspacePlace } from "@/features/work-detail/folder-edit/fileWorkspaceModel";
+import {
+  fileWorkspacePlace,
+  type FileWorkspacePlace,
+  type PendingDeletions,
+} from "@/features/work-detail/folder-edit/fileWorkspaceModel";
 import {
   CURRENT_FOLDER_RESOURCE,
   folderEditResourceChanges,
@@ -29,7 +43,7 @@ import {
   resourceTitle,
 } from "@/features/work-detail/folder-edit/FolderWorkspaceColumns";
 import { PlaceBadge, placeIcon, placeReason, placeTone } from "@/features/work-detail/folder-edit/FolderWorkspaceTools";
-import { PendingDeletionPanel } from "@/features/work-detail/folder-edit/PendingDeletionPanel";
+import { PendingDeletionPanel, PendingTotal } from "@/features/work-detail/folder-edit/PendingDeletionPanel";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { cn } from "@/lib/tailwindClassNames";
 
@@ -142,10 +156,24 @@ export function FileManagerPanes({
           active
           manage={manage}
           reveal={revealIn(CURRENT_FOLDER_RESOURCE)}
-          header={<TargetHeader workspace={workspace} entry={manage.identical?.entry} />}
+          header={<TargetHeader workspace={workspace} manage={manage} />}
           tools={<TargetTools workspace={workspace} manage={manage} />}
         />
-        <PendingDeletionPanel pending={manage.pending} disabled={workspace.applying} onKeep={manage.onKeep} />
+        <PendingDeletionPanel
+          pending={manage.pending}
+          disabled={workspace.applying}
+          onKeep={manage.onKeep}
+          header={<PendingHeader pending={manage.pending} />}
+          footer={
+            manage.forget && (
+              <div className="shrink-0 border-t bg-card px-3 py-2.5">
+                <p className="px-1 pb-1.5 text-2xs text-muted-foreground">{t("fileWorkspace.forgetHint")}</p>
+                {manage.forget}
+              </div>
+            )
+          }
+          className="bg-muted/25"
+        />
       </div>
     </FolderWorkspaceNavigationContext.Provider>
   );
@@ -154,24 +182,116 @@ export function FileManagerPanes({
 /** The left column's value while it shows the review of identical files. */
 const IDENTICAL_REVIEW = "identical-review";
 
+type PaneTone = FileWorkspacePlace | "neutral" | "danger";
+
+const paneTone: Record<PaneTone, { band: string; surface: string; tile: string }> = {
+  target: {
+    band: placeTone.target.band,
+    surface: placeTone.target.surface,
+    tile: cn("bg-background", placeTone.target.border, placeTone.target.text),
+  },
+  local: {
+    band: placeTone.local.band,
+    surface: placeTone.local.surface,
+    tile: cn("bg-background", placeTone.local.border, placeTone.local.text),
+  },
+  remote: {
+    band: placeTone.remote.band,
+    surface: placeTone.remote.surface,
+    tile: cn("bg-background", placeTone.remote.border, placeTone.remote.text),
+  },
+  neutral: { band: "bg-border", surface: "bg-card", tile: "bg-muted text-muted-foreground" },
+  danger: { band: "bg-error", surface: "bg-card", tile: "border-error-border bg-error-surface text-error-foreground" },
+};
+
+/**
+ * A column's head, the same in each column so they line up: a band, the
+ * column's icon, its title with one line below it, and its actions. A place's
+ * head takes the place's color; the others stay neutral, or red while the
+ * column lists what the edit deletes.
+ */
+function PaneHead({
+  tone,
+  icon: Icon,
+  title,
+  badge,
+  detail,
+  leading,
+  actions,
+}: {
+  tone: PaneTone;
+  icon: LucideIcon;
+  title: ReactNode;
+  badge?: ReactNode;
+  detail?: ReactNode;
+  leading?: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className={cn("shrink-0 border-b", paneTone[tone].surface)}>
+      <div className={cn("h-1", paneTone[tone].band)} aria-hidden="true" />
+      <div className="flex min-h-14 items-center gap-2.5 px-3 py-2">
+        {leading}
+        <span
+          className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-lg border", paneTone[tone].tile)}
+          aria-hidden="true"
+        >
+          <Icon className="h-4 w-4" />
+        </span>
+        <div className="min-w-24 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            {typeof title === "string" ? <h3 className="truncate text-sm font-semibold">{title}</h3> : title}
+            {badge}
+          </div>
+          {detail && <div className="truncate text-2xs text-muted-foreground">{detail}</div>}
+        </div>
+        {actions && <div className="flex min-w-0 items-center gap-1.5 [&>*:last-child]:shrink-0">{actions}</div>}
+      </div>
+    </div>
+  );
+}
+
+function BackButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="-ml-1 h-8 w-8 shrink-0 px-0"
+      aria-label={t("fileWorkspace.closePlace")}
+      title={t("fileWorkspace.closePlace")}
+      onClick={onClick}
+    >
+      <ChevronLeft className="h-4 w-4" />
+    </Button>
+  );
+}
+
 /** The review's head in the left column, with the way back to the other places. */
 function ReviewHeader({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b px-2 py-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="shrink-0 px-2"
-        aria-label={t("fileWorkspace.closePlace")}
-        title={t("fileWorkspace.closePlace")}
-        onClick={onClose}
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </Button>
-      <CopyCheck className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <h2 className="text-sm font-medium">{t("fileWorkspace.identical.title")}</h2>
-    </div>
+    <PaneHead
+      tone="neutral"
+      icon={CopyCheck}
+      title={t("fileWorkspace.identical.title")}
+      leading={<BackButton onClick={onClose} />}
+    />
+  );
+}
+
+/** The head of the column that lists what the edit deletes, red once it deletes anything. */
+function PendingHeader({ pending }: { pending: PendingDeletions }) {
+  const { t } = useTranslation();
+  const deleting = pending.files > 0;
+  return (
+    <PaneHead
+      tone={deleting ? "danger" : "neutral"}
+      icon={Trash2}
+      title={t("fileWorkspace.pending.title")}
+      detail={deleting ? undefined : t("fileWorkspace.pending.empty")}
+      badge={deleting && <PendingTotal pending={pending} />}
+    />
   );
 }
 
@@ -197,9 +317,14 @@ function SourcePrompts({
     .map((place) => ({ place, items: workspace.resources.filter((resource) => resource.kind === place) }));
   const none = groups.every((group) => group.items.length === 0);
   return (
-    <aside aria-label={t("fileWorkspace.otherPlaces")} className="app-scroll min-h-0 overflow-auto bg-muted/30 p-3">
-      <p className="px-1 pb-3 text-xs text-muted-foreground">{t("fileWorkspace.wideHint")}</p>
-      <div className="space-y-2">
+    <aside aria-label={t("fileWorkspace.otherPlaces")} className="flex min-h-0 flex-col bg-muted/25">
+      <PaneHead
+        tone="neutral"
+        icon={Layers}
+        title={t("fileWorkspace.otherPlaces")}
+        actions={<CheckSourcesButton workspace={workspace} className="h-7 px-2 text-xs" />}
+      />
+      <div className="app-scroll min-h-0 flex-1 space-y-2 overflow-auto overscroll-contain p-3">
         {groups.map(({ place, items }) =>
           items.length === 0 ? null : (
             <SourcePrompt
@@ -212,30 +337,80 @@ function SourcePrompts({
           ),
         )}
         {none && workspace.sourcesStatus === "ready" && (
-          <p className="px-1 text-xs text-muted-foreground">
+          <p className="rounded-lg border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
             {workspace.localOnly ? t("fileWorkspace.noOtherFolders") : t("fileWorkspace.noOtherPlaces")}
           </p>
         )}
         <SourcesStatus workspace={workspace} />
-        <CheckSourcesButton workspace={workspace} className="h-8 px-2 text-xs" />
         {identical > 0 && (
-          <button
-            type="button"
+          <PromptCard
+            icon={<PromptIcon icon={CopyCheck} className="bg-muted text-muted-foreground" />}
+            title={t("fileWorkspace.identical.review")}
             onClick={onReview}
-            className="flex min-h-14 w-full items-center gap-3 rounded-lg border bg-background py-2.5 pl-4 pr-2 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <CopyCheck className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium">{t("fileWorkspace.identical.review")}</span>
-              <span className="block text-2xs text-muted-foreground">
-                {t("fileWorkspace.identical.found", { count: identical })}
-              </span>
+            <span className="block text-2xs text-muted-foreground">
+              {t("fileWorkspace.identical.found", { count: identical })}
             </span>
-            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          </button>
+          </PromptCard>
         )}
+        <p className="flex gap-2 px-1 pt-2 text-2xs leading-relaxed text-muted-foreground">
+          <MousePointerClick className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {t("fileWorkspace.wideHint")}
+        </p>
       </div>
     </aside>
+  );
+}
+
+function PromptIcon({ icon: Icon, className }: { icon: LucideIcon; className: string }) {
+  return (
+    <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", className)} aria-hidden="true">
+      <Icon className="h-4 w-4" />
+    </span>
+  );
+}
+
+/** One way into another place or review from the left column, as a card that opens it. */
+function PromptCard({
+  icon,
+  title,
+  badges,
+  disabled,
+  className,
+  onClick,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  badges?: ReactNode;
+  disabled?: boolean;
+  className?: string;
+  onClick: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "group relative flex w-full items-start gap-3 overflow-hidden rounded-xl border bg-card p-3 text-left transition-colors hover:border-foreground/20 hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-70",
+        className,
+      )}
+    >
+      {icon}
+      <span className="min-w-0 flex-1">
+        <span className="flex min-h-5 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">{title}</span>
+          {badges}
+        </span>
+        {children}
+      </span>
+      <ChevronRight
+        className="mt-2.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"
+        aria-hidden="true"
+      />
+    </button>
   );
 }
 
@@ -267,62 +442,62 @@ function SourcePrompt({
   const merged = (resource: FolderEditResource) => Boolean(workspace.merge?.folderIds.has(resource.folderId));
   const usable = items.some((resource) => !resource.offline);
   return (
-    <button
-      type="button"
-      disabled={workspace.applying || !usable}
-      onClick={onOpen}
-      className={cn(
-        "relative flex min-h-14 w-full items-center gap-3 overflow-hidden rounded-lg border bg-background py-2.5 pl-4 pr-2 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-70",
-        placeTone[place].border,
-      )}
-    >
-      <span className={cn("absolute inset-y-0 left-0 w-1", placeTone[place].band)} aria-hidden="true" />
-      <Icon className={cn("h-4 w-4 shrink-0", placeTone[place].text)} aria-hidden="true" />
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">
-          {t(place === "local" ? "fileWorkspace.otherLocal" : "fileWorkspace.otherRemote", { count: items.length })}
-        </span>
-        {place === "remote" ? (
-          <span className="block truncate text-2xs text-muted-foreground">{names.join(" · ")}</span>
-        ) : (
-          // Each folder says whether the edit copies from it or merges it.
-          <span className="mt-1 block space-y-0.5">
-            {items.map((resource) => (
-              <span
-                key={resource.id}
-                className="flex min-w-0 items-center gap-1.5 text-2xs text-muted-foreground"
-                title={resource.rootPath}
-              >
-                <span className="truncate">{folderName(resource.rootPath)}</span>
-                {resource.offline ? (
-                  <span className="shrink-0 text-warning-foreground">{t("libraryOffline.badge")}</span>
-                ) : merged(resource) ? (
-                  <span className="inline-flex shrink-0 items-center gap-0.5 font-medium text-error-foreground">
-                    <Merge className="h-3 w-3" aria-hidden="true" />
-                    {t("fileWorkspace.mode.merge")}
-                  </span>
-                ) : (
-                  <span className={cn("inline-flex shrink-0 items-center gap-0.5", placeTone.local.text)}>
-                    <Copy className="h-3 w-3" aria-hidden="true" />
-                    {t("fileWorkspace.mode.copy")}
-                  </span>
-                )}
-              </span>
-            ))}
+    <PromptCard
+      icon={<PromptIcon icon={Icon} className={cn(placeTone[place].surface, placeTone[place].text)} />}
+      title={t(place === "local" ? "fileWorkspace.otherLocal" : "fileWorkspace.otherRemote", { count: items.length })}
+      badges={
+        added > 0 && (
+          <span
+            className="shrink-0 rounded-full bg-primary/10 px-1.5 py-px text-2xs font-medium tabular-nums text-primary"
+            aria-label={t("folderEdit.addCount", { count: added })}
+          >
+            +{added}
           </span>
-        )}
-      </span>
-      {added > 0 && (
-        <span
-          className="shrink-0 rounded-full bg-primary/10 px-1.5 py-px text-2xs font-medium tabular-nums text-primary"
-          aria-label={t("folderEdit.addCount", { count: added })}
-        >
-          +{added}
+        )
+      }
+      disabled={workspace.applying || !usable}
+      className={place === "remote" ? "hover:border-place-remote-border" : "hover:border-place-local-border"}
+      onClick={onOpen}
+    >
+      {place === "remote" ? (
+        <span className="mt-1 flex min-w-0 items-center gap-1.5 text-2xs text-muted-foreground">
+          <span className="min-w-0 flex-1 truncate">{names.join(" · ")}</span>
+          <PlaceBadge place={place} />
+        </span>
+      ) : (
+        // Each folder says whether the edit copies from it or merges it.
+        <span className="mt-1.5 block space-y-1">
+          {items.map((resource) => (
+            <span
+              key={resource.id}
+              className="flex min-w-0 items-center gap-1.5 text-2xs text-muted-foreground"
+              title={resource.rootPath}
+            >
+              <span className="min-w-0 flex-1 truncate font-mono">{folderName(resource.rootPath)}</span>
+              {resource.offline ? (
+                <span className="shrink-0 text-warning-foreground">{t("libraryOffline.badge")}</span>
+              ) : merged(resource) ? (
+                <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-error-surface px-1.5 py-px font-medium text-error-foreground">
+                  <Merge className="h-3 w-3" aria-hidden="true" />
+                  {t("fileWorkspace.mode.merge")}
+                </span>
+              ) : (
+                <span
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-px",
+                    placeTone.local.surface,
+                    placeTone.local.text,
+                  )}
+                >
+                  <Copy className="h-3 w-3" aria-hidden="true" />
+                  {t("fileWorkspace.mode.copy")}
+                </span>
+              )}
+            </span>
+          ))}
         </span>
       )}
-      {place === "remote" && <PlaceBadge place={place} />}
-      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-    </button>
+    </PromptCard>
   );
 }
 
@@ -361,66 +536,76 @@ function SourceHeader({
       ),
     };
   });
-  const Icon = placeIcon(place);
+  const location = resource.kind === "remote" ? resource.sourceName : resource.rootPath;
   return (
-    <div className={cn("shrink-0 border-b", placeTone[place].surface)}>
-      <div className={cn("h-1", placeTone[place].band)} aria-hidden="true" />
-      <div className="flex items-center gap-2 px-2 py-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="shrink-0 px-2"
-          aria-label={t("fileWorkspace.closePlace")}
-          title={t("fileWorkspace.closePlace")}
-          onClick={onClose}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <Icon className={cn("h-4 w-4 shrink-0", placeTone[place].text)} aria-hidden="true" />
-        <FloatingSelect
-          value={resource.id}
-          options={options}
-          onValueChange={onPick}
-          ariaLabel={t(place === "local" ? "fileWorkspace.pickLocal" : "fileWorkspace.pickRemote")}
-          disabled={workspace.applying || group.length < 2}
-          className="h-8 min-w-0 flex-1 bg-background text-xs"
-        />
-        {place !== "local" && <PlaceBadge place={place} />}
-      </div>
-      <div className="flex items-center gap-2 px-3 pb-2">
-        <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground" title={resource.rootPath}>
-          {resource.kind === "remote" ? resource.sourceName : resource.rootPath}
-        </span>
+    <>
+      <PaneHead
+        tone={place}
+        icon={placeIcon(place)}
+        leading={<BackButton onClick={onClose} />}
+        title={
+          group.length < 2 ? (
+            <h3 className="flex min-w-0 items-baseline gap-2 text-sm font-semibold">
+              <span className="truncate">{resourceTitle(resource, t)}</span>
+              <span className="shrink-0 font-mono text-2xs font-normal text-muted-foreground">
+                {resource.editionCode}
+              </span>
+            </h3>
+          ) : (
+            <FloatingSelect
+              value={resource.id}
+              options={options}
+              onValueChange={onPick}
+              ariaLabel={t(place === "local" ? "fileWorkspace.pickLocal" : "fileWorkspace.pickRemote")}
+              disabled={workspace.applying}
+              className="-ml-2 h-7 border-transparent bg-transparent px-2 text-sm font-semibold hover:bg-background/70"
+            />
+          )
+        }
+        // A local folder's Copy or Merge switch below says what the edit may do there.
+        badge={place !== "local" || !workspace.merge ? <PlaceBadge place={place} /> : undefined}
+        detail={
+          <span className="font-mono" title={location}>
+            {location}
+          </span>
+        }
+      />
+      <div className="flex shrink-0 items-center gap-3 border-b px-3 py-2 lg:px-4">
+        <p className="min-w-0 flex-1 text-2xs text-muted-foreground">{placeReason(place, t)}</p>
         {place === "local" && <CopyMergeSwitch workspace={workspace} resource={resource} />}
       </div>
-      <p className={cn("px-3 pb-2 text-2xs", placeTone[place].text)}>{placeReason(place, t)}</p>
-    </div>
+    </>
   );
 }
 
 /**
  * This folder's fixed head: the folder the edit changes, in its own color and
- * words, and `entry`, such as the way to find its identical files.
+ * words, the way to switch to another of the work's folders, and the way to
+ * find its identical files.
  */
-function TargetHeader({ workspace, entry }: { workspace: FolderWorkspace; entry?: ReactNode }) {
+function TargetHeader({ workspace, manage }: { workspace: FolderWorkspace; manage: FolderWorkspaceManage }) {
   const { t } = useTranslation();
-  const Icon = placeIcon("target");
   return (
-    <div className={cn("shrink-0 border-b", placeTone.target.surface)}>
-      <div className={cn("h-1", placeTone.target.band)} aria-hidden="true" />
-      <div className="flex min-h-12 items-center gap-2 px-3 py-2">
-        <Icon className={cn("h-4 w-4 shrink-0", placeTone.target.text)} aria-hidden="true" />
-        <span className="text-sm font-medium">{t("folderEdit.currentFolder")}</span>
-        <PlaceBadge place="target" />
-        <span
-          className="min-w-0 flex-1 truncate text-right font-mono text-2xs text-muted-foreground"
-          title={workspace.rootPath}
-        >
-          {workspace.rootPath}
-        </span>
-        {entry}
-      </div>
-    </div>
+    <PaneHead
+      tone="target"
+      icon={placeIcon("target")}
+      title={t("folderEdit.currentFolder")}
+      badge={<PlaceBadge place="target" />}
+      detail={
+        manage.folderPicker ? undefined : (
+          <span className="font-mono" title={workspace.rootPath}>
+            {workspace.rootPath}
+          </span>
+        )
+      }
+      actions={
+        <>
+          {manage.folderPicker}
+          {manage.refresh}
+          {manage.identical?.entry}
+        </>
+      }
+    />
   );
 }
 
@@ -430,7 +615,7 @@ function TargetTools({ workspace, manage }: { workspace: FolderWorkspace; manage
   const state = workspace.files[CURRENT_FOLDER_RESOURCE];
   const selected = workspace.selection[CURRENT_FOLDER_RESOURCE] ?? noSelection;
   return (
-    <div className="space-y-2 pt-1">
+    <div className="space-y-2">
       <ExtensionChips
         files={state?.status === "ready" ? state.files : []}
         selected={selected}

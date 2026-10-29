@@ -604,7 +604,10 @@ test("@desktop Manage files lists the work's other places and applies the review
       .getByRole("button", { name: /Example Remote A/ }),
   ).toBeVisible();
   const folder = editor.getByRole("region", { name: "This folder", exact: true });
-  await expect(folder.getByText("Keep", { exact: true })).toHaveCount(2);
+  await expect(folder.getByText("track.mp3", { exact: true })).toBeVisible();
+  await expect(folder.getByText("extra.mp3", { exact: true })).toBeVisible();
+  // The wide workspace marks only the files the edit changes.
+  await expect(folder.getByText("Keep", { exact: true })).toHaveCount(0);
   await expect(editor.getByRole("button", { name: "Apply changes" })).toBeDisabled();
 
   // Refresh reads the edited folder from disk again.
@@ -616,14 +619,11 @@ test("@desktop Manage files lists the work's other places and applies the review
   // Deleting a file of the edited folder moves it to To be deleted.
   await folder.getByRole("button", { name: "Actions for extra.mp3", exact: true }).click();
   await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
-  await expect(folder.getByText("Remove 1", { exact: true })).toBeVisible();
+  const pending = editor.getByRole("region", { name: "To be deleted", exact: true });
+  await expect(pending.getByText(/^1 file · /)).toBeVisible();
   // A pending change keeps the folder as it was listed until it is applied or undone.
   await expect(refresh).toBeDisabled();
-  await expect(
-    editor
-      .getByRole("region", { name: "To be deleted", exact: true })
-      .getByRole("button", { name: "Keep extra.mp3", exact: true }),
-  ).toBeVisible();
+  await expect(pending.getByRole("button", { name: "Keep extra.mp3", exact: true })).toBeVisible();
   await editor.getByRole("button", { name: "Apply changes" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("heading", { name: "Final confirmation" })).toBeVisible();

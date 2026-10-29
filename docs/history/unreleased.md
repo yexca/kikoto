@@ -44,15 +44,19 @@
   into it. On wide screens it has three fixed columns: the work's other
   folders and remote editions on the left, behind one prompt for each kind,
   the edited folder in the middle, and **To be deleted** on the right, with
-  drag and drop into the edited folder. Another local folder chooses **Copy**
-  or **Merge** in place of the **Merge into this folder** switch, and a
+  drag and drop into the edited folder. There the folder choice and
+  **Refresh** sit in the edited folder's head, **Delete folder and forget
+  work** below **To be deleted**, and only the files the edit changes carry a
+  mark. Another local folder chooses **Copy** or **Merge** in place of the
+  **Merge into this folder** switch, and a
   remote edition is marked **Read-only**. **Undo all changes** drops the
   whole edit, and **Restore** brings it back until the next change. **Manage
   as lyrics** is replaced by a note in the workspace that opens **Manage
   lyrics** on the folder's other lyrics. Manage cache and viewers who do not
   manage local files keep the list that selects files to delete.
 - **Refresh local files** moves from the source actions into **Manage files**
-  as **Refresh**, above the workspace. It reads only the edited folder from
+  as **Refresh**, above the workspace or in the edited folder's head on wide
+  screens. It reads only the edited folder from
   disk again, waits until the edit has no changes, and leaves a folder deeper
   than the scan depth as it is instead of marking its files missing.
 - **Manage files**, **Manage lyrics**, **Edit display names**, and

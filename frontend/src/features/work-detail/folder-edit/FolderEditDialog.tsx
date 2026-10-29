@@ -246,6 +246,25 @@ function FolderEditWorkspaceDialog({
         changed={workspace.undo?.canUndo ?? false}
       />
     ),
+    folderPicker:
+      manage.folders.length > 1 ? (
+        <FolderPicker
+          folder={folder}
+          manage={manage}
+          disabled={workspace.applying || refreshing}
+          className="w-full max-w-56"
+        />
+      ) : undefined,
+    refresh: manage.refresh ? (
+      <RefreshFolder
+        refresh={manage.refresh}
+        disabled={workspace.applying || refreshing}
+        changed={workspace.undo?.canUndo ?? false}
+      />
+    ) : undefined,
+    forget: manage.forget ? (
+      <ForgetWork forget={manage.forget} disabled={workspace.applying || refreshing} />
+    ) : undefined,
     thisFolderTools:
       manage.onManageFolderLyrics && folderLyricsCount > 0 ? (
         <FolderLyricsNote count={folderLyricsCount} onOpen={manage.onManageFolderLyrics} />
@@ -337,7 +356,6 @@ function ManageToolbar({
   changed: boolean;
 }) {
   const { t } = useTranslation();
-  const [forgetting, setForgetting] = useState<{ step: 1 | 2; targets: MediaDeleteTarget[] } | null>(null);
   const { forget, refresh } = manage;
   const canSwitch = manage.folders.length > 1;
   if (!canSwitch && !forget && !refresh) return null;
@@ -350,12 +368,7 @@ function ManageToolbar({
           </span>
           <FloatingSelect
             value={String(folder.id)}
-            options={manage.folders.map((candidate) => ({
-              value: String(candidate.id),
-              label: isLocalOffline(candidate.availability)
-                ? `${t("libraryOffline.badge")} · ${candidate.rootPath}`
-                : candidate.rootPath,
-            }))}
+            options={folderOptions(manage, t)}
             onValueChange={(value) => manage.onSelectFolder(Number(value))}
             ariaLabel={t("libraryDetail.manageFolder")}
             disabled={disabled}
@@ -364,37 +377,102 @@ function ManageToolbar({
         </>
       )}
       <div className="ml-auto flex flex-wrap items-center gap-1">
-        {refresh && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground"
-            disabled={disabled || changed}
-            title={changed ? t("fileWorkspace.refreshBlocked") : t("fileWorkspace.refreshHint")}
-            onClick={refresh.onRefresh}
-          >
-            <RefreshCw className={cn("h-4 w-4", refresh.refreshing && "animate-spin")} />
-            {t("fileWorkspace.refresh")}
-          </Button>
-        )}
-        {forget && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-            disabled={disabled || forget.deleting}
-            title={t("fileWorkspace.forgetHint")}
-            onClick={() => {
-              const targets = forget.targets();
-              if (targets.length > 0) setForgetting({ step: 1, targets });
-            }}
-          >
-            <ShieldAlert className="h-4 w-4" />
-            {t("fileWorkspace.forget")}
-          </Button>
-        )}
+        {refresh && <RefreshFolder refresh={refresh} disabled={disabled} changed={changed} />}
+        {forget && <ForgetWork forget={forget} disabled={disabled} />}
       </div>
-      {forget && forgetting && (
+    </div>
+  );
+}
+
+/** Reads the folder from disk again, once the edit has no changes a refresh would replace. */
+function RefreshFolder({
+  refresh,
+  disabled,
+  changed,
+}: {
+  refresh: NonNullable<FolderEditFolders["refresh"]>;
+  disabled: boolean;
+  changed: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="text-muted-foreground"
+      disabled={disabled || changed}
+      title={changed ? t("fileWorkspace.refreshBlocked") : t("fileWorkspace.refreshHint")}
+      onClick={refresh.onRefresh}
+    >
+      <RefreshCw className={cn("h-4 w-4", refresh.refreshing && "animate-spin")} />
+      {t("fileWorkspace.refresh")}
+    </Button>
+  );
+}
+
+function folderOptions(manage: FolderEditFolders, t: (key: string) => string) {
+  return manage.folders.map((candidate) => ({
+    value: String(candidate.id),
+    label: isLocalOffline(candidate.availability)
+      ? `${t("libraryOffline.badge")} · ${candidate.rootPath}`
+      : candidate.rootPath,
+  }));
+}
+
+/** Switches Manage files to another of the work's folders, where a wide workspace names This folder. */
+function FolderPicker({
+  folder,
+  manage,
+  disabled,
+  className,
+}: {
+  folder: { id: number };
+  manage: FolderEditFolders;
+  disabled: boolean;
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <FloatingSelect
+      value={String(folder.id)}
+      options={folderOptions(manage, t)}
+      onValueChange={(value) => manage.onSelectFolder(Number(value))}
+      ariaLabel={t("libraryDetail.manageFolder")}
+      disabled={disabled}
+      className={cn("h-8 min-w-0 bg-background font-mono text-xs", className)}
+    />
+  );
+}
+
+/** Forgets the work after a two-step confirmation, apart from the edit's own file changes. */
+function ForgetWork({
+  forget,
+  disabled,
+  className,
+}: {
+  forget: NonNullable<FolderEditFolders["forget"]>;
+  disabled: boolean;
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  const [forgetting, setForgetting] = useState<{ step: 1 | 2; targets: MediaDeleteTarget[] } | null>(null);
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className={cn("text-muted-foreground hover:bg-destructive/10 hover:text-destructive", className)}
+        disabled={disabled || forget.deleting}
+        title={t("fileWorkspace.forgetHint")}
+        onClick={() => {
+          const targets = forget.targets();
+          if (targets.length > 0) setForgetting({ step: 1, targets });
+        }}
+      >
+        <ShieldAlert className="h-4 w-4" />
+        {t("fileWorkspace.forget")}
+      </Button>
+      {forgetting && (
         <ConfirmMediaBatchDeleteDialog
           targets={forgetting.targets}
           mode="files_and_forget_work"
@@ -408,6 +486,6 @@ function ManageToolbar({
           }}
         />
       )}
-    </div>
+    </>
   );
 }
