@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, "..");
 const approvedEndpointAllowlistFile = "scripts/privacy-allowlist.json";
+const localPrivacyBlocklistFile = ".privacy-blocklist";
 const urlPattern = /\b(?:https?|wss?):\/\/[^\s<>"'`]+/giu;
 const ipv4Pattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/gu;
 // The well-known private and link-local IPv4 networks, written exactly as
@@ -285,6 +286,66 @@ function loadApprovedEndpointAllowlist() {
   return endpoints;
 }
 
+// The local blocklist is deliberately a plain text file: it can contain private
+// work codes and paths from a developer's data directory without becoming a
+// repository fixture. Values are matched literally, not as regular
+// expressions, so a path cannot change the scanner's matching behavior.
+export function parsePrivacyBlocklist(contents) {
+  if (contents.includes("\0")) {
+    throw new Error("blocklist must be a text file");
+  }
+  const values = [];
+  const seen = new Set();
+  for (const [index, rawLine] of contents
+    .replace(/^\uFEFF/u, "")
+    .split(/\r?\n/u)
+    .entries()) {
+    const value = rawLine.trim();
+    if (value === "" || value.startsWith("#")) continue;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    values.push(value);
+    if (values.length > 10_000) {
+      throw new Error(`blocklist has too many entries (line ${index + 1})`);
+    }
+  }
+  return values;
+}
+
+function loadPrivacyBlocklist() {
+  const fullPath = path.resolve(repositoryRoot, localPrivacyBlocklistFile);
+  if (!fs.existsSync(fullPath)) return [];
+  if (trackedFiles().includes(localPrivacyBlocklistFile)) {
+    throw new Error(
+      `${localPrivacyBlocklistFile} must remain untracked; keep private local values out of Git`,
+    );
+  }
+  if (
+    !gitIgnoredPaths([localPrivacyBlocklistFile], repositoryRoot).has(
+      localPrivacyBlocklistFile,
+    )
+  ) {
+    throw new Error(
+      `${localPrivacyBlocklistFile} must be ignored by Git so private local values cannot be staged accidentally`,
+    );
+  }
+  let contents;
+  try {
+    contents = fs.readFileSync(fullPath, "utf8");
+  } catch (error) {
+    throw new Error(
+      `${localPrivacyBlocklistFile}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  try {
+    return parsePrivacyBlocklist(contents);
+  } catch (error) {
+    throw new Error(
+      `${localPrivacyBlocklistFile}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 export function isApprovedPublicEndpoint(file, url, endpoints) {
   let candidate;
   try {
@@ -502,6 +563,7 @@ function parseURL(candidate) {
 function isSensitivePath(file) {
   const normalized = file.replaceAll("\\", "/");
   const baseName = path.posix.basename(normalized).toLowerCase();
+  if (normalized === localPrivacyBlocklistFile) return true;
   if (
     baseName === ".env" ||
     (baseName.startsWith(".env.") && baseName !== ".env.example")
@@ -555,7 +617,21 @@ function containsPrivatePath(text) {
   return /(?:[A-Za-z]:[\\/](?:Users|home)[\\/]|\/(?:home|Users)\/)/u.test(text);
 }
 
-export function scanLine(entry, findings, approvedEndpoints) {
+export function scanLine(
+  entry,
+  findings,
+  approvedEndpoints,
+  blockedValues = [],
+) {
+  const blockedValue = blockedValues.find(
+    (value) =>
+      entry.file.includes(value) ||
+      (typeof entry.text === "string" && entry.text.includes(value)),
+  );
+  if (blockedValue !== undefined) {
+    findings.push({ ...entry, kind: "locally blocked privacy value" });
+  }
+
   if (entry.binary) {
     findings.push({
       ...entry,
@@ -639,6 +715,7 @@ function binaryTrackedFiles() {
 
 export function runSensitiveCheck() {
   const approvedEndpoints = loadApprovedEndpointAllowlist();
+  const blockedValues = loadPrivacyBlocklist();
   const trackedFiles = changedTrackedFiles();
   const untracked = untrackedFiles();
   const entries = [
@@ -661,7 +738,9 @@ export function runSensitiveCheck() {
       kind: "sensitive runtime or credential file",
     });
   }
-  for (const entry of entries) scanLine(entry, findings, approvedEndpoints);
+  for (const entry of entries) {
+    scanLine(entry, findings, approvedEndpoints, blockedValues);
+  }
 
   const uniqueFindings = [
     ...new Map(

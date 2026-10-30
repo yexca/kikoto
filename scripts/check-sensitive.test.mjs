@@ -7,6 +7,7 @@ import test from "node:test";
 
 import {
   parseApprovedEndpointAllowlist,
+  parsePrivacyBlocklist,
   scanLine,
   sensitivePaths,
 } from "./check-sensitive.mjs";
@@ -353,6 +354,60 @@ test("still flags a credential key that follows a tokenizer prefix", () => {
   assert.equal(findings[0].kind, "literal value assigned to a sensitive key");
 });
 
+test("parses a local privacy blocklist without treating values as patterns", () => {
+  assert.deepEqual(
+    parsePrivacyBlocklist(
+      "\uFEFF# local values\r\nRJ00000042\r\n  D:\\Library\\Private Work  \r\nRJ00000042\n",
+    ),
+    ["RJ00000042", "D:\\Library\\Private Work"],
+  );
+  assert.throws(
+    () => parsePrivacyBlocklist("text\0binary"),
+    /must be a text file/,
+  );
+});
+
+test("reports local privacy blocklist matches in content and file names", () => {
+  const findings = [];
+  const blockedValue = "RJ00000042";
+  scanLine(
+    {
+      file: `backend/tests/${blockedValue}_test.go`,
+      line: 1,
+      text: `const workCode = "${blockedValue}"`,
+    },
+    findings,
+    approvedAllowlist(),
+    [blockedValue],
+  );
+  assert.deepEqual(
+    findings.map(({ kind, line, file }) => ({ kind, line, file })),
+    [
+      {
+        kind: "locally blocked privacy value",
+        line: 1,
+        file: `backend/tests/${blockedValue}_test.go`,
+      },
+    ],
+  );
+
+  const fileNameFindings = [];
+  scanLine(
+    {
+      file: `backend/tests/${blockedValue}_test.go`,
+      line: 1,
+      text: 'const workCode = "RJ00000000"',
+    },
+    fileNameFindings,
+    approvedAllowlist(),
+    [blockedValue],
+  );
+  assert.deepEqual(
+    fileNameFindings.map(({ kind }) => kind),
+    ["locally blocked privacy value"],
+  );
+});
+
 test("rejects malformed endpoint allowlist entries", () => {
   assert.throws(
     () =>
@@ -437,6 +492,7 @@ test("falls back to the built-in path rules without a root .gitignore", (t) => {
   assert.deepEqual(
     sensitivePaths(
       [
+        ".privacy-blocklist",
         "data/notes.txt",
         "config/app.example.yml",
         "config/app.yml",
@@ -447,6 +503,12 @@ test("falls back to the built-in path rules without a root .gitignore", (t) => {
       ],
       root,
     ),
-    ["data/notes.txt", "config/app.yml", ".env", "certs/server.pem"],
+    [
+      ".privacy-blocklist",
+      "data/notes.txt",
+      "config/app.yml",
+      ".env",
+      "certs/server.pem",
+    ],
   );
 });

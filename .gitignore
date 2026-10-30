@@ -17,6 +17,9 @@ config/*
 
 demo/
 
+# Local-only values for the sensitive-change scan.
+.privacy-blocklist
+
 # Databases, logs, captures, and key material anywhere in the tree. The
 # sensitive-change scan reports any changed file these rules match.
 *.db

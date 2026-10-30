@@ -591,6 +591,13 @@ HTTP bodies, request timeouts, polling, and Docker commands are bounded.
     metadata, and scope it to the files that need it.
     Never add a runtime-configured endpoint or a user-supplied destination.
     Review every allowlist change before committing.
+- For development data that contains private work codes, names, or local paths,
+  create the ignored root file `.privacy-blocklist`. Put one literal value per
+  line. Blank lines and lines beginning with `#` are ignored. Run
+  `make sensitive-check` to reject a tracked or non-ignored blocklist and
+  report a `locally blocked privacy value` when a value appears in an added
+  line or a changed file name. The finding does not print the value. Keep this
+  local file; it is intentionally not a repository fixture.
 - Check `git status`.
 - Review staged changes for secrets, real source details, private paths, logs,
   databases, and runtime data.
