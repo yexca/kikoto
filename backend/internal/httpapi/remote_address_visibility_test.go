@@ -50,7 +50,11 @@ func TestRemoteImageTokensAreBoundToTheirSource(t *testing.T) {
 	if _, ok := sealer.open(8, token); ok {
 		t.Fatal("a token opened for another source")
 	}
-	if _, ok := sealer.open(7, token[:len(token)-2]+"AA"); ok {
+	modifiedToken := token[:len(token)-2] + "AA"
+	if modifiedToken == token {
+		modifiedToken = token[:len(token)-2] + "AB"
+	}
+	if _, ok := sealer.open(7, modifiedToken); ok {
 		t.Fatal("a modified token opened")
 	}
 }
