@@ -217,6 +217,7 @@ these first rows and continues through the numbered chain:
 | `baseline/086_v0.9.1.sql` | v0.9.1 | Packaged |
 | `baseline/088_v0.9.2.sql` | v0.9.2 | Packaged |
 | `baseline/089_v0.9.3.sql` | v0.9.3 | Packaged |
+| `baseline/096_v0.10.0.sql` | v0.10.0 | Packaged |
 | `compat/<schema>_dev.sql` | Development builds of the unreleased chain | Development baseline; development mode only |
 
 A checksum-only entry validates a recorded ledger row in every mode and is
@@ -270,5 +271,6 @@ matches the backup.
 | v0.9.1 | `086` | `086_v0.9.1.sql` |
 | v0.9.2 | `088` | `088_v0.9.2.sql` |
 | v0.9.3 | `089` | `089_v0.9.3.sql` |
+| v0.10.0 | `096` | `096_v0.10.0.sql` |
 
 Per-release upgrade steps are in the [release notes](../history/index.md).
