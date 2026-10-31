@@ -10,6 +10,41 @@ export type ForYouColumnState = {
   failed: boolean;
 };
 
+export type ForYouDrawRevision = {
+  all: number;
+  columns: Record<ForYouColumn, number>;
+};
+
+const emptyForYouDrawRevision = (): ForYouDrawRevision => ({
+  all: 0,
+  columns: { maybe_like: 0, try_new: 0, listen_again: 0 },
+});
+
+/** Advances the request revisions for one full or column-only draw. */
+export function advanceForYouDrawRevision(revision: ForYouDrawRevision, requested: ForYouColumn[]): ForYouDrawRevision {
+  const next: ForYouDrawRevision = {
+    all: revision.all,
+    columns: { ...revision.columns },
+  };
+  if (requested.length !== 1) next.all += 1;
+  for (const column of requested) next.columns[column] += 1;
+  return next;
+}
+
+/** Whether a completed draw still owns the state it was allowed to update. */
+export function isCurrentForYouDrawRevision(
+  token: ForYouDrawRevision,
+  current: ForYouDrawRevision,
+  requested: ForYouColumn[],
+): boolean {
+  if (token.all !== current.all) return false;
+  return requested.every((column) => token.columns[column] === current.columns[column]);
+}
+
+export function initialForYouDrawRevision() {
+  return emptyForYouDrawRevision();
+}
+
 export function emptyForYouColumns(): Record<ForYouColumn, ForYouColumnState> {
   const drawing = (): ForYouColumnState => ({ items: [], coldStart: false, drawing: true, failed: false });
   return { maybe_like: drawing(), try_new: drawing(), listen_again: drawing() };

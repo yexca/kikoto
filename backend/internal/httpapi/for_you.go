@@ -56,12 +56,18 @@ func (s *Server) drawForYou(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request := library.ForYouRequest{UserID: user.ID, Exclude: payload.Exclude}
+	seenColumns := map[library.ForYouColumn]bool{}
 	for _, raw := range payload.Columns {
 		column, ok := library.ParseForYouColumn(raw)
 		if !ok {
 			writeAPIError(w, http.StatusBadRequest, "invalid_request", "unknown For you column", false)
 			return
 		}
+		if seenColumns[column] {
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "duplicate For you column", false)
+			return
+		}
+		seenColumns[column] = true
 		request.Columns = append(request.Columns, column)
 	}
 	if payload.Temperature != "" {

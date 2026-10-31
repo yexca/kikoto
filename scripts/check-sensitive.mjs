@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
@@ -10,6 +11,7 @@ const approvedEndpointAllowlistFile = "scripts/privacy-allowlist.json";
 const localPrivacyBlocklistFile = ".privacy-blocklist";
 const urlPattern = /\b(?:https?|wss?):\/\/[^\s<>"'`]+/giu;
 const ipv4Pattern = /\b(?:\d{1,3}\.){3}\d{1,3}\b/gu;
+const ipv6Pattern = /(?<![A-Za-z0-9])[0-9A-Fa-f:]{2,}(?![A-Za-z0-9])/gu;
 // The well-known private and link-local IPv4 networks, written exactly as
 // these CIDR blocks, name no particular machine. Any address inside them is
 // still flagged.
@@ -546,6 +548,19 @@ function isAllowedIPv4(value) {
   );
 }
 
+function isAllowedIPv6(value) {
+  const normalized = value
+    .replace(/^\[|\]$/gu, "")
+    .split("%")[0]
+    .toLowerCase();
+  if (!net.isIPv6(normalized)) return true;
+  return (
+    normalized === "::1" ||
+    normalized.startsWith("2001:db8:") ||
+    normalized === "2001:db8"
+  );
+}
+
 function parseURL(candidate) {
   // A Markdown link target ends at the first unmatched ")", even when text
   // without a separating space, such as CJK prose, follows it.
@@ -696,6 +711,14 @@ export function scanLine(
   for (const match of addressText.matchAll(ipv4Pattern)) {
     if (!isAllowedIPv4(match[0])) {
       findings.push({ ...entry, kind: "non-loopback IPv4 address" });
+      break;
+    }
+  }
+
+  ipv6Pattern.lastIndex = 0;
+  for (const match of entry.text.matchAll(ipv6Pattern)) {
+    if (!isAllowedIPv6(match[0])) {
+      findings.push({ ...entry, kind: "non-loopback IPv6 address" });
       break;
     }
   }

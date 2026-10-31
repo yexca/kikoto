@@ -133,8 +133,23 @@ func (s *Server) publishTrackLyricsWith(ctx context.Context, userID, workID, aud
 	if err != nil {
 		return "", 0, err
 	}
+	destination := filepath.Join(folderAbsolute, filepath.FromSlash(file))
+	cleanupPublishedFile := false
+	commitAttempted := false
+	var indexedLyricsID int64
+	var indexedLyrics bool
+	defer func() {
+		if !cleanupPublishedFile || commitAttempted {
+			return
+		}
+		if indexedLyrics {
+			_ = s.removeUnassignedLyricsItem(context.WithoutCancel(ctx), target.FileSourceID, indexedLyricsID, path.Join(target.RootPath, folderName, file))
+		}
+		removePublishedLyricsFile(destination, text)
+	}()
 	if !published {
-		if err := s.stageTrackLyrics(ctx, target.RootPath, rootAbsolute, filepath.Join(folderAbsolute, filepath.FromSlash(file)), extension, text); err != nil {
+		cleanupPublishedFile = true
+		if err := s.stageTrackLyrics(ctx, target.RootPath, rootAbsolute, destination, extension, text); err != nil {
 			return "", 0, err
 		}
 	}
@@ -151,6 +166,7 @@ func (s *Server) publishTrackLyricsWith(ctx context.Context, userID, workID, aud
 	if err != nil {
 		return "", 0, err
 	}
+	indexedLyricsID, indexedLyrics = lyricsID, indexed
 	if finish != nil {
 		if err := finish(tx, lyricsPath, lyricsID); err != nil {
 			return "", 0, err
@@ -162,7 +178,56 @@ func (s *Server) publishTrackLyricsWith(ctx context.Context, userID, workID, aud
 			return "", 0, err
 		}
 	}
-	return lyricsPath, lyricsID, tx.Commit()
+	commitAttempted = true
+	if err := tx.Commit(); err != nil {
+		return "", 0, err
+	}
+	cleanupPublishedFile = false
+	return lyricsPath, lyricsID, nil
+}
+
+// removePublishedLyricsFile removes only the file this call wrote, and only
+// while it still has the exact content this call supplied. A concurrent file
+// or a user's replacement is left alone.
+func removePublishedLyricsFile(filePath, expected string) {
+	info, err := os.Lstat(filePath)
+	if err != nil || unsafeFetchStagingEntry(info) || !info.Mode().IsRegular() {
+		return
+	}
+	content, err := os.ReadFile(filePath)
+	if err != nil || string(content) != expected {
+		return
+	}
+	_ = os.Remove(filePath)
+}
+
+// removeUnassignedLyricsItem retires the media row created while indexing a
+// publication that failed before its assignment committed. Existing or
+// concurrently assigned rows remain intact.
+func (s *Server) removeUnassignedLyricsItem(ctx context.Context, fileSourceID, lyricsID int64, lyricsPath string) error {
+	if lyricsID <= 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM media_file_location
+		WHERE media_item_id = ? AND file_source_id = ? AND location_type = 'local' AND path = ?
+			AND NOT EXISTS (SELECT 1 FROM media_lyrics_assignment WHERE lyrics_media_item_id = media_item_id)
+	`, lyricsID, fileSourceID, lyricsPath); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM media_item
+		WHERE id = ? AND NOT EXISTS (SELECT 1 FROM media_file_location WHERE media_item_id = media_item.id)
+			AND NOT EXISTS (SELECT 1 FROM media_lyrics_assignment WHERE lyrics_media_item_id = media_item.id)
+	`, lyricsID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // trackLyricsFileName picks the name generated lyrics take inside their lyrics

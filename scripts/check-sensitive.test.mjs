@@ -452,6 +452,28 @@ test("allows the well-known private networks only as exact CIDR blocks", () => {
   }
 });
 
+test("reports bare IPv6 addresses while allowing loopback and documentation addresses", () => {
+  const scan = (text) => {
+    const findings = [];
+    scanLine(
+      { file: "backend/internal/example.go", line: 1, text },
+      findings,
+      approvedAllowlist(),
+    );
+    return findings.map((finding) => finding.kind);
+  };
+
+  const address = (...parts) => parts.join(":");
+  assert.deepEqual(scan(`host := "${address("fd00", "", "1")}"`), [
+    "non-loopback IPv6 address",
+  ]);
+  assert.deepEqual(scan(`host := "${address("fe80", "", "1")}"`), [
+    "non-loopback IPv6 address",
+  ]);
+  assert.deepEqual(scan(`host := "${address("", "", "1")}"`), []);
+  assert.deepEqual(scan(`host := "${address("2001", "db8", "", "1")}"`), []);
+});
+
 function temporaryRepository(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kikoto-sensitive-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

@@ -47,7 +47,7 @@ func TestForYouTemperatureIsSavedPerAccountAndValidated(t *testing.T) {
 		t.Fatalf("temperatures = %q, other account %q", got, other)
 	}
 
-	for _, body := range []string{`{"columns":["elsewhere"]}`, `{"temperature":"scorching"}`, `{"query":"private"}`} {
+	for _, body := range []string{`{"columns":["elsewhere"]}`, `{"columns":["maybe_like","maybe_like"]}`, `{"temperature":"scorching"}`, `{"query":"private"}`} {
 		response := httptest.NewRecorder()
 		server.drawForYou(response, as(1, httptest.NewRequest(http.MethodPost, "/api/for-you/draw", strings.NewReader(body))))
 		if response.Code != http.StatusBadRequest {

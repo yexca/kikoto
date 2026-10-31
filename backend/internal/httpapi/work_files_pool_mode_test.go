@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -276,6 +277,29 @@ func TestTrackLyricsPublishInPoolModeStagesOnTheFolderPool(t *testing.T) {
 	}
 	if folders := fixture.lyricsFolders(t); len(folders) != 1 {
 		t.Fatalf("publishing to an offline pool created lyrics folders: %v", folders)
+	}
+}
+
+func TestTrackLyricsPublishRemovesUncommittedPublication(t *testing.T) {
+	fixture := newPoolLyricsFetchFixture(t, serveLyricsFetchVTT, lyricsFetchVTTURL)
+	ctx := context.Background()
+	audioPath := fixture.root + "/mp3/Track1.Original name.mp3"
+
+	_, _, err := fixture.server.publishTrackLyricsWith(ctx, 0, fixture.workID, fixture.audioID, fixture.folderID, "zh-cn", audioPath, ".vtt", lyricsFetchVTT, "transcription",
+		func(*sql.Tx, string, int64) error { return errors.New("synthetic transaction failure") })
+	if err == nil {
+		t.Fatal("publication unexpectedly succeeded")
+	}
+	destination := filepath.Join(fixture.dataRoot, filepath.FromSlash(fixture.root), "lyrics_kikoto", "zh-hans", "mp3", "Track1.Original name.vtt")
+	if _, err := os.Stat(destination); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("uncommitted lyrics file = %v, want it removed", err)
+	}
+	var indexed int
+	if err := fixture.db.QueryRow("SELECT COUNT(*) FROM media_file_location WHERE path = ?", fixture.root+"/lyrics_kikoto/zh-hans/mp3/Track1.Original name.vtt").Scan(&indexed); err != nil {
+		t.Fatal(err)
+	}
+	if indexed != 0 {
+		t.Fatalf("uncommitted lyrics locations = %d, want 0", indexed)
 	}
 }
 

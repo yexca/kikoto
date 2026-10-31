@@ -3,7 +3,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type Work } from "@/lib/api";
 import { FOR_YOU_COLUMNS, type ForYouColumn, type ForYouTemperature } from "@/lib/forYouApi";
 
-import { emptyForYouColumns, otherColumnWorkIds, type ForYouColumnState } from "./forYouModel";
+import {
+  advanceForYouDrawRevision,
+  emptyForYouColumns,
+  initialForYouDrawRevision,
+  isCurrentForYouDrawRevision,
+  otherColumnWorkIds,
+  type ForYouColumnState,
+} from "./forYouModel";
 
 /** Whether the first draw is still loading, failed, or waits for recommendations to finish preparing. */
 export type ForYouStatus = "loading" | "ready" | "preparing" | "failed";
@@ -22,12 +29,15 @@ export function useForYou(active: boolean) {
   useEffect(() => {
     columnsRef.current = columns;
   }, [columns]);
-  // Only the latest draw of every column applies; a column draw always does.
-  const generation = useRef(0);
+  // Full draws invalidate every older request. Column draws only invalidate
+  // older draws of that column, while the full-draw epoch fences a late
+  // column response from overwriting a newer temperature change.
+  const drawRevision = useRef(initialForYouDrawRevision());
 
   const draw = useCallback(async (requested: ForYouColumn[], nextTemperature?: ForYouTemperature) => {
     const single = requested.length === 1 ? requested[0] : null;
-    const current = single ? generation.current : ++generation.current;
+    const token = advanceForYouDrawRevision(drawRevision.current, requested);
+    drawRevision.current = token;
     setColumns((state) => {
       const next = { ...state };
       for (const column of requested) next[column] = { ...next[column], drawing: true, failed: false };
@@ -39,8 +49,7 @@ export function useForYou(active: boolean) {
         temperature: nextTemperature,
         exclude: single ? otherColumnWorkIds(columnsRef.current, single) : undefined,
       });
-      // A later draw of every column replaces this one.
-      if (current !== generation.current && !single) return;
+      if (!isCurrentForYouDrawRevision(token, drawRevision.current, requested)) return;
       setTemperature(result.temperature);
       setAlgorithmVersion(result.algorithmVersion);
       setColumns((state) => {
@@ -52,7 +61,7 @@ export function useForYou(active: boolean) {
       });
       setStatus("ready");
     } catch (error) {
-      if (current !== generation.current && !single) return;
+      if (!isCurrentForYouDrawRevision(token, drawRevision.current, requested)) return;
       setColumns((state) => {
         const next = { ...state };
         for (const column of requested) next[column] = { ...next[column], drawing: false, failed: true };

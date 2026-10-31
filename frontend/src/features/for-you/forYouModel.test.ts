@@ -4,7 +4,14 @@ import { describe, expect, it } from "vitest";
 import i18n from "@/i18n";
 import type { ForYouItem, Work } from "@/lib/api";
 
-import { emptyForYouColumns, forYouReasonText, otherColumnWorkIds } from "./forYouModel";
+import {
+  advanceForYouDrawRevision,
+  emptyForYouColumns,
+  forYouReasonText,
+  initialForYouDrawRevision,
+  isCurrentForYouDrawRevision,
+  otherColumnWorkIds,
+} from "./forYouModel";
 
 const t = i18n.getFixedT("en") as TFunction;
 const rating = (value: number) => value.toFixed(1);
@@ -14,6 +21,24 @@ function item(id: number): ForYouItem {
 }
 
 describe("For you model", () => {
+  it("invalidates a late column draw after a newer full draw", () => {
+    const initial = initialForYouDrawRevision();
+    const column = advanceForYouDrawRevision(initial, ["maybe_like"]);
+    const full = advanceForYouDrawRevision(column, ["maybe_like", "try_new", "listen_again"]);
+
+    expect(isCurrentForYouDrawRevision(column, full, ["maybe_like"])).toBe(false);
+    expect(isCurrentForYouDrawRevision(full, full, ["maybe_like", "try_new", "listen_again"])).toBe(true);
+  });
+
+  it("keeps independent column draws current", () => {
+    const initial = initialForYouDrawRevision();
+    const maybeLike = advanceForYouDrawRevision(initial, ["maybe_like"]);
+    const tryNew = advanceForYouDrawRevision(maybeLike, ["try_new"]);
+
+    expect(isCurrentForYouDrawRevision(maybeLike, tryNew, ["maybe_like"])).toBe(true);
+    expect(isCurrentForYouDrawRevision(tryNew, tryNew, ["try_new"])).toBe(true);
+  });
+
   it("states why a work was drawn with the facts it carries", () => {
     expect(forYouReasonText({ kind: "liked_circle", name: "Example Circle" }, t, rating)).toBe(
       "A circle you like: Example Circle",
