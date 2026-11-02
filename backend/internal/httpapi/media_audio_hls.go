@@ -17,12 +17,13 @@ var audioHLSProfile = hlsEncodeProfile{
 	cacheDir: "hls-audio",
 	playlist: audioHLSSessionPlaylist,
 	// Thirty minutes ahead of the listener, refilled ten minutes before a gap.
-	aheadSegments:      300,
-	refillLeadSegments: 100,
-	waitWindowSegments: 20,
-	maximumSegments:    300 + 100,
+	aheadSegments:       300,
+	refillLeadSegments:  100,
+	waitWindowSegments:  20,
+	maximumSegments:     300 + 100,
+	segmentMaximumBytes: hlsSegmentMaximumBytes,
 	// A 192 kbit/s six-second segment is about 170 KiB in MPEG-TS.
-	segmentReservationBytes: 256 << 10,
+	reservation: fixedHLSSegmentReservation(300+100, 256<<10),
 	args: func(source hlsPlaybackSource, outputDir string, startIndex int) []string {
 		return audioHLSFFmpegArgs(source.Path, outputDir, startIndex)
 	},

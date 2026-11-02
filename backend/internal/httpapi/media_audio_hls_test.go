@@ -55,7 +55,7 @@ func TestAudioHLSSessionStopsAheadOfTheListenerOrAtEarlierOutput(t *testing.T) {
 		}
 	}
 	advance := func(session *hlsSession) bool {
-		stop, err := advanceHLSSession(session, time.Now())
+		stop, err := advanceHLSSession(session, time.Now(), false)
 		if err != nil {
 			t.Fatal(err)
 		}

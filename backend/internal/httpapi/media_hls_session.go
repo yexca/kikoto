@@ -41,9 +41,13 @@ type hlsEncodeProfile struct {
 	name string
 	// cacheDir holds the segments under the transcode cache root.
 	cacheDir string
-	// playlist is the session playlist FFmpeg's HLS muxer requires; the server
+	// playlist is the session playlist FFmpeg's muxer writes; the server
 	// publishes its own.
 	playlist string
+	// renamesSegments says FFmpeg writes each segment as a .tmp file it never
+	// renames, so the session publishes a segment once the next one starts or
+	// FFmpeg reaches the end of the input.
+	renamesSegments bool
 	// A session stops this many segments ahead of the furthest segment
 	// requested, releasing its transcode slot.
 	aheadSegments int
@@ -55,16 +59,22 @@ type hlsEncodeProfile struct {
 	waitWindowSegments int
 	// Every session also stops after this many segments, which bounds its
 	// cache quota reservation.
-	maximumSegments         int
-	segmentReservationBytes int64
+	maximumSegments int
+	// A larger segment fails the session and is never served.
+	segmentMaximumBytes int64
 	// A session that no request has asked or waited for in this long stops;
 	// zero leaves only the other limits.
 	idleTimeout time.Duration
+	// reservation is the cache quota a session starting at startIndex reserves
+	// for its segments; a session that writes more stops.
+	reservation func(source hlsPlaybackSource, startIndex int) int64
 	args        func(source hlsPlaybackSource, outputDir string, startIndex int) []string
 }
 
-func (profile *hlsEncodeProfile) reservationBytes() int64 {
-	return int64(profile.maximumSegments) * profile.segmentReservationBytes
+// fixedHLSSegmentReservation reserves the same bytes for every segment a
+// session may write.
+func fixedHLSSegmentReservation(maximumSegments int, segmentBytes int64) func(hlsPlaybackSource, int) int64 {
+	return func(hlsPlaybackSource, int) int64 { return int64(maximumSegments) * segmentBytes }
 }
 
 type hlsSessionState uint8
@@ -84,8 +94,10 @@ type hlsSession struct {
 	dir       string
 	start     int
 	startedAt time.Time
-	cancel    context.CancelFunc
-	exited    chan struct{}
+	// reservation is the quota this session reserved; zero leaves it unbounded.
+	reservation int64
+	cancel      context.CancelFunc
+	exited      chan struct{}
 
 	mu sync.Mutex
 	// next is the first segment this session has not completed.
@@ -208,7 +220,7 @@ func (session *hlsSession) waitFor(ctx context.Context, index int, segmentPath s
 		session.mu.Lock()
 		changed, state, next, err := session.changed, session.state, session.next, session.err
 		session.mu.Unlock()
-		if validCachedHLSSegment(segmentPath) {
+		if validCachedHLSSegment(segmentPath, session.profile.segmentMaximumBytes) {
 			return nil
 		}
 		switch state {
@@ -250,7 +262,7 @@ func (s *Server) serveHLSSessionSegment(w http.ResponseWriter, r *http.Request, 
 	if session := s.hlsSessions.get(relDir); session != nil {
 		session.observe(index)
 	}
-	served, err := s.serveCachedHLSSessionSegment(w, r, relPath)
+	served, err := s.serveCachedHLSSessionSegment(w, r, profile, relPath)
 	if served {
 		s.refillHLSSession(profile, source, relDir, dir, index)
 	}
@@ -271,7 +283,7 @@ func (s *Server) serveHLSSessionSegment(w http.ResponseWriter, r *http.Request, 
 		if err != nil {
 			return err
 		}
-		served, err := s.serveCachedHLSSessionSegment(w, r, relPath)
+		served, err := s.serveCachedHLSSessionSegment(w, r, profile, relPath)
 		if served || err != nil {
 			return err
 		}
@@ -279,7 +291,7 @@ func (s *Server) serveHLSSessionSegment(w http.ResponseWriter, r *http.Request, 
 	return errRealtimeResourceBusy
 }
 
-func (s *Server) serveCachedHLSSessionSegment(w http.ResponseWriter, r *http.Request, relPath string) (bool, error) {
+func (s *Server) serveCachedHLSSessionSegment(w http.ResponseWriter, r *http.Request, profile *hlsEncodeProfile, relPath string) (bool, error) {
 	absolutePath, err := safeCachePath(s.cfg.CacheRoot, relPath)
 	if err != nil {
 		return false, err
@@ -291,7 +303,7 @@ func (s *Server) serveCachedHLSSessionSegment(w http.ResponseWriter, r *http.Req
 		return false, err
 	}
 	defer releasePath()
-	if !validCachedHLSSegment(absolutePath) {
+	if !validCachedHLSSegment(absolutePath, profile.segmentMaximumBytes) {
 		return false, nil
 	}
 	return true, serveCachedHLSSegment(w, r, absolutePath)
@@ -321,10 +333,10 @@ func (s *Server) refillHLSSession(profile *hlsEncodeProfile, source hlsPlaybackS
 	if s.hlsSessions.get(key) != nil {
 		return
 	}
-	count := hlsSegmentCount(source.Duration)
+	count := source.segmentCount()
 	missing := -1
 	for candidate := index + 1; candidate < count && candidate <= index+profile.refillLeadSegments; candidate++ {
-		if !validCachedHLSSegment(filepath.Join(dir, hlsSegmentName(candidate))) {
+		if !validCachedHLSSegment(filepath.Join(dir, hlsSegmentName(candidate)), profile.segmentMaximumBytes) {
 			missing = candidate
 			break
 		}
@@ -359,7 +371,8 @@ func (s *Server) startHLSSession(ctx context.Context, profile *hlsEncodeProfile,
 	}
 	s.transcodeCacheActivityMu.RLock()
 	defer s.transcodeCacheActivityMu.RUnlock()
-	releaseReservation, err := s.reserveTranscodeCache(ctx, profile.reservationBytes())
+	reservation := profile.reservation(source, index)
+	releaseReservation, err := s.reserveTranscodeCache(ctx, reservation)
 	if err != nil {
 		releaseSlot()
 		return nil, err
@@ -387,6 +400,7 @@ func (s *Server) startHLSSession(ctx context.Context, profile *hlsEncodeProfile,
 		dir:         dir,
 		start:       index,
 		startedAt:   now,
+		reservation: reservation,
 		cancel:      cancel,
 		exited:      make(chan struct{}),
 		next:        index,
@@ -433,14 +447,16 @@ wait:
 		case waitErr = <-waitResult:
 			break wait
 		case now := <-ticker.C:
-			if stop, err := advanceHLSSession(session, now); stop {
+			if stop, err := advanceHLSSession(session, now, false); stop {
 				failure = err
 				session.cancel()
 			}
 		}
 	}
 	ticker.Stop()
-	if _, err := advanceHLSSession(session, time.Now()); failure == nil {
+	// Only an encode that reached the end of the input completed its last segment.
+	completed := waitErr == nil && ctx.Err() == nil && failure == nil
+	if _, err := advanceHLSSession(session, time.Now(), completed); failure == nil {
 		failure = err
 	}
 
@@ -472,10 +488,11 @@ wait:
 }
 
 // advanceHLSSession records the segments FFmpeg has published and reports
-// whether the session should stop, with the reason when it fails. FFmpeg
-// writes each segment beside its final name and renames it into place once
-// complete, so a segment file that exists is complete.
-func advanceHLSSession(session *hlsSession, now time.Time) (bool, error) {
+// whether the session should stop, with the reason when it fails. A segment
+// file that exists is complete: FFmpeg writes each segment beside its final
+// name and it is renamed into place once complete. completed says FFmpeg
+// reached the end of the input.
+func advanceHLSSession(session *hlsSession, now time.Time, completed bool) (bool, error) {
 	profile := session.profile
 	session.mu.Lock()
 	next, written, requested := session.next, session.written, session.requested
@@ -483,11 +500,15 @@ func advanceHLSSession(session *hlsSession, now time.Time) (bool, error) {
 	session.mu.Unlock()
 	defer func() { session.setProgress(next, written) }()
 	for {
-		if next-session.start >= profile.maximumSegments || next >= requested+profile.aheadSegments || written > profile.reservationBytes() {
+		if next-session.start >= profile.maximumSegments || next >= requested+profile.aheadSegments ||
+			session.reservation > 0 && written > session.reservation {
 			return true, nil
 		}
 		segmentPath := filepath.Join(session.dir, hlsSegmentName(next))
 		info, err := os.Stat(segmentPath)
+		if err != nil && profile.renamesSegments && publishHLSSegment(session.dir, next, completed) {
+			info, err = os.Stat(segmentPath)
+		}
 		if err != nil {
 			break
 		}
@@ -496,17 +517,33 @@ func advanceHLSSession(session *hlsSession, now time.Time) (bool, error) {
 		if info.ModTime().Before(session.startedAt.Add(-hlsSessionModTimeMargin)) {
 			return true, nil
 		}
-		if info.Size() > hlsSegmentMaximumBytes {
+		if info.Size() > profile.segmentMaximumBytes {
 			_ = os.Remove(segmentPath)
 			return true, fmt.Errorf("%w: segment exceeded its byte limit", errHLSTranscodeUnavailable)
 		}
 		written += info.Size()
 		next++
 	}
-	if info, err := os.Stat(filepath.Join(session.dir, hlsSegmentName(next)+".tmp")); err == nil && info.Size() > hlsSegmentMaximumBytes {
+	if info, err := os.Stat(filepath.Join(session.dir, hlsSegmentName(next)+".tmp")); err == nil && info.Size() > profile.segmentMaximumBytes {
 		return true, fmt.Errorf("%w: segment exceeded its byte limit", errHLSTranscodeUnavailable)
 	}
 	return profile.idleTimeout > 0 && idle, nil
+}
+
+// publishHLSSegment renames a segment FFmpeg finished writing into place. FFmpeg
+// closes a segment before it starts the next one, so a segment is complete
+// once the next one exists or the encode completed.
+func publishHLSSegment(dir string, index int, completed bool) bool {
+	temporary := filepath.Join(dir, hlsSegmentName(index)+".tmp")
+	if _, err := os.Stat(temporary); err != nil {
+		return false
+	}
+	if !completed {
+		if _, err := os.Stat(filepath.Join(dir, hlsSegmentName(index+1)+".tmp")); err != nil {
+			return false
+		}
+	}
+	return os.Rename(temporary, filepath.Join(dir, hlsSegmentName(index))) == nil
 }
 
 // removeHLSSessionPartials removes the session playlist and unfinished
@@ -527,7 +564,8 @@ func removeHLSSessionPartials(profile *hlsEncodeProfile, dir string) {
 // isHLSSessionPartial reports whether name is a session playlist or an
 // unfinished segment.
 func isHLSSessionPartial(name string) bool {
-	return strings.HasPrefix(name, audioHLSSessionPlaylist) || strings.HasPrefix(name, videoHLSSessionPlaylist) || strings.HasSuffix(name, ".ts.tmp")
+	return strings.HasPrefix(name, audioHLSSessionPlaylist) || strings.HasPrefix(name, videoHLSSessionPlaylist) ||
+		strings.HasPrefix(name, videoRemuxHLSSessionPlaylist) || strings.HasSuffix(name, ".ts.tmp")
 }
 
 // hlsSegmentFFmpegOutputArgs are the HLS muxer options every session uses:

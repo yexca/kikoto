@@ -3,14 +3,18 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -318,10 +322,13 @@ func TestPlaybackStartupPerformance(t *testing.T) {
 	t.Logf("resources: upstream requests=%d cache files=%d cache bytes=%d; synthetic 300s AAC -> complete MP3, two transcode slots, no background workers, no pre-preparation except explicit warm control; no NAS/device coverage", upstreamRequests.Load(), cacheFiles, cacheBytes)
 }
 
-// This measures realtime video HLS conversion of a synthetic 1080p MPEG-4 Part 2
-// AVI through the segment handler: time to the first segment, seek-to-play
-// latency, sequential segment delivery, and FFmpeg CPU per minute of video.
-// Each sample uses a new source revision, so nothing is served from the cache.
+// This measures video HLS through the playback info and segment handlers for
+// two synthetic 240-second 1080p 29.97 fps files: an MPEG-4 Part 2 AVI with MP3
+// audio, which is transcoded, and an H.264 High MKV with 5.1 AC3 audio, which a
+// client that decodes H.264 High cannot play directly. It reports time to the
+// first segment, seek-to-play latency, sequential segment delivery, and FFmpeg
+// CPU per minute of video. Each sample uses a new source revision, so nothing
+// is served from the cache.
 func TestVideoHLSPlaybackPerformance(t *testing.T) {
 	if os.Getenv("KIKOTO_PLAYBACK_PERF") != "1" {
 		t.Skip("opt-in playback experiment")
@@ -335,102 +342,168 @@ func TestVideoHLSPlaybackPerformance(t *testing.T) {
 	}
 	const durationSeconds = 240
 	dataRoot := t.TempDir()
-	relativePath := "RJ00000000/movie.avi"
-	mediaPath := filepath.Join(dataRoot, filepath.FromSlash(relativePath))
-	if err := os.MkdirAll(filepath.Dir(mediaPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// Temporal noise keeps the encoder from coasting on the static test pattern.
-	fixture := exec.Command(ffmpegPath,
+	// Temporal noise keeps the encoders from coasting on the static test pattern.
+	source := []string{
 		"-nostdin", "-hide_banner", "-loglevel", "error",
 		"-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30000/1001,noise=alls=6:allf=t",
-		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100",
-		"-t", strconv.Itoa(durationSeconds), "-c:v", "mpeg4", "-q:v", "4", "-c:a", "libmp3lame", "-b:a", "192k", "-y", mediaPath,
-	)
-	if output, err := fixture.CombinedOutput(); err != nil {
-		t.Fatalf("create video fixture: %v (%s)", err, output)
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+		"-t", strconv.Itoa(durationSeconds),
+	}
+	fixtures := []struct {
+		name, file string
+		location   int64
+		encode     []string
+	}{
+		{"mpeg4-avi", "movie.avi", 824, []string{"-c:v", "mpeg4", "-q:v", "4", "-c:a", "libmp3lame", "-b:a", "192k"}},
+		{"h264-mkv-ac3", "movie.mkv", 828, []string{"-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-profile:v", "high", "-c:a", "ac3", "-ac", "6", "-b:a", "448k"}},
 	}
 	db := openMigratedTestDB(t)
 	if _, err := db.Exec(`
 		INSERT INTO work (id, primary_code, title) VALUES (821, 'RJ00000000', 'Synthetic HLS video performance');
 		INSERT INTO file_source (id, code, display_name, source_type) VALUES (822, 'synthetic_local', 'Synthetic Local', 'local_folder');
-		INSERT INTO media_item (id, work_id, kind, title, fingerprint, duration_seconds, has_audio)
-		VALUES (823, 821, 'video', 'movie.avi', 'synthetic-hls-video-performance', 240, 1);
-		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability, duration_seconds)
-		VALUES (824, 823, 822, 'local', ?, 'available', 240);
-	`, relativePath); err != nil {
+	`); err != nil {
 		t.Fatal(err)
+	}
+	for index, fixture := range fixtures {
+		mediaPath := filepath.Join(dataRoot, "RJ00000000", fixture.file)
+		if err := os.MkdirAll(filepath.Dir(mediaPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		command := exec.Command(ffmpegPath, append(append(slices.Clone(source), fixture.encode...), "-y", mediaPath)...)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("create %s fixture: %v (%s)", fixture.name, err, output)
+		}
+		item := 823 + int64(index)*4
+		if _, err := db.Exec(`INSERT INTO media_item (id, work_id, kind, title, fingerprint, duration_seconds, has_audio) VALUES (?, 821, 'video', ?, ?, 240, 1)`,
+			item, fixture.file, "synthetic-hls-video-performance-"+fixture.name); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability, duration_seconds) VALUES (?, ?, 822, 'local', ?, 'available', 240)`,
+			fixture.location, item, "RJ00000000/"+fixture.file); err != nil {
+			t.Fatal(err)
+		}
 	}
 	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: t.TempDir()})
 	defer func() { _ = server.Shutdown(context.Background()) }()
 	var revisionCount int64
-	// coldRevision changes the file version, so every segment must be encoded again.
-	coldRevision := func() string {
-		server.hlsSessions.stopAll()
-		changed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(atomic.AddInt64(&revisionCount, 1)) * time.Second)
-		if err := os.Chtimes(mediaPath, changed, changed); err != nil {
-			t.Fatal(err)
+	for _, fixture := range fixtures {
+		mediaPath := filepath.Join(dataRoot, "RJ00000000", fixture.file)
+		location := strconv.FormatInt(fixture.location, 10)
+		// coldPlaylist changes the file version, so every segment must be
+		// prepared again, and returns the playlist the player would load.
+		conversion := ""
+		var infos []time.Duration
+		coldPlaylist := func() (string, []string) {
+			server.hlsSessions.stopAll()
+			changed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(atomic.AddInt64(&revisionCount, 1)) * time.Second)
+			if err := os.Chtimes(mediaPath, changed, changed); err != nil {
+				t.Fatal(err)
+			}
+			server.realtimeProbeCacheMu.Lock()
+			server.realtimeProbeCache = nil
+			server.realtimeProbeCacheMu.Unlock()
+			request := httptest.NewRequest(http.MethodGet, "/api/media/"+location+"/playback?capabilities=video-mp4-h264-aac,video-h264-main,video-h264-high", nil)
+			request.SetPathValue("id", location)
+			response := httptest.NewRecorder()
+			infoStart := time.Now()
+			server.getVideoPlaybackInfo(response, request)
+			infos = append(infos, time.Since(infoStart))
+			var info videoPlaybackInfoResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &info); err != nil || info.Delivery != "hls" {
+				t.Fatalf("%s playback info = %d: %s", fixture.name, response.Code, response.Body.String())
+			}
+			playlistURL, err := url.Parse(info.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request = httptest.NewRequest(http.MethodGet, info.URL, nil)
+			request.SetPathValue("id", location)
+			request.SetPathValue("file", "index.m3u8")
+			response = httptest.NewRecorder()
+			server.serveMediaHLS(response, request)
+			segments := regexp.MustCompile(`segment-[0-9]{6}\.ts`).FindAllString(response.Body.String(), -1)
+			if response.Code != http.StatusOK || len(segments) == 0 {
+				t.Fatalf("%s playlist = %d: %s", fixture.name, response.Code, response.Body.String())
+			}
+			conversion = info.Conversion
+			return playlistURL.Query().Get("v"), segments
 		}
-		server.realtimeProbeCacheMu.Lock()
-		server.realtimeProbeCache = nil
-		server.realtimeProbeCacheMu.Unlock()
-		source, err := server.loadHLSPlaybackSource(context.Background(), 824)
+		segment := func(revision string, file string) time.Duration {
+			request := httptest.NewRequest(http.MethodGet, "/api/media/"+location+"/hls/"+file+"?v="+revision, nil)
+			request.SetPathValue("id", location)
+			request.SetPathValue("file", file)
+			response := httptest.NewRecorder()
+			start := time.Now()
+			server.serveMediaHLS(response, request)
+			elapsed := time.Since(start)
+			if response.Code != http.StatusOK || response.Body.Len() == 0 || response.Body.Bytes()[0] != 0x47 {
+				t.Fatalf("%s %s response = %d: %s", fixture.name, file, response.Code, response.Body.String())
+			}
+			return elapsed
+		}
+
+		coldPlaylist()
+		name := "playback/video-hls/" + fixture.name + "/" + conversion
+		var first, seeks, sequential []time.Duration
+		for range 6 {
+			revision, segments := coldPlaylist()
+			first = append(first, segment(revision, segments[0]))
+		}
+		logBrowseTiming(t, name+"/cold-first-segment", first, 1, 0)
+		logBrowseTiming(t, name+"/cold-playback-info", infos, 1, 0)
+		var segmentCount int
+		for range 6 {
+			revision, segments := coldPlaylist()
+			segmentCount = len(segments)
+			segment(revision, segments[0])
+			// Three quarters of the way through the file.
+			seeks = append(seeks, segment(revision, segments[len(segments)*3/4]))
+		}
+		logBrowseTiming(t, name+"/cold-seek-to-three-quarters", seeks, 1, 0)
+		// The first half of the file, in order.
+		var sequentialTotal time.Duration
+		var sequentialSeconds float64
+		for range 2 {
+			revision, segments := coldPlaylist()
+			count := len(segments) / 2
+			start := time.Now()
+			for _, file := range segments[:count] {
+				sequential = append(sequential, segment(revision, file))
+			}
+			sequentialTotal += time.Since(start)
+			sequentialSeconds += float64(count) * durationSeconds / float64(len(segments))
+		}
+		logBrowseTiming(t, name+"/cold-sequential-segment", sequential, 1, 0)
+		t.Logf("%s/cold-sequential first half of %d segments: %.2fs per run, %.1fx realtime",
+			name, segmentCount, sequentialTotal.Seconds()/2, sequentialSeconds/sequentialTotal.Seconds())
+		server.hlsSessions.stopAll()
+
+		// Isolate FFmpeg from queueing, quota, probe and publication to measure
+		// the CPU one continuous encode spends on each minute of video.
+		cpu, wall := measureVideoHLSEncoderCPU(t, server, fixture.location, mediaPath, durationSeconds, conversion == "remux")
+		t.Logf("%s/isolated-encoder %ds: wall=%.2fs CPU=%.2fs CPU/min-of-video=%.2fs realtime=%.1fx host-cores=%d",
+			name, durationSeconds, wall.Seconds(), cpu.Seconds(), cpu.Seconds()*60/durationSeconds, durationSeconds/wall.Seconds(), runtime.NumCPU())
+	}
+}
+
+// measureVideoHLSEncoderCPU runs the remux of a source that playback info
+// remuxes, and the transcode of any other, over the whole file.
+func measureVideoHLSEncoderCPU(t *testing.T, server *Server, location int64, mediaPath string, durationSeconds float64, remux bool) (time.Duration, time.Duration) {
+	t.Helper()
+	args := videoHLSFFmpegArgs(mediaPath, t.TempDir(), 0, durationSeconds)
+	if remux {
+		source, err := server.loadHLSPlaybackSource(context.Background(), location)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return source.Revision
-	}
-	segment := func(revision string, index int) time.Duration {
-		file := hlsSegmentName(index)
-		request := httptest.NewRequest(http.MethodGet, "/api/media/824/hls/"+file+"?v="+revision, nil)
-		request.SetPathValue("id", "824")
-		request.SetPathValue("file", file)
-		response := httptest.NewRecorder()
-		start := time.Now()
-		server.serveMediaHLS(response, request)
-		elapsed := time.Since(start)
-		if response.Code != http.StatusOK || response.Body.Len() == 0 || response.Body.Bytes()[0] != 0x47 {
-			t.Fatalf("segment %d response = %d: %s", index, response.Code, response.Body.String())
+		index, err := server.videoKeyframeIndex(context.Background(), source, time.Minute)
+		if err != nil {
+			t.Fatal(err)
 		}
-		return elapsed
+		// Past the listed cuts, the last segment runs to the end of the file.
+		args = videoRemuxHLSFFmpegArgs(mediaPath, t.TempDir(), 0, index)
 	}
-
-	var first, seeks, sequential []time.Duration
-	for range 6 {
-		first = append(first, segment(coldRevision(), 0))
-	}
-	logBrowseTiming(t, "playback/video-hls/cold-first-segment", first, 1, 0)
-	for range 6 {
-		revision := coldRevision()
-		segment(revision, 0)
-		seeks = append(seeks, segment(revision, 30))
-	}
-	logBrowseTiming(t, "playback/video-hls/cold-seek-to-segment-30", seeks, 1, 0)
-	const sequentialSegments = 20
-	var sequentialTotal time.Duration
-	for range 2 {
-		revision := coldRevision()
-		start := time.Now()
-		for index := range sequentialSegments {
-			sequential = append(sequential, segment(revision, index))
-		}
-		sequentialTotal += time.Since(start)
-	}
-	logBrowseTiming(t, "playback/video-hls/cold-sequential-segment", sequential, 1, 0)
-	t.Logf("playback/video-hls/cold-sequential %d segments: %.2fs per run, %.1fx realtime",
-		sequentialSegments, sequentialTotal.Seconds()/2, 2*sequentialSegments*hlsSegmentDurationSeconds/sequentialTotal.Seconds())
-	server.hlsSessions.stopAll()
-
-	// Isolate FFmpeg from queueing, quota, probe and publication to measure the
-	// CPU one continuous encode spends on each minute of video.
-	cpu, wall := measureVideoHLSEncoderCPU(t, mediaPath, durationSeconds)
-	t.Logf("playback/video-hls/isolated-encoder %ds 1080p29.97 MPEG-4 -> 720p H.264: wall=%.2fs CPU=%.2fs CPU/min-of-video=%.2fs realtime=%.1fx host-cores=%d",
-		durationSeconds, wall.Seconds(), cpu.Seconds(), cpu.Seconds()*60/durationSeconds, durationSeconds/wall.Seconds(), runtime.NumCPU())
-}
-
-func measureVideoHLSEncoderCPU(t *testing.T, mediaPath string, durationSeconds float64) (time.Duration, time.Duration) {
-	t.Helper()
-	command := exec.Command("ffmpeg", videoHLSFFmpegArgs(mediaPath, t.TempDir(), 0, durationSeconds)...)
+	command := exec.Command("ffmpeg", args...)
 	start := time.Now()
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("isolated encode: %v %s", err, output)

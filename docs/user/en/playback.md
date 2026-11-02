@@ -46,18 +46,30 @@ Playback is handled by a global browser audio player.
   Matroska plays directly only in a browser that reports Matroska support.
   Where the browser offers MediaCapabilities, HEVC and AV1 play directly only
   when it reports their decoding as supported and power efficient. 10-bit
-  H.264, 4:2:2, 4:4:4, 12-bit, and every other format are transcoded. A
-  direct file the browser then fails to decode switches to the HLS playlist.
-- Local and cached video is inspected before playback. Incompatible video first
-  returns its probed total duration and a complete HLS VOD playlist of
-  six-second H.264/AAC segments. One continuous FFmpeg encode produces the
-  segments in order from where playback starts or seeks to, so a later
-  position starts without transcoding everything before it and audio stays
-  seamless across segment boundaries; seeking outside what the encode has
-  produced restarts it there. An encode stops six minutes ahead of the
-  furthest segment played, or after a minute without requests, such as while
-  playback is paused, and the next one starts once playback is within two
-  minutes of a segment not yet produced. iOS and iPadOS play the playlist
+  H.264, 4:2:2, 4:4:4, 12-bit, and every other format are converted. A
+  direct file the browser then fails to decode switches to a transcoded HLS
+  playlist.
+- Local and cached video that does not play directly first returns its probed
+  total duration and a complete HLS VOD playlist. When the browser decodes the
+  file's H.264 video but not its container or audio, such as H.264 in
+  Matroska, AVI, MPEG-TS, or FLV, or in MP4 with AC-3, DTS, FLAC, or PCM audio,
+  the video is copied unchanged and only the audio is converted to AAC. The
+  playlist then follows the file's own keyframes: each segment starts at the
+  keyframe nearest six seconds after the previous one, at least three seconds
+  later. Video with keyframes more than 15 seconds apart, an average bitrate
+  above 20 Mbit/s, or keyframes that cannot be read within five seconds of the
+  playback request is transcoded instead; the keyframe scan continues, so a
+  later playback of the file copies its video. Every other video is transcoded
+  to six-second 720p H.264/AAC segments.
+- One continuous FFmpeg process produces the segments in order from where
+  playback starts or seeks to, so a later position starts without converting
+  everything before it and audio stays seamless across segment boundaries;
+  seeking outside what the process has produced restarts it there. A transcode
+  stops six minutes ahead of the furthest segment played, and the next one
+  starts once playback is within two minutes of a segment not yet produced; a
+  copy stops two minutes ahead and the next one starts one minute before. Either
+  stops after a minute without requests, such as while playback is paused.
+  iOS and iPadOS play the playlist
   natively, which keeps native fullscreen and AirPlay; other browsers, the
   Android app included, use hls.js, and a browser without it plays the
   playlist natively when it can.
@@ -65,13 +77,16 @@ Playback is handled by a global browser audio player.
   failure keeps an inline Retry action; direct-to-HLS recovery and explicit
   retries retain the playback position and whether the video was paused.
 - Generated video segments are rebuildable cache data under
-  `/cache/transcodes/hls`, and audio segments under
+  `/cache/transcodes/hls`, copied video segments under
+  `/cache/transcodes/hls-remux`, and audio segments under
   `/cache/transcodes/hls-audio`. The shared audio/video transcode LRU quota defaults to
   5 GiB. Segments are invalidated by the source path, size, modification time, or
-  transcode profile changing. A segment is capped at 16 MiB. A video encode
-  holds one transcode slot and a 240 MiB quota reservation while it runs, and
-  an audio encode one slot and 100 MiB; either runs for at most 20 minutes and
-  publishes each segment only once it is complete. Clearing the transcode
+  transcode profile changing. A segment is capped at 16 MiB, or 64 MiB with
+  copied video. A video transcode holds one transcode slot and a 240 MiB quota
+  reservation while it runs, a copy one slot and a reservation sized from the
+  file's bitrate for its next 30 segments, and an audio encode one slot and
+  100 MiB; each runs for at most 20 minutes and publishes each segment only
+  once it is complete. Clearing the transcode
   cache stops running encodes first. Stale partial files left by an
   interrupted process are reclaimed.
 - Prepared MP3 audio is rebuildable data under `/cache/transcodes/audio` and shares
@@ -82,7 +97,8 @@ Playback is handled by a global browser audio player.
   encode that produces no segment, and realtime video conversion remember the
   failure for 30 seconds for that file revision.
   Requests in that time fail at once instead of occupying one of the encode
-  slots; a changed file is tried again immediately.
+  slots, and a video whose copy failed is offered as a transcode; a changed
+  file is tried again immediately.
 - Tracked remote and remote-preview media is fetched through the configured
   source policy and proxied unchanged through the backend by default. The
   proxy keeps the browser-facing response same-origin and forwards range and
@@ -94,9 +110,10 @@ Playback is handled by a global browser audio player.
   workflow remains independent.
 - Prepared MP3 audio responses support random byte ranges and include their complete
   length. HLS video and audio segments are immutable for their source revision and are
-  seekable through the complete VOD timeline. Video output is bounded to 720p
-  and 60 frames per second, padded to even dimensions before `yuv420p`
-  encoding, and produced with a conservative two-thread profile. FFmpeg and FFprobe each have a small fixed
+  seekable through the complete VOD timeline. Transcoded video is bounded to
+  720p and 60 frames per second, padded to even dimensions before `yuv420p`
+  encoding, and produced with a conservative two-thread profile; copied video
+  keeps the source picture. FFmpeg and FFprobe each have a small fixed
   concurrency limit and a short, bounded wait queue; requests that cannot
   acquire a slot promptly are rejected so a process cannot remain occupied for
   an unbounded period.

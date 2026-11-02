@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,7 +39,10 @@ var (
 )
 
 type videoPlaybackInfoResponse struct {
-	Delivery        string  `json:"delivery"`
+	Delivery string `json:"delivery"`
+	// Conversion says how the server prepares the stream: "none", "remux", or
+	// "transcode". Playback needs only Delivery.
+	Conversion      string  `json:"conversion"`
 	URL             string  `json:"url"`
 	DurationSeconds float64 `json:"durationSeconds"`
 	Seekable        bool    `json:"seekable"`
@@ -52,6 +56,16 @@ type hlsPlaybackSource struct {
 	Revision string
 	Duration float64
 	Probe    playbackProbe
+	// Keyframes places the segments of remuxed video; other playlists follow
+	// the six-second grid.
+	Keyframes *videoKeyframeIndex
+}
+
+func (source hlsPlaybackSource) segmentCount() int {
+	if source.Keyframes != nil {
+		return len(source.Keyframes.cuts)
+	}
+	return hlsSegmentCount(source.Duration)
 }
 
 func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +82,8 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 		s.writeHLSPlaybackError(w, err, playbackProfileVideo)
 		return
 	}
+	// A client asks for a transcode after direct playback failed, which a
+	// remux of the same video stream would repeat.
 	if !forcePlaybackTranscode(r) {
 		capabilities := playbackCapabilities(r)
 		if _, direct := directPlaybackContentType(source.Probe, playbackProfileVideo, capabilities); direct {
@@ -76,18 +92,45 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 				query.Set("capabilities", strings.Join(values, ","))
 			}
 			writeJSON(w, http.StatusOK, videoPlaybackInfoResponse{
-				Delivery: "direct", URL: fmt.Sprintf("/api/media/%d/stream?%s", locationID, query.Encode()),
+				Delivery: "direct", Conversion: "none", URL: fmt.Sprintf("/api/media/%d/stream?%s", locationID, query.Encode()),
 				DurationSeconds: source.Duration, Seekable: true,
+			})
+			return
+		}
+		if s.videoRemuxAvailable(r.Context(), source, capabilities) {
+			writeJSON(w, http.StatusOK, videoPlaybackInfoResponse{
+				Delivery:        "hls",
+				Conversion:      "remux",
+				URL:             fmt.Sprintf("/api/media/%d/hls/index.m3u8?v=%s", locationID, videoRemuxRevision(source)),
+				DurationSeconds: source.Duration,
+				Seekable:        true,
 			})
 			return
 		}
 	}
 	writeJSON(w, http.StatusOK, videoPlaybackInfoResponse{
 		Delivery:        "hls",
+		Conversion:      "transcode",
 		URL:             fmt.Sprintf("/api/media/%d/hls/index.m3u8?v=%s", locationID, source.Revision),
 		DurationSeconds: source.Duration,
 		Seekable:        true,
 	})
+}
+
+// videoRemuxAvailable reports whether the client gets a remux of the source:
+// it decodes the video stream, the source's bitrate and keyframes fit the
+// remux limits, and a remux of this revision has not failed recently.
+func (s *Server) videoRemuxAvailable(ctx context.Context, source hlsPlaybackSource, capabilities map[string]bool) bool {
+	info, err := os.Stat(source.Path)
+	if err != nil || !remuxableVideo(source, capabilities, info.Size()) ||
+		s.mediaPreparationFailures.failedRecently(mediaPreparationFailureKey(videoRemuxHLSProfile.name, source.Path, info)) {
+		return false
+	}
+	_, err = s.videoKeyframeIndex(ctx, source, videoKeyframeIndexInfoWait)
+	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, errRealtimeResourceBusy) {
+		slog.Info("video is transcoded because it cannot be remuxed", "location_id", source.LocationID, "error", err)
+	}
+	return err == nil
 }
 
 func sortedPlaybackCapabilities(capabilities map[string]bool) []string {
@@ -121,12 +164,35 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 		s.writeHLSPlaybackError(w, err, "media")
 		return
 	}
+	profile := &videoHLSProfile
+	if source.Profile == playbackProfileAudio {
+		profile = &audioHLSProfile
+	}
 	if revision := strings.TrimSpace(r.URL.Query().Get("v")); revision != "" && revision != source.Revision {
-		s.writeHLSPlaybackError(w, errHLSPlaybackSourceChanged, source.Profile)
-		return
+		// Playback info names a remux by its own revision of the source.
+		if source.Profile != playbackProfileVideo || revision != videoRemuxRevision(source) {
+			s.writeHLSPlaybackError(w, errHLSPlaybackSourceChanged, source.Profile)
+			return
+		}
+		if !copyableH264(firstPlaybackStream(source.Probe, "video")) {
+			s.writeHLSPlaybackError(w, errHLSMediaUnsupported, source.Profile)
+			return
+		}
+		keyframes, err := s.videoKeyframeIndex(r.Context(), source, hlsSegmentWait)
+		if err != nil {
+			if errors.Is(err, errVideoKeyframeIndexUnusable) {
+				err = errHLSMediaUnsupported
+			}
+			s.writeHLSPlaybackError(w, err, source.Profile)
+			return
+		}
+		source.Revision, source.Keyframes, profile = revision, keyframes, &videoRemuxHLSProfile
 	}
 	if file == "index.m3u8" {
 		playlist := buildHLSPlaylist(source.Duration, source.Revision)
+		if source.Keyframes != nil {
+			playlist = buildHLSPlaylistOfSegments(source.Keyframes.durations(), source.Revision)
+		}
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "private, no-cache")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -136,13 +202,9 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	segmentIndex, err := strconv.Atoi(segmentMatch[1])
-	if err != nil || segmentIndex < 0 || segmentIndex >= hlsSegmentCount(source.Duration) {
+	if err != nil || segmentIndex < 0 || segmentIndex >= source.segmentCount() {
 		writeAPIError(w, http.StatusNotFound, "hls_segment_not_found", "playback segment was not found", false)
 		return
-	}
-	profile := &videoHLSProfile
-	if source.Profile == playbackProfileAudio {
-		profile = &audioHLSProfile
 	}
 	err = s.serveHLSSessionSegment(w, r, profile, source, segmentIndex)
 	if err != nil {
@@ -264,16 +326,24 @@ func hlsSegmentWindow(duration float64, index int) (float64, float64) {
 }
 
 func buildHLSPlaylist(duration float64, revision string) string {
+	durations := make([]float64, hlsSegmentCount(duration))
+	for index := range durations {
+		_, durations[index] = hlsSegmentWindow(duration, index)
+	}
+	return buildHLSPlaylistOfSegments(durations, revision)
+}
+
+func buildHLSPlaylistOfSegments(durations []float64, revision string) string {
 	var playlist strings.Builder
 	playlist.WriteString("#EXTM3U\n")
 	playlist.WriteString("#EXT-X-VERSION:3\n")
-	playlist.WriteString("#EXT-X-TARGETDURATION:6\n")
+	// The target duration is the longest segment rounded up.
+	fmt.Fprintf(&playlist, "#EXT-X-TARGETDURATION:%d\n", int(math.Ceil(slices.Max(durations)-0.0005)))
 	playlist.WriteString("#EXT-X-MEDIA-SEQUENCE:0\n")
 	playlist.WriteString("#EXT-X-PLAYLIST-TYPE:VOD\n")
 	playlist.WriteString("#EXT-X-INDEPENDENT-SEGMENTS\n")
-	for index := 0; index < hlsSegmentCount(duration); index++ {
-		_, segmentDuration := hlsSegmentWindow(duration, index)
-		fmt.Fprintf(&playlist, "#EXTINF:%.3f,\nsegment-%06d.ts?v=%s\n", segmentDuration, index, revision)
+	for index, duration := range durations {
+		fmt.Fprintf(&playlist, "#EXTINF:%.3f,\nsegment-%06d.ts?v=%s\n", duration, index, revision)
 	}
 	playlist.WriteString("#EXT-X-ENDLIST\n")
 	return playlist.String()
@@ -302,9 +372,9 @@ func serveCachedHLSSegment(w http.ResponseWriter, r *http.Request, absolutePath 
 	return nil
 }
 
-func validCachedHLSSegment(path string) bool {
+func validCachedHLSSegment(path string, maximumBytes int64) bool {
 	info, err := os.Stat(path)
-	return err == nil && info.Mode().IsRegular() && info.Size() > 0 && info.Size() <= hlsSegmentMaximumBytes
+	return err == nil && info.Mode().IsRegular() && info.Size() > 0 && info.Size() <= maximumBytes
 }
 
 // Video HLS encodes stop a few minutes ahead of the viewer and when no request
@@ -319,12 +389,13 @@ var videoHLSProfile = hlsEncodeProfile{
 	refillLeadSegments: 20,
 	// Restarting at a later segment produces it sooner than encoding the
 	// segments before it.
-	waitWindowSegments: 2,
-	maximumSegments:    60 + 20,
+	waitWindowSegments:  2,
+	maximumSegments:     60 + 20,
+	segmentMaximumBytes: hlsSegmentMaximumBytes,
 	// 2800 kbit/s video and 128 kbit/s audio are about 2.2 MB per segment, and
 	// the rate control buffer allows a segment to exceed that average.
-	segmentReservationBytes: 3 << 20,
-	idleTimeout:             time.Minute,
+	reservation: fixedHLSSegmentReservation(60+20, 3<<20),
+	idleTimeout: time.Minute,
 	args: func(source hlsPlaybackSource, outputDir string, startIndex int) []string {
 		return videoHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Duration)
 	},

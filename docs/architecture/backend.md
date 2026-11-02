@@ -73,8 +73,9 @@ The backend is a Go HTTP API with SQLite persistence.
 - Publish complete-duration HLS VOD manifests for incompatible local or cached
   audio and video under one route, `GET /api/media/{id}/hls/{file}`, which
   branches on the media kind. Segments of both come from one continuous
-  encode per source revision, so segment boundaries stay seamless. Both are
-  quota-bounded and live under the disposable cache root.
+  encode per source revision, so segment boundaries stay seamless; H.264 video
+  the client decodes is copied rather than transcoded. Both are quota-bounded
+  and live under the disposable cache root.
 - Prepare incompatible local or cached audio as complete, quota-bounded MP3
   cache files with duration and HTTP Range support for clients without HLS
   playback, preserving original media.
@@ -132,44 +133,81 @@ prepares an unplayed queue, work, or library in the background, because
 speculative preparation would spend the two transcode slots and the shared
 cache quota without a demonstrated benefit.
 
-An HLS encode runs FFmpeg's HLS muxer from the requested segment, with the
-segment's start as both input seek and output timestamp offset, so every
-encode of a source revision writes one shared timeline. Video timestamps start
-10 seconds in, which keeps B-frame decode timestamps positive from the first
-segment, so FFmpeg never shifts one encode's timeline against another's. A
-video encode places keyframes only on the six-second grid, without scene-cut
-keyframes, converts to a constant frame rate of at most 60 fps, and clones the
-last frame of a video stream that ends early up to the published duration; the
-muxer cuts segments at those keyframes, so every encode cuts them at the
-playlist's boundaries, within one frame. Strict interleaving keeps each audio
-packet in the segment of its timestamp. Each segment is written beside its
-final name and renamed when complete, so a segment file that exists is
-complete.
+`GET /api/media/{id}/playback` chooses how a local or cached video plays and
+says so in `conversion`, which clients may ignore: `none` serves the file
+directly, `remux` copies its video into HLS and encodes only the audio, and
+`transcode` converts both. A video is remuxed when it does not play directly,
+its stream is 8-bit 4:2:0 H.264 in Baseline, Main, or High profile at a
+profile and level the client reports decoding, its average bitrate is at most
+20 Mbit/s, its keyframes fit the segment limits below, and a remux of the
+revision has not failed recently. A `forceTranscode` request, which the
+player sends after direct playback fails, skips the remux, because a remux
+would hand the same video stream to the same decoder. A remux playlist is named
+by its own revision, derived from the source revision, so the HLS route serves
+both from one path.
+
+Copied video can be cut only at its keyframes, so a remux playlist follows a
+keyframe index instead of the six-second grid. FFprobe reads the timestamps
+and flags of the video packets, one scan at a time per server, for at most a
+minute and 64 MiB of output. Each segment starts at the keyframe nearest six
+seconds after the previous start, at least three seconds later; a segment
+longer than 15 seconds, including one before the first keyframe, makes the
+index unusable. Playback info waits five seconds for the index and otherwise
+offers a transcode while the scan continues. Results are kept in memory per
+source revision for the 64 most recent files, and a failed scan is retried
+after ten minutes.
+
+An HLS encode runs from the requested segment and writes the timestamps of one
+shared timeline for its source revision, so segments from different encodes
+fit together. Video timestamps start 10 seconds in, which keeps B-frame decode
+timestamps positive from the first segment, so FFmpeg never shifts one
+encode's timeline against another's.
+
+- Audio and transcoded video use FFmpeg's HLS muxer, with the segment's start
+  as both input seek and output timestamp offset. A video transcode places
+  keyframes only on the six-second grid, without scene-cut keyframes, converts
+  to a constant frame rate of at most 60 fps, and clones the last frame of a
+  video stream that ends early up to the published duration; the muxer cuts
+  segments at those keyframes, so every encode cuts them at the playlist's
+  boundaries, within one frame. Each segment is written beside its final name
+  and renamed when complete.
+- A remux seeks to the source timestamp just before the segment's keyframe,
+  keeps source timestamps, and discards packets before that time, so the
+  keyframe is the first packet. FFmpeg's segment muxer cuts at the indexed
+  keyframes by counting video packets from that first packet. It writes each
+  segment under a temporary name, and the session renames a segment once the
+  next one starts or the encode reaches the end of the input.
+
+Strict interleaving keeps each audio packet in the segment of its timestamp. A
+segment file that exists under its final name is complete.
 
 A missing segment close to the running encode's output waits up to 45 seconds
 for it; any other missing segment stops that encode and starts one there. For
-video, starting at a later segment produces it sooner than encoding the ones
-before it. An encode stops when it is far enough ahead of the furthest segment
-requested, after its segment budget, when it reaches a segment an earlier
-encode already produced, after 20 minutes, and, for video, when no request has
-asked or waited for a segment for a minute. Serving a segment while no encode
-runs starts the next one in the background when a segment within the refill
-lead is missing. An encode takes one of the two transcode slots and a quota
-reservation for its segment budget, and fails when a segment exceeds 16 MiB.
+transcoded video, starting at a later segment produces it sooner than encoding
+the ones before it. An encode stops when it is far enough ahead of the
+furthest segment requested, after its segment budget, when it reaches a
+segment an earlier encode already produced, after 20 minutes, and, for video,
+when no request has asked or waited for a segment for a minute. Serving a
+segment while no encode runs starts the next one in the background when a
+segment within the refill lead is missing. An encode takes one of the two
+transcode slots and a quota reservation for its segment budget, and fails when
+a segment exceeds the segment size limit.
 
-| Limit | Audio | Video |
-| --- | --- | --- |
-| Wait instead of restarting | within 20 segments | within 2 segments |
-| Stop ahead of the furthest request | 300 segments | 60 segments |
-| Refill lead | 100 segments | 20 segments |
-| Segment budget | 400 segments | 80 segments |
-| Quota reservation per segment | 256 KiB | 3 MiB |
-| Stop without requests | none | 1 minute |
+| Limit | Audio | Transcoded video | Remuxed video |
+| --- | --- | --- | --- |
+| Wait instead of restarting | within 20 segments | within 2 segments | within 10 segments |
+| Stop ahead of the furthest request | 300 segments | 60 segments | 20 segments |
+| Refill lead | 100 segments | 20 segments | 10 segments |
+| Segment budget | 400 segments | 80 segments | 30 segments |
+| Quota reservation | 256 KiB per segment | 3 MiB per segment | 1.25 times the source bytes of the budget, plus 192 kbit/s audio |
+| Segment size limit | 16 MiB | 16 MiB | 64 MiB |
+| Stop without requests | none | 1 minute | 1 minute |
 
 Encodes join where playback seeks or a refill starts, and audio there can
 overlap or miss a few tens of milliseconds. A video stream with no frame after
 the requested position, such as a single still picture, produces no segment
-boundaries, so seeking into it fails.
+boundaries when transcoded, so seeking into it fails; a remux of it has no
+usable keyframe index and is not offered.
 
 Query planner statistics are refreshed by one bounded background worker after
 committed bulk changes; GET requests never run analysis. Its triggers and

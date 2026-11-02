@@ -103,11 +103,11 @@ func TestVideoHLSSessionStopsAheadIdleOrOverTheByteLimit(t *testing.T) {
 	ahead := t.TempDir()
 	session := newSession(ahead)
 	writeSegments(ahead, 0, videoHLSProfile.aheadSegments+5)
-	if stop, err := advanceHLSSession(session, time.Now()); !stop || err != nil || session.next != videoHLSProfile.aheadSegments {
+	if stop, err := advanceHLSSession(session, time.Now(), false); !stop || err != nil || session.next != videoHLSProfile.aheadSegments {
 		t.Fatalf("session ahead of the viewer: next = %d, stop %t, %v", session.next, stop, err)
 	}
 	session.observe(10)
-	if stop, err := advanceHLSSession(session, time.Now()); stop || err != nil || session.next != videoHLSProfile.aheadSegments+5 {
+	if stop, err := advanceHLSSession(session, time.Now(), false); stop || err != nil || session.next != videoHLSProfile.aheadSegments+5 {
 		t.Fatalf("viewer moved on: next = %d, stop %t, %v", session.next, stop, err)
 	}
 
@@ -115,16 +115,16 @@ func TestVideoHLSSessionStopsAheadIdleOrOverTheByteLimit(t *testing.T) {
 	session = newSession(idle)
 	later := time.Now().Add(videoHLSProfile.idleTimeout)
 	session.waiting = 1
-	if stop, _ := advanceHLSSession(session, later); stop {
+	if stop, _ := advanceHLSSession(session, later, false); stop {
 		t.Fatal("a session with a waiting request stopped as idle")
 	}
 	session.waiting = 0
-	if stop, err := advanceHLSSession(session, later); !stop || err != nil {
+	if stop, err := advanceHLSSession(session, later, false); !stop || err != nil {
 		t.Fatalf("idle session: stop %t, %v", stop, err)
 	}
 	if stop, _ := advanceHLSSession(&hlsSession{
 		profile: &audioHLSProfile, dir: idle, startedAt: time.Now(), changed: make(chan struct{}),
-	}, later); stop {
+	}, later, false); stop {
 		t.Fatal("audio sessions have no idle limit")
 	}
 
@@ -138,7 +138,7 @@ func TestVideoHLSSessionStopsAheadIdleOrOverTheByteLimit(t *testing.T) {
 			t.Fatal(err)
 		}
 		session = newSession(oversized)
-		if stop, err := advanceHLSSession(session, time.Now()); !stop || !errors.Is(err, errHLSTranscodeUnavailable) || session.next != 0 {
+		if stop, err := advanceHLSSession(session, time.Now(), false); !stop || !errors.Is(err, errHLSTranscodeUnavailable) || session.next != 0 {
 			t.Fatalf("%s over the byte limit: next = %d, stop %t, %v", name, session.next, stop, err)
 		}
 	}
@@ -456,7 +456,7 @@ func TestVideoHLSSessionStopsAheadOfTheViewer(t *testing.T) {
 		t.Fatalf("cached segment response = %d", response.Code)
 	}
 	deadline := time.Now().Add(time.Minute)
-	for !validCachedHLSSegment(fixture.segmentPath(revision, 69)) {
+	for !validCachedHLSSegment(fixture.segmentPath(revision, 69), hlsSegmentMaximumBytes) {
 		if time.Now().After(deadline) {
 			t.Fatal("serving near the gap did not refill it")
 		}

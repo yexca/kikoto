@@ -145,13 +145,16 @@ the production player against the real playback handlers on a single-track
 queue (20 samples per kind, 12 for cold compatibility). It finishes with the
 upstream request count and the prepared cache file count and bytes.
 
-`TestVideoHLSPlaybackPerformance` generates a 240-second 1080p 29.97 fps
-MPEG-4 Part 2 AVI with temporal noise and MP3 audio, and requests video HLS
-segments through the segment handler with a changed source revision per
-sample: the first segment (6 samples), segment 30 right after segment 0 to
-time a seek (6 samples), and segments 0 to 19 in order (2 runs), reported per
-segment and as a multiple of realtime. An isolated experiment then times one
-FFmpeg encode of the whole file and reports its CPU time per minute of video.
+`TestVideoHLSPlaybackPerformance` generates two 240-second 1080p 29.97 fps
+files with temporal noise: an MPEG-4 Part 2 AVI with MP3 audio, which is
+transcoded, and an H.264 High Matroska file with 5.1 AC-3 audio, which a client
+that decodes H.264 High gets remuxed. For each it requests playback info and
+segments with a changed source revision per sample: playback info and the first
+segment (6 samples), the segment three quarters through right after the first
+to time a seek (6 samples), and the first half of the playlist in order (2
+runs), reported per segment and as a multiple of realtime. An isolated
+experiment then times one FFmpeg run over the whole file, the transcode or the
+remux, and reports its CPU time per minute of video.
 
 ### Additional scenarios
 

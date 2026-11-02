@@ -22,5 +22,11 @@
   boundary, later segments arrive without per-segment startup, and one video
   holds a single transcode slot. Segments converted before the upgrade are
   not reused.
+- H.264 video the browser decodes but cannot play in its container or with
+  its audio, such as H.264 in Matroska, AVI, MPEG-TS, or FLV, or in MP4 with
+  AC-3, DTS, FLAC, or PCM audio, keeps its source picture: its video is copied
+  into HLS segments cut at its own keyframes and only the audio is converted.
+  Video with keyframes more than 15 seconds apart or above 20 Mbit/s is still
+  transcoded to 720p.
 
 </details>
