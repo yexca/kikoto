@@ -48,11 +48,18 @@ func TestAudioHLSFFmpegArgsContinueOneTimeline(t *testing.T) {
 }
 
 func TestAudioHLSSessionStopsAheadOfTheListenerOrAtEarlierOutput(t *testing.T) {
-	newSession := func(dir string, start int) *audioHLSSession {
-		return &audioHLSSession{
-			dir: dir, start: start, startedAt: time.Now(), next: start, requested: start,
-			changed: make(chan struct{}),
+	newSession := func(dir string, start int) *hlsSession {
+		return &hlsSession{
+			profile: &audioHLSProfile, dir: dir, start: start, startedAt: time.Now(), next: start, requested: start,
+			requestedAt: time.Now(), changed: make(chan struct{}),
 		}
+	}
+	advance := func(session *hlsSession) bool {
+		stop, err := advanceHLSSession(session, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return stop
 	}
 	writeSegments := func(dir string, from int, to int, modified time.Time) {
 		for index := from; index < to; index++ {
@@ -68,20 +75,20 @@ func TestAudioHLSSessionStopsAheadOfTheListenerOrAtEarlierOutput(t *testing.T) {
 
 	ahead := t.TempDir()
 	session := newSession(ahead, 4)
-	writeSegments(ahead, 4, 4+audioHLSAheadSegments+5, time.Now().Add(time.Second))
-	if !advanceAudioHLSSession(session) || session.next != 4+audioHLSAheadSegments {
-		t.Fatalf("session ahead of the listener: next = %d, want %d and a stop", session.next, 4+audioHLSAheadSegments)
+	writeSegments(ahead, 4, 4+audioHLSProfile.aheadSegments+5, time.Now().Add(time.Second))
+	if !advance(session) || session.next != 4+audioHLSProfile.aheadSegments {
+		t.Fatalf("session ahead of the listener: next = %d, want %d and a stop", session.next, 4+audioHLSProfile.aheadSegments)
 	}
 	session.observe(10)
-	if advanceAudioHLSSession(session) || session.next != 4+audioHLSAheadSegments+5 {
-		t.Fatalf("listener moved on: next = %d, want %d and no stop", session.next, 4+audioHLSAheadSegments+5)
+	if advance(session) || session.next != 4+audioHLSProfile.aheadSegments+5 {
+		t.Fatalf("listener moved on: next = %d, want %d and no stop", session.next, 4+audioHLSProfile.aheadSegments+5)
 	}
 
 	earlier := t.TempDir()
 	session = newSession(earlier, 0)
 	writeSegments(earlier, 0, 2, time.Now().Add(time.Second))
 	writeSegments(earlier, 2, 3, time.Now().Add(-time.Hour))
-	if !advanceAudioHLSSession(session) || session.next != 2 {
+	if !advance(session) || session.next != 2 {
 		t.Fatalf("session reaching earlier output: next = %d, want 2 and a stop", session.next)
 	}
 }
@@ -171,7 +178,7 @@ func TestAudioHLSStartsAtALaterSegmentAndContinuesOneEncode(t *testing.T) {
 
 	// The same encode continues to the end of the file and then exits.
 	deadline := time.Now().Add(20 * time.Second)
-	for server.audioHLS.get("814/"+revision) != nil {
+	for server.hlsSessions.get("transcodes/hls-audio/814/"+revision) != nil {
 		if time.Now().After(deadline) {
 			t.Fatal("audio HLS session did not finish")
 		}
@@ -201,7 +208,7 @@ func TestAudioHLSStartsAtALaterSegmentAndContinuesOneEncode(t *testing.T) {
 	if next.Code != http.StatusOK || next.Body.Len() == 0 || next.Header().Get("Cache-Control") != "private, max-age=31536000, immutable" {
 		t.Fatalf("produced segment response = %d, %d bytes", next.Code, next.Body.Len())
 	}
-	if server.audioHLS.get("814/"+revision) != nil {
+	if server.hlsSessions.get("transcodes/hls-audio/814/"+revision) != nil {
 		t.Fatal("serving a produced segment started another session")
 	}
 }

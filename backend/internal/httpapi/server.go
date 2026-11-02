@@ -67,7 +67,7 @@ type Server struct {
 	remoteImageTokens              remoteImageTokenSealer
 	cachePathLocks                 cachePathLocker
 	audioTranscodeLocks            cachePathLocker
-	audioHLS                       audioHLSSessions
+	hlsSessions                    hlsSessions
 	mediaPreparationFailures       mediaPreparationFailures
 	loudnessMeasurements           loudnessMeasurementSlot
 	metadataSyncMu                 sync.Mutex

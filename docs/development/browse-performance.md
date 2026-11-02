@@ -69,7 +69,7 @@ make recommendation-performance RECOMMENDATION_PERF_ARGS="--baseline <git-ref>"
 | --- | --- |
 | `make browse-performance` | `TestLibraryPagePerformance` (`internal/library`), then `TestBrowseMatrixPerformance`, `TestWorkCodeHTTPPerformance`, and `TestTranslationCoveragePerformance` (`internal/httpapi`), one package at a time with `KIKOTO_BROWSE_PERF=1`. |
 | `make browse-production-performance` | Builds the frontend, starts a production `vite preview` on `127.0.0.1:3102` unless `PLAYWRIGHT_BASE_URL` names an existing preview, and runs `browse-production-performance.spec.ts` on desktop Chromium with one worker. |
-| `make playback-performance` | Builds the frontend and runs `TestPlaybackStartupPerformance` with `KIKOTO_PLAYBACK_PERF=1`. The test serves the built assets itself and starts `playback-production-performance.spec.ts`. |
+| `make playback-performance` | Builds the frontend and runs `TestPlaybackStartupPerformance` and `TestVideoHLSPlaybackPerformance` with `KIKOTO_PLAYBACK_PERF=1`. The first serves the built assets itself and starts `playback-production-performance.spec.ts`. |
 | `make recommendation-performance` | Runs the opt-in recommendation scale experiment over 50,000 and 100,000 synthetic works, 100 users, and 20 concurrent cold requests. |
 
 The browser and playback targets require installed frontend dependencies and a
@@ -144,6 +144,14 @@ time and output size (12 samples each). The test then runs
 the production player against the real playback handlers on a single-track
 queue (20 samples per kind, 12 for cold compatibility). It finishes with the
 upstream request count and the prepared cache file count and bytes.
+
+`TestVideoHLSPlaybackPerformance` generates a 240-second 1080p 29.97 fps
+MPEG-4 Part 2 AVI with temporal noise and MP3 audio, and requests video HLS
+segments through the segment handler with a changed source revision per
+sample: the first segment (6 samples), segment 30 right after segment 0 to
+time a seek (6 samples), and segments 0 to 19 in order (2 runs), reported per
+segment and as a multiple of realtime. An isolated experiment then times one
+FFmpeg encode of the whole file and reports its CPU time per minute of video.
 
 ### Additional scenarios
 

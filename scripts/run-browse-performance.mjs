@@ -58,7 +58,7 @@ try {
         "test",
         "./internal/httpapi",
         "-run",
-        "^TestPlaybackStartupPerformance$",
+        "^(TestPlaybackStartupPerformance|TestVideoHLSPlaybackPerformance)$",
         "-count=1",
         "-v",
       ],

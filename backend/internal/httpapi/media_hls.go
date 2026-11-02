@@ -6,14 +6,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
-	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -23,11 +20,13 @@ import (
 )
 
 const (
-	hlsProfileVersion                = "hls-v1-720p"
-	hlsSegmentDurationSeconds        = 6.0
-	hlsMaximumDurationSeconds        = 24 * 60 * 60
-	hlsSegmentMaximumBytes     int64 = 16 << 20
-	hlsSegmentTranscodeTimeout       = 2 * time.Minute
+	hlsProfileVersion               = "hls-v2-720p"
+	videoHLSSessionPlaylist         = ".video-hls-session.m3u8"
+	hlsSegmentDurationSeconds       = 6.0
+	hlsMaximumDurationSeconds       = 24 * 60 * 60
+	hlsSegmentMaximumBytes    int64 = 16 << 20
+	// Video segment timestamps start here instead of at zero.
+	videoHLSTimelineOffsetSeconds = 10.0
 )
 
 var (
@@ -103,8 +102,8 @@ func sortedPlaybackCapabilities(capabilities map[string]bool) []string {
 }
 
 // serveMediaHLS serves the HLS VOD playlist and segments of a local or cached
-// video or audio file. Video segments are generated one at a time; audio
-// segments come from a continuous encoding session (see media_audio_hls.go).
+// video or audio file. Segments come from continuous encoding sessions (see
+// media_hls_session.go).
 func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 	file := strings.TrimSpace(r.PathValue("file"))
 	segmentMatch := hlsSegmentPattern.FindStringSubmatch(file)
@@ -141,11 +140,11 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "hls_segment_not_found", "playback segment was not found", false)
 		return
 	}
+	profile := &videoHLSProfile
 	if source.Profile == playbackProfileAudio {
-		err = s.serveAudioHLSSegment(w, r, source, segmentIndex)
-	} else {
-		err = s.serveHLSSegment(w, r, source, segmentIndex)
+		profile = &audioHLSProfile
 	}
+	err = s.serveHLSSessionSegment(w, r, profile, source, segmentIndex)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			slog.Warn("playback segment preparation failed", "location_id", source.LocationID, "profile", source.Profile, "segment", segmentIndex, "error", err)
@@ -280,60 +279,6 @@ func buildHLSPlaylist(duration float64, revision string) string {
 	return playlist.String()
 }
 
-func (s *Server) serveHLSSegment(w http.ResponseWriter, r *http.Request, source hlsPlaybackSource, index int) error {
-	relPath := path.Join(
-		transcodeCacheRootRelative,
-		"hls",
-		strconv.FormatInt(source.LocationID, 10),
-		source.Revision,
-		fmt.Sprintf("segment-%06d.ts", index),
-	)
-	absolutePath, err := safeCachePath(s.cfg.CacheRoot, relPath)
-	if err != nil {
-		return err
-	}
-	s.transcodeCacheActivityMu.RLock()
-	defer s.transcodeCacheActivityMu.RUnlock()
-
-	// A cached segment only needs its path lock. New segments reserve quota
-	// before taking that lock so LRU eviction never waits on a path held by a
-	// request that is itself waiting for the quota lock.
-	releasePath, err := s.acquireCachePathLock(r.Context(), relPath)
-	if err != nil {
-		return err
-	}
-	if validCachedHLSSegment(absolutePath) {
-		defer releasePath()
-		return serveCachedHLSSegment(w, r, absolutePath)
-	}
-	releasePath()
-
-	releaseReservation, err := s.reserveTranscodeCache(r.Context(), hlsSegmentMaximumBytes)
-	if err != nil {
-		return err
-	}
-	defer releaseReservation()
-	releasePath, err = s.acquireCachePathLock(r.Context(), relPath)
-	if err != nil {
-		return err
-	}
-	defer releasePath()
-	if !validCachedHLSSegment(absolutePath) {
-		_, _, _ = s.removeCacheFileUnlocked(relPath)
-		start, duration := hlsSegmentWindow(source.Duration, index)
-		if duration <= 0 {
-			return errHLSMediaUnsupported
-		}
-		if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil {
-			return err
-		}
-		if err := s.generateHLSSegment(r.Context(), source.Path, absolutePath, start, duration); err != nil {
-			return err
-		}
-	}
-	return serveCachedHLSSegment(w, r, absolutePath)
-}
-
 func serveCachedHLSSegment(w http.ResponseWriter, r *http.Request, absolutePath string) error {
 	file, err := os.Open(absolutePath)
 	if err != nil {
@@ -362,112 +307,62 @@ func validCachedHLSSegment(path string) bool {
 	return err == nil && info.Mode().IsRegular() && info.Size() > 0 && info.Size() <= hlsSegmentMaximumBytes
 }
 
-func (s *Server) generateHLSSegment(ctx context.Context, inputPath string, outputPath string, start float64, duration float64) error {
-	transcodeContext, cancel := context.WithTimeout(ctx, hlsSegmentTranscodeTimeout)
-	defer cancel()
-	release, err := s.acquireRealtimeTranscode(transcodeContext)
-	if err != nil {
-		return err
-	}
-	defer release()
-	ffmpegPath, err := exec.LookPath("ffmpeg")
-	if err != nil {
-		return fmt.Errorf("%w: ffmpeg executable was not found", errHLSTranscodeUnavailable)
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(outputPath), ".hls-segment-*.part")
-	if err != nil {
-		return err
-	}
-	temporaryPath := temporary.Name()
-	defer func() {
-		_ = temporary.Close()
-		_ = os.Remove(temporaryPath)
-	}()
-	command := exec.CommandContext(transcodeContext, ffmpegPath, hlsSegmentFFmpegArgs(inputPath, start, duration)...)
-	diagnostics := &transcodeDiagnosticOutput{}
-	command.Stderr = diagnostics
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	if err := command.Start(); err != nil {
-		return fmt.Errorf("%w: command failed to start", errHLSTranscodeUnavailable)
-	}
-	written, copyErr := io.Copy(temporary, io.LimitReader(stdout, hlsSegmentMaximumBytes+1))
-	if written > hlsSegmentMaximumBytes {
-		cancel()
-		_ = stdout.Close()
-		_ = command.Wait()
-		return fmt.Errorf("%w: segment exceeded its byte limit", errHLSTranscodeUnavailable)
-	}
-	waitErr := command.Wait()
-	if copyErr != nil {
-		return copyErr
-	}
-	if waitErr != nil {
-		if err := transcodeContext.Err(); err != nil {
-			if parentErr := ctx.Err(); parentErr != nil {
-				return parentErr
-			}
-			return fmt.Errorf("%w: command timed out", errHLSTranscodeUnavailable)
-		}
-		return fmt.Errorf("%w: command failed: %s", errHLSTranscodeUnavailable, diagnostics.String())
-	}
-	if written == 0 {
-		return fmt.Errorf("%w: command produced no output", errHLSTranscodeUnavailable)
-	}
-	if err := temporary.Sync(); err != nil {
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(temporaryPath, outputPath); err != nil {
-		return err
-	}
-	return nil
+// Video HLS encodes stop a few minutes ahead of the viewer and when no request
+// arrives for a minute, because a 720p H.264 encode keeps a transcode slot and
+// two CPU threads busy for as long as it runs.
+var videoHLSProfile = hlsEncodeProfile{
+	name:     "video-hls",
+	cacheDir: "hls",
+	playlist: videoHLSSessionPlaylist,
+	// Six minutes ahead of the viewer, refilled two minutes before a gap.
+	aheadSegments:      60,
+	refillLeadSegments: 20,
+	// Restarting at a later segment produces it sooner than encoding the
+	// segments before it.
+	waitWindowSegments: 2,
+	maximumSegments:    60 + 20,
+	// 2800 kbit/s video and 128 kbit/s audio are about 2.2 MB per segment, and
+	// the rate control buffer allows a segment to exceed that average.
+	segmentReservationBytes: 3 << 20,
+	idleTimeout:             time.Minute,
+	args: func(source hlsPlaybackSource, outputDir string, startIndex int) []string {
+		return videoHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Duration)
+	},
 }
 
-func hlsSegmentFFmpegArgs(input string, start float64, duration float64) []string {
-	return []string{
-		"-nostdin",
-		"-hide_banner",
-		"-loglevel", "error",
-		"-threads", "2",
-		"-filter_threads", "1",
-		"-max_alloc", "268435456",
+func videoHLSFFmpegArgs(input string, outputDir string, startIndex int, durationSeconds float64) []string {
+	start := float64(startIndex) * hlsSegmentDurationSeconds
+	formatSeconds := func(value float64) string { return strconv.FormatFloat(value, 'f', 3, 64) }
+	args := []string{
+		"-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+		"-threads", "2", "-filter_threads", "1", "-max_alloc", "268435456",
 		"-protocol_whitelist", "file,pipe",
-		"-ss", strconv.FormatFloat(start, 'f', 3, 64),
-		"-i", input,
-		"-t", strconv.FormatFloat(duration, 'f', 3, 64),
-		"-map", "0:v:0",
-		"-map", "0:a:0?",
-		"-map_metadata", "-1",
-		"-sn",
-		"-dn",
-		"-vf", "scale=w='min(1280,iw)':h='min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,pad=width=ceil(iw/2)*2:height=ceil(ih/2)*2:x=0:y=0",
-		"-c:v", "libx264",
-		"-threads:v", "2",
-		"-preset", "veryfast",
-		"-tune", "zerolatency",
-		"-crf", "24",
-		"-maxrate", "2800k",
-		"-bufsize", "5600k",
-		"-pix_fmt", "yuv420p",
-		"-g", "60",
-		"-keyint_min", "30",
-		"-sc_threshold", "0",
-		"-force_key_frames", "expr:gte(t,n_forced*2)",
-		"-c:a", "aac",
-		"-threads:a", "1",
-		"-b:a", "128k",
-		"-ac", "2",
-		"-ar", "48000",
-		"-output_ts_offset", strconv.FormatFloat(start, 'f', 3, 64),
-		"-mpegts_flags", "+resend_headers+initial_discontinuity",
-		"-muxdelay", "0",
-		"-muxpreload", "0",
-		"-f", "mpegts",
-		"pipe:1",
+		"-ss", formatSeconds(start), "-i", input,
+		"-map", "0:v:0", "-map", "0:a:0?", "-map_metadata", "-1", "-sn", "-dn",
+		// Cloning the last frame keeps a video stream ending before the audio
+		// cutting segments until the published duration, where -t ends it.
+		"-vf", "tpad=stop=-1:stop_mode=clone," +
+			"scale=w='min(1280,iw)':h='min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2," +
+			"pad=width=ceil(iw/2)*2:height=ceil(ih/2)*2:x=0:y=0",
+		"-t", formatSeconds(durationSeconds - start),
+		// A constant frame rate puts a frame at every segment boundary of a
+		// variable or sparse frame rate source.
+		"-fps_mode", "cfr", "-fpsmax", "60",
+		"-c:v", "libx264", "-threads:v", "2", "-preset", "veryfast",
+		"-crf", "24", "-maxrate", "2800k", "-bufsize", "5600k", "-pix_fmt", "yuv420p",
+		// Keyframes, where the HLS muxer cuts segments, fall only on the
+		// six-second grid that the published playlist describes.
+		"-g", "600", "-sc_threshold", "0",
+		"-force_key_frames", "expr:gte(t,n_forced*" + strconv.FormatFloat(hlsSegmentDurationSeconds, 'f', -1, 64) + ")",
+		"-c:a", "aac", "-threads:a", "1", "-b:a", "128k", "-ac", "2", "-ar", "48000",
+		// Every session writes the timestamps of one shared timeline, offset so
+		// that B-frame decode timestamps stay positive from the first segment;
+		// FFmpeg would otherwise shift only the session that starts at zero.
+		"-output_ts_offset", formatSeconds(start + videoHLSTimelineOffsetSeconds),
+		// Strict interleaving keeps each audio packet in the segment of its
+		// timestamp even when the video encoder lags behind the audio.
+		"-max_interleave_delta", "0",
+		"-muxdelay", "0", "-muxpreload", "0",
 	}
+	return append(args, hlsSegmentFFmpegOutputArgs(outputDir, videoHLSSessionPlaylist, startIndex)...)
 }

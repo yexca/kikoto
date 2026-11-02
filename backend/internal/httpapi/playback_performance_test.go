@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -314,6 +316,126 @@ func TestPlaybackStartupPerformance(t *testing.T) {
 	}
 	mu.Unlock()
 	t.Logf("resources: upstream requests=%d cache files=%d cache bytes=%d; synthetic 300s AAC -> complete MP3, two transcode slots, no background workers, no pre-preparation except explicit warm control; no NAS/device coverage", upstreamRequests.Load(), cacheFiles, cacheBytes)
+}
+
+// This measures realtime video HLS conversion of a synthetic 1080p MPEG-4 Part 2
+// AVI through the segment handler: time to the first segment, seek-to-play
+// latency, sequential segment delivery, and FFmpeg CPU per minute of video.
+// Each sample uses a new source revision, so nothing is served from the cache.
+func TestVideoHLSPlaybackPerformance(t *testing.T) {
+	if os.Getenv("KIKOTO_PLAYBACK_PERF") != "1" {
+		t.Skip("opt-in playback experiment")
+	}
+	ffmpegPath, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		t.Skip("ffprobe is not installed")
+	}
+	const durationSeconds = 240
+	dataRoot := t.TempDir()
+	relativePath := "RJ00000000/movie.avi"
+	mediaPath := filepath.Join(dataRoot, filepath.FromSlash(relativePath))
+	if err := os.MkdirAll(filepath.Dir(mediaPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Temporal noise keeps the encoder from coasting on the static test pattern.
+	fixture := exec.Command(ffmpegPath,
+		"-nostdin", "-hide_banner", "-loglevel", "error",
+		"-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30000/1001,noise=alls=6:allf=t",
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100",
+		"-t", strconv.Itoa(durationSeconds), "-c:v", "mpeg4", "-q:v", "4", "-c:a", "libmp3lame", "-b:a", "192k", "-y", mediaPath,
+	)
+	if output, err := fixture.CombinedOutput(); err != nil {
+		t.Fatalf("create video fixture: %v (%s)", err, output)
+	}
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (821, 'RJ00000000', 'Synthetic HLS video performance');
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (822, 'synthetic_local', 'Synthetic Local', 'local_folder');
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint, duration_seconds, has_audio)
+		VALUES (823, 821, 'video', 'movie.avi', 'synthetic-hls-video-performance', 240, 1);
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability, duration_seconds)
+		VALUES (824, 823, 822, 'local', ?, 'available', 240);
+	`, relativePath); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: t.TempDir()})
+	defer func() { _ = server.Shutdown(context.Background()) }()
+	var revisionCount int64
+	// coldRevision changes the file version, so every segment must be encoded again.
+	coldRevision := func() string {
+		server.hlsSessions.stopAll()
+		changed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(atomic.AddInt64(&revisionCount, 1)) * time.Second)
+		if err := os.Chtimes(mediaPath, changed, changed); err != nil {
+			t.Fatal(err)
+		}
+		server.realtimeProbeCacheMu.Lock()
+		server.realtimeProbeCache = nil
+		server.realtimeProbeCacheMu.Unlock()
+		source, err := server.loadHLSPlaybackSource(context.Background(), 824)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return source.Revision
+	}
+	segment := func(revision string, index int) time.Duration {
+		file := hlsSegmentName(index)
+		request := httptest.NewRequest(http.MethodGet, "/api/media/824/hls/"+file+"?v="+revision, nil)
+		request.SetPathValue("id", "824")
+		request.SetPathValue("file", file)
+		response := httptest.NewRecorder()
+		start := time.Now()
+		server.serveMediaHLS(response, request)
+		elapsed := time.Since(start)
+		if response.Code != http.StatusOK || response.Body.Len() == 0 || response.Body.Bytes()[0] != 0x47 {
+			t.Fatalf("segment %d response = %d: %s", index, response.Code, response.Body.String())
+		}
+		return elapsed
+	}
+
+	var first, seeks, sequential []time.Duration
+	for range 6 {
+		first = append(first, segment(coldRevision(), 0))
+	}
+	logBrowseTiming(t, "playback/video-hls/cold-first-segment", first, 1, 0)
+	for range 6 {
+		revision := coldRevision()
+		segment(revision, 0)
+		seeks = append(seeks, segment(revision, 30))
+	}
+	logBrowseTiming(t, "playback/video-hls/cold-seek-to-segment-30", seeks, 1, 0)
+	const sequentialSegments = 20
+	var sequentialTotal time.Duration
+	for range 2 {
+		revision := coldRevision()
+		start := time.Now()
+		for index := range sequentialSegments {
+			sequential = append(sequential, segment(revision, index))
+		}
+		sequentialTotal += time.Since(start)
+	}
+	logBrowseTiming(t, "playback/video-hls/cold-sequential-segment", sequential, 1, 0)
+	t.Logf("playback/video-hls/cold-sequential %d segments: %.2fs per run, %.1fx realtime",
+		sequentialSegments, sequentialTotal.Seconds()/2, 2*sequentialSegments*hlsSegmentDurationSeconds/sequentialTotal.Seconds())
+	server.hlsSessions.stopAll()
+
+	// Isolate FFmpeg from queueing, quota, probe and publication to measure the
+	// CPU one continuous encode spends on each minute of video.
+	cpu, wall := measureVideoHLSEncoderCPU(t, mediaPath, durationSeconds)
+	t.Logf("playback/video-hls/isolated-encoder %ds 1080p29.97 MPEG-4 -> 720p H.264: wall=%.2fs CPU=%.2fs CPU/min-of-video=%.2fs realtime=%.1fx host-cores=%d",
+		durationSeconds, wall.Seconds(), cpu.Seconds(), cpu.Seconds()*60/durationSeconds, durationSeconds/wall.Seconds(), runtime.NumCPU())
+}
+
+func measureVideoHLSEncoderCPU(t *testing.T, mediaPath string, durationSeconds float64) (time.Duration, time.Duration) {
+	t.Helper()
+	command := exec.Command("ffmpeg", videoHLSFFmpegArgs(mediaPath, t.TempDir(), 0, durationSeconds)...)
+	start := time.Now()
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("isolated encode: %v %s", err, output)
+	}
+	return command.ProcessState.UserTime() + command.ProcessState.SystemTime(), time.Since(start)
 }
 
 type playbackTimingWriter struct {

@@ -101,8 +101,8 @@ func (s *Server) scanTranscodeCacheUnlocked(ctx context.Context) (transcodeCache
 		isComplete := strings.EqualFold(filepath.Ext(entry.Name()), ".ts") || strings.EqualFold(filepath.Ext(entry.Name()), ".mp3")
 		isPartial := ((strings.HasPrefix(entry.Name(), ".hls-segment-") || strings.HasPrefix(entry.Name(), ".audio-transcode-")) &&
 			strings.EqualFold(filepath.Ext(entry.Name()), ".part")) ||
-			// An audio HLS session's playlist and unfinished segment.
-			strings.HasPrefix(entry.Name(), audioHLSSessionPlaylist) || strings.HasSuffix(entry.Name(), ".ts.tmp")
+			// An HLS session playlist or unfinished segment.
+			isHLSSessionPartial(entry.Name())
 		isStalePartial := isPartial && scannedAt.Sub(info.ModTime()) >= transcodeCachePartialMaxAge
 		if !isComplete && !isStalePartial {
 			return nil
@@ -189,8 +189,8 @@ func (s *Server) clearTranscodeCache(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
 		return
 	}
-	// Running audio encoders write into the tree that is about to be removed.
-	s.audioHLS.stopAll()
+	// Running encoders write into the tree that is about to be removed.
+	s.hlsSessions.stopAll()
 	s.transcodeCacheActivityMu.Lock()
 	defer s.transcodeCacheActivityMu.Unlock()
 	s.transcodeCacheQuotaMu.Lock()
