@@ -3,6 +3,11 @@ export type PlaybackProfile = "audio" | "video";
 type CapabilitySpec = {
   key: string;
   mime: string;
+  /**
+   * The decoding configuration of a key that MediaCapabilities must report
+   * supported and power efficient, where the browser has it.
+   */
+  decoding?: Omit<VideoConfiguration, "contentType">;
 };
 
 const audioCapabilities: CapabilitySpec[] = [
@@ -16,35 +21,106 @@ const audioCapabilities: CapabilitySpec[] = [
   { key: "audio-wav", mime: "audio/wav" },
 ];
 
+const decodeAt1080p = { width: 1920, height: 1080, bitrate: 10_000_000, framerate: 30 };
+const decodeAt2160p = { width: 3840, height: 2160, bitrate: 40_000_000, framerate: 30 };
+
+// Container keys pair a codec with an audio codec in a container; decoder keys
+// name the profile, level, and bit depth the browser decodes. The backend
+// matches a probed file against both, as media_direct_video.go describes.
 const videoCapabilities: CapabilitySpec[] = [
   { key: "video-mp4-h264-aac", mime: 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"' },
   { key: "video-mp4-h264-mp3", mime: 'video/mp4; codecs="avc1.42E01E, mp3"' },
   { key: "video-mp4-h264-noaudio", mime: 'video/mp4; codecs="avc1.42E01E"' },
+  { key: "video-mp4-hvc1-aac", mime: 'video/mp4; codecs="hvc1.1.6.L93.B0, mp4a.40.2"' },
+  { key: "video-mp4-hvc1-noaudio", mime: 'video/mp4; codecs="hvc1.1.6.L93.B0"' },
+  { key: "video-mp4-hev1-aac", mime: 'video/mp4; codecs="hev1.1.6.L93.B0, mp4a.40.2"' },
+  { key: "video-mp4-hev1-noaudio", mime: 'video/mp4; codecs="hev1.1.6.L93.B0"' },
+  { key: "video-mp4-av1-aac", mime: 'video/mp4; codecs="av01.0.04M.08, mp4a.40.2"' },
+  { key: "video-mp4-av1-noaudio", mime: 'video/mp4; codecs="av01.0.04M.08"' },
   { key: "video-webm-vp8-opus", mime: 'video/webm; codecs="vp8, opus"' },
   { key: "video-webm-vp8-vorbis", mime: 'video/webm; codecs="vp8, vorbis"' },
   { key: "video-webm-vp8-noaudio", mime: 'video/webm; codecs="vp8"' },
   { key: "video-webm-vp9-opus", mime: 'video/webm; codecs="vp9, opus"' },
   { key: "video-webm-vp9-vorbis", mime: 'video/webm; codecs="vp9, vorbis"' },
   { key: "video-webm-vp9-noaudio", mime: 'video/webm; codecs="vp9"' },
+  { key: "video-webm-av1-opus", mime: 'video/webm; codecs="av01.0.04M.08, opus"' },
+  { key: "video-webm-av1-noaudio", mime: 'video/webm; codecs="av01.0.04M.08"' },
+  { key: "video-mkv-h264-aac", mime: 'video/x-matroska; codecs="avc1.42E01E, mp4a.40.2"' },
+  { key: "video-mkv-h264-opus", mime: 'video/x-matroska; codecs="avc1.42E01E, opus"' },
+  { key: "video-mkv-h264-noaudio", mime: 'video/x-matroska; codecs="avc1.42E01E"' },
+  { key: "video-mkv-vp9-aac", mime: 'video/x-matroska; codecs="vp9, mp4a.40.2"' },
+  { key: "video-h264-main", mime: 'video/mp4; codecs="avc1.4D401F"' },
+  { key: "video-h264-high", mime: 'video/mp4; codecs="avc1.64002A"' },
+  { key: "video-h264-high-l52", mime: 'video/mp4; codecs="avc1.640034"' },
+  { key: "video-hevc-main", mime: 'video/mp4; codecs="hvc1.1.6.L123.B0"', decoding: decodeAt1080p },
+  { key: "video-hevc-main-l51", mime: 'video/mp4; codecs="hvc1.1.6.L153.B0"', decoding: decodeAt2160p },
+  { key: "video-hevc-main10", mime: 'video/mp4; codecs="hvc1.2.4.L123.B0"', decoding: decodeAt1080p },
+  { key: "video-hevc-main10-l51", mime: 'video/mp4; codecs="hvc1.2.4.L153.B0"', decoding: decodeAt2160p },
+  { key: "video-av1-main", mime: 'video/mp4; codecs="av01.0.09M.08"', decoding: decodeAt1080p },
+  { key: "video-av1-main-l51", mime: 'video/mp4; codecs="av01.0.13M.08"', decoding: decodeAt2160p },
+  { key: "video-av1-main10", mime: 'video/mp4; codecs="av01.0.09M.10"', decoding: decodeAt1080p },
+  { key: "video-av1-main10-l51", mime: 'video/mp4; codecs="av01.0.13M.10"', decoding: decodeAt2160p },
+  { key: "video-vp9-profile2", mime: 'video/webm; codecs="vp09.02.10.10"' },
 ];
 
 function capabilitySpecs(profile: PlaybackProfile) {
   return profile === "audio" ? audioCapabilities : videoCapabilities;
 }
 
-export function playbackCapabilities(profile: PlaybackProfile): string[] {
-  if (typeof document === "undefined") return [];
+function playbackElement(profile: PlaybackProfile) {
+  if (typeof document === "undefined") return null;
   const element = document.createElement(profile);
-  if (typeof element.canPlayType !== "function") return [];
+  return typeof element.canPlayType === "function" ? element : null;
+}
+
+function canPlay(element: HTMLMediaElement, mime: string) {
+  try {
+    return element.canPlayType(mime) !== "";
+  } catch {
+    return false;
+  }
+}
+
+function mediaCapabilities() {
+  const capabilities = typeof navigator === "undefined" ? undefined : navigator.mediaCapabilities;
+  return typeof capabilities?.decodingInfo === "function" ? capabilities : null;
+}
+
+/**
+ * The capabilities the media element reports synchronously. A key that needs
+ * MediaCapabilities is left out where the browser has it, because only
+ * {@link videoPlaybackCapabilities} can wait for its answer.
+ */
+export function playbackCapabilities(profile: PlaybackProfile): string[] {
+  const element = playbackElement(profile);
+  if (!element) return [];
+  const verifies = mediaCapabilities() !== null;
   return capabilitySpecs(profile)
-    .filter(({ mime }) => {
+    .filter(({ mime, decoding }) => !(decoding && verifies) && canPlay(element, mime))
+    .map(({ key }) => key);
+}
+
+/**
+ * The video capabilities, with HEVC and AV1 decoder keys kept only when
+ * MediaCapabilities reports them supported and power efficient.
+ */
+export async function videoPlaybackCapabilities(): Promise<string[]> {
+  const element = playbackElement("video");
+  if (!element) return [];
+  const capabilities = mediaCapabilities();
+  const kept = await Promise.all(
+    videoCapabilities.map(async ({ mime, decoding }) => {
+      if (!canPlay(element, mime)) return false;
+      if (!decoding || !capabilities) return true;
       try {
-        return element.canPlayType(mime) !== "";
+        const info = await capabilities.decodingInfo({ type: "file", video: { contentType: mime, ...decoding } });
+        return info.supported && info.powerEfficient;
       } catch {
         return false;
       }
-    })
-    .map(({ key }) => key);
+    }),
+  );
+  return videoCapabilities.filter((_, index) => kept[index]).map(({ key }) => key);
 }
 
 export type AudioHlsPlayback = "native" | "mse";

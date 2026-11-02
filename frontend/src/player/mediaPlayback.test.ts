@@ -6,6 +6,7 @@ import {
   playbackURL,
   remoteMediaPlaybackURL,
   remoteMediaURL,
+  videoPlaybackCapabilities,
 } from "./mediaPlayback";
 
 describe("media playback URLs", () => {
@@ -51,5 +52,90 @@ describe("media playback URLs", () => {
       }),
     });
     expect(playbackCapabilities("audio")).toEqual(["audio-flac", "audio-ogg-opus", "audio-ogg-vorbis"]);
+  });
+});
+
+describe("video playback capabilities", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // A device that plays H.264 High, HEVC Main in hvc1 with AAC, and AV1 in WebM.
+  function stubVideoElement() {
+    const playable = [
+      'video/mp4; codecs="avc1.42E01E, mp4a.40.2"',
+      'video/mp4; codecs="avc1.4D401F"',
+      'video/mp4; codecs="avc1.64002A"',
+      'video/mp4; codecs="hvc1.1.6.L93.B0, mp4a.40.2"',
+      'video/mp4; codecs="hvc1.1.6.L123.B0"',
+      'video/mp4; codecs="hvc1.2.4.L123.B0"',
+      'video/webm; codecs="av01.0.04M.08, opus"',
+      'video/mp4; codecs="av01.0.09M.08"',
+    ];
+    vi.stubGlobal("document", {
+      createElement: () => ({ canPlayType: (mime: string) => (playable.includes(mime) ? "probably" : "") }),
+    });
+  }
+
+  it("keeps HEVC and AV1 decoder keys only when decoding is supported and power efficient", async () => {
+    stubVideoElement();
+    const decodingInfo = vi.fn(async ({ video }: MediaDecodingConfiguration) => ({
+      supported: true,
+      smooth: true,
+      powerEfficient: video?.contentType.includes("hvc1.1.6") ?? false,
+    }));
+    vi.stubGlobal("navigator", { mediaCapabilities: { decodingInfo } });
+
+    await expect(videoPlaybackCapabilities()).resolves.toEqual([
+      "video-mp4-h264-aac",
+      "video-mp4-hvc1-aac",
+      "video-webm-av1-opus",
+      "video-h264-main",
+      "video-h264-high",
+      "video-hevc-main",
+    ]);
+    expect(decodingInfo).toHaveBeenCalledWith({
+      type: "file",
+      video: {
+        contentType: 'video/mp4; codecs="hvc1.1.6.L123.B0"',
+        width: 1920,
+        height: 1080,
+        bitrate: 10_000_000,
+        framerate: 30,
+      },
+    });
+    // Keys that the media element already rejects are never measured.
+    expect(decodingInfo).toHaveBeenCalledTimes(3);
+  });
+
+  it("drops a decoder key whose decoding check fails", async () => {
+    stubVideoElement();
+    vi.stubGlobal("navigator", {
+      mediaCapabilities: { decodingInfo: () => Promise.reject(new TypeError("unsupported configuration")) },
+    });
+    const capabilities = await videoPlaybackCapabilities();
+    expect(capabilities).not.toContain("video-hevc-main");
+    expect(capabilities).not.toContain("video-av1-main");
+    expect(capabilities).toContain("video-h264-high");
+  });
+
+  it("trusts the media element where MediaCapabilities is missing", async () => {
+    stubVideoElement();
+    vi.stubGlobal("navigator", {});
+    const capabilities = await videoPlaybackCapabilities();
+    expect(capabilities).toEqual(expect.arrayContaining(["video-hevc-main", "video-hevc-main10", "video-av1-main"]));
+    expect(playbackCapabilities("video")).toEqual(capabilities);
+  });
+
+  it("leaves unverified decoder keys out of the synchronous list", () => {
+    stubVideoElement();
+    vi.stubGlobal("navigator", { mediaCapabilities: { decodingInfo: vi.fn() } });
+    expect(playbackCapabilities("video")).toEqual([
+      "video-mp4-h264-aac",
+      "video-mp4-hvc1-aac",
+      "video-webm-av1-opus",
+      "video-h264-main",
+      "video-h264-high",
+    ]);
   });
 });

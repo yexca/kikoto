@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -79,6 +80,8 @@ type playbackProbeStream struct {
 	CodecType string `json:"codec_type"`
 	CodecName string `json:"codec_name"`
 	Profile   string `json:"profile"`
+	Level     int    `json:"level"`
+	CodecTag  string `json:"codec_tag_string"`
 	PixelFmt  string `json:"pix_fmt"`
 	Width     int    `json:"width"`
 	Height    int    `json:"height"`
@@ -166,33 +169,16 @@ func (s *Server) playbackProfile(r *http.Request, kind string) (string, error) {
 
 func playbackCapabilities(r *http.Request) map[string]bool {
 	values := strings.Split(strings.TrimSpace(r.URL.Query().Get("capabilities")), ",")
-	allowed := map[string]bool{
-		capAudioMP3:            true,
-		capAudioMP4AAC:         true,
-		capAudioFLAC:           true,
-		capAudioOggOpus:        true,
-		capAudioOggVorbis:      true,
-		capAudioWebMOpus:       true,
-		capAudioWebMVorbis:     true,
-		capAudioWAV:            true,
-		capVideoMP4H264AAC:     true,
-		capVideoMP4H264MP3:     true,
-		capVideoMP4H264NoAudio: true,
-		capVideoWebMVP8Opus:    true,
-		capVideoWebMVP8Vorbis:  true,
-		capVideoWebMVP8NoAudio: true,
-		capVideoWebMVP9Opus:    true,
-		capVideoWebMVP9Vorbis:  true,
-		capVideoWebMVP9NoAudio: true,
-	}
+	allowed := slices.Concat([]string{
+		capAudioMP3, capAudioMP4AAC, capAudioFLAC, capAudioOggOpus,
+		capAudioOggVorbis, capAudioWebMOpus, capAudioWebMVorbis, capAudioWAV,
+	}, videoPlaybackCapabilityKeys)
+	// Only known keys are kept, so the result is bounded by the allow list.
 	result := make(map[string]bool)
 	for _, value := range values {
 		value = strings.ToLower(strings.TrimSpace(value))
-		if allowed[value] {
+		if slices.Contains(allowed, value) {
 			result[value] = true
-		}
-		if len(result) >= 16 {
-			break
 		}
 	}
 	return result
@@ -343,7 +329,7 @@ func (s *Server) probePlaybackFile(ctx context.Context, path string) (playbackPr
 	if probe, ok := s.cachedPlaybackProbe(path, info.Size(), info.ModTime()); ok {
 		return probe, nil
 	}
-	output, err := s.runBoundedFFprobe(ctx, path, "format=format_name,duration:stream=codec_type,codec_name,profile,pix_fmt,width,height")
+	output, err := s.runBoundedFFprobe(ctx, path, "format=format_name,duration:stream=codec_type,codec_name,codec_tag_string,profile,level,pix_fmt,width,height")
 	if err != nil {
 		return playbackProbe{}, err
 	}
@@ -459,65 +445,11 @@ func directPlaybackContentType(probe playbackProbe, profile string, capabilities
 	if video == nil {
 		return "", false
 	}
-	videoCodec := strings.ToLower(strings.TrimSpace(video.CodecName))
 	audioCodec := "noaudio"
 	if audio != nil {
 		audioCodec = strings.ToLower(strings.TrimSpace(audio.CodecName))
 	}
-	if videoCodec == "h264" && browserSafeH264(video) && (playbackFormatIncludes(probe, "mov") || playbackFormatIncludes(probe, "mp4") || playbackFormatIncludes(probe, "m4v") || playbackFormatIncludes(probe, "3gp")) {
-		switch audioCodec {
-		case "aac":
-			if capabilities[capVideoMP4H264AAC] {
-				return "video/mp4", true
-			}
-		case "mp3":
-			if capabilities[capVideoMP4H264MP3] {
-				return "video/mp4", true
-			}
-		case "noaudio":
-			if capabilities[capVideoMP4H264NoAudio] {
-				return "video/mp4", true
-			}
-		}
-	}
-	if playbackFormatIncludes(probe, "webm") && (videoCodec == "vp8" || videoCodec == "vp9") {
-		prefix := "video-webm-vp9-"
-		if videoCodec == "vp8" {
-			prefix = "video-webm-vp8-"
-		}
-		switch audioCodec {
-		case "opus":
-			if capabilities[prefix+"opus"] {
-				return "video/webm", true
-			}
-		case "vorbis":
-			if capabilities[prefix+"vorbis"] {
-				return "video/webm", true
-			}
-		case "noaudio":
-			if capabilities[prefix+"noaudio"] {
-				return "video/webm", true
-			}
-		}
-	}
-	return "", false
-}
-
-func browserSafeH264(stream *playbackProbeStream) bool {
-	pixelFormat := strings.ToLower(strings.TrimSpace(stream.PixelFmt))
-	if pixelFormat != "" && pixelFormat != "yuv420p" && pixelFormat != "yuvj420p" {
-		return false
-	}
-	profile := strings.ToLower(strings.TrimSpace(stream.Profile))
-	if profile == "" {
-		return true
-	}
-	for _, allowed := range []string{"baseline", "constrained baseline", "main", "high", "constrained high"} {
-		if profile == allowed {
-			return true
-		}
-	}
-	return false
+	return directVideoContentType(probe, video, audioCodec, capabilities)
 }
 
 func fallbackDirectPlaybackContentType(path string, profile string) (string, bool) {

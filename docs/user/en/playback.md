@@ -29,6 +29,25 @@ Playback is handled by a global browser audio player.
   offer conversion: with **Switch sources on failure** enabled in Settings it
   continues through the normal source fallback order, and otherwise playback
   stops with a Retry action.
+- Local and cached video plays directly, with HTTP range support, when the
+  browser decodes the file as stored. The player reports the containers,
+  codecs, profiles, levels, and bit depths the browser plays, and the server
+  matches them against the file's FFprobe result:
+  - H.264 Baseline, Main, or High up to level 5.2, 8-bit 4:2:0, in MP4 with
+    AAC, MP3, or no audio, or in Matroska with AAC, Opus, or no audio.
+  - HEVC Main up to level 5.1 in MP4 tagged `hvc1` or `hev1`, with AAC or no
+    audio. 10-bit HEVC needs Main 10 support.
+  - AV1 Main up to level 5.1, 8-bit or 10-bit, in MP4 with AAC or no audio, or
+    in WebM with Opus or no audio.
+  - VP8 and VP9 in WebM with Opus, Vorbis, or no audio, and VP9 in Matroska
+    with AAC. 10-bit VP9 needs profile 2 support.
+
+  Each profile, level, and bit depth must be one the browser reports, and
+  Matroska plays directly only in a browser that reports Matroska support.
+  Where the browser offers MediaCapabilities, HEVC and AV1 play directly only
+  when it reports their decoding as supported and power efficient. 10-bit
+  H.264, 4:2:2, 4:4:4, 12-bit, and every other format are transcoded. A
+  direct file the browser then fails to decode switches to the HLS playlist.
 - Local and cached video is inspected before playback. Incompatible video first
   returns its probed total duration and a complete HLS VOD playlist of
   six-second H.264/AAC segments. One continuous FFmpeg encode produces the

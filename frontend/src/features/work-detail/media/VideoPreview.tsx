@@ -6,7 +6,7 @@ import type { ErrorData } from "hls.js";
 
 import { Button } from "@/components/ui/button";
 import { api, assetURL, type VideoPlaybackInfo } from "@/lib/api";
-import { playbackCapabilities, playbackURL } from "@/player/mediaPlayback";
+import { playbackURL, videoPlaybackCapabilities } from "@/player/mediaPlayback";
 import {
   CONSERVATIVE_HLS_CONFIG,
   prepareVideoPlayback,
@@ -69,7 +69,8 @@ function VideoPlayback({
     }
     setPlayback(null);
     void prepareVideoPlayback(
-      () => api.getVideoPlaybackInfo(locationId, playbackCapabilities("video"), forceTranscode, controller.signal),
+      async () =>
+        api.getVideoPlaybackInfo(locationId, await videoPlaybackCapabilities(), forceTranscode, controller.signal),
       controller.signal,
     )
       .then((value) => {
