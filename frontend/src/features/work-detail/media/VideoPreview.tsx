@@ -12,6 +12,7 @@ import { playbackURL, prefersNativeVideoHls, videoPlaybackCapabilities } from "@
 import {
   CONSERVATIVE_HLS_CONFIG,
   prepareVideoPlayback,
+  retriesRemuxAsTranscode,
   videoPlaybackFailureKey,
 } from "@/features/work-detail/media/videoPlaybackModel";
 import {
@@ -228,6 +229,10 @@ function VideoPlayback({
               return;
             }
             instance.stopLoad();
+            if (data.type === HlsConstructor.ErrorTypes.MEDIA_ERROR && retriesRemuxAsTranscode(playback)) {
+              setForceTranscode(true);
+              return;
+            }
             setError(
               data.response?.code === 503 || data.response?.code === 429
                 ? "videoPlayback.busy"
@@ -380,7 +385,10 @@ function VideoPlayback({
           if (!playback) return;
           if (playback.delivery === "hls" && hlsManagedRef.current) return;
           rememberPlayback();
-          if (playback.delivery === "direct" && canTranscode && !forceTranscode) {
+          if (
+            ((playback.delivery === "direct" && canTranscode) || retriesRemuxAsTranscode(playback)) &&
+            !forceTranscode
+          ) {
             setForceTranscode(true);
             return;
           }

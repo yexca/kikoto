@@ -180,6 +180,8 @@ export type TranscodeCacheClearResult = {
 
 export type VideoPlaybackInfo = {
   delivery: "direct" | "hls";
+  /** How the server converts the video; absent from servers that do not say. */
+  conversion?: "none" | "remux" | "transcode";
   url: string;
   durationSeconds: number;
   seekable: boolean;

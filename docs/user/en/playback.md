@@ -76,8 +76,10 @@ Playback is handled by a global browser audio player.
   Android app included, use hls.js, and a browser without it plays the
   playlist natively when it can.
 - Temporary video preparation failures receive bounded retries. A remaining
-  failure keeps an inline Retry action; direct-to-HLS recovery and explicit
-  retries retain the playback position and whether the video was paused.
+  failure keeps an inline Retry action. A direct file or copied video that the
+  browser fails to decode is prepared again as a transcode; that recovery and
+  explicit retries retain the playback position and whether the video was
+  paused.
 - Generated video segments are rebuildable cache data under
   `/cache/transcodes/hls`, copied video segments under
   `/cache/transcodes/hls-remux`, and audio segments under

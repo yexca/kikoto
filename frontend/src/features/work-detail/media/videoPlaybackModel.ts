@@ -1,5 +1,7 @@
 import type { HlsConfig } from "hls.js";
 
+import type { VideoPlaybackInfo } from "@/lib/api";
+
 export async function prepareVideoPlayback<T>(load: () => Promise<T>, signal: AbortSignal): Promise<T> {
   const delays = [750, 1500];
   for (let attempt = 0; ; attempt++) {
@@ -37,6 +39,16 @@ export function videoPlaybackFailureKey(error: unknown) {
     return "videoPlayback.busy";
   }
   return "videoPlayback.prepareFailed";
+}
+
+/**
+ * Whether a playback that the browser failed to decode should be prepared
+ * again as a full transcode. A remux hands the source's own H.264 stream to
+ * the browser, so a decoder that rejects it needs the converted picture; a
+ * transcode or direct file has no such fallback here.
+ */
+export function retriesRemuxAsTranscode(playback: Pick<VideoPlaybackInfo, "delivery" | "conversion">) {
+  return playback.delivery === "hls" && playback.conversion === "remux";
 }
 
 export const CONSERVATIVE_HLS_CONFIG: Partial<HlsConfig> = {

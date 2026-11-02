@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CONSERVATIVE_HLS_CONFIG,
   prepareVideoPlayback,
+  retriesRemuxAsTranscode,
   videoPlaybackFailureKey,
 } from "@/features/work-detail/media/videoPlaybackModel";
 import { prefersNativeVideoHls } from "@/player/mediaPlayback";
@@ -41,6 +42,13 @@ describe("conservative HLS playback", () => {
     await vi.runAllTimersAsync();
     await rejected;
     expect(load).toHaveBeenCalledTimes(3);
+  });
+
+  it("prepares a remux the browser cannot decode again as a transcode", () => {
+    expect(retriesRemuxAsTranscode({ delivery: "hls", conversion: "remux" })).toBe(true);
+    expect(retriesRemuxAsTranscode({ delivery: "hls", conversion: "transcode" })).toBe(false);
+    expect(retriesRemuxAsTranscode({ delivery: "hls" })).toBe(false);
+    expect(retriesRemuxAsTranscode({ delivery: "direct", conversion: "none" })).toBe(false);
   });
 
   it("keeps upstream diagnostics out of the video recovery surface", () => {
