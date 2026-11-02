@@ -9,6 +9,7 @@ import {
   treeStats,
   type TreeTrack,
 } from "@/features/work-detail/media/mediaTreeModel";
+import { videoSubtitlesFor } from "@/features/work-detail/media/videoSubtitles";
 import { formatFolderStats } from "@/features/work-detail/dialogs/mediaFilePresentation";
 import i18n from "@/i18n";
 import type { FilePreviewState } from "@/features/work-detail/dialogs/FilePreviewDialog";
@@ -499,6 +500,7 @@ export function previewForFile(file: TreeTrack): FilePreviewState | null {
       url: file.streamUrl,
       durationSeconds: file.durationSeconds,
       canTranscode: file.locationType === "local" || file.locationType === "cache",
+      subtitles: videoSubtitlesFor(file.sourcePath || file.title, file.lyricsChoices ?? []),
     };
   }
   if (file.kind === "text" && (file.locationId > 0 || file.streamUrl || file.downloadUrl)) {

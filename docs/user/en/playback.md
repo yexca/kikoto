@@ -57,8 +57,10 @@ Playback is handled by a global browser audio player.
   produced restarts it there. An encode stops six minutes ahead of the
   furthest segment played, or after a minute without requests, such as while
   playback is paused, and the next one starts once playback is within two
-  minutes of a segment not yet produced. Hls.js supplies MSE playback where
-  needed; clients with native HLS support use the same playlist directly.
+  minutes of a segment not yet produced. iOS and iPadOS play the playlist
+  natively, which keeps native fullscreen and AirPlay; other browsers, the
+  Android app included, use hls.js, and a browser without it plays the
+  playlist natively when it can.
 - Temporary video preparation failures receive bounded retries. A remaining
   failure keeps an inline Retry action; direct-to-HLS recovery and explicit
   retries retain the playback position and whether the video was paused.

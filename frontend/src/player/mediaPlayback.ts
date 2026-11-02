@@ -144,6 +144,19 @@ export function audioHlsPlayback(): AudioHlsPlayback | null {
   return native ? "native" : null;
 }
 
+/**
+ * Whether a video element plays an HLS playlist through its own player rather
+ * than hls.js: on iOS and iPadOS, which keeps native fullscreen and AirPlay.
+ * Other browsers, Android WebView included, use hls.js when it is supported.
+ */
+export function prefersNativeVideoHls(element: Pick<HTMLMediaElement, "canPlayType">) {
+  try {
+    return appleMobileWebKit() && element.canPlayType("application/vnd.apple.mpegurl") !== "";
+  } catch {
+    return false;
+  }
+}
+
 function appleMobileWebKit() {
   if (typeof navigator === "undefined") return false;
   // iPadOS reports a desktop Mac, which has no touch points.

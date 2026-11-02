@@ -19,6 +19,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import { countTextLines, formatLyricsTime, parseLyrics } from "@/features/work-detail/dialogs/textPreviewModel";
 import { VideoPreview } from "@/features/work-detail/media/VideoPreview";
+import type { VideoSubtitle } from "@/features/work-detail/media/videoSubtitles";
 import { formatBytes, formatTrackDuration } from "@/features/work-detail/media/mediaTreeModel";
 import i18n from "@/i18n";
 import { api, assetURL, mediaDownloadURL } from "@/lib/api";
@@ -47,6 +48,8 @@ export type FilePreviewState =
       url: string;
       durationSeconds: number | null;
       canTranscode: boolean;
+      /** Same-name WebVTT and SRT files beside the video. */
+      subtitles?: VideoSubtitle[];
     })
   | (FilePreviewBase & { kind: "text"; url?: string });
 
@@ -287,6 +290,7 @@ export function FilePreviewDialog({
               fallbackUrl={preview.url}
               durationSeconds={preview.durationSeconds}
               canTranscode={preview.canTranscode}
+              subtitles={preview.subtitles}
               pauseRequested={player.isPlaying}
               onPlay={player.pause}
             />

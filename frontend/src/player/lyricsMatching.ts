@@ -158,6 +158,27 @@ export function findRemoteLyricsMatches(audioPath: string, candidates: RemoteLyr
     }));
 }
 
+const sidecarSubtitleExtensions = [".vtt", ".srt"];
+
+/**
+ * The WebVTT and SRT files beside a video that share its name, such as
+ * `clip.vtt` or `clip.mp4.srt` for `clip.mp4`, in the order of `choices`.
+ */
+export function sidecarSubtitleChoices(videoPath: string, choices: LyricsChoice[]) {
+  const videoName = fileName(videoPath);
+  const videoDirectory = matchKey(directoryName(videoPath));
+  const videoStem = matchKey(stripLastExtension(videoName));
+  return choices.filter((choice) => {
+    const path = choice.displayPath || choice.path;
+    const name = fileName(path);
+    const lower = name.toLowerCase();
+    const extension = sidecarSubtitleExtensions.find((candidate) => lower.endsWith(candidate));
+    if (!extension || matchKey(directoryName(path)) !== videoDirectory) return false;
+    const base = matchKey(name.slice(0, -extension.length));
+    return base === matchKey(videoName) || base === videoStem;
+  });
+}
+
 export function isLyricsPath(path: string) {
   const lower = path.toLowerCase();
   return lyricExtensions.some((extension) => lower.endsWith(extension));

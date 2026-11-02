@@ -5,6 +5,7 @@ import {
   prepareVideoPlayback,
   videoPlaybackFailureKey,
 } from "@/features/work-detail/media/videoPlaybackModel";
+import { prefersNativeVideoHls } from "@/player/mediaPlayback";
 
 afterEach(() => vi.useRealTimers());
 
@@ -46,5 +47,26 @@ describe("conservative HLS playback", () => {
     expect(videoPlaybackFailureKey(Object.assign(new Error("Untrusted upstream failure"), { status: 500 }))).toBe(
       "videoPlayback.prepareFailed",
     );
+  });
+});
+
+describe("video HLS player choice", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const nativeHls = { canPlayType: (type: string) => (type === "application/vnd.apple.mpegurl" ? "maybe" : "") };
+
+  it("plays HLS natively on iOS and iPadOS", () => {
+    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)" });
+    expect(prefersNativeVideoHls(nativeHls)).toBe(true);
+    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (Macintosh)", platform: "MacIntel", maxTouchPoints: 5 });
+    expect(prefersNativeVideoHls(nativeHls)).toBe(true);
+  });
+
+  it("keeps hls.js on Android, desktop Safari, and without native HLS", () => {
+    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (Linux; Android 15; wv)", maxTouchPoints: 5 });
+    expect(prefersNativeVideoHls(nativeHls)).toBe(false);
+    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (Macintosh)", platform: "MacIntel", maxTouchPoints: 0 });
+    expect(prefersNativeVideoHls(nativeHls)).toBe(false);
+    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (iPhone)" });
+    expect(prefersNativeVideoHls({ canPlayType: () => "" })).toBe(false);
   });
 });

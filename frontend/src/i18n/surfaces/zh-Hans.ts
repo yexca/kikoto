@@ -590,6 +590,10 @@ export const surfaceHans = {
     preparing: "正在准备视频",
     preview: "视频预览",
     previewDuration: "视频预览，时长 {{duration}}",
+    player: "视频播放器",
+    playbackRate: "速度 {{rate}}×",
+    resumedAt: "已从 {{time}} 继续",
+    startOver: "从头播放",
     retry: "重试",
   },
   permissions: {

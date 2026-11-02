@@ -537,6 +537,19 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   images, which takes a second click to confirm and resets after a few seconds
   or on another image. It fills the screen on phones and opens above the
   floating desktop player.
+- Plays video in the file viewer with the browser's video controls:
+  - WebVTT and SRT files beside the video with the same name, such as
+    `clip.vtt` or `clip.mp4.srt` for `clip.mp4`, load as subtitles. The first
+    one shows, and the video controls switch or hide them.
+  - A local or cached video reopens where it stopped, paused, with a
+    **Start over** button. The browser keeps the position per file and account
+    on this device, from 10 seconds in until the last 15 seconds or the last 5
+    percent of the video, whichever is longer.
+  - While the video has focus, Space or K plays and pauses, J and L go back
+    and forward 10 seconds, the left and right arrows go back and forward 5
+    seconds, F switches fullscreen, M mutes, and Shift+, and Shift+. lower and
+    raise the speed between 0.5× and 2×. Elsewhere in the viewer the left and
+    right arrows step through the folder's videos.
 - Converts local, cached, and remote text previews to UTF-8 on demand, using byte-order
   marks, declared charsets, and automatic legacy-encoding detection without
   rewriting the source file.

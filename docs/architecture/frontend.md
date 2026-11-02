@@ -356,6 +356,16 @@ viewer read LRC, WebVTT, SRT, and ASS files the same way. `usePlayerLyrics`
 moves parsed lines by the listener's lyrics offset, so the active line, line
 seeking, and screen lyrics share one timeline.
 
+The work detail file viewer plays video in `VideoPreview`
+(`features/work-detail/media`), outside the global player. It attaches an HLS
+playlist natively on iOS and iPadOS (`prefersNativeVideoHls`) and through a
+lazily loaded hls.js elsewhere. Same-name WebVTT and SRT files from the video's
+lyrics matches (`sidecarSubtitleChoices`) load as `<track>` elements, with SRT
+rewritten as WebVTT through `lib/timedLyrics`. `videoResume` keeps resume
+positions in account-scoped browser storage, keyed by location id and holding
+only positions; the stage writes one only after its start position applies,
+so a still-loading element never replaces it.
+
 ## Major Surfaces
 
 - Library.

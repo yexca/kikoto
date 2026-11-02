@@ -1,24 +1,26 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
-import type { VideoPlaybackInfo } from "../../src/lib/api";
+import type { MediaItem, MediaTextPreview, VideoPlaybackInfo } from "../../src/lib/api";
 import type { ApiErrorBody } from "./fixtures/api";
 import { mediaFixture, mockApplication, silentWav, work } from "./fixtures/player-library";
 
-async function mockLocalVideo(page: Page) {
-  const item = mediaFixture(1, "example.avi", `${work.primaryCode}/example.avi`, "file");
-  await mockApplication(page, undefined, false, 1, 0, [
-    {
-      ...item,
-      kind: "video",
+function videoFixture(id: number, title: string): MediaItem {
+  const item = mediaFixture(id, title, `${work.primaryCode}/${title}`, "file");
+  return {
+    ...item,
+    kind: "video",
+    durationSeconds: 180,
+    hasAudio: true,
+    locations: item.locations.map((location) => ({
+      ...location,
       durationSeconds: 180,
-      hasAudio: true,
-      locations: item.locations.map((location) => ({
-        ...location,
-        durationSeconds: 180,
-        streamUrl: "/api/media/1/stream",
-      })),
-    },
-  ]);
+      streamUrl: `/api/media/${id}/stream`,
+    })),
+  };
+}
+
+async function mockLocalVideo(page: Page, otherItems: MediaItem[] = []) {
+  await mockApplication(page, undefined, false, 1, 0, [videoFixture(1, "example.avi"), ...otherItems]);
   // Exercise the native-HLS branch through browser capability APIs. A generated
   // WAV supplies real media timing; this tests recovery, not codec decoding.
   await page.addInitScript(() => {
@@ -45,9 +47,25 @@ async function mockLocalVideo(page: Page) {
       body: media.subarray(start, end + 1),
     });
   };
-  await page.route("**/api/media/1/stream*", serveMedia);
+  await page.route(/\/api\/media\/\d+\/stream/, serveMedia);
   await page.route("**/api/media/1/native-hls.wav", serveMedia);
 }
+
+async function mockDirectPlayback(page: Page) {
+  await page.route(/\/api\/media\/\d+\/playback/, (route) => {
+    const id = /\/api\/media\/(\d+)\//.exec(route.request().url())?.[1];
+    return route.fulfill({
+      json: {
+        delivery: "direct",
+        url: `/api/media/${id}/stream`,
+        durationSeconds: 180,
+        seekable: true,
+      } satisfies VideoPlaybackInfo,
+    });
+  });
+}
+
+const currentTime = (element: HTMLVideoElement) => element.currentTime;
 
 async function openVideo(page: Page) {
   await page.goto(`/${work.primaryCode}`);
@@ -143,4 +161,110 @@ test("busy local video preparation stops automatic retries and keeps manual reco
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThan(0);
   expect(requests).toBe(beforeRetry + 1);
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("a reopened video resumes where it stopped and can start over", async ({ page }) => {
+  await mockLocalVideo(page);
+  await mockDirectPlayback(page);
+  let video = await openVideo(page);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThan(0);
+  await video.evaluate((element: HTMLVideoElement) => {
+    element.currentTime = 42;
+  });
+  await expect.poll(() => video.evaluate(currentTime)).toBe(42);
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+
+  video = await openVideo(page);
+  await expect(page.getByRole("status").filter({ hasText: "Resumed at 0:42" })).toBeVisible();
+  await expect.poll(() => video.evaluate(currentTime)).toBe(42);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
+
+  await page.getByRole("button", { name: "Start over", exact: true }).click();
+  await expect.poll(() => video.evaluate(currentTime)).toBe(0);
+  await expect(page.getByText("Resumed at 0:42")).toHaveCount(0);
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+
+  video = await openVideo(page);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThan(0);
+  await expect(page.getByText(/Resumed at/)).toHaveCount(0);
+  expect(await video.evaluate(currentTime)).toBe(0);
+});
+
+test("video stage shortcuts control the video while the dialog keeps its file keys", async ({ page }) => {
+  await mockLocalVideo(page, [videoFixture(5, "second.avi")]);
+  await mockDirectPlayback(page);
+  const video = await openVideo(page);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThan(0);
+  await page.getByRole("group", { name: "Video player", exact: true }).focus();
+
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => video.evaluate(currentTime)).toBe(5);
+  await page.keyboard.press("l");
+  await expect.poll(() => video.evaluate(currentTime)).toBe(15);
+  await page.keyboard.press("j");
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(() => video.evaluate(currentTime)).toBe(0);
+  await expect(page.getByRole("heading", { name: "example.avi", exact: true })).toBeVisible();
+
+  await page.keyboard.press("k");
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false);
+  await page.keyboard.press("Space");
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
+  await page.keyboard.press("m");
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.muted)).toBe(true);
+  await page.keyboard.press("Shift+Period");
+  await page.keyboard.press("Shift+Period");
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.playbackRate)).toBe(1.5);
+  await expect(page.getByRole("status").filter({ hasText: "Speed 1.5×" })).toBeVisible();
+  await page.keyboard.press("Shift+Comma");
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.playbackRate)).toBe(1.25);
+
+  // Outside the video stage the arrow keys still step through the folder's videos.
+  await page.getByRole("dialog").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("heading", { name: "second.avi", exact: true })).toBeVisible();
+});
+
+test("same-name WebVTT and SRT files load as subtitle tracks", async ({ page }) => {
+  const subtitles: Record<number, MediaTextPreview> = {
+    2: { path: "example.srt", content: "1\r\n00:00:01,000 --> 00:00:03,500\r\nSynthetic SRT line\r\n" },
+    3: { path: "example.avi.vtt", content: "WEBVTT\n\n00:00:02.000 --> 00:00:04.000\nSynthetic WebVTT line\n" },
+  };
+  await mockLocalVideo(page, [
+    mediaFixture(2, "example.srt", `${work.primaryCode}/example.srt`, "text"),
+    mediaFixture(3, "example.avi.vtt", `${work.primaryCode}/example.avi.vtt`, "text"),
+    mediaFixture(4, "other.srt", `${work.primaryCode}/other.srt`, "text"),
+  ]);
+  await mockDirectPlayback(page);
+  const textRequests: number[] = [];
+  await page.route(/\/api\/media\/\d+\/text$/, (route) => {
+    const id = Number(/\/api\/media\/(\d+)\/text$/.exec(route.request().url())?.[1]);
+    textRequests.push(id);
+    return route.fulfill({ json: subtitles[id] ?? { path: "other.srt", content: "" } });
+  });
+  const video = await openVideo(page);
+  await expect
+    .poll(() =>
+      video.evaluate((element: HTMLVideoElement) =>
+        Array.from(element.textTracks).map((track) => ({ label: track.label, mode: track.mode })),
+      ),
+    )
+    .toEqual([
+      { label: "example.avi.vtt", mode: "showing" },
+      { label: "example.srt", mode: "disabled" },
+    ]);
+  // Development StrictMode may load the files twice; the unrelated other.srt is never read.
+  expect([...new Set(textRequests)].sort()).toEqual([2, 3]);
+
+  await video.evaluate((element: HTMLVideoElement) => {
+    element.textTracks[1].mode = "hidden";
+  });
+  await expect
+    .poll(() =>
+      video.evaluate((element: HTMLVideoElement) => {
+        const cue = element.textTracks[1].cues?.[0] as VTTCue | undefined;
+        return cue ? { text: cue.text, start: cue.startTime, end: cue.endTime } : null;
+      }),
+    )
+    .toEqual({ text: "Synthetic SRT line", start: 1, end: 3.5 });
 });

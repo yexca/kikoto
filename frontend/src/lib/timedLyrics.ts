@@ -45,21 +45,74 @@ export function parseTimedLyrics(text: string): ParsedLyrics {
     return { timed: true, lines: assLines.sort((left, right) => left.time - right.time) };
   }
 
-  const cueLines: TimedLyricLine[] = [];
-  for (let index = 0; index < sourceLines.length; index += 1) {
-    const match = sourceLines[index].match(/(\d{1,2}:)?(\d{1,2}):(\d{2})([,.]\d{1,3})?\s*-->/);
-    if (!match) continue;
-    const textLines: string[] = [];
-    index += 1;
-    while (index < sourceLines.length && sourceLines[index].trim() !== "") {
-      textLines.push(sourceLines[index].trim());
-      index += 1;
-    }
-    cueLines.push({ time: cueTimestampToSeconds(match[0].split("-->")[0].trim()), text: textLines.join(" ") });
-  }
+  const cueLines = parseCueBlocks(sourceLines).map((cue) => ({ time: cue.start, text: cue.lines.join(" ") }));
   return cueLines.length > 0
     ? { timed: true, lines: cueLines.sort((left, right) => left.time - right.time) }
     : { timed: false, lines: [] };
+}
+
+/** A WebVTT or SRT cue: its start, its end when the timing line gives one, and its text lines. */
+export type TimedCue = {
+  start: number;
+  end: number | null;
+  lines: string[];
+};
+
+const cueTimestampSource = String.raw`(?:\d{1,2}:)?\d{1,2}:\d{2}(?:[,.]\d{1,3})?`;
+const cueTimingPattern = new RegExp(`(${cueTimestampSource})\\s*-->(?:\\s*(${cueTimestampSource}))?`);
+
+/** The cues of a WebVTT or SRT file in file order. */
+export function parseTimedCues(text: string): TimedCue[] {
+  return parseCueBlocks(text.split(/\r?\n/));
+}
+
+function parseCueBlocks(sourceLines: string[]): TimedCue[] {
+  const cues: TimedCue[] = [];
+  for (let index = 0; index < sourceLines.length; index += 1) {
+    const match = cueTimingPattern.exec(sourceLines[index]);
+    if (!match) continue;
+    const lines: string[] = [];
+    index += 1;
+    while (index < sourceLines.length && sourceLines[index].trim() !== "") {
+      lines.push(sourceLines[index].trim());
+      index += 1;
+    }
+    cues.push({
+      start: cueTimestampToSeconds(match[1]),
+      end: match[2] ? cueTimestampToSeconds(match[2]) : null,
+      lines,
+    });
+  }
+  return cues;
+}
+
+// A cue whose timing line names no usable end shows until the next cue, or this long.
+const fallbackCueSeconds = 5;
+
+/**
+ * Writes cues as a WebVTT file, the one subtitle format every browser's
+ * `<track>` element reads. Cue text keeps its line breaks and the basic
+ * `<i>`, `<b>`, and `<u>` markup SRT shares with WebVTT.
+ */
+export function timedCuesToWebVtt(cues: TimedCue[]) {
+  const blocks = ["WEBVTT"];
+  cues.forEach((cue, index) => {
+    const lines = cue.lines.map((line) => line.replace(/-->/g, "--&gt;"));
+    if (lines.length === 0) return;
+    const next = cues.slice(index + 1).find((candidate) => candidate.start > cue.start)?.start;
+    const end = cue.end !== null && cue.end > cue.start ? cue.end : (next ?? cue.start + fallbackCueSeconds);
+    blocks.push(`${webVttTimestamp(cue.start)} --> ${webVttTimestamp(end)}\n${lines.join("\n")}`);
+  });
+  return `${blocks.join("\n\n")}\n`;
+}
+
+function webVttTimestamp(seconds: number) {
+  const totalMilliseconds = Math.max(0, Math.round(seconds * 1000));
+  const hours = Math.floor(totalMilliseconds / 3_600_000);
+  const minutes = Math.floor((totalMilliseconds % 3_600_000) / 60_000);
+  const wholeSeconds = Math.floor((totalMilliseconds % 60_000) / 1000);
+  const milliseconds = totalMilliseconds % 1000;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(wholeSeconds).padStart(2, "0")}.${String(milliseconds).padStart(3, "0")}`;
 }
 
 export function activeTimedLyricIndex(lines: TimedLyricLine[], currentTime: number) {

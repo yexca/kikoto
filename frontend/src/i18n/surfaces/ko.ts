@@ -608,6 +608,10 @@ export const surfaceKorean = {
     preparing: "동영상 준비 중",
     preview: "동영상 미리보기",
     previewDuration: "동영상 미리보기, 길이 {{duration}}",
+    player: "동영상 플레이어",
+    playbackRate: "속도 {{rate}}×",
+    resumedAt: "{{time}}부터 이어서 재생합니다",
+    startOver: "처음부터 재생",
     retry: "다시 시도",
   },
   permissions: {

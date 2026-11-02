@@ -590,6 +590,10 @@ export const surfaceHant = {
     preparing: "正在準備影片",
     preview: "影片預覽",
     previewDuration: "影片預覽，長度 {{duration}}",
+    player: "影片播放器",
+    playbackRate: "速度 {{rate}}×",
+    resumedAt: "已從 {{time}} 繼續",
+    startOver: "從頭播放",
     retry: "重試",
   },
   permissions: {
