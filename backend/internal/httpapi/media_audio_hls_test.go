@@ -212,3 +212,155 @@ func TestAudioHLSStartsAtALaterSegmentAndContinuesOneEncode(t *testing.T) {
 		t.Fatal("serving a produced segment started another session")
 	}
 }
+
+func TestHLSPlaybackProfileSelectsTheAudioOfAVideoOnRequest(t *testing.T) {
+	for _, test := range []struct {
+		kind      string
+		requested string
+		profile   string
+		encode    *hlsEncodeProfile
+		version   string
+	}{
+		{"audio", "", playbackProfileAudio, &audioHLSProfile, audioHLSProfileVersion},
+		{"audio", playbackProfileAudio, playbackProfileAudio, &audioHLSProfile, audioHLSProfileVersion},
+		{"video", "", playbackProfileVideo, &videoHLSProfile, hlsProfileVersion},
+		{"video", playbackProfileVideo, playbackProfileVideo, &videoHLSProfile, hlsProfileVersion},
+		{"video", playbackProfileAudio, playbackProfileAudio, &videoAudioHLSProfile, videoAudioHLSProfileVersion},
+	} {
+		profile, encode, version, ok := hlsPlaybackProfile(test.kind, test.requested)
+		if !ok || profile != test.profile || encode != test.encode || version != test.version {
+			t.Fatalf("%s with %q = %q, %s, %q, %v", test.kind, test.requested, profile, encode.name, version, ok)
+		}
+	}
+	if _, _, _, ok := hlsPlaybackProfile("audio", playbackProfileVideo); ok {
+		t.Fatal("an audio file was given the video profile")
+	}
+	if videoAudioHLSProfileVersion == audioHLSProfileVersion || videoAudioHLSProfileVersion == hlsProfileVersion {
+		t.Fatal("the audio of a video shares a profile version")
+	}
+}
+
+func TestVideoAudioHLSFFmpegArgsPadTheAudioToTheVideo(t *testing.T) {
+	args := videoAudioHLSFFmpegArgs("input.mkv", "cache", 2, 40)
+	joined := strings.Join(args, " ")
+	for _, expected := range []string{"-ss 12.000", "-map 0:a:0", "-vn", "-af apad", "-t 28.000", "-output_ts_offset 12.000", "-c:a aac"} {
+		if !strings.Contains(joined, expected) {
+			t.Fatalf("FFmpeg args do not contain %q: %v", expected, args)
+		}
+	}
+	if strings.Contains(joined, "0:v") || strings.Contains(joined, "libx264") {
+		t.Fatalf("the audio of a video decodes the video: %v", args)
+	}
+}
+
+func TestHLSPlaysTheAudioOfAVideoSeparatelyFromItsVideo(t *testing.T) {
+	ffmpegPath, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	ffprobePath, err := exec.LookPath("ffprobe")
+	if err != nil {
+		t.Skip("ffprobe is not installed")
+	}
+	dataRoot := t.TempDir()
+	cacheRoot := t.TempDir()
+	createVideo := func(name string, audioSeconds int) string {
+		relativePath := "RJ00000000/" + name
+		mediaPath := filepath.Join(dataRoot, filepath.FromSlash(relativePath))
+		if err := os.MkdirAll(filepath.Dir(mediaPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		args := []string{
+			"-nostdin", "-hide_banner", "-loglevel", "error",
+			"-f", "lavfi", "-i", "testsrc2=size=160x90:rate=10:duration=14",
+		}
+		if audioSeconds > 0 {
+			args = append(args, "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=8000:duration="+strconv.Itoa(audioSeconds), "-c:a", "pcm_s16le")
+		}
+		args = append(args, "-c:v", "mpeg4", "-q:v", "8", "-y", mediaPath)
+		if output, err := exec.Command(ffmpegPath, args...).CombinedOutput(); err != nil {
+			t.Fatalf("create video fixture: %v (%s)", err, output)
+		}
+		return relativePath
+	}
+	// The audio ends before the video, in a segment the playlist still lists.
+	withAudio := createVideo("movie.avi", 8)
+	silent := createVideo("silent.avi", 0)
+
+	db := openMigratedTestDB(t)
+	if _, err := db.Exec(`
+		INSERT INTO work (id, primary_code, title) VALUES (841, 'RJ00000000', 'Synthetic HLS video audio');
+		INSERT INTO file_source (id, code, display_name, source_type) VALUES (842, 'synthetic_local', 'Synthetic Local', 'local_folder');
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint, has_audio)
+		VALUES (843, 841, 'video', 'movie.avi', 'synthetic-hls-video-audio', 1),
+		       (845, 841, 'video', 'silent.avi', 'synthetic-hls-video-silent', 0);
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability)
+		VALUES (844, 843, 842, 'local', ?, 'available'),
+		       (846, 845, 842, 'local', ?, 'available');
+	`, withAudio, silent); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: cacheRoot})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	serve := func(id string, file string, query string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodGet, "/api/media/"+id+"/hls/"+file+query, nil)
+		request.SetPathValue("id", id)
+		request.SetPathValue("file", file)
+		response := httptest.NewRecorder()
+		server.serveMediaHLS(response, request)
+		return response
+	}
+
+	playlist := serve("844", "index.m3u8", "?profile=audio")
+	match := regexp.MustCompile(`segment-000000\.ts\?profile=audio&v=([0-9a-f]+)`).FindStringSubmatch(playlist.Body.String())
+	if playlist.Code != http.StatusOK || match == nil || !strings.Contains(playlist.Body.String(), "segment-000002.ts?profile=audio&") {
+		t.Fatalf("audio playlist response = %d:\n%s", playlist.Code, playlist.Body.String())
+	}
+	audioRevision := match[1]
+	videoSource, err := server.loadHLSPlaybackSource(context.Background(), 844)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if videoSource.Revision == audioRevision || videoSource.Encode != &videoHLSProfile {
+		t.Fatalf("the audio of a video shares revision %q with its video", audioRevision)
+	}
+	// A segment URL without the profile names the video, whose revision differs.
+	if response := serve("844", "segment-000000.ts", "?v="+audioRevision); response.Code != http.StatusConflict {
+		t.Fatalf("audio revision under the video profile = %d", response.Code)
+	}
+
+	first := serve("844", "segment-000000.ts", "?profile=audio&v="+audioRevision)
+	if first.Code != http.StatusOK || first.Body.Len() == 0 || first.Body.Bytes()[0] != 0x47 {
+		t.Fatalf("audio segment response = %d, %d bytes: %s", first.Code, first.Body.Len(), first.Body.String())
+	}
+	sessionKey := "transcodes/hls-audio/844/" + audioRevision
+	deadline := time.Now().Add(20 * time.Second)
+	for server.hlsSessions.get(sessionKey) != nil {
+		if time.Now().After(deadline) {
+			t.Fatal("audio HLS session of the video did not finish")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	segmentRoot := filepath.Join(cacheRoot, "transcodes", "hls-audio", "844", audioRevision)
+	last := filepath.Join(segmentRoot, hlsSegmentName(2))
+	output, err := exec.Command(ffprobePath, "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", last).Output()
+	if err != nil {
+		t.Fatalf("the segment after the audio ends was not produced: %v", err)
+	}
+	if streams := string(output); !strings.Contains(streams, "audio") || strings.Contains(streams, "video") {
+		t.Fatalf("audio segment streams = %q", output)
+	}
+	if _, err := os.Stat(filepath.Join(cacheRoot, "transcodes", "hls", "844")); !os.IsNotExist(err) {
+		t.Fatal("the audio of a video wrote into the video segment cache")
+	}
+
+	if response := serve("846", "index.m3u8", "?profile=audio"); response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "media_hls_unsupported") {
+		t.Fatalf("video without audio = %d: %s", response.Code, response.Body.String())
+	}
+	if response := serve("846", "index.m3u8", ""); response.Code != http.StatusOK {
+		t.Fatalf("video playlist of a video without audio = %d", response.Code)
+	}
+	if response := serve("844", "index.m3u8", "?profile=lyrics"); response.Code != http.StatusBadRequest {
+		t.Fatalf("unknown profile = %d", response.Code)
+	}
+}

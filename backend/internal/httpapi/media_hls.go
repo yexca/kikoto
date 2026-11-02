@@ -51,8 +51,11 @@ type videoPlaybackInfoResponse struct {
 type hlsPlaybackSource struct {
 	LocationID int64
 	Path       string
-	// Profile is playbackProfileVideo or playbackProfileAudio, from the media kind.
-	Profile  string
+	// Profile is playbackProfileVideo or playbackProfileAudio, the media kind
+	// unless the audio player requested the audio of a video.
+	Profile string
+	// Encode produces the segments of Profile from this media kind.
+	Encode   *hlsEncodeProfile
 	Revision string
 	Duration float64
 	Probe    playbackProbe
@@ -146,7 +149,8 @@ func sortedPlaybackCapabilities(capabilities map[string]bool) []string {
 
 // serveMediaHLS serves the HLS VOD playlist and segments of a local or cached
 // video or audio file. Segments come from continuous encoding sessions (see
-// media_hls_session.go).
+// media_hls_session.go). The profile query "audio" plays only the audio of a
+// video, for the audio player.
 func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 	file := strings.TrimSpace(r.PathValue("file"))
 	segmentMatch := hlsSegmentPattern.FindStringSubmatch(file)
@@ -159,15 +163,17 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid media location id"})
 		return
 	}
-	source, err := s.loadHLSPlaybackSource(r.Context(), locationID)
+	requestedProfile := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("profile")))
+	if requestedProfile != "" && requestedProfile != playbackProfileAudio && requestedProfile != playbackProfileVideo {
+		writeAPIError(w, http.StatusBadRequest, "invalid_playback_profile", "playback profile is invalid", false)
+		return
+	}
+	source, err := s.loadHLSPlaybackSourceProfile(r.Context(), locationID, requestedProfile)
 	if err != nil {
 		s.writeHLSPlaybackError(w, err, "media")
 		return
 	}
-	profile := &videoHLSProfile
-	if source.Profile == playbackProfileAudio {
-		profile = &audioHLSProfile
-	}
+	profile := source.Encode
 	if revision := strings.TrimSpace(r.URL.Query().Get("v")); revision != "" && revision != source.Revision {
 		// Playback info names a remux by its own revision of the source.
 		if source.Profile != playbackProfileVideo || revision != videoRemuxRevision(source) {
@@ -189,9 +195,14 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 		source.Revision, source.Keyframes, profile = revision, keyframes, &videoRemuxHLSProfile
 	}
 	if file == "index.m3u8" {
-		playlist := buildHLSPlaylist(source.Duration, source.Revision)
+		// Segments repeat the requested profile, which selects their encode.
+		segmentQuery := url.Values{"v": []string{source.Revision}}
+		if requestedProfile != "" {
+			segmentQuery.Set("profile", requestedProfile)
+		}
+		playlist := buildHLSPlaylist(source.Duration, segmentQuery.Encode())
 		if source.Keyframes != nil {
-			playlist = buildHLSPlaylistOfSegments(source.Keyframes.durations(), source.Revision)
+			playlist = buildHLSPlaylistOfSegments(source.Keyframes.durations(), segmentQuery.Encode())
 		}
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "private, no-cache")
@@ -253,6 +264,26 @@ func (s *Server) writeHLSPlaybackError(w http.ResponseWriter, err error, noun st
 }
 
 func (s *Server) loadHLSPlaybackSource(ctx context.Context, locationID int64) (hlsPlaybackSource, error) {
+	return s.loadHLSPlaybackSourceProfile(ctx, locationID, "")
+}
+
+// hlsPlaybackProfile selects what an HLS playlist of a media kind plays: the
+// kind itself when requested is empty, or the audio alone of a video. The
+// profile version is part of the revision, so the sessions of one file under
+// different profiles never share segments.
+func hlsPlaybackProfile(kind string, requested string) (profile string, encode *hlsEncodeProfile, version string, ok bool) {
+	switch {
+	case kind == "audio" && (requested == "" || requested == playbackProfileAudio):
+		return playbackProfileAudio, &audioHLSProfile, audioHLSProfileVersion, true
+	case kind == "video" && (requested == "" || requested == playbackProfileVideo):
+		return playbackProfileVideo, &videoHLSProfile, hlsProfileVersion, true
+	case kind == "video" && requested == playbackProfileAudio:
+		return playbackProfileAudio, &videoAudioHLSProfile, videoAudioHLSProfileVersion, true
+	}
+	return "", nil, "", false
+}
+
+func (s *Server) loadHLSPlaybackSourceProfile(ctx context.Context, locationID int64, requestedProfile string) (hlsPlaybackSource, error) {
 	target, _, err := s.loadMediaStreamTarget(ctx, locationID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -283,9 +314,9 @@ func (s *Server) loadHLSPlaybackSource(ctx context.Context, locationID int64) (h
 	if err != nil {
 		return hlsPlaybackSource{}, err
 	}
-	profile, profileVersion := playbackProfileVideo, hlsProfileVersion
-	if kind == "audio" {
-		profile, profileVersion = playbackProfileAudio, audioHLSProfileVersion
+	profile, encode, profileVersion, ok := hlsPlaybackProfile(kind, requestedProfile)
+	if !ok {
+		return hlsPlaybackSource{}, errHLSMediaNotFound
 	}
 	if firstPlaybackStream(probe, profile) == nil {
 		return hlsPlaybackSource{}, errHLSMediaUnsupported
@@ -300,6 +331,7 @@ func (s *Server) loadHLSPlaybackSource(ctx context.Context, locationID int64) (h
 		LocationID: locationID,
 		Path:       mediaPath,
 		Profile:    profile,
+		Encode:     encode,
 		Revision:   fmt.Sprintf("%x", revision[:12]),
 		Duration:   duration,
 		Probe:      probe,
@@ -325,15 +357,18 @@ func hlsSegmentWindow(duration float64, index int) (float64, float64) {
 	return start, math.Min(hlsSegmentDurationSeconds, math.Max(0, duration-start))
 }
 
-func buildHLSPlaylist(duration float64, revision string) string {
+// buildHLSPlaylist lists the segments of duration, each URL with segmentQuery.
+func buildHLSPlaylist(duration float64, segmentQuery string) string {
 	durations := make([]float64, hlsSegmentCount(duration))
 	for index := range durations {
 		_, durations[index] = hlsSegmentWindow(duration, index)
 	}
-	return buildHLSPlaylistOfSegments(durations, revision)
+	return buildHLSPlaylistOfSegments(durations, segmentQuery)
 }
 
-func buildHLSPlaylistOfSegments(durations []float64, revision string) string {
+// buildHLSPlaylistOfSegments lists segments of the given durations, each URL
+// with segmentQuery.
+func buildHLSPlaylistOfSegments(durations []float64, segmentQuery string) string {
 	var playlist strings.Builder
 	playlist.WriteString("#EXTM3U\n")
 	playlist.WriteString("#EXT-X-VERSION:3\n")
@@ -343,7 +378,7 @@ func buildHLSPlaylistOfSegments(durations []float64, revision string) string {
 	playlist.WriteString("#EXT-X-PLAYLIST-TYPE:VOD\n")
 	playlist.WriteString("#EXT-X-INDEPENDENT-SEGMENTS\n")
 	for index, duration := range durations {
-		fmt.Fprintf(&playlist, "#EXTINF:%.3f,\nsegment-%06d.ts?v=%s\n", duration, index, revision)
+		fmt.Fprintf(&playlist, "#EXTINF:%.3f,\nsegment-%06d.ts?%s\n", duration, index, segmentQuery)
 	}
 	playlist.WriteString("#EXT-X-ENDLIST\n")
 	return playlist.String()

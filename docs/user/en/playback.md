@@ -23,9 +23,11 @@ Playback is handled by a global browser audio player.
   the lock screen; other browsers use hls.js. A browser with neither instead
   gets a complete MP3 conversion with duration and seeking information: first
   playback waits for it, and later requests reuse it with HTTP Range. Either
-  way, seeking, Resume, and normal end-of-track queue advancement work. Video
-  files played through the audio player always use the MP3 conversion. A
-  confirmed missing file does not
+  way, seeking, Resume, and normal end-of-track queue advancement work. A
+  video file that needs conversion plays in the audio player the same way,
+  from its first audio stream without decoding the picture, with silence
+  after audio that ends before the video; a video without audio cannot play
+  there. A confirmed missing file does not
   offer conversion: with **Switch sources on failure** enabled in Settings it
   continues through the normal source fallback order, and otherwise playback
   stops with a Retry action.

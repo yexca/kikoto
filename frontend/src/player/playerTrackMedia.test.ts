@@ -77,13 +77,27 @@ describe("player audio sources", () => {
     expect(playerTrackAudioSource({ ...track, title: "01 Example.wma" }).delivery).toBe("hls");
   });
 
-  it("prepares a complete conversion without HLS playback or for a video file", () => {
+  it("converts the audio of a video file through the audio profile of its HLS playlist", () => {
+    const video: PlayerTrack = { ...track, kind: "video", title: "clip.avi" };
+    stubBrowser({ mse: true });
+    expect(playerTrackAudioSource(video)).toEqual({
+      delivery: "hls",
+      url: "/api/media/11/hls/index.m3u8?profile=audio",
+    });
+    stubBrowser({ nativeHls: true, userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)" });
+    expect(playerTrackAudioSource(video).delivery).toBe("hls");
+    stubBrowser({ mse: true });
+    expect(playerTrackAudioSource({ ...video, title: "clip.mp4" }).delivery).toBe("direct");
+  });
+
+  it("prepares a complete conversion without HLS playback", () => {
     stubBrowser({});
     const prepared = playerTrackAudioSource(track, true);
     expect(prepared.delivery).toBe("prepared");
     expect(prepared.url).toContain("forceTranscode=1");
-    stubBrowser({ mse: true });
-    expect(playerTrackAudioSource({ ...track, kind: "video", title: "clip.avi" }).delivery).toBe("prepared");
+    const video = playerTrackAudioSource({ ...track, kind: "video", title: "clip.avi" });
+    expect(video.delivery).toBe("prepared");
+    expect(video.url).toContain("profile=audio");
   });
 
   it("never converts a remote stream", () => {

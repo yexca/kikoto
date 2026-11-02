@@ -72,10 +72,14 @@ The backend is a Go HTTP API with SQLite persistence.
 - Stream local media with range support.
 - Publish complete-duration HLS VOD manifests for incompatible local or cached
   audio and video under one route, `GET /api/media/{id}/hls/{file}`, which
-  branches on the media kind. Segments of both come from one continuous
-  encode per source revision, so segment boundaries stay seamless; H.264 video
-  the client decodes is copied rather than transcoded. Both are quota-bounded
-  and live under the disposable cache root.
+  branches on the media kind. The audio player adds `profile=audio` to play
+  only the first audio stream of a video; that profile has its own revisions
+  and audio encode, so it never shares segments with the video playlist of
+  the same file, and a video without audio fails as unsupported like an audio
+  file without one. Segments of all of them come from one continuous encode
+  per source revision, so segment boundaries stay seamless; H.264 video the
+  client decodes is copied rather than transcoded. All are quota-bounded and
+  live under the disposable cache root.
 - Prepare incompatible local or cached audio as complete, quota-bounded MP3
   cache files with duration and HTTP Range support for clients without HLS
   playback, preserving original media.
@@ -169,8 +173,10 @@ encode's timeline against another's.
   to a constant frame rate of at most 60 fps, and clones the last frame of a
   video stream that ends early up to the published duration; the muxer cuts
   segments at those keyframes, so every encode cuts them at the playlist's
-  boundaries, within one frame. Each segment is written beside its final name
-  and renamed when complete.
+  boundaries, within one frame. An encode of the audio of a video pads it with
+  silence to the published duration, so audio that ends before the video
+  still produces every listed segment. Each segment is written beside its
+  final name and renamed when complete.
 - A remux seeks to the source timestamp just before the segment's keyframe,
   keeps source timestamps, and discards packets before that time, so the
   keyframe is the first packet. FFmpeg's segment muxer cuts at the indexed

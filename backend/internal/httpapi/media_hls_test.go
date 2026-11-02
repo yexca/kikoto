@@ -20,7 +20,7 @@ import (
 )
 
 func TestBuildHLSPlaylistPublishesCompleteDuration(t *testing.T) {
-	playlist := buildHLSPlaylist(14, "revision")
+	playlist := buildHLSPlaylist(14, "v=revision")
 	if hlsSegmentCount(14) != 3 {
 		t.Fatalf("segment count = %d, want 3", hlsSegmentCount(14))
 	}

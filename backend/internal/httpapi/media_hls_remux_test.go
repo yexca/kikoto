@@ -103,7 +103,7 @@ func TestVideoKeyframePacketsBuildTheRemuxPlaylist(t *testing.T) {
 	if !slices.Equal(index.cuts, []float64{1.4, 8.4}) || !slices.Equal(index.packets, []int{0, 4}) || index.end != 15.4 {
 		t.Fatalf("index = %+v", index)
 	}
-	playlist := buildHLSPlaylistOfSegments(index.durations(), "remux")
+	playlist := buildHLSPlaylistOfSegments(index.durations(), "v=remux")
 	for _, expected := range []string{
 		"#EXT-X-TARGETDURATION:7\n",
 		"#EXTINF:7.000,\nsegment-000000.ts?v=remux\n",

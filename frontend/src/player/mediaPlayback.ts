@@ -175,9 +175,13 @@ function mediaSourcePlaysAAC() {
   }
 }
 
-/** The HLS VOD playlist of a local or cached location. */
-export function mediaHlsPlaylistURL(locationId: number) {
-  return `/api/media/${encodeURIComponent(String(locationId))}/hls/index.m3u8`;
+/**
+ * The HLS VOD playlist of a local or cached location. The "audio" profile
+ * plays only the audio of a video; the media kind is played otherwise.
+ */
+export function mediaHlsPlaylistURL(locationId: number, profile?: PlaybackProfile) {
+  const url = `/api/media/${encodeURIComponent(String(locationId))}/hls/index.m3u8`;
+  return profile ? `${url}?profile=${profile}` : url;
 }
 
 function appendQuery(url: string, query: URLSearchParams) {

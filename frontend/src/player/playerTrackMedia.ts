@@ -23,9 +23,12 @@ export function playerTrackAudioSource(track: PlayerTrack, compatibilityMode = f
   if (!supportsCompatibilityPlayback(track) || !audioNeedsConversion(track.title, compatibilityMode)) {
     return { delivery: "direct", url: playbackURL(track.streamUrl, "audio", false, true) };
   }
-  // Video files keep an audio-only conversion instead of video segments.
-  if (track.kind === "audio" && track.locationId > 0 && audioHlsPlayback()) {
-    return { delivery: "hls", url: mediaHlsPlaylistURL(track.locationId) };
+  // A video file plays only its audio, never video segments.
+  if (track.locationId > 0 && audioHlsPlayback()) {
+    return {
+      delivery: "hls",
+      url: mediaHlsPlaylistURL(track.locationId, track.kind === "video" ? "audio" : undefined),
+    };
   }
   return { delivery: "prepared", url: playbackURL(track.streamUrl, "audio", true, false) };
 }

@@ -22,6 +22,12 @@
   boundary, later segments arrive without per-segment startup, and one video
   holds a single transcode slot. Segments converted before the upgrade are
   not reused.
+- A video file played through the audio player streams its audio as the
+  six-second AAC playlist that converted audio uses, so it starts within
+  about a second instead of waiting for a complete MP3 conversion, and a long
+  video no longer fails to convert. Only the first audio stream is encoded;
+  the picture is never decoded. The MP3 conversion remains for browsers
+  without HLS playback.
 - H.264 video the browser decodes but cannot play in its container or with
   its audio, such as H.264 in Matroska, AVI, MPEG-TS, or FLV, or in MP4 with
   AC-3, DTS, FLAC, or PCM audio, keeps its source picture: its video is copied
