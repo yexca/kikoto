@@ -223,6 +223,13 @@ async function mockCacheSettings(
       const { proxy, ...payload } = route.request().postDataJSON() as SettingsUpdate;
       onSettings(proxy ? { ...payload, proxy } : payload);
       currentSettings = { ...currentSettings, ...payload };
+      if (payload.videoHardwareAcceleration !== undefined || payload.videoHardwareDevice !== undefined) {
+        // Like the server: saving the encoder reports its test encode, which fails without a GPU.
+        currentSettings.videoHardwareStatus =
+          currentSettings.videoHardwareAcceleration === "none"
+            ? { state: "disabled" }
+            : { state: "unavailable", reason: "device_missing" };
+      }
       if (proxy) {
         // Like the server: passwords are write-only and an omitted one is kept.
         const previous = new Map(currentSettings.proxy.proxies.map((candidate) => [candidate.id, candidate]));
@@ -468,6 +475,40 @@ test("@desktop cache settings save transfer limits and link to the Cleanup page"
   await expect(page).toHaveURL(/\/settings\?tab=cleanup$/);
   await expect(page.getByRole("tab", { name: "Cleanup", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("region", { name: "Transcode cache" })).toBeVisible();
+});
+
+test("@desktop video conversion saves the hardware encoder and shows its check", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const settingsPayloads: Record<string, unknown>[] = [];
+  await mockCacheSettings(
+    page,
+    () => undefined,
+    (payload) => {
+      settingsPayloads.push(payload);
+    },
+  );
+  await page.goto("/settings?tab=cache");
+
+  const section = page.getByRole("region", { name: "Video conversion" });
+  const save = section.getByRole("button", { name: "Save video conversion" });
+  await expect(section.getByRole("combobox", { name: "Hardware encoder", exact: true })).toHaveText("Off (CPU)");
+  await expect(section.getByLabel("Render device")).toHaveCount(0);
+  await expect(save).toBeDisabled();
+
+  await section.getByRole("combobox", { name: "Hardware encoder", exact: true }).click();
+  await page.getByRole("option", { name: "Intel VA-API", exact: true }).click();
+  await expect(section.getByLabel("Render device")).toHaveValue("/dev/dri/renderD128");
+  await section.getByLabel("Render device").fill("/dev/dri/renderD129");
+  await save.click();
+  await expect.poll(() => settingsPayloads).toHaveLength(1);
+  expect(settingsPayloads[0]).toEqual({
+    videoHardwareAcceleration: "vaapi",
+    videoHardwareDevice: "/dev/dri/renderD129",
+  });
+  await expect(section.getByText("Unavailable", { exact: true })).toBeVisible();
+  await expect(
+    section.getByText("The render device is not in the container. Pass /dev/dri to the container."),
+  ).toBeVisible();
 });
 
 test("@desktop cleanup page scans managed media and requires cleanup confirmation", async ({ page }) => {

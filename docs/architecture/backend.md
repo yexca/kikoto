@@ -125,7 +125,7 @@ measurement `503 media_loudness_unavailable`; Demo measures nothing.
 
 Audio preparation, realtime video conversion that ends before any output, and
 an HLS encode that fails before its first segment remember a failure for 30
-seconds, and loudness measurement remembers a failure
+seconds (a hardware video encode for an hour, after any failure), and loudness measurement remembers a failure
 or timeout for an hour, keyed by purpose, path, size, and modification time,
 holding at most 256 entries. A request in that time fails at once instead of
 running FFmpeg again.
@@ -214,6 +214,24 @@ overlap or miss a few tens of milliseconds. A video stream with no frame after
 the requested position, such as a single still picture, produces no segment
 boundaries when transcoded, so seeking into it fails; a remux of it has no
 usable keyframe index and is not offered.
+
+Transcoded video can be encoded by an Intel GPU, chosen by the administrator
+settings `video_hardware_acceleration` (`none`, `qsv`, or `vaapi`) and
+`video_hardware_device`, a `/dev/dri/renderD*` render node. The GPU receives
+the frames the CPU decoded, scaled, and padded for the software encode, so
+both share the 720p bound, forced keyframes on the six-second grid, timeline,
+and audio; VA-API encodes in variable bitrate and QSV turns forced keyframes
+into IDR frames, both at 2000 kbit/s under the software 2800 kbit/s cap. At
+startup and after the settings change, a check encodes a 42-second 29.97 fps
+clip, in the encoder's normal mode and then in low-power mode, and accepts the
+encoder only when every segment starts with a keyframe within one frame of its
+playlist position; the settings response reports the outcome. Playback info
+then names a hardware revision, derived from the source revision and the mode,
+whose segments live under `hls-hw`. Its playlist has the software grid, so the
+software encode serves its segments whenever the encoder is off, changed, or
+failed for that file: a failed hardware session, at any segment, is remembered
+for an hour per file revision, and the request that met the failure is
+answered by the software encode.
 
 Query planner statistics are refreshed by one bounded background worker after
 committed bulk changes; GET requests never run analysis. Its triggers and

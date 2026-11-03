@@ -912,6 +912,35 @@ export const surfaceJapanese = {
       transcodeLimit: "変換キャッシュ上限",
       transcodeLimitDescription:
         "変換済み音声と HLS 動画セグメントが共有するキャッシュ上限です。最も長く未使用のファイルから削除します。",
+      videoHardware: "動画の変換",
+      videoHardwareDescription:
+        "変換する動画を Intel GPU でエンコードできます。GPU がオフ、利用不可、または失敗したときは CPU のエンコーダーで再生します。",
+      videoHardwareEncoder: "ハードウェアエンコーダー",
+      videoHardwareEncoderDescription:
+        "VA-API はほとんどの Intel GPU で動作します。Quick Sync Video には GPU に合ったランタイムが必要です。",
+      videoHardwareNone: "オフ（CPU）",
+      videoHardwareVaapi: "Intel VA-API",
+      videoHardwareQsv: "Intel Quick Sync Video",
+      videoHardwareDevice: "レンダーデバイス",
+      videoHardwareDeviceDescription: "コンテナー内の GPU レンダーノード。通常は /dev/dri/renderD128 です。",
+      videoHardwareStatus: "状態",
+      videoHardwareState: {
+        disabled: "オフ",
+        checking: "確認中",
+        ready: "使用可能",
+        unavailable: "利用不可",
+      },
+      videoHardwareReadyDetail: "テストエンコードに成功したため、変換する動画に GPU を使います。",
+      videoHardwareReadyLowPower: "低電力モードでテストエンコードに成功したため、変換する動画に GPU を使います。",
+      videoHardwareCheckingDetail: "サーバーがこのエンコーダーでテストエンコードを実行しています。",
+      videoHardwareReason: {
+        deviceMissing: "レンダーデバイスがコンテナー内にありません。/dev/dri をコンテナーに渡してください。",
+        encoderMissing: "FFmpeg にこの選択のエンコーダーがありません。",
+        encodeFailed:
+          "テストエンコードに失敗しました。コンテナーがデバイスを開けること、GPU ドライバーがあることを確認してください。",
+        keyframesUnaligned: "エンコーダーが、セグメントの開始位置にキーフレームを置きません。",
+      },
+      saveVideoHardware: "動画の変換を保存",
       transferSafety: "転送の安全性",
       downloadLimit: "ファイルごとのダウンロード上限",
       downloadLimitDescription:

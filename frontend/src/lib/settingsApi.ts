@@ -154,6 +154,16 @@ export type FileSource = {
 /** Copy the work's own lyrics into Kikoto's lyrics folder, or move them there. */
 export type FolderLyricsMode = "copy" | "move";
 
+/** GPU encoder for converted video, or none for the software encoder. */
+export type VideoHardwareAcceleration = "none" | "qsv" | "vaapi";
+
+/** Outcome of the server check of the configured video encoder. */
+export type VideoHardwareStatus = {
+  state: "disabled" | "checking" | "ready" | "unavailable";
+  reason?: "device_missing" | "encoder_missing" | "encode_failed" | "keyframes_unaligned";
+  lowPower?: boolean;
+};
+
 export type RuntimeSettings = {
   anonymousAccessEnabled: boolean;
   cacheEnabled: boolean;
@@ -181,6 +191,10 @@ export type AppSettings = {
   cacheEnabled: boolean;
   cacheLimitGb: number;
   transcodeCacheLimitGb: number;
+  videoHardwareAcceleration?: VideoHardwareAcceleration;
+  /** Render node the hardware encoder opens. */
+  videoHardwareDevice?: string;
+  videoHardwareStatus?: VideoHardwareStatus;
   remoteDownloadLimitGb: number;
   fetchStagingRetentionDays: number;
   remoteSaveTemplate: string;
@@ -292,6 +306,8 @@ export const settingsApi = {
     cacheEnabled?: boolean;
     cacheLimitGb?: number;
     transcodeCacheLimitGb?: number;
+    videoHardwareAcceleration?: VideoHardwareAcceleration;
+    videoHardwareDevice?: string;
     remoteDownloadLimitGb?: number;
     fetchStagingRetentionDays?: number;
     remoteSaveTemplate?: string;

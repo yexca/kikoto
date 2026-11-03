@@ -911,6 +911,34 @@ export const surfaceKorean = {
       transcodeLimit: "트랜스코드 캐시 제한",
       transcodeLimitDescription:
         "변환된 오디오와 HLS 동영상 세그먼트가 공유하는 캐시 제한입니다. 가장 오래 사용되지 않은 파일부터 제거됩니다.",
+      videoHardware: "동영상 변환",
+      videoHardwareDescription:
+        "변환하는 동영상을 Intel GPU로 인코딩할 수 있습니다. GPU가 꺼져 있거나 사용할 수 없거나 실패하면 CPU 인코더로 재생합니다.",
+      videoHardwareEncoder: "하드웨어 인코더",
+      videoHardwareEncoderDescription:
+        "VA-API는 대부분의 Intel GPU에서 작동합니다. Quick Sync Video에는 GPU에 맞는 런타임이 필요합니다.",
+      videoHardwareNone: "끄기(CPU)",
+      videoHardwareVaapi: "Intel VA-API",
+      videoHardwareQsv: "Intel Quick Sync Video",
+      videoHardwareDevice: "렌더 장치",
+      videoHardwareDeviceDescription: "컨테이너 안의 GPU 렌더 노드이며 보통 /dev/dri/renderD128입니다.",
+      videoHardwareStatus: "상태",
+      videoHardwareState: {
+        disabled: "꺼짐",
+        checking: "확인 중",
+        ready: "사용 가능",
+        unavailable: "사용 불가",
+      },
+      videoHardwareReadyDetail: "테스트 인코딩에 성공해 변환하는 동영상에 GPU를 사용합니다.",
+      videoHardwareReadyLowPower: "저전력 모드에서 테스트 인코딩에 성공해 변환하는 동영상에 GPU를 사용합니다.",
+      videoHardwareCheckingDetail: "서버가 이 인코더로 테스트 인코딩을 실행하고 있습니다.",
+      videoHardwareReason: {
+        deviceMissing: "렌더 장치가 컨테이너 안에 없습니다. /dev/dri를 컨테이너에 전달하세요.",
+        encoderMissing: "FFmpeg에 이 선택에 해당하는 인코더가 없습니다.",
+        encodeFailed: "테스트 인코딩에 실패했습니다. 컨테이너가 장치를 열 수 있고 GPU 드라이버가 있는지 확인하세요.",
+        keyframesUnaligned: "인코더가 세그먼트가 시작해야 하는 위치에 키프레임을 두지 않습니다.",
+      },
+      saveVideoHardware: "동영상 변환 저장",
       transferSafety: "전송 안전",
       downloadLimit: "파일별 다운로드 제한",
       downloadLimitDescription:

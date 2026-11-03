@@ -27,10 +27,16 @@ FROM debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde
 
 # Debian packages float within the digest-pinned release so each build takes
 # current security updates; the published image SBOM records exact versions.
+# On amd64 the Intel VA-API driver (about 15 MB with vainfo) lets optional
+# hardware video encoding use a GPU passed in as /dev/dri; Intel GPUs do not
+# exist on arm64.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     ca-certificates \
     ffmpeg \
+  && if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
+    apt-get install -y --no-install-recommends intel-media-va-driver vainfo; \
+  fi \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

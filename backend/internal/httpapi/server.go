@@ -69,6 +69,7 @@ type Server struct {
 	audioTranscodeLocks            cachePathLocker
 	hlsSessions                    hlsSessions
 	videoKeyframeIndexes           videoKeyframeIndexes
+	videoHardware                  videoHardwareState
 	mediaPreparationFailures       mediaPreparationFailures
 	loudnessMeasurements           loudnessMeasurementSlot
 	metadataSyncMu                 sync.Mutex

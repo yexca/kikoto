@@ -35,5 +35,10 @@
   Video with keyframes more than 15 seconds apart or above 20 Mbit/s is still
   transcoded to 720p, and a copied video the browser fails to decode is
   prepared again as a transcode.
+- Converted video can be encoded by an Intel GPU through VA-API or Quick Sync
+  Video, chosen under Settings → Cache & Fetch and off by default. A test
+  encode at startup and on save decides whether the GPU is used, and a file
+  whose GPU encode fails is encoded by the CPU. The amd64 image includes the
+  Intel VA-API driver; pass `/dev/dri` to the container to use it.
 
 </details>

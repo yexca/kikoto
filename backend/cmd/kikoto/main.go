@@ -131,6 +131,7 @@ func run() error {
 			}
 		})
 		server.Go(server.StartJobRunner)
+		server.Go(server.RefreshVideoHardware)
 	}
 
 	return serveUntilStopped(ctx, listener, newHTTPServer(server.Routes()), server, cfg.ShutdownTimeout)

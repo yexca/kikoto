@@ -1278,6 +1278,34 @@ export const surfaceEnglish = {
       transcodeLimit: "Transcode cache limit",
       transcodeLimitDescription:
         "Maximum cache size for converted audio and HLS video segments. Least recently used files are removed first.",
+      videoHardware: "Video conversion",
+      videoHardwareDescription:
+        "Converted video can be encoded by an Intel GPU. Playback uses the CPU encoder whenever the GPU is off, unavailable, or fails.",
+      videoHardwareEncoder: "Hardware encoder",
+      videoHardwareEncoderDescription:
+        "VA-API works with most Intel GPUs. Quick Sync Video needs a runtime that matches the GPU.",
+      videoHardwareNone: "Off (CPU)",
+      videoHardwareVaapi: "Intel VA-API",
+      videoHardwareQsv: "Intel Quick Sync Video",
+      videoHardwareDevice: "Render device",
+      videoHardwareDeviceDescription: "The GPU render node inside the container, usually /dev/dri/renderD128.",
+      videoHardwareStatus: "Status",
+      videoHardwareState: {
+        disabled: "Off",
+        checking: "Checking",
+        ready: "Ready",
+        unavailable: "Unavailable",
+      },
+      videoHardwareReadyDetail: "A test encode succeeded, so converted video uses the GPU.",
+      videoHardwareReadyLowPower: "A test encode succeeded in low-power mode, so converted video uses the GPU.",
+      videoHardwareCheckingDetail: "The server is running a test encode with this encoder.",
+      videoHardwareReason: {
+        deviceMissing: "The render device is not in the container. Pass /dev/dri to the container.",
+        encoderMissing: "FFmpeg has no encoder for this choice.",
+        encodeFailed: "The test encode failed. Check that the container can open the device and has the GPU driver.",
+        keyframesUnaligned: "The encoder does not place keyframes where segments must start.",
+      },
+      saveVideoHardware: "Save video conversion",
       transferSafety: "Transfer safety",
       downloadLimit: "Per-file download limit",
       downloadLimitDescription:

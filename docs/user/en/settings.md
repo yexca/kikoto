@@ -167,13 +167,23 @@ settings.
 
 Cache & Fetch contains configuration only: playback cache policy, transfer
 safety, and collapsed download pacing, with one save action that is enabled
-after a change. Cache contents are managed in the Cleanup tab.
+after a change, and video conversion with its own save action. Cache contents
+are managed in the Cleanup tab.
 
 - The per-file remote media limit defaults to 100 GB, and unpublished staging
   from failed or cancelled Fetch runs is kept for seven days by default.
 - The transcode cache limit is independent, from 1 to 4096 GB, and defaults to
   5 GB. This rebuildable cache lives under `/cache/transcodes` and does not
   change the managed remote-media cache limit.
+- **Hardware encoder** under video conversion chooses how converted video is
+  encoded: **Off (CPU)**, the default, **Intel VA-API**, or **Intel Quick Sync
+  Video**, on the render device inside the container, `/dev/dri/renderD128`
+  by default. Saving runs a short test encode and shows its result: **Ready**,
+  or **Unavailable** with the reason, such as a device that is not passed to
+  the container. Converted video uses the GPU only while the status is
+  **Ready**, and uses the CPU encoder for a file whose GPU encode failed. See
+  [Hardware video encoding](../../operations/docker.md#hardware-video-encoding)
+  for passing the GPU to the container.
 
 ### Proxy
 

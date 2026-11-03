@@ -62,7 +62,10 @@ Playback is handled by a global browser audio player.
   above 20 Mbit/s, or keyframes that cannot be read within five seconds of the
   playback request is transcoded instead; the keyframe scan continues, so a
   later playback of the file copies its video. Every other video is transcoded
-  to six-second 720p H.264/AAC segments.
+  to six-second 720p H.264/AAC segments, by the CPU or, when an administrator
+  turns on a hardware encoder under Settings → Cache & Fetch and its test
+  encode succeeds, by an Intel GPU. A file whose GPU encode fails is encoded
+  by the CPU instead, within the same request.
 - One continuous FFmpeg process produces the segments in order from where
   playback starts or seeks to, so a later position starts without converting
   everything before it and audio stays seamless across segment boundaries;
@@ -116,8 +119,8 @@ Playback is handled by a global browser audio player.
   length. HLS video and audio segments are immutable for their source revision and are
   seekable through the complete VOD timeline. Transcoded video is bounded to
   720p and 60 frames per second, padded to even dimensions before `yuv420p`
-  encoding, and produced with a conservative two-thread profile; copied video
-  keeps the source picture. FFmpeg and FFprobe each have a small fixed
+  encoding, and produced with a conservative two-thread profile or the GPU
+  encoder at up to 2800 kbit/s; copied video keeps the source picture. FFmpeg and FFprobe each have a small fixed
   concurrency limit and a short, bounded wait queue; requests that cannot
   acquire a slot promptly are rejected so a process cannot remain occupied for
   an unbounded period.

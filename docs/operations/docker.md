@@ -124,6 +124,54 @@ docker compose up -d
 configuration while reusing an already installed image, use
 `docker compose up -d --pull never`.
 
+## Hardware Video Encoding
+
+Converted video can be encoded by an Intel GPU instead of the CPU, which
+matters most on a low-power host. It is off by default; decoding, scaling, and
+audio stay on the CPU either way. The `linux/amd64` image includes the Intel
+VA-API driver (`intel-media-va-driver`) and `vainfo`; the `linux/arm64` image
+has no Intel driver.
+
+1. Pass the GPU's device folder to the container in `docker-compose.yml`, or
+   in a `docker-compose.override.yml` beside it:
+
+   ```yaml
+   services:
+     kikoto:
+       devices:
+         - /dev/dri:/dev/dri
+   ```
+
+   The container runs as root, which owns the render node, so it needs no
+   extra group. A service started with a different `user:` also needs the
+   host's `render` group, for example `group_add: ["<gid of render>"]` with
+   the number from `getent group render`. The dropped capabilities and the
+   read-only root filesystem do not affect the device.
+2. Run `docker compose up -d`, then check that the driver opens the GPU:
+
+   ```sh
+   docker compose exec kikoto vainfo --display drm --device /dev/dri/renderD128
+   ```
+
+   The list should include `VAProfileH264Main` or `VAProfileH264High` with
+   `VAEntrypointEncSlice` or `VAEntrypointEncSliceLP`.
+3. In **Settings → Cache & Fetch**, choose **Intel VA-API** as the hardware
+   encoder and save. Change the render device only when the host has several
+   GPUs; `ls /dev/dri` on the host lists them.
+
+Saving, and every start, runs a short test encode, first in the encoder's
+normal mode and then in its low-power mode, which some GPUs and the free
+driver offer alone. Converted video uses the GPU only after a test encode
+succeeds and cuts its segments on the playlist grid; otherwise the status
+names the reason and playback stays on the CPU. A GPU encode that fails during
+playback sends that file to the CPU encoder for an hour, and the same request
+is answered by the CPU encode.
+
+Prefer **Intel VA-API**. **Intel Quick Sync Video** reaches the same encoder
+through the Intel Media SDK runtime that the image's FFmpeg uses, which does
+not cover every recent GPU; the image does not include the newer oneVPL
+runtime. When its test encode fails, use VA-API.
+
 ## Upgrade
 
 Back up `config/` before upgrading. Keep the existing `data/` mount in place;

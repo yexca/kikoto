@@ -116,6 +116,8 @@ describe("translation resources", () => {
       "workflowPage.runSubjectTitle",
       // Product name.
       "maintenance.proxy.scopes.dlsite",
+      "maintenance.cache.videoHardwareVaapi",
+      "maintenance.cache.videoHardwareQsv",
       "workflowPage.metadataSyncScope.dlsite",
       // Synthetic identifier examples.
       "workflowPage.presetTargetPlaceholders.circleId",

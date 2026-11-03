@@ -17,6 +17,7 @@ import { toastFromError, useToast } from "@/components/ui/toast";
 import { libraryLayoutSummary } from "@/features/library-setup/libraryLayoutSummary";
 import { LibraryLayoutSection } from "@/features/library-setup/LibraryLayoutSection";
 import { useLibraryLayout } from "@/features/library-setup/useLibraryLayout";
+import { VideoHardwareSettingsSection } from "@/features/video-hardware/VideoHardwareSettingsSection";
 import { ProxySettingsSection } from "@/features/proxy";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { RemoteSourceDialog } from "@/features/sources/RemoteSourceDialog";
@@ -31,7 +32,14 @@ import {
   sourcePayload,
   storagePathPreview,
 } from "@/features/sources/remoteSourceModel";
-import { api, type AppSettings, type FileSource, type FolderLyricsMode, type LibraryLayout } from "@/lib/api";
+import {
+  api,
+  type AppSettings,
+  type FileSource,
+  type FolderLyricsMode,
+  type LibraryLayout,
+  type VideoHardwareAcceleration,
+} from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { draftAfterSectionSave, sectionSettings } from "@/pages/settingsDraft";
 import { UsersPage } from "@/pages/UsersPage";
@@ -47,6 +55,8 @@ type RuntimeDraft = {
   cacheEnabled: boolean;
   cacheLimitGb: number;
   transcodeCacheLimitGb: number;
+  videoHardwareAcceleration: VideoHardwareAcceleration;
+  videoHardwareDevice: string;
   remoteDownloadLimitGb: number;
   fetchStagingRetentionDays: number;
   remoteDelayBaseSeconds: number;
@@ -65,6 +75,8 @@ function runtimeDraftFromSettings(settings: AppSettings): RuntimeDraft {
     cacheEnabled: settings.cacheEnabled,
     cacheLimitGb: settings.cacheLimitGb,
     transcodeCacheLimitGb: settings.transcodeCacheLimitGb ?? 5,
+    videoHardwareAcceleration: settings.videoHardwareAcceleration ?? "none",
+    videoHardwareDevice: settings.videoHardwareDevice ?? "/dev/dri/renderD128",
     remoteDownloadLimitGb: settings.remoteDownloadLimitGb,
     fetchStagingRetentionDays: settings.fetchStagingRetentionDays,
     remoteDelayBaseSeconds: settings.remoteDelayBaseSeconds,
@@ -472,26 +484,39 @@ export function MaintenancePage({
             <StoragePaths settings={settings} remoteSources={remoteSources} />
           </div>
         ) : activeTab === "cache" && draft ? (
-          <CacheFetchSettings
-            draft={draft}
-            readOnly={readOnly}
-            canManageCleanup={canManageCleanup}
-            onChange={patchDraft}
-            saveButton={saveButton(
-              [
-                "cacheEnabled",
-                "cacheLimitGb",
-                "transcodeCacheLimitGb",
-                "remoteDownloadLimitGb",
-                "fetchStagingRetentionDays",
-                "remoteDelayBaseSeconds",
-                "remoteDelayRandomSeconds",
-                "remoteBackoffSeconds",
-                "remoteMaxBackoffSeconds",
-              ],
-              t("maintenance.cache.save"),
-            )}
-          />
+          <div className="space-y-6">
+            <CacheFetchSettings
+              draft={draft}
+              readOnly={readOnly}
+              canManageCleanup={canManageCleanup}
+              onChange={patchDraft}
+              saveButton={saveButton(
+                [
+                  "cacheEnabled",
+                  "cacheLimitGb",
+                  "transcodeCacheLimitGb",
+                  "remoteDownloadLimitGb",
+                  "fetchStagingRetentionDays",
+                  "remoteDelayBaseSeconds",
+                  "remoteDelayRandomSeconds",
+                  "remoteBackoffSeconds",
+                  "remoteMaxBackoffSeconds",
+                ],
+                t("maintenance.cache.save"),
+              )}
+            />
+            <VideoHardwareSettingsSection
+              acceleration={draft.videoHardwareAcceleration}
+              device={draft.videoHardwareDevice}
+              status={settings?.videoHardwareStatus}
+              readOnly={readOnly}
+              onChange={patchDraft}
+              saveButton={saveButton(
+                ["videoHardwareAcceleration", "videoHardwareDevice"],
+                t("maintenance.cache.saveVideoHardware"),
+              )}
+            />
+          </div>
         ) : activeTab === "proxy" && settings ? (
           <div className="space-y-6">
             <ProxySettingsSection

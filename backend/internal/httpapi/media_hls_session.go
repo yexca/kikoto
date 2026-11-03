@@ -62,6 +62,9 @@ type hlsEncodeProfile struct {
 	maximumSegments int
 	// A larger segment fails the session and is never served.
 	segmentMaximumBytes int64
+	// failureTTL, when set, remembers every failed session of a file revision
+	// for that long instead of only one that produced nothing.
+	failureTTL time.Duration
 	// A session that no request has asked or waited for in this long stops;
 	// zero leaves only the other limits.
 	idleTimeout time.Duration
@@ -474,7 +477,10 @@ wait:
 		session.mu.Lock()
 		producedNothing := session.next == session.start
 		session.mu.Unlock()
-		if producedNothing {
+		switch {
+		case session.profile.failureTTL > 0:
+			s.mediaPreparationFailures.rememberFor(failureKey, session.profile.failureTTL)
+		case producedNothing:
 			s.mediaPreparationFailures.remember(failureKey)
 		}
 	}

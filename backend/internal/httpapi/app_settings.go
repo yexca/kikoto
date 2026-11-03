@@ -22,18 +22,23 @@ type appSettingsResponse struct {
 	LocalScanDepth         int  `json:"localScanDepth"`
 	// LocalScanDepthMinimum is the shallowest depth that still reaches every
 	// Fetch folder; scans use at least this depth.
-	LocalScanDepthMinimum     int     `json:"localScanDepthMinimum"`
-	CacheEnabled              bool    `json:"cacheEnabled"`
-	CacheLimitGB              int     `json:"cacheLimitGb"`
-	TranscodeCacheLimitGB     int     `json:"transcodeCacheLimitGb"`
-	RemoteDownloadLimitGB     int     `json:"remoteDownloadLimitGb"`
-	FetchStagingRetentionDays int     `json:"fetchStagingRetentionDays"`
-	RemoteSaveTemplate        string  `json:"remoteSaveTemplate"`
-	RemoteDelayBase           float64 `json:"remoteDelayBaseSeconds"`
-	RemoteDelayRandom         float64 `json:"remoteDelayRandomSeconds"`
-	RemoteBackoff             float64 `json:"remoteBackoffSeconds"`
-	RemoteMaxBackoff          float64 `json:"remoteMaxBackoffSeconds"`
-	CatalogFreshnessDays      int     `json:"catalogFreshnessDays"`
+	LocalScanDepthMinimum int  `json:"localScanDepthMinimum"`
+	CacheEnabled          bool `json:"cacheEnabled"`
+	CacheLimitGB          int  `json:"cacheLimitGb"`
+	TranscodeCacheLimitGB int  `json:"transcodeCacheLimitGb"`
+	// VideoHardwareAcceleration is "none", "qsv", or "vaapi"; the status says
+	// whether the check of that encoder on VideoHardwareDevice succeeded.
+	VideoHardwareAcceleration string              `json:"videoHardwareAcceleration"`
+	VideoHardwareDevice       string              `json:"videoHardwareDevice"`
+	VideoHardwareStatus       videoHardwareStatus `json:"videoHardwareStatus"`
+	RemoteDownloadLimitGB     int                 `json:"remoteDownloadLimitGb"`
+	FetchStagingRetentionDays int                 `json:"fetchStagingRetentionDays"`
+	RemoteSaveTemplate        string              `json:"remoteSaveTemplate"`
+	RemoteDelayBase           float64             `json:"remoteDelayBaseSeconds"`
+	RemoteDelayRandom         float64             `json:"remoteDelayRandomSeconds"`
+	RemoteBackoff             float64             `json:"remoteBackoffSeconds"`
+	RemoteMaxBackoff          float64             `json:"remoteMaxBackoffSeconds"`
+	CatalogFreshnessDays      int                 `json:"catalogFreshnessDays"`
 	// RemoteMetadataFallback is the opt-in remote source lookup for works
 	// DLsite reports as not found, with its ordered source list.
 	RemoteMetadataFallback remoteMetadataFallbackSettings `json:"remoteMetadataFallback"`
@@ -73,6 +78,8 @@ type settingsUpdatePayload struct {
 	CacheEnabled                  *bool                           `json:"cacheEnabled"`
 	CacheLimitGB                  *int                            `json:"cacheLimitGb"`
 	TranscodeCacheLimitGB         *int                            `json:"transcodeCacheLimitGb"`
+	VideoHardwareAcceleration     *string                         `json:"videoHardwareAcceleration"`
+	VideoHardwareDevice           *string                         `json:"videoHardwareDevice"`
 	RemoteDownloadLimitGB         *int                            `json:"remoteDownloadLimitGb"`
 	FetchStagingRetentionDays     *int                            `json:"fetchStagingRetentionDays"`
 	RemoteSaveTemplate            *string                         `json:"remoteSaveTemplate"`
@@ -214,6 +221,9 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("transcode cache limit enforcement failed after settings update", "error", err)
 		}
 	}
+	if payload.VideoHardwareAcceleration != nil || payload.VideoHardwareDevice != nil {
+		s.refreshVideoHardwareForResponse(r.Context())
+	}
 	settings, err := s.loadAppSettings(r)
 	if err != nil {
 		writeError(w, err)
@@ -293,6 +303,9 @@ func applyGeneralSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePay
 		return err
 	}
 	if err := upsertOptionalBoolSetting(r, tx, payload.HideRemoteSourceAddresses, hideRemoteSourceAddressesSetting); err != nil {
+		return err
+	}
+	if err := applyVideoHardwareSettings(r, tx, payload); err != nil {
 		return err
 	}
 	if payload.FolderLyricsMode != nil {
@@ -410,6 +423,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 	if err != nil {
 		return appSettingsResponse{}, err
 	}
+	videoHardwareMode, videoHardwareDevice := s.videoHardwareSettings(r.Context())
 	return appSettingsResponse{
 		AnonymousAccessEnabled:        s.configuredAnonymousAccessEnabled(),
 		LocalScanDepth:                s.settingInt(r, "local_scan_depth", s.cfg.LocalScanDepth),
@@ -417,6 +431,9 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		CacheEnabled:                  s.settingBool(r, "remote_cache_enabled", false),
 		CacheLimitGB:                  s.settingInt(r, "remote_cache_limit_gb", 20),
 		TranscodeCacheLimitGB:         s.settingInt(r, transcodeCacheLimitSetting, defaultTranscodeCacheLimitGB),
+		VideoHardwareAcceleration:     videoHardwareMode,
+		VideoHardwareDevice:           videoHardwareDevice,
+		VideoHardwareStatus:           s.videoHardwareStatusFor(videoHardwareMode, videoHardwareDevice),
 		RemoteDownloadLimitGB:         int(s.remoteMediaDownloadLimitBytes(r.Context()) >> 30),
 		FetchStagingRetentionDays:     s.configuredFetchStagingRetentionDays(r.Context()),
 		RemoteSaveTemplate:            s.settingString(r, "remote_save_root_template", defaultRemoteSaveRootTemplate),

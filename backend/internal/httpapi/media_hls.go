@@ -111,10 +111,14 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	revision := source.Revision
+	if encoder, ok := s.readyVideoHardwareEncoder(); ok && !s.videoHardwareFailedRecently(encoder, source.Path) {
+		revision = videoHardwareRevision(source, encoder.mode)
+	}
 	writeJSON(w, http.StatusOK, videoPlaybackInfoResponse{
 		Delivery:        "hls",
 		Conversion:      "transcode",
-		URL:             fmt.Sprintf("/api/media/%d/hls/index.m3u8?v=%s", locationID, source.Revision),
+		URL:             fmt.Sprintf("/api/media/%d/hls/index.m3u8?v=%s", locationID, revision),
 		DurationSeconds: source.Duration,
 		Seekable:        true,
 	})
@@ -174,7 +178,22 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	profile := source.Encode
-	if revision := strings.TrimSpace(r.URL.Query().Get("v")); revision != "" && revision != source.Revision {
+	playlistRevision, softwareRevision := source.Revision, source.Revision
+	var hardware *videoHardwareEncoder
+	revision := strings.TrimSpace(r.URL.Query().Get("v"))
+	switch {
+	case revision == "" || revision == source.Revision:
+	case source.Encode == &videoHLSProfile &&
+		(revision == videoHardwareRevision(source, videoHardwareQSV) || revision == videoHardwareRevision(source, videoHardwareVAAPI)):
+		// Playback info names a hardware encode by its own revision. Its
+		// playlist has the software grid, so the software encode produces its
+		// segments when the encoder is off, changed, or failed for this file.
+		playlistRevision = revision
+		if encoder, ok := s.readyVideoHardwareEncoder(); ok && revision == videoHardwareRevision(source, encoder.mode) &&
+			!s.videoHardwareFailedRecently(encoder, source.Path) {
+			source.Revision, profile, hardware = revision, videoHardwareHLSProfile(encoder), &encoder
+		}
+	default:
 		// Playback info names a remux by its own revision of the source.
 		if source.Profile != playbackProfileVideo || revision != videoRemuxRevision(source) {
 			s.writeHLSPlaybackError(w, errHLSPlaybackSourceChanged, source.Profile)
@@ -193,10 +212,11 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		source.Revision, source.Keyframes, profile = revision, keyframes, &videoRemuxHLSProfile
+		playlistRevision = revision
 	}
 	if file == "index.m3u8" {
 		// Segments repeat the requested profile, which selects their encode.
-		segmentQuery := url.Values{"v": []string{source.Revision}}
+		segmentQuery := url.Values{"v": []string{playlistRevision}}
 		if requestedProfile != "" {
 			segmentQuery.Set("profile", requestedProfile)
 		}
@@ -218,6 +238,13 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err = s.serveHLSSessionSegment(w, r, profile, source, segmentIndex)
+	// A failed hardware encode is remembered, and the software encode
+	// produces the segment instead.
+	if hardware != nil && errors.Is(err, errHLSTranscodeUnavailable) && s.videoHardwareFailedRecently(*hardware, source.Path) {
+		slog.Warn("hardware video encode failed; encoding in software", "location_id", source.LocationID, "mode", hardware.mode, "error", err)
+		source.Revision = softwareRevision
+		err = s.serveHLSSessionSegment(w, r, &videoHLSProfile, source, segmentIndex)
+	}
 	if err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			slog.Warn("playback segment preparation failed", "location_id", source.LocationID, "profile", source.Profile, "segment", segmentIndex, "error", err)
@@ -437,38 +464,57 @@ var videoHLSProfile = hlsEncodeProfile{
 }
 
 func videoHLSFFmpegArgs(input string, outputDir string, startIndex int, durationSeconds float64) []string {
+	return videoHLSEncodeArgs(nil, input, outputDir, startIndex, durationSeconds)
+}
+
+// videoHLSEncodeArgs encodes with libx264, or with a hardware encoder that
+// receives the same CPU-decoded and scaled frames.
+func videoHLSEncodeArgs(hardware *videoHardwareEncoder, input string, outputDir string, startIndex int, durationSeconds float64) []string {
 	start := float64(startIndex) * hlsSegmentDurationSeconds
 	formatSeconds := func(value float64) string { return strconv.FormatFloat(value, 'f', 3, 64) }
+	var device []string
+	upload := ""
+	codec := []string{
+		"-c:v", "libx264", "-threads:v", "2", "-preset", "veryfast",
+		"-crf", "24", "-maxrate", "2800k", "-bufsize", "5600k", "-pix_fmt", "yuv420p", "-sc_threshold", "0",
+	}
+	if hardware != nil {
+		device, upload, codec = hardware.hardwareArgs()
+	}
 	args := []string{
 		"-nostdin", "-hide_banner", "-loglevel", "error", "-y",
 		"-threads", "2", "-filter_threads", "1", "-max_alloc", "268435456",
 		"-protocol_whitelist", "file,pipe",
+	}
+	args = append(args, device...)
+	args = append(args,
 		"-ss", formatSeconds(start), "-i", input,
 		"-map", "0:v:0", "-map", "0:a:0?", "-map_metadata", "-1", "-sn", "-dn",
 		// Cloning the last frame keeps a video stream ending before the audio
 		// cutting segments until the published duration, where -t ends it.
-		"-vf", "tpad=stop=-1:stop_mode=clone," +
-			"scale=w='min(1280,iw)':h='min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2," +
-			"pad=width=ceil(iw/2)*2:height=ceil(ih/2)*2:x=0:y=0",
-		"-t", formatSeconds(durationSeconds - start),
+		"-vf", "tpad=stop=-1:stop_mode=clone,"+
+			"scale=w='min(1280,iw)':h='min(720,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,"+
+			"pad=width=ceil(iw/2)*2:height=ceil(ih/2)*2:x=0:y=0"+upload,
+		"-t", formatSeconds(durationSeconds-start),
 		// A constant frame rate puts a frame at every segment boundary of a
 		// variable or sparse frame rate source.
 		"-fps_mode", "cfr", "-fpsmax", "60",
-		"-c:v", "libx264", "-threads:v", "2", "-preset", "veryfast",
-		"-crf", "24", "-maxrate", "2800k", "-bufsize", "5600k", "-pix_fmt", "yuv420p",
+	)
+	args = append(args, codec...)
+	args = append(args,
 		// Keyframes, where the HLS muxer cuts segments, fall only on the
 		// six-second grid that the published playlist describes.
-		"-g", "600", "-sc_threshold", "0",
-		"-force_key_frames", "expr:gte(t,n_forced*" + strconv.FormatFloat(hlsSegmentDurationSeconds, 'f', -1, 64) + ")",
+		"-g", "600",
+		"-force_key_frames", "expr:gte(t,n_forced*"+strconv.FormatFloat(hlsSegmentDurationSeconds, 'f', -1, 64)+")",
 		"-c:a", "aac", "-threads:a", "1", "-b:a", "128k", "-ac", "2", "-ar", "48000",
 		// Every session writes the timestamps of one shared timeline, offset so
 		// that B-frame decode timestamps stay positive from the first segment;
 		// FFmpeg would otherwise shift only the session that starts at zero.
-		"-output_ts_offset", formatSeconds(start + videoHLSTimelineOffsetSeconds),
+		"-output_ts_offset", formatSeconds(start+videoHLSTimelineOffsetSeconds),
 		// Strict interleaving keeps each audio packet in the segment of its
 		// timestamp even when the video encoder lags behind the audio.
 		"-max_interleave_delta", "0",
 		"-muxdelay", "0", "-muxpreload", "0",
-	}
+	)
 	return append(args, hlsSegmentFFmpegOutputArgs(outputDir, videoHLSSessionPlaylist, startIndex)...)
 }
