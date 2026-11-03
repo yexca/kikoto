@@ -148,7 +148,7 @@ func (s *Server) writeHLSInitSection(ctx context.Context, profile *hlsEncodeProf
 	}
 	runContext, cancel := context.WithTimeout(ctx, hlsInitSectionTimeout)
 	defer cancel()
-	command := exec.CommandContext(runContext, ffmpegPath, videoHEVCRemuxInitArgs(source.Path, dir, source.Keyframes)...)
+	command := exec.CommandContext(runContext, ffmpegPath, withVideoAudioTrack(videoHEVCRemuxInitArgs(source.Path, dir, source.Keyframes), source.AudioTrack)...)
 	diagnostics := &transcodeDiagnosticOutput{}
 	command.Stderr = diagnostics
 	stdout, err := command.StdoutPipe()

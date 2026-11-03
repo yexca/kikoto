@@ -82,6 +82,17 @@ Playback is handled by a global browser audio player.
   natively, which keeps native fullscreen and AirPlay; other browsers, the
   Android app included, use hls.js, and a browser without it plays the
   playlist natively when it can.
+- A video with two or more audio tracks shows an **Audio track** menu below
+  the video, which names each track by number and by the title, language, and
+  channel layout the file gives. Without a choice the viewer plays the track
+  the file flags as default, or the first track when none is flagged. Only
+  the first track plays directly, because a browser playing a file itself
+  chooses its audio; any other track, including a default track that is not
+  the first, plays as a copy or transcode of the video with that track's
+  audio, and each track has its own segments. Changing the track keeps the
+  playback position and whether the video was paused, and the choice lasts
+  until the page reloads. The audio player always plays the first audio
+  track of a video.
 - Temporary video preparation failures receive bounded retries. A remaining
   failure keeps an inline Retry action. A direct file or copied video that the
   browser fails to decode is prepared again as a transcode; that recovery and

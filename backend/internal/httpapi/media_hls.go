@@ -46,6 +46,10 @@ type videoPlaybackInfoResponse struct {
 	URL             string  `json:"url"`
 	DurationSeconds float64 `json:"durationSeconds"`
 	Seekable        bool    `json:"seekable"`
+	// AudioTracks lists the audio streams of the file, and AudioStream names
+	// the one playing; both are absent from a video without audio.
+	AudioTracks []videoAudioTrack `json:"audioTracks,omitempty"`
+	AudioStream *int              `json:"audioStream,omitempty"`
 }
 
 type hlsPlaybackSource struct {
@@ -62,6 +66,11 @@ type hlsPlaybackSource struct {
 	// Keyframes places the segments of remuxed video; other playlists follow
 	// the six-second grid.
 	Keyframes *videoKeyframeIndex
+	// AudioTrack is the audio stream, counted among audio streams, that the
+	// encodes of a video map; FileRevision is the revision before
+	// useAudioTrack derives one for the track.
+	AudioTrack   int
+	FileRevision string
 }
 
 func (source hlsPlaybackSource) segmentCount() int {
@@ -85,11 +94,19 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 		s.writeHLSPlaybackError(w, err, playbackProfileVideo)
 		return
 	}
+	if selectVideoAudioTrack(r, &source) != nil {
+		writeInvalidVideoAudioStream(w)
+		return
+	}
+	audioTracks := videoAudioTracks(source.Probe)
+	trackQuery := videoAudioTrackQuery(audioTracks, source.AudioTrack)
 	// A client asks for a transcode after direct playback failed, which a
 	// remux of the same video stream would repeat.
 	if !forcePlaybackTranscode(r) {
 		capabilities := playbackCapabilities(r)
-		if _, direct := directPlaybackContentType(source.Probe, playbackProfileVideo, capabilities); direct {
+		// The browser chooses the audio of a file it plays directly, so only
+		// the first audio stream plays directly.
+		if _, direct := directPlaybackContentType(source.Probe, playbackProfileVideo, capabilities); direct && source.AudioTrack == 0 {
 			query := url.Values{"profile": []string{playbackProfileVideo}}
 			if values := sortedPlaybackCapabilities(capabilities); len(values) > 0 {
 				query.Set("capabilities", strings.Join(values, ","))
@@ -97,6 +114,7 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, videoPlaybackInfoResponse{
 				Delivery: "direct", Conversion: "none", URL: fmt.Sprintf("/api/media/%d/stream?%s", locationID, query.Encode()),
 				DurationSeconds: source.Duration, Seekable: true,
+				AudioTracks: audioTracks, AudioStream: selectedVideoAudioStream(audioTracks, source.AudioTrack),
 			})
 			return
 		}
@@ -104,9 +122,11 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, videoPlaybackInfoResponse{
 				Delivery:        "hls",
 				Conversion:      "remux",
-				URL:             fmt.Sprintf("/api/media/%d/hls/index.m3u8?v=%s", locationID, remux.revision(source)),
+				URL:             fmt.Sprintf("/api/media/%d/hls/index.m3u8?v=%s%s", locationID, remux.revision(source), trackQuery),
 				DurationSeconds: source.Duration,
 				Seekable:        true,
+				AudioTracks:     audioTracks,
+				AudioStream:     selectedVideoAudioStream(audioTracks, source.AudioTrack),
 			})
 			return
 		}
@@ -118,9 +138,11 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, videoPlaybackInfoResponse{
 		Delivery:        "hls",
 		Conversion:      "transcode",
-		URL:             fmt.Sprintf("/api/media/%d/hls/index.m3u8?v=%s", locationID, revision),
+		URL:             fmt.Sprintf("/api/media/%d/hls/index.m3u8?v=%s%s", locationID, revision, trackQuery),
 		DurationSeconds: source.Duration,
 		Seekable:        true,
+		AudioTracks:     audioTracks,
+		AudioStream:     selectedVideoAudioStream(audioTracks, source.AudioTrack),
 	})
 }
 
@@ -184,6 +206,10 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 		s.writeHLSPlaybackError(w, err, "media")
 		return
 	}
+	if selectVideoAudioTrack(r, &source) != nil {
+		writeInvalidVideoAudioStream(w)
+		return
+	}
 	profile := source.Encode
 	playlistRevision, softwareRevision := source.Revision, source.Revision
 	var hardware *videoHardwareEncoder
@@ -227,6 +253,9 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 		segmentQuery := url.Values{"v": []string{playlistRevision}}
 		if requestedProfile != "" {
 			segmentQuery.Set("profile", requestedProfile)
+		}
+		if value := r.URL.Query().Get(videoAudioStreamQuery); value != "" {
+			segmentQuery.Set(videoAudioStreamQuery, value)
 		}
 		playlist := buildHLSPlaylist(source.Duration, segmentQuery.Encode())
 		if source.Keyframes != nil {
@@ -483,7 +512,7 @@ var videoHLSProfile = hlsEncodeProfile{
 	reservation: fixedHLSSegmentReservation(60+20, 3<<20),
 	idleTimeout: time.Minute,
 	args: func(source hlsPlaybackSource, outputDir string, startIndex int) []string {
-		return videoHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Duration)
+		return withVideoAudioTrack(videoHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Duration), source.AudioTrack)
 	},
 }
 

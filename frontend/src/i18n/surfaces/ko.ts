@@ -613,6 +613,11 @@ export const surfaceKorean = {
     resumedAt: "{{time}}부터 이어서 재생합니다",
     startOver: "처음부터 재생",
     retry: "다시 시도",
+    audioTrack: "오디오 트랙",
+    audioTrackNumber: "트랙 {{number}}",
+    audioMono: "모노",
+    audioStereo: "스테레오",
+    audioChannels: "{{count}}채널",
   },
   permissions: {
     demoReadOnly: "데모 모드는 읽기 전용입니다.",

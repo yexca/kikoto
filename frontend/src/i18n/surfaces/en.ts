@@ -661,6 +661,11 @@ export const surfaceEnglish = {
     resumedAt: "Resumed at {{time}}",
     startOver: "Start over",
     retry: "Retry",
+    audioTrack: "Audio track",
+    audioTrackNumber: "Track {{number}}",
+    audioMono: "Mono",
+    audioStereo: "Stereo",
+    audioChannels: "{{count}} channels",
   },
   permissions: {
     demoReadOnly: "Demo mode is read-only.",

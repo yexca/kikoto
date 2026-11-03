@@ -595,6 +595,11 @@ export const surfaceHans = {
     resumedAt: "已从 {{time}} 继续",
     startOver: "从头播放",
     retry: "重试",
+    audioTrack: "音轨",
+    audioTrackNumber: "音轨 {{number}}",
+    audioMono: "单声道",
+    audioStereo: "立体声",
+    audioChannels: "{{count}} 声道",
   },
   permissions: {
     demoReadOnly: "演示模式为只读。",

@@ -6,8 +6,9 @@ import type { ErrorData } from "hls.js";
 
 import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/input";
 import { useStableCallback } from "@/hooks/useStableCallback";
-import { api, assetURL, type VideoPlaybackInfo } from "@/lib/api";
+import { api, assetURL, type VideoAudioTrack, type VideoPlaybackInfo } from "@/lib/api";
 import { playbackURL, prefersNativeVideoHls, videoPlaybackCapabilities } from "@/player/mediaPlayback";
 import {
   CONSERVATIVE_HLS_CONFIG,
@@ -20,6 +21,14 @@ import {
   videoResumeStorageKey,
   writeVideoResumePosition,
 } from "@/features/work-detail/media/videoResume";
+import {
+  chooseVideoAudioStream,
+  chosenVideoAudioStream,
+  forgetChosenVideoAudioStream,
+  rejectsVideoAudioStream,
+  videoAudioTrackChoices,
+  videoAudioTrackLabel,
+} from "@/features/work-detail/media/videoAudioTracks";
 import { nextVideoPlaybackRate, videoShortcut } from "@/features/work-detail/media/videoShortcuts";
 import { type VideoSubtitle, videoSubtitleWebVtt } from "@/features/work-detail/media/videoSubtitles";
 
@@ -60,13 +69,17 @@ function VideoPlayback({
   pauseRequested,
   onPlay,
 }: VideoPreviewProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const auth = useAuth();
-  const resumeStorageKey = videoResumeStorageKey(auth.user?.id ?? null);
+  const principalID = auth.user?.id ?? null;
+  const resumeStorageKey = videoResumeStorageKey(principalID);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playback, setPlayback] = useState<VideoPlaybackInfo | null>(null);
   const [forceTranscode, setForceTranscode] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
+  // The audio track chosen in this page session; null plays the default track.
+  const [audioStream, setAudioStream] = useState(() => chosenVideoAudioStream(principalID, locationId));
+  const [audioTracks, setAudioTracks] = useState<VideoAudioTrack[]>([]);
   const [error, setError] = useState("");
   const [resumedFrom, setResumedFrom] = useState(() => {
     const storage = browserStorage();
@@ -167,18 +180,31 @@ function VideoPlayback({
     setPlayback(null);
     void prepareVideoPlayback(
       async () =>
-        api.getVideoPlaybackInfo(locationId, await videoPlaybackCapabilities(), forceTranscode, controller.signal),
+        api.getVideoPlaybackInfo(
+          locationId,
+          await videoPlaybackCapabilities(),
+          forceTranscode,
+          controller.signal,
+          audioStream,
+        ),
       controller.signal,
     )
       .then((value) => {
-        if (!controller.signal.aborted) setPlayback(value);
+        if (controller.signal.aborted) return;
+        setAudioTracks(videoAudioTrackChoices(value));
+        setPlayback(value);
       })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;
+        if (audioStream !== null && rejectsVideoAudioStream(reason)) {
+          forgetChosenVideoAudioStream(principalID, locationId);
+          setAudioStream(null);
+          return;
+        }
         setError(videoPlaybackFailureKey(reason));
       });
     return () => controller.abort();
-  }, [canTranscode, durationSeconds, fallbackUrl, forceTranscode, locationId, retryToken]);
+  }, [audioStream, canTranscode, durationSeconds, fallbackUrl, forceTranscode, locationId, principalID, retryToken]);
 
   useEffect(() => {
     if (!pauseRequested) return;
@@ -268,6 +294,17 @@ function VideoPlayback({
     if (!video || !first || Array.from(video.textTracks).some((track) => track.mode === "showing")) return;
     first.mode = "showing";
   }, [subtitleTracks]);
+
+  // A new track reloads the source like a failure recovery, at the same position and play state.
+  const changeAudioTrack = (streamIndex: number) => {
+    if (streamIndex === (playback?.audioStream ?? audioStream)) return;
+    rememberPlayback();
+    changingSourceRef.current = true;
+    videoRef.current?.pause();
+    chooseVideoAudioStream(principalID, locationId, streamIndex);
+    setError("");
+    setAudioStream(streamIndex);
+  };
 
   const startOver = () => {
     setResumedFrom(null);
@@ -411,6 +448,24 @@ function VideoPlayback({
         <div className="flex min-h-11 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
           <Loader2 className="h-4 w-4 animate-spin" />
           {t("videoPlayback.preparing")}
+        </div>
+      )}
+      {audioTracks.length > 0 && (
+        <div className="mt-3 flex min-h-11 items-center gap-3 px-3 text-sm text-muted-foreground sm:px-0">
+          <label htmlFor={`video-audio-track-${locationId}`}>{t("videoPlayback.audioTrack")}</label>
+          <NativeSelect
+            id={`video-audio-track-${locationId}`}
+            className="w-auto min-w-0 max-w-full flex-1 sm:flex-none"
+            value={playback?.audioStream ?? audioStream ?? ""}
+            disabled={!playback}
+            onChange={(event) => changeAudioTrack(Number(event.target.value))}
+          >
+            {audioTracks.map((track, position) => (
+              <option key={track.streamIndex} value={track.streamIndex}>
+                {videoAudioTrackLabel(track, position, t, i18n.language)}
+              </option>
+            ))}
+          </NativeSelect>
         </div>
       )}
       {resumedFrom !== null && !error && (

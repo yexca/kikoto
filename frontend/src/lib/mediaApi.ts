@@ -178,6 +178,19 @@ export type TranscodeCacheClearResult = {
   freedBytes: number;
 };
 
+/** An audio stream of a video file. */
+export type VideoAudioTrack = {
+  /** The stream's index in the file, which playback info requests name. */
+  streamIndex: number;
+  codec: string;
+  channels?: number;
+  /** An ISO 639 code; absent when the file does not say. */
+  language?: string;
+  title?: string;
+  /** The file's default flag. */
+  default: boolean;
+};
+
 export type VideoPlaybackInfo = {
   delivery: "direct" | "hls";
   /** How the server converts the video; absent from servers that do not say. */
@@ -185,6 +198,10 @@ export type VideoPlaybackInfo = {
   url: string;
   durationSeconds: number;
   seekable: boolean;
+  /** The audio streams of the file; absent for a video without audio. */
+  audioTracks?: VideoAudioTrack[];
+  /** The stream index of the audio track that plays. */
+  audioStream?: number;
 };
 
 export type CacheMaintenanceResult = {
@@ -243,10 +260,18 @@ export const mediaApi = {
   /** Compares the local files of a work's family by content; one request does a bounded share of the work. */
   findWorkDuplicateFiles: (workId: number) =>
     postJSON<DuplicateFilesResult>(`/api/works/${workId}/local-files/duplicates`),
-  getVideoPlaybackInfo: (locationId: number, capabilities: string[], forceTranscode = false, signal?: AbortSignal) => {
+  /** `audioStream` names an audio track by its stream index; without it the default track plays. */
+  getVideoPlaybackInfo: (
+    locationId: number,
+    capabilities: string[],
+    forceTranscode = false,
+    signal?: AbortSignal,
+    audioStream: number | null = null,
+  ) => {
     const query = new URLSearchParams();
     if (capabilities.length > 0) query.set("capabilities", capabilities.join(","));
     if (forceTranscode) query.set("forceTranscode", "1");
+    if (audioStream !== null) query.set("audioStream", String(audioStream));
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
     return getJSON<VideoPlaybackInfo>(`/api/media/${locationId}/playback${suffix}`, signal);
   },

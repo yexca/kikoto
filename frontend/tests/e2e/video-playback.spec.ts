@@ -268,3 +268,72 @@ test("same-name WebVTT and SRT files load as subtitle tracks", async ({ page }) 
     )
     .toEqual({ text: "Synthetic SRT line", start: 1, end: 3.5 });
 });
+
+test("choosing another audio track keeps the position and the paused or playing state", async ({ page }) => {
+  await mockLocalVideo(page);
+  const requested: (string | null)[] = [];
+  await page.route("**/api/media/1/playback*", (route) => {
+    const audioStream = new URL(route.request().url()).searchParams.get("audioStream");
+    requested.push(audioStream);
+    return route.fulfill({
+      json: {
+        delivery: audioStream === "2" ? "hls" : "direct",
+        url: audioStream === "2" ? "/api/media/1/native-hls.wav" : "/api/media/1/stream",
+        durationSeconds: 180,
+        seekable: true,
+        audioTracks: [
+          { streamIndex: 1, codec: "aac", channels: 2, language: "jpn", default: true },
+          { streamIndex: 2, codec: "ac3", channels: 6, title: "Commentary", default: false },
+        ],
+        audioStream: audioStream === "2" ? 2 : 1,
+      } satisfies VideoPlaybackInfo,
+    });
+  });
+  const video = await openVideo(page);
+  const menu = page.getByRole("combobox", { name: "Audio track", exact: true });
+  await expect(menu).toHaveValue("1");
+  await expect(menu.getByRole("option")).toHaveText(["Track 1 · Japanese · Stereo", "Track 2 · Commentary · 5.1"]);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThan(0);
+  await video.evaluate((element: HTMLVideoElement) => {
+    element.currentTime = 42;
+  });
+  await expect.poll(() => video.evaluate(currentTime)).toBe(42);
+
+  await menu.selectOption("2");
+  await expect.poll(() => requested.at(-1)).toBe("2");
+  await expect
+    .poll(() =>
+      video.evaluate((element: HTMLVideoElement) => ({
+        source: element.currentSrc.split("/").at(-1),
+        paused: element.paused,
+        position: element.currentTime,
+      })),
+    )
+    .toEqual({ source: "native-hls.wav", paused: true, position: 42 });
+  await expect(menu).toHaveValue("2");
+
+  await video.evaluate(async (element: HTMLVideoElement) => {
+    element.currentTime = 84;
+    await element.play();
+  });
+  await menu.selectOption("1");
+  await expect.poll(() => requested.at(-1)).toBe("1");
+  await expect
+    .poll(() =>
+      video.evaluate((element: HTMLVideoElement) => ({
+        source: element.currentSrc.split("/").at(-1),
+        paused: element.paused,
+        positionRestored: element.currentTime >= 84,
+      })),
+    )
+    .toEqual({ source: "stream", paused: false, positionRestored: true });
+
+  // The choice lasts while the page does: reopening the video asks for the same track.
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  const before = requested.length;
+  await page.getByText("example.avi", { exact: true }).click();
+  await expect.poll(() => requested.length).toBeGreaterThan(before);
+  expect(new Set(requested.slice(before))).toEqual(new Set(["1"]));
+  await expect(menu).toHaveValue("1");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});

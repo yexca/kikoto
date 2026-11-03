@@ -44,5 +44,14 @@
   encode at startup and on save decides whether the GPU is used, and a file
   whose GPU encode fails is encoded by the CPU. The amd64 image includes the
   Intel VA-API driver; pass `/dev/dri` to the container to use it.
+- The work detail video viewer offers an **Audio track** menu for a video
+  with two or more audio tracks. The server lists every audio stream with its
+  language, title, channels, and default flag, and a track other than the
+  first plays as a copy or transcode with that track's audio, in segments of
+  its own. Without a choice the viewer plays the track the file flags as
+  default, so a file whose default flag is on a later track plays that track
+  through HLS instead of directly. Changing the track keeps the position and
+  paused state, and the choice lasts until the page reloads. The audio player
+  keeps the first audio track.
 
 </details>

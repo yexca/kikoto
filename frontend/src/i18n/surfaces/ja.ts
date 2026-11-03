@@ -614,6 +614,11 @@ export const surfaceJapanese = {
     resumedAt: "{{time}} から再開しました",
     startOver: "最初から再生",
     retry: "再試行",
+    audioTrack: "音声トラック",
+    audioTrackNumber: "トラック {{number}}",
+    audioMono: "モノラル",
+    audioStereo: "ステレオ",
+    audioChannels: "{{count}} チャンネル",
   },
   permissions: {
     demoReadOnly: "デモモードは読み取り専用です。",

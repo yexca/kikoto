@@ -595,6 +595,11 @@ export const surfaceHant = {
     resumedAt: "已從 {{time}} 繼續",
     startOver: "從頭播放",
     retry: "重試",
+    audioTrack: "音軌",
+    audioTrackNumber: "音軌 {{number}}",
+    audioMono: "單聲道",
+    audioStereo: "立體聲",
+    audioChannels: "{{count}} 聲道",
   },
   permissions: {
     demoReadOnly: "示範模式為唯讀。",

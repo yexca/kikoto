@@ -78,7 +78,7 @@ var videoRemuxHLSProfile = hlsEncodeProfile{
 		return int64(seconds*index.bytesPerSecond*1.25) + int64(seconds*videoRemuxAudioBitsPerSecond/8)
 	},
 	args: func(source hlsPlaybackSource, outputDir string, startIndex int) []string {
-		return videoRemuxHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Keyframes)
+		return withVideoAudioTrack(videoRemuxHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Keyframes), source.AudioTrack)
 	},
 }
 
@@ -92,7 +92,7 @@ var videoHEVCRemuxHLSProfile = func() hlsEncodeProfile {
 	profile.cacheDir = "hls-remux-hevc"
 	profile.segments = &hlsFMP4Segments
 	profile.args = func(source hlsPlaybackSource, outputDir string, startIndex int) []string {
-		return videoHEVCRemuxHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Keyframes)
+		return withVideoAudioTrack(videoHEVCRemuxHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Keyframes), source.AudioTrack)
 	}
 	return profile
 }()
@@ -296,26 +296,27 @@ func (s *Server) videoKeyframeIndex(ctx context.Context, source hlsPlaybackSourc
 		indexes.builds = map[string]*videoKeyframeIndexBuild{}
 		indexes.slot = make(chan struct{}, 1)
 	}
-	build := indexes.builds[source.Revision]
+	key := videoKeyframeIndexKey(source)
+	build := indexes.builds[key]
 	if build != nil && build.err != nil && time.Since(build.finishedAt) >= videoKeyframeIndexFailureTTL {
 		build = nil
 	}
 	if build == nil {
 		indexes.evictLocked()
 		build = &videoKeyframeIndexBuild{done: make(chan struct{})}
-		indexes.builds[source.Revision] = build
+		indexes.builds[key] = build
 		if !s.Go(func(lifetime context.Context) {
 			index, err := s.buildVideoKeyframeIndex(lifetime, source)
 			indexes.mu.Lock()
 			build.index, build.err, build.finishedAt = index, err, time.Now()
 			if err != nil && lifetime.Err() != nil {
 				// A shutdown says nothing about the file.
-				delete(indexes.builds, source.Revision)
+				delete(indexes.builds, key)
 			}
 			indexes.mu.Unlock()
 			close(build.done)
 		}) {
-			delete(indexes.builds, source.Revision)
+			delete(indexes.builds, key)
 			indexes.mu.Unlock()
 			return nil, ErrShuttingDown
 		}

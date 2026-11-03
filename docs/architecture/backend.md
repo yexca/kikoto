@@ -161,6 +161,25 @@ player sends one only when Media Source accepts the codec and AAC and, where
 the browser offers MediaCapabilities, reports `media-source` decoding of it as
 supported and power efficient.
 
+Playback info lists the audio streams of a video in `audioTracks`, with each
+stream's index in the file, codec, channels, language, title, and default
+flag, and names the one that plays in `audioStream`. Without a choice a video
+plays its default track: the first audio stream flagged default, or the first
+audio stream. A request names another track with the `audioStream` query, the
+stream index of an audio stream of the file; any other value answers
+`400 invalid_audio_stream`. Only the first audio stream plays directly, since
+a browser chooses the audio of a file it plays itself, so another track is
+remuxed or transcoded under the usual rules with FFmpeg mapping `0:a:N`. Each
+track but the first has its own source revision, derived from the file
+revision and the track number, so its playlists, cache directories, and
+derived remux and hardware revisions are its own; the HLS URL carries
+`audioStream` for a track other than the default, and its playlist repeats it
+on every segment. A keyframe index, which depends only on the video stream,
+is shared by every track. Transcode slots, sessions, quota, and failure memory
+keyed by the file apply to every track alike. The audio of a video in the
+audio player, realtime conversion, and loudness measurement use the first
+audio stream and accept no `audioStream`.
+
 Copied video can be cut only at its keyframes, so a remux playlist follows a
 keyframe index instead of the six-second grid. FFprobe reads the timestamps
 and flags of the video packets, one scan at a time per server, for at most a
