@@ -31,7 +31,7 @@ const (
 )
 
 var (
-	hlsSegmentPattern           = regexp.MustCompile(`^segment-([0-9]{6})\.ts$`)
+	hlsSegmentPattern           = regexp.MustCompile(`^segment-([0-9]{6})(\.ts|\.m4s)$`)
 	errHLSMediaNotFound         = errors.New("HLS media was not found")
 	errHLSMediaUnsupported      = errors.New("HLS media is not supported")
 	errHLSPlaybackSourceChanged = errors.New("HLS playback source changed")
@@ -100,11 +100,11 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		if s.videoRemuxAvailable(r.Context(), source, capabilities) {
+		if remux := s.videoRemuxAvailable(r.Context(), source, capabilities); remux != nil {
 			writeJSON(w, http.StatusOK, videoPlaybackInfoResponse{
 				Delivery:        "hls",
 				Conversion:      "remux",
-				URL:             fmt.Sprintf("/api/media/%d/hls/index.m3u8?v=%s", locationID, videoRemuxRevision(source)),
+				URL:             fmt.Sprintf("/api/media/%d/hls/index.m3u8?v=%s", locationID, remux.revision(source)),
 				DurationSeconds: source.Duration,
 				Seekable:        true,
 			})
@@ -124,20 +124,27 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// videoRemuxAvailable reports whether the client gets a remux of the source:
-// it decodes the video stream, the source's bitrate and keyframes fit the
-// remux limits, and a remux of this revision has not failed recently.
-func (s *Server) videoRemuxAvailable(ctx context.Context, source hlsPlaybackSource, capabilities map[string]bool) bool {
+// videoRemuxAvailable returns the remux the client gets of the source, or nil:
+// it decodes the video stream in that remux's segments, the source's bitrate
+// and keyframes fit the remux limits, and that remux of this revision has not
+// failed recently.
+func (s *Server) videoRemuxAvailable(ctx context.Context, source hlsPlaybackSource, capabilities map[string]bool) *videoRemux {
 	info, err := os.Stat(source.Path)
-	if err != nil || !remuxableVideo(source, capabilities, info.Size()) ||
-		s.mediaPreparationFailures.failedRecently(mediaPreparationFailureKey(videoRemuxHLSProfile.name, source.Path, info)) {
-		return false
+	if err != nil {
+		return nil
+	}
+	remux := remuxForVideo(source, capabilities, info.Size())
+	if remux == nil || s.mediaPreparationFailures.failedRecently(mediaPreparationFailureKey(remux.profile.name, source.Path, info)) {
+		return nil
 	}
 	_, err = s.videoKeyframeIndex(ctx, source, videoKeyframeIndexInfoWait)
 	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, errRealtimeResourceBusy) {
 		slog.Info("video is transcoded because it cannot be remuxed", "location_id", source.LocationID, "error", err)
 	}
-	return err == nil
+	if err != nil {
+		return nil
+	}
+	return remux
 }
 
 func sortedPlaybackCapabilities(capabilities map[string]bool) []string {
@@ -158,7 +165,7 @@ func sortedPlaybackCapabilities(capabilities map[string]bool) []string {
 func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 	file := strings.TrimSpace(r.PathValue("file"))
 	segmentMatch := hlsSegmentPattern.FindStringSubmatch(file)
-	if file != "index.m3u8" && segmentMatch == nil {
+	if file != "index.m3u8" && file != hlsFMP4Segments.initSection && segmentMatch == nil {
 		writeAPIError(w, http.StatusNotFound, "hls_resource_not_found", "playback resource was not found", false)
 		return
 	}
@@ -195,11 +202,12 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 		}
 	default:
 		// Playback info names a remux by its own revision of the source.
-		if source.Profile != playbackProfileVideo || revision != videoRemuxRevision(source) {
+		remux := videoRemuxOfRevision(source, revision)
+		if source.Profile != playbackProfileVideo || remux == nil {
 			s.writeHLSPlaybackError(w, errHLSPlaybackSourceChanged, source.Profile)
 			return
 		}
-		if !copyableH264(firstPlaybackStream(source.Probe, "video")) {
+		if !remux.copyable(firstPlaybackStream(source.Probe, "video")) {
 			s.writeHLSPlaybackError(w, errHLSMediaUnsupported, source.Profile)
 			return
 		}
@@ -211,7 +219,7 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 			s.writeHLSPlaybackError(w, err, source.Profile)
 			return
 		}
-		source.Revision, source.Keyframes, profile = revision, keyframes, &videoRemuxHLSProfile
+		source.Revision, source.Keyframes, profile = revision, keyframes, remux.profile
 		playlistRevision = revision
 	}
 	if file == "index.m3u8" {
@@ -222,7 +230,7 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 		}
 		playlist := buildHLSPlaylist(source.Duration, segmentQuery.Encode())
 		if source.Keyframes != nil {
-			playlist = buildHLSPlaylistOfSegments(source.Keyframes.durations(), segmentQuery.Encode())
+			playlist = buildHLSPlaylistOfSegments(source.Keyframes.durations(), segmentQuery.Encode(), profile.segmentFormat())
 		}
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "private, no-cache")
@@ -232,8 +240,16 @@ func (s *Server) serveMediaHLS(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(playlist))
 		return
 	}
+	if file == hlsFMP4Segments.initSection {
+		if profile.segmentFormat().initSection != file {
+			writeAPIError(w, http.StatusNotFound, "hls_resource_not_found", "playback resource was not found", false)
+			return
+		}
+		s.serveHLSInitSection(w, r, profile, source)
+		return
+	}
 	segmentIndex, err := strconv.Atoi(segmentMatch[1])
-	if err != nil || segmentIndex < 0 || segmentIndex >= source.segmentCount() {
+	if err != nil || segmentIndex < 0 || segmentIndex >= source.segmentCount() || segmentMatch[2] != profile.segmentFormat().extension {
 		writeAPIError(w, http.StatusNotFound, "hls_segment_not_found", "playback segment was not found", false)
 		return
 	}
@@ -390,28 +406,36 @@ func buildHLSPlaylist(duration float64, segmentQuery string) string {
 	for index := range durations {
 		_, durations[index] = hlsSegmentWindow(duration, index)
 	}
-	return buildHLSPlaylistOfSegments(durations, segmentQuery)
+	return buildHLSPlaylistOfSegments(durations, segmentQuery, &hlsMPEGTSSegments)
 }
 
-// buildHLSPlaylistOfSegments lists segments of the given durations, each URL
-// with segmentQuery.
-func buildHLSPlaylistOfSegments(durations []float64, segmentQuery string) string {
+// buildHLSPlaylistOfSegments lists segments of the given durations and
+// format, each URL with segmentQuery.
+func buildHLSPlaylistOfSegments(durations []float64, segmentQuery string, format *hlsSegmentFormat) string {
 	var playlist strings.Builder
 	playlist.WriteString("#EXTM3U\n")
-	playlist.WriteString("#EXT-X-VERSION:3\n")
+	if format.initSection != "" {
+		// EXT-X-MAP needs version 6; FFmpeg's fMP4 playlists declare 7.
+		playlist.WriteString("#EXT-X-VERSION:7\n")
+	} else {
+		playlist.WriteString("#EXT-X-VERSION:3\n")
+	}
 	// The target duration is the longest segment rounded up.
 	fmt.Fprintf(&playlist, "#EXT-X-TARGETDURATION:%d\n", int(math.Ceil(slices.Max(durations)-0.0005)))
 	playlist.WriteString("#EXT-X-MEDIA-SEQUENCE:0\n")
 	playlist.WriteString("#EXT-X-PLAYLIST-TYPE:VOD\n")
 	playlist.WriteString("#EXT-X-INDEPENDENT-SEGMENTS\n")
+	if format.initSection != "" {
+		fmt.Fprintf(&playlist, "#EXT-X-MAP:URI=\"%s?%s\"\n", format.initSection, segmentQuery)
+	}
 	for index, duration := range durations {
-		fmt.Fprintf(&playlist, "#EXTINF:%.3f,\nsegment-%06d.ts?%s\n", duration, index, segmentQuery)
+		fmt.Fprintf(&playlist, "#EXTINF:%.3f,\nsegment-%06d%s?%s\n", duration, index, format.extension, segmentQuery)
 	}
 	playlist.WriteString("#EXT-X-ENDLIST\n")
 	return playlist.String()
 }
 
-func serveCachedHLSSegment(w http.ResponseWriter, r *http.Request, absolutePath string) error {
+func serveCachedHLSSegment(w http.ResponseWriter, r *http.Request, absolutePath string, contentType string) error {
 	file, err := os.Open(absolutePath)
 	if err != nil {
 		return err
@@ -427,7 +451,7 @@ func serveCachedHLSSegment(w http.ResponseWriter, r *http.Request, absolutePath 
 			info, _ = file.Stat()
 		}
 	}
-	w.Header().Set("Content-Type", "video/mp2t")
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	http.ServeContent(w, r, filepath.Base(absolutePath), info.ModTime(), file)

@@ -77,8 +77,8 @@ The backend is a Go HTTP API with SQLite persistence.
   and audio encode, so it never shares segments with the video playlist of
   the same file, and a video without audio fails as unsupported like an audio
   file without one. Segments of all of them come from one continuous encode
-  per source revision, so segment boundaries stay seamless; H.264 video the
-  client decodes is copied rather than transcoded. All are quota-bounded and
+  per source revision, so segment boundaries stay seamless; H.264 and HEVC
+  video the client decodes is copied rather than transcoded. All are quota-bounded and
   live under the disposable cache root.
 - Prepare incompatible local or cached audio as complete, quota-bounded MP3
   cache files with duration and HTTP Range support for clients without HLS
@@ -142,13 +142,24 @@ says so in `conversion`, which clients may ignore: `none` serves the file
 directly, `remux` copies its video into HLS and encodes only the audio, and
 `transcode` converts both. A video is remuxed when it does not play directly,
 its stream is 8-bit 4:2:0 H.264 in Baseline, Main, or High profile at a
-profile and level the client reports decoding, its average bitrate is at most
-20 Mbit/s, its keyframes fit the segment limits below, and a remux of the
-revision has not failed recently. A `forceTranscode` request, which the
-player sends after direct playback fails, skips the remux, because a remux
-would hand the same video stream to the same decoder. A remux playlist is named
-by its own revision, derived from the source revision, so the HLS route serves
-both from one path.
+profile and level the client reports decoding, or 8- or 10-bit 4:2:0 HEVC in
+Main or Main 10 profile at a profile, level, and bit depth the client reports
+decoding in HLS, its average bitrate is at most 20 Mbit/s, its keyframes fit
+the segment limits below, and a remux of the revision has not failed recently.
+A `forceTranscode` request, which the player sends after direct playback
+fails, skips the remux, because a remux would hand the same video stream to
+the same decoder. A remux playlist is named by its own revision, derived from
+the source revision and the copied codec, so the HLS route serves all of them
+from one path and H.264 and HEVC remuxes never share segments.
+
+HEVC in HLS plays through Media Source Extensions in hls.js, which a browser
+can support without playing the file directly, or the reverse. The HLS HEVC
+decoder keys `video-hls-hevc-main`, `video-hls-hevc-main-l51`,
+`video-hls-hevc-main10`, and `video-hls-hevc-main10-l51` therefore mirror the
+tiers of the direct HEVC decoder keys and are probed against Media Source: the
+player sends one only when Media Source accepts the codec and AAC and, where
+the browser offers MediaCapabilities, reports `media-source` decoding of it as
+supported and power efficient.
 
 Copied video can be cut only at its keyframes, so a remux playlist follows a
 keyframe index instead of the six-second grid. FFprobe reads the timestamps
@@ -182,7 +193,18 @@ encode's timeline against another's.
   keyframe is the first packet. FFmpeg's segment muxer cuts at the indexed
   keyframes by counting video packets from that first packet. It writes each
   segment under a temporary name, and the session renames a segment once the
-  next one starts or the encode reaches the end of the input.
+  next one starts or the encode reaches the end of the input. H.264 is copied
+  into MPEG-TS segments. HEVC is copied into fMP4 segments under the `hvc1`
+  sample entry, the only HEVC form Apple's HLS players accept: each segment is
+  one fragment whose decode time continues the shared timeline, and the
+  playlist declares version 7 and names one initialization section,
+  `init.mp4`, in `EXT-X-MAP`. Every encode of a revision writes the same
+  section, so encodes discard theirs and the server produces it once per
+  revision with a run of the remux encode that copies no media. That run
+  takes a transcode slot for at most 30 seconds, its section is limited to
+  1 MiB, its result is cached beside the segments under the shared quota, and
+  its failure is remembered as a failed remux, so playback info then offers a
+  transcode.
 
 Strict interleaving keeps each audio packet in the segment of its timestamp. A
 segment file that exists under its final name is complete.
@@ -199,7 +221,7 @@ segment within the refill lead is missing. An encode takes one of the two
 transcode slots and a quota reservation for its segment budget, and fails when
 a segment exceeds the segment size limit.
 
-| Limit | Audio | Transcoded video | Remuxed video |
+| Limit | Audio | Transcoded video | Remuxed H.264 or HEVC video |
 | --- | --- | --- | --- |
 | Wait instead of restarting | within 20 segments | within 2 segments | within 10 segments |
 | Stop ahead of the furthest request | 300 segments | 60 segments | 20 segments |

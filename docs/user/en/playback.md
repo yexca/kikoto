@@ -53,9 +53,13 @@ Playback is handled by a global browser audio player.
   playlist.
 - Local and cached video that does not play directly first returns its probed
   total duration and a complete HLS VOD playlist. When the browser decodes the
-  file's H.264 video but not its container or audio, such as H.264 in
-  Matroska, AVI, MPEG-TS, or FLV, or in MP4 with AC-3, DTS, FLAC, or PCM audio,
-  the video is copied unchanged and only the audio is converted to AAC. The
+  file's H.264 or HEVC video but not its container or audio, such as H.264 in
+  Matroska, AVI, MPEG-TS, or FLV, HEVC in Matroska or MPEG-TS, or either in
+  MP4 with AC-3, DTS, FLAC, or PCM audio, the video is copied unchanged and
+  only the audio is converted to AAC. Copied HEVC Main, or Main 10 for 10-bit
+  video, up to level 5.1 needs the browser to report streamed HEVC decoding
+  as supported and, where it offers MediaCapabilities, power efficient; a
+  browser can report it for streaming without playing the file directly. The
   playlist then follows the file's own keyframes: each segment starts at the
   keyframe nearest six seconds after the previous one, at least three seconds
   later. Video with keyframes more than 15 seconds apart, an average bitrate
@@ -85,7 +89,8 @@ Playback is handled by a global browser audio player.
   paused.
 - Generated video segments are rebuildable cache data under
   `/cache/transcodes/hls`, copied video segments under
-  `/cache/transcodes/hls-remux`, and audio segments under
+  `/cache/transcodes/hls-remux` for H.264 and `/cache/transcodes/hls-remux-hevc`
+  for HEVC, and audio segments under
   `/cache/transcodes/hls-audio`. The shared audio/video transcode LRU quota defaults to
   5 GiB. Segments are invalidated by the source path, size, modification time, or
   transcode profile changing. A segment is capped at 16 MiB, or 64 MiB with

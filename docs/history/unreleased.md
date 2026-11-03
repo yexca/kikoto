@@ -35,6 +35,10 @@
   Video with keyframes more than 15 seconds apart or above 20 Mbit/s is still
   transcoded to 720p, and a copied video the browser fails to decode is
   prepared again as a transcode.
+- HEVC Main and Main 10 video that the browser decodes in streamed playback
+  but cannot play directly, such as HEVC in Matroska in a browser without
+  Matroska support, keeps its source picture the same way, copied into fMP4
+  HLS segments instead of transcoded to 720p H.264.
 - Converted video can be encoded by an Intel GPU through VA-API or Quick Sync
   Video, chosen under Settings → Cache & Fetch and off by default. A test
   encode at startup and on save decides whether the GPU is used, and a file

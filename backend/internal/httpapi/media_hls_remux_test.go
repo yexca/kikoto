@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +21,7 @@ import (
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
+	"github.com/yexca/kikoto/backend/internal/sqlutil"
 )
 
 func remuxCutsOf(t *testing.T, keyframes []float64, end float64) ([]float64, error) {
@@ -103,7 +106,7 @@ func TestVideoKeyframePacketsBuildTheRemuxPlaylist(t *testing.T) {
 	if !slices.Equal(index.cuts, []float64{1.4, 8.4}) || !slices.Equal(index.packets, []int{0, 4}) || index.end != 15.4 {
 		t.Fatalf("index = %+v", index)
 	}
-	playlist := buildHLSPlaylistOfSegments(index.durations(), "v=remux")
+	playlist := buildHLSPlaylistOfSegments(index.durations(), "v=remux", &hlsMPEGTSSegments)
 	for _, expected := range []string{
 		"#EXT-X-TARGETDURATION:7\n",
 		"#EXTINF:7.000,\nsegment-000000.ts?v=remux\n",
@@ -157,7 +160,7 @@ func TestVideoRemuxFFmpegArgsCutAtTheIndexedKeyframes(t *testing.T) {
 	}
 }
 
-func TestVideoRemuxRequiresADecodableH264StreamWithinTheBitrateLimit(t *testing.T) {
+func TestVideoRemuxRequiresADecodableStreamWithinTheBitrateLimit(t *testing.T) {
 	source := func(codec string, profile string, level int, pixelFormat string) hlsPlaybackSource {
 		return hlsPlaybackSource{Duration: 100, Probe: playbackProbe{
 			Format: playbackProbeFormat{FormatName: "matroska,webm"},
@@ -168,33 +171,142 @@ func TestVideoRemuxRequiresADecodableH264StreamWithinTheBitrateLimit(t *testing.
 		}}
 	}
 	high := map[string]bool{capVideoH264Main: true, capVideoH264High: true}
+	// Direct HEVC decoding says nothing about HEVC in HLS segments.
+	fileHEVC := map[string]bool{capVideoHEVCMain: true, capVideoHEVCMain10: true, capVideoHEVCMainL51: true}
+	hlsHEVC := map[string]bool{capVideoHLSHEVCMain: true}
+	hlsHEVC10 := map[string]bool{capVideoHLSHEVCMain: true, capVideoHLSHEVCMain10: true}
 	underLimit := int64(videoRemuxMaximumBitsPerSecond / 8 * 100)
 	for _, test := range []struct {
 		name         string
 		source       hlsPlaybackSource
 		capabilities map[string]bool
 		size         int64
-		want         bool
+		want         *videoRemux
 	}{
-		{"decodable High 4.1", source("h264", "High", 41, "yuv420p"), high, underLimit, true},
-		{"High without the High decoder", source("h264", "High", 41, "yuv420p"), map[string]bool{capVideoH264Main: true}, underLimit, false},
-		{"level above the decoder", source("h264", "High", 51, "yuv420p"), high, underLimit, false},
-		{"High 10", source("h264", "High 10", 41, "yuv420p10le"), high, underLimit, false},
-		{"4:2:2", source("h264", "High 4:2:2", 41, "yuv422p"), high, underLimit, false},
-		{"HEVC", source("hevc", "Main", 120, "yuv420p"), high, underLimit, false},
-		{"above the bitrate limit", source("h264", "High", 41, "yuv420p"), high, underLimit + 1000, false},
+		{"decodable High 4.1", source("h264", "High", 41, "yuv420p"), high, underLimit, &videoH264Remux},
+		{"High without the High decoder", source("h264", "High", 41, "yuv420p"), map[string]bool{capVideoH264Main: true}, underLimit, nil},
+		{"level above the decoder", source("h264", "High", 51, "yuv420p"), high, underLimit, nil},
+		{"High 10", source("h264", "High 10", 41, "yuv420p10le"), high, underLimit, nil},
+		{"4:2:2", source("h264", "High 4:2:2", 41, "yuv422p"), high, underLimit, nil},
+		{"HEVC without an HLS HEVC decoder", source("hevc", "Main", 120, "yuv420p"), mergeCapabilities(high, fileHEVC), underLimit, nil},
+		{"HEVC Main 4.0", source("hevc", "Main", 120, "yuv420p"), hlsHEVC, underLimit, &videoHEVCRemux},
+		{"HEVC above the HLS decoder level", source("hevc", "Main", 150, "yuv420p"), hlsHEVC, underLimit, nil},
+		{"HEVC Main 10 without its decoder", source("hevc", "Main 10", 120, "yuv420p10le"), hlsHEVC, underLimit, nil},
+		{"HEVC Main 10", source("hevc", "Main 10", 120, "yuv420p10le"), hlsHEVC10, underLimit, &videoHEVCRemux},
+		{"HEVC 4:2:2", source("hevc", "Rext", 120, "yuv422p10le"), hlsHEVC10, underLimit, nil},
+		{"HEVC above the bitrate limit", source("hevc", "Main", 120, "yuv420p"), hlsHEVC, underLimit + 1000, nil},
+		{"above the bitrate limit", source("h264", "High", 41, "yuv420p"), high, underLimit + 1000, nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := remuxableVideo(test.source, test.capabilities, test.size); got != test.want {
-				t.Fatalf("remuxable = %t, want %t", got, test.want)
+			if got := remuxForVideo(test.source, test.capabilities, test.size); got != test.want {
+				t.Fatalf("remux = %+v, want %+v", got, test.want)
 			}
 		})
 	}
 }
 
+func mergeCapabilities(sets ...map[string]bool) map[string]bool {
+	merged := map[string]bool{}
+	for _, set := range sets {
+		for key, value := range set {
+			merged[key] = value
+		}
+	}
+	return merged
+}
+
+func TestVideoRemuxRevisionsAreSeparateForEachCodec(t *testing.T) {
+	source := hlsPlaybackSource{Revision: "source"}
+	h264, hevc := videoH264Remux.revision(source), videoHEVCRemux.revision(source)
+	if h264 == hevc || h264 == source.Revision || hevc == source.Revision {
+		t.Fatalf("revisions: source %s, H.264 %s, HEVC %s", source.Revision, h264, hevc)
+	}
+	if videoRemuxOfRevision(source, h264) != &videoH264Remux || videoRemuxOfRevision(source, hevc) != &videoHEVCRemux ||
+		videoRemuxOfRevision(source, source.Revision) != nil {
+		t.Fatal("a revision does not name its remux")
+	}
+	if videoHEVCRemuxHLSProfile.cacheDir == videoRemuxHLSProfile.cacheDir || videoHEVCRemuxHLSProfile.name == videoRemuxHLSProfile.name ||
+		videoHEVCRemuxHLSProfile.maximumSegments != videoRemuxHLSProfile.maximumSegments ||
+		videoHEVCRemuxHLSProfile.segmentMaximumBytes != videoRemuxHLSProfile.segmentMaximumBytes {
+		t.Fatalf("HEVC remux profile = %+v", videoHEVCRemuxHLSProfile)
+	}
+}
+
+func TestVideoHEVCRemuxWritesFMP4SegmentsWithAnInitializationSection(t *testing.T) {
+	index := &videoKeyframeIndex{cuts: []float64{0, 5, 10, 15}, packets: []int{0, 120, 240, 360}, end: 18.5}
+	args := videoHEVCRemuxHLSFFmpegArgs("input.mkv", filepath.Join("cache", "100%"), 1, index)
+	for _, expected := range [][2]string{
+		{"-c:v", "copy"},
+		{"-tag:v", "hvc1"},
+		{"-segment_format", "mp4"},
+		{"-segment_header_filename", os.DevNull},
+		{"-individual_header_trailer", "0"},
+		{"-segment_frames", "120,240"},
+		{"-ss", "4.999000"},
+	} {
+		if !hasArgPair(args, expected[0], expected[1]) {
+			t.Fatalf("FFmpeg args do not contain %q %q: %v", expected[0], expected[1], args)
+		}
+	}
+	if args[len(args)-1] != filepath.Join("cache", "100%%", "segment-%06d.m4s.tmp") {
+		t.Fatalf("FFmpeg args = %v", args)
+	}
+	// The init run writes the section to standard output and nothing a
+	// session would publish.
+	init := videoHEVCRemuxInitArgs("input.mkv", "cache", index)
+	if !hasArgPair(init, "-segment_header_filename", "pipe:1") || !hasArgPair(init, "-t", "0") || !hasArgPair(init, "-ss", "-0.001000") ||
+		!strings.HasPrefix(filepath.Base(init[len(init)-1]), videoRemuxHLSSessionPlaylist) {
+		t.Fatalf("init args = %v", init)
+	}
+
+	playlist := buildHLSPlaylistOfSegments(index.durations(), "v=hevc", videoHEVCRemuxHLSProfile.segmentFormat())
+	for _, expected := range []string{
+		"#EXT-X-VERSION:7\n",
+		"#EXT-X-INDEPENDENT-SEGMENTS\n#EXT-X-MAP:URI=\"init.mp4?v=hevc\"\n#EXTINF:5.000,\nsegment-000000.m4s?v=hevc\n",
+		"#EXTINF:3.500,\nsegment-000003.m4s?v=hevc\n#EXT-X-ENDLIST\n",
+	} {
+		if !strings.Contains(playlist, expected) {
+			t.Fatalf("playlist does not contain %q:\n%s", expected, playlist)
+		}
+	}
+	if mpegts := buildHLSPlaylistOfSegments(index.durations(), "v=h264", videoRemuxHLSProfile.segmentFormat()); strings.Contains(mpegts, "EXT-X-MAP") ||
+		!strings.Contains(mpegts, "#EXT-X-VERSION:3\n") || !strings.Contains(mpegts, "segment-000000.ts?v=h264") {
+		t.Fatalf("MPEG-TS playlist:\n%s", mpegts)
+	}
+
+	box := func(kind string, payload int) []byte {
+		data := make([]byte, 8+payload)
+		data[3] = byte(len(data))
+		copy(data[4:], kind)
+		return data
+	}
+	section := append(box("ftyp", 4), box("moov", 16)...)
+	if !validHLSInitSection(section) || validHLSInitSection(append(section, box("moof", 8)...)) ||
+		validHLSInitSection(section[:len(section)-1]) || validHLSInitSection(box("moov", 16)) {
+		t.Fatal("initialization section check is wrong")
+	}
+	for _, name := range []string{"segment-000001.m4s.tmp", hlsInitSectionPartial + ".part", hlsInitSectionPartial + "-000000"} {
+		if !isHLSSessionPartial(name) {
+			t.Fatalf("%s is not a partial", name)
+		}
+	}
+}
+
+func hasArgPair(args []string, key string, value string) bool {
+	for position := 0; position+1 < len(args); position++ {
+		if args[position] == key && args[position+1] == value {
+			return true
+		}
+	}
+	return false
+}
+
 type videoRemuxTestServer struct {
 	server    *Server
+	db        *sqlutil.DB
+	dataRoot  string
 	cacheRoot string
+	ffmpeg    string
 	ffprobe   string
 }
 
@@ -224,39 +336,39 @@ func newVideoRemuxTestServer(t *testing.T) *videoRemuxTestServer {
 		return []string{"-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high", "-pix_fmt", "yuv420p",
 			"-x264-params", "keyint=" + strconv.Itoa(keyframeInterval) + ":min-keyint=" + strconv.Itoa(keyframeInterval) + ":scenecut=0"}
 	}
-	for _, fixture := range []struct {
-		location int64
-		file     string
-		encode   []string
-	}{
-		{841, "remux.mkv", append(h264(60), "-c:a", "flac")},
-		{842, "sparse-keyframes.mkv", append(h264(600), "-c:a", "flac")},
-		{843, "direct.mp4", append(h264(60), "-c:a", "aac")},
-		{844, "legacy.avi", []string{"-c:v", "mpeg4", "-c:a", "pcm_s16le"}},
-	} {
-		mediaPath := filepath.Join(dataRoot, "RJ00000000", fixture.file)
-		if err := os.MkdirAll(filepath.Dir(mediaPath), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		args := append([]string{"-nostdin", "-hide_banner", "-loglevel", "error",
-			"-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24",
-			"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
-			"-t", "120"}, fixture.encode...)
-		if output, err := exec.Command(ffmpegPath, append(args, "-y", mediaPath)...).CombinedOutput(); err != nil {
-			t.Fatalf("create %s: %v (%s)", fixture.file, err, output)
-		}
-		if _, err := db.Exec(`INSERT INTO media_item (id, work_id, kind, title, fingerprint, has_audio) VALUES (?, 840, 'video', ?, ?, 1)`,
-			fixture.location, fixture.file, "synthetic-remux-"+fixture.file); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := db.Exec(`INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES (?, ?, 840, 'local', ?, 'available')`,
-			fixture.location, fixture.location, "RJ00000000/"+fixture.file); err != nil {
-			t.Fatal(err)
-		}
-	}
 	server := NewServer(db, config.Config{DataRoot: dataRoot, CacheRoot: cacheRoot})
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
-	return &videoRemuxTestServer{server: server, cacheRoot: cacheRoot, ffprobe: ffprobePath}
+	fixture := &videoRemuxTestServer{server: server, db: db, dataRoot: dataRoot, cacheRoot: cacheRoot, ffmpeg: ffmpegPath, ffprobe: ffprobePath}
+	fixture.addVideo(t, 841, "remux.mkv", append(h264(60), "-c:a", "flac"))
+	fixture.addVideo(t, 842, "sparse-keyframes.mkv", append(h264(600), "-c:a", "flac"))
+	fixture.addVideo(t, 843, "direct.mp4", append(h264(60), "-c:a", "aac"))
+	fixture.addVideo(t, 844, "legacy.avi", []string{"-c:v", "mpeg4", "-c:a", "pcm_s16le"})
+	return fixture
+}
+
+// addVideo encodes a two-minute 24 fps test pattern with a sine tone and
+// serves it at location.
+func (fixture *videoRemuxTestServer) addVideo(t *testing.T, location int64, file string, encode []string) {
+	t.Helper()
+	mediaPath := filepath.Join(fixture.dataRoot, "RJ00000000", file)
+	if err := os.MkdirAll(filepath.Dir(mediaPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	args := append([]string{"-nostdin", "-hide_banner", "-loglevel", "error",
+		"-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24",
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+		"-t", "120"}, encode...)
+	if output, err := exec.Command(fixture.ffmpeg, append(args, "-y", mediaPath)...).CombinedOutput(); err != nil {
+		t.Fatalf("create %s: %v (%s)", file, err, output)
+	}
+	if _, err := fixture.db.Exec(`INSERT INTO media_item (id, work_id, kind, title, fingerprint, has_audio) VALUES (?, 840, 'video', ?, ?, 1)`,
+		location, file, "synthetic-remux-"+file); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Exec(`INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability) VALUES (?, ?, 840, 'local', ?, 'available')`,
+		location, location, "RJ00000000/"+file); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (fixture *videoRemuxTestServer) playbackInfo(t *testing.T, location int64, query string) videoPlaybackInfoResponse {
@@ -355,7 +467,7 @@ func TestVideoPlaybackChoosesDirectRemuxOrTranscode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response := fixture.serve(844, "index.m3u8", videoRemuxRevision(source)); response.Code != http.StatusUnprocessableEntity {
+	if response := fixture.serve(844, "index.m3u8", videoH264Remux.revision(source)); response.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("remux of MPEG-4 Part 2 = %d: %s", response.Code, response.Body.String())
 	}
 }
@@ -432,4 +544,118 @@ func TestVideoRemuxSegmentsStartAtTheirKeyframesAcrossEncodes(t *testing.T) {
 			t.Fatalf("a finished remux left %s", entry.Name())
 		}
 	}
+}
+
+func TestVideoHEVCRemuxSegmentsShareOneInitializationSection(t *testing.T) {
+	fixture := newVideoRemuxTestServer(t)
+	if encoders, err := exec.Command(fixture.ffmpeg, "-hide_banner", "-encoders").Output(); err != nil || !bytes.Contains(encoders, []byte(" libx265 ")) {
+		t.Skip("ffmpeg has no libx265 encoder")
+	}
+	// HEVC Main with a closed GOP keyframe every 2.5 s, in Matroska with FLAC.
+	fixture.addVideo(t, 845, "hevc.mkv", []string{"-c:v", "libx265", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+		"-x265-params", "keyint=60:min-keyint=60:scenecut=0:open-gop=0:log-level=error", "-c:a", "flac"})
+	source, err := fixture.server.loadHLSPlaybackSource(context.Background(), 845)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info := fixture.playbackInfo(t, 845, "capabilities=video-mp4-hvc1-aac,video-hevc-main"); info.Conversion != "transcode" {
+		t.Fatalf("playback info without an HLS HEVC decoder = %+v", info)
+	}
+	info := fixture.playbackInfo(t, 845, "capabilities=video-hls-hevc-main")
+	revision := videoHEVCRemux.revision(source)
+	if info.Conversion != "remux" || !strings.HasSuffix(info.URL, "?v="+revision) {
+		t.Fatalf("playback info = %+v, want the HEVC remux %s", info, revision)
+	}
+
+	playlist := fixture.serve(845, "index.m3u8", revision)
+	if playlist.Code != http.StatusOK || !strings.Contains(playlist.Body.String(), "#EXT-X-MAP:URI=\"init.mp4?v="+revision+"\"\n") ||
+		len(regexp.MustCompile(`#EXTINF:5\.000,\nsegment-[0-9]{6}\.m4s\?`).FindAllString(playlist.Body.String(), -1)) != 24 {
+		t.Fatalf("playlist = %d:\n%s", playlist.Code, playlist.Body.String())
+	}
+	if response := fixture.serve(845, hlsSegmentName(0), revision); response.Code != http.StatusNotFound {
+		t.Fatalf("MPEG-TS segment of an fMP4 remux = %d", response.Code)
+	}
+	h264Source, err := fixture.server.loadHLSPlaybackSource(context.Background(), 841)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := fixture.serve(841, "init.mp4", videoH264Remux.revision(h264Source)); response.Code != http.StatusNotFound {
+		t.Fatalf("initialization section of an MPEG-TS remux = %d", response.Code)
+	}
+	initResponse := fixture.serve(845, "init.mp4", revision)
+	section := initResponse.Body.Bytes()
+	if initResponse.Code != http.StatusOK || initResponse.Header().Get("Content-Type") != "video/mp4" || !validHLSInitSection(section) {
+		t.Fatalf("initialization section = %d %q", initResponse.Code, initResponse.Header().Get("Content-Type"))
+	}
+
+	segmentName := func(index int) string { return videoHEVCRemuxHLSProfile.segmentName(index) }
+	if response := fixture.serve(845, segmentName(0), revision); response.Code != http.StatusOK || string(response.Body.Bytes()[4:8]) != "moof" {
+		t.Fatalf("first segment = %d", response.Code)
+	}
+	key := "transcodes/hls-remux-hevc/845/" + revision
+	if first := fixture.server.hlsSessions.get(key); first != nil {
+		<-first.exited
+	}
+	if response := fixture.serve(845, segmentName(22), revision); response.Code != http.StatusOK {
+		t.Fatalf("seek segment = %d: %s", response.Code, response.Body.String())
+	}
+	if second := fixture.server.hlsSessions.get(key); second != nil {
+		<-second.exited
+	}
+
+	// Segments from both encodes follow the one section on one timeline.
+	dir := filepath.Join(fixture.cacheRoot, filepath.FromSlash(key))
+	probeDir := t.TempDir()
+	for _, index := range []int{0, 1, videoRemuxAheadSegments - 1, 22, 23} {
+		segment, err := os.ReadFile(filepath.Join(dir, segmentName(index)))
+		if err != nil {
+			t.Fatalf("segment %d was not produced: %v", index, err)
+		}
+		path := filepath.Join(probeDir, fmt.Sprintf("segment-%d.mp4", index))
+		if err := os.WriteFile(path, append(slices.Clone(section), segment...), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		want := videoHLSTimelineOffsetSeconds + float64(index)*5
+		videoStart, keyframe, videoEnd := fixture.packetTimes(t, path, "v:0")
+		if !keyframe || math.Abs(videoStart-want) > 0.001 || math.Abs(videoEnd-(want+5)) > 1.0/24+0.001 {
+			t.Fatalf("segment %d video covers %.4f to %.4f (keyframe %t), want %.1f to %.1f", index, videoStart, videoEnd, keyframe, want, want+5)
+		}
+		audioStart, _, _ := fixture.packetTimes(t, path, "a:0")
+		if audioStart < want-0.15 || audioStart > want+0.03 {
+			t.Fatalf("segment %d audio starts at %.4f, want about %.1f", index, audioStart, want)
+		}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if isHLSSessionPartial(entry.Name()) {
+			t.Fatalf("a finished remux left %s", entry.Name())
+		}
+	}
+
+	// An encode starting anywhere writes the same section.
+	header := filepath.Join(t.TempDir(), "header.mp4")
+	args := videoHEVCRemuxHLSFFmpegArgs(source.Path, t.TempDir(), 10, fixture.server.mustVideoKeyframeIndex(t, source))
+	for position := range args {
+		if args[position] == os.DevNull {
+			args[position] = header
+		}
+	}
+	if output, err := exec.Command(fixture.ffmpeg, args...).CombinedOutput(); err != nil {
+		t.Fatalf("remux from segment 10: %v (%s)", err, output)
+	}
+	if written, err := os.ReadFile(header); err != nil || !bytes.Equal(written, section) {
+		t.Fatalf("an encode from segment 10 wrote another section: %v", err)
+	}
+}
+
+func (s *Server) mustVideoKeyframeIndex(t *testing.T, source hlsPlaybackSource) *videoKeyframeIndex {
+	t.Helper()
+	index, err := s.videoKeyframeIndex(context.Background(), source, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return index
 }

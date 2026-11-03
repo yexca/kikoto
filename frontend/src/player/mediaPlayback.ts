@@ -63,6 +63,17 @@ const videoCapabilities: CapabilitySpec[] = [
   { key: "video-vp9-profile2", mime: 'video/webm; codecs="vp09.02.10.10"' },
 ];
 
+// HEVC decoder keys for HLS segments, which hls.js plays through Media Source
+// Extensions. Each mirrors a decoder key above but is probed against Media
+// Source, because a browser can decode HEVC there and not as a file, or the
+// reverse.
+const hlsVideoCapabilities: CapabilitySpec[] = [
+  { key: "video-hls-hevc-main", mime: 'video/mp4; codecs="hvc1.1.6.L123.B0"', decoding: decodeAt1080p },
+  { key: "video-hls-hevc-main-l51", mime: 'video/mp4; codecs="hvc1.1.6.L153.B0"', decoding: decodeAt2160p },
+  { key: "video-hls-hevc-main10", mime: 'video/mp4; codecs="hvc1.2.4.L123.B0"', decoding: decodeAt1080p },
+  { key: "video-hls-hevc-main10-l51", mime: 'video/mp4; codecs="hvc1.2.4.L153.B0"', decoding: decodeAt2160p },
+];
+
 function capabilitySpecs(profile: PlaybackProfile) {
   return profile === "audio" ? audioCapabilities : videoCapabilities;
 }
@@ -100,27 +111,41 @@ export function playbackCapabilities(profile: PlaybackProfile): string[] {
     .map(({ key }) => key);
 }
 
+async function decodesEfficiently(
+  capabilities: MediaCapabilities | null,
+  type: MediaDecodingType,
+  { mime, decoding }: CapabilitySpec,
+) {
+  if (!decoding || !capabilities) return true;
+  try {
+    const info = await capabilities.decodingInfo({ type, video: { contentType: mime, ...decoding } });
+    return info.supported && info.powerEfficient;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The video capabilities, with HEVC and AV1 decoder keys kept only when
- * MediaCapabilities reports them supported and power efficient.
+ * MediaCapabilities reports them supported and power efficient. HLS HEVC keys
+ * need Media Source support for the codec and AAC, and are measured as Media
+ * Source decoding.
  */
 export async function videoPlaybackCapabilities(): Promise<string[]> {
   const element = playbackElement("video");
   if (!element) return [];
   const capabilities = mediaCapabilities();
-  const kept = await Promise.all(
-    videoCapabilities.map(async ({ mime, decoding }) => {
-      if (!canPlay(element, mime)) return false;
-      if (!decoding || !capabilities) return true;
-      try {
-        const info = await capabilities.decodingInfo({ type: "file", video: { contentType: mime, ...decoding } });
-        return info.supported && info.powerEfficient;
-      } catch {
-        return false;
-      }
-    }),
-  );
-  return videoCapabilities.filter((_, index) => kept[index]).map(({ key }) => key);
+  const mediaSource = mediaSourceSupports('audio/mp4; codecs="mp4a.40.2"');
+  const kept = await Promise.all([
+    ...videoCapabilities.map(
+      async (spec) => canPlay(element, spec.mime) && (await decodesEfficiently(capabilities, "file", spec)),
+    ),
+    ...hlsVideoCapabilities.map(
+      async (spec) =>
+        mediaSource && mediaSourceSupports(spec.mime) && (await decodesEfficiently(capabilities, "media-source", spec)),
+    ),
+  ]);
+  return [...videoCapabilities, ...hlsVideoCapabilities].filter((_, index) => kept[index]).map(({ key }) => key);
 }
 
 export type AudioHlsPlayback = "native" | "mse";
@@ -140,7 +165,7 @@ export function audioHlsPlayback(): AudioHlsPlayback | null {
     native = false;
   }
   if (native && appleMobileWebKit()) return "native";
-  if (mediaSourcePlaysAAC()) return "mse";
+  if (mediaSourceSupports('audio/mp4; codecs="mp4a.40.2"')) return "mse";
   return native ? "native" : null;
 }
 
@@ -165,11 +190,12 @@ function appleMobileWebKit() {
   );
 }
 
-function mediaSourcePlaysAAC() {
+/** Whether the Media Source that hls.js would use accepts mime. */
+function mediaSourceSupports(mime: string) {
   const source =
     (globalThis as { ManagedMediaSource?: typeof MediaSource }).ManagedMediaSource ?? globalThis.MediaSource;
   try {
-    return typeof source?.isTypeSupported === "function" && source.isTypeSupported('audio/mp4; codecs="mp4a.40.2"');
+    return typeof source?.isTypeSupported === "function" && source.isTypeSupported(mime);
   } catch {
     return false;
   }

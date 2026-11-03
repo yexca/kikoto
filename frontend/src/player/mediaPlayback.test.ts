@@ -127,6 +127,61 @@ describe("video playback capabilities", () => {
     expect(playbackCapabilities("video")).toEqual(capabilities);
   });
 
+  function stubMediaSource(supported: string[]) {
+    vi.stubGlobal("MediaSource", { isTypeSupported: (mime: string) => supported.includes(mime) });
+  }
+
+  it("keeps HLS HEVC keys only when Media Source decoding is supported and power efficient", async () => {
+    stubVideoElement();
+    stubMediaSource([
+      'audio/mp4; codecs="mp4a.40.2"',
+      'video/mp4; codecs="hvc1.1.6.L123.B0"',
+      'video/mp4; codecs="hvc1.2.4.L123.B0"',
+    ]);
+    // HEVC Main is efficient as a file and through Media Source, Main 10 only through Media Source.
+    const decodingInfo = vi.fn(async ({ type, video }: MediaDecodingConfiguration) => ({
+      supported: true,
+      smooth: true,
+      powerEfficient:
+        (video?.contentType.includes("hvc1.1.6") ?? false) ||
+        (type === "media-source" && (video?.contentType.includes("hvc1.2.4") ?? false)),
+    }));
+    vi.stubGlobal("navigator", { mediaCapabilities: { decodingInfo } });
+
+    const capabilities = await videoPlaybackCapabilities();
+    expect(capabilities).toEqual(
+      expect.arrayContaining(["video-hevc-main", "video-hls-hevc-main", "video-hls-hevc-main10"]),
+    );
+    expect(capabilities).not.toContain("video-hevc-main10");
+    // Keys that Media Source rejects are never measured.
+    expect(capabilities).not.toContain("video-hls-hevc-main-l51");
+    expect(decodingInfo).toHaveBeenCalledWith({
+      type: "media-source",
+      video: {
+        contentType: 'video/mp4; codecs="hvc1.1.6.L123.B0"',
+        width: 1920,
+        height: 1080,
+        bitrate: 10_000_000,
+        framerate: 30,
+      },
+    });
+    expect(decodingInfo.mock.calls.filter(([config]) => config.type === "media-source")).toHaveLength(2);
+  });
+
+  it("offers no HLS HEVC key without Media Source AAC or with inefficient decoding", async () => {
+    stubVideoElement();
+    stubMediaSource(['video/mp4; codecs="hvc1.1.6.L123.B0"']);
+    vi.stubGlobal("navigator", {});
+    expect(await videoPlaybackCapabilities()).not.toContain("video-hls-hevc-main");
+
+    stubMediaSource(['audio/mp4; codecs="mp4a.40.2"', 'video/mp4; codecs="hvc1.1.6.L123.B0"']);
+    expect(await videoPlaybackCapabilities()).toContain("video-hls-hevc-main");
+    vi.stubGlobal("navigator", {
+      mediaCapabilities: { decodingInfo: async () => ({ supported: true, smooth: true, powerEfficient: false }) },
+    });
+    expect(await videoPlaybackCapabilities()).not.toContain("video-hls-hevc-main");
+  });
+
   it("leaves unverified decoder keys out of the synchronous list", () => {
     stubVideoElement();
     vi.stubGlobal("navigator", { mediaCapabilities: { decodingInfo: vi.fn() } });

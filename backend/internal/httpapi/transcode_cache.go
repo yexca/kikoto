@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -98,7 +99,9 @@ func (s *Server) scanTranscodeCacheUnlocked(ctx context.Context) (transcodeCache
 		if entry.IsDir() || !info.Mode().IsRegular() {
 			return nil
 		}
-		isComplete := strings.EqualFold(filepath.Ext(entry.Name()), ".ts") || strings.EqualFold(filepath.Ext(entry.Name()), ".mp3")
+		isComplete := slices.ContainsFunc([]string{".ts", ".m4s", ".mp4", ".mp3"}, func(extension string) bool {
+			return strings.EqualFold(filepath.Ext(entry.Name()), extension)
+		})
 		isPartial := ((strings.HasPrefix(entry.Name(), ".hls-segment-") || strings.HasPrefix(entry.Name(), ".audio-transcode-")) &&
 			strings.EqualFold(filepath.Ext(entry.Name()), ".part")) ||
 			// An HLS session playlist or unfinished segment.
