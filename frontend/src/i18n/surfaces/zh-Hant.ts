@@ -592,6 +592,8 @@ export const surfaceHant = {
     previewDuration: "影片預覽，長度 {{duration}}",
     player: "影片播放器",
     playbackRate: "速度 {{rate}}×",
+    subtitleTrack: "字幕 {{number}}",
+    forcedSubtitle: "{{label}}（強制）",
     resumedAt: "已從 {{time}} 繼續",
     startOver: "從頭播放",
     retry: "重試",

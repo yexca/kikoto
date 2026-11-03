@@ -158,10 +158,10 @@ export function findRemoteLyricsMatches(audioPath: string, candidates: RemoteLyr
     }));
 }
 
-const sidecarSubtitleExtensions = [".vtt", ".srt"];
+const sidecarSubtitleExtensions = [".vtt", ".srt", ".ass", ".ssa"];
 
 /**
- * The WebVTT and SRT files beside a video that share its name, such as
+ * The WebVTT, SRT, ASS, and SSA files beside a video that share its name, such as
  * `clip.vtt` or `clip.mp4.srt` for `clip.mp4`, in the order of `choices`.
  */
 export function sidecarSubtitleChoices(videoPath: string, choices: LyricsChoice[]) {

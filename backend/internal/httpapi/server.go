@@ -72,6 +72,7 @@ type Server struct {
 	videoHardware                  videoHardwareState
 	mediaPreparationFailures       mediaPreparationFailures
 	loudnessMeasurements           loudnessMeasurementSlot
+	videoSubtitleProbes            videoSubtitleProbes
 	metadataSyncMu                 sync.Mutex
 	metadataPreviewMu              sync.Mutex
 	metadataPreviews               map[string]metadataPreviewRecord
@@ -365,6 +366,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/media/{id}/playback", s.getVideoPlaybackInfo)
 	mux.HandleFunc("GET /api/media/{id}/loudness", s.getMediaLoudness)
 	handleSlowFirstResponse("GET /api/media/{id}/hls/{file}", s.serveMediaHLS)
+	handleSlowFirstResponse("GET /api/media/{id}/subtitles/{file}", s.serveVideoSubtitle)
 	mux.HandleFunc("POST /api/media/{id}/cache", s.cacheMediaLocation)
 	mux.HandleFunc("DELETE /api/media/{id}/cache", s.deleteMediaCacheLocation)
 	mux.HandleFunc("DELETE /api/media/{id}/local", s.deleteMediaLocalLocation)

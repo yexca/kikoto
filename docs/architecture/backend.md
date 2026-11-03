@@ -123,8 +123,9 @@ probe records that version for the location. Remote and cache locations answer
 `404`, a busy slot `503 media_loudness_busy`, and a failed or timed-out
 measurement `503 media_loudness_unavailable`; Demo measures nothing.
 
-Audio preparation, realtime video conversion that ends before any output, and
-an HLS encode that fails before its first segment remember a failure for 30
+Audio preparation, subtitle extraction, realtime video conversion that ends
+before any output, and an HLS encode that fails before its first segment
+remember a failure for 30
 seconds (a hardware video encode for an hour, after any failure), and loudness measurement remembers a failure
 or timeout for an hour, keyed by purpose, path, size, and modification time,
 holding at most 256 entries. A request in that time fails at once instead of
@@ -273,6 +274,22 @@ software encode serves its segments whenever the encoder is off, changed, or
 failed for that file: a failed hardware session, at any segment, is remembered
 for an hour per file revision, and the request that met the failure is
 answered by the software encode.
+
+Playback info also lists a video's embedded text subtitle streams (SubRip,
+ASS, SSA, WebVTT, and MP4 timed text) in `subtitles`: each stream's container
+index, codec, language and title tags, default and forced flags, and its
+`GET /api/media/{id}/subtitles/{stream}.vtt` URL. Picture subtitles are not
+listed. The list comes from a separate probe on the shared FFprobe runner,
+kept in memory for ten minutes per path, size, and modification time for the
+128 most recent files; a probe that fails or finds the runner busy lists no
+subtitles instead of failing playback info. The subtitle route converts one
+stream to WebVTT with FFmpeg in one of the two transcode slots, waiting at most
+one second for it, for at most two minutes and 4 MiB of output held in memory.
+The file is kept under the transcode cache quota, named by a revision of the
+source path, size, modification time, and stream, so a changed source is
+extracted again and the old file is evicted like any other cache file.
+Responses carry the untrusted-file headers, and a URL naming the current
+revision is cached as immutable.
 
 Query planner statistics are refreshed by one bounded background worker after
 committed bulk changes; GET requests never run analysis. Its triggers and

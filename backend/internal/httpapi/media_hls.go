@@ -50,6 +50,8 @@ type videoPlaybackInfoResponse struct {
 	// the one playing; both are absent from a video without audio.
 	AudioTracks []videoAudioTrack `json:"audioTracks,omitempty"`
 	AudioStream *int              `json:"audioStream,omitempty"`
+	// Subtitles lists the embedded text subtitle streams (media_subtitles.go).
+	Subtitles []videoSubtitleTrack `json:"subtitles,omitempty"`
 }
 
 type hlsPlaybackSource struct {
@@ -100,6 +102,7 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	audioTracks := videoAudioTracks(source.Probe)
 	trackQuery := videoAudioTrackQuery(audioTracks, source.AudioTrack)
+	subtitles := s.videoSubtitleTracksFor(r.Context(), source)
 	// A client asks for a transcode after direct playback failed, which a
 	// remux of the same video stream would repeat.
 	if !forcePlaybackTranscode(r) {
@@ -115,6 +118,7 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 				Delivery: "direct", Conversion: "none", URL: fmt.Sprintf("/api/media/%d/stream?%s", locationID, query.Encode()),
 				DurationSeconds: source.Duration, Seekable: true,
 				AudioTracks: audioTracks, AudioStream: selectedVideoAudioStream(audioTracks, source.AudioTrack),
+				Subtitles: subtitles,
 			})
 			return
 		}
@@ -127,6 +131,7 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 				Seekable:        true,
 				AudioTracks:     audioTracks,
 				AudioStream:     selectedVideoAudioStream(audioTracks, source.AudioTrack),
+				Subtitles:       subtitles,
 			})
 			return
 		}
@@ -143,6 +148,7 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 		Seekable:        true,
 		AudioTracks:     audioTracks,
 		AudioStream:     selectedVideoAudioStream(audioTracks, source.AudioTrack),
+		Subtitles:       subtitles,
 	})
 }
 

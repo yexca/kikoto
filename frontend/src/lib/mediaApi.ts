@@ -1,4 +1,13 @@
-import { assetURL, deleteJSON, getJSON, postJSON, postJSONBody, putJSONBody, sendJSONBody } from "@/lib/apiTransport";
+import {
+  assetURL,
+  deleteJSON,
+  getJSON,
+  getText,
+  postJSON,
+  postJSONBody,
+  putJSONBody,
+  sendJSONBody,
+} from "@/lib/apiTransport";
 
 export type MediaProgressUpdate = {
   workId: number;
@@ -202,6 +211,19 @@ export type VideoPlaybackInfo = {
   audioTracks?: VideoAudioTrack[];
   /** The stream index of the audio track that plays. */
   audioStream?: number;
+  /** Embedded text subtitle streams; absent when the video has none or the server does not list them. */
+  subtitles?: VideoEmbeddedSubtitle[];
+};
+
+/** An embedded text subtitle stream, served as WebVTT from `url`. */
+export type VideoEmbeddedSubtitle = {
+  stream: number;
+  codec: string;
+  language?: string;
+  title?: string;
+  default: boolean;
+  forced: boolean;
+  url: string;
 };
 
 export type CacheMaintenanceResult = {
@@ -257,6 +279,8 @@ export function mediaDownloadURL(locationId: number) {
 
 export const mediaApi = {
   getMediaText: (locationId: number) => getJSON<MediaTextPreview>(`/api/media/${locationId}/text`),
+  /** Reads an embedded subtitle stream as WebVTT from the URL playback info lists. */
+  getVideoSubtitle: (url: string, signal?: AbortSignal) => getText(url, signal),
   /** Compares the local files of a work's family by content; one request does a bounded share of the work. */
   findWorkDuplicateFiles: (workId: number) =>
     postJSON<DuplicateFilesResult>(`/api/works/${workId}/local-files/duplicates`),

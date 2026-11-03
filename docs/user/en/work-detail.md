@@ -538,9 +538,16 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   or on another image. It fills the screen on phones and opens above the
   floating desktop player.
 - Plays video in the file viewer with the browser's video controls:
-  - WebVTT and SRT files beside the video with the same name, such as
-    `clip.vtt` or `clip.mp4.srt` for `clip.mp4`, load as subtitles. The first
-    one shows, and the video controls switch or hide them.
+  - WebVTT, SRT, ASS, and SSA files beside the video with the same name, such
+    as `clip.vtt` or `clip.mp4.ass` for `clip.mp4`, load as subtitles. ASS and
+    SSA keep their text and timing but not their styles or positions.
+  - A local or cached video also lists its embedded text subtitles (SubRip,
+    ASS, SSA, WebVTT, and MP4 timed text), named by their language and title.
+    The server extracts one the first time it is selected, which takes longer
+    for a large file. Picture subtitles, such as PGS, DVD, and DVB, are not
+    listed.
+  - An embedded subtitle marked forced shows first, then one marked default,
+    and otherwise the first subtitle. The video controls switch or hide them.
   - A local or cached video reopens where it stopped, paused, with a
     **Start over** button. The browser keeps the position per file and account
     on this device, from 10 seconds in until the last 15 seconds or the last 5

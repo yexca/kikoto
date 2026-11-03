@@ -611,6 +611,8 @@ export const surfaceJapanese = {
     previewDuration: "動画プレビュー、長さ {{duration}}",
     player: "動画プレーヤー",
     playbackRate: "速度 {{rate}}×",
+    subtitleTrack: "字幕 {{number}}",
+    forcedSubtitle: "{{label}}（強制）",
     resumedAt: "{{time}} から再開しました",
     startOver: "最初から再生",
     retry: "再試行",

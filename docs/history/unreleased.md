@@ -4,9 +4,14 @@
 <summary><strong>Playback</strong></summary>
 
 - The work detail video viewer reopens a local or cached video where it
-  stopped, with a Start over button, loads same-name WebVTT and SRT files as
-  subtitles, and adds keyboard shortcuts for play, seeking, fullscreen, mute,
-  and speed.
+  stopped, with a Start over button, loads same-name WebVTT, SRT, ASS, and SSA
+  files as subtitles, and adds keyboard shortcuts for play, seeking,
+  fullscreen, mute, and speed. ASS and SSA keep only their text and timing.
+- The video viewer lists the embedded text subtitles of a local or cached
+  video (SubRip, ASS, SSA, WebVTT, and MP4 timed text) by language and title,
+  and shows a forced or default one first. The server extracts a subtitle to
+  WebVTT the first time it is selected and keeps it in the transcode cache.
+  Picture subtitles such as PGS are not listed.
 - iOS and iPadOS play converted video through their native HLS player, which
   keeps native fullscreen and AirPlay.
 - Local and cached video plays directly instead of through the 720p

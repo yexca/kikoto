@@ -658,6 +658,8 @@ export const surfaceEnglish = {
     previewDuration: "Video preview, duration {{duration}}",
     player: "Video player",
     playbackRate: "Speed {{rate}}×",
+    subtitleTrack: "Subtitle {{number}}",
+    forcedSubtitle: "{{label}} (forced)",
     resumedAt: "Resumed at {{time}}",
     startOver: "Start over",
     retry: "Retry",

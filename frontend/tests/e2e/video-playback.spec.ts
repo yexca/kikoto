@@ -337,3 +337,80 @@ test("choosing another audio track keeps the position and the paused or playing 
   await expect(menu).toHaveValue("1");
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
+
+test("ASS files and embedded subtitle streams load as subtitle tracks", async ({ page }) => {
+  const ass = [
+    "[Script Info]",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    "Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,{\\an8}Synthetic\\NASS line",
+  ].join("\n");
+  await mockLocalVideo(page, [mediaFixture(2, "example.ass", `${work.primaryCode}/example.ass`, "text")]);
+  await page.route(/\/api\/media\/\d+\/text$/, (route) =>
+    route.fulfill({ json: { path: "example.ass", content: ass } satisfies MediaTextPreview }),
+  );
+  await page.route("**/api/media/1/playback*", (route) =>
+    route.fulfill({
+      json: {
+        delivery: "direct",
+        url: "/api/media/1/stream",
+        durationSeconds: 180,
+        seekable: true,
+        subtitles: [
+          {
+            stream: 2,
+            codec: "ass",
+            language: "jpn",
+            title: "Dialogue",
+            default: true,
+            forced: false,
+            url: "/api/media/1/subtitles/2.vtt?v=synthetic",
+          },
+          {
+            stream: 3,
+            codec: "subrip",
+            language: "eng",
+            default: false,
+            forced: false,
+            url: "/api/media/1/subtitles/3.vtt?v=synthetic",
+          },
+        ],
+      } satisfies VideoPlaybackInfo,
+    }),
+  );
+  const streamRequests: number[] = [];
+  await page.route(/\/api\/media\/1\/subtitles\/\d+\.vtt/, (route) => {
+    const stream = Number(/subtitles\/(\d+)\.vtt/.exec(route.request().url())?.[1]);
+    streamRequests.push(stream);
+    return route.fulfill({
+      contentType: "text/vtt",
+      body: `WEBVTT\n\n00:00:0${stream}.000 --> 00:00:05.000\nSynthetic stream ${stream}\n`,
+    });
+  });
+  const video = await openVideo(page);
+  const tracks = () =>
+    video.evaluate((element: HTMLVideoElement) =>
+      Array.from(element.textTracks).map((track) => ({
+        label: track.label,
+        language: track.language,
+        mode: track.mode,
+        cue: (track.cues?.[0] as VTTCue | undefined)?.text ?? null,
+      })),
+    );
+  // The default stream shows; the other stream is not extracted until it is selected.
+  await expect.poll(tracks).toEqual([
+    { label: "example.ass", language: "", mode: "disabled", cue: null },
+    { label: "Japanese · Dialogue", language: "ja", mode: "showing", cue: "Synthetic stream 2" },
+    { label: "English", language: "en", mode: "disabled", cue: null },
+  ]);
+  expect([...new Set(streamRequests)]).toEqual([2]);
+
+  await video.evaluate((element: HTMLVideoElement) => {
+    element.textTracks[0].mode = "hidden";
+    element.textTracks[2].mode = "hidden";
+  });
+  await expect
+    .poll(async () => (await tracks()).map((track) => track.cue))
+    .toEqual(["Synthetic\nASS line", "Synthetic stream 2", "Synthetic stream 3"]);
+  expect([...new Set(streamRequests)].sort()).toEqual([2, 3]);
+});
