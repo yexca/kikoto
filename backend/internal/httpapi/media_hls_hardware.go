@@ -220,7 +220,7 @@ func videoHardwareHLSProfile(encoder videoHardwareEncoder) *hlsEncodeProfile {
 	profile.cacheDir = "hls-hw"
 	profile.failureTTL = videoHardwareFailureTTL
 	profile.args = func(source hlsPlaybackSource, outputDir string, startIndex int) []string {
-		return videoHLSEncodeArgs(&encoder, source.Path, outputDir, startIndex, source.Duration)
+		return withVideoAudioTrack(videoHLSEncodeArgs(&encoder, source.Path, outputDir, startIndex, source.Duration), source.AudioTrack)
 	}
 	return &profile
 }

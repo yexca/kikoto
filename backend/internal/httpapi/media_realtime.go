@@ -85,6 +85,11 @@ type playbackProbeStream struct {
 	PixelFmt  string `json:"pix_fmt"`
 	Width     int    `json:"width"`
 	Height    int    `json:"height"`
+	// Audio track fields; see media_audio_tracks.go.
+	StreamIndex int                      `json:"index"`
+	Channels    int                      `json:"channels"`
+	Disposition playbackProbeDisposition `json:"disposition"`
+	Tags        playbackProbeTags        `json:"tags"`
 }
 
 type playbackProbeCacheEntry struct {
@@ -329,7 +334,8 @@ func (s *Server) probePlaybackFile(ctx context.Context, path string) (playbackPr
 	if probe, ok := s.cachedPlaybackProbe(path, info.Size(), info.ModTime()); ok {
 		return probe, nil
 	}
-	output, err := s.runBoundedFFprobe(ctx, path, "format=format_name,duration:stream=codec_type,codec_name,codec_tag_string,profile,level,pix_fmt,width,height")
+	output, err := s.runBoundedFFprobe(ctx, path, "format=format_name,duration:stream=codec_type,codec_name,codec_tag_string,profile,level,pix_fmt,width,height"+
+		",index,channels:stream_tags=language,title:stream_disposition=default")
 	if err != nil {
 		return playbackProbe{}, err
 	}

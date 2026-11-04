@@ -6,8 +6,9 @@ import type { ErrorData } from "hls.js";
 
 import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/input";
 import { useStableCallback } from "@/hooks/useStableCallback";
-import { api, assetURL, type VideoPlaybackInfo } from "@/lib/api";
+import { api, assetURL, type VideoAudioTrack, type VideoEmbeddedSubtitle, type VideoPlaybackInfo } from "@/lib/api";
 import { playbackURL, prefersNativeVideoHls, videoPlaybackCapabilities } from "@/player/mediaPlayback";
 import {
   CONSERVATIVE_HLS_CONFIG,
@@ -20,8 +21,17 @@ import {
   videoResumeStorageKey,
   writeVideoResumePosition,
 } from "@/features/work-detail/media/videoResume";
+import {
+  chooseVideoAudioStream,
+  chosenVideoAudioStream,
+  forgetChosenVideoAudioStream,
+  rejectsVideoAudioStream,
+  videoAudioTrackChoices,
+  videoAudioTrackLabel,
+} from "@/features/work-detail/media/videoAudioTracks";
 import { nextVideoPlaybackRate, videoShortcut } from "@/features/work-detail/media/videoShortcuts";
-import { type VideoSubtitle, videoSubtitleWebVtt } from "@/features/work-detail/media/videoSubtitles";
+import { useVideoSubtitleTracks } from "@/features/work-detail/media/useVideoSubtitleTracks";
+import type { VideoSubtitle } from "@/features/work-detail/media/videoSubtitles";
 
 type VideoPreviewProps = {
   locationId: number;
@@ -34,7 +44,7 @@ type VideoPreviewProps = {
 };
 
 const noSubtitles: VideoSubtitle[] = [];
-const MAX_SUBTITLE_BYTES = 512 * 1024;
+const noEmbeddedSubtitles: VideoEmbeddedSubtitle[] = [];
 // While playing, the stored resume position follows the video in steps of this many seconds.
 const resumeWriteIntervalSeconds = 5;
 const rateNoticeMilliseconds = 1500;
@@ -60,20 +70,28 @@ function VideoPlayback({
   pauseRequested,
   onPlay,
 }: VideoPreviewProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const auth = useAuth();
-  const resumeStorageKey = videoResumeStorageKey(auth.user?.id ?? null);
+  const principalID = auth.user?.id ?? null;
+  const resumeStorageKey = videoResumeStorageKey(principalID);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playback, setPlayback] = useState<VideoPlaybackInfo | null>(null);
   const [forceTranscode, setForceTranscode] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
+  // The audio track chosen in this page session; null plays the default track.
+  const [audioStream, setAudioStream] = useState(() => chosenVideoAudioStream(principalID, locationId));
+  const [audioTracks, setAudioTracks] = useState<VideoAudioTrack[]>([]);
   const [error, setError] = useState("");
   const [resumedFrom, setResumedFrom] = useState(() => {
     const storage = browserStorage();
     return storage ? readVideoResumePosition(storage, resumeStorageKey, locationId) : null;
   });
   const [rateNotice, setRateNotice] = useState<number | null>(null);
-  const subtitleTracks = useSubtitleTracks(subtitles);
+  const subtitleTracks = useVideoSubtitleTracks(
+    videoRef,
+    subtitles,
+    playback ? (playback.subtitles ?? noEmbeddedSubtitles) : null,
+  );
   const wantsPlaybackRef = useRef(false);
   const changingSourceRef = useRef(false);
   const hlsManagedRef = useRef(false);
@@ -167,18 +185,31 @@ function VideoPlayback({
     setPlayback(null);
     void prepareVideoPlayback(
       async () =>
-        api.getVideoPlaybackInfo(locationId, await videoPlaybackCapabilities(), forceTranscode, controller.signal),
+        api.getVideoPlaybackInfo(
+          locationId,
+          await videoPlaybackCapabilities(),
+          forceTranscode,
+          controller.signal,
+          audioStream,
+        ),
       controller.signal,
     )
       .then((value) => {
-        if (!controller.signal.aborted) setPlayback(value);
+        if (controller.signal.aborted) return;
+        setAudioTracks(videoAudioTrackChoices(value));
+        setPlayback(value);
       })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;
+        if (audioStream !== null && rejectsVideoAudioStream(reason)) {
+          forgetChosenVideoAudioStream(principalID, locationId);
+          setAudioStream(null);
+          return;
+        }
         setError(videoPlaybackFailureKey(reason));
       });
     return () => controller.abort();
-  }, [canTranscode, durationSeconds, fallbackUrl, forceTranscode, locationId, retryToken]);
+  }, [audioStream, canTranscode, durationSeconds, fallbackUrl, forceTranscode, locationId, principalID, retryToken]);
 
   useEffect(() => {
     if (!pauseRequested) return;
@@ -261,13 +292,16 @@ function VideoPlayback({
     };
   }, [playback, rememberPlayback]);
 
-  // Sidecar subtitles show from the start; the listener can turn them off in the video controls.
-  useEffect(() => {
-    const video = videoRef.current;
-    const first = video?.querySelector("track")?.track;
-    if (!video || !first || Array.from(video.textTracks).some((track) => track.mode === "showing")) return;
-    first.mode = "showing";
-  }, [subtitleTracks]);
+  // A new track reloads the source like a failure recovery, at the same position and play state.
+  const changeAudioTrack = (streamIndex: number) => {
+    if (streamIndex === (playback?.audioStream ?? audioStream)) return;
+    rememberPlayback();
+    changingSourceRef.current = true;
+    videoRef.current?.pause();
+    chooseVideoAudioStream(principalID, locationId, streamIndex);
+    setError("");
+    setAudioStream(streamIndex);
+  };
 
   const startOver = () => {
     setResumedFrom(null);
@@ -396,7 +430,14 @@ function VideoPlayback({
         }}
       >
         {subtitleTracks.map((track) => (
-          <track key={track.key} kind="subtitles" src={track.src} label={track.label} />
+          <track
+            key={track.key}
+            data-subtitle-key={track.key}
+            kind="subtitles"
+            src={track.src}
+            srcLang={track.language}
+            label={track.label}
+          />
         ))}
       </video>
       {rateNotice !== null && (
@@ -411,6 +452,24 @@ function VideoPlayback({
         <div className="flex min-h-11 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
           <Loader2 className="h-4 w-4 animate-spin" />
           {t("videoPlayback.preparing")}
+        </div>
+      )}
+      {audioTracks.length > 0 && (
+        <div className="mt-3 flex min-h-11 items-center gap-3 px-3 text-sm text-muted-foreground sm:px-0">
+          <label htmlFor={`video-audio-track-${locationId}`}>{t("videoPlayback.audioTrack")}</label>
+          <NativeSelect
+            id={`video-audio-track-${locationId}`}
+            className="w-auto min-w-0 max-w-full flex-1 sm:flex-none"
+            value={playback?.audioStream ?? audioStream ?? ""}
+            disabled={!playback}
+            onChange={(event) => changeAudioTrack(Number(event.target.value))}
+          >
+            {audioTracks.map((track, position) => (
+              <option key={track.streamIndex} value={track.streamIndex}>
+                {videoAudioTrackLabel(track, position, t, i18n.language)}
+              </option>
+            ))}
+          </NativeSelect>
         </div>
       )}
       {resumedFrom !== null && !error && (
@@ -447,49 +506,6 @@ function VideoPlayback({
       )}
     </div>
   );
-}
-
-type SubtitleTrack = { key: string; label: string; src: string };
-
-/** Loads sidecar subtitle files as WebVTT object URLs for `<track>` elements; a file that fails is left out. */
-function useSubtitleTracks(subtitles: VideoSubtitle[]) {
-  const [tracks, setTracks] = useState<SubtitleTrack[]>([]);
-  useEffect(() => {
-    if (subtitles.length === 0) return;
-    const controller = new AbortController();
-    const urls: string[] = [];
-    void Promise.allSettled(subtitles.map((subtitle) => loadSubtitleText(subtitle, controller.signal))).then(
-      (results) => {
-        if (controller.signal.aborted) return;
-        const loaded: SubtitleTrack[] = [];
-        results.forEach((result, index) => {
-          const content = result.status === "fulfilled" ? videoSubtitleWebVtt(result.value) : null;
-          if (!content) return;
-          const src = URL.createObjectURL(new Blob([content], { type: "text/vtt" }));
-          urls.push(src);
-          const subtitle = subtitles[index];
-          loaded.push({ key: `${subtitle.locationId}:${subtitle.url ?? ""}`, label: subtitle.title, src });
-        });
-        setTracks(loaded);
-      },
-    );
-    return () => {
-      controller.abort();
-      for (const url of urls) URL.revokeObjectURL(url);
-      setTracks([]);
-    };
-  }, [subtitles]);
-  return tracks;
-}
-
-async function loadSubtitleText(subtitle: VideoSubtitle, signal: AbortSignal) {
-  if (!subtitle.url) return (await api.getMediaText(subtitle.locationId)).content;
-  const response = await fetch(assetURL(subtitle.url), { headers: { Accept: "text/plain,text/*" }, signal });
-  if (!response.ok) throw new Error(`Subtitle request returned HTTP ${response.status}.`);
-  if (Number(response.headers.get("content-length") ?? 0) > MAX_SUBTITLE_BYTES) throw new Error("Subtitle too large.");
-  const content = await response.text();
-  if (content.length > MAX_SUBTITLE_BYTES) throw new Error("Subtitle too large.");
-  return content;
 }
 
 function toggleVideoFullscreen(video: HTMLVideoElement) {

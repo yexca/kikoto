@@ -359,9 +359,14 @@ seeking, and screen lyrics share one timeline.
 The work detail file viewer plays video in `VideoPreview`
 (`features/work-detail/media`), outside the global player. It attaches an HLS
 playlist natively on iOS and iPadOS (`prefersNativeVideoHls`) and through a
-lazily loaded hls.js elsewhere. Same-name WebVTT and SRT files from the video's
-lyrics matches (`sidecarSubtitleChoices`) load as `<track>` elements, with SRT
-rewritten as WebVTT through `lib/timedLyrics`. `videoResume` keeps resume
+lazily loaded hls.js elsewhere. `useVideoSubtitleTracks` renders its `<track>`
+elements: same-name WebVTT, SRT, ASS, and SSA files from the video's lyrics
+matches (`sidecarSubtitleChoices`) load at once, with SRT and ASS rewritten as
+WebVTT through `lib/timedLyrics`, and the embedded streams that playback info
+lists follow, each fetched only once its track is selected. Every track loads
+through the API transport as an object URL, so native shells need no subtitle
+asset route. `videoSubtitles` labels the tracks and picks the one that shows
+first. `videoResume` keeps resume
 positions in account-scoped browser storage, keyed by location id and holding
 only positions; the stage writes one only after its start position applies,
 so a still-loading element never replaces it.

@@ -53,9 +53,13 @@ Playback is handled by a global browser audio player.
   playlist.
 - Local and cached video that does not play directly first returns its probed
   total duration and a complete HLS VOD playlist. When the browser decodes the
-  file's H.264 video but not its container or audio, such as H.264 in
-  Matroska, AVI, MPEG-TS, or FLV, or in MP4 with AC-3, DTS, FLAC, or PCM audio,
-  the video is copied unchanged and only the audio is converted to AAC. The
+  file's H.264 or HEVC video but not its container or audio, such as H.264 in
+  Matroska, AVI, MPEG-TS, or FLV, HEVC in Matroska or MPEG-TS, or either in
+  MP4 with AC-3, DTS, FLAC, or PCM audio, the video is copied unchanged and
+  only the audio is converted to AAC. Copied HEVC Main, or Main 10 for 10-bit
+  video, up to level 5.1 needs the browser to report streamed HEVC decoding
+  as supported and, where it offers MediaCapabilities, power efficient; a
+  browser can report it for streaming without playing the file directly. The
   playlist then follows the file's own keyframes: each segment starts at the
   keyframe nearest six seconds after the previous one, at least three seconds
   later. Video with keyframes more than 15 seconds apart, an average bitrate
@@ -78,6 +82,17 @@ Playback is handled by a global browser audio player.
   natively, which keeps native fullscreen and AirPlay; other browsers, the
   Android app included, use hls.js, and a browser without it plays the
   playlist natively when it can.
+- A video with two or more audio tracks shows an **Audio track** menu below
+  the video, which names each track by number and by the title, language, and
+  channel layout the file gives. Without a choice the viewer plays the track
+  the file flags as default, or the first track when none is flagged. Only
+  the first track plays directly, because a browser playing a file itself
+  chooses its audio; any other track, including a default track that is not
+  the first, plays as a copy or transcode of the video with that track's
+  audio, and each track has its own segments. Changing the track keeps the
+  playback position and whether the video was paused, and the choice lasts
+  until the page reloads. The audio player always plays the first audio
+  track of a video.
 - Temporary video preparation failures receive bounded retries. A remaining
   failure keeps an inline Retry action. A direct file or copied video that the
   browser fails to decode is prepared again as a transcode; that recovery and
@@ -85,7 +100,8 @@ Playback is handled by a global browser audio player.
   paused.
 - Generated video segments are rebuildable cache data under
   `/cache/transcodes/hls`, copied video segments under
-  `/cache/transcodes/hls-remux`, and audio segments under
+  `/cache/transcodes/hls-remux` for H.264 and `/cache/transcodes/hls-remux-hevc`
+  for HEVC, and audio segments under
   `/cache/transcodes/hls-audio`. The shared audio/video transcode LRU quota defaults to
   5 GiB. Segments are invalidated by the source path, size, modification time, or
   transcode profile changing. A segment is capped at 16 MiB, or 64 MiB with

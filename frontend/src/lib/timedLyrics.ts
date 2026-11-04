@@ -141,13 +141,15 @@ const defaultAssEventFields = [
 ];
 const assTimePattern = /^(\d+):(\d{1,2}):(\d{1,2})(?:[.,](\d{1,3}))?$/;
 
+type AssDialogue = { start: number; end: number | null; text: string };
+
 /**
- * Reads the Dialogue lines of an ASS or SSA subtitle as timed lines. Override
- * tags such as `{\an8}` are dropped, and `\N` line breaks become spaces.
+ * The Dialogue events of an ASS or SSA subtitle in file order, with the raw
+ * text of each, which may still hold override tags and escapes.
  */
-function parseAssDialogue(sourceLines: string[]): TimedLyricLine[] {
+function parseAssEvents(sourceLines: string[]): AssDialogue[] {
   let fields = defaultAssEventFields;
-  const lines: TimedLyricLine[] = [];
+  const events: AssDialogue[] = [];
   for (const rawLine of sourceLines) {
     const line = rawLine.trim();
     const separator = line.indexOf(":");
@@ -162,19 +164,52 @@ function parseAssDialogue(sourceLines: string[]): TimedLyricLine[] {
     if (kind !== "dialogue") continue;
     const values = body.split(",");
     if (values.length < fields.length) continue;
-    const text = values
-      .slice(fields.length - 1)
-      .join(",")
-      .replace(/\{[^}]*\}/g, "")
-      .replace(/\\[Nn]/g, " ")
-      .replace(/\\h/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    const time = assTimestampToSeconds(values[fields.indexOf("start")]?.trim() ?? "");
-    if (time === null || !text) continue;
-    lines.push({ time, text });
+    const start = assTimestampToSeconds(values[fields.indexOf("start")]?.trim() ?? "");
+    if (start === null) continue;
+    const endIndex = fields.indexOf("end");
+    const end = endIndex < 0 ? null : assTimestampToSeconds(values[endIndex]?.trim() ?? "");
+    events.push({ start, end, text: values.slice(fields.length - 1).join(",") });
   }
-  return lines;
+  return events;
+}
+
+/**
+ * The lines of ASS dialogue text: override tags such as `{\an8}` are dropped,
+ * `\N` and `\n` break the line, and `\h` is a space.
+ */
+function assTextLines(text: string) {
+  return text
+    .replace(/\{[^}]*\}/g, "")
+    .replace(/\\h/g, " ")
+    .split(/\\[Nn]/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line !== "");
+}
+
+/** Reads the Dialogue lines of an ASS or SSA subtitle as timed lines, each on one line. */
+function parseAssDialogue(sourceLines: string[]): TimedLyricLine[] {
+  return parseAssEvents(sourceLines).flatMap((event) => {
+    const text = assTextLines(event.text).join(" ");
+    return text ? [{ time: event.start, text }] : [];
+  });
+}
+
+/**
+ * The Dialogue lines of an ASS or SSA subtitle as cues in start order, keeping
+ * only their timing and text. Styles and positions are dropped, and the text
+ * is escaped so a `<` or `&` in it shows as written in WebVTT.
+ */
+export function parseAssCues(text: string): TimedCue[] {
+  return parseAssEvents(text.split(/\r?\n/))
+    .map((event) => ({
+      start: event.start,
+      end: event.end,
+      lines: assTextLines(event.text).map((line) =>
+        line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
+      ),
+    }))
+    .filter((cue) => cue.lines.length > 0)
+    .sort((left, right) => left.start - right.start);
 }
 
 function assTimestampToSeconds(value: string) {

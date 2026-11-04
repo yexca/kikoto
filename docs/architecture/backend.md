@@ -77,8 +77,8 @@ The backend is a Go HTTP API with SQLite persistence.
   and audio encode, so it never shares segments with the video playlist of
   the same file, and a video without audio fails as unsupported like an audio
   file without one. Segments of all of them come from one continuous encode
-  per source revision, so segment boundaries stay seamless; H.264 video the
-  client decodes is copied rather than transcoded. All are quota-bounded and
+  per source revision, so segment boundaries stay seamless; H.264 and HEVC
+  video the client decodes is copied rather than transcoded. All are quota-bounded and
   live under the disposable cache root.
 - Prepare incompatible local or cached audio as complete, quota-bounded MP3
   cache files with duration and HTTP Range support for clients without HLS
@@ -123,8 +123,9 @@ probe records that version for the location. Remote and cache locations answer
 `404`, a busy slot `503 media_loudness_busy`, and a failed or timed-out
 measurement `503 media_loudness_unavailable`; Demo measures nothing.
 
-Audio preparation, realtime video conversion that ends before any output, and
-an HLS encode that fails before its first segment remember a failure for 30
+Audio preparation, subtitle extraction, realtime video conversion that ends
+before any output, and an HLS encode that fails before its first segment
+remember a failure for 30
 seconds (a hardware video encode for an hour, after any failure), and loudness measurement remembers a failure
 or timeout for an hour, keyed by purpose, path, size, and modification time,
 holding at most 256 entries. A request in that time fails at once instead of
@@ -142,13 +143,43 @@ says so in `conversion`, which clients may ignore: `none` serves the file
 directly, `remux` copies its video into HLS and encodes only the audio, and
 `transcode` converts both. A video is remuxed when it does not play directly,
 its stream is 8-bit 4:2:0 H.264 in Baseline, Main, or High profile at a
-profile and level the client reports decoding, its average bitrate is at most
-20 Mbit/s, its keyframes fit the segment limits below, and a remux of the
-revision has not failed recently. A `forceTranscode` request, which the
-player sends after direct playback fails, skips the remux, because a remux
-would hand the same video stream to the same decoder. A remux playlist is named
-by its own revision, derived from the source revision, so the HLS route serves
-both from one path.
+profile and level the client reports decoding, or 8- or 10-bit 4:2:0 HEVC in
+Main or Main 10 profile at a profile, level, and bit depth the client reports
+decoding in HLS, its average bitrate is at most 20 Mbit/s, its keyframes fit
+the segment limits below, and a remux of the revision has not failed recently.
+A `forceTranscode` request, which the player sends after direct playback
+fails, skips the remux, because a remux would hand the same video stream to
+the same decoder. A remux playlist is named by its own revision, derived from
+the source revision and the copied codec, so the HLS route serves all of them
+from one path and H.264 and HEVC remuxes never share segments.
+
+HEVC in HLS plays through Media Source Extensions in hls.js, which a browser
+can support without playing the file directly, or the reverse. The HLS HEVC
+decoder keys `video-hls-hevc-main`, `video-hls-hevc-main-l51`,
+`video-hls-hevc-main10`, and `video-hls-hevc-main10-l51` therefore mirror the
+tiers of the direct HEVC decoder keys and are probed against Media Source: the
+player sends one only when Media Source accepts the codec and AAC and, where
+the browser offers MediaCapabilities, reports `media-source` decoding of it as
+supported and power efficient.
+
+Playback info lists the audio streams of a video in `audioTracks`, with each
+stream's index in the file, codec, channels, language, title, and default
+flag, and names the one that plays in `audioStream`. Without a choice a video
+plays its default track: the first audio stream flagged default, or the first
+audio stream. A request names another track with the `audioStream` query, the
+stream index of an audio stream of the file; any other value answers
+`400 invalid_audio_stream`. Only the first audio stream plays directly, since
+a browser chooses the audio of a file it plays itself, so another track is
+remuxed or transcoded under the usual rules with FFmpeg mapping `0:a:N`. Each
+track but the first has its own source revision, derived from the file
+revision and the track number, so its playlists, cache directories, and
+derived remux and hardware revisions are its own; the HLS URL carries
+`audioStream` for a track other than the default, and its playlist repeats it
+on every segment. A keyframe index, which depends only on the video stream,
+is shared by every track. Transcode slots, sessions, quota, and failure memory
+keyed by the file apply to every track alike. The audio of a video in the
+audio player, realtime conversion, and loudness measurement use the first
+audio stream and accept no `audioStream`.
 
 Copied video can be cut only at its keyframes, so a remux playlist follows a
 keyframe index instead of the six-second grid. FFprobe reads the timestamps
@@ -182,7 +213,18 @@ encode's timeline against another's.
   keyframe is the first packet. FFmpeg's segment muxer cuts at the indexed
   keyframes by counting video packets from that first packet. It writes each
   segment under a temporary name, and the session renames a segment once the
-  next one starts or the encode reaches the end of the input.
+  next one starts or the encode reaches the end of the input. H.264 is copied
+  into MPEG-TS segments. HEVC is copied into fMP4 segments under the `hvc1`
+  sample entry, the only HEVC form Apple's HLS players accept: each segment is
+  one fragment whose decode time continues the shared timeline, and the
+  playlist declares version 7 and names one initialization section,
+  `init.mp4`, in `EXT-X-MAP`. Every encode of a revision writes the same
+  section, so encodes discard theirs and the server produces it once per
+  revision with a run of the remux encode that copies no media. That run
+  takes a transcode slot for at most 30 seconds, its section is limited to
+  1 MiB, its result is cached beside the segments under the shared quota, and
+  its failure is remembered as a failed remux, so playback info then offers a
+  transcode.
 
 Strict interleaving keeps each audio packet in the segment of its timestamp. A
 segment file that exists under its final name is complete.
@@ -199,7 +241,7 @@ segment within the refill lead is missing. An encode takes one of the two
 transcode slots and a quota reservation for its segment budget, and fails when
 a segment exceeds the segment size limit.
 
-| Limit | Audio | Transcoded video | Remuxed video |
+| Limit | Audio | Transcoded video | Remuxed H.264 or HEVC video |
 | --- | --- | --- | --- |
 | Wait instead of restarting | within 20 segments | within 2 segments | within 10 segments |
 | Stop ahead of the furthest request | 300 segments | 60 segments | 20 segments |
@@ -232,6 +274,22 @@ software encode serves its segments whenever the encoder is off, changed, or
 failed for that file: a failed hardware session, at any segment, is remembered
 for an hour per file revision, and the request that met the failure is
 answered by the software encode.
+
+Playback info also lists a video's embedded text subtitle streams (SubRip,
+ASS, SSA, WebVTT, and MP4 timed text) in `subtitles`: each stream's container
+index, codec, language and title tags, default and forced flags, and its
+`GET /api/media/{id}/subtitles/{stream}.vtt` URL. Picture subtitles are not
+listed. The list comes from a separate probe on the shared FFprobe runner,
+kept in memory for ten minutes per path, size, and modification time for the
+128 most recent files; a probe that fails or finds the runner busy lists no
+subtitles instead of failing playback info. The subtitle route converts one
+stream to WebVTT with FFmpeg in one of the two transcode slots, waiting at most
+one second for it, for at most two minutes and 4 MiB of output held in memory.
+The file is kept under the transcode cache quota, named by a revision of the
+source path, size, modification time, and stream, so a changed source is
+extracted again and the old file is evicted like any other cache file.
+Responses carry the untrusted-file headers, and a URL naming the current
+revision is cached as immutable.
 
 Query planner statistics are refreshed by one bounded background worker after
 committed bulk changes; GET requests never run analysis. Its triggers and

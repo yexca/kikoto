@@ -268,3 +268,149 @@ test("same-name WebVTT and SRT files load as subtitle tracks", async ({ page }) 
     )
     .toEqual({ text: "Synthetic SRT line", start: 1, end: 3.5 });
 });
+
+test("choosing another audio track keeps the position and the paused or playing state", async ({ page }) => {
+  await mockLocalVideo(page);
+  const requested: (string | null)[] = [];
+  await page.route("**/api/media/1/playback*", (route) => {
+    const audioStream = new URL(route.request().url()).searchParams.get("audioStream");
+    requested.push(audioStream);
+    return route.fulfill({
+      json: {
+        delivery: audioStream === "2" ? "hls" : "direct",
+        url: audioStream === "2" ? "/api/media/1/native-hls.wav" : "/api/media/1/stream",
+        durationSeconds: 180,
+        seekable: true,
+        audioTracks: [
+          { streamIndex: 1, codec: "aac", channels: 2, language: "jpn", default: true },
+          { streamIndex: 2, codec: "ac3", channels: 6, title: "Commentary", default: false },
+        ],
+        audioStream: audioStream === "2" ? 2 : 1,
+      } satisfies VideoPlaybackInfo,
+    });
+  });
+  const video = await openVideo(page);
+  const menu = page.getByRole("combobox", { name: "Audio track", exact: true });
+  await expect(menu).toHaveValue("1");
+  await expect(menu.getByRole("option")).toHaveText(["Track 1 · Japanese · Stereo", "Track 2 · Commentary · 5.1"]);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThan(0);
+  await video.evaluate((element: HTMLVideoElement) => {
+    element.currentTime = 42;
+  });
+  await expect.poll(() => video.evaluate(currentTime)).toBe(42);
+
+  await menu.selectOption("2");
+  await expect.poll(() => requested.at(-1)).toBe("2");
+  await expect
+    .poll(() =>
+      video.evaluate((element: HTMLVideoElement) => ({
+        source: element.currentSrc.split("/").at(-1),
+        paused: element.paused,
+        position: element.currentTime,
+      })),
+    )
+    .toEqual({ source: "native-hls.wav", paused: true, position: 42 });
+  await expect(menu).toHaveValue("2");
+
+  await video.evaluate(async (element: HTMLVideoElement) => {
+    element.currentTime = 84;
+    await element.play();
+  });
+  await menu.selectOption("1");
+  await expect.poll(() => requested.at(-1)).toBe("1");
+  await expect
+    .poll(() =>
+      video.evaluate((element: HTMLVideoElement) => ({
+        source: element.currentSrc.split("/").at(-1),
+        paused: element.paused,
+        positionRestored: element.currentTime >= 84,
+      })),
+    )
+    .toEqual({ source: "stream", paused: false, positionRestored: true });
+
+  // The choice lasts while the page does: reopening the video asks for the same track.
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  const before = requested.length;
+  await page.getByText("example.avi", { exact: true }).click();
+  await expect.poll(() => requested.length).toBeGreaterThan(before);
+  expect(new Set(requested.slice(before))).toEqual(new Set(["1"]));
+  await expect(menu).toHaveValue("1");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("ASS files and embedded subtitle streams load as subtitle tracks", async ({ page }) => {
+  const ass = [
+    "[Script Info]",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    "Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,{\\an8}Synthetic\\NASS line",
+  ].join("\n");
+  await mockLocalVideo(page, [mediaFixture(2, "example.ass", `${work.primaryCode}/example.ass`, "text")]);
+  await page.route(/\/api\/media\/\d+\/text$/, (route) =>
+    route.fulfill({ json: { path: "example.ass", content: ass } satisfies MediaTextPreview }),
+  );
+  await page.route("**/api/media/1/playback*", (route) =>
+    route.fulfill({
+      json: {
+        delivery: "direct",
+        url: "/api/media/1/stream",
+        durationSeconds: 180,
+        seekable: true,
+        subtitles: [
+          {
+            stream: 2,
+            codec: "ass",
+            language: "jpn",
+            title: "Dialogue",
+            default: true,
+            forced: false,
+            url: "/api/media/1/subtitles/2.vtt?v=synthetic",
+          },
+          {
+            stream: 3,
+            codec: "subrip",
+            language: "eng",
+            default: false,
+            forced: false,
+            url: "/api/media/1/subtitles/3.vtt?v=synthetic",
+          },
+        ],
+      } satisfies VideoPlaybackInfo,
+    }),
+  );
+  const streamRequests: number[] = [];
+  await page.route(/\/api\/media\/1\/subtitles\/\d+\.vtt/, (route) => {
+    const stream = Number(/subtitles\/(\d+)\.vtt/.exec(route.request().url())?.[1]);
+    streamRequests.push(stream);
+    return route.fulfill({
+      contentType: "text/vtt",
+      body: `WEBVTT\n\n00:00:0${stream}.000 --> 00:00:05.000\nSynthetic stream ${stream}\n`,
+    });
+  });
+  const video = await openVideo(page);
+  const tracks = () =>
+    video.evaluate((element: HTMLVideoElement) =>
+      Array.from(element.textTracks).map((track) => ({
+        label: track.label,
+        language: track.language,
+        mode: track.mode,
+        cue: (track.cues?.[0] as VTTCue | undefined)?.text ?? null,
+      })),
+    );
+  // The default stream shows; the other stream is not extracted until it is selected.
+  await expect.poll(tracks).toEqual([
+    { label: "example.ass", language: "", mode: "disabled", cue: null },
+    { label: "Japanese · Dialogue", language: "ja", mode: "showing", cue: "Synthetic stream 2" },
+    { label: "English", language: "en", mode: "disabled", cue: null },
+  ]);
+  expect([...new Set(streamRequests)]).toEqual([2]);
+
+  await video.evaluate((element: HTMLVideoElement) => {
+    element.textTracks[0].mode = "hidden";
+    element.textTracks[2].mode = "hidden";
+  });
+  await expect
+    .poll(async () => (await tracks()).map((track) => track.cue))
+    .toEqual(["Synthetic\nASS line", "Synthetic stream 2", "Synthetic stream 3"]);
+  expect([...new Set(streamRequests)].sort()).toEqual([2, 3]);
+});

@@ -18,13 +18,15 @@ import (
 	"time"
 )
 
-// Remuxed video HLS copies an H.264 stream the client decodes into the
+// Remuxed video HLS copies an H.264 or HEVC stream the client decodes into the
 // segments and encodes only the audio, so playback keeps the source picture
 // for a small part of a transcode's CPU. Copied video can be cut only at its
 // own keyframes, so the playlist follows a keyframe index of the source
-// instead of the six-second grid.
+// instead of the six-second grid. H.264 is copied into MPEG-TS segments, and
+// HEVC into fMP4 segments, the only HEVC segments HLS players accept.
 const (
 	videoRemuxHLSProfileVersion  = "hls-remux-v1"
+	videoHEVCRemuxProfileVersion = "hls-remux-hevc-fmp4-v1"
 	videoRemuxHLSSessionPlaylist = ".video-remux-session.list"
 	// Segments start at the keyframe nearest each six-second target, but never
 	// less than the minimum after the previous start. A gap between keyframes
@@ -76,11 +78,68 @@ var videoRemuxHLSProfile = hlsEncodeProfile{
 		return int64(seconds*index.bytesPerSecond*1.25) + int64(seconds*videoRemuxAudioBitsPerSecond/8)
 	},
 	args: func(source hlsPlaybackSource, outputDir string, startIndex int) []string {
-		return videoRemuxHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Keyframes)
+		return withVideoAudioTrack(videoRemuxHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Keyframes), source.AudioTrack)
 	},
 }
 
 const videoRemuxAudioBitsPerSecond = 192_000
+
+// HEVC remux sessions share every limit of an H.264 remux and keep their
+// segments apart, with the initialization section beside them.
+var videoHEVCRemuxHLSProfile = func() hlsEncodeProfile {
+	profile := videoRemuxHLSProfile
+	profile.name = "video-remux-hevc-hls"
+	profile.cacheDir = "hls-remux-hevc"
+	profile.segments = &hlsFMP4Segments
+	profile.args = func(source hlsPlaybackSource, outputDir string, startIndex int) []string {
+		return withVideoAudioTrack(videoHEVCRemuxHLSFFmpegArgs(source.Path, outputDir, startIndex, source.Keyframes), source.AudioTrack)
+	}
+	return profile
+}()
+
+// videoRemux is one kind of remuxed video: the streams it copies, whether a
+// client decodes them in its segments, and the encode that writes them.
+type videoRemux struct {
+	version  string
+	profile  *hlsEncodeProfile
+	copyable func(video *playbackProbeStream) bool
+	decodes  func(video *playbackProbeStream, capabilities map[string]bool) bool
+}
+
+var (
+	videoH264Remux = videoRemux{
+		version:  videoRemuxHLSProfileVersion,
+		profile:  &videoRemuxHLSProfile,
+		copyable: copyableH264,
+		decodes: func(video *playbackProbeStream, capabilities map[string]bool) bool {
+			return videoDecoderSupported(video, "h264", capabilities)
+		},
+	}
+	videoHEVCRemux = videoRemux{
+		version:  videoHEVCRemuxProfileVersion,
+		profile:  &videoHEVCRemuxHLSProfile,
+		copyable: copyableHEVC,
+		decodes:  hlsHEVCDecoderSupported,
+	}
+	videoRemuxes = []*videoRemux{&videoH264Remux, &videoHEVCRemux}
+)
+
+// revision names the playlist of this remux of a source revision.
+func (remux *videoRemux) revision(source hlsPlaybackSource) string {
+	revision := sha256.Sum256([]byte(remux.version + "\x00" + source.Revision))
+	return fmt.Sprintf("%x", revision[:12])
+}
+
+// videoRemuxOfRevision returns the remux whose playlist revision of source is
+// revision, or nil.
+func videoRemuxOfRevision(source hlsPlaybackSource, revision string) *videoRemux {
+	for _, remux := range videoRemuxes {
+		if revision == remux.revision(source) {
+			return remux
+		}
+	}
+	return nil
+}
 
 // videoKeyframeIndex holds where the segments of a remuxed video start: the
 // keyframe times in seconds of the source timeline, and how many video
@@ -187,21 +246,30 @@ func copyableH264(video *playbackProbeStream) bool {
 	return ok && depth == 8 && slices.Contains(h264HighProfiles, strings.ToLower(strings.TrimSpace(video.Profile)))
 }
 
-// remuxableVideo reports whether a client with these capabilities decodes the
-// video stream of a source it cannot play directly, so that remuxing it is
-// enough.
-func remuxableVideo(source hlsPlaybackSource, capabilities map[string]bool, sizeBytes int64) bool {
-	video := firstPlaybackStream(source.Probe, "video")
-	if !copyableH264(video) || !videoDecoderSupported(video, "h264", capabilities) {
+// copyableHEVC reports whether a video stream is 8- or 10-bit 4:2:0 HEVC in
+// the Main or Main 10 profile, which fMP4 HLS segments carry unchanged.
+func copyableHEVC(video *playbackProbeStream) bool {
+	if video == nil || !strings.EqualFold(strings.TrimSpace(video.CodecName), "hevc") {
 		return false
 	}
-	return float64(sizeBytes)*8/source.Duration <= videoRemuxMaximumBitsPerSecond
+	_, ok := videoBitDepth(video.PixelFmt)
+	return ok && slices.Contains([]string{"main", "main 10"}, strings.ToLower(strings.TrimSpace(video.Profile)))
 }
 
-// videoRemuxRevision names the remuxed playlist of a source revision.
-func videoRemuxRevision(source hlsPlaybackSource) string {
-	revision := sha256.Sum256([]byte(videoRemuxHLSProfileVersion + "\x00" + source.Revision))
-	return fmt.Sprintf("%x", revision[:12])
+// remuxForVideo returns the remux whose segments a client with these
+// capabilities decodes, for a source it cannot play directly, or nil when the
+// source needs a transcode.
+func remuxForVideo(source hlsPlaybackSource, capabilities map[string]bool, sizeBytes int64) *videoRemux {
+	if float64(sizeBytes)*8/source.Duration > videoRemuxMaximumBitsPerSecond {
+		return nil
+	}
+	video := firstPlaybackStream(source.Probe, "video")
+	for _, remux := range videoRemuxes {
+		if remux.copyable(video) && remux.decodes(video, capabilities) {
+			return remux
+		}
+	}
+	return nil
 }
 
 type videoKeyframeIndexBuild struct {
@@ -228,26 +296,27 @@ func (s *Server) videoKeyframeIndex(ctx context.Context, source hlsPlaybackSourc
 		indexes.builds = map[string]*videoKeyframeIndexBuild{}
 		indexes.slot = make(chan struct{}, 1)
 	}
-	build := indexes.builds[source.Revision]
+	key := videoKeyframeIndexKey(source)
+	build := indexes.builds[key]
 	if build != nil && build.err != nil && time.Since(build.finishedAt) >= videoKeyframeIndexFailureTTL {
 		build = nil
 	}
 	if build == nil {
 		indexes.evictLocked()
 		build = &videoKeyframeIndexBuild{done: make(chan struct{})}
-		indexes.builds[source.Revision] = build
+		indexes.builds[key] = build
 		if !s.Go(func(lifetime context.Context) {
 			index, err := s.buildVideoKeyframeIndex(lifetime, source)
 			indexes.mu.Lock()
 			build.index, build.err, build.finishedAt = index, err, time.Now()
 			if err != nil && lifetime.Err() != nil {
 				// A shutdown says nothing about the file.
-				delete(indexes.builds, source.Revision)
+				delete(indexes.builds, key)
 			}
 			indexes.mu.Unlock()
 			close(build.done)
 		}) {
-			delete(indexes.builds, source.Revision)
+			delete(indexes.builds, key)
 			indexes.mu.Unlock()
 			return nil, ErrShuttingDown
 		}
@@ -393,7 +462,55 @@ func parseVideoKeyframePackets(reader io.Reader) (*videoKeyframeIndex, error) {
 	return cutter.finish(start, start+duration)
 }
 
+// videoRemuxOutput is where a remux encode writes its segments.
+type videoRemuxOutput struct {
+	// muxer holds the options of the segments' container.
+	muxer []string
+	// list is the segment muxer's list, and pattern the segment names.
+	list    string
+	pattern string
+}
+
 func videoRemuxHLSFFmpegArgs(input string, outputDir string, startIndex int, index *videoKeyframeIndex) []string {
+	return videoRemuxFFmpegArgs(input, startIndex, index, videoRemuxOutput{
+		muxer:   []string{"-segment_format", "mpegts"},
+		list:    filepath.Join(outputDir, videoRemuxHLSSessionPlaylist),
+		pattern: videoRemuxSegmentPattern(outputDir, &hlsMPEGTSSegments),
+	})
+}
+
+// videoHEVCRemuxHLSFFmpegArgs writes fMP4 segments without their
+// initialization section, which every encode of a revision writes alike and
+// videoHEVCRemuxInitArgs produces on its own.
+func videoHEVCRemuxHLSFFmpegArgs(input string, outputDir string, startIndex int, index *videoKeyframeIndex) []string {
+	return videoRemuxFFmpegArgs(input, startIndex, index, videoRemuxOutput{
+		muxer:   videoHEVCRemuxMuxerArgs(os.DevNull),
+		list:    filepath.Join(outputDir, videoRemuxHLSSessionPlaylist),
+		pattern: videoRemuxSegmentPattern(outputDir, &hlsFMP4Segments),
+	})
+}
+
+// videoHEVCRemuxMuxerArgs writes the fMP4 initialization section to header
+// and one fragment per segment. Each segment's first fragment carries the
+// decode time of its first packet on the shared timeline, and later fragments
+// continue from it.
+func videoHEVCRemuxMuxerArgs(header string) []string {
+	return []string{
+		// Apple's HLS players accept HEVC only under the hvc1 sample entry.
+		"-tag:v", "hvc1",
+		"-segment_format", "mp4",
+		"-segment_format_options", "movflags=+frag_custom+empty_moov+default_base_moof+frag_discont+skip_trailer:use_editlist=0:avoid_negative_ts=disabled",
+		"-segment_header_filename", header,
+		"-individual_header_trailer", "0",
+	}
+}
+
+// The segment name is an FFmpeg pattern, so a literal % in the cache path is doubled.
+func videoRemuxSegmentPattern(outputDir string, format *hlsSegmentFormat) string {
+	return filepath.Join(strings.ReplaceAll(outputDir, "%", "%%"), "segment-%06d"+format.extension+".tmp")
+}
+
+func videoRemuxFFmpegArgs(input string, startIndex int, index *videoKeyframeIndex, output videoRemuxOutput) []string {
 	formatSeconds := func(value float64) string { return strconv.FormatFloat(value, 'f', 6, 64) }
 	// The segment muxer starts a segment at the first keyframe after each
 	// listed count of video packets, counted from the first packet it writes.
@@ -421,16 +538,16 @@ func videoRemuxHLSFFmpegArgs(input string, outputDir string, startIndex int, ind
 		"-output_ts_offset", formatSeconds(videoHLSTimelineOffsetSeconds),
 		"-max_interleave_delta", "0",
 		"-muxdelay", "0", "-muxpreload", "0",
-		"-f", "segment", "-segment_format", "mpegts",
+		"-f", "segment",
 		"-segment_start_number", strconv.Itoa(startIndex),
-		"-segment_list", filepath.Join(outputDir, videoRemuxHLSSessionPlaylist), "-segment_list_type", "flat",
+		"-segment_list", output.list, "-segment_list_type", "flat",
 	}
+	args = append(args, output.muxer...)
 	if len(cutPackets) > 0 {
 		args = append(args, "-segment_frames", strings.Join(cutPackets, ","))
 	} else {
 		// The last segment runs to the end of the file.
 		args = append(args, "-segment_time", strconv.Itoa(2*hlsMaximumDurationSeconds))
 	}
-	// The segment name is an FFmpeg pattern, so a literal % in the cache path is doubled.
-	return append(args, filepath.Join(strings.ReplaceAll(outputDir, "%", "%%"), "segment-%06d.ts.tmp"))
+	return append(args, output.pattern)
 }

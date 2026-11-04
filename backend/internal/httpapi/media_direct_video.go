@@ -37,6 +37,12 @@ const (
 	capVideoAV1Main10     = "video-av1-main10"
 	capVideoAV1Main10L51  = "video-av1-main10-l51"
 	capVideoVP9Profile2   = "video-vp9-profile2"
+
+	// HEVC decoder keys for HLS segments; see hlsHEVCDecoderCapabilities.
+	capVideoHLSHEVCMain      = "video-hls-hevc-main"
+	capVideoHLSHEVCMainL51   = "video-hls-hevc-main-l51"
+	capVideoHLSHEVCMain10    = "video-hls-hevc-main10"
+	capVideoHLSHEVCMain10L51 = "video-hls-hevc-main10-l51"
 )
 
 var videoPlaybackCapabilityKeys = []string{
@@ -51,6 +57,7 @@ var videoPlaybackCapabilityKeys = []string{
 	capVideoHEVCMain, capVideoHEVCMainL51, capVideoHEVCMain10, capVideoHEVCMain10L51,
 	capVideoAV1Main, capVideoAV1MainL51, capVideoAV1Main10, capVideoAV1Main10L51,
 	capVideoVP9Profile2,
+	capVideoHLSHEVCMain, capVideoHLSHEVCMainL51, capVideoHLSHEVCMain10, capVideoHLSHEVCMain10L51,
 }
 
 // Containers are tried in order: FFprobe names both WebM and Matroska files
