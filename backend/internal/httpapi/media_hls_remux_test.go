@@ -262,7 +262,7 @@ func TestVideoHEVCRemuxWritesFMP4SegmentsWithAnInitializationSection(t *testing.
 	playlist := buildHLSPlaylistOfSegments(index.durations(), "v=hevc", videoHEVCRemuxHLSProfile.segmentFormat())
 	for _, expected := range []string{
 		"#EXT-X-VERSION:7\n",
-		"#EXT-X-INDEPENDENT-SEGMENTS\n#EXT-X-MAP:URI=\"init.mp4?v=hevc\"\n#EXTINF:5.000,\nsegment-000000.m4s?v=hevc\n",
+		"#EXT-X-INDEPENDENT-SEGMENTS\n#EXT-X-MAP:URI=\"init.m4s?v=hevc\"\n#EXTINF:5.000,\nsegment-000000.m4s?v=hevc\n",
 		"#EXTINF:3.500,\nsegment-000003.m4s?v=hevc\n#EXT-X-ENDLIST\n",
 	} {
 		if !strings.Contains(playlist, expected) {
@@ -568,7 +568,7 @@ func TestVideoHEVCRemuxSegmentsShareOneInitializationSection(t *testing.T) {
 	}
 
 	playlist := fixture.serve(845, "index.m3u8", revision)
-	if playlist.Code != http.StatusOK || !strings.Contains(playlist.Body.String(), "#EXT-X-MAP:URI=\"init.mp4?v="+revision+"\"\n") ||
+	if playlist.Code != http.StatusOK || !strings.Contains(playlist.Body.String(), "#EXT-X-MAP:URI=\"init.m4s?v="+revision+"\"\n") ||
 		len(regexp.MustCompile(`#EXTINF:5\.000,\nsegment-[0-9]{6}\.m4s\?`).FindAllString(playlist.Body.String(), -1)) != 24 {
 		t.Fatalf("playlist = %d:\n%s", playlist.Code, playlist.Body.String())
 	}
@@ -579,17 +579,17 @@ func TestVideoHEVCRemuxSegmentsShareOneInitializationSection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response := fixture.serve(841, "init.mp4", videoH264Remux.revision(h264Source)); response.Code != http.StatusNotFound {
+	if response := fixture.serve(841, "init.m4s", videoH264Remux.revision(h264Source)); response.Code != http.StatusNotFound {
 		t.Fatalf("initialization section of an MPEG-TS remux = %d", response.Code)
 	}
-	initResponse := fixture.serve(845, "init.mp4", revision)
+	initResponse := fixture.serve(845, "init.m4s", revision)
 	section := initResponse.Body.Bytes()
-	if initResponse.Code != http.StatusOK || initResponse.Header().Get("Content-Type") != "video/mp4" || !validHLSInitSection(section) {
+	if initResponse.Code != http.StatusOK || initResponse.Header().Get("Content-Type") != "video/iso.segment" || !validHLSInitSection(section) {
 		t.Fatalf("initialization section = %d %q", initResponse.Code, initResponse.Header().Get("Content-Type"))
 	}
 
 	segmentName := func(index int) string { return videoHEVCRemuxHLSProfile.segmentName(index) }
-	if response := fixture.serve(845, segmentName(0), revision); response.Code != http.StatusOK || string(response.Body.Bytes()[4:8]) != "moof" {
+	if response := fixture.serve(845, segmentName(0), revision); response.Code != http.StatusOK || response.Header().Get("Content-Type") != "video/iso.segment" || string(response.Body.Bytes()[4:8]) != "moof" {
 		t.Fatalf("first segment = %d", response.Code)
 	}
 	key := "transcodes/hls-remux-hevc/845/" + revision

@@ -85,9 +85,12 @@ type hlsSegmentFormat struct {
 	initSection string
 }
 
+// fMP4 sections and segments are named and typed as ISO segments, not MP4
+// files: download managers that capture .mp4 URLs or video/mp4 responses take
+// them away from the player otherwise.
 var (
 	hlsMPEGTSSegments = hlsSegmentFormat{extension: ".ts", contentType: "video/mp2t"}
-	hlsFMP4Segments   = hlsSegmentFormat{extension: ".m4s", contentType: "video/mp4", initSection: "init.mp4"}
+	hlsFMP4Segments   = hlsSegmentFormat{extension: ".m4s", contentType: "video/iso.segment", initSection: "init.m4s"}
 )
 
 func (profile *hlsEncodeProfile) segmentFormat() *hlsSegmentFormat {

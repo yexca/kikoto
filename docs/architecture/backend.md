@@ -235,7 +235,9 @@ encode's timeline against another's.
   sample entry, the only HEVC form Apple's HLS players accept: each segment is
   one fragment whose decode time continues the shared timeline, and the
   playlist declares version 7 and names one initialization section,
-  `init.mp4`, in `EXT-X-MAP`. Every encode of a revision writes the same
+  `init.m4s`, in `EXT-X-MAP`. The section and segments are served as
+  `video/iso.segment`, never under an `.mp4` name or as `video/mp4`, which
+  browser download managers capture as files. Every encode of a revision writes the same
   section, so encodes discard theirs and the server produces it once per
   revision with a run of the remux encode that copies no media. That run
   takes a transcode slot for at most 30 seconds, its section is limited to
