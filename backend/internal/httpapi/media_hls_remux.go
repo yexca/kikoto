@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"os"
 	"os/exec"
@@ -277,6 +278,12 @@ type videoKeyframeIndexBuild struct {
 	index      *videoKeyframeIndex
 	err        error
 	finishedAt time.Time
+	// prefetch marks a build that only a work's prefetch waits for. A playback
+	// that starts another build cancels it, so the scan slot serves playback
+	// first; a playback that needs the same index adopts it instead.
+	prefetch bool
+	yielded  bool
+	cancel   context.CancelFunc
 }
 
 // videoKeyframeIndexes builds one index at a time and keeps recent results per
@@ -290,38 +297,10 @@ type videoKeyframeIndexes struct {
 // videoKeyframeIndex returns the keyframe index of a source revision, waiting
 // at most wait for a build that runs under the server lifetime.
 func (s *Server) videoKeyframeIndex(ctx context.Context, source hlsPlaybackSource, wait time.Duration) (*videoKeyframeIndex, error) {
-	indexes := &s.videoKeyframeIndexes
-	indexes.mu.Lock()
-	if indexes.builds == nil {
-		indexes.builds = map[string]*videoKeyframeIndexBuild{}
-		indexes.slot = make(chan struct{}, 1)
+	build, err := s.startVideoKeyframeIndexBuild(source, false)
+	if err != nil {
+		return nil, err
 	}
-	key := videoKeyframeIndexKey(source)
-	build := indexes.builds[key]
-	if build != nil && build.err != nil && time.Since(build.finishedAt) >= videoKeyframeIndexFailureTTL {
-		build = nil
-	}
-	if build == nil {
-		indexes.evictLocked()
-		build = &videoKeyframeIndexBuild{done: make(chan struct{})}
-		indexes.builds[key] = build
-		if !s.Go(func(lifetime context.Context) {
-			index, err := s.buildVideoKeyframeIndex(lifetime, source)
-			indexes.mu.Lock()
-			build.index, build.err, build.finishedAt = index, err, time.Now()
-			if err != nil && lifetime.Err() != nil {
-				// A shutdown says nothing about the file.
-				delete(indexes.builds, key)
-			}
-			indexes.mu.Unlock()
-			close(build.done)
-		}) {
-			delete(indexes.builds, key)
-			indexes.mu.Unlock()
-			return nil, ErrShuttingDown
-		}
-	}
-	indexes.mu.Unlock()
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	select {
@@ -332,6 +311,80 @@ func (s *Server) videoKeyframeIndex(ctx context.Context, source hlsPlaybackSourc
 	case <-timer.C:
 		return nil, errRealtimeResourceBusy
 	}
+}
+
+// prefetchVideoKeyframeIndex builds the keyframe index of a source revision
+// that no playback has asked for yet, waiting until the build ends.
+func (s *Server) prefetchVideoKeyframeIndex(ctx context.Context, source hlsPlaybackSource) (*videoKeyframeIndex, error) {
+	build, err := s.startVideoKeyframeIndexBuild(source, true)
+	if err != nil {
+		return nil, err
+	}
+	select {
+	case <-build.done:
+		return build.index, build.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// startVideoKeyframeIndexBuild returns the build of a source revision's index,
+// starting one when none is kept.
+func (s *Server) startVideoKeyframeIndexBuild(source hlsPlaybackSource, prefetch bool) (*videoKeyframeIndexBuild, error) {
+	indexes := &s.videoKeyframeIndexes
+	indexes.mu.Lock()
+	defer indexes.mu.Unlock()
+	if indexes.builds == nil {
+		indexes.builds = map[string]*videoKeyframeIndexBuild{}
+		indexes.slot = make(chan struct{}, 1)
+	}
+	key := videoKeyframeIndexKey(source)
+	build := indexes.builds[key]
+	if build != nil && (build.yielded || build.err != nil && time.Since(build.finishedAt) >= videoKeyframeIndexFailureTTL) {
+		build = nil
+	}
+	if build != nil {
+		if !prefetch {
+			build.prefetch = false
+		}
+		return build, nil
+	}
+	if !prefetch {
+		for _, other := range indexes.builds {
+			if other.prefetch && other.finishedAt.IsZero() {
+				other.yielded = true
+				if other.cancel != nil {
+					other.cancel()
+				}
+			}
+		}
+	}
+	indexes.evictLocked()
+	build = &videoKeyframeIndexBuild{done: make(chan struct{}), prefetch: prefetch}
+	indexes.builds[key] = build
+	if !s.Go(func(lifetime context.Context) {
+		ctx, cancel := context.WithCancel(lifetime)
+		defer cancel()
+		indexes.mu.Lock()
+		build.cancel = cancel
+		if build.yielded {
+			cancel()
+		}
+		indexes.mu.Unlock()
+		index, err := s.buildVideoKeyframeIndex(ctx, source)
+		indexes.mu.Lock()
+		build.index, build.err, build.finishedAt = index, err, time.Now()
+		if err != nil && ctx.Err() != nil && indexes.builds[key] == build {
+			// A shutdown or a yielded prefetch says nothing about the file.
+			delete(indexes.builds, key)
+		}
+		indexes.mu.Unlock()
+		close(build.done)
+	}) {
+		delete(indexes.builds, key)
+		return nil, ErrShuttingDown
+	}
+	return build, nil
 }
 
 // evictLocked keeps the cache within its size, removing the builds that
@@ -355,8 +408,13 @@ func (indexes *videoKeyframeIndexes) evictLocked() {
 	}
 }
 
-func (s *Server) buildVideoKeyframeIndex(ctx context.Context, source hlsPlaybackSource) (*videoKeyframeIndex, error) {
-	ctx, cancel := context.WithTimeout(ctx, videoKeyframeIndexTimeout)
+// buildVideoKeyframeIndex returns the stored index of a source revision, or
+// scans the file and stores the index it finds.
+func (s *Server) buildVideoKeyframeIndex(parent context.Context, source hlsPlaybackSource) (*videoKeyframeIndex, error) {
+	if index := s.loadStoredVideoKeyframeIndex(parent, source); index != nil {
+		return index, nil
+	}
+	ctx, cancel := context.WithTimeout(parent, videoKeyframeIndexTimeout)
 	defer cancel()
 	select {
 	case s.videoKeyframeIndexes.slot <- struct{}{}:
@@ -386,6 +444,10 @@ func (s *Server) buildVideoKeyframeIndex(ctx context.Context, source hlsPlayback
 		cancel()
 	}
 	waitErr := command.Wait()
+	// A cancelled scan read only part of the file, whatever its output says.
+	if err := parent.Err(); err != nil {
+		return nil, err
+	}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return nil, fmt.Errorf("%w: the keyframe scan timed out", errVideoKeyframeIndexUnusable)
 	}
@@ -399,6 +461,9 @@ func (s *Server) buildVideoKeyframeIndex(ctx context.Context, source hlsPlayback
 		return nil, fmt.Errorf("%w: ffprobe exited with an error", errVideoKeyframeIndexUnusable)
 	}
 	index.bytesPerSecond = float64(info.Size()) / (index.end - index.cuts[0])
+	if err := s.storeVideoKeyframeIndex(parent, source, index); err != nil {
+		slog.Warn("video keyframe index was not stored", "location_id", source.LocationID, "error", err)
+	}
 	return index, nil
 }
 

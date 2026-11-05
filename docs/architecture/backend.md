@@ -136,7 +136,9 @@ including the player's single next-track preload, which requests the same
 playback URL or the first segment of the same playlist. The backend never
 prepares an unplayed queue, work, or library in the background, because
 speculative preparation would spend the two transcode slots and the shared
-cache quota without a demonstrated benefit.
+cache quota without a demonstrated benefit. The one exception is the keyframe
+index of a remux, described below, which uses neither the transcode slots nor
+a quota reservation.
 
 `GET /api/media/{id}/playback` chooses how a local or cached video plays and
 says so in `conversion`, which clients may ignore: `none` serves the file
@@ -190,7 +192,22 @@ longer than 15 seconds, including one before the first keyframe, makes the
 index unusable. Playback info waits five seconds for the index and otherwise
 offers a transcode while the scan continues. Results are kept in memory per
 source revision for the 64 most recent files, and a failed scan is retried
-after ten minutes.
+after ten minutes. A usable index is also stored in the transcode cache, at
+`transcodes/hls-keyframes/<location>/<revision>.json` with the name of the
+segment rules it was cut with, so a restarted server reads it instead of
+scanning again; reading it counts as a use for the cache limit, and a stored
+index that is malformed or was cut by other rules is scanned again.
+
+`GET /api/works/{id}` with media and `GET /api/works/{id}/media` queue the
+work's available local and cached videos for a keyframe scan after writing
+their response. A queue of at most 32 locations runs one video at a time
+behind the response, skips a video whose probe shows no stream a remux copies
+or whose average bitrate exceeds the remux limit, and reads a stored index
+without scanning. Whether the client decodes the stream is decided only at
+playback. A scan that a playback starts cancels a queued scan holding or
+waiting for the scan slot, and that scan's result is not remembered, so the
+next request for the file scans it again; a playback that asks for the index
+being prefetched waits for that scan instead.
 
 An HLS encode runs from the requested segment and writes the timestamps of one
 shared timeline for its source revision, so segments from different encodes

@@ -65,7 +65,10 @@ Playback is handled by a global browser audio player.
   later. Video with keyframes more than 15 seconds apart, an average bitrate
   above 20 Mbit/s, or keyframes that cannot be read within five seconds of the
   playback request is transcoded instead; the keyframe scan continues, so a
-  later playback of the file copies its video. Every other video is transcoded
+  later playback of the file copies its video. Opening a work reads the
+  keyframes of its videos in the background after the page has loaded, and
+  the server keeps them in the transcode cache, so a video is usually ready to
+  copy by the time it is played, also after a restart. Every other video is transcoded
   to six-second 720p H.264/AAC segments, by the CPU or, when an administrator
   turns on a hardware encoder under Settings → Cache & Fetch and its test
   encode succeeds, by an Intel GPU. A file whose GPU encode fails is encoded

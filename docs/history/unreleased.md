@@ -44,6 +44,12 @@
   but cannot play directly, such as HEVC in Matroska in a browser without
   Matroska support, keeps its source picture the same way, copied into fMP4
   HLS segments instead of transcoded to 720p H.264.
+- Opening a work reads the keyframes of its local and cached H.264 and HEVC
+  videos in the background after the page has loaded, and the server keeps
+  each result in the transcode cache across restarts. The first playback of
+  such a video then copies its picture right away instead of waiting for the
+  keyframe scan and falling back to a 720p transcode when it takes longer
+  than five seconds.
 - Converted video can be encoded by an Intel GPU through VA-API or Quick Sync
   Video, chosen under Settings → Cache & Fetch and off by default. A test
   encode at startup and on save decides whether the GPU is used, and a file

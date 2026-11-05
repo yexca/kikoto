@@ -251,6 +251,9 @@ func (s *Server) getWork(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, work)
+	if includeMedia {
+		s.prefetchWorkVideoKeyframes(work.MediaItems)
+	}
 }
 
 func (s *Server) getWorkMedia(w http.ResponseWriter, r *http.Request) {
@@ -282,6 +285,7 @@ func (s *Server) getWorkMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"workId": id, "mediaWorkId": mediaWorkID, "mediaItems": mediaItems})
+	s.prefetchWorkVideoKeyframes(mediaItems)
 }
 
 func (s *Server) loadWorkDetail(ctx context.Context, userID int64, id int64, includeMedia bool) (workDetail, error) {
