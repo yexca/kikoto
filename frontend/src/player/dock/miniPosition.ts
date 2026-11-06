@@ -5,15 +5,21 @@ const MINI_EDGE_GAP = 8;
 
 export type MiniPosition = { x: number; y: number };
 
-export function safeAreaBottom() {
-  const footer = document.querySelector("footer");
-  return footer ? Number.parseFloat(window.getComputedStyle(footer).paddingBottom) || 0 : 0;
+/**
+ * Space the Mini player keeps clear above the viewport bottom: the rendered
+ * phone navigation, including its safe-area padding, plus the edge gap.
+ */
+export function miniBottomLimit() {
+  const navigation = document.querySelector("[data-mobile-navigation]");
+  return (navigation?.getBoundingClientRect().height ?? 0) + MINI_EDGE_GAP;
 }
 
 function miniVerticalBounds() {
   const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-  const bottomLimit = 84 + safeAreaBottom();
-  return { min: MINI_EDGE_GAP, max: Math.max(MINI_EDGE_GAP, viewportHeight - MINI_PLAYER_SIZE - bottomLimit) };
+  return {
+    min: MINI_EDGE_GAP,
+    max: Math.max(MINI_EDGE_GAP, viewportHeight - MINI_PLAYER_SIZE - miniBottomLimit()),
+  };
 }
 
 export function miniRightEdgeX() {

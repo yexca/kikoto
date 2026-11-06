@@ -177,11 +177,11 @@
     --dialog-max-height: calc(100dvh - 2 * var(--dialog-edge) - var(--safe-area-top) - var(--safe-area-bottom));
     /* Bottom sheets stop below the status bar and leave a strip that dismisses them. */
     --sheet-top-inset: calc(var(--safe-area-top) + 2.5rem);
-    --mobile-navigation-height: 4rem;
+    --mobile-navigation-height: 3.5rem;
     --compact-player-height: 4.5rem;
     --mini-player-size: 5.75rem;
     --player-reserved-height: max(var(--compact-player-height), var(--mini-player-size));
-    --compact-player-mobile-offset: calc(var(--mobile-navigation-height) + 0.75rem + var(--safe-area-bottom));
+    --compact-player-mobile-offset: calc(var(--mobile-navigation-height) + 0.5rem + var(--safe-area-bottom));
     --compact-player-desktop-offset: 1.5rem;
     --app-content-bottom-clearance: calc(var(--mobile-navigation-height) + 1rem + var(--safe-area-bottom));
     --app-update-banner-bottom: calc(var(--mobile-navigation-height) + 1rem + var(--safe-area-bottom));
@@ -272,7 +272,7 @@
     --player-radius-cover: 0.625rem;
     --header-height: 3.75rem;
     --page-padding-y: 1rem;
-    --mobile-navigation-height: 3.75rem;
+    --mobile-navigation-height: 3.25rem;
     --motion-scale: 0.72;
     --press-scale: 0.99;
     --press-brightness: 0.97;
@@ -348,7 +348,7 @@
     --player-radius-cover: 1.25rem;
     --header-height: 4.5rem;
     --page-padding-y: 1.5rem;
-    --mobile-navigation-height: 4.25rem;
+    --mobile-navigation-height: 3.75rem;
     --motion-scale: 1.12;
     --press-scale: 0.96;
     --press-brightness: 0.95;
@@ -426,7 +426,7 @@
     --player-radius-cover: 1.125rem;
     --header-height: 4.25rem;
     --page-padding-y: 1.5rem;
-    --mobile-navigation-height: 4.25rem;
+    --mobile-navigation-height: 3.75rem;
     --motion-scale: 1;
     --press-scale: 0.97;
     --press-brightness: 0.95;
@@ -1311,7 +1311,7 @@ svg.lucide {
 
 @media (max-width: 1023px) {
   :root {
-    --header-height: 3.5rem;
+    --header-height: 3rem;
   }
 
   .backdrop-blur,

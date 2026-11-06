@@ -10,10 +10,10 @@ import {
   clampMiniPosition,
   MINI_PLAYER_SIZE,
   miniActionLayout,
+  miniBottomLimit,
   miniRightEdgeX,
   persistMiniPosition,
   restoreMiniPosition,
-  safeAreaBottom,
   snapMiniPosition,
   type MiniPosition,
 } from "./miniPosition";
@@ -114,10 +114,9 @@ export function MiniPlayer({
         if (!drag || drag.pointerId !== event.pointerId) return;
         if (drag.moved) setActionsOpen(false);
         const nextX = Math.max(8, Math.min(miniRightEdgeX(), event.clientX - drag.offsetX));
-        const bottomLimit = isMobile ? 84 + safeAreaBottom() : 8;
         const nextY = Math.max(
           8,
-          Math.min(window.innerHeight - MINI_PLAYER_SIZE - bottomLimit, event.clientY - drag.offsetY),
+          Math.min(window.innerHeight - MINI_PLAYER_SIZE - miniBottomLimit(), event.clientY - drag.offsetY),
         );
         if (!drag.moved) {
           const origin = position ?? event.currentTarget.getBoundingClientRect();

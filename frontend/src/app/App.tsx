@@ -777,14 +777,17 @@ function AuthenticatedApp() {
         </main>
 
         {!mobileRuntime.keyboardOpen && (
-          <footer className="theme-shell-surface fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[var(--safe-area-bottom)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] backdrop-blur lg:hidden">
+          <footer
+            data-mobile-navigation
+            className="theme-shell-surface fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[var(--safe-area-bottom)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)] backdrop-blur lg:hidden"
+          >
             <nav className="grid grid-cols-4">
               {mobileNavItems.map((item) => {
                 return (
                   <button
                     key={item.id}
                     className={cx(
-                      "group flex h-[var(--mobile-navigation-height)] flex-col items-center justify-center gap-1 text-2xs text-muted-foreground transition-colors",
+                      "group flex h-[var(--mobile-navigation-height)] flex-col items-center justify-center gap-0.5 text-2xs text-muted-foreground transition-colors",
                       page === item.id && "font-medium text-foreground",
                     )}
                     aria-current={page === item.id ? "page" : undefined}
@@ -874,7 +877,7 @@ function AppHeaderTitle({
   }
   return (
     <div className="flex min-w-0 items-center lg:flex-row lg:items-baseline lg:gap-3">
-      {!showMobileTitle && <img src="/kikoto-icon-64.png" alt="Kikoto" className="h-8 w-8 lg:hidden" />}
+      {!showMobileTitle && <img src="/kikoto-icon-64.png" alt="Kikoto" className="h-7 w-7 lg:hidden" />}
       <h1 className={cx("truncate text-base font-semibold lg:text-2xl", !showMobileTitle && "hidden lg:block")}>
         {title}
       </h1>

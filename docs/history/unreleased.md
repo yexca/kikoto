@@ -69,3 +69,14 @@
   keeps the first audio track.
 
 </details>
+
+<details>
+<summary><strong>Interface</strong></summary>
+
+- On phones the header is 8px shorter and the bottom navigation 8px shorter in
+  every style, and the Compact and Mini players sit 8px above the navigation,
+  so more of the page shows between them.
+- The Mini player can be dragged down to just above the bottom navigation on
+  phones and to the bottom edge of the window on wide screens.
+
+</details>
