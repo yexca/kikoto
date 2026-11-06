@@ -155,8 +155,10 @@ keeps a local slice's events in a file. The slice count lives in the
 No slice finishes before its slowest single test. A test that repeats the
 same checks over a matrix of inputs may run a smaller part of it when its
 package's `raceEnabled` test constant is set, as the recommendation paging
-test in `internal/library` does, because the coverage job runs the whole
-matrix without the race detector.
+tests in `internal/library` do. A test whose subject is row volume rather than
+concurrency, such as the statement bind limit of the circle list in
+`internal/httpapi`, may skip under it. The coverage job runs every such test
+in full without the race detector.
 
 Module downloads are cached separately from compilation and lint results. The
 compilation key includes source, migrations, tool configuration, and the check
@@ -189,9 +191,14 @@ WAL, foreign-key, and pool settings; a test that needs one connection sets it
 on the returned database. `storagetest.NewTemplate` adds seed rows that every
 test of a package starts from, applied once before the image is taken. No
 writable database or WAL is shared between tests. Tests of a migration or of
-the numbered upgrade chain build their own databases and run the real
-migrations. Do not replace the template with a checked-in database or reuse a
-mutated test copy.
+the numbered upgrade chain run the real migrations. In `internal/storage`,
+`openMigratedThrough` returns a private copy of a database that the numbered
+chain built through a given version. A test process keeps the checkpointed
+image of every version it builds, and of every eighth version a build passes,
+so it replays each numbered migration about once and a test pays only for the
+migrations after the version it starts from. The baseline comparison test
+builds the complete chain from an empty database. Do not replace the template
+or these images with a checked-in database or reuse a mutated test copy.
 
 HTTP handler tests start from a template seeded with a configured standard
 library and use a single pooled connection, so a path that issues a query while

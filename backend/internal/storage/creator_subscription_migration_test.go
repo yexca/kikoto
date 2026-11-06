@@ -10,10 +10,7 @@ import (
 // the Availability Watch interval to the subscription schedule.
 func TestMigrationConvertsFollowTriggersIntoSubscriptions(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 77)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 77)
 	for _, statement := range []string{
 		`INSERT INTO user_account (id, username, role) VALUES (1, 'subscriber', 'admin')`,
 		`INSERT INTO party (id, display_name) VALUES (10, 'Example Circle 1'), (11, 'Example Circle 2')`,

@@ -9,10 +9,7 @@ import (
 // unchanged rows from advancing the recommendation revision.
 func TestSnapshotProjectionMigrationPrunesCircleSnapshotsAndIgnoresNoOpUpdates(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 41)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 41)
 	for _, statement := range []string{
 		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000000', 'Example Work')`,
 		`INSERT INTO person (id, display_name, sort_name) VALUES (1, 'Example Voice 1', 'example voice 1'), (2, 'Example Voice 2', 'example voice 2')`,

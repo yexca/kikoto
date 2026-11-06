@@ -10,11 +10,7 @@ import (
 // belongs to the bounded worker.
 func TestRecommendationCatalogUpgradePreservesPersonalDataAndQueuesExistingWorks(t *testing.T) {
 	source := filepath.Join("..", "..", "migrations")
-	previous := copyNumberedMigrationsThrough(t, source, 62)
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, previous); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 62)
 	if _, err := db.Exec(`
 		INSERT INTO user_account(id,username,display_name,role) VALUES (1,'synthetic-user','Example User','user');
 		INSERT INTO work(id,primary_code,title) VALUES (1,'RJ00000000','Example Work'),(2,'RJ00000001','Example Other Work');

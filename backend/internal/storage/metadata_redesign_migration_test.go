@@ -9,11 +9,8 @@ import (
 )
 
 func TestMetadataMigrationUnfreezesOnlyMatchingFamilyTitles(t *testing.T) {
-	db := openMigrationManagerDB(t)
 	dir := filepath.Join("..", "..", "migrations")
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, dir, 47)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 47)
 	run := func(query string, args ...any) {
 		t.Helper()
 		if _, err := db.Exec(query, args...); err != nil {

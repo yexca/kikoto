@@ -13,11 +13,8 @@ import (
 // The persisted circle ownership must start out equal to what the views of
 // the previous schema computed.
 func TestCircleOwnershipMigrationKeepsPrimaryCirclesAndCatalogOwners(t *testing.T) {
-	db := openMigrationManagerDB(t)
 	sourceDir := filepath.Join("..", "..", "migrations")
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 81)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 81)
 	var providerID int64
 	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
 		t.Fatal(err)

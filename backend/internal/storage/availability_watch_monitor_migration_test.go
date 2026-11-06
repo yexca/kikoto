@@ -11,10 +11,7 @@ import (
 // available target ready whatever was started for it.
 func TestMigrationMakesAvailabilityWatchMonitorOnly(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 95)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 95)
 	for _, statement := range []string{
 		`INSERT INTO user_account (id, username, role) VALUES (1, 'watcher', 'admin')`,
 		`INSERT INTO file_source (id, code, display_name, source_type, enabled) VALUES (1, 'example_remote', 'Example Remote', 'kikoeru_compatible', 1)`,

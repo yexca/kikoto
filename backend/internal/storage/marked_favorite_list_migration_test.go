@@ -1,39 +1,13 @@
 package storage
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestMarkedFavoriteListMigrationPreservesExplicitLegacyFavorites(t *testing.T) {
 	migrationDir := filepath.Join("..", "..", "migrations")
-	preMarkedDir := t.TempDir()
-	entries, err := os.ReadDir(migrationDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() >= "028_marked_favorite_list.sql" {
-			continue
-		}
-		contents, err := os.ReadFile(filepath.Join(migrationDir, entry.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(preMarkedDir, entry.Name()), contents, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	db, err := Open(filepath.Join(t.TempDir(), "pre-marked.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := Migrate(db, preMarkedDir); err != nil {
-		t.Fatalf("create pre-marked database: %v", err)
-	}
+	db := openMigratedThrough(t, 27)
 	if _, err := db.Exec(`
 		INSERT INTO user_account (id, username, display_name, role) VALUES (1, 'synthetic-user', 'Synthetic User', 'user');
 		INSERT INTO work (id, primary_code, title) VALUES
@@ -72,32 +46,7 @@ func TestMarkedFavoriteListMigrationPreservesExplicitLegacyFavorites(t *testing.
 
 func TestMarkedFavoriteListMigrationConvertsEmptyLegacyDefault(t *testing.T) {
 	migrationDir := filepath.Join("..", "..", "migrations")
-	preMarkedDir := t.TempDir()
-	entries, err := os.ReadDir(migrationDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() >= "028_marked_favorite_list.sql" {
-			continue
-		}
-		contents, err := os.ReadFile(filepath.Join(migrationDir, entry.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(preMarkedDir, entry.Name()), contents, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	db, err := Open(filepath.Join(t.TempDir(), "empty-legacy-default.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := Migrate(db, preMarkedDir); err != nil {
-		t.Fatalf("create pre-marked database: %v", err)
-	}
+	db := openMigratedThrough(t, 27)
 	if _, err := db.Exec(`
 		INSERT INTO user_account (id, username, display_name, role) VALUES (1, 'synthetic-user', 'Synthetic User', 'user');
 		INSERT INTO favorite_list (id, user_id, name, sort_order) VALUES (1, 1, 'Favorites', 0);
@@ -127,15 +76,7 @@ func TestMarkedFavoriteListMigrationConvertsEmptyLegacyDefault(t *testing.T) {
 
 func TestMarkedFavoriteListMigrationMovesStateOnlyFavoritesOutOfConvertedDefault(t *testing.T) {
 	migrationDir := filepath.Join("..", "..", "migrations")
-	preMarkedDir := preMarkedMigrationDir(t, migrationDir)
-	db, err := Open(filepath.Join(t.TempDir(), "state-only-favorites.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := Migrate(db, preMarkedDir); err != nil {
-		t.Fatalf("create pre-marked database: %v", err)
-	}
+	db := openMigratedThrough(t, 27)
 	if _, err := db.Exec(`
 		INSERT INTO user_account (id, username, display_name, role) VALUES (1, 'synthetic-user', 'Synthetic User', 'user');
 		INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Example State Favorite');
@@ -175,15 +116,7 @@ func TestMarkedFavoriteListMigrationMovesStateOnlyFavoritesOutOfConvertedDefault
 
 func TestMarkedFavoriteListMigrationPreservesExistingUserStateTimestamps(t *testing.T) {
 	migrationDir := filepath.Join("..", "..", "migrations")
-	preMarkedDir := preMarkedMigrationDir(t, migrationDir)
-	db, err := Open(filepath.Join(t.TempDir(), "preserved-state-time.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := Migrate(db, preMarkedDir); err != nil {
-		t.Fatalf("create pre-marked database: %v", err)
-	}
+	db := openMigratedThrough(t, 27)
 	if _, err := db.Exec(`
 		INSERT INTO user_account (id, username, display_name, role) VALUES (1, 'synthetic-user', 'Synthetic User', 'user');
 		INSERT INTO work (id, primary_code, title) VALUES
@@ -215,26 +148,4 @@ func TestMarkedFavoriteListMigrationPreservesExistingUserStateTimestamps(t *test
 	if listedFavorite != 1 || unlistedFavorite != 0 {
 		t.Fatalf("favorite summaries = %d / %d, want 1 / 0", listedFavorite, unlistedFavorite)
 	}
-}
-
-func preMarkedMigrationDir(t *testing.T, migrationDir string) string {
-	t.Helper()
-	preMarkedDir := t.TempDir()
-	entries, err := os.ReadDir(migrationDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() >= "028_marked_favorite_list.sql" {
-			continue
-		}
-		contents, err := os.ReadFile(filepath.Join(migrationDir, entry.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(preMarkedDir, entry.Name()), contents, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return preMarkedDir
 }

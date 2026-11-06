@@ -9,10 +9,7 @@ import (
 // switch to token digests, so no usable credential stays at rest.
 func TestMigrationRemovesPlaintextSessions(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 39)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 39)
 	for _, statement := range []string{
 		`INSERT INTO user_account (id, username, display_name, role) VALUES (101, 'synthetic-listener', 'Listener', 'user')`,
 		`INSERT INTO user_session (id, user_id, expires_at) VALUES ('synthetic-plaintext-token', 101, '2999-01-01 00:00:00')`,

@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/internal/testfixture"
@@ -9,10 +8,7 @@ import (
 )
 
 func TestLanguageTitleMigrationPreservesTitleOverridesAndSearchTriggers(t *testing.T) {
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, filepath.Join("..", "..", "migrations"), 52)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 52)
 	if _, err := db.Exec("INSERT INTO work(primary_code,title) VALUES (?,'Example Work')", testfixture.WorkCode(testfixture.PrefixRJ, 0)); err != nil {
 		t.Fatal(err)
 	}

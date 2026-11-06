@@ -18,15 +18,22 @@ import (
 func TestListPagePreservesOrderedProjection(t *testing.T) {
 	store, userID := seedPaginationLibrary(t, 60, 2, 256)
 	ctx := context.Background()
-	for _, mode := range []struct {
+	for modeIndex, mode := range []struct {
 		name    string
 		userID  int64
 		session string
 	}{
 		{"anonymous", 0, ""}, {"live", userID, ""}, {"snapshot", userID, "synthetic-session"},
 	} {
-		for _, sortKey := range []string{"recent", "release", "title", "code", "rating", "sales", "random"} {
-			for _, direction := range []string{"asc", "desc"} {
+		for sortIndex, sortKey := range []string{"recent", "release", "title", "code", "rating", "sales", "random"} {
+			for directionIndex, direction := range []string{"asc", "desc"} {
+				// The race detector slows this matrix many times over. Under it
+				// each mode and sort keeps one direction, alternating so every
+				// mode and every sort still pages in both directions; the
+				// uninstrumented run checks the whole matrix.
+				if raceEnabled && (modeIndex+sortIndex+directionIndex)%2 == 1 {
+					continue
+				}
 				t.Run(mode.name+"/"+sortKey+"/"+direction, func(t *testing.T) {
 					options := ListOptions{UserID: mode.userID, PageSize: 7, Sort: sortKey, Direction: direction, RandomSeed: 43, IncludeRecommendation: true, RecommendationSessionID: mode.session}
 					for _, query := range []string{"", "Example Work 1", "absent synthetic title"} {

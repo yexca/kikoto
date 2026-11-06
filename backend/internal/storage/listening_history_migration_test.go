@@ -1,39 +1,14 @@
 package storage
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestListeningMigrationPreservesExistingPlayEventsWithoutInventedDuration(t *testing.T) {
 	migrationDir := filepath.Join("..", "..", "migrations")
-	before := t.TempDir()
-	entries, err := os.ReadDir(migrationDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() >= "043_personal_listening_history.sql" {
-			continue
-		}
-		contents, err := os.ReadFile(filepath.Join(migrationDir, entry.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(filepath.Join(before, entry.Name()), contents, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	db, err := Open(filepath.Join(t.TempDir(), "history.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
-	if err = Migrate(db, before); err != nil {
-		t.Fatal(err)
-	}
-	_, err = db.Exec(`
+	db := openMigratedThrough(t, 42)
+	_, err := db.Exec(`
 	 INSERT INTO user_account (id,username,display_name,role) VALUES (1,'synthetic-user','Example User','user');
 	 INSERT INTO work (id,primary_code,title) VALUES (1,'RJ00000000','Example Work'),(2,'RJ00000001','Example Translation');
 	 INSERT INTO logical_work (id,canonical_work_id,canonical_code) VALUES (1,1,'RJ00000000');

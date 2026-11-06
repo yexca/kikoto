@@ -53,6 +53,9 @@ func TestListCirclesPagesSummariesWithLatestKnownWork(t *testing.T) {
 // The circle list aggregates every circle at once; its IN lists must stay under
 // SQLite's 32766 bound-parameter limit however many circles exist.
 func TestListCirclesLoadsMoreCirclesThanOneStatementCanBind(t *testing.T) {
+	if raceEnabled {
+		t.Skip("the bind limit is a property of row volume, which the race detector slows many times over; the uninstrumented run checks it")
+	}
 	db := openMigratedTestDB(t)
 	const circles = 32800
 	for _, statement := range []string{

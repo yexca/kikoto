@@ -7,11 +7,7 @@ import (
 
 func TestMetadataIssuesMigrationPreservesUnavailableAndExistingMetadata(t *testing.T) {
 	source := filepath.Join("..", "..", "migrations")
-	before := copyNumberedMigrationsThrough(t, source, 32)
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, before); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 32)
 	if _, err := db.Exec(`INSERT INTO work(id,primary_code,title) VALUES (1,'RJ00000000','Retained local metadata');
  INSERT INTO work_metadata_provider_state(work_id,provider_id,status,message,checked_at)
  SELECT 1,id,'not_found','protected legacy diagnostic','2026-01-01 00:00:00' FROM metadata_provider WHERE code='dlsite';`); err != nil {

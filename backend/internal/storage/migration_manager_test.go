@@ -93,12 +93,7 @@ func TestCreatorAndForeignKeyIndexesArePackaged(t *testing.T) {
 
 func TestMigrateUpgradesExistingDatabaseThroughNumberedChain(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	previousCatalog := copyNumberedMigrationsThrough(t, sourceDir, latestNumberedMigrationVersion-1)
-
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, previousCatalog); err != nil {
-		t.Fatalf("create existing database: %v", err)
-	}
+	db := openMigratedThrough(t, latestNumberedMigrationVersion-1)
 	var before int
 	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migration").Scan(&before); err != nil {
 		t.Fatal(err)
@@ -218,12 +213,7 @@ func TestMigrateUpgradesRetiredBaselineLedger(t *testing.T) {
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			previousCatalog := copyNumberedMigrationsThrough(t, sourceDir, testCase.previousVersion)
-
-			db := openMigrationManagerDB(t)
-			if err := Migrate(db, previousCatalog); err != nil {
-				t.Fatalf("create schema version %03d database: %v", testCase.previousVersion, err)
-			}
+			db := openMigratedThrough(t, testCase.previousVersion)
 			replaceMigrationHistoryWithRetiredBaseline(t, db, testCase.baseline)
 			if err := Migrate(db, sourceDir); err != nil {
 				t.Fatalf("upgrade retired baseline ledger: %v", err)
@@ -339,11 +329,7 @@ func TestMigrateBaselineMatchesCompleteIncrementalChain(t *testing.T) {
 }
 
 func TestMigrateLocalizedMetadataDeduplicatesLegacySnapshots(t *testing.T) {
-	migrationDir := copyNumberedMigrationsThrough(t, filepath.Join("..", "..", "migrations"), 30)
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, migrationDir); err != nil {
-		t.Fatalf("pre-localized migration error = %v", err)
-	}
+	db := openMigratedThrough(t, 30)
 	var providerID int64
 	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
 		t.Fatal(err)
@@ -394,11 +380,7 @@ func TestMigrateLocalizedMetadataDeduplicatesLegacySnapshots(t *testing.T) {
 }
 
 func TestMigrateSharedAvailabilityWatchMergesTargetsAndPausesConflictingSchedule(t *testing.T) {
-	migrationDir := copyNumberedMigrationsThrough(t, filepath.Join("..", "..", "migrations"), 31)
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, migrationDir); err != nil {
-		t.Fatalf("pre-shared Availability Watch migration error = %v", err)
-	}
+	db := openMigratedThrough(t, 31)
 	for _, statement := range []string{
 		`INSERT INTO user_account (id, username, role) VALUES (1, 'watch-one', 'admin')`,
 		`INSERT INTO user_account (id, username, role) VALUES (2, 'watch-two', 'admin')`,
@@ -441,10 +423,7 @@ func TestMigrateSharedAvailabilityWatchMergesTargetsAndPausesConflictingSchedule
 
 func TestMigrateRejectsChangedAppliedMigration(t *testing.T) {
 	migrationDir := copyNumberedMigrations(t, filepath.Join("..", "..", "migrations"))
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, migrationDir); err != nil {
-		t.Fatalf("initial Migrate() error = %v", err)
-	}
+	db := openMigratedThrough(t, latestNumberedMigrationVersion)
 	path := filepath.Join(migrationDir, "030_media_cleanup_hardening.sql")
 	contents, err := os.ReadFile(path)
 	if err != nil {

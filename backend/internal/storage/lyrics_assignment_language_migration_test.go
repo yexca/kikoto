@@ -9,10 +9,7 @@ import (
 // file per language. An assignment stored before it applies to every language.
 func TestLyricsAssignmentLanguageMigrationKeepsAssignmentsForEveryLanguage(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 68)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 68)
 	for _, statement := range []string{
 		`INSERT INTO user_account (id, username, role) VALUES (101, 'synthetic-editor', 'admin')`,
 		`INSERT INTO work (id, primary_code, title) VALUES (11, 'RJ00000001', 'Example Work 1')`,

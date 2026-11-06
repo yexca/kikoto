@@ -10,10 +10,7 @@ import (
 // credit change queues its work for the search index.
 func TestStaffCreditMigrationReprojectsCreditsAndReindexesEveryWork(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 83)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 83)
 	for _, statement := range []string{
 		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000000', 'Example Work')`,
 		`INSERT INTO work_snapshot_projection (work_id, kind, snapshot_id, version, input_hash) VALUES (1, 'voice_credit', 1, 1, 'recorded'), (1, 'dlsite_party', 1, 1, 'recorded')`,
@@ -66,10 +63,7 @@ func TestStaffCreditMigrationReprojectsCreditsAndReindexesEveryWork(t *testing.T
 // finds a work by its tag and a negated tag clause still excludes it.
 func TestStaffCreditMigrationKeepsSearchDocumentsDuringRebuild(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 83)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 83)
 	for _, statement := range []string{
 		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000001', 'Example Work'), (2, 'RJ00000002', 'Other Work')`,
 		`DELETE FROM work_search`,

@@ -1,39 +1,13 @@
 package storage
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestWorkPartyProvenanceMigrationRepairsCatalogOwnership(t *testing.T) {
 	migrationDir := filepath.Join("..", "..", "migrations")
-	preRepairDir := t.TempDir()
-	entries, err := os.ReadDir(migrationDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() >= "021_reconcile_work_party_provenance.sql" {
-			continue
-		}
-		contents, err := os.ReadFile(filepath.Join(migrationDir, entry.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(preRepairDir, entry.Name()), contents, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	db, err := Open(filepath.Join(t.TempDir(), "party-provenance.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := Migrate(db, preRepairDir); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 20)
 	var providerID int64
 	if err := db.QueryRow("SELECT id FROM metadata_provider WHERE code = 'dlsite'").Scan(&providerID); err != nil {
 		t.Fatal(err)

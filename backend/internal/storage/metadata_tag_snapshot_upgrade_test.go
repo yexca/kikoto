@@ -1,18 +1,13 @@
 package storage
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/yexca/kikoto/backend/migrations"
 )
 
 func TestSchema050UpgradePreservesWorksAndSnapshots(t *testing.T) {
-	source := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, source, 50)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 50)
 	if _, err := db.Exec("INSERT INTO work(primary_code,title) VALUES ('RJ00000000','Example Work')"); err != nil {
 		t.Fatal(err)
 	}

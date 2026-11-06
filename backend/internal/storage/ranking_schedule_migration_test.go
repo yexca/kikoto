@@ -15,10 +15,7 @@ import (
 // running.
 func TestMigrationJoinsRankingListsAndConvertsPopularCollectionTriggers(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 93)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 93)
 	for _, statement := range []string{
 		`INSERT INTO user_account (id, username, role) VALUES (1, 'ranking-viewer', 'user')`,
 		`INSERT INTO file_source (id, code, display_name, source_type, enabled)

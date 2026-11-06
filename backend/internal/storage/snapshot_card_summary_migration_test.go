@@ -9,10 +9,7 @@ import (
 // builds their card summaries in the background.
 func TestSnapshotCardSummaryMigrationQueuesExistingSnapshots(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 37)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 37)
 	if _, err := db.Exec(`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000000', 'Example Work')`); err != nil {
 		t.Fatal(err)
 	}

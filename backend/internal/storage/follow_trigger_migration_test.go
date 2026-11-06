@@ -9,10 +9,7 @@ import (
 // and asks for reconfiguration; other workflow triggers keep running.
 func TestMigrationDisablesFollowTriggersForReconfiguration(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 38)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 38)
 	for _, statement := range []string{
 		`INSERT INTO workflow_definition (id, code, display_name, description, definition_json, scope, editable)
 			VALUES (101, 'circle_follow', 'Follow a circle', '', '{}', 'system', 0),

@@ -2,39 +2,13 @@ package storage
 
 import (
 	"database/sql"
-	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestPlaybackCursorMigrationBackfillsLatestCanonicalFamilyProgress(t *testing.T) {
 	migrationDir := filepath.Join("..", "..", "migrations")
-	preCursorDir := t.TempDir()
-	entries, err := os.ReadDir(migrationDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() >= "022_user_work_playback_cursor.sql" {
-			continue
-		}
-		contents, err := os.ReadFile(filepath.Join(migrationDir, entry.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(preCursorDir, entry.Name()), contents, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	db, err := Open(filepath.Join(t.TempDir(), "playback-cursor.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := Migrate(db, preCursorDir); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 21)
 	if _, err := db.Exec(`
 		INSERT INTO user_account (id, username, display_name, role) VALUES (801, 'cursor-user', 'Cursor User', 'user');
 		INSERT INTO work (id, primary_code, title) VALUES

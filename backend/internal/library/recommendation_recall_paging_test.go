@@ -124,12 +124,15 @@ func referenceRecommendationOrder(t testing.TB, store *Store, snapshot Recommend
 func TestRecommendationPagingCoversPrefixAndTailWithStableLanes(t *testing.T) {
 	store, userID := seedPaginationLibrary(t, 720, 0, 0)
 	ctx := context.Background()
-	// A second seed only repeats this ordering matrix, which the race detector
-	// slows many times over. Under it each direction keeps one seed; the
-	// uninstrumented run checks both seeds in both directions.
+	// A second seed or page size only repeats this ordering matrix, which the
+	// race detector slows many times over. Under it each direction keeps one
+	// seed and one page size; the uninstrumented run checks both seeds and both
+	// page sizes in both directions.
 	seeds := map[string][]int64{"asc": {43, 811}, "desc": {43, 811}}
+	sizes := map[string][]int{"asc": {17, 100}, "desc": {17, 100}}
 	if raceEnabled {
 		seeds = map[string][]int64{"asc": {43}, "desc": {811}}
+		sizes = map[string][]int{"asc": {17}, "desc": {100}}
 	}
 	for _, direction := range []string{"asc", "desc"} {
 		for _, query := range []string{"", `"Example Work 1"`, "tag:absent-synthetic-tag"} {
@@ -147,7 +150,7 @@ func TestRecommendationPagingCoversPrefixAndTailWithStableLanes(t *testing.T) {
 				if first.Total != len(want) {
 					t.Fatalf("total=%d matching=%d", first.Total, len(want))
 				}
-				for _, size := range []int{17, 100} {
+				for _, size := range sizes[direction] {
 					options.PageSize = size
 					got := []int64{}
 					for pageNo := 1; pageNo <= (len(want)+size-1)/size+1; pageNo++ {
@@ -287,17 +290,22 @@ func TestRecommendationRecallBudgetsContextsAndPageOnlyBadges(t *testing.T) {
 		t.Fatalf("ordinary badge read recalled contexts=%d", contexts)
 	}
 	options.Sort = "recommend"
-	for seed := int64(2); seed <= 11; seed++ {
-		options.RandomSeed = seed
-		if _, err := store.ListPage(ctx, options); err != nil {
+	// Reaching the context budget repeats the same full-library recall ten
+	// times, which the race detector slows many times over; the uninstrumented
+	// run checks it.
+	if !raceEnabled {
+		for seed := int64(2); seed <= 11; seed++ {
+			options.RandomSeed = seed
+			if _, err := store.ListPage(ctx, options); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := store.db.QueryRow(`SELECT COUNT(*) FROM recommendation_query_context WHERE generation_id=?`, snapshot.GenerationID).Scan(&contexts); err != nil {
 			t.Fatal(err)
 		}
-	}
-	if err := store.db.QueryRow(`SELECT COUNT(*) FROM recommendation_query_context WHERE generation_id=?`, snapshot.GenerationID).Scan(&contexts); err != nil {
-		t.Fatal(err)
-	}
-	if contexts != 8 {
-		t.Fatalf("generation contexts=%d", contexts)
+		if contexts != 8 {
+			t.Fatalf("generation contexts=%d", contexts)
+		}
 	}
 	result, err = store.db.Exec(`INSERT INTO user_account(username,display_name,role) VALUES('synthetic-cold-user','Example Cold User','user')`)
 	if err != nil {

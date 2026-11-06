@@ -10,10 +10,7 @@ import (
 // their stored fields.
 func TestRemoteMetadataFallbackMigrationQueuesRemoteWorks(t *testing.T) {
 	source := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, source, 53)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 53)
 	statements := []string{
 		`INSERT INTO work (id, primary_code, title) VALUES (1, 'RJ00000000', 'Example Work 0'), (2, 'RJ00000001', 'Example Work 1')`,
 		`INSERT INTO metadata_provider (id, code, display_name) VALUES (90, 'kikoeru_source_example_remote_a', 'Example Remote A')`,

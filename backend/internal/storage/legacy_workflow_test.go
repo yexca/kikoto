@@ -9,10 +9,7 @@ import (
 
 func TestPreserveLegacyWorkflowsBeforeRemovalMigration(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 34)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 34)
 	_, err := db.Exec(`INSERT INTO workflow_definition
 		(id, code, display_name, description, definition_json, scope, editable)
 		VALUES (9001, 'example_custom', 'Example Workflow', 'Synthetic', '{"schemaVersion":2,"nodes":[],"edges":[]}', 'user', 1)`)

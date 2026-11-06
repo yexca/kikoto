@@ -10,10 +10,7 @@ import (
 // rule's become the any group, and excluded tags stay excluded.
 func TestMigrationSortsSmartRuleTagsIntoGroups(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 79)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 79)
 	for _, statement := range []string{
 		`INSERT INTO user_account (id, username, role) VALUES (1, 'collector', 'admin')`,
 		`INSERT INTO favorite_list (id, user_id, name, kind) VALUES (10, 1, 'Example All', 'smart'), (11, 1, 'Example Any', 'smart')`,

@@ -10,10 +10,7 @@ import (
 // pool must keep enforcing foreign keys afterwards.
 func TestContributorRoleMigrationKeepsAccountsAndReferences(t *testing.T) {
 	sourceDir := filepath.Join("..", "..", "migrations")
-	db := openMigrationManagerDB(t)
-	if err := Migrate(db, copyNumberedMigrationsThrough(t, sourceDir, 65)); err != nil {
-		t.Fatal(err)
-	}
+	db := openMigratedThrough(t, 65)
 	for _, statement := range []string{
 		`INSERT INTO user_account (id, username, display_name, role, ui_locale) VALUES (101, 'synthetic-listener', 'Listener', 'user', 'ja')`,
 		`INSERT INTO user_account (id, username, display_name, role) VALUES (102, 'synthetic-admin', 'Admin', 'admin')`,
