@@ -132,7 +132,9 @@ Demo mode does not bootstrap or expose the root identity, recover or dispatch
 workflow jobs, or accept supplied sessions. Its HTTP API rejects mutation
 requests, and the Demo identity has only library-read and playback permissions.
 The read-only remote recommendation POST uses
-[simulated scores](../architecture/data-model.md#recommendation-catalog-and-generations).
+[simulated scores](../architecture/data-model.md#recommendation-catalog-and-generations),
+and the For you draw POST returns a random sample of the admitted works that
+records nothing.
 Read requests are nevertheless allowed through administration, workflow,
 activity, source, and user surfaces so the isolated deployment can be shown;
 the frontend keeps those controls read-only and all writes are rejected before

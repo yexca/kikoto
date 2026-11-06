@@ -16,7 +16,7 @@ For provider display, any non-original edition in the work family is a translati
 
 ## Translate with AI
 
-**Translate with AI** fills in what a work lacks in other languages: its title and description, the names of its shared tags, the display names of its local files and folders, and the lyrics of its local tracks. Everything is translated by an LLM provider. Lyrics are translated only from a lyrics file the track already has; a track without lyrics is first transcribed in [Manage lyrics → Transcribe](#transcribe). Accounts with library write permission open it from the local source's options, beside **Manage lyrics** and **Edit display names**, or from **More** in the metadata editor's footer after saving or discarding their edits. Titles, descriptions and shared tag names also need metadata sync permission; a category the account cannot translate is shown unavailable with the reason, and the other categories stay usable. Demo does not offer it.
+**Translate with AI** fills in what a work lacks in other languages: its title and description, the names of its shared tags, the display names of its local files and folders, and the lyrics of its local tracks. Everything is translated by an LLM provider. Lyrics are translated only from a lyrics file the track already has; a track without lyrics is first transcribed in [Manage lyrics → Transcribe](#transcribe). Accounts with library write permission open it from the local source's options, beside **Manage lyrics** and **Edit display names**, or from **More** in the metadata editor's footer after saving or discarding their edits. Titles, descriptions and shared tag names also need metadata sync permission; a category the account cannot translate is shown unavailable with the reason, and the other categories stay usable. Demo opens it with what the work really lacks and example models, sends nothing, and cannot start a translation.
 
 The dialog has three tabs: **Translate**, **Lyrics** when the work has local tracks the account can write lyrics for, and **Results**. Choose one or more target languages at the top of **Translate** or **Lyrics**; the work's original language is marked. The table on **Translate** lists each category against the chosen languages, with how many objects lack a value in that language, a check where nothing is missing, × where the translation model cannot translate what is missing, and the counts of a category that is not selected dimmed. Every category starts selected, and only what is missing is sent:
 
@@ -286,7 +286,8 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   **Copy** above the real names copies them, one per line. On a wide screen
   the selected file or folder shows its names in every language beside the
   list. A file or folder that **Manage files** moves keeps its names; one
-  renamed outside Kikoto loses them.
+  renamed outside Kikoto loses them. Demo offers the editor to try, and
+  **Save** is unavailable.
 - The local source's **Manage lyrics** option lists every local audio file
   with a lyrics choice. A user with library write access can assign any local
   lyrics file of the work, including translated lyrics whose names do not
@@ -365,7 +366,9 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   for users who may check sources, asks every remote source that answers
   again about each edition of the work and refreshes the list. Anyone else,
   and **Manage cache** on a tracked source, gets a list of the source's files
-  to select and delete.
+  to select and delete. Demo opens the workspace too: files can be arranged
+  and the final folder shows a sample preview, but **Check sources** and
+  **Apply changes** change nothing.
 - On a phone and a narrow window the workspace has four views: **Sources**,
   **Select** with the files of the chosen place, **Final folder** with the
   folder as it will be, and **To delete**, and a fifth, **Identical**, once
@@ -517,7 +520,7 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   The directory then shows one folder per copy, **Manage files** lists one
   folder at a time with a **Folder** choice, in the head of **This folder** in
   the wide workspace, and the work can be forgotten
-  only once a single folder is left. A library manager sees a notice above the
+  only once a single folder is left. A library manager, and Demo, sees a notice above the
   directory when the work is in several folders or another edition of it is in
   the library, with **Manage lyrics** and **Manage files** to bring the lyrics
   into one folder and remove what is identical.

@@ -2,6 +2,7 @@ import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
 import { AlignLeft, Languages, ListTree, Loader2, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { DemoPreviewNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
 import { CoverageBar } from "@/components/ui/coverage-bar";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -50,10 +51,13 @@ const panelQuery = "(min-width: 1024px)";
  */
 export function FileDisplayNamesDialog({
   workId,
+  demo = false,
   onClose,
   onSaved,
 }: {
   workId: number;
+  /** Demo lets the names be edited for inspection and saves none. */
+  demo?: boolean;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -219,7 +223,7 @@ export function FileDisplayNamesDialog({
     t(metadataTagNameLanguages.find(([candidate]) => candidate === code)?.[1] ?? "");
 
   const save = async () => {
-    if (changes.length === 0 || anyInvalid) return;
+    if (demo || changes.length === 0 || anyInvalid) return;
     setSaving(true);
     // Each language saves on its own, so a failed one leaves the languages
     // before it saved: the dialog and the page show them, and only the rest
@@ -327,7 +331,7 @@ export function FileDisplayNamesDialog({
     <Dialog
       onClose={onClose}
       size="workspace"
-      dismissible={!saving && changes.length === 0}
+      dismissible={!saving && (demo || changes.length === 0)}
       marker="file-display-names"
     >
       <DialogHeader
@@ -337,6 +341,11 @@ export function FileDisplayNamesDialog({
         onClose={saving ? undefined : onClose}
         closeLabel={t("content.close")}
       />
+      {demo && (
+        <div className="shrink-0 border-b px-4 py-3 sm:px-5">
+          <DemoPreviewNotice surface="fileNames" />
+        </div>
+      )}
       {rows.length > 0 && (
         <div className="shrink-0 space-y-2.5 border-b bg-muted/20 px-4 py-3 sm:px-5">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -455,7 +464,7 @@ export function FileDisplayNamesDialog({
         <Button variant="ghost" onClick={onClose} disabled={saving}>
           {t("content.cancel")}
         </Button>
-        <Button onClick={() => void save()} disabled={saving || changes.length === 0 || anyInvalid}>
+        <Button onClick={() => void save()} disabled={demo || saving || changes.length === 0 || anyInvalid}>
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
           {saving ? t("fileDisplayNames.saving") : t("fileDisplayNames.save")}
         </Button>

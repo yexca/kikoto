@@ -71,7 +71,8 @@ Voice pages present persisted person and credit data.
   new works; see [Discover](discover.md#subscribing). **More** holds **Change
   cover…**, **Sync this voice actor's catalog…**,
   which opens the preset with this voice actor selected for source, filter,
-  metadata, and tag choices, and **Manage aliases**. The works toolbar mirrors the Library: a bounded search on the
+  metadata, and tag choices, and **Manage aliases**. Demo offers all three
+  read-only: **Change cover…** saves no cover. The works toolbar mirrors the Library: a bounded search on the
   left, then the sort button that names the current order, display options,
   the availability filter, and selection on the right, with the shared
   collection pagination above and below the grid. Display options hold the

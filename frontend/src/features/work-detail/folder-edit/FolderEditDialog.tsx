@@ -150,6 +150,7 @@ function FolderEditWorkspaceDialog({
     initialRemote,
     canAssign: !auth.demoMode && auth.hasPermission("library:write"),
     localOnly,
+    demo: auth.demoMode,
     onApplied,
   });
   const [confirmation, setConfirmation] = useState<{ step: 1 | 2; targets: MediaDeleteTarget[] } | null>(null);

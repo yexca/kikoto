@@ -9,6 +9,7 @@ import {
 } from "@/features/work-detail/folder-edit/folderEditLayout";
 import {
   CURRENT_FOLDER_RESOURCE,
+  createDemoFolderEditPlan,
   folderEditCanMerge,
   folderEditItemKey,
   folderEditMerges,
@@ -68,6 +69,7 @@ export function useFolderEditWorkspace({
   initialRemote,
   canAssign,
   localOnly = false,
+  demo = false,
   onApplied,
 }: {
   target: FolderEditTarget;
@@ -78,6 +80,8 @@ export function useFolderEditWorkspace({
   canAssign: boolean;
   /** Lists only local places, for a custom work that no remote source has. */
   localOnly?: boolean;
+  /** Demo previews the edit with a sample plan, asks no remote source, and applies nothing. */
+  demo?: boolean;
   onApplied: (result: WorkFolderEditResult) => void;
 }) {
   const { t } = useTranslation();
@@ -173,6 +177,10 @@ export function useFolderEditWorkspace({
   const remoteCheckAbort = useRef<AbortController | null>(null);
   useEffect(() => () => remoteCheckAbort.current?.abort(), []);
   const checkRemote = useCallback(async () => {
+    if (demo) {
+      toast.warning(t("permissions.demoReadOnly"));
+      return;
+    }
     if (remoteCheckAbort.current) return;
     const controller = new AbortController();
     remoteCheckAbort.current = controller;
@@ -192,7 +200,7 @@ export function useFolderEditWorkspace({
       if (remoteCheckAbort.current === controller) remoteCheckAbort.current = null;
       if (!controller.signal.aborted) setRemoteCheck("idle");
     }
-  }, [t, target, toast]);
+  }, [demo, t, target, toast]);
 
   const merges = useMemo(() => folderEditMerges(resources, merged), [merged, resources]);
   // A file that is cleared, or becomes lyrics, gives up its place, so selecting
@@ -248,7 +256,7 @@ export function useFolderEditWorkspace({
   };
 
   useEffect(() => {
-    if (!needsPlan || applying) return;
+    if (demo || !needsPlan || applying) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
       api.planWorkFolderEdit(target.workId, request).then(
@@ -269,19 +277,8 @@ export function useFolderEditWorkspace({
     };
     // The request is identified by its revision.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [applying, needsPlan, planAttempt, revision, target.workId]);
+  }, [applying, demo, needsPlan, planAttempt, revision, target.workId]);
 
-  const currentPlan = needsPlan ? plan : null;
-  const planCurrent = needsPlan && plannedRevision === revision;
-  const readiness = folderEditReadiness({ request, plan: currentPlan, planCurrent });
-  const currentSelection = selection[CURRENT_FOLDER_RESOURCE] ?? noSelection;
-  // Until the preview catches up, the final folder shows only what is still
-  // selected, and a newly selected file as pending.
-  const shownPlan = useMemo(() => {
-    if (!currentPlan) return null;
-    const keys = new Set(request.additions.map(folderEditItemKey));
-    return { ...currentPlan, items: currentPlan.items.filter((item) => keys.has(item.itemKey)) };
-  }, [currentPlan, request.additions]);
   const pending = useMemo(() => {
     const additions: FolderEditPendingAddition[] = [];
     for (const resource of resources) {
@@ -295,6 +292,21 @@ export function useFolderEditWorkspace({
     }
     return additions;
   }, [lyrics, readyFiles, resources, selection]);
+  const demoPlan = useMemo(
+    () => (demo && needsPlan ? createDemoFolderEditPlan(target, request, pending) : null),
+    [demo, needsPlan, pending, request, target],
+  );
+  const currentPlan = demo ? demoPlan : needsPlan ? plan : null;
+  const planCurrent = needsPlan && (demo || plannedRevision === revision);
+  const readiness = folderEditReadiness({ request, plan: currentPlan, planCurrent });
+  const currentSelection = selection[CURRENT_FOLDER_RESOURCE] ?? noSelection;
+  // Until the preview catches up, the final folder shows only what is still
+  // selected, and a newly selected file as pending.
+  const shownPlan = useMemo(() => {
+    if (!currentPlan) return null;
+    const keys = new Set(request.additions.map(folderEditItemKey));
+    return { ...currentPlan, items: currentPlan.items.filter((item) => keys.has(item.itemKey)) };
+  }, [currentPlan, request.additions]);
   const result = useMemo(
     () => folderEditResult(currentFiles, currentSelection, shownPlan, layout, pending),
     [currentFiles, currentSelection, layout, pending, shownPlan],
@@ -341,7 +353,7 @@ export function useFolderEditWorkspace({
    * request the check compared, which must still be the edit, and the check's review.
    */
   const apply = async (mergeReview?: { request: WorkFolderEditRequest; review: string }) => {
-    if (readiness !== "ready" || applying) return;
+    if (demo || readiness !== "ready" || applying) return;
     if (mergeReview && JSON.stringify(mergeReview.request) !== revision) {
       toast.notify({ kind: "warning", message: t("folderEdit.mergeChanged") });
       return;
@@ -375,6 +387,7 @@ export function useFolderEditWorkspace({
   };
 
   const workspace: FolderWorkspace = {
+    demo,
     resources,
     sourcesStatus,
     retrySources: () => setSourcesAttempt((value) => value + 1),

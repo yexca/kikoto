@@ -66,7 +66,8 @@ Circles represent makers, circles, and related party catalog state.
   the Sync a circle catalog preset with this circle filled in, for every other
   combination of catalog refresh, filter, metadata, tag, and source check. To
   refresh metadata the circle's works already have, run Metadata sync with the
-  circle scope.
+  circle scope. Demo offers both: **Change cover…** saves no cover, and the
+  preset opens read-only.
 - Shortens the common detail actions on mobile, keeps icon-only Favorite,
   More, and DLsite controls accessible by name, and places DLsite last.
 - Uses the Library-style works toolbar on wide layouts: the Works/Series switch

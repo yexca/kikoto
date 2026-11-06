@@ -410,7 +410,9 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
   }, [active, hasDetail, personId, t, toast]);
 
   const canOpenWorkflows = auth.hasPermission("workflows:run") && !auth.demoMode;
-  const canChangeCover = auth.hasPermission("favorites:write");
+  // Demo lists the covers and the catalog sync form for inspection and saves or runs neither.
+  const canChangeCover = auth.demoMode || auth.hasPermission("favorites:write");
+  const canOpenCatalogSync = auth.demoMode || canOpenWorkflows;
   const [coverDialogOpen, setCoverDialogOpen] = useState(false);
   const openRefreshRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
   const runAction = (runId?: number) =>
@@ -577,6 +579,10 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
   };
 
   const saveVoiceCover = async (primaryCode: string) => {
+    if (auth.demoMode) {
+      toast.warning(t("permissions.demoReadOnly"));
+      return;
+    }
     try {
       const next = await api.updateVoiceUserState(personId, { coverPrimaryCode: primaryCode });
       setDetail((current) => (current ? { ...current, ...next } : current));
@@ -801,7 +807,7 @@ function VoiceDetailView({ personId, routeKey, active }: { personId: number; rou
                       },
                     ]
                   : []),
-                ...(canOpenWorkflows
+                ...(canOpenCatalogSync
                   ? [
                       {
                         key: "catalogSync",

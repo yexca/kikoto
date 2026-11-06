@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, Loader2, Redo2, Undo2 } from "lucide-react
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
+import { DemoPreviewNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { FileManagerPanes } from "@/features/work-detail/folder-edit/FileManagerPanes";
@@ -118,6 +119,11 @@ export function FolderWorkspaceView({
         onClose={onClose}
         closeLabel={t("content.close")}
       />
+      {workspace.demo && (
+        <div className="shrink-0 border-b px-4 py-2">
+          <DemoPreviewNotice surface="folderEdit" />
+        </div>
+      )}
       {!wide && manage?.toolbar}
       {!wide && (
         <PaneSwitch
@@ -292,7 +298,9 @@ function WorkspaceFooter({
         )}
         <Button
           onClick={onApply}
-          disabled={readiness !== "ready" || workspace.applying || workspace.planFailed || collision !== null}
+          disabled={
+            workspace.demo || readiness !== "ready" || workspace.applying || workspace.planFailed || collision !== null
+          }
         >
           <CheckCircle2 className="h-4 w-4" />
           {applyLabel}

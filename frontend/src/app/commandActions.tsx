@@ -15,7 +15,10 @@ export type CommandAction = {
 
 type CommandActionContext = {
   hasPermission: (permission: string) => boolean;
-  /** Read-only view permission; Demo can open surfaces it cannot change. Defaults to hasPermission. */
+  /**
+   * Read-only view permission; Demo can open surfaces it cannot change and
+   * lists the maintenance commands, which the server refuses. Defaults to hasPermission.
+   */
   canView?: (permission: string) => boolean;
   visibleNavItems: readonly NavigationItem[];
   translate?: (key: string) => string;
@@ -36,7 +39,7 @@ export function commandActions({
     return !translated || translated === key ? fallback : translated;
   };
   const maintenanceActions: CommandAction[] = [
-    ...(hasPermission("workflows:run") && hasPermission("metadata:sync")
+    ...(canView("workflows:run") && canView("metadata:sync")
       ? [
           {
             id: "action:local_scan",
@@ -51,7 +54,7 @@ export function commandActions({
           },
         ]
       : []),
-    ...(hasPermission("metadata:sync")
+    ...(canView("metadata:sync")
       ? [
           {
             id: "action:dlsite_sync",
@@ -68,7 +71,7 @@ export function commandActions({
       : []),
     // Recovering stale runs is workflow maintenance, kept with the other
     // instance maintenance under sources:write.
-    ...(hasPermission("workflows:run") && hasPermission("sources:write")
+    ...(canView("workflows:run") && canView("sources:write")
       ? [
           {
             id: "action:recover_stale",

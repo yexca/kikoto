@@ -201,11 +201,14 @@ export function CopyMergeSwitch({ workspace, resource }: { workspace: FolderWork
   );
 }
 
-/** Asks every remote source again about each edition of the work, for users who may check sources. */
+/**
+ * Asks every remote source again about each edition of the work, for users who
+ * may check sources. Demo shows it and asks nothing.
+ */
 export function CheckSourcesButton({ workspace, className }: { workspace: FolderWorkspace; className?: string }) {
   const { t } = useTranslation();
   const auth = useAuth();
-  if (!workspace.remoteCheck || auth.demoMode || !auth.hasPermission("remote:track")) return null;
+  if (!workspace.remoteCheck || (!workspace.demo && !auth.hasPermission("remote:track"))) return null;
   const checking = workspace.remoteCheck.checking;
   return (
     <Button

@@ -47,6 +47,21 @@ export function DemoLyricsTaskNotice({ task }: { task: "transcription" | "transl
   );
 }
 
+/**
+ * Demo opens these editors for inspection; say what is a sample and that
+ * nothing is saved or sent.
+ */
+export function DemoPreviewNotice({ surface }: { surface: "aiTranslation" | "fileNames" | "folderEdit" | "forYou" }) {
+  const { t } = useTranslation();
+  const messages = {
+    aiTranslation: t("permissions.demoAITranslationNotice"),
+    fileNames: t("permissions.demoFileNamesNotice"),
+    folderEdit: t("permissions.demoFolderEditNotice"),
+    forYou: t("permissions.demoForYouNotice"),
+  };
+  return <DemoNotice message={messages[surface]} />;
+}
+
 function DemoNotice({ message }: { message: string }) {
   return (
     <div

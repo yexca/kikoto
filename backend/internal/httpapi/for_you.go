@@ -40,10 +40,6 @@ func (s *Server) drawForYou(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if s.cfg.IsDemo() {
-		writeAPIError(w, http.StatusForbidden, "demo_unavailable", "For you is not available in the demo", false)
-		return
-	}
 	var payload struct {
 		Columns     []string `json:"columns"`
 		Temperature string   `json:"temperature"`
@@ -84,6 +80,10 @@ func (s *Server) drawForYou(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		request.Temperature = temperature
+	}
+	if s.cfg.IsDemo() {
+		s.writeDemoForYou(w, r, user.ID, request)
+		return
 	}
 	draw, err := s.libraryStore.DrawForYou(r.Context(), request)
 	if err != nil {

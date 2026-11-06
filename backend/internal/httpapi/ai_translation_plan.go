@@ -101,11 +101,12 @@ func translationPlanLanguages(raw []string) ([]string, bool) {
 }
 
 func (s *Server) getAITranslationPlan(w http.ResponseWriter, r *http.Request) {
+	// Demo shows the plan of what the work lacks; it can request nothing.
+	permission := "library:write"
 	if s.cfg.IsDemo() {
-		writeAPIError(w, 403, "llm_disabled", "Translation is unavailable in Demo.", false)
-		return
+		permission = "library:read"
 	}
-	actor, ok := s.requirePermission(w, r, "library:write")
+	actor, ok := s.requirePermission(w, r, permission)
 	if !ok {
 		return
 	}
@@ -142,6 +143,10 @@ func (s *Server) planAITranslation(ctx context.Context, actor currentUser, workI
 		Metadata: hasTranslationPermissions(actor, translationTitle),
 		Files:    hasTranslationPermissions(actor, translationFileName),
 		Lyrics:   hasTranslationPermissions(actor, translationLyrics),
+	}
+	if s.cfg.IsDemo() {
+		// Every category is shown for inspection; the request itself is refused.
+		response.Permissions = translationPlanPermissions{Metadata: true, Files: true, Lyrics: true}
 	}
 	enabled, err := s.lyricsAttributionEnabled(ctx)
 	if err != nil {

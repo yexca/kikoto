@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
+import { DemoPreviewNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import {
@@ -79,12 +80,18 @@ function ForYouDraws({
   onOpenWork,
 }: ForYouViewProps & { storageScope: string }) {
   const { t } = useTranslation();
+  const { demoMode } = useAuth();
   const forYou = useForYou(storageScope);
   const [shown, setShown] = useState<ForYouColumn>("maybe_like");
   const coldStart = FOR_YOU_COLUMNS.some((column) => forYou.columns[column].coldStart);
   const sideBySide = cardLayout === "row";
 
   const open = (column: ForYouColumn, item: ForYouItem, rank: number) => {
+    // Demo draws are samples and record nothing.
+    if (demoMode) {
+      onOpenWork(item.work.primaryCode);
+      return;
+    }
     void api
       .recordRecommendationEvents([
         {
@@ -103,6 +110,7 @@ function ForYouDraws({
 
   return (
     <section className="@container min-w-0 space-y-4" aria-label={t("subscriptions.forYou.label")}>
+      {demoMode && <DemoPreviewNotice surface="forYou" />}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div
           role="radiogroup"

@@ -111,3 +111,16 @@
   phones and to the bottom edge of the window on wide screens.
 
 </details>
+
+<details>
+<summary><strong>Demo</strong></summary>
+
+- The Demo shows features it used to hide, each labelled as a demonstration
+  and changing nothing: For you as a random sample of the demo works, a
+  work's **Edit display names**, **Translate with AI** with example models,
+  and the **Manage files** workspace with a sample preview, the batch
+  translation on the Translation page, **Change cover…** and the catalog sync
+  preset on circle and voice actor pages, creating a list from a work card,
+  and the maintenance commands in Quick actions.
+
+</details>

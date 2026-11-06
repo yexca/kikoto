@@ -183,10 +183,7 @@ export function SubscriptionsPage({
   );
   const panels = SUBSCRIPTION_PANELS.filter((item) => item !== "watch" || canRunWorkflows);
   const activePanel = panel && panels.includes(panel) ? panel : panel ? "subscriptions" : null;
-  // For you draws from the account's own library, which the demo does not have.
-  const views = SUBSCRIPTION_VIEWS.filter(
-    (item) => (item !== "watch" || canRunWorkflows) && (item !== "for-you" || !readOnly),
-  );
+  const views = SUBSCRIPTION_VIEWS.filter((item) => item !== "watch" || canRunWorkflows);
   const activeView = views.includes(view) ? view : "releases";
   const settingsBeside = besideLayout && Boolean(activePanel);
   // The Watch view and the watch's settings share one watch and its poll.

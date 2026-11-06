@@ -659,6 +659,82 @@ export function folderEditMergeCheckProgress(
   };
 }
 
+/**
+ * Demo's stand-in for the server's preview of a folder edit: each addition is
+ * copied or downloaded to the path it asks for, and nothing conflicts. The
+ * workspace shows it; nothing applies it.
+ */
+export function createDemoFolderEditPlan(
+  target: FolderEditTarget,
+  request: WorkFolderEditRequest,
+  pending: readonly FolderEditPendingAddition[],
+): WorkFolderEditPlan {
+  const root = normalizePath(target.rootPath);
+  const files = new Map(pending.map((addition) => [addition.key, addition]));
+  const items = request.additions.map((addition): WorkFolderEditItem => {
+    const itemKey = folderEditItemKey(addition);
+    const file = files.get(itemKey);
+    const local = addition.kind === "local";
+    const relative = normalizePath(addition.targetPath ?? addition.path);
+    const targetPath = root ? `${root}/${relative}` : relative;
+    return {
+      itemKey,
+      path: addition.path,
+      kind: file?.kind ?? "file",
+      sizeBytes: file?.sizeBytes ?? null,
+      sourceKind: addition.kind,
+      action: local ? "copy_local" : "cache_download",
+      status: "preview only",
+      sourcePath: addition.path,
+      localSourcePath: "",
+      cachePath: "",
+      targetPath,
+      mediaItemId: 0,
+      localPaths: [],
+      targetExists: false,
+      targetConflict: false,
+      targetConflictReason: "",
+      targetSizeBytes: null,
+      originalTargetPath: targetPath,
+      resolution: "auto",
+      remoteSourceId: local ? 0 : addition.sourceId,
+      remoteSourceCode: "",
+      remoteSourceName: "",
+      remotePath: local ? "" : addition.path,
+      sourceOptions: [],
+      ...(local ? { sourceFolderId: addition.folderId } : { remoteCode: addition.remoteCode }),
+      ...(addition.language !== undefined ? { language: addition.language } : {}),
+    };
+  });
+  const copy = items.filter((item) => item.action === "copy_local").length;
+  return {
+    workId: target.workId,
+    primaryCode: "",
+    folderId: target.folderId,
+    saveRoot: root,
+    items,
+    removals: [],
+    moves: [],
+    folders: request.folders ?? [],
+    merges: [],
+    summary: {
+      add: items.length,
+      copy,
+      download: items.length - copy,
+      skip: 0,
+      conflict: 0,
+      remove: request.removeLocationIds.length,
+      move: request.moves?.length ?? 0,
+      folders: request.folders?.length ?? 0,
+      merge: request.mergeFolderIds?.length ?? 0,
+      mergeFiles: 0,
+      lyrics: items.filter((item) => item.language !== undefined).length,
+      addBytes: items.reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0),
+      removeBytes: 0,
+    },
+  };
+}
+
 export type FolderEditReadiness = "idle" | "refreshing" | "blocked" | "ready";
 
 /**

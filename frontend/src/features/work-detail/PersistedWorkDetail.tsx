@@ -249,11 +249,14 @@ export function PersistedWorkDetailController({
   const autoRoutePath = usePlaybackRoutePath(playbackRouting, tree);
   const directoryStats = useMemo(() => treeStats(tree), [tree]);
   const canEditFolders = !auth.demoMode && auth.hasPermission("downloads:manage");
+  // Demo opens the file workspace, display names, and Translate with AI for
+  // inspection; each saves and sends nothing.
+  const canOpenFolderWorkspace = auth.demoMode || canEditFolders;
   // Display names are shared metadata, edited by whoever edits the library's metadata.
-  const canEditFileNames = !auth.demoMode && auth.hasPermission("library:write");
+  const canEditFileNames = auth.demoMode || auth.hasPermission("library:write");
   const [fileNamesOpen, setFileNamesOpen] = useState(false);
-  // Translate with AI asks for a translation permission; Demo never translates.
-  const canTranslate = !auth.demoMode && auth.hasPermission("library:write");
+  // Translate with AI asks for a translation permission.
+  const canTranslate = auth.demoMode || auth.hasPermission("library:write");
   const [translateOpen, setTranslateOpen] = useState(false);
   const files = usePersistedFileManagement({
     localDirectoryWork,
@@ -261,7 +264,7 @@ export function PersistedWorkDetailController({
     selectedTrackedPresence,
     selectedTrackedSourceID,
     tree,
-    canEditFolders,
+    canEditFolders: canOpenFolderWorkspace,
     canFetchIntoFolder: canEditFolders && auth.hasPermission("remote:fetch"),
   });
   const { localFolders } = files;
@@ -298,8 +301,7 @@ export function PersistedWorkDetailController({
   const otherLocalEditionCount = (localDirectoryWork?.translations ?? []).filter(
     (edition) => edition.workId && edition.workId !== localDirectoryWork?.id && edition.localAvailable,
   ).length;
-  const canManageLocalCopies =
-    !auth.demoMode && auth.hasPermission("downloads:manage") && selectedSource?.kind === "local";
+  const canManageLocalCopies = canOpenFolderWorkspace && selectedSource?.kind === "local";
   const fetchWorkspace = useRemoteFetchWorkspace({ onWorksChanged });
   // A manager of local files builds a new folder from several places; the
   // single-edition Fetch stays for everyone else.
@@ -789,6 +791,7 @@ export function PersistedWorkDetailController({
       {fileNamesOpen && localDirectoryWork && (
         <FileDisplayNamesDialog
           workId={localDirectoryWork.id}
+          demo={auth.demoMode}
           onClose={() => setFileNamesOpen(false)}
           onSaved={localMediaSaved}
         />
@@ -818,6 +821,7 @@ export function PersistedWorkDetailController({
         <TranslateWithAIDialog
           work={work}
           mediaWork={localDirectoryWork}
+          demo={auth.demoMode}
           onClose={() => setTranslateOpen(false)}
           onChanged={async () => {
             await Promise.all([metadataSaved(), localMediaSaved()]);

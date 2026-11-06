@@ -188,8 +188,9 @@ func TestLLMTransportRefusesRedirectsAndBoundsResponses(t *testing.T) {
 	}
 }
 func TestLLMDemoAndLeastPrivilegeBoundary(t *testing.T) {
+	// Demo lists sample translation models (TestDemoShowsTranslationPlanAndSampleModels) and refuses the rest.
 	f := newManualOverrideFixture(t, config.Config{Mode: "demo"})
-	for _, handler := range []http.HandlerFunc{f.server.listLLMTranslationModels, f.server.listLLMReviews, f.server.translateWorkWithLLM, f.server.precheckLLMWork} {
+	for _, handler := range []http.HandlerFunc{f.server.listLLMReviews, f.server.translateWorkWithLLM, f.server.precheckLLMWork} {
 		w := httptest.NewRecorder()
 		handler(w, llmTestRequest(f, "GET", "{}"))
 		if w.Code != 403 {

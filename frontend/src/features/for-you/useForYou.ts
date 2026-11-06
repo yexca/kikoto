@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { WORK_DETAIL_USER_STATE_EVENT, type WorkDetailUserStateDetail } from "@/app/workDetailEvents";
+import { useAuth } from "@/auth/AuthProvider";
 import { api, ApiError, type Work } from "@/lib/api";
 import { FOR_YOU_COLUMNS, type ForYouColumn, type ForYouTemperature } from "@/lib/forYouApi";
 
@@ -28,6 +29,7 @@ export type ForYouStatus = "loading" | "ready" | "preparing" | "failed";
  * it instead of drawing anew.
  */
 export function useForYou(storageScope: string) {
+  const { demoMode } = useAuth();
   const [restored] = useState(() => readForYouSnapshot(storageScope));
   const [status, setStatus] = useState<ForYouStatus>(restored ? "ready" : "loading");
   const [temperature, setTemperature] = useState<ForYouTemperature | null>(restored?.temperature ?? null);
@@ -102,18 +104,21 @@ export function useForYou(storageScope: string) {
     (column: ForYouColumn) => draw([column], temperature ?? undefined),
     [draw, temperature],
   );
-  // The choice is saved for the account, then every column draws again with it.
+  // The choice is saved for the account, then every column draws again with
+  // it. Demo shares one account and saves nothing, so the choice stays in the
+  // kept draw.
   const changeTemperature = useCallback(
     async (next: ForYouTemperature) => {
       setTemperature(next);
       void draw([...FOR_YOU_COLUMNS], next);
+      if (demoMode) return;
       try {
         await api.updateUserPreferences({ forYouTemperature: next });
       } catch {
         // The draw still uses the choice; it is saved the next time it changes.
       }
     },
-    [draw],
+    [demoMode, draw],
   );
   // Marks and ratings change the card in place; the next draw reads them.
   const patchWork = useCallback((workId: number, patch: Partial<Work>) => {

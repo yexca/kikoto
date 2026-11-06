@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/yexca/kikoto/backend/internal/asr"
@@ -82,6 +83,19 @@ func writeDemoASRServices(w http.ResponseWriter) {
 		result = append(result, response)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"providers": result, "presets": asr.Presets, "hostAddress": demoServiceHost})
+}
+
+// translationModelProviders lists the LLM providers a translation chooses
+// among: the configured ones, or the Demo samples, which no request reaches.
+func (s *Server) translationModelProviders(ctx context.Context) ([]llm.Provider, error) {
+	if !s.cfg.IsDemo() {
+		return s.llmStore.List(ctx)
+	}
+	providers := make([]llm.Provider, 0, len(demoLLMProviders))
+	for _, provider := range demoLLMProviders {
+		providers = append(providers, provider.provider)
+	}
+	return providers, nil
 }
 
 func writeDemoLLMProviders(w http.ResponseWriter) {

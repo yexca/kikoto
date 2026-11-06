@@ -616,6 +616,11 @@ export const surfaceHans = {
       "演示模式：这些转写是示例。演示不会把音频发送给语音识别服务，因此无法检测分级，也无法开始、添加或丢弃转写。",
     demoLyricsTranslationNotice:
       "演示模式：这些翻译是示例。演示不会把歌词发送给 LLM 服务商，因此无法检测分级，也无法开始、添加或丢弃翻译。",
+    demoAITranslationNotice: "演示模式：这里的模型均为示例。演示不会向 LLM 服务商发送任何内容，因此无法开始翻译。",
+    demoFileNamesNotice: "演示模式：可以在这里试着编辑显示名称，但无法保存。",
+    demoFolderEditNotice: "演示模式：可以在这里整理文件并查看示例预览，但无法更改文件夹。",
+    demoForYouNotice:
+      "演示模式：为你推荐是从演示作品中随机抽取的示例，推荐结果和理由都是演示数据，并非根据收听记录学习得出。",
     permissionDenied: "您的账户没有使用此功能的权限。",
   },
   workflow: {

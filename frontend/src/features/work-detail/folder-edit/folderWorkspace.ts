@@ -39,6 +39,8 @@ export type FolderEditFilesState = {
  * existing folder and for a Fetch into a new one alike.
  */
 export type FolderWorkspace = {
+  /** Demo previews the change with a sample plan and applies nothing. */
+  demo?: boolean;
   resources: FolderEditResource[];
   sourcesStatus: "loading" | "ready" | "error";
   retrySources: () => void;

@@ -308,7 +308,9 @@ export function CircleDetailPage({
     : circle.series.reduce((total, series) => total + series.works, 0);
 
   const canOpenWorkflows = auth.hasPermission("workflows:run") && !auth.demoMode;
-  const canChangeCover = auth.hasPermission("favorites:write");
+  // Demo lists the covers and the catalog sync form for inspection and saves or runs neither.
+  const canChangeCover = auth.demoMode || auth.hasPermission("favorites:write");
+  const canOpenCatalogSync = auth.demoMode || canOpenWorkflows;
   const canSubscribe = auth.hasPermission("favorites:write") && !auth.demoMode;
   const openSubscriptions = () => openWorkflowPath("/discover?panel=subscriptions");
   const openRefreshRun = (runId: number) => openWorkflowPath(workflowActivityRunPath(runId));
@@ -391,7 +393,7 @@ export function CircleDetailPage({
           },
         ]
       : []),
-    ...(canOpenWorkflows
+    ...(canOpenCatalogSync
       ? [
           {
             key: "catalogSync",
@@ -409,6 +411,10 @@ export function CircleDetailPage({
   };
 
   const saveCircleCover = async (primaryCode: string) => {
+    if (auth.demoMode) {
+      toast.warning(t("permissions.demoReadOnly"));
+      return;
+    }
     try {
       const next = await api.updateCircleUserState(externalId, { coverPrimaryCode: primaryCode });
       setDetail((current) =>

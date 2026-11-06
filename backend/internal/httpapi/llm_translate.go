@@ -408,21 +408,17 @@ func (s *Server) applyLLMTranslation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listLLMTranslationModels(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.IsDemo() {
-		writeAPIError(w, 403, "llm_disabled", "LLM translation is unavailable in Demo.", false)
-		return
-	}
 	// Every account that may translate a category chooses among the models.
 	actor, ok := userFromContext(r.Context())
 	if !ok {
 		writeAPIError(w, http.StatusUnauthorized, "login_required", "login required", false)
 		return
 	}
-	if !canUseTranslationCenter(actor) && !userHasPermission(actor, "metadata:sync") {
+	if !s.cfg.IsDemo() && !canUseTranslationCenter(actor) && !userHasPermission(actor, "metadata:sync") {
 		writeAPIError(w, http.StatusForbidden, "permission_denied", "permission denied", false)
 		return
 	}
-	providers, err := s.llmStore.List(r.Context())
+	providers, err := s.translationModelProviders(r.Context())
 	if err != nil {
 		writeError(w, err)
 		return

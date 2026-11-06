@@ -144,7 +144,10 @@ export function TranslationCoverage({
   const selectedWorks = result.works.filter((work) => selectedWorkIds.has(work.id));
   const languageLabel = (value: string) =>
     t(metadataTagNameLanguages.find(([candidate]) => candidate === value)?.[1] ?? value);
-  const controlsDisabled = readOnly || !!loadError || loading;
+  // Read-only Demo selects works and opens the batch for inspection over every
+  // category; the batch queues nothing.
+  const controlsDisabled = !!loadError || loading;
+  const batchPermissions = readOnly ? { metadata: true, files: true } : permissions;
   const initialLoading = loading && !hasLoaded;
   const columnCount = wide ? 8 : 3;
   const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
@@ -176,7 +179,7 @@ export function TranslationCoverage({
           setPage(1);
         }}
       >
-        {!readOnly && (permissions.metadata || permissions.files) && (
+        {(batchPermissions.metadata || batchPermissions.files) && (
           <Button
             size="sm"
             variant={selectedWorks.length > 0 ? "default" : "toolbar"}
@@ -489,7 +492,8 @@ export function TranslationCoverage({
           works={selectedWorks}
           language={language}
           languageLabel={languageLabel(language)}
-          permissions={permissions}
+          permissions={batchPermissions}
+          demo={readOnly}
           onClose={() => setBatchOpen(false)}
           onQueued={() => {
             setSelectedWorkIds(new Set());

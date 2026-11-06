@@ -1259,7 +1259,8 @@ export function WorkCardListButton({
   const [resolving, setResolving] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
   const effectiveWorkId = workId ?? resolvedWorkId;
-  const canCreate = !demoMode && hasPermission("favorites:write");
+  // Demo shows the create field; the server refuses the new list as read-only.
+  const canCreate = demoMode || hasPermission("favorites:write");
   const membership = useWorkFavoriteLists({ workId: effectiveWorkId, open, onSaved });
   const options = useMemo<FavoriteListPickerOption[] | null>(() => {
     const { lists, selected } = membership;

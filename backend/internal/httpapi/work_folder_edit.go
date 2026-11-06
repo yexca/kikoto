@@ -200,7 +200,12 @@ func (s *Server) requireWorkFolderEdit(w http.ResponseWriter, r *http.Request, p
 // come from: the local folders of every edition of its family and the stored
 // availability of those editions on the configured sources.
 func (s *Server) listWorkFolderEditSources(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requirePermission(w, r, "downloads:manage"); !ok {
+	// Demo opens Manage files read-only, so it may list where files could come from.
+	permission := "downloads:manage"
+	if s.cfg.IsDemo() {
+		permission = "library:read"
+	}
+	if _, ok := s.requirePermission(w, r, permission); !ok {
 		return
 	}
 	workID, code, ok := s.workFolderEditSourcesWork(w, r)

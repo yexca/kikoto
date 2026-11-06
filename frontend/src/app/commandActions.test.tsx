@@ -26,7 +26,7 @@ describe("commandActions", () => {
     expect(actions.map((action) => action.id)).toEqual(["page:library"]);
   });
 
-  it("offers read-only activity navigation without maintenance commands in Demo", () => {
+  it("lists the maintenance commands and activity navigation in Demo", () => {
     const actions = commandActions({
       hasPermission: () => false,
       canView: () => true,
@@ -35,7 +35,14 @@ describe("commandActions", () => {
       onOpenPath: vi.fn(),
     });
 
-    expect(actions.map((action) => action.id)).toEqual(["page:library", "activity:open", "activity:history"]);
+    expect(actions.map((action) => action.id)).toEqual([
+      "action:local_scan",
+      "action:dlsite_sync",
+      "action:recover_stale",
+      "page:library",
+      "activity:open",
+      "activity:history",
+    ]);
   });
 
   it("offers each personal Settings tab as its own destination to library readers", () => {

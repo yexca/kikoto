@@ -11,6 +11,7 @@ import type {
 import {
   CURRENT_FOLDER_RESOURCE,
   buildFolderEditTree,
+  createDemoFolderEditPlan,
   conflictResolutions,
   fetchComposeReadiness,
   fetchComposeRequest,
@@ -571,5 +572,37 @@ describe("folder edit merge check", () => {
       pendingBytes: 800,
     });
     expect(back).toEqual({ progress: { checkedFiles: 3, pendingFiles: 7, pendingBytes: 700 }, advanced: false });
+  });
+});
+
+describe("Demo folder edit plan", () => {
+  it("previews every addition at its requested place, ready to show and never conflicting", () => {
+    const current = [file("mp3/01.mp3", 5)];
+    const request = {
+      folderId: 11,
+      additions: [
+        { kind: "local" as const, folderId: 21, path: "wav/01.wav" },
+        {
+          kind: "remote" as const,
+          sourceId: 3,
+          remoteCode: "rj00000002",
+          path: "extra/02.mp3",
+          targetPath: "mp3/02.mp3",
+        },
+      ],
+      removeLocationIds: [],
+      decisions: [],
+    };
+    const pending = [{ key: "local:21:wav/01.wav", path: "wav/01.wav", kind: "audio", sizeBytes: 9 }];
+    const plan = createDemoFolderEditPlan(target, request, pending);
+
+    expect(plan.summary).toMatchObject({ add: 2, copy: 1, download: 1, conflict: 0, addBytes: 9 });
+    expect(folderEditReadiness({ request, plan, planCurrent: true })).toBe("ready");
+    const entries = folderEditResult(current, new Set(["mp3/01.mp3"]), plan);
+    expect(entries.map((entry) => [entry.path, entry.state])).toEqual([
+      ["mp3/01.mp3", "keep"],
+      ["wav/01.wav", "add_local"],
+      ["mp3/02.mp3", "add_remote"],
+    ]);
   });
 });

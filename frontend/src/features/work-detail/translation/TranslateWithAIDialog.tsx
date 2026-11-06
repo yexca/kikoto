@@ -2,6 +2,7 @@ import { AudioLines, Check, History, Languages, Loader2, RefreshCw, Sparkles } f
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { DemoPreviewNotice } from "@/components/DemoReadOnlyNotice";
 import { useTranslationReviewActions } from "@/components/translation/useTranslationReviewActions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,6 +86,7 @@ const requestRefusals = new Set([
 export function TranslateWithAIDialog({
   work,
   mediaWork,
+  demo = false,
   onClose,
   onChanged,
   onOpenEditor,
@@ -92,6 +94,8 @@ export function TranslateWithAIDialog({
   work: WorkDetail;
   /** The work whose local files the detail shows, for display names and lyrics. */
   mediaWork: WorkDetail | null;
+  /** Demo shows the plan over sample models and starts nothing. */
+  demo?: boolean;
   onClose: () => void;
   /** Reloads the work after an accepted item changed it. */
   onChanged: () => Promise<void> | void;
@@ -254,7 +258,7 @@ export function TranslateWithAIDialog({
   const shownTab = tab === "lyrics" && !lyricsAvailable ? "translate" : tab;
 
   const submit = async () => {
-    if (total === 0 || !planCurrent) return;
+    if (demo || total === 0 || !planCurrent) return;
     setSubmitting(true);
     try {
       const result = await api.requestTranslation(work.id, {
@@ -400,6 +404,7 @@ export function TranslateWithAIDialog({
       />
       {shownTab === "translate" ? (
         <DialogBody key="translate" className="space-y-4">
+          {demo && <DemoPreviewNotice surface="aiTranslation" />}
           {languagePicker}
           {planState ?? (
             <div className="app-scrollbar overflow-x-auto rounded-lg border bg-card">
@@ -727,7 +732,7 @@ export function TranslateWithAIDialog({
             </Button>
             <Button
               onClick={() => void submit()}
-              disabled={submitting || !planCurrent || total === 0 || (needsLLM && !choice)}
+              disabled={demo || submitting || !planCurrent || total === 0 || (needsLLM && !choice)}
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Languages className="h-4 w-4" />}
               {t("aiTranslation.start", { count: total })}

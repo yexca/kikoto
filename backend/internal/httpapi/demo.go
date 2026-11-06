@@ -14,7 +14,7 @@ import (
 
 func (s *Server) demoReadOnlyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.cfg.IsDemo() && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions && !demoRecommendationReadRequest(r) {
+		if s.cfg.IsDemo() && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions && !demoRecommendationReadRequest(r) && !demoForYouDrawRequest(r) {
 			writeAPIError(w, http.StatusForbidden, "demo_read_only", "demo mode is read-only", false)
 			return
 		}
@@ -34,6 +34,12 @@ func demoRecommendationReadRequest(r *http.Request) bool {
 	}
 	id, err := strconv.ParseInt(parts[3], 10, 64)
 	return err == nil && id > 0
+}
+
+// A Demo For you draw samples the admitted works and records nothing, so it is
+// a read despite its POST transport (see writeDemoForYou).
+func demoForYouDrawRequest(r *http.Request) bool {
+	return r.Method == http.MethodPost && r.URL.Path == "/api/for-you/draw"
 }
 
 func (s *Server) demoWorkEligible(ctx context.Context, workID int64) (bool, error) {

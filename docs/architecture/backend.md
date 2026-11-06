@@ -652,7 +652,9 @@ whether the title names a bundle or the bundle has members.
 `POST /api/works/{id}/folder-edit/merge-check`, and
 `POST /api/works/{id}/folder-edit`
 edit one active local folder of a work. Sources lists the family's editions
-with their local folders and stored source availability.
+with their local folders and stored source availability; it requires
+`downloads:manage`, or `library:read` in Demo, whose workspace previews an
+edit with a sample plan in the browser and sends neither a plan nor an edit.
 `POST /api/works/{id}/folder-edit/sources/check` first asks every enabled
 remote source that passes its health check about each of the family's
 editions, at most 16, one edition at a time, records the answers as their

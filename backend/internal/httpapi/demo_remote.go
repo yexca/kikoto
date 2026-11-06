@@ -121,10 +121,14 @@ func (s *Server) seedDemoRemoteSource(ctx context.Context, tx *sql.Tx) ([]demoSh
 	return catalog, nil
 }
 
+type demoWorkQuerier interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
 // demoAdmittedLocalWorks lists the admitted local works the Library shows; a
 // language edition folded into its original work is not a separate catalog entry.
-func demoAdmittedLocalWorks(ctx context.Context, tx *sql.Tx) ([]demoShowcaseWork, error) {
-	rows, err := tx.QueryContext(ctx, `
+func demoAdmittedLocalWorks(ctx context.Context, querier demoWorkQuerier) ([]demoShowcaseWork, error) {
+	rows, err := querier.QueryContext(ctx, `
 		SELECT work.id, work.primary_code FROM work
 		WHERE `+contentpolicy.DemoEligibleWorkSQL("work")+`
 			AND `+demoLibraryVisibilityPredicateSQL+`

@@ -83,7 +83,8 @@ you do in For you changes what the Library recommends.
   the DLsite rating and sales, and **Listen again** waits for works you play.
 - On a narrow window or a phone, the switch under the temperature chooses the
   column to show.
-- For you is not available in the demo.
+- In the demo, For you is a random sample of the demo works, labelled as
+  sample data; its reasons are examples (see [Demo](#demo)).
 
 ## Subscribing
 
@@ -402,4 +403,7 @@ sync metadata change them; others can only read them.
 
 Demo shows a sample feed, subscription list, and sample rankings with a
 short history and obviously fictional names and codes. Nothing can be
-subscribed, refreshed, or opened.
+subscribed, refreshed, or opened. For you draws a random sample of the demo
+works into each column, with example reasons taken from a work's DLsite rating
+or circle; nothing learns from what you open, and the temperature applies only
+to the draws in this browser.

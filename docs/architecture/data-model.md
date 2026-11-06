@@ -215,7 +215,7 @@ displayed names.
 
 `llm_lyrics_asset` keeps the confirmed result, original lyrics location, audio item, target language and source hash before publication. The audio item must have an available local file; the deepest active work folder holding that file is the destination, and a request naming another folder is refused. Publication follows [speech transcription](#speech-transcription): the file is staged on the work folder's storage pool and added to the target language's lyrics folder under the track's path with the source file's extension (`<language folder>/<track path><extension>`, then numbered names when a different file holds that name), the work folder is indexed, and the file is assigned to the track in the target language with origin `translation`. The original lyrics file is never changed. Failed publication stays `publishing` and completes from the retained result without another model request; a file already published with the same content counts as published. Only an explicitly selected file is read; remote reads require opt-in and remote-fetch permission. Templates preserve timing and order for LRC, WebVTT, SRT, standard ASS Dialogue and plain text. Input and output are each bounded to 128 KiB, 4,000 source lines and 4,096 bytes per text line. Chunked requests check complete sending text first.
 
-`llm_translation_task` rows belong to `llm_translation` workflow runs, which translated one work for review on its work page. Nothing queues such a run. Its job ends a queued or retried run without a request or a preview: the task becomes `invalid` with `translation_replaced`, the run fails, and Activity refuses to retry it. Activity exposes fixed states and sanitized diagnostics, never credentials, origins, paths or full source text. Demo lists fixed example providers for inspection and refuses LLM configuration and translation.
+`llm_translation_task` rows belong to `llm_translation` workflow runs, which translated one work for review on its work page. Nothing queues such a run. Its job ends a queued or retried run without a request or a preview: the task becomes `invalid` with `translation_replaced`, the run fails, and Activity refuses to retry it. Activity exposes fixed states and sanitized diagnostics, never credentials, origins, paths or full source text. Demo lists fixed example providers for inspection and refuses LLM configuration and translation. Its translation model list offers those examples, and a work's translation plan reports what the work lacks with every category permitted; the request itself is refused.
 
 #### Translate with AI
 
@@ -1293,7 +1293,11 @@ balanced). Every drawn work is a `recommendation_event` impression with
 `surface = 'for_you'` and the column as `context_id`; opens report the same
 surface. Impressions of the last three days not followed by an open or play
 lower a work's score in later draws. Library events use `surface = 'library'`,
-and the recommendation activity report reads only those.
+and the recommendation activity report reads only those. A Demo draw
+(`algorithmVersion` `demo`) samples the admitted local works at random, each
+column preferring works the other columns do not show, with example reasons
+from each work's DLsite rating or circle and random scores. It records no
+impression, saves no temperature, and reads no profile or generation.
 
 ## Modeling Rules
 

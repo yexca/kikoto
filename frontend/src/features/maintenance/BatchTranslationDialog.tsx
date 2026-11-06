@@ -2,6 +2,7 @@ import { Languages, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { DemoPreviewNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -24,6 +25,7 @@ export function BatchTranslationDialog({
   language,
   languageLabel,
   permissions,
+  demo = false,
   onClose,
   onQueued,
 }: {
@@ -31,6 +33,8 @@ export function BatchTranslationDialog({
   language: string;
   languageLabel: string;
   permissions: { metadata: boolean; files: boolean };
+  /** Demo shows the batch over sample models and queues nothing. */
+  demo?: boolean;
   onClose: () => void;
   onQueued: () => void;
 }) {
@@ -66,7 +70,7 @@ export function BatchTranslationDialog({
   const targets = modelTranslationTargets(choice?.service, choice?.model);
   const languageSupported = targets === null || targets.includes(language);
   const selected = (Object.keys(categories) as TranslationCategory[]).filter((category) => categories[category]);
-  const canQueue = !!choice && languageSupported && selected.length > 0 && !queueing && result === null;
+  const canQueue = !demo && !!choice && languageSupported && selected.length > 0 && !queueing && result === null;
   const allowed = (category: TranslationCategory) => (category === "files" ? permissions.files : permissions.metadata);
 
   const queue = async () => {
@@ -119,6 +123,7 @@ export function BatchTranslationDialog({
           </div>
         ) : (
           <div className="space-y-4">
+            {demo && <DemoPreviewNotice surface="aiTranslation" />}
             <ul className="max-h-36 space-y-1 overflow-y-auto rounded-md border bg-muted/25 px-3 py-2 text-xs">
               {works.map((work) => (
                 <li key={work.id} className="truncate" title={work.title}>

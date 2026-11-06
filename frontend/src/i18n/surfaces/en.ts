@@ -684,6 +684,13 @@ export const surfaceEnglish = {
       "Demo mode: these transcriptions are samples. Demo sends no audio to a speech recognition service, so checking ratings and starting, adding, or discarding transcriptions are unavailable.",
     demoLyricsTranslationNotice:
       "Demo mode: these translations are samples. Demo sends no lyrics to an LLM provider, so checking ratings and starting, adding, or discarding translations are unavailable.",
+    demoAITranslationNotice:
+      "Demo mode: the models here are examples. Demo sends nothing to an LLM provider, so no translation can start.",
+    demoFileNamesNotice: "Demo mode: you can try editing display names here, but they cannot be saved.",
+    demoFolderEditNotice:
+      "Demo mode: you can arrange files here and see a sample preview, but the folder cannot be changed.",
+    demoForYouNotice:
+      "Demo mode: For you shows a random sample of the demo works. The picks and their reasons are examples, not learned from listening.",
     permissionDenied: "Your account does not have permission to use this feature.",
   },
   workflow: {

@@ -187,7 +187,7 @@ review live in `features/workflows`.
 The Discover page (`/discover`, rendered by `pages/SubscriptionsPage`) is
 where to find what to listen to next. A `/subscriptions` address redirects to
 it with its query. It switches between four views, For you (`?view=for-you`,
-not in the demo), the release feed, Rankings (`?view=rankings`), and Watch
+a labelled random sample in the demo), the release feed, Rankings (`?view=rankings`), and Watch
 (`?view=watch`, for accounts that can run workflows; any other account sees
 the release feed), and composes its
 settings as a sticky panel
