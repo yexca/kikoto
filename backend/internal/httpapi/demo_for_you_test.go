@@ -146,13 +146,26 @@ func TestDemoShowsTranslationPlanAndSampleModels(t *testing.T) {
 	}
 }
 
-// Demo lists where Manage files could take files from, and refuses the edit.
+// Demo lists where Manage files could take files from without recording
+// anything, and refuses the edit.
 func TestDemoListsFolderEditSourcesAndRefusesTheEdit(t *testing.T) {
 	s := newDemoAdmissionServer(t)
+	// Outside Demo, listing records the folder these files imply.
+	if _, err := s.db.Exec(`
+		INSERT INTO media_item (id, work_id, kind, title, fingerprint) VALUES (1, 1, 'audio', 'Track', 'example-track');
+		INSERT INTO media_file_location (id, media_item_id, file_source_id, location_type, path, availability)
+			VALUES (1, 1, 1, 'local', 'RJ00000001/track.mp3', 'available');
+	`); err != nil {
+		t.Fatal(err)
+	}
 	response := httptest.NewRecorder()
 	s.Routes().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/works/1/folder-edit/sources", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("Demo folder edit sources = %d %s", response.Code, response.Body.String())
+	}
+	var folders int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM work_folder_location").Scan(&folders); err != nil || folders != 0 {
+		t.Fatalf("Demo listing recorded %d folders, %v", folders, err)
 	}
 	for _, path := range []string{"/api/works/1/folder-edit/plan", "/api/works/1/folder-edit", "/api/works/1/folder-edit/sources/check"} {
 		response = httptest.NewRecorder()

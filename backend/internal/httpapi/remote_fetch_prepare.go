@@ -248,8 +248,12 @@ func (s *Server) loadRemoteFetchEditions(ctx context.Context, requestedCode stri
 }
 
 func (s *Server) loadRemoteFetchLocalRoots(ctx context.Context, workID int64, code string) ([]remoteFetchLocalRoot, error) {
-	if err := s.discoverRemoteFetchLocalRoots(ctx, workID, code); err != nil {
-		return nil, err
+	// Demo is read-only, so it lists the roots its scan recorded without
+	// recording the ones its media locations imply.
+	if !s.cfg.IsDemo() {
+		if err := s.discoverRemoteFetchLocalRoots(ctx, workID, code); err != nil {
+			return nil, err
+		}
 	}
 	availability, err := s.loadLibraryAvailability(ctx)
 	if err != nil {
