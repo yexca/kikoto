@@ -773,7 +773,16 @@ volatile queue with a diagnostic and a normal network loss window of up to
   destination's root and never leaves it or the app. The swipe comes
   from an app-local native edge recognizer, offered only where that plugin is
   registered, and yields when it starts on the Compact or Mini player, a
-  slider, or a horizontally scrollable region.
+  slider, or a horizontally scrollable region. While the Android WebView shows
+  an element fullscreen, the back button leaves fullscreen before this order.
+- A fullscreen video wider than it is tall locks the screen to landscape until
+  fullscreen ends (`features/work-detail/media/videoFullscreenOrientation`),
+  however fullscreen was entered. Browsers use the Screen Orientation API, and
+  a rejected lock leaves the screen as it is. The Android WebView rejects that
+  API, so the shell shows WebView fullscreen itself, over the content frame and
+  below the app lock cover with the system bars hidden, and its app-local
+  `KikotoVideoFullscreen` plugin holds the landscape lock while that view is
+  shown. iOS plays fullscreen video in the system player.
 - Keep provider tags to two measured card rows with an overflow popover. Card
   summaries use Circle / Series, DL sales, segmented rating, known available
   alternate-language state, and a compact playback-history indicator when a

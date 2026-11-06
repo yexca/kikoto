@@ -29,6 +29,10 @@ import {
   videoAudioTrackChoices,
   videoAudioTrackLabel,
 } from "@/features/work-detail/media/videoAudioTracks";
+import {
+  videoLandscapeLock,
+  watchVideoFullscreenOrientation,
+} from "@/features/work-detail/media/videoFullscreenOrientation";
 import { nextVideoPlaybackRate, videoShortcut } from "@/features/work-detail/media/videoShortcuts";
 import { useVideoSubtitleTracks } from "@/features/work-detail/media/useVideoSubtitleTracks";
 import type { VideoSubtitle } from "@/features/work-detail/media/videoSubtitles";
@@ -169,6 +173,13 @@ function VideoPlayback({
     const timer = window.setTimeout(() => setRateNotice(null), rateNoticeMilliseconds);
     return () => window.clearTimeout(timer);
   }, [rateNotice]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const landscape = videoLandscapeLock();
+    if (!video || !landscape) return;
+    return watchVideoFullscreenOrientation(video, document, landscape);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();

@@ -557,6 +557,12 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
     seconds, F switches fullscreen, M mutes, and Shift+, and Shift+. lower and
     raise the speed between 0.5× and 2×. Elsewhere in the viewer the left and
     right arrows step through the folder's videos.
+  - On a phone or tablet, a video wider than it is tall turns the screen to
+    landscape while it is fullscreen, where the browser or app lets a page
+    lock the screen, and the screen turns back when fullscreen ends. The
+    Android app also hides the system bars in fullscreen, and Back leaves
+    fullscreen first. iPhone and iPad play fullscreen video in the system
+    player, which follows the device rotation.
 - Converts local, cached, and remote text previews to UTF-8 on demand, using byte-order
   marks, declared charsets, and automatic legacy-encoding detection without
   rewriting the source file.

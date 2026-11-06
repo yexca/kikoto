@@ -14,6 +14,9 @@
   Picture subtitles such as PGS are not listed.
 - iOS and iPadOS play converted video through their native HLS player, which
   keeps native fullscreen and AirPlay.
+- A landscape video turns a phone or tablet to landscape while it is
+  fullscreen and turns it back afterwards. The Android app shows video
+  fullscreen with the system bars hidden, and Back leaves fullscreen first.
 - Local and cached video plays directly instead of through the 720p
   transcode when the browser decodes it as stored: H.264 Main and High up to
   level 5.2, HEVC Main and Main 10 in MP4, AV1 in MP4 and WebM, 10-bit VP9,
