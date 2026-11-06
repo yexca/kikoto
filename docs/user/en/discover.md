@@ -71,6 +71,10 @@ you do in For you changes what the Library recommends.
   far from your usual listening as the library allows, and **Listen again**
   adds works you heard once or left half-finished. **Balanced**, the default,
   sits between them. The choice is saved for your account.
+- The columns stay as drawn while you use Kikoto in the same browser tab,
+  including when you switch views, open a work, or reload the page. A new
+  tab, a fresh start of the app, or saving your own preferences in Settings
+  draws all three anew.
 - **Draw again** draws its column anew from your current ratings and marks,
   leaving out what the other columns show. Each draw is random, and works
   shown recently that you neither opened nor played are drawn less often for

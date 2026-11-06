@@ -32,6 +32,7 @@ import type {
   ShownWorksActionResult,
   WorkflowRunDetail,
 } from "../../src/lib/api";
+import type { ForYouColumn, ForYouDraw, ForYouDrawRequest } from "../../src/lib/forYouApi";
 import { syntheticWorkCode } from "../../src/test-support/workCode";
 
 type SubscriptionServer = {
@@ -50,6 +51,8 @@ type SubscriptionServer = {
   pageActions?: Record<string, ShownWorksActionResult>;
   /** Workflow runs by id, read again each time the page follows one. */
   runs?: Record<string, WorkflowRunDetail>;
+  /** The For you draw requests; each answer names its draw number in the work titles. */
+  forYouDraws?: ForYouDrawRequest[];
   requests: Array<{ method: string; path: string; body: unknown }>;
   feedQueries: string[];
 };
@@ -183,6 +186,34 @@ function rankingPageFixture(
 }
 
 /** Waits until the location names these query values; null means the key is absent. */
+const FOR_YOU_COLUMNS: ForYouColumn[] = ["maybe_like", "try_new", "listen_again"];
+
+/** A For you draw of `columns` whose one work per column is titled after the draw number. */
+function forYouDrawFixture(draw: number, columns: ForYouColumn[]): ForYouDraw {
+  return {
+    temperature: "balanced",
+    algorithmVersion: "for-you-v1",
+    columns: columns.map((column) => {
+      const ordinal = FOR_YOU_COLUMNS.indexOf(column) + 1;
+      return {
+        column,
+        coldStart: false,
+        items: [
+          {
+            work: workFixture({
+              id: ordinal,
+              primaryCode: syntheticWorkCode("RJ", ordinal),
+              title: `Example Work ${ordinal} from draw ${draw}`,
+            }),
+            score: 50,
+            reason: { kind: "unexplored" },
+          },
+        ],
+      };
+    }),
+  };
+}
+
 async function expectSearch(page: Page, expected: Record<string, string | null>) {
   await expect
     .poll(() => {
@@ -353,6 +384,12 @@ async function mockSubscriptions(page: Page, server: SubscriptionServer) {
     }
     if (url.pathname === "/api/subscriptions") {
       await route.fulfill({ json: subscriptionViewFixture() });
+      return;
+    }
+    if (url.pathname === "/api/for-you/draw" && server.forYouDraws) {
+      const body = request.postDataJSON() as ForYouDrawRequest;
+      server.forYouDraws.push(body);
+      await route.fulfill({ json: forYouDrawFixture(server.forYouDraws.length, body.columns ?? [...FOR_YOU_COLUMNS]) });
       return;
     }
     if (url.pathname === "/api/circles/RG00001") {
@@ -1177,6 +1214,30 @@ test("phones reach the ranking page actions and see the labeled watch action", a
   await expect(page.getByRole("menuitem", { name: /^Check sources/ })).toBeInViewport();
   await page.keyboard.press("Escape");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("@desktop For you keeps its draw across views and reloads until a column is drawn again", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const server: SubscriptionServer = { requests: [], feedQueries: [], forYouDraws: [] };
+  await mockSubscriptions(page, server);
+  await page.goto("/discover?view=for-you");
+  const maybeLike = page.getByRole("region", { name: /^Maybe like/ });
+  await expect(maybeLike.getByText("Example Work 1 from draw 1")).toBeVisible();
+
+  await page.getByRole("tab", { name: /^New releases/ }).click();
+  await page.getByRole("tab", { name: "For you" }).click();
+  await expect(maybeLike.getByText("Example Work 1 from draw 1")).toBeVisible();
+  await page.reload();
+  await expect(maybeLike.getByText("Example Work 1 from draw 1")).toBeVisible();
+  expect(server.forYouDraws).toHaveLength(1);
+
+  await maybeLike.getByRole("button", { name: "Draw Maybe like again" }).click();
+  await expect(maybeLike.getByText("Example Work 1 from draw 2")).toBeVisible();
+  expect(server.forYouDraws?.[1]?.columns).toEqual(["maybe_like"]);
+  await page.getByRole("tab", { name: /^New releases/ }).click();
+  await page.getByRole("tab", { name: "For you" }).click();
+  await expect(maybeLike.getByText("Example Work 1 from draw 2")).toBeVisible();
+  expect(server.forYouDraws).toHaveLength(2);
 });
 
 test("Demo shows a sample feed without actions", async ({ page }) => {

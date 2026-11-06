@@ -280,9 +280,12 @@ names the feed page. The feed, subscription list, schedule panel,
 and the subscribe button that circle, series, and voice actor pages render
 live in `features/subscriptions`; the Rankings view, its settings, and the
 shared ranking state live in `features/rankings`; For you, its draws, and its
-reason sentences live in `features/for-you`, which draws every column on open
-and after a temperature change, and one column, without the other columns'
-works, on **Draw again**; the Watch view, the watch
+reason sentences live in `features/for-you`, which draws every column on the
+first open and after a temperature change, and one column, without the other
+columns' works, on **Draw again**. Every draw records its works as shown, so
+the settled draw is kept in server-and-user-scoped session storage, with
+memory as the fallback, and opening For you again in the same tab shows it
+without drawing; saved user preferences clear it. The Watch view, the watch
 configuration, and their shared state live in
 `features/workflows/availability-watch`.
 

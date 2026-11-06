@@ -3,21 +3,30 @@ import { describe, expect, it } from "vitest";
 
 import i18n from "@/i18n";
 import type { ForYouItem, Work } from "@/lib/api";
+import { syntheticWorkCode } from "@/test-support/workCode";
 
 import {
   advanceForYouDrawRevision,
   emptyForYouColumns,
+  forYouColumnsFromSnapshot,
   forYouReasonText,
+  forYouSnapshotFromColumns,
   initialForYouDrawRevision,
   isCurrentForYouDrawRevision,
   otherColumnWorkIds,
+  parseForYouSnapshot,
+  patchForYouColumns,
 } from "./forYouModel";
 
 const t = i18n.getFixedT("en") as TFunction;
 const rating = (value: number) => value.toFixed(1);
 
 function item(id: number): ForYouItem {
-  return { work: { id } as Work, score: 50, reason: { kind: "unexplored" } };
+  return {
+    work: { id, primaryCode: syntheticWorkCode("RJ", id) } as Work,
+    score: 50,
+    reason: { kind: "unexplored" },
+  };
 }
 
 describe("For you model", () => {
@@ -54,6 +63,48 @@ describe("For you model", () => {
     );
     expect(forYouReasonText({ kind: "unfinished", days: 20 }, t, rating)).toBe("Left unfinished 20 days ago");
     expect(forYouReasonText({ kind: "popular", dlsiteRating: 4.62 }, t, rating)).toBe("Popular on DLsite, rated 4.6");
+  });
+
+  it("keeps only a settled draw and restores it as shown", () => {
+    const columns = emptyForYouColumns();
+    expect(forYouSnapshotFromColumns(columns, "balanced", "for-you-v1")).toBeNull();
+
+    for (const column of ["maybe_like", "try_new", "listen_again"] as const) columns[column].drawing = false;
+    columns.maybe_like.items = [item(1)];
+    columns.try_new = { items: [item(2)], coldStart: false, drawing: false, failed: true };
+    columns.listen_again.coldStart = true;
+    const snapshot = forYouSnapshotFromColumns(columns, "safe", "for-you-v1");
+    expect(snapshot).not.toBeNull();
+    const restored = forYouColumnsFromSnapshot(parseForYouSnapshot(JSON.parse(JSON.stringify(snapshot)))!);
+    expect(restored.maybe_like.items.map((entry) => entry.work.id)).toEqual([1]);
+    // A column whose draw again failed still shows its earlier works, which is what is kept.
+    expect(restored.try_new).toMatchObject({ drawing: false, failed: false });
+    expect(restored.listen_again).toMatchObject({ items: [], coldStart: true });
+
+    columns.try_new.items = [];
+    expect(forYouSnapshotFromColumns(columns, "safe", "for-you-v1")).toBeNull();
+  });
+
+  it("rejects a stored value this version did not write", () => {
+    expect(parseForYouSnapshot(null)).toBeNull();
+    expect(parseForYouSnapshot({ temperature: "warm", algorithmVersion: "", columns: {} })).toBeNull();
+    const columns = { items: [{ work: { id: "1" }, score: 1, reason: { kind: "want" } }], coldStart: false };
+    expect(
+      parseForYouSnapshot({
+        temperature: "balanced",
+        algorithmVersion: "for-you-v1",
+        columns: { maybe_like: columns, try_new: columns, listen_again: columns },
+      }),
+    ).toBeNull();
+  });
+
+  it("patches every card of a work and leaves columns without it unchanged", () => {
+    const columns = emptyForYouColumns();
+    columns.maybe_like.items = [item(1)];
+    expect(patchForYouColumns(columns, 9, { favorite: true })).toBe(columns);
+    const patched = patchForYouColumns(columns, 1, { favorite: true });
+    expect(patched.maybe_like.items[0].work.favorite).toBe(true);
+    expect(patched.try_new).toBe(columns.try_new);
   });
 
   it("leaves out only what the other columns show when one column draws again", () => {

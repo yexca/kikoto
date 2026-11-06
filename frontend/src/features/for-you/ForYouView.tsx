@@ -2,6 +2,7 @@ import { Compass, Repeat, Shuffle, Sparkles, type LucideIcon } from "lucide-reac
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { segmentedItemClassName, segmentedListClassName } from "@/components/ui/segmented";
 import {
@@ -28,6 +29,7 @@ import { useLocale } from "@/i18n/LocaleProvider";
 import { api, type Work } from "@/lib/api";
 import { FOR_YOU_COLUMNS, FOR_YOU_TEMPERATURES, type ForYouColumn, type ForYouItem } from "@/lib/forYouApi";
 import { openCircleRoute } from "@/lib/circleNavigationState";
+import { currentClientStorageScope } from "@/lib/clientStorageScope";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { forYouReasonText, type ForYouColumnState } from "./forYouModel";
@@ -50,24 +52,34 @@ const sideBySideListClassName =
  * the width is too narrow for full cards and too short a run for mini covers,
  * so those modes stack the three columns as sections in Discover's card grid.
  * Cards offer the Library's own actions, and opening one records an open so
- * later draws rotate.
+ * later draws rotate. The draw stays as drawn for the browser session.
  */
-export function ForYouView({
-  canMark,
-  cardLayout,
-  mobileColumns,
-  desktopColumns,
-  onOpenWork,
-}: {
+export function ForYouView(props: ForYouViewProps) {
+  const auth = useAuth();
+  const storageScope = currentClientStorageScope(auth.user?.id ?? null);
+  // Remount on account or server changes so one account's draw never shows for another.
+  return <ForYouDraws key={storageScope} storageScope={storageScope} {...props} />;
+}
+
+type ForYouViewProps = {
   canMark: boolean;
   /** Discover's card layout, or null for the regular card. */
   cardLayout: CompactWorkCardLayout | null;
   mobileColumns: WorkCollectionColumnSetting;
   desktopColumns: WorkCollectionColumnSetting;
   onOpenWork: (code: string) => void;
-}) {
+};
+
+function ForYouDraws({
+  storageScope,
+  canMark,
+  cardLayout,
+  mobileColumns,
+  desktopColumns,
+  onOpenWork,
+}: ForYouViewProps & { storageScope: string }) {
   const { t } = useTranslation();
-  const forYou = useForYou(true);
+  const forYou = useForYou(storageScope);
   const [shown, setShown] = useState<ForYouColumn>("maybe_like");
   const coldStart = FOR_YOU_COLUMNS.some((column) => forYou.columns[column].coldStart);
   const sideBySide = cardLayout === "row";

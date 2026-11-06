@@ -71,6 +71,18 @@
 </details>
 
 <details>
+<summary><strong>Discover</strong></summary>
+
+- For you keeps its draw while you use Kikoto in the same browser tab,
+  including when you switch views, open a work, or reload the page, instead
+  of drawing anew every time it opens. Draws you did not get to look at no
+  longer push their works down in later draws. A new tab, a fresh start of
+  the app, or saved preferences in Settings draw anew, and **Draw again**
+  still draws a column anew at any time.
+
+</details>
+
+<details>
 <summary><strong>Operations and reliability</strong></summary>
 
 - Stopping or recreating the container no longer waits while a player or an

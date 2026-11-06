@@ -1,6 +1,12 @@
 import type { TFunction } from "i18next";
 
-import type { ForYouColumn, ForYouItem, ForYouReason } from "@/lib/forYouApi";
+import type { Work } from "@/lib/api";
+import type { ForYouColumn, ForYouItem, ForYouReason, ForYouTemperature } from "@/lib/forYouApi";
+
+// Kept here as type-checked key sets so the model stays free of the API transport.
+const COLUMN_KEYS: Record<ForYouColumn, true> = { maybe_like: true, try_new: true, listen_again: true };
+const TEMPERATURE_KEYS: Record<ForYouTemperature, true> = { safe: true, balanced: true, adventurous: true };
+const FOR_YOU_COLUMNS = Object.keys(COLUMN_KEYS) as ForYouColumn[];
 
 /** One column as the view holds it: the drawn works and whether a draw is under way or failed. */
 export type ForYouColumnState = {
@@ -48,6 +54,101 @@ export function initialForYouDrawRevision() {
 export function emptyForYouColumns(): Record<ForYouColumn, ForYouColumnState> {
   const drawing = (): ForYouColumnState => ({ items: [], coldStart: false, drawing: true, failed: false });
   return { maybe_like: drawing(), try_new: drawing(), listen_again: drawing() };
+}
+
+/**
+ * The draw on screen, kept so For you shows the same works when it is opened
+ * again: each column's works and the temperature they were drawn with.
+ */
+export type ForYouSnapshot = {
+  temperature: ForYouTemperature;
+  algorithmVersion: string;
+  columns: Record<ForYouColumn, { items: ForYouItem[]; coldStart: boolean }>;
+};
+
+/**
+ * The snapshot of the columns on screen, or null while a column is drawing or
+ * a column has nothing to show because its draw failed, so a snapshot only
+ * ever holds a settled draw.
+ */
+export function forYouSnapshotFromColumns(
+  columns: Record<ForYouColumn, ForYouColumnState>,
+  temperature: ForYouTemperature,
+  algorithmVersion: string,
+): ForYouSnapshot | null {
+  if (FOR_YOU_COLUMNS.some((column) => columns[column].drawing)) return null;
+  if (FOR_YOU_COLUMNS.some((column) => columns[column].failed && columns[column].items.length === 0)) return null;
+  const kept = (column: ForYouColumn) => ({ items: columns[column].items, coldStart: columns[column].coldStart });
+  return {
+    temperature,
+    algorithmVersion,
+    columns: { maybe_like: kept("maybe_like"), try_new: kept("try_new"), listen_again: kept("listen_again") },
+  };
+}
+
+export function forYouColumnsFromSnapshot(snapshot: ForYouSnapshot): Record<ForYouColumn, ForYouColumnState> {
+  const settled = (column: ForYouColumn): ForYouColumnState => ({
+    ...snapshot.columns[column],
+    drawing: false,
+    failed: false,
+  });
+  return { maybe_like: settled("maybe_like"), try_new: settled("try_new"), listen_again: settled("listen_again") };
+}
+
+/** A stored snapshot, or null when the value is not one this version wrote. */
+export function parseForYouSnapshot(value: unknown): ForYouSnapshot | null {
+  if (!isRecord(value) || !isRecord(value.columns)) return null;
+  const { temperature, algorithmVersion, columns } = value;
+  if (typeof temperature !== "string" || !Object.prototype.hasOwnProperty.call(TEMPERATURE_KEYS, temperature)) {
+    return null;
+  }
+  if (typeof algorithmVersion !== "string") return null;
+  const parsed = {} as ForYouSnapshot["columns"];
+  for (const column of FOR_YOU_COLUMNS) {
+    const state = columns[column];
+    if (!isRecord(state) || typeof state.coldStart !== "boolean" || !Array.isArray(state.items)) return null;
+    if (!state.items.every(isForYouItem)) return null;
+    parsed[column] = { items: state.items, coldStart: state.coldStart };
+  }
+  return { temperature: temperature as ForYouTemperature, algorithmVersion, columns: parsed };
+}
+
+function isForYouItem(value: unknown): value is ForYouItem {
+  return (
+    isRecord(value) &&
+    typeof value.score === "number" &&
+    isRecord(value.reason) &&
+    typeof value.reason.kind === "string" &&
+    isRecord(value.work) &&
+    typeof value.work.id === "number" &&
+    typeof value.work.primaryCode === "string"
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The columns with `patch` applied to every card of work `workId`; the same columns when none shows it. */
+export function patchForYouColumns(
+  columns: Record<ForYouColumn, ForYouColumnState>,
+  workId: number,
+  patch: Partial<Work>,
+): Record<ForYouColumn, ForYouColumnState> {
+  if (!FOR_YOU_COLUMNS.some((column) => columns[column].items.some((item) => item.work.id === workId))) {
+    return columns;
+  }
+  const next = { ...columns };
+  for (const column of FOR_YOU_COLUMNS) {
+    if (!columns[column].items.some((item) => item.work.id === workId)) continue;
+    next[column] = {
+      ...columns[column],
+      items: columns[column].items.map((item) =>
+        item.work.id === workId ? { ...item, work: { ...item.work, ...patch } } : item,
+      ),
+    };
+  }
+  return next;
 }
 
 /** The works the other columns show, which a draw of `column` leaves out. */

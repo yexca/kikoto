@@ -1,30 +1,38 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { WORK_DETAIL_USER_STATE_EVENT, type WorkDetailUserStateDetail } from "@/app/workDetailEvents";
 import { api, ApiError, type Work } from "@/lib/api";
 import { FOR_YOU_COLUMNS, type ForYouColumn, type ForYouTemperature } from "@/lib/forYouApi";
 
 import {
   advanceForYouDrawRevision,
   emptyForYouColumns,
+  forYouColumnsFromSnapshot,
+  forYouSnapshotFromColumns,
   initialForYouDrawRevision,
   isCurrentForYouDrawRevision,
   otherColumnWorkIds,
+  patchForYouColumns,
   type ForYouColumnState,
 } from "./forYouModel";
+import { readForYouSnapshot, writeForYouSnapshot } from "./forYouSnapshotStore";
 
 /** Whether the first draw is still loading, failed, or waits for recommendations to finish preparing. */
 export type ForYouStatus = "loading" | "ready" | "preparing" | "failed";
 
 /**
- * The For you draws: all three columns on open and after a temperature
- * change, one column when it is drawn again. A column draw leaves out what the
- * other columns show, so a work stays in one column.
+ * The For you draws: all three columns on the first open in a browser session
+ * and after a temperature change, one column when it is drawn again. A column
+ * draw leaves out what the other columns show, so a work stays in one column.
+ * The settled draw is kept for `storageScope`, so opening For you again shows
+ * it instead of drawing anew.
  */
-export function useForYou(active: boolean) {
-  const [status, setStatus] = useState<ForYouStatus>("loading");
-  const [temperature, setTemperature] = useState<ForYouTemperature | null>(null);
-  const [columns, setColumns] = useState(emptyForYouColumns);
-  const [algorithmVersion, setAlgorithmVersion] = useState("");
+export function useForYou(storageScope: string) {
+  const [restored] = useState(() => readForYouSnapshot(storageScope));
+  const [status, setStatus] = useState<ForYouStatus>(restored ? "ready" : "loading");
+  const [temperature, setTemperature] = useState<ForYouTemperature | null>(restored?.temperature ?? null);
+  const [columns, setColumns] = useState(() => (restored ? forYouColumnsFromSnapshot(restored) : emptyForYouColumns()));
+  const [algorithmVersion, setAlgorithmVersion] = useState(restored?.algorithmVersion ?? "");
   const columnsRef = useRef(columns);
   useEffect(() => {
     columnsRef.current = columns;
@@ -73,9 +81,21 @@ export function useForYou(active: boolean) {
     }
   }, []);
 
+  // A kept draw is shown as it was; only a first open draws, and only once,
+  // since every draw records its works as shown.
+  const firstDrawStarted = useRef(false);
   useEffect(() => {
-    if (active) void draw([...FOR_YOU_COLUMNS]);
-  }, [active, draw]);
+    if (restored || firstDrawStarted.current) return;
+    firstDrawStarted.current = true;
+    void draw([...FOR_YOU_COLUMNS]);
+  }, [restored, draw]);
+
+  // Keep every settled draw, and the marks and ratings changed on its cards.
+  useEffect(() => {
+    if (status !== "ready" || temperature === null) return;
+    const snapshot = forYouSnapshotFromColumns(columns, temperature, algorithmVersion);
+    if (snapshot) writeForYouSnapshot(storageScope, snapshot);
+  }, [algorithmVersion, columns, status, storageScope, temperature]);
 
   const drawAll = useCallback(() => draw([...FOR_YOU_COLUMNS], temperature ?? undefined), [draw, temperature]);
   const drawColumn = useCallback(
@@ -97,20 +117,20 @@ export function useForYou(active: boolean) {
   );
   // Marks and ratings change the card in place; the next draw reads them.
   const patchWork = useCallback((workId: number, patch: Partial<Work>) => {
-    setColumns((state) => {
-      const next = { ...state };
-      for (const column of FOR_YOU_COLUMNS) {
-        if (!state[column].items.some((item) => item.work.id === workId)) continue;
-        next[column] = {
-          ...state[column],
-          items: state[column].items.map((item) =>
-            item.work.id === workId ? { ...item, work: { ...item.work, ...patch } } : item,
-          ),
-        };
-      }
-      return next;
-    });
+    setColumns((state) => patchForYouColumns(state, workId, patch));
   }, []);
+
+  // Work detail opens over Discover, which stays mounted, and reports the
+  // listening status, favorite, and rating changed there.
+  useEffect(() => {
+    const followDetail = (event: Event) => {
+      const { workID, listeningStatus, favorite, userRating } = (event as CustomEvent<WorkDetailUserStateDetail>)
+        .detail;
+      patchWork(workID, { listeningStatus, favorite, userRating });
+    };
+    window.addEventListener(WORK_DETAIL_USER_STATE_EVENT, followDetail);
+    return () => window.removeEventListener(WORK_DETAIL_USER_STATE_EVENT, followDetail);
+  }, [patchWork]);
 
   return {
     status,
