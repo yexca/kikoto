@@ -99,7 +99,7 @@ const technologyGroups = [
   },
   {
     title: "Runtime & Delivery",
-    items: ["FFmpeg", "Debian", "Docker", "Docker Compose", "GitHub Actions"],
+    items: ["FFmpeg", "Intel Media Driver (VA-API)", "Debian", "Docker", "Docker Compose", "GitHub Actions"],
   },
 ] as const;
 

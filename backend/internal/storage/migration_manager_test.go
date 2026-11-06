@@ -36,7 +36,7 @@ func TestMigrationChecksumNormalizesLineEndings(t *testing.T) {
 
 func TestMigrateFreshDatabaseUsesLatestReleasedBaseline(t *testing.T) {
 	db := openMigrationManagerDB(t)
-	if err := MigrateFS(db, migrations.Files, "v0.10.0"); err != nil {
+	if err := MigrateFS(db, migrations.Files, "v0.10.1"); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 
