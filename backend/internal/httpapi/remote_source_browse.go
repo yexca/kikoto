@@ -241,7 +241,7 @@ func (s *Server) presentRemoteWorkSummaries(ctx context.Context, sourceID int64,
 	if !s.remoteAddressesHidden(ctx) {
 		return works
 	}
-	presented := append([]remoteWorkSummary(nil), works...)
+	presented := append(make([]remoteWorkSummary, 0, len(works)), works...)
 	for index := range presented {
 		presented[index].CoverURL = s.remoteImageProxyURL(sourceID, presented[index].CoverURL)
 	}

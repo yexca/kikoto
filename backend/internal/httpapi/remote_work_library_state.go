@@ -9,9 +9,10 @@ import (
 // state its work holds in this library: the same source presence,
 // availability, and personal tags a Library card shows. It runs once on the
 // final page, and copies the page because summaries can be shared with the
-// browse cache that serves every viewer.
+// browse cache that serves every viewer. The copy is never nil, so an empty
+// page encodes as an empty list.
 func (s *Server) attachRemoteWorkLibraryState(ctx context.Context, userID int64, works []remoteWorkSummary) ([]remoteWorkSummary, error) {
-	attached := append([]remoteWorkSummary(nil), works...)
+	attached := append(make([]remoteWorkSummary, 0, len(works)), works...)
 	ids := []int64{}
 	seen := map[int64]bool{}
 	for index := range attached {

@@ -78,3 +78,50 @@ func TestRemoteBrowseCardsCarryLibraryPresenceAndPersonalTags(t *testing.T) {
 		}
 	}
 }
+
+// An upstream page with no matches still encodes "works" as a list: the
+// Library reads its length and fails the whole page on null.
+func TestRemoteBrowseEmptyResultEncodesWorksAsList(t *testing.T) {
+	missingCode := testfixture.WorkCode(testfixture.PrefixRJ, 2)
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(kikoeru.WorksPage{Works: []kikoeru.Work{}, SortApplied: true})
+	}))
+	defer remote.Close()
+	db := openMigratedTestDB(t)
+	metadataReviewExec(t, db, `INSERT INTO user_account(id,username,role) VALUES(1,'synthetic-user','user');
+	 INSERT INTO file_source(id,code,display_name,source_type) VALUES(7,'example_remote','Example Remote','kikoeru_compatible')`)
+	if _, err := db.Exec(`INSERT INTO file_source_endpoint(file_source_id,api_url,base_url) VALUES(7,?,?)`, remote.URL, remote.URL); err != nil {
+		t.Fatal(err)
+	}
+	s := NewServer(db, config.Config{})
+	// Hidden addresses copy the page once more before it is written.
+	for _, hidden := range []bool{true, false} {
+		if _, err := db.Exec(`INSERT INTO app_setting (key, value_json) VALUES (?, ?)
+		 ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json`, hideRemoteSourceAddressesSetting, map[bool]string{true: "true", false: "false"}[hidden]); err != nil {
+			t.Fatal(err)
+		}
+		// A code query reads the upstream page directly; a personal-tag query takes the post-filtered path.
+		for _, query := range []string{"?q=" + missingCode, "?q=mytag:Wanted"} {
+			source, err := s.loadRemoteSourceForUse(context.Background(), 7)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := httptest.NewRequest(http.MethodGet, "/api/remote-sources/7/works"+query, nil)
+			request := newRemoteSourceWorksRequest(r, source.SourceType, []string{"ja-jp"})
+			w := httptest.NewRecorder()
+			if err := s.serveRemoteSourceWorksPage(w, r, 1, source, "", request); err != nil {
+				t.Fatal(err)
+			}
+			var result struct {
+				Status string          `json:"status"`
+				Works  json.RawMessage `json:"works"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.Status != "ok" || string(result.Works) != "[]" {
+				t.Fatalf("hidden=%v browse %q = %s", hidden, query, w.Body.String())
+			}
+		}
+	}
+}

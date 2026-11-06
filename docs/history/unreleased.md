@@ -71,6 +71,14 @@
 </details>
 
 <details>
+<summary><strong>Sources and remote fetch</strong></summary>
+
+- A remote source search or browse page with no matching works shows an
+  empty result instead of "Page unavailable".
+
+</details>
+
+<details>
 <summary><strong>Discover</strong></summary>
 
 - For you keeps its draw while you use Kikoto in the same browser tab,
