@@ -27,6 +27,7 @@ type serverLifetime struct {
 	cancel   context.CancelCauseFunc
 	tasks    sync.WaitGroup
 	stopping bool
+	streams  shutdownStreams
 }
 
 func newServerLifetime() *serverLifetime {
@@ -54,10 +55,12 @@ func (s *Server) goTracked(fn func()) bool {
 	return true
 }
 
-// Shutdown stops background work with ErrShuttingDown and waits until it
-// returns or ctx ends. Running workflow jobs release their leases as they
-// stop, so a later start resumes them from their checkpoints.
+// Shutdown ends open stream responses, stops background work with
+// ErrShuttingDown, and waits until the work returns or ctx ends. Running
+// workflow jobs release their leases as they stop, so a later start resumes
+// them from their checkpoints. Requests that are not streams keep running.
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.lifetime.streams.closeAll()
 	s.lifetime.mu.Lock()
 	s.lifetime.stopping = true
 	s.lifetime.mu.Unlock()

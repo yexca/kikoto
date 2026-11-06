@@ -71,6 +71,17 @@
 </details>
 
 <details>
+<summary><strong>Operations and reliability</strong></summary>
+
+- Stopping or recreating the container no longer waits while a player or an
+  open workflow run holds a stream: playback, live transcoding, HLS, remote
+  playback, and workflow event streams end as soon as the stop begins, even
+  when a paused player has stopped reading. Requests that change state still
+  get the full drain.
+
+</details>
+
+<details>
 <summary><strong>Interface</strong></summary>
 
 - On phones the header is 8px shorter and the bottom navigation 8px shorter in

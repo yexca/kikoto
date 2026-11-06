@@ -27,11 +27,11 @@ func newHTTPServer(handler http.Handler) *http.Server {
 }
 
 // serveUntilStopped serves HTTP until ctx ends, then stops within timeout:
-// new connections are refused at once, background work stops and releases
-// its jobs, and in-flight requests may finish. Streaming responses such as
-// playback and live transcoding get half of the timeout before their request
-// contexts are cancelled. It returns only after the drain has finished, so
-// the caller may then close shared resources such as the database.
+// new connections are refused at once, background work stops, releases its
+// jobs, and ends playback and event streams, and other in-flight requests may
+// finish. Requests still running after half of the timeout have their
+// contexts cancelled. It returns only after the drain has finished, so the
+// caller may then close shared resources such as the database.
 func serveUntilStopped(ctx context.Context, listener net.Listener, httpServer *http.Server, background backgroundWork, timeout time.Duration) error {
 	requestCtx, cancelRequests := context.WithCancelCause(context.Background())
 	defer cancelRequests(nil)

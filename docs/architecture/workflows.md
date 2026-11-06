@@ -1009,9 +1009,14 @@ changed for a minute.
 
 On `SIGTERM` or `SIGINT` the service stops claiming jobs, refuses new
 connections, and lets in-flight requests finish within
-`KIKOTO_SHUTDOWN_TIMEOUT_SECONDS`. Streaming playback and live transcoding are
-cancelled after half of that time. The database closes only after the job
-executor and other background work have returned.
+`KIKOTO_SHUTDOWN_TIMEOUT_SECONDS`. Playback, live transcoding, HLS, remote
+playback, and workflow event streams only read and last as long as their
+client keeps them open, so they end as soon as the stop begins, including a
+response blocked on a paused player that stopped reading; a stream requested
+during the stop is refused as retryable `service_stopping`. Other requests,
+including every request that changes state, keep running; those still running
+after half of the timeout are cancelled. The database closes only after the
+job executor and other background work have returned.
 
 A running job interrupted by the stop is settled before exit. A recoverable job
 returns to the queue with its checkpoint and does not spend its resume budget,

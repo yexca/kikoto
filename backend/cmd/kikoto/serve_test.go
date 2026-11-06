@@ -74,7 +74,7 @@ func TestServeUntilStoppedDrainsInFlightRequestBeforeReturning(t *testing.T) {
 	}
 }
 
-func TestServeUntilStoppedCancelsStreamingRequestsWithShutdownCause(t *testing.T) {
+func TestServeUntilStoppedCancelsLingeringRequestsWithShutdownCause(t *testing.T) {
 	entered := make(chan struct{})
 	cause := make(chan error, 1)
 	handler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -92,7 +92,7 @@ func TestServeUntilStoppedCancelsStreamingRequestsWithShutdownCause(t *testing.T
 	<-entered
 	stop()
 	if err := <-cause; !errors.Is(err, httpapi.ErrShuttingDown) {
-		t.Fatalf("streaming request cancellation cause = %v, want ErrShuttingDown", err)
+		t.Fatalf("lingering request cancellation cause = %v, want ErrShuttingDown", err)
 	}
 	if err := <-result; err != nil {
 		t.Fatalf("serveUntilStopped = %v", err)
