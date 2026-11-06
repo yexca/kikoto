@@ -143,12 +143,16 @@ func (s *Server) storeVideoKeyframeIndex(ctx context.Context, source hlsPlayback
 	return nil
 }
 
-// videoRemuxCandidate reports whether some client could get a remux of the
-// source: its average bitrate is within the remux limit and its video stream
-// is one a remux copies. Whether this client decodes it is decided at playback.
+// videoRemuxCandidate reports whether a client is likely to get a remux of the
+// source: its average bitrate is within the remux limit, its video stream is
+// one a remux copies, and it is not a file that every current browser plays
+// directly. Whether this client decodes it is decided at playback.
 func videoRemuxCandidate(source hlsPlaybackSource) bool {
 	info, err := os.Stat(source.Path)
 	if err != nil || source.Duration <= 0 || float64(info.Size())*8/source.Duration > videoRemuxMaximumBitsPerSecond {
+		return false
+	}
+	if videoCommonlyPlaysDirectly(source.Probe) {
 		return false
 	}
 	video := firstPlaybackStream(source.Probe, "video")
@@ -158,6 +162,21 @@ func videoRemuxCandidate(source hlsPlaybackSource) bool {
 		}
 	}
 	return false
+}
+
+// commonDirectVideoCapabilities are the direct playback keys every current
+// browser reports: H.264 up to High 4.2 in MP4, with AAC, MP3, or no audio.
+var commonDirectVideoCapabilities = map[string]bool{
+	capVideoMP4H264AAC: true, capVideoMP4H264MP3: true, capVideoMP4H264NoAudio: true,
+	capVideoH264Main: true, capVideoH264High: true,
+}
+
+// videoCommonlyPlaysDirectly reports whether a video plays directly in every
+// current browser with its default audio track, so its keyframes are read
+// only when a playback asks for a remux.
+func videoCommonlyPlaysDirectly(probe playbackProbe) bool {
+	_, direct := directPlaybackContentType(probe, playbackProfileVideo, commonDirectVideoCapabilities)
+	return direct && defaultVideoAudioTrack(videoAudioTracks(probe)) == 0
 }
 
 // videoKeyframePrefetch queues the videos of opened works for a keyframe scan
@@ -171,7 +190,11 @@ type videoKeyframePrefetch struct {
 
 // prefetchWorkVideoKeyframes queues the local and cached videos of a work the
 // viewer opened, so a later playback of one finds its keyframe index ready.
+// Demo, which anyone may browse, reads keyframes only for a playback.
 func (s *Server) prefetchWorkVideoKeyframes(items []mediaItemDetail) {
+	if s.cfg.IsDemo() {
+		return
+	}
 	var locations []int64
 	for _, item := range items {
 		for _, location := range item.Locations {

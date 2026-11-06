@@ -68,7 +68,10 @@ Playback is handled by a global browser audio player.
   later playback of the file copies its video. Opening a work reads the
   keyframes of its videos in the background after the page has loaded, and
   the server keeps them in the transcode cache, so a video is usually ready to
-  copy by the time it is played, also after a restart. Every other video is transcoded
+  copy by the time it is played, also after a restart. Videos that every
+  current browser plays directly, H.264 up to High 4.2 in MP4 with AAC, MP3, or
+  no audio, are left out, and Demo reads keyframes only when a video is
+  played. Every other video is transcoded
   to six-second 720p H.264/AAC segments, by the CPU or, when an administrator
   turns on a hardware encoder under Settings → Cache & Fetch and its test
   encode succeeds, by an Intel GPU. A file whose GPU encode fails is encoded

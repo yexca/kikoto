@@ -96,13 +96,28 @@ func TestOpeningAWorkPrefetchesTheKeyframesOfItsVideos(t *testing.T) {
 	}{
 		{841, true},  // H.264 in Matroska
 		{842, false}, // keyframes too far apart for a remux
-		{843, true},  // H.264 in MP4, remuxed for a client without its level
+		{843, false}, // H.264 High with AAC in MP4 plays directly in every current browser
 		{844, false}, // MPEG-4 Part 2 is never copied, so it is not scanned
 	} {
 		_, err := os.Stat(fixture.storedIndexPath(fixture.source(t, test.location)))
 		if stored := err == nil; stored != test.stored {
 			t.Errorf("location %d stored = %v, want %v", test.location, stored, test.stored)
 		}
+	}
+}
+
+func TestDemoReadsKeyframesOnlyForAPlayback(t *testing.T) {
+	server := NewServer(openMigratedTestDB(t), config.Config{Mode: config.ModeDemo, DataRoot: t.TempDir(), CacheRoot: t.TempDir()})
+	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
+	server.prefetchWorkVideoKeyframes([]mediaItemDetail{{
+		Kind:      "video",
+		Locations: []fileLocationDetail{{ID: 1, Path: "RJ00000000/clip.mkv", Availability: "available", LocationType: "local"}},
+	}})
+	prefetch := &server.videoKeyframePrefetch
+	prefetch.mu.Lock()
+	defer prefetch.mu.Unlock()
+	if prefetch.running || len(prefetch.queue) > 0 {
+		t.Fatalf("opening a work in Demo queued %v", prefetch.queue)
 	}
 }
 
