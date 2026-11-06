@@ -925,6 +925,9 @@ export const surfaceKorean = {
       transcodeLimitDescription:
         "변환된 오디오와 HLS 동영상 세그먼트가 공유하는 캐시 제한입니다. 가장 오래 사용되지 않은 파일부터 제거됩니다.",
       videoHardware: "동영상 변환",
+      transcodeSlots: "동시 변환 수",
+      transcodeSlotsDescription:
+        "서버 전체에서 동시에 실행하는 동영상·오디오 재생 변환의 수입니다(1~5). 이를 넘는 변환은 잠시 기다린 뒤 서버가 바쁘다고 알립니다.",
       videoHardwareDescription:
         "변환하는 동영상을 Intel GPU로 인코딩할 수 있습니다. GPU가 꺼져 있거나 사용할 수 없거나 실패하면 CPU 인코더로 재생합니다.",
       videoHardwareEncoder: "하드웨어 인코더",

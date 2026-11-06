@@ -175,10 +175,15 @@ are managed in the Cleanup tab.
 - The transcode cache limit is independent, from 1 to 4096 GB, and defaults to
   5 GB. This rebuildable cache lives under `/cache/transcodes` and does not
   change the managed remote-media cache limit.
+- **Simultaneous conversions** under video conversion sets how many video and
+  audio playback conversions run at once across the server, from 1 to 5, and
+  defaults to 2. A conversion beyond it waits briefly, then reports the server
+  as busy. A lower number applies as running conversions finish.
 - **Hardware encoder** under video conversion chooses how converted video is
   encoded: **Off (CPU)**, the default, **Intel VA-API**, or **Intel Quick Sync
   Video**, on the render device inside the container, `/dev/dri/renderD128`
-  by default. Saving runs a short test encode and shows its result: **Ready**,
+  by default. Saving another encoder or device runs a short test encode and
+  shows its result, updating while the test runs: **Ready**,
   or **Unavailable** with the reason, such as a device that is not passed to
   the container. Converted video uses the GPU only while the status is
   **Ready**, and uses the CPU encoder for a file whose GPU encode failed. See

@@ -18,7 +18,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/yexca/kikoto/backend/internal/buildinfo"
@@ -35,7 +34,12 @@ const (
 	realtimeTranscodeStartup      = 15 * time.Second
 	realtimeTranscodeTimeout      = 2 * time.Hour
 	realtimeTranscodeQueueTimeout = 1 * time.Second
+	// The administrator sets how many transcodes run at once, server-wide,
+	// within these bounds; realtimeTranscodeSlotsSize is the default.
+	realtimeTranscodeSlotsSetting = "realtime_transcode_slots"
 	realtimeTranscodeSlotsSize    = 2
+	realtimeTranscodeSlotsMinimum = 1
+	realtimeTranscodeSlotsMaximum = 5
 	realtimeTranscodeQueueSize    = 2
 	remotePlaybackTimeout         = 2 * time.Hour
 	realtimeProbeOutputLimit      = 128 << 10
@@ -85,7 +89,8 @@ type playbackProbeStream struct {
 	PixelFmt  string `json:"pix_fmt"`
 	Width     int    `json:"width"`
 	Height    int    `json:"height"`
-	// Audio track fields; see media_audio_tracks.go.
+	// Audio track and subtitle fields; see media_audio_tracks.go and
+	// media_subtitles.go.
 	StreamIndex int                      `json:"index"`
 	Channels    int                      `json:"channels"`
 	Disposition playbackProbeDisposition `json:"disposition"`
@@ -204,6 +209,9 @@ type realtimeResourceKind uint8
 const (
 	realtimeResourceProbe realtimeResourceKind = iota
 	realtimeResourceTranscode
+	// Subtitle extraction reads a whole video file but encodes almost
+	// nothing, so it has a slot of its own instead of a transcode slot.
+	realtimeResourceSubtitle
 )
 
 var errRealtimeResourceBusy = errors.New("realtime media resource is busy")
@@ -212,68 +220,53 @@ var errRealtimeResourceBusy = errors.New("realtime media resource is busy")
 // the file. The same file version fails the same way, unlike a timeout.
 var errMediaProbeRejected = errors.New("media probe rejected the file")
 
-func (s *Server) realtimeResourceChannels(kind realtimeResourceKind) (chan struct{}, chan struct{}) {
+// realtimeLimiterFor returns the server's limiter of a resource kind. The
+// transcode limiter starts at the configured slot count.
+func (s *Server) realtimeLimiterFor(ctx context.Context, kind realtimeResourceKind) *realtimeLimiter {
 	s.realtimeResourceMu.Lock()
 	defer s.realtimeResourceMu.Unlock()
-	if kind == realtimeResourceProbe {
-		if s.realtimeProbeSlots == nil {
-			s.realtimeProbeSlots = make(chan struct{}, realtimeProbeSlotsSize)
+	switch kind {
+	case realtimeResourceProbe:
+		if s.realtimeProbes == nil {
+			s.realtimeProbes = newRealtimeLimiter(realtimeProbeSlotsSize, realtimeProbeQueueSize)
 		}
-		if s.realtimeProbeQueue == nil {
-			s.realtimeProbeQueue = make(chan struct{}, realtimeProbeQueueSize)
+		return s.realtimeProbes
+	case realtimeResourceSubtitle:
+		if s.subtitleExtractions == nil {
+			s.subtitleExtractions = newRealtimeLimiter(videoSubtitleExtractSlots, videoSubtitleExtractQueueSize)
 		}
-		return s.realtimeProbeSlots, s.realtimeProbeQueue
+		return s.subtitleExtractions
+	default:
+		if s.realtimeTranscodes == nil {
+			s.realtimeTranscodes = newRealtimeLimiter(s.configuredRealtimeTranscodeSlots(context.WithoutCancel(ctx)), realtimeTranscodeQueueSize)
+		}
+		return s.realtimeTranscodes
 	}
-	if s.realtimeTranscodeSlots == nil {
-		s.realtimeTranscodeSlots = make(chan struct{}, realtimeTranscodeSlotsSize)
-	}
-	if s.realtimeTranscodeQueue == nil {
-		s.realtimeTranscodeQueue = make(chan struct{}, realtimeTranscodeQueueSize)
-	}
-	return s.realtimeTranscodeSlots, s.realtimeTranscodeQueue
 }
 
-func (s *Server) acquireRealtimeResource(ctx context.Context, kind realtimeResourceKind, queueTimeout time.Duration) (func(), error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
+// configuredRealtimeTranscodeSlots returns how many transcodes the
+// administrator lets run at once, or the default.
+func (s *Server) configuredRealtimeTranscodeSlots(ctx context.Context) int {
+	if s.db == nil {
+		return realtimeTranscodeSlotsSize
 	}
-	slots, queue := s.realtimeResourceChannels(kind)
-	newRelease := func() func() {
-		var releaseOnce sync.Once
-		return func() {
-			releaseOnce.Do(func() { <-slots })
-		}
+	slots := s.settingIntContext(ctx, realtimeTranscodeSlotsSetting, realtimeTranscodeSlotsSize)
+	if slots < realtimeTranscodeSlotsMinimum || slots > realtimeTranscodeSlotsMaximum {
+		return realtimeTranscodeSlotsSize
 	}
-	select {
-	case slots <- struct{}{}:
-		return newRelease(), nil
-	default:
-	}
-	select {
-	case queue <- struct{}{}:
-	default:
-		return nil, errRealtimeResourceBusy
-	}
-	defer func() { <-queue }()
-	queueContext, cancel := context.WithTimeout(ctx, queueTimeout)
-	defer cancel()
-	select {
-	case slots <- struct{}{}:
-		return newRelease(), nil
-	case <-queueContext.Done():
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		return nil, errRealtimeResourceBusy
-	}
+	return slots
 }
 
 func (s *Server) acquireRealtimeProbe(ctx context.Context) (func(), error) {
-	return s.acquireRealtimeResource(ctx, realtimeResourceProbe, realtimeProbeQueueTimeout)
+	return s.realtimeLimiterFor(ctx, realtimeResourceProbe).acquire(ctx, realtimeProbeQueueTimeout)
 }
 
 func (s *Server) acquireRealtimeTranscode(ctx context.Context) (func(), error) {
-	return s.acquireRealtimeResource(ctx, realtimeResourceTranscode, realtimeTranscodeQueueTimeout)
+	return s.realtimeLimiterFor(ctx, realtimeResourceTranscode).acquire(ctx, realtimeTranscodeQueueTimeout)
+}
+
+func (s *Server) acquireSubtitleExtraction(ctx context.Context) (func(), error) {
+	return s.realtimeLimiterFor(ctx, realtimeResourceSubtitle).acquire(ctx, videoSubtitleExtractQueueWait)
 }
 
 func (s *Server) cachedPlaybackProbe(path string, sizeBytes int64, modTime time.Time) (playbackProbe, bool) {
@@ -335,7 +328,7 @@ func (s *Server) probePlaybackFile(ctx context.Context, path string) (playbackPr
 		return probe, nil
 	}
 	output, err := s.runBoundedFFprobe(ctx, path, "format=format_name,duration:stream=codec_type,codec_name,codec_tag_string,profile,level,pix_fmt,width,height"+
-		",index,channels:stream_tags=language,title:stream_disposition=default")
+		",index,channels:stream_tags=language,title:stream_disposition=default,forced")
 	if err != nil {
 		return playbackProbe{}, err
 	}

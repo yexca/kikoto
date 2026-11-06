@@ -251,11 +251,13 @@ func TestVideoHEVCRemuxWritesFMP4SegmentsWithAnInitializationSection(t *testing.
 	if args[len(args)-1] != filepath.Join("cache", "100%%", "segment-%06d.m4s.tmp") {
 		t.Fatalf("FFmpeg args = %v", args)
 	}
-	// The init run writes the section to standard output and nothing a
-	// session would publish.
-	init := videoHEVCRemuxInitArgs("input.mkv", "cache", index)
+	// The init run writes the section to standard output and everything else
+	// into its scratch directory, never into the cache.
+	scratch := filepath.Join("scratch", "100%")
+	init := videoHEVCRemuxInitArgs("input.mkv", scratch, index)
 	if !hasArgPair(init, "-segment_header_filename", "pipe:1") || !hasArgPair(init, "-t", "0") || !hasArgPair(init, "-ss", "-0.001000") ||
-		!strings.HasPrefix(filepath.Base(init[len(init)-1]), videoRemuxHLSSessionPlaylist) {
+		!hasArgPair(init, "-segment_list", filepath.Join(scratch, "init.list")) ||
+		init[len(init)-1] != filepath.Join("scratch", "100%%", "init-%06d") {
 		t.Fatalf("init args = %v", init)
 	}
 
@@ -285,10 +287,8 @@ func TestVideoHEVCRemuxWritesFMP4SegmentsWithAnInitializationSection(t *testing.
 		validHLSInitSection(section[:len(section)-1]) || validHLSInitSection(box("moov", 16)) {
 		t.Fatal("initialization section check is wrong")
 	}
-	for _, name := range []string{"segment-000001.m4s.tmp", hlsInitSectionPartial + ".part", hlsInitSectionPartial + "-000000"} {
-		if !isHLSSessionPartial(name) {
-			t.Fatalf("%s is not a partial", name)
-		}
+	if !isHLSSessionPartial("segment-000001.m4s.tmp") {
+		t.Fatal("an unfinished fMP4 segment is not a partial")
 	}
 }
 

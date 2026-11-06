@@ -131,11 +131,19 @@ or timeout for an hour, keyed by purpose, path, size, and modification time,
 holding at most 256 entries. A request in that time fails at once instead of
 running FFmpeg again.
 
+Playback conversion, which is HLS encodes, audio preparation, realtime
+conversion, and the HEVC initialization run, shares one server-wide pool of
+transcode slots. The administrator setting `realtime_transcode_slots`
+(`transcodeSlots` in the settings API, 1 to 5, default 2) sizes it; a lower
+count applies as running conversions release their slots. A request that finds
+every slot taken waits at most one second in a queue of two places and is then
+answered as busy.
+
 Compatibility preparation starts only from a playback request for that file,
 including the player's single next-track preload, which requests the same
 playback URL or the first segment of the same playlist. The backend never
 prepares an unplayed queue, work, or library in the background, because
-speculative preparation would spend the two transcode slots and the shared
+speculative preparation would spend the transcode slots and the shared
 cache quota without a demonstrated benefit. The one exception is the keyframe
 index of a remux, described below, which uses neither the transcode slots nor
 a quota reservation.
@@ -202,8 +210,11 @@ index that is malformed or was cut by other rules is scanned again.
 work's available local and cached videos for a keyframe scan after writing
 their response. A queue of at most 32 locations runs one video at a time
 behind the response, skips a video whose probe shows no stream a remux copies
-or whose average bitrate exceeds the remux limit, and reads a stored index
-without scanning. Whether the client decodes the stream is decided only at
+or whose average bitrate exceeds the remux limit, skips a video that every
+current browser plays directly with its default audio track (H.264 up to High
+4.2 in MP4 with AAC, MP3, or no audio, its first audio stream the default), and
+reads a stored index without scanning. Whether the client decodes the stream
+is decided only at playback. Demo queues nothing, so it scans only for a
 playback. A scan that a playback starts cancels a queued scan holding or
 waiting for the scan slot, and that scan's result is not remembered, so the
 next request for the file scans it again; a playback that asks for the index
@@ -240,9 +251,12 @@ encode's timeline against another's.
   browser download managers capture as files. Every encode of a revision writes the same
   section, so encodes discard theirs and the server produces it once per
   revision with a run of the remux encode that copies no media. That run
-  takes a transcode slot for at most 30 seconds, its section is limited to
-  1 MiB, its result is cached beside the segments under the shared quota, and
-  its failure is remembered as a failed remux, so playback info then offers a
+  takes a transcode slot for at most 30 seconds, one run per section at a
+  time, and writes its empty segment and list into a temporary directory
+  outside the cache. It reads the section into memory, limited to 1 MiB, and
+  holds no transcode cache lock until it stores the section beside the
+  segments under the shared quota, so clearing the cache never waits for it.
+  Its failure is remembered as a failed remux, so playback info then offers a
   transcode.
 
 Strict interleaving keeps each audio packet in the segment of its timestamp. A
@@ -256,8 +270,8 @@ furthest segment requested, after its segment budget, when it reaches a
 segment an earlier encode already produced, after 20 minutes, and, for video,
 when no request has asked or waited for a segment for a minute. Serving a
 segment while no encode runs starts the next one in the background when a
-segment within the refill lead is missing. An encode takes one of the two
-transcode slots and a quota reservation for its segment budget, and fails when
+segment within the refill lead is missing. An encode takes a transcode slot
+and a quota reservation for its segment budget, and fails when
 a segment exceeds the segment size limit.
 
 | Limit | Audio | Transcoded video | Remuxed H.264 or HEVC video |
@@ -298,13 +312,16 @@ Playback info also lists a video's embedded text subtitle streams (SubRip,
 ASS, SSA, WebVTT, and MP4 timed text) in `subtitles`: each stream's container
 index, codec, language and title tags, default and forced flags, and its
 `GET /api/media/{id}/subtitles/{stream}.vtt` URL. Picture subtitles are not
-listed. The list comes from a separate probe on the shared FFprobe runner,
-kept in memory for ten minutes per path, size, and modification time for the
-128 most recent files; a probe that fails or finds the runner busy lists no
-subtitles instead of failing playback info. The subtitle route converts one
-stream to WebVTT with FFmpeg in one of the two transcode slots, waiting at most
-one second for it, for at most two minutes and 4 MiB of output held in memory.
-The file is kept under the transcode cache quota, named by a revision of the
+listed. The list comes from the playback probe that already decides direct
+playback, which also reads the forced flag. The subtitle route converts one
+stream to WebVTT with FFmpeg for at most two minutes and 4 MiB of output held
+in memory. Extractions run one at a time in a slot of their own, never in a
+transcode slot, so they run while every transcode slot is taken and never hold
+one up; up to four requests wait for that slot, each for at most two minutes,
+and a request that finds the queue full is answered as busy at once.
+Concurrent requests for one stream share its extraction. Extraction holds no
+transcode cache lock; only storing the result does, under a quota reservation
+of its size. The file is kept under the transcode cache quota, named by a revision of the
 source path, size, modification time, and stream, so a changed source is
 extracted again and the old file is evicted like any other cache file.
 Responses carry the untrusted-file headers, and a URL naming the current

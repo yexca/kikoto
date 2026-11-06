@@ -96,6 +96,7 @@ async function mockCacheSettings(
     cacheEnabled: initialCacheEnabled,
     cacheLimitGb: 20,
     transcodeCacheLimitGb: 5,
+    transcodeSlots: 2,
     remoteDownloadLimitGb: 100,
     fetchStagingRetentionDays: 7,
     remoteSaveTemplate: "/data/<source_code>/<code_prefix>_<code_group>/<work_code>",
@@ -224,11 +225,10 @@ async function mockCacheSettings(
       onSettings(proxy ? { ...payload, proxy } : payload);
       currentSettings = { ...currentSettings, ...payload };
       if (payload.videoHardwareAcceleration !== undefined || payload.videoHardwareDevice !== undefined) {
-        // Like the server: saving the encoder reports its test encode, which fails without a GPU.
+        // Like the server: saving the encoder answers while its test encode is still
+        // running, and a later read reports the result, which fails without a GPU.
         currentSettings.videoHardwareStatus =
-          currentSettings.videoHardwareAcceleration === "none"
-            ? { state: "disabled" }
-            : { state: "unavailable", reason: "device_missing" };
+          currentSettings.videoHardwareAcceleration === "none" ? { state: "disabled" } : { state: "checking" };
       }
       if (proxy) {
         // Like the server: passwords are write-only and an omitted one is kept.
@@ -259,6 +259,9 @@ async function mockCacheSettings(
     }
     if (url.pathname === "/api/settings") {
       await route.fulfill({ json: currentSettings });
+      if (currentSettings.videoHardwareStatus?.state === "checking") {
+        currentSettings.videoHardwareStatus = { state: "unavailable", reason: "device_missing" };
+      }
       return;
     }
     if (url.pathname === "/api/recommendation-telemetry") {
@@ -477,7 +480,7 @@ test("@desktop cache settings save transfer limits and link to the Cleanup page"
   await expect(page.getByRole("region", { name: "Transcode cache" })).toBeVisible();
 });
 
-test("@desktop video conversion saves the hardware encoder and shows its check", async ({ page }) => {
+test("@desktop video conversion saves its slots and encoder and follows the encoder check", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const settingsPayloads: Record<string, unknown>[] = [];
   await mockCacheSettings(
@@ -493,8 +496,10 @@ test("@desktop video conversion saves the hardware encoder and shows its check",
   const save = section.getByRole("button", { name: "Save video conversion" });
   await expect(section.getByRole("combobox", { name: "Hardware encoder", exact: true })).toHaveText("Off (CPU)");
   await expect(section.getByLabel("Render device")).toHaveCount(0);
+  await expect(section.getByLabel("Simultaneous conversions")).toHaveValue("2");
   await expect(save).toBeDisabled();
 
+  await section.getByLabel("Simultaneous conversions").fill("3");
   await section.getByRole("combobox", { name: "Hardware encoder", exact: true }).click();
   await page.getByRole("option", { name: "Intel VA-API", exact: true }).click();
   await expect(section.getByLabel("Render device")).toHaveValue("/dev/dri/renderD128");
@@ -502,9 +507,12 @@ test("@desktop video conversion saves the hardware encoder and shows its check",
   await save.click();
   await expect.poll(() => settingsPayloads).toHaveLength(1);
   expect(settingsPayloads[0]).toEqual({
+    transcodeSlots: 3,
     videoHardwareAcceleration: "vaapi",
     videoHardwareDevice: "/dev/dri/renderD129",
   });
+  // The save answers while the test encode runs; the page reads its result afterwards.
+  await expect(section.getByText("Checking", { exact: true })).toBeVisible();
   await expect(section.getByText("Unavailable", { exact: true })).toBeVisible();
   await expect(
     section.getByText("The render device is not in the container. Pass /dev/dri to the container."),

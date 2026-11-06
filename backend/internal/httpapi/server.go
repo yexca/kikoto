@@ -73,7 +73,6 @@ type Server struct {
 	videoHardware                  videoHardwareState
 	mediaPreparationFailures       mediaPreparationFailures
 	loudnessMeasurements           loudnessMeasurementSlot
-	videoSubtitleProbes            videoSubtitleProbes
 	metadataSyncMu                 sync.Mutex
 	metadataPreviewMu              sync.Mutex
 	metadataPreviews               map[string]metadataPreviewRecord
@@ -97,12 +96,11 @@ type Server struct {
 	localMediaProbeWake            chan struct{}
 	mediaStreamCache               sync.Map
 	realtimeResourceMu             sync.Mutex
-	realtimeProbeSlots             chan struct{}
-	realtimeProbeQueue             chan struct{}
+	realtimeProbes                 *realtimeLimiter
 	realtimeProbeCacheMu           sync.Mutex
 	realtimeProbeCache             map[string]playbackProbeCacheEntry
-	realtimeTranscodeSlots         chan struct{}
-	realtimeTranscodeQueue         chan struct{}
+	realtimeTranscodes             *realtimeLimiter
+	subtitleExtractions            *realtimeLimiter
 	transcodeCacheActivityMu       sync.RWMutex
 	transcodeCacheQuotaMu          sync.Mutex
 	transcodeCacheReservedBytes    int64

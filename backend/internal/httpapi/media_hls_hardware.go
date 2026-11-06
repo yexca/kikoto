@@ -160,6 +160,15 @@ func (s *Server) videoHardwareStatusFor(mode string, device string) videoHardwar
 	return state.status
 }
 
+// videoHardwareConfigurationKnown reports whether the last check, finished or
+// running, was of this configuration.
+func (s *Server) videoHardwareConfigurationKnown(mode string, device string) bool {
+	state := &s.videoHardware
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	return state.mode == mode && state.device == device
+}
+
 // RefreshVideoHardware checks the configured acceleration: at startup and
 // after its settings change. Playback uses the hardware encoder only after a
 // check of the current configuration succeeded.

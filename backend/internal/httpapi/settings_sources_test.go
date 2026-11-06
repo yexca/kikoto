@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/yexca/kikoto/backend/internal/account"
 	"net/http"
@@ -400,6 +401,57 @@ func TestUpdateSettingsValidatesAndPersistsTranscodeCacheLimit(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestTranscodeSlotsAreAServerWideSetting(t *testing.T) {
+	db := openMigratedTestDB(t)
+	server := NewServer(db, config.Config{CacheRoot: t.TempDir()})
+	update := func(body string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPatch, "/api/settings", strings.NewReader(body))
+		request = request.WithContext(context.WithValue(request.Context(), currentUserKey, currentUser{ID: 1, Permissions: []string{"sources:write"}}))
+		response := httptest.NewRecorder()
+		server.updateSettings(response, request)
+		return response
+	}
+	for _, body := range []string{`{"transcodeSlots":0}`, `{"transcodeSlots":6}`} {
+		if response := update(body); response.Code != http.StatusBadRequest {
+			t.Fatalf("%s = %d: %s", body, response.Code, response.Body.String())
+		}
+	}
+	// Two conversions run by default; a third is refused at once.
+	var leases []func()
+	defer func() {
+		for _, release := range leases {
+			release()
+		}
+	}()
+	for range realtimeTranscodeSlotsSize {
+		release, err := server.acquireRealtimeTranscode(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		leases = append(leases, release)
+	}
+	if _, err := server.acquireRealtimeTranscode(context.Background()); !errors.Is(err, errRealtimeResourceBusy) {
+		t.Fatalf("third conversion with the default limit = %v", err)
+	}
+
+	response := update(`{"transcodeSlots":3}`)
+	var settings appSettingsResponse
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &settings) != nil || settings.TranscodeSlots != 3 {
+		t.Fatalf("raise to 3 = %d: %s", response.Code, response.Body.String())
+	}
+	release, err := server.acquireRealtimeTranscode(context.Background())
+	if err != nil {
+		t.Fatalf("third conversion after raising the limit = %v", err)
+	}
+	leases = append(leases, release)
+
+	// A restarted server reads the saved limit.
+	restarted := NewServer(db, config.Config{CacheRoot: t.TempDir()})
+	if limit := restarted.realtimeLimiterFor(context.Background(), realtimeResourceTranscode).limit; limit != 3 {
+		t.Fatalf("restarted limit = %d, want 3", limit)
 	}
 }
 

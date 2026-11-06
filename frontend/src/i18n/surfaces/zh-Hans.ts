@@ -890,6 +890,9 @@ export const surfaceHans = {
       transcodeLimit: "转码缓存上限",
       transcodeLimitDescription: "转换后的音频与 HLS 视频分段共用的缓存上限。最久未使用的文件优先移除。",
       videoHardware: "视频转换",
+      transcodeSlots: "同时转换数",
+      transcodeSlotsDescription:
+        "整个服务器同时运行的视频和音频播放转换数量，范围 1 到 5。超出的转换会短暂等待，然后提示服务器繁忙。",
       videoHardwareDescription: "可以用 Intel GPU 编码需要转换的视频。GPU 关闭、不可用或失败时，播放使用 CPU 编码器。",
       videoHardwareEncoder: "硬件编码器",
       videoHardwareEncoderDescription: "VA-API 适用于大多数 Intel GPU。Quick Sync Video 需要与 GPU 匹配的运行时。",

@@ -49,12 +49,15 @@ import { LyricsAttributionSection } from "@/features/llm-settings/LyricsAttribut
 
 type MaintenanceTab = "library" | "cache" | "proxy" | "llm" | "users";
 
+const HARDWARE_STATUS_POLL_MILLISECONDS = 3000;
+
 type RuntimeDraft = {
   localScanDepth: number;
   catalogFreshnessDays: number;
   cacheEnabled: boolean;
   cacheLimitGb: number;
   transcodeCacheLimitGb: number;
+  transcodeSlots: number;
   videoHardwareAcceleration: VideoHardwareAcceleration;
   videoHardwareDevice: string;
   remoteDownloadLimitGb: number;
@@ -75,6 +78,7 @@ function runtimeDraftFromSettings(settings: AppSettings): RuntimeDraft {
     cacheEnabled: settings.cacheEnabled,
     cacheLimitGb: settings.cacheLimitGb,
     transcodeCacheLimitGb: settings.transcodeCacheLimitGb ?? 5,
+    transcodeSlots: settings.transcodeSlots ?? 2,
     videoHardwareAcceleration: settings.videoHardwareAcceleration ?? "none",
     videoHardwareDevice: settings.videoHardwareDevice ?? "/dev/dri/renderD128",
     remoteDownloadLimitGb: settings.remoteDownloadLimitGb,
@@ -158,6 +162,23 @@ export function MaintenancePage({
     }
     void reload();
   }, [canManageSources, canManageAccessPolicy, reload]);
+
+  // A hardware encoder check can outlast the save that started it, so the
+  // status is read again until the check settles. Only the status is taken,
+  // so edits in progress stay as typed.
+  const hardwareChecking = activeTab === "cache" && settings?.videoHardwareStatus?.state === "checking";
+  useEffect(() => {
+    if (!hardwareChecking) return;
+    const timer = window.setInterval(() => {
+      void api
+        .getSettings()
+        .then((next) =>
+          setSettings((current) => (current ? { ...current, videoHardwareStatus: next.videoHardwareStatus } : current)),
+        )
+        .catch(() => undefined);
+    }, HARDWARE_STATUS_POLL_MILLISECONDS);
+    return () => window.clearInterval(timer);
+  }, [hardwareChecking]);
 
   useEffect(() => {
     if (openedLinkedSource.current || !settings) return;
@@ -506,13 +527,14 @@ export function MaintenancePage({
               )}
             />
             <VideoHardwareSettingsSection
+              transcodeSlots={draft.transcodeSlots}
               acceleration={draft.videoHardwareAcceleration}
               device={draft.videoHardwareDevice}
               status={settings?.videoHardwareStatus}
               readOnly={readOnly}
               onChange={patchDraft}
               saveButton={saveButton(
-                ["videoHardwareAcceleration", "videoHardwareDevice"],
+                ["transcodeSlots", "videoHardwareAcceleration", "videoHardwareDevice"],
                 t("maintenance.cache.saveVideoHardware"),
               )}
             />

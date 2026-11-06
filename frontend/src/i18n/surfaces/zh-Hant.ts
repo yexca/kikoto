@@ -891,6 +891,9 @@ export const surfaceHant = {
       transcodeLimit: "轉碼快取上限",
       transcodeLimitDescription: "轉換後的音訊與 HLS 影片分段共用的快取上限。最久未使用的檔案優先移除。",
       videoHardware: "影片轉換",
+      transcodeSlots: "同時轉換數",
+      transcodeSlotsDescription:
+        "整個伺服器同時執行的影片和音訊播放轉換數量，範圍 1 到 5。超出的轉換會短暫等待，然後提示伺服器忙碌。",
       videoHardwareDescription:
         "可以用 Intel GPU 編碼需要轉換的影片。GPU 關閉、無法使用或失敗時，播放使用 CPU 編碼器。",
       videoHardwareEncoder: "硬體編碼器",

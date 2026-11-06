@@ -119,10 +119,7 @@ func TestCompatibleAudioRemembersAFailedTranscode(t *testing.T) {
 		t.Fatalf("first transcode = %v", err)
 	}
 	// The second request is answered from memory without taking an encode slot.
-	slots, _ := server.realtimeResourceChannels(realtimeResourceTranscode)
-	for range cap(slots) {
-		slots <- struct{}{}
-	}
+	occupyRealtimeResource(server, realtimeResourceTranscode, false)
 	if _, err := server.openCompatibleAudio(context.Background(), input, info); !errors.Is(err, errAudioTranscodeUnavailable) || !strings.Contains(err.Error(), "recently") {
 		t.Fatalf("repeated transcode = %v, want the remembered failure", err)
 	}
@@ -143,10 +140,7 @@ func TestMediaLoudnessIsMeasuredOncePerFileVersion(t *testing.T) {
 	}
 	// The index still records the earlier file version, and playback
 	// conversion holds every transcode slot.
-	slots, _ := s.realtimeResourceChannels(realtimeResourceTranscode)
-	for range cap(slots) {
-		slots <- struct{}{}
-	}
+	occupyRealtimeResource(s, realtimeResourceTranscode, false)
 	get := func() (int, mediaLoudnessDetail) {
 		t.Helper()
 		request := httptest.NewRequest(http.MethodGet, "/api/media/1/loudness", nil)

@@ -25,6 +25,8 @@ var errInvalidVideoAudioStream = errors.New("video audio stream is invalid")
 
 type playbackProbeDisposition struct {
 	Default int `json:"default"`
+	// Forced marks a subtitle stream that shows without being chosen.
+	Forced int `json:"forced"`
 }
 
 type playbackProbeTags struct {

@@ -358,6 +358,7 @@ export function appSettingsFixture(overrides: Partial<AppSettings> = {}): AppSet
     cacheEnabled: false,
     cacheLimitGb: 20,
     transcodeCacheLimitGb: 5,
+    transcodeSlots: 2,
     remoteDownloadLimitGb: 100,
     fetchStagingRetentionDays: 7,
     remoteSaveTemplate: "/data/<source_code>/<code_prefix>_<code_group>/<work_code>",

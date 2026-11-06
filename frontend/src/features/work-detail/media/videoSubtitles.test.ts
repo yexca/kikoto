@@ -46,6 +46,14 @@ describe("subtitle conversion", () => {
     );
   });
 
+  it("shows SRT text as written, keeping only the markup WebVTT shares", () => {
+    const srt =
+      '1\n00:00:01,000 --> 00:00:02,000\n<font color="#ffff00">Tom & Jerry</font> <B>love</B> <3\nif a < b --> c > d\n';
+    expect(videoSubtitleWebVtt(srt)).toBe(
+      "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nTom &amp; Jerry <b>love</b> &lt;3\nif a &lt; b --&gt; c &gt; d\n",
+    );
+  });
+
   it("ends a cue without a usable end at the next cue", () => {
     const srt =
       "1\n00:00:01,000 --> 00:00:00,000\nFirst\n\n2\n00:00:03,000 -->\nSecond\n\n3\n00:00:09,000 --> 00:00:10,000\n\n";

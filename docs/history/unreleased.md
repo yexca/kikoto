@@ -6,12 +6,15 @@
 - The work detail video viewer reopens a local or cached video where it
   stopped, with a Start over button, loads same-name WebVTT, SRT, ASS, and SSA
   files as subtitles, and adds keyboard shortcuts for play, seeking,
-  fullscreen, mute, and speed. ASS and SSA keep only their text and timing.
+  fullscreen, mute, and speed. SRT keeps italic, bold, and underline and
+  shows other text as written; ASS and SSA keep only their text and timing.
 - The video viewer lists the embedded text subtitles of a local or cached
   video (SubRip, ASS, SSA, WebVTT, and MP4 timed text) by language and title,
   and shows a forced or default one first. The server extracts a subtitle to
   WebVTT the first time it is selected and keeps it in the transcode cache.
-  Picture subtitles such as PGS are not listed.
+  Extractions run one at a time apart from video and audio conversion, so a
+  subtitle loads even while conversions keep the server busy. Picture
+  subtitles such as PGS are not listed.
 - iOS and iPadOS play converted video through their native HLS player, which
   keeps native fullscreen and AirPlay.
 - A landscape video turns a phone or tablet to landscape while it is
@@ -57,9 +60,13 @@
   only for a playback.
 - Converted video can be encoded by an Intel GPU through VA-API or Quick Sync
   Video, chosen under Settings → Cache & Fetch and off by default. A test
-  encode at startup and on save decides whether the GPU is used, and a file
-  whose GPU encode fails is encoded by the CPU. The amd64 image includes the
-  Intel VA-API driver; pass `/dev/dri` to the container to use it.
+  encode at startup and on saving another encoder or device decides whether
+  the GPU is used, and Settings shows its result as soon as it finishes. A
+  file whose GPU encode fails is encoded by the CPU. The amd64 image includes
+  the Intel VA-API driver; pass `/dev/dri` to the container to use it.
+- **Simultaneous conversions** under Settings → Cache & Fetch sets how many
+  video and audio playback conversions run at once across the server, from 1
+  to 5. It defaults to 2, the fixed number before.
 - The work detail video viewer offers an **Audio track** menu for a video
   with two or more audio tracks. The server lists every audio stream with its
   language, title, channels, and default flag, and a track other than the

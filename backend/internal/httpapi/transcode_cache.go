@@ -103,7 +103,8 @@ func (s *Server) scanTranscodeCacheUnlocked(ctx context.Context) (transcodeCache
 			return strings.EqualFold(filepath.Ext(entry.Name()), extension)
 		})
 		isPartial := ((strings.HasPrefix(entry.Name(), ".hls-segment-") || strings.HasPrefix(entry.Name(), ".audio-transcode-") ||
-			strings.HasPrefix(entry.Name(), ".subtitle-extract-") || strings.HasPrefix(entry.Name(), videoKeyframeIndexPartialPrefix)) &&
+			strings.HasPrefix(entry.Name(), videoSubtitlePartialPrefix) || strings.HasPrefix(entry.Name(), videoKeyframeIndexPartialPrefix) ||
+			strings.HasPrefix(entry.Name(), hlsInitSectionPartialPrefix)) &&
 			strings.EqualFold(filepath.Ext(entry.Name()), ".part")) ||
 			// An HLS session playlist or unfinished segment.
 			isHLSSessionPartial(entry.Name())

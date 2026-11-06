@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,7 +13,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -22,12 +20,17 @@ const (
 	videoSubtitleProfileVersion = "webvtt-v1"
 	// Extraction reads the whole container to collect one stream's packets.
 	videoSubtitleExtractTimeout = 2 * time.Minute
+	// Extractions run one at a time in a slot of their own, so they never wait
+	// for or hold up a transcode. A few requests may wait for the slot, each
+	// for as long as one extraction may take.
+	videoSubtitleExtractSlots     = 1
+	videoSubtitleExtractQueueSize = 4
+	videoSubtitleExtractQueueWait = videoSubtitleExtractTimeout
+	videoSubtitlePartialPrefix    = ".subtitle-extract-"
 	// Subtitle streams per file listed in playback info.
 	videoSubtitleStreamLimit = 32
 	// Runes kept of a stream's language and title tags.
 	videoSubtitleTextLimit = 100
-	videoSubtitleProbeTTL  = 10 * time.Minute
-	videoSubtitleProbeSize = 128
 )
 
 // videoSubtitleTextCodecs are the embedded subtitle codecs FFmpeg converts
@@ -56,105 +59,22 @@ type videoSubtitleTrack struct {
 	URL      string `json:"url"`
 }
 
-type videoSubtitleProbe struct {
-	Streams []videoSubtitleProbeStream `json:"streams"`
-}
-
-type videoSubtitleProbeStream struct {
-	Index       int               `json:"index"`
-	CodecType   string            `json:"codec_type"`
-	CodecName   string            `json:"codec_name"`
-	Tags        map[string]string `json:"tags"`
-	Disposition map[string]int    `json:"disposition"`
-}
-
-type videoSubtitleProbeEntry struct {
-	streams   []videoSubtitleProbeStream
-	sizeBytes int64
-	modTime   time.Time
-	expiresAt time.Time
-}
-
-// videoSubtitleProbes keeps the subtitle streams of recently probed files,
-// keyed by path and valid for the size and modification time they read.
-type videoSubtitleProbes struct {
-	mu      sync.Mutex
-	entries map[string]videoSubtitleProbeEntry
-}
-
-func (probes *videoSubtitleProbes) get(path string, info os.FileInfo) ([]videoSubtitleProbeStream, bool) {
-	probes.mu.Lock()
-	defer probes.mu.Unlock()
-	entry, ok := probes.entries[path]
-	if !ok || time.Now().After(entry.expiresAt) || entry.sizeBytes != info.Size() || !entry.modTime.Equal(info.ModTime()) {
-		delete(probes.entries, path)
-		return nil, false
-	}
-	return entry.streams, true
-}
-
-func (probes *videoSubtitleProbes) put(path string, info os.FileInfo, streams []videoSubtitleProbeStream) {
-	now := time.Now()
-	probes.mu.Lock()
-	defer probes.mu.Unlock()
-	if probes.entries == nil {
-		probes.entries = make(map[string]videoSubtitleProbeEntry)
-	}
-	for len(probes.entries) >= videoSubtitleProbeSize {
-		var oldestKey string
-		var oldest time.Time
-		for key, entry := range probes.entries {
-			if oldestKey == "" || entry.expiresAt.Before(oldest) {
-				oldestKey, oldest = key, entry.expiresAt
-			}
-		}
-		delete(probes.entries, oldestKey)
-	}
-	probes.entries[path] = videoSubtitleProbeEntry{
-		streams: streams, sizeBytes: info.Size(), modTime: info.ModTime(), expiresAt: now.Add(videoSubtitleProbeTTL),
-	}
-}
-
-// probeVideoSubtitleStreams lists the text subtitle streams of a file
-// through the shared bounded FFprobe runner.
-func (s *Server) probeVideoSubtitleStreams(ctx context.Context, path string) ([]videoSubtitleProbeStream, os.FileInfo, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, nil, errHLSMediaNotFound
-	}
-	if streams, ok := s.videoSubtitleProbes.get(path, info); ok {
-		return streams, info, nil
-	}
-	output, err := s.runBoundedFFprobe(ctx, path, "stream=index,codec_type,codec_name:stream_tags=language,title:stream_disposition=default,forced")
-	if err != nil {
-		return nil, nil, err
-	}
-	streams, err := parseVideoSubtitleProbe(output)
-	if err != nil {
-		return nil, nil, err
-	}
-	s.videoSubtitleProbes.put(path, info, streams)
-	return streams, info, nil
-}
-
-func parseVideoSubtitleProbe(output []byte) ([]videoSubtitleProbeStream, error) {
-	var probe videoSubtitleProbe
-	if err := json.Unmarshal(output, &probe); err != nil {
-		return nil, fmt.Errorf("%w: invalid subtitle probe output", errMediaProbeRejected)
-	}
-	streams := []videoSubtitleProbeStream{}
+// videoSubtitleStreams returns the text subtitle streams of a playback probe
+// in file order.
+func videoSubtitleStreams(probe playbackProbe) []playbackProbeStream {
+	streams := []playbackProbeStream{}
 	for _, stream := range probe.Streams {
-		if !strings.EqualFold(strings.TrimSpace(stream.CodecType), "subtitle") || stream.Index < 0 ||
-			!videoSubtitleTextCodecs[strings.ToLower(strings.TrimSpace(stream.CodecName))] {
+		codec := strings.ToLower(strings.TrimSpace(stream.CodecName))
+		if !strings.EqualFold(strings.TrimSpace(stream.CodecType), "subtitle") || stream.StreamIndex < 0 || !videoSubtitleTextCodecs[codec] {
 			continue
 		}
-		stream.CodecName = strings.ToLower(strings.TrimSpace(stream.CodecName))
+		stream.CodecName = codec
 		streams = append(streams, stream)
 		if len(streams) == videoSubtitleStreamLimit {
 			break
 		}
 	}
-	return streams, nil
+	return streams
 }
 
 func videoSubtitleRevision(path string, info os.FileInfo, stream int) string {
@@ -167,27 +87,27 @@ func videoSubtitleCachePath(revision string) string {
 }
 
 // videoSubtitleTracksFor lists the embedded text subtitle streams of a
-// playback source. A probe that fails or waits too long lists none, so
-// subtitles never hold up playback.
-func (s *Server) videoSubtitleTracksFor(ctx context.Context, source hlsPlaybackSource) []videoSubtitleTrack {
-	streams, info, err := s.probeVideoSubtitleStreams(ctx, source.Path)
+// playback source from the probe playback already made.
+func videoSubtitleTracksFor(source hlsPlaybackSource) []videoSubtitleTrack {
+	streams := videoSubtitleStreams(source.Probe)
+	if len(streams) == 0 {
+		return nil
+	}
+	info, err := os.Stat(source.Path)
 	if err != nil {
-		if !errors.Is(err, context.Canceled) {
-			slog.Info("video subtitles are not listed", "location_id", source.LocationID, "error", err)
-		}
 		return nil
 	}
 	tracks := make([]videoSubtitleTrack, 0, len(streams))
 	for _, stream := range streams {
 		tracks = append(tracks, videoSubtitleTrack{
-			Stream:   stream.Index,
+			Stream:   stream.StreamIndex,
 			Codec:    stream.CodecName,
-			Language: boundedSubtitleText(stream.Tags["language"]),
-			Title:    boundedSubtitleText(stream.Tags["title"]),
-			Default:  stream.Disposition["default"] == 1,
-			Forced:   stream.Disposition["forced"] == 1,
-			URL: fmt.Sprintf("/api/media/%d/subtitles/%d.vtt?v=%s", source.LocationID, stream.Index,
-				videoSubtitleRevision(source.Path, info, stream.Index)),
+			Language: boundedSubtitleText(stream.Tags.Language),
+			Title:    boundedSubtitleText(stream.Tags.Title),
+			Default:  stream.Disposition.Default == 1,
+			Forced:   stream.Disposition.Forced == 1,
+			URL: fmt.Sprintf("/api/media/%d/subtitles/%d.vtt?v=%s", source.LocationID, stream.StreamIndex,
+				videoSubtitleRevision(source.Path, info, stream.StreamIndex)),
 		})
 	}
 	return tracks
@@ -224,17 +144,17 @@ func (s *Server) serveVideoSubtitle(w http.ResponseWriter, r *http.Request) {
 		s.writeHLSPlaybackError(w, err, playbackProfileVideo)
 		return
 	}
-	streams, info, err := s.probeVideoSubtitleStreams(r.Context(), source.Path)
-	if err != nil {
-		s.writeHLSPlaybackError(w, err, playbackProfileVideo)
-		return
-	}
 	found := false
-	for _, candidate := range streams {
-		found = found || candidate.Index == stream
+	for _, candidate := range videoSubtitleStreams(source.Probe) {
+		found = found || candidate.StreamIndex == stream
 	}
 	if !found {
 		writeAPIError(w, http.StatusNotFound, "subtitle_not_found", "subtitle was not found", false)
+		return
+	}
+	info, err := os.Stat(source.Path)
+	if err != nil || !info.Mode().IsRegular() {
+		s.writeHLSPlaybackError(w, errHLSMediaNotFound, playbackProfileVideo)
 		return
 	}
 	revision := videoSubtitleRevision(source.Path, info, stream)
@@ -268,57 +188,89 @@ func (s *Server) serveVideoSubtitle(w http.ResponseWriter, r *http.Request) {
 }
 
 // openVideoSubtitle returns the cached WebVTT of a subtitle stream, extracting
-// it first under a transcode slot and a quota reservation.
+// it first in the subtitle slot. Extraction holds no transcode cache lock, so
+// clearing the cache never waits for it; only storing the result does.
 func (s *Server) openVideoSubtitle(ctx context.Context, input string, inputInfo os.FileInfo, stream int, revision string) (*os.File, error) {
 	relPath := videoSubtitleCachePath(revision)
 	output, err := safeCachePath(s.cfg.CacheRoot, relPath)
 	if err != nil {
 		return nil, err
 	}
+	// Concurrent requests for one stream share its extraction.
 	releasePreparation, err := s.audioTranscodeLocks.acquire(ctx, output)
 	if err != nil {
 		return nil, err
 	}
 	defer releasePreparation()
+	if file, err := s.openCachedVideoSubtitle(ctx, relPath, output); file != nil || err != nil {
+		return file, err
+	}
+	failureKey := mediaPreparationFailureKey("subtitle-webvtt:"+strconv.Itoa(stream), input, inputInfo)
+	if s.mediaPreparationFailures.failedRecently(failureKey) {
+		return nil, fmt.Errorf("%w: extraction failed recently", errVideoSubtitleUnavailable)
+	}
+	content, err := s.extractVideoSubtitle(ctx, input, inputInfo, stream)
+	if err != nil {
+		if errors.Is(err, errVideoSubtitleUnavailable) {
+			s.mediaPreparationFailures.remember(failureKey)
+		}
+		return nil, err
+	}
+	return s.storeVideoSubtitle(ctx, relPath, output, content)
+}
+
+// openCachedVideoSubtitle opens the cached WebVTT of a stream, or returns nil
+// when none is cached.
+func (s *Server) openCachedVideoSubtitle(ctx context.Context, relPath string, output string) (*os.File, error) {
 	s.transcodeCacheActivityMu.RLock()
 	defer s.transcodeCacheActivityMu.RUnlock()
 	releasePath, err := s.acquireCachePathLock(ctx, relPath)
 	if err != nil {
 		return nil, err
 	}
-	if validCachedSubtitle(output) {
-		defer releasePath()
-		return openCompleteAudio(output)
+	defer releasePath()
+	if !validCachedSubtitle(output) {
+		return nil, nil
 	}
-	releasePath()
-	failureKey := mediaPreparationFailureKey("subtitle-webvtt:"+strconv.Itoa(stream), input, inputInfo)
-	if s.mediaPreparationFailures.failedRecently(failureKey) {
-		return nil, fmt.Errorf("%w: extraction failed recently", errVideoSubtitleUnavailable)
-	}
+	return openCompleteAudio(output)
+}
+
+// storeVideoSubtitle publishes extracted WebVTT at output under a quota
+// reservation of its size and opens it.
+func (s *Server) storeVideoSubtitle(ctx context.Context, relPath string, output string, content []byte) (*os.File, error) {
+	s.transcodeCacheActivityMu.RLock()
+	defer s.transcodeCacheActivityMu.RUnlock()
 	// Reserve before locking the path, as audio preparation does.
-	releaseReservation, err := s.reserveTranscodeCache(ctx, videoSubtitleMaximumBytes)
+	releaseReservation, err := s.reserveTranscodeCache(ctx, int64(len(content)))
 	if err != nil {
 		return nil, err
 	}
 	defer releaseReservation()
-	releasePath, err = s.acquireCachePathLock(ctx, relPath)
+	releasePath, err := s.acquireCachePathLock(ctx, relPath)
 	if err != nil {
 		return nil, err
 	}
 	defer releasePath()
-	if !validCachedSubtitle(output) {
-		if _, _, err := s.removeCacheFileUnlocked(relPath); err != nil {
-			return nil, err
-		}
-		if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
-			return nil, err
-		}
-		if err := s.extractVideoSubtitle(ctx, input, inputInfo, stream, output); err != nil {
-			if errors.Is(err, errVideoSubtitleUnavailable) {
-				s.mediaPreparationFailures.remember(failureKey)
-			}
-			return nil, err
-		}
+	if _, _, err := s.removeCacheFileUnlocked(relPath); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
+		return nil, err
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(output), videoSubtitlePartialPrefix+"*.part")
+	if err != nil {
+		return nil, err
+	}
+	temporaryPath := temporary.Name()
+	defer func() { _ = os.Remove(temporaryPath) }()
+	_, writeErr := temporary.Write(content)
+	syncErr := temporary.Sync()
+	closeErr := temporary.Close()
+	if err := errors.Join(writeErr, syncErr, closeErr); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(temporaryPath, output); err != nil {
+		return nil, err
 	}
 	return openCompleteAudio(output)
 }
@@ -328,17 +280,19 @@ func validCachedSubtitle(path string) bool {
 	return err == nil && info.Mode().IsRegular() && info.Size() > 0 && info.Size() <= videoSubtitleMaximumBytes
 }
 
-func (s *Server) extractVideoSubtitle(ctx context.Context, input string, inputInfo os.FileInfo, stream int, output string) error {
-	extractContext, cancel := context.WithTimeout(ctx, videoSubtitleExtractTimeout)
-	defer cancel()
-	release, err := s.acquireRealtimeTranscode(extractContext)
+// extractVideoSubtitle converts one subtitle stream to WebVTT in memory, in
+// the subtitle slot.
+func (s *Server) extractVideoSubtitle(ctx context.Context, input string, inputInfo os.FileInfo, stream int) ([]byte, error) {
+	release, err := s.acquireSubtitleExtraction(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer release()
+	extractContext, cancel := context.WithTimeout(ctx, videoSubtitleExtractTimeout)
+	defer cancel()
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
-		return fmt.Errorf("%w: ffmpeg executable was not found", errVideoSubtitleUnavailable)
+		return nil, fmt.Errorf("%w: ffmpeg executable was not found", errVideoSubtitleUnavailable)
 	}
 	command := exec.CommandContext(extractContext, ffmpeg, videoSubtitleFFmpegArgs(input, stream)...)
 	content := &limitedCommandOutput{limit: int(videoSubtitleMaximumBytes)}
@@ -347,36 +301,24 @@ func (s *Server) extractVideoSubtitle(ctx context.Context, input string, inputIn
 	command.Stderr = diagnostics
 	if err := command.Run(); err != nil {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return nil, ctx.Err()
 		}
 		if errors.Is(extractContext.Err(), context.DeadlineExceeded) {
-			return fmt.Errorf("%w: extraction timed out", errVideoSubtitleUnavailable)
+			return nil, fmt.Errorf("%w: extraction timed out", errVideoSubtitleUnavailable)
 		}
 		if content.exceeded {
-			return fmt.Errorf("%w: output exceeded its byte limit", errVideoSubtitleUnavailable)
+			return nil, fmt.Errorf("%w: output exceeded its byte limit", errVideoSubtitleUnavailable)
 		}
-		return fmt.Errorf("%w: command failed: %v: %s", errVideoSubtitleUnavailable, err, diagnostics.String())
+		return nil, fmt.Errorf("%w: command failed: %v: %s", errVideoSubtitleUnavailable, err, diagnostics.String())
 	}
-	if content.exceeded || !strings.HasPrefix(strings.TrimPrefix(content.buffer.String(), "\ufeff"), "WEBVTT") {
-		return fmt.Errorf("%w: output is not WebVTT or reached its byte limit", errVideoSubtitleUnavailable)
+	if content.exceeded || !strings.HasPrefix(strings.TrimPrefix(content.buffer.String(), string(rune(0xFEFF))), "WEBVTT") {
+		return nil, fmt.Errorf("%w: output is not WebVTT or reached its byte limit", errVideoSubtitleUnavailable)
 	}
 	currentInput, err := os.Stat(input)
 	if err != nil || !currentInput.Mode().IsRegular() || currentInput.Size() != inputInfo.Size() || !currentInput.ModTime().Equal(inputInfo.ModTime()) {
-		return fmt.Errorf("%w: source changed during extraction", errVideoSubtitleUnavailable)
+		return nil, fmt.Errorf("%w: source changed during extraction", errVideoSubtitleUnavailable)
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(output), ".subtitle-extract-*.part")
-	if err != nil {
-		return err
-	}
-	temporaryPath := temporary.Name()
-	defer func() { _ = os.Remove(temporaryPath) }()
-	_, writeErr := temporary.Write(content.buffer.Bytes())
-	syncErr := temporary.Sync()
-	closeErr := temporary.Close()
-	if err := errors.Join(writeErr, syncErr, closeErr); err != nil {
-		return err
-	}
-	return os.Rename(temporaryPath, output)
+	return content.buffer.Bytes(), nil
 }
 
 func videoSubtitleFFmpegArgs(input string, stream int) []string {

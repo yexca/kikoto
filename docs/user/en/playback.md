@@ -142,10 +142,13 @@ Playback is handled by a global browser audio player.
   seekable through the complete VOD timeline. Transcoded video is bounded to
   720p and 60 frames per second, padded to even dimensions before `yuv420p`
   encoding, and produced with a conservative two-thread profile or the GPU
-  encoder at up to 2800 kbit/s; copied video keeps the source picture. FFmpeg and FFprobe each have a small fixed
-  concurrency limit and a short, bounded wait queue; requests that cannot
-  acquire a slot promptly are rejected so a process cannot remain occupied for
-  an unbounded period.
+  encoder at up to 2800 kbit/s; copied video keeps the source picture. Video
+  and audio conversions share a server-wide number of slots, two by default,
+  which an administrator sets from 1 to 5 under **Settings → Cache & Fetch**.
+  FFprobe has a small fixed concurrency limit, and embedded subtitle
+  extraction runs one at a time in a slot of its own. Each has a short,
+  bounded wait queue; requests that cannot acquire a slot promptly are
+  rejected so a process cannot remain occupied for an unbounded period.
 - The Docker image includes both `ffmpeg` and `ffprobe`. Other deployments must
   make both binaries available on the backend process `PATH`.
 - Clicking a playable file queues naturally sorted playable files in the same

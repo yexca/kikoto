@@ -29,22 +29,22 @@ func TestVideoSubtitleProbeListsOnlyTextStreams(t *testing.T) {
 		{"index":8,"codec_type":"subtitle","codec_name":"webvtt"},
 		{"index":9,"codec_type":"subtitle","codec_name":"ssa"}
 	]}`)
-	streams, err := parseVideoSubtitleProbe(output)
-	if err != nil {
+	// The playback probe that decides direct playback also lists subtitles.
+	var probe playbackProbe
+	if err := json.Unmarshal(output, &probe); err != nil {
 		t.Fatal(err)
 	}
+	streams := videoSubtitleStreams(probe)
 	indexes := []int{}
 	for _, stream := range streams {
-		indexes = append(indexes, stream.Index)
+		indexes = append(indexes, stream.StreamIndex)
 	}
 	if !slices.Equal(indexes, []int{2, 6, 7, 8, 9}) {
 		t.Fatalf("text subtitle streams = %v", indexes)
 	}
-	if streams[1].CodecName != "ass" || streams[1].Disposition["forced"] != 1 || streams[0].Tags["language"] != "jpn" {
+	if streams[1].CodecName != "ass" || streams[1].Disposition.Forced != 1 || streams[0].Tags.Language != "jpn" ||
+		streams[0].Disposition.Default != 1 {
 		t.Fatalf("streams = %+v", streams)
-	}
-	if _, err := parseVideoSubtitleProbe([]byte("not json")); err == nil {
-		t.Fatal("invalid probe output was accepted")
 	}
 }
 
@@ -271,18 +271,22 @@ func TestVideoSubtitleExtractionIsBounded(t *testing.T) {
 	fixture := newVideoSubtitleTestServer(t)
 	file, query := subtitleQuery(t, fixture.playbackInfo(t, 861).Subtitles[0])
 
-	// Both transcode slots are taken, so the request gives up after its queue wait.
-	for range realtimeTranscodeSlotsSize {
-		release, err := fixture.server.acquireRealtimeTranscode(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer release()
+	// Extraction has a slot of its own, so it runs while every transcode slot
+	// is taken.
+	occupyRealtimeResource(fixture.server, realtimeResourceTranscode, true)
+	if response := fixture.subtitle(861, file, query); response.Code != http.StatusOK {
+		t.Fatalf("subtitle while transcodes are busy = %d: %s", response.Code, response.Body.String())
 	}
+
+	// With its slot and queue taken, a request is refused at once.
+	fixture = newVideoSubtitleTestServer(t)
+	file, query = subtitleQuery(t, fixture.playbackInfo(t, 861).Subtitles[0])
+	occupyRealtimeResource(fixture.server, realtimeResourceSubtitle, true)
+	started := time.Now()
 	busy := fixture.subtitle(861, file, query)
 	if busy.Code != http.StatusServiceUnavailable || !strings.Contains(busy.Body.String(), "media_transcode_busy") ||
-		busy.Header().Get("Retry-After") != "1" {
-		t.Fatalf("busy subtitle = %d: %s", busy.Code, busy.Body.String())
+		busy.Header().Get("Retry-After") != "1" || time.Since(started) > 2*time.Second {
+		t.Fatalf("busy subtitle = %d after %v: %s", busy.Code, time.Since(started), busy.Body.String())
 	}
 
 	fixture = newVideoSubtitleTestServer(t)

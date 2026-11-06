@@ -24,9 +24,9 @@ import (
 const (
 	hlsInitSectionMaximumBytes int64 = 1 << 20
 	hlsInitSectionTimeout            = 30 * time.Second
-	// The init run writes its partial files under the session playlist's
-	// name, so session cleanup and the cache scan treat them as partials.
-	hlsInitSectionPartial = videoRemuxHLSSessionPlaylist + ".init"
+	// A section is written beside its final name under this prefix and
+	// renamed into place; the cache scan reclaims one left by a crash.
+	hlsInitSectionPartialPrefix = ".hls-init-"
 )
 
 // HEVC in HLS segments plays through Media Source Extensions in hls.js, or the
@@ -52,13 +52,13 @@ func hlsHEVCDecoderSupported(video *playbackProbeStream, capabilities map[string
 
 // videoHEVCRemuxInitArgs runs the remux encode of the first segment with no
 // output duration, which writes the initialization section to standard output
-// and an empty segment under a partial name.
-func videoHEVCRemuxInitArgs(input string, outputDir string, index *videoKeyframeIndex) []string {
+// and an empty segment and segment list into scratchDir.
+func videoHEVCRemuxInitArgs(input string, scratchDir string, index *videoKeyframeIndex) []string {
 	muxer := append([]string{"-t", "0"}, videoHEVCRemuxMuxerArgs("pipe:1")...)
 	return videoRemuxFFmpegArgs(input, 0, index, videoRemuxOutput{
 		muxer:   muxer,
-		list:    filepath.Join(outputDir, hlsInitSectionPartial+".list"),
-		pattern: filepath.Join(strings.ReplaceAll(outputDir, "%", "%%"), hlsInitSectionPartial+"-%06d"),
+		list:    filepath.Join(scratchDir, "init.list"),
+		pattern: filepath.Join(strings.ReplaceAll(scratchDir, "%", "%%"), "init-%06d"),
 	})
 }
 
@@ -99,6 +99,9 @@ func (s *Server) serveHLSInitSection(w http.ResponseWriter, r *http.Request, pro
 	}
 }
 
+// serveCachedHLSInitSection serves the revision's cached section, producing it
+// first when none is cached. The init encode holds no transcode cache lock, so
+// clearing the cache never waits for it; only storing the section does.
 func (s *Server) serveCachedHLSInitSection(w http.ResponseWriter, r *http.Request, profile *hlsEncodeProfile, source hlsPlaybackSource) error {
 	relDir := hlsSessionRelativeDir(profile, source)
 	relPath := path.Join(relDir, profile.segmentFormat().initSection)
@@ -107,57 +110,102 @@ func (s *Server) serveCachedHLSInitSection(w http.ResponseWriter, r *http.Reques
 		return err
 	}
 	absolutePath := filepath.Join(dir, profile.segmentFormat().initSection)
+	// Concurrent requests for one section share its encode.
+	releasePreparation, err := s.audioTranscodeLocks.acquire(r.Context(), absolutePath)
+	if err != nil {
+		return err
+	}
+	defer releasePreparation()
+	if served, err := s.serveStoredHLSInitSection(w, r, profile, relPath, absolutePath, nil); served || err != nil {
+		return err
+	}
+	section, err := s.encodeHLSInitSection(r.Context(), profile, source)
+	if err != nil {
+		return err
+	}
+	_, err = s.serveStoredHLSInitSection(w, r, profile, relPath, absolutePath, section)
+	return err
+}
+
+// serveStoredHLSInitSection publishes section at absolutePath when it is given,
+// then serves the cached section. It reports false when none is cached.
+func (s *Server) serveStoredHLSInitSection(w http.ResponseWriter, r *http.Request, profile *hlsEncodeProfile, relPath string, absolutePath string, section []byte) (bool, error) {
 	s.transcodeCacheActivityMu.RLock()
 	defer s.transcodeCacheActivityMu.RUnlock()
 	releasePath, err := s.acquireCachePathLock(r.Context(), relPath)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer releasePath()
-	if !validCachedHLSSegment(absolutePath, hlsInitSectionMaximumBytes) {
-		if err := s.writeHLSInitSection(r.Context(), profile, source, dir, absolutePath); err != nil {
-			return err
+	if section != nil {
+		if err := publishHLSInitSection(absolutePath, section); err != nil {
+			return false, err
 		}
 	}
-	return serveCachedHLSSegment(w, r, absolutePath, profile.segmentFormat().contentType)
+	if !validCachedHLSSegment(absolutePath, hlsInitSectionMaximumBytes) {
+		return false, nil
+	}
+	return true, serveCachedHLSSegment(w, r, absolutePath, profile.segmentFormat().contentType)
 }
 
-// writeHLSInitSection runs the init encode under a transcode slot and
-// publishes its section at absolutePath. A failure is remembered like a remux
-// that produced nothing, so playback info offers a transcode instead.
-func (s *Server) writeHLSInitSection(ctx context.Context, profile *hlsEncodeProfile, source hlsPlaybackSource, dir string, absolutePath string) error {
-	info, err := os.Stat(source.Path)
-	if err != nil || !info.Mode().IsRegular() {
-		return errHLSMediaNotFound
-	}
-	failureKey := mediaPreparationFailureKey(profile.name, source.Path, info)
-	if s.mediaPreparationFailures.failedRecently(failureKey) {
-		return fmt.Errorf("%w: preparation failed recently", errHLSTranscodeUnavailable)
-	}
-	ffmpegPath, err := exec.LookPath("ffmpeg")
-	if err != nil {
-		return fmt.Errorf("%w: ffmpeg executable was not found", errHLSTranscodeUnavailable)
-	}
-	releaseSlot, err := s.acquireRealtimeTranscode(ctx)
-	if err != nil {
-		return err
-	}
-	defer releaseSlot()
+// publishHLSInitSection writes section beside absolutePath and renames it into
+// place.
+func publishHLSInitSection(absolutePath string, section []byte) error {
+	dir := filepath.Dir(absolutePath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	temporary, err := os.CreateTemp(dir, hlsInitSectionPartialPrefix+"*.part")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(temporary.Name()) }()
+	_, writeErr := temporary.Write(section)
+	closeErr := temporary.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
+		return err
+	}
+	return os.Rename(temporary.Name(), absolutePath)
+}
+
+// encodeHLSInitSection runs the init encode under a transcode slot and returns
+// its section. A failure is remembered like a remux that produced nothing, so
+// playback info offers a transcode instead.
+func (s *Server) encodeHLSInitSection(ctx context.Context, profile *hlsEncodeProfile, source hlsPlaybackSource) ([]byte, error) {
+	info, err := os.Stat(source.Path)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, errHLSMediaNotFound
+	}
+	failureKey := mediaPreparationFailureKey(profile.name, source.Path, info)
+	if s.mediaPreparationFailures.failedRecently(failureKey) {
+		return nil, fmt.Errorf("%w: preparation failed recently", errHLSTranscodeUnavailable)
+	}
+	ffmpegPath, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		return nil, fmt.Errorf("%w: ffmpeg executable was not found", errHLSTranscodeUnavailable)
+	}
+	releaseSlot, err := s.acquireRealtimeTranscode(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer releaseSlot()
+	// The empty segment and list the encode also writes stay out of the cache.
+	scratch, err := os.MkdirTemp("", "kikoto-hls-init-*")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = os.RemoveAll(scratch) }()
 	runContext, cancel := context.WithTimeout(ctx, hlsInitSectionTimeout)
 	defer cancel()
-	command := exec.CommandContext(runContext, ffmpegPath, withVideoAudioTrack(videoHEVCRemuxInitArgs(source.Path, dir, source.Keyframes), source.AudioTrack)...)
+	command := exec.CommandContext(runContext, ffmpegPath, withVideoAudioTrack(videoHEVCRemuxInitArgs(source.Path, scratch, source.Keyframes), source.AudioTrack)...)
 	diagnostics := &transcodeDiagnosticOutput{}
 	command.Stderr = diagnostics
 	stdout, err := command.StdoutPipe()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer removeHLSInitPartials(dir)
 	if err := command.Start(); err != nil {
-		return fmt.Errorf("%w: command failed to start", errHLSTranscodeUnavailable)
+		return nil, fmt.Errorf("%w: command failed to start", errHLSTranscodeUnavailable)
 	}
 	section, readErr := io.ReadAll(io.LimitReader(stdout, hlsInitSectionMaximumBytes+1))
 	if readErr != nil || int64(len(section)) > hlsInitSectionMaximumBytes {
@@ -165,7 +213,7 @@ func (s *Server) writeHLSInitSection(ctx context.Context, profile *hlsEncodeProf
 	}
 	waitErr := command.Wait()
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	switch {
 	case readErr != nil:
@@ -179,24 +227,7 @@ func (s *Server) writeHLSInitSection(ctx context.Context, profile *hlsEncodeProf
 	}
 	if err != nil {
 		s.mediaPreparationFailures.remember(failureKey)
-		return err
+		return nil, err
 	}
-	temporary := filepath.Join(dir, hlsInitSectionPartial+".part")
-	if err := os.WriteFile(temporary, section, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(temporary, absolutePath)
-}
-
-// removeHLSInitPartials removes what an init encode left besides its section.
-func removeHLSInitPartials(dir string) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	for _, entry := range entries {
-		if entry.Type().IsRegular() && strings.HasPrefix(entry.Name(), hlsInitSectionPartial) {
-			_ = os.Remove(filepath.Join(dir, entry.Name()))
-		}
-	}
+	return section, nil
 }

@@ -536,14 +536,7 @@ func TestRealtimeProbeQueueRejectsPromptlyWhenSlotsAreFull(t *testing.T) {
 
 func TestStreamFFmpegFileRejectsImmediatelyWhenQueueIsFull(t *testing.T) {
 	server := NewServer(nil, config.Config{})
-	server.realtimeTranscodeSlots = make(chan struct{}, realtimeTranscodeSlotsSize)
-	server.realtimeTranscodeQueue = make(chan struct{}, realtimeTranscodeQueueSize)
-	for range realtimeTranscodeSlotsSize {
-		server.realtimeTranscodeSlots <- struct{}{}
-	}
-	for range realtimeTranscodeQueueSize {
-		server.realtimeTranscodeQueue <- struct{}{}
-	}
+	occupyRealtimeResource(server, realtimeResourceTranscode, true)
 	request := httptest.NewRequest(http.MethodGet, "/api/media/1/stream?profile=audio", nil)
 	response := httptest.NewRecorder()
 	started := time.Now()
@@ -565,14 +558,7 @@ func TestAutomaticLocalPlaybackRejectsImmediatelyWhenProbeQueueIsFull(t *testing
 		t.Fatal(err)
 	}
 	server := NewServer(nil, config.Config{})
-	server.realtimeProbeSlots = make(chan struct{}, realtimeProbeSlotsSize)
-	server.realtimeProbeQueue = make(chan struct{}, realtimeProbeQueueSize)
-	for range realtimeProbeSlotsSize {
-		server.realtimeProbeSlots <- struct{}{}
-	}
-	for range realtimeProbeQueueSize {
-		server.realtimeProbeQueue <- struct{}{}
-	}
+	occupyRealtimeResource(server, realtimeResourceProbe, true)
 	request := httptest.NewRequest(http.MethodGet, "/api/media/1/stream?profile=audio&capabilities=audio-wav", nil)
 	response := httptest.NewRecorder()
 	started := time.Now()

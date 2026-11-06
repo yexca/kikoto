@@ -91,8 +91,8 @@ const fallbackCueSeconds = 5;
 
 /**
  * Writes cues as a WebVTT file, the one subtitle format every browser's
- * `<track>` element reads. Cue text keeps its line breaks and the basic
- * `<i>`, `<b>`, and `<u>` markup SRT shares with WebVTT.
+ * `<track>` element reads. Cue lines are written as given, already in WebVTT
+ * cue text, and keep their line breaks.
  */
 export function timedCuesToWebVtt(cues: TimedCue[]) {
   const blocks = ["WEBVTT"];

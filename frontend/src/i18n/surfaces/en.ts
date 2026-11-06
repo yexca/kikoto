@@ -1293,6 +1293,9 @@ export const surfaceEnglish = {
       transcodeLimitDescription:
         "Maximum cache size for converted audio and HLS video segments. Least recently used files are removed first.",
       videoHardware: "Video conversion",
+      transcodeSlots: "Simultaneous conversions",
+      transcodeSlotsDescription:
+        "How many video and audio playback conversions run at once across the server, from 1 to 5. A conversion beyond this waits briefly, then reports the server as busy.",
       videoHardwareDescription:
         "Converted video can be encoded by an Intel GPU. Playback uses the CPU encoder whenever the GPU is off, unavailable, or fails.",
       videoHardwareEncoder: "Hardware encoder",

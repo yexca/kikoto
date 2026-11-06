@@ -1,18 +1,24 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
+import { SettingsNumberInput, SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 import { Badge } from "@/components/ui/badge";
 import { FloatingSelect } from "@/components/ui/floating-select";
 import { Input } from "@/components/ui/input";
 import type { VideoHardwareAcceleration, VideoHardwareStatus } from "@/lib/api";
 
+/** The bounds of the server-wide number of conversions that run at once. */
+export const TRANSCODE_SLOTS_MINIMUM = 1;
+export const TRANSCODE_SLOTS_MAXIMUM = 5;
+
 /**
- * Administrator choice of the GPU encoder for converted video, with the
+ * Administrator settings for playback conversion: how many conversions run at
+ * once across the server, and the GPU encoder for converted video with the
  * server's check of the saved choice. The server encodes in software whenever
  * the encoder is off, unavailable, or fails.
  */
 export function VideoHardwareSettingsSection({
+  transcodeSlots,
   acceleration,
   device,
   status,
@@ -20,11 +26,16 @@ export function VideoHardwareSettingsSection({
   onChange,
   saveButton,
 }: {
+  transcodeSlots: number;
   acceleration: VideoHardwareAcceleration;
   device: string;
   status?: VideoHardwareStatus;
   readOnly: boolean;
-  onChange: (next: { videoHardwareAcceleration?: VideoHardwareAcceleration; videoHardwareDevice?: string }) => void;
+  onChange: (next: {
+    transcodeSlots?: number;
+    videoHardwareAcceleration?: VideoHardwareAcceleration;
+    videoHardwareDevice?: string;
+  }) => void;
   saveButton: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -34,6 +45,20 @@ export function VideoHardwareSettingsSection({
       description={t("maintenance.cache.videoHardwareDescription")}
       footer={saveButton}
     >
+      <SettingsRow
+        title={t("maintenance.cache.transcodeSlots")}
+        description={t("maintenance.cache.transcodeSlotsDescription")}
+      >
+        <SettingsNumberInput
+          disabled={readOnly}
+          label={t("maintenance.cache.transcodeSlots")}
+          value={transcodeSlots}
+          min={TRANSCODE_SLOTS_MINIMUM}
+          max={TRANSCODE_SLOTS_MAXIMUM}
+          integer
+          onChange={(next) => onChange({ transcodeSlots: next })}
+        />
+      </SettingsRow>
       <SettingsRow
         title={t("maintenance.cache.videoHardwareEncoder")}
         description={t("maintenance.cache.videoHardwareEncoderDescription")}

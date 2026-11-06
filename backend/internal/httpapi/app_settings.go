@@ -26,6 +26,9 @@ type appSettingsResponse struct {
 	CacheEnabled          bool `json:"cacheEnabled"`
 	CacheLimitGB          int  `json:"cacheLimitGb"`
 	TranscodeCacheLimitGB int  `json:"transcodeCacheLimitGb"`
+	// TranscodeSlots is how many playback conversions run at once across the
+	// server, from 1 to 5.
+	TranscodeSlots int `json:"transcodeSlots"`
 	// VideoHardwareAcceleration is "none", "qsv", or "vaapi"; the status says
 	// whether the check of that encoder on VideoHardwareDevice succeeded.
 	VideoHardwareAcceleration string              `json:"videoHardwareAcceleration"`
@@ -78,6 +81,7 @@ type settingsUpdatePayload struct {
 	CacheEnabled                  *bool                           `json:"cacheEnabled"`
 	CacheLimitGB                  *int                            `json:"cacheLimitGb"`
 	TranscodeCacheLimitGB         *int                            `json:"transcodeCacheLimitGb"`
+	TranscodeSlots                *int                            `json:"transcodeSlots"`
 	VideoHardwareAcceleration     *string                         `json:"videoHardwareAcceleration"`
 	VideoHardwareDevice           *string                         `json:"videoHardwareDevice"`
 	RemoteDownloadLimitGB         *int                            `json:"remoteDownloadLimitGb"`
@@ -221,8 +225,16 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("transcode cache limit enforcement failed after settings update", "error", err)
 		}
 	}
+	if payload.TranscodeSlots != nil {
+		// Running conversions keep their slots; a lower limit applies as they end.
+		s.realtimeLimiterFor(r.Context(), realtimeResourceTranscode).setLimit(*payload.TranscodeSlots)
+	}
 	if payload.VideoHardwareAcceleration != nil || payload.VideoHardwareDevice != nil {
-		s.refreshVideoHardwareForResponse(r.Context())
+		// A save that keeps the checked encoder and device, such as one that
+		// only changes the slot count, does not run the test encode again.
+		if mode, device := s.videoHardwareSettings(r.Context()); !s.videoHardwareConfigurationKnown(mode, device) {
+			s.refreshVideoHardwareForResponse(r.Context())
+		}
 	}
 	settings, err := s.loadAppSettings(r)
 	if err != nil {
@@ -287,6 +299,7 @@ func applyGeneralSettings(r *http.Request, tx *sql.Tx, payload settingsUpdatePay
 		{payload.LocalScanDepth, "local_scan_depth", 1, 8, "localScanDepth must be between 1 and 8"},
 		{payload.CacheLimitGB, "remote_cache_limit_gb", 0, 4096, "cacheLimitGb must be between 0 and 4096"},
 		{payload.TranscodeCacheLimitGB, transcodeCacheLimitSetting, 1, 4096, "transcodeCacheLimitGb must be between 1 and 4096"},
+		{payload.TranscodeSlots, realtimeTranscodeSlotsSetting, realtimeTranscodeSlotsMinimum, realtimeTranscodeSlotsMaximum, "transcodeSlots must be between 1 and 5"},
 		{payload.RemoteDownloadLimitGB, "remote_download_limit_gb", minimumRemoteDownloadLimitGB, maximumRemoteDownloadLimitGB, "remoteDownloadLimitGb must be between 1 and 2048"},
 		{payload.FetchStagingRetentionDays, "fetch_staging_retention_days", minimumFetchStagingRetentionDays, maximumFetchStagingRetentionDays, "fetchStagingRetentionDays must be between 1 and 365"},
 		{payload.CatalogFreshnessDays, "catalog_freshness_days", minimumCatalogFreshnessDays, maximumCatalogFreshnessDays, "catalogFreshnessDays must be between 1 and 365"},
@@ -431,6 +444,7 @@ func (s *Server) loadAppSettings(r *http.Request) (appSettingsResponse, error) {
 		CacheEnabled:                  s.settingBool(r, "remote_cache_enabled", false),
 		CacheLimitGB:                  s.settingInt(r, "remote_cache_limit_gb", 20),
 		TranscodeCacheLimitGB:         s.settingInt(r, transcodeCacheLimitSetting, defaultTranscodeCacheLimitGB),
+		TranscodeSlots:                s.configuredRealtimeTranscodeSlots(r.Context()),
 		VideoHardwareAcceleration:     videoHardwareMode,
 		VideoHardwareDevice:           videoHardwareDevice,
 		VideoHardwareStatus:           s.videoHardwareStatusFor(videoHardwareMode, videoHardwareDevice),

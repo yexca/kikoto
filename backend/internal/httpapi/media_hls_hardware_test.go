@@ -135,6 +135,13 @@ func TestVideoHardwareSettingsAreValidatedAndChecked(t *testing.T) {
 	if encoder, ok := server.readyVideoHardwareEncoder(); !ok || encoder != (videoHardwareEncoder{mode: videoHardwareQSV, device: "/dev/dri/renderD129", lowPower: true}) {
 		t.Fatalf("ready encoder = %+v, %t", encoder, ok)
 	}
+	// Saving the section with the same encoder, as a slot change does, keeps
+	// the checked result instead of encoding the test clip again.
+	response = patchSettingsAsSourceWriter(t, server, `{"transcodeSlots":3,"videoHardwareAcceleration":"qsv","videoHardwareDevice":"/dev/dri/renderD129"}`)
+	settings = read(response.Body.Bytes())
+	if response.Code != http.StatusOK || settings.TranscodeSlots != 3 || settings.VideoHardwareStatus.State != "ready" || probes.Load() != 2 {
+		t.Fatalf("saving an unchanged encoder = %d %+v after %d checks", response.Code, settings, probes.Load())
+	}
 	response = patchSettingsAsSourceWriter(t, server, `{"videoHardwareAcceleration":"none"}`)
 	settings = read(response.Body.Bytes())
 	if settings.VideoHardwareStatus.State != "disabled" || probes.Load() != 2 {

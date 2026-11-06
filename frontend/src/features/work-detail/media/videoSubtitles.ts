@@ -28,8 +28,29 @@ export function videoSubtitleWebVtt(text: string) {
   if (/^WEBVTT(?:[ \t]|\r?\n|$)/.test(content)) return content;
   const cues = /^[ \t]*\[(?:Script Info|Events)\][ \t]*$/im.test(content)
     ? parseAssCues(content)
-    : parseTimedCues(content);
+    : parseTimedCues(content).map((cue) => ({ ...cue, lines: cue.lines.map(srtCueTextToWebVtt) }));
   return cues.some((cue) => cue.lines.length > 0) ? timedCuesToWebVtt(cues) : null;
+}
+
+const srtTagPattern = /(<\/?[a-zA-Z][^<>]*>)/;
+const webVttSharedTagPattern = /^<(\/?)([ibu])>$/i;
+
+/**
+ * One line of SRT cue text as WebVTT cue text: the `<i>`, `<b>`, and `<u>`
+ * markup the formats share is kept, other tags such as `<font>` are dropped,
+ * and every other `<`, `>`, and `&` is escaped so it shows as written.
+ */
+function srtCueTextToWebVtt(line: string) {
+  return line
+    .split(srtTagPattern)
+    .map((part, index) => {
+      if (index % 2 === 1) {
+        const shared = webVttSharedTagPattern.exec(part);
+        return shared ? `<${shared[1]}${shared[2].toLowerCase()}>` : "";
+      }
+      return part.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    })
+    .join("");
 }
 
 /** A subtitle track of the video element: a sidecar file, or an embedded stream the server extracts. */

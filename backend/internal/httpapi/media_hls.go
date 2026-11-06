@@ -102,7 +102,7 @@ func (s *Server) getVideoPlaybackInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	audioTracks := videoAudioTracks(source.Probe)
 	trackQuery := videoAudioTrackQuery(audioTracks, source.AudioTrack)
-	subtitles := s.videoSubtitleTracksFor(r.Context(), source)
+	subtitles := videoSubtitleTracksFor(source)
 	// A client asks for a transcode after direct playback failed, which a
 	// remux of the same video stream would repeat.
 	if !forcePlaybackTranscode(r) {

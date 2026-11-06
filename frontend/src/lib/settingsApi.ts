@@ -191,6 +191,8 @@ export type AppSettings = {
   cacheEnabled: boolean;
   cacheLimitGb: number;
   transcodeCacheLimitGb: number;
+  /** Playback conversions that run at once across the server, 1 to 5. */
+  transcodeSlots?: number;
   videoHardwareAcceleration?: VideoHardwareAcceleration;
   /** Render node the hardware encoder opens. */
   videoHardwareDevice?: string;
@@ -306,6 +308,7 @@ export const settingsApi = {
     cacheEnabled?: boolean;
     cacheLimitGb?: number;
     transcodeCacheLimitGb?: number;
+    transcodeSlots?: number;
     videoHardwareAcceleration?: VideoHardwareAcceleration;
     videoHardwareDevice?: string;
     remoteDownloadLimitGb?: number;

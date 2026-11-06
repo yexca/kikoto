@@ -927,6 +927,9 @@ export const surfaceJapanese = {
       transcodeLimitDescription:
         "変換済み音声と HLS 動画セグメントが共有するキャッシュ上限です。最も長く未使用のファイルから削除します。",
       videoHardware: "動画の変換",
+      transcodeSlots: "同時変換数",
+      transcodeSlotsDescription:
+        "サーバー全体で同時に実行する動画と音声の再生用変換の数です（1〜5）。これを超える変換は少し待ってから、サーバーが混雑していると伝えます。",
       videoHardwareDescription:
         "変換する動画を Intel GPU でエンコードできます。GPU がオフ、利用不可、または失敗したときは CPU のエンコーダーで再生します。",
       videoHardwareEncoder: "ハードウェアエンコーダー",
