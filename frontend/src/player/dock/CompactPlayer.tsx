@@ -228,15 +228,18 @@ export function CompactPlayer({
               secondaryClassName="text-xs text-muted-foreground"
             />
           </button>
-          <GlyphButton
-            data-compact-control
-            className="h-9 w-9 text-muted-foreground hover:text-foreground"
-            onClick={() => onDockModeChange("mini")}
-            aria-label={t("player.mini")}
-            title={t("player.mini")}
-          >
-            <Minimize2 className="h-4 w-4" />
-          </GlyphButton>
+          {/* Phones reach Mini by swiping the bar down, so the bar keeps only play and next. */}
+          {!isMobile && (
+            <GlyphButton
+              data-compact-control
+              className="h-9 w-9 text-muted-foreground hover:text-foreground"
+              onClick={() => onDockModeChange("mini")}
+              aria-label={t("player.mini")}
+              title={t("player.mini")}
+            >
+              <Minimize2 className="h-4 w-4" />
+            </GlyphButton>
+          )}
           <GlyphButton
             data-compact-control
             className="h-11 w-11"
