@@ -371,7 +371,18 @@ seeking, and screen lyrics share one timeline.
 The work detail file viewer plays video in `VideoPreview`
 (`features/work-detail/media`), outside the global player. It attaches an HLS
 playlist natively on iOS and iPadOS (`prefersNativeVideoHls`) and through a
-lazily loaded hls.js elsewhere. `useVideoSubtitleTracks` renders its `<track>`
+lazily loaded hls.js elsewhere. The `<video>` element has no native controls;
+`VideoControls` lays its own over it, reading the element through
+`useVideoElementState` and keeping tap zones, double-tap streaks, the hide
+rule, and seeking in the pure `videoControlsModel`. It reuses the player's
+control primitives and seek steps through `player/mediaControls`. Keyboard
+shortcuts, buttons, and double taps all seek through `seekVideoTo`.
+`videoFullscreen` makes the stage element fullscreen, so the controls stay,
+except on iOS and iPadOS (`appleMobileWebKit`), whose fullscreen is the system
+player; the stage leaves fullscreen when it unmounts. Its menus pass the stage
+to `AnchoredPopover` as `container` while it is fullscreen, because a popover
+in `document.body` is not shown over a fullscreen element. Subtitle menu
+choices set each `<track>` element's `track.mode`. `useVideoSubtitleTracks` renders its `<track>`
 elements: same-name WebVTT, SRT, ASS, and SSA files from the video's lyrics
 matches (`sidecarSubtitleChoices`) load at once, with SRT and ASS rewritten as
 WebVTT through `lib/timedLyrics`, and the embedded streams that playback info

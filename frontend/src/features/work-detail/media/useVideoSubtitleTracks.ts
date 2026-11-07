@@ -15,8 +15,18 @@ import {
 const MAX_SUBTITLE_BYTES = 512 * 1024;
 const trackSelector = "track[data-subtitle-key]";
 
-/** A `<track>` element to render; `src` is a WebVTT object URL once the track has loaded. */
-export type RenderedSubtitleTrack = { key: string; label: string; language?: string; src?: string };
+/**
+ * A `<track>` element to render; `src` is a WebVTT object URL once the track
+ * has loaded. An embedded track reports whether it is loading or its last
+ * load failed.
+ */
+export type RenderedSubtitleTrack = {
+  key: string;
+  label: string;
+  language?: string;
+  src?: string;
+  status?: "loading" | "failed";
+};
 
 /**
  * The subtitle tracks of a video element. Sidecar files load at once, and a
@@ -47,6 +57,7 @@ export function useVideoSubtitleTracks(
     [streams, i18n.language, sidecars, t],
   );
   const [sources, setSources] = useState<Record<string, string | null>>({});
+  const [statuses, setStatuses] = useState<Record<string, "loading" | "failed">>({});
   const [sidecarsSettled, setSidecarsSettled] = useState(false);
   const requestedRef = useRef(new Set<string>());
   const initialAppliedRef = useRef(false);
@@ -96,12 +107,25 @@ export function useVideoSubtitleTracks(
       const signal = lifetimeRef.current?.controller.signal;
       if (!signal || track.kind !== "embedded" || requestedRef.current.has(track.key)) return;
       requestedRef.current.add(track.key);
+      const settle = (status: "failed" | null) =>
+        setStatuses((current) => {
+          const next = { ...current };
+          if (status) next[track.key] = status;
+          else delete next[track.key];
+          return next;
+        });
+      setStatuses((current) => ({ ...current, [track.key]: "loading" }));
       void api
         .getVideoSubtitle(track.url, signal)
-        .then((text) => store(track.key, videoSubtitleWebVtt(text)))
+        .then((text) => {
+          store(track.key, videoSubtitleWebVtt(text));
+          if (!signal.aborted) settle(null);
+        })
         .catch(() => {
+          if (signal.aborted) return;
           // Selecting the track again retries, such as after a busy server frees a slot.
           requestedRef.current.delete(track.key);
+          settle("failed");
         });
     },
     [store],
@@ -116,6 +140,11 @@ export function useVideoSubtitleTracks(
         return [{ key: track.key, label: track.label, language: track.language, src }];
       }),
     [sources, tracks],
+  );
+  // Kept apart from `rendered`, so a failed load does not select and request the track again by itself.
+  const withStatus = useMemo(
+    () => rendered.map((track) => (statuses[track.key] ? { ...track, status: statuses[track.key] } : track)),
+    [rendered, statuses],
   );
 
   // An embedded track loads when the viewer selects it in the video controls.
@@ -150,7 +179,7 @@ export function useVideoSubtitleTracks(
     if (element) element.track.mode = "showing";
   }, [rendered, sidecarsSettled, streams, tracks, videoRef]);
 
-  return rendered;
+  return withStatus;
 }
 
 async function loadSidecarText(subtitle: VideoSubtitle, signal: AbortSignal) {
