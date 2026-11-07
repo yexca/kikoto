@@ -44,6 +44,15 @@ action. Centered dialogs pad their backdrop by the safe-area insets and cap
 their height to the space between them, so a tall dialog's header and close
 action never sit under the status bar or notch.
 
+The page alone pads for the system bars. Both native shells draw the WebView
+under the status bar, and the `--safe-area-*` tokens give each surface the
+inset to clear. The Android shell (`KikotoSystemInsets`) lays every Android
+version out edge to edge, adds no native padding for a bar, and publishes the
+bar sizes as `--native-safe-area-*` variables; each token takes the larger of
+that variable and `env(safe-area-inset-*)`, so a WebView that reports the
+insets itself still gets them once. With the keyboard open, the shell ends the
+WebView above the keyboard and reports no bottom inset.
+
 The header owns the desktop page title and description. Mobile browsing
 destinations use the bottom navigation as their location cue and show a compact
 Kikoto mark instead; administrative destinations retain a single-line title.
