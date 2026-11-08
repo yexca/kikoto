@@ -8,10 +8,9 @@ Workflows make backend actions inspectable.
 - Workflows: built-in definitions, including the preset catalog sync
   workflows, with their triggers managed in the selected definition. There is no custom
   workflow editor.
-- A status strip at the top shows what is running now with its progress, how
-  many runs need attention, and the next scheduled run. Its first two cells and
-  **Activity** at its right end open a desktop panel or mobile sheet covering
-  every workflow; the next-scheduled cell selects that workflow. Active runs
+- A status strip at the top shows what is running now with its progress and
+  how many runs need attention. Both cells and **Activity** at its right end
+  open a desktop panel or mobile sheet covering every workflow. Active runs
   appear above **Needs attention** and **History**. Each row shows the status,
   run number, trigger, and elapsed time. List rows and the **Latest run** card
   open details inside the same panel: start and finish times, duration,
@@ -82,15 +81,16 @@ administrators.
   Translation page's **Stopped** view, and a transcription its work;
   **Open Activity** opens the full panel.
 - The workflow list groups every workflow by category: Basic (local scan, local
-  files, metadata sync, and Learn tag names), Collect (**Pull DLsite
-  rankings** and **Pull remote source rankings**), Catalog sync (the
-  subscription refresh and the catalog sync presets), and Remote (Availability
-  Watch, Fetch, and Check works on a source), each in
-  a fixed order. Every entry shows its latest run's status and time, and small
-  icons mark an enabled Startup trigger, schedule, or folder watcher. Wide
-  layouts keep the list beside the selected workflow; **Hide tab names** below
-  it collapses the list to icons that each keep a dot for the latest run, and
-  **Show tab names** expands it again. The page remembers this choice. On
+  files, metadata sync, and Learn tag names), Catalog sync (the catalog sync
+  presets), Remote (Fetch and Check works on a source), and Discover (**Pull
+  remote source rankings**, **Pull DLsite rankings**, Availability Watch, and
+  **Refresh subscriptions**, which are configured on the
+  [Discover](discover.md) page), each in a fixed order. Every entry is one
+  line: a dot on its icon shows the latest run's status, and small icons mark
+  an enabled Startup trigger, schedule, or folder watcher. The latest run's
+  time is on the selected workflow's **Latest run** card. Wide layouts keep the
+  list beside the selected workflow; **Hide tab names** below it collapses the
+  list to its icons, and **Show tab names** expands it again. The page remembers this choice. On
   phones the list is the landing view: tapping a workflow opens it, and the
   header back button or the browser's Back returns to the list.
   Definitions cannot be created, edited, or deleted from the page.

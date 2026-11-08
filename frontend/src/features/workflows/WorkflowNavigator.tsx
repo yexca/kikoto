@@ -3,19 +3,10 @@ import { Fragment, useEffect, useId, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { RailLabelsToggle, useRailLabelsShown } from "@/components/ui/rail-labels";
-import { intlLocaleFor } from "@/i18n";
-import { useLocale } from "@/i18n/LocaleProvider";
 import type { WorkflowDefinition, WorkflowRun, WorkflowTrigger } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { RunStatusDot, useRunLabels } from "./RunOverview";
-import {
-  formatRelativeTime,
-  isActiveRunStatus,
-  isDemoShowcaseActiveRun,
-  parseWorkflowTimestamp,
-} from "./runPresentation";
-import { useNow } from "./useRunClock";
 import type { WorkflowCategoryGroup } from "./workflowCategories";
 import { workflowCategoryIcons, workflowIcon } from "./workflowVisuals";
 
@@ -28,10 +19,10 @@ const automationGlyphs: { type: string; icon: LucideIcon; label: string }[] = [
 const LABELS_SHOWN_KEY = "kikoto:workflow-rail-labels-shown";
 
 /**
- * Every visible workflow, grouped by category, with its latest run and active
- * automation at a glance. Wide layouts keep it beside the selected workflow
- * and can collapse it to an icon rail that marks each latest run on its icon;
- * the mobile layout shows it as the landing list that opens a workflow.
+ * Every visible workflow, grouped by category, one line each: its name, a dot
+ * on its icon for the latest run, and its active automation. Wide layouts keep
+ * it beside the selected workflow and can collapse it to an icon rail; the
+ * mobile layout shows it as the landing list that opens a workflow.
  */
 export function WorkflowNavigator({
   groups,
@@ -52,13 +43,6 @@ export function WorkflowNavigator({
   const listRef = useRef<HTMLElement>(null);
   const [labelsShown, toggleLabels] = useRailLabelsShown(LABELS_SHOWN_KEY, true);
   const collapsed = !labelsShown && !mobile;
-  const anyActive = groups.some((group) =>
-    group.definitions.some((definition) => {
-      const run = latestRun(definition.code);
-      return run ? isActiveRunStatus(run.status) && !isDemoShowcaseActiveRun(run) : false;
-    }),
-  );
-  const now = useNow(true, anyActive ? 5000 : 30_000);
 
   useEffect(() => {
     if (mobile) return;
@@ -91,7 +75,6 @@ export function WorkflowNavigator({
               triggers={triggers}
               mobile={mobile}
               collapsed={collapsed}
-              now={now}
               onSelect={onSelect}
             />
           </Fragment>
@@ -122,7 +105,6 @@ function NavigatorGroup({
   triggers,
   mobile,
   collapsed,
-  now,
   onSelect,
 }: {
   group: WorkflowCategoryGroup;
@@ -131,7 +113,6 @@ function NavigatorGroup({
   triggers: WorkflowTrigger[];
   mobile: boolean;
   collapsed: boolean;
-  now: number;
   onSelect: (definition: WorkflowDefinition) => void;
 }) {
   const { t } = useTranslation();
@@ -160,7 +141,6 @@ function NavigatorGroup({
               triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id && trigger.enabled)}
               mobile={mobile}
               collapsed={collapsed}
-              now={now}
               onSelect={() => onSelect(definition)}
             />
           </li>
@@ -177,7 +157,6 @@ function NavigatorItem({
   triggers,
   mobile,
   collapsed,
-  now,
   onSelect,
 }: {
   definition: WorkflowDefinition;
@@ -186,10 +165,10 @@ function NavigatorItem({
   triggers: WorkflowTrigger[];
   mobile: boolean;
   collapsed: boolean;
-  now: number;
   onSelect: () => void;
 }) {
   const { t } = useTranslation();
+  const labels = useRunLabels();
   const statusId = useId();
   const Icon = workflowIcon(definition.code);
   const fullName = t(`workflowPage.builtInDefinitions.${definition.code}.name`, {
@@ -197,6 +176,7 @@ function NavigatorItem({
   });
   const label = t(`workflowPage.shortNames.${definition.code}`, { defaultValue: fullName });
   const glyphs = automationGlyphs.filter((glyph) => triggers.some((trigger) => trigger.triggerType === glyph.type));
+  const status = run ? labels.status(run.status) : run === null ? t("workflowPage.console.neverRun") : "";
   return (
     <button
       type="button"
@@ -208,10 +188,10 @@ function NavigatorItem({
       className={cn(
         "group/item relative flex w-full min-w-0 items-center gap-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         mobile
-          ? "min-h-16 px-3 py-2.5 hover:bg-muted/50 active:bg-muted/70"
+          ? "min-h-14 px-3 py-2 hover:bg-muted/50 active:bg-muted/70"
           : collapsed
             ? "h-11 w-11 justify-center rounded-md hover:bg-muted/50 active:bg-muted/70"
-            : "min-h-14 rounded-md px-2 py-2 hover:bg-muted/50 active:bg-muted/70",
+            : "min-h-11 rounded-md px-2 py-1 hover:bg-muted/50 active:bg-muted/70",
         selected && "bg-primary/10 hover:bg-primary/10",
       )}
       onClick={onSelect}
@@ -224,79 +204,35 @@ function NavigatorItem({
         )}
       >
         <Icon className="h-[18px] w-[18px]" aria-hidden />
-        {/* Without the status line, the latest run still shows on the icon; the description names it. */}
+        {/* The latest run is a dot on the icon; the description names it. */}
         {/* The badge reaches the rail's edge, so it clips a spinning status that would otherwise scroll the rail. */}
-        {collapsed && run && (
+        {run && (
           <span className="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center overflow-hidden rounded-full bg-background">
             <RunStatusDot status={run.status} decorative />
           </span>
         )}
       </span>
-      <span className={cn("grid min-w-0 flex-1 gap-0.5", collapsed && "sr-only")}>
-        <span className="flex min-w-0 items-center gap-2">
-          <span className={cn("min-w-0 flex-1 truncate text-sm", selected ? "font-semibold" : "font-medium")}>
-            {label}
+      <span className={cn("flex min-w-0 flex-1 items-center gap-2", collapsed && "sr-only")}>
+        <span className={cn("min-w-0 flex-1 truncate text-sm", selected ? "font-semibold" : "font-medium")}>
+          {label}
+        </span>
+        {glyphs.length > 0 && (
+          <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground" aria-hidden>
+            {glyphs.map((glyph) => {
+              const GlyphIcon = glyph.icon;
+              return (
+                <span key={glyph.type} title={t(glyph.label)}>
+                  <GlyphIcon className="h-3.5 w-3.5" />
+                </span>
+              );
+            })}
           </span>
-          {glyphs.length > 0 && (
-            <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground" aria-hidden>
-              {glyphs.map((glyph) => {
-                const GlyphIcon = glyph.icon;
-                return (
-                  <span key={glyph.type} title={t(glyph.label)}>
-                    <GlyphIcon className="h-3.5 w-3.5" />
-                  </span>
-                );
-              })}
-            </span>
-          )}
-        </span>
-        <span id={statusId} className="min-w-0">
-          <LatestRunLine run={run} now={now} />
-          {glyphs.map((glyph) => (
-            <span key={glyph.type} className="sr-only">
-              , {t(glyph.label)}
-            </span>
-          ))}
-        </span>
+        )}
+      </span>
+      <span id={statusId} className="sr-only">
+        {[status, ...glyphs.map((glyph) => t(glyph.label))].filter(Boolean).join(", ")}
       </span>
       {mobile && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
     </button>
-  );
-}
-
-function LatestRunLine({ run, now }: { run: WorkflowRun | null | undefined; now: number }) {
-  const { t } = useTranslation();
-  const labels = useRunLabels();
-  const { resolvedLocale } = useLocale();
-  if (run === undefined) {
-    return <span className="block h-3 w-24 animate-pulse rounded bg-muted" aria-hidden />;
-  }
-  if (run === null) {
-    return (
-      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <span className="h-2 w-2 shrink-0 rounded-full border border-muted-foreground/50" aria-hidden />
-        {t("workflowPage.console.neverRun")}
-      </span>
-    );
-  }
-  const active = isActiveRunStatus(run.status);
-  const moment = parseWorkflowTimestamp(
-    active ? run.startedAt || run.createdAt : run.finishedAt || run.startedAt || run.createdAt,
-  );
-  return (
-    <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-      <span className="flex w-3.5 shrink-0 justify-center">
-        <RunStatusDot status={run.status} decorative />
-      </span>
-      <span className={cn("truncate", active && "text-info-foreground")}>{labels.status(run.status)}</span>
-      {moment && !isDemoShowcaseActiveRun(run) && (
-        <>
-          <span aria-hidden>·</span>
-          <span className="shrink-0 tabular-nums">
-            {formatRelativeTime(moment, intlLocaleFor(resolvedLocale), now)}
-          </span>
-        </>
-      )}
-    </span>
   );
 }

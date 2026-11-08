@@ -417,30 +417,30 @@ distributed request lock between separate application processes.
 The Workflows page lists the manually runnable built-in workflows and the
 preset workflows in one workflow list, grouped by a frontend-owned category
 keyed by workflow code: Basic (local scan, local files, metadata sync, Learn
-tag names), Collect (the DLsite and remote source ranking pulls), Catalog sync
-(the subscription refresh and the catalog sync presets), and Remote
-(Availability Watch, Fetch, and works on a source). A linked run of any other
-workflow adds a read-only entry for it, which stays with Basic. Availability
-Watch, the subscription refresh, and the ranking pulls are configured on the
-Discover page: their entries show the latest run, the health summary, and
-the run history with a link there, and have no Run options or triggers. Each entry shows
-its latest run's status and time and the enabled automation that starts it
-(Startup, schedule, or folder watch). The page reads each listed workflow's
+tag names), Catalog sync (the catalog sync presets), Remote (Fetch and works on
+a source), and Discover (the DLsite and remote source ranking pulls,
+Availability Watch, and the subscription refresh). A linked run of any other
+workflow adds a read-only entry for it, which stays with Basic. The Discover
+group holds the workflows configured on the Discover page: their entries show
+the Latest run card with a link there, and have no Run options or triggers.
+Each entry is one line: its name, a dot on its icon for the latest run's
+status, and icons for the enabled automation that starts it (Startup,
+schedule, or folder watch). The status and automation are also the entry's
+accessible description. The page reads each listed workflow's
 latest run when it loads and again when the active queue or attention count
 changes; the per-workflow summaries have no timer of their own.
 
 Wide layouts keep the list beside the selected workflow and can collapse it to
-an icon rail. Each icon then keeps a dot for its latest run, the full workflow
-name stays the accessible name and tooltip, and the choice is stored locally
+an icon rail. The full workflow name stays the accessible name and tooltip, and the choice is stored locally
 for this page. The mobile navigation layout lands on the list and opens one
 workflow at a time: opening a workflow adds a history entry, and the header
 back action returns to the list. The selected workflow remains the persisted
 and linked state (`?workflow=<code>`).
 
-A status strip above the list shows the newest active run with its progress,
-the Needs attention count, and the next enabled schedule. It reads the global
-queue every few seconds while work is active and every 15 seconds otherwise;
-Demo reads it once. Its cells open Activity or select the scheduled workflow.
+A status strip above the list shows the newest active run with its progress
+and the Needs attention count. It reads the global queue every few seconds
+while work is active and every 15 seconds otherwise; Demo reads it once. Both
+cells open Activity. A workflow's next start is stated by its triggers.
 
 The selected workflow shows its name and description, its run form, a Latest
 run card, and its triggers. Each fact about a run appears once on the page: the

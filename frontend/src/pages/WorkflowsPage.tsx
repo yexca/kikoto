@@ -530,9 +530,7 @@ export function WorkflowsPage({
       <WorkflowPulse
         pulse={overview.pulse}
         definitions={visibleDefinitions}
-        triggers={triggers}
         onOpenActivity={() => activityLocation.setOpen(true)}
-        onSelectWorkflow={selectDefinition}
         activity={
           <WorkflowActivity
             key="global-activity"

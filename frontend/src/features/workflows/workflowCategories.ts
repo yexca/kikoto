@@ -1,6 +1,6 @@
 import type { WorkflowDefinition } from "@/lib/api";
 
-export const workflowCategories = ["basic", "collect", "catalog", "remote"] as const;
+export const workflowCategories = ["basic", "catalog", "remote", "discover"] as const;
 
 export type WorkflowCategory = (typeof workflowCategories)[number];
 
@@ -26,15 +26,16 @@ const workflowCategoryByCode: Record<string, WorkflowCategory> = {
   local_media_index: "basic",
   metadata_sync: "basic",
   metadata_genre_names: "basic",
-  remote_popular_collection: "collect",
-  dlsite_popular_collection: "collect",
   circle_catalog_sync: "catalog",
   series_catalog_sync: "catalog",
   voice_catalog_sync: "catalog",
-  creator_subscription_refresh: "catalog",
-  availability_watch: "remote",
   remote_work_fetch: "remote",
   source_presence_check: "remote",
+  // Configured on the Discover page; Workflows keeps their runs.
+  remote_popular_collection: "discover",
+  dlsite_popular_collection: "discover",
+  availability_watch: "discover",
+  creator_subscription_refresh: "discover",
 };
 
 /** Workflows without a declared category, such as a read-only run context, stay with the basic set. */

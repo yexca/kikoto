@@ -971,7 +971,7 @@ test("definitions foreground runnable presets and send ranking pulls to the Disc
   await page.goto("/workflows");
 
   const list = workflowList(page);
-  await expect(list.getByRole("heading")).toHaveText(["Basic", "Collect", "Remote"]);
+  await expect(list.getByRole("heading")).toHaveText(["Basic", "Discover"]);
   await expect(list.getByRole("button")).toHaveCount(6);
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toHaveCount(0);
   await expect(list.getByText("Built-in", { exact: true })).toHaveCount(0);

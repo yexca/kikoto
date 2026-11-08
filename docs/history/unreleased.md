@@ -33,5 +33,10 @@
   itself while a run is active and after a failed or partial run. The run
   history bars close the card, and **All runs** opens Activity with only that
   workflow's runs. The header leaves out the category and step count.
+- The Workflows status strip shows what is running and what needs attention,
+  and leaves a workflow's next start to its triggers. Every workflow in the
+  list is one line, with the latest run as a dot on its icon. The ranking pulls,
+  Availability Watch, and the subscription refresh, which are configured on
+  the Discover page, form their own Discover group at the end of the list.
 
 </details>
