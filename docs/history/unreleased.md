@@ -22,3 +22,16 @@
   controls, except on iPhone and iPad, which still use the system player.
 
 </details>
+
+<details>
+<summary><strong>Workflows and Activity</strong></summary>
+
+- A selected workflow shows one **Latest run** card in place of the run
+  summary, success rate, typical duration, run monitor, and Recent runs list.
+  The card states the latest run's status, number, time, and duration, lists
+  its stages, and keeps its log folded after a success; the log opens by
+  itself while a run is active and after a failed or partial run. The run
+  history bars close the card, and **All runs** opens Activity with only that
+  workflow's runs. The header leaves out the category and step count.
+
+</details>

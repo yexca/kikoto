@@ -442,18 +442,22 @@ the Needs attention count, and the next enabled schedule. It reads the global
 queue every few seconds while work is active and every 15 seconds otherwise;
 Demo reads it once. Its cells open Activity or select the scheduled workflow.
 
-The selected workflow shows its category, stage count, and description, then a
-health summary of its latest 20 runs: the last run, the success rate of finished
-runs, their median duration, and the next automatic start. A duration strip
-plots those runs oldest first; ordinary successes stay neutral so failures,
-partial results, and active runs stand out.
+The selected workflow shows its name and description, its run form, a Latest
+run card, and its triggers. Each fact about a run appears once on the page: the
+card holds the latest run, and Activity holds every run.
 
 Run options form a run form that ends in a run bar holding Run, any workflow
 action, and the first reason Run is unavailable. The bar sticks above the
 page's fixed bottom controls while a long form scrolls.
 Preset option groups (Input, Filter, Actions) become columns once
 the form is wide enough. A workflow without run options keeps Run in its header.
-The latest run's monitor follows the form, then triggers and recent runs.
+The Latest run card follows the form. It states the latest run's status,
+number, time, and duration, lists its stages, and holds its log, which stays
+folded for a success and opens by itself while a run is active and after a
+failed or partial one. A duration strip of the latest 20 runs closes the card;
+ordinary successes stay neutral so failures, partial results, and active runs
+stand out. **All runs** opens Activity narrowed to that workflow. Each trigger
+row states when it next starts the workflow.
 
 ## Workflow Permissions
 
@@ -533,8 +537,11 @@ The desktop popover and mobile sheet show active runs above two server-paged
 views: Needs attention and History. The active list and both views are global
 across workflow definitions, so a job
 submitted from one workflow remains visible while another definition is open.
-Recent runs and list rows open full run details inside the same panel; returning
-to the list keeps the global scope. Activity has no page of its own:
+The Latest run card and list rows open full run details inside the same panel;
+returning to the list keeps its scope. A Latest run card's **All runs** opens
+the panel narrowed to that workflow (`?runsOf=<code>`), and its scope chip
+widens it to every workflow again; opening Activity from the status strip is
+always global. Activity has no page of its own:
 `/activity` and `/runs` links redirect into Workflows with the panel open, and a
 linked run resolves its workflow before loading history, including a read-only
 context for workflows without a configurable definition. The header

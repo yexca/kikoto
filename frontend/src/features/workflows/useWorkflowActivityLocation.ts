@@ -9,6 +9,8 @@ function readLocation() {
     open,
     runId: open && Number.isSafeInteger(run) && run > 0 ? run : null,
     workflowCode: params.get("workflow") ?? "",
+    /** The workflow whose runs the open Activity list is narrowed to; empty for every workflow. */
+    runsOf: open ? (params.get("runsOf") ?? "") : "",
   };
 }
 
@@ -35,8 +37,10 @@ export function useWorkflowActivityLocation() {
   };
   return {
     ...location,
+    /** Opens or closes Activity across every workflow. */
     setOpen: (open: boolean) =>
       update((params) => {
+        params.delete("runsOf");
         if (open) params.set("activity", "1");
         else {
           params.delete("activity");
@@ -49,13 +53,14 @@ export function useWorkflowActivityLocation() {
       }),
     clearWorkflow: () =>
       update((params) => {
-        for (const key of ["workflow", "run", "activity", "view", "dialog"]) params.delete(key);
+        for (const key of ["workflow", "run", "activity", "runsOf", "view", "dialog"]) params.delete(key);
       }),
     /** Selects a workflow; `push` makes the selection a history step, as when a mobile list opens one. */
     selectWorkflow: (code: string, push = false) =>
       update((params) => {
         params.set("workflow", code);
         params.delete("run");
+        params.delete("runsOf");
         params.delete("view");
         params.delete("dialog");
       }, push),
@@ -64,7 +69,20 @@ export function useWorkflowActivityLocation() {
       update((params) => {
         params.set("activity", "1");
         params.delete("run");
+        params.delete("runsOf");
       }, true),
+    /** Opens the Activity list narrowed to one workflow's runs. */
+    openWorkflowRuns: (code: string) =>
+      update((params) => {
+        params.set("activity", "1");
+        params.set("runsOf", code);
+        params.delete("run");
+      }, true),
+    /** Widens the open Activity list back to every workflow. */
+    showAllWorkflows: () =>
+      update((params) => {
+        params.delete("runsOf");
+      }),
     openRun: (runId: number, workflowCode?: string) =>
       update((params) => {
         params.set("activity", "1");

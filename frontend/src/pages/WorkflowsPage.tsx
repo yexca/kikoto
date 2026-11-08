@@ -16,7 +16,7 @@ import { useWorkflowActivityLocation } from "@/features/workflows/useWorkflowAct
 import { WorkflowActivity } from "@/features/workflows/WorkflowActivity";
 import { useWorkflowOverview } from "@/features/workflows/useWorkflowOverview";
 import { WorkflowDetail } from "@/features/workflows/WorkflowDetail";
-import { workflowHistorySize } from "@/features/workflows/WorkflowDetailFrame";
+import { workflowHistorySize } from "@/features/workflows/RunHistoryStrip";
 import { builtInWorkflowOrder, groupWorkflowDefinitions } from "@/features/workflows/workflowCategories";
 import { WorkflowNavigator } from "@/features/workflows/WorkflowNavigator";
 import {
@@ -509,6 +509,7 @@ export function WorkflowsPage({
     if (selectedDefinition) await refreshRecentRuns(selectedDefinition.code);
   };
   const openActivityRun = (run: WorkflowRun) => activityLocation.openRun(run.id, run.workflowCode);
+  const activityScope = definitions.find((definition) => definition.code === activityLocation.runsOf) ?? null;
 
   return (
     <div className="space-y-4">
@@ -535,8 +536,9 @@ export function WorkflowsPage({
         activity={
           <WorkflowActivity
             key="global-activity"
-            workflowCode="all"
-            workflowName=""
+            workflowCode={activityScope?.code ?? "all"}
+            workflowName={activityScope ? workflowName(activityScope, t) : ""}
+            onShowAllWorkflows={activityScope ? activityLocation.showAllWorkflows : undefined}
             open={activityLocation.open}
             onOpenChange={activityLocation.setOpen}
             selectedRunId={activityLocation.runId}
@@ -602,10 +604,10 @@ export function WorkflowsPage({
                 {selectedDefinition && subscriptionsScheduledWorkflowCodes.has(selectedDefinition.code) ? (
                   <SubscriptionsManagedWorkflowPanel
                     definition={selectedDefinition}
-                    triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === selectedDefinition.id)}
                     recentRuns={recentDefinitionRuns}
                     message={workflowCopy(subscriptionsManagedWorkflowPaths[selectedDefinition.code].message)}
                     onOpenRun={openActivityRun}
+                    onOpenRuns={() => activityLocation.openWorkflowRuns(selectedDefinition.code)}
                     onOpenSubscriptions={() =>
                       openWorkflowPath(subscriptionsManagedWorkflowPaths[selectedDefinition.code].path)
                     }
@@ -635,6 +637,9 @@ export function WorkflowsPage({
                     onTriggerRunOptionsChange={setCurrentTriggerRunOptions}
                     recentRuns={recentDefinitionRuns}
                     onOpenRun={openActivityRun}
+                    onOpenRuns={
+                      selectedDefinition ? () => activityLocation.openWorkflowRuns(selectedDefinition.code) : undefined
+                    }
                     onCreateTrigger={createAutomationTrigger}
                     onEditTrigger={editAutomationTrigger}
                     onToggleTrigger={toggleAutomationTrigger}

@@ -25,6 +25,7 @@ export function WorkflowActivity({
   staticDemo,
   canSyncMetadata,
   showCounts = true,
+  onShowAllWorkflows,
 }: {
   workflowCode: string;
   workflowName: string;
@@ -40,6 +41,8 @@ export function WorkflowActivity({
   canSyncMetadata: boolean;
   /** Off when a surrounding status strip already shows the running and attention counts. */
   showCounts?: boolean;
+  /** Offered while the list is narrowed to one workflow; widens it to every workflow. */
+  onShowAllWorkflows?: () => void;
 }) {
   const { t } = useTranslation();
   const mobile = useMobileNavigationLayout();
@@ -52,7 +55,19 @@ export function WorkflowActivity({
   );
   const [page, setPage] = useState(1);
   const [activePage, setActivePage] = useState(1);
-  const [snapshot, setSnapshot] = useState<{ view: string; page: number; result: WorkflowRunsPage } | null>(null);
+  const [snapshot, setSnapshot] = useState<{
+    code: string;
+    view: string;
+    page: number;
+    result: WorkflowRunsPage;
+  } | null>(null);
+  // Another workflow scope starts from its first pages.
+  const [pageScope, setPageScope] = useState(workflowCode);
+  if (pageScope !== workflowCode) {
+    setPageScope(workflowCode);
+    setPage(1);
+    setActivePage(1);
+  }
   const [active, setActive] = useState<WorkflowRunsPage | null>(null);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
@@ -87,7 +102,7 @@ export function WorkflowActivity({
             setPage(Math.max(1, Math.ceil(result.total / 8)));
             return;
           }
-          setSnapshot({ view, page, result });
+          setSnapshot({ code: workflowCode, view, page, result });
           const running = await api.listWorkflowRuns(activePage, 5, "running", "", workflowCode, controller.signal);
           if (controller.signal.aborted) return;
           setActive(running);
@@ -184,7 +199,8 @@ export function WorkflowActivity({
       </li>
     );
   };
-  const displayed = snapshot?.view === view && snapshot.page === page ? snapshot.result : null;
+  const displayed =
+    snapshot?.code === workflowCode && snapshot.view === view && snapshot.page === page ? snapshot.result : null;
   const runningCount = totals.running > 0 ? t("workflowActivity.runningCount", { count: totals.running }) : "";
   const content = (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -197,7 +213,20 @@ export function WorkflowActivity({
         ) : (
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold">{t("nav.activity")}</h2>
-            {workflowName && <p className="truncate text-xs text-muted-foreground">{workflowName}</p>}
+            {workflowName &&
+              (onShowAllWorkflows ? (
+                <button
+                  type="button"
+                  className="touch-target -ml-1 mt-0.5 flex min-h-6 max-w-full items-center gap-1 rounded-md bg-muted px-1.5 text-xs transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-muted/80"
+                  aria-label={t("workflowActivity.showAllWorkflows", { name: workflowName })}
+                  onClick={onShowAllWorkflows}
+                >
+                  <span className="truncate">{workflowName}</span>
+                  <X className="h-3 w-3 shrink-0" aria-hidden />
+                </button>
+              ) : (
+                <p className="truncate text-xs text-muted-foreground">{workflowName}</p>
+              ))}
           </div>
         )}
         <Button

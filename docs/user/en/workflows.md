@@ -12,11 +12,11 @@ Workflows make backend actions inspectable.
   many runs need attention, and the next scheduled run. Its first two cells and
   **Activity** at its right end open a desktop panel or mobile sheet covering
   every workflow; the next-scheduled cell selects that workflow. Active runs
-  appear above **Needs attention**
-  and **History**. Each row shows the status, run number, trigger, and elapsed
-  time. List rows and **Recent runs** open details inside the same panel: start
-  and finish times, duration, trigger, steps, candidates, run actions, and a
-  collapsed **Diagnostic log** of run events. **Back to runs** returns to the
+  appear above **Needs attention** and **History**. Each row shows the status,
+  run number, trigger, and elapsed time. List rows and the **Latest run** card
+  open details inside the same panel: start and finish times, duration,
+  trigger, steps, candidates, run actions, and a collapsed **Diagnostic log**
+  of run events. **Back to runs** returns to the
   list. Activity has no page of its own: `/activity` and `/runs` links open
   Workflows with the Activity panel and select the linked run.
 - Activity lists every run, including those of features with their own pages:
@@ -94,12 +94,9 @@ administrators.
   phones the list is the landing view: tapping a workflow opens it, and the
   header back button or the browser's Back returns to the list.
   Definitions cannot be created, edited, or deleted from the page.
-- The selected workflow summarizes its latest 20 runs: the last run, the share
-  of finished runs that succeeded, their typical (median) duration, and when it
-  starts next on its own (a schedule, the next service start, folder changes, or
-  manual only). A bar chart of those runs' durations, oldest first, keeps
-  ordinary successes neutral so failures and partial runs stand out; hover a
-  bar for its details and select it to open the run.
+- The selected workflow shows its name and description, its Run options, a
+  **Latest run** card, and its triggers. Each trigger states when it next
+  starts the workflow.
 - Needs attention collects unresolved candidates, metadata issues, and
   unacknowledged failures. Resolving or dismissing recorded issues clears the
   corresponding dedicated metadata-run notice. Other failures can be marked
@@ -162,18 +159,26 @@ administrators.
   workflow is selected.
   Local scan shows its follow-up option there; built-in workflows without run
   parameters show `Run` in their header instead.
-- The run monitor follows the form, then the triggers and recent runs. It
-  shows the latest run's stages and its log, side by side when there is room.
-  While a run is active, new log lines stream in and the log follows the latest
-  output unless you scroll up. Select a stage to show only its lines, and
-  select the run summary to open that run in Activity.
+- The **Latest run** card follows the form. Its first line states the latest
+  run's status, number, time, and duration; select it to open that run in
+  Activity. Below it are the run's stages and its log, side by side when there
+  is room. The log stays folded after a successful run and opens by itself
+  while a run is active and after a failed or partial one; **Show log** and
+  **Hide log** fold it by hand. While a run is active, new log lines stream in
+  and the log follows the latest output unless you scroll up. Select a stage to
+  show only its lines.
+- A bar chart of the latest 20 runs' durations, oldest first, closes the card.
+  Ordinary successes stay neutral so failures and partial runs stand out; hover
+  a bar for its details and select it to open the run. **All runs** opens
+  Activity with only this workflow's runs; select the workflow's name at the
+  top of the panel to show every workflow again.
 - Availability Watch, **Refresh subscriptions**, **Pull DLsite rankings**, and
   **Pull remote source rankings** are configured on the
   [Discover](discover.md) page, where the watch keeps its source setting
   and its pool is the **Watch** view, the subscription refresh
   its schedule, and
-  each ranking its own pull schedule. Here they show their latest runs, health
-  summary, and run history, link to that page, and have no Run options or
+  each ranking its own pull schedule. Here they show their **Latest run** card,
+  link to that page, and have no Run options or
   triggers of their own.
 - Sync a circle catalog, Sync a series catalog, and Sync a voice actor catalog
   (tabs **Circle catalog**, **Series catalog**, and **VA catalog**) are preset
