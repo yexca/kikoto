@@ -48,3 +48,12 @@
   keeps its workflow open, where the Latest run card reports it.
 
 </details>
+
+<details>
+<summary><strong>Operations and reliability</strong></summary>
+
+- Automatic database cleanup of expired sessions, old workflow runs, and old
+  ranking history runs shortly after the server starts and then every 10 days
+  instead of every day.
+
+</details>

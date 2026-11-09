@@ -733,7 +733,7 @@ with `metadata:sync`:
 - A variant's latest snapshot, every snapshot of a finished annual list, and
   any snapshot an account last displayed are always kept.
 
-The database cleanup task for old ranking history and its daily automatic run
+The database cleanup task for old ranking history and its automatic run
 apply these tiers, then remove the entries that no kept snapshot of their
 variant holds, so retained history keeps its titles and circles.
 

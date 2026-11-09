@@ -279,8 +279,8 @@ sections and `sources:write` for database sections.
   and the update each account last viewed are kept.
   Selected tasks are removed after confirmation and recorded in the audit log;
   media files are never deleted. Expired sessions, eligible old workflow runs,
-  and old ranking updates are also removed automatically once a day with the
-  same rules.
+  and old ranking updates are also removed automatically with the same rules,
+  shortly after the server starts and then every 10 days.
 - Path checks pause when the data folder is missing or empty, so an unmounted
   library is never treated as deleted.
 - **Works without any source** links to the **No available source** filter of

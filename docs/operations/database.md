@@ -79,9 +79,10 @@ Settings -> Cleanup lists the record types that the database cleanup can
 remove. Manual cleanup runs after confirmation and writes a `database.cleanup`
 audit entry.
 
-Two of those tasks also run automatically: expired sessions and old workflow
-runs. The workflow coordinator runs them two minutes after startup and then
-every 24 hours, with the same retention rules as the manual task. An old run is
+Three of those tasks also run automatically: expired sessions, old workflow
+runs, and old ranking history. The workflow coordinator runs them two minutes
+after startup and then every 10 days, with the same retention rules as the
+manual task. An old run is
 kept while a Fetch record, review candidate, metadata issue, or cleanup
 provenance still refers to it, and the latest run of each workflow is always
 kept. Automatic cleanup writes its results to the server log instead of the

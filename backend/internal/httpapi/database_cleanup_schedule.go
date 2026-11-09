@@ -11,7 +11,9 @@ const (
 	// databaseAutoCleanupInitialDelay lets startup recovery and startup
 	// workflows settle before the first automatic pass.
 	databaseAutoCleanupInitialDelay = 2 * time.Minute
-	databaseAutoCleanupPeriod       = 24 * time.Hour
+	// databaseAutoCleanupPeriod spaces later passes: the retention rules are
+	// measured in weeks or months, so a daily pass mostly finds nothing.
+	databaseAutoCleanupPeriod = 10 * 24 * time.Hour
 )
 
 // databaseAutoCleanupTasks are the manual Database cleanup tasks that also run
