@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { draftAfterSectionSave, sectionSettings } from "./settingsDraft";
+import { draftAfterSave, sectionSettings } from "./settingsDraft";
 
-describe("settings sections", () => {
+describe("settings saves", () => {
   const saved = { localScanDepth: 2, cacheLimitGb: 50, transcodeCacheLimitGb: 5, cacheEnabled: true };
 
-  it("sends the saved section's own fields and no other section's", () => {
+  it("sends the changed fields and no others", () => {
     const draft = { ...saved, cacheLimitGb: 80, localScanDepth: 4 };
 
     expect(sectionSettings(draft, ["cacheLimitGb", "transcodeCacheLimitGb", "cacheEnabled"])).toEqual({
@@ -16,20 +16,20 @@ describe("settings sections", () => {
     expect(sectionSettings(draft, ["localScanDepth"])).toEqual({ localScanDepth: 4 });
   });
 
-  it("keeps edits pending in other sections after a save", () => {
+  it("takes the server's value for the saved field and keeps a field still being typed", () => {
     const draft = { ...saved, cacheLimitGb: 80, localScanDepth: 4 };
-    const fromServer = { ...saved, cacheLimitGb: 80 };
+    const fromServer = { ...saved, cacheLimitGb: 64 };
 
-    expect(draftAfterSectionSave(fromServer, draft, saved, ["cacheLimitGb", "transcodeCacheLimitGb"])).toEqual({
-      ...fromServer,
+    expect(draftAfterSave(draft, fromServer, ["cacheLimitGb"])).toEqual({
+      ...saved,
+      cacheLimitGb: 64,
       localScanDepth: 4,
     });
   });
 
-  it("takes the server's value for the saved section and for untouched fields", () => {
-    const draft = { ...saved, cacheLimitGb: 80 };
-    const fromServer = { ...saved, cacheLimitGb: 64, transcodeCacheLimitGb: 6 };
+  it("returns a failed field to its saved value", () => {
+    const draft = { ...saved, cacheEnabled: false };
 
-    expect(draftAfterSectionSave(fromServer, draft, saved, ["cacheLimitGb"])).toEqual(fromServer);
+    expect(draftAfterSave(draft, saved, ["cacheEnabled"])).toEqual(saved);
   });
 });

@@ -438,8 +438,6 @@ export const personalEnglish = {
     description:
       "A day in your listening report starts at midnight in this time zone. Automatic follows the device you are using. Listening already recorded keeps the day it was counted on.",
     auto: "Automatic ({{zone}})",
-    save: "Save time zone",
-    saved: "Time zone saved.",
     saveFailed: "The time zone could not be saved.",
     loadFailed: "The time zone could not be loaded.",
   },

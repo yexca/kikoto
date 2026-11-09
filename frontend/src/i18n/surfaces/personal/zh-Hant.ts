@@ -422,8 +422,6 @@ export const personalHant = {
     description:
       "收聽報表裡的一天從這個時區的午夜開始。「自動」跟隨你正在使用的裝置。已經記錄的收聽保留當時計入的日期。",
     auto: "自動（{{zone}}）",
-    save: "儲存時區",
-    saved: "時區已儲存。",
     saveFailed: "無法儲存時區。",
     loadFailed: "無法載入時區。",
   },

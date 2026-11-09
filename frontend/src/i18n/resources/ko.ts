@@ -762,7 +762,6 @@ export const koreanResource = {
         copyDiagnostics: "진단 정보 복사",
         clearServer: "서버 지우기",
         accountSubtitle: "로그인하여 계정을 관리하세요",
-        profileUpdated: "계정 프로필을 업데이트했습니다.",
         profileUpdateFailed: "프로필 업데이트에 실패했습니다.",
         ["passwordChanged"]: "비밀번호를 변경했습니다. 다른 세션은 로그아웃되었습니다.",
         ["passwordChangeFailed"]: "비밀번호 변경에 실패했습니다.",
@@ -944,9 +943,11 @@ export const koreanResource = {
         seekBackward: "되감기 시간",
         seconds: "초",
         seekRange: "{{min}}초에서 {{max}}초 사이의 정수를 입력하세요.",
+        autosave: {
+          saving: "저장 중...",
+          saved: "저장됨",
+        },
         seekInvalid: "{{min}}초에서 {{max}}초 사이의 정수를 입력하세요.",
-        savePlayback: "재생 설정 저장",
-        seekUpdated: "재생 빨리감기/되감기 설정이 업데이트되었습니다.",
         loudness: "음량 정규화",
         loudnessDescription:
           "트랙 간 음량 차이를 맞춥니다. 각 로컬 파일은 정규화를 켠 상태로 처음 재생할 때 한 번만 측정됩니다.",
@@ -1012,7 +1013,6 @@ export const koreanResource = {
         displayName: "표시 이름",
         username: "사용자 이름",
         role: "역할",
-        saveProfile: "프로필 저장",
         ["password"]: "비밀번호",
         rootPasswordManaged:
           "root 비밀번호는 <env>KIKOTO_ROOT_PASSWORD</env>에서 관리됩니다. <file>.env</file>에서 업데이트한 후 Kikoto를 다시 시작하세요.",

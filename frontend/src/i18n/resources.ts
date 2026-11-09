@@ -428,7 +428,6 @@ export const englishResource = {
         copyDiagnostics: "Copy diagnostics",
         clearServer: "Clear server",
         accountSubtitle: "Sign in to manage your account",
-        profileUpdated: "Account profile updated.",
         profileUpdateFailed: "Profile update failed.",
         passwordChanged: "Password changed. Other sessions were signed out.",
         passwordChangeFailed: "Password change failed.",
@@ -614,9 +613,11 @@ export const englishResource = {
         seekBackward: "Backward seek",
         seconds: "seconds",
         seekRange: "Use a whole number from {{min}} to {{max}} seconds.",
+        autosave: {
+          saving: "Saving...",
+          saved: "Saved",
+        },
         seekInvalid: "Enter whole numbers from {{min}} to {{max}} seconds.",
-        savePlayback: "Save playback",
-        seekUpdated: "Playback seek settings updated.",
         loudness: "Loudness normalization",
         loudnessDescription:
           "Evens out loudness between tracks. Kikoto measures each local file once, the first time it plays with normalization on.",
@@ -684,7 +685,6 @@ export const englishResource = {
         displayName: "Display name",
         username: "Username",
         role: "Role",
-        saveProfile: "Save profile",
         password: "Password",
         rootPasswordManaged:
           "The root password is managed by <env>KIKOTO_ROOT_PASSWORD</env>. Update it in <file>.env</file> and restart Kikoto.",

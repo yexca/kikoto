@@ -674,7 +674,6 @@ export const surfaceJapanese = {
     settingsApiUnavailable: "設定APIを利用できません。",
     settingsSaved: "設定を保存しました。",
     accessPolicyRefreshFailed: "アクセス設定を保存しましたが、実行状態を更新できませんでした。",
-    accessPolicySaved: "アクセス設定を保存しました。",
     accessPolicySaveFailed: "アクセス設定を保存できませんでした。",
     asr: {
       title: "音声認識サービス",
@@ -971,7 +970,6 @@ export const surfaceJapanese = {
           "テストエンコードに失敗しました。コンテナーがデバイスを開けること、GPU ドライバーがあることを確認してください。",
         keyframesUnaligned: "エンコーダーが、セグメントの開始位置にキーフレームを置きません。",
       },
-      saveVideoHardware: "動画の変換を保存",
       transferSafety: "転送の安全性",
       downloadLimit: "ファイルごとのダウンロード上限",
       downloadLimitDescription:
@@ -988,7 +986,6 @@ export const surfaceJapanese = {
       initialBackoffDescription: "リモートのレート制限応答後の初回再試行待機時間です。",
       maximumBackoff: "最大待機時間",
       maximumBackoffDescription: "ソースの Retry-After を含む、レート制限時の待機時間の上限です。",
-      save: "設定を保存",
       transcodeCache: "変換キャッシュ",
       onDisk: "ディスク使用量",
       segments: "{{count}}ファイル",
@@ -1086,7 +1083,10 @@ export const surfaceJapanese = {
       instance: "インスタンスアクセス",
       anonymous: "匿名アクセス",
       anonymousDescription: "アカウントなしでライブラリを閲覧・再生",
-      save: "アクセス設定を保存",
+      enableTitle: "匿名アクセスを許可しますか？",
+      enableDescription:
+        "このサーバーに接続できる人なら誰でも、アカウントなしでライブラリを閲覧し、作品を再生できるようになります。",
+      enable: "許可",
     },
     routing: {
       playback: "再生",
@@ -1205,7 +1205,6 @@ export const surfaceJapanese = {
     library: {
       local: "ローカルライブラリ",
       scanDepth: "スキャン深度",
-      save: "ローカル設定を保存",
       libraries: "ライブラリ",
       librariesDescription: "このサーバーが読み込むローカルライブラリとリモートソース。",
       librariesSummary: "ローカルライブラリと、リモートソース {{total}} 件中 {{enabled}} 件が有効",
@@ -1214,8 +1213,8 @@ export const surfaceJapanese = {
       storageSettings: "ライブラリストレージの設定",
       poolsOnline: "{{total}} 件中 {{online}} 件がオンライン",
       settingsGroup: "設定",
+      networkPrivacy: "ネットワークとプライバシー",
       addSource: "ソースを追加",
-      kikoeruImport: "Kikoeru アカウントの取り込み",
       kikoeruImportDescription:
         "各アカウントは個人データから、Kikoeru サーバー上の自分のレビューとプレイリストを読み取れます。",
       kikoeruPrivateAddresses: "すべてのアカウントに LAN アドレスを許可",
@@ -1225,24 +1224,17 @@ export const surfaceJapanese = {
       kikoeruPrivateEnableDescription:
         "サインインしたどのアカウントでも、このサーバーからルーターや NAS などローカルネットワーク上の機器に接続させ、応答の有無を知ることができるようになります。すべてのアカウントを信頼できる場合のみオンにしてください。",
       kikoeruPrivateEnable: "許可",
-      saveKikoeruImport: "取り込み設定を保存",
-      remoteAddresses: "リモートソースのアドレス",
-      remoteAddressesDescription: "各リモートソースのネットワーク上の場所です。",
       hideRemoteAddresses: "ソースを管理しないアカウントからアドレスを隠す",
       hideRemoteAddressesDescription:
         "オンにすると、ソースを管理する権限のないアカウントとサインインしていない閲覧者には、ソースの API・サイト・予備のアドレス、ソースサイト上の作品へのリンク、トラックやアクティビティに含まれる上流 URL が渡されません。閲覧、再生、カバー、テキストプレビューはこのサーバーを経由します。",
-      saveRemoteAddresses: "アドレス設定を保存",
-      lyricsFiles: "歌詞ファイル",
       lyricsFilesDescription:
         "歌詞を管理 が、作品フォルダーにすでにある歌詞を Kikoto の lyrics_kikoto フォルダーに取り込む方法です。",
       folderLyricsMode: "作品フォルダーの歌詞",
       folderLyricsModeDescription:
         "コピーでは作品自身のファイルはそのまま残り、移動では元の場所から移されます。編集ごとに選ぶこともできます。",
-      saveLyricsFiles: "歌詞の設定を保存",
       creatorCatalogs: "クリエイターのカタログ",
       catalogFreshnessDays: "カタログの更新日数",
       catalogFreshnessDescription: "サークルと声優のカタログは、最後の更新からこの日数が過ぎると注意状態になります。",
-      saveCreatorCatalogs: "カタログ設定を保存",
       configure: "設定",
       deleteSource: "ソースを削除",
       checkHealth: "状態を確認",

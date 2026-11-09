@@ -1,7 +1,7 @@
 /**
- * The settings one section's Save sends: that section's own fields and nothing
- * else. A setting that belongs to another section is not sent, so it is never
- * revalidated and cannot make this save fail.
+ * The settings one change saves: its own fields and nothing else. A setting
+ * elsewhere is not sent, so it is never revalidated and cannot make this save
+ * fail.
  */
 export function sectionSettings<Draft extends object, Key extends keyof Draft>(
   draft: Draft,
@@ -13,18 +13,14 @@ export function sectionSettings<Draft extends object, Key extends keyof Draft>(
 }
 
 /**
- * The draft after one section was saved: the server's values, with the edits
- * still pending in the other sections kept as typed.
+ * The draft after a save of `keys` settles: those fields take `settled`, the
+ * server's answer or, after a failure, the values saved before. A field still
+ * being typed elsewhere keeps what was typed.
  */
-export function draftAfterSectionSave<Draft extends object>(
-  saved: Draft,
+export function draftAfterSave<Draft extends object>(
   draft: Draft,
-  savedBefore: Draft,
-  savedKeys: readonly (keyof Draft)[],
+  settled: Draft,
+  keys: readonly (keyof Draft)[],
 ): Draft {
-  const next = { ...saved };
-  for (const key of Object.keys(draft) as Array<keyof Draft>) {
-    if (!savedKeys.includes(key) && draft[key] !== savedBefore[key]) next[key] = draft[key];
-  }
-  return next;
+  return { ...draft, ...sectionSettings(settled, keys) };
 }

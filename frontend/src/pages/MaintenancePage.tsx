@@ -1,8 +1,9 @@
-import { ArrowRight, Eraser, HardDriveDownload, Loader2, Save } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowRight, Eraser, HardDriveDownload, Users } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
+import { AutosaveStatus, useAutosaveStatus } from "@/components/settings/AutosaveStatus";
 import {
   SettingsDisclosure,
   SettingsNumberInput,
@@ -22,7 +23,7 @@ import { ProxySettingsSection } from "@/features/proxy";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { RemoteSourceDialog } from "@/features/sources/RemoteSourceDialog";
 import { LibrarySourceList, type LocalLibraryEntry } from "@/features/sources/LibrarySourceList";
-import { KikoeruImportAccessSection } from "@/features/user-data/KikoeruImportAccessSection";
+import { KikoeruImportAccessRow } from "@/features/user-data/KikoeruImportAccessRow";
 import {
   DATA_PREFIX,
   DEFAULT_CACHE_SUFFIX,
@@ -41,7 +42,7 @@ import {
   type VideoHardwareAcceleration,
 } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
-import { draftAfterSectionSave, sectionSettings } from "@/pages/settingsDraft";
+import { draftAfterSave, sectionSettings } from "@/pages/settingsDraft";
 import { UsersPage } from "@/pages/UsersPage";
 import { ASRSettingsSection } from "@/features/asr-settings/ASRSettingsSection";
 import { LLMSettingsSection } from "@/features/llm-settings/LLMSettingsSection";
@@ -69,6 +70,17 @@ type RuntimeDraft = {
   kikoeruImportPrivateAddresses: boolean;
   hideRemoteSourceAddresses: boolean;
   folderLyricsMode: FolderLyricsMode;
+};
+
+/**
+ * How a settings section edits the runtime settings. A choice saves at once; a
+ * typed field updates as it is typed and saves when its edit is finished.
+ */
+type RuntimeEditor = {
+  change: (next: Partial<RuntimeDraft>) => void;
+  /** Saves a typed field if it differs from the saved value; null when it does not. */
+  commit: (key: keyof RuntimeDraft) => Promise<boolean> | null;
+  save: (next: Partial<RuntimeDraft>) => Promise<boolean>;
 };
 
 function runtimeDraftFromSettings(settings: AppSettings): RuntimeDraft {
@@ -119,9 +131,15 @@ export function MaintenancePage({
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
   const [draft, setDraft] = useState<RuntimeDraft | null>(null);
-  const [savingRuntime, setSavingRuntime] = useState(false);
   const [anonymousAccessEnabled, setAnonymousAccessEnabled] = useState(false);
   const [isAccessPolicySaving, setIsAccessPolicySaving] = useState(false);
+  const [confirmAnonymousAccess, setConfirmAnonymousAccess] = useState(false);
+  const localStatus = useAutosaveStatus();
+  const catalogStatus = useAutosaveStatus();
+  const networkStatus = useAutosaveStatus();
+  const accessStatus = useAutosaveStatus();
+  const savedSettings = useRef<AppSettings | null>(null);
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const [draftSource, setDraftSource] = useState<FileSource>(emptyRemoteSource);
   const [editingSourceId, setEditingSourceId] = useState<number | null>(null);
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
@@ -139,6 +157,10 @@ export function MaintenancePage({
   );
   const localSource = settings?.fileSources.find((source) => source.sourceType === "local_folder") ?? null;
   const savedDraft = settings ? runtimeDraftFromSettings(settings) : null;
+
+  useEffect(() => {
+    savedSettings.current = settings;
+  }, [settings]);
 
   const applySettings = (next: AppSettings) => {
     setSettings(next);
@@ -205,39 +227,60 @@ export function MaintenancePage({
   const patchDraft = (next: Partial<RuntimeDraft>) =>
     setDraft((current) => (current ? { ...current, ...next } : current));
 
-  // Each Save sends its own section only, so a setting in another section can
-  // neither be written by accident nor make this save fail.
-  const saveRuntimeSettings = async (keys: Array<keyof RuntimeDraft>) => {
-    if (readOnly || !draft || !savedDraft) return;
-    setSavingRuntime(true);
-    try {
-      const next = await api.updateSettings(sectionSettings(draft, keys));
-      applySettings(next);
-      setDraft(draftAfterSectionSave(runtimeDraftFromSettings(next), draft, savedDraft, keys));
-      toast.success(t("maintenance.settingsSaved"));
-    } catch (error) {
-      toast.notify(toastFromError(error, t("maintenance.settingsApiUnavailable")));
-    } finally {
-      setSavingRuntime(false);
-    }
+  // A change saves only its own fields, so a setting elsewhere can neither be
+  // written by accident nor make this save fail. Saves run one after another
+  // so a slower earlier answer cannot overwrite a later choice; a failed save
+  // returns its fields to the saved values.
+  const saveRuntime = (patch: Partial<RuntimeDraft>): Promise<boolean> => {
+    if (readOnly) return Promise.resolve(false);
+    const keys = Object.keys(patch) as Array<keyof RuntimeDraft>;
+    patchDraft(patch);
+    const save = saveQueue.current.then(async () => {
+      try {
+        const next = await api.updateSettings(patch);
+        setSettings(next);
+        setDraft((current) => (current ? draftAfterSave(current, runtimeDraftFromSettings(next), keys) : current));
+        return true;
+      } catch (error) {
+        const saved = savedSettings.current;
+        if (saved) {
+          setDraft((current) => (current ? draftAfterSave(current, runtimeDraftFromSettings(saved), keys) : current));
+        }
+        toast.notify(toastFromError(error, t("maintenance.settingsApiUnavailable")));
+        return false;
+      }
+    });
+    saveQueue.current = save;
+    return save;
   };
 
-  const saveAccessPolicy = async () => {
-    if (readOnly || !canManageAccessPolicy) return;
+  const runtimeEditor: RuntimeEditor = {
+    change: (next) => patchDraft(next),
+    commit: (key) => {
+      if (!draft || !savedDraft || draft[key] === savedDraft[key]) return null;
+      return saveRuntime(sectionSettings(draft, [key]));
+    },
+    save: saveRuntime,
+  };
+
+  const saveAccessPolicy = async (enabled: boolean) => {
+    if (readOnly || !canManageAccessPolicy) return false;
     setIsAccessPolicySaving(true);
+    setAnonymousAccessEnabled(enabled);
     try {
-      const next = await api.updateAccessPolicy({ anonymousAccessEnabled });
+      const next = await api.updateAccessPolicy({ anonymousAccessEnabled: enabled });
       setSettings((current) => (current ? { ...current, ...next } : current));
       setAnonymousAccessEnabled(next.anonymousAccessEnabled);
       try {
         await onAccessPolicyUpdated();
       } catch {
         toast.warning(t("maintenance.accessPolicyRefreshFailed"));
-        return;
       }
-      toast.success(t("maintenance.accessPolicySaved"));
+      return true;
     } catch (error) {
+      setAnonymousAccessEnabled(!enabled);
       toast.notify(toastFromError(error, t("maintenance.accessPolicySaveFailed")));
+      return false;
     } finally {
       setIsAccessPolicySaving(false);
     }
@@ -364,19 +407,6 @@ export function MaintenancePage({
     );
   }
 
-  const runtimeDirty = (keys: Array<keyof RuntimeDraft>) =>
-    Boolean(draft && savedDraft && keys.some((key) => draft[key] !== savedDraft[key]));
-  const saveButton = (keys: Array<keyof RuntimeDraft>, label: string) => (
-    <Button
-      size="sm"
-      disabled={readOnly || savingRuntime || !runtimeDirty(keys)}
-      onClick={() => void saveRuntimeSettings(keys)}
-    >
-      {savingRuntime ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-      {label}
-    </Button>
-  );
-
   return (
     <div className="min-w-0 space-y-5">
       {/* Each tab gates its own writes, so Demo can still browse, open details, and follow links. */}
@@ -400,24 +430,6 @@ export function MaintenancePage({
 
             <SettingsGroupDivider label={t("maintenance.library.settingsGroup")} />
 
-            <SettingsSection
-              title={t("maintenance.library.remoteAddresses")}
-              description={t("maintenance.library.remoteAddressesDescription")}
-              footer={saveButton(["hideRemoteSourceAddresses"], t("maintenance.library.saveRemoteAddresses"))}
-            >
-              <SettingsRow
-                title={t("maintenance.library.hideRemoteAddresses")}
-                description={t("maintenance.library.hideRemoteAddressesDescription")}
-              >
-                <Switch
-                  checked={draft.hideRemoteSourceAddresses}
-                  disabled={readOnly}
-                  aria-label={t("maintenance.library.hideRemoteAddresses")}
-                  onCheckedChange={(hideRemoteSourceAddresses) => patchDraft({ hideRemoteSourceAddresses })}
-                />
-              </SettingsRow>
-            </SettingsSection>
-
             <LibraryLayoutSection
               id="library-storage"
               layout={libraryLayout.layout}
@@ -429,7 +441,7 @@ export function MaintenancePage({
             <SettingsSection
               title={t("maintenance.library.local")}
               description={localSource?.displayName ?? t("maintenance.mainLocalLibrary")}
-              footer={saveButton(["localScanDepth"], t("maintenance.library.save"))}
+              action={<AutosaveStatus state={localStatus.state} />}
             >
               <SettingsRow
                 title={t("maintenance.library.scanDepth")}
@@ -448,18 +460,12 @@ export function MaintenancePage({
                   integer
                   unit={t("sourceSetup.levels")}
                   onChange={(localScanDepth) => patchDraft({ localScanDepth })}
+                  onCommit={() => void localStatus.track(runtimeEditor.commit("localScanDepth"))}
                 />
               </SettingsRow>
-            </SettingsSection>
-
-            <SettingsSection
-              title={t("maintenance.library.lyricsFiles")}
-              description={t("maintenance.library.lyricsFilesDescription")}
-              footer={saveButton(["folderLyricsMode"], t("maintenance.library.saveLyricsFiles"))}
-            >
               <SettingsRow
                 title={t("maintenance.library.folderLyricsMode")}
-                description={t("maintenance.library.folderLyricsModeDescription")}
+                description={`${t("maintenance.library.lyricsFilesDescription")} ${t("maintenance.library.folderLyricsModeDescription")}`}
               >
                 <FloatingSelect
                   value={draft.folderLyricsMode}
@@ -467,7 +473,9 @@ export function MaintenancePage({
                     { value: "copy", label: t("lyricsFiles.folderModeCopy") },
                     { value: "move", label: t("lyricsFiles.folderModeMove") },
                   ]}
-                  onValueChange={(value) => patchDraft({ folderLyricsMode: value === "move" ? "move" : "copy" })}
+                  onValueChange={(value) =>
+                    void localStatus.track(saveRuntime({ folderLyricsMode: value === "move" ? "move" : "copy" }))
+                  }
                   ariaLabel={t("maintenance.library.folderLyricsMode")}
                   disabled={readOnly}
                 />
@@ -476,7 +484,7 @@ export function MaintenancePage({
 
             <SettingsSection
               title={t("maintenance.library.creatorCatalogs")}
-              footer={saveButton(["catalogFreshnessDays"], t("maintenance.library.saveCreatorCatalogs"))}
+              action={<AutosaveStatus state={catalogStatus.state} />}
             >
               <SettingsRow
                 title={t("maintenance.library.catalogFreshnessDays")}
@@ -491,16 +499,36 @@ export function MaintenancePage({
                   integer
                   unit={t("sourceSetup.days")}
                   onChange={(catalogFreshnessDays) => patchDraft({ catalogFreshnessDays })}
+                  onCommit={() => void catalogStatus.track(runtimeEditor.commit("catalogFreshnessDays"))}
                 />
               </SettingsRow>
             </SettingsSection>
 
-            <KikoeruImportAccessSection
-              privateAddresses={draft.kikoeruImportPrivateAddresses}
-              readOnly={readOnly}
-              onChange={(kikoeruImportPrivateAddresses) => patchDraft({ kikoeruImportPrivateAddresses })}
-              saveButton={saveButton(["kikoeruImportPrivateAddresses"], t("maintenance.library.saveKikoeruImport"))}
-            />
+            <SettingsSection
+              title={t("maintenance.library.networkPrivacy")}
+              action={<AutosaveStatus state={networkStatus.state} />}
+            >
+              <SettingsRow
+                title={t("maintenance.library.hideRemoteAddresses")}
+                description={t("maintenance.library.hideRemoteAddressesDescription")}
+              >
+                <Switch
+                  checked={draft.hideRemoteSourceAddresses}
+                  disabled={readOnly}
+                  aria-label={t("maintenance.library.hideRemoteAddresses")}
+                  onCheckedChange={(hideRemoteSourceAddresses) =>
+                    void networkStatus.track(saveRuntime({ hideRemoteSourceAddresses }))
+                  }
+                />
+              </SettingsRow>
+              <KikoeruImportAccessRow
+                privateAddresses={draft.kikoeruImportPrivateAddresses}
+                readOnly={readOnly}
+                onChange={(kikoeruImportPrivateAddresses) =>
+                  void networkStatus.track(saveRuntime({ kikoeruImportPrivateAddresses }))
+                }
+              />
+            </SettingsSection>
 
             <StoragePaths settings={settings} remoteSources={remoteSources} />
           </div>
@@ -510,21 +538,7 @@ export function MaintenancePage({
               draft={draft}
               readOnly={readOnly}
               canManageCleanup={canManageCleanup}
-              onChange={patchDraft}
-              saveButton={saveButton(
-                [
-                  "cacheEnabled",
-                  "cacheLimitGb",
-                  "transcodeCacheLimitGb",
-                  "remoteDownloadLimitGb",
-                  "fetchStagingRetentionDays",
-                  "remoteDelayBaseSeconds",
-                  "remoteDelayRandomSeconds",
-                  "remoteBackoffSeconds",
-                  "remoteMaxBackoffSeconds",
-                ],
-                t("maintenance.cache.save"),
-              )}
+              editor={runtimeEditor}
             />
             <VideoHardwareSettingsSection
               transcodeSlots={draft.transcodeSlots}
@@ -533,10 +547,8 @@ export function MaintenancePage({
               status={settings?.videoHardwareStatus}
               readOnly={readOnly}
               onChange={patchDraft}
-              saveButton={saveButton(
-                ["transcodeSlots", "videoHardwareAcceleration", "videoHardwareDevice"],
-                t("maintenance.cache.saveVideoHardware"),
-              )}
+              onCommit={runtimeEditor.commit}
+              onSave={saveRuntime}
             />
           </div>
         ) : activeTab === "proxy" && settings ? (
@@ -566,22 +578,7 @@ export function MaintenancePage({
               ) : (
                 <SettingsSection
                   title={t("maintenance.access.instance")}
-                  footer={
-                    <Button
-                      size="sm"
-                      disabled={
-                        isAccessPolicySaving || anonymousAccessEnabled === (settings?.anonymousAccessEnabled ?? false)
-                      }
-                      onClick={() => void saveAccessPolicy()}
-                    >
-                      {isAccessPolicySaving ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Save className="h-4 w-4" />
-                      )}
-                      {t("maintenance.access.save")}
-                    </Button>
-                  }
+                  action={<AutosaveStatus state={accessStatus.state} />}
                 >
                   <SettingsRow
                     title={t("maintenance.access.anonymous")}
@@ -589,12 +586,39 @@ export function MaintenancePage({
                   >
                     <Switch
                       checked={anonymousAccessEnabled}
-                      onCheckedChange={setAnonymousAccessEnabled}
+                      disabled={isAccessPolicySaving}
+                      onCheckedChange={(enabled) => {
+                        // Opening the library to visitors without an account is confirmed first.
+                        if (enabled) setConfirmAnonymousAccess(true);
+                        else void accessStatus.track(saveAccessPolicy(false));
+                      }}
                       aria-label={t("maintenance.access.anonymous")}
                     />
                   </SettingsRow>
                 </SettingsSection>
               ))}
+            {confirmAnonymousAccess && (
+              <Dialog onClose={() => setConfirmAnonymousAccess(false)} layer="sheet" size="lg" role="alertdialog">
+                <DialogHeader
+                  title={t("maintenance.access.enableTitle")}
+                  description={t("maintenance.access.enableDescription")}
+                />
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setConfirmAnonymousAccess(false)}>
+                    {t("maintenance.cancel")}
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setConfirmAnonymousAccess(false);
+                      void accessStatus.track(saveAccessPolicy(true));
+                    }}
+                  >
+                    <Users className="h-4 w-4" />
+                    {t("maintenance.access.enable")}
+                  </Button>
+                </DialogFooter>
+              </Dialog>
+            )}
           </div>
         ) : null}
       </fieldset>
@@ -650,24 +674,29 @@ function CacheFetchSettings({
   draft,
   readOnly,
   canManageCleanup,
-  onChange,
-  saveButton,
+  editor,
 }: {
   draft: RuntimeDraft;
   readOnly: boolean;
   canManageCleanup: boolean;
-  onChange: (next: Partial<RuntimeDraft>) => void;
-  saveButton: ReactNode;
+  editor: RuntimeEditor;
 }) {
   const { t } = useTranslation();
   const [confirmEnableCache, setConfirmEnableCache] = useState(false);
+  const policyStatus = useAutosaveStatus();
+  const transferStatus = useAutosaveStatus();
+  const pacingStatus = useAutosaveStatus();
+  const onChange = editor.change;
+  const commitPolicy = (key: keyof RuntimeDraft) => () => void policyStatus.track(editor.commit(key));
+  const commitTransfer = (key: keyof RuntimeDraft) => () => void transferStatus.track(editor.commit(key));
+  const commitPacing = (key: keyof RuntimeDraft) => () => void pacingStatus.track(editor.commit(key));
   const openCleanup = () => {
     window.history.pushState({}, "", "/settings?tab=cleanup");
     window.dispatchEvent(new Event(NAVIGATION_EVENT));
   };
   return (
     <div className="space-y-6" data-testid="cache-configuration-card">
-      <SettingsSection title={t("maintenance.cache.policy")}>
+      <SettingsSection title={t("maintenance.cache.policy")} action={<AutosaveStatus state={policyStatus.state} />}>
         <SettingsRow
           title={t("maintenance.cache.remotePlayback")}
           description={t("maintenance.cache.remotePlaybackDescription")}
@@ -677,7 +706,7 @@ function CacheFetchSettings({
             disabled={readOnly}
             onCheckedChange={(enabled) => {
               if (enabled && !draft.cacheEnabled) setConfirmEnableCache(true);
-              else onChange({ cacheEnabled: enabled });
+              else void policyStatus.track(editor.save({ cacheEnabled: enabled }));
             }}
             aria-label={t("maintenance.cache.remotePlayback")}
           />
@@ -691,6 +720,7 @@ function CacheFetchSettings({
             integer
             unit="GB"
             onChange={(cacheLimitGb) => onChange({ cacheLimitGb })}
+            onCommit={commitPolicy("cacheLimitGb")}
           />
         </SettingsRow>
         <SettingsRow
@@ -706,6 +736,7 @@ function CacheFetchSettings({
             integer
             unit="GB"
             onChange={(transcodeCacheLimitGb) => onChange({ transcodeCacheLimitGb })}
+            onCommit={commitPolicy("transcodeCacheLimitGb")}
           />
         </SettingsRow>
         {canManageCleanup && (
@@ -719,7 +750,10 @@ function CacheFetchSettings({
         )}
       </SettingsSection>
 
-      <SettingsSection title={t("maintenance.cache.transferSafety")}>
+      <SettingsSection
+        title={t("maintenance.cache.transferSafety")}
+        action={<AutosaveStatus state={transferStatus.state} />}
+      >
         <SettingsRow
           title={t("maintenance.cache.downloadLimit")}
           description={t("maintenance.cache.downloadLimitDescription")}
@@ -733,6 +767,7 @@ function CacheFetchSettings({
             integer
             unit="GB"
             onChange={(remoteDownloadLimitGb) => onChange({ remoteDownloadLimitGb })}
+            onCommit={commitTransfer("remoteDownloadLimitGb")}
           />
         </SettingsRow>
         <SettingsRow
@@ -748,11 +783,15 @@ function CacheFetchSettings({
             integer
             unit={t("sourceSetup.days")}
             onChange={(fetchStagingRetentionDays) => onChange({ fetchStagingRetentionDays })}
+            onCommit={commitTransfer("fetchStagingRetentionDays")}
           />
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection title={t("maintenance.cache.downloadPacing")}>
+      <SettingsSection
+        title={t("maintenance.cache.downloadPacing")}
+        action={<AutosaveStatus state={pacingStatus.state} />}
+      >
         <SettingsDisclosure
           title={t("sourceSetup.pacingSummary", {
             base: draft.remoteDelayBaseSeconds,
@@ -772,6 +811,7 @@ function CacheFetchSettings({
               step={0.1}
               unit={t("sourceSetup.seconds")}
               onChange={(remoteDelayBaseSeconds) => onChange({ remoteDelayBaseSeconds })}
+              onCommit={commitPacing("remoteDelayBaseSeconds")}
             />
           </SettingsRow>
           <SettingsRow
@@ -786,6 +826,7 @@ function CacheFetchSettings({
               step={0.1}
               unit={t("sourceSetup.seconds")}
               onChange={(remoteDelayRandomSeconds) => onChange({ remoteDelayRandomSeconds })}
+              onCommit={commitPacing("remoteDelayRandomSeconds")}
             />
           </SettingsRow>
           <SettingsRow
@@ -799,6 +840,7 @@ function CacheFetchSettings({
               min={0}
               unit={t("sourceSetup.seconds")}
               onChange={(remoteBackoffSeconds) => onChange({ remoteBackoffSeconds })}
+              onCommit={commitPacing("remoteBackoffSeconds")}
             />
           </SettingsRow>
           <SettingsRow
@@ -812,12 +854,11 @@ function CacheFetchSettings({
               min={0}
               unit={t("sourceSetup.seconds")}
               onChange={(remoteMaxBackoffSeconds) => onChange({ remoteMaxBackoffSeconds })}
+              onCommit={commitPacing("remoteMaxBackoffSeconds")}
             />
           </SettingsRow>
         </SettingsDisclosure>
       </SettingsSection>
-
-      <div className="flex justify-end">{saveButton}</div>
 
       {confirmEnableCache && (
         <Dialog onClose={() => setConfirmEnableCache(false)} layer="sheet" size="lg" role="alertdialog">
@@ -832,7 +873,7 @@ function CacheFetchSettings({
             <Button
               onClick={() => {
                 setConfirmEnableCache(false);
-                onChange({ cacheEnabled: true });
+                void policyStatus.track(editor.save({ cacheEnabled: true }));
               }}
             >
               <HardDriveDownload className="h-4 w-4" />

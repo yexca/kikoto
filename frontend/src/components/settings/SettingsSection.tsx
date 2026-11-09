@@ -137,6 +137,7 @@ export function SettingsNumberInput({
   integer = false,
   unit,
   onChange,
+  onCommit,
   disabled = false,
   describedBy,
   className,
@@ -152,6 +153,8 @@ export function SettingsNumberInput({
   integer?: boolean;
   unit?: string;
   onChange: (value: number, text: string) => void;
+  /** Called when an edit is finished: the field loses focus or Enter is pressed. */
+  onCommit?: () => void;
   disabled?: boolean;
   describedBy?: string;
   className?: string;
@@ -182,6 +185,13 @@ export function SettingsNumberInput({
         onChange={(event) =>
           onChange(integer ? wholeNumberFromInput(event.target.value) : Number(event.target.value), event.target.value)
         }
+        onBlur={onCommit}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || !onCommit) return;
+          // Enter finishes the edit here rather than submitting a surrounding form.
+          event.preventDefault();
+          onCommit();
+        }}
       />
       {unit && <span className="flex items-center pr-3 text-xs text-muted-foreground">{unit}</span>}
     </div>

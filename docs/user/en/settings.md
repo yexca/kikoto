@@ -7,6 +7,16 @@ Settings holds account controls, personal playback, recommendation, and tag pref
 
 Settings uses Account, Playback, Recommendations, and Tags tabs, shown as icons: hover or focus an icon for its name, and phones also name the active tab. Administrators, and Demo, also see the administration tabs (Library, Cache & Fetch, Proxy, ASR & LLM, Cleanup, and Users) after a divider, so the elevated scope stays separate. Wide screens show the tabs as one row above the settings. The row names every tab when there is room; otherwise it names the group holding the open tab (the personal or the administration tabs) and shows the other group as icons, and on the narrowest wide screens it names only the open tab. If even that does not fit, the row wraps onto a second line. The icon at the end of that row, **Show tabs beside**, moves the tabs into a column beside the settings with every tab named. Below the column, **Hide tab names** collapses it to icons, **Show tab names** expands it again, and **Show tabs above** returns to the row. Phones show the tabs as one row that scrolls sideways. Settings remembers both choices on that device.
 
+## Saving
+
+A switch or a choice saves as soon as it changes. A typed number or name saves
+when you leave the field or press Enter. The section heading then shows
+**Saving** and **Saved**. A failed save returns the field to its saved value
+and reports the error. Forms whose fields only make sense together keep a
+button of their own: the password change, library storage, folder
+preferences, recommendation tuning, the content safety policy, the proxy
+bypass list, and every dialog.
+
 `/maintenance`, `/users`, `/cleanup`, `/tags`, and `/user-data` links open the matching Settings tab. `/history` and `/settings?tab=history` open [Insights](personal-data.md#insights).
 
 ## Account
@@ -102,13 +112,13 @@ enabled.
 
 Library opens with **Libraries**, every library the server reads: the local
 library with its storage mode and whether its storage is online, then each
-configured remote source. The settings follow below it: remote source
-addresses, library storage, local scan settings, lyrics files, creator
-catalogs, Kikoeru account import, and read-only storage paths. Selecting the local library jumps
-to **Library storage**.
+configured remote source. The settings follow below it: library storage,
+**Local library**, **Creator catalogs**, **Network and privacy**, and
+read-only storage paths. Selecting the local library jumps to **Library
+storage**.
 
-- **Remote source addresses** holds **Hide addresses from accounts that do not
-  manage sources**, on by default and saved with its own button. While it is
+- **Hide addresses from accounts that do not manage sources**, under
+  **Network and privacy**, is on by default. While it is
   on, accounts without `sources:write` and signed-out readers never receive a
   source's API, public site, or fallback address, a work's page on the source
   site, the upstream file URLs of a track tree or a remote location, a Fetch
@@ -117,24 +127,28 @@ to **Library storage**.
   and types stay visible. Covers, image previews, playback, and text previews
   go through this server, and **Open origin** is not offered. Turning it off
   restores the addresses for every account.
+- **Allow LAN addresses for every account**, also under **Network and
+  privacy**, is off by default. Administrators can always enter a LAN or
+  private address for a Kikoeru account import; turning this on, after a
+  confirmation, lets every account do so.
 
 - **Library storage** shows the library mode (Standard or Storage pools), each
   pool with an Online or Offline badge, and the Fetch pool. Pools can be added
   or, while they hold no works, removed; the mode itself is fixed once the
   library holds local works. **Reconnect** marks an existing folder again
   after an operator confirmed the right disk is mounted there.
-- **Scan depth** cannot be set below the level where Fetch saves works;
+- **Local library** holds **Scan depth** and **Lyrics of the work folder**.
+  Scan depth cannot be set below the level where Fetch saves works;
   scans always reach at least that level, so Fetched works are never reported
   missing because a scan stopped above them.
-- **Lyrics files** holds **Lyrics of the work folder**, saved with its own
-  **Save lyrics settings** button: whether
+- **Lyrics of the work folder** decides whether
   [Lyrics files](work-detail.md#current-behavior) copies
   the lyrics a work folder already holds into the `lyrics_kikoto` folder, which
   leaves the work's own files where they are, or moves them there. Copying is
   the default. It is the starting choice of every lyrics edit, which can still
   choose the other.
-- **Creator catalogs** holds **Catalog freshness days** (1 to 365, default 30),
-  saved with its own **Save catalog settings** button. A circle or voice actor
+- **Creator catalogs** holds **Catalog freshness days** (1 to 365, default 30).
+  A circle or voice actor
   catalog is marked Attention once its last refresh is older than that.
 - Each remote source in **Libraries** shows its health, host, a health-check
   action, and an enable switch that saves immediately. Health-check results are persisted
@@ -166,9 +180,9 @@ settings.
 ### Cache & Fetch
 
 Cache & Fetch contains configuration only: playback cache policy, transfer
-safety, and collapsed download pacing, with one save action that is enabled
-after a change, and video conversion with its own save action. Cache contents
-are managed in the Cleanup tab.
+safety, collapsed download pacing, and video conversion. Turning on the
+playback cache is confirmed first. Cache contents are managed in the Cleanup
+tab.
 
 - The per-file remote media limit defaults to 100 GB, and unpublished staging
   from failed or cancelled Fetch runs is kept for seven days by default.
@@ -321,8 +335,9 @@ Each role has a fixed set of permissions:
   saved. Caching while playing is skipped without a message.
 
 In **Instance access**, **Anonymous access** (off by default) allows Library
-browsing and playback without an account. **Save access policy** applies it to
-the production access boundary and creates an audit entry. Development authenticates every request
+browsing and playback without an account. Turning it on is confirmed first.
+The change applies to the production access boundary and creates an audit
+entry. Development authenticates every request
 as root, so the setting is visible and editable there without creating an
 anonymous development session.
 

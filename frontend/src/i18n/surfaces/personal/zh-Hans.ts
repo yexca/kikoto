@@ -422,8 +422,6 @@ export const personalHans = {
     description:
       "收听报表里的一天从这个时区的午夜开始。「自动」跟随你正在使用的设备。已经记录的收听保留当时计入的日期。",
     auto: "自动（{{zone}}）",
-    save: "保存时区",
-    saved: "时区已保存。",
     saveFailed: "无法保存时区。",
     loadFailed: "无法加载时区。",
   },

@@ -720,7 +720,6 @@ export const surfaceEnglish = {
     settingsApiUnavailable: "Settings API is unavailable.",
     settingsSaved: "Settings saved.",
     accessPolicyRefreshFailed: "Access policy saved, but runtime status could not be refreshed.",
-    accessPolicySaved: "Access policy saved.",
     accessPolicySaveFailed: "Access policy could not be saved.",
     asr: {
       title: "ASR services",
@@ -1019,7 +1018,10 @@ export const surfaceEnglish = {
       instance: "Instance access",
       anonymous: "Anonymous access",
       anonymousDescription: "Library browsing and playback without an account",
-      save: "Save access policy",
+      enableTitle: "Allow anonymous access?",
+      enableDescription:
+        "Anyone who can reach this server could then browse the library and play its works without an account.",
+      enable: "Allow",
     },
     routing: {
       playback: "Playback",
@@ -1138,7 +1140,6 @@ export const surfaceEnglish = {
     library: {
       local: "Local library",
       scanDepth: "Scan depth",
-      save: "Save local settings",
       libraries: "Libraries",
       librariesDescription: "The local library and every remote source this server reads.",
       librariesSummary: "Local library and {{enabled}} of {{total}} remote sources enabled",
@@ -1147,8 +1148,8 @@ export const surfaceEnglish = {
       storageSettings: "Library storage settings",
       poolsOnline: "{{online}} of {{total}} online",
       settingsGroup: "Settings",
+      networkPrivacy: "Network and privacy",
       addSource: "Add source",
-      kikoeruImport: "Kikoeru account import",
       kikoeruImportDescription:
         "Accounts can read their own reviews and playlists from a Kikoeru server in Personal data.",
       kikoeruPrivateAddresses: "Allow LAN addresses for every account",
@@ -1158,25 +1159,18 @@ export const surfaceEnglish = {
       kikoeruPrivateEnableDescription:
         "Any signed-in account could then make this server connect to devices on its local network, such as a router or NAS, and learn whether they answer. Turn this on only when you trust every account.",
       kikoeruPrivateEnable: "Allow",
-      saveKikoeruImport: "Save import settings",
-      remoteAddresses: "Remote source addresses",
-      remoteAddressesDescription: "Where each remote source lives on the network.",
       hideRemoteAddresses: "Hide addresses from accounts that do not manage sources",
       hideRemoteAddressesDescription:
         "When on, accounts without source management and signed-out readers never receive a source's API, site, or fallback address, links to works on the source site, or upstream URLs in tracks and Activity. Browsing, playback, covers, and text previews go through this server instead.",
-      saveRemoteAddresses: "Save address settings",
-      lyricsFiles: "Lyrics files",
       lyricsFilesDescription:
         "How Manage lyrics brings lyrics the work folder already holds into Kikoto's lyrics_kikoto folder.",
       folderLyricsMode: "Lyrics of the work folder",
       folderLyricsModeDescription:
         "Copying leaves the work's own files where they are; moving takes them out of their place. Each edit can still choose.",
-      saveLyricsFiles: "Save lyrics settings",
       creatorCatalogs: "Creator catalogs",
       catalogFreshnessDays: "Catalog freshness days",
       catalogFreshnessDescription:
         "Circle and voice actor catalogs are marked Attention when their last refresh is older than this.",
-      saveCreatorCatalogs: "Save catalog settings",
       configure: "Configure",
       deleteSource: "Delete source",
       checkHealth: "Check health",
@@ -1336,7 +1330,6 @@ export const surfaceEnglish = {
         encodeFailed: "The test encode failed. Check that the container can open the device and has the GPU driver.",
         keyframesUnaligned: "The encoder does not place keyframes where segments must start.",
       },
-      saveVideoHardware: "Save video conversion",
       transferSafety: "Transfer safety",
       downloadLimit: "Per-file download limit",
       downloadLimitDescription:
@@ -1354,7 +1347,6 @@ export const surfaceEnglish = {
       initialBackoffDescription: "First retry delay after a remote rate-limit response.",
       maximumBackoff: "Maximum backoff",
       maximumBackoffDescription: "Upper bound for rate-limit waits, including a source's Retry-After.",
-      save: "Save configuration",
       transcodeCache: "Transcode cache",
       onDisk: "On disk",
       segments: "{{count}} files",

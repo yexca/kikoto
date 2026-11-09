@@ -435,8 +435,6 @@ export const personalKorean = {
     description:
       "청취 리포트의 하루는 이 시간대의 자정에 시작합니다. '자동'은 사용 중인 기기를 따릅니다. 이미 기록된 청취는 기록 당시의 날짜를 유지합니다.",
     auto: "자동({{zone}})",
-    save: "시간대 저장",
-    saved: "시간대를 저장했습니다.",
     saveFailed: "시간대를 저장하지 못했습니다.",
     loadFailed: "시간대를 불러오지 못했습니다.",
   },

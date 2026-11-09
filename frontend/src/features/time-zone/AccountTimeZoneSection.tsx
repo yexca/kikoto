@@ -1,7 +1,7 @@
-import { LoaderCircle, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { AutosaveStatus, useAutosaveStatus } from "@/components/settings/AutosaveStatus";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 import { Button } from "@/components/ui/button";
 import { toastFromError, useToast } from "@/components/ui/toast";
@@ -16,8 +16,8 @@ export const ACCOUNT_TIME_ZONE_SECTION_ID = "settings-section-time-zone";
 /**
  * The account's time zone: automatic, which follows the device in use, or one
  * IANA zone for every device. The zone decides where a day starts in the
- * account's listening report, and a saved change reaches this tab's player at
- * once.
+ * account's listening report. A choice saves at once and reaches this tab's
+ * player; a failed save returns to the saved zone.
  */
 export function AccountTimeZoneSection({ readOnly }: { readOnly: boolean }) {
   const { t } = useTranslation();
@@ -28,6 +28,7 @@ export function AccountTimeZoneSection({ readOnly }: { readOnly: boolean }) {
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const autosave = useAutosaveStatus();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -45,21 +46,28 @@ export function AccountTimeZoneSection({ readOnly }: { readOnly: boolean }) {
     return () => controller.abort();
   }, [attempt]);
 
-  const save = async () => {
-    if (readOnly || saving || saved === null) return;
+  const save = async (zone: string) => {
+    setDraft(zone);
     setSaving(true);
     try {
-      const preferences = await api.updateUserPreferences({ timeZone: draft || null });
+      const preferences = await api.updateUserPreferences({ timeZone: zone || null });
       const next = preferences.timeZone ?? "";
       setSaved(next);
       setDraft(next);
       setListeningTimeZone(preferences.timeZone ?? null);
-      toast.success(t("timeZone.saved"));
+      return true;
     } catch (error) {
+      setDraft(saved ?? "");
       toast.notify(toastFromError(error, t("timeZone.saveFailed")));
+      return false;
     } finally {
       setSaving(false);
     }
+  };
+
+  const choose = (zone: string) => {
+    if (readOnly || saving || saved === null || zone === saved) return;
+    void autosave.track(save(zone));
   };
 
   const device = deviceTimeZone() ?? "UTC";
@@ -68,17 +76,7 @@ export function AccountTimeZoneSection({ readOnly }: { readOnly: boolean }) {
       id={ACCOUNT_TIME_ZONE_SECTION_ID}
       className="scroll-mt-[calc(var(--header-height)+var(--safe-area-top)+1rem)]"
       title={t("timeZone.title")}
-      footer={
-        <Button
-          type="button"
-          size="sm"
-          disabled={readOnly || saving || saved === null || draft === saved}
-          onClick={() => void save()}
-        >
-          {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {t("timeZone.save")}
-        </Button>
-      }
+      action={<AutosaveStatus state={autosave.state} />}
     >
       <SettingsRow htmlFor="account-time-zone" title={t("timeZone.title")} description={t("timeZone.description")}>
         {failed ? (
@@ -96,7 +94,7 @@ export function AccountTimeZoneSection({ readOnly }: { readOnly: boolean }) {
             inUse={[saved, device]}
             disabled={readOnly || saving || saved === null}
             ariaLabel={t("timeZone.title")}
-            onChange={setDraft}
+            onChange={choose}
           />
         )}
       </SettingsRow>

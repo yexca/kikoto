@@ -418,6 +418,11 @@ so a still-loading element never replaces it.
   by default, and Settings, Metadata, Favorites, and the Workflows list each
   store their own choice locally. Section headings are plain text,
   and a switch or number field stays beside its label even on a phone.
+  Fields save as the [design contract](../development/design.md) describes;
+  `components/settings/AutosaveStatus` holds the section save state, and a
+  typed number field reports a finished edit through `SettingsNumberInput`'s
+  `onCommit`. Runtime settings save one change at a time and send only the
+  changed fields.
   Personal tags manage account-owned work, circle, and voice tags; data
   transfer offers personal JSON export and previewed import from a Kikoto or
   Kikoeru file, a Kikoeru account, or an open-source Kikoeru database. Account

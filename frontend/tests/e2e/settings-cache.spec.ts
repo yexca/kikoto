@@ -444,7 +444,7 @@ async function mockCacheSettings(
   return { transcodeClearRequests, databaseCleanupRequests };
 }
 
-test("@desktop cache settings save transfer limits and link to the Cleanup page", async ({ page }) => {
+test("@desktop a cache setting saves on its own when its edit finishes and links to Cleanup", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const settingsPayloads: Record<string, unknown>[] = [];
   await mockCacheSettings(
@@ -461,19 +461,17 @@ test("@desktop cache settings save transfer limits and link to the Cleanup page"
   await expect(page.getByLabel("Per-file download limit")).toHaveValue("100");
   await expect(page.getByLabel("Failed staging retention")).toHaveValue("7");
   await expect(page.getByLabel("Transcode cache limit")).toHaveValue("5");
-  const save = page.getByRole("button", { name: "Save configuration" });
-  await expect(save).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Save/ })).toHaveCount(0);
   await page.getByLabel("Transcode cache limit").fill("6");
-  await save.click();
-  await expect.poll(() => settingsPayloads).toHaveLength(1);
-  expect(settingsPayloads[0]).not.toHaveProperty("remoteSaveTemplate");
-  expect(settingsPayloads[0]).toEqual(
-    expect.objectContaining({
-      transcodeCacheLimitGb: 6,
-      remoteDownloadLimitGb: 100,
-      fetchStagingRetentionDays: 7,
-    }),
-  );
+  // Typing alone sends nothing; finishing the edit saves that field and no other.
+  expect(settingsPayloads).toHaveLength(0);
+  await page.getByLabel("Transcode cache limit").press("Tab");
+  await expect.poll(() => settingsPayloads).toEqual([{ transcodeCacheLimitGb: 6 }]);
+  await expect(page.getByRole("region", { name: "Cache policy" }).getByRole("status")).toHaveText("Saved");
+  // Leaving an unchanged field saves nothing.
+  await page.getByLabel("Per-file download limit").focus();
+  await page.getByLabel("Per-file download limit").press("Tab");
+  expect(settingsPayloads).toHaveLength(1);
   await page.getByTestId("cache-configuration-card").getByRole("button", { name: "Cleanup", exact: true }).click();
   await expect(page).toHaveURL(/\/settings\?tab=cleanup$/);
   await expect(page.getByRole("tab", { name: "Cleanup", exact: true })).toHaveAttribute("aria-selected", "true");
@@ -493,24 +491,20 @@ test("@desktop video conversion saves its slots and encoder and follows the enco
   await page.goto("/settings?tab=cache");
 
   const section = page.getByRole("region", { name: "Video conversion" });
-  const save = section.getByRole("button", { name: "Save video conversion" });
   await expect(section.getByRole("combobox", { name: "Hardware encoder", exact: true })).toHaveText("Off (CPU)");
   await expect(section.getByLabel("Render device")).toHaveCount(0);
   await expect(section.getByLabel("Simultaneous conversions")).toHaveValue("2");
-  await expect(save).toBeDisabled();
 
   await section.getByLabel("Simultaneous conversions").fill("3");
+  await section.getByLabel("Simultaneous conversions").press("Enter");
+  await expect.poll(() => settingsPayloads).toEqual([{ transcodeSlots: 3 }]);
   await section.getByRole("combobox", { name: "Hardware encoder", exact: true }).click();
   await page.getByRole("option", { name: "Intel VA-API", exact: true }).click();
+  await expect.poll(() => settingsPayloads.at(-1)).toEqual({ videoHardwareAcceleration: "vaapi" });
   await expect(section.getByLabel("Render device")).toHaveValue("/dev/dri/renderD128");
   await section.getByLabel("Render device").fill("/dev/dri/renderD129");
-  await save.click();
-  await expect.poll(() => settingsPayloads).toHaveLength(1);
-  expect(settingsPayloads[0]).toEqual({
-    transcodeSlots: 3,
-    videoHardwareAcceleration: "vaapi",
-    videoHardwareDevice: "/dev/dri/renderD129",
-  });
+  await section.getByLabel("Render device").press("Enter");
+  await expect.poll(() => settingsPayloads.at(-1)).toEqual({ videoHardwareDevice: "/dev/dri/renderD129" });
   // The save answers while the test encode runs; the page reads its result afterwards.
   await expect(section.getByText("Checking", { exact: true })).toBeVisible();
   await expect(section.getByText("Unavailable", { exact: true })).toBeVisible();
@@ -611,11 +605,7 @@ test("enabling global playback cache explains tracked synchronization before cha
     .getByRole("button", { name: "Enable cache", exact: true })
     .click();
   await expect(cacheSwitch).toHaveAttribute("aria-checked", "true");
-  expect(settingsPayloads).toHaveLength(0);
-
-  await page.getByRole("button", { name: "Save configuration", exact: true }).click();
-  await expect.poll(() => settingsPayloads).toHaveLength(1);
-  expect(settingsPayloads[0]).toEqual(expect.objectContaining({ cacheEnabled: true }));
+  await expect.poll(() => settingsPayloads).toEqual([{ cacheEnabled: true }]);
 });
 
 test("cleanup page can clear referenced cache for selected works", async ({ page }) => {
@@ -660,15 +650,13 @@ test.describe("on a device in another time zone", () => {
     await expect(zone.locator("option").first()).toHaveText("Automatic (Asia/Tokyo)");
     await expect(zone).toHaveValue("");
     await zone.selectOption("Europe/Berlin");
-    await page.getByRole("button", { name: "Save time zone", exact: true }).click();
-    await expect(page.getByText("Time zone saved.")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Time zone" }).getByRole("status")).toHaveText("Saved");
     expect(updates.at(-1)).toEqual({ timeZone: "Europe/Berlin" });
 
     // The fixed zone is the saved choice on the next visit, and automatic clears it.
     await page.reload();
     await expect(zone).toHaveValue("Europe/Berlin");
     await zone.selectOption("");
-    await page.getByRole("button", { name: "Save time zone", exact: true }).click();
     await expect.poll(() => updates.at(-1)).toEqual({ timeZone: null });
   });
 });
@@ -784,8 +772,13 @@ test("personal playback seek intervals use the requested defaults and persist lo
 
   await forward.fill("45");
   await backward.fill("15");
-  await page.getByRole("button", { name: "Save playback", exact: true }).click();
-  await expect(page.getByText("Playback seek settings updated.", { exact: true })).toBeVisible();
+  await backward.press("Enter");
+  await expect(page.getByRole("region", { name: "Playback" }).getByRole("status")).toHaveText("Saved");
+
+  // An out-of-range interval keeps its error and is not stored.
+  await forward.fill("0");
+  await forward.press("Tab");
+  await expect(page.getByRole("alert")).toContainText("1");
 
   await page.reload();
   await expect(forward).toHaveValue("45");
@@ -829,17 +822,24 @@ test("development super administrator can configure production anonymous access"
   await expect(
     accessSection.getByText("Library browsing and playback without an account", { exact: true }),
   ).toBeVisible();
-  const saveAccessPolicy = accessSection.getByRole("button", { name: "Save access policy", exact: true });
-  await expect(saveAccessPolicy).toBeDisabled();
   await expect(accessSwitch).toHaveAttribute("aria-checked", "false");
+  // Opening the library to visitors is confirmed first; cancelling changes nothing.
   await accessSwitch.click();
-  await saveAccessPolicy.click();
+  const confirm = page.getByRole("alertdialog", { name: "Allow anonymous access?" });
+  await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(accessSwitch).toHaveAttribute("aria-checked", "false");
+  expect(updates).toEqual([]);
 
+  await accessSwitch.click();
+  await confirm.getByRole("button", { name: "Allow", exact: true }).click();
   await expect.poll(() => updates).toEqual([{ anonymousAccessEnabled: true }]);
   await expect.poll(() => runtimeRequests).toBeGreaterThanOrEqual(2);
   await expect(accessSwitch).toHaveAttribute("aria-checked", "true");
-  await expect(saveAccessPolicy).toBeDisabled();
-  await expect(page.getByText("Access policy saved.", { exact: true })).toBeVisible();
+  await expect(accessSection.getByRole("status")).toHaveText("Saved");
+
+  // Turning it off needs no confirmation.
+  await accessSwitch.click();
+  await expect.poll(() => updates.at(-1)).toEqual({ anonymousAccessEnabled: false });
 });
 
 test("work maintenance mounts once and keeps its result region stable while settings load", async ({ page }) => {
@@ -1286,14 +1286,11 @@ test("@desktop administrators set catalog freshness in Library settings", async 
   // There is no instance metadata language, so Settings has no Metadata tab.
   await expect(page.getByRole("tab", { name: "Metadata", exact: true })).toHaveCount(0);
 
-  const save = page.getByRole("button", { name: "Save catalog settings", exact: true });
-  await expect(save).toBeDisabled();
-  await page.getByRole("spinbutton", { name: "Catalog freshness days", exact: true }).fill("14");
-  await save.click();
-  await expect.poll(() => saves.length).toBe(1);
-  expect(saves[0]).toEqual(expect.objectContaining({ catalogFreshnessDays: 14 }));
-  expect(saves[0]).not.toHaveProperty("dlsiteMetadataLanguages");
-  await expect(save).toBeDisabled();
+  const freshness = page.getByRole("spinbutton", { name: "Catalog freshness days", exact: true });
+  await freshness.fill("14");
+  await freshness.press("Tab");
+  await expect.poll(() => saves).toEqual([{ catalogFreshnessDays: 14 }]);
+  await expect(page.getByRole("region", { name: "Creator catalogs" }).getByRole("status")).toHaveText("Saved");
 
   // The metadata tab id opens Library.
   await page.goto("/settings?tab=metadata");

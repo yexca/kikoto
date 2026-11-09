@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { AutosaveStatus, useAutosaveStatus } from "@/components/settings/AutosaveStatus";
 import { SettingsNumberInput, SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 import { Badge } from "@/components/ui/badge";
 import { FloatingSelect } from "@/components/ui/floating-select";
@@ -15,7 +15,8 @@ export const TRANSCODE_SLOTS_MAXIMUM = 5;
  * Administrator settings for playback conversion: how many conversions run at
  * once across the server, and the GPU encoder for converted video with the
  * server's check of the saved choice. The server encodes in software whenever
- * the encoder is off, unavailable, or fails.
+ * the encoder is off, unavailable, or fails. A choice saves at once; a typed
+ * field saves when its edit is finished.
  */
 export function VideoHardwareSettingsSection({
   transcodeSlots,
@@ -24,7 +25,8 @@ export function VideoHardwareSettingsSection({
   status,
   readOnly,
   onChange,
-  saveButton,
+  onCommit,
+  onSave,
 }: {
   transcodeSlots: number;
   acceleration: VideoHardwareAcceleration;
@@ -36,14 +38,17 @@ export function VideoHardwareSettingsSection({
     videoHardwareAcceleration?: VideoHardwareAcceleration;
     videoHardwareDevice?: string;
   }) => void;
-  saveButton: ReactNode;
+  /** Saves a typed field if it changed; null when it did not. */
+  onCommit: (key: "transcodeSlots" | "videoHardwareDevice") => Promise<boolean> | null;
+  onSave: (next: { videoHardwareAcceleration: VideoHardwareAcceleration }) => Promise<boolean>;
 }) {
   const { t } = useTranslation();
+  const autosave = useAutosaveStatus();
   return (
     <SettingsSection
       title={t("maintenance.cache.videoHardware")}
       description={t("maintenance.cache.videoHardwareDescription")}
-      footer={saveButton}
+      action={<AutosaveStatus state={autosave.state} />}
     >
       <SettingsRow
         title={t("maintenance.cache.transcodeSlots")}
@@ -57,6 +62,7 @@ export function VideoHardwareSettingsSection({
           max={TRANSCODE_SLOTS_MAXIMUM}
           integer
           onChange={(next) => onChange({ transcodeSlots: next })}
+          onCommit={() => void autosave.track(onCommit("transcodeSlots"))}
         />
       </SettingsRow>
       <SettingsRow
@@ -71,7 +77,9 @@ export function VideoHardwareSettingsSection({
             { value: "qsv", label: t("maintenance.cache.videoHardwareQsv") },
           ]}
           onValueChange={(value) =>
-            onChange({ videoHardwareAcceleration: value === "qsv" || value === "vaapi" ? value : "none" })
+            void autosave.track(
+              onSave({ videoHardwareAcceleration: value === "qsv" || value === "vaapi" ? value : "none" }),
+            )
           }
           ariaLabel={t("maintenance.cache.videoHardwareEncoder")}
           disabled={readOnly}
@@ -90,6 +98,10 @@ export function VideoHardwareSettingsSection({
             aria-label={t("maintenance.cache.videoHardwareDevice")}
             className="w-48 font-mono sm:w-56"
             onChange={(event) => onChange({ videoHardwareDevice: event.target.value })}
+            onBlur={() => void autosave.track(onCommit("videoHardwareDevice"))}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void autosave.track(onCommit("videoHardwareDevice"));
+            }}
           />
         </SettingsRow>
       )}

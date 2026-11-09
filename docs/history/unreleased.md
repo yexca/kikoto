@@ -6,6 +6,15 @@
 - The Android app leaves exactly one status bar's height above the header, on
   every Android and WebView version, instead of counting the status bar twice
   on some phones.
+- Settings saves a switch or choice as soon as it changes and a typed number
+  or name when you leave the field, and shows Saving and Saved beside the
+  section heading, instead of a separate Save button under almost every
+  section. Forms whose fields belong together, such as the password change
+  and the content safety policy, keep their button. Turning on anonymous
+  access now asks for confirmation first.
+- The Library settings tab gathers scan depth and work-folder lyrics under
+  **Local library**, and hiding source addresses and LAN addresses for
+  Kikoeru imports under **Network and privacy**.
 
 </details>
 

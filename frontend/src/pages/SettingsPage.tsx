@@ -6,6 +6,7 @@ import {
   UserPreferencePanels,
 } from "@/features/preferences";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
+import { AutosaveStatus, useAutosaveStatus } from "@/components/settings/AutosaveStatus";
 import { SettingsNumberInput, SettingsRow, SettingsSection } from "@/components/settings/SettingsSection";
 import { IconRail, type IconRailItem } from "@/components/ui/icon-rail";
 import { useRailOrientation } from "@/components/ui/rail-labels";
@@ -18,7 +19,6 @@ import {
   KeyRound,
   LoaderCircle,
   Network,
-  Save,
   Shield,
   Sparkles,
   Tags,
@@ -125,6 +125,8 @@ export function SettingsPage({
     backward: String(seekPreferences.seekBackwardSeconds),
   }));
   const [seekError, setSeekError] = useState<string | null>(null);
+  const profileStatus = useAutosaveStatus();
+  const seekStatus = useAutosaveStatus();
   const [railOrientation, toggleRailOrientation] = useRailOrientation("kikoto:settings-rail-orientation", "horizontal");
   // Demo shows every administration surface read-only even though its identity
   // is not an administrator; the server rejects every write.
@@ -235,8 +237,8 @@ export function SettingsPage({
     };
   }, [user.id]);
 
-  const saveSeekPreferences = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  // Stored when either field's edit is finished; an invalid value stays as typed with its error.
+  const commitSeekPreferences = () => {
     const forward = Number(seekDraft.forward);
     const backward = Number(seekDraft.backward);
     const validForward = normalizeSeekSeconds(forward, Number.NaN);
@@ -250,6 +252,10 @@ export function SettingsPage({
       );
       return;
     }
+    if (validForward === seekPreferences.seekForwardSeconds && validBackward === seekPreferences.seekBackwardSeconds) {
+      setSeekError(null);
+      return;
+    }
     const preferences = storePlaybackSeekPreferences(user.id, {
       seekForwardSeconds: validForward,
       seekBackwardSeconds: validBackward,
@@ -260,23 +266,29 @@ export function SettingsPage({
       backward: String(preferences.seekBackwardSeconds),
     });
     setSeekError(null);
-    toast.success(t("settings.seekUpdated"));
+    void seekStatus.track(Promise.resolve(true));
   };
 
-  const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const nextDisplayName = displayName.trim() || user.username;
-    if (nextDisplayName === user.displayName) return;
+  // Saved when the field's edit is finished; a failure returns the field to the saved name.
+  const saveProfile = async (nextDisplayName: string) => {
     setIsProfileSaving(true);
     try {
       await api.updateCurrentAccount({ displayName: nextDisplayName });
       await onAccountUpdated();
-      toast.success(t("account.profileUpdated"));
+      return true;
     } catch (error) {
+      setDisplayName(user.displayName || user.username);
       toast.notify(toastFromError(error, t("account.profileUpdateFailed")));
+      return false;
     } finally {
       setIsProfileSaving(false);
     }
+  };
+
+  const commitDisplayName = () => {
+    const nextDisplayName = displayName.trim() || user.username;
+    if (readOnly || isProfileSaving || nextDisplayName === (user.displayName || user.username)) return;
+    void profileStatus.track(saveProfile(nextDisplayName));
   };
 
   const changePassword = async (event: FormEvent<HTMLFormElement>) => {
@@ -332,7 +344,6 @@ export function SettingsPage({
     });
 
   const savedDisplayName = user.displayName || user.username;
-  const normalizedDisplayName = displayName.trim() || user.username;
   const passwordManagedByEnvironment = user.passwordManagedBy === "environment";
 
   return (
@@ -356,54 +367,40 @@ export function SettingsPage({
               role="tabpanel"
               aria-labelledby="settings-tab-account"
             >
-              <form onSubmit={saveProfile}>
-                <SettingsSection
-                  title={t("settings.account")}
-                  footer={
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={readOnly || isProfileSaving || normalizedDisplayName === savedDisplayName}
-                    >
-                      {isProfileSaving ? (
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Save className="h-4 w-4" />
-                      )}
-                      {t("settings.saveProfile")}
-                    </Button>
-                  }
-                >
-                  <div className="flex min-w-0 items-center gap-3 px-4 py-4">
-                    <span
-                      className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/10 text-base font-semibold text-primary"
-                      aria-hidden="true"
-                    >
-                      {avatarInitial(savedDisplayName)}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold">{savedDisplayName}</div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        @{user.username}
-                        <span aria-hidden="true" className="px-1.5">
-                          ·
-                        </span>
-                        {t(`account.roles.${user.role}`, { defaultValue: user.role.replace("_", " ") })}
-                      </div>
+              <SettingsSection title={t("settings.account")} action={<AutosaveStatus state={profileStatus.state} />}>
+                <div className="flex min-w-0 items-center gap-3 px-4 py-4">
+                  <span
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary/10 text-base font-semibold text-primary"
+                    aria-hidden="true"
+                  >
+                    {avatarInitial(savedDisplayName)}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">{savedDisplayName}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      @{user.username}
+                      <span aria-hidden="true" className="px-1.5">
+                        ·
+                      </span>
+                      {t(`account.roles.${user.role}`, { defaultValue: user.role.replace("_", " ") })}
                     </div>
                   </div>
-                  <SettingsRow title={t("settings.displayName")} htmlFor="account-display-name">
-                    <Input
-                      id="account-display-name"
-                      className="w-full sm:w-64"
-                      value={displayName}
-                      autoComplete="name"
-                      disabled={readOnly || isProfileSaving}
-                      onChange={(event) => setDisplayName(event.target.value)}
-                    />
-                  </SettingsRow>
-                </SettingsSection>
-              </form>
+                </div>
+                <SettingsRow title={t("settings.displayName")} htmlFor="account-display-name">
+                  <Input
+                    id="account-display-name"
+                    className="w-full sm:w-64"
+                    value={displayName}
+                    autoComplete="name"
+                    disabled={readOnly || isProfileSaving}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                    onBlur={commitDisplayName}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") commitDisplayName();
+                    }}
+                  />
+                </SettingsRow>
+              </SettingsSection>
               {passwordManagedByEnvironment ? (
                 <SettingsSection title={t("settings.password")}>
                   <div className="px-4 py-3 text-sm text-muted-foreground" role="status">
@@ -489,57 +486,43 @@ export function SettingsPage({
               id="settings-panel-playback"
               aria-labelledby="settings-tab-playback"
             >
-              <form onSubmit={saveSeekPreferences}>
-                <SettingsSection
-                  title={t("settings.playback")}
-                  description={t("settings.playbackDescription")}
-                  footer={
-                    <>
-                      <span
-                        id="seek-preferences-error"
-                        className="mr-auto min-h-5 text-sm text-destructive"
-                        role={seekError ? "alert" : undefined}
-                      >
-                        {seekError}
-                      </span>
-                      <Button
-                        type="submit"
-                        size="sm"
-                        disabled={
-                          Number(seekDraft.forward) === seekPreferences.seekForwardSeconds &&
-                          Number(seekDraft.backward) === seekPreferences.seekBackwardSeconds
-                        }
-                      >
-                        <Save className="h-4 w-4" />
-                        {t("settings.savePlayback")}
-                      </Button>
-                    </>
-                  }
-                >
-                  <SeekRow
-                    id="seek-forward-seconds"
-                    label={t("settings.seekForward")}
-                    description={t("settings.seekRange", { min: SEEK_SECONDS_MIN, max: SEEK_SECONDS_MAX })}
-                    unit={t("settings.seconds")}
-                    value={seekDraft.forward}
-                    onChange={(forward) => {
-                      setSeekDraft((current) => ({ ...current, forward }));
-                      setSeekError(null);
-                    }}
-                  />
-                  <SeekRow
-                    id="seek-backward-seconds"
-                    label={t("settings.seekBackward")}
-                    description={t("settings.seekRange", { min: SEEK_SECONDS_MIN, max: SEEK_SECONDS_MAX })}
-                    unit={t("settings.seconds")}
-                    value={seekDraft.backward}
-                    onChange={(backward) => {
-                      setSeekDraft((current) => ({ ...current, backward }));
-                      setSeekError(null);
-                    }}
-                  />
-                </SettingsSection>
-              </form>
+              <SettingsSection
+                title={t("settings.playback")}
+                description={t("settings.playbackDescription")}
+                action={<AutosaveStatus state={seekStatus.state} />}
+                footer={
+                  seekError ? (
+                    <span id="seek-preferences-error" className="mr-auto text-sm text-destructive" role="alert">
+                      {seekError}
+                    </span>
+                  ) : undefined
+                }
+              >
+                <SeekRow
+                  id="seek-forward-seconds"
+                  label={t("settings.seekForward")}
+                  description={t("settings.seekRange", { min: SEEK_SECONDS_MIN, max: SEEK_SECONDS_MAX })}
+                  unit={t("settings.seconds")}
+                  value={seekDraft.forward}
+                  onChange={(forward) => {
+                    setSeekDraft((current) => ({ ...current, forward }));
+                    setSeekError(null);
+                  }}
+                  onCommit={commitSeekPreferences}
+                />
+                <SeekRow
+                  id="seek-backward-seconds"
+                  label={t("settings.seekBackward")}
+                  description={t("settings.seekRange", { min: SEEK_SECONDS_MIN, max: SEEK_SECONDS_MAX })}
+                  unit={t("settings.seconds")}
+                  value={seekDraft.backward}
+                  onChange={(backward) => {
+                    setSeekDraft((current) => ({ ...current, backward }));
+                    setSeekError(null);
+                  }}
+                  onCommit={commitSeekPreferences}
+                />
+              </SettingsSection>
               <PlaybackLoudnessPreference userId={user.id} />
               <PlaybackSourcePreferences userId={user.id} />
               {supportsNativePrivacy() && <DevicePrivacyPreferences />}
@@ -639,6 +622,7 @@ function SeekRow({
   unit,
   value,
   onChange,
+  onCommit,
 }: {
   id: string;
   label: string;
@@ -646,6 +630,7 @@ function SeekRow({
   unit: string;
   value: string;
   onChange: (value: string) => void;
+  onCommit: () => void;
 }) {
   return (
     <SettingsRow htmlFor={id} title={label} description={description}>
@@ -658,6 +643,7 @@ function SeekRow({
         value={value}
         describedBy="seek-preferences-error"
         onChange={(_, text) => onChange(text)}
+        onCommit={onCommit}
       />
     </SettingsRow>
   );

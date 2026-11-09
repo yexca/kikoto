@@ -206,6 +206,12 @@ should share a consistent content width, section spacing, field rhythm,
 and destructive-action placement. Wide diagnostic tables may opt out of the
 content cap, but ordinary forms should not define their own page-local width.
 
+A settings switch or choice saves as soon as it changes, and a typed field
+saves when its edit finishes. Its section heading shows the save state. A
+Save button belongs only to a form whose fields must change together, such as
+a password change or a policy editor. A section with one field does not get a
+footer for its own button.
+
 ## Failure and Recovery
 
 - Preserve the app shell and global player when a route or remote panel fails.

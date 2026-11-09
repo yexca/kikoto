@@ -672,7 +672,6 @@ export const surfaceKorean = {
     settingsApiUnavailable: "설정 API를 사용할 수 없습니다.",
     settingsSaved: "설정을 저장했습니다.",
     accessPolicyRefreshFailed: "접근 정책을 저장했지만 런타임 상태를 새로 고치지 못했습니다.",
-    accessPolicySaved: "접근 정책을 저장했습니다.",
     accessPolicySaveFailed: "접근 정책을 저장하지 못했습니다.",
     asr: {
       title: "음성 인식 서비스",
@@ -968,7 +967,6 @@ export const surfaceKorean = {
         encodeFailed: "테스트 인코딩에 실패했습니다. 컨테이너가 장치를 열 수 있고 GPU 드라이버가 있는지 확인하세요.",
         keyframesUnaligned: "인코더가 세그먼트가 시작해야 하는 위치에 키프레임을 두지 않습니다.",
       },
-      saveVideoHardware: "동영상 변환 저장",
       transferSafety: "전송 안전",
       downloadLimit: "파일별 다운로드 제한",
       downloadLimitDescription:
@@ -986,7 +984,6 @@ export const surfaceKorean = {
       initialBackoffDescription: "원격 속도 제한 응답 후 첫 재시도 지연입니다.",
       maximumBackoff: "최대 백오프",
       maximumBackoffDescription: "소스의 Retry-After를 포함한 속도 제한 대기 시간의 상한입니다.",
-      save: "구성 저장",
       transcodeCache: "트랜스코드 캐시",
       onDisk: "디스크 사용량",
       segments: "{{count}}개 파일",
@@ -1084,7 +1081,10 @@ export const surfaceKorean = {
       instance: "인스턴스 접근",
       anonymous: "익명 접근",
       anonymousDescription: "계정 없이 라이브러리를 탐색하고 재생",
-      save: "접근 정책 저장",
+      enableTitle: "익명 접근을 허용할까요?",
+      enableDescription:
+        "이 서버에 접속할 수 있는 누구나 계정 없이 라이브러리를 탐색하고 작품을 재생할 수 있게 됩니다.",
+      enable: "허용",
     },
     routing: {
       playback: "재생",
@@ -1203,7 +1203,6 @@ export const surfaceKorean = {
     library: {
       local: "로컬 라이브러리",
       scanDepth: "스캔 깊이",
-      save: "로컬 설정 저장",
       libraries: "라이브러리",
       librariesDescription: "이 서버가 읽는 로컬 라이브러리와 원격 소스입니다.",
       librariesSummary: "로컬 라이브러리와 원격 소스 {{total}}개 중 {{enabled}}개 사용",
@@ -1212,8 +1211,8 @@ export const surfaceKorean = {
       storageSettings: "라이브러리 저장소 설정",
       poolsOnline: "{{total}}개 중 {{online}}개 온라인",
       settingsGroup: "설정",
+      networkPrivacy: "네트워크 및 개인정보",
       addSource: "소스 추가",
-      kikoeruImport: "Kikoeru 계정 가져오기",
       kikoeruImportDescription: "각 계정은 개인 데이터에서 Kikoeru 서버의 자기 리뷰와 재생목록을 읽을 수 있습니다.",
       kikoeruPrivateAddresses: "모든 계정에 LAN 주소 허용",
       kikoeruPrivateAddressesDescription:
@@ -1222,24 +1221,17 @@ export const surfaceKorean = {
       kikoeruPrivateEnableDescription:
         "로그인한 모든 계정이 이 서버를 라우터나 NAS 같은 로컬 네트워크 기기에 연결하게 하고 응답 여부를 알 수 있게 됩니다. 모든 계정을 신뢰할 때만 켜세요.",
       kikoeruPrivateEnable: "허용",
-      saveKikoeruImport: "가져오기 설정 저장",
-      remoteAddresses: "원격 소스 주소",
-      remoteAddressesDescription: "각 원격 소스가 네트워크에서 있는 위치입니다.",
       hideRemoteAddresses: "소스를 관리하지 않는 계정에서 주소 숨기기",
       hideRemoteAddressesDescription:
         "켜면 소스 관리 권한이 없는 계정과 로그인하지 않은 열람자는 소스의 API·사이트·대체 주소, 소스 사이트의 작품 링크, 트랙과 활동에 포함된 업스트림 URL을 받지 않습니다. 탐색, 재생, 커버, 텍스트 미리보기는 이 서버를 거칩니다.",
-      saveRemoteAddresses: "주소 설정 저장",
-      lyricsFiles: "가사 파일",
       lyricsFilesDescription:
         "가사 관리가 작품 폴더에 이미 있는 가사를 Kikoto의 lyrics_kikoto 폴더로 가져오는 방식입니다.",
       folderLyricsMode: "작품 폴더의 가사",
       folderLyricsModeDescription:
         "복사하면 작품 자체의 파일은 그대로 남고, 이동하면 원래 자리에서 옮겨집니다. 편집할 때마다 따로 고를 수도 있습니다.",
-      saveLyricsFiles: "가사 설정 저장",
       creatorCatalogs: "크리에이터 카탈로그",
       catalogFreshnessDays: "카탈로그 최신 유지 일수",
       catalogFreshnessDescription: "서클 및 성우 카탈로그는 마지막 새로 고침 후 이 일수가 지나면 주의 상태가 됩니다.",
-      saveCreatorCatalogs: "카탈로그 설정 저장",
       configure: "구성",
       deleteSource: "소스 삭제",
       checkHealth: "상태 확인",

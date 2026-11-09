@@ -771,7 +771,6 @@ export const japaneseResource = {
         copyDiagnostics: "診断情報をコピー",
         clearServer: "サーバーをクリア",
         accountSubtitle: "ログインしてアカウントを管理",
-        profileUpdated: "アカウント情報を更新しました。",
         profileUpdateFailed: "プロフィールの更新に失敗しました。",
         ["passwordChanged"]: "パスワードを変更しました。他のセッションはログアウトされました。",
         ["passwordChangeFailed"]: "パスワードの変更に失敗しました。",
@@ -959,9 +958,11 @@ export const japaneseResource = {
         seekBackward: "巻き戻し時間",
         seconds: "秒",
         seekRange: "{{min}} 秒から {{max}} 秒までの整数を入力してください。",
+        autosave: {
+          saving: "保存中...",
+          saved: "保存しました",
+        },
         seekInvalid: "{{min}} 秒から {{max}} 秒までの整数を入力してください。",
-        savePlayback: "再生設定を保存",
-        seekUpdated: "再生の早送り／巻き戻し設定を更新しました。",
         loudness: "ラウドネスの正規化",
         loudnessDescription:
           "トラック間の音量差をそろえます。各ローカルファイルは、正規化をオンにして初めて再生したときに一度だけ測定されます。",
@@ -1028,7 +1029,6 @@ export const japaneseResource = {
         displayName: "表示名",
         username: "ユーザー名",
         role: "ロール",
-        saveProfile: "プロフィールを保存",
         ["password"]: "パスワード",
         rootPasswordManaged:
           "root パスワードは <env>KIKOTO_ROOT_PASSWORD</env> で管理されています。<file>.env</file> で更新し、Kikoto を再起動してください。",
