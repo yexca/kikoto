@@ -1,21 +1,12 @@
-import { CalendarClock, ChevronRight, Eye, Power, type LucideIcon } from "lucide-react";
+import { Activity, CalendarClock, ChevronRight, Eye, Loader2, Power, type LucideIcon } from "lucide-react";
 import { Fragment, useEffect, useId, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { RailLabelsToggle, useRailLabelsShown } from "@/components/ui/rail-labels";
-import { intlLocaleFor } from "@/i18n";
-import { useLocale } from "@/i18n/LocaleProvider";
 import type { WorkflowDefinition, WorkflowRun, WorkflowTrigger } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
 
 import { RunStatusDot, useRunLabels } from "./RunOverview";
-import {
-  formatRelativeTime,
-  isActiveRunStatus,
-  isDemoShowcaseActiveRun,
-  parseWorkflowTimestamp,
-} from "./runPresentation";
-import { useNow } from "./useRunClock";
 import type { WorkflowCategoryGroup } from "./workflowCategories";
 import { workflowCategoryIcons, workflowIcon } from "./workflowVisuals";
 
@@ -28,10 +19,10 @@ const automationGlyphs: { type: string; icon: LucideIcon; label: string }[] = [
 const LABELS_SHOWN_KEY = "kikoto:workflow-rail-labels-shown";
 
 /**
- * Every visible workflow, grouped by category, with its latest run and active
- * automation at a glance. Wide layouts keep it beside the selected workflow
- * and can collapse it to an icon rail that marks each latest run on its icon;
- * the mobile layout shows it as the landing list that opens a workflow.
+ * Every visible workflow, grouped by category, one line each: its name, a dot
+ * on its icon for the latest run, and its active automation. Wide layouts keep
+ * it beside the selected workflow and can collapse it to an icon rail; the
+ * mobile layout shows it as the landing list that opens a workflow.
  */
 export function WorkflowNavigator({
   groups,
@@ -40,25 +31,22 @@ export function WorkflowNavigator({
   triggers,
   mobile,
   onSelect,
+  activity,
 }: {
   groups: WorkflowCategoryGroup[];
+  /** The selected workflow; null while Activity or nothing is shown. */
   selectedId: number | null;
   latestRun: (code: string) => WorkflowRun | null | undefined;
   triggers: WorkflowTrigger[];
   mobile: boolean;
   onSelect: (definition: WorkflowDefinition) => void;
+  /** The entry above the workflows that shows every run in place of a workflow. */
+  activity: ActivityEntryState;
 }) {
   const { t } = useTranslation();
   const listRef = useRef<HTMLElement>(null);
   const [labelsShown, toggleLabels] = useRailLabelsShown(LABELS_SHOWN_KEY, true);
   const collapsed = !labelsShown && !mobile;
-  const anyActive = groups.some((group) =>
-    group.definitions.some((definition) => {
-      const run = latestRun(definition.code);
-      return run ? isActiveRunStatus(run.status) && !isDemoShowcaseActiveRun(run) : false;
-    }),
-  );
-  const now = useNow(true, anyActive ? 5000 : 30_000);
 
   useEffect(() => {
     if (mobile) return;
@@ -91,7 +79,6 @@ export function WorkflowNavigator({
               triggers={triggers}
               mobile={mobile}
               collapsed={collapsed}
-              now={now}
               onSelect={onSelect}
             />
           </Fragment>
@@ -99,15 +86,24 @@ export function WorkflowNavigator({
       </div>
     </nav>
   );
-  if (mobile) return navigation;
+  const activityEntry = <ActivityEntry {...activity} mobile={mobile} collapsed={collapsed} />;
+  if (mobile)
+    return (
+      <div className="grid gap-5">
+        <div className="overflow-hidden rounded-lg border bg-card">{activityEntry}</div>
+        {navigation}
+      </div>
+    );
 
   return (
     <div
       className={cn(
         "lg:sticky lg:top-20 lg:flex lg:max-h-[calc(100dvh-6rem)] lg:shrink-0 lg:flex-col lg:gap-1 lg:self-start lg:border-r",
-        collapsed ? "lg:pr-2" : "lg:w-60 lg:pr-3 xl:w-64 2xl:w-72",
+        collapsed ? "lg:pr-2" : "lg:w-56 lg:pr-2 xl:w-60",
       )}
     >
+      <div className="shrink-0">{activityEntry}</div>
+      <span aria-hidden className="mx-2 my-2 h-px shrink-0 bg-border" />
       {navigation}
       <span aria-hidden className="mx-2 my-1 h-px shrink-0 bg-border" />
       <RailLabelsToggle expanded={!collapsed} onToggle={toggleLabels} />
@@ -122,7 +118,6 @@ function NavigatorGroup({
   triggers,
   mobile,
   collapsed,
-  now,
   onSelect,
 }: {
   group: WorkflowCategoryGroup;
@@ -131,7 +126,6 @@ function NavigatorGroup({
   triggers: WorkflowTrigger[];
   mobile: boolean;
   collapsed: boolean;
-  now: number;
   onSelect: (definition: WorkflowDefinition) => void;
 }) {
   const { t } = useTranslation();
@@ -160,7 +154,6 @@ function NavigatorGroup({
               triggers={triggers.filter((trigger) => trigger.workflowDefinitionId === definition.id && trigger.enabled)}
               mobile={mobile}
               collapsed={collapsed}
-              now={now}
               onSelect={() => onSelect(definition)}
             />
           </li>
@@ -177,7 +170,6 @@ function NavigatorItem({
   triggers,
   mobile,
   collapsed,
-  now,
   onSelect,
 }: {
   definition: WorkflowDefinition;
@@ -186,10 +178,10 @@ function NavigatorItem({
   triggers: WorkflowTrigger[];
   mobile: boolean;
   collapsed: boolean;
-  now: number;
   onSelect: () => void;
 }) {
   const { t } = useTranslation();
+  const labels = useRunLabels();
   const statusId = useId();
   const Icon = workflowIcon(definition.code);
   const fullName = t(`workflowPage.builtInDefinitions.${definition.code}.name`, {
@@ -197,6 +189,7 @@ function NavigatorItem({
   });
   const label = t(`workflowPage.shortNames.${definition.code}`, { defaultValue: fullName });
   const glyphs = automationGlyphs.filter((glyph) => triggers.some((trigger) => trigger.triggerType === glyph.type));
+  const status = run ? labels.status(run.status) : run === null ? t("workflowPage.console.neverRun") : "";
   return (
     <button
       type="button"
@@ -208,10 +201,10 @@ function NavigatorItem({
       className={cn(
         "group/item relative flex w-full min-w-0 items-center gap-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         mobile
-          ? "min-h-16 px-3 py-2.5 hover:bg-muted/50 active:bg-muted/70"
+          ? "min-h-14 px-3 py-2 hover:bg-muted/50 active:bg-muted/70"
           : collapsed
             ? "h-11 w-11 justify-center rounded-md hover:bg-muted/50 active:bg-muted/70"
-            : "min-h-14 rounded-md px-2 py-2 hover:bg-muted/50 active:bg-muted/70",
+            : "min-h-11 rounded-md px-2 py-1 hover:bg-muted/50 active:bg-muted/70",
         selected && "bg-primary/10 hover:bg-primary/10",
       )}
       onClick={onSelect}
@@ -224,79 +217,127 @@ function NavigatorItem({
         )}
       >
         <Icon className="h-[18px] w-[18px]" aria-hidden />
-        {/* Without the status line, the latest run still shows on the icon; the description names it. */}
+        {/* The latest run is a dot on the icon; the description names it. */}
         {/* The badge reaches the rail's edge, so it clips a spinning status that would otherwise scroll the rail. */}
-        {collapsed && run && (
+        {run && (
           <span className="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center overflow-hidden rounded-full bg-background">
             <RunStatusDot status={run.status} decorative />
           </span>
         )}
       </span>
-      <span className={cn("grid min-w-0 flex-1 gap-0.5", collapsed && "sr-only")}>
-        <span className="flex min-w-0 items-center gap-2">
-          <span className={cn("min-w-0 flex-1 truncate text-sm", selected ? "font-semibold" : "font-medium")}>
-            {label}
+      <span className={cn("flex min-w-0 flex-1 items-center gap-2", collapsed && "sr-only")}>
+        <span className={cn("min-w-0 flex-1 truncate text-sm", selected ? "font-semibold" : "font-medium")}>
+          {label}
+        </span>
+        {glyphs.length > 0 && (
+          <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground" aria-hidden>
+            {glyphs.map((glyph) => {
+              const GlyphIcon = glyph.icon;
+              return (
+                <span key={glyph.type} title={t(glyph.label)}>
+                  <GlyphIcon className="h-3.5 w-3.5" />
+                </span>
+              );
+            })}
           </span>
-          {glyphs.length > 0 && (
-            <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground" aria-hidden>
-              {glyphs.map((glyph) => {
-                const GlyphIcon = glyph.icon;
-                return (
-                  <span key={glyph.type} title={t(glyph.label)}>
-                    <GlyphIcon className="h-3.5 w-3.5" />
-                  </span>
-                );
-              })}
-            </span>
-          )}
-        </span>
-        <span id={statusId} className="min-w-0">
-          <LatestRunLine run={run} now={now} />
-          {glyphs.map((glyph) => (
-            <span key={glyph.type} className="sr-only">
-              , {t(glyph.label)}
-            </span>
-          ))}
-        </span>
+        )}
+      </span>
+      <span id={statusId} className="sr-only">
+        {[status, ...glyphs.map((glyph) => t(glyph.label))].filter(Boolean).join(", ")}
       </span>
       {mobile && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
     </button>
   );
 }
 
-function LatestRunLine({ run, now }: { run: WorkflowRun | null | undefined; now: number }) {
+export type ActivityEntryState = {
+  selected: boolean;
+  running: number;
+  attention: number;
+  onSelect: () => void;
+};
+
+/** Activity as the navigator's first entry: what is running and what needs attention, across every workflow. */
+function ActivityEntry({
+  selected,
+  running,
+  attention,
+  onSelect,
+  mobile,
+  collapsed,
+}: ActivityEntryState & { mobile: boolean; collapsed: boolean }) {
   const { t } = useTranslation();
-  const labels = useRunLabels();
-  const { resolvedLocale } = useLocale();
-  if (run === undefined) {
-    return <span className="block h-3 w-24 animate-pulse rounded bg-muted" aria-hidden />;
-  }
-  if (run === null) {
-    return (
-      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <span className="h-2 w-2 shrink-0 rounded-full border border-muted-foreground/50" aria-hidden />
-        {t("workflowPage.console.neverRun")}
-      </span>
-    );
-  }
-  const active = isActiveRunStatus(run.status);
-  const moment = parseWorkflowTimestamp(
-    active ? run.startedAt || run.createdAt : run.finishedAt || run.startedAt || run.createdAt,
-  );
+  const statusId = useId();
+  const label = t("nav.activity");
+  const counts = [
+    running > 0 ? t("workflowActivity.runningCount", { count: running }) : "",
+    attention > 0 ? t("workflowPage.console.attentionCount", { count: attention }) : "",
+  ].filter(Boolean);
+  const current = selected && !mobile;
   return (
-    <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-      <span className="flex w-3.5 shrink-0 justify-center">
-        <RunStatusDot status={run.status} decorative />
-      </span>
-      <span className={cn("truncate", active && "text-info-foreground")}>{labels.status(run.status)}</span>
-      {moment && !isDemoShowcaseActiveRun(run) && (
-        <>
-          <span aria-hidden>·</span>
-          <span className="shrink-0 tabular-nums">
-            {formatRelativeTime(moment, intlLocaleFor(resolvedLocale), now)}
-          </span>
-        </>
+    <button
+      type="button"
+      aria-describedby={counts.length > 0 ? statusId : undefined}
+      aria-current={current ? "true" : undefined}
+      title={[label, ...counts].join(" · ")}
+      className={cn(
+        "group/item relative flex w-full min-w-0 items-center gap-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        mobile
+          ? "min-h-14 px-3 py-2 hover:bg-muted/50 active:bg-muted/70"
+          : collapsed
+            ? "h-11 w-11 justify-center rounded-md hover:bg-muted/50 active:bg-muted/70"
+            : "min-h-11 rounded-md px-2 py-1 hover:bg-muted/50 active:bg-muted/70",
+        current && "bg-primary/10 hover:bg-primary/10",
       )}
-    </span>
+      onClick={onSelect}
+    >
+      {current && <span aria-hidden className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-primary" />}
+      <span
+        className={cn(
+          "relative grid h-9 w-9 shrink-0 place-items-center rounded-md transition-colors",
+          current ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground group-hover/item:text-foreground",
+        )}
+      >
+        {running > 0 ? (
+          <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden />
+        ) : (
+          <Activity className="h-[18px] w-[18px]" aria-hidden />
+        )}
+        {/* The rail has no room for counts; a dot marks runs that need attention. */}
+        {collapsed && attention > 0 && (
+          <span
+            aria-hidden
+            className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-warning"
+          />
+        )}
+      </span>
+      <span className={cn("flex min-w-0 flex-1 items-center gap-1.5", collapsed && "sr-only")}>
+        <span className={cn("min-w-0 flex-1 truncate text-sm", current ? "font-semibold" : "font-medium")}>
+          {label}
+        </span>
+        {running > 0 && (
+          <span
+            aria-hidden
+            className="shrink-0 rounded-full bg-info-surface px-1.5 text-2xs font-semibold tabular-nums leading-5 text-info-foreground"
+          >
+            {running}
+          </span>
+        )}
+        {attention > 0 && (
+          <span
+            aria-hidden
+            className="shrink-0 rounded-full bg-warning-surface px-1.5 text-2xs font-semibold tabular-nums leading-5 text-warning-foreground"
+          >
+            {attention}
+          </span>
+        )}
+      </span>
+      {counts.length > 0 && (
+        <span id={statusId} className="sr-only">
+          {counts.join(", ")}
+        </span>
+      )}
+      {mobile && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
+    </button>
   );
 }

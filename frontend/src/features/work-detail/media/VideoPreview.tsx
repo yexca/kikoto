@@ -9,7 +9,12 @@ import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/input";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { api, assetURL, type VideoAudioTrack, type VideoEmbeddedSubtitle, type VideoPlaybackInfo } from "@/lib/api";
+import { cn } from "@/lib/tailwindClassNames";
+import { usePlaybackSeekPreferences } from "@/player/mediaControls";
 import { playbackURL, prefersNativeVideoHls, videoPlaybackCapabilities } from "@/player/mediaPlayback";
+import { VideoControls } from "@/features/work-detail/media/VideoControls";
+import { formatVideoDuration, seekVideoBy, toggleVideoPlayback } from "@/features/work-detail/media/videoControlsModel";
+import { toggleVideoFullscreen, useStageFullscreen } from "@/features/work-detail/media/videoFullscreen";
 import {
   CONSERVATIVE_HLS_CONFIG,
   prepareVideoPlayback,
@@ -79,6 +84,9 @@ function VideoPlayback({
   const principalID = auth.user?.id ?? null;
   const resumeStorageKey = videoResumeStorageKey(principalID);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const fullscreen = useStageFullscreen(stageRef);
+  const seekPreferences = usePlaybackSeekPreferences(principalID);
   const [playback, setPlayback] = useState<VideoPlaybackInfo | null>(null);
   const [forceTranscode, setForceTranscode] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
@@ -323,6 +331,19 @@ function VideoPlayback({
     writeResumePosition(0);
   };
 
+  const toggleFullscreen = () => {
+    const stage = stageRef.current;
+    const video = videoRef.current;
+    if (stage && video) toggleVideoFullscreen(stage, video);
+  };
+
+  const changeRate = (rate: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.playbackRate = rate;
+    setRateNotice(video.playbackRate);
+  };
+
   const handleStageKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const video = videoRef.current;
     // Buttons beside the video keep Space and Enter.
@@ -334,131 +355,145 @@ function VideoPlayback({
     switch (shortcut.action) {
       case "togglePlay":
         if (event.repeat) return;
-        if (video.paused || video.ended) void video.play().catch(() => undefined);
-        else video.pause();
+        toggleVideoPlayback(video);
         return;
-      case "seek": {
-        if (video.readyState === 0) return;
-        const end = Number.isFinite(video.duration) ? video.duration : displayedDuration || Number.POSITIVE_INFINITY;
-        video.currentTime = Math.min(Math.max(0, video.currentTime + shortcut.seconds), end);
+      case "seek":
+        seekVideoBy(video, shortcut.seconds, displayedDuration);
         return;
-      }
       case "fullscreen":
-        toggleVideoFullscreen(video);
+        toggleFullscreen();
         return;
       case "mute":
         video.muted = !video.muted;
         return;
       case "rate":
-        video.playbackRate = nextVideoPlaybackRate(video.playbackRate, shortcut.step);
-        setRateNotice(video.playbackRate);
+        changeRate(nextVideoPlaybackRate(video.playbackRate, shortcut.step));
         return;
     }
   };
 
   return (
     <div
-      className="relative w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      ref={stageRef}
+      className={cn(
+        "relative w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        fullscreen && "flex h-full flex-col bg-black",
+      )}
       role="group"
       aria-label={t("videoPlayback.player")}
       aria-keyshortcuts="Space K J L ArrowLeft ArrowRight F M Shift+< Shift+>"
       tabIndex={-1}
       onKeyDown={handleStageKeyDown}
     >
-      <video
-        ref={videoRef}
-        controls
-        playsInline
-        preload="metadata"
-        className="max-h-[72vh] w-full bg-black object-contain"
-        aria-label={
-          displayedDuration > 0
-            ? t("videoPlayback.previewDuration", { duration: formatVideoDuration(displayedDuration) })
-            : t("videoPlayback.preview")
-        }
-        onPlay={() => {
-          wantsPlaybackRef.current = true;
-          if (recoveryRef.current) recoveryRef.current.playing = true;
-          onPlay();
-        }}
-        onPause={(event) => {
-          if (changingSourceRef.current || event.currentTarget.error) return;
-          wantsPlaybackRef.current = false;
-          if (recoveryRef.current) recoveryRef.current.playing = false;
-          notePosition(event.currentTarget, true);
-        }}
-        onEnded={(event) => {
-          wantsPlaybackRef.current = false;
-          setResumedFrom(null);
-          notePosition(event.currentTarget, true);
-        }}
-        onTimeUpdate={(event) => notePosition(event.currentTarget)}
-        onSeeked={(event) => notePosition(event.currentTarget, true)}
-        onLoadedMetadata={(event) => {
-          changingSourceRef.current = false;
-          const recovery = recoveryRef.current;
-          if (!recovery) return;
-          const video = event.currentTarget;
-          // hls.js may already have started at an earlier recovery position.
-          if (recovery.position > 0 || video.currentTime > 0) {
-            const end = Number.isFinite(video.duration) ? video.duration : recovery.position;
-            try {
-              video.currentTime = Math.min(recovery.position, end);
-            } catch {
-              setError("videoPlayback.restoreFailed");
-              return;
-            }
+      <div className={cn("@container/video relative", fullscreen && "min-h-0 flex-1")}>
+        <video
+          ref={videoRef}
+          playsInline
+          preload="metadata"
+          className={cn("block w-full bg-black object-contain", fullscreen ? "h-full" : "max-h-[72vh]")}
+          aria-label={
+            displayedDuration > 0
+              ? t("videoPlayback.previewDuration", { duration: formatVideoDuration(displayedDuration) })
+              : t("videoPlayback.preview")
           }
-          recoveryRef.current = null;
-          if (recovery.playing) {
-            const generation = sourceGenerationRef.current;
-            void video.play().catch((reason: unknown) => {
-              if (generation !== sourceGenerationRef.current) return;
-              if (
-                reason instanceof DOMException &&
-                (reason.name === "NotAllowedError" || reason.name === "AbortError")
-              ) {
+          onPlay={() => {
+            wantsPlaybackRef.current = true;
+            if (recoveryRef.current) recoveryRef.current.playing = true;
+            onPlay();
+          }}
+          onPause={(event) => {
+            if (changingSourceRef.current || event.currentTarget.error) return;
+            wantsPlaybackRef.current = false;
+            if (recoveryRef.current) recoveryRef.current.playing = false;
+            notePosition(event.currentTarget, true);
+          }}
+          onEnded={(event) => {
+            wantsPlaybackRef.current = false;
+            setResumedFrom(null);
+            notePosition(event.currentTarget, true);
+          }}
+          onTimeUpdate={(event) => notePosition(event.currentTarget)}
+          onSeeked={(event) => notePosition(event.currentTarget, true)}
+          onLoadedMetadata={(event) => {
+            changingSourceRef.current = false;
+            const recovery = recoveryRef.current;
+            if (!recovery) return;
+            const video = event.currentTarget;
+            // hls.js may already have started at an earlier recovery position.
+            if (recovery.position > 0 || video.currentTime > 0) {
+              const end = Number.isFinite(video.duration) ? video.duration : recovery.position;
+              try {
+                video.currentTime = Math.min(recovery.position, end);
+              } catch {
+                setError("videoPlayback.restoreFailed");
                 return;
               }
-              rememberPlayback();
-              setError("videoPlayback.playFailed");
-            });
-          }
-        }}
-        onPlaying={() => setError("")}
-        onError={() => {
-          if (!playback) return;
-          if (playback.delivery === "hls" && hlsManagedRef.current) return;
-          rememberPlayback();
-          if (
-            ((playback.delivery === "direct" && canTranscode) || retriesRemuxAsTranscode(playback)) &&
-            !forceTranscode
-          ) {
-            setForceTranscode(true);
-            return;
-          }
-          setError("videoPlayback.playFailed");
-        }}
-      >
-        {subtitleTracks.map((track) => (
-          <track
-            key={track.key}
-            data-subtitle-key={track.key}
-            kind="subtitles"
-            src={track.src}
-            srcLang={track.language}
-            label={track.label}
-          />
-        ))}
-      </video>
-      {rateNotice !== null && (
-        <div
-          className="pointer-events-none absolute right-3 top-3 rounded-md bg-background/80 px-2.5 py-1 text-sm tabular-nums text-foreground backdrop-blur"
-          role="status"
+            }
+            recoveryRef.current = null;
+            if (recovery.playing) {
+              const generation = sourceGenerationRef.current;
+              void video.play().catch((reason: unknown) => {
+                if (generation !== sourceGenerationRef.current) return;
+                if (
+                  reason instanceof DOMException &&
+                  (reason.name === "NotAllowedError" || reason.name === "AbortError")
+                ) {
+                  return;
+                }
+                rememberPlayback();
+                setError("videoPlayback.playFailed");
+              });
+            }
+          }}
+          onPlaying={() => setError("")}
+          onError={() => {
+            if (!playback) return;
+            if (playback.delivery === "hls" && hlsManagedRef.current) return;
+            rememberPlayback();
+            if (
+              ((playback.delivery === "direct" && canTranscode) || retriesRemuxAsTranscode(playback)) &&
+              !forceTranscode
+            ) {
+              setForceTranscode(true);
+              return;
+            }
+            setError("videoPlayback.playFailed");
+          }}
         >
-          {t("videoPlayback.playbackRate", { rate: rateNotice })}
-        </div>
-      )}
+          {subtitleTracks.map((track) => (
+            <track
+              key={track.key}
+              data-subtitle-key={track.key}
+              kind="subtitles"
+              src={track.src}
+              srcLang={track.language}
+              label={track.label}
+            />
+          ))}
+        </video>
+        <VideoControls
+          videoRef={videoRef}
+          stageRef={stageRef}
+          fullscreen={fullscreen}
+          fallbackDuration={displayedDuration}
+          hasSource={Boolean(playback?.url)}
+          subtitles={subtitleTracks}
+          seekSteps={{
+            backward: seekPreferences.seekBackwardSeconds,
+            forward: seekPreferences.seekForwardSeconds,
+          }}
+          onToggleFullscreen={toggleFullscreen}
+          onRateChange={changeRate}
+        />
+        {rateNotice !== null && (
+          <div
+            className="pointer-events-none absolute right-3 top-3 rounded-md bg-background/80 px-2.5 py-1 text-sm tabular-nums text-foreground backdrop-blur"
+            role="status"
+          >
+            {t("videoPlayback.playbackRate", { rate: rateNotice })}
+          </div>
+        )}
+      </div>
       {!playback && !error && (
         <div className="flex min-h-11 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -517,26 +552,4 @@ function VideoPlayback({
       )}
     </div>
   );
-}
-
-function toggleVideoFullscreen(video: HTMLVideoElement) {
-  if (document.fullscreenElement) {
-    void document.exitFullscreen().catch(() => undefined);
-    return;
-  }
-  if (typeof video.requestFullscreen === "function") {
-    void video.requestFullscreen().catch(() => undefined);
-    return;
-  }
-  // iOS Safari offers fullscreen only on the video element itself.
-  (video as HTMLVideoElement & { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen?.();
-}
-
-function formatVideoDuration(seconds: number) {
-  const total = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const remainder = total % 60;
-  if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
-  return `${minutes}:${String(remainder).padStart(2, "0")}`;
 }

@@ -414,3 +414,185 @@ test("ASS files and embedded subtitle streams load as subtitle tracks", async ({
     .toEqual(["Synthetic\nASS line", "Synthetic stream 2", "Synthetic stream 3"]);
   expect([...new Set(streamRequests)].sort()).toEqual([2, 3]);
 });
+
+async function storeSeekSteps(page: Page, backward: number, forward: number) {
+  await page.addInitScript(
+    ({ seekBackwardSeconds, seekForwardSeconds }) => {
+      const key = `kikoto:player-seek-preferences:v1:${encodeURIComponent(window.location.origin)}:anonymous`;
+      localStorage.setItem(key, JSON.stringify({ seekBackwardSeconds, seekForwardSeconds }));
+    },
+    { seekBackwardSeconds: backward, seekForwardSeconds: forward },
+  );
+}
+
+test("the on-screen back and forward buttons seek by the playback settings", async ({ page }) => {
+  await mockLocalVideo(page);
+  await mockDirectPlayback(page);
+  await storeSeekSteps(page, 7, 20);
+  const video = await openVideo(page);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThan(0);
+
+  await page.getByRole("button", { name: "Forward 20 seconds", exact: true }).click();
+  await expect.poll(() => video.evaluate(currentTime)).toBe(20);
+  await page.getByRole("button", { name: "Back 7 seconds", exact: true }).click();
+  await expect.poll(() => video.evaluate(currentTime)).toBe(13);
+
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false);
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
+  await page.getByRole("button", { name: "Mute", exact: true }).click();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.muted)).toBe(true);
+  await expect(page.getByRole("button", { name: "Unmute", exact: true })).toBeVisible();
+});
+
+test("double taps on either side of the video seek and add up", async ({ page }) => {
+  await mockLocalVideo(page);
+  await mockDirectPlayback(page);
+  const video = await openVideo(page);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThan(0);
+  await video.evaluate((element: HTMLVideoElement) => {
+    element.currentTime = 100;
+  });
+  await expect.poll(() => video.evaluate(currentTime)).toBe(100);
+  const box = await video.boundingBox();
+  if (!box) throw new Error("The video has no layout box.");
+  const y = box.y + box.height * 0.25;
+  const right = box.x + box.width * 0.9;
+  const left = box.x + box.width * 0.1;
+
+  await page.touchscreen.tap(right, y);
+  await page.touchscreen.tap(right, y);
+  await page.touchscreen.tap(right, y);
+  await expect.poll(() => video.evaluate(currentTime)).toBe(160);
+  const forwardHint = page.getByRole("status").filter({ hasText: "+60 seconds" });
+  await expect(forwardHint).toBeVisible();
+
+  await expect(forwardHint).toHaveCount(0);
+  await page.touchscreen.tap(left, y);
+  await page.touchscreen.tap(left, y);
+  await expect.poll(() => video.evaluate(currentTime)).toBe(150);
+  await expect(page.getByRole("status").filter({ hasText: "−10 seconds" })).toBeVisible();
+});
+
+test("the speed menu sets the playback rate and shows the speed notice", async ({ page }) => {
+  await mockLocalVideo(page);
+  await mockDirectPlayback(page);
+  const video = await openVideo(page);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThan(0);
+
+  await page.getByRole("button", { name: "Playback speed", exact: true }).click();
+  const menu = page.getByRole("menu", { name: "Playback speed", exact: true });
+  await expect(menu.getByRole("menuitemradio", { name: "1×", exact: true })).toHaveAttribute("aria-checked", "true");
+  await menu.getByRole("menuitemradio", { name: "1.5×", exact: true }).click();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.playbackRate)).toBe(1.5);
+  await expect(page.getByRole("status").filter({ hasText: "Speed 1.5×" })).toBeVisible();
+  await expect(menu).toHaveCount(0);
+});
+
+test("the subtitle menu shows one track and extracts an embedded stream only once chosen", async ({ page }) => {
+  await mockLocalVideo(page, [mediaFixture(2, "example.srt", `${work.primaryCode}/example.srt`, "text")]);
+  await page.route(/\/api\/media\/\d+\/text$/, (route) =>
+    route.fulfill({
+      json: {
+        path: "example.srt",
+        content: "1\r\n00:00:01,000 --> 00:00:03,500\r\nSynthetic SRT line\r\n",
+      } satisfies MediaTextPreview,
+    }),
+  );
+  await page.route("**/api/media/1/playback*", (route) =>
+    route.fulfill({
+      json: {
+        delivery: "direct",
+        url: "/api/media/1/stream",
+        durationSeconds: 180,
+        seekable: true,
+        subtitles: [
+          {
+            stream: 3,
+            codec: "subrip",
+            language: "eng",
+            default: false,
+            forced: false,
+            url: "/api/media/1/subtitles/3.vtt?v=synthetic",
+          },
+        ],
+      } satisfies VideoPlaybackInfo,
+    }),
+  );
+  const streamRequests: number[] = [];
+  await page.route(/\/api\/media\/1\/subtitles\/\d+\.vtt/, (route) => {
+    streamRequests.push(Number(/subtitles\/(\d+)\.vtt/.exec(route.request().url())?.[1]));
+    return route.fulfill({
+      contentType: "text/vtt",
+      body: "WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nSynthetic stream\n",
+    });
+  });
+  const video = await openVideo(page);
+  const modes = () =>
+    video.evaluate((element: HTMLVideoElement) =>
+      Array.from(element.textTracks).map((track) => `${track.label}:${track.mode}`),
+    );
+  await expect.poll(modes).toEqual(["example.srt:showing", "English:disabled"]);
+
+  const subtitlesButton = page.getByRole("button", { name: "Subtitles", exact: true });
+  const menu = page.getByRole("menu", { name: "Subtitles", exact: true });
+  const choose = async (name: string) => {
+    await subtitlesButton.click();
+    await menu.getByRole("menuitemradio", { name, exact: true }).click();
+  };
+  await subtitlesButton.click();
+  await expect(menu.getByRole("menuitemradio")).toHaveText(["Off", "example.srt", "English"]);
+  await expect(menu.getByRole("menuitemradio", { name: "example.srt", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(subtitlesButton).toBeFocused();
+  expect(streamRequests).toEqual([]);
+
+  await choose("English");
+  await expect.poll(modes).toEqual(["example.srt:disabled", "English:showing"]);
+  await expect.poll(() => [...new Set(streamRequests)]).toEqual([3]);
+  await expect
+    .poll(() => video.evaluate((element: HTMLVideoElement) => element.textTracks[1].cues?.length ?? 0))
+    .toBe(1);
+
+  await choose("Off");
+  await expect.poll(modes).toEqual(["example.srt:disabled", "English:disabled"]);
+});
+
+test("fullscreen holds the video stage, and its menus show inside it @desktop", async ({ page }) => {
+  await mockLocalVideo(page);
+  await mockDirectPlayback(page);
+  const video = await openVideo(page);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThan(0);
+  const fullscreenLabel = () => page.evaluate(() => document.fullscreenElement?.getAttribute("aria-label") ?? null);
+
+  await page.getByRole("button", { name: "Full screen", exact: true }).click();
+  await expect.poll(fullscreenLabel).toBe("Video player");
+  await page.getByRole("button", { name: "Playback speed", exact: true }).click();
+  const menu = page.getByRole("menu", { name: "Playback speed", exact: true });
+  await expect(menu).toBeVisible();
+  expect(await menu.evaluate((element) => document.fullscreenElement?.contains(element) ?? false)).toBe(true);
+  await menu.getByRole("menuitemradio", { name: "2×", exact: true }).click();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.playbackRate)).toBe(2);
+
+  await page.getByRole("button", { name: "Exit full screen", exact: true }).click();
+  await expect.poll(fullscreenLabel).toBeNull();
+
+  // A mouse click on the picture, away from the controls, plays and pauses; a double click toggles fullscreen.
+  const box = await video.boundingBox();
+  if (!box) throw new Error("The video has no layout box.");
+  const x = box.x + box.width * 0.15;
+  const y = box.y + box.height * 0.25;
+  await page.mouse.click(x, y);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false);
+  await page.mouse.click(x, y);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
+  await page.mouse.dblclick(x, y);
+  await expect.poll(fullscreenLabel).toBe("Video player");
+  await page.mouse.dblclick(x, y);
+  await expect.poll(fullscreenLabel).toBeNull();
+});

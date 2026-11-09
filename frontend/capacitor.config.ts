@@ -8,6 +8,12 @@ const config: CapacitorConfig = {
     androidScheme: "http",
     cleartext: true,
   },
+  plugins: {
+    // The Android shell's KikotoSystemInsets owns the system bar insets.
+    SystemBars: {
+      insetsHandling: "disable",
+    },
+  },
 };
 
 export default config;

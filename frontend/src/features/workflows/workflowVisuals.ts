@@ -2,6 +2,7 @@ import {
   BellRing,
   BookCopy,
   Cloud,
+  Compass,
   DatabaseZap,
   Download,
   FileAudio,
@@ -23,9 +24,9 @@ import type { WorkflowCategory } from "./workflowCategories";
 
 export const workflowCategoryIcons: Record<WorkflowCategory, LucideIcon> = {
   basic: Library,
-  collect: TrendingUp,
   catalog: FolderSync,
   remote: Cloud,
+  discover: Compass,
 };
 
 const workflowIcons: Record<string, LucideIcon> = {

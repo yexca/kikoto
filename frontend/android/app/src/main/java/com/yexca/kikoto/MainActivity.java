@@ -1,5 +1,6 @@
 package com.yexca.kikoto;
 
+import androidx.activity.EdgeToEdge;
 import androidx.core.splashscreen.SplashScreen;
 import com.getcapacitor.BridgeActivity;
 
@@ -14,8 +15,11 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(KikotoPrivacyPlugin.class);
         registerPlugin(KikotoVideoFullscreenPlugin.class);
         SplashScreen.installSplashScreen(this);
+        // Every Android version draws under the system bars, as Android 15 and later always do.
+        EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
         bridge.setWebViewClient(new KikotoWebViewClient(bridge));
+        KikotoSystemInsets.install(this, bridge);
         videoFullscreen = new KikotoVideoFullscreen(this);
         bridge.getWebView().setWebChromeClient(new KikotoWebChromeClient(bridge, videoFullscreen));
     }

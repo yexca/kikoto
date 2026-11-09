@@ -198,7 +198,8 @@ Playback is handled by a global browser audio player.
 - Backward and forward seeking default to 10 and 30 seconds. Settings accepts
   whole-second values from 1 through 300 and stores them per server and user in
   the browser. The same values drive player buttons, keyboard shortcuts,
-  browser Media Session actions, and Android media controls.
+  browser Media Session actions, Android media controls, and the back and
+  forward buttons and double taps of the file viewer's video.
 - Compact playback reserves page space on mobile and desktop so final actions
   are not covered. PWA update notices stack above the Compact dock.
 - Mobile full playback uses edge-to-edge safe areas on every side. Bottom
