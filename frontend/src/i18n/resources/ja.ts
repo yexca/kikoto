@@ -847,7 +847,6 @@ export const japaneseResource = {
           recommendation: "推薦設計",
           design: "デザイン",
           playbackReporting: "再生レポート",
-          workflows: "ワークフロー",
           engineering: "エンジニアリングと CI",
         },
         references: {

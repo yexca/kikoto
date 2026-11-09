@@ -837,7 +837,6 @@ export const koreanResource = {
           recommendation: "추천 설계",
           design: "디자인",
           playbackReporting: "재생 보고",
-          workflows: "워크플로",
           engineering: "엔지니어링 및 CI",
         },
         references: {

@@ -504,7 +504,6 @@ export const englishResource = {
           recommendation: "Recommendation design",
           design: "Design",
           playbackReporting: "Playback reporting",
-          workflows: "Workflows",
           engineering: "Engineering & CI",
         },
         references: {

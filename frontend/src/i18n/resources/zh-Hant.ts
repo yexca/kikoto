@@ -819,7 +819,6 @@ export const zhHantResource = {
           recommendation: "推薦設計",
           design: "設計",
           playbackReporting: "播放回報",
-          workflows: "工作流程",
           engineering: "工程與 CI",
         },
         references: {

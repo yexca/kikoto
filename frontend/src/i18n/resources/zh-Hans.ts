@@ -814,7 +814,6 @@ export const zhHansResource = {
           recommendation: "推荐设计",
           design: "设计",
           playbackReporting: "播放上报",
-          workflows: "工作流",
           engineering: "工程与 CI",
         },
         references: {
