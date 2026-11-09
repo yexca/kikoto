@@ -99,7 +99,7 @@ export function WorkflowNavigator({
     <div
       className={cn(
         "lg:sticky lg:top-20 lg:flex lg:max-h-[calc(100dvh-6rem)] lg:shrink-0 lg:flex-col lg:gap-1 lg:self-start lg:border-r",
-        collapsed ? "lg:pr-2" : "lg:w-60 lg:pr-3 xl:w-64 2xl:w-72",
+        collapsed ? "lg:pr-2" : "lg:w-56 lg:pr-2 xl:w-60",
       )}
     >
       <div className="shrink-0">{activityEntry}</div>
