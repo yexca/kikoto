@@ -35,6 +35,7 @@ KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bce
 - `./config:/config`
 - `./cache:/cache`
 - `./data:/data`
+- `./record:/record`
 
 공개 읽기 전용 인스턴스에는 `deploy/compose/demo.yml`을 사용하세요. 게시된 이미지를 받아 사용하며 `./demo` 아래의 별도 마운트를 사용합니다. 후보 작품 폴더는 `./demo/data` 아래에 두세요. 전용 시작 워크플로는 전 연령 대상이며 영구적으로 무료인 작품만 검증하여 색인합니다. [Docker](../../operations/docker.md#demo-stack)를 참고하세요.
 
@@ -75,6 +76,21 @@ volumes:
 ```
 
 Kikoto는 선택한 각 폴더에 `.kikoto-pool` 마커를 기록합니다. 디스크가 마운트되지 않으면 해당 폴더는 비어 있고 마커도 없으므로, 풀은 오프라인으로 표시되고 스캔은 그 풀의 작품을 누락으로 보고하지 않고 그대로 둡니다. Fetch는 파일을 받는 풀 안에서 스테이징하고 게시하므로, 모든 게시는 한 디스크 안에서의 이름 변경으로 이루어집니다. 가져오기 전에 설정 -> 라이브러리에서 Fetch 풀을 선택하세요. 선택하기 전까지는 Fetch가 무엇을 구성해야 하는지 안내합니다.
+
+### 홈 비디오
+
+독립적인 **홈 비디오** 라이브러리는 `/record`를 사용하며 오디오 데이터 루트 및 스토리지 풀과 분리됩니다. 이 마운트 아래에 비디오와 이미지 폴더를 배치하고, 홈 비디오 페이지에서 record 루트를 초기화한 뒤 스캔을 실행하세요.
+
+```text
+record/
+├── artist1/
+│   ├── folder-a/
+│   └── folder-b/
+└── artist2/
+    └── folder-c/
+```
+
+스캐너는 `folder`, `poster`, `cover`, `backdrop`, `fanart`, `background` 이미지 sidecar를 인식합니다. record 루트가 오프라인이면 마운트가 복구될 때까지 색인된 폴더와 파일을 유지합니다.
 
 ## 빌드 검증
 

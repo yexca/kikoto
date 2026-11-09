@@ -35,6 +35,7 @@ KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bce
 - `./config:/config`
 - `./cache:/cache`
 - `./data:/data`
+- `./record:/record`
 
 如需公开的只读实例，请使用 `deploy/compose/demo.yml`。它会拉取已发布的镜像，并使用独立的 `./demo` 挂载。请把候选作品文件夹放在 `./demo/data` 下；专用的启动工作流只会验证并索引适合所有年龄段且永久免费的作品。参见 [Docker](../../operations/docker.md#demo-stack)。
 
@@ -75,6 +76,21 @@ volumes:
 ```
 
 Kikoto 会在每个选中的文件夹中写入一个 `.kikoto-pool` 标记。磁盘未挂载时，其文件夹为空且没有标记，因此该存储池会显示为离线，扫描也会保持其作品不变，而不是报告它们缺失。Fetch 在接收文件的存储池内暂存并发布，因此每次发布都是同一块磁盘上的重命名。进行 Fetch 之前，请先在“设置 -> 媒体库”中选择 Fetch 池；在此之前，Fetch 会提示需要配置什么。
+
+### 家庭视频
+
+独立的**家庭视频**媒体库使用 `/record`，它与音频数据根目录和存储池分开。请把视频和图片目录放在这个挂载点下，在“家庭视频”页面初始化 record 根目录，然后运行扫描：
+
+```text
+record/
+├── artist1/
+│   ├── folder-a/
+│   └── folder-b/
+└── artist2/
+    └── folder-c/
+```
+
+扫描器会识别 `folder`、`poster`、`cover`、`backdrop`、`fanart` 和 `background` 图片 sidecar。record 根目录离线时会保留已经索引的目录和文件，直到挂载恢复。
 
 ## 验证构建
 

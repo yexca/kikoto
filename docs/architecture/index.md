@@ -17,6 +17,7 @@ downloadable files are.
 - [Data model](data-model.md)
 - [Workflows](workflows.md)
 - [Source presence](source-presence.md)
+- [Record library](record-library.md)
 
 ## When To Read What
 

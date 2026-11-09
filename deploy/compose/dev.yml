@@ -17,6 +17,7 @@ services:
       KIKOTO_DB_PATH: ${KIKOTO_DB_PATH:-/config/kikoto.db}
       KIKOTO_DB_READ_CONNECTIONS: ${KIKOTO_DB_READ_CONNECTIONS:-8}
       KIKOTO_DATA_ROOT: ${KIKOTO_DATA_ROOT:-/data}
+      KIKOTO_RECORD_ROOT: ${KIKOTO_RECORD_ROOT:-/record}
       KIKOTO_CACHE_ROOT: ${KIKOTO_CACHE_ROOT:-/cache}
       KIKOTO_LOCAL_SCAN_DEPTH: ${KIKOTO_LOCAL_SCAN_DEPTH:-3}
       KIKOTO_SESSION_COOKIE_SECURE: ${KIKOTO_SESSION_COOKIE_SECURE:-false}
@@ -35,6 +36,7 @@ services:
       - "${KIKOTO_DEV_CONFIG_DIR:-./config}:/config"
       - "${KIKOTO_DEV_CACHE_DIR:-./cache}:/cache"
       - "${KIKOTO_DEV_DATA_DIR:-./data}:/data"
+      - "${KIKOTO_DEV_RECORD_DIR:-./record}:/record"
 
   frontend:
     build:

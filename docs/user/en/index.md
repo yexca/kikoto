@@ -8,6 +8,7 @@ the English page first, then mark translations for review.
 
 - [Getting started](getting-started.md)
 - [Library](library.md)
+- [Home videos](record-library.md)
 - [Work detail](work-detail.md)
 - [Sources](sources.md)
 - [Circles](circles.md)

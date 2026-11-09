@@ -24,6 +24,8 @@ Library and metadata:
 
 - `local_library_scan`: discover local work folders and synchronize local
   presence (see [Local Folder Trigger](#local-folder-trigger)).
+- `record_library_scan`: discover the independent record root's folders and
+  video/image assets without changing audio works (see [Record library](record-library.md)).
 - `local_media_index`: index the media files of discovered local work folders
   (see [Local Work File Refresh](#local-work-file-refresh)).
 - `metadata_sync`: bulk metadata sync of existing works and explicitly

@@ -47,6 +47,7 @@ The default runtime mounts are:
 - `./config:/config`
 - `./cache:/cache`
 - `./data:/data`
+- `./record:/record`
 
 For a public read-only instance, use `deploy/compose/demo.yml`. It pulls the
 published image and uses separate `./demo` mounts. Put candidate work folders
@@ -118,6 +119,25 @@ offline and scans leave its works unchanged instead of reporting them missing.
 Fetch stages and publishes inside the pool that receives the files, so each
 publication is a rename on one disk. Choose a Fetch pool in Settings -> Library
 before fetching; until then Fetch explains what to configure.
+
+### Home Videos
+
+The independent **Home videos** library uses `/record`, which is separate from
+the audio data root and storage pools. Put video and image folders below that
+mount, initialize the record root from the Home videos page, and run its scan:
+
+```text
+record/
+├── artist1/
+│   ├── folder-a/
+│   └── folder-b/
+└── artist2/
+    └── folder-c/
+```
+
+The scanner recognizes `folder`, `poster`, `cover`, `backdrop`, `fanart`, and
+`background` image sidecars. A record root that is offline keeps its indexed
+folders and files until the mount returns.
 
 ## Validate The Build
 

@@ -3,6 +3,10 @@
 ## Current Guarantees
 
 - Local and cached media remain inspectable when a remote source is offline.
+- The independent record library keeps indexed folders and assets when its root
+  is unmounted, missing its marker, or unreadable. A complete online record scan
+  reconciles missing rows; a cancelled or partial scan does not reconcile rows
+  it could not observe.
 - Source outages are scoped to the affected source.
 - Batch source availability checks probe source health before per-work checks.
 - Remote downloads use configurable delay and backoff. Media streams into a
@@ -92,6 +96,11 @@
 - Local scan completion is independent of metadata-provider latency or failure.
   Its optional, disabled-by-default metadata follow-up creates a separate run
   after scan completion, with its own retry and review state.
+
+Record scans use the durable `record_library_scan` workflow and coalesce while
+one scan is queued or running. Discovery stores one row per folder and regular
+file, skips links and transaction directories, and classifies assets by the
+bounded extension set documented in the [record library](../architecture/record-library.md).
 
 ## Limits
 

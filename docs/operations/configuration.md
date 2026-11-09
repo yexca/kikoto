@@ -19,6 +19,7 @@ does not update its environment.
 | `KIKOTO_DB_READ_CONNECTIONS` | `8` | SQLite reader connections; writes use one separate connection. See [Database concurrency](database.md#concurrency). Each connection may hold a 16 MiB page cache; a missing, invalid, or non-positive value uses the default. |
 | `KIKOTO_DB_BACKUP_DIR` | `backups` beside the database | Verified database backups; see [Database backups](database.md#backups). Direct backend runs only: the Compose stacks do not pass it, so the container always uses `/config/backups`. |
 | `KIKOTO_DATA_ROOT` | `../data` | Local media library root. |
+| `KIKOTO_RECORD_ROOT` | `../record` | Independent home video and image library root. It is initialized with a `.kikoto-record` marker before scanning. |
 | `KIKOTO_CACHE_ROOT` | `../cache` | Runtime cache root. It also holds [temporary files](#temporary-files). |
 | `KIKOTO_STATIC_DIR` | Empty | Frontend asset directory; empty disables static file serving. |
 | `KIKOTO_LOCAL_SCAN_DEPTH` | `3` | Maximum local scan folder depth. |

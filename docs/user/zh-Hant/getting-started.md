@@ -35,6 +35,7 @@ KIKOTO_IMAGE=yexca/kikoto@sha256:d51500d0155694908e392e6f936c24610eac23e16072bce
 - `./config:/config`
 - `./cache:/cache`
 - `./data:/data`
+- `./record:/record`
 
 若要架設公開的唯讀站台，請使用 `deploy/compose/demo.yml`。它會拉取已發佈的映像檔，並使用獨立的 `./demo` 掛載。請將候選作品資料夾放在 `./demo/data` 之下；專用的啟動工作流程只會驗證並建立索引給全年齡且永久免費的作品。請參閱 [Docker](../../operations/docker.md#demo-stack)。
 
@@ -75,6 +76,21 @@ volumes:
 ```
 
 Kikoto 會在每個選取的資料夾中寫入 `.kikoto-pool` 標記。磁碟未掛載時，其資料夾是空的且沒有標記，因此該儲存池會顯示為離線，掃描時會保持其作品不變，而不是回報它們已遺失。取得作業會在接收檔案的儲存池內暫存並發佈，因此每次發佈都是同一顆磁碟上的重新命名。請在取得之前，先於設定 -> 媒體庫中選擇 Fetch 池；在此之前，取得功能會說明需要設定什麼。
+
+### 家庭影片
+
+獨立的**家庭影片**媒體庫使用 `/record`，並且與音訊資料根目錄和儲存池分開。請將影片和圖片資料夾放在這個掛載點下，在「家庭影片」頁面初始化 record 根目錄，然後執行掃描：
+
+```text
+record/
+├── artist1/
+│   ├── folder-a/
+│   └── folder-b/
+└── artist2/
+    └── folder-c/
+```
+
+掃描器會識別 `folder`、`poster`、`cover`、`backdrop`、`fanart` 和 `background` 圖片 sidecar。record 根目錄離線時，會保留已建立索引的資料夾和檔案，直到掛載恢復。
 
 ## 驗證建置
 

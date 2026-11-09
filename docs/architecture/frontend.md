@@ -174,11 +174,16 @@ functions: base URL and asset URLs, credentials, session fencing, shared
 in-flight reads, and error mapping. JSON and plain-text API reads share browser
 cookie or native bearer authentication. Each domain module declares its response
 types beside its requests: `accountApi`, `libraryApi`, `workApi`, `mediaApi`,
-`metadataApi`, `creatorApi`, `remoteSourceApi`, `workflowApi`, and
+`metadataApi`, `creatorApi`, `remoteSourceApi`, `workflowApi`, `recordsApi`, and
 `settingsApi`. A domain module imports the transport and, for types only, a
 domain it builds on; none imports `lib/api`. `lib/api` composes the domain
 modules into the single `api` object and re-exports their types, and is the
 entry pages, features, and tests import.
+
+The `RecordsPage` owns the Home videos surface. It initializes the independent
+record root when permitted, loads folders lazily through `recordsApi`, queues a
+durable record scan, and saves per-user video progress. Record previews use
+authenticated asset routes and do not use the global audio player.
 
 Navigation and browse state that pages and features share lives in `lib`:
 circle and voice route helpers, Library browse state, and Library search

@@ -7,6 +7,7 @@
 まず英語版のページを更新し、その後で各翻訳を要レビューとしてマークしてください。
 
 - [ライブラリ](library.md)
+- [ホームビデオ](record-library.md)
 - [作品詳細](work-detail.md)
 - [ソース](sources.md)
 - [サークル](circles.md)

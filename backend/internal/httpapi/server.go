@@ -24,6 +24,7 @@ import (
 	"github.com/yexca/kikoto/backend/internal/llm"
 	"github.com/yexca/kikoto/backend/internal/metasync"
 	"github.com/yexca/kikoto/backend/internal/proxyconfig"
+	"github.com/yexca/kikoto/backend/internal/record"
 	"github.com/yexca/kikoto/backend/internal/sqlutil"
 	"github.com/yexca/kikoto/backend/internal/storage"
 	"github.com/yexca/kikoto/backend/internal/workflow"
@@ -45,6 +46,7 @@ type Server struct {
 	initialSetup                   initialSetupState
 	loginThrottle                  *auththrottle.Limiter
 	libraryStore                   *library.Store
+	recordStore                    *record.Store
 	workflowStore                  *workflow.Store
 	cfg                            config.Config
 	dlsiteEndpoints                dlsite.Endpoints
@@ -128,7 +130,7 @@ func NewServer(db *sqlutil.DB, cfg config.Config) *Server {
 		llmRequestSlots: make(chan struct{}, 2),
 		asrStore:        asr.NewStore(db),
 		statistics:      storage.NewStatisticsMaintainer(db),
-		db:              db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), workflowStore: workflow.NewStore(db), cfg: cfg,
+		db:              db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), recordStore: record.NewStore(db, cfg.RecordRoot), workflowStore: workflow.NewStore(db), cfg: cfg,
 		loginThrottle:                  auththrottle.New(),
 		dlsiteEndpoints:                dlsiteEndpoints,
 		metadataCoordinator:            metasync.NewCoordinator(),
@@ -361,6 +363,15 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/voices/{personId}/tags", s.setVoiceUserTags)
 	mux.HandleFunc("GET /api/assets/covers/", s.getCoverAsset)
 	mux.HandleFunc("GET /api/assets/manual/{file}", s.getManualAsset)
+	mux.HandleFunc("GET /api/records", s.getRecordRoot)
+	mux.HandleFunc("POST /api/records/root/initialize", s.initializeRecordRoot)
+	mux.HandleFunc("GET /api/records/tree", s.listRecordTree)
+	mux.HandleFunc("GET /api/records/assets/{id}", s.getRecordAsset)
+	handleSlowFirstResponse("GET /api/records/assets/{id}/stream", s.endsOnShutdown(s.streamRecordAsset))
+	mux.HandleFunc("GET /api/records/folders/{id}/artwork/{role}", s.serveRecordArtwork)
+	handleSlowFirstResponse("POST /api/records/scans", s.scanRecords)
+	mux.HandleFunc("GET /api/records/assets/{id}/progress", s.getRecordProgress)
+	mux.HandleFunc("PUT /api/records/assets/{id}/progress", s.updateRecordProgress)
 	handleSlowFirstResponse("GET /api/media/{id}/stream", s.endsOnShutdown(s.streamMedia))
 	mux.HandleFunc("GET /api/media/{id}/playback", s.getVideoPlaybackInfo)
 	mux.HandleFunc("GET /api/media/{id}/loudness", s.getMediaLoudness)

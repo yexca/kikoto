@@ -54,6 +54,7 @@ Default mounts:
 - `./config:/config`
 - `./cache:/cache`
 - `./data:/data`
+- `./record:/record`
 
 ## Container Isolation
 
@@ -68,7 +69,7 @@ or unreadable, and deleting, Fetch, and scans of it fail with a permission
 error. Demo adds no capability: give the root user (uid 0) write access to its
 config and cache folders and read access to its data folder.
 
-`/config`, `/cache`, and the production `/data` mount remain writable; durable
+`/config`, `/cache`, and the production `/data` and `/record` mounts remain writable; durable
 Fetch transaction directories stay on the target storage filesystem, and large
 [temporary files](configuration.md#temporary-files) go to `/cache` rather than
 `/tmp`. Demo keeps its data mount read-only. Limit host access to the
@@ -98,13 +99,16 @@ runtime settings. The production stack uses these deployment defaults:
 | `KIKOTO_HTTP_ADDR` | `0.0.0.0:7659` |
 | `KIKOTO_DB_PATH` | `/config/kikoto.db` |
 | `KIKOTO_DATA_ROOT` | `/data` |
+| `KIKOTO_RECORD_ROOT` | `/record` |
 | `KIKOTO_CACHE_ROOT` | `/cache` |
 | `KIKOTO_STATIC_DIR` | `/app/static` |
 
 Path variables refer to paths **inside the container** and do not change host
-bind mounts. Keep the database and its backups under `/config`, durable media
-and Fetch staging/backup/trash under `/data`, and disposable cache under
-`/cache`. In storage pool mode, mount each disk or cloud drive at its own
+bind mounts. Keep the database and its backups under `/config`, durable audio
+media and Fetch staging/backup/trash under `/data`, the independent record
+library under `/record`, and disposable cache under `/cache`. The record root
+is not a storage pool and must carry its `.kikoto-record` marker before scans
+can index it. In storage pool mode, mount each disk or cloud drive at its own
 first-level folder such as `/data/disk1`; Fetch then keeps its staging, backup,
 and trash inside that pool, so a pool must be one filesystem that supports
 renames. See [Storage pools](../user/en/getting-started.md#storage-pools). Keep

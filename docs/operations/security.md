@@ -338,13 +338,16 @@ domains or sanitized host labels instead.
 
 ## Filesystem and Container Boundaries
 
-Kikoto expects `/config`, `/cache`, and `/data` to be dedicated runtime mounts.
+Kikoto expects `/config`, `/cache`, `/data`, and `/record` to be dedicated
+runtime mounts. `/data` contains the audio library and storage pools; `/record`
+contains the independent home video and image library and is not a storage pool.
 Do not mount a host root, home directory, Docker socket, or unrelated sensitive
-tree into those locations. Avoid symbolic links that leave the configured data
-or cache roots.
+tree into those locations. Avoid symbolic links that leave the configured data,
+cache, or record roots.
 
-Local scans ignore symbolic-link files, and media processing and Fetch source
-copies reject stored paths whose resolved target leaves the configured root.
+Local scans and record scans ignore symbolic-link files, and media processing,
+record serving, and Fetch source copies reject stored paths whose resolved target
+leaves the configured root.
 The check compares against the root's own resolved location, so a root that is
 itself a symbolic link, or sits below a linked directory, holds its files.
 Media processing opens the resolved location it checked, and refuses a
@@ -363,11 +366,13 @@ regardless of their owner, so host permission bits do not restrict it inside a
 mount. See [container isolation](docker.md#container-isolation) for that
 capability and the writable runtime mounts.
 
-Media assets only render recognized passive raster images inline. Other files,
-including HTML, SVG, or an HTML file named as an image, are served as downloads
-with `nosniff` and a sandbox CSP. Text previews remain JSON data rendered as
-text by the application. The application shell loads packaged scripts under a
-CSP that blocks inline scripts, frames, and plugins. FFprobe and FFmpeg accept
+Work media assets only render recognized passive raster images inline. Other
+files, including HTML, SVG, or an HTML file named as an image, are served as
+downloads with `nosniff` and a sandbox CSP. Record image previews also require
+the declared raster signature to match the file before they are served inline;
+an invalid record image is unavailable. Text previews remain JSON data rendered
+as text by the application. The application shell loads packaged scripts under
+a CSP that blocks inline scripts, frames, and plugins. FFprobe and FFmpeg accept
 only local file and pipe protocols for local media processing, so embedded
 network URLs cannot bypass the shared outbound policy.
 

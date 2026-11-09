@@ -5,6 +5,7 @@
     { "id": "index", "source": "en/index.md" },
     { "id": "getting-started", "source": "en/getting-started.md" },
     { "id": "library", "source": "en/library.md" },
+    { "id": "record-library", "source": "en/record-library.md" },
     { "id": "sources", "source": "en/sources.md" },
     { "id": "playback", "source": "en/playback.md" },
     { "id": "personal-data", "source": "en/personal-data.md" },

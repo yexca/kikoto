@@ -146,6 +146,7 @@ const InsightsPage = lazy(() => import("@/pages/InsightsPage").then((module) => 
 const SubscriptionsPage = lazy(() =>
   import("@/pages/SubscriptionsPage").then((module) => ({ default: module.SubscriptionsPage })),
 );
+const RecordsPage = lazy(() => import("@/pages/RecordsPage").then((module) => ({ default: module.RecordsPage })));
 // Preloaded with the browse workspaces so the first Quick actions tap opens at once.
 const commandPalette = preloadableComponent(() =>
   import("@/app/CommandPalette").then((module) => module.CommandPalette),
@@ -755,6 +756,7 @@ function AuthenticatedApp() {
                     canFetchRemote={effectiveHasPermission("remote:fetch") && effectiveHasPermission("metadata:sync")}
                   />
                 )}
+                {showRoutePage && page === "records" && auth.user && <RecordsPage />}
                 {showRoutePage && page === "about" && <AboutPage />}
                 {![
                   "library",

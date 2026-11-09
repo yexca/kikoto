@@ -43,6 +43,12 @@ Examples:
 
 File availability belongs in source presence and media file location tables.
 
+The independent record library is a separate local-media subsystem. Files below
+the configured record root describe record folders and assets, not works or
+audio media locations. They never receive a `primary_code` and are not imported
+into the unified work model; their per-user playback state lives in record
+tables.
+
 ## User State
 
 User state is separate from provider metadata and file availability. Listening

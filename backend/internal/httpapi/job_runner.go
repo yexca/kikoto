@@ -250,6 +250,7 @@ func (s *Server) executeClaimedWorkflowJob(ctx context.Context, job workflowJobR
 		"remote_work_fetch":           s.executeRemoteWorkFetchJob,
 		"remote_media_cache":          s.executeRemoteMediaCacheJob,
 		"local_library_scan":          s.executeLocalScanJob,
+		recordScanWorkerType:          s.executeRecordScanJob,
 		localMediaIndexWorkerType:     s.executeLocalMediaIndexJob,
 		sourcePresenceCheckWorkerType: s.executeSourcePresenceCheckJob,
 		"metadata_sync":               s.executeDLsiteMetadataSyncJob,

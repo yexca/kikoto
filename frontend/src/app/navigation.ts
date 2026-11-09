@@ -1,5 +1,6 @@
 import {
   ChartColumn,
+  Clapperboard,
   Compass,
   Database,
   Heart,
@@ -52,6 +53,18 @@ export const navItems = [
     icon: Heart,
     audience: "authenticated",
     permission: undefined,
+    group: "browse",
+  },
+  {
+    id: "records",
+    label: "Home videos",
+    labelKey: "nav.homeVideos",
+    description: "Browse the independent video and image library",
+    descriptionKey: "nav.homeVideosDescription",
+    path: "/records",
+    icon: Clapperboard,
+    audience: "authenticated",
+    permission: "library:read",
     group: "browse",
   },
   {

@@ -42,7 +42,10 @@ type Config struct {
 	// separate connection.
 	DBReadConnections int
 	DataRoot          string
-	CacheRoot         string
+	// RecordRoot is the independent local root for the record/video library.
+	// It is deliberately separate from DataRoot and storage-pool discovery.
+	RecordRoot string
+	CacheRoot  string
 	// TempDir holds short-lived working files inside the cache root. Empty
 	// uses the system temporary directory.
 	TempDir             string
@@ -118,6 +121,7 @@ func Load() (Config, error) {
 		DatabaseBackupDir:   env("KIKOTO_DB_BACKUP_DIR", defaultDatabaseBackupDir(databasePath)),
 		DBReadConnections:   envInt("KIKOTO_DB_READ_CONNECTIONS", 8),
 		DataRoot:            env("KIKOTO_DATA_ROOT", "../data"),
+		RecordRoot:          env("KIKOTO_RECORD_ROOT", "../record"),
 		CacheRoot:           cacheRoot,
 		TempDir:             filepath.Join(cacheRoot, tempDirName),
 		StaticDir:           env("KIKOTO_STATIC_DIR", ""),

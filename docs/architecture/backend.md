@@ -19,6 +19,10 @@ The backend is a Go HTTP API with SQLite persistence.
   cached effective value.
 - `backend/internal/library`: persisted work browsing: search parsing, list
   queries and projection, batch enrichment, and recommendation sessions.
+- `backend/internal/record`: the independent record root marker, folder and
+  asset scanner, safe path resolution, artwork selection, streaming, and
+  per-user playback progress. Record assets never enter the work or media-item
+  identity model.
 - `backend/internal/storagepool`: storage pool layout below the data root and
   the marker that distinguishes an online pool from an empty mount point.
 - `backend/internal/localfs`: local folder discovery.
@@ -66,6 +70,8 @@ The backend is a Go HTTP API with SQLite persistence.
 - Enforce the production instance access policy before API handlers, with
   sign-in required by default and optional anonymous `GET`/`HEAD` access.
 - Scan local libraries.
+- Scan the independent record library and serve its authenticated video and
+  image routes without coupling it to audio work identity.
 - Sync metadata snapshots.
 - Serve library and detail APIs.
 - Browse and sync remote sources.
