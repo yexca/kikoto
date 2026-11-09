@@ -577,32 +577,35 @@ test("@desktop compact player reserves the final directory action area", async (
   await expect(lastRow.getByRole("button", { name: /More actions for track-24\.mp3/ })).toBeVisible();
 });
 
+async function swipeCompact(page: Page, deltaY: number) {
+  const box = await page.locator('[data-player-surface="compact"]').boundingBox();
+  expect(box).not.toBeNull();
+  const x = box!.x + box!.width * 0.3;
+  const y = box!.y + box!.height * 0.5;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y + deltaY, { steps: 4 });
+  await page.mouse.up();
+}
+
 test("compact player swipes up to full and down to mini on phones", async ({ page }) => {
   await mockApplication(page);
   await seedPlayer(page);
   await page.goto("/");
   const playerMode = () => page.evaluate(() => document.documentElement.dataset.playerMode);
-  const swipeCompact = async (deltaY: number) => {
-    const box = await page.locator('[data-player-surface="compact"]').boundingBox();
-    expect(box).not.toBeNull();
-    const x = box!.x + box!.width * 0.3;
-    const y = box!.y + box!.height * 0.5;
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.mouse.move(x, y + deltaY, { steps: 4 });
-    await page.mouse.up();
-  };
 
   await expect.poll(playerMode).toBe("compact");
+  // The phone bar keeps only play and next; swiping down is the way to Mini.
+  await expect(page.getByRole("button", { name: "Mini player" })).toHaveCount(0);
   // A short swipe springs back and does not count as a tap on the track title.
-  await swipeCompact(-12);
+  await swipeCompact(page, -12);
   await page.waitForTimeout(300);
   expect(await playerMode()).toBe("compact");
 
-  await swipeCompact(-80);
+  await swipeCompact(page, -80);
   await expect.poll(playerMode).toBe("full");
   await page.getByRole("button", { name: "Collapse player" }).click();
-  await swipeCompact(40);
+  await swipeCompact(page, 40);
   await expect.poll(playerMode).toBe("mini");
 });
 
@@ -617,12 +620,13 @@ test("mini player opens compact on tap, persists its snapped edge, and compact m
     .locator(".app-main")
     .evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingBottom));
   expect(padding).toBeGreaterThanOrEqual(160);
-  await page.getByRole("button", { name: "Mini player" }).click();
+  await swipeCompact(page, 40);
   const mini = page.locator(".mini-player");
   await expect(mini).toBeVisible();
   await mini.tap({ position: { x: 8, y: 46 } });
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.playerMode)).toBe("compact");
-  await page.getByRole("button", { name: "Mini player" }).click();
+  await swipeCompact(page, 40);
+  await expect(mini).toBeVisible();
 
   const box = await mini.boundingBox();
   expect(box).not.toBeNull();

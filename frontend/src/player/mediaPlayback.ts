@@ -182,7 +182,8 @@ export function prefersNativeVideoHls(element: Pick<HTMLMediaElement, "canPlayTy
   }
 }
 
-function appleMobileWebKit() {
+/** Whether this is iOS or iPadOS WebKit, whose video fullscreen is the system player. */
+export function appleMobileWebKit() {
   if (typeof navigator === "undefined") return false;
   // iPadOS reports a desktop Mac, which has no touch points.
   return (

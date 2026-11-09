@@ -1,15 +1,31 @@
-import { ArrowUpRight, Ban, CheckCircle2, Circle, CircleAlert, CircleDashed, Loader2, X, XCircle } from "lucide-react";
+import {
+  ArrowUpRight,
+  Ban,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  CircleAlert,
+  CircleDashed,
+  List,
+  Loader2,
+  X,
+  XCircle,
+} from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
 import { intlLocaleFor } from "@/i18n";
 import { useLocale } from "@/i18n/LocaleProvider";
 import type { WorkflowEvent, WorkflowNodeRun, WorkflowRun } from "@/lib/api";
+import { cn } from "@/lib/tailwindClassNames";
 
+import { RunHistoryStrip } from "./RunHistoryStrip";
 import { useRunLabels } from "./RunOverview";
 import {
   formatClockTime,
   formatDuration,
+  formatRelativeTime,
   isActiveRunStatus,
   isDemoShowcaseActiveRun,
   parseWorkflowTimestamp,
@@ -28,64 +44,117 @@ const visibleLineLimit = 500;
 // Within this distance of the bottom the log keeps following new output.
 const followThresholdPx = 24;
 
+/** A run whose log opens on its own: one still working, or one whose outcome needs reading. */
+function logOpensByItself(run: WorkflowRun) {
+  return isActiveRunStatus(run.status) || run.status === "failed" || run.status === "partial";
+}
+
 /**
- * Run console for one workflow: its stages on the left and the latest run's log on the right.
- * An active run streams into the log; selecting a stage narrows the log to that stage.
+ * The selected workflow's latest run: its outcome, its stages, its log, and the
+ * durations of the runs before it. The log stays folded for an ordinary success
+ * and opens while a run is active or after it failed; an active run streams into
+ * it, and selecting a stage narrows it to that stage.
  */
 export function WorkflowRunMonitor({
   stages,
   run,
+  runs,
   events,
   nodeRuns,
   onOpenRun,
+  onOpenRuns,
 }: {
   stages: WorkflowStage[];
   run: WorkflowRun | null;
+  /** The workflow's recent runs, newest first, for the history strip. */
+  runs: WorkflowRun[];
   events: WorkflowEvent[];
   nodeRuns: WorkflowNodeRun[];
   onOpenRun?: (run: WorkflowRun) => void;
+  /** Opens Activity on this workflow's runs. */
+  onOpenRuns?: () => void;
 }) {
   const { t } = useTranslation();
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
+  // An explicit toggle wins for the run it was made on; a run that opened its log keeps it open once it settles.
+  const [logChoice, setLogChoice] = useState<{ runId: number | null; open: boolean } | null>(null);
+  const [openedRunId, setOpenedRunId] = useState<number | null>(null);
+  const runId = run?.id ?? null;
+  if (run && logOpensByItself(run) && openedRunId !== run.id) setOpenedRunId(run.id);
+  const logOpen =
+    logChoice && logChoice.runId === runId
+      ? logChoice.open
+      : Boolean(run && (logOpensByItself(run) || openedRunId === run.id));
   const active = run ? isActiveRunStatus(run.status) : false;
   const staticExample = run ? isDemoShowcaseActiveRun(run) : false;
-  const now = useNow(!staticExample && (active || stages.some((stage) => stage.state === "running")));
+  const live = !staticExample && (active || stages.some((stage) => stage.state === "running"));
+  const now = useNow(true, live ? 1000 : 30_000);
   const lines = useMemo(() => workflowRunLog(events, nodeRuns), [events, nodeRuns]);
-  if (stages.length === 0) return null;
   const selected = stages.find((stage) => stage.id === selectedStage) ?? null;
+  const hasStages = stages.length > 0;
   return (
     <section
-      className="workflow-monitor overflow-hidden rounded-lg border"
+      className="workflow-monitor overflow-hidden rounded-lg border bg-card"
       aria-label={t("workflowMonitor.label")}
       data-workflow-run-monitor=""
     >
-      <div className="workflow-monitor-grid">
-        <div className="workflow-monitor-steps min-w-0 bg-muted/20">
-          <RunSummary run={run} now={now} onOpenRun={onOpenRun} />
-          <ol className="px-2 py-2" aria-label={t("workflowMonitor.stages")}>
-            {stages.map((stage, index) => (
-              <StepRow
-                key={stage.id}
-                stage={stage}
-                last={index === stages.length - 1}
-                hasRun={Boolean(run)}
-                demoShowcase={staticExample}
-                selected={stage.id === selectedStage}
-                now={now}
-                onSelect={() => setSelectedStage((current) => (current === stage.id ? null : stage.id))}
-              />
-            ))}
-          </ol>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-1 border-b pr-2">
+        <RunSummary run={run} now={now} onOpenRun={onOpenRun} />
+        <div className="ml-auto flex shrink-0 items-center gap-1 py-1">
+          {hasStages && run && (
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-expanded={logOpen}
+              onClick={() => setLogChoice({ runId, open: !logOpen })}
+            >
+              <ChevronDown className={cn("h-4 w-4 transition-transform", logOpen && "rotate-180")} aria-hidden />
+              {logOpen ? t("workflowMonitor.hideLog") : t("workflowMonitor.showLog")}
+            </Button>
+          )}
+          {onOpenRuns && (
+            <Button size="sm" variant="ghost" onClick={onOpenRuns}>
+              <List className="h-4 w-4" aria-hidden />
+              {t("workflowMonitor.allRuns")}
+            </Button>
+          )}
         </div>
-        <RunLog
-          lines={lines}
-          stages={stages}
-          selected={selected}
-          hasRun={Boolean(run)}
-          active={active}
-          onClearSelection={() => setSelectedStage(null)}
-        />
       </div>
+      {hasStages && (
+        <div className="workflow-monitor-grid" data-log-open={logOpen || undefined}>
+          <div className="workflow-monitor-steps min-w-0 bg-muted/20">
+            <ol className="workflow-monitor-stage-list px-2 py-2" aria-label={t("workflowMonitor.stages")}>
+              {stages.map((stage, index) => (
+                <StepRow
+                  key={stage.id}
+                  stage={stage}
+                  last={!logOpen || index === stages.length - 1}
+                  hasRun={Boolean(run)}
+                  demoShowcase={staticExample}
+                  selected={stage.id === selectedStage}
+                  now={now}
+                  onSelect={() => {
+                    const next = selectedStage === stage.id ? null : stage.id;
+                    setSelectedStage(next);
+                    if (next && !logOpen) setLogChoice({ runId, open: true });
+                  }}
+                />
+              ))}
+            </ol>
+          </div>
+          {logOpen && (
+            <RunLog
+              lines={lines}
+              stages={stages}
+              selected={selected}
+              hasRun={Boolean(run)}
+              active={active}
+              onClearSelection={() => setSelectedStage(null)}
+            />
+          )}
+        </div>
+      )}
+      <RunHistoryStrip runs={runs} now={now} onOpenRun={onOpenRun} />
     </section>
   );
 }
@@ -102,30 +171,37 @@ function RunSummary({
   const { t } = useTranslation();
   const labels = useRunLabels();
   const { resolvedLocale } = useLocale();
+  const locale = intlLocaleFor(resolvedLocale);
   if (!run) {
     return (
-      <div className="flex min-h-11 items-center gap-2 border-b px-4 text-xs text-muted-foreground">
+      <div className="flex min-h-11 min-w-0 flex-[1_1_18rem] items-center gap-2 px-4 text-sm text-muted-foreground">
         <CircleDashed className="h-4 w-4" aria-hidden />
         {t("workflowMonitor.standby")}
       </div>
     );
   }
   const duration = runDurationMs(run, now);
+  const moment = parseWorkflowTimestamp(
+    isActiveRunStatus(run.status) ? run.startedAt || run.createdAt : run.finishedAt || run.startedAt || run.createdAt,
+  );
   const content = (
     <>
       <StepIcon state={runSummaryState(run.status)} />
-      <span className="min-w-0 truncate text-sm font-medium">{labels.status(run.status)}</span>
-      <span className="font-mono text-xs tabular-nums text-muted-foreground">#{run.id}</span>
-      <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
-        {duration !== null ? formatDuration(duration, intlLocaleFor(resolvedLocale)) : ""}
+      <span className="shrink-0 text-sm font-medium">{labels.status(run.status)}</span>
+      <span className="min-w-0 truncate text-xs tabular-nums text-muted-foreground">
+        #{run.id}
+        {moment && !isDemoShowcaseActiveRun(run) && <> · {formatRelativeTime(moment, locale, now)}</>}
+        {duration !== null && <> · {formatDuration(duration, locale)}</>}
       </span>
     </>
   );
-  if (!onOpenRun) return <div className="flex min-h-11 items-center gap-2 border-b px-4">{content}</div>;
+  // A narrow card keeps the whole summary on its line and moves the log and All runs actions below it.
+  if (!onOpenRun)
+    return <div className="flex min-h-11 min-w-0 flex-[1_1_18rem] items-center gap-2 px-4">{content}</div>;
   return (
     <button
       type="button"
-      className="flex min-h-11 w-full items-center gap-2 border-b px-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-muted/70"
+      className="flex min-h-11 min-w-0 flex-[1_1_18rem] items-center gap-2 px-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-muted/70"
       aria-label={t("workflowMonitor.openRun", { id: run.id, status: labels.status(run.status) })}
       onClick={() => onOpenRun(run)}
     >

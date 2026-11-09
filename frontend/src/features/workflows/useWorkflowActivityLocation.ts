@@ -1,17 +1,29 @@
 import { useEffect, useState } from "react";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 
+export type ActivityView = "attention" | "history";
+
 function readLocation() {
   const params = new URLSearchParams(window.location.search);
   const run = Number(params.get("run"));
   const open = params.has("activity") || (!params.has("dialog") && Number.isSafeInteger(run) && run > 0);
   return {
+    /** Whether the page shows Activity in place of the selected workflow. */
     open,
     runId: open && Number.isSafeInteger(run) && run > 0 ? run : null,
     workflowCode: params.get("workflow") ?? "",
+    /** The workflow whose runs the open Activity list is narrowed to; empty for every workflow. */
+    runsOf: open ? (params.get("runsOf") ?? "") : "",
+    // Earlier links name the finished list `completed`.
+    view: (["history", "completed"].includes(params.get("view") ?? "") ? "history" : "attention") as ActivityView,
   };
 }
 
+/**
+ * The Workflows page location: the selected workflow, and whether Activity
+ * replaces it with every run. Activity keeps `?workflow`, so leaving it
+ * returns to the workflow that was open.
+ */
 export function useWorkflowActivityLocation() {
   const [location, setLocation] = useState(readLocation);
   useEffect(() => {
@@ -35,42 +47,53 @@ export function useWorkflowActivityLocation() {
   };
   return {
     ...location,
-    setOpen: (open: boolean) =>
+    /**
+     * Shows Activity across every workflow, on the given list when one is named;
+     * `push` makes it a history step, as when the mobile list opens it.
+     */
+    openActivity: (view?: ActivityView, push = false) =>
       update((params) => {
-        if (open) params.set("activity", "1");
-        else {
-          params.delete("activity");
-          params.delete("run");
-        }
+        params.set("activity", "1");
+        params.delete("run");
+        params.delete("runsOf");
+        if (view) params.set("view", view);
+      }, push),
+    /** Leaves Activity for the workflow that was open before it. */
+    closeActivity: () =>
+      update((params) => {
+        for (const key of ["activity", "run", "runsOf", "view"]) params.delete(key);
       }),
-    resolveWorkflow: (code: string) =>
+    setView: (view: ActivityView) =>
       update((params) => {
-        params.set("workflow", code);
+        params.set("view", view);
       }),
     clearWorkflow: () =>
       update((params) => {
-        for (const key of ["workflow", "run", "activity", "view", "dialog"]) params.delete(key);
+        for (const key of ["workflow", "run", "activity", "runsOf", "view", "dialog"]) params.delete(key);
       }),
-    /** Selects a workflow; `push` makes the selection a history step, as when a mobile list opens one. */
+    /** Selects a workflow, leaving Activity; `push` makes the selection a history step, as when a mobile list opens one. */
     selectWorkflow: (code: string, push = false) =>
       update((params) => {
         params.set("workflow", code);
-        params.delete("run");
-        params.delete("view");
-        params.delete("dialog");
+        for (const key of ["activity", "run", "runsOf", "view", "dialog"]) params.delete(key);
       }, push),
-    /** Opens the Activity list, where a newly queued run appears with the active runs. */
-    openList: () =>
+    /** Opens Activity narrowed to one workflow's runs. */
+    openWorkflowRuns: (code: string) =>
       update((params) => {
         params.set("activity", "1");
+        params.set("runsOf", code);
         params.delete("run");
       }, true),
-    openRun: (runId: number, workflowCode?: string) =>
+    /** Widens the open Activity list back to every workflow. */
+    showAllWorkflows: () =>
+      update((params) => {
+        params.delete("runsOf");
+      }),
+    /** Opens a run in Activity without changing the selected workflow. */
+    openRun: (runId: number) =>
       update((params) => {
         params.set("activity", "1");
         params.set("run", String(runId));
-        if (workflowCode) params.set("workflow", workflowCode);
-        else params.delete("workflow");
       }, true),
     backToList: () =>
       update((params) => {

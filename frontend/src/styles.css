@@ -162,10 +162,11 @@
     --shadow-2xl: 0 24px 64px hsl(24 18% 18% / 0.18);
     --card-shadow: var(--shadow-sm);
     --card-border-width: 1px;
-    --safe-area-top: env(safe-area-inset-top, 0px);
-    --safe-area-right: env(safe-area-inset-right, 0px);
-    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
-    --safe-area-left: env(safe-area-inset-left, 0px);
+    /* The Android shell also reports the system bars, which older WebViews leave out of env(). */
+    --safe-area-top: max(env(safe-area-inset-top, 0px), var(--native-safe-area-top, 0px));
+    --safe-area-right: max(env(safe-area-inset-right, 0px), var(--native-safe-area-right, 0px));
+    --safe-area-bottom: max(env(safe-area-inset-bottom, 0px), var(--native-safe-area-bottom, 0px));
+    --safe-area-left: max(env(safe-area-inset-left, 0px), var(--native-safe-area-left, 0px));
     --visual-viewport-width: 100vw;
     --visual-viewport-height: 100dvh;
     --visual-viewport-offset-top: 0px;
@@ -775,15 +776,7 @@
     background-clip: content-box;
   }
 
-  /* Selected workflow health: two stat columns and a stacked history in a narrow column, one row when wide. */
-  .workflow-frame {
-    container-type: inline-size;
-  }
-
-  .workflow-health-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
+  /* Run history strip: the label stacks above the bars in a narrow card and sits beside them when wide. */
   .workflow-history-strip {
     display: flex;
     flex-direction: column;
@@ -791,10 +784,6 @@
   }
 
   @container (min-width: 44rem) {
-    .workflow-health-grid {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-
     .workflow-history-strip {
       flex-direction: row;
       align-items: flex-end;
@@ -808,23 +797,6 @@
 
     .workflow-history-bars {
       flex: 1 1 0%;
-    }
-  }
-
-  /* Selected workflow: automation and recent runs share a row once the detail column has room. */
-  .workflow-detail {
-    container-type: inline-size;
-  }
-
-  .workflow-detail-pair {
-    display: grid;
-    gap: 1.25rem;
-    align-items: start;
-  }
-
-  @container (min-width: 50rem) {
-    .workflow-detail-pair:has(> :nth-child(2)) {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 
@@ -890,7 +862,7 @@
     box-shadow: 0 -12px 24px -18px hsl(var(--foreground) / 0.45);
   }
 
-  /* Workflow run monitor: stage list beside a streaming run log. */
+  /* Latest run: stages fill the card in columns while the log is folded, and sit beside the open log. */
   .workflow-monitor {
     container-type: inline-size;
   }
@@ -899,7 +871,13 @@
     display: grid;
   }
 
-  .workflow-monitor-steps {
+  .workflow-monitor-grid:not([data-log-open]) .workflow-monitor-stage-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+    column-gap: 0.25rem;
+  }
+
+  .workflow-monitor-grid[data-log-open] .workflow-monitor-steps {
     border-bottom: 1px solid hsl(var(--border));
   }
 
@@ -995,12 +973,12 @@
   }
 
   @container (min-width: 40rem) {
-    .workflow-monitor-grid {
+    .workflow-monitor-grid[data-log-open] {
       height: 20rem;
       grid-template-columns: minmax(13rem, 17rem) minmax(0, 1fr);
     }
 
-    .workflow-monitor-steps {
+    .workflow-monitor-grid[data-log-open] .workflow-monitor-steps {
       overflow-y: auto;
       border-right: 1px solid hsl(var(--border));
       border-bottom: 0;

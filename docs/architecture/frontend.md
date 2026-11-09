@@ -44,6 +44,15 @@ action. Centered dialogs pad their backdrop by the safe-area insets and cap
 their height to the space between them, so a tall dialog's header and close
 action never sit under the status bar or notch.
 
+The page alone pads for the system bars. Both native shells draw the WebView
+under the status bar, and the `--safe-area-*` tokens give each surface the
+inset to clear. The Android shell (`KikotoSystemInsets`) lays every Android
+version out edge to edge, adds no native padding for a bar, and publishes the
+bar sizes as `--native-safe-area-*` variables; each token takes the larger of
+that variable and `env(safe-area-inset-*)`, so a WebView that reports the
+insets itself still gets them once. With the keyboard open, the shell ends the
+WebView above the keyboard and reports no bottom inset.
+
 The header owns the desktop page title and description. Mobile browsing
 destinations use the bottom navigation as their location cue and show a compact
 Kikoto mark instead; administrative destinations retain a single-line title.
@@ -362,7 +371,18 @@ seeking, and screen lyrics share one timeline.
 The work detail file viewer plays video in `VideoPreview`
 (`features/work-detail/media`), outside the global player. It attaches an HLS
 playlist natively on iOS and iPadOS (`prefersNativeVideoHls`) and through a
-lazily loaded hls.js elsewhere. `useVideoSubtitleTracks` renders its `<track>`
+lazily loaded hls.js elsewhere. The `<video>` element has no native controls;
+`VideoControls` lays its own over it, reading the element through
+`useVideoElementState` and keeping tap zones, double-tap streaks, the hide
+rule, and seeking in the pure `videoControlsModel`. It reuses the player's
+control primitives and seek steps through `player/mediaControls`. Keyboard
+shortcuts, buttons, and double taps all seek through `seekVideoTo`.
+`videoFullscreen` makes the stage element fullscreen, so the controls stay,
+except on iOS and iPadOS (`appleMobileWebKit`), whose fullscreen is the system
+player; the stage leaves fullscreen when it unmounts. Its menus pass the stage
+to `AnchoredPopover` as `container` while it is fullscreen, because a popover
+in `document.body` is not shown over a fullscreen element. Subtitle menu
+choices set each `<track>` element's `track.mode`. `useVideoSubtitleTracks` renders its `<track>`
 elements: same-name WebVTT, SRT, ASS, and SSA files from the video's lyrics
 matches (`sidecarSubtitleChoices`) load at once, with SRT and ASS rewritten as
 WebVTT through `lib/timedLyrics`, and the embedded streams that playback info
@@ -466,9 +486,9 @@ so a still-loading element never replaces it.
 
 - Workflows: a category-grouped workflow navigator beside the selected
   workflow on wide screens, collapsible to an icon rail; on phones the navigator
-  is the landing list. Activity opens from the status strip as an anchored
-  popover, or a sheet on phones.
-- Activity run details inside the Workflows panel, also reachable through notifications.
+  is the landing list. Activity is the navigator's first entry and replaces
+  the selected workflow, with run details beside its list from 1280px.
+- Activity run details on the Workflows page, also reachable through notifications.
 - Global player dock.
 
 The work metadata editor freezes its initial normalized values and sends only

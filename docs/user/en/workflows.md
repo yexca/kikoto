@@ -8,17 +8,21 @@ Workflows make backend actions inspectable.
 - Workflows: built-in definitions, including the preset catalog sync
   workflows, with their triggers managed in the selected definition. There is no custom
   workflow editor.
-- A status strip at the top shows what is running now with its progress, how
-  many runs need attention, and the next scheduled run. Its first two cells and
-  **Activity** at its right end open a desktop panel or mobile sheet covering
-  every workflow; the next-scheduled cell selects that workflow. Active runs
-  appear above **Needs attention**
-  and **History**. Each row shows the status, run number, trigger, and elapsed
-  time. List rows and **Recent runs** open details inside the same panel: start
-  and finish times, duration, trigger, steps, candidates, run actions, and a
-  collapsed **Diagnostic log** of run events. **Back to runs** returns to the
-  list. Activity has no page of its own: `/activity` and `/runs` links open
-  Workflows with the Activity panel and select the linked run.
+- A status strip at the top shows what is running now with its progress and
+  how many runs need attention; each cell opens Activity.
+- **Activity** is the first entry of the workflow list, with the number of
+  running runs and of runs that need attention beside it. Selecting it shows
+  every workflow's runs in place of a workflow: active runs above
+  **Needs attention** and **History**. Each row shows the status, run number,
+  trigger, and elapsed time. Selecting a row, or the **Latest run** card,
+  opens the run's details: start and finish times, duration, trigger, steps,
+  candidates, run actions, and a collapsed **Diagnostic log** of run events.
+  Wide screens show the details beside the list; elsewhere they replace it,
+  and **Back to runs** returns to the list. On phones Activity opens from the
+  list like a workflow, and the header back button returns from a run to the
+  list and from Activity to where you were. Selecting a workflow leaves
+  Activity. `/activity` and `/runs` links open Workflows on Activity and
+  select the linked run.
 - Activity lists every run, including those of features with their own pages:
   translations are followed on the [Translation](translation.md) page, and
   transcriptions in a work's **Manage lyrics → Transcribe**. A notification
@@ -80,26 +84,24 @@ administrators.
   notifications open the local work detail and can be dismissed independently
   for the signed-in user; a translation that needs attention opens the
   Translation page's **Stopped** view, and a transcription its work;
-  **Open Activity** opens the full panel.
+  **Open Activity** opens Activity on the Workflows page.
 - The workflow list groups every workflow by category: Basic (local scan, local
-  files, metadata sync, and Learn tag names), Collect (**Pull DLsite
-  rankings** and **Pull remote source rankings**), Catalog sync (the
-  subscription refresh and the catalog sync presets), and Remote (Availability
-  Watch, Fetch, and Check works on a source), each in
-  a fixed order. Every entry shows its latest run's status and time, and small
-  icons mark an enabled Startup trigger, schedule, or folder watcher. Wide
-  layouts keep the list beside the selected workflow; **Hide tab names** below
-  it collapses the list to icons that each keep a dot for the latest run, and
-  **Show tab names** expands it again. The page remembers this choice. On
+  files, metadata sync, and Learn tag names), Catalog sync (the catalog sync
+  presets), Remote (Fetch and Check works on a source), and Discover (**Pull
+  remote source rankings**, **Pull DLsite rankings**, Availability Watch, and
+  **Refresh subscriptions**, which are configured on the
+  [Discover](discover.md) page), each in a fixed order. Every entry is one
+  line: a dot on its icon shows the latest run's status, and small icons mark
+  an enabled Startup trigger, schedule, or folder watcher. The latest run's
+  time is on the selected workflow's **Latest run** card. Wide layouts keep the
+  list beside the selected workflow; **Hide tab names** below it collapses the
+  list to its icons, and **Show tab names** expands it again. The page remembers this choice. On
   phones the list is the landing view: tapping a workflow opens it, and the
   header back button or the browser's Back returns to the list.
   Definitions cannot be created, edited, or deleted from the page.
-- The selected workflow summarizes its latest 20 runs: the last run, the share
-  of finished runs that succeeded, their typical (median) duration, and when it
-  starts next on its own (a schedule, the next service start, folder changes, or
-  manual only). A bar chart of those runs' durations, oldest first, keeps
-  ordinary successes neutral so failures and partial runs stand out; hover a
-  bar for its details and select it to open the run.
+- The selected workflow shows its name and description, its Run options, a
+  **Latest run** card, and its triggers. Each trigger states when it next
+  starts the workflow.
 - Needs attention collects unresolved candidates, metadata issues, and
   unacknowledged failures. Resolving or dismissing recorded issues clears the
   corresponding dedicated metadata-run notice. Other failures can be marked
@@ -162,18 +164,27 @@ administrators.
   workflow is selected.
   Local scan shows its follow-up option there; built-in workflows without run
   parameters show `Run` in their header instead.
-- The run monitor follows the form, then the triggers and recent runs. It
-  shows the latest run's stages and its log, side by side when there is room.
-  While a run is active, new log lines stream in and the log follows the latest
-  output unless you scroll up. Select a stage to show only its lines, and
-  select the run summary to open that run in Activity.
+- The **Latest run** card follows the form. Its first line states the latest
+  run's status, number, time, and duration; select it to open that run in
+  Activity. Below it are the run's stages and its log, side by side when there
+  is room. The log stays folded after a successful run and opens by itself
+  while a run is active and after a failed or partial one; **Show log** and
+  **Hide log** fold it by hand. Starting a run keeps its workflow open, and
+  the card reports the new run. While a run is active, new log lines stream in
+  and the log follows the latest output unless you scroll up. Select a stage to
+  show only its lines.
+- A bar chart of the latest 20 runs' durations, oldest first, closes the card.
+  Ordinary successes stay neutral so failures and partial runs stand out; hover
+  a bar for its details and select it to open the run. **All runs** opens
+  Activity with only this workflow's runs; select the workflow's name below
+  the Activity heading to show every workflow again.
 - Availability Watch, **Refresh subscriptions**, **Pull DLsite rankings**, and
   **Pull remote source rankings** are configured on the
   [Discover](discover.md) page, where the watch keeps its source setting
   and its pool is the **Watch** view, the subscription refresh
   its schedule, and
-  each ranking its own pull schedule. Here they show their latest runs, health
-  summary, and run history, link to that page, and have no Run options or
+  each ranking its own pull schedule. Here they show their **Latest run** card,
+  link to that page, and have no Run options or
   triggers of their own.
 - Sync a circle catalog, Sync a series catalog, and Sync a voice actor catalog
   (tabs **Circle catalog**, **Series catalog**, and **VA catalog**) are preset
