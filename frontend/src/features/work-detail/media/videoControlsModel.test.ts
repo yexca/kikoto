@@ -6,6 +6,7 @@ import {
   cueLineAboveControls,
   DOUBLE_TAP_MS,
   initialTapState,
+  keepOneVideoSubtitle,
   nextTap,
   seekVideoBy,
   showVideoSubtitle,
@@ -187,6 +188,19 @@ describe("subtitle choice", () => {
     expect(shownVideoSubtitle(tracks)).toBe("b");
     showVideoSubtitle(tracks, null);
     expect(shownVideoSubtitle(tracks)).toBeNull();
+  });
+
+  it("leaves the shown track when the browser shows another beside it", () => {
+    const tracks = [element("a", "disabled"), element("b", "showing"), element("c", "showing")];
+    expect(keepOneVideoSubtitle(tracks, "c")).toBe("c");
+    expect(tracks.map((track) => track.track.mode)).toEqual(["disabled", "disabled", "showing"]);
+    expect(keepOneVideoSubtitle(tracks, "c")).toBe("c");
+    expect(tracks[2].modes).toEqual([]);
+
+    const unknown = [element("a", "showing"), element("b", "showing")];
+    expect(keepOneVideoSubtitle(unknown, null)).toBe("a");
+    expect(unknown.map((track) => track.track.mode)).toEqual(["showing", "disabled"]);
+    expect(keepOneVideoSubtitle([element("a", "hidden")], "a")).toBeNull();
   });
 
   it("switches a track that already shows off and on, so a failed load retries", () => {

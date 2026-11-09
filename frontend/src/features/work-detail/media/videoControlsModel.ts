@@ -151,6 +151,21 @@ export function showVideoSubtitle(elements: Iterable<SubtitleTrackElement>, key:
   }
 }
 
+/**
+ * Leaves one subtitle track showing. A browser may show a track by itself,
+ * such as one in the device language, beside the track that already shows;
+ * the track with `keepKey` stays, or the first that shows when it is not
+ * among them. Returns the key of the track that shows afterwards.
+ */
+export function keepOneVideoSubtitle(elements: Iterable<SubtitleTrackElement>, keepKey: string | null) {
+  const showing = Array.from(elements).filter((element) => element.track.mode === "showing");
+  const kept = showing.find((element) => element.dataset.subtitleKey === keepKey) ?? showing[0];
+  for (const element of showing) {
+    if (element !== kept) element.track.mode = "disabled";
+  }
+  return kept?.dataset.subtitleKey ?? null;
+}
+
 /** The key of the subtitle track that shows, or null when subtitles are off. */
 export function shownVideoSubtitle(elements: Iterable<SubtitleTrackElement>) {
   for (const element of elements) {
