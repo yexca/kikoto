@@ -20,6 +20,9 @@
   seeks, adding a step for each further quick tap; with a mouse a click plays
   or pauses and a double click switches fullscreen. Fullscreen keeps the
   controls, except on iPhone and iPad, which still use the system player.
+- A video shows one subtitle track at a time. A track the browser turns on by
+  itself, such as one in the device language, is switched off instead of
+  showing beside the chosen track and extracting its stream from the video.
 
 </details>
 

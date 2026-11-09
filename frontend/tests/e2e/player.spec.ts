@@ -969,6 +969,8 @@ test("@desktop queue rows reorder by dragging the handle or with the arrow keys"
   const rows = queue.getByRole("listitem");
   await expect(rows).toHaveCount(3);
   const handle = queue.getByRole("button", { name: "Reorder Test track.wav" });
+  // Hovering waits for the panel to finish sliding in, so the drag starts on the handle.
+  await handle.hover();
   const [handleBox, rowBox] = await Promise.all([handle.boundingBox(), rows.first().boundingBox()]);
   expect(handleBox).not.toBeNull();
   expect(rowBox).not.toBeNull();

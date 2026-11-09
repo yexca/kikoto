@@ -138,7 +138,10 @@ func TestFilesystemTriggerPauseDiscardsPendingAndPausedEvents(t *testing.T) {
 	db := openMigratedTestDB(t)
 	server := NewServer(db, config.Config{DataRoot: t.TempDir(), LocalScanDepth: 2})
 	watcher := newFakeFilesystemWatcher(2)
-	startFilesystemWatcherSession(t, server, watcher, 25*time.Millisecond, 15*time.Millisecond)
+	// The pause must reach the session before the pending change settles, which
+	// a slow race-detector run can take tens of milliseconds to do.
+	const settle = 200 * time.Millisecond
+	startFilesystemWatcherSession(t, server, watcher, settle, 15*time.Millisecond)
 
 	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000000", "track.flac")}
 	if _, err := db.Exec("UPDATE workflow_trigger SET enabled = 0 WHERE trigger_type = 'filesystem_event'"); err != nil {
@@ -146,7 +149,7 @@ func TestFilesystemTriggerPauseDiscardsPendingAndPausedEvents(t *testing.T) {
 	}
 	server.notifyFilesystemTriggerConfigChanged()
 	waitForFilesystemTriggerNotification(t, server)
-	time.Sleep(40 * time.Millisecond)
+	time.Sleep(settle + 50*time.Millisecond)
 	assertFilesystemRunCount(t, db, 0)
 
 	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000000", "track.flac")}
@@ -156,7 +159,7 @@ func TestFilesystemTriggerPauseDiscardsPendingAndPausedEvents(t *testing.T) {
 	}
 	server.notifyFilesystemTriggerConfigChanged()
 	waitForFilesystemTriggerNotification(t, server)
-	time.Sleep(40 * time.Millisecond)
+	time.Sleep(settle + 50*time.Millisecond)
 	assertFilesystemRunCount(t, db, 0)
 
 	watcher.changes <- localfs.DirectoryChange{Path: filepath.Join(server.cfg.DataRoot, "RJ00000000", "track.flac")}

@@ -2,6 +2,7 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from "react-i18next";
 
 import { api, assetURL, type VideoEmbeddedSubtitle } from "@/lib/api";
+import { keepOneVideoSubtitle } from "@/features/work-detail/media/videoControlsModel";
 import {
   initialVideoSubtitleKey,
   sidecarSubtitleKey,
@@ -61,6 +62,8 @@ export function useVideoSubtitleTracks(
   const [sidecarsSettled, setSidecarsSettled] = useState(false);
   const requestedRef = useRef(new Set<string>());
   const initialAppliedRef = useRef(false);
+  /** The track that shows, kept when the browser shows another beside it. */
+  const shownKeyRef = useRef<string | null>(null);
   const lifetimeRef = useRef<{ controller: AbortController; urls: string[] } | null>(null);
 
   useEffect(() => {
@@ -148,11 +151,15 @@ export function useVideoSubtitleTracks(
   );
 
   // An embedded track loads when the viewer selects it in the video controls.
+  // A track the browser shows by itself beside the shown one is switched off
+  // first, so it neither shows nor loads.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     const loadSelected = () => {
-      for (const element of Array.from(video.querySelectorAll<HTMLTrackElement>(trackSelector))) {
+      const elements = Array.from(video.querySelectorAll<HTMLTrackElement>(trackSelector));
+      shownKeyRef.current = keepOneVideoSubtitle(elements, shownKeyRef.current);
+      for (const element of elements) {
         if (element.track.mode === "disabled") continue;
         const track = tracks.find((candidate) => candidate.key === element.dataset.subtitleKey);
         if (track) requestEmbedded(track);
@@ -176,7 +183,9 @@ export function useVideoSubtitleTracks(
     const element = Array.from(video.querySelectorAll<HTMLTrackElement>(trackSelector)).find(
       (candidate) => candidate.dataset.subtitleKey === key,
     );
-    if (element) element.track.mode = "showing";
+    if (!element) return;
+    shownKeyRef.current = key ?? null;
+    element.track.mode = "showing";
   }, [rendered, sidecarsSettled, streams, tracks, videoRef]);
 
   return withStatus;
