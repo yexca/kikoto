@@ -593,6 +593,8 @@ test("fullscreen holds the video stage, and its menus show inside it @desktop", 
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
   await page.mouse.dblclick(x, y);
   await expect.poll(fullscreenLabel).toBe("Video player");
+  // The fullscreen layout settles when the browser reports the change, which the controls then show.
+  await expect(page.getByRole("button", { name: "Exit full screen", exact: true })).toHaveCount(1);
   await page.mouse.dblclick(x, y);
   await expect.poll(fullscreenLabel).toBeNull();
 });
