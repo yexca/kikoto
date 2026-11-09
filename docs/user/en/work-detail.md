@@ -540,7 +540,21 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
   images, which takes a second click to confirm and resets after a few seconds
   or on another image. It fills the screen on phones and opens above the
   floating desktop player.
-- Plays video in the file viewer with the browser's video controls:
+- Plays video in the file viewer with on-screen controls:
+  - Back, play or pause, and forward sit in the middle of the picture, and the
+    seek bar with the buffered part, the time, Subtitles, Playback speed (0.5×
+    to 2×), Mute, and Full screen run along the bottom. Picture in picture and
+    AirPlay join them where the browser offers them and the player is wide
+    enough. Back and forward use the seek steps from Settings.
+  - On a touch screen, a tap shows or hides the controls, and a double tap on
+    the left or right third of the picture goes back or forward by the same
+    steps; each further quick tap adds another step. With a mouse, a click
+    plays or pauses and a double click switches fullscreen. While the video
+    plays, the controls fade out 3 seconds after the last tap, mouse movement,
+    or key press, and they stay while it is paused or loading, a menu is open,
+    or a control has keyboard focus.
+  - Full screen keeps these controls and menus. iPhone and iPad open the
+    system player instead, with its own controls.
   - WebVTT, SRT, ASS, and SSA files beside the video with the same name, such
     as `clip.vtt` or `clip.mp4.ass` for `clip.mp4`, load as subtitles. SRT
     keeps italic, bold, and underline and shows other text as written. ASS and
@@ -553,7 +567,10 @@ An official bundle, such as a complete pack (`コンプリートパック`) or a
     busy, and one may wait for another to finish. Picture subtitles, such as
     PGS, DVD, and DVB, are not listed.
   - An embedded subtitle marked forced shows first, then one marked default,
-    and otherwise the first subtitle. The video controls switch or hide them.
+    and otherwise the first subtitle. The Subtitles menu switches to another
+    one or turns them off, marks an embedded subtitle that is still loading,
+    and loads one again when it is chosen after a failed load. Subtitles move
+    up above the bottom controls while those show.
   - A local or cached video reopens where it stopped, paused, with a
     **Start over** button. The browser keeps the position per file and account
     on this device, from 10 seconds in until the last 15 seconds or the last 5

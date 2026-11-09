@@ -58,6 +58,8 @@ steps. The design contract includes:
   readable foreground, and border treatment.
 - A destructive action role reserved for irreversible commands. Error feedback
   is not automatically a destructive action.
+- A scrim role that darkens what lies behind a dialog, and the edges of a
+  picture under controls laid over video, so they read on any frame.
 - Place roles for the file workspace: `place-target` for the folder an edit
   changes, `place-local` for another local folder it only copies from, and
   `place-remote` for a read-only remote edition, each with a band, subtle

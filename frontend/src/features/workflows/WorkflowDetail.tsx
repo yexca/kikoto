@@ -15,7 +15,7 @@ import { isActiveRunStatus, isDemoShowcaseActiveRun } from "@/features/workflows
 import { WorkflowAutomationPanel } from "@/features/workflows/triggers/WorkflowAutomationPanel";
 import { WorkflowDetailFrame } from "@/features/workflows/WorkflowDetailFrame";
 import { openWorkflowPath } from "@/features/workflows/workflowLinks";
-import { RecentRunList, WorkflowSection } from "@/features/workflows/WorkflowDetailLayout";
+import { WorkflowSection } from "@/features/workflows/WorkflowDetailLayout";
 import {
   parseNodes,
   workflowCopy,
@@ -62,6 +62,7 @@ export function WorkflowDetail({
   onTriggerRunOptionsChange,
   recentRuns = [],
   onOpenRun,
+  onOpenRuns,
   emptyText = workflowCopy("selectWorkflowNodePipeline"),
   onCreateTrigger,
   onEditTrigger,
@@ -85,6 +86,8 @@ export function WorkflowDetail({
   onTriggerRunOptionsChange?: (options: CurrentTriggerRunOptions) => void;
   recentRuns?: WorkflowRun[];
   onOpenRun?: (run: WorkflowRun) => void;
+  /** Opens Activity on this workflow's runs. */
+  onOpenRuns?: () => void;
   emptyText?: string;
   onCreateTrigger: (triggerType: CreatableAutomationTriggerType, anchor?: HTMLElement | null) => void;
   onEditTrigger: (trigger: WorkflowTrigger, anchor?: HTMLElement | null) => void;
@@ -161,54 +164,38 @@ export function WorkflowDetail({
   const showAutomation =
     supportedAutomationTriggerTypes(definition, Boolean(preset)).length > 0 || definitionTriggers.length > 0;
   return (
-    <WorkflowDetailFrame
-      definition={definition}
-      recentRuns={recentRuns}
-      triggers={definitionTriggers}
-      onOpenRun={onOpenRun}
-    >
-      <div className="workflow-detail relative min-w-0">
+    <WorkflowDetailFrame definition={definition}>
+      <div className="relative min-w-0">
         <div className="grid min-w-0 gap-5">
           {runForm}
-          <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} />
-          <div className="workflow-detail-pair">
-            {preset ? (
+          <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} onOpenRuns={onOpenRuns} />
+          {preset ? (
+            <WorkflowPanel>
+              <WorkflowSection title={workflowCopy("triggers")} label={workflowCopy("workflowAutomations")}>
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">{workflowCopy("presetScheduledBySubscriptions")}</p>
+                  <Button size="sm" variant="outline" onClick={() => openWorkflowPath("/discover?panel=subscriptions")}>
+                    <Compass className="h-4 w-4" />
+                    {workflowCopy("openSubscriptions")}
+                  </Button>
+                </div>
+              </WorkflowSection>
+            </WorkflowPanel>
+          ) : (
+            showAutomation && (
               <WorkflowPanel>
-                <WorkflowSection title={workflowCopy("triggers")} label={workflowCopy("workflowAutomations")}>
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">{workflowCopy("presetScheduledBySubscriptions")}</p>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openWorkflowPath("/discover?panel=subscriptions")}
-                    >
-                      <Compass className="h-4 w-4" />
-                      {workflowCopy("openSubscriptions")}
-                    </Button>
-                  </div>
-                </WorkflowSection>
+                <WorkflowAutomationPanel
+                  definition={definition}
+                  triggers={definitionTriggers}
+                  canManage={canManageTriggers}
+                  readOnly={readOnly}
+                  onCreate={onCreateTrigger}
+                  onEdit={onEditTrigger}
+                  onToggle={onToggleTrigger}
+                />
               </WorkflowPanel>
-            ) : (
-              showAutomation && (
-                <WorkflowPanel>
-                  <WorkflowAutomationPanel
-                    definition={definition}
-                    triggers={definitionTriggers}
-                    canManage={canManageTriggers}
-                    readOnly={readOnly}
-                    onCreate={onCreateTrigger}
-                    onEdit={onEditTrigger}
-                    onToggle={onToggleTrigger}
-                  />
-                </WorkflowPanel>
-              )
-            )}
-            {onOpenRun && (
-              <WorkflowPanel>
-                <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />
-              </WorkflowPanel>
-            )}
-          </div>
+            )
+          )}
         </div>
         {remoteSourceUnavailable && remoteSourceRequiredCopy[definition.code] && (
           <div
@@ -330,15 +317,17 @@ function RunBar({ blocker, floating, children }: { blocker?: ReactNode; floating
 const emptyEvents: WorkflowEvent[] = [];
 const emptyNodeRuns: WorkflowNodeRun[] = [];
 
-/** Stages and log of the definition's most recent run; an active run streams into the log. */
+/** The definition's most recent run with its stages and log, and its run history; an active run streams into the log. */
 export function DefinitionRunMonitor({
   nodes,
   recentRuns,
   onOpenRun,
+  onOpenRuns,
 }: {
   nodes: WorkflowNode[];
   recentRuns: WorkflowRun[];
   onOpenRun?: (run: WorkflowRun) => void;
+  onOpenRuns?: () => void;
 }) {
   const latestRun = useMemo(
     () => recentRuns.reduce<WorkflowRun | null>((latest, run) => (!latest || run.id > latest.id ? run : latest), null),
@@ -355,19 +344,11 @@ export function DefinitionRunMonitor({
     <WorkflowRunMonitor
       stages={stages}
       run={detail ?? latestRun}
+      runs={recentRuns}
       events={detail ? watched.events : emptyEvents}
       nodeRuns={nodeRuns ?? emptyNodeRuns}
       onOpenRun={onOpenRun}
+      onOpenRuns={onOpenRuns}
     />
-  );
-}
-
-const recentRunListSize = 5;
-
-export function RecentWorkflowRuns({ runs, onOpen }: { runs: WorkflowRun[]; onOpen: (run: WorkflowRun) => void }) {
-  return (
-    <WorkflowSection title={workflowCopy("recentRuns")}>
-      <RecentRunList runs={runs.slice(0, recentRunListSize)} empty={workflowCopy("noRecentRuns")} onOpen={onOpen} />
-    </WorkflowSection>
   );
 }

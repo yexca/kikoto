@@ -90,10 +90,15 @@ export function SeekBar({
   currentTime,
   duration,
   onSeek,
+  buffered,
+  disabled = false,
 }: {
   currentTime: number;
   duration: number;
   onSeek: (seconds: number) => void;
+  /** Buffered ranges as fractions of the duration, drawn behind the progress. */
+  buffered?: readonly { start: number; end: number }[];
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
   const hasDuration = Number.isFinite(duration) && duration > 0;
@@ -113,9 +118,16 @@ export function SeekBar({
   return (
     <div className="group/seek relative h-7" data-active={interacting || undefined}>
       <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-foreground/[0.14] transition-[height] duration-200 group-data-[active]/seek:h-2.5">
+        {buffered?.map((range) => (
+          <div
+            key={`${range.start}:${range.end}`}
+            className="absolute inset-y-0 bg-foreground/20"
+            style={{ left: `${range.start * 100}%`, width: `${(range.end - range.start) * 100}%` }}
+          />
+        ))}
         <div
           className={cn(
-            "h-full origin-left rounded-full bg-foreground/60 group-data-[active]/seek:bg-foreground",
+            "relative h-full origin-left rounded-full bg-foreground/60 group-data-[active]/seek:bg-foreground",
             interacting ? "" : "transition-transform duration-500 ease-linear",
           )}
           style={{ transform: `scaleX(${displayedProgress / 100})` }}
@@ -129,7 +141,7 @@ export function SeekBar({
         max={hasDuration ? duration : 1}
         step={0.1}
         value={value}
-        disabled={!hasDuration}
+        disabled={disabled || !hasDuration}
         onPointerDown={() => {
           setInteracting(true);
           setDraftValue(value);

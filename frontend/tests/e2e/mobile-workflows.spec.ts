@@ -716,11 +716,14 @@ function workflowList(page: Page) {
   return page.getByRole("navigation", { name: "Workflows", exact: true });
 }
 
-/** Opens a workflow from the list; the mobile layout first returns from an open workflow to the list. */
+/**
+ * Opens a workflow from the list; the mobile layout first returns to the list
+ * from an open workflow, or from Activity and the workflow beneath it.
+ */
 async function openWorkflow(page: Page, name: string) {
   const back = page.getByRole("button", { name: "Back to workflows", exact: true });
   await expect(workflowList(page).or(back)).toBeVisible();
-  if (await back.isVisible()) await back.click();
+  for (let step = 0; step < 2 && (await back.isVisible()); step += 1) await back.click();
   await workflowList(page).getByRole("button", { name, exact: true }).click();
   await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
 }
@@ -971,7 +974,7 @@ test("definitions foreground runnable presets and send ranking pulls to the Disc
   await page.goto("/workflows");
 
   const list = workflowList(page);
-  await expect(list.getByRole("heading")).toHaveText(["Basic", "Collect", "Remote"]);
+  await expect(list.getByRole("heading")).toHaveText(["Basic", "Discover"]);
   await expect(list.getByRole("button")).toHaveCount(6);
   await expect(page.getByRole("button", { name: "New workflow", exact: true })).toHaveCount(0);
   await expect(list.getByText("Built-in", { exact: true })).toHaveCount(0);
@@ -983,10 +986,14 @@ test("definitions foreground runnable presets and send ranking pulls to the Disc
   await expect(page.getByRole("region", { name: "Run options", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Add schedule", exact: true })).toHaveCount(0);
   await expect(page.getByText("Each ranking is pulled on its own schedule", { exact: false })).toBeVisible();
-  await expect(page.getByText("Recent runs", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /^#51 Manual · day / }).click();
+  await page
+    .getByRole("region", { name: "Latest run", exact: true })
+    .getByRole("button", { name: "Open run #51 (Succeeded) in Activity", exact: true })
+    .click();
   await expect(page).toHaveURL(/\/workflows\?.*run=51/);
-  await page.getByRole("button", { name: "Close Activity", exact: true }).click();
+  // Opening a run is a history step; Back returns to the workflow it was opened from.
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Pull DLsite rankings", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Open Discover", exact: true }).click();
   await expect(page).toHaveURL(/\/discover\?view=rankings&panel=rankings$/);
@@ -1374,10 +1381,9 @@ test("local scan follow-up is explicit and defaults off for manual and automatic
   await manualFollowUp.click();
   await page.getByRole("button", { name: "Run", exact: true }).click();
   await expect.poll(() => manualPayloads).toEqual([{ followUpRun: true }]);
-  const queuedActivity = page.getByRole("dialog", { name: "Activity", exact: true });
-  await expect(queuedActivity).toBeVisible();
-  await queuedActivity.getByRole("button", { name: "Close Activity", exact: true }).click();
-  await expect(queuedActivity).toHaveCount(0);
+  // A queued run leaves its workflow open; the Latest run card reports it.
+  await expect(page.getByRole("heading", { name: "Scan local library", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Activity", exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Edit Startup local library scan" }).click();
   const triggerDialog = page.getByRole("dialog", { name: "Edit trigger" });
@@ -1409,8 +1415,6 @@ test("local work file refresh sends the chosen mode for manual and startup runs"
   await mode.getByRole("button", { name: "Full", exact: true }).click();
   await page.getByRole("button", { name: "Run", exact: true }).click();
   await expect.poll(() => manualPayloads).toEqual([{ mode: "full" }]);
-  const queuedActivity = page.getByRole("dialog", { name: "Activity", exact: true });
-  await queuedActivity.getByRole("button", { name: "Close Activity", exact: true }).click();
 
   const triggerRequest = page.waitForRequest(
     (request) => request.method() === "POST" && request.url().endsWith("/api/workflow-triggers"),
@@ -1602,11 +1606,11 @@ test("activity presents a compact run summary without the execution canvas", asy
   await mockWorkflows(page);
   await page.goto("/activity?view=completed&run=51");
 
-  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  const activity = page.getByRole("region", { name: "Activity", exact: true });
   await expect(activity.getByText("Nodes", { exact: true })).toBeVisible();
   await expect(activity.getByText("jobs", { exact: true })).toBeVisible();
   await expect(activity.getByText("Run signals", { exact: true })).toHaveCount(0);
-  await expect(activity.getByRole("region", { name: "Workflow run" })).toHaveCount(0);
+  await expect(activity.getByRole("region", { name: "Latest run" })).toHaveCount(0);
   await expect(activity.getByText("Node logs", { exact: true })).toHaveCount(0);
   await expect(activity.getByRole("button", { name: "Overview", exact: true })).toHaveCount(0);
   await expect(activity.getByRole("button", { name: "Steps", exact: true })).toHaveCount(0);
@@ -1651,10 +1655,9 @@ test("workflow Activity forgets a previous account's private run after sign-in",
     } else await route.fallback();
   });
   await page.goto("/workflows?activity=1&run=51");
-  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  const activity = page.getByRole("region", { name: "Activity", exact: true });
   await activity.getByText("Diagnostic log", { exact: true }).click();
   await expect(activity.getByText("Tagging works", { exact: true })).toBeVisible();
-  await activity.getByRole("button", { name: "Close Activity", exact: true }).click();
   await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sign in to Kikoto" })).toBeVisible();
@@ -1839,7 +1842,7 @@ test("run retry shows progress while pending and reports a failure", async ({ pa
   });
 
   await page.goto("/activity?run=99");
-  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  const activity = page.getByRole("region", { name: "Activity", exact: true });
   await expect(activity.getByRole("heading", { name: "Scan local library", exact: true })).toBeVisible();
   const retry = activity.getByRole("button", { name: "Retry", exact: true });
   await retry.click();
@@ -1956,7 +1959,7 @@ test("demo running activity stays untimed while real running work keeps its elap
   await expect(demoItem).not.toContainText(/1m \d+s/);
   await demoItem.getByRole("button").click();
   await expect(
-    page.getByRole("dialog", { name: "Activity", exact: true }).getByText("#64", { exact: true }),
+    page.getByRole("region", { name: "Activity", exact: true }).getByText("#64", { exact: true }),
   ).toBeVisible();
   const initialRequests = runningListRequests;
   const initialRecentRequests = recentRunRequests;
@@ -1981,7 +1984,7 @@ test("activity deep links load a run outside the visible list page", async ({ pa
   await page.goto("/activity?run=99");
 
   await expect(page).toHaveURL(/\/workflows\?.*run=99/);
-  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  const activity = page.getByRole("region", { name: "Activity", exact: true });
   await expect(activity.getByRole("heading", { name: "Pull DLsite rankings", exact: true })).toBeVisible();
   await expect(activity.getByText("#99", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open full Activity", exact: true })).toHaveCount(0);
@@ -1995,7 +1998,7 @@ test("activity uses two scoped counted tabs and a single empty state", async ({ 
     }),
   );
   await page.goto("/activity");
-  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  const activity = page.getByRole("region", { name: "Activity", exact: true });
   await expect(activity.getByRole("tab", { name: "Needs attention 0", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",
@@ -2029,7 +2032,7 @@ test("activity preserves its loading state until the scoped request completes", 
     });
   });
   await page.goto("/workflows?activity=1");
-  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  const activity = page.getByRole("region", { name: "Activity", exact: true });
   await expect(activity.getByRole("status")).toBeVisible();
   releaseRuns();
   await expect(activity.getByText("No tasks need attention.", { exact: true })).toBeVisible();
@@ -2411,6 +2414,14 @@ test("the mobile workflow list opens one workflow at a time and Back returns to 
   await expect(list).toBeVisible();
   await expect(page.getByRole("heading", { name: "Sync work metadata", exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  // Activity is the list's first entry and opens in place of it, as a workflow does.
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Activity", exact: true })).toBeVisible();
+  await expect(list).toHaveCount(0);
+  await page.goBack();
+  await expect(list).toBeVisible();
+  await expect(page.getByRole("region", { name: "Activity", exact: true })).toHaveCount(0);
 });
 
 test("@desktop the workflow list keeps the selection beside it and moves focus with arrow keys", async ({ page }) => {
@@ -2555,7 +2566,7 @@ for (const viewport of ["mobile", "@desktop"]) {
     const status = page.getByRole("region", { name: "Workflow status", exact: true });
     await expect(status).toContainText("Scan local library");
     await status.getByRole("button", { name: /^Attention/ }).click();
-    const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+    const activity = page.getByRole("region", { name: "Activity", exact: true });
     await expect(activity.getByRole("region", { name: "Running", exact: true })).toBeVisible();
     await expect(activity.getByRole("tab", { name: "Needs attention 2", exact: true })).toHaveAttribute(
       "aria-selected",
@@ -2596,7 +2607,7 @@ test("Activity marks a run reviewed when only not-found products remain", async 
     await route.fulfill({ json: { ...notFound, reviewedAt: "2026-01-01 00:00:00" } satisfies WorkflowRun });
   });
   await page.goto("/workflows?activity=1");
-  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  const activity = page.getByRole("region", { name: "Activity", exact: true });
   const row = (id: number) => activity.getByRole("listitem").filter({ hasText: `#${id}` });
   await expect(row(65).getByRole("button", { name: "Open metadata issues", exact: true })).toBeVisible();
   await expect(row(65).getByRole("button", { name: "Mark reviewed", exact: true })).toHaveCount(0);
@@ -2605,7 +2616,7 @@ test("Activity marks a run reviewed when only not-found products remain", async 
 });
 
 for (const viewport of ["mobile", "@desktop"]) {
-  test(`${viewport} Activity is global across workflows and Recent runs opens its detail`, async ({
+  test(`${viewport} Activity is global across workflows and All runs narrows it to one workflow`, async ({
     page,
   }, testInfo) => {
     await mockWorkflows(page);
@@ -2628,7 +2639,8 @@ for (const viewport of ["mobile", "@desktop"]) {
     await page.route("**/api/workflow-runs?*", async (route) => {
       const params = new URL(route.request().url()).searchParams;
       const code = params.get("workflowCode") ?? "";
-      if (params.get("view") !== "review") scopes.push(code);
+      // The open Activity list reads pages of eight; the closed panel and the workflow history read other sizes.
+      if (params.get("view") !== "review" && params.get("pageSize") === "8") scopes.push(code);
       const runs = ["attention", "running"].includes(params.get("view") ?? "") ? [] : [local, metadata];
       await route.fulfill({
         json: workflowRunsPageFixture(runs, {
@@ -2642,30 +2654,39 @@ for (const viewport of ["mobile", "@desktop"]) {
       route.fulfill({ json: [] satisfies WorkflowEvent[] }),
     );
     await page.goto("/workflows?workflow=local_library_scan");
-    await page.getByRole("button", { name: "Activity", exact: true }).click();
-    const panel = page.getByRole("dialog", { name: "Activity", exact: true });
+    // The status strip opens Activity in place of the open workflow.
+    const status = page.getByRole("region", { name: "Workflow status", exact: true });
+    await status.getByRole("button", { name: /^Idle/ }).click();
+    const panel = page.getByRole("region", { name: "Activity", exact: true });
+    await expect(page.getByRole("heading", { name: "Scan local library", exact: true })).toHaveCount(0);
     await panel.getByRole("tab", { name: "History 2", exact: true }).click();
     await expect(panel.getByText("#71", { exact: true })).toBeVisible();
     await expect(panel.getByText("#72", { exact: true })).toBeVisible();
-    if (viewport === "mobile") await panel.getByRole("button", { name: "Close Activity", exact: true }).click();
-    await openWorkflow(page, "Sync work metadata");
-    // Desktop dismisses the popover on outside pointer input, so reopen it on both layouts.
-    await expect(panel).toHaveCount(0);
-    await page.getByRole("button", { name: "Activity", exact: true }).click();
-    await panel.getByRole("tab", { name: "History 2", exact: true }).click();
-    await expect(panel.getByText("#72", { exact: true })).toBeVisible();
-    await expect(panel.getByText("#71", { exact: true })).toBeVisible();
     expect(scopes.length).toBeGreaterThan(0);
     expect(scopes).toContain("all");
-    await panel.getByRole("button", { name: "Close Activity", exact: true }).click();
-    await page.getByRole("button", { name: /^#72 RG00000000 · / }).click();
+    if (viewport === "@desktop")
+      await expect(page.getByRole("button", { name: "Activity", exact: true })).toHaveAttribute("aria-current", "true");
+    await openWorkflow(page, "Sync work metadata");
+    await expect(panel).toHaveCount(0);
+    scopes.length = 0;
+    await page.getByRole("button", { name: "All runs", exact: true }).click();
+    const scope = panel.getByRole("button", { name: "Show all workflows instead of Sync work metadata", exact: true });
+    await expect(scope).toBeVisible();
+    await expect.poll(() => scopes).toContain("metadata_sync");
+    expect(scopes).not.toContain("all");
+    await panel.getByRole("tab", { name: "History 2", exact: true }).click();
+    await panel.getByRole("button", { name: /#72/ }).click();
     await expect(panel.getByRole("heading", { name: "Sync work metadata · RG00000000", exact: true })).toBeVisible();
     await expect(page).toHaveURL(/\/workflows\?.*run=72/);
     await expect(panel.getByRole("button", { name: "Open full Activity", exact: true })).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("workflow-run-panel.png") });
-    await panel.getByRole("button", { name: "Back to runs", exact: true }).click();
+    // The mobile layout returns from a run through the page header.
+    await page.getByRole("button", { name: "Back to runs", exact: true }).click();
     await expect(panel.getByRole("tab", { name: "History 2", exact: true })).toBeVisible();
     await expect(page).not.toHaveURL(/run=72/);
+    await scope.click();
+    await expect(scope).toHaveCount(0);
+    await expect.poll(() => scopes).toContain("all");
   });
 }
 
@@ -2703,7 +2724,7 @@ test("workflow run monitor lists stages and filters the run log by stage", async
   );
   await page.goto("/workflows?workflow=dlsite_popular_collection");
 
-  const monitor = page.getByRole("region", { name: "Workflow run" });
+  const monitor = page.getByRole("region", { name: "Latest run" });
   const stages = monitor.getByRole("list", { name: "Workflow stages" }).getByRole("listitem");
   await expect(stages).toHaveCount(2);
   await expect(stages.nth(0)).toContainText("Pull rankings");
@@ -2720,6 +2741,14 @@ test("workflow run monitor lists stages and filters the run log by stage", async
   await expect(log).toContainText("Record changes finished: Failed");
   await monitor.getByRole("button", { name: "Show all stages", exact: true }).click();
   await expect(log).toContainText("Tagging works");
+
+  // A failed run opens its log by itself; folding it keeps the stages, and selecting one opens the log on it.
+  await monitor.getByRole("button", { name: "Hide log", exact: true }).click();
+  await expect(log).toHaveCount(0);
+  await expect(stages).toHaveCount(2);
+  await stages.nth(0).getByRole("button").click();
+  await expect(log).toContainText("Pull rankings finished: Succeeded");
+  await expect(log).not.toContainText("Record changes finished: Failed");
 
   await monitor.getByRole("button", { name: "Open run #51 (Failed) in Activity", exact: true }).click();
   await expect(page).toHaveURL(/run=51/);
