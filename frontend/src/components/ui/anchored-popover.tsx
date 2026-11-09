@@ -33,6 +33,7 @@ export function AnchoredPopover({
   matchAnchorWidth = false,
   dismissOnOutsidePointer = true,
   preserveOnNestedLayers = false,
+  container,
   onOpenChange,
 }: {
   open: boolean;
@@ -50,6 +51,12 @@ export function AnchoredPopover({
   dismissOnOutsidePointer?: boolean;
   /** Keep the popover open for pointer input inside dialogs, sheets or toasts opened on top of it. */
   preserveOnNestedLayers?: boolean;
+  /**
+   * The element the popover renders into, `document.body` by default. A
+   * popover opened from inside a fullscreen element must render into that
+   * element to be visible.
+   */
+  container?: Element | null;
   onOpenChange?: (open: boolean) => void;
 }) {
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -166,6 +173,6 @@ export function AnchoredPopover({
     >
       {children}
     </div>,
-    document.body,
+    container ?? document.body,
   );
 }

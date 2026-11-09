@@ -6,18 +6,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import type { AvailabilityWatchState } from "@/features/workflows/availability-watch/useAvailabilityWatch";
 import { OptionField, SegmentedControl } from "@/features/workflows/RunOptionControls";
-import { DefinitionRunMonitor, RecentWorkflowRuns, WorkflowPanel } from "@/features/workflows/WorkflowDetail";
+import { DefinitionRunMonitor, WorkflowPanel } from "@/features/workflows/WorkflowDetail";
 import { WorkflowDetailFrame } from "@/features/workflows/WorkflowDetailFrame";
 import { parseNodes, workflowCopy } from "@/features/workflows/workflowPageModel";
 import { ErrorPanel, SkeletonLine, WorkflowMetadataErrorState } from "@/features/workflows/WorkflowPanelParts";
-import {
-  api,
-  type AvailabilityWatch,
-  type LibrarySource,
-  type WorkflowDefinition,
-  type WorkflowRun,
-  type WorkflowTrigger,
-} from "@/lib/api";
+import { api, type AvailabilityWatch, type LibrarySource, type WorkflowDefinition, type WorkflowRun } from "@/lib/api";
 
 /**
  * A workflow configured on the Discover page, such as Availability Watch
@@ -26,23 +19,24 @@ import {
  */
 export function SubscriptionsManagedWorkflowPanel({
   definition,
-  triggers,
   recentRuns,
   message,
   onOpenRun,
+  onOpenRuns,
   onOpenSubscriptions,
 }: {
   definition: WorkflowDefinition;
-  triggers: WorkflowTrigger[];
   recentRuns: WorkflowRun[];
   message: string;
   onOpenRun: (run: WorkflowRun) => void;
+  /** Opens Activity on this workflow's runs. */
+  onOpenRuns: () => void;
   onOpenSubscriptions: () => void;
 }) {
   const nodes = parseNodes(definition.definitionJson);
   return (
-    <WorkflowDetailFrame definition={definition} recentRuns={recentRuns} triggers={triggers} onOpenRun={onOpenRun}>
-      <div className="workflow-detail grid min-w-0 gap-5">
+    <WorkflowDetailFrame definition={definition}>
+      <div className="grid min-w-0 gap-5">
         <WorkflowPanel>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="min-w-0 text-sm text-muted-foreground">{message}</p>
@@ -52,10 +46,7 @@ export function SubscriptionsManagedWorkflowPanel({
             </Button>
           </div>
         </WorkflowPanel>
-        <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} />
-        <WorkflowPanel>
-          <RecentWorkflowRuns runs={recentRuns} onOpen={onOpenRun} />
-        </WorkflowPanel>
+        <DefinitionRunMonitor nodes={nodes} recentRuns={recentRuns} onOpenRun={onOpenRun} onOpenRuns={onOpenRuns} />
       </div>
     </WorkflowDetailFrame>
   );
@@ -154,7 +145,7 @@ function AvailabilityWatchSourceForm({
   };
 
   return (
-    <div className="workflow-detail grid min-w-0 gap-4">
+    <div className="grid min-w-0 gap-4">
       <OptionField label={workflowCopy("remoteSource")} stacked hint={workflowCopy("watchView.sourceHint")}>
         <SegmentedControl
           label={workflowCopy("remoteSource")}

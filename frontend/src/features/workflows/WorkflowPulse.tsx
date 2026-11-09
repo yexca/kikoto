@@ -1,14 +1,11 @@
-import { CalendarClock, CircleCheck, CircleDashed, Loader2, TriangleAlert } from "lucide-react";
+import { CircleCheck, CircleDashed, Loader2, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { intlLocaleFor } from "@/i18n";
-import { useLocale } from "@/i18n/LocaleProvider";
-import type { WorkflowDefinition, WorkflowRun, WorkflowTrigger } from "@/lib/api";
+import type { WorkflowDefinition, WorkflowRun } from "@/lib/api";
 import { cn } from "@/lib/tailwindClassNames";
 
-import { formatRelativeTime, isDemoShowcaseActiveRun, parseWorkflowTimestamp, runTitle } from "./runPresentation";
-import { useNow } from "./useRunClock";
+import { isDemoShowcaseActiveRun, runTitle } from "./runPresentation";
 import type { WorkflowPulseState } from "./useWorkflowOverview";
 import { parseNodes } from "./workflowPageModel";
 
@@ -25,33 +22,25 @@ export function activeRunProgress(run: WorkflowRun, stageCount: number) {
 }
 
 /**
- * The page's status strip: what is running now, what needs attention, and the
- * next scheduled run. Each cell is a shortcut; Activity keeps the full queue.
+ * The page's status strip: what is running now and what needs attention. Each
+ * cell opens Activity on the matching list, which keeps the full queue; each
+ * trigger states its own next start beside the workflow it starts.
  */
 export function WorkflowPulse({
   pulse,
   definitions,
-  triggers,
-  activity,
   onOpenActivity,
-  onSelectWorkflow,
+  onOpenAttention,
 }: {
   pulse: WorkflowPulseState;
   definitions: WorkflowDefinition[];
-  triggers: WorkflowTrigger[];
-  activity: ReactNode;
   onOpenActivity: () => void;
-  onSelectWorkflow: (definition: WorkflowDefinition) => void;
+  onOpenAttention: () => void;
 }) {
   const { t } = useTranslation();
-  const { resolvedLocale } = useLocale();
-  const locale = intlLocaleFor(resolvedLocale);
-  const now = useNow(true, 30_000);
   const lead = pulse.active.find((run) => run.status === "running") ?? pulse.active[0] ?? null;
   const leadDefinition = lead ? definitions.find((definition) => definition.code === lead.workflowCode) : undefined;
   const progress = lead ? activeRunProgress(lead, parseNodes(leadDefinition?.definitionJson ?? "").length) : null;
-  const next = nextScheduled(triggers, definitions);
-  const nextAt = next ? parseWorkflowTimestamp(next.trigger.nextRunAt) : null;
 
   return (
     <section
@@ -109,7 +98,7 @@ export function WorkflowPulse({
       <PulseDivider />
       <PulseCell
         className="min-w-0 flex-1"
-        onClick={onOpenActivity}
+        onClick={onOpenAttention}
         orb={
           <PulseOrb tone={pulse.attention > 0 ? "warning" : "success"}>
             {pulse.attention > 0 ? (
@@ -133,33 +122,6 @@ export function WorkflowPulse({
           )
         }
       />
-      <PulseDivider className="hidden md:block" />
-      <PulseCell
-        className="hidden min-w-0 flex-1 md:flex"
-        disabled={!next}
-        onClick={() => next && onSelectWorkflow(next.definition)}
-        orb={
-          <PulseOrb tone="neutral">
-            <CalendarClock className="h-4 w-4" aria-hidden />
-          </PulseOrb>
-        }
-        label={t("workflowPage.console.nextScheduled")}
-        value={
-          next ? (
-            <span className="truncate">
-              {t(`workflowPage.shortNames.${next.definition.code}`, {
-                defaultValue: t(`workflowPage.builtInDefinitions.${next.definition.code}.name`, {
-                  defaultValue: next.definition.displayName,
-                }),
-              })}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">{t("workflowPage.console.noSchedules")}</span>
-          )
-        }
-        detail={nextAt ? formatRelativeTime(nextAt, locale, now) : null}
-      />
-      <div className="flex shrink-0 items-center border-l px-1">{activity}</div>
     </section>
   );
 }
@@ -185,7 +147,6 @@ function PulseCell({
   value,
   detail,
   className,
-  disabled = false,
   onClick,
 }: {
   orb: ReactNode;
@@ -193,15 +154,13 @@ function PulseCell({
   value: ReactNode;
   detail?: ReactNode;
   className?: string;
-  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      disabled={disabled}
       className={cn(
-        "flex min-h-16 items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-muted/70 disabled:pointer-events-none sm:px-4",
+        "flex min-h-16 items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-muted/70 sm:px-4",
         className,
       )}
       onClick={onClick}
@@ -214,18 +173,4 @@ function PulseCell({
       </span>
     </button>
   );
-}
-
-/** The soonest enabled schedule among the listed workflows. */
-function nextScheduled(triggers: WorkflowTrigger[], definitions: WorkflowDefinition[]) {
-  let best: { trigger: WorkflowTrigger; definition: WorkflowDefinition; at: number } | null = null;
-  for (const trigger of triggers) {
-    if (!trigger.enabled || trigger.triggerType !== "schedule") continue;
-    const at = parseWorkflowTimestamp(trigger.nextRunAt)?.getTime();
-    if (at === undefined) continue;
-    const definition = definitions.find((item) => item.id === trigger.workflowDefinitionId);
-    if (!definition) continue;
-    if (!best || at < best.at) best = { trigger, definition, at };
-  }
-  return best;
 }

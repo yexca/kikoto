@@ -79,6 +79,8 @@ module.exports = {
           DEFAULT: "hsl(var(--card) / <alpha-value>)",
           foreground: "hsl(var(--card-foreground) / <alpha-value>)",
         },
+        // The darkening behind dialogs, and behind controls laid over video.
+        scrim: "hsl(var(--scrim) / <alpha-value>)",
         // Translucent highlights for the frosted player surfaces.
         "glass-border": "var(--glass-border)",
         "glass-border-strong": "var(--glass-border-strong)",
