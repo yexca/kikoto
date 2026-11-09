@@ -480,6 +480,7 @@ export const surfaceEnglish = {
   },
   workflowActivity: {
     backToHistory: "Back to runs",
+    description: "Every workflow run in one place: what is running, what needs attention, and what has finished.",
     allWorkflows: "All workflows",
     showAllWorkflows: "Show all workflows instead of {{name}}",
     attention: "Needs attention",
@@ -487,7 +488,6 @@ export const surfaceEnglish = {
     running: "Running",
     allRunning: "View all running",
     acknowledge: "Mark reviewed",
-    close: "Close Activity",
     categories: "Activity categories",
     previous: "Previous page",
     next: "Next page",

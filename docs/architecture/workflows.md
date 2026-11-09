@@ -419,8 +419,10 @@ preset workflows in one workflow list, grouped by a frontend-owned category
 keyed by workflow code: Basic (local scan, local files, metadata sync, Learn
 tag names), Catalog sync (the catalog sync presets), Remote (Fetch and works on
 a source), and Discover (the DLsite and remote source ranking pulls,
-Availability Watch, and the subscription refresh). A linked run of any other
-workflow adds a read-only entry for it, which stays with Basic. The Discover
+Availability Watch, and the subscription refresh). A `?workflow=` link to any
+other workflow adds a read-only entry for it, which stays with Basic.
+Activity is the list's first entry, above the categories, with the active and
+Needs attention counts beside it. The Discover
 group holds the workflows configured on the Discover page: their entries show
 the Latest run card with a link there, and have no Run options or triggers.
 Each entry is one line: its name, a dot on its icon for the latest run's
@@ -433,18 +435,23 @@ changes; the per-workflow summaries have no timer of their own.
 Wide layouts keep the list beside the selected workflow and can collapse it to
 an icon rail. The full workflow name stays the accessible name and tooltip, and the choice is stored locally
 for this page. The mobile navigation layout lands on the list and opens one
-workflow at a time: opening a workflow adds a history entry, and the header
-back action returns to the list. The selected workflow remains the persisted
-and linked state (`?workflow=<code>`).
+workflow, or Activity, at a time: opening either adds a history entry, and the
+header back action returns to the list. The selected workflow remains the
+persisted and linked state (`?workflow=<code>`); Activity is shown in its place
+(`?activity=1`) without clearing it, so leaving Activity returns to that
+workflow.
 
 A status strip above the list shows the newest active run with its progress
 and the Needs attention count. It reads the global queue every few seconds
 while work is active and every 15 seconds otherwise; Demo reads it once. Both
-cells open Activity. A workflow's next start is stated by its triggers.
+cells open Activity, the attention cell on Needs attention. A workflow's next
+start is stated by its triggers.
 
 The selected workflow shows its name and description, its run form, a Latest
 run card, and its triggers. Each fact about a run appears once on the page: the
-card holds the latest run, and Activity holds every run.
+card holds the latest run, and Activity holds every run. Starting a run keeps
+the workflow open; its Latest run card, list entry, and the status strip report
+the queued run.
 
 Run options form a run form that ends in a run bar holding Run, any workflow
 action, and the first reason Run is unavailable. The bar sticks above the
@@ -521,7 +528,8 @@ the backend.
 
 ## Activity Summary
 
-Workflows exposes Activity at the right end of its status strip. Activity
+Workflows shows Activity in place of the selected workflow, from the first
+entry of its workflow list or the status strip. Activity
 lists every run as the administrators' diagnostic view; features with their
 own pages show their runs there too. The Translation page reads Translate with
 AI runs and items through `/api/translation/runs` and
@@ -533,20 +541,20 @@ Each returned translation run carries `canCancel`, which controls whether
 the Translation page offers the action.
 Notification Center attention rows for a Translate with AI run open the
 Translation page's Stopped view, and those for a transcription open its work.
-The desktop popover and mobile sheet show active runs above two server-paged
-views: Needs attention and History. The active list and both views are global
-across workflow definitions, so a job
-submitted from one workflow remains visible while another definition is open.
-The Latest run card and list rows open full run details inside the same panel;
-returning to the list keeps its scope. A Latest run card's **All runs** opens
-the panel narrowed to that workflow (`?runsOf=<code>`), and its scope chip
-widens it to every workflow again; opening Activity from the status strip is
-always global. Activity has no page of its own:
-`/activity` and `/runs` links redirect into Workflows with the panel open, and a
-linked run resolves its workflow before loading history, including a read-only
-context for workflows without a configurable definition. The header
-notification panel and Quick actions open this same surface. Events,
-candidates, progress, retries, and cancellation are available within the panel.
+Activity shows active runs above two server-paged views, Needs attention and
+History (`?view=history`). The active list and both views are global across
+workflow definitions, so a job submitted from one workflow remains visible
+while another definition is open. The Latest run card and list rows open full
+run details (`?run=<id>`) beside the list from 1280px and in place of it below;
+returning to the list keeps its scope. Opening a run is a history entry and
+leaves the selected workflow unchanged, so a run of a workflow outside the list
+needs no workflow context. A Latest run card's **All runs** opens Activity
+narrowed to that workflow (`?runsOf=<code>`), and its scope chip widens it to
+every workflow again; opening Activity from the list or the status strip is
+always global. `/activity` and `/runs` links redirect into Workflows with
+Activity shown. The header notification panel and Quick actions open this same
+surface. Events, candidates, progress, retries, and cancellation are available
+within the run details.
 
 A run record's `subject` names the one target the run acts on, read from its
 input: a work code for Fetch, Track, ASR, LLM translation, Translate with AI, folder edit, media

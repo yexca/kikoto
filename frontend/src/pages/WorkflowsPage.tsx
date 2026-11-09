@@ -12,7 +12,7 @@ import { openWorkflowPath } from "@/features/workflows/workflowLinks";
 import { RunDetail } from "@/features/workflows/RunDetail";
 import { isDemoShowcaseActiveRun } from "@/features/workflows/runPresentation";
 import { TriggerModal } from "@/features/workflows/triggers/TriggerModal";
-import { useWorkflowActivityLocation } from "@/features/workflows/useWorkflowActivityLocation";
+import { type ActivityView, useWorkflowActivityLocation } from "@/features/workflows/useWorkflowActivityLocation";
 import { WorkflowActivity } from "@/features/workflows/WorkflowActivity";
 import { useWorkflowOverview } from "@/features/workflows/useWorkflowOverview";
 import { WorkflowDetail } from "@/features/workflows/WorkflowDetail";
@@ -37,7 +37,6 @@ import {
   type CreatableAutomationTriggerType,
 } from "@/features/workflows/workflowTriggerModel";
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
-import { useStableCallback } from "@/hooks/useStableCallback";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import {
   api,
@@ -107,7 +106,7 @@ export function WorkflowsPage({
   const activityLocation = useWorkflowActivityLocation();
   const activityRun = useWorkflowRunWatcher(activityLocation.open ? activityLocation.runId : null, !auth.demoMode);
   const linkedRun = activityRun.run?.id === activityLocation.runId ? activityRun.run : null;
-  const linkedCode = linkedRun?.workflowCode || activityLocation.workflowCode || "";
+  const linkedCode = activityLocation.workflowCode;
   const [activityRevision, setActivityRevision] = useState(0);
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [triggers, setTriggers] = useState<WorkflowTrigger[]>([]);
@@ -184,16 +183,6 @@ export function WorkflowsPage({
     };
   }, []);
 
-  // The location object and its actions are rebuilt on every render; only the codes decide whether to resolve.
-  const linkedRunCode = linkedRun?.workflowCode;
-  const locationWorkflowCode = activityLocation.workflowCode;
-  const resolveActivityWorkflow = useStableCallback(activityLocation.resolveWorkflow);
-  useEffect(() => {
-    if (linkedRunCode !== undefined && linkedRunCode !== locationWorkflowCode) {
-      resolveActivityWorkflow(linkedRunCode);
-    }
-  }, [linkedRunCode, locationWorkflowCode, resolveActivityWorkflow]);
-
   const presetByCode = useMemo(() => new Map(presets.map((preset) => [preset.code, preset])), [presets]);
   const visibleDefinitions = useMemo(() => {
     const choices = [...definitions];
@@ -201,7 +190,7 @@ export function WorkflowsPage({
       choices.push({
         id: -(linkedRun?.definitionId ?? linkedRun?.id ?? 1),
         code: linkedCode,
-        displayName: linkedRun?.displayName ?? linkedCode,
+        displayName: linkedRun?.workflowCode === linkedCode ? linkedRun.displayName : linkedCode,
         description: "",
         definitionJson: "{}",
         scope: "system",
@@ -239,12 +228,17 @@ export function WorkflowsPage({
     refreshKey: activityRevision,
     staticDemo: auth.demoMode,
   });
-  // The mobile layout lands on the workflow list and opens one workflow at a time.
+  // The mobile layout lands on the workflow list and opens one workflow, or Activity, at a time.
   const mobile = useMobileNavigationLayout();
-  const mobileDetailOpen = mobile && Boolean(activityLocation.workflowCode);
+  const mobileDetailOpen = mobile && (Boolean(activityLocation.workflowCode) || activityLocation.open);
+  const runOpen = activityLocation.runId !== null;
   usePageHeaderBack({
-    label: t("workflowPage.console.backToWorkflows"),
-    onBack: activityLocation.clearWorkflow,
+    label: runOpen ? t("workflowActivity.backToHistory") : t("workflowPage.console.backToWorkflows"),
+    onBack: runOpen
+      ? activityLocation.backToList
+      : activityLocation.open
+        ? activityLocation.closeActivity
+        : activityLocation.clearWorkflow,
     enabled: mobileDetailOpen,
   });
 
@@ -332,10 +326,9 @@ export function WorkflowsPage({
     activityLocation.selectWorkflow(definition.code, mobile && !mobileDetailOpen);
   };
 
-  // Activity replaces a success toast: the new run is visible there with the rest of the queue.
+  // The workflow stays open: its Latest run card, its list entry, and the status strip show the new run.
   const showQueuedRun = () => {
     setActivityRevision((value) => value + 1);
-    activityLocation.openList();
   };
 
   const runLocalScan = async (followUpRun = false) => {
@@ -508,7 +501,9 @@ export function WorkflowsPage({
     setActivityRevision((value) => value + 1);
     if (selectedDefinition) await refreshRecentRuns(selectedDefinition.code);
   };
-  const openActivityRun = (run: WorkflowRun) => activityLocation.openRun(run.id, run.workflowCode);
+  const openActivityRun = (run: WorkflowRun) => activityLocation.openRun(run.id);
+  // Opening Activity from the mobile list is a history step that Back returns from.
+  const openActivity = (view?: ActivityView) => activityLocation.openActivity(view, mobile && !mobileDetailOpen);
   const activityScope = definitions.find((definition) => definition.code === activityLocation.runsOf) ?? null;
 
   return (
@@ -530,69 +525,81 @@ export function WorkflowsPage({
       <WorkflowPulse
         pulse={overview.pulse}
         definitions={visibleDefinitions}
-        onOpenActivity={() => activityLocation.setOpen(true)}
-        activity={
-          <WorkflowActivity
-            key="global-activity"
-            workflowCode={activityScope?.code ?? "all"}
-            workflowName={activityScope ? workflowName(activityScope, t) : ""}
-            onShowAllWorkflows={activityScope ? activityLocation.showAllWorkflows : undefined}
-            open={activityLocation.open}
-            onOpenChange={activityLocation.setOpen}
-            selectedRunId={activityLocation.runId}
-            onSelectRun={openActivityRun}
-            onBack={activityLocation.backToList}
-            refreshKey={activityRevision}
-            readOnly={readOnly}
-            staticDemo={auth.demoMode}
-            canSyncMetadata={canSyncMetadata}
-            showCounts={false}
-            detail={
-              activityLocation.runId ? (
-                <>
-                  {activityRun.error && (
-                    <div role="alert" className="rounded-md border p-3 text-sm">
-                      {workflowCopy("activityLoadFailed")}{" "}
-                      <Button variant="outline" onClick={() => void activityRun.refresh(true)}>
-                        {t("common.retry")}
-                      </Button>
-                    </div>
-                  )}
-                  <RunDetail
-                    key={activityLocation.runId}
-                    run={linkedRun}
-                    candidates={linkedRun ? activityRun.candidates : []}
-                    events={linkedRun ? activityRun.events : []}
-                    loading={!linkedRun && !activityRun.error}
-                    onCandidateUpdate={refreshSelectedRunReview}
-                    onRunAction={refreshSelectedRunReview}
-                    canSyncMetadata={canSyncMetadata}
-                    readOnly={readOnly}
-                  />
-                </>
-              ) : undefined
-            }
-          />
-        }
+        onOpenActivity={() => openActivity()}
+        onOpenAttention={() => openActivity("attention")}
       />
       <WorkflowRunSlotProvider>
-        {!hasWorkflowMetaSnapshot && isWorkflowMetaLoading ? (
-          <WorkflowMetadataLoadingState />
-        ) : !hasWorkflowMetaSnapshot && workflowMetaError ? (
-          <WorkflowMetadataErrorState message={workflowMetaError} onRetry={refresh} />
-        ) : (
-          <div className="flex min-w-0 flex-col gap-6 lg:flex-row">
-            {(!mobile || !mobileDetailOpen) && categoryGroups.length > 0 && (
-              <WorkflowNavigator
-                groups={categoryGroups}
-                selectedId={selectedDefinition?.id ?? null}
-                latestRun={overview.latestRun}
-                triggers={triggers}
+        <div className="flex min-w-0 flex-col gap-6 lg:flex-row">
+          {hasWorkflowMetaSnapshot && (!mobile || !mobileDetailOpen) && categoryGroups.length > 0 && (
+            <WorkflowNavigator
+              groups={categoryGroups}
+              selectedId={activityLocation.open ? null : (selectedDefinition?.id ?? null)}
+              latestRun={overview.latestRun}
+              triggers={triggers}
+              mobile={mobile}
+              onSelect={selectDefinition}
+              activity={{
+                selected: activityLocation.open,
+                running: overview.pulse.running,
+                attention: overview.pulse.attention,
+                onSelect: () => openActivity(),
+              }}
+            />
+          )}
+          {/* Activity needs no workflow metadata, so it shows while that loads or fails. */}
+          {activityLocation.open && (!mobile || mobileDetailOpen) ? (
+            <div className="min-w-0 flex-1">
+              <WorkflowActivity
+                workflowCode={activityScope?.code ?? "all"}
+                workflowName={activityScope ? workflowName(activityScope, t) : ""}
+                onShowAllWorkflows={activityScope ? activityLocation.showAllWorkflows : undefined}
+                view={activityLocation.view}
+                onViewChange={activityLocation.setView}
+                selectedRunId={activityLocation.runId}
+                onSelectRun={openActivityRun}
+                onBack={activityLocation.backToList}
+                refreshKey={activityRevision}
+                readOnly={readOnly}
+                staticDemo={auth.demoMode}
+                canSyncMetadata={canSyncMetadata}
                 mobile={mobile}
-                onSelect={selectDefinition}
+                detail={
+                  activityLocation.runId ? (
+                    <>
+                      {activityRun.error && (
+                        <div role="alert" className="mb-4 rounded-md border p-3 text-sm">
+                          {workflowCopy("activityLoadFailed")}{" "}
+                          <Button variant="outline" onClick={() => void activityRun.refresh(true)}>
+                            {t("common.retry")}
+                          </Button>
+                        </div>
+                      )}
+                      <RunDetail
+                        key={activityLocation.runId}
+                        run={linkedRun}
+                        candidates={linkedRun ? activityRun.candidates : []}
+                        events={linkedRun ? activityRun.events : []}
+                        loading={!linkedRun && !activityRun.error}
+                        onCandidateUpdate={refreshSelectedRunReview}
+                        onRunAction={refreshSelectedRunReview}
+                        canSyncMetadata={canSyncMetadata}
+                        readOnly={readOnly}
+                      />
+                    </>
+                  ) : undefined
+                }
               />
-            )}
-            {(!mobile || mobileDetailOpen) && (
+            </div>
+          ) : !hasWorkflowMetaSnapshot && isWorkflowMetaLoading ? (
+            <div className="min-w-0 flex-1">
+              <WorkflowMetadataLoadingState />
+            </div>
+          ) : !hasWorkflowMetaSnapshot && workflowMetaError ? (
+            <div className="min-w-0 flex-1">
+              <WorkflowMetadataErrorState message={workflowMetaError} onRetry={refresh} />
+            </div>
+          ) : (
+            (!mobile || mobileDetailOpen) && (
               <div
                 id="workflow-definition-panel"
                 role="region"
@@ -645,9 +652,9 @@ export function WorkflowsPage({
                   />
                 )}
               </div>
-            )}
-          </div>
-        )}
+            )
+          )}
+        </div>
       </WorkflowRunSlotProvider>
       <LazyRemoteFetchWorkspaceDialog workspace={fetchWorkspace} />
 

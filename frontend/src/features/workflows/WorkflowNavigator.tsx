@@ -1,4 +1,4 @@
-import { CalendarClock, ChevronRight, Eye, Power, type LucideIcon } from "lucide-react";
+import { Activity, CalendarClock, ChevronRight, Eye, Loader2, Power, type LucideIcon } from "lucide-react";
 import { Fragment, useEffect, useId, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -31,13 +31,17 @@ export function WorkflowNavigator({
   triggers,
   mobile,
   onSelect,
+  activity,
 }: {
   groups: WorkflowCategoryGroup[];
+  /** The selected workflow; null while Activity or nothing is shown. */
   selectedId: number | null;
   latestRun: (code: string) => WorkflowRun | null | undefined;
   triggers: WorkflowTrigger[];
   mobile: boolean;
   onSelect: (definition: WorkflowDefinition) => void;
+  /** The entry above the workflows that shows every run in place of a workflow. */
+  activity: ActivityEntryState;
 }) {
   const { t } = useTranslation();
   const listRef = useRef<HTMLElement>(null);
@@ -82,7 +86,14 @@ export function WorkflowNavigator({
       </div>
     </nav>
   );
-  if (mobile) return navigation;
+  const activityEntry = <ActivityEntry {...activity} mobile={mobile} collapsed={collapsed} />;
+  if (mobile)
+    return (
+      <div className="grid gap-5">
+        <div className="overflow-hidden rounded-lg border bg-card">{activityEntry}</div>
+        {navigation}
+      </div>
+    );
 
   return (
     <div
@@ -91,6 +102,8 @@ export function WorkflowNavigator({
         collapsed ? "lg:pr-2" : "lg:w-60 lg:pr-3 xl:w-64 2xl:w-72",
       )}
     >
+      <div className="shrink-0">{activityEntry}</div>
+      <span aria-hidden className="mx-2 my-2 h-px shrink-0 bg-border" />
       {navigation}
       <span aria-hidden className="mx-2 my-1 h-px shrink-0 bg-border" />
       <RailLabelsToggle expanded={!collapsed} onToggle={toggleLabels} />
@@ -232,6 +245,98 @@ function NavigatorItem({
       <span id={statusId} className="sr-only">
         {[status, ...glyphs.map((glyph) => t(glyph.label))].filter(Boolean).join(", ")}
       </span>
+      {mobile && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
+    </button>
+  );
+}
+
+export type ActivityEntryState = {
+  selected: boolean;
+  running: number;
+  attention: number;
+  onSelect: () => void;
+};
+
+/** Activity as the navigator's first entry: what is running and what needs attention, across every workflow. */
+function ActivityEntry({
+  selected,
+  running,
+  attention,
+  onSelect,
+  mobile,
+  collapsed,
+}: ActivityEntryState & { mobile: boolean; collapsed: boolean }) {
+  const { t } = useTranslation();
+  const statusId = useId();
+  const label = t("nav.activity");
+  const counts = [
+    running > 0 ? t("workflowActivity.runningCount", { count: running }) : "",
+    attention > 0 ? t("workflowPage.console.attentionCount", { count: attention }) : "",
+  ].filter(Boolean);
+  const current = selected && !mobile;
+  return (
+    <button
+      type="button"
+      aria-describedby={counts.length > 0 ? statusId : undefined}
+      aria-current={current ? "true" : undefined}
+      title={[label, ...counts].join(" · ")}
+      className={cn(
+        "group/item relative flex w-full min-w-0 items-center gap-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        mobile
+          ? "min-h-14 px-3 py-2 hover:bg-muted/50 active:bg-muted/70"
+          : collapsed
+            ? "h-11 w-11 justify-center rounded-md hover:bg-muted/50 active:bg-muted/70"
+            : "min-h-11 rounded-md px-2 py-1 hover:bg-muted/50 active:bg-muted/70",
+        current && "bg-primary/10 hover:bg-primary/10",
+      )}
+      onClick={onSelect}
+    >
+      {current && <span aria-hidden className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-primary" />}
+      <span
+        className={cn(
+          "relative grid h-9 w-9 shrink-0 place-items-center rounded-md transition-colors",
+          current ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground group-hover/item:text-foreground",
+        )}
+      >
+        {running > 0 ? (
+          <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden />
+        ) : (
+          <Activity className="h-[18px] w-[18px]" aria-hidden />
+        )}
+        {/* The rail has no room for counts; a dot marks runs that need attention. */}
+        {collapsed && attention > 0 && (
+          <span
+            aria-hidden
+            className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-warning"
+          />
+        )}
+      </span>
+      <span className={cn("flex min-w-0 flex-1 items-center gap-1.5", collapsed && "sr-only")}>
+        <span className={cn("min-w-0 flex-1 truncate text-sm", current ? "font-semibold" : "font-medium")}>
+          {label}
+        </span>
+        {running > 0 && (
+          <span
+            aria-hidden
+            className="shrink-0 rounded-full bg-info-surface px-1.5 text-2xs font-semibold tabular-nums leading-5 text-info-foreground"
+          >
+            {running}
+          </span>
+        )}
+        {attention > 0 && (
+          <span
+            aria-hidden
+            className="shrink-0 rounded-full bg-warning-surface px-1.5 text-2xs font-semibold tabular-nums leading-5 text-warning-foreground"
+          >
+            {attention}
+          </span>
+        )}
+      </span>
+      {counts.length > 0 && (
+        <span id={statusId} className="sr-only">
+          {counts.join(", ")}
+        </span>
+      )}
       {mobile && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
     </button>
   );

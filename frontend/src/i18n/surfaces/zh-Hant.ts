@@ -417,6 +417,7 @@ export const surfaceHant = {
   },
   workflowActivity: {
     backToHistory: "返回執行記錄",
+    description: "所有工作流程的執行集中在這裡：正在執行的、需要處理的，以及已經結束的。",
     allWorkflows: "所有工作流程",
     showAllWorkflows: "取消篩選 {{name}}，顯示所有工作流程",
     attention: "需要處理",
@@ -424,7 +425,6 @@ export const surfaceHant = {
     running: "正在執行",
     allRunning: "查看全部執行任務",
     acknowledge: "標記已處理",
-    close: "關閉活動",
     categories: "活動分類",
     previous: "上一頁",
     next: "下一頁",

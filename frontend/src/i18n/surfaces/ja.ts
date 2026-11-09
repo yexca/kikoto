@@ -434,6 +434,7 @@ export const surfaceJapanese = {
   },
   workflowActivity: {
     backToHistory: "実行履歴に戻る",
+    description: "すべてのワークフローの実行をここにまとめます。実行中のもの、対応が必要なもの、終了したものです。",
     allWorkflows: "すべてのワークフロー",
     showAllWorkflows: "{{name}} の絞り込みを解除してすべてのワークフローを表示",
     attention: "要対応",
@@ -441,7 +442,6 @@ export const surfaceJapanese = {
     running: "実行中",
     allRunning: "実行中のタスクをすべて表示",
     acknowledge: "確認済みにする",
-    close: "アクティビティを閉じる",
     categories: "アクティビティの分類",
     previous: "前のページ",
     next: "次のページ",

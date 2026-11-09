@@ -418,6 +418,7 @@ export const surfaceHans = {
   },
   workflowActivity: {
     backToHistory: "返回运行记录",
+    description: "所有工作流的运行集中在这里：正在运行的、需要处理的，以及已经结束的。",
     allWorkflows: "所有工作流",
     showAllWorkflows: "取消筛选 {{name}}，显示所有工作流",
     attention: "需要处理",
@@ -425,7 +426,6 @@ export const surfaceHans = {
     running: "正在运行",
     allRunning: "查看全部运行任务",
     acknowledge: "标记已处理",
-    close: "关闭活动",
     categories: "活动分类",
     previous: "上一页",
     next: "下一页",

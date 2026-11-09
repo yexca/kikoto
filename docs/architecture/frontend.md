@@ -486,9 +486,9 @@ so a still-loading element never replaces it.
 
 - Workflows: a category-grouped workflow navigator beside the selected
   workflow on wide screens, collapsible to an icon rail; on phones the navigator
-  is the landing list. Activity opens from the status strip as an anchored
-  popover, or a sheet on phones.
-- Activity run details inside the Workflows panel, also reachable through notifications.
+  is the landing list. Activity is the navigator's first entry and replaces
+  the selected workflow, with run details beside its list from 1280px.
+- Activity run details on the Workflows page, also reachable through notifications.
 - Global player dock.
 
 The work metadata editor freezes its initial normalized values and sends only

@@ -38,5 +38,10 @@
   list is one line, with the latest run as a dot on its icon. The ranking pulls,
   Availability Watch, and the subscription refresh, which are configured on
   the Discover page, form their own Discover group at the end of the list.
+- Activity is the first entry of the workflow list instead of a popover over
+  the page. It replaces the selected workflow with every run, shows a run's
+  details beside the list on wide screens, and opens like a workflow on
+  phones; the status strip drops its separate Activity button. Starting a run
+  keeps its workflow open, where the Latest run card reports it.
 
 </details>

@@ -433,6 +433,7 @@ export const surfaceKorean = {
   },
   workflowActivity: {
     backToHistory: "실행 기록으로 돌아가기",
+    description: "모든 워크플로 실행을 한곳에서 봅니다. 실행 중인 것, 처리가 필요한 것, 끝난 것이 있습니다.",
     allWorkflows: "모든 워크플로",
     showAllWorkflows: "{{name}} 필터를 해제하고 모든 워크플로 보기",
     attention: "처리 필요",
@@ -440,7 +441,6 @@ export const surfaceKorean = {
     running: "실행 중",
     allRunning: "실행 중인 작업 모두 보기",
     acknowledge: "확인 완료로 표시",
-    close: "활동 닫기",
     categories: "활동 분류",
     previous: "이전 페이지",
     next: "다음 페이지",

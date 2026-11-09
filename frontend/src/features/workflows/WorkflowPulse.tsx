@@ -22,20 +22,20 @@ export function activeRunProgress(run: WorkflowRun, stageCount: number) {
 }
 
 /**
- * The page's status strip: what is running now and what needs attention. Both
- * cells open Activity, which keeps the full queue; each trigger states its own
- * next start beside the workflow it starts.
+ * The page's status strip: what is running now and what needs attention. Each
+ * cell opens Activity on the matching list, which keeps the full queue; each
+ * trigger states its own next start beside the workflow it starts.
  */
 export function WorkflowPulse({
   pulse,
   definitions,
-  activity,
   onOpenActivity,
+  onOpenAttention,
 }: {
   pulse: WorkflowPulseState;
   definitions: WorkflowDefinition[];
-  activity: ReactNode;
   onOpenActivity: () => void;
+  onOpenAttention: () => void;
 }) {
   const { t } = useTranslation();
   const lead = pulse.active.find((run) => run.status === "running") ?? pulse.active[0] ?? null;
@@ -98,7 +98,7 @@ export function WorkflowPulse({
       <PulseDivider />
       <PulseCell
         className="min-w-0 flex-1"
-        onClick={onOpenActivity}
+        onClick={onOpenAttention}
         orb={
           <PulseOrb tone={pulse.attention > 0 ? "warning" : "success"}>
             {pulse.attention > 0 ? (
@@ -122,7 +122,6 @@ export function WorkflowPulse({
           )
         }
       />
-      <div className="flex shrink-0 items-center border-l px-1">{activity}</div>
     </section>
   );
 }
