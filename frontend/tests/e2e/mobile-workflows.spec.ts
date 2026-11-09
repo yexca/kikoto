@@ -2307,7 +2307,9 @@ test("settings identifies an environment-managed root password", async ({ page }
   );
 
   await page.goto("/settings");
-  await expect(page.getByRole("status")).toContainText("KIKOTO_ROOT_PASSWORD");
+  await expect(page.getByRole("region", { name: "Password" }).getByRole("status")).toContainText(
+    "KIKOTO_ROOT_PASSWORD",
+  );
   await expect(page.getByLabel("Current password")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Change password", exact: true })).toHaveCount(0);
 });
@@ -2331,7 +2333,9 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   );
 
   await page.goto("/settings");
-  await expect(page.getByRole("status")).toHaveText(demoNotice);
+  // Autosaving sections hold their own status regions, so the notice is found by its text.
+  const notice = page.getByRole("status").filter({ hasText: demoNotice });
+  await expect(notice).toHaveText(demoNotice);
   const settingsTabs = page.getByRole("tablist", { name: "Settings", exact: true });
   // Demo shows every administration tab read-only in the same row administrators use.
   await expect(settingsTabs.getByRole("tab")).toHaveText([
@@ -2347,9 +2351,7 @@ test("demo settings keeps account and workflows read-only while allowing appeara
     "Users",
   ]);
   await expect(page.getByRole("button", { name: "Download export", exact: true })).toBeVisible();
-  const noticeBackground = await page
-    .getByRole("status")
-    .evaluate((element) => getComputedStyle(element).backgroundColor);
+  const noticeBackground = await notice.evaluate((element) => getComputedStyle(element).backgroundColor);
   for (const name of ["Recommendations", "Tags"]) {
     await settingsTabs.getByRole("tab", { name, exact: true }).click();
     await expect(page.getByText(demoNotice, { exact: true })).toHaveCount(1);
@@ -2365,7 +2367,7 @@ test("demo settings keeps account and workflows read-only while allowing appeara
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.locator("html")).toHaveAttribute("data-theme-preset", "apple");
   await expect
-    .poll(() => page.getByRole("status").evaluate((element) => getComputedStyle(element).backgroundColor))
+    .poll(() => notice.evaluate((element) => getComputedStyle(element).backgroundColor))
     .not.toBe(noticeBackground);
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
