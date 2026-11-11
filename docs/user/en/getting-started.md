@@ -120,11 +120,11 @@ Fetch stages and publishes inside the pool that receives the files, so each
 publication is a rename on one disk. Choose a Fetch pool in Settings -> Library
 before fetching; until then Fetch explains what to configure.
 
-### Home Videos
+### Record
 
-The independent **Home videos** library uses `/record`, which is separate from
+The independent **Record** library uses `/record`, which is separate from
 the audio data root and storage pools. Put video and image folders below that
-mount, initialize the record root from the Home videos page, and run its scan:
+mount, initialize the record root from the Record page, and run its scan:
 
 ```text
 record/

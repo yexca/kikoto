@@ -2,6 +2,7 @@ import { surfaceEnglish } from "./surfaces/en";
 import { adminToolsEnglish } from "./surfaces/adminTools";
 import { personalEnglish } from "./surfaces/personal/en";
 import { subscriptionsEnglish } from "./surfaces/subscriptions/en";
+import { recordsEnglish } from "./surfaces/records/en";
 import { translationEnglish } from "./surfaces/translation/en";
 
 export const libraryEnglish = {
@@ -355,7 +356,7 @@ export const englishResource = {
         workManagementDescription: "Resolve work issues and configure metadata",
         library: "Library",
         favorites: "Favorites",
-        homeVideos: "Home videos",
+        record: "Record",
         circles: "Circles",
         voiceActors: "Voice Actors",
         workflows: "Workflows",
@@ -371,7 +372,7 @@ export const englishResource = {
         translationDescription: "Review AI translations and follow the ones that are running",
         about: "About",
         libraryDescription: "Browse, filter, and play works from every configured source",
-        homeVideosDescription: "Browse the independent video and image library",
+        recordDescription: "Browse your personal videos and images",
         favoritesDescription: "Browse your favorite works, circles, voices, and lists",
         circlesDescription: "Browse circles and their known catalogs",
         voiceActorsDescription: "Browse voices and their credited works",
@@ -391,6 +392,7 @@ export const englishResource = {
       ...personalEnglish,
       ...subscriptionsEnglish,
       ...translationEnglish,
+      ...recordsEnglish,
       appearance: {
         title: "Appearance",
         subtitle: "Mode, style, and color",

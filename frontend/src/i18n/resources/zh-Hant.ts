@@ -3,6 +3,7 @@ import { collectionHans, libraryHans, workCardHans } from "./zh-Hans";
 import { surfaceHant } from "../surfaces/zh-Hant";
 import { personalHant } from "../surfaces/personal/zh-Hant";
 import { subscriptionsHant } from "../surfaces/subscriptions/zh-Hant";
+import { recordsHant } from "../surfaces/records/zh-Hant";
 import { translationHant } from "../surfaces/translation/zh-Hant";
 
 const libraryHant = {
@@ -678,7 +679,7 @@ export const zhHantResource = {
         workManagementDescription: "處理作品問題並設定中繼資料",
         library: "媒體庫",
         favorites: "收藏",
-        homeVideos: "家庭影片",
+        record: "記錄",
         circles: "社團",
         voiceActors: "聲優",
         workflows: "工作流程",
@@ -693,7 +694,7 @@ export const zhHantResource = {
         translationDescription: "審核 AI 翻譯，並追蹤正在進行的翻譯",
         about: "關於",
         libraryDescription: "瀏覽、篩選並播放所有已設定來源中的作品",
-        homeVideosDescription: "瀏覽獨立的影片和圖片媒體庫",
+        recordDescription: "瀏覽個人影片和圖片",
         favoritesDescription: "瀏覽收藏的作品、社團、聲優和清單",
         circlesDescription: "瀏覽社團及其已知目錄",
         voiceActorsDescription: "瀏覽聲優及其參與的作品",
@@ -713,6 +714,7 @@ export const zhHantResource = {
       ...personalHant,
       ...subscriptionsHant,
       ...translationHant,
+      ...recordsHant,
       appearance: {
         title: "外觀",
         subtitle: "模式、樣式和色彩",

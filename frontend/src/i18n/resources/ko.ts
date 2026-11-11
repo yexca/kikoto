@@ -2,6 +2,7 @@ import { libraryEnglish, collectionEnglish, workCardEnglish } from "../resources
 import { surfaceKorean } from "../surfaces/ko";
 import { personalKorean } from "../surfaces/personal/ko";
 import { subscriptionsKorean } from "../surfaces/subscriptions/ko";
+import { recordsKorean } from "../surfaces/records/ko";
 import { translationKorean } from "../surfaces/translation/ko";
 
 const libraryKorean = {
@@ -695,7 +696,7 @@ export const koreanResource = {
         workManagementDescription: "작품 문제와 메타데이터 설정 관리",
         library: "라이브러리",
         favorites: "즐겨찾기",
-        homeVideos: "홈 비디오",
+        record: "기록",
         circles: "서클",
         voiceActors: "성우",
         workflows: "워크플로",
@@ -710,7 +711,7 @@ export const koreanResource = {
         translationDescription: "AI 번역을 검토하고 진행 중인 번역을 확인",
         about: "정보",
         libraryDescription: "설정된 모든 소스의 작품을 탐색하고 필터링하고 재생합니다",
-        homeVideosDescription: "독립적인 동영상 및 이미지 라이브러리 탐색",
+        recordDescription: "개인 동영상과 이미지 탐색",
         favoritesDescription: "즐겨찾기 작품, 서클, 성우와 목록을 탐색합니다",
         circlesDescription: "서클과 알려진 카탈로그를 탐색합니다",
         voiceActorsDescription: "성우와 참여 작품을 탐색합니다",
@@ -730,6 +731,7 @@ export const koreanResource = {
       ...personalKorean,
       ...subscriptionsKorean,
       ...translationKorean,
+      ...recordsKorean,
       appearance: {
         title: "외관",
         subtitle: "모드, 스타일 및 색상",

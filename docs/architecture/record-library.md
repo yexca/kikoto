@@ -49,6 +49,7 @@ The HTTP surface is under `/api/records`:
 - `GET` and `PUT /api/records/assets/{id}/progress` read and write per-user
   video progress.
 
-The desktop application adds a **Home videos** navigation entry and loads the
-directory tree lazily in the records feature. The existing global audio player
-remains independent of record video playback.
+The **Record** navigation entry opens a folder browser over this tree with a
+full-screen video player and photo viewer, described in
+[Frontend](frontend.md). Record video playback does not go through the global
+audio player; starting a record video pauses it.

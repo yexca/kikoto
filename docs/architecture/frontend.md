@@ -180,10 +180,30 @@ domain it builds on; none imports `lib/api`. `lib/api` composes the domain
 modules into the single `api` object and re-exports their types, and is the
 entry pages, features, and tests import.
 
-The `RecordsPage` owns the Home videos surface. It initializes the independent
-record root when permitted, loads folders lazily through `recordsApi`, queues a
-durable record scan, and saves per-user video progress. Record previews use
-authenticated asset routes and do not use the global audio player.
+`features/records` owns the Record surface, which `pages/RecordsPage` mounts
+through the feature's `RecordsBrowser` entry. It initializes the independent
+record root when permitted and browses it one folder at a time through
+`recordsApi`. `recordsLocation` keeps the open folder, the All, Videos, or
+Photos filter, the name order, and an open video (`?play=`) or photo
+(`?photo=`) in the `/records` URL. Opening a folder or an overlay pushes a
+history entry; the filter, the order, and previous or next inside an overlay
+replace it; closing an overlay the page opened goes back, and closing one
+opened from a pasted link replaces it with its folder. Each entry carries the
+breadcrumb trail with the artwork the parent listing reported, and a pasted
+folder link recovers the trail by walking from the root along a child's
+relative path. Scan follows the queued run through the root's scan generation
+and last-scanned time with bounded polling. Video tiles read saved progress
+only as they near the viewport, a few at a time (`createProgressLoader`), and
+the folder header reads the first few videos' progress to offer Continue. The
+full-screen `RecordVideoPlayer` asks whether to continue from a saved position
+and saves progress through `RecordProgressTracker` every ten seconds, on
+pause, at the end, and when it closes. A same-name WebVTT sidecar becomes the
+video's `<track>` when its asset carries a stream URL; the stream route serves
+videos and images only, so subtitle assets carry none. `RecordPhotoViewer`
+steps through photos by button, arrow key, or touch swipe. Both overlays are
+modal dialogs over authenticated asset routes and never play through the
+global audio player; a record video that starts playing pauses it through
+`usePlayer`.
 
 Navigation and browse state that pages and features share lives in `lib`:
 circle and voice route helpers, Library browse state, and Library search

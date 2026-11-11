@@ -2,6 +2,7 @@ import { libraryEnglish, collectionEnglish, workCardEnglish } from "../resources
 import { surfaceHans } from "../surfaces/zh-Hans";
 import { personalHans } from "../surfaces/personal/zh-Hans";
 import { subscriptionsHans } from "../surfaces/subscriptions/zh-Hans";
+import { recordsHans } from "../surfaces/records/zh-Hans";
 import { translationHans } from "../surfaces/translation/zh-Hans";
 
 export const libraryHans = {
@@ -673,7 +674,7 @@ export const zhHansResource = {
         workManagementDescription: "处理作品问题并配置元数据",
         library: "媒体库",
         favorites: "收藏",
-        homeVideos: "家庭视频",
+        record: "记录",
         circles: "社团",
         voiceActors: "声优",
         workflows: "工作流",
@@ -688,7 +689,7 @@ export const zhHansResource = {
         translationDescription: "审核 AI 翻译，并跟进正在进行的翻译",
         about: "关于",
         libraryDescription: "浏览、筛选并播放所有已配置来源中的作品",
-        homeVideosDescription: "浏览独立的视频和图片媒体库",
+        recordDescription: "浏览个人视频和图片",
         favoritesDescription: "浏览收藏的作品、社团、声优和列表",
         circlesDescription: "浏览社团及其已知目录",
         voiceActorsDescription: "浏览声优及其参与的作品",
@@ -708,6 +709,7 @@ export const zhHansResource = {
       ...personalHans,
       ...subscriptionsHans,
       ...translationHans,
+      ...recordsHans,
       appearance: {
         title: "外观",
         subtitle: "模式、样式和颜色",

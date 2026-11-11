@@ -2,6 +2,7 @@ import { libraryEnglish, collectionEnglish, workCardEnglish } from "../resources
 import { surfaceJapanese } from "../surfaces/ja";
 import { personalJapanese } from "../surfaces/personal/ja";
 import { subscriptionsJapanese } from "../surfaces/subscriptions/ja";
+import { recordsJapanese } from "../surfaces/records/ja";
 import { translationJapanese } from "../surfaces/translation/ja";
 
 const libraryJapanese = {
@@ -703,7 +704,7 @@ export const japaneseResource = {
         workManagementDescription: "作品の問題とメタデータ設定を管理",
         library: "ライブラリ",
         favorites: "お気に入り",
-        homeVideos: "ホームビデオ",
+        record: "記録",
         circles: "サークル",
         voiceActors: "声優",
         workflows: "ワークフロー",
@@ -719,7 +720,7 @@ export const japaneseResource = {
         translationDescription: "AI 翻訳を確認し、実行中のものを追う",
         about: "情報",
         libraryDescription: "すべての設定済みソースから作品を閲覧、絞り込み、再生",
-        homeVideosDescription: "独立した動画と画像のライブラリを閲覧",
+        recordDescription: "個人の動画と画像を閲覧",
         favoritesDescription: "お気に入りの作品、サークル、声優、リストを閲覧",
         circlesDescription: "サークルと既知のカタログを閲覧",
         voiceActorsDescription: "声優と参加作品を閲覧",
@@ -739,6 +740,7 @@ export const japaneseResource = {
       ...personalJapanese,
       ...subscriptionsJapanese,
       ...translationJapanese,
+      ...recordsJapanese,
       appearance: {
         title: "外観",
         subtitle: "モード、スタイル、カラー",

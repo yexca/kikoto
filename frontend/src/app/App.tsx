@@ -769,6 +769,7 @@ function AuthenticatedApp() {
                   "translation",
                   "workflows",
                   "insights",
+                  "records",
                   "about",
                 ].includes(page) && (
                   <PlaceholderPage title={activeItem ? navigationLabel(activeItem, t) : t("app.pageReserved")} />
