@@ -5,7 +5,7 @@
 
 - Docker 和 Docker Compose。
 - 本地开发可选：
-  - Go 1.26.10。
+  - Go 1.26.11。
   - Node.js 24.22.1 及 npm 11.19.1。
 
 ## 使用 Docker 运行

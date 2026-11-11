@@ -23,7 +23,7 @@ NPX ?= npx
 NODE ?= node
 DOCKER ?= docker
 DOCKER_IMAGE ?= kikoto:dev
-GO_IMAGE ?= golang:1.26.10@sha256:fb456410ab4c979617acaf28c46b2b9fe60b11bcc3dc8ceea0eaeb3e7cd0f8a8
+GO_IMAGE ?= golang:1.26.11@sha256:7af425da11f4fc1a9308eb704369e3f6d1c44e35bac0f874a59ade3f20fdc07e
 # Its tag follows @playwright/test in frontend/package-lock.json; make
 # playwright-image-check enforces that.
 PLAYWRIGHT_IMAGE ?= mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
