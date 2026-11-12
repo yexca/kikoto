@@ -55,6 +55,7 @@ export const recordsKorean = {
       unconfirmed: "스캔이 아직 진행 중입니다. 나중에 새로 고침하여 결과를 확인하세요.",
     },
     sections: {
+      continue: "이어서 보기",
       folders: "폴더",
       videos: "동영상",
       photos: "사진",

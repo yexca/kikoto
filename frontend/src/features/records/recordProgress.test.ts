@@ -6,7 +6,6 @@ import {
   RECORD_PROGRESS_SAVE_INTERVAL_MS,
   RecordProgressTracker,
   continueCandidate,
-  createProgressLoader,
   resumePosition,
   watchedFraction,
 } from "./recordProgress";
@@ -93,40 +92,5 @@ describe("saved progress", () => {
     ]);
     expect(continueCandidate([1, 2, 3], progress)).toEqual({ id: 2, position: 60 });
     expect(continueCandidate([3], progress)).toBeNull();
-  });
-});
-
-describe("createProgressLoader", () => {
-  it("reads at most a few tiles at once, each only once, and stops when cancelled", async () => {
-    const started: number[] = [];
-    const pending = new Map<number, () => void>();
-    const loaded: number[] = [];
-    const loader = createProgressLoader({
-      concurrency: 2,
-      load: (id) => {
-        started.push(id);
-        return new Promise<RecordProgress>((resolve) => {
-          pending.set(id, () => resolve({ positionSeconds: id, completed: false }));
-        });
-      },
-      onLoaded: (id) => loaded.push(id),
-    });
-    for (const id of [1, 2, 3, 1, 4]) loader.request(id);
-    expect(started).toEqual([1, 2]);
-
-    pending.get(1)?.();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(loaded).toEqual([1]);
-    expect(started).toEqual([1, 2, 3]);
-
-    loader.cancel();
-    pending.get(2)?.();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(loaded).toEqual([1]);
-    expect(started).toEqual([1, 2, 3]);
   });
 });

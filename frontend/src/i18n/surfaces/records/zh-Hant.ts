@@ -53,6 +53,7 @@ export const recordsHant = {
       unconfirmed: "掃描仍在進行。請稍後重新整理查看結果。",
     },
     sections: {
+      continue: "繼續觀看",
       folders: "資料夾",
       videos: "影片",
       photos: "照片",

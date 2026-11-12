@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
 import { useStableCallback } from "@/hooks/useStableCallback";
-import { api, type RecordFolder, type RecordProgress, type RecordRoot } from "@/lib/api";
+import { api, type RecordAsset, type RecordFolder, type RecordProgress, type RecordRoot } from "@/lib/api";
 
 import { RecordFolderHeader, type RecordPrimaryAction } from "./RecordFolderHeader";
 import { RecordFolderTile, RecordPhotoTile, RecordSection, RecordVideoTile } from "./RecordGrid";
@@ -22,6 +22,7 @@ import {
   closeOverlayNavigation,
   openCrumbNavigation,
   openFolderNavigation,
+  openFolderVideoNavigation,
   openOverlayNavigation,
   stepOverlayNavigation,
   updateViewNavigation,
@@ -30,12 +31,17 @@ import {
 } from "./recordsLocation";
 import { crumbFromFolder, filteredRecordView, recordFolderView, siblingIds } from "./recordsModel";
 import { useRecordRoot, useRecordTree } from "./useRecordLibrary";
-import { useRecordProgress } from "./useRecordProgress";
+import { useRecordContinue, useRecordProgress } from "./useRecordProgress";
 import { useRecordScan } from "./useRecordScan";
 import { useRecordsLocation } from "./useRecordsLocation";
 
-/** How many of a folder's first videos the header reads progress for to offer Continue. */
-const continueProgressReads = 8;
+const noVideos: readonly RecordAsset[] = [];
+
+/** The folder path a Continue watching tile names under its title. */
+function folderCaption(relativePath: string | undefined) {
+  const parts = (relativePath ?? "").split("/").filter(Boolean);
+  return parts.slice(0, -1).join(" › ");
+}
 
 /**
  * The Record surface: a folder browser over the independent record root with
@@ -57,7 +63,6 @@ export function RecordsBrowser() {
     pending,
     reload: reloadTree,
   } = useRecordTree(location.folderId, historyState, enabled && online);
-  const { progress, observe, request, remember } = useRecordProgress(location.folderId, enabled && online);
   const scan = useRecordScan({ reloadRoot, onFinished: reloadTree });
   const [initializing, setInitializing] = useState<"idle" | "busy" | "failed">("idle");
   const [autoResumeId, setAutoResumeId] = useState<number | null>(null);
@@ -70,15 +75,18 @@ export function RecordsBrowser() {
   const shown = view ? filteredRecordView(view, location.filter) : null;
   const current = trail.length > 0 ? trail[trail.length - 1] : null;
 
-  // The header offers Continue from the most recent unfinished video among the first few.
-  const firstVideoIds = useMemo(
-    () => (view ? view.videos.slice(0, continueProgressReads).map((v) => v.id) : []),
-    [view],
+  const { progress, remember } = useRecordProgress(location.folderId, view?.videos ?? noVideos);
+  // The Continue watching row belongs to the root and is read again whenever
+  // the root shows without an overlay, as after the player closes.
+  const [savedToken, setSavedToken] = useState(0);
+  const continueAssets = useRecordContinue(
+    enabled && online && location.folderId === 0 && location.overlay === null,
+    savedToken,
   );
-  useEffect(() => {
-    for (const id of firstVideoIds) request(id);
-  }, [firstVideoIds, request]);
-  const candidate = continueCandidate(firstVideoIds, progress);
+
+  // The header offers Continue from the most recent unfinished video in the folder.
+  const videoIds = useMemo(() => (view ? view.videos.map((video) => video.id) : []), [view]);
+  const candidate = continueCandidate(videoIds, progress);
   const primaryAction: RecordPrimaryAction | null = candidate
     ? { kind: "continue", videoId: candidate.id, position: candidate.position }
     : view && view.videos.length > 0
@@ -107,7 +115,14 @@ export function RecordsBrowser() {
   const closeOverlay = () => navigate((at, state) => closeOverlayNavigation(at, state));
   const setFilter = (filter: RecordKindFilter) => navigate((at, state) => updateViewNavigation(at, state, { filter }));
   const setSort = (sort: RecordSortOrder) => navigate((at, state) => updateViewNavigation(at, state, { sort }));
-  const rememberProgress = useStableCallback((id: number, value: RecordProgress) => remember(id, value));
+  const rememberProgress = useStableCallback((id: number, value: RecordProgress) => {
+    remember(id, value);
+    setSavedToken((token) => token + 1);
+  });
+  const openContinue = (video: RecordAsset) => {
+    setAutoResumeId(video.id);
+    navigate((at) => openFolderVideoNavigation(at, video.folderId, video.id));
+  };
 
   const startScan = () => {
     if (root) void scan.start(root);
@@ -212,6 +227,22 @@ export function RecordsBrowser() {
         />
       ) : (
         <div className="space-y-8">
+          {location.folderId === 0 && continueAssets.length > 0 && (
+            <RecordSection title={t("records.sections.continue")} count={continueAssets.length}>
+              <div className="app-scrollbar -mx-1 flex gap-3 overflow-x-auto overflow-y-hidden px-1 pb-1">
+                {continueAssets.map((video) => (
+                  <div key={video.id} className="w-[min(16rem,70vw)] shrink-0">
+                    <RecordVideoTile
+                      video={video}
+                      progress={video.progress}
+                      caption={folderCaption(video.relativePath)}
+                      onOpen={() => openContinue(video)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </RecordSection>
+          )}
           {shown.folders.length > 0 && (
             <RecordSection title={t("records.sections.folders")} count={shown.folders.length}>
               <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6">
@@ -231,7 +262,6 @@ export function RecordsBrowser() {
                       video={video}
                       progress={progress.get(video.id)}
                       onOpen={openVideo}
-                      observe={observe}
                     />
                   ))}
                 </div>

@@ -5,6 +5,7 @@ import {
   historyStateWithRecordTrail,
   openCrumbNavigation,
   openFolderNavigation,
+  openFolderVideoNavigation,
   openOverlayNavigation,
   readRecordsLocation,
   recordTrailFromState,
@@ -98,6 +99,15 @@ describe("Record location", () => {
   it("replaces a pasted overlay link with its folder, since no folder entry lies below it", () => {
     const pasted = readRecordsLocation("?folder=7&photo=30");
     expect(closeOverlayNavigation(pasted, null)).toEqual({ mode: "replace", href: "/records?folder=7", state: {} });
+  });
+
+  it("opens a Continue watching video over its own folder, and closing it goes back to the root", () => {
+    const root = readRecordsLocation("?kind=photos");
+    const open = openFolderVideoNavigation(root, 7, 21);
+    expect(open).toMatchObject({ mode: "push", href: "/records?folder=7&kind=photos&play=21" });
+    if (open.mode === "back") throw new Error("expected a push");
+    expect(recordTrailFromState(open.state, 7)).toBeNull();
+    expect(closeOverlayNavigation(readRecordsLocation("?folder=7&play=21"), open.state).mode).toBe("back");
   });
 
   it("moves an open overlay instead of stacking a second one", () => {

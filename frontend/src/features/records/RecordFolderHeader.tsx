@@ -68,8 +68,9 @@ export function RecordFolderHeader({
   return (
     <section className="relative isolate overflow-clip rounded-xl border bg-card" aria-label={name}>
       <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
-        <img src={assetURL(backdropUrl)} alt="" decoding="async" className="h-full w-full object-cover opacity-70" />
-        <div className="absolute inset-0 bg-gradient-to-t from-card via-card/80 to-card/25 sm:bg-gradient-to-r sm:from-card sm:via-card/80 sm:to-card/10" />
+        <img src={assetURL(backdropUrl)} alt="" decoding="async" className="h-full w-full object-cover opacity-60" />
+        {/* The scrim is densest behind the title and counts, so they stay readable over a busy backdrop. */}
+        <div className="absolute inset-0 bg-gradient-to-t from-card from-40% via-card/90 to-card/40 sm:bg-gradient-to-r sm:from-card sm:from-45% sm:via-card/90 sm:via-60% sm:to-card/20" />
       </div>
       <div className="flex min-h-[13rem] items-end gap-4 p-4 sm:min-h-[16rem] sm:gap-6 sm:p-6">
         {posterUrl && (

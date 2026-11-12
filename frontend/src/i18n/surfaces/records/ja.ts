@@ -56,6 +56,7 @@ export const recordsJapanese = {
       unconfirmed: "スキャンはまだ実行中です。後で更新して結果を確認してください。",
     },
     sections: {
+      continue: "続きを見る",
       folders: "フォルダー",
       videos: "動画",
       photos: "写真",

@@ -1,5 +1,5 @@
 import { Check, Folder, Play, Video } from "lucide-react";
-import { memo, useCallback, type ReactNode } from "react";
+import { memo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
@@ -63,30 +63,38 @@ export const RecordFolderTile = memo(function RecordFolderTile({
 export const RecordVideoTile = memo(function RecordVideoTile({
   video,
   progress,
+  caption,
   onOpen,
-  observe,
 }: {
   video: RecordAsset;
   progress?: RecordProgress;
+  /** A muted line under the name, such as the folder a Continue watching tile comes from. */
+  caption?: string;
   onOpen: (id: number) => void;
-  observe: (id: number, element: Element | null) => (() => void) | undefined;
 }) {
   const { t } = useTranslation();
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const id = video.id;
-  const ref = useCallback((element: HTMLButtonElement | null) => observe(id, element), [id, observe]);
   const fraction = watchedFraction(progress);
   const title = baseName(video.name);
+  const duration = video.durationSeconds ?? progress?.durationSeconds;
   return (
-    <button
-      ref={ref}
-      type="button"
-      className={`group flex min-w-0 flex-col gap-2 ${tileFocus}`}
-      onClick={() => onOpen(id)}
-    >
+    <button type="button" className={`group flex min-w-0 flex-col gap-2 ${tileFocus}`} onClick={() => onOpen(id)}>
       <span className="relative block aspect-video w-full overflow-hidden rounded-lg border bg-muted">
-        <span className="grid h-full w-full place-items-center">
-          <Video className="h-9 w-9 text-muted-foreground/70" strokeWidth={1.5} aria-hidden="true" />
-        </span>
+        {video.thumbnailUrl && !thumbnailFailed ? (
+          <img
+            src={assetURL(video.thumbnailUrl)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            onError={() => setThumbnailFailed(true)}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none"
+          />
+        ) : (
+          <span className="grid h-full w-full place-items-center">
+            <Video className="h-9 w-9 text-muted-foreground/70" strokeWidth={1.5} aria-hidden="true" />
+          </span>
+        )}
         <span
           className="absolute inset-0 grid place-items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
           aria-hidden="true"
@@ -95,9 +103,9 @@ export const RecordVideoTile = memo(function RecordVideoTile({
             <Play className="h-5 w-5 translate-x-px fill-current" />
           </span>
         </span>
-        {video.durationSeconds ? (
+        {duration ? (
           <span className="absolute bottom-2 right-2 rounded-md bg-background/85 px-1.5 py-0.5 text-xs font-medium tabular-nums text-foreground">
-            {formatPlaybackTime(video.durationSeconds)}
+            {formatPlaybackTime(duration)}
           </span>
         ) : null}
         {progress?.completed ? (
@@ -119,7 +127,10 @@ export const RecordVideoTile = memo(function RecordVideoTile({
           </span>
         )}
       </span>
-      <span className="line-clamp-2 px-0.5 text-sm font-medium group-hover:text-primary">{title}</span>
+      <span className="min-w-0 px-0.5">
+        <span className="line-clamp-2 text-sm font-medium group-hover:text-primary">{title}</span>
+        {caption && <span className="block truncate text-xs text-muted-foreground">{caption}</span>}
+      </span>
     </button>
   );
 });
@@ -132,6 +143,10 @@ export const RecordPhotoTile = memo(function RecordPhotoTile({
   onOpen: (id: number) => void;
 }) {
   const title = baseName(photo.name);
+  // The grid shows the small thumbnail; the full image stays for the viewer
+  // and for a photo whose thumbnail cannot be made.
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const source = photo.thumbnailUrl && !thumbnailFailed ? photo.thumbnailUrl : photo.streamUrl;
   return (
     <button
       type="button"
@@ -140,7 +155,8 @@ export const RecordPhotoTile = memo(function RecordPhotoTile({
       onClick={() => onOpen(photo.id)}
     >
       <img
-        src={photo.streamUrl ? assetURL(photo.streamUrl) : undefined}
+        onError={() => setThumbnailFailed(true)}
+        src={source ? assetURL(source) : undefined}
         alt={title}
         loading="lazy"
         decoding="async"

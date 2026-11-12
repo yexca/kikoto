@@ -40,9 +40,15 @@ folders show the same facts as a plain heading.
 
 The toolbar shows **All**, **Videos**, or **Photos** and sorts by name in either
 direction. Subfolders appear as posters, or as a folder when they have none;
-videos as wide tiles with their length when it is known and a bar for how much
-you have watched; photos as square thumbnails. Subtitle, metadata, and other
-files stay hidden. **Refresh** reads the folder again.
+videos as wide tiles with a frame from the video, their length, and a bar for
+how much you have watched; photos as square thumbnails. Thumbnails are made the
+first time a folder shows them, so a large folder can take a moment the first
+time. Subtitle, metadata, and other files stay hidden, and so do the folder's
+artwork images. **Refresh** reads the folder again.
+
+At the top level, **Continue watching** lists the videos you stopped part way
+through, most recent first, with the folder each one is in. Selecting one plays
+it from where you stopped, and closing the player returns to the top level.
 
 ## Scanning and artwork
 
@@ -52,7 +58,9 @@ it is queued, running, or finished. The scan is queued as a durable
 workflow and coalesces with an existing scan. It indexes regular files by
 extension, skips links and Kikoto transaction directories, and keeps previous
 rows when the root is offline or a scan is partial. Only a complete walk marks
-removed folders and files as missing.
+removed folders and files as missing. The scan also reads each new or changed
+video's length and size and each new or changed photo's size; a file that
+cannot be read keeps no length and is read again once it changes.
 
 Folder artwork uses these image names: `folder`, `poster`, or `cover` for a
 poster, and `backdrop`, `fanart`, or `background` for a backdrop. Supported
@@ -63,8 +71,9 @@ video extensions include `.mp4`, `.mkv`, `.webm`, `.mov`, `.avi`, `.m4v`, and
 ## Watching videos and photos
 
 Select a video to open it in a full-screen player. When you stopped part way
-through, Kikoto asks whether to continue from that time or start over. The
-previous and next buttons step through the folder's videos, and Back or Esc
+through, Kikoto asks whether to continue from that time or start over. A
+`.vtt` or `.srt` file with the same name as the video shows as its subtitles;
+`.srt` files must be UTF-8. The previous and next buttons step through the folder's videos, and Back or Esc
 closes the player. The position is saved per account about every ten seconds,
 on pause, at the end, and when the player closes; saving it needs library write
 access. A video that starts playing pauses the global audio player, which stays

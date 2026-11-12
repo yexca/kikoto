@@ -167,6 +167,23 @@ export function openOverlayNavigation(
   };
 }
 
+/**
+ * Opens a video in its own folder, as Continue watching does from the root.
+ * The player sits over that folder in a new entry, so closing it goes back to
+ * the place it was opened from; the folder's trail is recovered from its listing.
+ */
+export function openFolderVideoNavigation(
+  current: RecordsLocation,
+  folderId: number,
+  assetId: number,
+): RecordsNavigation {
+  return {
+    mode: "push",
+    href: recordsHref({ ...current, folderId, overlay: { kind: "video", assetId } }),
+    state: { [overlayStateKey]: true },
+  };
+}
+
 /** Moves the open overlay to a sibling without adding a Back step. */
 export function stepOverlayNavigation(current: RecordsLocation, state: unknown, assetId: number): RecordsNavigation {
   if (!current.overlay) return { mode: "replace", href: recordsHref(current), state: stateRecord(state) };

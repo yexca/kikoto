@@ -20,6 +20,12 @@
 - Videos play in a full-screen player that steps through the folder, offers to
   continue where you stopped, saves the position per account, and pauses the
   global audio player. Photos open full screen with arrow keys and swipes.
+- A scan reads each video's length and size. Video tiles show a frame from the
+  video and photos show small thumbnails, both made the first time a folder
+  shows them; folder artwork images stay out of the photos.
+- **Continue watching** at the top of Record lists the videos you stopped part
+  way through and resumes them. A `.vtt` or UTF-8 `.srt` file named like a
+  video plays as its subtitles.
 
 </details>
 

@@ -53,6 +53,7 @@ export const recordsHans = {
       unconfirmed: "扫描仍在进行。请稍后刷新查看结果。",
     },
     sections: {
+      continue: "继续观看",
       folders: "文件夹",
       videos: "视频",
       photos: "照片",

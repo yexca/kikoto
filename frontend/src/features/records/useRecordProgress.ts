@@ -1,84 +1,60 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { api, type RecordProgress } from "@/lib/api";
-
-import { createProgressLoader, type ProgressLoader } from "./recordProgress";
+import { api, type RecordAsset, type RecordProgress } from "@/lib/api";
 
 /**
- * Saved progress for the open folder's videos, read as their tiles scroll
- * near the viewport through a bounded loader. `remember` applies a position the
- * player just saved without reading it back.
+ * Saved progress for the open folder's videos: what the folder listing
+ * reported, overlaid with positions the player saved during this visit so a
+ * tile and the folder's Continue action update without reading the folder again.
  */
-export function useRecordProgress(folderKey: number, enabled: boolean) {
-  const [progress, setProgress] = useState<ReadonlyMap<number, RecordProgress>>(() => new Map());
-  const loader = useRef<ProgressLoader | null>(null);
-  const observer = useRef<IntersectionObserver | null>(null);
-  const observed = useRef(new Map<Element, number>());
+export function useRecordProgress(folderKey: number, videos: readonly RecordAsset[]) {
+  const [saved, setSaved] = useState<{ folderKey: number; values: ReadonlyMap<number, RecordProgress> }>(() => ({
+    folderKey,
+    values: new Map(),
+  }));
+  const savedHere = saved.folderKey === folderKey ? saved.values : null;
 
-  useEffect(() => {
-    setProgress(new Map());
-    if (!enabled) return;
-    const nextLoader = createProgressLoader({
-      load: (id, signal) => api.getRecordProgress(id, signal),
-      onLoaded: (id, value) =>
-        setProgress((current) => {
-          const next = new Map(current);
-          next.set(id, value);
-          return next;
-        }),
-    });
-    loader.current = nextLoader;
-    const elements = observed.current;
-    const nextObserver =
-      typeof IntersectionObserver === "undefined"
-        ? null
-        : new IntersectionObserver(
-            (entries) => {
-              for (const entry of entries) {
-                if (!entry.isIntersecting) continue;
-                const id = elements.get(entry.target);
-                if (id !== undefined) nextLoader.request(id);
-                nextObserver?.unobserve(entry.target);
-                elements.delete(entry.target);
-              }
-            },
-            { rootMargin: "200px 0px" },
-          );
-    observer.current = nextObserver;
-    for (const [element, id] of elements) {
-      if (nextObserver) nextObserver.observe(element);
-      else nextLoader.request(id);
+  const progress = useMemo(() => {
+    const map = new Map<number, RecordProgress>();
+    for (const video of videos) {
+      const value = savedHere?.get(video.id) ?? video.progress;
+      if (value) map.set(video.id, value);
     }
-    return () => {
-      nextLoader.cancel();
-      nextObserver?.disconnect();
-      if (loader.current === nextLoader) loader.current = null;
-      if (observer.current === nextObserver) observer.current = null;
-    };
-  }, [enabled, folderKey]);
+    return map as ReadonlyMap<number, RecordProgress>;
+  }, [savedHere, videos]);
 
-  /** A ref callback for a video tile: its progress loads once the tile nears the viewport. */
-  const observe = useCallback((id: number, element: Element | null) => {
-    if (!element) return;
-    observed.current.set(element, id);
-    if (observer.current) observer.current.observe(element);
-    else loader.current?.request(id);
-    return () => {
-      observer.current?.unobserve(element);
-      observed.current.delete(element);
-    };
-  }, []);
+  const remember = useCallback(
+    (id: number, value: RecordProgress) =>
+      setSaved((current) => {
+        const values = new Map(current.folderKey === folderKey ? current.values : []);
+        values.set(id, { ...value, lastPlayedAt: value.lastPlayedAt ?? new Date().toISOString() });
+        return { folderKey, values };
+      }),
+    [folderKey],
+  );
 
-  /** Reads one video's progress now, as the folder header's Continue action needs. */
-  const request = useCallback((id: number) => loader.current?.request(id), []);
+  return { progress, remember };
+}
 
-  const remember = useCallback((id: number, value: RecordProgress) => {
-    setProgress((current) => {
-      const next = new Map(current);
-      next.set(id, { ...value, lastPlayedAt: value.lastPlayedAt ?? new Date().toISOString() });
-      return next;
-    });
-  }, []);
-
-  return { progress, observe, request, remember };
+/**
+ * The viewer's unfinished videos for the Continue watching row, read while
+ * `active`, again each time it becomes active, and when `savedToken`
+ * changes, since the player's last save can land after it closes.
+ */
+export function useRecordContinue(active: boolean, savedToken: number) {
+  const [assets, setAssets] = useState<RecordAsset[]>([]);
+  useEffect(() => {
+    if (!active) return;
+    const controller = new AbortController();
+    void api
+      .listRecordContinue(controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) setAssets(result.assets);
+      })
+      .catch(() => {
+        // The row is optional; the folder stays usable without it.
+      });
+    return () => controller.abort();
+  }, [active, savedToken]);
+  return assets;
 }

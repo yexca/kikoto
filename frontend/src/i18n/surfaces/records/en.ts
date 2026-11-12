@@ -55,6 +55,7 @@ export const recordsEnglish = {
       unconfirmed: "The scan is still running. Refresh later to see its result.",
     },
     sections: {
+      continue: "Continue watching",
       folders: "Folders",
       videos: "Videos",
       photos: "Photos",

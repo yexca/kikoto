@@ -30,11 +30,25 @@ var ignoredNames = map[string]bool{
 }
 
 type Store struct {
-	db   *sqlutil.DB
-	root string
+	db    *sqlutil.DB
+	root  string
+	probe ProbeFunc
 }
 
-func NewStore(db *sqlutil.DB, root string) *Store { return &Store{db: db, root: root} }
+// Option configures a Store.
+type Option func(*Store)
+
+// WithProber makes every scan probe pending videos and images before it
+// records the scan as finished.
+func WithProber(probe ProbeFunc) Option { return func(s *Store) { s.probe = probe } }
+
+func NewStore(db *sqlutil.DB, root string, options ...Option) *Store {
+	store := &Store{db: db, root: root}
+	for _, option := range options {
+		option(store)
+	}
+	return store
+}
 
 type Root struct {
 	ID             int64  `json:"id"`
@@ -69,6 +83,11 @@ type Asset struct {
 	Height          *int     `json:"height,omitempty"`
 	Availability    string   `json:"availability"`
 	StreamURL       string   `json:"streamUrl,omitempty"`
+	ThumbnailURL    string   `json:"thumbnailUrl,omitempty"`
+	// Progress is the viewer's saved position for a video, when there is one.
+	Progress *Progress `json:"progress,omitempty"`
+	// MtimeNs and the size identify the file revision a thumbnail belongs to.
+	MtimeNs *int64 `json:"-"`
 }
 
 type Artwork struct {
@@ -83,6 +102,8 @@ type ScanResult struct {
 	Assets        int    `json:"assets"`
 	Unreadable    int    `json:"unreadableDirectories"`
 	MissingMarked bool   `json:"missingMarked"`
+	// Probe reports the media probe that follows the walk.
+	Probe *ProbeResult `json:"probe,omitempty"`
 }
 
 type Progress struct {
@@ -301,10 +322,20 @@ func (s *Store) Scan(ctx context.Context) (ScanResult, error) {
 	if !complete {
 		state = "partial"
 	}
+	result := ScanResult{RootID: root.ID, State: state, Folders: folders, Assets: assets, Unreadable: unreadable, MissingMarked: complete}
+	// The probe runs before the scan is recorded as finished, so a client that
+	// waits for the last-scanned time sees durations and dimensions.
+	if s.probe != nil {
+		probe, err := s.ProbePending(ctx, s.probe, DefaultProbeLimit, DefaultProbeConcurrency)
+		if err != nil {
+			return ScanResult{}, err
+		}
+		result.Probe = &probe
+	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE record_root SET state='online', last_scanned_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=1`); err != nil {
 		return ScanResult{}, err
 	}
-	return ScanResult{RootID: root.ID, State: state, Folders: folders, Assets: assets, Unreadable: unreadable, MissingMarked: complete}, nil
+	return result, nil
 }
 
 func (s *Store) ensureFolder(ctx context.Context, parent *int64, name, rel string, depth int, generation int64) (int64, error) {
@@ -347,7 +378,17 @@ func (s *Store) upsertAsset(ctx context.Context, folderID int64, name, rel, kind
 	if err != nil {
 		return 0, err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE record_asset SET folder_id=?, name=?, relative_path=?, kind=?, extension=?, mime_type=?, size_bytes=?, mtime_ns=?, availability='available', last_seen_generation=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, folderID, name, rel, kind, strings.ToLower(filepath.Ext(name)), mime, info.Size(), info.ModTime().UnixNano(), generation, id)
+	// A changed size, modification time, or kind makes the earlier probe stale.
+	// SQLite evaluates every SET expression against the row before the update.
+	size, mtime := info.Size(), info.ModTime().UnixNano()
+	_, err = s.db.ExecContext(ctx, `UPDATE record_asset SET
+		probe_state=CASE WHEN size_bytes IS ? AND mtime_ns IS ? AND kind=? THEN probe_state ELSE 'pending' END,
+		duration_seconds=CASE WHEN size_bytes IS ? AND mtime_ns IS ? AND kind=? THEN duration_seconds ELSE NULL END,
+		width=CASE WHEN size_bytes IS ? AND mtime_ns IS ? AND kind=? THEN width ELSE NULL END,
+		height=CASE WHEN size_bytes IS ? AND mtime_ns IS ? AND kind=? THEN height ELSE NULL END,
+		folder_id=?, name=?, relative_path=?, kind=?, extension=?, mime_type=?, size_bytes=?, mtime_ns=?, availability='available', last_seen_generation=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+		size, mtime, kind, size, mtime, kind, size, mtime, kind, size, mtime, kind,
+		folderID, name, rel, kind, strings.ToLower(filepath.Ext(name)), mime, size, mtime, generation, id)
 	return id, err
 }
 
@@ -377,7 +418,47 @@ func mimeFor(name string) string {
 	return mapType[ext]
 }
 
-func (s *Store) ListTree(ctx context.Context, parentID int64, limit int) ([]Folder, []Asset, error) {
+// assetColumns are the record_asset columns scanAsset reads, aliased as a.
+const assetColumns = `a.id, a.folder_id, a.name, a.relative_path, a.kind, a.mime_type, a.size_bytes, a.mtime_ns, a.duration_seconds, a.width, a.height, a.availability`
+
+type rowScanner interface{ Scan(dest ...any) error }
+
+func scanAsset(row rowScanner, extra ...any) (Asset, error) {
+	var a Asset
+	dest := append([]any{&a.ID, &a.FolderID, &a.Name, &a.RelativePath, &a.Kind, &a.MimeType, &a.SizeBytes, &a.MtimeNs, &a.DurationSeconds, &a.Width, &a.Height, &a.Availability}, extra...)
+	return a, row.Scan(dest...)
+}
+
+// progressColumns are the record_asset_progress columns, aliased as p, that
+// scanProgress reads after a LEFT JOIN.
+const progressColumns = `p.position_seconds, p.duration_seconds, p.completed, p.last_played_at`
+
+type progressFields struct {
+	position   sql.NullFloat64
+	duration   sql.NullFloat64
+	completed  sql.NullBool
+	lastPlayed sql.NullString
+}
+
+func (f *progressFields) dest() []any {
+	return []any{&f.position, &f.duration, &f.completed, &f.lastPlayed}
+}
+
+func (f *progressFields) progress() *Progress {
+	if !f.position.Valid {
+		return nil
+	}
+	p := &Progress{PositionSeconds: f.position.Float64, Completed: f.completed.Bool, LastPlayedAt: f.lastPlayed.String}
+	if f.duration.Valid {
+		duration := f.duration.Float64
+		p.DurationSeconds = &duration
+	}
+	return p
+}
+
+// ListTree lists up to limit subfolders and available assets of one folder,
+// the root when parentID is 0, with userID's saved progress on each video.
+func (s *Store) ListTree(ctx context.Context, parentID int64, limit int, userID int64) ([]Folder, []Asset, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
@@ -403,20 +484,57 @@ func (s *Store) ListTree(ctx context.Context, parentID int64, limit int) ([]Fold
 		f.Artwork = s.artworkForFolder(f)
 		folders = append(folders, f)
 	}
-	assetRows, err := s.db.QueryContext(ctx, `SELECT id, folder_id, name, relative_path, kind, mime_type, size_bytes, duration_seconds, width, height, availability FROM record_asset WHERE folder_id=? AND availability='available' ORDER BY name COLLATE NOCASE, id LIMIT ?`, parentID, limit)
+	assetRows, err := s.db.QueryContext(ctx, `SELECT `+assetColumns+`, `+progressColumns+` FROM record_asset a LEFT JOIN record_asset_progress p ON p.asset_id=a.id AND p.user_id=? AND a.kind='video' WHERE a.folder_id=? AND a.availability='available' ORDER BY a.name COLLATE NOCASE, a.id LIMIT ?`, userID, parentID, limit)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer assetRows.Close()
 	assets := []Asset{}
 	for assetRows.Next() {
-		var a Asset
-		if err := assetRows.Scan(&a.ID, &a.FolderID, &a.Name, &a.RelativePath, &a.Kind, &a.MimeType, &a.SizeBytes, &a.DurationSeconds, &a.Width, &a.Height, &a.Availability); err != nil {
+		var progress progressFields
+		a, err := scanAsset(assetRows, progress.dest()...)
+		if err != nil {
 			return nil, nil, err
 		}
+		a.Progress = progress.progress()
 		assets = append(assets, a)
 	}
-	return folders, assets, nil
+	return folders, assets, assetRows.Err()
+}
+
+// ContinueLimitMax bounds the Continue watching list.
+const ContinueLimitMax = 50
+
+// ContinueWatching lists userID's most recently played available videos that
+// stopped part way: past the first five seconds and not within five seconds
+// of the end.
+func (s *Store) ContinueWatching(ctx context.Context, userID int64, limit int) ([]Asset, error) {
+	if limit <= 0 || limit > ContinueLimitMax {
+		limit = 12
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+assetColumns+`, `+progressColumns+`
+		FROM record_asset_progress p
+		JOIN record_asset a ON a.id=p.asset_id
+		JOIN record_folder f ON f.id=a.folder_id AND f.state='active'
+		WHERE p.user_id=? AND p.completed=0 AND p.position_seconds>=5
+			AND (p.duration_seconds IS NULL OR p.position_seconds < p.duration_seconds-5)
+			AND a.kind='video' AND a.availability='available'
+		ORDER BY p.last_played_at DESC, a.id DESC LIMIT ?`, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	assets := []Asset{}
+	for rows.Next() {
+		var progress progressFields
+		a, err := scanAsset(rows, progress.dest()...)
+		if err != nil {
+			return nil, err
+		}
+		a.Progress = progress.progress()
+		assets = append(assets, a)
+	}
+	return assets, rows.Err()
 }
 
 func (s *Store) artworkForFolder(f Folder) Artwork {
@@ -426,9 +544,7 @@ func (s *Store) artworkForFolder(f Folder) Artwork {
 }
 
 func (s *Store) Asset(ctx context.Context, id int64) (Asset, error) {
-	var a Asset
-	err := s.db.QueryRowContext(ctx, `SELECT id,folder_id,name,relative_path,kind,mime_type,size_bytes,duration_seconds,width,height,availability FROM record_asset WHERE id=?`, id).Scan(&a.ID, &a.FolderID, &a.Name, &a.RelativePath, &a.Kind, &a.MimeType, &a.SizeBytes, &a.DurationSeconds, &a.Width, &a.Height, &a.Availability)
-	return a, err
+	return scanAsset(s.db.QueryRowContext(ctx, `SELECT `+assetColumns+` FROM record_asset a WHERE a.id=?`, id))
 }
 
 func (s *Store) AssetPath(ctx context.Context, id int64) (string, Asset, error) {
@@ -486,7 +602,7 @@ func (s *Store) ArtworkPath(ctx context.Context, folderID int64, role string) (s
 	if role != "poster" && role != "backdrop" {
 		return "", Asset{}, errors.New("invalid artwork role")
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,folder_id,name,relative_path,kind,mime_type,size_bytes,duration_seconds,width,height,availability FROM record_asset WHERE folder_id=? AND kind='image' AND availability='available'`, folderID)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+assetColumns+` FROM record_asset a WHERE a.folder_id=? AND a.kind='image' AND a.availability='available'`, folderID)
 	if err != nil {
 		return "", Asset{}, err
 	}
@@ -497,8 +613,8 @@ func (s *Store) ArtworkPath(ctx context.Context, folderID int64, role string) (s
 	}
 	candidates := []candidate{}
 	for rows.Next() {
-		var a Asset
-		if err := rows.Scan(&a.ID, &a.FolderID, &a.Name, &a.RelativePath, &a.Kind, &a.MimeType, &a.SizeBytes, &a.DurationSeconds, &a.Width, &a.Height, &a.Availability); err != nil {
+		a, err := scanAsset(rows)
+		if err != nil {
 			return "", Asset{}, err
 		}
 		stem := strings.TrimSuffix(strings.ToLower(a.Name), strings.ToLower(filepath.Ext(a.Name)))

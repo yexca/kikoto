@@ -8,9 +8,12 @@ export type RecordFolderView = {
   folders: RecordFolder[];
   videos: RecordAsset[];
   photos: RecordAsset[];
-  /** Same-name WebVTT sidecars by video id. */
+  /** Same-name subtitle sidecars the server serves as WebVTT, by video id. */
   subtitles: Map<number, RecordAsset>;
 };
+
+/** Image names the server reads as folder artwork; they never show as photos. */
+const artworkStems = new Set(["folder", "poster", "cover", "backdrop", "fanart", "background"]);
 
 export function baseName(name: string) {
   const dot = name.lastIndexOf(".");
@@ -31,10 +34,15 @@ function byName<T extends { name: string }>(sort: RecordSortOrder) {
     sort === "name-desc" ? naturalNameCompare(right.name, left.name) : naturalNameCompare(left.name, right.name);
 }
 
+export function isFolderArtwork(asset: Pick<RecordAsset, "kind" | "name">) {
+  return asset.kind === "image" && artworkStems.has(baseName(asset.name).toLocaleLowerCase());
+}
+
 /**
  * Splits a folder listing into what the grid shows. Subtitle, metadata, and
- * other files stay hidden; a WebVTT file whose base name matches a video
- * becomes that video's subtitle.
+ * other files and the folder's artwork images stay hidden; a WebVTT or SubRip
+ * file whose base name matches a video becomes that video's subtitle, WebVTT
+ * first, when the server serves it.
  */
 export function recordFolderView(
   folders: readonly RecordFolder[],
@@ -42,12 +50,16 @@ export function recordFolderView(
   sort: RecordSortOrder,
 ): RecordFolderView {
   const videos = assets.filter((asset) => asset.kind === "video" && playable(asset)).sort(byName(sort));
-  const photos = assets.filter((asset) => asset.kind === "image" && playable(asset)).sort(byName(sort));
+  const photos = assets
+    .filter((asset) => asset.kind === "image" && playable(asset) && !isFolderArtwork(asset))
+    .sort(byName(sort));
   const vttByBase = new Map<string, RecordAsset>();
   for (const asset of assets) {
-    if (asset.kind === "subtitle" && extension(asset.name) === "vtt") {
-      vttByBase.set(baseName(asset.name).toLocaleLowerCase(), asset);
-    }
+    const ext = extension(asset.name);
+    if (asset.kind !== "subtitle" || !asset.streamUrl || (ext !== "vtt" && ext !== "srt")) continue;
+    const key = baseName(asset.name).toLocaleLowerCase();
+    const known = vttByBase.get(key);
+    if (!known || (ext === "vtt" && extension(known.name) !== "vtt")) vttByBase.set(key, asset);
   }
   const subtitles = new Map<number, RecordAsset>();
   for (const video of videos) {

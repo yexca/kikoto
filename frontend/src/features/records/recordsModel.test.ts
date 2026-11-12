@@ -25,19 +25,30 @@ describe("recordFolderView", () => {
   const assets = [
     asset(1, "Day 10 - Hike.mp4", "video", "/s/1"),
     asset(2, "Day 2 - Town.mp4", "video", "/s/2"),
-    asset(3, "Day 2 - Town.vtt", "subtitle"),
+    asset(3, "Day 2 - Town.vtt", "subtitle", "/v/3"),
     asset(4, "beach.jpg", "image", "/s/4"),
     asset(5, "notes.nfo", "metadata"),
-    asset(6, "Day 10 - Hike.srt", "subtitle"),
+    asset(6, "Day 10 - Hike.srt", "subtitle", "/v/6"),
+    asset(7, "Day 2 - Town.srt", "subtitle", "/v/7"),
+    asset(8, "Poster.JPG", "image", "/s/8"),
+    asset(9, "fanart.webp", "image", "/s/9"),
+    asset(10, "Day 3.ass", "subtitle"),
   ];
 
-  it("orders by natural name, hides non-media files, and pairs same-name WebVTT subtitles", () => {
+  it("orders by natural name and hides non-media files and folder artwork", () => {
     const view = recordFolderView([folder(9, "B"), folder(8, "a")], assets, "name");
     expect(view.folders.map((item) => item.name)).toEqual(["a", "B"]);
     expect(view.videos.map((item) => item.id)).toEqual([2, 1]);
     expect(view.photos.map((item) => item.id)).toEqual([4]);
-    expect([...view.subtitles]).toEqual([[2, assets[2]]]);
     expect(recordFolderView([], assets, "name-desc").videos.map((item) => item.id)).toEqual([1, 2]);
+  });
+
+  it("pairs a served same-name subtitle with each video, WebVTT before SubRip", () => {
+    const view = recordFolderView([], assets, "name");
+    expect([...view.subtitles].map(([video, subtitle]) => [video, subtitle.id])).toEqual([
+      [2, 3],
+      [1, 6],
+    ]);
   });
 
   it("keeps folders visible under a kind filter", () => {
