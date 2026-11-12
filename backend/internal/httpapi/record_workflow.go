@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 
 	"github.com/yexca/kikoto/backend/internal/record"
 	"github.com/yexca/kikoto/backend/internal/workflow"
@@ -92,7 +93,7 @@ func (s *Server) executeRecordScanJob(ctx context.Context, job workflowJobRecord
 		_ = s.failClaimedWorkflowJob(ctx, job, err.Error())
 		return err
 	}
-	result, err := s.recordStore.Scan(ctx)
+	result, err := s.runRecordScan(ctx)
 	if err != nil {
 		if shutdownInterrupted(ctx) {
 			return err
@@ -101,6 +102,25 @@ func (s *Server) executeRecordScanJob(ctx context.Context, job workflowJobRecord
 		return err
 	}
 	return s.finishRecordScanJob(context.WithoutCancel(ctx), job, payload, result)
+}
+
+// runRecordScan scans the record root and, when the walk was complete, removes
+// the cached thumbnails of assets it no longer finds as videos or images. A
+// partial walk leaves thumbnails alone, as it leaves the rows it could not see.
+func (s *Server) runRecordScan(ctx context.Context) (record.ScanResult, error) {
+	result, err := s.recordStore.Scan(ctx)
+	if err != nil || !result.MissingMarked {
+		return result, err
+	}
+	removed, err := s.pruneRecordThumbnails(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return record.ScanResult{}, ctx.Err()
+		}
+		slog.Warn("record thumbnail cleanup failed", "error", err)
+	}
+	result.ThumbnailsRemoved = removed
+	return result, nil
 }
 
 func (s *Server) finishRecordScanJob(ctx context.Context, job workflowJobRecord, _ recordScanPayload, result record.ScanResult) error {

@@ -23,6 +23,12 @@
 - A scan reads each video's length and size. Video tiles show a frame from the
   video and photos show small thumbnails, both made the first time a folder
   shows them; folder artwork images stay out of the photos.
+- Record thumbnails are kept in the transcode cache and count against its
+  limit in **Settings → Cache & Fetch**. The least recently viewed are removed
+  first when the cache is full, **Clear transcode cache** in **Settings →
+  Cleanup** removes them with the rest of the cache, and a complete Record scan
+  removes the thumbnails of files that are gone. A removed thumbnail is made
+  again the next time a folder shows it.
 - **Continue watching** at the top of Record lists the videos you stopped part
   way through and resumes them. A `.vtt` or UTF-8 `.srt` file named like a
   video plays as its subtitles.

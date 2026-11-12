@@ -45,15 +45,26 @@ Thumbnails are made on first request rather than during the scan: a scan stays
 a walk and a probe, and only folders someone opens pay for `ffmpeg`. A video's
 thumbnail is the frame a tenth of the way in (one second in when the duration
 is unknown, and the first frame when that seek finds nothing); an image's is
-the image itself. Both fit a 640-pixel box as JPEG. They live under
-`record-thumbs/` in the cache root, named by asset, file size, and
-modification time, so a changed file gets a new thumbnail and the old one is
-removed when it is written. A file `ffmpeg` cannot read leaves a failure marker
-for that revision, so it is not tried again until it changes. At most two
-`ffmpeg` processes run, concurrent requests for one revision share one run, and
-at most 64 requests wait before the server answers busy. Each result must carry
-a JPEG signature before it is cached or served. The cache is disposable;
-removing it only makes thumbnails again.
+the image itself. Both fit a 640-pixel box as JPEG. At most two `ffmpeg`
+processes run, concurrent requests for one revision share one run, and at most
+64 requests wait before the server answers busy. `ffmpeg` writes into the
+[temporary directory](../operations/configuration.md#temporary-files); each
+result must carry a JPEG signature and stay within 2 MiB before it is cached
+or served.
+
+Thumbnails are part of the transcode cache, under
+`transcodes/record-thumbs/` in the cache root. They share its quota and
+eviction, its usage in **Settings → Cleanup**, and its clear action: storing a
+thumbnail reserves its size under the transcode cache limit, evicting the
+least recently used cache files first, and serving a thumbnail counts as a
+use. A thumbnail is named by asset, file size, and modification time, so a
+changed file gets a new thumbnail and the asset's earlier one is removed when
+it is written. A file `ffmpeg` cannot read leaves an empty failure marker for
+that revision, so it is not tried again until it changes or the cache is
+cleared. After a complete scan, the thumbnails and failure markers of assets
+that are no longer available videos or images are removed, and the run summary
+counts them; a partial scan leaves them in place. An evicted or cleared
+thumbnail is made again on its next request.
 
 Folder artwork follows explicit sidecar names. `folder`, `poster`, and `cover`
 are poster candidates; `backdrop`, `fanart`, and `background` are backdrop

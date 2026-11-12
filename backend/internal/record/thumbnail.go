@@ -21,6 +21,9 @@ const (
 	thumbnailTimeout    = 30 * time.Second
 	thumbnailBox        = "640"
 	thumbnailMaxWaiters = 64
+	// ThumbnailPartialPrefix starts the name of a thumbnail that is still
+	// being written, so the cache holding it can reclaim one left behind.
+	ThumbnailPartialPrefix = ".record-thumbnail-"
 )
 
 var (
@@ -63,13 +66,41 @@ func (s ThumbnailSource) Revision() string {
 	return strconv.FormatInt(s.SizeBytes, 36) + "-" + strconv.FormatInt(s.MtimeNs, 36)
 }
 
+// ThumbnailGuard runs before a Thumbnailer changes its cache directory, given
+// the bytes it is about to write, and returns the function that ends the
+// change. The cache that holds the directory uses it to make room under its
+// quota and to keep the directory from being cleared during the change.
+type ThumbnailGuard func(ctx context.Context, bytes int64) (release func(), err error)
+
+// ThumbnailOption configures a Thumbnailer.
+type ThumbnailOption func(*Thumbnailer)
+
+// WithThumbnailWorkDir makes ffmpeg write into dir before a result is stored;
+// the default is the system temporary directory.
+func WithThumbnailWorkDir(dir string) ThumbnailOption {
+	return func(t *Thumbnailer) { t.workDir = dir }
+}
+
+// WithThumbnailGuard coordinates every change to the cache directory.
+func WithThumbnailGuard(guard ThumbnailGuard) ThumbnailOption {
+	return func(t *Thumbnailer) {
+		if guard != nil {
+			t.guard = guard
+		}
+	}
+}
+
 // Thumbnailer makes and caches JPEG thumbnails of record videos and images on
 // first request. A video's frame is taken a tenth of the way in. Generation
 // is bounded to a few ffmpeg processes and a bounded number of waiters, and
-// concurrent requests for one revision share a single run.
+// concurrent requests for one revision share a single run. ffmpeg writes
+// outside the cache directory; only a finished thumbnail is stored there,
+// under the guard, and every read marks the thumbnail as recently used.
 type Thumbnailer struct {
 	dir     string
+	workDir string
 	run     FFmpegFunc
+	guard   ThumbnailGuard
 	slots   chan struct{}
 	waiting atomic.Int32
 	mu      sync.Mutex
@@ -82,36 +113,61 @@ type thumbnailCall struct {
 }
 
 // NewThumbnailer caches under dir with at most concurrency ffmpeg runs.
-func NewThumbnailer(dir string, run FFmpegFunc, concurrency int) *Thumbnailer {
+func NewThumbnailer(dir string, run FFmpegFunc, concurrency int, options ...ThumbnailOption) *Thumbnailer {
 	if concurrency <= 0 {
 		concurrency = 2
 	}
-	return &Thumbnailer{dir: dir, run: run, slots: make(chan struct{}, concurrency), pending: map[string]*thumbnailCall{}}
+	t := &Thumbnailer{
+		dir: dir, run: run, slots: make(chan struct{}, concurrency), pending: map[string]*thumbnailCall{},
+		guard: func(context.Context, int64) (func(), error) { return func() {}, nil },
+	}
+	for _, option := range options {
+		option(t)
+	}
+	return t
 }
 
 func (t *Thumbnailer) paths(source ThumbnailSource) (dir, prefix, final, failed string) {
 	dir = filepath.Join(t.dir, fmt.Sprintf("%02x", source.AssetID%256))
-	prefix = fmt.Sprintf("a%d-", source.AssetID)
+	prefix = thumbnailAssetPrefix(source.AssetID)
 	key := prefix + source.Revision() + "-" + thumbnailVersion
 	return dir, prefix, filepath.Join(dir, key+".jpg"), filepath.Join(dir, key+".failed")
 }
 
-// Thumbnail returns the cached thumbnail path for one revision of a record
-// video or image at input, making it first when needed.
-func (t *Thumbnailer) Thumbnail(ctx context.Context, input string, source ThumbnailSource) (string, error) {
+func thumbnailAssetPrefix(assetID int64) string {
+	return fmt.Sprintf("a%d-", assetID)
+}
+
+// thumbnailAssetID reads the asset of a thumbnail or failure marker name.
+func thumbnailAssetID(name string) (int64, bool) {
+	rest, ok := strings.CutPrefix(name, "a")
+	if !ok {
+		return 0, false
+	}
+	digits, _, ok := strings.Cut(rest, "-")
+	if !ok {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(digits, 10, 64)
+	return id, err == nil && id > 0
+}
+
+// Thumbnail opens the cached thumbnail of one revision of a record video or
+// image at input, making it first when needed.
+func (t *Thumbnailer) Thumbnail(ctx context.Context, input string, source ThumbnailSource) (*os.File, error) {
 	if source.Kind != "video" && source.Kind != "image" {
-		return "", ErrThumbnailUnavailable
+		return nil, ErrThumbnailUnavailable
 	}
 	_, _, final, failed := t.paths(source)
-	if validThumbnail(final) {
-		return final, nil
+	if file := openThumbnail(final); file != nil {
+		return file, nil
 	}
 	if _, err := os.Stat(failed); err == nil {
-		return "", ErrThumbnailUnavailable
+		return nil, ErrThumbnailUnavailable
 	}
 	if t.waiting.Add(1) > thumbnailMaxWaiters {
 		t.waiting.Add(-1)
-		return "", ErrThumbnailBusy
+		return nil, ErrThumbnailBusy
 	}
 	defer t.waiting.Add(-1)
 
@@ -125,23 +181,39 @@ func (t *Thumbnailer) Thumbnail(ctx context.Context, input string, source Thumbn
 	if running {
 		select {
 		case <-call.done:
-			if call.err != nil {
-				return "", call.err
-			}
-			return final, nil
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return nil, ctx.Err()
 		}
+	} else {
+		call.err = t.generate(ctx, input, source)
+		t.mu.Lock()
+		delete(t.pending, final)
+		t.mu.Unlock()
+		close(call.done)
 	}
-	call.err = t.generate(ctx, input, source)
-	t.mu.Lock()
-	delete(t.pending, final)
-	t.mu.Unlock()
-	close(call.done)
 	if call.err != nil {
-		return "", call.err
+		return nil, call.err
 	}
-	return final, nil
+	if file := openThumbnail(final); file != nil {
+		return file, nil
+	}
+	// The cache evicted or cleared the thumbnail as it was stored.
+	return nil, ErrThumbnailBusy
+}
+
+// openThumbnail opens a valid cached thumbnail and marks it as recently used,
+// so eviction removes the thumbnails nobody has viewed for longest first.
+func openThumbnail(path string) *os.File {
+	if !validThumbnail(path) {
+		return nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	now := time.Now()
+	_ = os.Chtimes(path, now, now)
+	return file
 }
 
 func (t *Thumbnailer) generate(ctx context.Context, input string, source ThumbnailSource) error {
@@ -153,10 +225,34 @@ func (t *Thumbnailer) generate(ctx context.Context, input string, source Thumbna
 	defer func() { <-t.slots }()
 
 	dir, prefix, final, failed := t.paths(source)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+	content, err := t.render(ctx, input, source)
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
-	temporary := final + ".part"
+	if err == nil {
+		return t.store(ctx, dir, prefix, final, content)
+	}
+	if errors.Is(err, ErrProbeUnavailable) {
+		// Nothing is remembered when ffmpeg is missing; installing it fixes every file.
+		return ErrThumbnailUnavailable
+	}
+	_ = t.store(ctx, dir, prefix, failed, nil)
+	return ErrThumbnailUnavailable
+}
+
+// render runs ffmpeg into a work file and returns the validated JPEG.
+func (t *Thumbnailer) render(ctx context.Context, input string, source ThumbnailSource) ([]byte, error) {
+	if t.workDir != "" {
+		if err := os.MkdirAll(t.workDir, 0o755); err != nil {
+			return nil, err
+		}
+	}
+	work, err := os.CreateTemp(t.workDir, ThumbnailPartialPrefix+"*.jpg")
+	if err != nil {
+		return nil, err
+	}
+	temporary := work.Name()
+	_ = work.Close()
 	defer func() { _ = os.Remove(temporary) }()
 
 	seeks := []float64{0}
@@ -168,27 +264,92 @@ func (t *Thumbnailer) generate(ctx context.Context, input string, source Thumbna
 		// A short video may end before the seek; its first frame is the fallback.
 		seeks = []float64{seek, 0}
 	}
-	var lastErr error
+	lastErr := ErrThumbnailUnavailable
 	for _, seek := range seeks {
-		_ = os.Remove(temporary)
+		_ = os.Truncate(temporary, 0)
 		lastErr = t.run(ctx, thumbnailArgs(input, temporary, source.Kind, seek))
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return nil, ctx.Err()
 		}
 		if lastErr == nil && validThumbnail(temporary) {
-			if err := os.Rename(temporary, final); err != nil {
-				return err
-			}
-			removeStaleThumbnails(dir, prefix, final)
-			return nil
+			return os.ReadFile(temporary)
 		}
 	}
-	if errors.Is(lastErr, ErrProbeUnavailable) {
-		// Nothing is remembered when ffmpeg is missing; installing it fixes every file.
-		return ErrThumbnailUnavailable
+	if lastErr == nil {
+		lastErr = ErrThumbnailUnavailable
 	}
-	_ = os.WriteFile(failed, nil, 0o644)
-	return ErrThumbnailUnavailable
+	return nil, lastErr
+}
+
+// store writes content, or an empty failure marker, as target under the
+// guard and removes the asset's earlier revisions.
+func (t *Thumbnailer) store(ctx context.Context, dir, prefix, target string, content []byte) error {
+	release, err := t.guard(ctx, int64(len(content)))
+	if err != nil {
+		return err
+	}
+	defer release()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	partial, err := os.CreateTemp(dir, ThumbnailPartialPrefix+"*.part")
+	if err != nil {
+		return err
+	}
+	partialPath := partial.Name()
+	defer func() { _ = os.Remove(partialPath) }()
+	_, writeErr := partial.Write(content)
+	if err := errors.Join(writeErr, partial.Close()); err != nil {
+		return err
+	}
+	if err := os.Rename(partialPath, target); err != nil {
+		return err
+	}
+	removeStaleThumbnails(dir, prefix, target)
+	return nil
+}
+
+// Prune removes the cached thumbnails and failure markers of every asset keep
+// rejects and reports how many files it removed.
+func (t *Thumbnailer) Prune(ctx context.Context, keep func(assetID int64) bool) (int, error) {
+	release, err := t.guard(ctx, 0)
+	if err != nil {
+		return 0, err
+	}
+	defer release()
+	buckets, err := os.ReadDir(t.dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, bucket := range buckets {
+		if err := ctx.Err(); err != nil {
+			return removed, err
+		}
+		if !bucket.IsDir() {
+			continue
+		}
+		bucketDir := filepath.Join(t.dir, bucket.Name())
+		entries, err := os.ReadDir(bucketDir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			id, ok := thumbnailAssetID(entry.Name())
+			if !ok || !entry.Type().IsRegular() || keep(id) {
+				continue
+			}
+			if err := os.Remove(filepath.Join(bucketDir, entry.Name())); err == nil {
+				removed++
+			}
+		}
+		// Only an empty bucket is removed.
+		_ = os.Remove(bucketDir)
+	}
+	return removed, nil
 }
 
 func thumbnailArgs(input, output, kind string, seek float64) []string {

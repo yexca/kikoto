@@ -131,7 +131,7 @@ func NewServer(db *sqlutil.DB, cfg config.Config) *Server {
 		llmRequestSlots: make(chan struct{}, 2),
 		asrStore:        asr.NewStore(db),
 		statistics:      storage.NewStatisticsMaintainer(db),
-		db:              db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), recordStore: record.NewStore(db, cfg.RecordRoot, record.WithProber(record.FFprobe)), recordThumbnails: newRecordThumbnailer(cfg.CacheRoot), workflowStore: workflow.NewStore(db), cfg: cfg,
+		db:              db, accountStore: account.NewStore(db), accessPolicy: accesspolicy.NewStore(db), libraryStore: library.NewStore(db), recordStore: record.NewStore(db, cfg.RecordRoot, record.WithProber(record.FFprobe)), workflowStore: workflow.NewStore(db), cfg: cfg,
 		loginThrottle:                  auththrottle.New(),
 		dlsiteEndpoints:                dlsiteEndpoints,
 		metadataCoordinator:            metasync.NewCoordinator(),
@@ -151,6 +151,7 @@ func NewServer(db *sqlutil.DB, cfg config.Config) *Server {
 		appUpdateEndpoints:             defaultAppUpdateEndpoints(),
 		lifetime:                       newServerLifetime(),
 	}
+	server.recordThumbnails = server.newRecordThumbnailer(record.FFmpeg)
 	server.proxyConfig = &proxyConfigStore{load: server.loadProxyConfig}
 	server.metadataTransport = newMetadataTransport(dlsiteEndpoints, func(ctx context.Context) (proxyRoute, error) {
 		return server.resolveProxyRoute(ctx, proxyconfig.ScopeDLsite, 0)

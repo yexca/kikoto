@@ -262,17 +262,25 @@ func TestThumbnailerCachesPerRevisionAndRemembersFailures(t *testing.T) {
 	thumbs := NewThumbnailer(dir, fakeFFmpeg(&calls, tinyJPEG, nil), 1)
 	source := ThumbnailSource{AssetID: 300, Kind: "video", SizeBytes: 5, MtimeNs: 1, DurationSeconds: 60}
 	ctx := context.Background()
-	first, err := thumbs.Thumbnail(ctx, input, source)
-	if err != nil || ValidateImageFile(first, "image/jpeg") != nil {
+	thumbnail := func(source ThumbnailSource) (string, error) {
+		file, err := thumbs.Thumbnail(ctx, input, source)
+		if err != nil {
+			return "", err
+		}
+		_ = file.Close()
+		return file.Name(), nil
+	}
+	first, err := thumbnail(source)
+	if err != nil || ValidateImageFile(first, "image/jpeg") != nil || !strings.HasPrefix(first, dir) {
 		t.Fatalf("first thumbnail = %q, %v", first, err)
 	}
-	if again, err := thumbs.Thumbnail(ctx, input, source); err != nil || again != first || calls.Load() != 1 {
+	if again, err := thumbnail(source); err != nil || again != first || calls.Load() != 1 {
 		t.Fatalf("cached thumbnail = %q, %v, calls %d", again, err, calls.Load())
 	}
 
 	changed := source
 	changed.MtimeNs = 2
-	second, err := thumbs.Thumbnail(ctx, input, changed)
+	second, err := thumbnail(changed)
 	if err != nil || second == first || calls.Load() != 2 {
 		t.Fatalf("changed revision = %q, %v, calls %d", second, err, calls.Load())
 	}
@@ -308,9 +316,11 @@ func TestThumbnailerFallsBackToFirstFrameAndRejectsOtherKinds(t *testing.T) {
 		return false
 	}
 	thumbs := NewThumbnailer(t.TempDir(), fakeFFmpeg(&calls, tinyJPEG, seekFails), 1)
-	if _, err := thumbs.Thumbnail(context.Background(), input, ThumbnailSource{AssetID: 1, Kind: "video", SizeBytes: 5, MtimeNs: 1}); err != nil || calls.Load() != 2 {
+	file, err := thumbs.Thumbnail(context.Background(), input, ThumbnailSource{AssetID: 1, Kind: "video", SizeBytes: 5, MtimeNs: 1})
+	if err != nil || calls.Load() != 2 {
 		t.Fatalf("fallback err = %v, calls %d", err, calls.Load())
 	}
+	_ = file.Close()
 	if _, err := thumbs.Thumbnail(context.Background(), input, ThumbnailSource{AssetID: 2, Kind: "subtitle"}); !errors.Is(err, ErrThumbnailUnavailable) {
 		t.Fatalf("subtitle thumbnail err = %v", err)
 	}

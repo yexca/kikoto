@@ -23,13 +23,49 @@ const (
 	recordThumbnailImmutableControl = "private, max-age=31536000, immutable"
 )
 
-// newRecordThumbnailer caches record thumbnails under the disposable cache
-// root; without one, thumbnails are unavailable.
-func newRecordThumbnailer(cacheRoot string) *record.Thumbnailer {
-	if strings.TrimSpace(cacheRoot) == "" {
+// newRecordThumbnailer caches record thumbnails in the transcode cache, so
+// they share its quota, least-recently-used eviction, overview, and clear
+// action; without a cache root, thumbnails are unavailable. ffmpeg writes
+// into the temporary directory and only finished thumbnails enter the cache.
+func (s *Server) newRecordThumbnailer(run record.FFmpegFunc) *record.Thumbnailer {
+	if strings.TrimSpace(s.cfg.CacheRoot) == "" {
 		return nil
 	}
-	return record.NewThumbnailer(filepath.Join(cacheRoot, recordThumbnailCacheDir), record.FFmpeg, recordThumbnailConcurrency)
+	dir := filepath.Join(s.cfg.CacheRoot, transcodeCacheRootRelative, recordThumbnailCacheDir)
+	return record.NewThumbnailer(dir, run, recordThumbnailConcurrency,
+		record.WithThumbnailWorkDir(s.cfg.TempDir), record.WithThumbnailGuard(s.guardRecordThumbnailWrite))
+}
+
+// guardRecordThumbnailWrite holds the transcode cache open and reserves bytes
+// under its quota, evicting the least recently used cache files first, while a
+// thumbnail is stored or pruned.
+func (s *Server) guardRecordThumbnailWrite(ctx context.Context, bytes int64) (func(), error) {
+	s.transcodeCacheActivityMu.RLock()
+	releaseReservation, err := s.reserveTranscodeCache(ctx, bytes)
+	if err != nil {
+		s.transcodeCacheActivityMu.RUnlock()
+		return nil, err
+	}
+	return func() {
+		releaseReservation()
+		s.transcodeCacheActivityMu.RUnlock()
+	}, nil
+}
+
+// pruneRecordThumbnails removes the cached thumbnails of record assets that
+// are no longer available videos or images.
+func (s *Server) pruneRecordThumbnails(ctx context.Context) (int, error) {
+	if s.recordThumbnails == nil {
+		return 0, nil
+	}
+	keep, err := s.recordStore.ThumbnailAssetIDs(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return s.recordThumbnails.Prune(ctx, func(assetID int64) bool {
+		_, ok := keep[assetID]
+		return ok
+	})
 }
 
 func recordThumbnailSource(a record.Asset) record.ThumbnailSource {
@@ -98,18 +134,15 @@ func (s *Server) serveRecordThumbnail(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), recordThumbnailRequestTimeout)
 	defer cancel()
 	source := recordThumbnailSource(asset)
-	thumbnail, err := s.recordThumbnails.Thumbnail(ctx, path, source)
+	file, err := s.recordThumbnails.Thumbnail(ctx, path, source)
 	switch {
-	case errors.Is(err, record.ErrThumbnailBusy), errors.Is(err, context.DeadlineExceeded):
-		writeAPIError(w, http.StatusServiceUnavailable, "record_thumbnail_busy", "The record thumbnail is not ready yet.", true)
+	case errors.Is(err, record.ErrThumbnailUnavailable):
+		writeAPIError(w, http.StatusNotFound, "record_thumbnail_unavailable", "The record thumbnail is unavailable.", false)
 		return
 	case err != nil:
-		writeAPIError(w, http.StatusNotFound, "record_thumbnail_unavailable", "The record thumbnail is unavailable.", false)
-		return
-	}
-	file, err := os.Open(thumbnail)
-	if err != nil {
-		writeAPIError(w, http.StatusNotFound, "record_thumbnail_unavailable", "The record thumbnail is unavailable.", false)
+		// Busy generation, a timeout, and a cache that cannot make room are
+		// all worth retrying.
+		writeAPIError(w, http.StatusServiceUnavailable, "record_thumbnail_busy", "The record thumbnail is not ready yet.", true)
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -120,12 +153,15 @@ func (s *Server) serveRecordThumbnail(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// Reading a thumbnail updates its modification time for eviction, so the
+	// revision, not that time, validates a cached copy.
+	w.Header().Set("ETag", strconv.Quote(source.Revision()))
 	if r.URL.Query().Get("v") == source.Revision() {
 		w.Header().Set("Cache-Control", recordThumbnailImmutableControl)
 	} else {
 		w.Header().Set("Cache-Control", "private, no-cache")
 	}
-	http.ServeContent(w, r, "thumbnail.jpg", info.ModTime(), file)
+	http.ServeContent(w, r, "thumbnail.jpg", time.Time{}, file)
 }
 
 // serveRecordSubtitle serves a WebVTT or SubRip sidecar as WebVTT.

@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/yexca/kikoto/backend/internal/record"
 )
 
 const (
@@ -99,12 +101,12 @@ func (s *Server) scanTranscodeCacheUnlocked(ctx context.Context) (transcodeCache
 		if entry.IsDir() || !info.Mode().IsRegular() {
 			return nil
 		}
-		isComplete := slices.ContainsFunc([]string{".ts", ".m4s", ".mp4", ".mp3", ".vtt", ".json"}, func(extension string) bool {
+		isComplete := slices.ContainsFunc([]string{".ts", ".m4s", ".mp4", ".mp3", ".vtt", ".json", ".jpg"}, func(extension string) bool {
 			return strings.EqualFold(filepath.Ext(entry.Name()), extension)
 		})
 		isPartial := ((strings.HasPrefix(entry.Name(), ".hls-segment-") || strings.HasPrefix(entry.Name(), ".audio-transcode-") ||
 			strings.HasPrefix(entry.Name(), videoSubtitlePartialPrefix) || strings.HasPrefix(entry.Name(), videoKeyframeIndexPartialPrefix) ||
-			strings.HasPrefix(entry.Name(), hlsInitSectionPartialPrefix)) &&
+			strings.HasPrefix(entry.Name(), hlsInitSectionPartialPrefix) || strings.HasPrefix(entry.Name(), record.ThumbnailPartialPrefix)) &&
 			strings.EqualFold(filepath.Ext(entry.Name()), ".part")) ||
 			// An HLS session playlist or unfinished segment.
 			isHLSSessionPartial(entry.Name())

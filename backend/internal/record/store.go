@@ -104,6 +104,9 @@ type ScanResult struct {
 	MissingMarked bool   `json:"missingMarked"`
 	// Probe reports the media probe that follows the walk.
 	Probe *ProbeResult `json:"probe,omitempty"`
+	// ThumbnailsRemoved counts the cached thumbnails removed after a complete
+	// scan because their assets are no longer available videos or images.
+	ThumbnailsRemoved int `json:"thumbnailsRemoved,omitempty"`
 }
 
 type Progress struct {
@@ -688,6 +691,25 @@ func ServeContent(w http.ResponseWriter, r *http.Request, path string, modTime t
 	}
 	http.ServeContent(w, r, filepath.Base(path), modTime, f)
 	return nil
+}
+
+// ThumbnailAssetIDs returns the available videos and images, the assets that
+// may keep cached thumbnails.
+func (s *Store) ThumbnailAssetIDs(ctx context.Context) (map[int64]struct{}, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM record_asset WHERE root_id=1 AND availability='available' AND kind IN ('video','image')`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	ids := map[int64]struct{}{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids[id] = struct{}{}
+	}
+	return ids, rows.Err()
 }
 
 // ValidateImageFile accepts the passive raster formats that the record API

@@ -9,16 +9,21 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/yexca/kikoto/backend/internal/config"
 	"github.com/yexca/kikoto/backend/internal/record"
 )
 
 type recordTestServer struct {
-	handler http.Handler
-	cookie  *http.Cookie
-	ids     map[string]int64
+	server      *Server
+	root        string
+	handler     http.Handler
+	cookie      *http.Cookie
+	ids         map[string]int64
+	ffmpegCalls *atomic.Int32
 }
 
 func newRecordTestServer(t *testing.T) recordTestServer {
@@ -26,6 +31,7 @@ func newRecordTestServer(t *testing.T) recordTestServer {
 	root := t.TempDir()
 	files := map[string]string{
 		"trip/Day 1.mp4": "video",
+		"trip/Day 2.mp4": "video",
 		"trip/Day 1.srt": "1\n00:00:01,000 --> 00:00:02,000\nHello\n",
 		"trip/notes.ass": "[Script Info]",
 	}
@@ -42,9 +48,11 @@ func newRecordTestServer(t *testing.T) recordTestServer {
 	server := NewServer(db, config.Config{Mode: config.ModeProduction, RootUsername: "root", RecordRoot: root, CacheRoot: t.TempDir()})
 	// The fixture files are not real media, so the scan here does not probe them.
 	server.recordStore = record.NewStore(db, root)
-	server.recordThumbnails = record.NewThumbnailer(t.TempDir(), func(_ context.Context, args []string) error {
+	ffmpegCalls := &atomic.Int32{}
+	server.recordThumbnails = server.newRecordThumbnailer(func(_ context.Context, args []string) error {
+		ffmpegCalls.Add(1)
 		return os.WriteFile(strings.TrimPrefix(args[len(args)-1], "file:"), []byte{0xff, 0xd8, 0xff, 0xd9}, 0o644)
-	}, 1)
+	})
 	if _, err := server.recordStore.InitializeRoot(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +75,10 @@ func newRecordTestServer(t *testing.T) recordTestServer {
 		}
 		ids[name] = id
 	}
-	return recordTestServer{handler: handler, cookie: loginTestSession(t, handler, "root", "synthetic-password"), ids: ids}
+	return recordTestServer{
+		server: server, root: root, handler: handler, cookie: loginTestSession(t, handler, "root", "synthetic-password"),
+		ids: ids, ffmpegCalls: ffmpegCalls,
+	}
 }
 
 func (s recordTestServer) get(path string, authenticated bool) *httptest.ResponseRecorder {
@@ -156,5 +167,87 @@ func TestRecordTreeLinksThumbnailsAndSubtitles(t *testing.T) {
 	}
 	if notMedia := server.get("/api/records/assets/"+strconv.FormatInt(server.ids["Day 1.srt"], 10)+"/thumbnail", true); notMedia.Code != http.StatusNotFound {
 		t.Fatalf("subtitle thumbnail = %d", notMedia.Code)
+	}
+}
+
+// thumbnailPath returns the cached thumbnail of a fixture asset, or "" when
+// none is cached.
+func (s recordTestServer) thumbnailPath(t *testing.T, name string) string {
+	t.Helper()
+	pattern := filepath.Join(s.server.cfg.CacheRoot, transcodeCacheRootRelative, recordThumbnailCacheDir, "*",
+		"a"+strconv.FormatInt(s.ids[name], 10)+"-*.jpg")
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) > 1 {
+		t.Fatalf("thumbnails of %s = %v, %v", name, matches, err)
+	}
+	if len(matches) == 0 {
+		return ""
+	}
+	return matches[0]
+}
+
+func (s recordTestServer) getThumbnail(t *testing.T, name string) {
+	t.Helper()
+	path := "/api/records/assets/" + strconv.FormatInt(s.ids[name], 10) + "/thumbnail"
+	if response := s.get(path, true); response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("%s thumbnail = %d %s", name, response.Code, response.Body.String())
+	}
+}
+
+func TestRecordThumbnailsAreEvictedLeastRecentlyUsedUnderTheTranscodeQuota(t *testing.T) {
+	server := newRecordTestServer(t)
+	ctx := context.Background()
+	server.getThumbnail(t, "Day 1.mp4")
+	server.getThumbnail(t, "Day 2.mp4")
+	first, second := server.thumbnailPath(t, "Day 1.mp4"), server.thumbnailPath(t, "Day 2.mp4")
+	if first == "" || second == "" {
+		t.Fatalf("thumbnails = %q, %q", first, second)
+	}
+	overview, err := server.server.scanTranscodeCache(ctx)
+	if err != nil || overview.Files != 2 {
+		t.Fatalf("transcode cache overview = %+v, %v", overview, err)
+	}
+	// The first thumbnail is older, but viewing it again makes the second the
+	// least recently used.
+	now := time.Now()
+	for path, age := range map[string]time.Duration{first: 2 * time.Hour, second: time.Hour} {
+		if err := os.Chtimes(path, now.Add(-age), now.Add(-age)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server.getThumbnail(t, "Day 1.mp4")
+	info, err := os.Stat(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reserving all but one thumbnail of the quota evicts the other.
+	if _, err := server.server.enforceTranscodeCacheLimit(ctx, server.server.transcodeCacheLimitBytes(ctx)-info.Size()); err != nil {
+		t.Fatal(err)
+	}
+	if server.thumbnailPath(t, "Day 1.mp4") != first || server.thumbnailPath(t, "Day 2.mp4") != "" {
+		t.Fatalf("after eviction = %q, %q", server.thumbnailPath(t, "Day 1.mp4"), server.thumbnailPath(t, "Day 2.mp4"))
+	}
+
+	calls := server.ffmpegCalls.Load()
+	server.getThumbnail(t, "Day 2.mp4")
+	if server.thumbnailPath(t, "Day 2.mp4") == "" || server.ffmpegCalls.Load() != calls+1 {
+		t.Fatalf("evicted thumbnail was not made again: calls %d -> %d", calls, server.ffmpegCalls.Load())
+	}
+}
+
+func TestRecordCompleteScanRemovesThumbnailsOfMissingAssets(t *testing.T) {
+	server := newRecordTestServer(t)
+	server.getThumbnail(t, "Day 1.mp4")
+	server.getThumbnail(t, "Day 2.mp4")
+	if err := os.Remove(filepath.Join(server.root, "trip", "Day 2.mp4")); err != nil {
+		t.Fatal(err)
+	}
+	result, err := server.server.runRecordScan(context.Background())
+	if err != nil || !result.MissingMarked || result.ThumbnailsRemoved != 1 {
+		t.Fatalf("scan = %+v, %v", result, err)
+	}
+	if server.thumbnailPath(t, "Day 1.mp4") == "" || server.thumbnailPath(t, "Day 2.mp4") != "" {
+		t.Fatalf("after scan = %q, %q", server.thumbnailPath(t, "Day 1.mp4"), server.thumbnailPath(t, "Day 2.mp4"))
 	}
 }

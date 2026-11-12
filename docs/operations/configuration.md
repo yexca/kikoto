@@ -45,6 +45,8 @@ system temporary directory:
 - The working files SQLite writes while it compacts the database, builds an
   index, or sorts more than its page cache holds. Compaction needs free space
   on the cache volume of about the database size.
+- A Record thumbnail while `ffmpeg` makes it, at most 2 MiB each. Only a
+  finished thumbnail enters the transcode cache.
 
 Startup empties `.kikoto-tmp`, so a file left by an interrupted run does not
 outlive the next start. When the cache root cannot hold the directory, startup
@@ -61,6 +63,9 @@ Administrators manage the instance from the administration tabs in Settings:
   which is only the default.
 - **Cache & Fetch**: playback and transcode cache limits, the remote per-file
   download limit, failed Fetch staging retention, and remote download pacing.
+  The transcode cache limit also bounds Record thumbnails, which live in
+  `transcodes/record-thumbs/` and are evicted with the other transcode cache
+  files, least recently used first.
 - **Proxy**: outbound proxies and their scopes.
 - **ASR & LLM**: ASR services, LLM providers, the content safety policy, and the AI lyrics attribution
   that governs both.
