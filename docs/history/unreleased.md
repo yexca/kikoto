@@ -49,9 +49,11 @@
   existing links to those Settings tabs open it.
 - Personal tags are a page of their own, **Tags** (`/tags`), instead of a
   Settings tab.
-- About and **Language** open from the menu behind your avatar, which marks
-  the page you are on. On a wide screen the menu also holds Discover, Insights,
-  and Tags as shortcuts under your profile, repeating their sidebar entries.
+- **About** closes the sidebar below a divider. **Language** opens from the
+  menu behind your avatar, which marks the page you are on. On a wide screen
+  the menu also holds Discover, Insights, and Tags as shortcuts under your
+  profile, repeating their sidebar entries; without the sidebar it lists the
+  pages the bottom navigation does not carry, About included.
 - The page header shows only the page title. Its tray keeps Quick actions,
   Notifications, and Appearance, and the avatar no longer shows your role
   beside it.
@@ -70,10 +72,9 @@
   without a card around them. Sources, proxies, users, and other repeated
   items keep their rows.
 - Pages use one of two widths. Library, Favorites, Record, Circles, Voice
-  Actors, Discover, Activity, Metadata, and Translation use the full width;
-  Settings, System, Tags, Workflows, and Insights share one centered column,
-  with their tab rows spanning that column, instead of each picking its own
-  width and alignment.
+  Actors, and Discover use the full width; the Personal and Manage pages and
+  About share one centered column, with their tab rows spanning that column,
+  instead of each picking its own width and alignment.
 
 </details>
 

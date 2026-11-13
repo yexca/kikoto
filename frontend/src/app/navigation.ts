@@ -31,15 +31,14 @@ type NavItem = {
   permission?: string;
   /**
    * Where the shell offers the destination: `browse` pages are the sidebar's
-   * listening destinations, and `personal` and `manage` pages sit in its
-   * collapsible groups. A page without a group is reached from the account
-   * panel on every layout.
+   * listening destinations, `personal` and `manage` pages sit in its
+   * collapsible groups, and `app` pages close the sidebar after a divider.
    */
-  group: NavigationGroup | undefined;
+  group: NavigationGroup;
 };
 
-export type NavigationGroup = "browse" | "personal" | "manage";
-export type CollapsibleNavigationGroup = Exclude<NavigationGroup, "browse">;
+export type NavigationGroup = "browse" | "personal" | "manage" | "app";
+export type CollapsibleNavigationGroup = Exclude<NavigationGroup, "browse" | "app">;
 
 /**
  * The sidebar's collapsible groups, in the order it shows them. A layout
@@ -210,7 +209,7 @@ export const navItems = [
     icon: Info,
     audience: "public",
     permission: undefined,
-    group: undefined,
+    group: "app",
   },
 ] as const satisfies readonly NavItem[];
 

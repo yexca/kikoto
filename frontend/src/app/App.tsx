@@ -319,19 +319,16 @@ function AuthenticatedApp() {
     const additions = visibleNavItems.filter((item) => !preferred.some((candidate) => candidate.id === item.id));
     return [...preferred, ...additions].slice(0, 4);
   }, [visibleNavItems]);
-  // The account panel lists what the layout offers nowhere else: a page
-  // without a sidebar group wherever the bottom navigation does not carry it,
-  // and below the sidebar breakpoint the sidebar's pages that the bottom
-  // navigation does not carry. Where the sidebar is shown, the panel also
-  // repeats the shortcut destinations as tiles.
+  // The account panel lists, below the sidebar breakpoint, the sidebar's pages
+  // that the bottom navigation does not carry. Where the sidebar is shown, the
+  // panel also repeats the shortcut destinations as tiles.
   const accountDestinations = useMemo<AccountDestination[]>(() => {
     const inBottomNavigation = (id: PageID) => mobileNavItems.some((item) => item.id === id);
     return visibleNavItems.flatMap<AccountDestination>((item) => {
       if ((accountShortcutIds as readonly string[]).includes(item.id)) {
         return [{ item, placement: inBottomNavigation(item.id) ? "wide" : "always" }];
       }
-      if (item.group) return inBottomNavigation(item.id) ? [] : [{ item, placement: "compact" }];
-      return [{ item, placement: inBottomNavigation(item.id) ? "wide" : "always" }];
+      return inBottomNavigation(item.id) ? [] : [{ item, placement: "compact" }];
     });
   }, [mobileNavItems, visibleNavItems]);
   const showMobilePageTitle = !["library", "favorites", "circles", "voice-actors"].includes(page);

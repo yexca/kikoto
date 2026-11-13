@@ -31,11 +31,12 @@ describe("navigation access and labels", () => {
     expect(canAccessPage("activity", "authenticated", (permission) => permission !== "workflows:run")).toBe(false);
   });
 
-  it("offers every destination in a sidebar group or, without one, in the account panel", () => {
-    const groups = new Set<string | undefined>(["browse", ...navigationGroups.map((group) => group.id)]);
-    expect(navItems.filter((item) => !groups.has(item.group)).map((item) => item.id)).toEqual(["about"]);
+  it("places Insights, Tags, and Settings in Personal and closes the sidebar with About", () => {
+    const groups = new Set<string>(["browse", "app", ...navigationGroups.map((group) => group.id)]);
+    expect(navItems.every((item) => groups.has(item.group))).toBe(true);
     const grouped = (group: string) => navItems.filter((item) => item.group === group).map((item) => item.id);
     expect(grouped("personal")).toEqual(["insights", "tags", "settings"]);
+    expect(grouped("app")).toEqual(["about"]);
   });
 
   it("shows System by role, whatever the permissions, and Tags to library readers", () => {

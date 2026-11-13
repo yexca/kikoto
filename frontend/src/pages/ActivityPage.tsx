@@ -6,6 +6,7 @@ import { usePageHeaderBack } from "@/app/pageHeader";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
+import { contentPageClassName } from "@/components/ui/page-width";
 import { RunDetail } from "@/features/workflows/RunDetail";
 import { useActivityLocation } from "@/features/workflows/useActivityLocation";
 import { WorkflowActivity } from "@/features/workflows/WorkflowActivity";
@@ -15,6 +16,7 @@ import { discoverManagedWorkflows } from "@/features/workflows/workflowTriggerMo
 import { useMobileNavigationLayout } from "@/hooks/useMobileNavigationLayout";
 import { useWorkflowRunWatcher } from "@/hooks/useWorkflowRunWatcher";
 import { api, type WorkflowDefinition } from "@/lib/api";
+import { cn } from "@/lib/tailwindClassNames";
 
 /**
  * Activity is the run log of every workflow: what is running, what needs
@@ -68,7 +70,7 @@ export function ActivityPage({ canSyncMetadata, readOnly = false }: { canSyncMet
   const managed = discoverManagedWorkflows[location.workflowCode];
 
   return (
-    <div className="space-y-4">
+    <div className={cn(contentPageClassName, "space-y-4")}>
       {readOnly && <DemoReadOnlyNotice />}
       <WorkflowActivity
         view={location.view}

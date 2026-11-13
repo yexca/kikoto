@@ -2260,19 +2260,11 @@ test("@desktop sidebar keeps listening destinations in view and folds the rest i
   const manage = sidebar.getByRole("button", { name: "Manage", exact: true });
   await expect(personal).toHaveAttribute("aria-expanded", "false");
   await expect(manage).toHaveAttribute("aria-expanded", "false");
-  for (const name of [
-    "Workflows",
-    "Activity",
-    "Metadata",
-    "Translation",
-    "System",
-    "Settings",
-    "Insights",
-    "Tags",
-    "About",
-  ]) {
+  for (const name of ["Workflows", "Activity", "Metadata", "Translation", "System", "Settings", "Insights", "Tags"]) {
     await expect(sidebar.getByRole("button", { name, exact: true })).toHaveCount(0);
   }
+  // About closes the sidebar's list outside the groups.
+  await expect(sidebar.getByRole("button").last()).toHaveAccessibleName("About");
   await expect(page.locator("header").getByRole("button", { name: "Open appearance settings" })).toBeVisible();
 
   // Each group remembers its own expanded state on this device.
@@ -2316,7 +2308,7 @@ test("@desktop sidebar keeps listening destinations in view and folds the rest i
     "Insights",
     "Tags",
   ]);
-  for (const name of ["Record", "Library", "Settings", "Users"]) {
+  for (const name of ["Record", "Library", "Settings", "Users", "About"]) {
     await expect(account.getByRole("button", { name, exact: true })).toHaveCount(0);
   }
   await expect(account.getByRole("button", { name: /^(Manage|Appearance)/ })).toHaveCount(0);
@@ -2325,11 +2317,10 @@ test("@desktop sidebar keeps listening destinations in view and folds the rest i
   await page.getByRole("button", { name: "User menu" }).click();
   await expect(account.getByRole("button", { name: "Insights", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(account.getByRole("button", { name: "Tags", exact: true })).not.toHaveAttribute("aria-current", "page");
-  await account.getByRole("button", { name: "About", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "About", exact: true, level: 1 })).toBeVisible();
-  await page.getByRole("button", { name: "User menu" }).click();
-  await expect(account.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-current", "page");
   await page.keyboard.press("Escape");
+  await sidebar.getByRole("button", { name: "About", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "About", exact: true, level: 1 })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-current", "page");
   await page.goto("/workflows");
 
   // The icon rail keeps the same structure.

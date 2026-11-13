@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { AnchoredPopover } from "@/components/ui/anchored-popover";
 import { Button } from "@/components/ui/button";
+import { contentPageClassName } from "@/components/ui/page-width";
 import { SubNavTabs, type SubNavItem } from "@/components/ui/sub-nav";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import type { MaintenanceToolbarSlots } from "@/features/maintenance/MaintenanceControls";
@@ -17,6 +18,7 @@ import { WorkMetadataEditorModal } from "@/features/work-detail/metadata";
 import { api, type MaintenanceCounts, type WorkDetail } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
 import { metadataIssueRunFromLocation } from "@/lib/metadataMaintenance";
+import { cn } from "@/lib/tailwindClassNames";
 
 type MetadataView = "works" | "aliases" | "tags" | "circles";
 // DLsite works holds every catalog `reason` behind its own filter; custom works keep theirs.
@@ -283,7 +285,7 @@ export function WorkManagementPage({
   };
 
   return (
-    <div className="min-w-0 space-y-3">
+    <div className={cn(contentPageClassName, "min-w-0 space-y-3")}>
       {readOnly && <DemoReadOnlyNotice />}
       <div className="flex min-w-0 flex-col gap-3">
         <SubNavTabs

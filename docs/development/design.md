@@ -269,9 +269,8 @@ section by whitespace and from its own fields by hairlines; it has no card or
 border, and a field has no framed container around it. A repeated object such
 as a source, a proxy, a folder rule, or a user may be a card or a table row.
 Settings tabs should share the [content column](#app-shell), section spacing,
-field rhythm, and destructive-action placement. No form or section defines its
-own width; a wide diagnostic table belongs on a full-width page such as
-Activity or Metadata.
+field rhythm, and destructive-action placement. No form, table, or section
+defines its own width.
 
 A page of operations lists them in sections like settings sections, one row
 each. At rest a row holds only what answers "what is this, how is it, and can
@@ -323,14 +322,15 @@ destinations and no administration controls:
   administration pages (Workflows, Activity, Metadata, Translation, System) in a
   collapsible Manage group. Both groups behave alike: closed by default, the
   choice remembered on the device, open while one of their pages is current,
-  and absent for an account that can open none of their pages.
+  and absent for an account that can open none of their pages. About closes
+  the list, below a divider.
 - Settings holds only the signed-in account's settings. Instance settings are
   the System page, shown to administrators and, read-only, to Demo.
-- The account panel behind the avatar holds the languages, About, and
+- The account panel behind the avatar holds the languages and
   authentication. Where the sidebar is shown, it also holds Discover, Insights,
   and Tags as shortcut tiles that repeat the sidebar's entries. A layout
-  without the sidebar lists the sidebar's pages there instead, with the Manage
-  pages behind one entry, and no tile.
+  without the sidebar lists the sidebar's pages there instead, About included,
+  with the Manage pages behind one entry, and no tile.
 - The header shows the page title without a description. Its tray holds Quick
   actions, Notifications, and Appearance, and the avatar carries no role text.
 - A phone header holds at most three actions: Notifications, Appearance, and
@@ -341,11 +341,11 @@ destinations and no administration controls:
 
 A page takes one of two widths, chosen by what it holds:
 
-- Collection grids and data tables (Library, Favorites, Records, Circles,
-  Voice Actors, Discover, Activity, Metadata, and Translation) fill the page.
-- A page that is read or filled in rather than browsed (Settings, System,
-  Tags, Workflows, and Insights) is one shared content column, centered in
-  the page. Its tab row and section hairlines span the column, not the page.
+- The browse destinations (Library, Favorites, Record, Circles, Voice Actors,
+  and Discover) are collection grids and fill the page.
+- Every other page, the Personal and Manage pages and About, is one shared
+  content column, centered in the page. Its tab row and section hairlines span
+  the column, not the page.
 
 A new page takes one of these widths rather than defining its own.
 

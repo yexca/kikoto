@@ -247,9 +247,10 @@ test("@desktop personal pages sit in the sidebar's Personal group", async ({ pag
   }
   // A listener has no Manage group, and the account panel repeats only the Insights and Tags shortcuts.
   await expect(sidebar.getByRole("button", { name: "Manage", exact: true })).toHaveCount(0);
+  await expect(sidebar.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-current", "page");
   await page.getByRole("button", { name: "User menu" }).click();
   const account = page.getByRole("dialog", { name: "Account" });
-  await expect(account.getByRole("button", { name: "About", exact: true })).toBeVisible();
+  await expect(account.getByRole("button", { name: "About", exact: true })).toHaveCount(0);
   for (const name of ["Insights", "Tags"]) {
     await expect(account.getByRole("button", { name, exact: true })).toBeVisible();
   }

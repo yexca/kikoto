@@ -45,11 +45,10 @@ type AccountView = "main" | "language" | CollapsibleNavigationGroup;
 
 /**
  * The account surface behind the header avatar, or behind Sign in for anonymous
- * visitors: profile, the destinations the current layout offers nowhere else,
- * the Language view, and authentication. Where the sidebar is shown, Discover,
- * Insights, and Tags are also shortcut tiles under the profile. A layout without
- * the sidebar lists the sidebar's pages here, with the Manage group behind one
- * entry. On phones the panel also opens Quick actions, and in the native shell
+ * visitors: profile, the Language view, and authentication. Where the sidebar
+ * is shown, Discover, Insights, and Tags are also shortcut tiles under the
+ * profile. A layout without the sidebar lists the sidebar's pages that the
+ * bottom navigation does not carry, with the Manage group behind one entry. On phones the panel also opens Quick actions, and in the native shell
  * it holds the server connection.
  */
 export function AccountPanel({
@@ -105,7 +104,6 @@ export function AccountPanel({
   });
   const groupDestinations = (group: NavigationItem["group"]) =>
     destinations.filter((destination) => destination.item.group === group);
-
   if (view === "language") {
     return (
       <NestedView title={t("account.language")} onBack={back("language")}>
@@ -165,7 +163,8 @@ export function AccountPanel({
         </div>
       )}
 
-      <MenuSection>
+      {/* Where the sidebar is shown it offers every page, so this list serves only the layouts without it. */}
+      <MenuSection className="lg:hidden">
         {onOpenQuickActions && (
           <ActionItem
             icon={<Zap className="h-4 w-4" />}
@@ -195,10 +194,10 @@ export function AccountPanel({
             />
           );
         })}
-        {groupDestinations(undefined).map(destinationItem)}
+        {groupDestinations("app").map(destinationItem)}
       </MenuSection>
 
-      <MenuSection className="border-t">
+      <MenuSection className="border-t lg:border-t-0">
         <ActionItem
           icon={<Languages className="h-4 w-4" />}
           label={t("account.language")}

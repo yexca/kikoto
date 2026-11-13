@@ -2,13 +2,13 @@
 
 The shell separates listening from managing. Each navigation destination
 declares a group in `app/navigation`: `browse` pages are listening
-destinations, `personal` pages belong to the signed-in account, and `manage`
-pages are administration. A page without a group, such as About, is an account
-panel destination. The desktop sidebar (`app/AppSidebar`) lists the browse
-destinations and, below a hairline, the collapsible groups that
-`navigationGroups` declares: **Personal**, holding Insights, Tags, and
-Settings, and **Manage**, holding Workflows, Activity, Metadata,
-Translation, and System. The sidebar renders a group from its declaration and the pages that
+destinations, `personal` pages belong to the signed-in account, `manage`
+pages are administration, and `app` pages (About) describe Kikoto itself. The
+desktop sidebar (`app/AppSidebar`) lists the browse destinations; below a
+hairline, the collapsible groups that `navigationGroups` declares:
+**Personal**, holding Insights, Tags, and Settings, and **Manage**, holding
+Workflows, Activity, Metadata, Translation, and System; and below another
+hairline the `app` pages. The sidebar renders a group from its declaration and the pages that
 name it, so a new page joins a group by declaring it. Each group is collapsed
 by default, remembers its expanded state in browser storage, and opens while
 one of its pages is current; collapsed, it still marks the current page. An
@@ -32,15 +32,14 @@ The account panel (`app/header/AccountPanel`) opens from the avatar, or from
 Sign in for anonymous visitors, on every screen size. Where the sidebar is
 shown, three shortcut tiles under the profile open Discover, Insights, and
 Tags (`accountShortcutIds` in `app/navigation`); the sidebar keeps these
-pages in their own groups, so the tiles repeat them. Below the profile, one
-list holds the destinations the layout shows nowhere else. Where the sidebar
-is shown, that is About. Below the sidebar breakpoint it is, in order: Quick
-actions on phones; the browse pages the bottom navigation does not carry, such
-as Discover and Record; the Personal pages; one **Manage** entry that opens
-the Manage pages as a view of the panel and names the current page while it is
-one of them; and About. The tiles do not appear below the breakpoint, so no
-destination is listed twice. A page the bottom navigation carries appears in
-the list only where the sidebar is shown. While a listed page or a tile is
+pages in their own groups, so the tiles repeat them. The sidebar itself offers
+every page, About last below a divider, so the panel lists pages only below
+the sidebar breakpoint. There one list under the profile holds, in order:
+Quick actions on phones; the browse pages the bottom navigation does not
+carry, such as Discover and Record; the Personal pages; one **Manage** entry
+that opens the Manage pages as a view of the panel and names the current page
+while it is one of them; and About. The tiles do not appear below the
+breakpoint, so no destination is listed twice. While a listed page or a tile is
 current, its entry and the account trigger carry the selected state. **Language** opens a
 view of its own inside the panel and shows its current value on the entry.
 Sign-in or sign-out
@@ -533,8 +532,9 @@ so a still-loading element never replaces it.
   keeps the open tab of both pages in the `tab` query parameter and scrolls
   to a section a link names.
 - Both settings pages, tabs included, are the content column of
-  `components/ui/page-width` (`contentPageClassName`), which Tags, Workflows,
-  and Insights share; the page sets it, never a feature inside the page. A
+  `components/ui/page-width` (`contentPageClassName`), which every page but
+  the browse destinations shares; the page sets it, never a feature inside the
+  page. A
   `SettingsSection` is a plain
   heading over a hairline followed by
   its fields as rows divided by hairlines. It has no card or border of its own

@@ -36,8 +36,8 @@ function storeGroupExpanded(group: CollapsibleNavigationGroup, expanded: boolean
 /**
  * The desktop sidebar. Listening destinations stay in view; personal and
  * administration pages sit in groups that are collapsed until the user opens
- * them, and open on their own while one of their pages is current. A page
- * without a group lives in the account panel instead.
+ * them, and open on their own while one of their pages is current. About
+ * closes the list after a divider.
  */
 export function AppSidebar({
   items,
@@ -57,6 +57,7 @@ export function AppSidebar({
 }) {
   const { t } = useTranslation();
   const browseItems = items.filter((item) => item.group === "browse");
+  const appItems = items.filter((item) => item.group === "app");
   const groups = navigationGroups
     .map((group) => ({ group, items: items.filter((item) => item.group === group.id) }))
     .filter((entry) => entry.items.length > 0);
@@ -131,6 +132,8 @@ export function AppSidebar({
             {groupItems.map(renderItem)}
           </SidebarGroup>
         ))}
+        {appItems.length > 0 && <div aria-hidden="true" className={cx("my-2 border-t", collapsed ? "mx-2" : "mx-3")} />}
+        {appItems.map(renderItem)}
       </nav>
       <div className={cx("border-t", collapsed ? "p-2" : "p-3")}>
         <Button
