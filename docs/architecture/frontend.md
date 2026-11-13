@@ -532,7 +532,10 @@ so a still-loading element never replaces it.
   Cache & Fetch, Proxy, ASR & LLM, Cleanup, and Users. `pages/settingsLocation`
   keeps the open tab of both pages in the `tab` query parameter and scrolls
   to a section a link names.
-- Both settings pages share one content width. A `SettingsSection` is a plain
+- Both settings pages, tabs included, are the content column of
+  `components/ui/page-width` (`contentPageClassName`), which Tags, Workflows,
+  and Insights share; the page sets it, never a feature inside the page. A
+  `SettingsSection` is a plain
   heading over a hairline followed by
   its fields as rows divided by hairlines. It has no card or border of its own
   and tabs set sections apart with whitespace, so a field never sits in a

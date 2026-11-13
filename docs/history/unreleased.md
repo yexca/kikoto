@@ -69,6 +69,11 @@
 - Settings sections are a heading over a thin line followed by their fields,
   without a card around them. Sources, proxies, users, and other repeated
   items keep their rows.
+- Pages use one of two widths. Library, Favorites, Record, Circles, Voice
+  Actors, Discover, Activity, Metadata, and Translation use the full width;
+  Settings, System, Tags, Workflows, and Insights share one centered column,
+  with their tab rows spanning that column, instead of each picking its own
+  width and alignment.
 
 </details>
 

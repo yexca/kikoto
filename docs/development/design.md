@@ -268,10 +268,10 @@ a plain heading over a hairline followed by its fields, set apart from the next
 section by whitespace and from its own fields by hairlines; it has no card or
 border, and a field has no framed container around it. A repeated object such
 as a source, a proxy, a folder rule, or a user may be a card or a table row.
-Settings tabs should share a consistent content width, section spacing, field
-rhythm, and destructive-action placement. Wide diagnostic tables may opt out of
-the content cap, but ordinary forms should not define their own page-local
-width.
+Settings tabs should share the [content column](#app-shell), section spacing,
+field rhythm, and destructive-action placement. No form or section defines its
+own width; a wide diagnostic table belongs on a full-width page such as
+Activity or Metadata.
 
 A page of operations lists them in sections like settings sections, one row
 each. At rest a row holds only what answers "what is this, how is it, and can
@@ -338,6 +338,16 @@ destinations and no administration controls:
 - A new destination or shell action joins an existing container (a sidebar
   group, the account panel, or Quick actions) rather than adding a persistent
   button, and Quick actions reaches every destination the viewer can open.
+
+A page takes one of two widths, chosen by what it holds:
+
+- Collection grids and data tables (Library, Favorites, Records, Circles,
+  Voice Actors, Discover, Activity, Metadata, and Translation) fill the page.
+- A page that is read or filled in rather than browsed (Settings, System,
+  Tags, Workflows, and Insights) is one shared content column, centered in
+  the page. Its tab row and section hairlines span the column, not the page.
+
+A new page takes one of these widths rather than defining its own.
 
 [Frontend](../architecture/frontend.md) describes how the shell implements
 these rules.

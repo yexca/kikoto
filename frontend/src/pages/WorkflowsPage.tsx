@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/auth/AuthProvider";
 import { DemoReadOnlyNotice } from "@/components/DemoReadOnlyNotice";
 import { Button } from "@/components/ui/button";
+import { contentPageClassName } from "@/components/ui/page-width";
 import { toastFromError, useToast } from "@/components/ui/toast";
 import { LazyRemoteFetchWorkspaceDialog, useRemoteFetchWorkspace } from "@/features/work-detail/workflows";
 import {
@@ -39,6 +40,7 @@ import type { CreatableAutomationTriggerType } from "@/features/workflows/workfl
 import { workflowIcon } from "@/features/workflows/workflowVisuals";
 import { api, type WorkflowDefinition, type WorkflowPreset, type WorkflowRun, type WorkflowTrigger } from "@/lib/api";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { cn } from "@/lib/tailwindClassNames";
 
 // The editor is bound to the operation and run options shown when it opened, not to one opened later.
 type TriggerEditorState =
@@ -430,7 +432,7 @@ export function WorkflowsPage({
   };
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className={cn(contentPageClassName, "space-y-6")}>
       {readOnly && <DemoReadOnlyNotice />}
       {hasWorkflowMetaSnapshot && workflowMetaError && (
         <div

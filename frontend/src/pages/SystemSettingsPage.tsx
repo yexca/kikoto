@@ -6,7 +6,12 @@ import { SubNavTabs, type SubNavItem } from "@/components/ui/sub-nav";
 import type { CurrentUser } from "@/lib/api";
 import { CleanupPage } from "@/pages/CleanupPage";
 import { MaintenancePage } from "@/pages/MaintenancePage";
-import { settingsPanelClassName, useSettingsLocation, type SettingsLocation } from "@/pages/settingsLocation";
+import {
+  settingsPageClassName,
+  settingsPanelClassName,
+  useSettingsLocation,
+  type SettingsLocation,
+} from "@/pages/settingsLocation";
 import {
   SYSTEM_SETTINGS_PATH,
   systemSettingsTabAliases,
@@ -67,7 +72,7 @@ export function SystemSettingsPage({
   }));
 
   return (
-    <div className="space-y-6">
+    <div className={settingsPageClassName}>
       {readOnly && <DemoReadOnlyNotice />}
       <SubNavTabs label={t("nav.system")} items={navItems} selected={activeTab} onSelect={selectTab} />
       <div

@@ -34,7 +34,7 @@ import {
 export function UserDataPage({ canImportData, demoMode }: { canImportData: boolean; demoMode: boolean }) {
   const { t } = useTranslation();
   return (
-    <div className="w-full max-w-4xl space-y-6">
+    <div className="space-y-6">
       {!demoMode && !canImportData && <p className="text-sm text-muted-foreground">{t("personal.readOnlyAccount")}</p>}
       <ExportSection />
       <ImportSection enabled={canImportData} />

@@ -1,12 +1,20 @@
 import { useEffect, useState } from "react";
 
+import { contentPageClassName } from "@/components/ui/page-width";
 import { NAVIGATION_EVENT } from "@/lib/browserHistory";
+import { cn } from "@/lib/tailwindClassNames";
 
 /** The tab a settings page shows and, for a link into one, the section of it to land on. */
 export type SettingsLocation<Tab extends string> = { tab: Tab; section?: string };
 
-/** Every tab shares one content width so switching tabs never shifts the layout. */
-export const settingsPanelClassName = "w-full max-w-4xl space-y-10";
+/**
+ * A settings page is one content column, tabs included, so the tab hairline
+ * ends where the fields do and switching tabs never shifts the layout.
+ */
+export const settingsPageClassName = cn(contentPageClassName, "space-y-6");
+
+/** The open tab's sections. */
+export const settingsPanelClassName = "space-y-10";
 
 function currentTabParameter() {
   return new URLSearchParams(window.location.search).get("tab") ?? "";

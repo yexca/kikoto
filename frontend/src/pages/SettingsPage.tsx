@@ -20,7 +20,12 @@ import { supportsNativePrivacy } from "@/lib/nativePrivacy";
 import { api, type CurrentUser } from "@/lib/api";
 import { validatePasswordChange, type PasswordChangeDraft } from "@/pages/accountSettings";
 import { AccountTimeZoneSection } from "@/features/time-zone/AccountTimeZoneSection";
-import { settingsPanelClassName, useSettingsLocation, type SettingsLocation } from "@/pages/settingsLocation";
+import {
+  settingsPageClassName,
+  settingsPanelClassName,
+  useSettingsLocation,
+  type SettingsLocation,
+} from "@/pages/settingsLocation";
 import {
   getStoredPlaybackSeekPreferences,
   normalizeSeekSeconds,
@@ -234,7 +239,7 @@ export function SettingsPage({
   const passwordManagedByEnvironment = user.passwordManagedBy === "environment";
 
   return (
-    <div className="space-y-6">
+    <div className={settingsPageClassName}>
       {readOnly && <DemoReadOnlyNotice />}
       <SubNavTabs label={t("nav.settings")} items={navItems} selected={activeTab} onSelect={selectTab} />
       {activeTab === "account" && (
